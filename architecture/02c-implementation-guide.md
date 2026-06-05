@@ -650,7 +650,7 @@ class BaseAgentAdapter {
 
 ### 3.1 Sistema de diseno
 
-> ✅ **Implementado** (rama `uxnanmobile`): tokens en `lib/presentation/theme/` (`colors.dart`, `typography.dart`, `spacing.dart`) y `buildUxnanTheme()` dark-first. Nota: se usa `Color.withValues(alpha:)` en lugar de `withOpacity()` (deprecado en Flutter actual). Las fuentes Inter/JetBrainsMono están declaradas en el tema pero los `.ttf` aún no se incluyen (fallback al sistema).
+> ✅ **Implementado** (rama `uxnanmobile`): tokens en `lib/presentation/theme/` (`colors.dart`, `typography.dart`, `spacing.dart`) y `buildUxnanTheme()` dark-first. Nota: se usa `Color.withValues(alpha:)` en lugar de `withOpacity()` (deprecado en Flutter actual). Las fuentes Inter/JetBrainsMono ya están incluidas en `assets/fonts/` y declaradas en `pubspec.yaml` (verificado en dispositivo).
 
 Uxnan usa un sistema de diseno propio basado en Material Design 3 con personalizacion especifica para el contexto de terminal/codigo.
 

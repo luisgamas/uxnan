@@ -104,6 +104,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   `AgentId` (with stable wire-id mapping).
 - Material 3 design system: `colors.dart`, `typography.dart`, `spacing.dart`
   and the dark-first `buildUxnanTheme()` builder (spec 02c §3.1).
+- App fonts bundled: Inter (400/500/600/700) and JetBrains Mono (400/500) under
+  `assets/fonts/`, declared in `pubspec.yaml` (resolves the FOR-HUMAN item).
 - App entry point: minimal `main.dart` (`ProviderScope`), `app.dart`
   (`MaterialApp.router` + theme + l10n), `app_router.dart` (`go_router`
   provider) and the home empty-state screen.
@@ -121,8 +123,6 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   (`dartssh2`, `xterm`), rich media (`flutter_inappwebview`, `lottie`,
   `cached_network_image`, `shimmer`), `image_picker`, `file_picker`, `vibration`,
   and `freezed`/`json_serializable` (added when entities need them).
-- Inter / JetBrains Mono font binaries are not yet bundled; the theme names the
-  families and falls back to the platform default until the `.ttf` files land.
 - Riverpod is pinned to `^3.0.0` (see the Changed entry above). The spec's 2.x
   `StateNotifierProvider` examples (02b §2.1) are adapted to the modern
   `Notifier`/`NotifierProvider` API when the state layer is built.

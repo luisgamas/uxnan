@@ -9,11 +9,14 @@ fallbacks); each item only unlocks or polishes a feature. Search the codebase fo
 
 ---
 
-## ☐ 1. App fonts — Inter & JetBrains Mono
+## ☑ 1. App fonts — Inter & JetBrains Mono — DONE (2026-06-05)
+
+**Done:** the six `.ttf` files below were added to `assets/fonts/`, the
+`fonts:` block in `pubspec.yaml` is enabled, and the app was verified rendering
+with them. Kept here for reference / re-provisioning.
 
 **What:** the UI font (Inter) and the monospaced/code font (JetBrains Mono). The
-theme (`lib/presentation/theme/typography.dart`) already names these families;
-until the `.ttf` files exist, Flutter falls back to the platform default font.
+theme (`lib/presentation/theme/typography.dart`) names these families.
 
 **Files needed** (exact names — the `pubspec.yaml` font block expects these):
 
