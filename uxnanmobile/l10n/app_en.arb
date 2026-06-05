@@ -1,0 +1,35 @@
+{
+  "@@locale": "en",
+  "appTitle": "Uxnan",
+  "@appTitle": {
+    "description": "The application name shown in the title bar and about screen."
+  },
+  "homeEmptyTitle": "No active sessions",
+  "@homeEmptyTitle": {
+    "description": "Title shown on the home screen when there are no paired bridges yet."
+  },
+  "homeEmptyBody": "Pair your phone with a PC running the Uxnan bridge to get started.",
+  "@homeEmptyBody": {
+    "description": "Body text shown on the empty home screen."
+  },
+  "actionPairDevice": "Pair a device",
+  "@actionPairDevice": {
+    "description": "Label for the button that starts the pairing flow."
+  },
+  "connectionConnected": "Connected",
+  "@connectionConnected": {
+    "description": "Connection status label when the secure channel is established."
+  },
+  "connectionConnecting": "Connecting…",
+  "@connectionConnecting": {
+    "description": "Connection status label while establishing the connection."
+  },
+  "connectionDisconnected": "Disconnected",
+  "@connectionDisconnected": {
+    "description": "Connection status label when there is no active connection."
+  },
+  "connectionReconnecting": "Reconnecting…",
+  "@connectionReconnecting": {
+    "description": "Connection status label while attempting to reconnect."
+  }
+}

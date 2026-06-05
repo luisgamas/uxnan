@@ -1,0 +1,78 @@
+# Changelog
+
+All notable changes to the `uxnanmobile` app are documented here.
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and the project adheres to [Semantic Versioning](https://semver.org/).
+
+## [Unreleased]
+
+### Added
+
+- **Local persistence (drift / SQLite)** — spec 02c §10:
+  - Full schema (`schemaVersion` 1): `threads`, `messages`, `turns`,
+    `projects`, `trusted_devices`, `composer_drafts`, `git_action_log` tables,
+    with WAL + foreign-keys pragmas.
+  - `UxnanDatabase` (drift) with an in-memory `forTesting` constructor.
+  - `Thread` domain entity + `IThreadRepository` / `IComposerDraftRepository`
+    contracts.
+  - `DriftThreadRepository` (faithful to spec §10.3) and
+    `DriftComposerDraftRepository`.
+  - DI providers: `databaseProvider`, `threadRepositoryProvider`,
+    `composerDraftRepositoryProvider` (spec 03 §1.5 / §3.6 levels 1–2).
+  - In-memory repository tests for the full thread CRUD + watch surface.
+  - Table indexes use the real drift `@TableIndex` annotation (the spec's
+    `List<Index> get indexes` sketch is not the actual drift API).
+  - `Message`/`Turn`/`Project`/`TrustedDevice` repositories are deferred to
+    their modules (they depend on the `MessageContent` sealed hierarchy,
+    `AgentConfig`, or split storage with `SecureStore`); their tables already
+    exist in the schema.
+
+### Changed
+
+- Migrated state management to **Riverpod 3.x** (`^3.0.0`), reconciling the
+  spec's "Riverpod 3.x manual" guidance (AGENTS.md / 00-index). The state layer
+  will use the modern `Notifier`/`NotifierProvider` API.
+
+### Added (foundation)
+
+- Initial Flutter project scaffold (Android + iOS), package name `uxnan`,
+  application id `com.uxnan.mobile`.
+- Clean Architecture skeleton: `core/`, `domain/`, `application/`,
+  `infrastructure/`, `presentation/` directory layers (per spec 02a §7).
+- `core/` layer:
+  - `protocol_constants.dart` and `app_constants.dart` (compile-time
+    `--dart-define` configuration, spec 03 §3.3 / 02a §5.9.1).
+  - Typed errors: `AppException`, `RpcException` (JSON-RPC code table),
+    `TransportException`.
+  - Extensions on `String`, `DateTime`, `Uint8List` (hex/base64).
+  - `AppLogger` (gated by `ENABLE_LOGGING`) and `Debouncer` utilities.
+- Domain enums: `MessageRole`, `TurnStatus`, `ThreadStatus`,
+  `ThreadSyncState`, `HandshakeMode`, `ConnectionPhase`, `GitActionKind`,
+  `AgentId` (with stable wire-id mapping).
+- Material 3 design system: `colors.dart`, `typography.dart`, `spacing.dart`
+  and the dark-first `buildUxnanTheme()` builder (spec 02c §3.1).
+- App entry point: minimal `main.dart` (`ProviderScope`), `app.dart`
+  (`MaterialApp.router` + theme + l10n), `app_router.dart` (`go_router`
+  provider) and the home empty-state screen.
+- Internationalization (`flutter_localizations` + ARB): English and Spanish.
+- `analysis_options.yaml` based on `very_good_analysis` (spec 02c §15.1).
+- Foundation tests: core extensions, `AgentId` mapping, and an app smoke test.
+- iOS deployment target 15.0; Android `minSdk` 24 (spec 02b §3.4).
+
+### Notes / deferred
+
+- The following spec packages are added in their respective module increments
+  to keep the build green until native configuration exists:
+  Firebase (`firebase_core`, `firebase_messaging`, `flutter_local_notifications`),
+  QR scanner (`mobile_scanner`, `permission_handler`), SSH terminal
+  (`dartssh2`, `xterm`), rich media (`flutter_inappwebview`, `lottie`,
+  `cached_network_image`, `shimmer`), `image_picker`, `file_picker`, `vibration`,
+  and `freezed`/`json_serializable` (added when entities need them).
+- Inter / JetBrains Mono font binaries are not yet bundled; the theme names the
+  families and falls back to the platform default until the `.ttf` files land.
+- Riverpod is pinned to `^3.0.0` (see the Changed entry above). The spec's 2.x
+  `StateNotifierProvider` examples (02b §2.1) are adapted to the modern
+  `Notifier`/`NotifierProvider` API when the state layer is built.
+- `analysis_options.yaml` omits the spec's `prefer_relative_imports` rule
+  because it contradicts `always_use_package_imports`; the project enforces
+  full package imports (spec 03 §1.5).

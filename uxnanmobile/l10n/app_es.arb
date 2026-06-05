@@ -1,0 +1,11 @@
+{
+  "@@locale": "es",
+  "appTitle": "Uxnan",
+  "homeEmptyTitle": "Sin sesiones activas",
+  "homeEmptyBody": "Vincula tu teléfono con una PC que ejecute el bridge de Uxnan para comenzar.",
+  "actionPairDevice": "Vincular un dispositivo",
+  "connectionConnected": "Conectado",
+  "connectionConnecting": "Conectando…",
+  "connectionDisconnected": "Desconectado",
+  "connectionReconnecting": "Reconectando…"
+}
