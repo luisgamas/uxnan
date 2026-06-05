@@ -1,0 +1,279 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:async/async.dart';
+import 'package:uxnan/core/constants/protocol_constants.dart';
+import 'package:uxnan/core/errors/transport_exception.dart';
+import 'package:uxnan/domain/entities/phone_identity.dart';
+import 'package:uxnan/domain/entities/secure_session.dart';
+import 'package:uxnan/domain/entities/trusted_device.dart';
+import 'package:uxnan/domain/enums/handshake_mode.dart';
+import 'package:uxnan/domain/value_objects/secure_envelope.dart';
+import 'package:uxnan/infrastructure/crypto/envelope_crypto.dart';
+import 'package:uxnan/infrastructure/crypto/handshake_crypto.dart';
+import 'package:uxnan/infrastructure/crypto/key_generation.dart';
+import 'package:uxnan/infrastructure/transport/handshake_messages.dart';
+import 'package:uxnan/infrastructure/transport/websocket_transport.dart';
+
+/// Coarse classification of an inbound raw frame.
+enum SecureMessageKind {
+  /// A handshake control message.
+  handshake,
+
+  /// An encrypted envelope carrying application traffic.
+  envelope,
+
+  /// A plaintext JSON-RPC message (rare; mostly enveloped).
+  rpc,
+
+  /// Anything that could not be classified.
+  unknown,
+}
+
+/// Performs the E2EE handshake and opens encrypted [SecureChannel]s.
+///
+/// Implements the phone side of the protocol in
+/// `architecture/02a-system-architecture.md` (section 5.9.1), reusing the
+/// audited primitives in `infrastructure/crypto/`. No cryptographic variants
+/// are introduced here.
+class SecureTransportLayer {
+  /// Creates a [SecureTransportLayer], optionally injecting crypto helpers.
+  SecureTransportLayer({
+    KeyGeneration? keyGeneration,
+    HandshakeCrypto? handshakeCrypto,
+    EnvelopeCrypto? envelopeCrypto,
+  })  : _keyGen = keyGeneration ?? KeyGeneration(),
+        _handshake = handshakeCrypto ?? HandshakeCrypto(),
+        _envelope = envelopeCrypto ?? EnvelopeCrypto();
+
+  final KeyGeneration _keyGen;
+  final HandshakeCrypto _handshake;
+  final EnvelopeCrypto _envelope;
+
+  /// Runs the full handshake over [transport] and returns the [SecureSession].
+  ///
+  /// Throws a [TransportException] of kind [TransportErrorKind.handshake] if
+  /// any verification step fails (nonce echo, expiry, identity, signature).
+  Future<SecureSession> performHandshake({
+    required WebSocketTransport transport,
+    required PhoneIdentity phoneIdentity,
+    required TrustedDevice device,
+    required HandshakeMode mode,
+  }) async {
+    final ephemeral = await _keyGen.generateEphemeralKeyPair();
+    final clientNonce = _keyGen.randomBytes(32);
+    final queue = StreamQueue<Uint8List>(transport.incoming);
+
+    try {
+      await _sendJson(
+        transport,
+        ClientHello(
+          sessionId: device.sessionId,
+          handshakeMode: mode,
+          phoneDeviceId: phoneIdentity.phoneDeviceId,
+          phoneIdentityPublicKey: phoneIdentity.publicKey,
+          phoneEphemeralPublicKey: ephemeral.publicKey,
+          clientNonce: clientNonce,
+        ).toJson(),
+      );
+
+      final serverHello = ServerHello.fromJson(await _nextJson(queue));
+      _verifyServerHello(serverHello, clientNonce, device, mode);
+
+      final transcript = _handshake.buildTranscript(
+        HandshakeTranscriptInput(
+          clientNonce: clientNonce,
+          phoneEphemeralPublicKey: ephemeral.publicKey,
+          macEphemeralPublicKey: serverHello.macEphemeralPublicKey,
+          serverNonce: serverHello.serverNonce,
+          sessionId: device.sessionId,
+          keyEpoch: serverHello.keyEpoch,
+          expiresAtForTranscript: serverHello.expiresAtForTranscript,
+        ),
+      );
+
+      final signatureOk = await _handshake.verify(
+        transcript,
+        serverHello.macSignature,
+        device.macIdentityPublicKey,
+      );
+      if (!signatureOk) {
+        throw const TransportException(
+          TransportErrorKind.handshake,
+          'Bridge signature verification failed',
+        );
+      }
+
+      final derivedKey = await _handshake.deriveSessionKey(
+        phoneEphemeralPrivateKey: ephemeral.privateKey,
+        macEphemeralPublicKey: serverHello.macEphemeralPublicKey,
+        clientNonce: clientNonce,
+        serverNonce: serverHello.serverNonce,
+      );
+
+      final phoneSignature = await _handshake.sign(
+        transcript,
+        phoneIdentity.privateSeed,
+      );
+      await _sendJson(
+        transport,
+        ClientAuth(
+          sessionId: device.sessionId,
+          phoneDeviceId: phoneIdentity.phoneDeviceId,
+          keyEpoch: serverHello.keyEpoch,
+          phoneSignature: phoneSignature,
+        ).toJson(),
+      );
+
+      final ready = Ready.fromJson(await _nextJson(queue));
+      if (ready.sessionId != device.sessionId) {
+        throw const TransportException(
+          TransportErrorKind.handshake,
+          'Ready sessionId mismatch',
+        );
+      }
+
+      return SecureSession(
+        sessionId: device.sessionId,
+        macDeviceId: device.macDeviceId,
+        phoneDeviceId: phoneIdentity.phoneDeviceId,
+        derivedKey: derivedKey,
+        keyEpoch: serverHello.keyEpoch,
+        mode: mode,
+      );
+    } finally {
+      await queue.cancel(immediate: true);
+    }
+  }
+
+  /// Opens an encrypted channel over an established [session].
+  SecureChannel openChannel(SecureSession session) =>
+      SecureChannel(session, envelopeCrypto: _envelope);
+
+  /// Classifies a raw inbound frame without decrypting it.
+  SecureMessageKind classifyRaw(Uint8List data) {
+    try {
+      final decoded = jsonDecode(utf8.decode(data));
+      if (decoded is! Map) return SecureMessageKind.unknown;
+      final kind = decoded['kind'];
+      if (kind == SecureEnvelope.kind) return SecureMessageKind.envelope;
+      if (kind == ServerHello.kind ||
+          kind == Ready.kind ||
+          kind == ClientHello.kind ||
+          kind == ClientAuth.kind) {
+        return SecureMessageKind.handshake;
+      }
+      if (decoded['jsonrpc'] != null) return SecureMessageKind.rpc;
+      return SecureMessageKind.unknown;
+    } on FormatException {
+      return SecureMessageKind.unknown;
+    }
+  }
+
+  void _verifyServerHello(
+    ServerHello hello,
+    Uint8List clientNonce,
+    TrustedDevice device,
+    HandshakeMode mode,
+  ) {
+    if (!_bytesEqual(hello.clientNonce, clientNonce)) {
+      throw const TransportException(
+        TransportErrorKind.handshake,
+        'Server did not echo the client nonce',
+      );
+    }
+    if (!_bytesEqual(hello.macIdentityPublicKey, device.macIdentityPublicKey)) {
+      throw const TransportException(
+        TransportErrorKind.handshake,
+        'Bridge identity key does not match the trusted device',
+      );
+    }
+    final skew = mode == HandshakeMode.trustedReconnect
+        ? ProtocolConstants.trustedReconnectSkew
+        : ProtocolConstants.clockSkewTolerance;
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    if (nowMs > hello.expiresAtForTranscript + skew.inMilliseconds) {
+      throw const TransportException(
+        TransportErrorKind.handshake,
+        'Handshake transcript has expired',
+      );
+    }
+  }
+
+  Future<void> _sendJson(
+    WebSocketTransport transport,
+    Map<String, dynamic> json,
+  ) {
+    return transport.send(Uint8List.fromList(utf8.encode(jsonEncode(json))));
+  }
+
+  Future<Map<String, dynamic>> _nextJson(StreamQueue<Uint8List> queue) async {
+    final raw = await queue.next;
+    return jsonDecode(utf8.decode(raw)) as Map<String, dynamic>;
+  }
+
+  static bool _bytesEqual(Uint8List a, Uint8List b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+}
+
+/// An encrypted message channel over an established [SecureSession].
+///
+/// Encrypts outbound plaintext into [SecureEnvelope]s with a monotonic phone
+/// sequence number, and decrypts inbound envelopes while enforcing replay
+/// protection: any envelope whose `seq` is not strictly greater than the last
+/// applied bridge sequence is rejected (spec 02b §5.3).
+class SecureChannel {
+  /// Creates a [SecureChannel] over [session].
+  SecureChannel(this._session, {EnvelopeCrypto? envelopeCrypto})
+      : _envelope = envelopeCrypto ?? EnvelopeCrypto(),
+        _lastInboundSeq = _session.bridgeOutboundSeq;
+
+  SecureSession _session;
+  final EnvelopeCrypto _envelope;
+  int _lastInboundSeq;
+
+  /// The current session (sequence counters advance as traffic flows).
+  SecureSession get session => _session;
+
+  /// Encrypts [plaintext] into the next outbound envelope.
+  Future<SecureEnvelope> encrypt(Uint8List plaintext) async {
+    final seq = _session.phoneOutboundSeq;
+    final envelope = await _envelope.encrypt(
+      plaintext: plaintext,
+      key: _session.derivedKey,
+      sessionId: _session.sessionId,
+      seq: seq,
+    );
+    _session = _session.withPhoneSeq(seq + 1);
+    return envelope;
+  }
+
+  /// Decrypts an inbound [envelope], enforcing session and replay checks.
+  Future<Uint8List> decrypt(SecureEnvelope envelope) async {
+    if (envelope.sessionId != _session.sessionId) {
+      throw const TransportException(
+        TransportErrorKind.decryption,
+        'Envelope sessionId mismatch',
+      );
+    }
+    if (envelope.seq <= _lastInboundSeq) {
+      throw TransportException(
+        TransportErrorKind.replay,
+        'Envelope seq ${envelope.seq} <= last applied $_lastInboundSeq',
+      );
+    }
+    final plaintext = await _envelope.decrypt(
+      envelope: envelope,
+      key: _session.derivedKey,
+    );
+    _lastInboundSeq = envelope.seq;
+    _session = _session.withBridgeSeq(envelope.seq);
+    return plaintext;
+  }
+}

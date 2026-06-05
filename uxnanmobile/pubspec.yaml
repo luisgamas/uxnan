@@ -42,6 +42,7 @@ dependencies:
   rxdart: ^0.28.0 # reactive stream operators
   shared_preferences: ^2.3.0 # non-sensitive preferences
   uuid: ^4.4.0 # UUID generation
+  web_socket_channel: ^3.0.0 # WebSocket client (LAN + relay)
 
 dev_dependencies:
   # --- drift code generation ---

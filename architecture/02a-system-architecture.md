@@ -632,6 +632,8 @@ Implementaciones concretas de repositorios, adaptadores de transporte, almacenam
 
 #### 5.3.1 WebSocket Transport
 
+> ✅ **Implementado** (rama `uxnanmobile`): `lib/infrastructure/transport/websocket_transport.dart` define la interfaz `WebSocketTransport` + `WebSocketChannelTransport` (vía `IOWebSocketChannel` para soportar headers de upgrade). La capa segura (handshake + envelopes + `seq`/replay) está en `secure_transport_layer.dart`. Ver detalle en §5.9.1.
+
 ```dart
 // lib/infrastructure/transport/websocket_transport.dart
 class WebSocketTransport {
@@ -1540,7 +1542,7 @@ El transporte seguro es la capa mas critica del sistema. Garantiza que el relay 
 
 #### 5.9.1 Protocolo de handshake completo
 
-> ✅ **Implementado parcialmente** (rama `uxnanmobile`): las primitivas criptográficas están en `lib/infrastructure/crypto/` (`key_generation`, `handshake_crypto`, `envelope_crypto`, `fingerprint`) + entidad `SecureSession` y value object `SecureEnvelope`. Verificadas contra vectores RFC 8032 (Ed25519), RFC 7748 (X25519), RFC 5869 (HKDF-SHA256) y NIST (AES-256-GCM), más un handshake de dos partes que prueba que ambos lados derivan la misma clave. **Pendiente** (módulo de conexión): WebSocket seguro, enforcement de `seq`/replay, correlación de requests, selección LAN/relay y la orquestación `SessionCoordinator`.
+> ✅ **Implementado** (rama `uxnanmobile`): primitivas crypto en `lib/infrastructure/crypto/` (verificadas contra vectores RFC 8032/7748/5869 y NIST) + la mecánica de transporte en `lib/infrastructure/transport/`: `WebSocketTransport`/`WebSocketChannelTransport`, `SecureTransportLayer.performHandshake` (flujo clientHello→serverHello→clientAuth→ready con verificación de nonce/expiry/identidad/firma), `SecureChannel` (cifrado + `seq` 1-based + rechazo de replay), `RequestCorrelator`, `BackoffCalculator`, `OutboundMessageBuffer`. Probado con un handshake de dos partes sobre un transporte en memoria. **Pendiente** (siguiente incremento): `SessionCoordinator` (máquina `ConnectionPhase` + bucle de reconexión + providers), `TransportSelector` (descubrimiento LAN), `IncomingMessageProcessor` e integración WS en vivo contra un bridge real.
 >
 > **Contrato — codificación canónica del transcript:** el transcript que se firma es el UTF-8 de la concatenación, en el orden documentado, de la representación *wire* de cada campo: hex en minúsculas para los campos de bytes (`clientNonce`, claves efímeras, `serverNonce`), el string tal cual para `sessionId`, y la representación decimal para los enteros (`keyEpoch`, `expiresAtForTranscript`). El bridge debe reproducir esta codificación byte a byte. La librería usada para AES-256-GCM es `cryptography` (no se introduce ninguna variante criptográfica: mismos algoritmo y parámetros del spec).
 

@@ -18,7 +18,7 @@ class SecureSession {
     required this.keyEpoch,
     required this.mode,
     this.bridgeOutboundSeq = 0,
-    this.phoneOutboundSeq = 0,
+    this.phoneOutboundSeq = 1,
   });
 
   /// Session identifier shared with the bridge and relay.
@@ -33,10 +33,12 @@ class SecureSession {
   /// AES-256 key derived during the handshake (32 bytes). In-memory only.
   final Uint8List derivedKey;
 
-  /// Last sequence number applied from the bridge's outbound stream.
+  /// Last sequence number applied from the bridge's outbound stream (0 = none
+  /// applied yet). Inbound envelopes must have a strictly greater `seq`.
   final int bridgeOutboundSeq;
 
-  /// Next sequence number to use for messages sent to the bridge.
+  /// Next sequence number to use for messages sent to the bridge. Sequence
+  /// numbers are 1-based, so the first outbound message is `seq` 1.
   final int phoneOutboundSeq;
 
   /// Key renegotiation counter.

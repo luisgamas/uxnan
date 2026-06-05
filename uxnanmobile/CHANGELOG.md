@@ -8,6 +8,32 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Secure transport + connection mechanics** — spec 02a §5.9 / 02c §11:
+  - `WebSocketTransport` interface + `WebSocketChannelTransport`
+    (`web_socket_channel`, `IOWebSocketChannel` so the relay's `x-role` /
+    `x-session-id` upgrade headers are honored).
+  - `SecureTransportLayer.performHandshake`: the phone side of the
+    clientHello → serverHello → clientAuth → ready flow, verifying the nonce
+    echo, transcript expiry (with clock-skew tolerance), the trusted bridge
+    identity, and the Ed25519 signature before deriving the session key.
+  - `SecureChannel`: AES-256-GCM encrypt/decrypt with 1-based outbound
+    sequencing and replay rejection (`seq <= lastApplied` ⇒
+    `TransportException(replay)`).
+  - `RequestCorrelator` (JSON-RPC request/response matching + timeout),
+    `BackoffCalculator` (exp. 1→60s with ±30% jitter), `OutboundMessageBuffer`
+    (sliding window) and `classifyRaw` message triage.
+  - Value objects/entities: `RpcMessage` (+`RpcError`), `PhoneIdentity`,
+    `TrustedDevice`, `ConnectionRecoveryState`; added `web_socket_channel` dep
+    and a `TransportErrorKind.replay`.
+  - Tests: a full **two-party handshake over an in-memory transport pair**
+    (phone + simulated bridge derive the same key; untrusted-identity rejected),
+    channel round-trip + replay rejection, correlator, backoff bounds, buffer
+    sliding window, and RpcMessage JSON.
+  - Deferred to the next increment: `SessionCoordinator` orchestration
+    (ConnectionPhase state machine + reconnection loop + Riverpod wiring),
+    `TransportSelector` LAN discovery, `IncomingMessageProcessor`, and live
+    WebSocket integration against a real bridge.
+
 - **E2EE cryptography** — spec 02a §5.9 / 02b §5:
   - `KeyGeneration`: Ed25519 identity key pairs, X25519 ephemeral key pairs,
     CSPRNG nonces.

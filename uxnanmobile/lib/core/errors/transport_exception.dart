@@ -31,6 +31,9 @@ enum TransportErrorKind {
   /// An envelope failed authenticated decryption (AES-256-GCM tag mismatch).
   decryption,
 
+  /// An envelope's sequence number violated replay protection.
+  replay,
+
   /// A message exceeded the maximum allowed size.
   messageTooLarge,
 
