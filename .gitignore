@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+.dart_tool/
+.packages
+build/
+target/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+credentials.json
+*.pem
+*.key
+*.p12
+*.jks
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Flutter
+.flutter-plugins
+.flutter-plugins-dependencies
+*.iml
+
+# Rust / Tauri
+target/
+*.rs.bk
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Desktop.ini
