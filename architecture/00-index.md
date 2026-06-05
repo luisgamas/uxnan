@@ -40,7 +40,8 @@
 | Gestión de estado | Riverpod **3.x** manual | Decisión 2026-06-05 (ver abajo); API `Notifier`/`NotifierProvider` |
 | Primitivas crypto E2EE (key gen, handshake Ed25519/X25519/HKDF, envelope AES-256-GCM, fingerprint) | ✅ Hecho | 02a §5.9; verificado con vectores RFC/NIST |
 | Mecánica de transporte (WebSocket, handshake `performHandshake`, `SecureChannel` seq/replay, correlador, backoff, outbound buffer) | ✅ Hecho | 02a §5.9; handshake de 2 partes probado en memoria |
-| Orquestación `SessionCoordinator` (ConnectionPhase + reconexión + providers), `TransportSelector` LAN, `IncomingMessageProcessor`, integración WS en vivo | ⏳ Pendiente | Siguiente incremento |
+| Orquestación `SessionCoordinator` (ConnectionPhase + reconexión + providers Riverpod) + `SecureStore`/`PhoneIdentityStore` + `TransportSelector` (relay) | ✅ Hecho | 02a §5.2.1; probado con bridge simulado (connect, RPC, reconexión) |
+| `IncomingMessageProcessor`, descubrimiento LAN, integración WS en vivo contra bridge | ⏳ Pendiente | Con conversación / pruebas e2e |
 | Pairing/onboarding · conversación/streaming · Git · push | ⏳ Pendiente | — |
 
 > **Decisión de gestión de estado (2026-06-05):** el proyecto usa **Riverpod 3.x** manual (no 2.x). Los ejemplos de la especificación que usan `StateNotifierProvider` (API 2.x) se adaptan a la API moderna `Notifier`/`NotifierProvider`/`AsyncNotifierProvider`. Sigue sin usarse `riverpod_generator`.

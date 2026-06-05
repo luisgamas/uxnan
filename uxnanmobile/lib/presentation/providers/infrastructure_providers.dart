@@ -4,6 +4,8 @@ import 'package:uxnan/domain/repositories/i_thread_repository.dart';
 import 'package:uxnan/infrastructure/repositories/drift_composer_draft_repository.dart';
 import 'package:uxnan/infrastructure/repositories/drift_thread_repository.dart';
 import 'package:uxnan/infrastructure/storage/local_database.dart';
+import 'package:uxnan/infrastructure/storage/phone_identity_store.dart';
+import 'package:uxnan/infrastructure/storage/secure_store.dart';
 
 /// Infrastructure-layer providers.
 ///
@@ -27,4 +29,13 @@ final threadRepositoryProvider = Provider<IThreadRepository>(
 /// Composer-draft repository, backed by drift.
 final composerDraftRepositoryProvider = Provider<IComposerDraftRepository>(
   (ref) => DriftComposerDraftRepository(ref.watch(databaseProvider)),
+);
+
+/// Encrypted secure storage (Keychain / Keystore).
+final secureStoreProvider =
+    Provider<SecureStore>((ref) => FlutterSecureStore());
+
+/// Loads or creates the phone's persistent Ed25519 identity.
+final phoneIdentityStoreProvider = Provider<PhoneIdentityStore>(
+  (ref) => PhoneIdentityStore(ref.watch(secureStoreProvider)),
 );

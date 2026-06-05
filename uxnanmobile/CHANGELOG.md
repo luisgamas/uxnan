@@ -8,6 +8,34 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **SessionCoordinator + connection orchestration** — spec 02a §5.2.1 / 02c §11:
+  - `SessionCoordinator` (application layer): drives the connection lifecycle
+    (connect / disconnect / switchMac), runs the handshake via
+    `SecureTransportLayer`, opens a `SecureChannel`, and exposes
+    `connectionPhase`, `recoveryState`, `activeMac` and inbound `incomingMessages`
+    as streams.
+  - `sendRequest`: encrypts + sends when connected, otherwise buffers for replay;
+    inbound envelopes are decrypted and routed to the `RequestCorrelator`
+    (responses) or the `incomingMessages` stream (requests/notifications).
+  - Automatic reconnection: on an unexpected drop, retries with
+    `BackoffCalculator` up to a max (default 10) before entering the terminal
+    error phase; intentional `disconnect()` does not reconnect.
+  - `TransportSelector` interface + `RelayTransportSelector` (relay via
+    `relayUrl` with `x-role`/`x-session-id` headers; LAN discovery deferred).
+  - `SecureStore` interface + `FlutterSecureStore`, and `PhoneIdentityStore`
+    (load-or-create the persistent Ed25519 identity — spec 02b RF-PAIR-08).
+  - Riverpod 3.x providers: `secureStoreProvider`, `phoneIdentityStoreProvider`,
+    `secureTransportLayerProvider`, `transportSelectorProvider`,
+    `sessionCoordinatorProvider`, and the `connectionPhaseProvider` /
+    `connectionRecoveryProvider` / `activeMacProvider` `StreamProvider`s.
+  - Tests: a persistent **simulated bridge over an in-memory transport** drives
+    a full connect, an encrypted `sendRequest` round-trip, inbound notification
+    delivery, intentional disconnect, and **automatic reconnect after a drop**;
+    plus `PhoneIdentityStore` load-or-create against an in-memory store.
+  - Deferred: `IncomingMessageProcessor` (domain-event classification, with the
+    conversation module), `TransportSelector` LAN discovery, and live WebSocket
+    integration against a real bridge.
+
 - **Secure transport + connection mechanics** — spec 02a §5.9 / 02c §11:
   - `WebSocketTransport` interface + `WebSocketChannelTransport`
     (`web_socket_channel`, `IOWebSocketChannel` so the relay's `x-role` /
