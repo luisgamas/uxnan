@@ -1,4 +1,4 @@
-package com.uxnan.uxnan
+package com.uxnan.mobile
 
 import io.flutter.embedding.android.FlutterActivity
 
