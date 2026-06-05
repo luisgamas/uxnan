@@ -133,6 +133,22 @@ These rules are non-negotiable:
   - Node.js: project-configured linter
   - Svelte: `svelte-check` + project-configured linter
 
+### Human-required assets (`FOR-HUMAN:`)
+
+Some files cannot be produced by an agent: font binaries (`.ttf`/`.otf`), icon and image assets, Firebase/APNs credentials (`google-services.json`, `GoogleService-Info.plist`), signing keys, `.env` secrets, and store metadata.
+
+Whenever the implementation references such a file that the **human** must provide, you MUST leave a greppable annotation containing the literal token `FOR-HUMAN:` followed by:
+
+1. **What** the file/asset is (and where to obtain it, if relevant).
+2. **Where** it must go — the exact path in the project.
+3. **Config** — any wiring needed for it to work (e.g. uncomment a `pubspec.yaml` section then run `flutter pub get`, apply a gradle plugin, add an Xcode capability), or state "none".
+
+Rules:
+- Aggregate every open item in a `FOR-HUMAN.md` checklist at the component root (e.g. `uxnanmobile/FOR-HUMAN.md`).
+- Also place an inline comment with the `FOR-HUMAN:` token at the exact code/config location that needs the asset (e.g. a `# FOR-HUMAN:` comment in `pubspec.yaml`).
+- The whole project must always compile and run without these assets (use graceful fallbacks); a missing `FOR-HUMAN` asset may degrade a feature but must never break startup or the build.
+- **Never** commit real secrets, credentials, or keys — only the annotation describing what is needed and where.
+
 ---
 
 ## After implementing

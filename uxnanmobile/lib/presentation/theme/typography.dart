@@ -3,9 +3,13 @@ import 'package:uxnan/presentation/theme/colors.dart';
 
 /// Centralized typography tokens for the Uxnan design system.
 ///
-/// Inter is used for UI text and JetBrains Mono for code. The font binaries
-/// are declared in `pubspec.yaml`; until they are bundled, Flutter falls back
-/// to the platform default for these family names. See spec 02c section 3.1.
+/// Inter is used for UI text and JetBrains Mono for code. Until the font
+/// binaries are bundled, Flutter falls back to the platform default for these
+/// family names. See spec 02c section 3.1.
+///
+/// FOR-HUMAN: add the Inter and JetBrains Mono `.ttf` files under
+/// `assets/fonts/` and uncomment the `fonts:` block in `pubspec.yaml`. Full
+/// instructions and the exact file list are in `uxnanmobile/FOR-HUMAN.md`.
 class UxnanTypography {
   const UxnanTypography._();
 

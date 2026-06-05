@@ -62,13 +62,22 @@ flutter:
     - assets/images/
     - assets/animations/lottie/
 
-  # Fonts (Inter for UI, JetBrainsMono for code) are declared per architecture
-  # 02c §3.1. The .ttf binaries are added under assets/fonts/ in a follow-up; the
-  # theme names these families and falls back to the platform default until then.
+  # FOR-HUMAN: Fonts (Inter for UI, JetBrainsMono for code) per architecture
+  # 02c §3.1. Add the .ttf binaries under assets/fonts/ then UNCOMMENT this block
+  # and run `flutter pub get`. The theme already names these families and falls
+  # back to the platform default until the files are present. See FOR-HUMAN.md.
   # fonts:
   #   - family: Inter
   #     fonts:
   #       - asset: assets/fonts/Inter-Regular.ttf
+  #       - asset: assets/fonts/Inter-Medium.ttf
+  #         weight: 500
+  #       - asset: assets/fonts/Inter-SemiBold.ttf
+  #         weight: 600
+  #       - asset: assets/fonts/Inter-Bold.ttf
+  #         weight: 700
   #   - family: JetBrainsMono
   #     fonts:
   #       - asset: assets/fonts/JetBrainsMono-Regular.ttf
+  #       - asset: assets/fonts/JetBrainsMono-Medium.ttf
+  #         weight: 500
