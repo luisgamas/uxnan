@@ -5,7 +5,7 @@
 
 ## Project status
 
-**ALPHA** — The project is in technical specification phase. Architecture documentation is complete but implementation has not started. All code is new — no legacy, no users, no production data.
+**ALPHA** — Architecture documentation is complete. Implementation has begun: the `uxnanmobile/` Flutter app has a foundation (project scaffold, `core/` layer, Material 3 theme, domain enums, routing, i18n) and a local persistence module (drift) on the `uxnanmobile` branch. Other components (`uxnandesktop/`, `bridge/`, `relay/`, `shared/`) have not started. All code is new — no legacy, no users, no production data.
 
 This means:
 - There is no backwards-compatibility to maintain (yet).
@@ -82,11 +82,12 @@ If it affects contracts in `shared/`, all consuming components must be updated i
 ### Conventions by component
 
 **Flutter (uxnanmobile/):**
-- Clean Architecture: `domain/`, `infrastructure/`, `presentation/`, `core/`
-- Riverpod 3.x manual — no `riverpod_generator`, no `riverpod_annotation`
+- Clean Architecture: `core/`, `domain/`, `application/`, `infrastructure/`, `presentation/`
+- Riverpod 3.x manual — no `riverpod_generator`, no `riverpod_annotation`. Use the modern `Notifier` / `NotifierProvider` / `AsyncNotifierProvider` API (the spec's older `StateNotifierProvider` examples are adapted accordingly).
 - Material Design 3 with semantic `ColorScheme`
 - drift (SQLite) for local persistence
 - Detailed conventions: `architecture/03-technical-reference.md`
+- **Always use the installed Flutter skills** when working on this app — they encode this repo's exact style: `flutter-init-project` (bootstrap/reset a baseline), `flutter-clean-architect` (module/layer structure), `flutter-riverpod-expert` (providers, notifiers, auth/router wiring), `flutter-m3-uiux` (theme, design tokens, responsive UI). Invoke the relevant skill before scaffolding or restructuring. The architecture docs remain the source of truth: where a skill's generic default conflicts with the spec (e.g. `lib/config/` vs the spec's `lib/core/`, or a minimal-dependency default), follow the spec.
 
 **Desktop (uxnandesktop/):**
 - Backend: Rust with Tauri 2 + Tokio async

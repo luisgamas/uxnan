@@ -115,6 +115,8 @@ lib/presentation/screens/conversation/
 
 El proyecto utiliza Riverpod 3.x con declaracion manual de providers (sin code generation). Esto permite control explicito sobre el ciclo de vida, la inyeccion de dependencias y el naming.
 
+> **Nota (Riverpod 3.x, 2026-06-05):** los ejemplos de esta sección que usan `StateNotifierProvider` corresponden a la API 2.x; en 3.x se sustituyen por `NotifierProvider` / `AsyncNotifierProvider` (clases `Notifier` / `AsyncNotifier`). Los `Provider`, `StreamProvider`, `FutureProvider` y `*.family` se mantienen igual. Ya implementados con este patrón: `databaseProvider`, `threadRepositoryProvider`, `composerDraftRepositoryProvider` y `appRouterProvider`.
+
 #### Patron general
 
 ```dart

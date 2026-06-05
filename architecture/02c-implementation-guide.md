@@ -650,6 +650,8 @@ class BaseAgentAdapter {
 
 ### 3.1 Sistema de diseno
 
+> ✅ **Implementado** (rama `uxnanmobile`): tokens en `lib/presentation/theme/` (`colors.dart`, `typography.dart`, `spacing.dart`) y `buildUxnanTheme()` dark-first. Nota: se usa `Color.withValues(alpha:)` en lugar de `withOpacity()` (deprecado en Flutter actual). Las fuentes Inter/JetBrainsMono están declaradas en el tema pero los `.ttf` aún no se incluyen (fallback al sistema).
+
 Uxnan usa un sistema de diseno propio basado en Material Design 3 con personalizacion especifica para el contexto de terminal/codigo.
 
 #### Paleta de colores
@@ -1999,6 +2001,8 @@ class GitErrorMapper {
 ---
 
 ## 10. Modelos de base de datos (Drift)
+
+> ✅ **Implementado** (rama `uxnanmobile`): esquema completo (7 tablas, `schemaVersion` 1, pragmas WAL/foreign_keys), `UxnanDatabase` con constructor `forTesting`, y `DriftThreadRepository` + `DriftComposerDraftRepository` con tests in-memory. Ajuste vs. spec: los índices usan la anotación real de drift `@TableIndex(...)` en lugar del `List<Index> get indexes` mostrado abajo (que es pseudocódigo de referencia). `DriftMessageRepository` se implementa con el módulo de conversación, junto con la jerarquía sellada `MessageContent`.
 
 ### 10.1 Definicion completa de tablas
 

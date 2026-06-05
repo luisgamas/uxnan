@@ -292,6 +292,8 @@ class WorkspaceCheckpoint {
 
 #### 5.1.2 Enumeraciones de dominio
 
+> ✅ **Implementado** (rama `uxnanmobile`): los 8 enums en `lib/domain/enums/` (uno por archivo). `AgentId` añade mapeo a `wireId` estable con fallback a `custom`.
+
 ```dart
 enum MessageRole { user, assistant, system, tool }
 enum TurnStatus { pending, running, completed, error, aborted }
@@ -696,6 +698,8 @@ class SecureStore {
 ```
 
 #### 5.3.4 Almacenamiento local (SQLite)
+
+> ✅ **Implementado** (rama `uxnanmobile`): `UxnanDatabase` y el esquema completo de 7 tablas en `lib/infrastructure/storage/`. Detalle de tablas y repositorios en 02c §10. Repositorios drift listos: `Thread`, `ComposerDraft` (los demás se implementan con su módulo).
 
 ```dart
 // lib/infrastructure/storage/local_database.dart
@@ -1961,6 +1965,8 @@ class AiFileChange {
 ---
 
 ## 7. Estructura de directorios del proyecto Flutter
+
+> ✅ **Implementado parcialmente** (rama `uxnanmobile`): el árbol está creado con las 5 capas. Completos: `core/`, `domain/enums`, parte de `domain/entities` + `domain/repositories`, `infrastructure/storage` + `infrastructure/repositories` (drift), `presentation/{theme,router,providers}` y las pantallas base. Las carpetas aún sin código llevan `.gitkeep`. `build.yaml` no es necesario por ahora (la generación de drift usa la config por defecto de `build_runner`).
 
 > **Nota:** este proyecto usa `lib/core/` para utilidades transversales. En proyectos que siguen la convencion `config/`, el contenido equivalente se ubicaria en `lib/config/`.
 
