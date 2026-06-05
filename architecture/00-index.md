@@ -38,7 +38,8 @@
 | Persistencia drift (esquema completo de 7 tablas + `UxnanDatabase`) | ✅ Hecho | 02c §10 |
 | Repositorios drift: `Thread`, `ComposerDraft` (+ providers DI) | ✅ Hecho | `Message`/`Turn`/`Project`/`TrustedDevice` diferidos a su módulo |
 | Gestión de estado | Riverpod **3.x** manual | Decisión 2026-06-05 (ver abajo); API `Notifier`/`NotifierProvider` |
-| Crypto + transporte seguro E2EE | ⏳ Pendiente | Próximo módulo (02a §5.9) |
+| Primitivas crypto E2EE (key gen, handshake Ed25519/X25519/HKDF, envelope AES-256-GCM, fingerprint) | ✅ Hecho | 02a §5.9; verificado con vectores RFC/NIST |
+| Transporte seguro (WebSocket, seq/replay, correlación, selección LAN/relay) + orquestación `SessionCoordinator` | ⏳ Pendiente | Próximo módulo (02a §5.9.2–5.9.4) |
 | Pairing/onboarding · conversación/streaming · Git · push | ⏳ Pendiente | — |
 
 > **Decisión de gestión de estado (2026-06-05):** el proyecto usa **Riverpod 3.x** manual (no 2.x). Los ejemplos de la especificación que usan `StateNotifierProvider` (API 2.x) se adaptan a la API moderna `Notifier`/`NotifierProvider`/`AsyncNotifierProvider`. Sigue sin usarse `riverpod_generator`.

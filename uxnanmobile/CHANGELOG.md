@@ -8,6 +8,33 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **E2EE cryptography** — spec 02a §5.9 / 02b §5:
+  - `KeyGeneration`: Ed25519 identity key pairs, X25519 ephemeral key pairs,
+    CSPRNG nonces.
+  - `HandshakeCrypto`: canonical transcript builder, Ed25519 bilateral
+    sign/verify, and X25519 + HKDF-SHA256 session-key derivation
+    (`salt = clientNonce || serverNonce`, `info = "uxnan-e2ee-v1"`).
+  - `EnvelopeCrypto`: AES-256-GCM authenticated encryption with the documented
+    envelope wire format (12-byte nonce, 16-byte tag); decryption failures
+    surface as `TransportException(decryption)`.
+  - `SecureSession` entity (in-memory key + seq counters) and `SecureEnvelope`
+    value object.
+  - `MessageFingerprinter` (SHA-256 via pointycastle) + `TextFingerprint`.
+  - Tests against published vectors: Ed25519 (RFC 8032), X25519 (RFC 7748),
+    HKDF-SHA256 (RFC 5869), AES-256-GCM (NIST all-zero), a full two-party
+    handshake that proves both sides derive the same key, plus tamper/wrong-key
+    rejection and SHA-256 known-answer checks.
+  - Contract note: the transcript is the UTF-8 of the fields' wire strings
+    concatenated in order (hex for byte fields, raw string for `sessionId`,
+    decimal for integers); the bridge must mirror this exactly.
+  - Library choice: AES-256-GCM uses the `cryptography` package (native
+    acceleration via `cryptography_flutter`); the algorithm/params are exactly
+    per spec — no variant. `pointycastle` remains for synchronous SHA-256.
+  - Deferred to the connection module: WebSocket transport, secure-transport
+    seq/replay enforcement, request correlator, LAN/relay transport selector,
+    and the `SessionCoordinator` handshake orchestration (they need the live
+    message flow / bridge).
+
 - **Local persistence (drift / SQLite)** — spec 02c §10:
   - Full schema (`schemaVersion` 1): `threads`, `messages`, `turns`,
     `projects`, `trusted_devices`, `composer_drafts`, `git_action_log` tables,
