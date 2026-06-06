@@ -33,7 +33,7 @@
 | Estructura de capas (`core/`, `domain/`, `application/`, `infrastructure/`, `presentation/`) | ✅ Hecho | Ver 02a §7 |
 | Capa `core/` (constantes de protocolo, errores tipados, extensiones, logger/debouncer) | ✅ Hecho | — |
 | Enums de dominio | ✅ Hecho | 02a §5.1.2 |
-| Sistema visual M3 (tokens + tema dark-first) | ✅ Hecho | 02c §3.1 |
+| Sistema visual M3 (tokens + tema adaptativo claro/oscuro) | ✅ Hecho | 02c §3.1 |
 | Arranque (`main`/`app`/router), i18n (en/es) | ✅ Hecho | — |
 | Persistencia drift (esquema completo de 7 tablas + `UxnanDatabase`) | ✅ Hecho | 02c §10 |
 | Repositorios drift: `Thread`, `ComposerDraft` (+ providers DI) | ✅ Hecho | `Message`/`Turn`/`Project`/`TrustedDevice` diferidos a su módulo |

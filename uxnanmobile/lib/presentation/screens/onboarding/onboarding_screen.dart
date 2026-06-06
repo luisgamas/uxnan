@@ -116,7 +116,7 @@ class _PairPage extends StatelessWidget {
       title: l10n.onboardingPairTitle,
       body: l10n.onboardingPairBody,
       top: const FloatingAgents(
-        assets: [AgentLogos.claude, AgentLogos.gemini, AgentLogos.kimi],
+        assets: [AgentLogos.claude, AgentLogos.kilocode, AgentLogos.goose],
         placements: FloatingAgents.layoutD,
       ),
     );

@@ -19,6 +19,7 @@ class HomeScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
     final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
 
     return Center(
       child: Padding(
@@ -41,7 +42,7 @@ class HomeScreen extends ConsumerWidget {
             Text(
               l10n.homeEmptyBody,
               style: textTheme.bodyMedium?.copyWith(
-                color: UxnanColors.onSurfaceMuted,
+                color: colorScheme.onSurfaceVariant,
               ),
               textAlign: TextAlign.center,
             ),

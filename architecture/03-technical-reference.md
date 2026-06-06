@@ -793,7 +793,9 @@ class UxnanApp extends ConsumerWidget {
     final router = ref.watch(appRouterProvider);
     return MaterialApp.router(
       title: 'Uxnan',
-      theme: buildUxnanTheme(brightness: Brightness.dark),
+      themeMode: ThemeMode.system,
+      theme: buildUxnanTheme(brightness: Brightness.light),
+      darkTheme: buildUxnanTheme(brightness: Brightness.dark),
       routerConfig: router,
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
@@ -807,7 +809,7 @@ class UxnanApp extends ConsumerWidget {
 - `ConsumerWidget` en lugar de `StatelessWidget` porque la app necesita acceder al provider del router (que puede depender del estado de sesion para redirects).
 - `MaterialApp.router` en lugar de `MaterialApp` porque usamos `go_router` para navegacion declarativa.
 - `buildUxnanTheme()` es una funcion pura definida en `lib/presentation/theme/uxnan_theme.dart` que construye el `ThemeData` de Material 3 con los tokens de diseno del proyecto.
-- El tema por defecto es oscuro (`Brightness.dark`), consistente con la estetica de herramientas de desarrollo.
+- La app sigue el tema del sistema (`ThemeMode.system`) y expone variantes clara y oscura para preservar la identidad visual en ambos modos.
 - Las localizaciones se generan desde los archivos ARB en `l10n/` usando `flutter_localizations` + `intl`.
 
 **Configuracion del router:**

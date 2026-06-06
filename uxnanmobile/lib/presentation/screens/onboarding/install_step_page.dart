@@ -16,6 +16,7 @@ class InstallStepPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
 
     return OnboardingPageLayout(
       icon: Icons.terminal_rounded,
@@ -42,7 +43,7 @@ class InstallStepPage extends StatelessWidget {
                 child: Text(
                   l10n.onboardingInstallHint,
                   style: textTheme.bodySmall?.copyWith(
-                    color: UxnanColors.onSurfaceMuted,
+                    color: colorScheme.onSurfaceVariant,
                   ),
                 ),
               ),

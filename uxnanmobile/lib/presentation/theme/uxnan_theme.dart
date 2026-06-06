@@ -3,29 +3,45 @@ import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
 
 /// Builds the Material 3 [ThemeData] for Uxnan from the centralized design
-/// tokens. Dark is the primary brightness; the same builder produces a light
-/// variant when requested. See spec 02c section 3.1.
+/// tokens. The same builder produces brightness-specific variants so the app
+/// can follow the system theme while preserving the brand palette.
 ThemeData buildUxnanTheme({Brightness brightness = Brightness.dark}) {
+  final surface = UxnanColors.surfaceFor(brightness);
+  final surfaceVariant = UxnanColors.surfaceVariantFor(brightness);
+  final surfaceElevated = UxnanColors.surfaceElevatedFor(brightness);
+  final primary = UxnanColors.primaryFor(brightness);
+  final primaryContainer = UxnanColors.primaryContainerFor(brightness);
+  final secondary = UxnanColors.secondaryFor(brightness);
+  final secondaryContainer = UxnanColors.secondaryContainerFor(brightness);
+  final error = UxnanColors.errorFor(brightness);
+  final onSurface = UxnanColors.onSurfaceFor(brightness);
+  final onSurfaceVariant = UxnanColors.onSurfaceMutedFor(brightness);
+  final outline = UxnanColors.outlineFor(brightness);
   final colorScheme = ColorScheme(
     brightness: brightness,
-    primary: UxnanColors.primary,
-    onPrimary: UxnanColors.onPrimary,
-    primaryContainer: UxnanColors.primaryContainer,
-    onPrimaryContainer: UxnanColors.onSurface,
-    secondary: UxnanColors.secondary,
-    onSecondary: UxnanColors.onSecondary,
-    secondaryContainer: UxnanColors.secondaryContainer,
-    onSecondaryContainer: UxnanColors.onSurface,
-    error: UxnanColors.error,
+    primary: primary,
+    onPrimary: brightness == Brightness.dark
+        ? UxnanColors.onPrimary
+        : UxnanColors.lightOnPrimary,
+    primaryContainer: primaryContainer,
+    onPrimaryContainer: onSurface,
+    secondary: secondary,
+    onSecondary: brightness == Brightness.dark
+        ? UxnanColors.onSecondary
+        : UxnanColors.lightOnSecondary,
+    secondaryContainer: secondaryContainer,
+    onSecondaryContainer: onSurface,
+    error: error,
     onError: Colors.white,
-    surface: UxnanColors.surface,
-    onSurface: UxnanColors.onSurface,
-    surfaceContainerHighest: UxnanColors.surfaceVariant,
-    surfaceContainerHigh: UxnanColors.surfaceElevated,
-    outline: UxnanColors.outline,
-    outlineVariant: UxnanColors.outline.withValues(alpha: 0.5),
+    surface: surface,
+    onSurface: onSurface,
+    onSurfaceVariant: onSurfaceVariant,
+    surfaceContainerHighest: surfaceVariant,
+    surfaceContainerHigh: surfaceElevated,
+    outline: outline,
+    outlineVariant:
+        outline.withValues(alpha: brightness == Brightness.dark ? 0.5 : 0.35),
   );
-
   return ThemeData(
     useMaterial3: true,
     colorScheme: colorScheme,
@@ -48,17 +64,22 @@ ThemeData buildUxnanTheme({Brightness brightness = Brightness.dark}) {
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
     ),
-    textTheme: _buildTextTheme(),
+    textTheme: _buildTextTheme(colorScheme),
     fontFamily: UxnanTypography.fontFamily,
   );
 }
 
-TextTheme _buildTextTheme() {
-  return const TextTheme(
-    displayLarge: UxnanTypography.displayLarge,
-    headlineMedium: UxnanTypography.headlineMedium,
-    titleSmall: UxnanTypography.titleSmall,
-    bodyMedium: UxnanTypography.bodyMedium,
-    bodySmall: UxnanTypography.bodySmall,
+TextTheme _buildTextTheme(ColorScheme colorScheme) {
+  return TextTheme(
+    displayLarge:
+        UxnanTypography.displayLarge.copyWith(color: colorScheme.onSurface),
+    headlineMedium:
+        UxnanTypography.headlineMedium.copyWith(color: colorScheme.onSurface),
+    titleSmall:
+        UxnanTypography.titleSmall.copyWith(color: colorScheme.onSurface),
+    bodyMedium:
+        UxnanTypography.bodyMedium.copyWith(color: colorScheme.onSurface),
+    bodySmall:
+        UxnanTypography.bodySmall.copyWith(color: colorScheme.onSurfaceVariant),
   );
 }
