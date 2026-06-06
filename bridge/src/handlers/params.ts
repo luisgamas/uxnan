@@ -37,6 +37,15 @@ export function optionalBoolean(params: unknown, key: string): boolean | undefin
   return value;
 }
 
+export function optionalNumber(params: unknown, key: string): number | undefined {
+  const value = asObject(params)[key];
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw RpcError.invalidParams(`'${key}' must be a number`);
+  }
+  return value;
+}
+
 function hasControlChars(value: string): boolean {
   for (let i = 0; i < value.length; i += 1) {
     const code = value.charCodeAt(i);

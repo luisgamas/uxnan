@@ -26,6 +26,9 @@ import { handleSecureConnection } from './transport/session-handler.js';
 import { connectRelayAsMac, type RelayConnection } from './transport/relay-client.js';
 import { startLanServer, type LanServerHandle } from './transport/lan-server.js';
 import { SessionRegistry } from './transport/session-registry.js';
+import { ThreadStore } from './conversation/thread-store.js';
+import { AgentManager } from './agents/agent-manager.js';
+import { EchoAgentAdapter } from './adapters/echo-agent-adapter.js';
 
 export interface StartBridgeOptions {
   /** Override the daemon state directory (defaults to `~/.uxnan`). */
@@ -69,6 +72,17 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   const sessions = new SessionState();
   const sessionRegistry = new SessionRegistry();
   const trustStore = new FileTrustStore(state);
+  const threadStore = new ThreadStore(state);
+  const agentManager = new AgentManager({
+    store: threadStore,
+    notify: (message) => sessionRegistry.broadcast(message),
+    now,
+    logger,
+    defaultAgent: 'echo',
+  });
+  // The echo agent is the only wired adapter for now (Codex/OpenCode need their
+  // real CLI protocol — see bridge/FOR-DEV.md).
+  agentManager.register(new EchoAgentAdapter());
   const startedAt = now();
 
   const context: BridgeContext = {
@@ -79,6 +93,8 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
     deviceState,
     sessions,
     sessionRegistry,
+    threadStore,
+    agentManager,
     logger,
     now,
   };
@@ -158,6 +174,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       sessionRegistry.notify(deviceId, makeNotification(method, params)),
     stop: async () => {
       logger.info('bridge stopping');
+      await agentManager.stopAll();
       for (const connection of relayConnections) {
         connection.ws.close();
       }

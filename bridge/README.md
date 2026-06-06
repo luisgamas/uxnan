@@ -8,10 +8,12 @@ per-domain handlers.
 > **Status: Phase 4.** The daemon core, the **live E2EE transport** (relay `mac`
 > client + direct-LAN server, handshake, AES-256-GCM channel, byte-for-byte
 > compatible with the mobile app), bridge→phone notifications, **OS-keychain
-> identity persistence**, a **single-instance lock**, and the **real Git and
-> Workspace handlers** (path-traversal-safe, including working-tree checkpoints)
-> are in place. The agent adapters (streaming conversations) are the next major
-> piece — see [FOR-DEV.md](./FOR-DEV.md) and [../ROADMAP.md](../ROADMAP.md).
+> identity persistence**, a **single-instance lock**, the **real Git and
+> Workspace handlers** (path-traversal-safe, including working-tree checkpoints),
+> and the **conversation engine** (threads/turns + streaming via an agent
+> adapter framework, with a working `echo` reference agent) are in place. Wiring
+> the real Codex/OpenCode CLIs is the next piece — see [FOR-DEV.md](./FOR-DEV.md)
+> and [../ROADMAP.md](../ROADMAP.md).
 
 ## Install (later, as a global package)
 

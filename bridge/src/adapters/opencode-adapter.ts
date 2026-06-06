@@ -1,36 +1,26 @@
 /**
- * OpenCode adapter.
+ * OpenCode adapter (MVP-priority agent).
  *
- * FOR-DEV: drive the OpenCode runtime and read its SQLite session store
- * (src/adapters/opencode-adapter.ts). OpenCode is an MVP-priority agent.
- * Unblocks: real conversations from mobile.
+ * Extends {@link ProcessAgentAdapter} with OpenCode's binary and capabilities. It
+ * currently INHERITS the generic bridge agent IPC, which OpenCode does NOT speak.
+ *
+ * FOR-DEV: override `formatTurn`/`parseLine` to translate OpenCode's real CLI
+ * invocation and stream/SQLite session output into the bridge IPC, then register
+ * it in `startBridge`. Until then it is not wired by default. See bridge/FOR-DEV.md.
  */
-import type { AgentCapabilities, AgentConfig, AgentId, SendTurnOptions } from '@uxnan/shared';
-import { BaseAgentAdapter } from './base-adapter.js';
+import type { AgentCapabilities } from '@uxnan/shared';
+import { ProcessAgentAdapter } from './process-agent-adapter.js';
 
-export class OpenCodeAdapter extends BaseAgentAdapter {
-  readonly agentId: AgentId = 'opencode';
-  readonly capabilities: AgentCapabilities = {
-    planMode: false,
-    streaming: true,
-    approvals: false,
-    forking: false,
-    images: false,
-  };
+const OPENCODE_CAPABILITIES: AgentCapabilities = {
+  planMode: false,
+  streaming: true,
+  approvals: false,
+  forking: false,
+  images: false,
+};
 
-  start(_config: AgentConfig): Promise<void> {
-    return Promise.reject(new Error('FOR-DEV: OpenCodeAdapter.start not implemented'));
-  }
-
-  stop(): Promise<void> {
-    return Promise.resolve();
-  }
-
-  sendTurn(_options: SendTurnOptions): Promise<void> {
-    return Promise.reject(new Error('FOR-DEV: OpenCodeAdapter.sendTurn not implemented'));
-  }
-
-  cancelTurn(_threadId: string, _turnId: string): Promise<void> {
-    return Promise.reject(new Error('FOR-DEV: OpenCodeAdapter.cancelTurn not implemented'));
+export class OpenCodeAdapter extends ProcessAgentAdapter {
+  constructor(binaryPath = 'opencode') {
+    super({ agentId: 'opencode', capabilities: OPENCODE_CAPABILITIES, binaryPath });
   }
 }

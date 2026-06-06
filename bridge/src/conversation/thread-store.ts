@@ -1,0 +1,298 @@
+/**
+ * Persistent conversation store (threads → turns → messages) under
+ * `~/.uxnan/threads.json`. Mutations are serialized through a mutex so concurrent
+ * turn/delta updates don't corrupt the read-modify-write cycle.
+ *
+ * Source: architecture/02a-system-architecture.md §6 (domain models).
+ *
+ * FOR-DEV: a single JSON file is fine for the MVP; move to a per-thread or SQLite
+ * store if conversation volume grows (src/conversation/thread-store.ts).
+ */
+import { randomUUID } from 'node:crypto';
+import type {
+  Message,
+  MessageRole,
+  Thread,
+  ThreadList,
+  ThreadStatus,
+  Turn,
+  TurnList,
+  TurnStatus,
+} from '@uxnan/shared';
+import { JsonRpcErrorCode, RpcError } from '@uxnan/shared';
+import { DAEMON_FILES, type DaemonState } from '../daemon-state.js';
+
+interface StoredMessage {
+  id: string;
+  turnId: string;
+  role: MessageRole;
+  text: string;
+  createdAt: number;
+}
+
+interface StoredTurn {
+  id: string;
+  threadId: string;
+  status: TurnStatus;
+  messages: StoredMessage[];
+  createdAt: number;
+  completedAt?: number;
+}
+
+interface StoredThread {
+  id: string;
+  projectId: string;
+  title: string;
+  status: ThreadStatus;
+  createdAt: number;
+  updatedAt: number;
+  turns: StoredTurn[];
+}
+
+const DEFAULT_TURN_LIMIT = 20;
+
+export interface StartTurnResult {
+  turnId: string;
+  userMessageId: string;
+  assistantMessageId: string;
+}
+
+export class ThreadStore {
+  readonly #state: DaemonState;
+  #lock: Promise<void> = Promise.resolve();
+
+  constructor(state: DaemonState) {
+    this.#state = state;
+  }
+
+  async listThreads(projectId?: string): Promise<ThreadList> {
+    const threads = await this.#read();
+    const filtered = projectId ? threads.filter((t) => t.projectId === projectId) : threads;
+    return { threads: filtered.map(toThread) };
+  }
+
+  async getThread(threadId: string): Promise<Thread> {
+    return toThread(await this.#requireThread(await this.#read(), threadId));
+  }
+
+  async listTurns(threadId: string, cursor?: string, limit?: number): Promise<TurnList> {
+    const threads = await this.#read();
+    const thread = await this.#requireThread(threads, threadId);
+    const start = cursor ? Number.parseInt(cursor, 10) || 0 : 0;
+    const size = limit && limit > 0 ? limit : DEFAULT_TURN_LIMIT;
+    const slice = thread.turns.slice(start, start + size);
+    const result: TurnList = { turns: slice.map(toTurn) };
+    if (start + size < thread.turns.length) {
+      result.nextCursor = String(start + size);
+    }
+    return result;
+  }
+
+  async getTurn(turnId: string): Promise<Turn> {
+    const threads = await this.#read();
+    for (const thread of threads) {
+      const turn = thread.turns.find((t) => t.id === turnId);
+      if (turn) return toTurn(turn);
+    }
+    throw notFound(`turn not found: ${turnId}`);
+  }
+
+  startThread(projectId: string, title: string | undefined, now: number): Promise<Thread> {
+    return this.#mutate(async (threads) => {
+      const thread: StoredThread = {
+        id: randomUUID(),
+        projectId,
+        title: title ?? 'New thread',
+        status: 'active',
+        createdAt: now,
+        updatedAt: now,
+        turns: [],
+      };
+      threads.push(thread);
+      return toThread(thread);
+    });
+  }
+
+  resumeThread(threadId: string, now: number): Promise<void> {
+    return this.#mutate(async (threads) => {
+      const thread = await this.#requireThread(threads, threadId);
+      thread.status = 'active';
+      thread.updatedAt = now;
+    });
+  }
+
+  forkThread(threadId: string, now: number): Promise<Thread> {
+    return this.#mutate(async (threads) => {
+      const source = await this.#requireThread(threads, threadId);
+      const copy: StoredThread = {
+        ...structuredCloneThread(source),
+        id: randomUUID(),
+        title: `${source.title} (fork)`,
+        createdAt: now,
+        updatedAt: now,
+      };
+      threads.push(copy);
+      return toThread(copy);
+    });
+  }
+
+  startTurn(threadId: string, userText: string, now: number): Promise<StartTurnResult> {
+    return this.#mutate(async (threads) => {
+      const thread = await this.#requireThread(threads, threadId);
+      const turnId = randomUUID();
+      const userMessage: StoredMessage = {
+        id: randomUUID(),
+        turnId,
+        role: 'user',
+        text: userText,
+        createdAt: now,
+      };
+      const assistantMessage: StoredMessage = {
+        id: randomUUID(),
+        turnId,
+        role: 'assistant',
+        text: '',
+        createdAt: now,
+      };
+      thread.turns.push({
+        id: turnId,
+        threadId,
+        status: 'streaming',
+        messages: [userMessage, assistantMessage],
+        createdAt: now,
+      });
+      thread.updatedAt = now;
+      return { turnId, userMessageId: userMessage.id, assistantMessageId: assistantMessage.id };
+    });
+  }
+
+  appendDelta(threadId: string, turnId: string, delta: string, now: number): Promise<void> {
+    return this.#mutate(async (threads) => {
+      const assistant = this.#assistantMessage(threads, threadId, turnId);
+      assistant.text += delta;
+      this.#touch(threads, threadId, now);
+    });
+  }
+
+  completeTurn(
+    threadId: string,
+    turnId: string,
+    finalText: string | undefined,
+    now: number,
+  ): Promise<void> {
+    return this.#mutate(async (threads) => {
+      const turn = this.#turn(threads, threadId, turnId);
+      if (finalText !== undefined) {
+        const assistant = turn.messages.find((m) => m.role === 'assistant');
+        if (assistant) assistant.text = finalText;
+      }
+      turn.status = 'completed';
+      turn.completedAt = now;
+      this.#touch(threads, threadId, now);
+    });
+  }
+
+  failTurn(threadId: string, turnId: string, now: number): Promise<void> {
+    return this.#setTurnStatus(threadId, turnId, 'error', now);
+  }
+
+  abortTurn(threadId: string, turnId: string, now: number): Promise<void> {
+    return this.#setTurnStatus(threadId, turnId, 'aborted', now);
+  }
+
+  #setTurnStatus(threadId: string, turnId: string, status: TurnStatus, now: number): Promise<void> {
+    return this.#mutate(async (threads) => {
+      const turn = this.#turn(threads, threadId, turnId);
+      turn.status = status;
+      turn.completedAt = now;
+      this.#touch(threads, threadId, now);
+    });
+  }
+
+  #assistantMessage(threads: StoredThread[], threadId: string, turnId: string): StoredMessage {
+    const turn = this.#turn(threads, threadId, turnId);
+    const assistant = turn.messages.find((m) => m.role === 'assistant');
+    if (!assistant) throw notFound(`assistant message not found for turn: ${turnId}`);
+    return assistant;
+  }
+
+  #turn(threads: StoredThread[], threadId: string, turnId: string): StoredTurn {
+    const thread = threads.find((t) => t.id === threadId);
+    const turn = thread?.turns.find((t) => t.id === turnId);
+    if (!turn) throw notFound(`turn not found: ${turnId}`);
+    return turn;
+  }
+
+  #touch(threads: StoredThread[], threadId: string, now: number): void {
+    const thread = threads.find((t) => t.id === threadId);
+    if (thread) thread.updatedAt = now;
+  }
+
+  async #requireThread(threads: StoredThread[], threadId: string): Promise<StoredThread> {
+    const thread = threads.find((t) => t.id === threadId);
+    if (!thread) throw notFound(`thread not found: ${threadId}`);
+    return thread;
+  }
+
+  async #read(): Promise<StoredThread[]> {
+    return (await this.#state.readJson<StoredThread[]>(DAEMON_FILES.threads)) ?? [];
+  }
+
+  /** Run `fn` under the write lock with the current threads, then persist. */
+  #mutate<T>(fn: (threads: StoredThread[]) => Promise<T>): Promise<T> {
+    const run = this.#lock.then(async () => {
+      const threads = await this.#read();
+      const result = await fn(threads);
+      await this.#state.writeJson(DAEMON_FILES.threads, threads);
+      return result;
+    });
+    // Keep the chain alive regardless of individual failures.
+    this.#lock = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  }
+}
+
+function toThread(thread: StoredThread): Thread {
+  return {
+    id: thread.id,
+    projectId: thread.projectId,
+    title: thread.title,
+    status: thread.status,
+    turnCount: thread.turns.length,
+    createdAt: thread.createdAt,
+    updatedAt: thread.updatedAt,
+  };
+}
+
+function toTurn(turn: StoredTurn): Turn {
+  const result: Turn = {
+    id: turn.id,
+    threadId: turn.threadId,
+    status: turn.status,
+    messages: turn.messages.map(toMessage),
+    createdAt: turn.createdAt,
+  };
+  if (turn.completedAt !== undefined) result.completedAt = turn.completedAt;
+  return result;
+}
+
+function toMessage(message: StoredMessage): Message {
+  return {
+    id: message.id,
+    turnId: message.turnId,
+    role: message.role,
+    content: message.text,
+    createdAt: message.createdAt,
+  };
+}
+
+function structuredCloneThread(thread: StoredThread): StoredThread {
+  return JSON.parse(JSON.stringify(thread)) as StoredThread;
+}
+
+function notFound(message: string): RpcError {
+  return new RpcError(JsonRpcErrorCode.ResourceNotFound, message);
+}

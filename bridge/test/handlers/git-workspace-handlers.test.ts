@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { JsonRpcErrorCode, makeRequest } from '@uxnan/shared';
 import { InMemorySecretStore, runGit, startBridge, type Bridge } from '../../src/index.js';
+import { rmrf } from '../helpers/fs.js';
 
 async function boot(): Promise<{ bridge: Bridge; baseDir: string }> {
   const baseDir = join(tmpdir(), `uxnan-gw-${randomUUID()}`);
@@ -28,8 +29,8 @@ test('git/status routes to the real handler and returns a result for a repo', as
   assert.ok('result' in res);
 
   await bridge.stop();
-  await rm(baseDir, { recursive: true, force: true });
-  await rm(repo, { recursive: true, force: true });
+  await rmrf(baseDir);
+  await rmrf(repo);
 });
 
 test('git failures map to -32003 GitOperationFailed', async () => {
@@ -41,8 +42,8 @@ test('git failures map to -32003 GitOperationFailed', async () => {
   assert.ok('error' in res && res.error.code === JsonRpcErrorCode.GitOperationFailed);
 
   await bridge.stop();
-  await rm(baseDir, { recursive: true, force: true });
-  await rm(notRepo, { recursive: true, force: true });
+  await rmrf(baseDir);
+  await rmrf(notRepo);
 });
 
 test('workspace path traversal maps to -32004 WorkspaceAccessDenied', async () => {
@@ -56,8 +57,8 @@ test('workspace path traversal maps to -32004 WorkspaceAccessDenied', async () =
   assert.ok('error' in res && res.error.code === JsonRpcErrorCode.WorkspaceAccessDenied);
 
   await bridge.stop();
-  await rm(baseDir, { recursive: true, force: true });
-  await rm(root, { recursive: true, force: true });
+  await rmrf(baseDir);
+  await rmrf(root);
 });
 
 test('invalid params map to -32602 InvalidParams', async () => {
@@ -65,5 +66,5 @@ test('invalid params map to -32602 InvalidParams', async () => {
   const res = await bridge.router.dispatch(makeRequest('4', 'git/commit', { cwd: '/x' }));
   assert.ok('error' in res && res.error.code === JsonRpcErrorCode.InvalidParams);
   await bridge.stop();
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });

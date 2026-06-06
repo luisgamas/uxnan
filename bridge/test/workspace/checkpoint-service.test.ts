@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { GitCommandError } from '../../src/index.js';
 import { CheckpointService, DaemonState, runGit } from '../../src/index.js';
+import { rmrf } from '../helpers/fs.js';
 
 async function newRepoWithCommit(): Promise<string> {
   const dir = join(tmpdir(), `uxnan-ckpt-${randomUUID()}`);
@@ -41,7 +42,7 @@ test('capture snapshots tracked changes and untracked files; diff lists them', a
   assert.equal(diff.files.find((f) => f.path === 'new.txt')?.status, 'added');
   assert.ok(diff.diff.includes('brand new'));
 
-  await rm(repo, { recursive: true, force: true });
+  await rmrf(repo);
 });
 
 test('apply restores file contents captured by the checkpoint', async () => {
@@ -56,7 +57,7 @@ test('apply restores file contents captured by the checkpoint', async () => {
   await service.apply(checkpoint.id);
 
   assert.equal(await readFile(join(repo, 'tracked.txt'), 'utf-8'), 'checkpoint-state\n');
-  await rm(repo, { recursive: true, force: true });
+  await rmrf(repo);
 });
 
 test('diff on an unknown checkpoint id is rejected', async () => {
@@ -70,5 +71,5 @@ test('capture before the first commit fails (no HEAD)', async () => {
   await runGit(dir, ['init', '-b', 'main']);
   const service = new CheckpointService(newState());
   await assert.rejects(service.capture(dir, { now: 1 }), GitCommandError);
-  await rm(dir, { recursive: true, force: true });
+  await rmrf(dir);
 });

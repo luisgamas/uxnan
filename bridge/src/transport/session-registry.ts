@@ -30,6 +30,13 @@ export class SessionRegistry {
     this.#sinks.delete(deviceId);
   }
 
+  /** Send a message to every currently-connected device (live only). */
+  broadcast(message: unknown): void {
+    for (const sink of this.#sinks.values()) {
+      sink.send(message);
+    }
+  }
+
   isActive(deviceId: string): boolean {
     return this.#sinks.has(deviceId);
   }

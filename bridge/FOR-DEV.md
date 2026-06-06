@@ -36,7 +36,8 @@ only a human can provide.)
           cap) so `refs/uxnan/checkpoints/*` doesn't grow unbounded.
         - checkpoints require at least one commit (no HEAD → `-32003`); consider
           supporting checkpoints on an unborn branch if a use case appears.
-- [ ] **Thread/turn** — `src/handlers/thread-context-handler.ts` (+ JSONL fallback).
+- [x] **Thread/turn** (Phase 5) — `src/handlers/thread-context-handler.ts` +
+      `src/conversation/thread-store.ts` + `src/agents/agent-manager.ts`.
 - [ ] **Project** — `src/handlers/project-handler.ts`.
 - [ ] **Account/auth** — `src/handlers/account-handler.ts` (sanitized, no tokens).
 - [ ] **Notifications** — `src/handlers/notifications-handler.ts` (+ add contracts).
@@ -44,9 +45,21 @@ only a human can provide.)
 - [ ] **bridge/removeTrustedDevice** — `src/handlers/bridge-control-handler.ts`.
 - [ ] **bridge/status `relayConnected`** — reflect the real relay connection.
 
-## Agent adapters (stubbed)
-- [ ] **Codex** (MVP) — `src/adapters/codex-adapter.ts`.
-- [ ] **OpenCode** (MVP) — `src/adapters/opencode-adapter.ts`.
+## Agent adapters
+- [x] **Framework + reference** (Phase 5) — `ProcessAgentAdapter` (generic CLI
+      stdio driver) + working `EchoAgentAdapter`; `AgentManager` orchestration.
+- [ ] **Codex** (MVP) — `src/adapters/codex-adapter.ts`. Scaffolded as a
+      `ProcessAgentAdapter` subclass but NOT wired: override `formatTurn`/`parseLine`
+      to translate the real Codex CLI invocation + streaming output (its
+      `exec`/proto JSON) into the bridge agent IPC, then register it in
+      `startBridge`. **Needs the real Codex CLI contract (not in the arch docs).**
+- [ ] **OpenCode** (MVP) — `src/adapters/opencode-adapter.ts`. Same as Codex,
+      for OpenCode's stream/SQLite output. **Needs the real OpenCode contract.**
+- [ ] **JSONL history fallback** (`session-jsonl-history`) — read agent session
+      JSONL/SQLite from disk for `turn/list` when the runtime has no fresh data
+      (§5.8.8). Needs each agent's real on-disk format.
+- [ ] **Per-project agent selection** — resolve the agent from the project's
+      `AgentConfig` instead of `AgentManager`'s single `defaultAgent: 'echo'`.
 - [ ] Later: Claude Code, Gemini CLI, pi-agent, Aider.
 
 ## Daemon lifecycle & ops

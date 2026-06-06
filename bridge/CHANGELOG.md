@@ -5,6 +5,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — Phase 5 (conversation engine + agent adapters)
+- **Conversation store** (`src/conversation/thread-store.ts`): persistent
+  threads → turns → messages in `~/.uxnan/threads.json`, with serialized
+  mutations.
+- **Real thread/turn handlers** (`thread/list|read|start|resume|fork`,
+  `turn/list|read|send|cancel`) replacing the stubs.
+- **AgentManager** (`src/agents/agent-manager.ts`): routes `turn/send` to an
+  adapter, persists the streamed reply, and broadcasts `stream/*` notifications
+  to connected phones.
+- **Adapter framework**: `ProcessAgentAdapter` (drives a CLI over newline-JSON
+  stdio) and a working `EchoAgentAdapter` reference agent that exercises the full
+  turn pipeline end-to-end. Codex/OpenCode are `ProcessAgentAdapter` subclasses
+  (metadata only — their real CLI protocol is FOR-DEV) and are not wired by
+  default; only `echo` is registered.
+- Tests: thread-store CRUD/pagination, AgentManager + echo end-to-end,
+  ProcessAgentAdapter against a fake agent, and a router-level
+  `thread/start` → `turn/send` flow.
+
 ### Added — Phase 4b (workspace checkpoints)
 - `workspace/checkpoint`, `workspace/diffCheckpoint`, `workspace/applyCheckpoint`
   (`src/workspace/checkpoint-service.ts`). A checkpoint snapshots the whole

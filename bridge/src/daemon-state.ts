@@ -21,6 +21,7 @@ export const DAEMON_FILES = {
   pushState: 'push-state.json',
   lock: 'bridge.lock',
   checkpoints: 'checkpoints.json',
+  threads: 'threads.json',
 } as const;
 
 export class DaemonState {

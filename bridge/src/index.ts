@@ -28,6 +28,19 @@ export { createLogger, type Logger, type LogLevel } from './logger.js';
 export { BaseAgentAdapter } from './adapters/base-adapter.js';
 export { CodexAdapter } from './adapters/codex-adapter.js';
 export { OpenCodeAdapter } from './adapters/opencode-adapter.js';
+export { EchoAgentAdapter } from './adapters/echo-agent-adapter.js';
+export {
+  ProcessAgentAdapter,
+  type ProcessAdapterOptions,
+} from './adapters/process-agent-adapter.js';
+
+// Conversation engine
+export { ThreadStore, type StartTurnResult } from './conversation/thread-store.js';
+export {
+  AgentManager,
+  type AgentManagerOptions,
+  type SendTurnOptions as AgentManagerSendTurnOptions,
+} from './agents/agent-manager.js';
 
 // Transport (live E2EE)
 export {

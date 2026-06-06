@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { GitCommandError, GitService, runGit } from '../../src/index.js';
+import { rmrf } from '../helpers/fs.js';
 
 const git = new GitService();
 
@@ -25,7 +26,7 @@ test('status reports the branch, untracked files and dirtiness', async () => {
   assert.equal(status.branch, 'main');
   assert.equal(status.isDirty, true);
   assert.deepEqual(status.files, [{ path: 'a.txt', status: 'untracked' }]);
-  await rm(dir, { recursive: true, force: true });
+  await rmrf(dir);
 });
 
 test('commit stages everything and returns a sha; diff reflects later edits', async () => {
@@ -41,7 +42,7 @@ test('commit stages everything and returns a sha; diff reflects later edits', as
 
   const clean = await git.status(dir);
   assert.equal(clean.files[0]?.status, 'modified');
-  await rm(dir, { recursive: true, force: true });
+  await rmrf(dir);
 });
 
 test('createBranch, checkout and createWorktree work', async () => {
@@ -58,8 +59,8 @@ test('createBranch, checkout and createWorktree work', async () => {
   assert.equal(wt.branch, 'wt-branch');
   assert.equal((await git.status(wtPath)).branch, 'wt-branch');
 
-  await rm(dir, { recursive: true, force: true });
-  await rm(wtPath, { recursive: true, force: true });
+  await rmrf(dir);
+  await rmrf(wtPath);
 });
 
 test('push and pull against a bare remote succeed', async () => {
@@ -82,13 +83,13 @@ test('push and pull against a bare remote succeed', async () => {
   });
   assert.deepEqual(await git.pull(work), { success: true });
 
-  await rm(remote, { recursive: true, force: true });
-  await rm(work, { recursive: true, force: true });
+  await rmrf(remote);
+  await rmrf(work);
 });
 
 test('a git failure surfaces as GitCommandError', async () => {
   const dir = join(tmpdir(), `uxnan-nogit-${randomUUID()}`);
   await mkdir(dir, { recursive: true });
   await assert.rejects(git.status(dir), GitCommandError);
-  await rm(dir, { recursive: true, force: true });
+  await rmrf(dir);
 });
