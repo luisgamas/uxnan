@@ -4,7 +4,15 @@
  * Source: architecture/02a-system-architecture.md §5.8.2 (adapters).
  */
 
-export type AgentId = 'codex' | 'opencode' | 'claude-code' | 'gemini-cli' | 'pi-agent' | 'aider';
+export type AgentId =
+  | 'codex'
+  | 'opencode'
+  | 'claude-code'
+  | 'gemini-cli'
+  | 'pi-agent'
+  | 'aider'
+  /** Built-in reference/dev agent that echoes the prompt (no external CLI). */
+  | 'echo';
 
 export interface AgentCapabilities {
   /** Agent supports interactive plan mode. */

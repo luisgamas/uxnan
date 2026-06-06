@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added
+- Streaming notification contracts (`StreamNotification` + param types:
+  turn started/delta/completed/error/aborted) in `jsonrpc/notifications.ts`.
+- `'echo'` added to `AgentId` (built-in reference/dev agent).
+
 ### Changed
 - **Pairing QR encoding is now Base64 of the UTF-8 JSON** (was plain JSON), to
   match the mobile `PairingPayload.fromQrString` (`base64.decode` → `jsonDecode`,

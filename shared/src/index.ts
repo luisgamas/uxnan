@@ -10,6 +10,7 @@ export * from './jsonrpc/envelope.js';
 export * from './jsonrpc/errors.js';
 export * from './jsonrpc/methods.js';
 export * from './jsonrpc/method-registry.js';
+export * from './jsonrpc/notifications.js';
 
 // E2EE
 export * from './e2ee/handshake.js';
