@@ -5,11 +5,12 @@ PC over an end-to-end-encrypted channel. It runs Git, reads the workspace, and
 drives AI coding agents on behalf of the phone, routing JSON-RPC methods to
 per-domain handlers.
 
-> **Status: Phase 3.** The daemon core, the **live E2EE transport** (relay `mac`
+> **Status: Phase 4.** The daemon core, the **live E2EE transport** (relay `mac`
 > client + direct-LAN server, handshake, AES-256-GCM channel, byte-for-byte
 > compatible with the mobile app), bridge→phone notifications, **OS-keychain
-> identity persistence** and a **single-instance lock** are in place. The real
-> handlers/agent adapters are deferred — see [FOR-DEV.md](./FOR-DEV.md) and
+> identity persistence**, a **single-instance lock**, and the **real Git and
+> Workspace handlers** (path-traversal-safe) are in place. Workspace checkpoints
+> and the agent adapters are deferred — see [FOR-DEV.md](./FOR-DEV.md) and
 > [../ROADMAP.md](../ROADMAP.md).
 
 ## Install (later, as a global package)

@@ -23,9 +23,12 @@ only a human can provide.)
       a running Secret Service it falls back to in-memory (no persistence) — wire a
       CI/service alternative there before relying on persistence on Linux.
 
-## Handlers (currently stubbed → return `-32000`)
-- [ ] **Git** — `src/handlers/git-handler.ts` (`child_process`).
-- [ ] **Workspace** — `src/handlers/workspace-handler.ts` (path-traversal safe).
+## Handlers
+- [x] **Git** (Phase 4) — `src/git/` + `src/handlers/git-handler.ts`.
+- [x] **Workspace** reads/list/applyPatch (Phase 4) — `src/workspace/`.
+- [ ] **Workspace checkpoints** (Phase 4b) — `workspace/checkpoint` /
+      `diffCheckpoint` / `applyCheckpoint` via `git stash create` + metadata in
+      `~/.uxnan` (currently stubbed in `src/handlers/workspace-handler.ts`).
 - [ ] **Thread/turn** — `src/handlers/thread-context-handler.ts` (+ JSONL fallback).
 - [ ] **Project** — `src/handlers/project-handler.ts`.
 - [ ] **Account/auth** — `src/handlers/account-handler.ts` (sanitized, no tokens).

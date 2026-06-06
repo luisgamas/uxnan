@@ -5,6 +5,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — Phase 4 (real Git + Workspace handlers)
+- **Git handlers** (`src/git/`): `git/status`, `git/diff`, `git/commit`,
+  `git/push`, `git/pull`, `git/checkout`, `git/createBranch`,
+  `git/createWorktree`, run via `child_process.execFile` (no shell → no command
+  injection). Failures map to `-32003 GitOperationFailed`; git output is stripped
+  of the project cwd and home dir before being sent to the phone.
+- **Workspace handlers** (`src/workspace/`): `workspace/readFile` (utf-8 or
+  base64 for binaries), `workspace/readImage`, `workspace/list`,
+  `workspace/applyPatch`. All access is **confined to the project root**
+  (path-traversal → `-32004 WorkspaceAccessDenied`), the `.git` directory and
+  sensitive files (`.env`, keys, credentials) are denied/excluded, and returned
+  paths are relative — never absolute (§5.8.9). Read size caps: 5 MB / 10 MB.
+- Untrusted-param validators (`src/handlers/params.ts`) reject bad types and
+  option-injection (leading `-`) in git refs/paths.
+
+### Deferred (Phase 4b)
+- Workspace checkpoints (`workspace/checkpoint` / `diffCheckpoint` /
+  `applyCheckpoint`) remain stubs — need a `git stash`-based snapshot + metadata
+  persistence design.
+
 ### Added — Phase 3 (identity persistence + pairing hardening)
 - **OS-keychain identity persistence** (`KeyringSecretStore`) via the optional
   `@napi-rs/keyring` native module (Windows Credential Manager, macOS Keychain,

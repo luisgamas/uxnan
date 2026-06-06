@@ -71,3 +71,9 @@ export {
 export { wsToMessageIO, rawDataToBuffer } from './transport/ws-adapter.js';
 export { OutboundMessageBuffer } from './transport/outbound-buffer.js';
 export { SessionRegistry, type SessionSink } from './transport/session-registry.js';
+
+// Git + workspace services
+export { GitService } from './git/git-service.js';
+export { runGit, GitCommandError, sanitizePaths, type RunGitResult } from './git/git-runner.js';
+export { WorkspaceService } from './workspace/workspace-service.js';
+export { resolveWithinRoot, isSensitiveName } from './workspace/path-guard.js';

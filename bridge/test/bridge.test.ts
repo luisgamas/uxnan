@@ -40,7 +40,7 @@ test('startBridge generates a valid pairing payload via the router', async () =>
 
 test('stubbed domain methods return a bridge error, not a crash', async () => {
   const { bridge, baseDir } = await bootBridge();
-  const res = await bridge.router.dispatch(makeRequest('3', 'git/status', { cwd: '/r' }));
+  const res = await bridge.router.dispatch(makeRequest('3', 'thread/list', {}));
   assert.ok('error' in res && res.error.code === JsonRpcErrorCode.BridgeError);
   await bridge.stop();
   await rm(baseDir, { recursive: true, force: true });
