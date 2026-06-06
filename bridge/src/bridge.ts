@@ -1,12 +1,13 @@
 /**
  * Bridge daemon orchestration: wires daemon state, identity, config, the
- * JSON-RPC router and handlers into a single runnable unit.
+ * JSON-RPC router and handlers, and the live E2EE transport (relay + LAN).
  *
- * The live relay/LAN transport and agent runtimes are deferred (see FOR-DEV).
+ * Agent runtimes and the outbound catch-up buffer remain deferred (see FOR-DEV).
  *
  * Source: architecture/02a-system-architecture.md §5.8.2 (bridge entrypoint).
  */
 import { hostname } from 'node:os';
+import { WebSocket } from 'ws';
 import type { BridgeStatus, PairingPayload } from '@uxnan/shared';
 import type { BridgeContext } from './bridge-context.js';
 import { HandlerRouter } from './handler-router.js';
@@ -19,6 +20,10 @@ import { buildBridgeStatus } from './bridge-status.js';
 import { generatePairingPayload } from './qr.js';
 import { createLogger, type LogLevel } from './logger.js';
 import { BRIDGE_VERSION } from './version.js';
+import { FileTrustStore, type TrustStore } from './transport/trust-store.js';
+import { handleSecureConnection } from './transport/session-handler.js';
+import { connectRelayAsMac, type RelayConnection } from './transport/relay-client.js';
+import { startLanServer, type LanServerHandle } from './transport/lan-server.js';
 
 export interface StartBridgeOptions {
   /** Override the daemon state directory (defaults to `~/.uxnan`). */
@@ -33,8 +38,13 @@ export interface StartBridgeOptions {
 export interface Bridge {
   readonly context: BridgeContext;
   readonly router: HandlerRouter;
+  readonly trustStore: TrustStore;
   status(): BridgeStatus;
   generatePairingQr(): PairingPayload;
+  /** Connect to the relay as `mac` and serve a phone for the given session. */
+  connectRelay(sessionId: string): Promise<void>;
+  /** Start the direct-LAN WebSocket server; resolves with the bound port. */
+  startLan(): Promise<{ port: number }>;
   stop(): Promise<void>;
 }
 
@@ -50,6 +60,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   await deviceState.loadOrCreate();
 
   const sessions = new SessionState();
+  const trustStore = new FileTrustStore(state);
   const startedAt = now();
 
   const context: BridgeContext = {
@@ -66,21 +77,20 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   const router = new HandlerRouter(context);
   registerAllHandlers(router);
 
-  logger.info(
-    `bridge ready (v${BRIDGE_VERSION}); relay transport not yet wired (FOR-DEV: secure-transport)`,
-  );
+  const relayConnections: RelayConnection[] = [];
+  let lanHandle: LanServerHandle | undefined;
+  let relayConnected = false;
 
-  // FOR-DEV: connect to the relay (WebSocket), start the LAN server, perform the
-  // E2EE handshake and pump encrypted envelopes through `router.dispatchRaw`
-  // (src/bridge.ts). Unblocks: real mobile connectivity.
+  logger.info(`bridge ready (v${BRIDGE_VERSION})`);
 
   return {
     context,
     router,
+    trustStore,
     status: () =>
       buildBridgeStatus({
         version: BRIDGE_VERSION,
-        relayConnected: false,
+        relayConnected,
         lanEnabled: config.lanEnabled,
         activeSessions: sessions.count,
         startedAt,
@@ -94,10 +104,58 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
         displayName: hostname(),
         now: now(),
       }),
+    connectRelay: async (sessionId: string) => {
+      const connection = await connectRelayAsMac({
+        relayUrl: config.relayUrl,
+        sessionId,
+        macDeviceId: deviceState.identity.macDeviceId,
+        macIdentityPublicKey: deviceState.identity.macIdentityPublicKey,
+        machineName: hostname(),
+      });
+      relayConnections.push(connection);
+      relayConnected = true;
+      connection.ws.once('close', () => {
+        relayConnected = relayConnections.some((c) => c.ws.readyState === WebSocket.OPEN);
+      });
+      void handleSecureConnection({
+        io: connection.io,
+        ctx: context,
+        router,
+        deviceState,
+        trustStore,
+        displayName: hostname(),
+        expectedSessionId: sessionId,
+      });
+    },
+    startLan: async () => {
+      if (lanHandle) return { port: lanHandle.port };
+      lanHandle = await startLanServer({
+        port: config.lanPort,
+        onConnection: (io) => {
+          void handleSecureConnection({
+            io,
+            ctx: context,
+            router,
+            deviceState,
+            trustStore,
+            displayName: hostname(),
+          });
+        },
+      });
+      logger.info(`LAN server listening on port ${lanHandle.port}`);
+      return { port: lanHandle.port };
+    },
     stop: async () => {
       logger.info('bridge stopping');
-      // FOR-DEV: close relay/LAN transports and agent runtimes here.
-      await Promise.resolve();
+      for (const connection of relayConnections) {
+        connection.ws.close();
+      }
+      relayConnections.length = 0;
+      relayConnected = false;
+      if (lanHandle) {
+        await lanHandle.close();
+        lanHandle = undefined;
+      }
     },
   };
 }

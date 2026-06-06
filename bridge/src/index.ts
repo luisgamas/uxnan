@@ -21,3 +21,44 @@ export { createLogger, type Logger, type LogLevel } from './logger.js';
 export { BaseAgentAdapter } from './adapters/base-adapter.js';
 export { CodexAdapter } from './adapters/codex-adapter.js';
 export { OpenCodeAdapter } from './adapters/opencode-adapter.js';
+
+// Transport (live E2EE)
+export {
+  type MessageIO,
+  MessageQueue,
+  queueFor,
+  createInMemoryIoPair,
+} from './transport/message-io.js';
+export {
+  generateEphemeralKeyPair,
+  deriveSessionKey,
+  randomHex,
+  verifyEd25519,
+  aesGcmEncrypt,
+  aesGcmDecrypt,
+  type EphemeralKeyPair,
+  type AesGcmParts,
+} from './transport/crypto.js';
+export { BridgeSecureChannel, ReplayError } from './transport/secure-channel.js';
+export {
+  performServerHandshake,
+  HandshakeError,
+  type ServerHandshakeResult,
+  type ServerHandshakeOptions,
+} from './transport/server-handshake.js';
+export {
+  handleSecureConnection,
+  type SecureConnectionOptions,
+} from './transport/session-handler.js';
+export { FileTrustStore, type TrustStore } from './transport/trust-store.js';
+export {
+  connectRelayAsMac,
+  type ConnectRelayOptions,
+  type RelayConnection,
+} from './transport/relay-client.js';
+export {
+  startLanServer,
+  type LanServerOptions,
+  type LanServerHandle,
+} from './transport/lan-server.js';
+export { wsToMessageIO, rawDataToBuffer } from './transport/ws-adapter.js';

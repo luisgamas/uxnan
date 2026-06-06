@@ -4,15 +4,17 @@ Deferred developer work for the bridge. Each item has a greppable `FOR-DEV:`
 marker at its site in the code. (Distinct from `FOR-HUMAN.md`, which tracks assets
 only a human can provide.)
 
-## Transport & connectivity (highest priority — next increment)
-- [ ] **Secure transport / E2EE handshake** — `src/bridge.ts`. Connect to the relay
-      (WebSocket), start the LAN server, perform the handshake
-      (clientHello→serverHello→clientAuth→ready) and pump encrypted envelopes
-      through `router.dispatchRaw`. Must interoperate byte-for-byte with the
-      mobile app (see the transcript contract in `@uxnan/shared` `handshake.ts`).
-- [ ] **Outbound buffer & catch-up** — replay messages with `seq > lastApplied`
-      on trusted reconnect (caps already in `@uxnan/shared` constants).
-- [ ] **Relay package** — build `relay/` and add it back to the root workspaces.
+## Transport & connectivity
+- [x] **Secure transport / E2EE handshake** — `src/transport/` (Phase 2). Relay
+      `mac` client + LAN server, handshake, AES-256-GCM channel; interoperable
+      byte-for-byte with the mobile app.
+- [x] **Relay package** — `relay/` builds and is in the root workspaces (Phase 2).
+- [ ] **Outbound buffer & catch-up** (Phase 2b) — `src/transport/session-handler.ts`.
+      Keep per-device outbound envelopes and, on trusted reconnect, resend those
+      with `seq > resumeState.lastAppliedBridgeOutboundSeq` (caps in `@uxnan/shared`).
+- [ ] **Bridge → phone notifications** (Phase 2b) — push streamed agent events
+      to the phone over the established channel.
+- [ ] **Key rotation / keyEpoch advance** (Phase 2b).
 
 ## Identity & security
 - [ ] **OS-keychain SecretStore** — `src/secret-store.ts`. Persist the Ed25519

@@ -5,8 +5,31 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
-### Added
-- Initial bridge daemon **skeleton** (TypeScript, ESM, Node ≥18) — Phase 1.
+### Added — Phase 2 (live E2EE transport + relay)
+- **Secure transport** (`src/transport/`) implementing the bridge (server) side
+  of the E2EE protocol, interoperable byte-for-byte with the mobile app:
+  - `crypto.ts`: X25519 + HKDF-SHA256 key derivation, AES-256-GCM
+    encrypt/decrypt, Ed25519 verification — all via `node:crypto` (no external
+    crypto deps).
+  - `server-handshake.ts`: clientHello → serverHello → clientAuth → ready, with
+    transcript signing/verification and `qr_bootstrap` / `trusted_reconnect`.
+  - `secure-channel.ts`: AES-256-GCM envelopes with 1-based outbound seq and
+    replay-protected inbound seq.
+  - `session-handler.ts`: decrypts envelopes, dispatches JSON-RPC through the
+    router, returns encrypted responses.
+  - `relay-client.ts` / `lan-server.ts`: live `ws` transports (relay `mac`
+    connection and direct-LAN server), adapted via a shared `MessageIO`.
+  - `trust-store.ts`: trusted-phone persistence (`trusted-phones.json`),
+    written on `qr_bootstrap` and read by `bridge/trustedDevices`.
+- `startBridge` now exposes `connectRelay(sessionId)` and `startLan()`; the CLI
+  `start` boots the LAN server and connects to the relay for a pairing session.
+- Depends on the new `uxnan-relay` package for end-to-end tests.
+- Tests: crypto round-trips, secure-channel replay/seq, an in-memory two-party
+  handshake, a real-WebSocket LAN exchange, and a full phone ↔ relay ↔ bridge
+  end-to-end (handshake + encrypted `bridge/status`). 33 bridge tests total.
+
+### Added — Phase 1 (skeleton)
+- Initial bridge daemon **skeleton** (TypeScript, ESM, Node ≥18).
 - Daemon state under `~/.uxnan/` with atomic JSON writes (`DaemonState`) and
   config defaults/merge (`DaemonConfig`, `resolveDaemonConfig`).
 - Ed25519 identity (`SecureDeviceState`) with a pluggable `SecretStore`
@@ -25,10 +48,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   end-to-end `startBridge` wiring test.
 
 ### Deferred (see FOR-DEV.md)
-- Live relay/LAN transport and the E2EE handshake (next increment).
+- Outbound buffer + catch-up on reconnect; key rotation / epoch advance.
 - OS-keychain-backed identity persistence (required before real pairing).
 - Real git/workspace/thread/account handlers and Codex/OpenCode adapters.
 - Daemon process manager (`stop`), autostart scripts, file logging.
+- Relay hardening (rate limiting, pairing-code resolution, push endpoints).
 
 ### Notes
 - Built on TypeScript (the architecture sketches `.js`); same file names, `.ts`

@@ -49,9 +49,29 @@ async function cmdStatus(): Promise<void> {
 
 async function cmdStart(): Promise<void> {
   const bridge = await startBridge();
-  process.stdout.write(`${JSON.stringify(bridge.status(), null, 2)}\n`);
-  process.stdout.write('Bridge core started. Press Ctrl+C to stop.\n');
-  // FOR-DEV: replace this idle wait with the relay/LAN event loop.
+
+  if (bridge.context.config.lanEnabled) {
+    try {
+      const { port } = await bridge.startLan();
+      process.stdout.write(`LAN server listening on port ${port}.\n`);
+    } catch (err) {
+      process.stderr.write(`Failed to start LAN server: ${errText(err)}\n`);
+    }
+  }
+
+  const payload = bridge.generatePairingQr();
+  const qr = await renderPairingQr(payload);
+  process.stdout.write(`${qr}\nScan with the Uxnan mobile app.\n`);
+  try {
+    await bridge.connectRelay(payload.sessionId);
+    process.stdout.write(`Connected to relay ${payload.relay}; waiting for a phone.\n`);
+  } catch (err) {
+    process.stderr.write(
+      `Relay connection failed (${errText(err)}); LAN remains available if enabled.\n`,
+    );
+  }
+
+  process.stdout.write('Press Ctrl+C to stop.\n');
   await new Promise<void>((resolve) => {
     const shutdown = (): void => {
       void bridge.stop().then(resolve);
@@ -59,6 +79,10 @@ async function cmdStart(): Promise<void> {
     process.once('SIGINT', shutdown);
     process.once('SIGTERM', shutdown);
   });
+}
+
+function errText(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 function cmdInstallService(): void {
