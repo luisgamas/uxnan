@@ -75,13 +75,41 @@ Deferred implementation work (code the team/agent will do later). Distinct from
   - **Approval mode** (`ApprovalModeSheet`) → read current access mode from the
     session and persist the choice via the access-mode RPC (not local `setState`).
   - **Git branch / remote / local** (`_EnvironmentChip`, status-sheet git
-    section) → real values from `git/status`; the commit/push rows must invoke
-    the corresponding git RPCs (lands with the git module).
+    section) → real values from `git/status` via `gitRepoStateProvider`; the
+    commit/push rows must call `GitActionManager.commit` / `.push` (manager and
+    providers now exist — see the Git section below).
   - **Attach** (`ComposerBar` add button) → file/image picker → upload as
     `ImageContent` / attachment.
   - **Voice** (`ComposerBar` mic button) → speech-to-text into the composer.
   - Remove `SessionEnvironment.sample()`, `demo_seed.dart` and the home preview
     entry once the above are wired.
+
+## Git
+
+- ☑ **Git logic layer** — DONE: `GitActionManager` (status/commit/push with
+  per-phase push progress from `stream/git/progress`), `GitRepoState` +
+  `GitDiffTotals` / `GitChangedFile`, `GitActionProgress` / `GitActionPhase`,
+  commit/push params + results, `GitProgressEvent` (classified by
+  `IncomingMessageProcessor`), and `DriftGitActionLogRepository` recording each
+  action to the `git_action_log` table. Providers: `gitActionManagerProvider`,
+  `gitRepoStateProvider`, `gitActiveActionProvider`,
+  `gitActionLogRepositoryProvider`. Covered by unit tests.
+- ☐ **Verify the `git/status` JSON shape against a real bridge** — the parser
+  (`GitRepoState.fromJson`) is tolerant but assumes a shape (`branch`,
+  `upstream`, `isDirty`, `ahead`, `behind`, `diffTotals`, `changedFiles`);
+  confirm field names/types once the bridge git handler is reachable. Same for
+  the `git/commit` (`sha`, `message`) and `git/push` (`branch`, `remote`)
+  results and the `stream/git/progress` (`phase`, `status`) params.
+- ☐ **Resolve the active `cwd`** — git RPCs need the workspace directory; wire
+  it from the active thread's `cwd`/`worktreePath` instead of a placeholder.
+- ☐ **Extended git actions** — `pull`, `checkout`, `createBranch`,
+  `createWorktree` (+ managed), `revert`, `stackedPublish` (commit+push+PR) per
+  spec 02a §5.2.4 / §5.5; only `status`/`commit`/`push` are wired in the MVP.
+- ☐ **Git UI** — `GitActionsBottomSheet` (repo state + actions), `CommitDialog`
+  (message entry), `diff_viewer` (spec 02a §5.6 `conversation/git/`), push
+  progress display from `gitActiveActionProvider`, and the action history from
+  `IGitActionLogRepository.watchForThread`. Wire the conversation status sheet's
+  git section to these (see Conversation wiring item above).
 
 ## Tooling
 

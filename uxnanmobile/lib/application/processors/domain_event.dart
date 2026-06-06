@@ -1,10 +1,11 @@
 import 'package:equatable/equatable.dart';
+import 'package:uxnan/domain/enums/git_action_phase_status.dart';
 
 /// A classified event derived from an inbound bridge notification
 /// (spec 02a §5.2.5).
 ///
-/// This increment models the conversation/turn streaming events; other stream
-/// notifications (git progress, plan, subagent, approval, connection,
+/// This increment models the conversation/turn streaming events and git action
+/// progress; other stream notifications (plan, subagent, approval, connection,
 /// workspace, auth) currently map to [UnknownDomainEvent] and gain dedicated
 /// event types with their modules (FOR-DEV).
 sealed class DomainEvent extends Equatable {
@@ -94,6 +95,28 @@ class TurnAbortedEvent extends DomainEvent {
 
   @override
   List<Object?> get props => [turnId, threadId];
+}
+
+/// A progress update for a long-running git action (`stream/git/progress`).
+class GitProgressEvent extends DomainEvent {
+  /// Creates a [GitProgressEvent].
+  const GitProgressEvent({
+    required this.phase,
+    required this.status,
+    this.threadId,
+  });
+
+  /// The phase the bridge is reporting (e.g. `resolving`, `uploading`).
+  final String phase;
+
+  /// The phase's status.
+  final GitActionPhaseStatus status;
+
+  /// The owning thread, if provided.
+  final String? threadId;
+
+  @override
+  List<Object?> get props => [phase, status, threadId];
 }
 
 /// A notification not yet modeled as a specific domain event.

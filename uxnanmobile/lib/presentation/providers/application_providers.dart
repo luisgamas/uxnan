@@ -1,12 +1,15 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/application/coordinators/session_coordinator.dart';
+import 'package:uxnan/application/managers/git_action_manager.dart';
 import 'package:uxnan/application/managers/thread_manager.dart';
 import 'package:uxnan/application/processors/incoming_message_processor.dart';
 import 'package:uxnan/domain/entities/connection_recovery_state.dart';
+import 'package:uxnan/domain/entities/git/git_repo_state.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/entities/trusted_device.dart';
 import 'package:uxnan/domain/enums/connection_phase.dart';
 import 'package:uxnan/domain/services/pairing_validator.dart';
+import 'package:uxnan/domain/value_objects/git/git_action_progress.dart';
 import 'package:uxnan/domain/value_objects/turn_timeline_snapshot.dart';
 import 'package:uxnan/infrastructure/transport/secure_transport_layer.dart';
 import 'package:uxnan/infrastructure/transport/transport_selector.dart';
@@ -87,4 +90,27 @@ final threadsProvider = StreamProvider<List<Thread>>(
 /// The active thread's timeline, for the UI.
 final activeTimelineProvider = StreamProvider<TurnTimelineSnapshot>(
   (ref) => ref.watch(threadManagerProvider).timelineStream,
+);
+
+/// Coordinates git actions (status, commit, push) for the active workspace.
+final gitActionManagerProvider = Provider<GitActionManager>((ref) {
+  final coordinator = ref.watch(sessionCoordinatorProvider);
+  final processor = ref.watch(incomingMessageProcessorProvider);
+  final manager = GitActionManager(
+    sendRequest: coordinator.sendRequest,
+    domainEvents: processor.bind(coordinator.incomingMessages),
+    actionLog: ref.watch(gitActionLogRepositoryProvider),
+  );
+  ref.onDispose(manager.dispose);
+  return manager;
+});
+
+/// The active workspace's git repository state, for the UI.
+final gitRepoStateProvider = StreamProvider<GitRepoState?>(
+  (ref) => ref.watch(gitActionManagerProvider).repoStateStream,
+);
+
+/// The in-flight git action's progress, for the UI.
+final gitActiveActionProvider = StreamProvider<GitActionProgress?>(
+  (ref) => ref.watch(gitActionManagerProvider).activeActionStream,
 );

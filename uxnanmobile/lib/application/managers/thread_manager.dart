@@ -162,7 +162,7 @@ class ThreadManager {
         if (streamingTurn != null) {
           _timeline.add(_timeline.value.completeStreaming(streamingTurn));
         }
-      case UnknownDomainEvent():
+      case GitProgressEvent() || UnknownDomainEvent():
         break;
     }
   }
@@ -180,6 +180,7 @@ class ThreadManager {
         TurnCompletedEvent(:final threadId) => threadId,
         TurnErrorEvent(:final threadId) => threadId,
         TurnAbortedEvent(:final threadId) => threadId,
+        GitProgressEvent(:final threadId) => threadId,
         UnknownDomainEvent() => null,
       };
 

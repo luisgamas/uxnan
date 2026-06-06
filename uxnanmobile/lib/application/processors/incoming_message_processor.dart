@@ -1,4 +1,5 @@
 import 'package:uxnan/application/processors/domain_event.dart';
+import 'package:uxnan/domain/enums/git_action_phase_status.dart';
 import 'package:uxnan/domain/value_objects/rpc_message.dart';
 
 /// Classifies inbound bridge notifications into [DomainEvent]s (spec 02a
@@ -35,6 +36,11 @@ class IncomingMessageProcessor {
         ),
       'stream/turn/aborted' =>
         TurnAbortedEvent(turnId: turnId, threadId: threadId),
+      'stream/git/progress' => GitProgressEvent(
+          phase: params['phase'] as String? ?? '',
+          status: _phaseStatus(params['status'] as String?),
+          threadId: threadId,
+        ),
       _ => UnknownDomainEvent(
           method: method,
           params: message.params,
@@ -44,4 +50,11 @@ class IncomingMessageProcessor {
 
   /// Maps a stream of inbound [source] messages to a stream of domain events.
   Stream<DomainEvent> bind(Stream<RpcMessage> source) => source.map(classify);
+
+  static GitActionPhaseStatus _phaseStatus(String? name) {
+    for (final value in GitActionPhaseStatus.values) {
+      if (value.name == name) return value;
+    }
+    return GitActionPhaseStatus.running;
+  }
 }
