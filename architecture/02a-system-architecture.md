@@ -1124,6 +1124,8 @@ SessionCoordinator.switchMac(device)
 
 ### 5.6 Modulo de timeline y turn handling
 
+> ✅ **Dominio + datos implementados** (rama `uxnanmobile`): jerarquía sellada `MessageContent` (+ codec JSON con fallback `UnknownContent`) en `lib/domain/value_objects/message_content.dart`; entidades `Message`/`Turn`; `IMessageRepository` + `DriftMessageRepository` (§6.2 / §10.3); `MessageDeduplicator` (§5.6.5) y `TurnTimelineSnapshot` con reducer de streaming/reconciliación/paginación (§5.4.6). Todo con tests. ⏳ **Pendiente (FOR-DEV):** contenido avanzado (`approval`/`plan`/`subagent`), managers de aplicación (`ThreadManager` de timeline, `IncomingMessageProcessor`), y la **UI** (`ConversationScreen`, renderers, composer) — siguiente incremento, para revisión visual. Ver `uxnanmobile/FOR-DEV.md`.
+
 **Objetivo:** presentar la conversacion activa de forma reactiva, eficiente y con soporte completo para streaming, diffs, planes, subagentes y adjuntos.
 
 #### 5.6.1 ConversationScreen

@@ -44,7 +44,8 @@
 | `IncomingMessageProcessor`, descubrimiento LAN, integración WS en vivo contra bridge | ⏳ Pendiente | Con conversación / pruebas e2e |
 | Pairing — **lógica** (`PairingPayload`, `PairingValidator`, `TrustedDevice` repo, `processPairingPayload`) | ✅ Hecho | 02a §5.5; solo QR (código manual diferido, FOR-DEV) |
 | Pairing — **UI** (onboarding 4 páginas, `QrScannerScreen` con permiso de cámara, `UpdatePromptDialog`, rutas) | ✅ Hecho | M3; `MyDevicesScreen`/código manual diferidos (FOR-DEV) |
-| Conversación/streaming · Git · push | ⏳ Pendiente | — |
+| Conversación/timeline — **dominio + datos** (`MessageContent`, `Message`/`Turn`, `DriftMessageRepository`, `MessageDeduplicator`, `TurnTimelineSnapshot` + reducer) | ✅ Hecho | 02a §5.6/§6.2; managers + UI pendientes |
+| Conversación — managers (`ThreadManager`/`IncomingMessageProcessor`) + **UI** · Git · push | ⏳ Pendiente | UI de conversación es siguiente incremento |
 
 > **Decisión de gestión de estado (2026-06-05):** el proyecto usa **Riverpod 3.x** manual (no 2.x). Los ejemplos de la especificación que usan `StateNotifierProvider` (API 2.x) se adaptan a la API moderna `Notifier`/`NotifierProvider`/`AsyncNotifierProvider`. Sigue sin usarse `riverpod_generator`.
 

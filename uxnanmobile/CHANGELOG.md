@@ -8,6 +8,25 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Conversation/timeline — domain & data layer** — spec 02a §5.6 / §6.2:
+  - `MessageContent` sealed hierarchy with a JSON codec: `text`, `code`,
+    `image`, `tool`, `diff`, `mermaid`, `system`, `command_execution`, plus an
+    `UnknownContent` fallback so unmodeled/newer types round-trip losslessly.
+  - `Message` and `Turn` entities; `MessageDeliveryState`, `SystemContentKind`
+    and `CommandStatus` enums.
+  - `IMessageRepository` + `DriftMessageRepository` (content stored as JSON in
+    the existing `messages` table; ascending reads, limit + `beforeId`
+    pagination, reactive `watch`). `messageRepositoryProvider` wired.
+  - `MessageDeduplicator` (fingerprint/id dedup for replays, §5.6.5) and the
+    immutable `TurnTimelineSnapshot` with a streaming reducer
+    (reconcile / prependHistory / startStreaming / appendStreamingDelta /
+    completeStreaming) per §5.4.6.
+  - Tests: content codec round-trips + unknown fallback, repository
+    CRUD/pagination/watch, deduplicator, and the timeline reducer.
+  - Advanced content (`approval`/`plan`/`subagent`) and the application managers
+    (`ThreadManager` timeline, `IncomingMessageProcessor`) + the conversation UI
+    are deferred (FOR-DEV) to the next increments.
+
 - **Pairing / onboarding UI** — spec 02a §5.5.1–5.5.2, M3 design tokens:
   - `OnboardingScreen`: a 4-page flow (Welcome → Features → Install bridge →
     Pair) with a page indicator, Skip/Back/Next controls and a copyable

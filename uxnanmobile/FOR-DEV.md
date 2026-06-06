@@ -41,9 +41,22 @@ Deferred implementation work (code the team/agent will do later). Distinct from
 
 ## Persistence
 
-- ☐ **Message/Turn/Project drift repositories** — tables exist; repositories +
-  the `MessageContent` sealed hierarchy and `AgentConfig` land with their
-  modules (conversation, projects).
+- ☑ **Message drift repository + `MessageContent`** — DONE (conversation domain
+  layer).
+- ☐ **Project drift repository** — `projects` table exists; the repository plus
+  the `AgentConfig` type land with the projects module.
+
+## Conversation / timeline
+
+- ☐ **Advanced `MessageContent` types** — `approval`, `plan`, `subagent` (and
+  their `ApprovalRequest` / `PlanState` / `SubagentState` payloads). Currently
+  decoded as `UnknownContent` (lossless). Post-MVP per spec.
+- ☐ **Application managers** — `ThreadManager` timeline loading/streaming and
+  `IncomingMessageProcessor` (classify bridge stream events → domain events,
+  spec §5.2.5), driving `TurnTimelineSnapshot`.
+- ☐ **Conversation UI** — `ConversationScreen`, message renderers (markdown,
+  code, command card, diff viewer), `ComposerWidget`, streaming/auto-scroll.
+  Next increment, for visual review.
 
 ## Tooling
 

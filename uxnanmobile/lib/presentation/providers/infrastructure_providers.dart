@@ -1,8 +1,10 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/domain/repositories/i_composer_draft_repository.dart';
+import 'package:uxnan/domain/repositories/i_message_repository.dart';
 import 'package:uxnan/domain/repositories/i_thread_repository.dart';
 import 'package:uxnan/domain/repositories/i_trusted_device_repository.dart';
 import 'package:uxnan/infrastructure/repositories/drift_composer_draft_repository.dart';
+import 'package:uxnan/infrastructure/repositories/drift_message_repository.dart';
 import 'package:uxnan/infrastructure/repositories/drift_thread_repository.dart';
 import 'package:uxnan/infrastructure/repositories/trusted_device_repository.dart';
 import 'package:uxnan/infrastructure/storage/local_database.dart';
@@ -31,6 +33,11 @@ final threadRepositoryProvider = Provider<IThreadRepository>(
 /// Composer-draft repository, backed by drift.
 final composerDraftRepositoryProvider = Provider<IComposerDraftRepository>(
   (ref) => DriftComposerDraftRepository(ref.watch(databaseProvider)),
+);
+
+/// Message repository, backed by drift.
+final messageRepositoryProvider = Provider<IMessageRepository>(
+  (ref) => DriftMessageRepository(ref.watch(databaseProvider)),
 );
 
 /// Encrypted secure storage (Keychain / Keystore).
