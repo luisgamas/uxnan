@@ -38,11 +38,18 @@ Legend: ✅ done · 🔜 next · ⏳ planned
 - Tests: in-memory two-party handshake, real-WebSocket LAN exchange, full
   phone ↔ relay ↔ bridge end-to-end, crypto + replay round-trips, relay routing.
 
-### 🔜 Phase 2b — carry-over  *(next)*
-- Outbound buffer + catch-up on trusted reconnect (resend envelopes with
-  `seq > resumeState.lastAppliedBridgeOutboundSeq`; caps in `@uxnan/shared`).
-- Key rotation / `keyEpoch` advance; bridge → phone notifications (push of
-  streamed agent events).
+### ✅ Phase 2b — bridge → phone notifications + outbound buffer
+- `SessionRegistry` + `bridge.notify()`: push JSON-RPC notifications to a
+  connected phone over the established channel.
+- `OutboundMessageBuffer` (spec caps): buffer messages sent while a device is
+  offline; flush on (re)connect.
+
+> **Deferred (needs mobile support):** the seq-based catch-up of §5.9.2 — where
+> the phone sends `resumeState.lastAppliedBridgeOutboundSeq` in `clientHello` and
+> the bridge replays envelopes with a greater `seq` — is **not** built yet: the
+> mobile `clientHello` does not send `resumeState` today, so implementing the
+> bridge half would be speculative. Revisit when the mobile side adds it.
+> Key rotation / `keyEpoch` advance is likewise deferred (no mobile trigger yet).
 
 ---
 
