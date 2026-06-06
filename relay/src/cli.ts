@@ -16,8 +16,10 @@ async function main(): Promise<void> {
   }
 
   const server = new RelayServer({
-    info: (m) => process.stdout.write(`[relay] ${m}\n`),
-    warn: (m) => process.stderr.write(`[relay] ${m}\n`),
+    logger: {
+      info: (m) => process.stdout.write(`[relay] ${m}\n`),
+      warn: (m) => process.stderr.write(`[relay] ${m}\n`),
+    },
   });
   const handle = await server.start(port);
   process.stdout.write(`uxnan-relay listening on port ${handle.port}\n`);

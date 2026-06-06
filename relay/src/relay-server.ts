@@ -32,19 +32,65 @@ export interface RelayLogger {
 
 const NOOP_LOGGER: RelayLogger = { info: () => {}, warn: () => {} };
 
+/** Per-IP request budgets per minute (architecture/02a §5.10.1). */
+export interface RelayRateLimits {
+  httpPerMinute: number;
+  upgradePerMinute: number;
+}
+
+const DEFAULT_RATE_LIMITS: RelayRateLimits = { httpPerMinute: 120, upgradePerMinute: 60 };
+
+export interface RelayServerOptions {
+  logger?: RelayLogger;
+  rateLimits?: Partial<RelayRateLimits>;
+  /** Injected clock (epoch ms) for testability. */
+  now?: () => number;
+}
+
 export interface RelayServerHandle {
   port: number;
   close(): Promise<void>;
 }
 
+/** Fixed-window per-key rate limiter. */
+class RateLimiter {
+  readonly #windows = new Map<string, { start: number; count: number }>();
+  readonly #limit: number;
+  readonly #now: () => number;
+  readonly #windowMs: number;
+
+  constructor(limit: number, now: () => number, windowMs = 60_000) {
+    this.#limit = limit;
+    this.#now = now;
+    this.#windowMs = windowMs;
+  }
+
+  allow(key: string): boolean {
+    const now = this.#now();
+    const window = this.#windows.get(key);
+    if (!window || now - window.start >= this.#windowMs) {
+      this.#windows.set(key, { start: now, count: 1 });
+      return true;
+    }
+    window.count += 1;
+    return window.count <= this.#limit;
+  }
+}
+
 export class RelayServer {
   readonly #sessions = new Map<string, SessionPeers>();
   readonly #logger: RelayLogger;
+  readonly #httpLimiter: RateLimiter;
+  readonly #upgradeLimiter: RateLimiter;
   #http: Server | undefined;
   #wss: WebSocketServer | undefined;
 
-  constructor(logger: RelayLogger = NOOP_LOGGER) {
-    this.#logger = logger;
+  constructor(options: RelayServerOptions = {}) {
+    this.#logger = options.logger ?? NOOP_LOGGER;
+    const limits = { ...DEFAULT_RATE_LIMITS, ...(options.rateLimits ?? {}) };
+    const now = options.now ?? (() => Date.now());
+    this.#httpLimiter = new RateLimiter(limits.httpPerMinute, now);
+    this.#upgradeLimiter = new RateLimiter(limits.upgradePerMinute, now);
   }
 
   get sessionCount(): number {
@@ -53,6 +99,11 @@ export class RelayServer {
 
   start(port = 0, host?: string): Promise<RelayServerHandle> {
     const http = createServer((req, res) => {
+      if (!this.#httpLimiter.allow(ipOf(req.socket.remoteAddress))) {
+        res.writeHead(429, { 'content-type': 'text/plain' });
+        res.end('Too Many Requests');
+        return;
+      }
       if (req.method === 'GET' && (req.url ?? '').startsWith('/health')) {
         res.writeHead(200, { 'content-type': 'application/json' });
         res.end('{"ok":true}');
@@ -64,6 +115,10 @@ export class RelayServer {
     const wss = new WebSocketServer({ noServer: true });
 
     http.on('upgrade', (req, socket, head) => {
+      if (!this.#upgradeLimiter.allow(ipOf(req.socket.remoteAddress))) {
+        socket.destroy();
+        return;
+      }
       const conn = parseConnection(req);
       if (!conn) {
         socket.destroy();
@@ -142,4 +197,8 @@ function parseConnection(req: IncomingMessage): { role: RelayRole; sessionId: st
 function header(req: IncomingMessage, name: string): string | undefined {
   const value = req.headers[name];
   return Array.isArray(value) ? value[0] : value;
+}
+
+function ipOf(remoteAddress: string | undefined): string {
+  return remoteAddress ?? 'unknown';
 }

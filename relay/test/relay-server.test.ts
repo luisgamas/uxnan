@@ -49,3 +49,13 @@ test('GET /health returns ok', async () => {
   assert.deepEqual(await res.json(), { ok: true });
   await close();
 });
+
+test('HTTP requests over the per-IP rate limit get 429', async () => {
+  const relay = new RelayServer({ rateLimits: { httpPerMinute: 2 } });
+  const { port, close } = await relay.start(0, '127.0.0.1');
+  const url = `http://127.0.0.1:${port}/health`;
+  assert.equal((await fetch(url)).status, 200);
+  assert.equal((await fetch(url)).status, 200);
+  assert.equal((await fetch(url)).status, 429);
+  await close();
+});

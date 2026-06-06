@@ -5,8 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
-### Added
-- Initial relay server (TypeScript, ESM, Node ≥18) — Phase 2.
+### Added — Phase 3
+- Per-IP fixed-window rate limiting for HTTP requests and WebSocket upgrades
+  (defaults 120/min and 60/min; configurable via `RelayServerOptions.rateLimits`).
+  Over-limit HTTP gets `429`; over-limit upgrades are dropped.
+
+### Changed
+- `RelayServer` constructor now takes a `RelayServerOptions` object
+  (`{ logger, rateLimits, now }`) instead of a bare logger.
+
+### Added — Phase 2
+- Initial relay server (TypeScript, ESM, Node ≥18).
 - `RelayServer`: pairs one `mac` and one `iphone` socket per `sessionId` (from the
   `x-role` / `x-session-id` headers or `?role=&sessionId=` query) and forwards
   opaque E2EE frames between them. The relay never sees plaintext.
