@@ -32,4 +32,114 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get connectionReconnecting => 'Reconnecting…';
+
+  @override
+  String get onboardingSkip => 'Skip';
+
+  @override
+  String get onboardingNext => 'Next';
+
+  @override
+  String get onboardingBack => 'Back';
+
+  @override
+  String get onboardingGetStarted => 'Get started';
+
+  @override
+  String get onboardingWelcomeTitle => 'Control your agents from anywhere';
+
+  @override
+  String get onboardingWelcomeBody =>
+      'Uxnan is a secure remote control for the AI coding agents running on your PC.';
+
+  @override
+  String get onboardingFeaturesTitle => 'Built for the way you work';
+
+  @override
+  String get featureMultiAgentTitle => 'Multi-agent';
+
+  @override
+  String get featureMultiAgentBody =>
+      'Works with Codex, Claude Code, Gemini CLI, OpenCode and more — no lock-in.';
+
+  @override
+  String get featureE2eeTitle => 'End-to-end encrypted';
+
+  @override
+  String get featureE2eeBody =>
+      'Messages are encrypted on your devices. The relay only sees opaque envelopes.';
+
+  @override
+  String get featureLocalFirstTitle => 'Local-first';
+
+  @override
+  String get featureLocalFirstBody =>
+      'Your code and conversations stay on your machine, never on a third-party server.';
+
+  @override
+  String get onboardingInstallTitle => 'Install the bridge on your PC';
+
+  @override
+  String get onboardingInstallBody =>
+      'Run this in a terminal on the computer where your agents live:';
+
+  @override
+  String get onboardingInstallHint =>
+      'Keep the terminal open — it shows the pairing QR.';
+
+  @override
+  String get onboardingPairTitle => 'Pair your phone';
+
+  @override
+  String get onboardingPairBody =>
+      'Scan the QR code shown by the bridge to establish a secure session.';
+
+  @override
+  String get actionScanQr => 'Scan QR code';
+
+  @override
+  String get commandCopied => 'Command copied to clipboard';
+
+  @override
+  String get actionCopy => 'Copy';
+
+  @override
+  String get qrScannerTitle => 'Scan pairing QR';
+
+  @override
+  String get qrPermissionTitle => 'Camera access needed';
+
+  @override
+  String get qrPermissionBody =>
+      'Uxnan uses the camera only to scan the bridge\'s pairing QR code.';
+
+  @override
+  String get actionAllowCamera => 'Allow camera';
+
+  @override
+  String get actionOpenSettings => 'Open settings';
+
+  @override
+  String get qrHint =>
+      'Point the camera at the QR code in your bridge terminal.';
+
+  @override
+  String get qrErrorExpired =>
+      'This QR code has expired. Generate a new one on your PC.';
+
+  @override
+  String get qrErrorMalformed => 'This isn\'t a valid Uxnan pairing code.';
+
+  @override
+  String get pairingConnecting => 'Establishing a secure session…';
+
+  @override
+  String get updateRequiredTitle => 'Update required';
+
+  @override
+  String get updateRequiredBody =>
+      'This bridge uses a newer pairing format. Update the Uxnan app to continue.';
+
+  @override
+  String get actionDismiss => 'Dismiss';
 }

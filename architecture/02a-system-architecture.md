@@ -1014,7 +1014,7 @@ class TurnTimelineSnapshot {
 
 ### 5.5 Modulo de pairing y onboarding
 
-> ✅ **Lógica implementada** (rama `uxnanmobile`): `PairingPayload` (+`fromQrString`), `PairingValidator` (versión/expiry/campos), `ITrustedDeviceRepository` + `TrustedDeviceRepository` (drift + `SecureStore`), y `SessionCoordinator.processPairingPayload`/`cancelPairing` cableados a providers. Probado con tests de dominio/infra + un `processPairingPayload` end-to-end sobre el bridge simulado. ⏳ **Pendiente (FOR-DEV):** la **UI** (onboarding, `QrScannerScreen` con `mobile_scanner`, `MyDevicesScreen`, `UpdatePromptDialog`) en el siguiente incremento, y el **pairing por código manual** (relay REST §5.5.3). Ver `uxnanmobile/FOR-DEV.md`.
+> ✅ **Lógica + UI implementadas** (rama `uxnanmobile`): Lógica — `PairingPayload` (+`fromQrString`), `PairingValidator`, `ITrustedDeviceRepository` + `TrustedDeviceRepository` (drift + `SecureStore`), `SessionCoordinator.processPairingPayload`/`cancelPairing`. UI (M3) — `OnboardingScreen` (Welcome/Features/Install/Pair) con `CommandCardWidget`, `QrScannerScreen` (`mobile_scanner` + gating de permiso de cámara), `UpdatePromptDialog`, rutas `/onboarding` y `/pairing`. Permiso de cámara configurado (Android manifest + iOS `NSCameraUsageDescription`). Tests: dominio/infra + `processPairingPayload` e2e (bridge simulado) + navegación de onboarding. ⏳ **Pendiente (FOR-DEV):** pairing por **código manual** (relay REST §5.5.3), `MyDevicesScreen`, macro `PERMISSION_CAMERA=1` del Podfile iOS, y verificación on-device contra un bridge real. Ver `uxnanmobile/FOR-DEV.md`.
 
 **Objetivo:** llevar al usuario desde "app instalada" hasta "sesion segura activa" sin exponer detalles tecnicos.
 

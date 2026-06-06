@@ -8,6 +8,28 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Pairing / onboarding UI** — spec 02a §5.5.1–5.5.2, M3 design tokens:
+  - `OnboardingScreen`: a 4-page flow (Welcome → Features → Install bridge →
+    Pair) with a page indicator, Skip/Back/Next controls and a copyable
+    `CommandCardWidget` (`npx uxnan-bridge`); width-constrained for tablets.
+  - Onboarding visual treatment: an `OnboardingBackground` (soft square grid +
+    top-transparent → deeper-bottom gradient) and `FloatingAgents` — bundled
+    coding-agent logos (`flutter_svg`, `assets/images/agents/`) that gently
+    float on soft dark chips, with a different size/position preset per page.
+    Implemented efficiently (one controller per page, GPU transforms,
+    `RepaintBoundary`).
+  - `QrScannerScreen`: camera permission gating (request / settings fallback),
+    `mobile_scanner` preview with a scan window, validates the QR via
+    `PairingValidator`, drives `SessionCoordinator.processPairingPayload`, and
+    shows `UpdatePromptDialog` on an unsupported QR version.
+  - Routes `/onboarding` and `/pairing`; the home "Pair a device" button now
+    launches the flow. English + Spanish strings.
+  - `mobile_scanner` and `permission_handler` dependencies; Android `CAMERA`
+    permission and iOS `NSCameraUsageDescription` configured.
+  - Widget test covering onboarding page navigation.
+  - **FOR-DEV** (deferred): iOS `permission_handler` Podfile macro
+    (`PERMISSION_CAMERA=1`), live on-device camera pairing against a real bridge.
+
 - **Pairing logic (QR)** — spec 02a §5.5:
   - `PairingPayload` entity with `fromQrString` (Base64-JSON QR decode) and
     `PairingValidator` (domain service): checks QR version, required fields and

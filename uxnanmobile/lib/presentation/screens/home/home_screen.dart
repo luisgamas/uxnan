@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
+import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 
@@ -45,7 +47,7 @@ class HomeScreen extends ConsumerWidget {
             ),
             const SizedBox(height: UxnanSpacing.xl),
             FilledButton.icon(
-              onPressed: () {},
+              onPressed: () => context.push(AppRoutes.onboarding),
               icon: const Icon(Icons.qr_code_scanner),
               label: Text(l10n.actionPairDevice),
             ),

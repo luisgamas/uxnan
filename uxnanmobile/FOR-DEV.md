@@ -13,10 +13,18 @@ Deferred implementation work (code the team/agent will do later). Distinct from
 - ☐ **Manual-code pairing** — `ManualCodeScreen` + relay `GET /trusted-session/resolve?code=`
   (dio) to synthesize a `PairingPayload` (spec §5.5.3). Deferred: QR is the MVP
   method and the relay is not implemented yet.
-- ☐ **Pairing/onboarding UI** — `OnboardingScreen` (Welcome/Features/Install/Pair),
-  `QrScannerScreen` (`mobile_scanner`), `UpdatePromptDialog`, `MyDevicesScreen`.
-  Next increment (UI), using the M3 design tokens. Needs the `mobile_scanner`
-  dependency and the camera permission (see `FOR-HUMAN.md`).
+- ☑ **Pairing/onboarding UI** — DONE: `OnboardingScreen` (Welcome/Features/
+  Install/Pair), `QrScannerScreen` (`mobile_scanner` + permission gating),
+  `UpdatePromptDialog`, routes and home CTA. Still open below.
+- ☐ **iOS camera permission macro** — `permission_handler` needs
+  `GCC_PREPROCESSOR_DEFINITIONS` `PERMISSION_CAMERA=1` in the iOS Podfile
+  `post_install`. The Podfile is generated on the first macOS build; add the
+  macro there or `Permission.camera` is compiled out on iOS.
+- ☐ **`MyDevicesScreen` + `DeviceCard`** — list/switch trusted Macs
+  (`SessionCoordinator.switchMac`), spec §5.5.6. Post-MVP-ish; not built yet.
+- ☐ **On-device pairing verification** — the QR happy path needs a running
+  bridge/relay to complete `processPairingPayload`; verify end-to-end once the
+  bridge exists.
 - ☐ **Standalone pairing use cases** — the spec lists `StartPairing`,
   `RegisterTrustedDevice`, `RemoveTrustedDevice` under `domain/usecases/pairing/`.
   Currently folded into `SessionCoordinator.processPairingPayload` +

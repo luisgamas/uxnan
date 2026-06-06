@@ -1,6 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uxnan/presentation/screens/home/home_screen.dart';
+import 'package:uxnan/presentation/screens/onboarding/onboarding_screen.dart';
+import 'package:uxnan/presentation/screens/pairing/qr_scanner_screen.dart';
 import 'package:uxnan/presentation/screens/shell/app_shell_screen.dart';
 
 /// Route path constants used across the app.
@@ -22,11 +24,10 @@ class AppRoutes {
 
 /// Provides the app's [GoRouter] instance.
 ///
-/// Only the routes whose screens already exist are wired here; additional
-/// routes (conversation, settings, devices, projects, terminal, onboarding,
-/// pairing) are added as their modules are implemented. Keeping routing in this
-/// provider — never in `main.dart` — follows the project's navigation
-/// convention.
+/// The onboarding and pairing flows live outside the app shell; in-app screens
+/// (conversation, settings, devices, projects, terminal) are added as their
+/// modules are implemented. Keeping routing in this provider — never in
+/// `main.dart` — follows the project's navigation convention.
 final appRouterProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     initialLocation: AppRoutes.home,
@@ -39,6 +40,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => const HomeScreen(),
           ),
         ],
+      ),
+      GoRoute(
+        path: AppRoutes.onboarding,
+        builder: (context, state) => const OnboardingScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.pairing,
+        builder: (context, state) => const QrScannerScreen(),
       ),
     ],
   );

@@ -17,19 +17,46 @@
     "description": "Label for the button that starts the pairing flow."
   },
   "connectionConnected": "Connected",
-  "@connectionConnected": {
-    "description": "Connection status label when the secure channel is established."
-  },
   "connectionConnecting": "Connecting…",
-  "@connectionConnecting": {
-    "description": "Connection status label while establishing the connection."
-  },
   "connectionDisconnected": "Disconnected",
-  "@connectionDisconnected": {
-    "description": "Connection status label when there is no active connection."
-  },
   "connectionReconnecting": "Reconnecting…",
-  "@connectionReconnecting": {
-    "description": "Connection status label while attempting to reconnect."
-  }
+
+  "onboardingSkip": "Skip",
+  "onboardingNext": "Next",
+  "onboardingBack": "Back",
+  "onboardingGetStarted": "Get started",
+  "onboardingWelcomeTitle": "Control your agents from anywhere",
+  "@onboardingWelcomeTitle": {
+    "description": "Welcome page headline."
+  },
+  "onboardingWelcomeBody": "Uxnan is a secure remote control for the AI coding agents running on your PC.",
+  "onboardingFeaturesTitle": "Built for the way you work",
+  "featureMultiAgentTitle": "Multi-agent",
+  "featureMultiAgentBody": "Works with Codex, Claude Code, Gemini CLI, OpenCode and more — no lock-in.",
+  "featureE2eeTitle": "End-to-end encrypted",
+  "featureE2eeBody": "Messages are encrypted on your devices. The relay only sees opaque envelopes.",
+  "featureLocalFirstTitle": "Local-first",
+  "featureLocalFirstBody": "Your code and conversations stay on your machine, never on a third-party server.",
+  "onboardingInstallTitle": "Install the bridge on your PC",
+  "onboardingInstallBody": "Run this in a terminal on the computer where your agents live:",
+  "onboardingInstallHint": "Keep the terminal open — it shows the pairing QR.",
+  "onboardingPairTitle": "Pair your phone",
+  "onboardingPairBody": "Scan the QR code shown by the bridge to establish a secure session.",
+  "actionScanQr": "Scan QR code",
+  "commandCopied": "Command copied to clipboard",
+  "actionCopy": "Copy",
+
+  "qrScannerTitle": "Scan pairing QR",
+  "qrPermissionTitle": "Camera access needed",
+  "qrPermissionBody": "Uxnan uses the camera only to scan the bridge's pairing QR code.",
+  "actionAllowCamera": "Allow camera",
+  "actionOpenSettings": "Open settings",
+  "qrHint": "Point the camera at the QR code in your bridge terminal.",
+  "qrErrorExpired": "This QR code has expired. Generate a new one on your PC.",
+  "qrErrorMalformed": "This isn't a valid Uxnan pairing code.",
+  "pairingConnecting": "Establishing a secure session…",
+
+  "updateRequiredTitle": "Update required",
+  "updateRequiredBody": "This bridge uses a newer pairing format. Update the Uxnan app to continue.",
+  "actionDismiss": "Dismiss"
 }

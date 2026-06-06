@@ -33,10 +33,13 @@ dependencies:
   flutter_markdown: ^0.7.3 # markdown rendering
   flutter_riverpod: ^3.0.0 # state management (manual providers)
   flutter_secure_storage: ^9.2.0 # Keychain / Keystore
+  flutter_svg: ^2.0.10 # SVG rendering (agent logos)
   go_router: ^14.0.0 # declarative navigation
   intl: any # i18n + date formatting (pinned by flutter_localizations)
   logger: ^2.4.0 # structured logging
+  mobile_scanner: ^5.1.0 # QR scanner (CameraX/MLKit, AVFoundation)
   path_provider: ^2.1.0 # on-disk app directories
+  permission_handler: ^11.3.0 # camera / notification permissions
   pointycastle: ^3.9.0 # AES-256-GCM, HKDF, SHA-256
   riverpod: ^3.0.0 # core Riverpod
   rxdart: ^0.28.0 # reactive stream operators
@@ -61,6 +64,7 @@ flutter:
 
   assets:
     - assets/images/
+    - assets/images/agents/
     - assets/animations/lottie/
 
   # Fonts: Inter for UI, JetBrains Mono for code (architecture 02c §3.1).
