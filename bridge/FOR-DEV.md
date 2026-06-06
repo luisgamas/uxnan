@@ -18,10 +18,10 @@ only a human can provide.)
 - [ ] **Key rotation / keyEpoch advance** — blocked on a mobile trigger.
 
 ## Identity & security
-- [ ] **OS-keychain SecretStore** — `src/secret-store.ts`. Persist the Ed25519
-      identity in Windows Credential Manager / macOS Keychain / libsecret. Until
-      then the identity is in-memory only (regenerated per run) and real pairing
-      is intentionally not possible.
+- [x] **OS-keychain SecretStore** (Phase 3) — `src/keyring-secret-store.ts` via
+      `@napi-rs/keyring`, with in-memory fallback. NOTE: on headless Linux without
+      a running Secret Service it falls back to in-memory (no persistence) — wire a
+      CI/service alternative there before relying on persistence on Linux.
 
 ## Handlers (currently stubbed → return `-32000`)
 - [ ] **Git** — `src/handlers/git-handler.ts` (`child_process`).
@@ -40,12 +40,18 @@ only a human can provide.)
 - [ ] Later: Claude Code, Gemini CLI, pi-agent, Aider.
 
 ## Daemon lifecycle & ops
-- [ ] **`start` event loop** — `src/cli.ts` (replace the idle wait).
-- [ ] **`stop`** — daemon process manager (lock file + IPC) — `src/cli.ts`.
+- [x] **Single-instance lock + `stop`** (Phase 3) — `src/lock-file.ts`,
+      `src/cli.ts` (`bridge.lock` + SIGTERM).
 - [ ] **`install-service`** — flesh out `scripts/install-service-*`.
 - [ ] **File logging** — `src/logger.ts` (`~/.uxnan/logs/` with rotation + redaction).
 - [ ] **Version** — `src/version.ts` (source from package.json at build).
 
-## Contracts to verify
-- [ ] **Pairing QR encoding** — confirm `@uxnan/shared` `encodePairingQr` matches
-      the mobile `PairingPayload.fromQrString` exactly before enabling pairing.
+## Relay hardening
+- [x] **Per-IP rate limiting** (Phase 3) — `relay/src/relay-server.ts`.
+- [ ] **Pairing-code resolution** (`/trusted-session/resolve`) and **multi-session
+      `mac` registration** — need protocol/mobile coordination (§5.10.1).
+- [ ] **Push endpoints** (`/push/*`, APNs/FCM) — Phase 6.
+
+## Contracts verified
+- [x] **Pairing QR encoding** — `@uxnan/shared` now emits Base64 JSON matching the
+      mobile `PairingPayload.fromQrString` (Phase 3).

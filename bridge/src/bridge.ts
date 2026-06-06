@@ -14,7 +14,8 @@ import { HandlerRouter } from './handler-router.js';
 import { registerAllHandlers } from './handlers/index.js';
 import { DaemonState } from './daemon-state.js';
 import { SecureDeviceState } from './secure-device-state.js';
-import { InMemorySecretStore, type SecretStore } from './secret-store.js';
+import type { SecretStore } from './secret-store.js';
+import { createDefaultSecretStore } from './keyring-secret-store.js';
 import { SessionState } from './session-state.js';
 import { buildBridgeStatus } from './bridge-status.js';
 import { generatePairingPayload } from './qr.js';
@@ -61,7 +62,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   const state = new DaemonState(options.baseDir);
   const config = await state.initConfig();
 
-  const secretStore = options.secretStore ?? new InMemorySecretStore();
+  const secretStore = options.secretStore ?? (await createDefaultSecretStore(logger));
   const deviceState = new SecureDeviceState(secretStore);
   await deviceState.loadOrCreate();
 

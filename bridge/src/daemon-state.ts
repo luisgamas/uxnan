@@ -19,6 +19,7 @@ export const DAEMON_FILES = {
   trustedPhones: 'trusted-phones.json',
   managedWorktrees: 'managed-worktrees.json',
   pushState: 'push-state.json',
+  lock: 'bridge.lock',
 } as const;
 
 export class DaemonState {

@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — Phase 3 (identity persistence + pairing hardening)
+- **OS-keychain identity persistence** (`KeyringSecretStore`) via the optional
+  `@napi-rs/keyring` native module (Windows Credential Manager, macOS Keychain,
+  Linux Secret Service). `createDefaultSecretStore()` uses it by default and
+  falls back to an in-memory store (with a warning) when the keychain is
+  unavailable, so the daemon still runs. The Ed25519 identity now survives
+  restarts — a prerequisite for real pairing.
+- **Single-instance lock** (`LockFile`, `~/.uxnan/bridge.lock`): `start` refuses
+  to launch if another live daemon holds the lock; stale locks (dead pid) are
+  taken over. `stop` reads the lock and signals the running daemon (SIGTERM).
+- Pairing QR now matches the mobile contract end-to-end (Base64 JSON; the fix
+  lives in `@uxnan/shared`).
+
 ### Added — Phase 2b (bridge → phone notifications + outbound buffer)
 - `SessionRegistry`: tracks the live encrypted sink per connected device so the
   bridge can push JSON-RPC notifications (e.g. streamed agent events).

@@ -13,7 +13,14 @@ export { DaemonState, DAEMON_FILES } from './daemon-state.js';
 export { DEFAULT_DAEMON_CONFIG, resolveDaemonConfig, type DaemonConfig } from './daemon-config.js';
 export { SecureDeviceState, type PublicIdentity } from './secure-device-state.js';
 export { InMemorySecretStore, type SecretStore } from './secret-store.js';
+export {
+  KeyringSecretStore,
+  createDefaultSecretStore,
+  loadNativeKeyringBackend,
+  type KeyringBackend,
+} from './keyring-secret-store.js';
 export { SessionState } from './session-state.js';
+export { LockFile, isProcessAlive, type LockInfo } from './lock-file.js';
 export { buildBridgeStatus, type BridgeStatusInput } from './bridge-status.js';
 export { generatePairingPayload, renderPairingQr, type GeneratePairingOptions } from './qr.js';
 export { createLogger, type Logger, type LogLevel } from './logger.js';

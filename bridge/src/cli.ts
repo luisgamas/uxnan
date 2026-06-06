@@ -16,6 +16,8 @@ import { encodePairingQr } from '@uxnan/shared';
 import { startBridge } from './bridge.js';
 import { renderPairingQr } from './qr.js';
 import { BRIDGE_VERSION } from './version.js';
+import { DaemonState, DAEMON_FILES } from './daemon-state.js';
+import { LockFile, isProcessAlive } from './lock-file.js';
 
 const USAGE = `uxnan-bridge v${BRIDGE_VERSION}
 
@@ -48,6 +50,18 @@ async function cmdStatus(): Promise<void> {
 }
 
 async function cmdStart(): Promise<void> {
+  const state = new DaemonState();
+  await state.ensureDir();
+  const lock = new LockFile(state.pathFor(DAEMON_FILES.lock));
+  if (!(await lock.acquire())) {
+    const held = await lock.read();
+    process.stderr.write(
+      `uxnan-bridge is already running${held ? ` (pid ${held.pid})` : ''}. Run 'uxnan-bridge stop' first.\n`,
+    );
+    process.exitCode = 1;
+    return;
+  }
+
   const bridge = await startBridge();
 
   if (bridge.context.config.lanEnabled) {
@@ -74,11 +88,29 @@ async function cmdStart(): Promise<void> {
   process.stdout.write('Press Ctrl+C to stop.\n');
   await new Promise<void>((resolve) => {
     const shutdown = (): void => {
-      void bridge.stop().then(resolve);
+      void Promise.allSettled([bridge.stop(), lock.release()]).then(() => resolve());
     };
     process.once('SIGINT', shutdown);
     process.once('SIGTERM', shutdown);
   });
+}
+
+async function cmdStop(): Promise<void> {
+  const state = new DaemonState();
+  const lock = new LockFile(state.pathFor(DAEMON_FILES.lock));
+  const held = await lock.read();
+  if (!held || !isProcessAlive(held.pid)) {
+    process.stdout.write('uxnan-bridge is not running.\n');
+    await lock.release(held?.pid);
+    return;
+  }
+  try {
+    process.kill(held.pid, 'SIGTERM');
+    process.stdout.write(`Sent stop signal to uxnan-bridge (pid ${held.pid}).\n`);
+  } catch (err) {
+    process.stderr.write(`Failed to stop pid ${held.pid}: ${errText(err)}\n`);
+    process.exitCode = 1;
+  }
 }
 
 function errText(err: unknown): string {
@@ -89,12 +121,6 @@ function cmdInstallService(): void {
   process.stdout.write(
     'FOR-DEV: autostart installation is not implemented yet.\n' +
       'See bridge/scripts/install-service-{windows.ps1,macos.sh,linux.sh}.\n',
-  );
-}
-
-function cmdStop(): void {
-  process.stdout.write(
-    'FOR-DEV: stopping a running daemon needs the daemon process manager (lock file + IPC).\n',
   );
 }
 
@@ -111,7 +137,7 @@ async function main(): Promise<number> {
       await cmdStart();
       return 0;
     case 'stop':
-      cmdStop();
+      await cmdStop();
       return 0;
     case 'install-service':
       cmdInstallService();
