@@ -1,9 +1,13 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/application/coordinators/session_coordinator.dart';
+import 'package:uxnan/application/managers/thread_manager.dart';
+import 'package:uxnan/application/processors/incoming_message_processor.dart';
 import 'package:uxnan/domain/entities/connection_recovery_state.dart';
+import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/entities/trusted_device.dart';
 import 'package:uxnan/domain/enums/connection_phase.dart';
 import 'package:uxnan/domain/services/pairing_validator.dart';
+import 'package:uxnan/domain/value_objects/turn_timeline_snapshot.dart';
 import 'package:uxnan/infrastructure/transport/secure_transport_layer.dart';
 import 'package:uxnan/infrastructure/transport/transport_selector.dart';
 import 'package:uxnan/infrastructure/transport/websocket_transport.dart';
@@ -53,4 +57,34 @@ final connectionRecoveryProvider = StreamProvider<ConnectionRecoveryState>(
 /// The active bridge device, as a stream for the UI.
 final activeMacProvider = StreamProvider<TrustedDevice?>(
   (ref) => ref.watch(sessionCoordinatorProvider).activeMacStream,
+);
+
+/// Classifies inbound bridge notifications into domain events.
+final incomingMessageProcessorProvider =
+    Provider<IncomingMessageProcessor>((ref) {
+  return const IncomingMessageProcessor();
+});
+
+/// Coordinates threads and the active conversation timeline.
+final threadManagerProvider = Provider<ThreadManager>((ref) {
+  final coordinator = ref.watch(sessionCoordinatorProvider);
+  final processor = ref.watch(incomingMessageProcessorProvider);
+  final manager = ThreadManager(
+    threadRepository: ref.watch(threadRepositoryProvider),
+    messageRepository: ref.watch(messageRepositoryProvider),
+    domainEvents: processor.bind(coordinator.incomingMessages),
+    sendRequest: coordinator.sendRequest,
+  );
+  ref.onDispose(manager.dispose);
+  return manager;
+});
+
+/// Reactive list of threads, for the UI.
+final threadsProvider = StreamProvider<List<Thread>>(
+  (ref) => ref.watch(threadManagerProvider).threadsStream,
+);
+
+/// The active thread's timeline, for the UI.
+final activeTimelineProvider = StreamProvider<TurnTimelineSnapshot>(
+  (ref) => ref.watch(threadManagerProvider).timelineStream,
 );

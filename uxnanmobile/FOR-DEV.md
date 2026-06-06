@@ -32,8 +32,7 @@ Deferred implementation work (code the team/agent will do later). Distinct from
 
 ## Connection / transport
 
-- ☐ **IncomingMessageProcessor** — domain-event classification of inbound
-  messages (spec §5.2.5); lands with the conversation module.
+- ☑ **IncomingMessageProcessor** — DONE (conversation managers).
 - ☐ **TransportSelector LAN discovery** — prefer a direct LAN socket before the
   relay (spec §5.9.3); needs mDNS/Bonjour + the iOS local-network permission.
 - ☐ **Live WebSocket integration test** against a real bridge (current tests use
@@ -51,12 +50,16 @@ Deferred implementation work (code the team/agent will do later). Distinct from
 - ☐ **Advanced `MessageContent` types** — `approval`, `plan`, `subagent` (and
   their `ApprovalRequest` / `PlanState` / `SubagentState` payloads). Currently
   decoded as `UnknownContent` (lossless). Post-MVP per spec.
-- ☐ **Application managers** — `ThreadManager` timeline loading/streaming and
-  `IncomingMessageProcessor` (classify bridge stream events → domain events,
-  spec §5.2.5), driving `TurnTimelineSnapshot`.
+- ☑ **Application managers** — DONE: `ThreadManager` (timeline build + streaming
+  reducer application, `loadThreads`, `sendUserMessage`) and
+  `IncomingMessageProcessor`.
+- ☐ **Remote history pagination** — `ThreadManager.loadMoreHistory` via
+  `thread/turns/list` (cursor) → `TurnTimelineSnapshot.prependHistory`; plus
+  `startNewThread`/`resumeThread`/`forkThread`. The bridge `thread/list` JSON
+  shape is assumed (tolerant parser); verify against the real bridge.
 - ☐ **Conversation UI** — `ConversationScreen`, message renderers (markdown,
-  code, command card, diff viewer), `ComposerWidget`, streaming/auto-scroll.
-  Next increment, for visual review.
+  code, command card, diff viewer), `ComposerWidget` (+ `ComposerManager`),
+  streaming/auto-scroll. Next increment, for visual review.
 
 ## Tooling
 

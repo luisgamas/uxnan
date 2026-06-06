@@ -1,0 +1,157 @@
+import 'dart:async';
+
+import 'package:collection/collection.dart';
+import 'package:drift/native.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:uxnan/application/managers/thread_manager.dart';
+import 'package:uxnan/application/processors/domain_event.dart';
+import 'package:uxnan/domain/entities/message.dart';
+import 'package:uxnan/domain/enums/message_delivery_state.dart';
+import 'package:uxnan/domain/enums/message_role.dart';
+import 'package:uxnan/domain/value_objects/message_content.dart';
+import 'package:uxnan/domain/value_objects/rpc_message.dart';
+import 'package:uxnan/infrastructure/repositories/drift_message_repository.dart';
+import 'package:uxnan/infrastructure/repositories/drift_thread_repository.dart';
+import 'package:uxnan/infrastructure/storage/local_database.dart';
+
+Message _msg(
+  String id, {
+  required int order,
+  required MessageRole role,
+  String text = '',
+  String threadId = 'th1',
+}) =>
+    Message(
+      id: id,
+      threadId: threadId,
+      turnId: '',
+      role: role,
+      contents: [TextContent(text)],
+      deliveryState: MessageDeliveryState.delivered,
+      orderIndex: order,
+      createdAt: DateTime.fromMillisecondsSinceEpoch(1000 + order),
+    );
+
+String _text(Message m) => (m.contents.first as TextContent).text;
+
+Future<void> _settle() =>
+    Future<void>.delayed(const Duration(milliseconds: 60));
+
+void main() {
+  late UxnanDatabase db;
+  late DriftThreadRepository threadRepo;
+  late DriftMessageRepository messageRepo;
+  late StreamController<DomainEvent> events;
+  late List<String> sentMethods;
+  late ThreadManager manager;
+
+  setUp(() {
+    db = UxnanDatabase.forTesting(NativeDatabase.memory());
+    threadRepo = DriftThreadRepository(db);
+    messageRepo = DriftMessageRepository(db);
+    events = StreamController<DomainEvent>.broadcast();
+    sentMethods = [];
+    manager = ThreadManager(
+      threadRepository: threadRepo,
+      messageRepository: messageRepo,
+      domainEvents: events.stream,
+      sendRequest: (method, [params]) async {
+        sentMethods.add(method);
+        final result = method == 'thread/list'
+            ? [
+                {
+                  'id': 'th1',
+                  'title': 'Thread 1',
+                  'agentId': 'codex',
+                  'status': 'active',
+                },
+              ]
+            : <String, dynamic>{};
+        return RpcMessage.response(id: '1', result: result);
+      },
+    );
+  });
+
+  tearDown(() async {
+    await manager.dispose();
+    await events.close();
+    await db.close();
+  });
+
+  test('selectThread builds the timeline from local messages', () async {
+    await messageRepo.saveMessages([
+      _msg('m1', order: 0, role: MessageRole.user, text: 'hi'),
+      _msg('m2', order: 1, role: MessageRole.assistant, text: 'hello'),
+    ]);
+
+    await manager.selectThread('th1');
+    await _settle();
+
+    expect(manager.timeline.messages.map((m) => m.id).toList(), ['m1', 'm2']);
+  });
+
+  test('applies a streaming turn: started, deltas, completed', () async {
+    await manager.selectThread('th1');
+    await _settle();
+
+    events.add(const TurnStartedEvent(turnId: 'turn1', threadId: 'th1'));
+    await _settle();
+    expect(manager.timeline.isStreaming, isTrue);
+
+    events
+      ..add(const MessageDeltaEvent(turnId: 'turn1', delta: 'Hello, '))
+      ..add(const MessageDeltaEvent(turnId: 'turn1', delta: 'world'));
+    await _settle();
+
+    final streaming = manager.timeline.messages
+        .firstWhereOrNull((m) => m.id == 'stream-turn1');
+    expect(streaming, isNotNull);
+    expect(_text(streaming!), 'Hello, world');
+    expect(streaming.isStreaming, isTrue);
+
+    events.add(const TurnCompletedEvent(turnId: 'turn1', threadId: 'th1'));
+    await _settle();
+
+    expect(manager.timeline.isStreaming, isFalse);
+    final finalized =
+        manager.timeline.messages.firstWhere((m) => m.id == 'stream-turn1');
+    expect(finalized.isStreaming, isFalse);
+    expect(_text(finalized), 'Hello, world');
+
+    // The finalized message is persisted.
+    final persisted = await messageRepo.getMessages('th1');
+    expect(persisted.any((m) => m.id == 'stream-turn1'), isTrue);
+  });
+
+  test('ignores events for a non-active thread', () async {
+    await manager.selectThread('th1');
+    await _settle();
+    events.add(const TurnStartedEvent(turnId: 'x', threadId: 'other'));
+    await _settle();
+    expect(manager.timeline.isStreaming, isFalse);
+  });
+
+  test('loadThreads parses and persists the thread list', () async {
+    await manager.loadThreads();
+    final threads = await threadRepo.getThreads();
+    expect(threads.map((t) => t.id).toList(), ['th1']);
+    expect(threads.single.title, 'Thread 1');
+    expect(sentMethods, contains('thread/list'));
+  });
+
+  test('sendUserMessage persists locally and sends turn/send', () async {
+    await manager.selectThread('th1');
+    await _settle();
+
+    await manager.sendUserMessage('th1', 'hola');
+    await _settle();
+
+    expect(sentMethods, contains('turn/send'));
+    final persisted = await messageRepo.getMessages('th1');
+    final user = persisted.firstWhereOrNull(
+      (m) => m.role == MessageRole.user,
+    );
+    expect(user, isNotNull);
+    expect(_text(user!), 'hola');
+  });
+}

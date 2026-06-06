@@ -504,6 +504,8 @@ class SessionCoordinator {
 
 #### 5.2.2 ThreadManager
 
+> ✅ **Implementado** (rama `uxnanmobile`): `lib/application/managers/thread_manager.dart`. Construye el `TurnTimelineSnapshot` del thread activo desde el repositorio local y aplica eventos de streaming (start/delta/complete, persistiendo el mensaje final); `loadThreads` (`thread/list`) y `sendUserMessage` (`turn/send`) sobre un `RpcSend` inyectado; dedup vía `MessageDeduplicator`. Expone `threadsStream`/`timelineStream` a providers Riverpod. Probado con DB in-memory + stream de eventos controlable. Adaptación: el spec usa `ValueNotifier`; se usan streams (BehaviorSubject) para Riverpod 3.x. Pendiente (FUTURO): paginación remota (`loadMoreHistory`), `startNewThread`/`resumeThread`/`fork`.
+
 ```dart
 // lib/application/managers/thread_manager.dart
 class ThreadManager {
@@ -567,6 +569,8 @@ class GitActionManager {
 ```
 
 #### 5.2.5 IncomingMessageProcessor
+
+> ✅ **Implementado** (rama `uxnanmobile`): `lib/application/processors/incoming_message_processor.dart` + jerarquía `DomainEvent`. Clasifica las notificaciones `stream/turn/started|message/delta|turn/completed|error|aborted` en eventos tipados; el resto (`stream/git/progress`, `plan`, `subagent`, `approval`, `connection`, `workspace`, `auth`) cae en `UnknownDomainEvent` hasta que su módulo lo modele (FOR-DEV). Probado. Nota: el `SessionCoordinator` ya descifra envelopes y enruta respuestas; este procesador consume las notificaciones entrantes.
 
 Procesa mensajes entrantes del bridge y los clasifica antes de rutearlos:
 

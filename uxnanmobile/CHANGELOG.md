@@ -8,6 +8,24 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Conversation/timeline — application managers** — spec 02a §5.2.2 / §5.2.5:
+  - `DomainEvent` hierarchy and `IncomingMessageProcessor` that classifies
+    inbound bridge notifications (`stream/turn/started`, `stream/message/delta`,
+    `stream/turn/completed`, `…/error`, `…/aborted`) into typed events; other
+    `stream/*` notifications map to `UnknownDomainEvent`.
+  - `ThreadManager`: builds the active thread's `TurnTimelineSnapshot` from the
+    local message repository and applies streaming events through the reducer
+    (start → delta → complete, persisting the finalized message); `loadThreads`
+    (`thread/list`) and `sendUserMessage` (`turn/send`) over the injected RPC
+    sender; dedup via `MessageDeduplicator`.
+  - Providers: `incomingMessageProcessorProvider`, `threadManagerProvider`,
+    `threadsProvider`, `activeTimelineProvider`.
+  - Tests: event classification, and a `ThreadManager` driven by an in-memory
+    DB + a controllable event stream (timeline build, full streaming turn,
+    thread loading, send).
+  - The conversation **UI** (`ConversationScreen`, renderers, composer) is the
+    remaining piece (FOR-DEV), built next for visual review.
+
 - **Conversation/timeline — domain & data layer** — spec 02a §5.6 / §6.2:
   - `MessageContent` sealed hierarchy with a JSON codec: `text`, `code`,
     `image`, `tool`, `diff`, `mermaid`, `system`, `command_execution`, plus an
