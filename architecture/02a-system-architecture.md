@@ -1014,6 +1014,8 @@ class TurnTimelineSnapshot {
 
 ### 5.5 Modulo de pairing y onboarding
 
+> ✅ **Lógica implementada** (rama `uxnanmobile`): `PairingPayload` (+`fromQrString`), `PairingValidator` (versión/expiry/campos), `ITrustedDeviceRepository` + `TrustedDeviceRepository` (drift + `SecureStore`), y `SessionCoordinator.processPairingPayload`/`cancelPairing` cableados a providers. Probado con tests de dominio/infra + un `processPairingPayload` end-to-end sobre el bridge simulado. ⏳ **Pendiente (FOR-DEV):** la **UI** (onboarding, `QrScannerScreen` con `mobile_scanner`, `MyDevicesScreen`, `UpdatePromptDialog`) en el siguiente incremento, y el **pairing por código manual** (relay REST §5.5.3). Ver `uxnanmobile/FOR-DEV.md`.
+
 **Objetivo:** llevar al usuario desde "app instalada" hasta "sesion segura activa" sin exponer detalles tecnicos.
 
 #### 5.5.1 Flujo de onboarding

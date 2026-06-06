@@ -7,10 +7,13 @@ import 'package:uuid/uuid.dart';
 import 'package:uxnan/core/errors/transport_exception.dart';
 import 'package:uxnan/core/utils/logger.dart';
 import 'package:uxnan/domain/entities/connection_recovery_state.dart';
+import 'package:uxnan/domain/entities/pairing_payload.dart';
 import 'package:uxnan/domain/entities/phone_identity.dart';
 import 'package:uxnan/domain/entities/trusted_device.dart';
 import 'package:uxnan/domain/enums/connection_phase.dart';
 import 'package:uxnan/domain/enums/handshake_mode.dart';
+import 'package:uxnan/domain/repositories/i_trusted_device_repository.dart';
+import 'package:uxnan/domain/services/pairing_validator.dart';
 import 'package:uxnan/domain/value_objects/rpc_message.dart';
 import 'package:uxnan/domain/value_objects/secure_envelope.dart';
 import 'package:uxnan/infrastructure/transport/backoff_calculator.dart';
@@ -39,6 +42,8 @@ class SessionCoordinator {
     required SecureTransportLayer secureTransport,
     required TransportSelector transportSelector,
     required PhoneIdentityResolver identityResolver,
+    ITrustedDeviceRepository? trustedDeviceRepository,
+    PairingValidator pairingValidator = const PairingValidator(),
     RequestCorrelator? correlator,
     BackoffCalculator? backoff,
     OutboundMessageBuffer? outboundBuffer,
@@ -48,6 +53,8 @@ class SessionCoordinator {
   })  : _secureTransport = secureTransport,
         _transportSelector = transportSelector,
         _identityResolver = identityResolver,
+        _trustedDeviceRepository = trustedDeviceRepository,
+        _pairingValidator = pairingValidator,
         _correlator = correlator ?? RequestCorrelator(),
         _backoff = backoff ?? BackoffCalculator(),
         _outboundBuffer = outboundBuffer ?? OutboundMessageBuffer(),
@@ -58,6 +65,8 @@ class SessionCoordinator {
   final SecureTransportLayer _secureTransport;
   final TransportSelector _transportSelector;
   final PhoneIdentityResolver _identityResolver;
+  final ITrustedDeviceRepository? _trustedDeviceRepository;
+  final PairingValidator _pairingValidator;
   final RequestCorrelator _correlator;
   final BackoffCalculator _backoff;
   final OutboundMessageBuffer _outboundBuffer;
@@ -127,6 +136,42 @@ class SessionCoordinator {
     setActiveDevice(device);
     await connect();
   }
+
+  /// Registers a scanned [payload] as a trusted device and starts the QR
+  /// bootstrap handshake.
+  ///
+  /// Re-validates the payload defensively, persists the resulting
+  /// [TrustedDevice], makes it active and connects with QR bootstrap. Requires
+  /// a trusted-device repository to have been provided.
+  Future<void> processPairingPayload(PairingPayload payload) async {
+    final repository = _trustedDeviceRepository;
+    if (repository == null) {
+      throw StateError(
+        'processPairingPayload requires a trusted device repository',
+      );
+    }
+    final result = _pairingValidator.validatePayload(payload);
+    if (!result.isValid) {
+      throw TransportException(
+        TransportErrorKind.handshake,
+        'Invalid pairing payload: ${result.status.name}',
+      );
+    }
+    final device = TrustedDevice(
+      macDeviceId: payload.macDeviceId,
+      displayName: payload.displayName,
+      macIdentityPublicKey: payload.macIdentityPublicKey,
+      relayUrl: payload.relayUrl,
+      sessionId: payload.sessionId,
+      pairedAt: DateTime.now(),
+    );
+    await repository.saveDevice(device);
+    setActiveDevice(device);
+    await connect(forceQrBootstrap: true);
+  }
+
+  /// Cancels an in-progress pairing by tearing down the connection.
+  Future<void> cancelPairing() => disconnect();
 
   /// Sends a JSON-RPC request and resolves with the bridge's response.
   ///

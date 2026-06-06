@@ -1,8 +1,10 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/domain/repositories/i_composer_draft_repository.dart';
 import 'package:uxnan/domain/repositories/i_thread_repository.dart';
+import 'package:uxnan/domain/repositories/i_trusted_device_repository.dart';
 import 'package:uxnan/infrastructure/repositories/drift_composer_draft_repository.dart';
 import 'package:uxnan/infrastructure/repositories/drift_thread_repository.dart';
+import 'package:uxnan/infrastructure/repositories/trusted_device_repository.dart';
 import 'package:uxnan/infrastructure/storage/local_database.dart';
 import 'package:uxnan/infrastructure/storage/phone_identity_store.dart';
 import 'package:uxnan/infrastructure/storage/secure_store.dart';
@@ -38,4 +40,13 @@ final secureStoreProvider =
 /// Loads or creates the phone's persistent Ed25519 identity.
 final phoneIdentityStoreProvider = Provider<PhoneIdentityStore>(
   (ref) => PhoneIdentityStore(ref.watch(secureStoreProvider)),
+);
+
+/// Trusted-device repository (drift for metadata + secure storage for the
+/// bridge identity key).
+final trustedDeviceRepositoryProvider = Provider<ITrustedDeviceRepository>(
+  (ref) => TrustedDeviceRepository(
+    ref.watch(databaseProvider),
+    ref.watch(secureStoreProvider),
+  ),
 );

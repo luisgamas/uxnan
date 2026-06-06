@@ -8,6 +8,25 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Pairing logic (QR)** — spec 02a §5.5:
+  - `PairingPayload` entity with `fromQrString` (Base64-JSON QR decode) and
+    `PairingValidator` (domain service): checks QR version, required fields and
+    expiry with clock-skew tolerance, returning a typed result.
+  - `ITrustedDeviceRepository` + `TrustedDeviceRepository`: split storage —
+    device metadata in drift, the bridge identity key in `SecureStore`.
+  - `SessionCoordinator.processPairingPayload` (validate → persist
+    `TrustedDevice` → set active → QR-bootstrap connect) and `cancelPairing`,
+    with optional pairing dependencies so existing wiring is unaffected.
+  - Providers: `trustedDeviceRepositoryProvider`, `pairingValidatorProvider`,
+    wired into `sessionCoordinatorProvider`.
+  - Tests: payload parse/round-trip + malformed/missing-field, validator
+    (valid/expired/unsupported-version/malformed), repository split-storage
+    round-trip, and an end-to-end `processPairingPayload` over the simulated
+    bridge.
+  - **FOR-DEV** (deferred): manual-code pairing (relay REST), the pairing/
+    onboarding UI (next increment), and standalone pairing use-case classes.
+    See `FOR-DEV.md`.
+
 - **SessionCoordinator + connection orchestration** — spec 02a §5.2.1 / 02c §11:
   - `SessionCoordinator` (application layer): drives the connection lifecycle
     (connect / disconnect / switchMac), runs the handshake via

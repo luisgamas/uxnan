@@ -6,11 +6,13 @@ import 'package:async/async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uxnan/application/coordinators/session_coordinator.dart';
 import 'package:uxnan/core/extensions/uint8list_ext.dart';
+import 'package:uxnan/domain/entities/pairing_payload.dart';
 import 'package:uxnan/domain/entities/phone_identity.dart';
 import 'package:uxnan/domain/entities/secure_session.dart';
 import 'package:uxnan/domain/entities/trusted_device.dart';
 import 'package:uxnan/domain/enums/connection_phase.dart';
 import 'package:uxnan/domain/enums/handshake_mode.dart';
+import 'package:uxnan/domain/repositories/i_trusted_device_repository.dart';
 import 'package:uxnan/domain/value_objects/rpc_message.dart';
 import 'package:uxnan/domain/value_objects/secure_envelope.dart';
 import 'package:uxnan/infrastructure/crypto/handshake_crypto.dart';
@@ -190,6 +192,25 @@ class _FakeSelector implements TransportSelector {
   }
 }
 
+class _FakeTrustedDeviceRepo implements ITrustedDeviceRepository {
+  final Map<String, TrustedDevice> devices = {};
+
+  @override
+  Future<void> saveDevice(TrustedDevice device) async =>
+      devices[device.macDeviceId] = device;
+
+  @override
+  Future<TrustedDevice?> getDevice(String macDeviceId) async =>
+      devices[macDeviceId];
+
+  @override
+  Future<List<TrustedDevice>> getDevices() async => devices.values.toList();
+
+  @override
+  Future<void> deleteDevice(String macDeviceId) async =>
+      devices.remove(macDeviceId);
+}
+
 void main() {
   late KeyGeneration keygen;
   late Ed25519KeyPairBytes bridgeId;
@@ -198,22 +219,32 @@ void main() {
     keygen = KeyGeneration();
   });
 
-  Future<({SessionCoordinator coordinator, _FakeSelector selector})> build(
-    RpcMessage Function(RpcMessage) handler,
-  ) async {
+  Future<
+      ({
+        SessionCoordinator coordinator,
+        _FakeSelector selector,
+        _FakeTrustedDeviceRepo repo,
+      })> build(
+    RpcMessage Function(RpcMessage) handler, {
+    bool setActive = true,
+  }) async {
     bridgeId = await keygen.generateIdentityKeyPair();
     final phoneId = await keygen.generateIdentityKeyPair();
     final selector = _FakeSelector(bridgeId, handler);
+    final repo = _FakeTrustedDeviceRepo();
     final coordinator = SessionCoordinator(
       secureTransport: SecureTransportLayer(),
       transportSelector: selector,
+      trustedDeviceRepository: repo,
       identityResolver: () async => PhoneIdentity(
         phoneDeviceId: 'phone-1',
         publicKey: phoneId.publicKey,
         privateSeed: phoneId.privateSeed,
       ),
       delay: (_) async {}, // elide backoff in tests
-    )..setActiveDevice(
+    );
+    if (setActive) {
+      coordinator.setActiveDevice(
         TrustedDevice(
           macDeviceId: 'mac-1',
           displayName: 'Test Bridge',
@@ -223,7 +254,8 @@ void main() {
           pairedAt: DateTime(2026),
         ),
       );
-    return (coordinator: coordinator, selector: selector);
+    }
+    return (coordinator: coordinator, selector: selector, repo: repo);
   }
 
   RpcMessage echo(RpcMessage request) =>
@@ -302,5 +334,28 @@ void main() {
           const Duration(seconds: 5),
         );
     expect((response.result! as Map)['echo'], 'ping');
+  });
+
+  test('processPairingPayload registers the device and connects', () async {
+    final harness = await build(echo, setActive: false);
+    addTearDown(harness.coordinator.dispose);
+
+    final payload = PairingPayload(
+      version: 2,
+      relayUrl: 'wss://relay.test',
+      sessionId: 'session-xyz',
+      macDeviceId: 'mac-1',
+      macIdentityPublicKey: bridgeId.publicKey,
+      expiresAt: DateTime(2035).millisecondsSinceEpoch,
+      displayName: 'Test Bridge',
+    );
+
+    await harness.coordinator.processPairingPayload(payload);
+
+    expect(harness.coordinator.connectionPhase, ConnectionPhase.connected);
+    expect(harness.coordinator.activeMac?.macDeviceId, 'mac-1');
+    final saved = await harness.repo.getDevice('mac-1');
+    expect(saved, isNotNull);
+    expect(saved!.macIdentityPublicKey, bridgeId.publicKey);
   });
 }

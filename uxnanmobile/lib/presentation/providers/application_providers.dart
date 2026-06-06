@@ -3,6 +3,7 @@ import 'package:uxnan/application/coordinators/session_coordinator.dart';
 import 'package:uxnan/domain/entities/connection_recovery_state.dart';
 import 'package:uxnan/domain/entities/trusted_device.dart';
 import 'package:uxnan/domain/enums/connection_phase.dart';
+import 'package:uxnan/domain/services/pairing_validator.dart';
 import 'package:uxnan/infrastructure/transport/secure_transport_layer.dart';
 import 'package:uxnan/infrastructure/transport/transport_selector.dart';
 import 'package:uxnan/infrastructure/transport/websocket_transport.dart';
@@ -22,12 +23,18 @@ final transportSelectorProvider = Provider<TransportSelector>(
   (ref) => RelayTransportSelector(WebSocketChannelTransport.new),
 );
 
-/// The session coordinator (connection lifecycle, reconnection, RPC).
+/// Validates pairing QR payloads.
+final pairingValidatorProvider =
+    Provider<PairingValidator>((ref) => const PairingValidator());
+
+/// The session coordinator (connection lifecycle, reconnection, RPC, pairing).
 final sessionCoordinatorProvider = Provider<SessionCoordinator>((ref) {
   final coordinator = SessionCoordinator(
     secureTransport: ref.watch(secureTransportLayerProvider),
     transportSelector: ref.watch(transportSelectorProvider),
     identityResolver: () => ref.read(phoneIdentityStoreProvider).loadOrCreate(),
+    trustedDeviceRepository: ref.watch(trustedDeviceRepositoryProvider),
+    pairingValidator: ref.watch(pairingValidatorProvider),
   );
   ref.onDispose(coordinator.dispose);
   return coordinator;

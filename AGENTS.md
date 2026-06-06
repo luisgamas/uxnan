@@ -149,6 +149,20 @@ Rules:
 - The whole project must always compile and run without these assets (use graceful fallbacks); a missing `FOR-HUMAN` asset may degrade a feature but must never break startup or the build.
 - **Never** commit real secrets, credentials, or keys — only the annotation describing what is needed and where.
 
+### Pending developer work (`FOR-DEV:`)
+
+When you intentionally defer implementation work that a developer/agent must do later — a deferred feature, a stub, a happy-path-only implementation, a `TODO` that is justified by sequencing — leave a greppable annotation with the literal token `FOR-DEV:` followed by:
+
+1. **What** is missing or stubbed.
+2. **Where** the real implementation should go (path / symbol).
+3. **Why** it was deferred and what unblocks it (e.g. "needs the relay", "UI increment", "needs the conversation module).
+
+Rules:
+- This is distinct from `FOR-HUMAN:` (which is for assets/secrets only a human can provide). `FOR-DEV:` is for code work the team will do.
+- Aggregate open items in a `FOR-DEV.md` checklist at the component root (e.g. `uxnanmobile/FOR-DEV.md`), and place an inline `// FOR-DEV:` comment at the exact deferral site.
+- A `FOR-DEV:` marker is the only acceptable form of a deferred-work `TODO`/`FIXME` (see "Code quality"); plain `TODO`/`FIXME` without it are still not allowed.
+- Deferring must not break the build or tests: stubs either throw a clear `UnimplementedError`/`StateError` or are simply not wired yet.
+
 ---
 
 ## After implementing
