@@ -73,9 +73,14 @@ Legend: ✅ done · 🔜 next · ⏳ planned
   path-traversal → `-32004`, `.git`/sensitive files excluded, relative paths only.
 - Boundary param validation (option-injection safe).
 
-### 🔜 Phase 4b — carry-over
-- Workspace checkpoints (capture via `git stash create`, diff, apply) with
-  metadata persistence in `~/.uxnan`.
+### ✅ Phase 4b — workspace checkpoints
+- `workspace/checkpoint` / `diffCheckpoint` / `applyCheckpoint`: full-tree
+  snapshots (tracked + untracked) via a temp git index + `commit-tree`, anchored
+  in `refs/uxnan/checkpoints/<id>`, metadata in `~/.uxnan/checkpoints.json`.
+
+> **Known limitations (see bridge/FOR-DEV.md):** `apply` restores file contents
+> but does not remove files created after the checkpoint; checkpoints are not yet
+> garbage-collected/pruned.
 
 ## ⏳ Phase 5 — Agent adapters
 - Codex and OpenCode (MVP), with streaming → `AgentStreamEvent`, JSONL history
