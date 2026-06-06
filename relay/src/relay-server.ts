@@ -6,6 +6,10 @@
  * `sessionId` (from the `x-session-id` header or `?sessionId=` query). Both the
  * phone (`x-role: iphone`) and the bridge (`x-role: mac`) present the session id.
  *
+ * NOTE: `mac` / `iphone` are protocol ROLE names, not operating systems. `mac`
+ * is the PC/bridge side (Windows, macOS or Linux); `iphone` is the mobile app
+ * side (Android or iOS). The names are fixed by the wire contract.
+ *
  * Source: architecture/02a-system-architecture.md §5.10.
  *
  * FOR-DEV: add rate limiting, pairing-code resolution, multi-session `mac`

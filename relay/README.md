@@ -7,6 +7,11 @@ plaintext, keys, code, or diffs.
 > **Status: Phase 2.** Forwarding by `sessionId` + `/health` are implemented.
 > Rate limiting, pairing-code resolution and push endpoints are deferred.
 
+> **`mac` / `iphone` are ROLES, not platforms.** `mac` = the PC/bridge side
+> (runs on Windows, macOS or Linux); `iphone` = the mobile app side (Android or
+> iOS). The names come from the protocol spec and are fixed by the wire contract
+> with the mobile app — they do not restrict the operating system.
+
 ## Run
 
 ```bash
