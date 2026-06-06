@@ -23,23 +23,26 @@ Legend: ✅ done · 🔜 next · ⏳ planned
 
 ---
 
-## 🔜 Phase 2 — Live E2EE transport + relay  *(in progress)*
-Goal: a phone can complete a handshake and exchange encrypted JSON-RPC with the
-bridge, both over the relay (WAN) and directly on the LAN.
+## ✅ Phase 2 — Live E2EE transport + relay
+**Delivered** (one item carried to Phase 2b). 61 tests across the workspaces.
 
-- `bridge/src/secure-transport.ts` — handshake (clientHello→serverHello→
+- `bridge/src/transport/` — bridge-side handshake (clientHello→serverHello→
   clientAuth→ready), session-key derivation (X25519 + HKDF-SHA256), AES-256-GCM
-  envelope encrypt/decrypt with `seq`/replay protection. **Must interoperate
-  byte-for-byte with the mobile implementation** (transcript contract in
-  `@uxnan/shared`).
-- `bridge` WebSocket client to the relay + LAN WebSocket server; pump decrypted
-  payloads through `router.dispatchRaw`.
-- Outbound buffer + catch-up on trusted reconnect (caps in `@uxnan/shared`).
-- Trusted-phone persistence (`trusted-phones.json`) — pairing + trusted reconnect.
-- `relay/` package: WebSocket relay that forwards opaque E2EE envelopes by
-  `sessionId`, rate limiting, `/health`; add it to the root workspaces.
-- Tests: two-party handshake over an in-memory transport pair; envelope
-  encrypt→decrypt round-trip; relay routing.
+  envelopes with `seq`/replay protection. **Interoperates byte-for-byte with the
+  mobile implementation** (verified by an independent Node "phone" in tests).
+- `relay-client.ts` (mac) + `lan-server.ts` over `ws`, both adapted via a shared
+  `MessageIO`; decrypted payloads pumped through `router.dispatchRaw`.
+- Trusted-phone persistence (`trusted-phones.json`) for pairing + reconnect.
+- `relay/` package: forwards opaque E2EE envelopes by `sessionId` + `/health`;
+  added to the root workspaces.
+- Tests: in-memory two-party handshake, real-WebSocket LAN exchange, full
+  phone ↔ relay ↔ bridge end-to-end, crypto + replay round-trips, relay routing.
+
+### 🔜 Phase 2b — carry-over  *(next)*
+- Outbound buffer + catch-up on trusted reconnect (resend envelopes with
+  `seq > resumeState.lastAppliedBridgeOutboundSeq`; caps in `@uxnan/shared`).
+- Key rotation / `keyEpoch` advance; bridge → phone notifications (push of
+  streamed agent events).
 
 ---
 
@@ -49,6 +52,7 @@ bridge, both over the relay (WAN) and directly on the LAN.
   pairing**).
 - Verify the pairing QR encoding against the mobile `PairingPayload.fromQrString`.
 - Daemon process manager: lock file (`bridge.lock`) + `stop` via IPC.
+- Relay hardening: rate limiting, pairing-code resolution, multi-session `mac`.
 
 ## ⏳ Phase 4 — Git + workspace handlers
 - Real `git/*` via `child_process`; `workspace/*` with path-traversal protection,
