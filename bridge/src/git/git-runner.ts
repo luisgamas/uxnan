@@ -31,7 +31,7 @@ export interface RunGitResult {
 export function runGit(
   cwd: string,
   args: string[],
-  options: { timeoutMs?: number } = {},
+  options: { timeoutMs?: number; env?: NodeJS.ProcessEnv } = {},
 ): Promise<RunGitResult> {
   return new Promise((resolve, reject) => {
     execFile(
@@ -42,6 +42,7 @@ export function runGit(
         timeout: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
         maxBuffer: MAX_BUFFER,
         windowsHide: true,
+        ...(options.env ? { env: options.env } : {}),
       },
       (error, stdout, stderr) => {
         if (error) {

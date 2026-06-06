@@ -26,9 +26,16 @@ only a human can provide.)
 ## Handlers
 - [x] **Git** (Phase 4) — `src/git/` + `src/handlers/git-handler.ts`.
 - [x] **Workspace** reads/list/applyPatch (Phase 4) — `src/workspace/`.
-- [ ] **Workspace checkpoints** (Phase 4b) — `workspace/checkpoint` /
-      `diffCheckpoint` / `applyCheckpoint` via `git stash create` + metadata in
-      `~/.uxnan` (currently stubbed in `src/handlers/workspace-handler.ts`).
+- [x] **Workspace checkpoints** (Phase 4b) — `src/workspace/checkpoint-service.ts`
+      (full-tree snapshot via temp index + `commit-tree`, anchored ref + metadata).
+      Follow-ups still needed:
+        - `apply` restores contents but does NOT delete files created after the
+          checkpoint — implement a true restore (diff current vs snapshot, remove
+          extras) for full revert parity with the mobile `AiChangeSet` revert.
+        - prune/GC old checkpoint refs + `checkpoints.json` entries (TTL or count
+          cap) so `refs/uxnan/checkpoints/*` doesn't grow unbounded.
+        - checkpoints require at least one commit (no HEAD → `-32003`); consider
+          supporting checkpoints on an unborn branch if a use case appears.
 - [ ] **Thread/turn** — `src/handlers/thread-context-handler.ts` (+ JSONL fallback).
 - [ ] **Project** — `src/handlers/project-handler.ts`.
 - [ ] **Account/auth** — `src/handlers/account-handler.ts` (sanitized, no tokens).

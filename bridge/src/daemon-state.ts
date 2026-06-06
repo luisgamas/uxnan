@@ -20,6 +20,7 @@ export const DAEMON_FILES = {
   managedWorktrees: 'managed-worktrees.json',
   pushState: 'push-state.json',
   lock: 'bridge.lock',
+  checkpoints: 'checkpoints.json',
 } as const;
 
 export class DaemonState {

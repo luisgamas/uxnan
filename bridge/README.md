@@ -9,9 +9,9 @@ per-domain handlers.
 > client + direct-LAN server, handshake, AES-256-GCM channel, byte-for-byte
 > compatible with the mobile app), bridge→phone notifications, **OS-keychain
 > identity persistence**, a **single-instance lock**, and the **real Git and
-> Workspace handlers** (path-traversal-safe) are in place. Workspace checkpoints
-> and the agent adapters are deferred — see [FOR-DEV.md](./FOR-DEV.md) and
-> [../ROADMAP.md](../ROADMAP.md).
+> Workspace handlers** (path-traversal-safe, including working-tree checkpoints)
+> are in place. The agent adapters (streaming conversations) are the next major
+> piece — see [FOR-DEV.md](./FOR-DEV.md) and [../ROADMAP.md](../ROADMAP.md).
 
 ## Install (later, as a global package)
 

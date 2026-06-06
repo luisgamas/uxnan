@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — Phase 4b (workspace checkpoints)
+- `workspace/checkpoint`, `workspace/diffCheckpoint`, `workspace/applyCheckpoint`
+  (`src/workspace/checkpoint-service.ts`). A checkpoint snapshots the whole
+  working tree — tracked changes AND untracked files — without touching the
+  user's index (temp `GIT_INDEX_FILE` + `commit-tree`), anchored under
+  `refs/uxnan/checkpoints/<id>` and recorded in `~/.uxnan/checkpoints.json`.
+  `diff` returns the unified diff + per-file status; `apply` restores file
+  contents via `git restore`. Unknown ids → `-32008`.
+- Limitations (see FOR-DEV.md): `apply` restores contents but does not delete
+  files created after the checkpoint; snapshot commits use a fixed internal
+  identity and are never pushed.
+
 ### Added — Phase 4 (real Git + Workspace handlers)
 - **Git handlers** (`src/git/`): `git/status`, `git/diff`, `git/commit`,
   `git/push`, `git/pull`, `git/checkout`, `git/createBranch`,
@@ -19,11 +31,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   paths are relative — never absolute (§5.8.9). Read size caps: 5 MB / 10 MB.
 - Untrusted-param validators (`src/handlers/params.ts`) reject bad types and
   option-injection (leading `-`) in git refs/paths.
-
-### Deferred (Phase 4b)
-- Workspace checkpoints (`workspace/checkpoint` / `diffCheckpoint` /
-  `applyCheckpoint`) remain stubs — need a `git stash`-based snapshot + metadata
-  persistence design.
 
 ### Added — Phase 3 (identity persistence + pairing hardening)
 - **OS-keychain identity persistence** (`KeyringSecretStore`) via the optional

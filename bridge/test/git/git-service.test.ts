@@ -14,6 +14,7 @@ async function newRepo(): Promise<string> {
   await runGit(dir, ['init', '-b', 'main']);
   await runGit(dir, ['config', 'user.email', 'test@uxnan.dev']);
   await runGit(dir, ['config', 'user.name', 'Uxnan Test']);
+  await runGit(dir, ['config', 'core.autocrlf', 'false']);
   return dir;
 }
 
