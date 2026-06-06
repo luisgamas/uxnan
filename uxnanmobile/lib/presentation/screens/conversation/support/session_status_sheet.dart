@@ -1,0 +1,196 @@
+import 'package:flutter/material.dart';
+import 'package:uxnan/domain/enums/approval_mode.dart';
+import 'package:uxnan/l10n/app_localizations.dart';
+import 'package:uxnan/presentation/screens/conversation/session_environment.dart';
+import 'package:uxnan/presentation/screens/conversation/support/approval_mode_sheet.dart';
+import 'package:uxnan/presentation/theme/spacing.dart';
+
+/// Floating sheet showing the active session's environment: model, context,
+/// approval mode and git (branch, local, commit/push). Modeled on the desktop
+/// app's "Environment" menu. Values are sampled for now (FOR-DEV).
+class SessionStatusSheet extends StatefulWidget {
+  /// Creates a [SessionStatusSheet].
+  const SessionStatusSheet({
+    required this.environment,
+    this.onApprovalModeChanged,
+    super.key,
+  });
+
+  /// The session environment to display.
+  final SessionEnvironment environment;
+
+  /// Called when the user picks a new approval mode.
+  final ValueChanged<ApprovalMode>? onApprovalModeChanged;
+
+  /// Shows the sheet.
+  static Future<void> show(
+    BuildContext context,
+    SessionEnvironment environment, {
+    ValueChanged<ApprovalMode>? onApprovalModeChanged,
+  }) {
+    return showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (_) => SessionStatusSheet(
+        environment: environment,
+        onApprovalModeChanged: onApprovalModeChanged,
+      ),
+    );
+  }
+
+  @override
+  State<SessionStatusSheet> createState() => _SessionStatusSheetState();
+}
+
+class _SessionStatusSheetState extends State<SessionStatusSheet> {
+  late SessionEnvironment _env = widget.environment;
+
+  String _approvalLabel(AppLocalizations l10n) => switch (_env.approvalMode) {
+        ApprovalMode.requestApproval => l10n.approvalRequestTitle,
+        ApprovalMode.approveForMe => l10n.approvalAutoTitle,
+        ApprovalMode.fullAccess => l10n.approvalFullTitle,
+      };
+
+  Future<void> _editApprovalMode() async {
+    final mode = await ApprovalModeSheet.show(context, _env.approvalMode);
+    if (mode == null) return;
+    setState(() => _env = _env.withApprovalMode(mode));
+    widget.onApprovalModeChanged?.call(mode);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          UxnanSpacing.lg,
+          0,
+          UxnanSpacing.lg,
+          UxnanSpacing.lg,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _SectionHeader(label: l10n.environmentTitle),
+            _StatusRow(
+              icon: Icons.auto_awesome_outlined,
+              label: l10n.environmentModel,
+              value: _env.modelName,
+              onTap: () {}, // FOR-DEV: model selector.
+            ),
+            _StatusRow(
+              icon: Icons.donut_large_outlined,
+              label: l10n.environmentContext,
+              value: '${_env.contextPercent}%',
+            ),
+            _StatusRow(
+              icon: Icons.shield_outlined,
+              label: l10n.environmentApprovalMode,
+              value: _approvalLabel(l10n),
+              onTap: _editApprovalMode,
+            ),
+            const Divider(height: UxnanSpacing.xl),
+            _SectionHeader(label: l10n.environmentGit),
+            _StatusRow(
+              icon: Icons.account_tree_outlined,
+              label: l10n.environmentBranch,
+              value: _env.gitBranch ?? '—',
+              onTap: () {}, // FOR-DEV: branch selector.
+            ),
+            _StatusRow(
+              icon: Icons.computer_outlined,
+              label: l10n.environmentLocal,
+              value: _env.isLocal ? l10n.environmentLocal : '',
+            ),
+            _StatusRow(
+              icon: Icons.cloud_upload_outlined,
+              label: l10n.environmentCommitOrPush,
+              onTap: () {}, // FOR-DEV: git actions.
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({required this.label});
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: UxnanSpacing.sm),
+      child: Text(
+        label.toUpperCase(),
+        style: textTheme.bodySmall?.copyWith(
+          color: colors.onSurfaceVariant,
+          letterSpacing: 0.6,
+        ),
+      ),
+    );
+  }
+}
+
+class _StatusRow extends StatelessWidget {
+  const _StatusRow({
+    required this.icon,
+    required this.label,
+    this.value,
+    this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final String? value;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: const BorderRadius.all(UxnanRadius.md),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: UxnanSpacing.xs,
+            vertical: UxnanSpacing.md,
+          ),
+          child: Row(
+            children: [
+              Icon(icon, size: 20, color: colors.onSurfaceVariant),
+              const SizedBox(width: UxnanSpacing.md),
+              Expanded(child: Text(label, style: textTheme.bodyMedium)),
+              if (value != null && value!.isNotEmpty)
+                Text(
+                  value!,
+                  style: textTheme.bodySmall?.copyWith(
+                    color: colors.onSurfaceVariant,
+                  ),
+                ),
+              if (onTap != null) ...[
+                const SizedBox(width: UxnanSpacing.xs),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: 18,
+                  color: colors.onSurfaceVariant,
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

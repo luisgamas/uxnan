@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:uxnan/presentation/screens/conversation/conversation_screen.dart';
 import 'package:uxnan/presentation/screens/home/home_screen.dart';
 import 'package:uxnan/presentation/screens/onboarding/onboarding_screen.dart';
 import 'package:uxnan/presentation/screens/pairing/qr_scanner_screen.dart';
@@ -20,6 +21,12 @@ class AppRoutes {
 
   /// QR pairing flow.
   static const String pairing = '/pairing';
+
+  /// Conversation screen path pattern (`:threadId`).
+  static const String conversationPattern = '/conversation/:threadId';
+
+  /// Builds the conversation route for [threadId].
+  static String conversation(String threadId) => '/conversation/$threadId';
 }
 
 /// Provides the app's [GoRouter] instance.
@@ -48,6 +55,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.pairing,
         builder: (context, state) => const QrScannerScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.conversationPattern,
+        builder: (context, state) => ConversationScreen(
+          threadId: state.pathParameters['threadId']!,
+        ),
       ),
     ],
   );

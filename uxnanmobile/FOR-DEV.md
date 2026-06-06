@@ -57,9 +57,31 @@ Deferred implementation work (code the team/agent will do later). Distinct from
   `thread/turns/list` (cursor) → `TurnTimelineSnapshot.prependHistory`; plus
   `startNewThread`/`resumeThread`/`forkThread`. The bridge `thread/list` JSON
   shape is assumed (tolerant parser); verify against the real bridge.
-- ☐ **Conversation UI** — `ConversationScreen`, message renderers (markdown,
-  code, command card, diff viewer), `ComposerWidget` (+ `ComposerManager`),
-  streaming/auto-scroll. Next increment, for visual review.
+- ☑ **Conversation UI (visual layer)** — DONE: `ConversationScreen`
+  (`SliverAppBar.large`, floating + snap, auto-scroll), message renderers
+  (`MessageBubble` + `MessageContentView`: markdown, code, command card, diff,
+  system banner, streaming dots), floating `ComposerBar`, `SessionStatusSheet`
+  and `ApprovalModeSheet`. Reviewable via the FOR-DEV home preview + `demo_seed`.
+- ☐ **Wire conversation controls to real bridge data** — the environment
+  surfaces are currently fed by `SessionEnvironment.sample()` (FOR-DEV) and
+  several controls are no-op `onTap`s. Each must be backed by live data/actions
+  to be usable, not just visible:
+  - **Model indicator + selector** (`ComposerBar._ModelChip`,
+    `SessionStatusSheet` model row) → real model from bridge session state;
+    tapping opens a model picker that issues the model-change RPC.
+  - **Context badge** (`ComposerBar._ContextBadge`, status-sheet context row) →
+    real token usage / window % from the bridge (`bridge/status` or turn usage),
+    not the sampled fraction.
+  - **Approval mode** (`ApprovalModeSheet`) → read current access mode from the
+    session and persist the choice via the access-mode RPC (not local `setState`).
+  - **Git branch / remote / local** (`_EnvironmentChip`, status-sheet git
+    section) → real values from `git/status`; the commit/push rows must invoke
+    the corresponding git RPCs (lands with the git module).
+  - **Attach** (`ComposerBar` add button) → file/image picker → upload as
+    `ImageContent` / attachment.
+  - **Voice** (`ComposerBar` mic button) → speech-to-text into the composer.
+  - Remove `SessionEnvironment.sample()`, `demo_seed.dart` and the home preview
+    entry once the above are wired.
 
 ## Tooling
 

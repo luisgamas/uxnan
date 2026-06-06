@@ -58,5 +58,30 @@
 
   "updateRequiredTitle": "Update required",
   "updateRequiredBody": "This bridge uses a newer pairing format. Update the Uxnan app to continue.",
-  "actionDismiss": "Dismiss"
+  "actionDismiss": "Dismiss",
+
+  "conversationTitle": "Conversation",
+  "conversationEmpty": "No messages yet",
+  "conversationEmptyBody": "Send a message to start the conversation.",
+  "composerHint": "Message…",
+  "composerSend": "Send",
+  "composerAttach": "Attach",
+  "composerVoice": "Voice input",
+  "conversationPreview": "Preview conversation (demo)",
+
+  "environmentTitle": "Environment",
+  "environmentModel": "Model",
+  "environmentContext": "Context",
+  "environmentApprovalMode": "Approval mode",
+  "environmentGit": "Git",
+  "environmentBranch": "Branch",
+  "environmentLocal": "Local",
+  "environmentCommitOrPush": "Commit or push",
+  "approvalQuestion": "How should actions be approved?",
+  "approvalRequestTitle": "Request approval",
+  "approvalRequestBody": "Always ask before editing external files or using the internet.",
+  "approvalAutoTitle": "Approve for me",
+  "approvalAutoBody": "Only ask for actions detected as potentially risky.",
+  "approvalFullTitle": "Full access",
+  "approvalFullBody": "Unrestricted access to the internet and any file."
 }

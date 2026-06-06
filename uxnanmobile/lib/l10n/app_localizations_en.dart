@@ -142,4 +142,77 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get actionDismiss => 'Dismiss';
+
+  @override
+  String get conversationTitle => 'Conversation';
+
+  @override
+  String get conversationEmpty => 'No messages yet';
+
+  @override
+  String get conversationEmptyBody =>
+      'Send a message to start the conversation.';
+
+  @override
+  String get composerHint => 'Message…';
+
+  @override
+  String get composerSend => 'Send';
+
+  @override
+  String get composerAttach => 'Attach';
+
+  @override
+  String get composerVoice => 'Voice input';
+
+  @override
+  String get conversationPreview => 'Preview conversation (demo)';
+
+  @override
+  String get environmentTitle => 'Environment';
+
+  @override
+  String get environmentModel => 'Model';
+
+  @override
+  String get environmentContext => 'Context';
+
+  @override
+  String get environmentApprovalMode => 'Approval mode';
+
+  @override
+  String get environmentGit => 'Git';
+
+  @override
+  String get environmentBranch => 'Branch';
+
+  @override
+  String get environmentLocal => 'Local';
+
+  @override
+  String get environmentCommitOrPush => 'Commit or push';
+
+  @override
+  String get approvalQuestion => 'How should actions be approved?';
+
+  @override
+  String get approvalRequestTitle => 'Request approval';
+
+  @override
+  String get approvalRequestBody =>
+      'Always ask before editing external files or using the internet.';
+
+  @override
+  String get approvalAutoTitle => 'Approve for me';
+
+  @override
+  String get approvalAutoBody =>
+      'Only ask for actions detected as potentially risky.';
+
+  @override
+  String get approvalFullTitle => 'Full access';
+
+  @override
+  String get approvalFullBody =>
+      'Unrestricted access to the internet and any file.';
 }

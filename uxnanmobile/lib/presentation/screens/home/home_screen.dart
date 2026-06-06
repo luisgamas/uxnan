@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
+import 'package:uxnan/presentation/screens/conversation/demo_seed.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 
@@ -51,6 +52,19 @@ class HomeScreen extends ConsumerWidget {
               onPressed: () => context.push(AppRoutes.onboarding),
               icon: const Icon(Icons.qr_code_scanner),
               label: Text(l10n.actionPairDevice),
+            ),
+            const SizedBox(height: UxnanSpacing.sm),
+            // FOR-DEV: lets the conversation UI be reviewed on-device without a
+            // bridge. Remove with demo_seed.dart before release.
+            TextButton.icon(
+              onPressed: () async {
+                final id = await seedDemoConversation(ref);
+                if (context.mounted) {
+                  await context.push(AppRoutes.conversation(id));
+                }
+              },
+              icon: const Icon(Icons.science_outlined),
+              label: Text(l10n.conversationPreview),
             ),
           ],
         ),

@@ -143,4 +143,77 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get actionDismiss => 'Cerrar';
+
+  @override
+  String get conversationTitle => 'Conversación';
+
+  @override
+  String get conversationEmpty => 'Aún no hay mensajes';
+
+  @override
+  String get conversationEmptyBody =>
+      'Envía un mensaje para iniciar la conversación.';
+
+  @override
+  String get composerHint => 'Mensaje…';
+
+  @override
+  String get composerSend => 'Enviar';
+
+  @override
+  String get composerAttach => 'Adjuntar';
+
+  @override
+  String get composerVoice => 'Entrada de voz';
+
+  @override
+  String get conversationPreview => 'Vista previa de conversación (demo)';
+
+  @override
+  String get environmentTitle => 'Entorno';
+
+  @override
+  String get environmentModel => 'Modelo';
+
+  @override
+  String get environmentContext => 'Contexto';
+
+  @override
+  String get environmentApprovalMode => 'Modo de aprobación';
+
+  @override
+  String get environmentGit => 'Git';
+
+  @override
+  String get environmentBranch => 'Rama';
+
+  @override
+  String get environmentLocal => 'Local';
+
+  @override
+  String get environmentCommitOrPush => 'Hacer commit o push';
+
+  @override
+  String get approvalQuestion => '¿Cómo se deben aprobar las acciones?';
+
+  @override
+  String get approvalRequestTitle => 'Solicitar aprobación';
+
+  @override
+  String get approvalRequestBody =>
+      'Preguntar siempre antes de editar archivos externos o usar internet.';
+
+  @override
+  String get approvalAutoTitle => 'Aprobar por mí';
+
+  @override
+  String get approvalAutoBody =>
+      'Solicitar aprobación solo para acciones detectadas como potencialmente riesgosas.';
+
+  @override
+  String get approvalFullTitle => 'Acceso completo';
+
+  @override
+  String get approvalFullBody =>
+      'Acceso sin restricciones a internet y a cualquier archivo.';
 }

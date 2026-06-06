@@ -343,6 +343,144 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Dismiss'**
   String get actionDismiss;
+
+  /// No description provided for @conversationTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Conversation'**
+  String get conversationTitle;
+
+  /// No description provided for @conversationEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No messages yet'**
+  String get conversationEmpty;
+
+  /// No description provided for @conversationEmptyBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Send a message to start the conversation.'**
+  String get conversationEmptyBody;
+
+  /// No description provided for @composerHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Message…'**
+  String get composerHint;
+
+  /// No description provided for @composerSend.
+  ///
+  /// In en, this message translates to:
+  /// **'Send'**
+  String get composerSend;
+
+  /// No description provided for @composerAttach.
+  ///
+  /// In en, this message translates to:
+  /// **'Attach'**
+  String get composerAttach;
+
+  /// No description provided for @composerVoice.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice input'**
+  String get composerVoice;
+
+  /// No description provided for @conversationPreview.
+  ///
+  /// In en, this message translates to:
+  /// **'Preview conversation (demo)'**
+  String get conversationPreview;
+
+  /// No description provided for @environmentTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Environment'**
+  String get environmentTitle;
+
+  /// No description provided for @environmentModel.
+  ///
+  /// In en, this message translates to:
+  /// **'Model'**
+  String get environmentModel;
+
+  /// No description provided for @environmentContext.
+  ///
+  /// In en, this message translates to:
+  /// **'Context'**
+  String get environmentContext;
+
+  /// No description provided for @environmentApprovalMode.
+  ///
+  /// In en, this message translates to:
+  /// **'Approval mode'**
+  String get environmentApprovalMode;
+
+  /// No description provided for @environmentGit.
+  ///
+  /// In en, this message translates to:
+  /// **'Git'**
+  String get environmentGit;
+
+  /// No description provided for @environmentBranch.
+  ///
+  /// In en, this message translates to:
+  /// **'Branch'**
+  String get environmentBranch;
+
+  /// No description provided for @environmentLocal.
+  ///
+  /// In en, this message translates to:
+  /// **'Local'**
+  String get environmentLocal;
+
+  /// No description provided for @environmentCommitOrPush.
+  ///
+  /// In en, this message translates to:
+  /// **'Commit or push'**
+  String get environmentCommitOrPush;
+
+  /// No description provided for @approvalQuestion.
+  ///
+  /// In en, this message translates to:
+  /// **'How should actions be approved?'**
+  String get approvalQuestion;
+
+  /// No description provided for @approvalRequestTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Request approval'**
+  String get approvalRequestTitle;
+
+  /// No description provided for @approvalRequestBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Always ask before editing external files or using the internet.'**
+  String get approvalRequestBody;
+
+  /// No description provided for @approvalAutoTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Approve for me'**
+  String get approvalAutoTitle;
+
+  /// No description provided for @approvalAutoBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Only ask for actions detected as potentially risky.'**
+  String get approvalAutoBody;
+
+  /// No description provided for @approvalFullTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Full access'**
+  String get approvalFullTitle;
+
+  /// No description provided for @approvalFullBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Unrestricted access to the internet and any file.'**
+  String get approvalFullBody;
 }
 
 class _AppLocalizationsDelegate

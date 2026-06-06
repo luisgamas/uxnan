@@ -43,5 +43,30 @@
 
   "updateRequiredTitle": "Actualización requerida",
   "updateRequiredBody": "Este bridge usa un formato de vinculación más nuevo. Actualiza la app de Uxnan para continuar.",
-  "actionDismiss": "Cerrar"
+  "actionDismiss": "Cerrar",
+
+  "conversationTitle": "Conversación",
+  "conversationEmpty": "Aún no hay mensajes",
+  "conversationEmptyBody": "Envía un mensaje para iniciar la conversación.",
+  "composerHint": "Mensaje…",
+  "composerSend": "Enviar",
+  "composerAttach": "Adjuntar",
+  "composerVoice": "Entrada de voz",
+  "conversationPreview": "Vista previa de conversación (demo)",
+
+  "environmentTitle": "Entorno",
+  "environmentModel": "Modelo",
+  "environmentContext": "Contexto",
+  "environmentApprovalMode": "Modo de aprobación",
+  "environmentGit": "Git",
+  "environmentBranch": "Rama",
+  "environmentLocal": "Local",
+  "environmentCommitOrPush": "Hacer commit o push",
+  "approvalQuestion": "¿Cómo se deben aprobar las acciones?",
+  "approvalRequestTitle": "Solicitar aprobación",
+  "approvalRequestBody": "Preguntar siempre antes de editar archivos externos o usar internet.",
+  "approvalAutoTitle": "Aprobar por mí",
+  "approvalAutoBody": "Solicitar aprobación solo para acciones detectadas como potencialmente riesgosas.",
+  "approvalFullTitle": "Acceso completo",
+  "approvalFullBody": "Acceso sin restricciones a internet y a cualquier archivo."
 }
