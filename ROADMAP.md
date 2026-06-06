@@ -82,9 +82,19 @@ Legend: ✅ done · 🔜 next · ⏳ planned
 > but does not remove files created after the checkpoint; checkpoints are not yet
 > garbage-collected/pruned.
 
-## ⏳ Phase 5 — Agent adapters
-- Codex and OpenCode (MVP), with streaming → `AgentStreamEvent`, JSONL history
-  fallback; then Claude Code, Gemini CLI, pi-agent, Aider.
+## ✅ Phase 5 — Conversation engine + agent adapters
+- Persistent `ThreadStore`, real `thread/*` + `turn/*` handlers, `AgentManager`
+  (turn routing + persistence + `stream/*` notifications), a `ProcessAgentAdapter`
+  CLI-driver framework, and a working `EchoAgentAdapter` reference agent.
+
+> **Deferred — Phase 5b (needs the real CLI contracts, not in the spec):**
+> - Codex / OpenCode concrete adapters: translate the real CLI invocation +
+>   streaming output into the bridge agent IPC (override `formatTurn`/`parseLine`),
+>   then register them in `startBridge`. Currently scaffolded but not wired.
+> - JSONL session-history fallback (`session-jsonl-history`) per agent.
+> - Per-project/thread agent selection from the project's `AgentConfig`
+>   (today a single `defaultAgent: 'echo'`).
+> - Then: Claude Code, Gemini CLI, pi-agent, Aider.
 
 ## ⏳ Phase 6 — Push notifications
 - Relay `/push/*` (APNs/FCM, dedupe); bridge completion tracking + dedupe.
