@@ -53,13 +53,18 @@ Legend: ✅ done · 🔜 next · ⏳ planned
 
 ---
 
-## ⏳ Phase 3 — Identity persistence + pairing hardening
-- OS-keychain-backed `SecretStore` (Windows Credential Manager / macOS Keychain /
-  libsecret) so the bridge identity survives restarts (**required before real
-  pairing**).
-- Verify the pairing QR encoding against the mobile `PairingPayload.fromQrString`.
-- Daemon process manager: lock file (`bridge.lock`) + `stop` via IPC.
-- Relay hardening: rate limiting, pairing-code resolution, multi-session `mac`.
+## ✅ Phase 3 — Identity persistence + pairing hardening
+- OS-keychain `SecretStore` (`@napi-rs/keyring`: Credential Manager / Keychain /
+  Secret Service) with graceful in-memory fallback — identity survives restarts.
+- Pairing QR encoding verified + fixed to match the mobile `fromQrString`
+  (Base64 JSON) in `@uxnan/shared`.
+- Single-instance lock (`bridge.lock`) + `stop` via SIGTERM.
+- Relay per-IP rate limiting (HTTP + upgrades).
+
+> **Deferred to a later phase (needs protocol/mobile coordination):** relay
+> pairing-code resolution (`/trusted-session/resolve`) and multi-session `mac`
+> registration. On Linux the keychain needs a running Secret Service (libsecret /
+> D-Bus); headless boxes fall back to the in-memory store.
 
 ## ⏳ Phase 4 — Git + workspace handlers
 - Real `git/*` via `child_process`; `workspace/*` with path-traversal protection,
