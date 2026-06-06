@@ -66,9 +66,16 @@ Legend: ✅ done · 🔜 next · ⏳ planned
 > registration. On Linux the keychain needs a running Secret Service (libsecret /
 > D-Bus); headless boxes fall back to the in-memory store.
 
-## ⏳ Phase 4 — Git + workspace handlers
-- Real `git/*` via `child_process`; `workspace/*` with path-traversal protection,
-  checkpoints and patch application.
+## ✅ Phase 4 — Git + workspace handlers
+- Real `git/*` via `child_process` (status, diff, commit, push, pull, checkout,
+  createBranch, createWorktree) — failures → `-32003`.
+- `workspace/*` reads + listing + `applyPatch`, confined to the project root with
+  path-traversal → `-32004`, `.git`/sensitive files excluded, relative paths only.
+- Boundary param validation (option-injection safe).
+
+### 🔜 Phase 4b — carry-over
+- Workspace checkpoints (capture via `git stash create`, diff, apply) with
+  metadata persistence in `~/.uxnan`.
 
 ## ⏳ Phase 5 — Agent adapters
 - Codex and OpenCode (MVP), with streaming → `AgentStreamEvent`, JSONL history
