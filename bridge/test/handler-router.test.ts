@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { JsonRpcErrorCode, RpcError, makeRequest } from '@uxnan/shared';
-import { HandlerRouter, createLogger } from '../src/index.js';
+import { HandlerRouter, SessionRegistry, createLogger } from '../src/index.js';
 import type { BridgeContext } from '../src/index.js';
 
 function fakeContext(): BridgeContext {
@@ -12,6 +12,7 @@ function fakeContext(): BridgeContext {
     state: {} as BridgeContext['state'],
     deviceState: {} as BridgeContext['deviceState'],
     sessions: {} as BridgeContext['sessions'],
+    sessionRegistry: new SessionRegistry(),
     logger: createLogger('test', 'error'),
     now: () => 1000,
   };

@@ -8,7 +8,7 @@
  */
 import { hostname } from 'node:os';
 import { WebSocket } from 'ws';
-import type { BridgeStatus, PairingPayload } from '@uxnan/shared';
+import { makeNotification, type BridgeStatus, type PairingPayload } from '@uxnan/shared';
 import type { BridgeContext } from './bridge-context.js';
 import { HandlerRouter } from './handler-router.js';
 import { registerAllHandlers } from './handlers/index.js';
@@ -24,6 +24,7 @@ import { FileTrustStore, type TrustStore } from './transport/trust-store.js';
 import { handleSecureConnection } from './transport/session-handler.js';
 import { connectRelayAsMac, type RelayConnection } from './transport/relay-client.js';
 import { startLanServer, type LanServerHandle } from './transport/lan-server.js';
+import { SessionRegistry } from './transport/session-registry.js';
 
 export interface StartBridgeOptions {
   /** Override the daemon state directory (defaults to `~/.uxnan`). */
@@ -45,6 +46,11 @@ export interface Bridge {
   connectRelay(sessionId: string): Promise<void>;
   /** Start the direct-LAN WebSocket server; resolves with the bound port. */
   startLan(): Promise<{ port: number }>;
+  /**
+   * Push a JSON-RPC notification to a connected phone. Returns `true` if it was
+   * sent live, `false` if the device is offline and it was buffered.
+   */
+  notify(deviceId: string, method: string, params?: unknown): boolean;
   stop(): Promise<void>;
 }
 
@@ -60,6 +66,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   await deviceState.loadOrCreate();
 
   const sessions = new SessionState();
+  const sessionRegistry = new SessionRegistry();
   const trustStore = new FileTrustStore(state);
   const startedAt = now();
 
@@ -70,6 +77,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
     state,
     deviceState,
     sessions,
+    sessionRegistry,
     logger,
     now,
   };
@@ -145,6 +153,8 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       logger.info(`LAN server listening on port ${lanHandle.port}`);
       return { port: lanHandle.port };
     },
+    notify: (deviceId, method, params) =>
+      sessionRegistry.notify(deviceId, makeNotification(method, params)),
     stop: async () => {
       logger.info('bridge stopping');
       for (const connection of relayConnections) {

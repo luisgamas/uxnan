@@ -21,6 +21,7 @@ export class FakePhone {
     private readonly queue: ReturnType<typeof queueFor>,
     private readonly channel: BridgeSecureChannel,
     readonly sessionId: string,
+    readonly deviceId: string,
     readonly sessionKey: Buffer,
   ) {}
 
@@ -92,7 +93,14 @@ export class FakePhone {
     if (ready['kind'] !== 'ready') throw new Error(`expected ready, got ${String(ready['kind'])}`);
 
     const channel = new BridgeSecureChannel(sessionKey, options.sessionId);
-    return new FakePhone(io, queue, channel, options.sessionId, sessionKey);
+    return new FakePhone(io, queue, channel, options.sessionId, phoneDeviceId, sessionKey);
+  }
+
+  /** Read and decrypt the next inbound envelope (e.g. a server notification). */
+  async receive(): Promise<Record<string, unknown>> {
+    const envelope = await nextJson(this.queue);
+    const plaintext = this.channel.decrypt(envelope as never);
+    return JSON.parse(plaintext.toString('utf-8')) as Record<string, unknown>;
   }
 
   /** Send a JSON-RPC request encrypted, and await the decrypted response. */

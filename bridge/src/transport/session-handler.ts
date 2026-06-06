@@ -49,6 +49,14 @@ export async function handleSecureConnection(options: SecureConnectionOptions): 
     const result = await performServerHandshake(handshakeOptions);
     phoneDeviceId = result.phoneDeviceId;
 
+    // Register the encrypted sink synchronously (before any further await) so the
+    // bridge can push notifications immediately, flushing anything buffered while
+    // this device was offline.
+    ctx.sessionRegistry.register(result.phoneDeviceId, {
+      send: (message) =>
+        io.send(Buffer.from(JSON.stringify(result.channel.encrypt(toBytes(message))), 'utf-8')),
+    });
+
     const trusted = await trustStore.get(result.phoneDeviceId);
     ctx.sessions.add({
       deviceId: result.phoneDeviceId,
@@ -84,10 +92,15 @@ export async function handleSecureConnection(options: SecureConnectionOptions): 
   } finally {
     if (phoneDeviceId !== undefined) {
       ctx.sessions.remove(phoneDeviceId);
+      ctx.sessionRegistry.unregister(phoneDeviceId);
       ctx.logger.info(`phone session closed: ${phoneDeviceId}`);
     }
     io.close();
   }
+}
+
+function toBytes(message: unknown): Buffer {
+  return Buffer.from(JSON.stringify(message), 'utf-8');
 }
 
 function tryParse(bytes: Buffer): unknown {

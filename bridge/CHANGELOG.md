@@ -5,6 +5,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — Phase 2b (bridge → phone notifications + outbound buffer)
+- `SessionRegistry`: tracks the live encrypted sink per connected device so the
+  bridge can push JSON-RPC notifications (e.g. streamed agent events).
+- `OutboundMessageBuffer`: sliding-window buffer (spec caps
+  MAX_BRIDGE_OUTBOUND_MESSAGES / _BYTES) for messages sent while a device is
+  offline; flushed in FIFO order on (re)connect.
+- `bridge.notify(deviceId, method, params)` and `BridgeContext.sessionRegistry`
+  for handlers/managers to push to a phone; returns whether it was sent live or
+  buffered.
+- Tests: buffer eviction caps, registry buffer→flush, and an end-to-end
+  `bridge.notify` delivered to and decrypted by a connected phone.
+
+### Clarified
+- `mac` / `iphone` are protocol ROLE names, not platforms. The bridge and relay
+  run on Windows, macOS and Linux (developed/tested on Windows); the mobile role
+  covers Android and iOS.
+
 ### Added — Phase 2 (live E2EE transport + relay)
 - **Secure transport** (`src/transport/`) implementing the bridge (server) side
   of the E2EE protocol, interoperable byte-for-byte with the mobile app:

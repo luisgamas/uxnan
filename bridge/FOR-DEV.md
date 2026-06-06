@@ -9,12 +9,13 @@ only a human can provide.)
       `mac` client + LAN server, handshake, AES-256-GCM channel; interoperable
       byte-for-byte with the mobile app.
 - [x] **Relay package** — `relay/` builds and is in the root workspaces (Phase 2).
-- [ ] **Outbound buffer & catch-up** (Phase 2b) — `src/transport/session-handler.ts`.
-      Keep per-device outbound envelopes and, on trusted reconnect, resend those
-      with `seq > resumeState.lastAppliedBridgeOutboundSeq` (caps in `@uxnan/shared`).
-- [ ] **Bridge → phone notifications** (Phase 2b) — push streamed agent events
-      to the phone over the established channel.
-- [ ] **Key rotation / keyEpoch advance** (Phase 2b).
+- [x] **Bridge → phone notifications** (Phase 2b) — `SessionRegistry` +
+      `bridge.notify()`; offline messages buffered via `OutboundMessageBuffer`.
+- [ ] **Seq-based catch-up on reconnect** — `src/transport/server-handshake.ts`.
+      Read `clientHello.resumeState.lastAppliedBridgeOutboundSeq` and replay
+      envelopes with a greater `seq`. **Blocked:** the mobile `clientHello` does
+      not send `resumeState` yet — coordinate with the mobile side first.
+- [ ] **Key rotation / keyEpoch advance** — blocked on a mobile trigger.
 
 ## Identity & security
 - [ ] **OS-keychain SecretStore** — `src/secret-store.ts`. Persist the Ed25519

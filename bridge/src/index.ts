@@ -62,3 +62,5 @@ export {
   type LanServerHandle,
 } from './transport/lan-server.js';
 export { wsToMessageIO, rawDataToBuffer } from './transport/ws-adapter.js';
+export { OutboundMessageBuffer } from './transport/outbound-buffer.js';
+export { SessionRegistry, type SessionSink } from './transport/session-registry.js';
