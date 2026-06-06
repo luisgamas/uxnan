@@ -163,6 +163,16 @@ Rules:
 - A `FOR-DEV:` marker is the only acceptable form of a deferred-work `TODO`/`FIXME` (see "Code quality"); plain `TODO`/`FIXME` without it are still not allowed.
 - Deferring must not break the build or tests: stubs either throw a clear `UnimplementedError`/`StateError` or are simply not wired yet.
 
+### UI changes (propose and iterate)
+
+UI work — screens, layouts, visual design, theming — is reviewed visually by the user and must not be committed unilaterally. When you build or change UI:
+
+1. Implement the proposal with the design system and verify it once (analyze / tests / build).
+2. **Present it for the user's review and wait for their adjustments. Do not commit UI changes until the user approves them.**
+3. Iterate on their feedback (sizes, spacing, colors, positions, copy, motion) in the same loop; only re-run build/analyze when a change could actually affect compilation or behavior — not for pure visual tweaks the user asked for after an already-green verification.
+
+This mirrors the agreed workflow: propose → user reviews on-device → adjust → approve → commit.
+
 ---
 
 ## After implementing
