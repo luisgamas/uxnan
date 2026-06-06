@@ -1,0 +1,66 @@
+/**
+ * Runtime list of valid JSON-RPC method names, kept in lock-step with the
+ * compile-time {@link JsonRpcMethodRegistry} via the assertion below.
+ */
+import type { JsonRpcMethodName } from './methods.js';
+
+export const METHOD_NAMES = [
+  // Threads & turns
+  'thread/list',
+  'thread/read',
+  'thread/start',
+  'thread/resume',
+  'thread/fork',
+  'turn/list',
+  'turn/read',
+  'turn/send',
+  'turn/cancel',
+  // Git
+  'git/status',
+  'git/diff',
+  'git/commit',
+  'git/push',
+  'git/pull',
+  'git/checkout',
+  'git/createBranch',
+  'git/createWorktree',
+  // Workspace
+  'workspace/readFile',
+  'workspace/readImage',
+  'workspace/list',
+  'workspace/checkpoint',
+  'workspace/diffCheckpoint',
+  'workspace/applyCheckpoint',
+  'workspace/applyPatch',
+  // Projects
+  'project/list',
+  'project/resolve',
+  // Auth
+  'auth/status',
+  'auth/login',
+  'auth/logout',
+  // Bridge control
+  'bridge/status',
+  'bridge/generatePairingQr',
+  'bridge/connectedPhones',
+  'bridge/disconnectPhone',
+  'bridge/trustedDevices',
+  'bridge/removeTrustedDevice',
+] as const;
+
+/**
+ * Compile-time guarantee that {@link METHOD_NAMES} and {@link JsonRpcMethodName}
+ * describe exactly the same set of methods. If they drift, this fails to build.
+ */
+type _NamesAreMethods = (typeof METHOD_NAMES)[number] extends JsonRpcMethodName ? true : never;
+type _MethodsAreNames = JsonRpcMethodName extends (typeof METHOD_NAMES)[number] ? true : never;
+const _assertNamesAreMethods: _NamesAreMethods = true;
+const _assertMethodsAreNames: _MethodsAreNames = true;
+void _assertNamesAreMethods;
+void _assertMethodsAreNames;
+
+const METHOD_NAME_SET: ReadonlySet<string> = new Set(METHOD_NAMES);
+
+export function isKnownMethod(method: string): method is JsonRpcMethodName {
+  return METHOD_NAME_SET.has(method);
+}
