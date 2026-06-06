@@ -105,11 +105,20 @@ Deferred implementation work (code the team/agent will do later). Distinct from
 - ☐ **Extended git actions** — `pull`, `checkout`, `createBranch`,
   `createWorktree` (+ managed), `revert`, `stackedPublish` (commit+push+PR) per
   spec 02a §5.2.4 / §5.5; only `status`/`commit`/`push` are wired in the MVP.
-- ☐ **Git UI** — `GitActionsBottomSheet` (repo state + actions), `CommitDialog`
-  (message entry), `diff_viewer` (spec 02a §5.6 `conversation/git/`), push
-  progress display from `gitActiveActionProvider`, and the action history from
-  `IGitActionLogRepository.watchForThread`. Wire the conversation status sheet's
-  git section to these (see Conversation wiring item above).
+- ☑ **Git UI (visual layer)** — DONE: `GitActionsSheet` (branch state, changed
+  files, commit/push actions, live push progress, recent activity) + `CommitSheet`
+  (message entry), opened from the conversation status sheet's git rows. Push
+  progress reads `gitActiveActionProvider`; history reads
+  `gitActionHistoryProvider`. Reviewable via `GitRepoState.sample()` (FOR-DEV
+  preview) — in preview mode push runs a local phase animation and commit is a
+  visual-only flow.
+- ☐ **Wire the git UI to a live session** — drop the `previewState` /
+  `_simulatePush` FOR-DEV paths and pass a real `cwd` (from the active thread)
+  so `GitActionsSheet` reads `gitRepoStateProvider` and runs real commit/push.
+  Remove `GitRepoState.sample()` once wired.
+- ☐ **Per-file diff viewer** — `conversation/git/diff_viewer.dart` (spec 02a
+  §5.6) needs the `git/diff` RPC (not in the MVP manager); the changed-files
+  list currently shows only per-file +/- counts from `git/status`.
 
 ## Tooling
 

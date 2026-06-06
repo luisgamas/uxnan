@@ -68,5 +68,25 @@
   "approvalAutoTitle": "Aprobar por mí",
   "approvalAutoBody": "Solicitar aprobación solo para acciones detectadas como potencialmente riesgosas.",
   "approvalFullTitle": "Acceso completo",
-  "approvalFullBody": "Acceso sin restricciones a internet y a cualquier archivo."
+  "approvalFullBody": "Acceso sin restricciones a internet y a cualquier archivo.",
+
+  "gitActionsTitle": "Control de versiones",
+  "gitCleanState": "Árbol de trabajo limpio",
+  "gitDirtyState": "Cambios sin confirmar",
+  "gitChangedFiles": "Archivos modificados",
+  "gitCommitButton": "Commit",
+  "gitPushButton": "Push",
+  "gitCommitTitle": "Confirmar cambios",
+  "gitCommitHint": "Describe tus cambios…",
+  "gitNoRepository": "Sin repositorio git",
+  "gitNoRepositoryBody": "Abre un espacio de trabajo con un repositorio git para gestionar el control de versiones.",
+  "gitRecent": "Actividad reciente",
+  "gitActionFailed": "La acción de git falló",
+  "gitCommitSuccess": "Cambios confirmados",
+  "gitPushSuccess": "Push completado",
+  "gitStatusAdded": "Añadido",
+  "gitStatusModified": "Modificado",
+  "gitStatusDeleted": "Eliminado",
+  "gitStatusRenamed": "Renombrado",
+  "gitStatusUntracked": "Sin seguimiento"
 }

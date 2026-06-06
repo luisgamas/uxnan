@@ -4,6 +4,7 @@ import 'package:uxnan/application/managers/git_action_manager.dart';
 import 'package:uxnan/application/managers/thread_manager.dart';
 import 'package:uxnan/application/processors/incoming_message_processor.dart';
 import 'package:uxnan/domain/entities/connection_recovery_state.dart';
+import 'package:uxnan/domain/entities/git/git_action_log_entry.dart';
 import 'package:uxnan/domain/entities/git/git_repo_state.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/entities/trusted_device.dart';
@@ -113,4 +114,11 @@ final gitRepoStateProvider = StreamProvider<GitRepoState?>(
 /// The in-flight git action's progress, for the UI.
 final gitActiveActionProvider = StreamProvider<GitActionProgress?>(
   (ref) => ref.watch(gitActionManagerProvider).activeActionStream,
+);
+
+/// Recent git actions recorded for the given thread id, most recent first.
+final gitActionHistoryProvider =
+    StreamProvider.family<List<GitActionLogEntry>, String>(
+  (ref, threadId) =>
+      ref.watch(gitActionLogRepositoryProvider).watchForThread(threadId),
 );

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:uxnan/domain/entities/git/git_repo_state.dart';
 import 'package:uxnan/domain/enums/approval_mode.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
+import 'package:uxnan/presentation/screens/conversation/git/git_actions_sheet.dart';
 import 'package:uxnan/presentation/screens/conversation/session_environment.dart';
 import 'package:uxnan/presentation/screens/conversation/support/approval_mode_sheet.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
@@ -13,6 +15,9 @@ class SessionStatusSheet extends StatefulWidget {
   const SessionStatusSheet({
     required this.environment,
     this.onApprovalModeChanged,
+    this.threadId,
+    this.cwd,
+    this.previewGitState,
     super.key,
   });
 
@@ -22,11 +27,23 @@ class SessionStatusSheet extends StatefulWidget {
   /// Called when the user picks a new approval mode.
   final ValueChanged<ApprovalMode>? onApprovalModeChanged;
 
+  /// Owning thread, forwarded to the source-control panel.
+  final String? threadId;
+
+  /// Workspace directory for git actions; null in preview mode.
+  final String? cwd;
+
+  /// Sample repo state for the source-control panel (FOR-DEV preview).
+  final GitRepoState? previewGitState;
+
   /// Shows the sheet.
   static Future<void> show(
     BuildContext context,
     SessionEnvironment environment, {
     ValueChanged<ApprovalMode>? onApprovalModeChanged,
+    String? threadId,
+    String? cwd,
+    GitRepoState? previewGitState,
   }) {
     return showModalBottomSheet<void>(
       context: context,
@@ -34,6 +51,9 @@ class SessionStatusSheet extends StatefulWidget {
       builder: (_) => SessionStatusSheet(
         environment: environment,
         onApprovalModeChanged: onApprovalModeChanged,
+        threadId: threadId,
+        cwd: cwd,
+        previewGitState: previewGitState,
       ),
     );
   }
@@ -57,6 +77,13 @@ class _SessionStatusSheetState extends State<SessionStatusSheet> {
     setState(() => _env = _env.withApprovalMode(mode));
     widget.onApprovalModeChanged?.call(mode);
   }
+
+  Future<void> _openGit() => GitActionsSheet.show(
+        context,
+        cwd: widget.cwd,
+        threadId: widget.threadId,
+        previewState: widget.previewGitState,
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -99,7 +126,7 @@ class _SessionStatusSheetState extends State<SessionStatusSheet> {
               icon: Icons.account_tree_outlined,
               label: l10n.environmentBranch,
               value: _env.gitBranch ?? '—',
-              onTap: () {}, // FOR-DEV: branch selector.
+              onTap: _openGit,
             ),
             _StatusRow(
               icon: Icons.computer_outlined,
@@ -109,7 +136,7 @@ class _SessionStatusSheetState extends State<SessionStatusSheet> {
             _StatusRow(
               icon: Icons.cloud_upload_outlined,
               label: l10n.environmentCommitOrPush,
-              onTap: () {}, // FOR-DEV: git actions.
+              onTap: _openGit,
             ),
           ],
         ),

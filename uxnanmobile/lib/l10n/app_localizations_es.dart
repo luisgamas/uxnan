@@ -216,4 +216,62 @@ class AppLocalizationsEs extends AppLocalizations {
   @override
   String get approvalFullBody =>
       'Acceso sin restricciones a internet y a cualquier archivo.';
+
+  @override
+  String get gitActionsTitle => 'Control de versiones';
+
+  @override
+  String get gitCleanState => 'Árbol de trabajo limpio';
+
+  @override
+  String get gitDirtyState => 'Cambios sin confirmar';
+
+  @override
+  String get gitChangedFiles => 'Archivos modificados';
+
+  @override
+  String get gitCommitButton => 'Commit';
+
+  @override
+  String get gitPushButton => 'Push';
+
+  @override
+  String get gitCommitTitle => 'Confirmar cambios';
+
+  @override
+  String get gitCommitHint => 'Describe tus cambios…';
+
+  @override
+  String get gitNoRepository => 'Sin repositorio git';
+
+  @override
+  String get gitNoRepositoryBody =>
+      'Abre un espacio de trabajo con un repositorio git para gestionar el control de versiones.';
+
+  @override
+  String get gitRecent => 'Actividad reciente';
+
+  @override
+  String get gitActionFailed => 'La acción de git falló';
+
+  @override
+  String get gitCommitSuccess => 'Cambios confirmados';
+
+  @override
+  String get gitPushSuccess => 'Push completado';
+
+  @override
+  String get gitStatusAdded => 'Añadido';
+
+  @override
+  String get gitStatusModified => 'Modificado';
+
+  @override
+  String get gitStatusDeleted => 'Eliminado';
+
+  @override
+  String get gitStatusRenamed => 'Renombrado';
+
+  @override
+  String get gitStatusUntracked => 'Sin seguimiento';
 }

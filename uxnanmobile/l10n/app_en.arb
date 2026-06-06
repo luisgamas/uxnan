@@ -83,5 +83,25 @@
   "approvalAutoTitle": "Approve for me",
   "approvalAutoBody": "Only ask for actions detected as potentially risky.",
   "approvalFullTitle": "Full access",
-  "approvalFullBody": "Unrestricted access to the internet and any file."
+  "approvalFullBody": "Unrestricted access to the internet and any file.",
+
+  "gitActionsTitle": "Source control",
+  "gitCleanState": "Working tree clean",
+  "gitDirtyState": "Uncommitted changes",
+  "gitChangedFiles": "Changed files",
+  "gitCommitButton": "Commit",
+  "gitPushButton": "Push",
+  "gitCommitTitle": "Commit changes",
+  "gitCommitHint": "Describe your changes…",
+  "gitNoRepository": "No git repository",
+  "gitNoRepositoryBody": "Open a workspace with a git repository to manage source control.",
+  "gitRecent": "Recent activity",
+  "gitActionFailed": "Git action failed",
+  "gitCommitSuccess": "Changes committed",
+  "gitPushSuccess": "Push complete",
+  "gitStatusAdded": "Added",
+  "gitStatusModified": "Modified",
+  "gitStatusDeleted": "Deleted",
+  "gitStatusRenamed": "Renamed",
+  "gitStatusUntracked": "Untracked"
 }

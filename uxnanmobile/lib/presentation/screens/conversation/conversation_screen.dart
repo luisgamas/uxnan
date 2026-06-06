@@ -1,6 +1,7 @@
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uxnan/domain/entities/git/git_repo_state.dart';
 import 'package:uxnan/domain/enums/connection_phase.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
@@ -61,6 +62,10 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
     SessionStatusSheet.show(
       context,
       _environment,
+      threadId: widget.threadId,
+      // FOR-DEV: sample git state so the source-control panel is reviewable
+      // without a connected bridge; replace with a resolved cwd when wired.
+      previewGitState: GitRepoState.sample(),
       onApprovalModeChanged: (mode) =>
           setState(() => _environment = _environment.withApprovalMode(mode)),
     );

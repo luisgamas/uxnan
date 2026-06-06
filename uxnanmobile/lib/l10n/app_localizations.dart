@@ -481,6 +481,120 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Unrestricted access to the internet and any file.'**
   String get approvalFullBody;
+
+  /// No description provided for @gitActionsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Source control'**
+  String get gitActionsTitle;
+
+  /// No description provided for @gitCleanState.
+  ///
+  /// In en, this message translates to:
+  /// **'Working tree clean'**
+  String get gitCleanState;
+
+  /// No description provided for @gitDirtyState.
+  ///
+  /// In en, this message translates to:
+  /// **'Uncommitted changes'**
+  String get gitDirtyState;
+
+  /// No description provided for @gitChangedFiles.
+  ///
+  /// In en, this message translates to:
+  /// **'Changed files'**
+  String get gitChangedFiles;
+
+  /// No description provided for @gitCommitButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Commit'**
+  String get gitCommitButton;
+
+  /// No description provided for @gitPushButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Push'**
+  String get gitPushButton;
+
+  /// No description provided for @gitCommitTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Commit changes'**
+  String get gitCommitTitle;
+
+  /// No description provided for @gitCommitHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Describe your changes…'**
+  String get gitCommitHint;
+
+  /// No description provided for @gitNoRepository.
+  ///
+  /// In en, this message translates to:
+  /// **'No git repository'**
+  String get gitNoRepository;
+
+  /// No description provided for @gitNoRepositoryBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Open a workspace with a git repository to manage source control.'**
+  String get gitNoRepositoryBody;
+
+  /// No description provided for @gitRecent.
+  ///
+  /// In en, this message translates to:
+  /// **'Recent activity'**
+  String get gitRecent;
+
+  /// No description provided for @gitActionFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Git action failed'**
+  String get gitActionFailed;
+
+  /// No description provided for @gitCommitSuccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Changes committed'**
+  String get gitCommitSuccess;
+
+  /// No description provided for @gitPushSuccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Push complete'**
+  String get gitPushSuccess;
+
+  /// No description provided for @gitStatusAdded.
+  ///
+  /// In en, this message translates to:
+  /// **'Added'**
+  String get gitStatusAdded;
+
+  /// No description provided for @gitStatusModified.
+  ///
+  /// In en, this message translates to:
+  /// **'Modified'**
+  String get gitStatusModified;
+
+  /// No description provided for @gitStatusDeleted.
+  ///
+  /// In en, this message translates to:
+  /// **'Deleted'**
+  String get gitStatusDeleted;
+
+  /// No description provided for @gitStatusRenamed.
+  ///
+  /// In en, this message translates to:
+  /// **'Renamed'**
+  String get gitStatusRenamed;
+
+  /// No description provided for @gitStatusUntracked.
+  ///
+  /// In en, this message translates to:
+  /// **'Untracked'**
+  String get gitStatusUntracked;
 }
 
 class _AppLocalizationsDelegate
