@@ -1,0 +1,30 @@
+{
+  "name": "uxnan-bridge",
+  "version": "0.1.0",
+  "description": "Uxnan Bridge — local control-plane daemon connecting the Uxnan mobile app to the developer's PC over E2EE.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "bin": {
+    "uxnan-bridge": "./dist/src/cli.js"
+  },
+  "files": [
+    "dist/src",
+    "scripts"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "tsc && node --test \"dist/test/**/*.test.js\"",
+    "start": "node dist/src/cli.js start"
+  },
+  "dependencies": {
+    "@uxnan/shared": "*",
+    "ajv": "^8.17.1",
+    "qrcode-terminal": "^0.12.0"
+  }
+}
