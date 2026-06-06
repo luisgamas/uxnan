@@ -57,6 +57,16 @@ test('encode/parse round-trips a valid payload', () => {
   assert.deepEqual(result.valid === true && result.payload, payload);
 });
 
+test('the QR string is Base64 of the UTF-8 JSON (mobile fromQrString contract)', () => {
+  const payload = freshPayload();
+  const qr = encodePairingQr(payload);
+  // Must be decodable as Base64 → JSON with the documented field names.
+  const json = JSON.parse(Buffer.from(qr, 'base64').toString('utf-8')) as Record<string, unknown>;
+  assert.equal(json['v'], PAIRING_QR_VERSION);
+  assert.equal(json['relay'], payload.relay);
+  assert.equal(json['macIdentityPublicKey'], payload.macIdentityPublicKey);
+});
+
 test('parsePairingQr reports invalid JSON', () => {
   const result = parsePairingQr('not json {', NOW);
   assert.ok(!result.valid);

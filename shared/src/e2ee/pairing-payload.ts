@@ -7,9 +7,9 @@
  * The bridge GENERATES this payload; the mobile app parses it
  * (`PairingPayload.fromQrString`). The wire field names below are the contract.
  *
- * FOR-DEV: verify the QR string encoding (this module uses compact JSON) against
- * the mobile `PairingPayload.fromQrString` implementation on the `uxnanmobile`
- * branch before enabling real pairing — see bridge/FOR-DEV.md.
+ * QR string encoding: **Base64 of the UTF-8 JSON** — verified against the mobile
+ * `PairingPayload.fromQrString` (spec 02a §5.5.4), which does
+ * `base64.decode(base64.normalize(qr))` then `jsonDecode`.
  */
 import { MAX_PAIRING_AGE_MS, PAIRING_QR_VERSION } from '../constants.js';
 
@@ -46,9 +46,9 @@ const REQUIRED_STRING_FIELDS: (keyof PairingPayload)[] = [
   'displayName',
 ];
 
-/** Serialize a pairing payload to the QR string (compact JSON). */
+/** Serialize a pairing payload to the QR string: Base64 of the UTF-8 JSON. */
 export function encodePairingQr(payload: PairingPayload): string {
-  return JSON.stringify(payload);
+  return Buffer.from(JSON.stringify(payload), 'utf-8').toString('base64');
 }
 
 /**
@@ -80,11 +80,12 @@ export function validatePairingPayload(value: unknown, now: number): PairingVali
   return { valid: true, payload: obj as unknown as PairingPayload };
 }
 
-/** Parse a QR string and validate it in one step. */
+/** Parse a QR string (Base64 of UTF-8 JSON) and validate it in one step. */
 export function parsePairingQr(qr: string, now: number): PairingValidationResult {
   let decoded: unknown;
   try {
-    decoded = JSON.parse(qr);
+    const json = Buffer.from(qr.trim(), 'base64').toString('utf-8');
+    decoded = JSON.parse(json);
   } catch {
     return { valid: false, error: 'invalid_json' };
   }

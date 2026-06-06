@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed
+- **Pairing QR encoding is now Base64 of the UTF-8 JSON** (was plain JSON), to
+  match the mobile `PairingPayload.fromQrString` (`base64.decode` → `jsonDecode`,
+  spec 02a §5.5.4). `encodePairingQr` / `parsePairingQr` updated accordingly.
+
 ### Added
 - Initial `@uxnan/shared` contracts package (TypeScript, ESM, Node ≥18).
 - JSON-RPC 2.0 envelope types and constructors (`makeRequest`, `makeNotification`,
