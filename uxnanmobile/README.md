@@ -14,7 +14,7 @@ coding agents running on a PC, over an end-to-end encrypted channel.
 | Architecture | Clean Architecture — `core/`, `domain/`, `application/`, `infrastructure/`, `presentation/` |
 | State management | Riverpod (manual providers, **no** code generation) |
 | Navigation | `go_router` |
-| UI | Material 3, dark-first, centralized design tokens |
+| UI | Material 3, adaptive light/dark, centralized design tokens |
 | Local persistence | `drift` (SQLite) |
 | Secure storage | `flutter_secure_storage` (Keychain / Keystore) |
 | Crypto | `cryptography` + `pointycastle` (X25519, Ed25519, AES-256-GCM, HKDF) |

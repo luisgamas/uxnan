@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 
 /// Shared visual scaffold for an onboarding page: a hero icon, a headline, an
@@ -70,7 +69,7 @@ class OnboardingPageLayout extends StatelessWidget {
                     Text(
                       body!,
                       style: textTheme.bodyMedium?.copyWith(
-                        color: UxnanColors.onSurfaceMuted,
+                        color: colors.onSurfaceVariant,
                       ),
                       textAlign: TextAlign.center,
                     ),

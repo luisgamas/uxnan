@@ -10,8 +10,6 @@ class OnboardingBackground extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    // A shade deeper than the surface, for extra depth at the very bottom.
-    final deep = Color.lerp(colors.surface, Colors.black, 0.45)!;
 
     return DecoratedBox(
       decoration: BoxDecoration(color: colors.surface),
@@ -21,7 +19,7 @@ class OnboardingBackground extends StatelessWidget {
           RepaintBoundary(
             child: CustomPaint(
               painter: _GridPainter(
-                color: colors.outline.withValues(alpha: 0.55),
+                color: colors.outline.withValues(alpha: 0.25),
               ),
             ),
           ),
@@ -32,11 +30,9 @@ class OnboardingBackground extends StatelessWidget {
                 end: Alignment.bottomCenter,
                 colors: [
                   Colors.transparent,
-                  Colors.transparent,
                   colors.surface,
-                  deep,
                 ],
-                stops: [0.0, 0.38, 0.82, 1.0],
+                stops: const [0.1, 0.8],
               ),
             ),
           ),

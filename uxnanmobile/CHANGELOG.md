@@ -154,6 +154,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 - Migrated state management to **Riverpod 3.x** (`^3.0.0`), reconciling the
   spec's "Riverpod 3.x manual" guidance (AGENTS.md / 00-index). The state layer
   will use the modern `Notifier`/`NotifierProvider` API.
+- Updated the Material 3 theme to provide both light and dark variants and
+  follow `ThemeMode.system` instead of forcing dark mode. The shared design
+  tokens now expose brightness-aware semantic colors, and existing screens were
+  updated to consume theme-derived muted text colors.
 
 ### Added (foundation)
 
@@ -172,7 +176,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   `ThreadSyncState`, `HandshakeMode`, `ConnectionPhase`, `GitActionKind`,
   `AgentId` (with stable wire-id mapping).
 - Material 3 design system: `colors.dart`, `typography.dart`, `spacing.dart`
-  and the dark-first `buildUxnanTheme()` builder (spec 02c §3.1).
+  and the adaptive `buildUxnanTheme()` builder (spec 02c §3.1).
 - App fonts bundled: Inter (400/500/600/700) and JetBrains Mono (400/500) under
   `assets/fonts/`, declared in `pubspec.yaml` (resolves the FOR-HUMAN item).
 - App entry point: minimal `main.dart` (`ProviderScope`), `app.dart`

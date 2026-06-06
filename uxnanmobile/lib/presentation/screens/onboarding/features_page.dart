@@ -89,7 +89,7 @@ class _FeatureRow extends StatelessWidget {
               Text(
                 body,
                 style: textTheme.bodySmall?.copyWith(
-                  color: UxnanColors.onSurfaceMuted,
+                  color: colors.onSurfaceVariant,
                 ),
               ),
             ],

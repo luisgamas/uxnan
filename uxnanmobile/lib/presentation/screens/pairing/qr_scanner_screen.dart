@@ -12,7 +12,6 @@ import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/screens/pairing/update_prompt_dialog.dart';
-import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 
 /// Camera state for the scanner screen.
@@ -241,6 +240,7 @@ class _PermissionRequest extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
 
     return Center(
       child: SingleChildScrollView(
@@ -251,7 +251,7 @@ class _PermissionRequest extends StatelessWidget {
             const Icon(
               Icons.photo_camera_rounded,
               size: 56,
-              color: UxnanColors.onSurfaceMuted,
+              color: Colors.white,
               semanticLabel: 'Camera',
             ),
             const SizedBox(height: UxnanSpacing.lg),
@@ -264,7 +264,7 @@ class _PermissionRequest extends StatelessWidget {
             Text(
               l10n.qrPermissionBody,
               style: textTheme.bodyMedium?.copyWith(
-                color: UxnanColors.onSurfaceMuted,
+                color: colorScheme.onSurfaceVariant,
               ),
               textAlign: TextAlign.center,
             ),
