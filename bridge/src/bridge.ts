@@ -32,6 +32,7 @@ import { EchoAgentAdapter } from './adapters/echo-agent-adapter.js';
 import { OpenCodeAdapter } from './adapters/opencode-adapter.js';
 import { resolveOpenCodeBinary } from './adapters/resolve-opencode.js';
 import { ProjectRegistry } from './projects/project-registry.js';
+import { PushService } from './push/push-service.js';
 
 export interface StartBridgeOptions {
   /** Override the daemon state directory (defaults to `~/.uxnan`). */
@@ -80,12 +81,14 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   const trustStore = new FileTrustStore(state);
   const threadStore = new ThreadStore(state);
   const projects = new ProjectRegistry(config.workspaceRoots);
+  const pushService = new PushService({ relayUrl: config.relayUrl, config, logger });
   const agentManager = new AgentManager({
     store: threadStore,
     notify: (message) => sessionRegistry.broadcast(message),
     now,
     logger,
     defaultAgent: config.defaultAgent,
+    onTurnEnd: (info) => pushService.onTurnEnd(info),
   });
   // Echo: built-in reference agent (no external CLI), useful for development.
   agentManager.register(new EchoAgentAdapter(), { displayName: 'Echo (dev)' });
@@ -116,6 +119,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
     threadStore,
     agentManager,
     projects,
+    pushService,
     logger,
     now,
   };

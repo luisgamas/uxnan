@@ -31,6 +31,9 @@
     "@uxnan/shared": "*",
     "ws": "^8.18.0"
   },
+  "optionalDependencies": {
+    "firebase-admin": "^13.0.0"
+  },
   "devDependencies": {
     "@types/ws": "^8.5.12"
   }

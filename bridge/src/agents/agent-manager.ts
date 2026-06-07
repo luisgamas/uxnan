@@ -29,6 +29,13 @@ export interface AgentMeta {
   defaultModel?: string;
 }
 
+export interface TurnEndInfo {
+  threadId: string;
+  turnId: string;
+  status: 'completed' | 'error';
+  text?: string;
+}
+
 export interface AgentManagerOptions {
   store: ThreadStore;
   /** Broadcast a JSON-RPC notification to connected phones. */
@@ -36,6 +43,8 @@ export interface AgentManagerOptions {
   now: () => number;
   logger: Logger;
   defaultAgent: AgentId;
+  /** Optional hook fired when a turn completes or errors (e.g. push notifications). */
+  onTurnEnd?: (info: TurnEndInfo) => void;
 }
 
 export interface SendTurnOptions {
@@ -178,6 +187,7 @@ export class AgentManager {
             }),
           );
           this.#assistantByTurn.delete(turnId);
+          this.#options.onTurnEnd?.({ threadId, turnId, status: 'completed', text });
           break;
         }
         case 'turn_error': {
@@ -191,6 +201,7 @@ export class AgentManager {
             }),
           );
           this.#assistantByTurn.delete(turnId);
+          this.#options.onTurnEnd?.({ threadId, turnId, status: 'error', text: message });
           break;
         }
         case 'turn_aborted':

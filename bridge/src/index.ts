@@ -17,6 +17,11 @@ export {
   type AgentSettings,
 } from './daemon-config.js';
 export { ProjectRegistry, projectIdFor } from './projects/project-registry.js';
+export {
+  PushService,
+  type PushServiceOptions,
+  type TurnEndInfo as PushTurnEndInfo,
+} from './push/push-service.js';
 export { SecureDeviceState, type PublicIdentity } from './secure-device-state.js';
 export { InMemorySecretStore, type SecretStore } from './secret-store.js';
 export {

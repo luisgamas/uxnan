@@ -5,6 +5,7 @@
  * Usage: uxnan-relay [port]   (default port 8787, or $RELAY_PORT)
  */
 import { RelayServer } from './relay-server.js';
+import { PushRegistry, createDefaultPushSender } from './push.js';
 
 async function main(): Promise<void> {
   const portArg = process.argv[2] ?? process.env['RELAY_PORT'] ?? '8787';
@@ -15,12 +16,14 @@ async function main(): Promise<void> {
     return;
   }
 
-  const server = new RelayServer({
-    logger: {
-      info: (m) => process.stdout.write(`[relay] ${m}\n`),
-      warn: (m) => process.stderr.write(`[relay] ${m}\n`),
-    },
-  });
+  const logger = {
+    info: (m: string) => process.stdout.write(`[relay] ${m}\n`),
+    warn: (m: string) => process.stderr.write(`[relay] ${m}\n`),
+  };
+  // Push delivery uses FCM when UXNAN_FCM_SERVICE_ACCOUNT is set, else a noop
+  // sender (registrations + dedupe still work; nothing is delivered).
+  const pushRegistry = new PushRegistry({ sender: await createDefaultPushSender(logger), logger });
+  const server = new RelayServer({ logger, pushRegistry });
   const handle = await server.start(port);
   process.stdout.write(`uxnan-relay listening on port ${handle.port}\n`);
 

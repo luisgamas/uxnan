@@ -34,6 +34,7 @@ export async function handleSecureConnection(options: SecureConnectionOptions): 
   const send = (message: unknown): void => io.send(Buffer.from(JSON.stringify(message), 'utf-8'));
 
   let phoneDeviceId: string | undefined;
+  let sessionId: string | undefined;
   try {
     const handshakeOptions = {
       queue,
@@ -48,6 +49,10 @@ export async function handleSecureConnection(options: SecureConnectionOptions): 
     };
     const result = await performServerHandshake(handshakeOptions);
     phoneDeviceId = result.phoneDeviceId;
+    sessionId = result.sessionId;
+    // Mark this as the active session so a `notifications/register` from the phone
+    // (and later turn-end pushes) target the right relay session.
+    ctx.pushService.setActiveSession(result.sessionId);
 
     // Register the encrypted sink synchronously (before any further await) so the
     // bridge can push notifications immediately, flushing anything buffered while
@@ -93,6 +98,7 @@ export async function handleSecureConnection(options: SecureConnectionOptions): 
     if (phoneDeviceId !== undefined) {
       ctx.sessions.remove(phoneDeviceId);
       ctx.sessionRegistry.unregister(phoneDeviceId);
+      if (sessionId !== undefined) ctx.pushService.clearActiveSession(sessionId);
       ctx.logger.info(`phone session closed: ${phoneDeviceId}`);
     }
     io.close();

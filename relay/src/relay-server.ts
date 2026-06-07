@@ -15,10 +15,14 @@
  * FOR-DEV: add rate limiting, pairing-code resolution, multi-session `mac`
  * registration and the push endpoints (src/relay-server.ts) — see §5.10.1.
  */
-import { createServer, type IncomingMessage, type Server } from 'node:http';
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { WebSocketServer, type RawData, type WebSocket } from 'ws';
+import type { PushNotifyRequest, PushPlatform } from '@uxnan/shared';
+import { NoopPushSender, PushRegistry } from './push.js';
 
 export type RelayRole = 'mac' | 'iphone';
+
+const MAX_BODY_BYTES = 16 * 1024;
 
 interface SessionPeers {
   mac?: WebSocket;
@@ -45,6 +49,8 @@ export interface RelayServerOptions {
   rateLimits?: Partial<RelayRateLimits>;
   /** Injected clock (epoch ms) for testability. */
   now?: () => number;
+  /** Push delivery registry; defaults to a noop-sender registry (no FCM creds). */
+  pushRegistry?: PushRegistry;
 }
 
 export interface RelayServerHandle {
@@ -82,6 +88,7 @@ export class RelayServer {
   readonly #logger: RelayLogger;
   readonly #httpLimiter: RateLimiter;
   readonly #upgradeLimiter: RateLimiter;
+  readonly #pushRegistry: PushRegistry;
   #http: Server | undefined;
   #wss: WebSocketServer | undefined;
 
@@ -91,10 +98,18 @@ export class RelayServer {
     const now = options.now ?? (() => Date.now());
     this.#httpLimiter = new RateLimiter(limits.httpPerMinute, now);
     this.#upgradeLimiter = new RateLimiter(limits.upgradePerMinute, now);
+    this.#pushRegistry =
+      options.pushRegistry ??
+      new PushRegistry({ sender: new NoopPushSender(this.#logger), logger: this.#logger, now });
   }
 
   get sessionCount(): number {
     return this.#sessions.size;
+  }
+
+  /** The push registry (token store + delivery), exposed for tests/wiring. */
+  get pushRegistry(): PushRegistry {
+    return this.#pushRegistry;
   }
 
   start(port = 0, host?: string): Promise<RelayServerHandle> {
@@ -104,9 +119,13 @@ export class RelayServer {
         res.end('Too Many Requests');
         return;
       }
-      if (req.method === 'GET' && (req.url ?? '').startsWith('/health')) {
-        res.writeHead(200, { 'content-type': 'application/json' });
-        res.end('{"ok":true}');
+      const url = req.url ?? '';
+      if (req.method === 'GET' && url.startsWith('/health')) {
+        sendJson(res, 200, { ok: true });
+        return;
+      }
+      if (req.method === 'POST' && url.startsWith('/push/')) {
+        void this.#handlePush(req, res, url);
         return;
       }
       res.writeHead(426, { 'content-type': 'text/plain' });
@@ -167,6 +186,45 @@ export class RelayServer {
     });
   }
 
+  /** Handle `POST /push/register` and `POST /push/notify`. */
+  async #handlePush(req: IncomingMessage, res: ServerResponse, url: string): Promise<void> {
+    let body: unknown;
+    try {
+      body = await readJsonBody(req);
+    } catch {
+      sendJson(res, 400, { error: 'invalid body' });
+      return;
+    }
+    const data = (body ?? {}) as Record<string, unknown>;
+
+    if (url.startsWith('/push/register')) {
+      const sessionId = asString(data['sessionId']);
+      const pushToken = asString(data['pushToken']);
+      const platform = asPlatform(data['platform']);
+      if (!sessionId || !pushToken || !platform) {
+        sendJson(res, 400, { error: 'sessionId, pushToken and platform are required' });
+        return;
+      }
+      const result = this.#pushRegistry.register(sessionId, pushToken, platform);
+      this.#logger.info(`push register: session=${sessionId} platform=${platform}`);
+      sendJson(res, 200, result);
+      return;
+    }
+
+    if (url.startsWith('/push/notify')) {
+      const notify = asNotifyRequest(data);
+      if (!notify) {
+        sendJson(res, 400, { error: 'invalid notify payload' });
+        return;
+      }
+      const outcome = await this.#pushRegistry.notify(notify);
+      sendJson(res, outcome.reason === 'unauthorized' ? 403 : 200, outcome);
+      return;
+    }
+
+    sendJson(res, 404, { error: 'not found' });
+  }
+
   #close(): Promise<void> {
     return new Promise((resolve) => {
       for (const peers of this.#sessions.values()) {
@@ -201,4 +259,62 @@ function header(req: IncomingMessage, name: string): string | undefined {
 
 function ipOf(remoteAddress: string | undefined): string {
   return remoteAddress ?? 'unknown';
+}
+
+function sendJson(res: ServerResponse, status: number, body: unknown): void {
+  res.writeHead(status, { 'content-type': 'application/json' });
+  res.end(JSON.stringify(body));
+}
+
+/** Read a size-capped JSON request body. Rejects on overflow or invalid JSON. */
+function readJsonBody(req: IncomingMessage): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    req.on('data', (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > MAX_BODY_BYTES) {
+        reject(new Error('body too large'));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => {
+      try {
+        resolve(chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf-8')) : {});
+      } catch (err) {
+        reject(err instanceof Error ? err : new Error('invalid json'));
+      }
+    });
+    req.on('error', reject);
+  });
+}
+
+function asString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+function asPlatform(value: unknown): PushPlatform | undefined {
+  return value === 'ios' || value === 'android' ? value : undefined;
+}
+
+function asNotifyRequest(data: Record<string, unknown>): PushNotifyRequest | undefined {
+  const sessionId = asString(data['sessionId']);
+  const notificationSecret = asString(data['notificationSecret']);
+  const threadId = asString(data['threadId']);
+  const turnId = asString(data['turnId']);
+  const title = typeof data['title'] === 'string' ? data['title'] : undefined;
+  const body = typeof data['body'] === 'string' ? data['body'] : undefined;
+  if (
+    !sessionId ||
+    !notificationSecret ||
+    !threadId ||
+    !turnId ||
+    title === undefined ||
+    body === undefined
+  ) {
+    return undefined;
+  }
+  return { sessionId, notificationSecret, threadId, turnId, title, body };
 }
