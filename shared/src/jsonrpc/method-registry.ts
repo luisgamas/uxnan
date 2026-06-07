@@ -11,6 +11,7 @@ export const METHOD_NAMES = [
   'thread/start',
   'thread/resume',
   'thread/fork',
+  'thread/setModel',
   'turn/list',
   'turn/read',
   'turn/send',

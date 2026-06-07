@@ -152,6 +152,14 @@ export class ThreadStore {
     });
   }
 
+  setModel(threadId: string, model: string, now: number): Promise<void> {
+    return this.#mutate(async (threads) => {
+      const thread = await this.#requireThread(threads, threadId);
+      thread.model = model;
+      thread.updatedAt = now;
+    });
+  }
+
   forkThread(threadId: string, now: number): Promise<Thread> {
     return this.#mutate(async (threads) => {
       const source = await this.#requireThread(threads, threadId);

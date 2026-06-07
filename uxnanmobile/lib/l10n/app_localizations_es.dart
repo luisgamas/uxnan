@@ -246,6 +246,18 @@ class AppLocalizationsEs extends AppLocalizations {
   String get newThreadStart => 'Iniciar conversación';
 
   @override
+  String get modelPickerTitle => 'Seleccionar modelo';
+
+  @override
+  String get modelPickerSearchHint => 'Buscar modelos';
+
+  @override
+  String get modelPickerLoadFailed => 'No se pudieron cargar los modelos';
+
+  @override
+  String get modelPickerEmpty => 'Sin modelos coincidentes';
+
+  @override
   String get newThreadFailed => 'No se pudo iniciar la conversación';
 
   @override

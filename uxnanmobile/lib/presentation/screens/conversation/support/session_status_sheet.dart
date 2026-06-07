@@ -16,6 +16,7 @@ class SessionStatusSheet extends StatefulWidget {
     this.onApprovalModeChanged,
     this.threadId,
     this.cwd,
+    this.onModelTap,
     super.key,
   });
 
@@ -31,6 +32,9 @@ class SessionStatusSheet extends StatefulWidget {
   /// Workspace directory for git actions; null when the thread has no cwd.
   final String? cwd;
 
+  /// Opens the model picker for the thread's agent, if available.
+  final VoidCallback? onModelTap;
+
   /// Shows the sheet.
   static Future<void> show(
     BuildContext context,
@@ -38,6 +42,7 @@ class SessionStatusSheet extends StatefulWidget {
     ValueChanged<ApprovalMode>? onApprovalModeChanged,
     String? threadId,
     String? cwd,
+    VoidCallback? onModelTap,
   }) {
     return showModalBottomSheet<void>(
       context: context,
@@ -47,6 +52,7 @@ class SessionStatusSheet extends StatefulWidget {
         onApprovalModeChanged: onApprovalModeChanged,
         threadId: threadId,
         cwd: cwd,
+        onModelTap: onModelTap,
       ),
     );
   }
@@ -99,7 +105,12 @@ class _SessionStatusSheetState extends State<SessionStatusSheet> {
               icon: Icons.auto_awesome_outlined,
               label: l10n.environmentModel,
               value: _env.modelName,
-              onTap: () {}, // FOR-DEV: model selector.
+              onTap: widget.onModelTap == null
+                  ? null
+                  : () {
+                      Navigator.of(context).pop();
+                      widget.onModelTap!.call();
+                    },
             ),
             // FOR-DEV: the bridge does not report token usage yet; show a
             // neutral placeholder instead of a fabricated percentage.

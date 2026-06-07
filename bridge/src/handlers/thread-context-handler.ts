@@ -41,6 +41,14 @@ export function registerThreadHandlers(router: HandlerRouter): void {
   router.register('thread/fork', (p, ctx: BridgeContext) =>
     ctx.threadStore.forkThread(requireString(p, 'threadId'), ctx.now()),
   );
+  router.register('thread/setModel', async (p, ctx: BridgeContext) => {
+    await ctx.threadStore.setModel(
+      requireString(p, 'threadId'),
+      requireString(p, 'model'),
+      ctx.now(),
+    );
+    return null;
+  });
 
   router.register('turn/list', (p, ctx: BridgeContext) =>
     ctx.threadStore.listTurns(

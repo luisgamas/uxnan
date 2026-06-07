@@ -115,6 +115,19 @@ class ThreadManager {
     ];
   }
 
+  /// Changes the model a thread's agent uses (`thread/setModel`) and mirrors it
+  /// locally so the conversation reflects it immediately.
+  Future<void> setThreadModel(String threadId, String model) async {
+    await _sendRequest('thread/setModel', {
+      'threadId': threadId,
+      'model': model,
+    });
+    final thread = await _threadRepository.getThread(threadId);
+    if (thread != null) {
+      await _threadRepository.saveThread(thread.copyWith(model: model));
+    }
+  }
+
   /// Loads the models the bridge reports for [agentId] (`agent/models`).
   Future<List<String>> loadModels(String agentId) async {
     final response = await _sendRequest('agent/models', {'agentId': agentId});

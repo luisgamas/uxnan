@@ -60,6 +60,10 @@ export interface TurnSendParams {
   service?: string;
   effort?: string;
 }
+export interface ThreadSetModelParams {
+  threadId: string;
+  model: string;
+}
 export interface TurnSendResult {
   turnId: string;
 }
@@ -148,6 +152,7 @@ export interface JsonRpcMethodRegistry {
   'thread/start': { params: StartThreadParams; result: Thread };
   'thread/resume': { params: { threadId: string }; result: void };
   'thread/fork': { params: ForkParams; result: Thread };
+  'thread/setModel': { params: ThreadSetModelParams; result: void };
   'turn/list': { params: TurnListParams; result: TurnList };
   'turn/read': { params: { turnId: string }; result: Turn };
   'turn/send': { params: TurnSendParams; result: TurnSendResult };

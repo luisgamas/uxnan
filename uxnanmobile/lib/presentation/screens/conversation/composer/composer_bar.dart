@@ -14,6 +14,7 @@ class ComposerBar extends StatefulWidget {
   const ComposerBar({
     required this.onSend,
     required this.environment,
+    this.onModelTap,
     this.enabled = true,
     super.key,
   });
@@ -23,6 +24,9 @@ class ComposerBar extends StatefulWidget {
 
   /// The session environment (model, context) shown in the toolbar.
   final SessionEnvironment environment;
+
+  /// Opens the model picker for the active thread, if available.
+  final VoidCallback? onModelTap;
 
   /// Whether sending is currently allowed (e.g. connected).
   final bool enabled;
@@ -122,7 +126,10 @@ class _ComposerBarState extends State<ComposerBar> {
                   ),
                   const SizedBox(width: UxnanSpacing.xs),
                   Flexible(
-                    child: _ModelChip(model: widget.environment.modelName),
+                    child: _ModelChip(
+                      model: widget.environment.modelName,
+                      onTap: widget.onModelTap,
+                    ),
                   ),
                   const Spacer(),
                   // The badge is hidden until the bridge reports real token
@@ -173,8 +180,9 @@ class _RoundIconButton extends StatelessWidget {
 }
 
 class _ModelChip extends StatelessWidget {
-  const _ModelChip({required this.model});
+  const _ModelChip({required this.model, this.onTap});
   final String model;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -184,7 +192,7 @@ class _ModelChip extends StatelessWidget {
       shape: const StadiumBorder(),
       child: InkWell(
         customBorder: const StadiumBorder(),
-        onTap: () {}, // FOR-DEV: model selector.
+        onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.symmetric(
             horizontal: UxnanSpacing.md,

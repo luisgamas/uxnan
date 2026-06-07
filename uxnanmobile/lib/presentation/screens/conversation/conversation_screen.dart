@@ -9,6 +9,7 @@ import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_bar.dart';
 import 'package:uxnan/presentation/screens/conversation/messages/message_bubble.dart';
 import 'package:uxnan/presentation/screens/conversation/session_environment.dart';
+import 'package:uxnan/presentation/screens/conversation/support/model_picker_sheet.dart';
 import 'package:uxnan/presentation/screens/conversation/support/session_status_sheet.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
@@ -71,14 +72,32 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
     );
   }
 
-  void _openEnvironment(SessionEnvironment environment, String? cwd) {
+  void _openEnvironment(
+    SessionEnvironment environment,
+    String? cwd,
+    Thread? thread,
+  ) {
     SessionStatusSheet.show(
       context,
       environment,
       threadId: widget.threadId,
       cwd: cwd,
       onApprovalModeChanged: (mode) => setState(() => _approvalMode = mode),
+      onModelTap: thread != null ? () => _pickModel(thread) : null,
     );
+  }
+
+  /// Opens the model picker and applies the choice to the thread's agent.
+  Future<void> _pickModel(Thread thread) async {
+    final selected = await ModelPickerSheet.show(
+      context,
+      agentId: thread.agentId,
+      current: thread.model,
+    );
+    if (selected == null || selected == thread.model || !mounted) return;
+    await ref
+        .read(threadManagerProvider)
+        .setThreadModel(widget.threadId, selected);
   }
 
   /// Builds the environment snapshot from the active thread, the live git
@@ -144,7 +163,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
                   actions: [
                     _EnvironmentChip(
                       branch: environment.gitBranch,
-                      onTap: () => _openEnvironment(environment, cwd),
+                      onTap: () => _openEnvironment(environment, cwd, thread),
                     ),
                     const SizedBox(width: UxnanSpacing.md),
                   ],
@@ -173,6 +192,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
           ComposerBar(
             environment: environment,
             enabled: phase == ConnectionPhase.connected,
+            onModelTap: thread != null ? () => _pickModel(thread) : null,
             onSend: (text) => ref
                 .read(threadManagerProvider)
                 .sendUserMessage(widget.threadId, text),

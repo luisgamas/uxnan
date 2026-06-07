@@ -542,6 +542,30 @@ abstract class AppLocalizations {
   /// **'Start conversation'**
   String get newThreadStart;
 
+  /// No description provided for @modelPickerTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Select model'**
+  String get modelPickerTitle;
+
+  /// No description provided for @modelPickerSearchHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Search models'**
+  String get modelPickerSearchHint;
+
+  /// No description provided for @modelPickerLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load models'**
+  String get modelPickerLoadFailed;
+
+  /// No description provided for @modelPickerEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No matching models'**
+  String get modelPickerEmpty;
+
   /// No description provided for @newThreadFailed.
   ///
   /// In en, this message translates to:
