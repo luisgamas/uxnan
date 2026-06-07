@@ -42,7 +42,13 @@ only a human can provide.)
           supporting checkpoints on an unborn branch if a use case appears.
 - [x] **Thread/turn** (Phase 5) — `src/handlers/thread-context-handler.ts` +
       `src/conversation/thread-store.ts` + `src/agents/agent-manager.ts`.
-- [ ] **Project** — `src/handlers/project-handler.ts`.
+- [~] **Project** — `src/handlers/project-handler.ts`: `project/list`/`project/resolve`
+      return the configured `workspaceRoots` (manual). PLANNED (plug-and-play): a
+      `workspace/browseDirs { path? }` method so the phone can browse the
+      sub-directories under a root (a configured base, the bridge cwd, or the
+      user's home), mark which are git repos, and pick ANY directory (git or not)
+      as the project for a thread — no per-project pre-configuration. Pairing
+      stays once; project selection becomes a directory browse on the phone.
 - [ ] **Account/auth** — `src/handlers/account-handler.ts` (sanitized, no tokens).
 - [x] **Notifications** — `src/handlers/notifications-handler.ts` +
       `src/push/push-service.ts`. `notifications/register|update|unregister` wired;
