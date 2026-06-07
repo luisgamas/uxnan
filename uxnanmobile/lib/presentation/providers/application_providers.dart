@@ -122,6 +122,11 @@ final agentsProvider = FutureProvider<List<AgentDescriptor>>(
   (ref) => ref.watch(threadManagerProvider).loadAgents(),
 );
 
+/// The models a given agent reports (`agent/models`), for the model picker.
+final agentModelsProvider = FutureProvider.family<List<String>, String>(
+  (ref, agentId) => ref.watch(threadManagerProvider).loadModels(agentId),
+);
+
 /// Registers the FCM push token with the bridge once the session connects and
 /// raises local notifications for turn-completed / turn-error events.
 ///

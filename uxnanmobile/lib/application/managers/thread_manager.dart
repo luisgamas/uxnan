@@ -112,6 +112,18 @@ class ThreadManager {
     ];
   }
 
+  /// Loads the models the bridge reports for [agentId] (`agent/models`).
+  Future<List<String>> loadModels(String agentId) async {
+    final response = await _sendRequest('agent/models', {'agentId': agentId});
+    final result = response.result;
+    final models = result is Map ? result['models'] : null;
+    if (models is! List) return const [];
+    return [
+      for (final raw in models)
+        if (raw is String) raw,
+    ];
+  }
+
   /// Starts a new thread (`thread/start`) for [projectId], optionally overriding
   /// the agent/model/title/cwd, persists it locally and returns it.
   Future<Thread> startThread({

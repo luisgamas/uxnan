@@ -72,7 +72,9 @@ class MyDevicesScreen extends ConsumerWidget {
               IconButton(
                 tooltip: l10n.actionPairDevice,
                 icon: const Icon(Icons.add_link_rounded),
-                onPressed: () => context.push(AppRoutes.onboarding),
+                // A PC is already paired (onboarding done): go straight to the
+                // QR scanner. First-pair onboarding is the empty state below.
+                onPressed: () => context.push(AppRoutes.pairing),
               ),
               const SizedBox(width: UxnanSpacing.sm),
             ],

@@ -88,6 +88,9 @@ class _NewConversationSheetState extends ConsumerState<NewConversationSheet> {
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
     final projects = ref.watch(projectsProvider);
     final agents = ref.watch(agentsProvider);
+    final agent = _agent;
+    final models =
+        agent != null ? ref.watch(agentModelsProvider(agent.agentId)) : null;
 
     return SafeArea(
       top: false,
@@ -126,7 +129,8 @@ class _NewConversationSheetState extends ConsumerState<NewConversationSheet> {
               _SectionHeader(label: l10n.newThreadModel),
               _ModelField(
                 controller: _model,
-                enabled: _agent != null,
+                enabled: agent != null,
+                models: models,
                 onChanged: (_) => _modelTouched = true,
               ),
               const SizedBox(height: UxnanSpacing.lg),
@@ -268,15 +272,62 @@ class _AgentLeading extends StatelessWidget {
   }
 }
 
+/// Model picker. When the bridge reports models for the selected agent it shows
+/// a filterable M3 [DropdownMenu] (the user can still type a custom id); while
+/// loading or when no list is available it falls back to a free-text field.
 class _ModelField extends StatelessWidget {
   const _ModelField({
     required this.controller,
     required this.enabled,
+    required this.models,
     required this.onChanged,
   });
 
   final TextEditingController controller;
   final bool enabled;
+  final AsyncValue<List<String>>? models;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final list = models?.asData?.value;
+    if (enabled && list != null && list.isNotEmpty) {
+      return DropdownMenu<String>(
+        controller: controller,
+        enableFilter: true,
+        requestFocusOnTap: true,
+        expandedInsets: EdgeInsets.zero,
+        menuHeight: 320,
+        hintText: AppLocalizations.of(context).newThreadModelHint,
+        leadingIcon: const Icon(Icons.auto_awesome_outlined, size: 18),
+        initialSelection: controller.text.isEmpty ? null : controller.text,
+        onSelected: (value) => onChanged(value ?? ''),
+        dropdownMenuEntries: [
+          for (final model in list)
+            DropdownMenuEntry<String>(value: model, label: model),
+        ],
+      );
+    }
+    return _ModelTextField(
+      controller: controller,
+      enabled: enabled,
+      loading: models?.isLoading ?? false,
+      onChanged: onChanged,
+    );
+  }
+}
+
+class _ModelTextField extends StatelessWidget {
+  const _ModelTextField({
+    required this.controller,
+    required this.enabled,
+    required this.loading,
+    required this.onChanged,
+  });
+
+  final TextEditingController controller;
+  final bool enabled;
+  final bool loading;
   final ValueChanged<String> onChanged;
 
   @override
@@ -308,6 +359,16 @@ class _ModelField extends StatelessWidget {
             size: 18,
             color: colors.onSurfaceVariant,
           ),
+          suffixIcon: loading
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: Padding(
+                    padding: EdgeInsets.all(4),
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                )
+              : null,
           hintText: l10n.newThreadModelHint,
           hintStyle: TextStyle(color: colors.onSurfaceVariant),
         ),
