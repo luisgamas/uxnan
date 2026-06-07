@@ -1,7 +1,8 @@
-import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:uxnan/domain/entities/git/git_repo_state.dart';
+import 'package:uxnan/domain/entities/thread.dart';
+import 'package:uxnan/domain/enums/agent_id.dart';
+import 'package:uxnan/domain/enums/approval_mode.dart';
 import 'package:uxnan/domain/enums/connection_phase.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
@@ -11,6 +12,7 @@ import 'package:uxnan/presentation/screens/conversation/session_environment.dart
 import 'package:uxnan/presentation/screens/conversation/support/session_status_sheet.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/widgets/agent_visuals.dart';
 
 /// The active conversation: a thread title with connection status, the
 /// streaming timeline, and the composer (spec 02a §5.6.1).
@@ -26,15 +28,26 @@ class ConversationScreen extends ConsumerStatefulWidget {
 }
 
 class _ConversationScreenState extends ConsumerState<ConversationScreen> {
-  // FOR-DEV: sampled until wired to bridge status + git state.
-  SessionEnvironment _environment = SessionEnvironment.sample();
+  // FOR-DEV: there is no bridge RPC for the approval/access mode yet, so it is
+  // a local per-thread setting (no sampled default — see SessionEnvironment).
+  ApprovalMode _approvalMode = ApprovalMode.approveForMe;
   final ScrollController _scroll = ScrollController();
+  String? _gitCwd;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(threadManagerProvider).selectThread(widget.threadId);
+    });
+  }
+
+  /// Fetches `git/status` for the thread's [cwd] once it is known/changes.
+  void _refreshGitFor(String? cwd) {
+    if (cwd == null || cwd.isEmpty || cwd == _gitCwd) return;
+    _gitCwd = cwd;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) ref.read(gitActionManagerProvider).refreshStatus(cwd);
     });
   }
 
@@ -58,16 +71,27 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
     );
   }
 
-  void _openEnvironment() {
+  void _openEnvironment(SessionEnvironment environment, String? cwd) {
     SessionStatusSheet.show(
       context,
-      _environment,
+      environment,
       threadId: widget.threadId,
-      // FOR-DEV: sample git state so the source-control panel is reviewable
-      // without a connected bridge; replace with a resolved cwd when wired.
-      previewGitState: GitRepoState.sample(),
-      onApprovalModeChanged: (mode) =>
-          setState(() => _environment = _environment.withApprovalMode(mode)),
+      cwd: cwd,
+      onApprovalModeChanged: (mode) => setState(() => _approvalMode = mode),
+    );
+  }
+
+  /// Builds the environment snapshot from the active thread, the live git
+  /// state and the local approval-mode setting.
+  SessionEnvironment _buildEnvironment(Thread? thread, String? gitBranch) {
+    final agent = AgentIdParsing.fromWireId(thread?.agentId ?? 'custom');
+    final modelName = thread?.model?.isNotEmpty ?? false
+        ? thread!.model!
+        : AgentVisuals.labelFor(agent);
+    return SessionEnvironment(
+      modelName: modelName,
+      approvalMode: _approvalMode,
+      gitBranch: gitBranch,
     );
   }
 
@@ -77,9 +101,14 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
     final timelineAsync = ref.watch(activeTimelineProvider);
     final phase = ref.watch(connectionPhaseProvider).value ??
         ConnectionPhase.disconnected;
-    final threads = ref.watch(threadsProvider).value ?? const [];
-    final thread = threads.firstWhereOrNull((t) => t.id == widget.threadId);
+    final thread = ref.watch(threadByIdProvider(widget.threadId));
+    final gitBranch = ref.watch(gitRepoStateProvider).value?.branch;
+    final environment = _buildEnvironment(thread, gitBranch);
+    final cwd = thread?.cwd;
     final snapshot = timelineAsync.value;
+
+    // Resolve git state for the real workspace once the thread's cwd is known.
+    if (phase == ConnectionPhase.connected) _refreshGitFor(cwd);
 
     // Auto-scroll to the bottom on new content while the user is near it.
     ref.listen(activeTimelineProvider, (previous, next) {
@@ -114,8 +143,8 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
                   ),
                   actions: [
                     _EnvironmentChip(
-                      branch: _environment.gitBranch,
-                      onTap: _openEnvironment,
+                      branch: environment.gitBranch,
+                      onTap: () => _openEnvironment(environment, cwd),
                     ),
                     const SizedBox(width: UxnanSpacing.md),
                   ],
@@ -142,7 +171,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
             ),
           ),
           ComposerBar(
-            environment: _environment,
+            environment: environment,
             enabled: phase == ConnectionPhase.connected,
             onSend: (text) => ref
                 .read(threadManagerProvider)

@@ -34,13 +34,16 @@ class UxnanDatabase extends _$UxnanDatabase {
   UxnanDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
         onCreate: (m) => m.createAll(),
         onUpgrade: (m, from, to) async {
-          // Future migrations go here.
+          // v2: threads carry the agent's model (nullable).
+          if (from < 2) {
+            await m.addColumn(threadsTable, threadsTable.model);
+          }
         },
         beforeOpen: (details) async {
           await customStatement('PRAGMA journal_mode=WAL');

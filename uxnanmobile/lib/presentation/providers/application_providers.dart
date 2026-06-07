@@ -3,9 +3,11 @@ import 'package:uxnan/application/coordinators/session_coordinator.dart';
 import 'package:uxnan/application/managers/git_action_manager.dart';
 import 'package:uxnan/application/managers/thread_manager.dart';
 import 'package:uxnan/application/processors/incoming_message_processor.dart';
+import 'package:uxnan/domain/entities/agent_descriptor.dart';
 import 'package:uxnan/domain/entities/connection_recovery_state.dart';
 import 'package:uxnan/domain/entities/git/git_action_log_entry.dart';
 import 'package:uxnan/domain/entities/git/git_repo_state.dart';
+import 'package:uxnan/domain/entities/project.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/entities/trusted_device.dart';
 import 'package:uxnan/domain/enums/connection_phase.dart';
@@ -96,6 +98,25 @@ final threadsProvider = StreamProvider<List<Thread>>(
 /// The active thread's timeline, for the UI.
 final activeTimelineProvider = StreamProvider<TurnTimelineSnapshot>(
   (ref) => ref.watch(threadManagerProvider).timelineStream,
+);
+
+/// The thread with the given id (from the reactive thread list), for the UI.
+final threadByIdProvider = Provider.family<Thread?, String>((ref, threadId) {
+  final threads = ref.watch(threadsProvider).value ?? const <Thread>[];
+  for (final thread in threads) {
+    if (thread.id == threadId) return thread;
+  }
+  return null;
+});
+
+/// The bridge's projects (`project/list`) for the new-conversation flow.
+final projectsProvider = FutureProvider<List<Project>>(
+  (ref) => ref.watch(threadManagerProvider).loadProjects(),
+);
+
+/// The bridge's agents (`agent/list`) for the new-conversation flow.
+final agentsProvider = FutureProvider<List<AgentDescriptor>>(
+  (ref) => ref.watch(threadManagerProvider).loadAgents(),
 );
 
 /// Coordinates git actions (status, commit, push) for the active workspace.

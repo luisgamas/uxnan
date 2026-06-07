@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:uxnan/domain/entities/git/git_repo_state.dart';
 import 'package:uxnan/domain/enums/approval_mode.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/screens/conversation/git/git_actions_sheet.dart';
@@ -9,7 +8,7 @@ import 'package:uxnan/presentation/theme/spacing.dart';
 
 /// Floating sheet showing the active session's environment: model, context,
 /// approval mode and git (branch, local, commit/push). Modeled on the desktop
-/// app's "Environment" menu. Values are sampled for now (FOR-DEV).
+/// app's "Environment" menu, driven by the active thread + live git state.
 class SessionStatusSheet extends StatefulWidget {
   /// Creates a [SessionStatusSheet].
   const SessionStatusSheet({
@@ -17,7 +16,6 @@ class SessionStatusSheet extends StatefulWidget {
     this.onApprovalModeChanged,
     this.threadId,
     this.cwd,
-    this.previewGitState,
     super.key,
   });
 
@@ -30,11 +28,8 @@ class SessionStatusSheet extends StatefulWidget {
   /// Owning thread, forwarded to the source-control panel.
   final String? threadId;
 
-  /// Workspace directory for git actions; null in preview mode.
+  /// Workspace directory for git actions; null when the thread has no cwd.
   final String? cwd;
-
-  /// Sample repo state for the source-control panel (FOR-DEV preview).
-  final GitRepoState? previewGitState;
 
   /// Shows the sheet.
   static Future<void> show(
@@ -43,7 +38,6 @@ class SessionStatusSheet extends StatefulWidget {
     ValueChanged<ApprovalMode>? onApprovalModeChanged,
     String? threadId,
     String? cwd,
-    GitRepoState? previewGitState,
   }) {
     return showModalBottomSheet<void>(
       context: context,
@@ -53,7 +47,6 @@ class SessionStatusSheet extends StatefulWidget {
         onApprovalModeChanged: onApprovalModeChanged,
         threadId: threadId,
         cwd: cwd,
-        previewGitState: previewGitState,
       ),
     );
   }
@@ -82,7 +75,6 @@ class _SessionStatusSheetState extends State<SessionStatusSheet> {
         context,
         cwd: widget.cwd,
         threadId: widget.threadId,
-        previewState: widget.previewGitState,
       );
 
   @override
@@ -109,10 +101,12 @@ class _SessionStatusSheetState extends State<SessionStatusSheet> {
               value: _env.modelName,
               onTap: () {}, // FOR-DEV: model selector.
             ),
+            // FOR-DEV: the bridge does not report token usage yet; show a
+            // neutral placeholder instead of a fabricated percentage.
             _StatusRow(
               icon: Icons.donut_large_outlined,
               label: l10n.environmentContext,
-              value: '${_env.contextPercent}%',
+              value: _env.hasContext ? '${_env.contextPercent}%' : '—',
             ),
             _StatusRow(
               icon: Icons.shield_outlined,

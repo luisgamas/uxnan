@@ -18,6 +18,7 @@ class Thread extends Equatable {
     this.projectId,
     this.cwd,
     this.worktreePath,
+    this.model,
     this.lastActivity,
   });
 
@@ -35,6 +36,9 @@ class Thread extends Equatable {
 
   /// Path of the git worktree backing this thread, if any.
   final String? worktreePath;
+
+  /// Model the thread's agent runs (bridge wire id / display name), if known.
+  final String? model;
 
   /// Local-vs-bridge synchronization state.
   final ThreadSyncState syncState;
@@ -54,6 +58,7 @@ class Thread extends Equatable {
     String? projectId,
     String? cwd,
     String? worktreePath,
+    String? model,
     ThreadSyncState? syncState,
     ThreadStatus? status,
     DateTime? lastActivity,
@@ -65,6 +70,7 @@ class Thread extends Equatable {
       projectId: projectId ?? this.projectId,
       cwd: cwd ?? this.cwd,
       worktreePath: worktreePath ?? this.worktreePath,
+      model: model ?? this.model,
       syncState: syncState ?? this.syncState,
       status: status ?? this.status,
       lastActivity: lastActivity ?? this.lastActivity,
@@ -79,6 +85,7 @@ class Thread extends Equatable {
         projectId,
         cwd,
         worktreePath,
+        model,
         syncState,
         status,
         lastActivity,

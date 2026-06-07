@@ -3,6 +3,7 @@ import 'package:flutter_highlight/flutter_highlight.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uxnan/domain/entities/message.dart';
+import 'package:uxnan/domain/enums/approval_mode.dart';
 import 'package:uxnan/domain/enums/message_delivery_state.dart';
 import 'package:uxnan/domain/enums/message_role.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
@@ -11,6 +12,12 @@ import 'package:uxnan/presentation/screens/conversation/composer/composer_bar.da
 import 'package:uxnan/presentation/screens/conversation/messages/message_bubble.dart';
 import 'package:uxnan/presentation/screens/conversation/messages/message_content_view.dart';
 import 'package:uxnan/presentation/screens/conversation/session_environment.dart';
+
+const _environment = SessionEnvironment(
+  modelName: 'Claude Opus 4.8',
+  approvalMode: ApprovalMode.approveForMe,
+  gitBranch: 'main',
+);
 
 Widget _wrap(Widget child) => MaterialApp(
       localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -49,7 +56,7 @@ void main() {
     await tester.pumpWidget(
       _wrap(
         ComposerBar(
-          environment: SessionEnvironment.sample(),
+          environment: _environment,
           onSend: (text) => sent = text,
         ),
       ),
@@ -69,7 +76,7 @@ void main() {
     await tester.pumpWidget(
       _wrap(
         ComposerBar(
-          environment: SessionEnvironment.sample(),
+          environment: _environment,
           enabled: false,
           onSend: (_) => sentCount++,
         ),

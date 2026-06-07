@@ -65,8 +65,11 @@ Deferred implementation work (code the team/agent will do later). Distinct from
   threads regardless of device; once the session exposes the active device/agent/
   project, scope it (and drive `loadThreads(projectId:)`). The `thread/list` JSON
   shape is still assumed (tolerant parser) — verify against the real bridge.
-- ☐ **Thread actions** — new thread, archive, delete are post-MVP; add when
-  `startNewThread`/`resumeThread` land.
+- ◑ **Thread actions** — **new thread DONE**: a "New conversation" FAB on
+  `ThreadsScreen` opens `NewConversationSheet` (pick project via `project/list`,
+  agent via `agent/list`, optional model) → `ThreadManager.startThread`
+  (`thread/start`) → navigates to the conversation. Archive/delete and
+  resume/fork remain post-MVP.
 
 ## Conversation / timeline
 
@@ -85,27 +88,30 @@ Deferred implementation work (code the team/agent will do later). Distinct from
   (`MessageBubble` + `MessageContentView`: markdown, code, command card, diff,
   system banner, streaming dots), floating `ComposerBar`, `SessionStatusSheet`
   and `ApprovalModeSheet`. Reviewable via the FOR-DEV home preview + `demo_seed`.
-- ☐ **Wire conversation controls to real bridge data** — the environment
-  surfaces are currently fed by `SessionEnvironment.sample()` (FOR-DEV) and
-  several controls are no-op `onTap`s. Each must be backed by live data/actions
-  to be usable, not just visible:
-  - **Model indicator + selector** (`ComposerBar._ModelChip`,
-    `SessionStatusSheet` model row) → real model from bridge session state;
-    tapping opens a model picker that issues the model-change RPC.
-  - **Context badge** (`ComposerBar._ContextBadge`, status-sheet context row) →
-    real token usage / window % from the bridge (`bridge/status` or turn usage),
-    not the sampled fraction.
-  - **Approval mode** (`ApprovalModeSheet`) → read current access mode from the
-    session and persist the choice via the access-mode RPC (not local `setState`).
-  - **Git branch / remote / local** (`_EnvironmentChip`, status-sheet git
+- ◑ **Wire conversation controls to real bridge data** — the environment is now
+  built from the active `Thread` + live git state (no more
+  `SessionEnvironment.sample()`); remaining items below need real RPCs:
+  - ☑ **Model indicator** (`ComposerBar._ModelChip`, `SessionStatusSheet` model
+    row) → shows the real thread model (from `Thread.model`, falling back to the
+    agent label). ☐ The **selector** is still a no-op `onTap` (FOR-DEV) until a
+    model-change RPC exists.
+  - ☑ **Context badge** (`ComposerBar._ContextBadge`, status-sheet context row)
+    → hidden / shown as a neutral `—` placeholder while the bridge does not
+    report token usage (no fabricated fraction). ☐ Wire real usage from
+    `bridge/status` or turn usage when available.
+  - ◑ **Approval mode** (`ApprovalModeSheet`) → now an explicit local per-thread
+    setting (no sampled value). ☐ Read/persist via an access-mode RPC when one
+    exists.
+  - ☑ **Git branch / remote / local** (`_EnvironmentChip`, status-sheet git
     section) → real values from `git/status` via `gitRepoStateProvider`; the
-    commit/push rows must call `GitActionManager.commit` / `.push` (manager and
-    providers now exist — see the Git section below).
-  - **Attach** (`ComposerBar` add button) → file/image picker → upload as
-    `ImageContent` / attachment.
-  - **Voice** (`ComposerBar` mic button) → speech-to-text into the composer.
-  - Remove `SessionEnvironment.sample()`, `demo_seed.dart` and the home preview
-    entry once the above are wired.
+    commit/push rows call `GitActionManager.commit` / `.push` against the active
+    thread's `cwd`.
+  - ☐ **Attach** (`ComposerBar` add button) → file/image picker → upload as
+    `ImageContent` / attachment. Currently a disabled placeholder (FOR-DEV).
+  - ☐ **Voice** (`ComposerBar` mic button) → speech-to-text into the composer.
+    Currently a disabled placeholder (FOR-DEV).
+  - ☑ Removed `SessionEnvironment.sample()`, `demo_seed.dart` and the home
+    preview entry from the default UX.
 
 ## Git
 
@@ -123,8 +129,10 @@ Deferred implementation work (code the team/agent will do later). Distinct from
   confirm field names/types once the bridge git handler is reachable. Same for
   the `git/commit` (`sha`, `message`) and `git/push` (`branch`, `remote`)
   results and the `stream/git/progress` (`phase`, `status`) params.
-- ☐ **Resolve the active `cwd`** — git RPCs need the workspace directory; wire
-  it from the active thread's `cwd`/`worktreePath` instead of a placeholder.
+- ☑ **Resolve the active `cwd`** — DONE: `ConversationScreen` reads the active
+  thread's `cwd` (via `threadByIdProvider`) and drives
+  `GitActionManager.refreshStatus(cwd)` + `GitActionsSheet`. `worktreePath`
+  fallback can be added when worktree-backed threads land.
 - ☐ **Extended git actions** — `pull`, `checkout`, `createBranch`,
   `createWorktree` (+ managed), `revert`, `stackedPublish` (commit+push+PR) per
   spec 02a §5.2.4 / §5.5; only `status`/`commit`/`push` are wired in the MVP.
@@ -135,10 +143,11 @@ Deferred implementation work (code the team/agent will do later). Distinct from
   `gitActionHistoryProvider`. Reviewable via `GitRepoState.sample()` (FOR-DEV
   preview) — in preview mode push runs a local phase animation and commit is a
   visual-only flow.
-- ☐ **Wire the git UI to a live session** — drop the `previewState` /
-  `_simulatePush` FOR-DEV paths and pass a real `cwd` (from the active thread)
-  so `GitActionsSheet` reads `gitRepoStateProvider` and runs real commit/push.
-  Remove `GitRepoState.sample()` once wired.
+- ☑ **Wire the git UI to a live session** — DONE: dropped the `previewState` /
+  `_simulatePush` FOR-DEV paths; `GitActionsSheet` reads `gitRepoStateProvider`
+  and runs real commit/push against the active thread's `cwd`. `GitRepoState.
+  sample()` is no longer used by the UI (retained only as a widget-test fixture;
+  remove if the test is reworked).
 - ☐ **Per-file diff viewer** — `conversation/git/diff_viewer.dart` (spec 02a
   §5.6) needs the `git/diff` RPC (not in the MVP manager); the changed-files
   list currently shows only per-file +/- counts from `git/status`.

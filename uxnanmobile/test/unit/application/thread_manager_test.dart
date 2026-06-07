@@ -57,16 +57,35 @@ void main() {
       domainEvents: events.stream,
       sendRequest: (method, [params]) async {
         sentMethods.add(method);
-        final result = method == 'thread/list'
-            ? [
-                {
-                  'id': 'th1',
-                  'title': 'Thread 1',
-                  'agentId': 'codex',
-                  'status': 'active',
-                },
-              ]
-            : <String, dynamic>{};
+        final result = switch (method) {
+          'thread/list' => [
+              {
+                'id': 'th1',
+                'title': 'Thread 1',
+                'agentId': 'codex',
+                'status': 'active',
+                'model': 'gpt-5',
+              },
+            ],
+          'project/list' => [
+              {'id': 'p1', 'name': 'App', 'cwd': '/projects/app'},
+            ],
+          'agent/list' => {
+              'agents': [
+                {'agentId': 'codex', 'displayName': 'Codex', 'available': true},
+              ],
+            },
+          'thread/start' => {
+              'id': 'th-new',
+              'title': params?['title'] ?? 'New',
+              'agentId': params?['agentId'] ?? 'custom',
+              'projectId': params?['projectId'],
+              'cwd': params?['cwd'],
+              'model': params?['model'],
+              'status': 'active',
+            },
+          _ => <String, dynamic>{},
+        };
         return RpcMessage.response(id: '1', result: result);
       },
     );
@@ -131,12 +150,47 @@ void main() {
     expect(manager.timeline.isStreaming, isFalse);
   });
 
-  test('loadThreads parses and persists the thread list', () async {
+  test('loadThreads parses and persists the thread list (incl. model)',
+      () async {
     await manager.loadThreads();
     final threads = await threadRepo.getThreads();
     expect(threads.map((t) => t.id).toList(), ['th1']);
     expect(threads.single.title, 'Thread 1');
+    expect(threads.single.model, 'gpt-5');
     expect(sentMethods, contains('thread/list'));
+  });
+
+  test('loadProjects parses the project list', () async {
+    final projects = await manager.loadProjects();
+    expect(projects.single.id, 'p1');
+    expect(projects.single.cwd, '/projects/app');
+    expect(sentMethods, contains('project/list'));
+  });
+
+  test('loadAgents parses the agent list', () async {
+    final agents = await manager.loadAgents();
+    expect(agents.single.agentId, 'codex');
+    expect(agents.single.available, isTrue);
+    expect(sentMethods, contains('agent/list'));
+  });
+
+  test('startThread sends thread/start and persists the result', () async {
+    final thread = await manager.startThread(
+      projectId: 'p1',
+      title: 'My thread',
+      agentId: 'codex',
+      model: 'gpt-5',
+      cwd: '/projects/app',
+    );
+    expect(thread.id, 'th-new');
+    expect(thread.agentId, 'codex');
+    expect(thread.cwd, '/projects/app');
+    expect(thread.model, 'gpt-5');
+    expect(sentMethods, contains('thread/start'));
+
+    final persisted = await threadRepo.getThread('th-new');
+    expect(persisted, isNotNull);
+    expect(persisted!.model, 'gpt-5');
   });
 
   test('sendUserMessage persists locally and sends turn/send', () async {

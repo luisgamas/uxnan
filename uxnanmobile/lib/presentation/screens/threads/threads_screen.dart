@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -11,6 +13,7 @@ import 'package:uxnan/domain/enums/thread_status.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
+import 'package:uxnan/presentation/screens/threads/new_conversation_sheet.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/agent_logo_chip.dart';
@@ -46,6 +49,13 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
     }
   }
 
+  Future<void> _newConversation() async {
+    final threadId = await NewConversationSheet.show(context);
+    if (threadId == null || !mounted) return;
+    await ref.read(threadManagerProvider).loadThreads();
+    if (mounted) unawaited(context.push(AppRoutes.conversation(threadId)));
+  }
+
   String _title(List<TrustedDevice> devices) {
     for (final device in devices) {
       if (device.macDeviceId == widget.deviceId) return device.displayName;
@@ -69,7 +79,18 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
             )
             .toList();
 
+    final l10n = AppLocalizations.of(context);
+
     return Scaffold(
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed:
+            phase == ConnectionPhase.connected ? _newConversation : null,
+        icon: const Icon(Icons.add_comment_outlined),
+        label: Text(l10n.newThreadAction),
+        backgroundColor: phase == ConnectionPhase.connected
+            ? null
+            : Theme.of(context).colorScheme.surfaceContainerHighest,
+      ),
       body: RefreshIndicator(
         onRefresh: _refresh,
         child: CustomScrollView(

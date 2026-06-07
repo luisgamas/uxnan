@@ -7,9 +7,9 @@ import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/screens/conversation/git/commit_sheet.dart';
 import 'package:uxnan/presentation/screens/conversation/git/git_actions_sheet.dart';
 
-Widget _wrap(Widget child) => ProviderScope(
+Widget _wrap(Widget child, {GitRepoState? state}) => ProviderScope(
       overrides: [
-        gitRepoStateProvider.overrideWith((ref) => Stream.value(null)),
+        gitRepoStateProvider.overrideWith((ref) => Stream.value(state)),
         gitActiveActionProvider.overrideWith((ref) => Stream.value(null)),
       ],
       child: MaterialApp(
@@ -20,10 +20,10 @@ Widget _wrap(Widget child) => ProviderScope(
     );
 
 void main() {
-  testWidgets('GitActionsSheet renders branch, files and actions from preview',
+  testWidgets('GitActionsSheet renders branch, files and actions from state',
       (tester) async {
     await tester.pumpWidget(
-      _wrap(GitActionsSheet(previewState: GitRepoState.sample())),
+      _wrap(const GitActionsSheet(), state: GitRepoState.sample()),
     );
     await tester.pump();
 

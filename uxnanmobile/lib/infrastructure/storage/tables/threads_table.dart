@@ -21,6 +21,9 @@ class ThreadsTable extends Table {
   /// Wire identifier of the handling agent.
   TextColumn get agentId => text()();
 
+  /// Model the agent runs (bridge id / display name), if known.
+  TextColumn get model => text().nullable()();
+
   /// `ThreadSyncState` serialized as its enum name.
   TextColumn get syncState => text()();
 

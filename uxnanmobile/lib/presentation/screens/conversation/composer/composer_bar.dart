@@ -114,22 +114,28 @@ class _ComposerBarState extends State<ComposerBar> {
               const SizedBox(height: UxnanSpacing.sm),
               Row(
                 children: [
+                  // FOR-DEV: attach is a placeholder (no file/image picker yet).
                   _RoundIconButton(
                     icon: Icons.add_rounded,
                     tooltip: l10n.composerAttach,
-                    onPressed: () {},
+                    onPressed: null,
                   ),
                   const SizedBox(width: UxnanSpacing.xs),
                   Flexible(
                     child: _ModelChip(model: widget.environment.modelName),
                   ),
                   const Spacer(),
-                  _ContextBadge(percent: widget.environment.contextPercent),
-                  const SizedBox(width: UxnanSpacing.xs),
+                  // The badge is hidden until the bridge reports real token
+                  // usage (no fabricated percentage).
+                  if (widget.environment.hasContext) ...[
+                    _ContextBadge(percent: widget.environment.contextPercent),
+                    const SizedBox(width: UxnanSpacing.xs),
+                  ],
+                  // FOR-DEV: voice input is a placeholder (no speech-to-text).
                   _RoundIconButton(
                     icon: Icons.mic_none_rounded,
                     tooltip: l10n.composerVoice,
-                    onPressed: () {},
+                    onPressed: null,
                   ),
                   const SizedBox(width: UxnanSpacing.xs),
                   _SendButton(enabled: canSend, onPressed: _send),
@@ -152,7 +158,7 @@ class _RoundIconButton extends StatelessWidget {
 
   final IconData icon;
   final String tooltip;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {

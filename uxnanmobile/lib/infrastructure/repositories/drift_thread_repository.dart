@@ -40,6 +40,7 @@ class DriftThreadRepository implements IThreadRepository {
             cwd: Value(thread.cwd),
             worktreePath: Value(thread.worktreePath),
             agentId: Value(thread.agentId),
+            model: Value(thread.model),
             syncState: Value(thread.syncState.name),
             status: Value(thread.status.name),
             lastActivityMs: Value(thread.lastActivity?.millisecondsSinceEpoch),
@@ -70,6 +71,7 @@ class DriftThreadRepository implements IThreadRepository {
         cwd: row.cwd,
         worktreePath: row.worktreePath,
         agentId: row.agentId,
+        model: row.model,
         syncState: ThreadSyncState.values.byName(row.syncState),
         status: ThreadStatus.values.byName(row.status),
         lastActivity: row.lastActivityMs != null

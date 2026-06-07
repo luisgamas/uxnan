@@ -4,7 +4,9 @@ import 'package:collection/collection.dart';
 import 'package:rxdart/rxdart.dart';
 import 'package:uuid/uuid.dart';
 import 'package:uxnan/application/processors/domain_event.dart';
+import 'package:uxnan/domain/entities/agent_descriptor.dart';
 import 'package:uxnan/domain/entities/message.dart';
+import 'package:uxnan/domain/entities/project.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/enums/message_delivery_state.dart';
 import 'package:uxnan/domain/enums/message_role.dart';
@@ -85,6 +87,64 @@ class ThreadManager {
         );
       }
     }
+  }
+
+  /// Loads the bridge's project list (`project/list`).
+  Future<List<Project>> loadProjects() async {
+    final response = await _sendRequest('project/list');
+    final result = response.result;
+    if (result is! List) return const [];
+    return [
+      for (final raw in result)
+        if (raw is Map) Project.fromJson(raw.cast<String, dynamic>()),
+    ];
+  }
+
+  /// Loads the bridge's agent list (`agent/list`).
+  Future<List<AgentDescriptor>> loadAgents() async {
+    final response = await _sendRequest('agent/list');
+    final result = response.result;
+    final agents = result is Map ? result['agents'] : null;
+    if (agents is! List) return const [];
+    return [
+      for (final raw in agents)
+        if (raw is Map) AgentDescriptor.fromJson(raw.cast<String, dynamic>()),
+    ];
+  }
+
+  /// Starts a new thread (`thread/start`) for [projectId], optionally overriding
+  /// the agent/model/title/cwd, persists it locally and returns it.
+  Future<Thread> startThread({
+    required String projectId,
+    String? title,
+    String? agentId,
+    String? model,
+    String? cwd,
+  }) async {
+    final response = await _sendRequest('thread/start', {
+      'projectId': projectId,
+      if (title != null && title.isNotEmpty) 'title': title,
+      if (agentId != null) 'agentId': agentId,
+      if (model != null && model.isNotEmpty) 'model': model,
+      if (cwd != null && cwd.isNotEmpty) 'cwd': cwd,
+    });
+    final result = response.result;
+    final json = result is Map ? result.cast<String, dynamic>() : null;
+    final thread = json != null
+        ? _parseThread(json)
+        : Thread(
+            id: _uuid.v4(),
+            title: title ?? projectId,
+            agentId: agentId ?? 'custom',
+            projectId: projectId,
+            cwd: cwd,
+            model: model,
+            syncState: ThreadSyncState.synced,
+            status: ThreadStatus.active,
+            lastActivity: DateTime.now(),
+          );
+    await _threadRepository.saveThread(thread);
+    return thread;
   }
 
   /// Selects [threadId] as active and (re)builds its timeline from local
@@ -193,6 +253,7 @@ class ThreadManager {
       projectId: json['projectId'] as String?,
       cwd: json['cwd'] as String?,
       worktreePath: json['worktreePath'] as String?,
+      model: json['model'] as String?,
       syncState: ThreadSyncState.synced,
       status: _parseStatus(json['status'] as String?),
       lastActivity: lastActivity is int

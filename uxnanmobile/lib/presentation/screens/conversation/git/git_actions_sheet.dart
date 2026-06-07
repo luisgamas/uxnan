@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/domain/entities/git/git_action_log_entry.dart';
 import 'package:uxnan/domain/entities/git/git_repo_state.dart';
-import 'package:uxnan/domain/enums/git_action_kind.dart';
 import 'package:uxnan/domain/enums/git_action_phase_status.dart';
 import 'package:uxnan/domain/enums/git_file_status.dart';
 import 'package:uxnan/domain/value_objects/git/git_action_io.dart';
@@ -19,32 +18,27 @@ import 'package:uxnan/presentation/theme/typography.dart';
 /// actions with live push progress, and recent activity. Modeled on the
 /// desktop apps' source-control view and the conversation status sheet.
 ///
-/// In a connected session pass the workspace [cwd]; for on-device review pass a
-/// [previewState] (FOR-DEV) so the panel is populated without a bridge.
+/// Pass the active thread's workspace [cwd]; the panel reads
+/// `gitRepoStateProvider` (fed by `git/status`) and runs real commit/push.
 class GitActionsSheet extends ConsumerStatefulWidget {
   /// Creates a [GitActionsSheet].
   const GitActionsSheet({
     this.cwd,
     this.threadId,
-    this.previewState,
     super.key,
   });
 
-  /// Workspace directory the git actions run in; null in preview mode.
+  /// Workspace directory the git actions run in; null when unknown.
   final String? cwd;
 
   /// Owning thread, used to record and read action history.
   final String? threadId;
-
-  /// Sample state shown when there is no live repo state (FOR-DEV preview).
-  final GitRepoState? previewState;
 
   /// Shows the sheet.
   static Future<void> show(
     BuildContext context, {
     String? cwd,
     String? threadId,
-    GitRepoState? previewState,
   }) {
     return showModalBottomSheet<void>(
       context: context,
@@ -53,7 +47,6 @@ class GitActionsSheet extends ConsumerStatefulWidget {
       builder: (_) => GitActionsSheet(
         cwd: cwd,
         threadId: threadId,
-        previewState: previewState,
       ),
     );
   }
@@ -64,9 +57,6 @@ class GitActionsSheet extends ConsumerStatefulWidget {
 
 class _GitActionsSheetState extends ConsumerState<GitActionsSheet> {
   bool _busy = false;
-  GitActionProgress? _previewProgress;
-
-  bool get _isPreview => widget.cwd == null;
 
   @override
   void initState() {
@@ -83,7 +73,7 @@ class _GitActionsSheetState extends ConsumerState<GitActionsSheet> {
     final message = await CommitSheet.show(context);
     if (message == null || !mounted) return;
     final cwd = widget.cwd;
-    if (cwd == null) return; // Preview: visual flow only (FOR-DEV).
+    if (cwd == null) return;
     await _guard(
       () => ref.read(gitActionManagerProvider).commit(
             GitCommitParams(
@@ -98,10 +88,7 @@ class _GitActionsSheetState extends ConsumerState<GitActionsSheet> {
 
   Future<void> _push(GitRepoState state) async {
     final cwd = widget.cwd;
-    if (cwd == null) {
-      await _simulatePush(); // Preview: animate the progress UI (FOR-DEV).
-      return;
-    }
+    if (cwd == null) return;
     await _guard(
       () => ref.read(gitActionManagerProvider).push(
             GitPushParams(
@@ -126,27 +113,6 @@ class _GitActionsSheetState extends ConsumerState<GitActionsSheet> {
     }
   }
 
-  Future<void> _simulatePush() async {
-    const phases = ['resolving', 'counting', 'uploading'];
-    setState(() => _busy = true);
-    var progress = const GitActionProgress(kind: GitActionKind.push);
-    for (final phase in phases) {
-      progress = progress.withPhase(phase, GitActionPhaseStatus.running);
-      if (!mounted) return;
-      setState(() => _previewProgress = progress);
-      await Future<void>.delayed(const Duration(milliseconds: 700));
-    }
-    progress = progress.withPhase('uploading', GitActionPhaseStatus.completed);
-    if (!mounted) return;
-    setState(() {
-      _previewProgress = progress;
-      _busy = false;
-    });
-    _toast(AppLocalizations.of(context).gitPushSuccess);
-    await Future<void>.delayed(const Duration(milliseconds: 900));
-    if (mounted) setState(() => _previewProgress = null);
-  }
-
   void _toast(String message) {
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
@@ -156,9 +122,8 @@ class _GitActionsSheetState extends ConsumerState<GitActionsSheet> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final state = ref.watch(gitRepoStateProvider).value ?? widget.previewState;
-    final progress =
-        ref.watch(gitActiveActionProvider).value ?? _previewProgress;
+    final state = ref.watch(gitRepoStateProvider).value;
+    final progress = ref.watch(gitActiveActionProvider).value;
     final history = widget.threadId == null
         ? const <GitActionLogEntry>[]
         : ref.watch(gitActionHistoryProvider(widget.threadId!)).value ??
@@ -194,8 +159,7 @@ class _GitActionsSheetState extends ConsumerState<GitActionsSheet> {
                     const SizedBox(height: UxnanSpacing.lg),
                     _Actions(
                       canCommit: state.isDirty && !_busy,
-                      canPush:
-                          (state.hasUnpushedCommits || _isPreview) && !_busy,
+                      canPush: state.hasUnpushedCommits && !_busy,
                       onCommit: () => _commit(state),
                       onPush: () => _push(state),
                     ),

@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -10,7 +8,6 @@ import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
-import 'package:uxnan/presentation/screens/conversation/demo_seed.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
@@ -415,28 +412,9 @@ class _PairEmptyState extends StatelessWidget {
               icon: const Icon(Icons.qr_code_scanner),
               label: Text(l10n.actionPairDevice),
             ),
-            const SizedBox(height: UxnanSpacing.sm),
-            // FOR-DEV: seeds a sample PC + threads so the devices → threads →
-            // conversation flow can be reviewed without a bridge. Remove with
-            // demo_seed.dart before release.
-            const _DemoSeedButton(),
           ],
         ),
       ),
-    );
-  }
-}
-
-class _DemoSeedButton extends ConsumerWidget {
-  const _DemoSeedButton();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final l10n = AppLocalizations.of(context);
-    return TextButton.icon(
-      onPressed: () => unawaited(seedDemoConversation(ref)),
-      icon: const Icon(Icons.science_outlined),
-      label: Text(l10n.conversationPreview),
     );
   }
 }

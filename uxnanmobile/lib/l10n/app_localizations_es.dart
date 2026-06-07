@@ -213,7 +213,52 @@ class AppLocalizationsEs extends AppLocalizations {
   String get composerVoice => 'Entrada de voz';
 
   @override
-  String get conversationPreview => 'Vista previa de conversación (demo)';
+  String get newThreadAction => 'Nueva conversación';
+
+  @override
+  String get newThreadTitle => 'Nueva conversación';
+
+  @override
+  String get newThreadProject => 'Proyecto';
+
+  @override
+  String get newThreadAgent => 'Agente';
+
+  @override
+  String get newThreadModel => 'Modelo (opcional)';
+
+  @override
+  String get newThreadModelHint => 'Modelo predeterminado';
+
+  @override
+  String get newThreadStart => 'Iniciar conversación';
+
+  @override
+  String get newThreadFailed => 'No se pudo iniciar la conversación';
+
+  @override
+  String get newThreadLoadFailed => 'No se pudo cargar desde el bridge';
+
+  @override
+  String get newThreadNoProjects => 'No hay proyectos disponibles en esta PC.';
+
+  @override
+  String get newThreadNoAgents => 'No hay agentes disponibles en esta PC.';
+
+  @override
+  String get newThreadAgentUnavailable => 'No disponible';
+
+  @override
+  String get newThreadCapStreaming => 'Streaming';
+
+  @override
+  String get newThreadCapPlan => 'Modo plan';
+
+  @override
+  String get newThreadCapApprovals => 'Aprobaciones';
+
+  @override
+  String get newThreadCapImages => 'Imágenes';
 
   @override
   String get environmentTitle => 'Entorno';

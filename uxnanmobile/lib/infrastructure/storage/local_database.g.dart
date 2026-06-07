@@ -42,6 +42,11 @@ class $ThreadsTableTable extends ThreadsTable
   late final GeneratedColumn<String> agentId = GeneratedColumn<String>(
       'agent_id', aliasedName, false,
       type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _modelMeta = const VerificationMeta('model');
+  @override
+  late final GeneratedColumn<String> model = GeneratedColumn<String>(
+      'model', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   static const VerificationMeta _syncStateMeta =
       const VerificationMeta('syncState');
   @override
@@ -73,6 +78,7 @@ class $ThreadsTableTable extends ThreadsTable
         cwd,
         worktreePath,
         agentId,
+        model,
         syncState,
         status,
         lastActivityMs,
@@ -118,6 +124,10 @@ class $ThreadsTableTable extends ThreadsTable
           agentId.isAcceptableOrUnknown(data['agent_id']!, _agentIdMeta));
     } else if (isInserting) {
       context.missing(_agentIdMeta);
+    }
+    if (data.containsKey('model')) {
+      context.handle(
+          _modelMeta, model.isAcceptableOrUnknown(data['model']!, _modelMeta));
     }
     if (data.containsKey('sync_state')) {
       context.handle(_syncStateMeta,
@@ -166,6 +176,8 @@ class $ThreadsTableTable extends ThreadsTable
           .read(DriftSqlType.string, data['${effectivePrefix}worktree_path']),
       agentId: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}agent_id'])!,
+      model: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}model']),
       syncState: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}sync_state'])!,
       status: attachedDatabase.typeMapping
@@ -202,6 +214,9 @@ class ThreadRow extends DataClass implements Insertable<ThreadRow> {
   /// Wire identifier of the handling agent.
   final String agentId;
 
+  /// Model the agent runs (bridge id / display name), if known.
+  final String? model;
+
   /// `ThreadSyncState` serialized as its enum name.
   final String syncState;
 
@@ -220,6 +235,7 @@ class ThreadRow extends DataClass implements Insertable<ThreadRow> {
       this.cwd,
       this.worktreePath,
       required this.agentId,
+      this.model,
       required this.syncState,
       required this.status,
       this.lastActivityMs,
@@ -239,6 +255,9 @@ class ThreadRow extends DataClass implements Insertable<ThreadRow> {
       map['worktree_path'] = Variable<String>(worktreePath);
     }
     map['agent_id'] = Variable<String>(agentId);
+    if (!nullToAbsent || model != null) {
+      map['model'] = Variable<String>(model);
+    }
     map['sync_state'] = Variable<String>(syncState);
     map['status'] = Variable<String>(status);
     if (!nullToAbsent || lastActivityMs != null) {
@@ -260,6 +279,8 @@ class ThreadRow extends DataClass implements Insertable<ThreadRow> {
           ? const Value.absent()
           : Value(worktreePath),
       agentId: Value(agentId),
+      model:
+          model == null && nullToAbsent ? const Value.absent() : Value(model),
       syncState: Value(syncState),
       status: Value(status),
       lastActivityMs: lastActivityMs == null && nullToAbsent
@@ -279,6 +300,7 @@ class ThreadRow extends DataClass implements Insertable<ThreadRow> {
       cwd: serializer.fromJson<String?>(json['cwd']),
       worktreePath: serializer.fromJson<String?>(json['worktreePath']),
       agentId: serializer.fromJson<String>(json['agentId']),
+      model: serializer.fromJson<String?>(json['model']),
       syncState: serializer.fromJson<String>(json['syncState']),
       status: serializer.fromJson<String>(json['status']),
       lastActivityMs: serializer.fromJson<int?>(json['lastActivityMs']),
@@ -295,6 +317,7 @@ class ThreadRow extends DataClass implements Insertable<ThreadRow> {
       'cwd': serializer.toJson<String?>(cwd),
       'worktreePath': serializer.toJson<String?>(worktreePath),
       'agentId': serializer.toJson<String>(agentId),
+      'model': serializer.toJson<String?>(model),
       'syncState': serializer.toJson<String>(syncState),
       'status': serializer.toJson<String>(status),
       'lastActivityMs': serializer.toJson<int?>(lastActivityMs),
@@ -309,6 +332,7 @@ class ThreadRow extends DataClass implements Insertable<ThreadRow> {
           Value<String?> cwd = const Value.absent(),
           Value<String?> worktreePath = const Value.absent(),
           String? agentId,
+          Value<String?> model = const Value.absent(),
           String? syncState,
           String? status,
           Value<int?> lastActivityMs = const Value.absent(),
@@ -321,6 +345,7 @@ class ThreadRow extends DataClass implements Insertable<ThreadRow> {
         worktreePath:
             worktreePath.present ? worktreePath.value : this.worktreePath,
         agentId: agentId ?? this.agentId,
+        model: model.present ? model.value : this.model,
         syncState: syncState ?? this.syncState,
         status: status ?? this.status,
         lastActivityMs:
@@ -337,6 +362,7 @@ class ThreadRow extends DataClass implements Insertable<ThreadRow> {
           ? data.worktreePath.value
           : this.worktreePath,
       agentId: data.agentId.present ? data.agentId.value : this.agentId,
+      model: data.model.present ? data.model.value : this.model,
       syncState: data.syncState.present ? data.syncState.value : this.syncState,
       status: data.status.present ? data.status.value : this.status,
       lastActivityMs: data.lastActivityMs.present
@@ -356,6 +382,7 @@ class ThreadRow extends DataClass implements Insertable<ThreadRow> {
           ..write('cwd: $cwd, ')
           ..write('worktreePath: $worktreePath, ')
           ..write('agentId: $agentId, ')
+          ..write('model: $model, ')
           ..write('syncState: $syncState, ')
           ..write('status: $status, ')
           ..write('lastActivityMs: $lastActivityMs, ')
@@ -366,7 +393,7 @@ class ThreadRow extends DataClass implements Insertable<ThreadRow> {
 
   @override
   int get hashCode => Object.hash(id, title, projectId, cwd, worktreePath,
-      agentId, syncState, status, lastActivityMs, createdAtMs);
+      agentId, model, syncState, status, lastActivityMs, createdAtMs);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -377,6 +404,7 @@ class ThreadRow extends DataClass implements Insertable<ThreadRow> {
           other.cwd == this.cwd &&
           other.worktreePath == this.worktreePath &&
           other.agentId == this.agentId &&
+          other.model == this.model &&
           other.syncState == this.syncState &&
           other.status == this.status &&
           other.lastActivityMs == this.lastActivityMs &&
@@ -390,6 +418,7 @@ class ThreadsTableCompanion extends UpdateCompanion<ThreadRow> {
   final Value<String?> cwd;
   final Value<String?> worktreePath;
   final Value<String> agentId;
+  final Value<String?> model;
   final Value<String> syncState;
   final Value<String> status;
   final Value<int?> lastActivityMs;
@@ -402,6 +431,7 @@ class ThreadsTableCompanion extends UpdateCompanion<ThreadRow> {
     this.cwd = const Value.absent(),
     this.worktreePath = const Value.absent(),
     this.agentId = const Value.absent(),
+    this.model = const Value.absent(),
     this.syncState = const Value.absent(),
     this.status = const Value.absent(),
     this.lastActivityMs = const Value.absent(),
@@ -415,6 +445,7 @@ class ThreadsTableCompanion extends UpdateCompanion<ThreadRow> {
     this.cwd = const Value.absent(),
     this.worktreePath = const Value.absent(),
     required String agentId,
+    this.model = const Value.absent(),
     required String syncState,
     required String status,
     this.lastActivityMs = const Value.absent(),
@@ -433,6 +464,7 @@ class ThreadsTableCompanion extends UpdateCompanion<ThreadRow> {
     Expression<String>? cwd,
     Expression<String>? worktreePath,
     Expression<String>? agentId,
+    Expression<String>? model,
     Expression<String>? syncState,
     Expression<String>? status,
     Expression<int>? lastActivityMs,
@@ -446,6 +478,7 @@ class ThreadsTableCompanion extends UpdateCompanion<ThreadRow> {
       if (cwd != null) 'cwd': cwd,
       if (worktreePath != null) 'worktree_path': worktreePath,
       if (agentId != null) 'agent_id': agentId,
+      if (model != null) 'model': model,
       if (syncState != null) 'sync_state': syncState,
       if (status != null) 'status': status,
       if (lastActivityMs != null) 'last_activity_ms': lastActivityMs,
@@ -461,6 +494,7 @@ class ThreadsTableCompanion extends UpdateCompanion<ThreadRow> {
       Value<String?>? cwd,
       Value<String?>? worktreePath,
       Value<String>? agentId,
+      Value<String?>? model,
       Value<String>? syncState,
       Value<String>? status,
       Value<int?>? lastActivityMs,
@@ -473,6 +507,7 @@ class ThreadsTableCompanion extends UpdateCompanion<ThreadRow> {
       cwd: cwd ?? this.cwd,
       worktreePath: worktreePath ?? this.worktreePath,
       agentId: agentId ?? this.agentId,
+      model: model ?? this.model,
       syncState: syncState ?? this.syncState,
       status: status ?? this.status,
       lastActivityMs: lastActivityMs ?? this.lastActivityMs,
@@ -502,6 +537,9 @@ class ThreadsTableCompanion extends UpdateCompanion<ThreadRow> {
     if (agentId.present) {
       map['agent_id'] = Variable<String>(agentId.value);
     }
+    if (model.present) {
+      map['model'] = Variable<String>(model.value);
+    }
     if (syncState.present) {
       map['sync_state'] = Variable<String>(syncState.value);
     }
@@ -529,6 +567,7 @@ class ThreadsTableCompanion extends UpdateCompanion<ThreadRow> {
           ..write('cwd: $cwd, ')
           ..write('worktreePath: $worktreePath, ')
           ..write('agentId: $agentId, ')
+          ..write('model: $model, ')
           ..write('syncState: $syncState, ')
           ..write('status: $status, ')
           ..write('lastActivityMs: $lastActivityMs, ')
@@ -3042,6 +3081,7 @@ typedef $$ThreadsTableTableCreateCompanionBuilder = ThreadsTableCompanion
   Value<String?> cwd,
   Value<String?> worktreePath,
   required String agentId,
+  Value<String?> model,
   required String syncState,
   required String status,
   Value<int?> lastActivityMs,
@@ -3056,6 +3096,7 @@ typedef $$ThreadsTableTableUpdateCompanionBuilder = ThreadsTableCompanion
   Value<String?> cwd,
   Value<String?> worktreePath,
   Value<String> agentId,
+  Value<String?> model,
   Value<String> syncState,
   Value<String> status,
   Value<int?> lastActivityMs,
@@ -3089,6 +3130,9 @@ class $$ThreadsTableTableFilterComposer
 
   ColumnFilters<String> get agentId => $composableBuilder(
       column: $table.agentId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get model => $composableBuilder(
+      column: $table.model, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get syncState => $composableBuilder(
       column: $table.syncState, builder: (column) => ColumnFilters(column));
@@ -3132,6 +3176,9 @@ class $$ThreadsTableTableOrderingComposer
   ColumnOrderings<String> get agentId => $composableBuilder(
       column: $table.agentId, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<String> get model => $composableBuilder(
+      column: $table.model, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<String> get syncState => $composableBuilder(
       column: $table.syncState, builder: (column) => ColumnOrderings(column));
 
@@ -3172,6 +3219,9 @@ class $$ThreadsTableTableAnnotationComposer
 
   GeneratedColumn<String> get agentId =>
       $composableBuilder(column: $table.agentId, builder: (column) => column);
+
+  GeneratedColumn<String> get model =>
+      $composableBuilder(column: $table.model, builder: (column) => column);
 
   GeneratedColumn<String> get syncState =>
       $composableBuilder(column: $table.syncState, builder: (column) => column);
@@ -3215,6 +3265,7 @@ class $$ThreadsTableTableTableManager extends RootTableManager<
             Value<String?> cwd = const Value.absent(),
             Value<String?> worktreePath = const Value.absent(),
             Value<String> agentId = const Value.absent(),
+            Value<String?> model = const Value.absent(),
             Value<String> syncState = const Value.absent(),
             Value<String> status = const Value.absent(),
             Value<int?> lastActivityMs = const Value.absent(),
@@ -3228,6 +3279,7 @@ class $$ThreadsTableTableTableManager extends RootTableManager<
             cwd: cwd,
             worktreePath: worktreePath,
             agentId: agentId,
+            model: model,
             syncState: syncState,
             status: status,
             lastActivityMs: lastActivityMs,
@@ -3241,6 +3293,7 @@ class $$ThreadsTableTableTableManager extends RootTableManager<
             Value<String?> cwd = const Value.absent(),
             Value<String?> worktreePath = const Value.absent(),
             required String agentId,
+            Value<String?> model = const Value.absent(),
             required String syncState,
             required String status,
             Value<int?> lastActivityMs = const Value.absent(),
@@ -3254,6 +3307,7 @@ class $$ThreadsTableTableTableManager extends RootTableManager<
             cwd: cwd,
             worktreePath: worktreePath,
             agentId: agentId,
+            model: model,
             syncState: syncState,
             status: status,
             lastActivityMs: lastActivityMs,

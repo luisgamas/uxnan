@@ -8,6 +8,40 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **MVP wiring — real bridge data + new-conversation flow** — spec 02a §5.2 /
+  §5.4 / §5.6:
+  - `Thread` entity now carries `model` (alongside `agentId`/`cwd`), parsed from
+    `thread/list` / `thread/start` and persisted (drift schema → v2, additive
+    `threads.model` column + migration).
+  - New bridge catalog entities `Project` (`project/list`) and `AgentDescriptor`
+    + `AgentCapabilities` (`agent/list`) with tolerant parsers; `ThreadManager`
+    gains `loadProjects`, `loadAgents` and `startThread` (`thread/start`).
+    Providers: `projectsProvider`, `agentsProvider`, `threadByIdProvider`.
+  - **New-conversation flow**: a "New conversation" / "Nueva conversación" FAB on
+    the threads screen opens `NewConversationSheet` (M3 bottom sheet matching the
+    existing `*_sheet.dart` patterns) to pick a project (name + cwd subtitle), an
+    agent (only `available` ones selectable, capability hints, `AgentLogoChip`/
+    `AgentVisuals` icon or a generic fallback) and an optional model (the agent's
+    `defaultModel` preselected); `thread/start` then navigates to the
+    conversation. FAB is disabled while disconnected.
+  - **Conversation wired to real data**: the model/agent indicator is driven by
+    the active `Thread`, connection state by `connectionPhaseProvider`, and the
+    git branch/state by `gitRepoStateProvider` fed with the thread's `cwd`
+    (refreshed via `GitActionManager.refreshStatus(cwd)`); `GitActionsSheet` runs
+    real commit/push against that `cwd`. Removed `SessionEnvironment.sample()`,
+    `GitRepoState.sample()` from the UI, and the `previewState` / `_simulatePush`
+    FOR-DEV git paths.
+  - **Composer/status controls**: the model indicator shows the real thread
+    model; the context badge is hidden until the bridge reports real token usage
+    (no fabricated 42%); approval mode is an explicit local per-thread setting
+    (FOR-DEV note, no sampled value); attach/voice stay disabled placeholders
+    (FOR-DEV).
+  - **Removed demo seeding** from the default UX: deleted `demo_seed.dart` and
+    the home preview button.
+  - Tests: `Project`/`AgentDescriptor` parsers, `ThreadManager` `loadProjects`/
+    `loadAgents`/`startThread`, the `model` thread round-trip, and updated
+    composer/git-sheet widget tests to the real-data shape.
+
 - **Conversation/timeline — application managers** — spec 02a §5.2.2 / §5.2.5:
   - `DomainEvent` hierarchy and `IncomingMessageProcessor` that classifies
     inbound bridge notifications (`stream/turn/started`, `stream/message/delta`,

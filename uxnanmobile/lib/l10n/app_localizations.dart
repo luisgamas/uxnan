@@ -476,11 +476,101 @@ abstract class AppLocalizations {
   /// **'Voice input'**
   String get composerVoice;
 
-  /// No description provided for @conversationPreview.
+  /// No description provided for @newThreadAction.
   ///
   /// In en, this message translates to:
-  /// **'Preview conversation (demo)'**
-  String get conversationPreview;
+  /// **'New conversation'**
+  String get newThreadAction;
+
+  /// No description provided for @newThreadTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'New conversation'**
+  String get newThreadTitle;
+
+  /// No description provided for @newThreadProject.
+  ///
+  /// In en, this message translates to:
+  /// **'Project'**
+  String get newThreadProject;
+
+  /// No description provided for @newThreadAgent.
+  ///
+  /// In en, this message translates to:
+  /// **'Agent'**
+  String get newThreadAgent;
+
+  /// No description provided for @newThreadModel.
+  ///
+  /// In en, this message translates to:
+  /// **'Model (optional)'**
+  String get newThreadModel;
+
+  /// No description provided for @newThreadModelHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Default model'**
+  String get newThreadModelHint;
+
+  /// No description provided for @newThreadStart.
+  ///
+  /// In en, this message translates to:
+  /// **'Start conversation'**
+  String get newThreadStart;
+
+  /// No description provided for @newThreadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t start the conversation'**
+  String get newThreadFailed;
+
+  /// No description provided for @newThreadLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load from the bridge'**
+  String get newThreadLoadFailed;
+
+  /// No description provided for @newThreadNoProjects.
+  ///
+  /// In en, this message translates to:
+  /// **'No projects available on this PC.'**
+  String get newThreadNoProjects;
+
+  /// No description provided for @newThreadNoAgents.
+  ///
+  /// In en, this message translates to:
+  /// **'No agents available on this PC.'**
+  String get newThreadNoAgents;
+
+  /// No description provided for @newThreadAgentUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Unavailable'**
+  String get newThreadAgentUnavailable;
+
+  /// No description provided for @newThreadCapStreaming.
+  ///
+  /// In en, this message translates to:
+  /// **'Streaming'**
+  String get newThreadCapStreaming;
+
+  /// No description provided for @newThreadCapPlan.
+  ///
+  /// In en, this message translates to:
+  /// **'Plan mode'**
+  String get newThreadCapPlan;
+
+  /// No description provided for @newThreadCapApprovals.
+  ///
+  /// In en, this message translates to:
+  /// **'Approvals'**
+  String get newThreadCapApprovals;
+
+  /// No description provided for @newThreadCapImages.
+  ///
+  /// In en, this message translates to:
+  /// **'Images'**
+  String get newThreadCapImages;
 
   /// No description provided for @environmentTitle.
   ///

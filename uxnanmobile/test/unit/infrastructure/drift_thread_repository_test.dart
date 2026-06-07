@@ -47,6 +47,14 @@ void main() {
       expect(await repo.getThread('missing'), isNull);
     });
 
+    test('round-trips the model column', () async {
+      await repo.saveThread(
+        _thread('t1', lastActivityMs: 1).copyWith(model: 'gpt-5'),
+      );
+      final loaded = await repo.getThread('t1');
+      expect(loaded!.model, 'gpt-5');
+    });
+
     test('getThreads orders by last activity descending', () async {
       await repo.saveThread(_thread('old', lastActivityMs: 1000));
       await repo.saveThread(_thread('new', lastActivityMs: 2000));
