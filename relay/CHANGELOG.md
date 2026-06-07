@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — Phase 6 (push notifications, gated)
+- `POST /push/register` (stores a device token per session, returns a
+  `notificationSecret`) and `POST /push/notify` (validates the secret, dedupes by
+  `(sessionId,turnId)`, fans out to the session's tokens). `PushRegistry` +
+  `PushSender` seam: `NoopPushSender` by default; a lazy `firebase-admin` FCM
+  sender activates only when `UXNAN_FCM_SERVICE_ACCOUNT` is set
+  (`firebase-admin` is an optionalDependency). Unit-tested with a fake sender.
+
 ### Added — Phase 3
 - Per-IP fixed-window rate limiting for HTTP requests and WebSocket upgrades
   (defaults 120/min and 60/min; configurable via `RelayServerOptions.rateLimits`).
