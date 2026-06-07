@@ -140,53 +140,59 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
       body: Column(
         children: [
           Expanded(
-            child: CustomScrollView(
-              controller: _scroll,
-              physics: const BouncingScrollPhysics(
-                parent: AlwaysScrollableScrollPhysics(),
-              ),
-              slivers: [
-                SliverAppBar.large(
-                  floating: true,
-                  snap: true,
-                  title: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        thread?.title ?? l10n.conversationTitle,
-                        overflow: TextOverflow.ellipsis,
+            // Tapping the message area dismisses the keyboard (unfocus the
+            // composer); dragging still scrolls.
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTap: () => FocusScope.of(context).unfocus(),
+              child: CustomScrollView(
+                controller: _scroll,
+                physics: const BouncingScrollPhysics(
+                  parent: AlwaysScrollableScrollPhysics(),
+                ),
+                slivers: [
+                  SliverAppBar.large(
+                    floating: true,
+                    snap: true,
+                    title: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          thread?.title ?? l10n.conversationTitle,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        _ConnectionLabel(phase: phase),
+                      ],
+                    ),
+                    actions: [
+                      _EnvironmentChip(
+                        branch: environment.gitBranch,
+                        onTap: () => _openEnvironment(environment, cwd, thread),
                       ),
-                      _ConnectionLabel(phase: phase),
+                      const SizedBox(width: UxnanSpacing.md),
                     ],
                   ),
-                  actions: [
-                    _EnvironmentChip(
-                      branch: environment.gitBranch,
-                      onTap: () => _openEnvironment(environment, cwd, thread),
+                  if (snapshot == null)
+                    const SliverFillRemaining(
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  else if (snapshot.messages.isEmpty)
+                    const SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: _EmptyState(),
+                    )
+                  else
+                    SliverPadding(
+                      padding: const EdgeInsets.all(UxnanSpacing.lg),
+                      sliver: SliverList.builder(
+                        itemCount: snapshot.messages.length,
+                        itemBuilder: (context, index) =>
+                            MessageBubble(message: snapshot.messages[index]),
+                      ),
                     ),
-                    const SizedBox(width: UxnanSpacing.md),
-                  ],
-                ),
-                if (snapshot == null)
-                  const SliverFillRemaining(
-                    child: Center(child: CircularProgressIndicator()),
-                  )
-                else if (snapshot.messages.isEmpty)
-                  const SliverFillRemaining(
-                    hasScrollBody: false,
-                    child: _EmptyState(),
-                  )
-                else
-                  SliverPadding(
-                    padding: const EdgeInsets.all(UxnanSpacing.lg),
-                    sliver: SliverList.builder(
-                      itemCount: snapshot.messages.length,
-                      itemBuilder: (context, index) =>
-                          MessageBubble(message: snapshot.messages[index]),
-                    ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
           ComposerBar(

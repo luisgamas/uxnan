@@ -86,8 +86,12 @@ class _ModelPickerSheetState extends ConsumerState<ModelPickerSheet> {
             ),
             const SizedBox(height: UxnanSpacing.md),
             ConstrainedBox(
+              // Cap to half the space above the keyboard so the sheet never
+              // overflows; the list scrolls within it.
               constraints: BoxConstraints(
-                maxHeight: MediaQuery.sizeOf(context).height * 0.5,
+                maxHeight:
+                    ((MediaQuery.sizeOf(context).height - bottomInset) * 0.5)
+                        .clamp(140.0, MediaQuery.sizeOf(context).height),
               ),
               child: modelsAsync.when(
                 loading: () => const Padding(
