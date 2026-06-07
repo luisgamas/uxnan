@@ -1,0 +1,27 @@
+{
+  "name": "uxnan-monorepo",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Uxnan ecosystem — Node.js workspaces (shared contracts, bridge daemon, relay).",
+  "license": "UNLICENSED",
+  "workspaces": [
+    "shared",
+    "bridge",
+    "relay"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "npm run build -w @uxnan/shared && npm run build -w uxnan-relay && npm run build -w uxnan-bridge",
+    "typecheck": "npm run typecheck -w @uxnan/shared && npm run typecheck -w uxnan-relay && npm run typecheck -w uxnan-bridge",
+    "test": "npm run build && npm run test -w @uxnan/shared && npm run test -w uxnan-relay && npm run test -w uxnan-bridge",
+    "format": "prettier --write \"{shared,bridge,relay}/{src,test}/**/*.{ts,json}\"",
+    "format:check": "prettier --check \"{shared,bridge,relay}/{src,test}/**/*.{ts,json}\""
+  },
+  "devDependencies": {
+    "prettier": "^3.3.3",
+    "typescript": "^5.6.3",
+    "@types/node": "^22.7.5"
+  }
+}

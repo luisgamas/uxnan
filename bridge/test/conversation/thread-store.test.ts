@@ -1,0 +1,74 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { rm } from 'node:fs/promises';
+import { RpcError } from '@uxnan/shared';
+import { DaemonState, ThreadStore } from '../../src/index.js';
+
+function newStore(): { store: ThreadStore; baseDir: string } {
+  const baseDir = join(tmpdir(), `uxnan-ts-${randomUUID()}`);
+  return { store: new ThreadStore(new DaemonState(baseDir)), baseDir };
+}
+
+test('start/list/read threads', async () => {
+  const { store, baseDir } = newStore();
+  const created = await store.startThread('proj-1', 'Hello', 1000);
+  assert.equal(created.projectId, 'proj-1');
+  assert.equal(created.turnCount, 0);
+
+  const list = await store.listThreads('proj-1');
+  assert.equal(list.threads.length, 1);
+  assert.equal((await store.listThreads('other')).threads.length, 0);
+
+  const read = await store.getThread(created.id);
+  assert.equal(read.id, created.id);
+  await rm(baseDir, { recursive: true, force: true });
+});
+
+test('turn lifecycle: start, delta, complete', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread('p', undefined, 1);
+  const { turnId } = await store.startTurn(thread.id, 'ask', 2);
+
+  await store.appendDelta(thread.id, turnId, 'ans', 3);
+  await store.appendDelta(thread.id, turnId, 'wer', 4);
+  await store.completeTurn(thread.id, turnId, undefined, 5);
+
+  const turn = await store.getTurn(turnId);
+  assert.equal(turn.status, 'completed');
+  const assistant = turn.messages.find((m) => m.role === 'assistant');
+  assert.equal(assistant?.content, 'answer');
+  const user = turn.messages.find((m) => m.role === 'user');
+  assert.equal(user?.content, 'ask');
+  await rm(baseDir, { recursive: true, force: true });
+});
+
+test('listTurns paginates with a cursor', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread('p', undefined, 1);
+  for (let i = 0; i < 3; i += 1) {
+    await store.startTurn(thread.id, `q${i}`, 10 + i);
+  }
+  const page1 = await store.listTurns(thread.id, undefined, 2);
+  assert.equal(page1.turns.length, 2);
+  assert.equal(page1.nextCursor, '2');
+  const page2 = await store.listTurns(thread.id, page1.nextCursor, 2);
+  assert.equal(page2.turns.length, 1);
+  assert.equal(page2.nextCursor, undefined);
+  await rm(baseDir, { recursive: true, force: true });
+});
+
+test('fork copies a thread; unknown ids reject', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread('p', 'Orig', 1);
+  await store.startTurn(thread.id, 'q', 2);
+  const fork = await store.forkThread(thread.id, 3);
+  assert.notEqual(fork.id, thread.id);
+  assert.equal(fork.turnCount, 1);
+
+  await assert.rejects(store.getThread('nope'), RpcError);
+  await assert.rejects(store.getTurn('nope'), RpcError);
+  await rm(baseDir, { recursive: true, force: true });
+});

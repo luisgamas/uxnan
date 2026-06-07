@@ -1,0 +1,35 @@
+{
+  "name": "@uxnan/shared",
+  "version": "0.1.0",
+  "description": "Shared JSON-RPC and E2EE contracts for the Uxnan ecosystem (bridge, relay, mobile).",
+  "license": "UNLICENSED",
+  "type": "module",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    }
+  },
+  "files": [
+    "dist/src"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/luisgamas/uxnan.git",
+    "directory": "shared"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "tsc && node --test \"dist/test/**/*.test.js\"",
+    "prepublishOnly": "tsc"
+  },
+  "dependencies": {
+    "ajv": "^8.17.1"
+  }
+}

@@ -5,6 +5,10 @@ node_modules/
 build/
 target/
 
+# TypeScript / Node build output
+dist/
+*.tsbuildinfo
+
 # Environment and secrets
 .env
 .env.*
@@ -14,6 +18,9 @@ credentials.json
 *.key
 *.p12
 *.jks
+# Bridge identity / daemon secrets (never committed; live under ~/.uxnan)
+secure-device-state.json
+trusted-phones.json
 
 # IDE
 .idea/

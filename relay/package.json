@@ -1,0 +1,37 @@
+{
+  "name": "uxnan-relay",
+  "version": "0.1.0",
+  "description": "Uxnan Relay — forwards opaque E2EE envelopes between the mobile app and the bridge by sessionId.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "bin": {
+    "uxnan-relay": "./dist/src/cli.js"
+  },
+  "files": [
+    "dist/src"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/luisgamas/uxnan.git",
+    "directory": "relay"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "tsc && node --test \"dist/test/**/*.test.js\"",
+    "start": "node dist/src/cli.js",
+    "prepublishOnly": "tsc"
+  },
+  "dependencies": {
+    "@uxnan/shared": "*",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.12"
+  }
+}

@@ -1,0 +1,166 @@
+#!/usr/bin/env node
+/**
+ * uxnan-bridge CLI.
+ *
+ * Commands (architecture/02a-system-architecture.md §5.8.5):
+ *   start            start the daemon
+ *   stop             stop the daemon
+ *   status           print current status
+ *   qr               print the pairing QR in the terminal
+ *   install-service  configure autostart on this platform
+ *
+ * In this skeleton increment `start` boots the daemon core without the live
+ * relay/LAN transport; `stop`/`install-service` are deferred (FOR-DEV).
+ */
+import { encodePairingQr } from '@uxnan/shared';
+import { startBridge } from './bridge.js';
+import { renderPairingQr } from './qr.js';
+import { BRIDGE_VERSION } from './version.js';
+import { DaemonState, DAEMON_FILES } from './daemon-state.js';
+import { LockFile, isProcessAlive } from './lock-file.js';
+
+const USAGE = `uxnan-bridge v${BRIDGE_VERSION}
+
+Usage: uxnan-bridge <command>
+
+Commands:
+  start            Start the bridge daemon (skeleton: no live transport yet)
+  status           Print the current bridge status
+  qr               Print the pairing QR code in the terminal
+  stop             Stop the running daemon (FOR-DEV)
+  install-service  Configure autostart for this platform (FOR-DEV)
+  help             Show this help
+`;
+
+async function cmdQr(): Promise<void> {
+  const bridge = await startBridge();
+  const payload = bridge.generatePairingQr();
+  const qr = await renderPairingQr(payload);
+  process.stdout.write(`${qr}\n`);
+  process.stdout.write('Scan with the Uxnan mobile app.\n');
+  process.stdout.write(`Expires at: ${new Date(payload.expiresAt).toISOString()}\n`);
+  process.stdout.write(`Payload: ${encodePairingQr(payload)}\n`);
+  await bridge.stop();
+}
+
+async function cmdStatus(): Promise<void> {
+  const bridge = await startBridge();
+  process.stdout.write(`${JSON.stringify(bridge.status(), null, 2)}\n`);
+  await bridge.stop();
+}
+
+async function cmdStart(): Promise<void> {
+  const state = new DaemonState();
+  await state.ensureDir();
+  const lock = new LockFile(state.pathFor(DAEMON_FILES.lock));
+  if (!(await lock.acquire())) {
+    const held = await lock.read();
+    process.stderr.write(
+      `uxnan-bridge is already running${held ? ` (pid ${held.pid})` : ''}. Run 'uxnan-bridge stop' first.\n`,
+    );
+    process.exitCode = 1;
+    return;
+  }
+
+  const bridge = await startBridge();
+
+  if (bridge.context.config.lanEnabled) {
+    try {
+      const { port } = await bridge.startLan();
+      process.stdout.write(`LAN server listening on port ${port}.\n`);
+    } catch (err) {
+      process.stderr.write(`Failed to start LAN server: ${errText(err)}\n`);
+    }
+  }
+
+  const payload = bridge.generatePairingQr();
+  const qr = await renderPairingQr(payload);
+  process.stdout.write(`${qr}\nScan with the Uxnan mobile app.\n`);
+  try {
+    await bridge.connectRelay(payload.sessionId);
+    process.stdout.write(`Connected to relay ${payload.relay}; waiting for a phone.\n`);
+  } catch (err) {
+    process.stderr.write(
+      `Relay connection failed (${errText(err)}); LAN remains available if enabled.\n`,
+    );
+  }
+
+  process.stdout.write('Press Ctrl+C to stop.\n');
+  await new Promise<void>((resolve) => {
+    const shutdown = (): void => {
+      void Promise.allSettled([bridge.stop(), lock.release()]).then(() => resolve());
+    };
+    process.once('SIGINT', shutdown);
+    process.once('SIGTERM', shutdown);
+  });
+}
+
+async function cmdStop(): Promise<void> {
+  const state = new DaemonState();
+  const lock = new LockFile(state.pathFor(DAEMON_FILES.lock));
+  const held = await lock.read();
+  if (!held || !isProcessAlive(held.pid)) {
+    process.stdout.write('uxnan-bridge is not running.\n');
+    await lock.release(held?.pid);
+    return;
+  }
+  try {
+    process.kill(held.pid, 'SIGTERM');
+    process.stdout.write(`Sent stop signal to uxnan-bridge (pid ${held.pid}).\n`);
+  } catch (err) {
+    process.stderr.write(`Failed to stop pid ${held.pid}: ${errText(err)}\n`);
+    process.exitCode = 1;
+  }
+}
+
+function errText(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+function cmdInstallService(): void {
+  process.stdout.write(
+    'FOR-DEV: autostart installation is not implemented yet.\n' +
+      'See bridge/scripts/install-service-{windows.ps1,macos.sh,linux.sh}.\n',
+  );
+}
+
+async function main(): Promise<number> {
+  const command = process.argv[2] ?? 'help';
+  switch (command) {
+    case 'qr':
+      await cmdQr();
+      return 0;
+    case 'status':
+      await cmdStatus();
+      return 0;
+    case 'start':
+      await cmdStart();
+      return 0;
+    case 'stop':
+      await cmdStop();
+      return 0;
+    case 'install-service':
+      cmdInstallService();
+      return 0;
+    case 'help':
+    case '--help':
+    case '-h':
+      process.stdout.write(USAGE);
+      return 0;
+    default:
+      process.stderr.write(`Unknown command: ${command}\n\n${USAGE}`);
+      return 1;
+  }
+}
+
+main().then(
+  (code) => {
+    process.exitCode = code;
+  },
+  (err: unknown) => {
+    process.stderr.write(
+      `uxnan-bridge error: ${err instanceof Error ? err.message : String(err)}\n`,
+    );
+    process.exitCode = 1;
+  },
+);
