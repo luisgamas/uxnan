@@ -46,6 +46,25 @@ class MyDevicesScreen extends ConsumerWidget {
         .saveDevice(device.copyWith(displayName: name));
   }
 
+  Future<void> _verify(
+    WidgetRef ref,
+    BuildContext context,
+    TrustedDevice device,
+  ) async {
+    final l10n = AppLocalizations.of(context);
+    final messenger = ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(SnackBar(content: Text(l10n.deviceVerifying)));
+    final ok = await ref.read(sessionCoordinatorProvider).verifyConnection();
+    messenger
+      ..clearSnackBars()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(ok ? l10n.deviceVerifyOk : l10n.deviceVerifyFailed),
+        ),
+      );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
@@ -100,6 +119,7 @@ class MyDevicesScreen extends ConsumerWidget {
                   onOpen: () => _open(ref, context, device),
                   onConnect: () => _connect(ref, device),
                   onRename: () => _rename(ref, context, device),
+                  onVerify: () => _verify(ref, context, device),
                 );
               },
             ),
@@ -118,6 +138,7 @@ class _DeviceCard extends StatelessWidget {
     required this.onOpen,
     required this.onConnect,
     required this.onRename,
+    required this.onVerify,
   });
 
   final TrustedDevice device;
@@ -126,6 +147,7 @@ class _DeviceCard extends StatelessWidget {
   final VoidCallback onOpen;
   final VoidCallback onConnect;
   final VoidCallback onRename;
+  final VoidCallback onVerify;
 
   bool get _isConnected => isActive && phase == ConnectionPhase.connected;
 
@@ -189,6 +211,16 @@ class _DeviceCard extends StatelessWidget {
                       color: colors.onSurfaceVariant,
                     ),
                     itemBuilder: (context) => [
+                      PopupMenuItem<void>(
+                        onTap: onVerify,
+                        child: Row(
+                          children: [
+                            const Icon(Icons.wifi_tethering_rounded, size: 18),
+                            const SizedBox(width: UxnanSpacing.sm),
+                            Text(l10n.deviceVerifyConnection),
+                          ],
+                        ),
+                      ),
                       PopupMenuItem<void>(
                         onTap: onRename,
                         child: Row(

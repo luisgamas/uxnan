@@ -199,6 +199,31 @@ class SessionCoordinator {
     return future;
   }
 
+  /// Actively checks the bridge is reachable with an encrypted `bridge/status`
+  /// round-trip. If we believed we were connected but it times out (a dead
+  /// bridge behind a still-open socket), the session is dropped so the
+  /// reconnection loop takes over. Returns `true` if the bridge responded.
+  Future<bool> verifyConnection({
+    Duration timeout = const Duration(seconds: 6),
+  }) async {
+    final disconnected = _connectionPhase.value != ConnectionPhase.connected;
+    if (disconnected || _channel == null) {
+      return false;
+    }
+    try {
+      await sendRequest('bridge/status').timeout(timeout);
+      return true;
+    } on Object {
+      await _rxSubscription?.cancel();
+      _rxSubscription = null;
+      await _transport?.disconnect().catchError((_) {});
+      _transport = null;
+      _channel = null;
+      unawaited(handleReconnect());
+      return false;
+    }
+  }
+
   /// Tears down the session deliberately (no reconnection is attempted).
   Future<void> disconnect() async {
     _intentionalDisconnect = true;

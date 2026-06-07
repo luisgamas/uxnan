@@ -1,5 +1,4 @@
 import 'package:equatable/equatable.dart';
-import 'package:uxnan/domain/enums/git_file_status.dart';
 import 'package:uxnan/domain/value_objects/git/git_changed_file.dart';
 import 'package:uxnan/domain/value_objects/git/git_diff_totals.dart';
 
@@ -19,37 +18,6 @@ class GitRepoState extends Equatable {
     this.diffTotals = const GitDiffTotals(),
     this.changedFiles = const [],
   });
-
-  /// A sample repository state for the demo/preview (FOR-DEV).
-  factory GitRepoState.sample() => const GitRepoState(
-        branch: 'feature/login',
-        upstream: 'origin/feature/login',
-        isDirty: true,
-        ahead: 2,
-        diffTotals: GitDiffTotals(
-          additions: 24,
-          deletions: 6,
-          changedFileCount: 3,
-        ),
-        changedFiles: [
-          GitChangedFile(
-            path: 'lib/presentation/screens/login/login_screen.dart',
-            status: GitFileStatus.modified,
-            additions: 18,
-            deletions: 4,
-          ),
-          GitChangedFile(
-            path: 'lib/application/auth/login_controller.dart',
-            status: GitFileStatus.added,
-            additions: 6,
-          ),
-          GitChangedFile(
-            path: 'lib/legacy/old_login.dart',
-            status: GitFileStatus.deleted,
-            deletions: 2,
-          ),
-        ],
-      );
 
   /// Reconstructs a [GitRepoState] from a `git/status` JSON result.
   factory GitRepoState.fromJson(Map<String, dynamic> json) {

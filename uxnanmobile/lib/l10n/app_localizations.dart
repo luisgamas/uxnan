@@ -386,6 +386,30 @@ abstract class AppLocalizations {
   /// **'Rename'**
   String get deviceRename;
 
+  /// No description provided for @deviceVerifyConnection.
+  ///
+  /// In en, this message translates to:
+  /// **'Verify connection'**
+  String get deviceVerifyConnection;
+
+  /// No description provided for @deviceVerifying.
+  ///
+  /// In en, this message translates to:
+  /// **'Checking the bridge…'**
+  String get deviceVerifying;
+
+  /// No description provided for @deviceVerifyOk.
+  ///
+  /// In en, this message translates to:
+  /// **'The bridge is reachable.'**
+  String get deviceVerifyOk;
+
+  /// No description provided for @deviceVerifyFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The bridge did not respond. Reconnecting…'**
+  String get deviceVerifyFailed;
+
   /// No description provided for @deviceNameTitle.
   ///
   /// In en, this message translates to:

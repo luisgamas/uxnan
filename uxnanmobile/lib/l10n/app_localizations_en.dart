@@ -165,6 +165,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get deviceRename => 'Rename';
 
   @override
+  String get deviceVerifyConnection => 'Verify connection';
+
+  @override
+  String get deviceVerifying => 'Checking the bridge…';
+
+  @override
+  String get deviceVerifyOk => 'The bridge is reachable.';
+
+  @override
+  String get deviceVerifyFailed => 'The bridge did not respond. Reconnecting…';
+
+  @override
   String get deviceNameTitle => 'Device name';
 
   @override

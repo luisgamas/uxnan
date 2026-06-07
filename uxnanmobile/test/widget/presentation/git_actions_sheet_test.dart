@@ -2,10 +2,44 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uxnan/domain/entities/git/git_repo_state.dart';
+import 'package:uxnan/domain/enums/git_file_status.dart';
+import 'package:uxnan/domain/value_objects/git/git_changed_file.dart';
+import 'package:uxnan/domain/value_objects/git/git_diff_totals.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/screens/conversation/git/commit_sheet.dart';
 import 'package:uxnan/presentation/screens/conversation/git/git_actions_sheet.dart';
+
+/// A fixture repo state for these widget tests (kept out of production code).
+GitRepoState _sampleState() => const GitRepoState(
+      branch: 'feature/login',
+      upstream: 'origin/feature/login',
+      isDirty: true,
+      ahead: 2,
+      diffTotals: GitDiffTotals(
+        additions: 24,
+        deletions: 6,
+        changedFileCount: 3,
+      ),
+      changedFiles: [
+        GitChangedFile(
+          path: 'lib/presentation/screens/login/login_screen.dart',
+          status: GitFileStatus.modified,
+          additions: 18,
+          deletions: 4,
+        ),
+        GitChangedFile(
+          path: 'lib/application/auth/login_controller.dart',
+          status: GitFileStatus.added,
+          additions: 6,
+        ),
+        GitChangedFile(
+          path: 'lib/legacy/old_login.dart',
+          status: GitFileStatus.deleted,
+          deletions: 2,
+        ),
+      ],
+    );
 
 Widget _wrap(Widget child, {GitRepoState? state}) => ProviderScope(
       overrides: [
@@ -23,7 +57,7 @@ void main() {
   testWidgets('GitActionsSheet renders branch, files and actions from state',
       (tester) async {
     await tester.pumpWidget(
-      _wrap(const GitActionsSheet(), state: GitRepoState.sample()),
+      _wrap(const GitActionsSheet(), state: _sampleState()),
     );
     await tester.pump();
 
