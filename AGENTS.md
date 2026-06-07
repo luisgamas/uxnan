@@ -5,7 +5,14 @@
 
 ## Project status
 
-**ALPHA** — Architecture documentation is complete. Implementation has begun: the `uxnanmobile/` Flutter app has a foundation (project scaffold, `core/` layer, Material 3 theme, domain enums, routing, i18n) and a local persistence module (drift) on the `uxnanmobile` branch. Other components (`uxnandesktop/`, `bridge/`, `relay/`, `shared/`) have not started. All code is new — no legacy, no users, no production data.
+**ALPHA — MVP in progress.** Architecture documentation is complete and the mobile MVP runs end-to-end with a real agent. State by component (details in each `CHANGELOG.md`; pending work in each `FOR-DEV.md`):
+- `shared/` — **implemented**: JSON-RPC + E2EE contracts and validators.
+- `relay/` — **implemented**: E2EE envelope relay by `sessionId`, rate limiting, peer-close, push endpoints (gated on Firebase/APNs creds).
+- `bridge/` — **implemented**: E2EE transport (relay + LAN), **OpenCode wired as a real agent**, per-thread agent/model/project selection, Git + workspace + checkpoints, conversation engine, push (gated), resilient relay reconnection. Remaining agents (Codex/Claude/Gemini) follow the recipe in `bridge/FOR-DEV.md`.
+- `uxnanmobile/` — **MVP wired**: pairing/E2EE, auto-reconnect, streaming conversation, real model picker, Git, per-PC threads, FCM push registration (gated).
+- `uxnandesktop/` — **not started** (architecture spec only).
+
+All code is new — no legacy, no users, no production data. Push notifications are code-complete but **gated** behind human-provided Firebase/APNs credentials (see the relevant `FOR-HUMAN.md`).
 
 This means:
 - There is no backwards-compatibility to maintain (yet).

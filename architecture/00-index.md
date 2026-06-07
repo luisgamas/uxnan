@@ -41,12 +41,21 @@
 | Primitivas crypto E2EE (key gen, handshake Ed25519/X25519/HKDF, envelope AES-256-GCM, fingerprint) | ✅ Hecho | 02a §5.9; verificado con vectores RFC/NIST |
 | Mecánica de transporte (WebSocket, handshake `performHandshake`, `SecureChannel` seq/replay, correlador, backoff, outbound buffer) | ✅ Hecho | 02a §5.9; handshake de 2 partes probado en memoria |
 | Orquestación `SessionCoordinator` (ConnectionPhase + reconexión + providers Riverpod) + `SecureStore`/`PhoneIdentityStore` + `TransportSelector` (relay) | ✅ Hecho | 02a §5.2.1; probado con bridge simulado (connect, RPC, reconexión) |
-| `IncomingMessageProcessor`, descubrimiento LAN, integración WS en vivo contra bridge | ⏳ Pendiente | Con conversación / pruebas e2e |
+| `IncomingMessageProcessor` + integración WS en vivo contra bridge real | ✅ Hecho | Probado físicamente (móvil ↔ bridge ↔ relay) |
+| Descubrimiento LAN (mDNS) | ⏳ Pendiente | Hoy se usa el relay; LAN directo diferido (FOR-DEV) |
+| Reconexión robusta: heartbeat `bridge/status`, single-flight, ping WS, "Verificar conexión", sessionId estable | ✅ Hecho | 02c §11 |
 | Pairing — **lógica** (`PairingPayload`, `PairingValidator`, `TrustedDevice` repo, `processPairingPayload`) | ✅ Hecho | 02a §5.5; solo QR (código manual diferido, FOR-DEV) |
 | Pairing — **UI** (onboarding 4 páginas, `QrScannerScreen` con permiso de cámara, `UpdatePromptDialog`, rutas) | ✅ Hecho | M3; `MyDevicesScreen`/código manual diferidos (FOR-DEV) |
 | Conversación/timeline — **dominio + datos** (`MessageContent`, `Message`/`Turn`, `DriftMessageRepository`, `MessageDeduplicator`, `TurnTimelineSnapshot` + reducer) | ✅ Hecho | 02a §5.6/§6.2 |
 | Conversación — **managers** (`ThreadManager`, `IncomingMessageProcessor`, eventos de dominio + streaming) | ✅ Hecho | 02a §5.2.2/§5.2.5; toda la lógica de conversación lista |
-| Conversación — **UI** (`ConversationScreen`, renderers, composer) · Git · push | ⏳ Pendiente | UI de conversación es el siguiente incremento (revisión visual) |
+| Conversación — **UI** (`ConversationScreen`, renderers, composer) cableada a datos reales | ✅ Hecho | Sin samples; modelo/agente del thread, git por `cwd` real |
+| Flujo **Nueva conversación** (proyecto `project/list` + agente `agent/list` + modelo `agent/models`) + **selector de modelos** (`thread/setModel`) | ✅ Hecho | M3; skip onboarding si ya hay PC |
+| **Git** (status/commit/push contra el `cwd` del thread) | ✅ Hecho | Diff por archivo y acciones extendidas: pendientes (FOR-DEV) |
+| **Push FCM** (registro de token, notificaciones locales) | ✅ Hecho (gated) | Requiere config Firebase nativa (FOR-HUMAN) |
+| Threads **por PC** (`Thread.deviceId`) | ✅ Hecho | Data demo eliminada (migración drift v3) |
+| Archivar/eliminar/renombrar thread, exponer thread id (resumir en CLI), quitar dispositivo, adjuntar/voz, badge de contexto, código de pairing manual | ⏳ Pendiente | Ver `uxnanmobile/FOR-DEV.md` |
+
+> Detalle completo del avance en `uxnanmobile/CHANGELOG.md`; lo pendiente, en `uxnanmobile/FOR-DEV.md`.
 
 > **Decisión de gestión de estado (2026-06-05):** el proyecto usa **Riverpod 3.x** manual (no 2.x). Los ejemplos de la especificación que usan `StateNotifierProvider` (API 2.x) se adaptan a la API moderna `Notifier`/`NotifierProvider`/`AsyncNotifierProvider`. Sigue sin usarse `riverpod_generator`.
 

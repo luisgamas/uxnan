@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — reconnection support
+- When one side of a paired session disconnects, the relay now closes the paired
+  peer's socket (instead of leaving it half-open) so the phone detects a dead
+  bridge and triggers reconnect rather than showing "connected" forever
+  (`relay-server.ts` `#register` close handler).
+- A **stale/replaced** socket closing no longer tears down the peer: if a newer
+  socket has already taken the role for that `sessionId` (e.g. the bridge or the
+  phone reconnected), the old socket's close is ignored, so a freshly
+  reconnected peer's handshake is not killed ("message channel closed").
+
 ### Added — Phase 6 (push notifications, gated)
 - `POST /push/register` (stores a device token per session, returns a
   `notificationSecret`) and `POST /push/notify` (validates the secret, dedupes by

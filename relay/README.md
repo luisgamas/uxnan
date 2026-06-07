@@ -4,8 +4,12 @@ Stateless WebSocket relay that forwards **opaque E2EE envelopes** between the
 Uxnan mobile app and the bridge. It only ever sees encrypted frames — never
 plaintext, keys, code, or diffs.
 
-> **Status: Phase 2.** Forwarding by `sessionId` + `/health` are implemented.
-> Rate limiting, pairing-code resolution and push endpoints are deferred.
+> **Status: Phase 6 (gated).** Forwarding by `sessionId`, `/health`, per-IP rate
+> limiting, reconnection support (peer-close + stale-socket handling) and the
+> push endpoints (`/push/register`, `/push/notify` — real delivery gated on a
+> Firebase service account) are implemented. Pairing-code resolution,
+> multi-session `mac` registration and auth-on-forwarding remain deferred (see
+> [`FOR-DEV.md`](FOR-DEV.md)).
 
 > **`mac` / `iphone` are ROLES, not platforms.** `mac` = the PC/bridge side
 > (runs on Windows, macOS or Linux); `iphone` = the mobile app side (Android or

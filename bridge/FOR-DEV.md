@@ -15,6 +15,12 @@ only a human can provide.)
 - [x] **Relay package** — `relay/` builds and is in the root workspaces (Phase 2).
 - [x] **Bridge → phone notifications** (Phase 2b) — `SessionRegistry` +
       `bridge.notify()`; offline messages buffered via `OutboundMessageBuffer`.
+- [x] **Stable pairing session** — the pairing `sessionId` is persisted to
+      `~/.uxnan/pairing-session.json` (`src/bridge.ts`, `daemon-state.ts`) and
+      reused across restarts instead of a fresh UUID each boot.
+- [x] **Relay connection survives phone reconnects** — `connectRelay`
+      (`src/bridge.ts`) runs a background loop: serve one phone session, then
+      immediately re-arm on the relay so trusted-reconnect works without re-scanning.
 - [ ] **Seq-based catch-up on reconnect** — `src/transport/server-handshake.ts`.
       Read `clientHello.resumeState.lastAppliedBridgeOutboundSeq` and replay
       envelopes with a greater `seq`. **Blocked:** the mobile `clientHello` does
@@ -49,6 +55,13 @@ only a human can provide.)
       user's home), mark which are git repos, and pick ANY directory (git or not)
       as the project for a thread — no per-project pre-configuration. Pairing
       stays once; project selection becomes a directory browse on the phone.
+- [ ] **Per-project agent selection from `AgentConfig`** — the shared
+      `AgentConfig` (`agentId`, `binaryPath`, `extraArgs`, `cwd`) is defined but
+      not consumed: `thread/start` currently takes an explicit `agentId/model/cwd`.
+      Resolve the default agent/model per project (from config) so a project can
+      pin its own agent without the phone passing it every time.
+- [ ] **Thread management** — `thread/archive` / `thread/delete` / `thread/rename`
+      (`thread-context-handler.ts` + `thread-store.ts`); not yet contracted/wired.
 - [ ] **Account/auth** — `src/handlers/account-handler.ts` (sanitized, no tokens).
 - [x] **Notifications** — `src/handlers/notifications-handler.ts` +
       `src/push/push-service.ts`. `notifications/register|update|unregister` wired;
@@ -71,6 +84,11 @@ only a human can provide.)
 - [x] **Per-thread agent selection** — `thread/start { agentId, model, cwd }`
       persists the choice; `turn/send` drives the thread's agent in its cwd.
       `agent/list` exposes registered agents + capabilities + availability.
+- [x] **Agent model discovery** — `agent/models` runs `opencode models` via
+      `OpenCodeAdapter.listModels()` → `AgentManager.getModels()` (optional
+      `IAgentAdapter.listModels`; agents without it return `[]`).
+- [x] **Change a thread's model mid-conversation** — `thread/setModel`
+      (`ThreadStore.setModel` + `thread-context-handler.ts`).
 
 ### Adding the next agent (recipe — do these one by one)
 The OpenCode adapter is the template for any "one-shot per-turn CLI" agent:

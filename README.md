@@ -118,9 +118,24 @@ All communication between the mobile app and the PC goes through a real E2EE cha
 
 ## Current status
 
-![Phase](https://img.shields.io/badge/PHASE-Technical_Specification-blueviolet?style=for-the-badge)
+![Phase](https://img.shields.io/badge/PHASE-ALPHA_(MVP_in_progress)-orange?style=for-the-badge)
 
-Architecture documentation is complete for both projects (mobile and desktop). Implementation has not started yet.
+The mobile MVP and its PC-side stack are implemented and run end-to-end with a
+real agent; the desktop app has not been started.
+
+| Component | Status |
+|---|---|
+| `uxnanmobile/` | **MVP wired.** QR pairing + trusted reconnect, E2EE transport with auto-reconnect (heartbeat), streaming conversation, real model picker, Git (status/commit/push), per-PC thread scoping, FCM push registration (gated). |
+| `bridge/` | **Implemented.** E2EE transport (relay + LAN), **OpenCode wired as a real agent** (`opencode run --format json`), per-thread agent/model/project selection (`agent/list`, `agent/models`, `project/list`), Git + workspace + checkpoints, conversation engine, push (gated), resilient relay reconnection. |
+| `relay/` | **Implemented.** E2EE envelope relay by `sessionId`, per-IP rate limiting, peer-close on disconnect, push endpoints (gated on Firebase/APNs creds). |
+| `shared/` | **Implemented.** JSON-RPC + E2EE contracts, validators. |
+| `uxnandesktop/` | **Not started** — architecture spec only. |
+
+Push notifications are code-complete but **gated**: real delivery needs a Firebase
+project + native config (see each component's `FOR-HUMAN.md`). The next agents
+(Codex, Claude Code, Gemini) follow the OpenCode recipe in `bridge/FOR-DEV.md`.
+Per-component progress lives in each `CHANGELOG.md`; pending work in each
+`FOR-DEV.md`. How to run/test: [`TESTING.md`](TESTING.md).
 
 ---
 

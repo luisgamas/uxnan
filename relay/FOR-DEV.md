@@ -7,6 +7,10 @@ are in `relay/FOR-HUMAN.md`.)
 - [x] WebSocket relay that pairs one `mac` + one `iphone` per `sessionId` and
       forwards opaque E2EE frames (Phase 2).
 - [x] `GET /health`; per-IP rate limiting for HTTP + upgrades (Phase 3).
+- [x] **Reconnection support** — on a peer disconnect the relay closes the paired
+      socket so the other side detects a dead peer (phone reconnect); a
+      stale/replaced socket's close is ignored so it doesn't tear down a freshly
+      reconnected peer's handshake (`relay-server.ts` `#register`).
 
 ## Done — push (Phase 6, gated)
 - [x] `POST /push/register` + `POST /push/notify`, `PushRegistry`, `PushSender`

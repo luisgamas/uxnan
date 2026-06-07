@@ -93,17 +93,29 @@ Legend: ✅ done · 🔜 next · ⏳ planned
   template for the remaining one-shot-CLI agents.
 - Per-thread agent + model selection (`thread/start { agentId, model, cwd }`);
   `agent/list`, real `project/list`/`project/resolve` from `workspaceRoots`.
+- **Model discovery** (`agent/models` → `opencode models`) and **mid-thread
+  model change** (`thread/setModel`).
+- **Resilient reconnection**: stable pairing `sessionId`
+  (`~/.uxnan/pairing-session.json`) + a relay reconnect loop so a trusted phone
+  reconnects without re-scanning the QR.
 
 > **Deferred — remaining agents (one by one, recipe in `bridge/FOR-DEV.md`):**
 > - **Codex** (`codex exec --json`), **Claude Code**
 >   (`claude -p --output-format stream-json`), **Gemini CLI**, then pi-agent / Aider.
 > - JSONL session-history fallback (`session-jsonl-history`) per agent.
+> - Per-project agent from `AgentConfig`; `workspace/browseDirs` directory picker;
+>   `thread/archive`/`delete`/`rename`; `bridge/removeTrustedDevice`.
 
-## ⏳ Phase 6 — Push notifications
-- Relay `/push/*` (APNs/FCM, dedupe); bridge completion tracking + dedupe.
-- Add `notifications/*` and `desktop/*` methods to `@uxnan/shared`.
-- **Setup (human):** [`relay/FOR-HUMAN.md`](./relay/FOR-HUMAN.md) — Firebase/APNs.
-- **Plan + tests:** [`relay/FOR-DEV.md`](./relay/FOR-DEV.md).
+## ✅ Phase 6 — Push notifications (code-complete, gated)
+- Relay `POST /push/register` + `/push/notify` (`PushRegistry` + `PushSender`
+  seam; dedupe; lazy `firebase-admin` FCM sender via `UXNAN_FCM_SERVICE_ACCOUNT`).
+- Bridge `notifications/register|update|unregister` + a turn-end push hook
+  (`src/push/push-service.ts`); mobile registers its FCM token + shows local
+  notifications. `notifications/*` contracts added to `@uxnan/shared`.
+- **Gated:** real delivery needs the user's Firebase project + native config —
+  [`relay/FOR-HUMAN.md`](./relay/FOR-HUMAN.md), `uxnanmobile/FOR-HUMAN.md`.
+- **Follow-ups (FOR-DEV):** persist tokens/dedupe + bridge push-state; APNs-direct
+  path; `desktop/*` methods (embedded mode). Plan: [`relay/FOR-DEV.md`](./relay/FOR-DEV.md).
 
 ## ✅ Phase 7 — Ops & packaging
 - File logging with daily rotation + secret redaction (`createFileLogger`).

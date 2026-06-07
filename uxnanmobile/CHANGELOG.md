@@ -8,6 +8,54 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Per-thread model picker (`thread/setModel`)** — spec 02a §5.4:
+  - `ThreadManager.setThreadModel` calls `thread/setModel { threadId, model }`
+    and mirrors the new model onto the local `Thread`; `loadAgentModels`
+    (`agent/models`) feeds the picker.
+  - `ModelPickerSheet` (`conversation/support/model_picker_sheet.dart`): a
+    searchable M3 bottom sheet that lists the agent's models and resolves with
+    the pick. Wired into the composer model chip and the `SessionStatusSheet`
+    model row (`ConversationScreen` → `setThreadModel`).
+  - The real model picker is also used by `NewConversationSheet` (the agent's
+    `defaultModel` preselected); onboarding is skipped when a PC is already
+    paired (straight to the devices list).
+
+- **"Verify connection" device action** — spec 02c §11:
+  - `SessionCoordinator.verifyConnection` actively probes the bridge with an
+    encrypted `bridge/status` (timeout), and reconnects first when the session is
+    disconnected. Surfaced as a per-device action on `MyDevicesScreen`
+    (`deviceVerifyConnection`, EN + ES).
+
+### Changed
+
+- **Threads scoped to the selected PC** — `Thread` now carries `deviceId`;
+  `thread/list` results are tagged with the active device and the threads screen
+  filters by it. Drift schema → v3: additive `threads.device_id` column + a
+  migration that purges the old UI demo data (`demo-thread*`, `demo-mac`).
+
+- **Robust reconnection + liveness** — spec 02c §11:
+  - `turn/send` now sends `text` at the top level (was nested under `content`,
+    which produced no response).
+  - `WebSocketChannelTransport` sets a 20s `pingInterval` so a dead socket is
+    detected; the relay closes the paired peer when one side drops (see
+    `relay/CHANGELOG.md`).
+  - `SessionCoordinator` runs a 25s `bridge/status` app heartbeat that detects a
+    dead bridge behind a still-open relay socket and triggers reconnect; a
+    single-flight reconnect guard prevents overlapping loops; `verifyConnection`
+    reconnects when disconnected; last-seen is updated on connect.
+
+### Fixed
+
+- **Seq-replay race on outbound envelopes** — the secure transport reserves the
+  outbound sequence number **synchronously** (before the `await` on encryption),
+  and `SessionCoordinator` serializes encrypt+send onto a single `_sendChain`, so
+  concurrent sends can no longer interleave and trip the bridge's replay
+  rejection.
+- **Model picker overflow + keyboard** — fixed the model-picker layout overflow
+  and dismiss the keyboard when tapping the chat surface.
+
+### Added
+
 - **Push notifications (FCM) — gated** — spec 02a §5.10:
   - `PushNotificationService` (infrastructure): fully guarded `firebase_core` +
     `firebase_messaging` + `flutter_local_notifications`. The app builds and runs

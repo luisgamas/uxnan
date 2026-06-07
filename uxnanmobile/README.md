@@ -69,7 +69,14 @@ flutter test               # unit + widget tests
 
 ## Status
 
-Foundation increment. The project compiles, analyzes clean and boots to a home
-empty state. Feature modules (pairing/E2EE, transport, threads/conversation,
-Git, push) are implemented incrementally — see
-[`CHANGELOG.md`](CHANGELOG.md) and the architecture spec for scope and order.
+Wired MVP. All core modules are implemented and connected to live bridge data:
+E2EE crypto + secure transport, QR pairing/onboarding, the paired-PC list,
+threads scoped to the selected PC, the conversation timeline (streaming turns),
+the new-conversation flow (`project/list` + `agent/list` + `agent/models`),
+a per-thread model picker (`thread/setModel`), Git status/commit/push, robust
+reconnection (app heartbeat + relay peer-close), "Verify connection", and gated
+FCM push notifications (builds/runs with no Firebase config). Remaining/deferred
+work (thread archive/rename, notification deep-link, LAN discovery, per-file
+diff, etc.) is tracked in [`FOR-DEV.md`](FOR-DEV.md); native Firebase config is
+in [`FOR-HUMAN.md`](FOR-HUMAN.md). See [`CHANGELOG.md`](CHANGELOG.md) for the
+full history.

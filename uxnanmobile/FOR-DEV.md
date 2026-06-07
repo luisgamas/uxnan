@@ -26,9 +26,12 @@ Deferred implementation work (code the team/agent will do later). Distinct from
   Connect CTA → `SessionCoordinator.switchMac`). Reactive via the new
   `watchDevices()` / `trustedDevicesProvider`. Tapping a card sets the active
   device and opens its threads. Empty → the pair/onboarding state.
-- ☐ **Connect UX polish** — `switchMac` is fire-and-forget from the card; surface
-  a connecting spinner/result and errors (today only the status dot reflects it).
-  Verify the switch flow end-to-end against a live bridge.
+- ◑ **Connect UX polish** — a per-device **"Verify connection"** action now
+  probes the bridge (`SessionCoordinator.verifyConnection` → encrypted
+  `bridge/status`, reconnecting first when disconnected) and reports the result.
+  ☐ Still: `switchMac` itself is fire-and-forget from the card; surface a
+  connecting spinner/errors on the Connect CTA, and verify the switch flow
+  end-to-end against a live bridge.
 - ☐ **On-device pairing verification** — the QR happy path needs a running
   bridge/relay to complete `processPairingPayload`; verify end-to-end once the
   bridge exists.
@@ -61,10 +64,12 @@ Deferred implementation work (code the team/agent will do later). Distinct from
   present), and navigates to `/conversation/:id`. Pull-to-refresh calls
   `ThreadManager.loadThreads` **only when connected** (guarded + 15s timeout, so
   the indicator no longer spins forever offline).
-- ☐ **Scope threads to the connected PC / project** — the list shows all local
-  threads regardless of device; once the session exposes the active device/agent/
-  project, scope it (and drive `loadThreads(projectId:)`). The `thread/list` JSON
-  shape is still assumed (tolerant parser) — verify against the real bridge.
+- ◑ **Scope threads to the connected PC / project** — **PC scoping DONE**:
+  `Thread.deviceId` tags each thread with the active device and the list filters
+  by it (drift v3 migration purged the old demo data). ☐ Still open:
+  **project**-level scoping (drive `loadThreads(projectId:)` once the session
+  exposes the active project). The `thread/list` JSON shape is still assumed
+  (tolerant parser) — verify against the real bridge.
 - ◑ **Thread actions** — **new thread DONE**: a "New conversation" FAB on
   `ThreadsScreen` opens `NewConversationSheet` (pick project via `project/list`,
   agent via `agent/list`, model via `agent/models`) → `ThreadManager.startThread`
@@ -104,10 +109,11 @@ Deferred implementation work (code the team/agent will do later). Distinct from
 - ◑ **Wire conversation controls to real bridge data** — the environment is now
   built from the active `Thread` + live git state (no more
   `SessionEnvironment.sample()`); remaining items below need real RPCs:
-  - ☑ **Model indicator** (`ComposerBar._ModelChip`, `SessionStatusSheet` model
-    row) → shows the real thread model (from `Thread.model`, falling back to the
-    agent label). ☐ The **selector** is still a no-op `onTap` (FOR-DEV) until a
-    model-change RPC exists.
+  - ☑ **Model indicator + selector** (`ComposerBar._ModelChip`,
+    `SessionStatusSheet` model row) → shows the real thread model (from
+    `Thread.model`, falling back to the agent label) and the chip now opens
+    `ModelPickerSheet` (`agent/models`) → `ThreadManager.setThreadModel`
+    (`thread/setModel`), persisting the pick locally. DONE.
   - ☑ **Context badge** (`ComposerBar._ContextBadge`, status-sheet context row)
     → hidden / shown as a neutral `—` placeholder while the bridge does not
     report token usage (no fabricated fraction). ☐ Wire real usage from

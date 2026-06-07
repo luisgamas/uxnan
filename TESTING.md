@@ -78,27 +78,38 @@ mobile if the protocol moves:
 
 ## 3. Validating agent adapters
 
-- **Echo (now):** fully tested; use it for the streaming path end-to-end.
-- **Codex / OpenCode (Phase 5b):** scaffolded but NOT wired — their real CLI
-  stream formats are not in the architecture docs. To implement + validate:
-  1. Run the real CLI by hand and capture its streamed output for one turn.
-  2. In the adapter (`bridge/src/adapters/{codex,opencode}-adapter.ts`) override
-     `formatTurn` (how to send a prompt) and `parseLine` (map each output line to
-     `started`/`delta`/`completed`/`error`).
-  3. Register it in `startBridge` and set the project's agent.
-  4. Test it the same way `ProcessAgentAdapter` is tested
-     (`bridge/test/adapters/process-agent-adapter.test.ts`): spawn the real (or a
-     recorded fake) CLI, send a turn, assert the mapped events; then an
-     end-to-end `turn/send` like `bridge/test/handlers/thread-handlers.test.ts`.
+- **Echo:** fully tested; use it for the streaming path end-to-end with no creds.
+- **OpenCode (WIRED, default agent):** `bridge/src/adapters/opencode-adapter.ts`
+  drives `opencode run --format json`. To run it for real:
+  1. Set a working model in `~/.uxnan/daemon-config.json` → `agents.opencode.model`
+     (a model your `opencode` account can actually call) and a real project dir in
+     `workspaceRoots`.
+  2. From the app: New conversation → pick the project + OpenCode + a model → send
+     a turn; you should see streamed `stream/message/delta` + `stream/turn/completed`.
+  3. Diagnose the agent directly (stdin MUST be closed or OpenCode hangs):
+     `cmd /c "opencode run --format json --model <m> --dir <repo> \"hi\" < NUL"`.
+  4. Tests use a fake spawn: `bridge/test/adapters/opencode-adapter.test.ts`
+     (parser + delta/complete/error/session continuity).
+- **Codex / Claude Code / Gemini (next):** follow the "Adding the next agent"
+  recipe in `bridge/FOR-DEV.md` — capture the real CLI's JSON stream, copy the
+  OpenCode adapter, override the args builder + line parser, register in
+  `startBridge`, and test like the OpenCode adapter.
 - The generic bridge agent IPC (newline-JSON over stdio) is documented in
   `bridge/src/adapters/process-agent-adapter.ts`.
 
 ---
 
-## 4. Push notifications (Phase 6)
+## 4. Push notifications (Phase 6 — implemented, gated)
 
-Not implemented yet. Setup + how to test without devices: `relay/FOR-HUMAN.md`.
-Implementation plan + the testable `PushSender` seam: `relay/FOR-DEV.md`.
+The relay + bridge + mobile push path is implemented but **gated** on Firebase/APNs
+credentials. Test the logic WITHOUT devices:
+- Relay: `npm run test -w uxnan-relay` covers register/notify/secret/dedupe with a
+  fake `PushSender`. Live smoke (noop sender, no creds):
+  `curl -X POST http://127.0.0.1:8787/push/register -d '{"sessionId":"s","pushToken":"t","platform":"android"}'`
+  then `/push/notify` with the returned `notificationSecret`.
+- Bridge: `bridge/test/push/push-service.test.ts` (register + turn-end notify + gating).
+- Real delivery needs the user's Firebase project + native config: setup in
+  `relay/FOR-HUMAN.md` and `uxnanmobile/FOR-HUMAN.md` (same project on both sides).
 
 ---
 

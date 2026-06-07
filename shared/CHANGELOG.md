@@ -9,6 +9,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 - Streaming notification contracts (`StreamNotification` + param types:
   turn started/delta/completed/error/aborted) in `jsonrpc/notifications.ts`.
 - `'echo'` added to `AgentId` (built-in reference/dev agent).
+- **Per-thread agent/project contracts**: `Thread.agentId|model|cwd`
+  (`models/thread.ts`), `StartThreadParams.agentId|model|cwd` and
+  `SendTurnOptions.cwd` so a thread is pinned to an agent/model/working directory.
+- **Agent discovery contracts**: `AgentDescriptor` (`agents/agent-capabilities.ts`)
+  plus methods `agent/list` (`AgentListResult`) and `agent/models`
+  (`AgentModelsParams` → `AgentModelsResult`); `IAgentAdapter.listModels?()`
+  (optional) for runtime model discovery.
+- **Project resolution contracts**: methods `project/list` (`Project[]`) and
+  `project/resolve` (`{ cwd } → Project`).
+- **`thread/setModel`** method (`ThreadSetModelParams`) to repoint a thread's model
+  mid-conversation.
+- **Push registration contracts**: methods `notifications/register`
+  (`RegisterNotificationsParams`), `notifications/update`
+  (`UpdateNotificationsParams`) and `notifications/unregister`.
 
 ### Changed
 - **Pairing QR encoding is now Base64 of the UTF-8 JSON** (was plain JSON), to

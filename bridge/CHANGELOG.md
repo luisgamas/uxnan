@@ -18,10 +18,34 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   agent/model in its cwd. `ProjectRegistry` + real `project/list`/`project/resolve`
   from `config.workspaceRoots` (fallback: the bridge cwd). `agent/list` exposes
   registered agents, capabilities and availability.
+- **Agent model discovery**: `agent/models` runs `opencode models` and parses the
+  provider/model ids (`OpenCodeAdapter.listModels()` → `AgentManager.getModels()`;
+  `IAgentAdapter.listModels` is optional, returns `[]` for agents without it).
+- **Change a thread's model mid-conversation**: `thread/setModel`
+  (`ThreadStore.setModel` + `thread-context-handler.ts`) repoints the thread's
+  `model`; subsequent `turn/send`s use it.
 - **Config**: `defaultAgent` (now `opencode`), `workspaceRoots`, per-agent
   `agents.<id>.{binaryPath,model}`.
 - Tests: OpenCode parser + adapter (delta/complete/error/session continuity),
   `ProjectRegistry`, `agent/list`, project-scoped `thread/start`.
+
+### Added — Phase 6 (push notifications, gated)
+- **Push bridge** (`src/push/push-service.ts`): `notifications/register|update|
+  unregister` handlers (`src/handlers/notifications-handler.ts`) register the FCM
+  token with the relay; `AgentManager`'s `onTurnEnd` hook pushes a turn-end
+  notification, and `session-handler.ts` marks the active relay session as the
+  push target. End-to-end push stays **gated** behind relay-side Firebase creds
+  (`config.push*`); the bridge no-ops cleanly without them. Follow-ups (FOR-DEV):
+  persist the registration to `~/.uxnan/push-state.json`; multi-session support.
+
+### Changed
+- **Stable pairing session** (`src/bridge.ts`, `daemon-state.ts`): the pairing
+  `sessionId` is persisted to `~/.uxnan/pairing-session.json` and reused across
+  restarts (was a fresh UUID each boot), so a trusted phone keeps reconnecting to
+  the same session.
+- **Relay connection stays alive across phone reconnects** (`connectRelay` in
+  `src/bridge.ts`): a background loop serves one phone session, then immediately
+  re-arms on the relay — trusted-reconnect works without re-scanning a QR.
 
 ### Added — Phase 7 (ops & packaging)
 - **File logging** (`src/logger.ts` `createFileLogger`): daily-rotated logs at
