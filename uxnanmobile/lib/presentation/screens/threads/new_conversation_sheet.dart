@@ -64,11 +64,14 @@ class _NewConversationSheetState extends ConsumerState<NewConversationSheet> {
     if (project == null || agent == null) return;
     setState(() => _starting = true);
     try {
+      final coordinator = ref.read(sessionCoordinatorProvider);
+      final deviceId = coordinator.activeMac?.macDeviceId;
       final thread = await ref.read(threadManagerProvider).startThread(
             projectId: project.id,
             agentId: agent.agentId,
             model: _model.text.trim(),
             cwd: project.cwd,
+            deviceId: deviceId,
           );
       if (mounted) Navigator.of(context).pop(thread.id);
     } on Object {

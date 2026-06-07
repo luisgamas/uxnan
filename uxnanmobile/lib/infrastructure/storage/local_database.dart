@@ -34,7 +34,7 @@ class UxnanDatabase extends _$UxnanDatabase {
   UxnanDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -43,6 +43,18 @@ class UxnanDatabase extends _$UxnanDatabase {
           // v2: threads carry the agent's model (nullable).
           if (from < 2) {
             await m.addColumn(threadsTable, threadsTable.model);
+          }
+          // v3: threads are scoped to a paired device; purge the old UI-demo
+          // sample data (a fake PC + sample claude/codex threads).
+          if (from < 3) {
+            await m.addColumn(threadsTable, threadsTable.deviceId);
+            const demoThreadIds = ['demo-thread', 'demo-thread-2'];
+            await (delete(threadsTable)
+                  ..where((t) => t.id.isIn(demoThreadIds)))
+                .go();
+            await (delete(trustedDevicesTable)
+                  ..where((d) => d.macDeviceId.equals('demo-mac')))
+                .go();
           }
         },
         beforeOpen: (details) async {

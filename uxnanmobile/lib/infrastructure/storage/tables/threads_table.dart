@@ -12,6 +12,10 @@ class ThreadsTable extends Table {
   /// Owning project id, if any.
   TextColumn get projectId => text().nullable()();
 
+  /// `macDeviceId` of the paired PC this thread belongs to, if known. Lets the
+  /// threads list be scoped to the selected device.
+  TextColumn get deviceId => text().nullable()();
+
   /// Working directory on the PC, if known.
   TextColumn get cwd => text().nullable()();
 

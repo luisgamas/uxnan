@@ -73,7 +73,7 @@ class ThreadManager {
   String? get activeThreadId => _activeThreadId;
 
   /// Loads the thread list from the bridge and persists it.
-  Future<void> loadThreads({String? projectId}) async {
+  Future<void> loadThreads({String? projectId, String? deviceId}) async {
     final response = await _sendRequest(
       'thread/list',
       projectId != null ? {'projectId': projectId} : null,
@@ -82,8 +82,11 @@ class ThreadManager {
     if (result is! List) return;
     for (final raw in result) {
       if (raw is Map) {
+        // Tag each synced thread with the PC it came from so the list can be
+        // scoped to the selected device.
+        final thread = _parseThread(raw.cast<String, dynamic>());
         await _threadRepository.saveThread(
-          _parseThread(raw.cast<String, dynamic>()),
+          deviceId != null ? thread.copyWith(deviceId: deviceId) : thread,
         );
       }
     }
@@ -132,6 +135,7 @@ class ThreadManager {
     String? agentId,
     String? model,
     String? cwd,
+    String? deviceId,
   }) async {
     final response = await _sendRequest('thread/start', {
       'projectId': projectId,
@@ -142,7 +146,7 @@ class ThreadManager {
     });
     final result = response.result;
     final json = result is Map ? result.cast<String, dynamic>() : null;
-    final thread = json != null
+    final base = json != null
         ? _parseThread(json)
         : Thread(
             id: _uuid.v4(),
@@ -155,6 +159,7 @@ class ThreadManager {
             status: ThreadStatus.active,
             lastActivity: DateTime.now(),
           );
+    final thread = deviceId != null ? base.copyWith(deviceId: deviceId) : base;
     await _threadRepository.saveThread(thread);
     return thread;
   }

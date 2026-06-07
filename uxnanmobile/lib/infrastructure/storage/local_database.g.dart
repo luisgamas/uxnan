@@ -25,6 +25,12 @@ class $ThreadsTableTable extends ThreadsTable
   late final GeneratedColumn<String> projectId = GeneratedColumn<String>(
       'project_id', aliasedName, true,
       type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _deviceIdMeta =
+      const VerificationMeta('deviceId');
+  @override
+  late final GeneratedColumn<String> deviceId = GeneratedColumn<String>(
+      'device_id', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   static const VerificationMeta _cwdMeta = const VerificationMeta('cwd');
   @override
   late final GeneratedColumn<String> cwd = GeneratedColumn<String>(
@@ -75,6 +81,7 @@ class $ThreadsTableTable extends ThreadsTable
         id,
         title,
         projectId,
+        deviceId,
         cwd,
         worktreePath,
         agentId,
@@ -108,6 +115,10 @@ class $ThreadsTableTable extends ThreadsTable
     if (data.containsKey('project_id')) {
       context.handle(_projectIdMeta,
           projectId.isAcceptableOrUnknown(data['project_id']!, _projectIdMeta));
+    }
+    if (data.containsKey('device_id')) {
+      context.handle(_deviceIdMeta,
+          deviceId.isAcceptableOrUnknown(data['device_id']!, _deviceIdMeta));
     }
     if (data.containsKey('cwd')) {
       context.handle(
@@ -170,6 +181,8 @@ class $ThreadsTableTable extends ThreadsTable
           .read(DriftSqlType.string, data['${effectivePrefix}title'])!,
       projectId: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}project_id']),
+      deviceId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}device_id']),
       cwd: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}cwd']),
       worktreePath: attachedDatabase.typeMapping
@@ -205,6 +218,10 @@ class ThreadRow extends DataClass implements Insertable<ThreadRow> {
   /// Owning project id, if any.
   final String? projectId;
 
+  /// `macDeviceId` of the paired PC this thread belongs to, if known. Lets the
+  /// threads list be scoped to the selected device.
+  final String? deviceId;
+
   /// Working directory on the PC, if known.
   final String? cwd;
 
@@ -232,6 +249,7 @@ class ThreadRow extends DataClass implements Insertable<ThreadRow> {
       {required this.id,
       required this.title,
       this.projectId,
+      this.deviceId,
       this.cwd,
       this.worktreePath,
       required this.agentId,
@@ -247,6 +265,9 @@ class ThreadRow extends DataClass implements Insertable<ThreadRow> {
     map['title'] = Variable<String>(title);
     if (!nullToAbsent || projectId != null) {
       map['project_id'] = Variable<String>(projectId);
+    }
+    if (!nullToAbsent || deviceId != null) {
+      map['device_id'] = Variable<String>(deviceId);
     }
     if (!nullToAbsent || cwd != null) {
       map['cwd'] = Variable<String>(cwd);
@@ -274,6 +295,9 @@ class ThreadRow extends DataClass implements Insertable<ThreadRow> {
       projectId: projectId == null && nullToAbsent
           ? const Value.absent()
           : Value(projectId),
+      deviceId: deviceId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deviceId),
       cwd: cwd == null && nullToAbsent ? const Value.absent() : Value(cwd),
       worktreePath: worktreePath == null && nullToAbsent
           ? const Value.absent()
@@ -297,6 +321,7 @@ class ThreadRow extends DataClass implements Insertable<ThreadRow> {
       id: serializer.fromJson<String>(json['id']),
       title: serializer.fromJson<String>(json['title']),
       projectId: serializer.fromJson<String?>(json['projectId']),
+      deviceId: serializer.fromJson<String?>(json['deviceId']),
       cwd: serializer.fromJson<String?>(json['cwd']),
       worktreePath: serializer.fromJson<String?>(json['worktreePath']),
       agentId: serializer.fromJson<String>(json['agentId']),
@@ -314,6 +339,7 @@ class ThreadRow extends DataClass implements Insertable<ThreadRow> {
       'id': serializer.toJson<String>(id),
       'title': serializer.toJson<String>(title),
       'projectId': serializer.toJson<String?>(projectId),
+      'deviceId': serializer.toJson<String?>(deviceId),
       'cwd': serializer.toJson<String?>(cwd),
       'worktreePath': serializer.toJson<String?>(worktreePath),
       'agentId': serializer.toJson<String>(agentId),
@@ -329,6 +355,7 @@ class ThreadRow extends DataClass implements Insertable<ThreadRow> {
           {String? id,
           String? title,
           Value<String?> projectId = const Value.absent(),
+          Value<String?> deviceId = const Value.absent(),
           Value<String?> cwd = const Value.absent(),
           Value<String?> worktreePath = const Value.absent(),
           String? agentId,
@@ -341,6 +368,7 @@ class ThreadRow extends DataClass implements Insertable<ThreadRow> {
         id: id ?? this.id,
         title: title ?? this.title,
         projectId: projectId.present ? projectId.value : this.projectId,
+        deviceId: deviceId.present ? deviceId.value : this.deviceId,
         cwd: cwd.present ? cwd.value : this.cwd,
         worktreePath:
             worktreePath.present ? worktreePath.value : this.worktreePath,
@@ -357,6 +385,7 @@ class ThreadRow extends DataClass implements Insertable<ThreadRow> {
       id: data.id.present ? data.id.value : this.id,
       title: data.title.present ? data.title.value : this.title,
       projectId: data.projectId.present ? data.projectId.value : this.projectId,
+      deviceId: data.deviceId.present ? data.deviceId.value : this.deviceId,
       cwd: data.cwd.present ? data.cwd.value : this.cwd,
       worktreePath: data.worktreePath.present
           ? data.worktreePath.value
@@ -379,6 +408,7 @@ class ThreadRow extends DataClass implements Insertable<ThreadRow> {
           ..write('id: $id, ')
           ..write('title: $title, ')
           ..write('projectId: $projectId, ')
+          ..write('deviceId: $deviceId, ')
           ..write('cwd: $cwd, ')
           ..write('worktreePath: $worktreePath, ')
           ..write('agentId: $agentId, ')
@@ -392,8 +422,19 @@ class ThreadRow extends DataClass implements Insertable<ThreadRow> {
   }
 
   @override
-  int get hashCode => Object.hash(id, title, projectId, cwd, worktreePath,
-      agentId, model, syncState, status, lastActivityMs, createdAtMs);
+  int get hashCode => Object.hash(
+      id,
+      title,
+      projectId,
+      deviceId,
+      cwd,
+      worktreePath,
+      agentId,
+      model,
+      syncState,
+      status,
+      lastActivityMs,
+      createdAtMs);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -401,6 +442,7 @@ class ThreadRow extends DataClass implements Insertable<ThreadRow> {
           other.id == this.id &&
           other.title == this.title &&
           other.projectId == this.projectId &&
+          other.deviceId == this.deviceId &&
           other.cwd == this.cwd &&
           other.worktreePath == this.worktreePath &&
           other.agentId == this.agentId &&
@@ -415,6 +457,7 @@ class ThreadsTableCompanion extends UpdateCompanion<ThreadRow> {
   final Value<String> id;
   final Value<String> title;
   final Value<String?> projectId;
+  final Value<String?> deviceId;
   final Value<String?> cwd;
   final Value<String?> worktreePath;
   final Value<String> agentId;
@@ -428,6 +471,7 @@ class ThreadsTableCompanion extends UpdateCompanion<ThreadRow> {
     this.id = const Value.absent(),
     this.title = const Value.absent(),
     this.projectId = const Value.absent(),
+    this.deviceId = const Value.absent(),
     this.cwd = const Value.absent(),
     this.worktreePath = const Value.absent(),
     this.agentId = const Value.absent(),
@@ -442,6 +486,7 @@ class ThreadsTableCompanion extends UpdateCompanion<ThreadRow> {
     required String id,
     required String title,
     this.projectId = const Value.absent(),
+    this.deviceId = const Value.absent(),
     this.cwd = const Value.absent(),
     this.worktreePath = const Value.absent(),
     required String agentId,
@@ -461,6 +506,7 @@ class ThreadsTableCompanion extends UpdateCompanion<ThreadRow> {
     Expression<String>? id,
     Expression<String>? title,
     Expression<String>? projectId,
+    Expression<String>? deviceId,
     Expression<String>? cwd,
     Expression<String>? worktreePath,
     Expression<String>? agentId,
@@ -475,6 +521,7 @@ class ThreadsTableCompanion extends UpdateCompanion<ThreadRow> {
       if (id != null) 'id': id,
       if (title != null) 'title': title,
       if (projectId != null) 'project_id': projectId,
+      if (deviceId != null) 'device_id': deviceId,
       if (cwd != null) 'cwd': cwd,
       if (worktreePath != null) 'worktree_path': worktreePath,
       if (agentId != null) 'agent_id': agentId,
@@ -491,6 +538,7 @@ class ThreadsTableCompanion extends UpdateCompanion<ThreadRow> {
       {Value<String>? id,
       Value<String>? title,
       Value<String?>? projectId,
+      Value<String?>? deviceId,
       Value<String?>? cwd,
       Value<String?>? worktreePath,
       Value<String>? agentId,
@@ -504,6 +552,7 @@ class ThreadsTableCompanion extends UpdateCompanion<ThreadRow> {
       id: id ?? this.id,
       title: title ?? this.title,
       projectId: projectId ?? this.projectId,
+      deviceId: deviceId ?? this.deviceId,
       cwd: cwd ?? this.cwd,
       worktreePath: worktreePath ?? this.worktreePath,
       agentId: agentId ?? this.agentId,
@@ -527,6 +576,9 @@ class ThreadsTableCompanion extends UpdateCompanion<ThreadRow> {
     }
     if (projectId.present) {
       map['project_id'] = Variable<String>(projectId.value);
+    }
+    if (deviceId.present) {
+      map['device_id'] = Variable<String>(deviceId.value);
     }
     if (cwd.present) {
       map['cwd'] = Variable<String>(cwd.value);
@@ -564,6 +616,7 @@ class ThreadsTableCompanion extends UpdateCompanion<ThreadRow> {
           ..write('id: $id, ')
           ..write('title: $title, ')
           ..write('projectId: $projectId, ')
+          ..write('deviceId: $deviceId, ')
           ..write('cwd: $cwd, ')
           ..write('worktreePath: $worktreePath, ')
           ..write('agentId: $agentId, ')
@@ -3078,6 +3131,7 @@ typedef $$ThreadsTableTableCreateCompanionBuilder = ThreadsTableCompanion
   required String id,
   required String title,
   Value<String?> projectId,
+  Value<String?> deviceId,
   Value<String?> cwd,
   Value<String?> worktreePath,
   required String agentId,
@@ -3093,6 +3147,7 @@ typedef $$ThreadsTableTableUpdateCompanionBuilder = ThreadsTableCompanion
   Value<String> id,
   Value<String> title,
   Value<String?> projectId,
+  Value<String?> deviceId,
   Value<String?> cwd,
   Value<String?> worktreePath,
   Value<String> agentId,
@@ -3121,6 +3176,9 @@ class $$ThreadsTableTableFilterComposer
 
   ColumnFilters<String> get projectId => $composableBuilder(
       column: $table.projectId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get deviceId => $composableBuilder(
+      column: $table.deviceId, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get cwd => $composableBuilder(
       column: $table.cwd, builder: (column) => ColumnFilters(column));
@@ -3166,6 +3224,9 @@ class $$ThreadsTableTableOrderingComposer
   ColumnOrderings<String> get projectId => $composableBuilder(
       column: $table.projectId, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<String> get deviceId => $composableBuilder(
+      column: $table.deviceId, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<String> get cwd => $composableBuilder(
       column: $table.cwd, builder: (column) => ColumnOrderings(column));
 
@@ -3210,6 +3271,9 @@ class $$ThreadsTableTableAnnotationComposer
 
   GeneratedColumn<String> get projectId =>
       $composableBuilder(column: $table.projectId, builder: (column) => column);
+
+  GeneratedColumn<String> get deviceId =>
+      $composableBuilder(column: $table.deviceId, builder: (column) => column);
 
   GeneratedColumn<String> get cwd =>
       $composableBuilder(column: $table.cwd, builder: (column) => column);
@@ -3262,6 +3326,7 @@ class $$ThreadsTableTableTableManager extends RootTableManager<
             Value<String> id = const Value.absent(),
             Value<String> title = const Value.absent(),
             Value<String?> projectId = const Value.absent(),
+            Value<String?> deviceId = const Value.absent(),
             Value<String?> cwd = const Value.absent(),
             Value<String?> worktreePath = const Value.absent(),
             Value<String> agentId = const Value.absent(),
@@ -3276,6 +3341,7 @@ class $$ThreadsTableTableTableManager extends RootTableManager<
             id: id,
             title: title,
             projectId: projectId,
+            deviceId: deviceId,
             cwd: cwd,
             worktreePath: worktreePath,
             agentId: agentId,
@@ -3290,6 +3356,7 @@ class $$ThreadsTableTableTableManager extends RootTableManager<
             required String id,
             required String title,
             Value<String?> projectId = const Value.absent(),
+            Value<String?> deviceId = const Value.absent(),
             Value<String?> cwd = const Value.absent(),
             Value<String?> worktreePath = const Value.absent(),
             required String agentId,
@@ -3304,6 +3371,7 @@ class $$ThreadsTableTableTableManager extends RootTableManager<
             id: id,
             title: title,
             projectId: projectId,
+            deviceId: deviceId,
             cwd: cwd,
             worktreePath: worktreePath,
             agentId: agentId,

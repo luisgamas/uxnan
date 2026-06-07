@@ -36,13 +36,21 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
   /// The selected agent filter; null means "all agents".
   AgentId? _agentFilter;
 
+  @override
+  void initState() {
+    super.initState();
+    // Pull this PC's threads on open so they get tagged with the device and the
+    // list reflects the connected bridge.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _refresh());
+  }
+
   Future<void> _refresh() async {
     final phase = ref.read(connectionPhaseProvider).value;
     if (phase != ConnectionPhase.connected) return;
     try {
       await ref
           .read(threadManagerProvider)
-          .loadThreads()
+          .loadThreads(deviceId: widget.deviceId)
           .timeout(const Duration(seconds: 15));
     } on Object {
       // Best effort: surface nothing if the refresh fails or times out.
@@ -52,7 +60,9 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
   Future<void> _newConversation() async {
     final threadId = await NewConversationSheet.show(context);
     if (threadId == null || !mounted) return;
-    await ref.read(threadManagerProvider).loadThreads();
+    await ref
+        .read(threadManagerProvider)
+        .loadThreads(deviceId: widget.deviceId);
     if (mounted) unawaited(context.push(AppRoutes.conversation(threadId)));
   }
 
@@ -65,7 +75,12 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final threads = ref.watch(threadsProvider).value ?? const <Thread>[];
+    final allThreads = ref.watch(threadsProvider).value ?? const <Thread>[];
+    // Scope to the selected PC. Legacy threads with no device tag are still
+    // shown (they get tagged on the next connected refresh); demo data is gone.
+    final threads = allThreads
+        .where((t) => t.deviceId == null || t.deviceId == widget.deviceId)
+        .toList();
     final devices = ref.watch(trustedDevicesProvider).value ?? const [];
     final phase = ref.watch(connectionPhaseProvider).value ??
         ConnectionPhase.disconnected;

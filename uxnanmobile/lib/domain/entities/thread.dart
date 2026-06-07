@@ -16,6 +16,7 @@ class Thread extends Equatable {
     required this.syncState,
     required this.status,
     this.projectId,
+    this.deviceId,
     this.cwd,
     this.worktreePath,
     this.model,
@@ -30,6 +31,9 @@ class Thread extends Equatable {
 
   /// Identifier of the project this thread belongs to, if any.
   final String? projectId;
+
+  /// `macDeviceId` of the paired PC this thread belongs to, if known.
+  final String? deviceId;
 
   /// Working directory of the thread on the PC, if known.
   final String? cwd;
@@ -56,6 +60,7 @@ class Thread extends Equatable {
   Thread copyWith({
     String? title,
     String? projectId,
+    String? deviceId,
     String? cwd,
     String? worktreePath,
     String? model,
@@ -68,6 +73,7 @@ class Thread extends Equatable {
       id: id,
       title: title ?? this.title,
       projectId: projectId ?? this.projectId,
+      deviceId: deviceId ?? this.deviceId,
       cwd: cwd ?? this.cwd,
       worktreePath: worktreePath ?? this.worktreePath,
       model: model ?? this.model,
@@ -83,6 +89,7 @@ class Thread extends Equatable {
         id,
         title,
         projectId,
+        deviceId,
         cwd,
         worktreePath,
         model,
