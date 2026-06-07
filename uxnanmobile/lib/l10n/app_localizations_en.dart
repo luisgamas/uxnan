@@ -144,6 +144,52 @@ class AppLocalizationsEn extends AppLocalizations {
   String get actionDismiss => 'Dismiss';
 
   @override
+  String get devicesTitle => 'Devices';
+
+  @override
+  String get deviceActive => 'Active';
+
+  @override
+  String get deviceConnect => 'Connect';
+
+  @override
+  String get deviceLastSeenLabel => 'Last seen';
+
+  @override
+  String get deviceNeverConnected => 'Never connected';
+
+  @override
+  String get devicePairedLabel => 'Paired';
+
+  @override
+  String get deviceRename => 'Rename';
+
+  @override
+  String get deviceNameTitle => 'Device name';
+
+  @override
+  String get deviceNameHint => 'e.g. Work MacBook';
+
+  @override
+  String get actionSave => 'Save';
+
+  @override
+  String get actionCancel => 'Cancel';
+
+  @override
+  String get threadsTitle => 'Threads';
+
+  @override
+  String get threadsFilterAll => 'All';
+
+  @override
+  String get threadsEmpty => 'No threads yet';
+
+  @override
+  String get threadsEmptyBody =>
+      'Threads from this PC will appear here. Pull down to refresh.';
+
+  @override
   String get conversationTitle => 'Conversation';
 
   @override

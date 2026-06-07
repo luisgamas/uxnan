@@ -145,6 +145,52 @@ class AppLocalizationsEs extends AppLocalizations {
   String get actionDismiss => 'Cerrar';
 
   @override
+  String get devicesTitle => 'Mis PCs';
+
+  @override
+  String get deviceActive => 'Activa';
+
+  @override
+  String get deviceConnect => 'Conectar';
+
+  @override
+  String get deviceLastSeenLabel => 'Última conexión';
+
+  @override
+  String get deviceNeverConnected => 'Nunca conectado';
+
+  @override
+  String get devicePairedLabel => 'Pareado';
+
+  @override
+  String get deviceRename => 'Renombrar';
+
+  @override
+  String get deviceNameTitle => 'Nombre del dispositivo';
+
+  @override
+  String get deviceNameHint => 'p. ej. MacBook del trabajo';
+
+  @override
+  String get actionSave => 'Guardar';
+
+  @override
+  String get actionCancel => 'Cancelar';
+
+  @override
+  String get threadsTitle => 'Conversaciones';
+
+  @override
+  String get threadsFilterAll => 'Todos';
+
+  @override
+  String get threadsEmpty => 'Aún no hay conversaciones';
+
+  @override
+  String get threadsEmptyBody =>
+      'Las conversaciones de esta PC aparecerán aquí. Desliza para actualizar.';
+
+  @override
   String get conversationTitle => 'Conversación';
 
   @override

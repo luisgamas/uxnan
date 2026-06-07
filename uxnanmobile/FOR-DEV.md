@@ -20,8 +20,15 @@ Deferred implementation work (code the team/agent will do later). Distinct from
   `GCC_PREPROCESSOR_DEFINITIONS` `PERMISSION_CAMERA=1` in the iOS Podfile
   `post_install`. The Podfile is generated on the first macOS build; add the
   macro there or `Permission.camera` is compiled out on iOS.
-- ☐ **`MyDevicesScreen` + `DeviceCard`** — list/switch trusted Macs
-  (`SessionCoordinator.switchMac`), spec §5.5.6. Post-MVP-ish; not built yet.
+- ☑ **`MyDevicesScreen` + `DeviceCard`** — DONE: the home is now the paired-PC
+  list (`SliverAppBar.large`, per-device card with name, relay host, status
+  badge, last-seen, rename via `TrustedDevice.copyWith`+`saveDevice`, and a
+  Connect CTA → `SessionCoordinator.switchMac`). Reactive via the new
+  `watchDevices()` / `trustedDevicesProvider`. Tapping a card sets the active
+  device and opens its threads. Empty → the pair/onboarding state.
+- ☐ **Connect UX polish** — `switchMac` is fire-and-forget from the card; surface
+  a connecting spinner/result and errors (today only the status dot reflects it).
+  Verify the switch flow end-to-end against a live bridge.
 - ☐ **On-device pairing verification** — the QR happy path needs a running
   bridge/relay to complete `processPairingPayload`; verify end-to-end once the
   bridge exists.
@@ -44,6 +51,22 @@ Deferred implementation work (code the team/agent will do later). Distinct from
   layer).
 - ☐ **Project drift repository** — `projects` table exists; the repository plus
   the `AgentConfig` type land with the projects module.
+
+## Threads list
+
+- ☑ **Threads screen** — DONE: `ThreadsScreen` (route `/device/:deviceId/
+  threads`) lists the active PC's threads (`SliverAppBar.large`, agent logo via
+  `AgentLogoChip` + `AgentVisuals`, title, last-activity time, status dot,
+  agent·cwd subtitle), with **per-agent filter chips** (shown when >1 agent is
+  present), and navigates to `/conversation/:id`. Pull-to-refresh calls
+  `ThreadManager.loadThreads` **only when connected** (guarded + 15s timeout, so
+  the indicator no longer spins forever offline).
+- ☐ **Scope threads to the connected PC / project** — the list shows all local
+  threads regardless of device; once the session exposes the active device/agent/
+  project, scope it (and drive `loadThreads(projectId:)`). The `thread/list` JSON
+  shape is still assumed (tolerant parser) — verify against the real bridge.
+- ☐ **Thread actions** — new thread, archive, delete are post-MVP; add when
+  `startNewThread`/`resumeThread` land.
 
 ## Conversation / timeline
 

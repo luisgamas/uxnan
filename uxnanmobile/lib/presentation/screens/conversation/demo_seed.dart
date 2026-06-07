@@ -1,6 +1,9 @@
+import 'dart:typed_data';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/domain/entities/message.dart';
 import 'package:uxnan/domain/entities/thread.dart';
+import 'package:uxnan/domain/entities/trusted_device.dart';
 import 'package:uxnan/domain/enums/command_status.dart';
 import 'package:uxnan/domain/enums/message_delivery_state.dart';
 import 'package:uxnan/domain/enums/message_role.dart';
@@ -12,21 +15,52 @@ import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
 /// FOR-DEV: id of the demo conversation thread.
 const String demoThreadId = 'demo-thread';
 
-/// FOR-DEV: seeds a sample conversation into local storage so the conversation
-/// UI can be reviewed on-device without a connected bridge. Remove (and the
-/// home-screen preview entry) before release.
+/// FOR-DEV: id of the demo trusted PC.
+const String demoDeviceId = 'demo-mac';
+
+/// FOR-DEV: seeds a sample PC, threads and a conversation into local storage so
+/// the devices → threads → conversation flow can be reviewed on-device without
+/// a bridge. Remove (and the devices-screen preview entry) before release.
 Future<String> seedDemoConversation(WidgetRef ref) async {
   final now = DateTime.now();
-  await ref.read(threadRepositoryProvider).saveThread(
-        Thread(
-          id: demoThreadId,
-          title: 'Demo conversation',
-          agentId: 'claude-code',
-          syncState: ThreadSyncState.synced,
-          status: ThreadStatus.active,
-          lastActivity: now,
+
+  await ref.read(trustedDeviceRepositoryProvider).saveDevice(
+        TrustedDevice(
+          macDeviceId: demoDeviceId,
+          displayName: "Jorge's MacBook Pro",
+          macIdentityPublicKey: Uint8List.fromList(
+            List<int>.generate(32, (i) => i),
+          ),
+          relayUrl: 'wss://relay.uxnan.dev',
+          sessionId: 'demo-session',
+          pairedAt: now.subtract(const Duration(days: 3)),
+          lastSeen: now.subtract(const Duration(minutes: 8)),
         ),
       );
+
+  final threadRepo = ref.read(threadRepositoryProvider);
+  await threadRepo.saveThread(
+    Thread(
+      id: demoThreadId,
+      title: 'Read a file in Dart',
+      agentId: 'claude-code',
+      cwd: '/projects/app',
+      syncState: ThreadSyncState.synced,
+      status: ThreadStatus.active,
+      lastActivity: now,
+    ),
+  );
+  await threadRepo.saveThread(
+    Thread(
+      id: 'demo-thread-2',
+      title: 'Refactor the auth module',
+      agentId: 'codex',
+      cwd: '/projects/api',
+      syncState: ThreadSyncState.synced,
+      status: ThreadStatus.active,
+      lastActivity: now.subtract(const Duration(hours: 2)),
+    ),
+  );
 
   Message message(
     String id,

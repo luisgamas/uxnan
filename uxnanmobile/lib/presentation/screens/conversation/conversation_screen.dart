@@ -94,6 +94,9 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
           Expanded(
             child: CustomScrollView(
               controller: _scroll,
+              physics: const BouncingScrollPhysics(
+                parent: AlwaysScrollableScrollPhysics(),
+              ),
               slivers: [
                 SliverAppBar.large(
                   floating: true,

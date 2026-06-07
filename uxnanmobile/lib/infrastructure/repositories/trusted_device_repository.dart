@@ -60,6 +60,20 @@ class TrustedDeviceRepository implements ITrustedDeviceRepository {
   }
 
   @override
+  Stream<List<TrustedDevice>> watchDevices() {
+    return _db.select(_db.trustedDevicesTable).watch().asyncMap((rows) async {
+      final devices = <TrustedDevice>[];
+      for (final row in rows) {
+        final keyHex = await _secureStore.read(_keyFor(row.macDeviceId));
+        if (keyHex != null) {
+          devices.add(_rowToDevice(row, keyHex.fromHex()));
+        }
+      }
+      return devices;
+    });
+  }
+
+  @override
   Future<void> deleteDevice(String macDeviceId) async {
     await (_db.delete(_db.trustedDevicesTable)
           ..where((d) => d.macDeviceId.equals(macDeviceId)))

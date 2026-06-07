@@ -344,6 +344,96 @@ abstract class AppLocalizations {
   /// **'Dismiss'**
   String get actionDismiss;
 
+  /// No description provided for @devicesTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Devices'**
+  String get devicesTitle;
+
+  /// No description provided for @deviceActive.
+  ///
+  /// In en, this message translates to:
+  /// **'Active'**
+  String get deviceActive;
+
+  /// No description provided for @deviceConnect.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect'**
+  String get deviceConnect;
+
+  /// No description provided for @deviceLastSeenLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Last seen'**
+  String get deviceLastSeenLabel;
+
+  /// No description provided for @deviceNeverConnected.
+  ///
+  /// In en, this message translates to:
+  /// **'Never connected'**
+  String get deviceNeverConnected;
+
+  /// No description provided for @devicePairedLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Paired'**
+  String get devicePairedLabel;
+
+  /// No description provided for @deviceRename.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename'**
+  String get deviceRename;
+
+  /// No description provided for @deviceNameTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Device name'**
+  String get deviceNameTitle;
+
+  /// No description provided for @deviceNameHint.
+  ///
+  /// In en, this message translates to:
+  /// **'e.g. Work MacBook'**
+  String get deviceNameHint;
+
+  /// No description provided for @actionSave.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get actionSave;
+
+  /// No description provided for @actionCancel.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get actionCancel;
+
+  /// No description provided for @threadsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Threads'**
+  String get threadsTitle;
+
+  /// No description provided for @threadsFilterAll.
+  ///
+  /// In en, this message translates to:
+  /// **'All'**
+  String get threadsFilterAll;
+
+  /// No description provided for @threadsEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No threads yet'**
+  String get threadsEmpty;
+
+  /// No description provided for @threadsEmptyBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Threads from this PC will appear here. Pull down to refresh.'**
+  String get threadsEmptyBody;
+
   /// No description provided for @conversationTitle.
   ///
   /// In en, this message translates to:

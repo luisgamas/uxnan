@@ -63,6 +63,11 @@ final activeMacProvider = StreamProvider<TrustedDevice?>(
   (ref) => ref.watch(sessionCoordinatorProvider).activeMacStream,
 );
 
+/// Reactive list of paired trusted devices (PCs), for the UI.
+final trustedDevicesProvider = StreamProvider<List<TrustedDevice>>(
+  (ref) => ref.watch(trustedDeviceRepositoryProvider).watchDevices(),
+);
+
 /// Classifies inbound bridge notifications into domain events.
 final incomingMessageProcessorProvider =
     Provider<IncomingMessageProcessor>((ref) {

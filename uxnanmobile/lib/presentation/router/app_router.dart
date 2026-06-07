@@ -1,10 +1,10 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uxnan/presentation/screens/conversation/conversation_screen.dart';
-import 'package:uxnan/presentation/screens/home/home_screen.dart';
+import 'package:uxnan/presentation/screens/devices/my_devices_screen.dart';
 import 'package:uxnan/presentation/screens/onboarding/onboarding_screen.dart';
 import 'package:uxnan/presentation/screens/pairing/qr_scanner_screen.dart';
-import 'package:uxnan/presentation/screens/shell/app_shell_screen.dart';
+import 'package:uxnan/presentation/screens/threads/threads_screen.dart';
 
 /// Route path constants used across the app.
 ///
@@ -13,7 +13,7 @@ import 'package:uxnan/presentation/screens/shell/app_shell_screen.dart';
 class AppRoutes {
   const AppRoutes._();
 
-  /// Home / empty-state route.
+  /// Home: the paired-devices list (empty state until a PC is paired).
   static const String home = '/';
 
   /// Onboarding flow.
@@ -21,6 +21,12 @@ class AppRoutes {
 
   /// QR pairing flow.
   static const String pairing = '/pairing';
+
+  /// Per-device threads screen path pattern (`:deviceId`).
+  static const String deviceThreadsPattern = '/device/:deviceId/threads';
+
+  /// Builds the threads route for the PC with [deviceId].
+  static String deviceThreads(String deviceId) => '/device/$deviceId/threads';
 
   /// Conversation screen path pattern (`:threadId`).
   static const String conversationPattern = '/conversation/:threadId';
@@ -31,22 +37,25 @@ class AppRoutes {
 
 /// Provides the app's [GoRouter] instance.
 ///
-/// The onboarding and pairing flows live outside the app shell; in-app screens
-/// (conversation, settings, devices, projects, terminal) are added as their
-/// modules are implemented. Keeping routing in this provider — never in
-/// `main.dart` — follows the project's navigation convention.
+/// All screens are flat top-level routes in a single navigator, so `push`
+/// builds a linear back stack (devices → threads → conversation) and both the
+/// AppBar back button and the OS back gesture pop one screen consistently. A
+/// shell (sidebar/chrome) will return as a `StatefulShellRoute` when those
+/// surfaces land. Keeping routing in this provider — never in `main.dart` —
+/// follows the project's navigation convention.
 final appRouterProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     initialLocation: AppRoutes.home,
     routes: [
-      ShellRoute(
-        builder: (context, state, child) => AppShellScreen(child: child),
-        routes: [
-          GoRoute(
-            path: AppRoutes.home,
-            builder: (context, state) => const HomeScreen(),
-          ),
-        ],
+      GoRoute(
+        path: AppRoutes.home,
+        builder: (context, state) => const MyDevicesScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.deviceThreadsPattern,
+        builder: (context, state) => ThreadsScreen(
+          deviceId: state.pathParameters['deviceId']!,
+        ),
       ),
       GoRoute(
         path: AppRoutes.onboarding,

@@ -8,6 +8,9 @@ abstract class ITrustedDeviceRepository {
   /// Returns all trusted devices.
   Future<List<TrustedDevice>> getDevices();
 
+  /// Emits the trusted device list whenever it changes.
+  Stream<List<TrustedDevice>> watchDevices();
+
   /// Returns the device with [macDeviceId], or `null` if absent.
   Future<TrustedDevice?> getDevice(String macDeviceId);
 

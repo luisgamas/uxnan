@@ -207,6 +207,10 @@ class _FakeTrustedDeviceRepo implements ITrustedDeviceRepository {
   Future<List<TrustedDevice>> getDevices() async => devices.values.toList();
 
   @override
+  Stream<List<TrustedDevice>> watchDevices() =>
+      Stream.value(devices.values.toList());
+
+  @override
   Future<void> deleteDevice(String macDeviceId) async =>
       devices.remove(macDeviceId);
 }
