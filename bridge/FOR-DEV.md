@@ -52,19 +52,35 @@ only a human can provide.)
 ## Agent adapters
 - [x] **Framework + reference** (Phase 5) — `ProcessAgentAdapter` (generic CLI
       stdio driver) + working `EchoAgentAdapter`; `AgentManager` orchestration.
-- [ ] **Codex** (MVP) — `src/adapters/codex-adapter.ts`. Scaffolded as a
-      `ProcessAgentAdapter` subclass but NOT wired: override `formatTurn`/`parseLine`
-      to translate the real Codex CLI invocation + streaming output (its
-      `exec`/proto JSON) into the bridge agent IPC, then register it in
-      `startBridge`. **Needs the real Codex CLI contract (not in the arch docs).**
-- [ ] **OpenCode** (MVP) — `src/adapters/opencode-adapter.ts`. Same as Codex,
-      for OpenCode's stream/SQLite output. **Needs the real OpenCode contract.**
+- [x] **OpenCode** (MVP) — `src/adapters/opencode-adapter.ts`. WIRED and the
+      bridge's default agent. Spawns `opencode run --format json` per turn,
+      parses the NDJSON event stream, keeps the OpenCode `sessionID` per thread
+      for `--session` continuity, runs in the thread's cwd. Picks the model from
+      `service` (per-turn) → thread.model → `config.agents.opencode.model`.
+      Binary resolved by `resolve-opencode.ts` (native `opencode.exe` on Windows).
+- [x] **Per-thread agent selection** — `thread/start { agentId, model, cwd }`
+      persists the choice; `turn/send` drives the thread's agent in its cwd.
+      `agent/list` exposes registered agents + capabilities + availability.
+
+### Adding the next agent (recipe — do these one by one)
+The OpenCode adapter is the template for any "one-shot per-turn CLI" agent:
+1. Run the real CLI by hand once and capture a turn's machine-readable stream
+   (`<cli> ... --json|--format json`). **Watch for stdin:** OpenCode hangs on an
+   open stdin pipe — spawn with `stdio:['ignore','pipe','pipe']`.
+2. Copy `opencode-adapter.ts`; adjust the args builder (`run/exec`, model flag,
+   session/continue flag, cwd flag) and `parseLine` for that CLI's event shape.
+   Keep `shell:false` and pass the prompt as an argv element (no injection).
+3. Register it in `startBridge` with display metadata + availability.
+- [ ] **Codex** — `codex exec --json` (JSONL events; `exec resume <id>` for
+      continuity; `-m` model, `-s` sandbox, `-c` config). Scaffold:
+      `src/adapters/codex-adapter.ts` (still the generic stub).
+- [ ] **Claude Code** — `claude -p --output-format stream-json --verbose`
+      (`--resume <id>`, `--model`). New scaffold to add.
+- [ ] **Gemini CLI** — capture its non-interactive JSON stream first. New scaffold.
 - [ ] **JSONL history fallback** (`session-jsonl-history`) — read agent session
       JSONL/SQLite from disk for `turn/list` when the runtime has no fresh data
       (§5.8.8). Needs each agent's real on-disk format.
-- [ ] **Per-project agent selection** — resolve the agent from the project's
-      `AgentConfig` instead of `AgentManager`'s single `defaultAgent: 'echo'`.
-- [ ] Later: Claude Code, Gemini CLI, pi-agent, Aider.
+- [ ] Later: pi-agent, Aider.
 
 ## Daemon lifecycle & ops
 - [x] **Single-instance lock + `stop`** (Phase 3) — `src/lock-file.ts`,

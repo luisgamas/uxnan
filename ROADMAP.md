@@ -87,14 +87,17 @@ Legend: ✅ done · 🔜 next · ⏳ planned
   (turn routing + persistence + `stream/*` notifications), a `ProcessAgentAdapter`
   CLI-driver framework, and a working `EchoAgentAdapter` reference agent.
 
-> **Deferred — Phase 5b (needs the real CLI contracts, not in the spec):**
-> - Codex / OpenCode concrete adapters: translate the real CLI invocation +
->   streaming output into the bridge agent IPC (override `formatTurn`/`parseLine`),
->   then register them in `startBridge`. Currently scaffolded but not wired.
+### ✅ Phase 5b — real OpenCode agent + agent/project selection
+- **OpenCode** wired as the default agent (`opencode run --format json`,
+  per-turn spawn, session continuity, runs in the thread's cwd). It is the
+  template for the remaining one-shot-CLI agents.
+- Per-thread agent + model selection (`thread/start { agentId, model, cwd }`);
+  `agent/list`, real `project/list`/`project/resolve` from `workspaceRoots`.
+
+> **Deferred — remaining agents (one by one, recipe in `bridge/FOR-DEV.md`):**
+> - **Codex** (`codex exec --json`), **Claude Code**
+>   (`claude -p --output-format stream-json`), **Gemini CLI**, then pi-agent / Aider.
 > - JSONL session-history fallback (`session-jsonl-history`) per agent.
-> - Per-project/thread agent selection from the project's `AgentConfig`
->   (today a single `defaultAgent: 'echo'`).
-> - Then: Claude Code, Gemini CLI, pi-agent, Aider.
 
 ## ⏳ Phase 6 — Push notifications
 - Relay `/push/*` (APNs/FCM, dedupe); bridge completion tracking + dedupe.

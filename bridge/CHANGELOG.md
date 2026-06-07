@@ -5,6 +5,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — Phase 5b (real OpenCode agent + agent/project selection)
+- **OpenCode adapter** (`src/adapters/opencode-adapter.ts`): real agent driven by
+  `opencode run --format json`. Spawns one process per turn with stdin closed
+  (OpenCode blocks on an open stdin pipe), parses its NDJSON event stream
+  (`step_start`/`text`/`step_finish`/`error`), keeps the OpenCode `sessionID` per
+  thread for `--session` continuity, and runs in the thread's cwd. The prompt is
+  an argv element (`shell:false`) — never shell-interpolated. `resolve-opencode.ts`
+  locates the native `opencode.exe` on Windows. OpenCode is now the default agent.
+- **Per-thread agent + project selection**: `thread/start` accepts
+  `{ agentId, model, cwd }` and persists them; `turn/send` drives the thread's
+  agent/model in its cwd. `ProjectRegistry` + real `project/list`/`project/resolve`
+  from `config.workspaceRoots` (fallback: the bridge cwd). `agent/list` exposes
+  registered agents, capabilities and availability.
+- **Config**: `defaultAgent` (now `opencode`), `workspaceRoots`, per-agent
+  `agents.<id>.{binaryPath,model}`.
+- Tests: OpenCode parser + adapter (delta/complete/error/session continuity),
+  `ProjectRegistry`, `agent/list`, project-scoped `thread/start`.
+
 ### Added — Phase 7 (ops & packaging)
 - **File logging** (`src/logger.ts` `createFileLogger`): daily-rotated logs at
   `~/.uxnan/logs/bridge-YYYY-MM-DD.log` with a secret-redaction pass
