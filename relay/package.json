@@ -15,11 +15,17 @@
   "engines": {
     "node": ">=18"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/luisgamas/uxnan.git",
+    "directory": "relay"
+  },
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "test": "tsc && node --test \"dist/test/**/*.test.js\"",
-    "start": "node dist/src/cli.js"
+    "start": "node dist/src/cli.js",
+    "prepublishOnly": "tsc"
   },
   "dependencies": {
     "@uxnan/shared": "*",

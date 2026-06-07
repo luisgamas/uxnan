@@ -16,11 +16,17 @@
   "engines": {
     "node": ">=18"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/luisgamas/uxnan.git",
+    "directory": "bridge"
+  },
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "test": "tsc && node --test \"dist/test/**/*.test.js\"",
-    "start": "node dist/src/cli.js start"
+    "start": "node dist/src/cli.js start",
+    "prepublishOnly": "tsc"
   },
   "dependencies": {
     "@uxnan/shared": "*",

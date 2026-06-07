@@ -69,9 +69,27 @@ only a human can provide.)
 ## Daemon lifecycle & ops
 - [x] **Single-instance lock + `stop`** (Phase 3) — `src/lock-file.ts`,
       `src/cli.ts` (`bridge.lock` + SIGTERM).
-- [ ] **`install-service`** — flesh out `scripts/install-service-*`.
-- [ ] **File logging** — `src/logger.ts` (`~/.uxnan/logs/` with rotation + redaction).
+- [x] **`install-service`** (Phase 7) — real `scripts/install-service-{windows.ps1,
+      macos.sh,linux.sh}` (Task Scheduler / LaunchAgent / systemd user unit). The
+      `install-service` CLI command still just points at these scripts; wire it to
+      run the right one per `process.platform` if desired.
+- [x] **File logging** (Phase 7) — `src/logger.ts` `createFileLogger`
+      (`~/.uxnan/logs/bridge-YYYY-MM-DD.log`, daily rotation + secret redaction).
+      Follow-up: size-based rotation + retention/pruning of old log files.
 - [ ] **Version** — `src/version.ts` (source from package.json at build).
+
+## Packaging (Phase 7 — npm publish readiness)
+- [x] `bin`, `files`, `engines`, `repository`, `prepublishOnly: tsc` set on all
+      three packages.
+- [ ] **Before `npm publish`:** publish `@uxnan/shared` first, then change the
+      bridge/relay dep `"@uxnan/shared": "*"` → the real `"^0.x"` version (the `*`
+      workspace spec does NOT resolve from the public registry). Same for the
+      bridge's `"uxnan-relay": "*"` devDependency (drop it or pin it; it's only
+      used by the e2e test).
+- [ ] Verify a packed install end-to-end: `npm pack` each package, then
+      `npm install -g ./uxnan-bridge-*.tgz` and run `uxnan-bridge qr`.
+- [ ] Ensure the `scripts/*.sh` keep their executable bit when published
+      (npm preserves mode; verify on a packed tarball).
 
 ## Relay hardening
 - [x] **Per-IP rate limiting** (Phase 3) — `relay/src/relay-server.ts`.

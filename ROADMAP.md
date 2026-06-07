@@ -102,9 +102,15 @@ Legend: ✅ done · 🔜 next · ⏳ planned
 - **Setup (human):** [`relay/FOR-HUMAN.md`](./relay/FOR-HUMAN.md) — Firebase/APNs.
 - **Plan + tests:** [`relay/FOR-DEV.md`](./relay/FOR-DEV.md).
 
-## ⏳ Phase 7 — Ops & packaging
-- Autostart scripts (`install-service-*`), file logging with rotation + redaction,
-  npm packaging for `npm install -g uxnan-bridge`.
+## ✅ Phase 7 — Ops & packaging
+- File logging with daily rotation + secret redaction (`createFileLogger`).
+- Real autostart scripts (Task Scheduler / LaunchAgent / systemd user unit).
+- npm packaging metadata (`repository`, `prepublishOnly`); publish checklist in
+  `bridge/FOR-DEV.md` (publish `@uxnan/shared` first; pin the `*` deps).
+
+> **Follow-ups (bridge/FOR-DEV.md):** size-based log rotation + retention; have the
+> `install-service` CLI run the right script per platform; verify a packed
+> `npm install -g` end-to-end.
 
 ---
 

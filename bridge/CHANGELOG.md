@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — Phase 7 (ops & packaging)
+- **File logging** (`src/logger.ts` `createFileLogger`): daily-rotated logs at
+  `~/.uxnan/logs/bridge-YYYY-MM-DD.log` with a secret-redaction pass
+  (`redactSecrets`: JWTs, `token=`/`secret=` values, PEM key blocks). `startBridge`
+  now logs to file + stderr. Logging never throws.
+- **Autostart scripts**: real `scripts/install-service-{windows.ps1,macos.sh,
+  linux.sh}` (Task Scheduler / LaunchAgent / systemd user unit).
+- **npm packaging**: `repository` + `prepublishOnly` on all packages; publish
+  checklist (publish `@uxnan/shared` first, pin the `*` deps) in FOR-DEV.md.
+
 ### Added — Phase 5 (conversation engine + agent adapters)
 - **Conversation store** (`src/conversation/thread-store.ts`): persistent
   threads → turns → messages in `~/.uxnan/threads.json`, with serialized

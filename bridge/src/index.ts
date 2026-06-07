@@ -23,7 +23,15 @@ export { SessionState } from './session-state.js';
 export { LockFile, isProcessAlive, type LockInfo } from './lock-file.js';
 export { buildBridgeStatus, type BridgeStatusInput } from './bridge-status.js';
 export { generatePairingPayload, renderPairingQr, type GeneratePairingOptions } from './qr.js';
-export { createLogger, type Logger, type LogLevel } from './logger.js';
+export {
+  createLogger,
+  createFileLogger,
+  redactSecrets,
+  logFileFor,
+  type Logger,
+  type LogLevel,
+  type FileLoggerOptions,
+} from './logger.js';
 
 export { BaseAgentAdapter } from './adapters/base-adapter.js';
 export { CodexAdapter } from './adapters/codex-adapter.js';

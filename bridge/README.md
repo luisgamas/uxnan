@@ -28,8 +28,12 @@ uxnan-bridge start            # start the daemon core (no live transport yet)
 uxnan-bridge status           # print current status as JSON
 uxnan-bridge qr               # print the pairing QR in the terminal
 uxnan-bridge stop             # stop the running daemon (via the lock file)
-uxnan-bridge install-service  # (FOR-DEV) configure autostart
+uxnan-bridge install-service  # autostart: see scripts/install-service-*
 ```
+
+Logs are written to `~/.uxnan/logs/bridge-YYYY-MM-DD.log` (daily rotation, with a
+secret-redaction pass) and to stderr. Autostart at login is configured by the
+platform scripts under `scripts/` (Task Scheduler / LaunchAgent / systemd).
 
 The Ed25519 identity is stored in the OS keychain (Windows Credential Manager /
 macOS Keychain / Linux Secret Service). If no keychain is available the bridge

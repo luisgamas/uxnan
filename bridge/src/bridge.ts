@@ -19,7 +19,7 @@ import { createDefaultSecretStore } from './keyring-secret-store.js';
 import { SessionState } from './session-state.js';
 import { buildBridgeStatus } from './bridge-status.js';
 import { generatePairingPayload } from './qr.js';
-import { createLogger, type LogLevel } from './logger.js';
+import { createFileLogger, type LogLevel } from './logger.js';
 import { BRIDGE_VERSION } from './version.js';
 import { FileTrustStore, type TrustStore } from './transport/trust-store.js';
 import { handleSecureConnection } from './transport/session-handler.js';
@@ -60,9 +60,12 @@ export interface Bridge {
 
 export async function startBridge(options: StartBridgeOptions = {}): Promise<Bridge> {
   const now = options.now ?? (() => Date.now());
-  const logger = createLogger('bridge', options.logLevel ?? 'info');
-
   const state = new DaemonState(options.baseDir);
+  const logger = createFileLogger({
+    scope: 'bridge',
+    minLevel: options.logLevel ?? 'info',
+    logDir: state.logsDir,
+  });
   const config = await state.initConfig();
 
   const secretStore = options.secretStore ?? (await createDefaultSecretStore(logger));

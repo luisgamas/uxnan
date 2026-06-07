@@ -1,14 +1,38 @@
 #!/usr/bin/env bash
 # install-service-linux.sh
 #
-# Configures autostart for the uxnan-bridge daemon on Linux via a systemd user unit.
+# Installs a systemd USER unit so the uxnan-bridge daemon starts at login.
+# Requires the global CLI: npm install -g uxnan-bridge
 #
-# FOR-DEV: write ~/.config/systemd/user/uxnan-bridge.service and enable it with
-# `systemctl --user enable --now uxnan-bridge`. See
-# architecture/02a-system-architecture.md §5.8.4. Until then this script only
-# prints guidance.
+# Remove:  systemctl --user disable --now uxnan-bridge.service && \
+#          rm "${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/uxnan-bridge.service"
 set -euo pipefail
 
-echo "FOR-DEV: uxnan-bridge Linux autostart is not implemented yet."
-echo "Planned: install ~/.config/systemd/user/uxnan-bridge.service running 'uxnan-bridge start'."
-exit 0
+BIN="$(command -v uxnan-bridge || true)"
+if [ -z "$BIN" ]; then
+  echo "uxnan-bridge not found on PATH. Run: npm install -g uxnan-bridge" >&2
+  exit 1
+fi
+
+UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
+mkdir -p "$UNIT_DIR"
+
+cat > "$UNIT_DIR/uxnan-bridge.service" <<EOF
+[Unit]
+Description=Uxnan Bridge daemon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=$BIN start
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+EOF
+
+systemctl --user daemon-reload
+systemctl --user enable --now uxnan-bridge.service
+echo "Enabled systemd user unit uxnan-bridge.service."
+echo "Tip: 'loginctl enable-linger \$USER' keeps it running after logout."
