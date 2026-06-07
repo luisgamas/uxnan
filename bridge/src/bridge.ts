@@ -231,9 +231,10 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
               continue;
             }
           }
+          // Serve one phone session, then immediately re-arm on the relay (no
+          // delay) so a reconnecting phone always finds the bridge paired.
           await serve(current);
           current = undefined;
-          if (!stopping) await delay(RELAY_RECONNECT_DELAY_MS);
         }
       })();
     },

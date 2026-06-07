@@ -90,6 +90,14 @@ class SessionCoordinator {
   StreamSubscription<Uint8List>? _rxSubscription;
   bool _intentionalDisconnect = false;
   bool _disposed = false;
+  bool _reconnecting = false;
+
+  /// End-to-end liveness probe: while connected, periodically round-trips
+  /// `bridge/status` so a dead bridge (even behind a still-open relay socket) is
+  /// detected and reconnection is triggered. The transport-level close alone is
+  /// not reliable when the relay stays up.
+  Timer? _heartbeat;
+  static const Duration _heartbeatInterval = Duration(seconds: 25);
 
   /// Serializes outbound encrypt+send so envelopes get strictly increasing,
   /// non-duplicated sequence numbers AND are transmitted in that order. Without
@@ -208,25 +216,72 @@ class SessionCoordinator {
   }) async {
     final disconnected = _connectionPhase.value != ConnectionPhase.connected;
     if (disconnected || _channel == null) {
+      // Not connected: kick a reconnect attempt instead of doing nothing, so
+      // the action also serves as a manual "try to reconnect now".
+      if (!_intentionalDisconnect && _activeMac.value != null) {
+        unawaited(handleReconnect());
+      }
       return false;
     }
     try {
       await sendRequest('bridge/status').timeout(timeout);
       return true;
     } on Object {
-      await _rxSubscription?.cancel();
-      _rxSubscription = null;
-      await _transport?.disconnect().catchError((_) {});
-      _transport = null;
-      _channel = null;
-      unawaited(handleReconnect());
+      await _dropAndReconnect();
       return false;
     }
+  }
+
+  void _startHeartbeat() {
+    _heartbeat?.cancel();
+    _heartbeat = Timer.periodic(_heartbeatInterval, (_) {
+      unawaited(_heartbeatTick());
+    });
+  }
+
+  void _stopHeartbeat() {
+    _heartbeat?.cancel();
+    _heartbeat = null;
+  }
+
+  Future<void> _heartbeatTick() async {
+    final notConnected =
+        _connectionPhase.value != ConnectionPhase.connected;
+    if (notConnected || _channel == null) {
+      return;
+    }
+    try {
+      await sendRequest('bridge/status').timeout(const Duration(seconds: 8));
+    } on Object {
+      await _dropAndReconnect();
+    }
+  }
+
+  /// Records "last seen = now" for [device] so the PC card reflects the real
+  /// last connection instead of "never connected".
+  void _touchLastSeen(TrustedDevice device) {
+    final repo = _trustedDeviceRepository;
+    if (repo == null) return;
+    final updated = device.copyWith(lastSeen: DateTime.now());
+    _activeMac.add(updated);
+    unawaited(repo.saveDevice(updated));
+  }
+
+  /// Drops the (apparently dead) session and starts the reconnection loop.
+  Future<void> _dropAndReconnect() async {
+    _stopHeartbeat();
+    await _rxSubscription?.cancel();
+    _rxSubscription = null;
+    await _transport?.disconnect().catchError((_) {});
+    _transport = null;
+    _channel = null;
+    unawaited(handleReconnect());
   }
 
   /// Tears down the session deliberately (no reconnection is attempted).
   Future<void> disconnect() async {
     _intentionalDisconnect = true;
+    _stopHeartbeat();
     await _rxSubscription?.cancel();
     _rxSubscription = null;
     await _transport?.disconnect();
@@ -241,11 +296,24 @@ class SessionCoordinator {
     if (!_disposed) _connectionPhase.add(ConnectionPhase.disconnected);
   }
 
-  /// Runs the reconnection loop with exponential backoff.
+  /// Runs the reconnection loop with exponential backoff. Single-flight: a
+  /// second caller (heartbeat, verify, socket close) while a loop is already
+  /// running is a no-op, so overlapping attempts can't sabotage each other's
+  /// handshakes.
   Future<void> handleReconnect() async {
     final device = _activeMac.value;
     if (device == null || _intentionalDisconnect || _disposed) return;
+    if (_reconnecting) return;
+    _reconnecting = true;
+    _stopHeartbeat();
+    try {
+      await _runReconnectLoop(device);
+    } finally {
+      _reconnecting = false;
+    }
+  }
 
+  Future<void> _runReconnectLoop(TrustedDevice device) async {
     _connectionPhase.add(ConnectionPhase.reconnecting);
     await _rxSubscription?.cancel();
     _rxSubscription = null;
@@ -291,6 +359,7 @@ class SessionCoordinator {
   /// Releases all resources. The coordinator is unusable afterwards.
   Future<void> dispose() async {
     _disposed = true;
+    _stopHeartbeat();
     _intentionalDisconnect = true;
     await _rxSubscription?.cancel();
     await _transport?.disconnect();
@@ -318,6 +387,8 @@ class SessionCoordinator {
       _startReceiving(transport);
       await _flushOutbound();
       _connectionPhase.add(ConnectionPhase.connected);
+      _startHeartbeat();
+      _touchLastSeen(device);
       _recoveryState.add(
         ConnectionRecoveryState(lastConnectedAt: DateTime.now()),
       );

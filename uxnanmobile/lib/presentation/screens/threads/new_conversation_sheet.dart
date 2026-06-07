@@ -362,12 +362,14 @@ class _ModelTextField extends StatelessWidget {
             size: 18,
             color: colors.onSurfaceVariant,
           ),
+          suffixIconConstraints:
+              const BoxConstraints(maxHeight: 20, maxWidth: 36),
           suffixIcon: loading
-              ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: Padding(
-                    padding: EdgeInsets.all(4),
+              ? const Padding(
+                  padding: EdgeInsets.only(right: 10),
+                  child: SizedBox(
+                    width: 16,
+                    height: 16,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   ),
                 )

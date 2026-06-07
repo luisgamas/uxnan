@@ -178,7 +178,12 @@ export class RelayServer {
     ws.on('close', () => {
       const current = this.#sessions.get(sessionId);
       if (!current) return;
-      if (current[role] === ws) delete current[role];
+      // If a newer socket already replaced us for this role (e.g. the bridge
+      // reconnected with the same sessionId), this is a stale close: do NOT
+      // tear down the peer, or we'd kill a freshly reconnected phone's handshake
+      // ("message channel closed").
+      if (current[role] !== ws) return;
+      delete current[role];
       // Tear down the paired peer so it learns the other side is gone instead of
       // sitting on a half-open socket. This lets the phone detect a dead bridge
       // (and trigger reconnect) instead of showing "connected" forever.
