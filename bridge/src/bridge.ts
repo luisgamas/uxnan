@@ -7,12 +7,13 @@
  * Source: architecture/02a-system-architecture.md §5.8.2 (bridge entrypoint).
  */
 import { hostname } from 'node:os';
+import { randomUUID } from 'node:crypto';
 import { WebSocket } from 'ws';
 import { makeNotification, type BridgeStatus, type PairingPayload } from '@uxnan/shared';
 import type { BridgeContext } from './bridge-context.js';
 import { HandlerRouter } from './handler-router.js';
 import { registerAllHandlers } from './handlers/index.js';
-import { DaemonState } from './daemon-state.js';
+import { DaemonState, DAEMON_FILES } from './daemon-state.js';
 import { SecureDeviceState } from './secure-device-state.js';
 import type { SecretStore } from './secret-store.js';
 import { createDefaultSecretStore } from './keyring-secret-store.js';
@@ -71,6 +72,17 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
     logDir: state.logsDir,
   });
   const config = await state.initConfig();
+
+  // Persist the pairing sessionId so it is STABLE across bridge restarts. The
+  // relay pairs phone↔bridge by sessionId; if we regenerated it every start,
+  // the phone's trusted-reconnect (which reuses the stored sessionId) would no
+  // longer find the bridge on the relay and would require re-scanning the QR.
+  const persistedPairing = await state.readJson<{ sessionId: string }>(DAEMON_FILES.pairing);
+  let pairingSessionId = persistedPairing?.sessionId;
+  if (!pairingSessionId) {
+    pairingSessionId = randomUUID();
+    await state.writeJson(DAEMON_FILES.pairing, { sessionId: pairingSessionId });
+  }
 
   const secretStore = options.secretStore ?? (await createDefaultSecretStore(logger));
   const deviceState = new SecureDeviceState(secretStore);
@@ -153,6 +165,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
         macIdentityPublicKey: deviceState.identity.macIdentityPublicKey,
         displayName: hostname(),
         now: now(),
+        sessionId: pairingSessionId,
       }),
     connectRelay: async (sessionId: string) => {
       const connection = await connectRelayAsMac({

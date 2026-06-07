@@ -100,6 +100,17 @@ export class AgentManager {
     return this.#options.defaultAgent;
   }
 
+  /** Models the given agent's CLI reports (empty if it can't enumerate them). */
+  async getModels(agentId: AgentId): Promise<string[]> {
+    const adapter = this.#adapters.get(agentId);
+    if (!adapter?.listModels) return [];
+    try {
+      return await adapter.listModels();
+    } catch {
+      return [];
+    }
+  }
+
   /** Start a turn: persist the user message, drive the adapter, return the turn id. */
   async sendTurn(
     threadId: string,

@@ -49,6 +49,7 @@ export { CodexAdapter } from './adapters/codex-adapter.js';
 export {
   OpenCodeAdapter,
   parseOpenCodeLine,
+  parseModelList,
   type OpenCodeAdapterOptions,
   type OpenCodeEvent,
   type SpawnFn,

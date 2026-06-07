@@ -107,6 +107,14 @@ export interface AgentListResult {
   agents: AgentDescriptor[];
 }
 
+export interface AgentModelsParams {
+  agentId: AgentId;
+}
+export interface AgentModelsResult {
+  /** Models the agent can use (e.g. `provider/model`), as reported by its CLI. */
+  models: string[];
+}
+
 /** What the phone wants to be notified about (background push). */
 export interface NotificationPreferences {
   /** Push when an agent turn completes. */
@@ -170,6 +178,7 @@ export interface JsonRpcMethodRegistry {
 
   // Agents
   'agent/list': { params: void; result: AgentListResult };
+  'agent/models': { params: AgentModelsParams; result: AgentModelsResult };
 
   // Auth
   'auth/status': { params: void; result: AuthStatus };

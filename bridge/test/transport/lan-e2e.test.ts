@@ -6,11 +6,20 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { rm } from 'node:fs/promises';
 import { WebSocket } from 'ws';
-import { InMemorySecretStore, startBridge, wsToMessageIO } from '../../src/index.js';
+import {
+  DaemonState,
+  DAEMON_FILES,
+  InMemorySecretStore,
+  startBridge,
+  wsToMessageIO,
+} from '../../src/index.js';
 import { FakePhone } from '../helpers/fake-phone.js';
 
 test('a phone connects over the real LAN WebSocket and runs encrypted RPC', async () => {
   const baseDir = join(tmpdir(), `uxnan-lan-${randomUUID()}`);
+  // Bind an ephemeral LAN port so the test never collides with a running daemon
+  // (which holds the default port).
+  await new DaemonState(baseDir).writeJson(DAEMON_FILES.config, { lanPort: 0 });
   const bridge = await startBridge({
     baseDir,
     secretStore: new InMemorySecretStore(),

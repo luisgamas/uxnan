@@ -2,7 +2,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { PassThrough } from 'node:stream';
 import { EventEmitter } from 'node:events';
-import { OpenCodeAdapter, parseOpenCodeLine, type SpawnedProcess } from '../../src/index.js';
+import {
+  OpenCodeAdapter,
+  parseOpenCodeLine,
+  parseModelList,
+  type SpawnedProcess,
+} from '../../src/index.js';
 import type { AgentStreamEvent } from '@uxnan/shared';
 
 // --- a fake `opencode` process whose stdout we feed with --format json lines ---
@@ -50,6 +55,22 @@ function collect(adapter: OpenCodeAdapter): {
   });
   return { events, done };
 }
+
+test('parseModelList extracts unique provider/model ids', () => {
+  const out = [
+    'opencode/big-pickle',
+    'opencode/deepseek-v4-flash-free',
+    'opencode/big-pickle', // duplicate
+    '', // blank
+    'Available models:', // header (has a space)
+    'ollama-cloud/gemma4:31b',
+  ].join('\n');
+  assert.deepEqual(parseModelList(out), [
+    'opencode/big-pickle',
+    'opencode/deepseek-v4-flash-free',
+    'ollama-cloud/gemma4:31b',
+  ]);
+});
 
 test('parseOpenCodeLine maps the documented event shapes', () => {
   assert.equal(parseOpenCodeLine('not json'), null);

@@ -4,13 +4,20 @@
  *
  * Source: architecture/02a-system-architecture.md §5.8.2 (adapters).
  */
-import type { AgentListResult } from '@uxnan/shared';
+import type { AgentId, AgentListResult, AgentModelsResult } from '@uxnan/shared';
 import type { BridgeContext } from '../bridge-context.js';
 import type { HandlerRouter } from '../handler-router.js';
+import { requireString } from './params.js';
 
 export function registerAgentHandlers(router: HandlerRouter): void {
   router.register(
     'agent/list',
     (_p, ctx: BridgeContext): AgentListResult => ({ agents: ctx.agentManager.listAgents() }),
+  );
+  router.register(
+    'agent/models',
+    async (p, ctx: BridgeContext): Promise<AgentModelsResult> => ({
+      models: await ctx.agentManager.getModels(requireString(p, 'agentId') as AgentId),
+    }),
   );
 }

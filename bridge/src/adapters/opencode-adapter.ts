@@ -227,6 +227,29 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     return Promise.resolve();
   }
 
+  /** Run `opencode models` and return the `provider/model` ids it reports. */
+  listModels(): Promise<string[]> {
+    return new Promise((resolve) => {
+      let stdout = '';
+      let child;
+      try {
+        child = spawn(this.#binaryPath, ['models'], {
+          stdio: ['ignore', 'pipe', 'pipe'],
+          windowsHide: true,
+          shell: false,
+        });
+      } catch {
+        resolve([]);
+        return;
+      }
+      child.stdout.on('data', (chunk: Buffer) => {
+        stdout += chunk.toString('utf-8');
+      });
+      child.on('error', () => resolve([]));
+      child.on('close', () => resolve(parseModelList(stdout)));
+    });
+  }
+
   /**
    * Emit only the newly-appended suffix for a part. Handles both one-shot text
    * parts and incrementally-updated parts (same id streamed multiple times).
@@ -243,6 +266,20 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     partTexts.set(key, text);
     return delta;
   }
+}
+
+// eslint-disable-next-line no-control-regex
+const ANSI_PATTERN = /\[[0-9;]*m/g;
+
+/** Parse `opencode models` output into a unique list of `provider/model` ids. */
+export function parseModelList(stdout: string): string[] {
+  const seen = new Set<string>();
+  for (const raw of stdout.split(/\r?\n/)) {
+    const line = raw.replace(ANSI_PATTERN, '').trim();
+    // Model ids look like `provider/model`; skip headers/blank lines.
+    if (line.includes('/') && !line.includes(' ')) seen.add(line);
+  }
+  return [...seen];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

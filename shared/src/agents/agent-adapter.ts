@@ -45,4 +45,7 @@ export interface IAgentAdapter {
 
   /** Subscribe to streaming events. Returns an unsubscribe function. */
   onEvent(listener: (event: AgentStreamEvent) => void): () => void;
+
+  /** List the models this agent's CLI reports as available (optional). */
+  listModels?(): Promise<string[]>;
 }

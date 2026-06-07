@@ -37,6 +37,7 @@ export const METHOD_NAMES = [
   'project/resolve',
   // Agents
   'agent/list',
+  'agent/models',
   // Auth
   'auth/status',
   'auth/login',
