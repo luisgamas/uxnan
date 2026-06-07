@@ -8,7 +8,6 @@
  */
 import { hostname } from 'node:os';
 import { randomUUID } from 'node:crypto';
-import { WebSocket } from 'ws';
 import { makeNotification, type BridgeStatus, type PairingPayload } from '@uxnan/shared';
 import type { BridgeContext } from './bridge-context.js';
 import { HandlerRouter } from './handler-router.js';
@@ -142,6 +141,13 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   const relayConnections: RelayConnection[] = [];
   let lanHandle: LanServerHandle | undefined;
   let relayConnected = false;
+  let stopping = false;
+  const RELAY_RECONNECT_DELAY_MS = 2000;
+  const delay = (ms: number): Promise<void> =>
+    new Promise((resolve) => {
+      const timer = setTimeout(resolve, ms);
+      timer.unref?.();
+    });
 
   logger.info(`bridge ready (v${BRIDGE_VERSION})`);
 
@@ -168,27 +174,68 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
         sessionId: pairingSessionId,
       }),
     connectRelay: async (sessionId: string) => {
-      const connection = await connectRelayAsMac({
-        relayUrl: config.relayUrl,
-        sessionId,
-        macDeviceId: deviceState.identity.macDeviceId,
-        macIdentityPublicKey: deviceState.identity.macIdentityPublicKey,
-        machineName: hostname(),
-      });
-      relayConnections.push(connection);
-      relayConnected = true;
-      connection.ws.once('close', () => {
-        relayConnected = relayConnections.some((c) => c.ws.readyState === WebSocket.OPEN);
-      });
-      void handleSecureConnection({
-        io: connection.io,
-        ctx: context,
-        router,
-        deviceState,
-        trustStore,
-        displayName: hostname(),
-        expectedSessionId: sessionId,
-      });
+      const dial = (): Promise<RelayConnection> =>
+        connectRelayAsMac({
+          relayUrl: config.relayUrl,
+          sessionId,
+          macDeviceId: deviceState.identity.macDeviceId,
+          macIdentityPublicKey: deviceState.identity.macIdentityPublicKey,
+          machineName: hostname(),
+        });
+
+      // Serve exactly one phone session over `connection`; resolves when the
+      // connection closes (the relay closes our socket when the phone drops).
+      const serve = async (connection: RelayConnection): Promise<void> => {
+        relayConnections.push(connection);
+        relayConnected = true;
+        try {
+          await handleSecureConnection({
+            io: connection.io,
+            ctx: context,
+            router,
+            deviceState,
+            trustStore,
+            displayName: hostname(),
+            expectedSessionId: sessionId,
+          });
+        } finally {
+          const idx = relayConnections.indexOf(connection);
+          if (idx >= 0) relayConnections.splice(idx, 1);
+          try {
+            connection.ws.close();
+          } catch {
+            /* already closed */
+          }
+          relayConnected = relayConnections.length > 0;
+        }
+      };
+
+      // Initial connect (awaited so the caller knows the relay is reachable).
+      const initial = await dial();
+      // Background loop: after each session ends, reconnect to the relay and
+      // wait for the phone again. This lets the phone trusted-reconnect after a
+      // drop (or a bridge/relay restart) WITHOUT re-scanning the QR — the old
+      // one-shot handler treated a reconnecting phone's handshake as encrypted
+      // traffic and dropped it.
+      void (async () => {
+        let current: RelayConnection | undefined = initial;
+        while (!stopping) {
+          if (!current) {
+            try {
+              current = await dial();
+            } catch (err) {
+              logger.warn(
+                `relay reconnect failed: ${err instanceof Error ? err.message : String(err)}`,
+              );
+              await delay(RELAY_RECONNECT_DELAY_MS);
+              continue;
+            }
+          }
+          await serve(current);
+          current = undefined;
+          if (!stopping) await delay(RELAY_RECONNECT_DELAY_MS);
+        }
+      })();
     },
     startLan: async () => {
       if (lanHandle) return { port: lanHandle.port };
@@ -212,6 +259,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       sessionRegistry.notify(deviceId, makeNotification(method, params)),
     stop: async () => {
       logger.info('bridge stopping');
+      stopping = true;
       await agentManager.stopAll();
       for (const connection of relayConnections) {
         connection.ws.close();
