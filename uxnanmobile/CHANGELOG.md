@@ -8,6 +8,26 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Push notifications (FCM) — gated** — spec 02a §5.10:
+  - `PushNotificationService` (infrastructure): fully guarded `firebase_core` +
+    `firebase_messaging` + `flutter_local_notifications`. The app builds and runs
+    with **no** Firebase native config — `Firebase.initializeApp()` and every FCM
+    call are try/caught; when config is absent `isAvailable` is `false` and push
+    silently degrades to a no-op.
+  - `PushRegistrar` (application): on `ConnectionPhase.connected` it fetches the
+    FCM token and calls `notifications/register { pushToken, platform,
+    preferences }` over the session RPC; re-registers on token refresh; raises a
+    local notification on `TurnCompleted`/`TurnError` domain events.
+  - `main.dart` guarded Firebase init + `@pragma('vm:entry-point')` background
+    handler; `_PushHost` (under `MaterialApp.builder`) keeps the registrar alive
+    and feeds it localized copy. EN + ES strings.
+  - Android: core-library desugaring enabled (required by
+    `flutter_local_notifications`). Native Firebase config is **FOR-HUMAN**
+    (`FOR-HUMAN.md`): `google-services.json` / `GoogleService-Info.plist` + the
+    google-services gradle plugin + iOS push capability.
+  - Tests: `PushRegistrar` (register-on-connect, no-reregister, token refresh,
+    local notification on turn end) with a fake push service.
+
 - **MVP wiring — real bridge data + new-conversation flow** — spec 02a §5.2 /
   §5.4 / §5.6:
   - `Thread` entity now carries `model` (alongside `agentId`/`cwd`), parsed from

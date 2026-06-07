@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/application/coordinators/session_coordinator.dart';
 import 'package:uxnan/application/managers/git_action_manager.dart';
+import 'package:uxnan/application/managers/push_registrar.dart';
 import 'package:uxnan/application/managers/thread_manager.dart';
 import 'package:uxnan/application/processors/incoming_message_processor.dart';
 import 'package:uxnan/domain/entities/agent_descriptor.dart';
@@ -118,6 +121,29 @@ final projectsProvider = FutureProvider<List<Project>>(
 final agentsProvider = FutureProvider<List<AgentDescriptor>>(
   (ref) => ref.watch(threadManagerProvider).loadAgents(),
 );
+
+/// Registers the FCM push token with the bridge once the session connects and
+/// raises local notifications for turn-completed / turn-error events.
+///
+/// Best-effort and non-blocking: it lazily initializes the (guarded) push
+/// service, and silently no-ops when Firebase native config is absent. Watch
+/// this provider from a widget (e.g. the root app) to keep it alive; the UI
+/// feeds it localized copy via the registrar's `strings` setter.
+final pushRegistrarProvider = Provider<PushRegistrar>((ref) {
+  final coordinator = ref.watch(sessionCoordinatorProvider);
+  final processor = ref.watch(incomingMessageProcessorProvider);
+  final pushService = ref.watch(pushNotificationServiceProvider);
+  // Fire-and-forget init: must never block app startup.
+  unawaited(pushService.init());
+  final registrar = PushRegistrar(
+    pushService: pushService,
+    sendRequest: coordinator.sendRequest,
+    connectionPhases: coordinator.connectionPhaseStream,
+    domainEvents: processor.bind(coordinator.incomingMessages),
+  );
+  ref.onDispose(registrar.dispose);
+  return registrar;
+});
 
 /// Coordinates git actions (status, commit, push) for the active workspace.
 final gitActionManagerProvider = Provider<GitActionManager>((ref) {

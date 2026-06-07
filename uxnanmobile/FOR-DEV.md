@@ -152,6 +152,24 @@ Deferred implementation work (code the team/agent will do later). Distinct from
   §5.6) needs the `git/diff` RPC (not in the MVP manager); the changed-files
   list currently shows only per-file +/- counts from `git/status`.
 
+## Push notifications
+
+- ☑ **FCM token registration + local notifications** — DONE (gated):
+  `PushNotificationService` (guarded firebase_core/messaging + local
+  notifications) and `PushRegistrar` (registers the token via
+  `notifications/register` on connect, raises local notifications on
+  turn-completed/error). Builds/runs with no Firebase config. Native config is
+  FOR-HUMAN (`FOR-HUMAN.md` §2) + the relay needs the matching service account.
+- ☐ **Notification tap → deep link** — opening a turn-completed notification
+  should route to `/conversation/:threadId` (the `threadId` is already the
+  notification payload); wire `onDidReceiveNotificationResponse` /
+  `getInitialMessage` to the router.
+- ☐ **Notification preferences UI** — `preferences` is hard-coded to
+  `{turnCompleted:true,turnError:true}`; add a settings toggle that calls
+  `notifications/update`.
+- ☐ **iOS APNs** — verify end-to-end on a real device once the Firebase project
+  + APNs key exist (FOR-HUMAN).
+
 ## Tooling
 
 - ☐ Adopt `freezed`/`json_serializable` if/when entity boilerplate warrants it.

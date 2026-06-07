@@ -775,6 +775,42 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Untracked'**
   String get gitStatusUntracked;
+
+  /// Name of the Android notification channel for agent activity.
+  ///
+  /// In en, this message translates to:
+  /// **'Agent activity'**
+  String get pushChannelName;
+
+  /// Description of the Android notification channel.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn completions and errors from your coding agents.'**
+  String get pushChannelDescription;
+
+  /// Title of the local notification shown when an agent turn completes.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn completed'**
+  String get pushTurnCompletedTitle;
+
+  /// Body of the turn-completed notification.
+  ///
+  /// In en, this message translates to:
+  /// **'Your agent finished a turn.'**
+  String get pushTurnCompletedBody;
+
+  /// Title of the local notification shown when an agent turn errors.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn failed'**
+  String get pushTurnErrorTitle;
+
+  /// Fallback body of the turn-error notification.
+  ///
+  /// In en, this message translates to:
+  /// **'Your agent reported an error.'**
+  String get pushTurnErrorBody;
 }
 
 class _AppLocalizationsDelegate

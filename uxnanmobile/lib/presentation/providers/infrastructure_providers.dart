@@ -4,6 +4,7 @@ import 'package:uxnan/domain/repositories/i_git_action_log_repository.dart';
 import 'package:uxnan/domain/repositories/i_message_repository.dart';
 import 'package:uxnan/domain/repositories/i_thread_repository.dart';
 import 'package:uxnan/domain/repositories/i_trusted_device_repository.dart';
+import 'package:uxnan/infrastructure/notifications/push_notification_service.dart';
 import 'package:uxnan/infrastructure/repositories/drift_composer_draft_repository.dart';
 import 'package:uxnan/infrastructure/repositories/drift_git_action_log_repository.dart';
 import 'package:uxnan/infrastructure/repositories/drift_message_repository.dart';
@@ -54,6 +55,13 @@ final secureStoreProvider =
 /// Loads or creates the phone's persistent Ed25519 identity.
 final phoneIdentityStoreProvider = Provider<PhoneIdentityStore>(
   (ref) => PhoneIdentityStore(ref.watch(secureStoreProvider)),
+);
+
+/// Firebase Cloud Messaging + local notifications, fully guarded so the app
+/// runs without Firebase native config. Initialized lazily by the push module;
+/// `isAvailable` is `false` until [PushNotificationService.init] succeeds.
+final pushNotificationServiceProvider = Provider<PushNotificationService>(
+  (ref) => PushNotificationService(),
 );
 
 /// Trusted-device repository (drift for metadata + secure storage for the

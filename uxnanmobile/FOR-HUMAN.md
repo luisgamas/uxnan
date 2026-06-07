@@ -44,14 +44,43 @@ theme (`lib/presentation/theme/typography.dart`) names these families.
 
 ---
 
+## ☐ 2. Firebase / FCM config — push notifications (module IS wired)
+
+The push module is implemented and **fully guarded**: the app builds and runs
+without any of the files below — push simply stays disabled until you add them.
+Provide these to receive background notifications when an agent turn completes.
+
+**Use the SAME Firebase project the relay uses** (the relay needs that project's
+service account via `UXNAN_FCM_SERVICE_ACCOUNT` — see `relay/FOR-HUMAN.md`).
+
+**Android:**
+1. Firebase Console → add an Android app with package id **`com.uxnan.mobile`**.
+2. Download **`google-services.json`** → place at `uxnanmobile/android/app/google-services.json`.
+3. Apply the Google Services Gradle plugin (only after the json exists):
+   - In `android/settings.gradle.kts` plugins block, add:
+     `id("com.google.gms.google-services") version "4.4.2" apply false`
+   - In `android/app/build.gradle.kts` plugins block, add:
+     `id("com.google.gms.google-services")`
+   - (Core-library desugaring is already enabled for `flutter_local_notifications`.)
+4. `flutter clean && flutter pub get && flutter run`.
+
+**iOS:**
+1. Firebase Console → add an iOS app with bundle id **`com.uxnan.mobile`**.
+2. Download **`GoogleService-Info.plist`** → `uxnanmobile/ios/Runner/` (add to the Runner target in Xcode).
+3. Xcode → Runner target → Signing & Capabilities → **+ Push Notifications** and
+   **+ Background Modes → Remote notifications**.
+4. Upload your **APNs Auth Key** to the Firebase project (so FCM can reach iOS) —
+   same key referenced in `relay/FOR-HUMAN.md`.
+
+**Never commit** these files (already covered by `.gitignore`). Without them
+`Firebase.initializeApp()` fails silently and push is disabled — by design.
+
+---
+
 ## Future items (added when their module lands)
 
 These are **not needed yet** — they are listed so you know what is coming:
 
-- ☐ **Firebase / FCM config** (push module): `google-services.json` →
-  `android/app/`, `GoogleService-Info.plist` → `ios/Runner/`; plus the
-  `com.google.gms.google-services` gradle plugin and an APNs key in the Firebase
-  console. A `FOR-HUMAN:` note will be added when the push module is built.
 - ☐ **Release signing** (store builds): Android keystore + `key.properties`,
   iOS signing certificate / provisioning profile.
 - ☐ **App icons / launch images** (branding pass): replace the default Flutter

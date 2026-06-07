@@ -134,5 +134,30 @@
   "gitStatusModified": "Modified",
   "gitStatusDeleted": "Deleted",
   "gitStatusRenamed": "Renamed",
-  "gitStatusUntracked": "Untracked"
+  "gitStatusUntracked": "Untracked",
+
+  "pushChannelName": "Agent activity",
+  "@pushChannelName": {
+    "description": "Name of the Android notification channel for agent activity."
+  },
+  "pushChannelDescription": "Turn completions and errors from your coding agents.",
+  "@pushChannelDescription": {
+    "description": "Description of the Android notification channel."
+  },
+  "pushTurnCompletedTitle": "Turn completed",
+  "@pushTurnCompletedTitle": {
+    "description": "Title of the local notification shown when an agent turn completes."
+  },
+  "pushTurnCompletedBody": "Your agent finished a turn.",
+  "@pushTurnCompletedBody": {
+    "description": "Body of the turn-completed notification."
+  },
+  "pushTurnErrorTitle": "Turn failed",
+  "@pushTurnErrorTitle": {
+    "description": "Title of the local notification shown when an agent turn errors."
+  },
+  "pushTurnErrorBody": "Your agent reported an error.",
+  "@pushTurnErrorBody": {
+    "description": "Fallback body of the turn-error notification."
+  }
 }

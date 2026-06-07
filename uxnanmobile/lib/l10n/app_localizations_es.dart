@@ -365,4 +365,23 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get gitStatusUntracked => 'Sin seguimiento';
+
+  @override
+  String get pushChannelName => 'Actividad del agente';
+
+  @override
+  String get pushChannelDescription =>
+      'Turnos completados y errores de tus agentes de código.';
+
+  @override
+  String get pushTurnCompletedTitle => 'Turno completado';
+
+  @override
+  String get pushTurnCompletedBody => 'Tu agente terminó un turno.';
+
+  @override
+  String get pushTurnErrorTitle => 'El turno falló';
+
+  @override
+  String get pushTurnErrorBody => 'Tu agente reportó un error.';
 }

@@ -119,5 +119,12 @@
   "gitStatusModified": "Modificado",
   "gitStatusDeleted": "Eliminado",
   "gitStatusRenamed": "Renombrado",
-  "gitStatusUntracked": "Sin seguimiento"
+  "gitStatusUntracked": "Sin seguimiento",
+
+  "pushChannelName": "Actividad del agente",
+  "pushChannelDescription": "Turnos completados y errores de tus agentes de código.",
+  "pushTurnCompletedTitle": "Turno completado",
+  "pushTurnCompletedBody": "Tu agente terminó un turno.",
+  "pushTurnErrorTitle": "El turno falló",
+  "pushTurnErrorBody": "Tu agente reportó un error."
 }
