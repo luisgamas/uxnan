@@ -44,7 +44,11 @@ only a human can provide.)
       `src/conversation/thread-store.ts` + `src/agents/agent-manager.ts`.
 - [ ] **Project** — `src/handlers/project-handler.ts`.
 - [ ] **Account/auth** — `src/handlers/account-handler.ts` (sanitized, no tokens).
-- [ ] **Notifications** — `src/handlers/notifications-handler.ts` (+ add contracts).
+- [x] **Notifications** — `src/handlers/notifications-handler.ts` +
+      `src/push/push-service.ts`. `notifications/register|update|unregister` wired;
+      registers the token with the relay and pushes on turn-end (gated by
+      `config.push*` + Firebase creds on the relay). Follow-ups: persist the
+      registration to `~/.uxnan/push-state.json`; support multiple sessions.
 - [ ] **Desktop** — `src/handlers/desktop-handler.ts` (embedded mode IPC).
 - [ ] **bridge/removeTrustedDevice** — `src/handlers/bridge-control-handler.ts`.
 - [ ] **bridge/status `relayConnected`** — reflect the real relay connection.
