@@ -66,6 +66,10 @@ class WebSocketChannelTransport implements WebSocketTransport {
     final channel = IOWebSocketChannel.connect(
       Uri.parse(url),
       headers: headers,
+      // Heartbeat: the underlying socket auto-pings and closes if no pong
+      // arrives, so a dropped phone↔relay link is detected (and reconnection is
+      // triggered) instead of lingering as a half-open "connected" socket.
+      pingInterval: const Duration(seconds: 20),
     );
     _channel = channel;
     await channel.ready;

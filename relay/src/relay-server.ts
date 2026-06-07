@@ -179,6 +179,11 @@ export class RelayServer {
       const current = this.#sessions.get(sessionId);
       if (!current) return;
       if (current[role] === ws) delete current[role];
+      // Tear down the paired peer so it learns the other side is gone instead of
+      // sitting on a half-open socket. This lets the phone detect a dead bridge
+      // (and trigger reconnect) instead of showing "connected" forever.
+      const peer = role === 'mac' ? current.iphone : current.mac;
+      if (peer && peer.readyState === peer.OPEN) peer.close();
       if (!current.mac && !current.iphone) {
         this.#sessions.delete(sessionId);
       }

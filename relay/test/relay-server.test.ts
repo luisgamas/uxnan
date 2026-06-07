@@ -33,6 +33,22 @@ test('the relay forwards frames both ways between paired peers', async () => {
   await close();
 });
 
+test('closing one peer also closes the paired peer', async () => {
+  const relay = new RelayServer();
+  const { port, close } = await relay.start(0, '127.0.0.1');
+  const url = `ws://127.0.0.1:${port}`;
+  const sessionId = 'sess-peer-close';
+
+  const mac = await connect(url, 'mac', sessionId);
+  const iphone = await connect(url, 'iphone', sessionId);
+
+  const phoneClosed = once(iphone, 'close');
+  mac.close(); // bridge drops; the phone must learn the session is gone
+  await phoneClosed;
+  assert.equal(iphone.readyState, WebSocket.CLOSED);
+  await close();
+});
+
 test('a connection without a role/sessionId is rejected', async () => {
   const relay = new RelayServer();
   const { port, close } = await relay.start(0, '127.0.0.1');

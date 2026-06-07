@@ -187,9 +187,12 @@ class ThreadManager {
       createdAt: DateTime.now(),
     );
     await _messageRepository.saveMessage(message);
+    // Bridge contract (TurnSendParams): { threadId, text, service?, effort? }.
+    // `text` is required at the top level; nesting it under `content` made the
+    // bridge reject the turn with invalid params, so no turn was created.
     await _sendRequest('turn/send', {
       'threadId': threadId,
-      'content': {'text': text},
+      'text': text,
     });
   }
 
