@@ -269,6 +269,22 @@ void main() {
         ),
       );
     });
+
+    test('concurrent encrypts get unique contiguous seqs', () async {
+      // Regression: two RPCs fired concurrently (e.g. project/list + agent/list)
+      // must not read the same phoneOutboundSeq and emit a duplicate seq, which
+      // the bridge rejects as a replay.
+      final sender = SecureChannel(session());
+      final envelopes = await Future.wait(
+        List.generate(
+          20,
+          (i) => sender.encrypt(Uint8List.fromList([i])),
+        ),
+      );
+      final seqs = envelopes.map((e) => e.seq).toList()..sort();
+      expect(seqs.toSet().length, 20, reason: 'all seqs must be unique');
+      expect(seqs, List<int>.generate(20, (i) => i + 1));
+    });
   });
 
   group('classifyRaw', () {

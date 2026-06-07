@@ -91,6 +91,12 @@ class SessionCoordinator {
   bool _intentionalDisconnect = false;
   bool _disposed = false;
 
+  /// Serializes outbound encrypt+send so envelopes get strictly increasing,
+  /// non-duplicated sequence numbers AND are transmitted in that order. Without
+  /// this, two concurrent `sendRequest` calls would race on the channel's seq
+  /// counter and the bridge would reject the later envelope(s) as replays.
+  Future<void> _sendChain = Future<void>.value();
+
   /// Stream of connection phase transitions (current value replayed on listen).
   Stream<ConnectionPhase> get connectionPhaseStream => _connectionPhase.stream;
 
@@ -345,7 +351,18 @@ class SessionCoordinator {
     }
   }
 
-  Future<void> _sendEncrypted(RpcMessage message) async {
+  /// Enqueues an encrypt+send onto the serialized [_sendChain] so messages are
+  /// assigned sequence numbers and transmitted strictly in order.
+  Future<void> _sendEncrypted(RpcMessage message) {
+    return _sendChain =
+        _sendChain.then((_) => _encryptAndSend(message)).catchError(
+      (Object error, StackTrace _) {
+        AppLogger.warn('Failed to send "${message.method}": $error');
+      },
+    );
+  }
+
+  Future<void> _encryptAndSend(RpcMessage message) async {
     final channel = _channel;
     final transport = _transport;
     if (channel == null || transport == null) {

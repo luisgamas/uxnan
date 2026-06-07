@@ -242,16 +242,22 @@ class SecureChannel {
   SecureSession get session => _session;
 
   /// Encrypts [plaintext] into the next outbound envelope.
+  ///
+  /// The sequence number is reserved **synchronously** (before the `await` on
+  /// the encryption) so concurrent `encrypt` calls can never read the same
+  /// `phoneOutboundSeq` and emit a duplicate seq, which the bridge rejects as a
+  /// replay. The caller (the session coordinator) also serializes sends so
+  /// envelopes reach the bridge in seq order.
   Future<SecureEnvelope> encrypt(Uint8List plaintext) async {
-    final seq = _session.phoneOutboundSeq;
-    final envelope = await _envelope.encrypt(
+    final session = _session;
+    final seq = session.phoneOutboundSeq;
+    _session = session.withPhoneSeq(seq + 1);
+    return _envelope.encrypt(
       plaintext: plaintext,
-      key: _session.derivedKey,
-      sessionId: _session.sessionId,
+      key: session.derivedKey,
+      sessionId: session.sessionId,
       seq: seq,
     );
-    _session = _session.withPhoneSeq(seq + 1);
-    return envelope;
   }
 
   /// Decrypts an inbound [envelope], enforcing session and replay checks.
