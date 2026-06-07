@@ -99,12 +99,18 @@ Legend: ✅ done · 🔜 next · ⏳ planned
 ## ⏳ Phase 6 — Push notifications
 - Relay `/push/*` (APNs/FCM, dedupe); bridge completion tracking + dedupe.
 - Add `notifications/*` and `desktop/*` methods to `@uxnan/shared`.
+- **Setup (human):** [`relay/FOR-HUMAN.md`](./relay/FOR-HUMAN.md) — Firebase/APNs.
+- **Plan + tests:** [`relay/FOR-DEV.md`](./relay/FOR-DEV.md).
 
 ## ⏳ Phase 7 — Ops & packaging
 - Autostart scripts (`install-service-*`), file logging with rotation + redaction,
   npm packaging for `npm install -g uxnan-bridge`.
 
 ---
+
+> **Testing & validation guide:** [`TESTING.md`](./TESTING.md) — how to run the
+> suites and how to validate the parts automated tests can't (real-device E2EE,
+> real agent CLIs, push).
 
 > Per-item detail and code locations live in [`bridge/FOR-DEV.md`](./bridge/FOR-DEV.md).
 > Each component's `CHANGELOG.md` records what shipped under `[Unreleased]`.

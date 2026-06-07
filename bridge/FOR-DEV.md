@@ -4,6 +4,10 @@ Deferred developer work for the bridge. Each item has a greppable `FOR-DEV:`
 marker at its site in the code. (Distinct from `FOR-HUMAN.md`, which tracks assets
 only a human can provide.)
 
+> **How to run/validate everything** (automated tests, real-mobile E2EE interop,
+> adapter wiring, contract re-checks) is in [`../TESTING.md`](../TESTING.md).
+> Each deferred item below says what to build; TESTING.md says how to test it.
+
 ## Transport & connectivity
 - [x] **Secure transport / E2EE handshake** — `src/transport/` (Phase 2). Relay
       `mac` client + LAN server, handshake, AES-256-GCM channel; interoperable
