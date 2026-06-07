@@ -9,6 +9,7 @@ import { registerGitHandlers } from './git-handler.js';
 import { registerWorkspaceHandlers } from './workspace-handler.js';
 import { registerThreadHandlers } from './thread-context-handler.js';
 import { registerProjectHandlers } from './project-handler.js';
+import { registerAgentHandlers } from './agent-handler.js';
 import { registerAccountHandlers } from './account-handler.js';
 import { registerNotificationHandlers } from './notifications-handler.js';
 import { registerDesktopHandlers } from './desktop-handler.js';
@@ -19,6 +20,7 @@ export function registerAllHandlers(router: HandlerRouter): void {
   registerGitHandlers(router);
   registerWorkspaceHandlers(router);
   registerProjectHandlers(router);
+  registerAgentHandlers(router);
   registerAccountHandlers(router);
   registerNotificationHandlers(router);
   registerDesktopHandlers(router);

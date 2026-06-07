@@ -26,3 +26,17 @@ export interface AgentCapabilities {
   /** Agent supports image inputs. */
   images: boolean;
 }
+
+/**
+ * A registered agent the phone can pick for a thread, returned by `agent/list`.
+ */
+export interface AgentDescriptor {
+  agentId: AgentId;
+  /** Human-facing label (e.g. "OpenCode"). */
+  displayName: string;
+  /** Whether the agent's CLI/runtime is resolvable on this PC right now. */
+  available: boolean;
+  capabilities: AgentCapabilities;
+  /** Default model the bridge will use when the phone does not pick one. */
+  defaultModel?: string;
+}

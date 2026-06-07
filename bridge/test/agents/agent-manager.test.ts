@@ -38,7 +38,7 @@ test('sendTurn drives the echo agent: persists the reply and broadcasts stream e
   });
   manager.register(new EchoAgentAdapter());
 
-  const thread = await store.startThread('p', undefined, 1);
+  const thread = await store.startThread({ projectId: 'p' }, 1);
   const { turnId } = await manager.sendTurn(thread.id, 'hello world');
 
   await waitFor(async () => (await store.getTurn(turnId)).status === 'completed');
@@ -64,7 +64,7 @@ test('sendTurn for an unregistered agent rejects with AgentNotRunning', async ()
     logger: createLogger('test', 'error'),
     defaultAgent: 'codex',
   });
-  const thread = await store.startThread('p', undefined, 1);
+  const thread = await store.startThread({ projectId: 'p' }, 1);
   await assert.rejects(manager.sendTurn(thread.id, 'hi'));
   await rm(baseDir, { recursive: true, force: true });
 });

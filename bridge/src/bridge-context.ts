@@ -8,6 +8,7 @@ import type { SessionState } from './session-state.js';
 import type { SessionRegistry } from './transport/session-registry.js';
 import type { ThreadStore } from './conversation/thread-store.js';
 import type { AgentManager } from './agents/agent-manager.js';
+import type { ProjectRegistry } from './projects/project-registry.js';
 import type { Logger } from './logger.js';
 
 export interface BridgeContext {
@@ -23,6 +24,8 @@ export interface BridgeContext {
   readonly threadStore: ThreadStore;
   /** Agent turn orchestration. */
   readonly agentManager: AgentManager;
+  /** The project directories the phone may open. */
+  readonly projects: ProjectRegistry;
   readonly logger: Logger;
   /** Injected clock (epoch ms) for testability. */
   now(): number;

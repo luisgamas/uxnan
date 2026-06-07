@@ -35,10 +35,16 @@ export const METHOD_NAMES = [
   // Projects
   'project/list',
   'project/resolve',
+  // Agents
+  'agent/list',
   // Auth
   'auth/status',
   'auth/login',
   'auth/logout',
+  // Notifications (push)
+  'notifications/register',
+  'notifications/update',
+  'notifications/unregister',
   // Bridge control
   'bridge/status',
   'bridge/generatePairingQr',

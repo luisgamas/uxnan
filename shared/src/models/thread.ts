@@ -37,6 +37,12 @@ export interface Thread {
   turnCount: number;
   createdAt: number;
   updatedAt: number;
+  /** Agent driving this thread (e.g. `opencode`, `echo`). */
+  agentId?: string;
+  /** Model the agent uses for this thread (e.g. `provider/model`). */
+  model?: string;
+  /** Absolute working directory the agent and git operations run in. */
+  cwd?: string;
 }
 
 export interface ThreadList {

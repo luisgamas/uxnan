@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { rm } from 'node:fs/promises';
-import { makeRequest } from '@uxnan/shared';
+import { makeRequest, type Project } from '@uxnan/shared';
 import { InMemorySecretStore, startBridge, type Bridge } from '../../src/index.js';
 
 async function boot(): Promise<{ bridge: Bridge; baseDir: string }> {
@@ -29,8 +29,13 @@ async function waitFor(predicate: () => Promise<boolean>, timeoutMs = 10000): Pr
 test('thread/start then turn/send routes through the echo agent end-to-end', async () => {
   const { bridge, baseDir } = await boot();
 
+  // The phone discovers a real project, then opens a thread on the echo agent.
+  const projectsRes = await bridge.router.dispatch(makeRequest('0', 'project/list', {}));
+  assert.ok('result' in projectsRes);
+  const projectId = (projectsRes.result as Project[])[0]!.id;
+
   const startRes = await bridge.router.dispatch(
-    makeRequest('1', 'thread/start', { projectId: 'p1', title: 'Chat' }),
+    makeRequest('1', 'thread/start', { projectId, title: 'Chat', agentId: 'echo' }),
   );
   assert.ok('result' in startRes);
   const threadId = (startRes.result as { id: string }).id;
@@ -47,6 +52,27 @@ test('thread/start then turn/send routes through the echo agent end-to-end', asy
   const turn = await bridge.context.threadStore.getTurn(turnId);
   assert.equal(turn.messages.find((m) => m.role === 'assistant')?.content, 'ping pong');
 
+  await bridge.stop();
+  await rm(baseDir, { recursive: true, force: true });
+});
+
+test('agent/list reports the registered agents (echo + opencode)', async () => {
+  const { bridge, baseDir } = await boot();
+  const res = await bridge.router.dispatch(makeRequest('1', 'agent/list', {}));
+  assert.ok('result' in res);
+  const ids = (res.result as { agents: { agentId: string }[] }).agents.map((a) => a.agentId);
+  assert.ok(ids.includes('echo'));
+  assert.ok(ids.includes('opencode'));
+  await bridge.stop();
+  await rm(baseDir, { recursive: true, force: true });
+});
+
+test('thread/start with an unknown project id is rejected', async () => {
+  const { bridge, baseDir } = await boot();
+  const res = await bridge.router.dispatch(
+    makeRequest('1', 'thread/start', { projectId: 'proj_unknown' }),
+  );
+  assert.ok('error' in res);
   await bridge.stop();
   await rm(baseDir, { recursive: true, force: true });
 });

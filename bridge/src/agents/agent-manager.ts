@@ -14,12 +14,20 @@ import {
   RpcError,
   StreamNotification,
   makeNotification,
+  type AgentDescriptor,
   type AgentId,
   type AgentStreamEvent,
   type IAgentAdapter,
 } from '@uxnan/shared';
 import type { ThreadStore } from '../conversation/thread-store.js';
 import type { Logger } from '../logger.js';
+
+/** Display metadata + availability for a registered adapter, surfaced by `agent/list`. */
+export interface AgentMeta {
+  displayName: string;
+  available: boolean;
+  defaultModel?: string;
+}
 
 export interface AgentManagerOptions {
   store: ThreadStore;
@@ -39,6 +47,7 @@ export interface SendTurnOptions {
 
 export class AgentManager {
   readonly #adapters = new Map<AgentId, IAgentAdapter>();
+  readonly #meta = new Map<AgentId, AgentMeta>();
   readonly #started = new Set<AgentId>();
   readonly #assistantByTurn = new Map<string, string>();
   readonly #options: AgentManagerOptions;
@@ -47,8 +56,13 @@ export class AgentManager {
     this.#options = options;
   }
 
-  register(adapter: IAgentAdapter): void {
+  register(adapter: IAgentAdapter, meta?: Partial<AgentMeta>): void {
     this.#adapters.set(adapter.agentId, adapter);
+    this.#meta.set(adapter.agentId, {
+      displayName: meta?.displayName ?? adapter.agentId,
+      available: meta?.available ?? true,
+      ...(meta?.defaultModel !== undefined ? { defaultModel: meta.defaultModel } : {}),
+    });
     adapter.onEvent((event) => {
       void this.#onEvent(event);
     });
@@ -56,6 +70,25 @@ export class AgentManager {
 
   hasAdapter(agentId: AgentId): boolean {
     return this.#adapters.has(agentId);
+  }
+
+  /** Registered agents the phone can pick, with capabilities + availability. */
+  listAgents(): AgentDescriptor[] {
+    return [...this.#adapters.values()].map((adapter) => {
+      const meta = this.#meta.get(adapter.agentId);
+      return {
+        agentId: adapter.agentId,
+        displayName: meta?.displayName ?? adapter.agentId,
+        available: meta?.available ?? true,
+        capabilities: adapter.capabilities,
+        ...(meta?.defaultModel !== undefined ? { defaultModel: meta.defaultModel } : {}),
+      };
+    });
+  }
+
+  /** The bridge's configured default agent. */
+  get defaultAgent(): AgentId {
+    return this.#options.defaultAgent;
   }
 
   /** Start a turn: persist the user message, drive the adapter, return the turn id. */
@@ -87,6 +120,7 @@ export class AgentManager {
       text: userText,
       ...(options.service !== undefined ? { service: options.service } : {}),
       ...(options.effort !== undefined ? { effort: options.effort } : {}),
+      ...(options.cwd !== undefined ? { cwd: options.cwd } : {}),
     });
     return { turnId: started.turnId };
   }

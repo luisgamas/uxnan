@@ -14,7 +14,7 @@ function newStore(): { store: ThreadStore; baseDir: string } {
 
 test('start/list/read threads', async () => {
   const { store, baseDir } = newStore();
-  const created = await store.startThread('proj-1', 'Hello', 1000);
+  const created = await store.startThread({ projectId: 'proj-1', title: 'Hello' }, 1000);
   assert.equal(created.projectId, 'proj-1');
   assert.equal(created.turnCount, 0);
 
@@ -29,7 +29,7 @@ test('start/list/read threads', async () => {
 
 test('turn lifecycle: start, delta, complete', async () => {
   const { store, baseDir } = newStore();
-  const thread = await store.startThread('p', undefined, 1);
+  const thread = await store.startThread({ projectId: 'p' }, 1);
   const { turnId } = await store.startTurn(thread.id, 'ask', 2);
 
   await store.appendDelta(thread.id, turnId, 'ans', 3);
@@ -47,7 +47,7 @@ test('turn lifecycle: start, delta, complete', async () => {
 
 test('listTurns paginates with a cursor', async () => {
   const { store, baseDir } = newStore();
-  const thread = await store.startThread('p', undefined, 1);
+  const thread = await store.startThread({ projectId: 'p' }, 1);
   for (let i = 0; i < 3; i += 1) {
     await store.startTurn(thread.id, `q${i}`, 10 + i);
   }
@@ -62,7 +62,7 @@ test('listTurns paginates with a cursor', async () => {
 
 test('fork copies a thread; unknown ids reject', async () => {
   const { store, baseDir } = newStore();
-  const thread = await store.startThread('p', 'Orig', 1);
+  const thread = await store.startThread({ projectId: 'p', title: 'Orig' }, 1);
   await store.startTurn(thread.id, 'q', 2);
   const fork = await store.forkThread(thread.id, 3);
   assert.notEqual(fork.id, thread.id);

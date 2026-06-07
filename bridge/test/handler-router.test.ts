@@ -15,6 +15,7 @@ function fakeContext(): BridgeContext {
     sessionRegistry: new SessionRegistry(),
     threadStore: {} as BridgeContext['threadStore'],
     agentManager: {} as BridgeContext['agentManager'],
+    projects: {} as BridgeContext['projects'],
     logger: createLogger('test', 'error'),
     now: () => 1000,
   };

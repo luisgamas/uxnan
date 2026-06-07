@@ -27,6 +27,8 @@ import type {
 import type { AuthStatus, Project } from '../models/project.js';
 import type { BridgeStatus, ConnectedPhone, TrustedDevice } from '../models/session.js';
 import type { PairingPayload } from '../e2ee/pairing-payload.js';
+import type { AgentDescriptor, AgentId } from '../agents/agent-capabilities.js';
+import type { PushPlatform } from '../notifications/push-payload.js';
 
 // --- Param shapes -----------------------------------------------------------
 
@@ -36,6 +38,12 @@ export interface ListThreadsParams {
 export interface StartThreadParams {
   projectId: string;
   title?: string;
+  /** Agent to drive the thread (defaults to the bridge's configured default). */
+  agentId?: AgentId;
+  /** Model the agent should use (e.g. `provider/model`). */
+  model?: string;
+  /** Working directory override; defaults to the project's cwd. */
+  cwd?: string;
 }
 export interface ForkParams {
   threadId: string;
@@ -95,6 +103,32 @@ export interface PatchParams {
   changes: PatchChange[];
 }
 
+export interface AgentListResult {
+  agents: AgentDescriptor[];
+}
+
+/** What the phone wants to be notified about (background push). */
+export interface NotificationPreferences {
+  /** Push when an agent turn completes. */
+  turnCompleted: boolean;
+  /** Push when an agent turn errors. */
+  turnError: boolean;
+}
+
+export interface RegisterNotificationsParams {
+  /** FCM (Android) or APNs (iOS) device token. */
+  pushToken: string;
+  platform: PushPlatform;
+  preferences?: NotificationPreferences;
+}
+export interface RegisterNotificationsResult {
+  /** Whether the bridge accepted (and forwarded to the relay) the token. */
+  registered: boolean;
+}
+export interface UpdateNotificationsParams {
+  preferences: NotificationPreferences;
+}
+
 /**
  * Maps each method name to its `params` and `result` types. Use with
  * {@link JsonRpcMethodName} for end-to-end type-safety on both peers.
@@ -134,10 +168,21 @@ export interface JsonRpcMethodRegistry {
   'project/list': { params: void; result: Project[] };
   'project/resolve': { params: { cwd: string }; result: Project };
 
+  // Agents
+  'agent/list': { params: void; result: AgentListResult };
+
   // Auth
   'auth/status': { params: void; result: AuthStatus };
   'auth/login': { params: { provider: string }; result: void };
   'auth/logout': { params: void; result: void };
+
+  // Notifications (push)
+  'notifications/register': {
+    params: RegisterNotificationsParams;
+    result: RegisterNotificationsResult;
+  };
+  'notifications/update': { params: UpdateNotificationsParams; result: void };
+  'notifications/unregister': { params: void; result: void };
 
   // Bridge control (desktop → bridge)
   'bridge/status': { params: void; result: BridgeStatus };

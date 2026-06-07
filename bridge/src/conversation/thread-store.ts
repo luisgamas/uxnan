@@ -47,6 +47,9 @@ interface StoredThread {
   createdAt: number;
   updatedAt: number;
   turns: StoredTurn[];
+  agentId?: string;
+  model?: string;
+  cwd?: string;
 }
 
 const DEFAULT_TURN_LIMIT = 20;
@@ -55,6 +58,21 @@ export interface StartTurnResult {
   turnId: string;
   userMessageId: string;
   assistantMessageId: string;
+}
+
+export interface StartThreadInput {
+  projectId: string;
+  title?: string;
+  agentId?: string;
+  model?: string;
+  cwd?: string;
+}
+
+/** Runtime config the AgentManager needs to drive a thread's turns. */
+export interface ThreadRuntime {
+  agentId?: string;
+  model?: string;
+  cwd?: string;
 }
 
 export class ThreadStore {
@@ -97,20 +115,33 @@ export class ThreadStore {
     throw notFound(`turn not found: ${turnId}`);
   }
 
-  startThread(projectId: string, title: string | undefined, now: number): Promise<Thread> {
+  startThread(input: StartThreadInput, now: number): Promise<Thread> {
     return this.#mutate(async (threads) => {
       const thread: StoredThread = {
         id: randomUUID(),
-        projectId,
-        title: title ?? 'New thread',
+        projectId: input.projectId,
+        title: input.title ?? 'New thread',
         status: 'active',
         createdAt: now,
         updatedAt: now,
         turns: [],
+        ...(input.agentId !== undefined ? { agentId: input.agentId } : {}),
+        ...(input.model !== undefined ? { model: input.model } : {}),
+        ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
       };
       threads.push(thread);
       return toThread(thread);
     });
+  }
+
+  /** Agent/model/cwd a thread's turns run with (used by `turn/send`). */
+  async getThreadRuntime(threadId: string): Promise<ThreadRuntime> {
+    const thread = await this.#requireThread(await this.#read(), threadId);
+    const runtime: ThreadRuntime = {};
+    if (thread.agentId !== undefined) runtime.agentId = thread.agentId;
+    if (thread.model !== undefined) runtime.model = thread.model;
+    if (thread.cwd !== undefined) runtime.cwd = thread.cwd;
+    return runtime;
   }
 
   resumeThread(threadId: string, now: number): Promise<void> {
@@ -264,6 +295,9 @@ function toThread(thread: StoredThread): Thread {
     turnCount: thread.turns.length,
     createdAt: thread.createdAt,
     updatedAt: thread.updatedAt,
+    ...(thread.agentId !== undefined ? { agentId: thread.agentId } : {}),
+    ...(thread.model !== undefined ? { model: thread.model } : {}),
+    ...(thread.cwd !== undefined ? { cwd: thread.cwd } : {}),
   };
 }
 

@@ -10,7 +10,13 @@ export { BRIDGE_VERSION } from './version.js';
 export { HandlerRouter, type RpcHandler } from './handler-router.js';
 export type { BridgeContext } from './bridge-context.js';
 export { DaemonState, DAEMON_FILES } from './daemon-state.js';
-export { DEFAULT_DAEMON_CONFIG, resolveDaemonConfig, type DaemonConfig } from './daemon-config.js';
+export {
+  DEFAULT_DAEMON_CONFIG,
+  resolveDaemonConfig,
+  type DaemonConfig,
+  type AgentSettings,
+} from './daemon-config.js';
+export { ProjectRegistry, projectIdFor } from './projects/project-registry.js';
 export { SecureDeviceState, type PublicIdentity } from './secure-device-state.js';
 export { InMemorySecretStore, type SecretStore } from './secret-store.js';
 export {
@@ -35,7 +41,15 @@ export {
 
 export { BaseAgentAdapter } from './adapters/base-adapter.js';
 export { CodexAdapter } from './adapters/codex-adapter.js';
-export { OpenCodeAdapter } from './adapters/opencode-adapter.js';
+export {
+  OpenCodeAdapter,
+  parseOpenCodeLine,
+  type OpenCodeAdapterOptions,
+  type OpenCodeEvent,
+  type SpawnFn,
+  type SpawnedProcess,
+} from './adapters/opencode-adapter.js';
+export { resolveOpenCodeBinary, type ResolvedOpenCode } from './adapters/resolve-opencode.js';
 export { EchoAgentAdapter } from './adapters/echo-agent-adapter.js';
 export {
   ProcessAgentAdapter,
@@ -43,10 +57,16 @@ export {
 } from './adapters/process-agent-adapter.js';
 
 // Conversation engine
-export { ThreadStore, type StartTurnResult } from './conversation/thread-store.js';
+export {
+  ThreadStore,
+  type StartTurnResult,
+  type StartThreadInput,
+  type ThreadRuntime,
+} from './conversation/thread-store.js';
 export {
   AgentManager,
   type AgentManagerOptions,
+  type AgentMeta,
   type SendTurnOptions as AgentManagerSendTurnOptions,
 } from './agents/agent-manager.js';
 

@@ -29,6 +29,9 @@ import { SessionRegistry } from './transport/session-registry.js';
 import { ThreadStore } from './conversation/thread-store.js';
 import { AgentManager } from './agents/agent-manager.js';
 import { EchoAgentAdapter } from './adapters/echo-agent-adapter.js';
+import { OpenCodeAdapter } from './adapters/opencode-adapter.js';
+import { resolveOpenCodeBinary } from './adapters/resolve-opencode.js';
+import { ProjectRegistry } from './projects/project-registry.js';
 
 export interface StartBridgeOptions {
   /** Override the daemon state directory (defaults to `~/.uxnan`). */
@@ -76,16 +79,30 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   const sessionRegistry = new SessionRegistry();
   const trustStore = new FileTrustStore(state);
   const threadStore = new ThreadStore(state);
+  const projects = new ProjectRegistry(config.workspaceRoots);
   const agentManager = new AgentManager({
     store: threadStore,
     notify: (message) => sessionRegistry.broadcast(message),
     now,
     logger,
-    defaultAgent: 'echo',
+    defaultAgent: config.defaultAgent,
   });
-  // The echo agent is the only wired adapter for now (Codex/OpenCode need their
-  // real CLI protocol — see bridge/FOR-DEV.md).
-  agentManager.register(new EchoAgentAdapter());
+  // Echo: built-in reference agent (no external CLI), useful for development.
+  agentManager.register(new EchoAgentAdapter(), { displayName: 'Echo (dev)' });
+  // OpenCode: real agent driven via `opencode run --format json` (see FOR-DEV.md).
+  const openCodeSettings = config.agents.opencode ?? {};
+  const openCode = resolveOpenCodeBinary(openCodeSettings.binaryPath);
+  agentManager.register(
+    new OpenCodeAdapter({
+      binaryPath: openCode.binaryPath,
+      ...(openCodeSettings.model !== undefined ? { defaultModel: openCodeSettings.model } : {}),
+    }),
+    {
+      displayName: 'OpenCode',
+      available: openCode.available,
+      ...(openCodeSettings.model !== undefined ? { defaultModel: openCodeSettings.model } : {}),
+    },
+  );
   const startedAt = now();
 
   const context: BridgeContext = {
@@ -98,6 +115,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
     sessionRegistry,
     threadStore,
     agentManager,
+    projects,
     logger,
     now,
   };

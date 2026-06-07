@@ -19,8 +19,12 @@ export interface SendTurnOptions {
   threadId: string;
   turnId: string;
   text: string;
+  /** Model/service identifier (e.g. `provider/model`) for adapters that accept one. */
   service?: string;
+  /** Reasoning effort / variant (e.g. `high`, `max`, `minimal`). */
   effort?: string;
+  /** Working directory the agent should run in for this turn. */
+  cwd?: string;
 }
 
 export interface IAgentAdapter {
