@@ -95,10 +95,26 @@ The OpenCode adapter is the template for any "one-shot per-turn CLI" agent:
 ## Daemon lifecycle & ops
 - [x] **Single-instance lock + `stop`** (Phase 3) — `src/lock-file.ts`,
       `src/cli.ts` (`bridge.lock` + SIGTERM).
-- [x] **`install-service`** (Phase 7) — real `scripts/install-service-{windows.ps1,
-      macos.sh,linux.sh}` (Task Scheduler / LaunchAgent / systemd user unit). The
-      `install-service` CLI command still just points at these scripts; wire it to
-      run the right one per `process.platform` if desired.
+- [~] **`install-service` / autostart (so the terminals don't need to stay open)**
+      — scripts exist (`scripts/install-service-{windows.ps1,macos.sh,linux.sh}`),
+      but the CLI command only prints their paths. TO FINISH + recommended SECURE
+      design (run as the logged-in user, NEVER elevated — the Ed25519 identity is
+      already per-user in the OS keychain, so no root/SYSTEM is needed):
+        - **Windows:** a **Task Scheduler** task `At log on` for the current user
+          (`schtasks /Create /SC ONLOGON /RL LIMITED`), running
+          `node <path>/cli.js start` (or the packed `uxnan-bridge start`). LIMITED
+          run level = the user's normal token, no admin.
+        - **macOS:** a **LaunchAgent** plist in `~/Library/LaunchAgents/`
+          (`RunAtLoad` + `KeepAlive`), loaded with `launchctl` — runs as the user,
+          not a root LaunchDaemon.
+        - **Linux:** a **systemd `--user`** unit (`~/.config/systemd/user/`,
+          `systemctl --user enable --now`) + `loginctl enable-linger` so it
+          survives logout. User scope, no system unit.
+      Wire the CLI to invoke the right script per `process.platform`, add an
+      `uninstall-service`, and keep the **relay** similarly autostartable (or use
+      the deployed relay) — both the relay and bridge must be running for the
+      phone to (re)connect. Security notes: bind the LAN server to the LAN iface
+      only, keep logs redacted (done), never run elevated.
 - [x] **File logging** (Phase 7) — `src/logger.ts` `createFileLogger`
       (`~/.uxnan/logs/bridge-YYYY-MM-DD.log`, daily rotation + secret redaction).
       Follow-up: size-based rotation + retention/pruning of old log files.

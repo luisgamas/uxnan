@@ -67,9 +67,22 @@ Deferred implementation work (code the team/agent will do later). Distinct from
   shape is still assumed (tolerant parser) — verify against the real bridge.
 - ◑ **Thread actions** — **new thread DONE**: a "New conversation" FAB on
   `ThreadsScreen` opens `NewConversationSheet` (pick project via `project/list`,
-  agent via `agent/list`, optional model) → `ThreadManager.startThread`
-  (`thread/start`) → navigates to the conversation. Archive/delete and
-  resume/fork remain post-MVP.
+  agent via `agent/list`, model via `agent/models`) → `ThreadManager.startThread`
+  (`thread/start`) → navigates to the conversation. Threads are now scoped to the
+  selected PC (`Thread.deviceId`).
+  - ☐ **Archive / delete thread** (deferred — user-requested): bridge handlers
+    `thread/archive` + `thread/delete` (update/remove in `thread-store.ts`) and
+    local mirror; UI as a long-press / swipe / per-thread menu on `ThreadsScreen`.
+  - ☐ **Rename thread** (deferred — user-requested): a `thread/rename { threadId,
+    title }` bridge method + local update; edit action in the thread menu.
+  - ☐ **Expose the thread id in the UI** (deferred — user-requested): show/copy
+    the thread id (and the agent's session id when available) so the user can
+    **resume the same conversation directly from the CLI on the PC** (e.g.
+    `opencode run --session <id>`). The bridge already keeps the OpenCode
+    `sessionID` per thread — surface it via `thread/read` and a copy button.
+  - ☐ **Remove device** (deferred — user-requested): a "Remove" action on the PC
+    card that deletes the `TrustedDevice` (+ its local threads) and calls
+    `bridge/removeTrustedDevice`. Also lets the user clear a stale PC.
 
 ## Conversation / timeline
 
