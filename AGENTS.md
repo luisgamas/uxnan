@@ -5,7 +5,7 @@
 
 ## Project status
 
-**ALPHA** — The project is in technical specification phase. Architecture documentation is complete but implementation has not started. All code is new — no legacy, no users, no production data.
+**ALPHA** — Architecture documentation is complete. Implementation has begun: the `uxnanmobile/` Flutter app has a foundation (project scaffold, `core/` layer, Material 3 theme, domain enums, routing, i18n) and a local persistence module (drift) on the `uxnanmobile` branch. Other components (`uxnandesktop/`, `bridge/`, `relay/`, `shared/`) have not started. All code is new — no legacy, no users, no production data.
 
 This means:
 - There is no backwards-compatibility to maintain (yet).
@@ -82,11 +82,12 @@ If it affects contracts in `shared/`, all consuming components must be updated i
 ### Conventions by component
 
 **Flutter (uxnanmobile/):**
-- Clean Architecture: `domain/`, `infrastructure/`, `presentation/`, `core/`
-- Riverpod 3.x manual — no `riverpod_generator`, no `riverpod_annotation`
+- Clean Architecture: `core/`, `domain/`, `application/`, `infrastructure/`, `presentation/`
+- Riverpod 3.x manual — no `riverpod_generator`, no `riverpod_annotation`. Use the modern `Notifier` / `NotifierProvider` / `AsyncNotifierProvider` API (the spec's older `StateNotifierProvider` examples are adapted accordingly).
 - Material Design 3 with semantic `ColorScheme`
 - drift (SQLite) for local persistence
 - Detailed conventions: `architecture/03-technical-reference.md`
+- **Always use the installed Flutter skills** when working on this app — they encode this repo's exact style: `flutter-init-project` (bootstrap/reset a baseline), `flutter-clean-architect` (module/layer structure), `flutter-riverpod-expert` (providers, notifiers, auth/router wiring), `flutter-m3-uiux` (theme, design tokens, responsive UI). Invoke the relevant skill before scaffolding or restructuring. The architecture docs remain the source of truth: where a skill's generic default conflicts with the spec (e.g. `lib/config/` vs the spec's `lib/core/`, or a minimal-dependency default), follow the spec.
 
 **Desktop (uxnandesktop/):**
 - Backend: Rust with Tauri 2 + Tokio async
@@ -131,6 +132,46 @@ These rules are non-negotiable:
   - Rust: `cargo clippy` + `cargo fmt`
   - Node.js: project-configured linter
   - Svelte: `svelte-check` + project-configured linter
+
+### Human-required assets (`FOR-HUMAN:`)
+
+Some files cannot be produced by an agent: font binaries (`.ttf`/`.otf`), icon and image assets, Firebase/APNs credentials (`google-services.json`, `GoogleService-Info.plist`), signing keys, `.env` secrets, and store metadata.
+
+Whenever the implementation references such a file that the **human** must provide, you MUST leave a greppable annotation containing the literal token `FOR-HUMAN:` followed by:
+
+1. **What** the file/asset is (and where to obtain it, if relevant).
+2. **Where** it must go — the exact path in the project.
+3. **Config** — any wiring needed for it to work (e.g. uncomment a `pubspec.yaml` section then run `flutter pub get`, apply a gradle plugin, add an Xcode capability), or state "none".
+
+Rules:
+- Aggregate every open item in a `FOR-HUMAN.md` checklist at the component root (e.g. `uxnanmobile/FOR-HUMAN.md`).
+- Also place an inline comment with the `FOR-HUMAN:` token at the exact code/config location that needs the asset (e.g. a `# FOR-HUMAN:` comment in `pubspec.yaml`).
+- The whole project must always compile and run without these assets (use graceful fallbacks); a missing `FOR-HUMAN` asset may degrade a feature but must never break startup or the build.
+- **Never** commit real secrets, credentials, or keys — only the annotation describing what is needed and where.
+
+### Pending developer work (`FOR-DEV:`)
+
+When you intentionally defer implementation work that a developer/agent must do later — a deferred feature, a stub, a happy-path-only implementation, a `TODO` that is justified by sequencing — leave a greppable annotation with the literal token `FOR-DEV:` followed by:
+
+1. **What** is missing or stubbed.
+2. **Where** the real implementation should go (path / symbol).
+3. **Why** it was deferred and what unblocks it (e.g. "needs the relay", "UI increment", "needs the conversation module).
+
+Rules:
+- This is distinct from `FOR-HUMAN:` (which is for assets/secrets only a human can provide). `FOR-DEV:` is for code work the team will do.
+- Aggregate open items in a `FOR-DEV.md` checklist at the component root (e.g. `uxnanmobile/FOR-DEV.md`), and place an inline `// FOR-DEV:` comment at the exact deferral site.
+- A `FOR-DEV:` marker is the only acceptable form of a deferred-work `TODO`/`FIXME` (see "Code quality"); plain `TODO`/`FIXME` without it are still not allowed.
+- Deferring must not break the build or tests: stubs either throw a clear `UnimplementedError`/`StateError` or are simply not wired yet.
+
+### UI changes (propose and iterate)
+
+UI work — screens, layouts, visual design, theming — is reviewed visually by the user and must not be committed unilaterally. When you build or change UI:
+
+1. Implement the proposal with the design system and verify it once (analyze / tests / build).
+2. **Present it for the user's review and wait for their adjustments. Do not commit UI changes until the user approves them.**
+3. Iterate on their feedback (sizes, spacing, colors, positions, copy, motion) in the same loop; only re-run build/analyze when a change could actually affect compilation or behavior — not for pure visual tweaks the user asked for after an already-green verification.
+
+This mirrors the agreed workflow: propose → user reviews on-device → adjust → approve → commit.
 
 ---
 

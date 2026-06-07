@@ -21,6 +21,37 @@
 
 ---
 
+## Estado de implementación
+
+> Esta sección registra el avance de implementación frente a la especificación; se actualiza con cada incremento. La rama de trabajo de la app móvil es `uxnanmobile`. El detalle por incremento vive en `uxnanmobile/CHANGELOG.md`.
+
+**uxnanmobile (Flutter) — rama `uxnanmobile`:**
+
+| Área | Estado | Notas |
+|---|---|---|
+| Bootstrap (Android+iOS, package Dart `uxnan`, bundle `com.uxnan.mobile`) | ✅ Hecho | `flutter analyze` sin issues; `minSdk` 24, iOS 15 |
+| Estructura de capas (`core/`, `domain/`, `application/`, `infrastructure/`, `presentation/`) | ✅ Hecho | Ver 02a §7 |
+| Capa `core/` (constantes de protocolo, errores tipados, extensiones, logger/debouncer) | ✅ Hecho | — |
+| Enums de dominio | ✅ Hecho | 02a §5.1.2 |
+| Sistema visual M3 (tokens + tema adaptativo claro/oscuro) | ✅ Hecho | 02c §3.1 |
+| Arranque (`main`/`app`/router), i18n (en/es) | ✅ Hecho | — |
+| Persistencia drift (esquema completo de 7 tablas + `UxnanDatabase`) | ✅ Hecho | 02c §10 |
+| Repositorios drift: `Thread`, `ComposerDraft` (+ providers DI) | ✅ Hecho | `Message`/`Turn`/`Project`/`TrustedDevice` diferidos a su módulo |
+| Gestión de estado | Riverpod **3.x** manual | Decisión 2026-06-05 (ver abajo); API `Notifier`/`NotifierProvider` |
+| Primitivas crypto E2EE (key gen, handshake Ed25519/X25519/HKDF, envelope AES-256-GCM, fingerprint) | ✅ Hecho | 02a §5.9; verificado con vectores RFC/NIST |
+| Mecánica de transporte (WebSocket, handshake `performHandshake`, `SecureChannel` seq/replay, correlador, backoff, outbound buffer) | ✅ Hecho | 02a §5.9; handshake de 2 partes probado en memoria |
+| Orquestación `SessionCoordinator` (ConnectionPhase + reconexión + providers Riverpod) + `SecureStore`/`PhoneIdentityStore` + `TransportSelector` (relay) | ✅ Hecho | 02a §5.2.1; probado con bridge simulado (connect, RPC, reconexión) |
+| `IncomingMessageProcessor`, descubrimiento LAN, integración WS en vivo contra bridge | ⏳ Pendiente | Con conversación / pruebas e2e |
+| Pairing — **lógica** (`PairingPayload`, `PairingValidator`, `TrustedDevice` repo, `processPairingPayload`) | ✅ Hecho | 02a §5.5; solo QR (código manual diferido, FOR-DEV) |
+| Pairing — **UI** (onboarding 4 páginas, `QrScannerScreen` con permiso de cámara, `UpdatePromptDialog`, rutas) | ✅ Hecho | M3; `MyDevicesScreen`/código manual diferidos (FOR-DEV) |
+| Conversación/timeline — **dominio + datos** (`MessageContent`, `Message`/`Turn`, `DriftMessageRepository`, `MessageDeduplicator`, `TurnTimelineSnapshot` + reducer) | ✅ Hecho | 02a §5.6/§6.2 |
+| Conversación — **managers** (`ThreadManager`, `IncomingMessageProcessor`, eventos de dominio + streaming) | ✅ Hecho | 02a §5.2.2/§5.2.5; toda la lógica de conversación lista |
+| Conversación — **UI** (`ConversationScreen`, renderers, composer) · Git · push | ⏳ Pendiente | UI de conversación es el siguiente incremento (revisión visual) |
+
+> **Decisión de gestión de estado (2026-06-05):** el proyecto usa **Riverpod 3.x** manual (no 2.x). Los ejemplos de la especificación que usan `StateNotifierProvider` (API 2.x) se adaptan a la API moderna `Notifier`/`NotifierProvider`/`AsyncNotifierProvider`. Sigue sin usarse `riverpod_generator`.
+
+---
+
 ## Estructura del Monorepo
 
 El proyecto Uxnan está organizado como un monorepo que agrupa todos los componentes del ecosistema:

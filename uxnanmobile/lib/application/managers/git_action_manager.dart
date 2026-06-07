@@ -1,0 +1,184 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:rxdart/rxdart.dart';
+import 'package:uuid/uuid.dart';
+import 'package:uxnan/application/managers/thread_manager.dart' show RpcSend;
+import 'package:uxnan/application/processors/domain_event.dart';
+import 'package:uxnan/domain/entities/git/git_action_log_entry.dart';
+import 'package:uxnan/domain/entities/git/git_repo_state.dart';
+import 'package:uxnan/domain/enums/git_action_kind.dart';
+import 'package:uxnan/domain/repositories/i_git_action_log_repository.dart';
+import 'package:uxnan/domain/value_objects/git/git_action_io.dart';
+import 'package:uxnan/domain/value_objects/git/git_action_progress.dart';
+
+/// Coordinates git actions for the active workspace (spec 02a §5.2.4).
+///
+/// Reads repository state through the injected [RpcSend] (`git/status`) and runs
+/// commit/push, exposing the in-flight [GitActionProgress] which accumulates
+/// `stream/git/progress` events arriving on [DomainEvent]s. Completed actions
+/// are recorded in the local action log.
+///
+/// Adaptation note: the spec exposes `ValueNotifier`s; like the other managers
+/// this exposes streams (`BehaviorSubject`) to fit Riverpod 3.x.
+class GitActionManager {
+  /// Creates a [GitActionManager].
+  GitActionManager({
+    required RpcSend sendRequest,
+    required Stream<DomainEvent> domainEvents,
+    IGitActionLogRepository? actionLog,
+    Uuid? uuid,
+  })  : _sendRequest = sendRequest,
+        _actionLog = actionLog,
+        _uuid = uuid ?? const Uuid() {
+    _eventsSub = domainEvents.listen(_applyEvent);
+  }
+
+  final RpcSend _sendRequest;
+  final IGitActionLogRepository? _actionLog;
+  final Uuid _uuid;
+  late final StreamSubscription<DomainEvent> _eventsSub;
+
+  final BehaviorSubject<GitRepoState?> _repoState =
+      BehaviorSubject.seeded(null);
+  final BehaviorSubject<GitActionProgress?> _activeAction =
+      BehaviorSubject.seeded(null);
+  final BehaviorSubject<bool> _isLoading = BehaviorSubject.seeded(false);
+
+  /// The latest repository state, or null until first fetched.
+  Stream<GitRepoState?> get repoStateStream => _repoState.stream;
+
+  /// The in-flight git action's progress, or null when idle.
+  Stream<GitActionProgress?> get activeActionStream => _activeAction.stream;
+
+  /// Whether a status refresh is in flight.
+  Stream<bool> get isLoadingStream => _isLoading.stream;
+
+  /// The latest repository state snapshot.
+  GitRepoState? get repoState => _repoState.value;
+
+  /// The in-flight action snapshot.
+  GitActionProgress? get activeAction => _activeAction.value;
+
+  /// Fetches `git/status` for [cwd] and publishes the parsed [GitRepoState].
+  Future<GitRepoState?> refreshStatus(String cwd) async {
+    _isLoading.add(true);
+    try {
+      final response = await _sendRequest('git/status', {'cwd': cwd});
+      final result = response.result;
+      if (result is! Map) return null;
+      final state = GitRepoState.fromJson(result.cast<String, dynamic>());
+      _repoState.add(state);
+      return state;
+    } finally {
+      _isLoading.add(false);
+    }
+  }
+
+  /// Commits the working tree with [params] and refreshes status.
+  Future<GitCommitResult?> commit(GitCommitParams params) {
+    return _run(
+      kind: GitActionKind.commit,
+      method: 'git/commit',
+      rpcParams: params.toRpcParams(),
+      threadId: params.threadId,
+      cwd: params.cwd,
+      parseResult: GitCommitResult.fromJson,
+    );
+  }
+
+  /// Pushes the branch in [params] to its remote, surfacing per-phase
+  /// progress, and refreshes status.
+  Future<GitPushResult?> push(GitPushParams params) {
+    return _run(
+      kind: GitActionKind.push,
+      method: 'git/push',
+      rpcParams: params.toRpcParams(),
+      threadId: params.threadId,
+      cwd: params.cwd,
+      parseResult: GitPushResult.fromJson,
+    );
+  }
+
+  /// Releases resources.
+  Future<void> dispose() async {
+    await _eventsSub.cancel();
+    await _repoState.close();
+    await _activeAction.close();
+    await _isLoading.close();
+  }
+
+  Future<T?> _run<T>({
+    required GitActionKind kind,
+    required String method,
+    required Map<String, dynamic> rpcParams,
+    required String? threadId,
+    required String cwd,
+    required T Function(Map<String, dynamic>) parseResult,
+  }) async {
+    final startedAt = DateTime.now();
+    _activeAction.add(GitActionProgress(kind: kind));
+    try {
+      final response = await _sendRequest(method, rpcParams);
+      final result = response.result;
+      final map = result is Map ? result.cast<String, dynamic>() : null;
+      final parsed = map == null ? null : parseResult(map);
+      _activeAction.add(null);
+      await _record(
+        kind: kind,
+        threadId: threadId,
+        rpcParams: rpcParams,
+        result: map,
+        error: null,
+        startedAt: startedAt,
+      );
+      await refreshStatus(cwd);
+      return parsed;
+    } catch (error) {
+      final current = _activeAction.value;
+      _activeAction
+          .add(current?.withError('$error') ?? GitActionProgress(kind: kind));
+      await _record(
+        kind: kind,
+        threadId: threadId,
+        rpcParams: rpcParams,
+        result: null,
+        error: '$error',
+        startedAt: startedAt,
+      );
+      rethrow;
+    }
+  }
+
+  void _applyEvent(DomainEvent event) {
+    if (event is! GitProgressEvent) return;
+    final current = _activeAction.value;
+    if (current == null) return;
+    _activeAction.add(current.withPhase(event.phase, event.status));
+  }
+
+  Future<void> _record({
+    required GitActionKind kind,
+    required String? threadId,
+    required Map<String, dynamic> rpcParams,
+    required Map<String, dynamic>? result,
+    required String? error,
+    required DateTime startedAt,
+  }) async {
+    final log = _actionLog;
+    if (log == null || threadId == null) return;
+    await log.record(
+      GitActionLogEntry(
+        id: _uuid.v4(),
+        threadId: threadId,
+        kind: kind,
+        succeeded: error == null,
+        paramsJson: jsonEncode(rpcParams),
+        resultJson: result == null ? null : jsonEncode(result),
+        errorMessage: error,
+        startedAt: startedAt,
+        completedAt: DateTime.now(),
+      ),
+    );
+  }
+}

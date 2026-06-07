@@ -200,7 +200,7 @@ Todos los paquetes listados son compatibles con Android e iOS. Se priorizan los 
 
 | Paquete | Version min. | Rol | Notas |
 |---|---|---|---|
-| `riverpod` / `flutter_riverpod` | ^2.5.0 | State management | Sin riverpod_generator — providers se declaran manualmente para control explicito del ciclo de vida. |
+| `riverpod` / `flutter_riverpod` | ^3.0.0 | State management | **Riverpod 3.x** (decisión 2026-06-05). Sin riverpod_generator — providers manuales con la API `Notifier`/`NotifierProvider`/`AsyncNotifierProvider` para control explicito del ciclo de vida. Los ejemplos de estos documentos que muestran `StateNotifierProvider` (API 2.x) se adaptan a la API 3.x. |
 
 ### 2.2 Navegacion
 

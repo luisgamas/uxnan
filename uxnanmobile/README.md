@@ -1,0 +1,75 @@
+# uxnanmobile
+
+Flutter mobile client (Android + iOS) for **Uxnan** — a remote control for AI
+coding agents running on a PC, over an end-to-end encrypted channel.
+
+> Full technical specification: [`../architecture/`](../architecture/00-index.md).
+> The architecture docs are the source of truth; this app implements them.
+
+## Stack
+
+| Concern | Choice |
+|---|---|
+| Language / SDK | Dart 3.4+, Flutter 3.22+ |
+| Architecture | Clean Architecture — `core/`, `domain/`, `application/`, `infrastructure/`, `presentation/` |
+| State management | Riverpod (manual providers, **no** code generation) |
+| Navigation | `go_router` |
+| UI | Material 3, adaptive light/dark, centralized design tokens |
+| Local persistence | `drift` (SQLite) |
+| Secure storage | `flutter_secure_storage` (Keychain / Keystore) |
+| Crypto | `cryptography` + `pointycastle` (X25519, Ed25519, AES-256-GCM, HKDF) |
+| Lint | `very_good_analysis` |
+
+Package id: `com.uxnan.mobile` · Dart package name: `uxnan` (imports use
+`package:uxnan/...`).
+
+## Project layout (`lib/`)
+
+```
+core/            cross-cutting utilities (constants, errors, extensions, utils)
+domain/          entities, value_objects, enums, repositories, usecases (pure Dart)
+application/     coordinators, managers, processors (use cases orchestration)
+infrastructure/  transport, storage (drift), repositories, platform, crypto
+presentation/    screens, widgets, providers, router, theme
+l10n/            generated localizations (en, es)
+```
+
+Layer import rules (enforced by review + analysis), per spec 03 §1.5:
+`presentation → domain/application` · `application → domain` ·
+`infrastructure → domain` · `domain → (pure)` · `core → (none)`.
+
+## Getting started
+
+```bash
+flutter pub get
+flutter gen-l10n          # regenerate localizations after editing l10n/*.arb
+flutter run \
+  --dart-define=RELAY_URL=wss://relay-dev.uxnan.io \
+  --dart-define=ENV=dev \
+  --dart-define=ENABLE_LOGGING=true
+```
+
+### Build flavors
+
+Configuration is injected at compile time with `--dart-define` (spec 03 §3.3):
+
+| Variable | dev | staging | prod (default) |
+|---|---|---|---|
+| `RELAY_URL` | `wss://relay-dev.uxnan.io` | `wss://relay-staging.uxnan.io` | `wss://relay.uxnan.io` |
+| `ENV` | `dev` | `staging` | `prod` |
+| `ENABLE_LOGGING` | `true` | `true` | `false` |
+
+## Quality
+
+```bash
+dart format lib test
+flutter analyze            # must report 0 issues
+flutter test               # unit + widget tests
+```
+
+## Status
+
+Foundation increment. The project compiles, analyzes clean and boots to a home
+empty state. Feature modules (pairing/E2EE, transport, threads/conversation,
+Git, push) are implemented incrementally — see
+[`CHANGELOG.md`](CHANGELOG.md) and the architecture spec for scope and order.

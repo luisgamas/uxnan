@@ -292,6 +292,8 @@ class WorkspaceCheckpoint {
 
 #### 5.1.2 Enumeraciones de dominio
 
+> ✅ **Implementado** (rama `uxnanmobile`): los 8 enums en `lib/domain/enums/` (uno por archivo). `AgentId` añade mapeo a `wireId` estable con fallback a `custom`.
+
 ```dart
 enum MessageRole { user, assistant, system, tool }
 enum TurnStatus { pending, running, completed, error, aborted }
@@ -472,6 +474,8 @@ Esta capa orquesta los use cases y coordina los estados de dominio. Es el equiva
 
 #### 5.2.1 SessionCoordinator
 
+> ✅ **Implementado** (rama `uxnanmobile`): `lib/application/coordinators/session_coordinator.dart`. Orquesta connect/disconnect/switchMac, handshake vía `SecureTransportLayer`, `SecureChannel`, `sendRequest` (cifrado + correlación), y reconexión automática con backoff (hasta 10 intentos → fase `error`). Expone `connectionPhase`/`recoveryState`/`activeMac`/`incomingMessages` como streams, cableados a providers Riverpod (`sessionCoordinatorProvider`, `connectionPhaseProvider`, …). Probado con un bridge simulado en memoria (connect, RPC round-trip, notificación entrante, reconexión tras caída). Nota de adaptación: el spec usa `ValueNotifier`; se exponen **streams** (BehaviorSubject) para encajar con Riverpod 3.x (doc 03 §1.3 ya referencia `connectionPhaseStream`). **Pendiente:** `IncomingMessageProcessor` (clasificación de eventos de dominio, con el módulo de conversación), descubrimiento LAN en `TransportSelector`, e integración WS en vivo.
+
 Nucleo de la sesion de conexion. Gestiona el ciclo de vida completo:
 
 ```dart
@@ -499,6 +503,8 @@ class SessionCoordinator {
 ```
 
 #### 5.2.2 ThreadManager
+
+> ✅ **Implementado** (rama `uxnanmobile`): `lib/application/managers/thread_manager.dart`. Construye el `TurnTimelineSnapshot` del thread activo desde el repositorio local y aplica eventos de streaming (start/delta/complete, persistiendo el mensaje final); `loadThreads` (`thread/list`) y `sendUserMessage` (`turn/send`) sobre un `RpcSend` inyectado; dedup vía `MessageDeduplicator`. Expone `threadsStream`/`timelineStream` a providers Riverpod. Probado con DB in-memory + stream de eventos controlable. Adaptación: el spec usa `ValueNotifier`; se usan streams (BehaviorSubject) para Riverpod 3.x. Pendiente (FUTURO): paginación remota (`loadMoreHistory`), `startNewThread`/`resumeThread`/`fork`.
 
 ```dart
 // lib/application/managers/thread_manager.dart
@@ -563,6 +569,8 @@ class GitActionManager {
 ```
 
 #### 5.2.5 IncomingMessageProcessor
+
+> ✅ **Implementado** (rama `uxnanmobile`): `lib/application/processors/incoming_message_processor.dart` + jerarquía `DomainEvent`. Clasifica las notificaciones `stream/turn/started|message/delta|turn/completed|error|aborted` en eventos tipados; el resto (`stream/git/progress`, `plan`, `subagent`, `approval`, `connection`, `workspace`, `auth`) cae en `UnknownDomainEvent` hasta que su módulo lo modele (FOR-DEV). Probado. Nota: el `SessionCoordinator` ya descifra envelopes y enruta respuestas; este procesador consume las notificaciones entrantes.
 
 Procesa mensajes entrantes del bridge y los clasifica antes de rutearlos:
 
@@ -630,6 +638,8 @@ Implementaciones concretas de repositorios, adaptadores de transporte, almacenam
 
 #### 5.3.1 WebSocket Transport
 
+> ✅ **Implementado** (rama `uxnanmobile`): `lib/infrastructure/transport/websocket_transport.dart` define la interfaz `WebSocketTransport` + `WebSocketChannelTransport` (vía `IOWebSocketChannel` para soportar headers de upgrade). La capa segura (handshake + envelopes + `seq`/replay) está en `secure_transport_layer.dart`. Ver detalle en §5.9.1.
+
 ```dart
 // lib/infrastructure/transport/websocket_transport.dart
 class WebSocketTransport {
@@ -696,6 +706,8 @@ class SecureStore {
 ```
 
 #### 5.3.4 Almacenamiento local (SQLite)
+
+> ✅ **Implementado** (rama `uxnanmobile`): `UxnanDatabase` y el esquema completo de 7 tablas en `lib/infrastructure/storage/`. Detalle de tablas y repositorios en 02c §10. Repositorios drift listos: `Thread`, `ComposerDraft` (los demás se implementan con su módulo).
 
 ```dart
 // lib/infrastructure/storage/local_database.dart
@@ -1006,6 +1018,8 @@ class TurnTimelineSnapshot {
 
 ### 5.5 Modulo de pairing y onboarding
 
+> ✅ **Lógica + UI implementadas** (rama `uxnanmobile`): Lógica — `PairingPayload` (+`fromQrString`), `PairingValidator`, `ITrustedDeviceRepository` + `TrustedDeviceRepository` (drift + `SecureStore`), `SessionCoordinator.processPairingPayload`/`cancelPairing`. UI (M3) — `OnboardingScreen` (Welcome/Features/Install/Pair) con `CommandCardWidget`, `QrScannerScreen` (`mobile_scanner` + gating de permiso de cámara), `UpdatePromptDialog`, rutas `/onboarding` y `/pairing`. Permiso de cámara configurado (Android manifest + iOS `NSCameraUsageDescription`). Tests: dominio/infra + `processPairingPayload` e2e (bridge simulado) + navegación de onboarding. ⏳ **Pendiente (FOR-DEV):** pairing por **código manual** (relay REST §5.5.3), `MyDevicesScreen`, macro `PERMISSION_CAMERA=1` del Podfile iOS, y verificación on-device contra un bridge real. Ver `uxnanmobile/FOR-DEV.md`.
+
 **Objetivo:** llevar al usuario desde "app instalada" hasta "sesion segura activa" sin exponer detalles tecnicos.
 
 #### 5.5.1 Flujo de onboarding
@@ -1113,6 +1127,8 @@ SessionCoordinator.switchMac(device)
 ---
 
 ### 5.6 Modulo de timeline y turn handling
+
+> ✅ **Dominio + datos implementados** (rama `uxnanmobile`): jerarquía sellada `MessageContent` (+ codec JSON con fallback `UnknownContent`) en `lib/domain/value_objects/message_content.dart`; entidades `Message`/`Turn`; `IMessageRepository` + `DriftMessageRepository` (§6.2 / §10.3); `MessageDeduplicator` (§5.6.5) y `TurnTimelineSnapshot` con reducer de streaming/reconciliación/paginación (§5.4.6). Todo con tests. ⏳ **Pendiente (FOR-DEV):** contenido avanzado (`approval`/`plan`/`subagent`), managers de aplicación (`ThreadManager` de timeline, `IncomingMessageProcessor`), y la **UI** (`ConversationScreen`, renderers, composer) — siguiente incremento, para revisión visual. Ver `uxnanmobile/FOR-DEV.md`.
 
 **Objetivo:** presentar la conversacion activa de forma reactiva, eficiente y con soporte completo para streaming, diffs, planes, subagentes y adjuntos.
 
@@ -1535,6 +1551,10 @@ async function readHistoryFromDisk(threadId, { cursor, limit }) {
 El transporte seguro es la capa mas critica del sistema. Garantiza que el relay nunca vea el contenido de los mensajes en texto claro.
 
 #### 5.9.1 Protocolo de handshake completo
+
+> ✅ **Implementado** (rama `uxnanmobile`): primitivas crypto en `lib/infrastructure/crypto/` (verificadas contra vectores RFC 8032/7748/5869 y NIST) + la mecánica de transporte en `lib/infrastructure/transport/`: `WebSocketTransport`/`WebSocketChannelTransport`, `SecureTransportLayer.performHandshake` (flujo clientHello→serverHello→clientAuth→ready con verificación de nonce/expiry/identidad/firma), `SecureChannel` (cifrado + `seq` 1-based + rechazo de replay), `RequestCorrelator`, `BackoffCalculator`, `OutboundMessageBuffer`. Probado con un handshake de dos partes sobre un transporte en memoria. **Pendiente** (siguiente incremento): `SessionCoordinator` (máquina `ConnectionPhase` + bucle de reconexión + providers), `TransportSelector` (descubrimiento LAN), `IncomingMessageProcessor` e integración WS en vivo contra un bridge real.
+>
+> **Contrato — codificación canónica del transcript:** el transcript que se firma es el UTF-8 de la concatenación, en el orden documentado, de la representación *wire* de cada campo: hex en minúsculas para los campos de bytes (`clientNonce`, claves efímeras, `serverNonce`), el string tal cual para `sessionId`, y la representación decimal para los enteros (`keyEpoch`, `expiresAtForTranscript`). El bridge debe reproducir esta codificación byte a byte. La librería usada para AES-256-GCM es `cryptography` (no se introduce ninguna variante criptográfica: mismos algoritmo y parámetros del spec).
 
 ```
 CONSTANTES:
@@ -1961,6 +1981,8 @@ class AiFileChange {
 ---
 
 ## 7. Estructura de directorios del proyecto Flutter
+
+> ✅ **Implementado parcialmente** (rama `uxnanmobile`): el árbol está creado con las 5 capas. Completos: `core/`, `domain/enums`, parte de `domain/entities` + `domain/repositories`, `infrastructure/storage` + `infrastructure/repositories` (drift), `presentation/{theme,router,providers}` y las pantallas base. Las carpetas aún sin código llevan `.gitkeep`. `build.yaml` no es necesario por ahora (la generación de drift usa la config por defecto de `build_runner`).
 
 > **Nota:** este proyecto usa `lib/core/` para utilidades transversales. En proyectos que siguen la convencion `config/`, el contenido equivalente se ubicaria en `lib/config/`.
 

@@ -650,6 +650,8 @@ class BaseAgentAdapter {
 
 ### 3.1 Sistema de diseno
 
+> ✅ **Implementado** (rama `uxnanmobile`): tokens en `lib/presentation/theme/` (`colors.dart`, `typography.dart`, `spacing.dart`) y `buildUxnanTheme()` adaptativo para claro/oscuro. Nota: se usa `Color.withValues(alpha:)` en lugar de `withOpacity()` (deprecado en Flutter actual). Las fuentes Inter/JetBrainsMono ya están incluidas en `assets/fonts/` y declaradas en `pubspec.yaml` (verificado en dispositivo).
+
 Uxnan usa un sistema de diseno propio basado en Material Design 3 con personalizacion especifica para el contexto de terminal/codigo.
 
 #### Paleta de colores
@@ -673,15 +675,21 @@ class UxnanColors {
   static const warning = Color(0xFFFFA500);
   static const success = Color(0xFF00C896);
 
-  // Superficies — dark-first (el 95% del uso es en dark mode)
-  static const surface = Color(0xFF0F1117);         // fondo principal
-  static const surfaceVariant = Color(0xFF1A1D27);  // tarjetas, paneles
-  static const surfaceElevated = Color(0xFF22263A); // modales, sheets
-  static const outline = Color(0xFF2E3347);         // bordes sutiles
+  // Superficies y texto: variantes claras y oscuras.
+  static const lightSurface = Color(0xFFF8FAFD);
+  static const surface = Color(0xFF0F1117);
+  static const lightSurfaceVariant = Color(0xFFE7EBF4);
+  static const surfaceVariant = Color(0xFF1A1D27);
+  static const lightSurfaceElevated = Color(0xFFFFFFFF);
+  static const surfaceElevated = Color(0xFF22263A);
+  static const lightOutline = Color(0xFFB5BECC);
+  static const outline = Color(0xFF2E3347);
 
-  // Texto
+  static const lightOnSurface = Color(0xFF111827);
   static const onSurface = Color(0xFFEAEBF0);
+  static const lightOnSurfaceMuted = Color(0xFF5B6474);
   static const onSurfaceMuted = Color(0xFF8892A4);
+  static const lightOnSurfaceDisabled = Color(0xFF98A1B3);
   static const onSurfaceDisabled = Color(0xFF444A5A);
 
   // Git especificos
@@ -1999,6 +2007,8 @@ class GitErrorMapper {
 ---
 
 ## 10. Modelos de base de datos (Drift)
+
+> ✅ **Implementado** (rama `uxnanmobile`): esquema completo (7 tablas, `schemaVersion` 1, pragmas WAL/foreign_keys), `UxnanDatabase` con constructor `forTesting`, y `DriftThreadRepository` + `DriftComposerDraftRepository` con tests in-memory. Ajuste vs. spec: los índices usan la anotación real de drift `@TableIndex(...)` en lugar del `List<Index> get indexes` mostrado abajo (que es pseudocódigo de referencia). `DriftMessageRepository` se implementa con el módulo de conversación, junto con la jerarquía sellada `MessageContent`.
 
 ### 10.1 Definicion completa de tablas
 
