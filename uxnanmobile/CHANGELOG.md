@@ -8,6 +8,18 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Capability-aware conversation UI** (proposal, pending on-device review) —
+  the conversation now adapts to the active agent's advertised
+  `AgentCapabilities` (from `agent/list`):
+  - `agentCapabilitiesProvider` resolves a thread's agent capabilities, falling
+    back to an all-permissive default (`AgentCapabilities.permissive()`) when the
+    agent list isn't loaded yet, so controls are never hidden spuriously.
+  - The `SessionStatusSheet` approval-mode row is shown only when the agent
+    advertises `approvals`; the `ComposerBar` attach button only when it
+    advertises `images` (the picker itself stays FOR-DEV). OpenCode (no
+    approvals/images) hides both; Codex/Claude will surface them once the bridge
+    exposes those agents. Verify on-device when they land.
+
 - **New threads default their title to the thread id** — when a conversation is
   started without an explicit title, `ThreadManager.startThread` sets the local
   title to the new thread's own id (instead of a generic "New thread"), so it's

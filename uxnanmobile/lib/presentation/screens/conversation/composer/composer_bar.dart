@@ -16,6 +16,7 @@ class ComposerBar extends StatefulWidget {
     required this.environment,
     this.onModelTap,
     this.enabled = true,
+    this.showAttach = true,
     super.key,
   });
 
@@ -30,6 +31,10 @@ class ComposerBar extends StatefulWidget {
 
   /// Whether sending is currently allowed (e.g. connected).
   final bool enabled;
+
+  /// Whether to show the attach button. Hidden for agents that don't advertise
+  /// the `images` capability (the picker itself is still FOR-DEV).
+  final bool showAttach;
 
   @override
   State<ComposerBar> createState() => _ComposerBarState();
@@ -118,13 +123,16 @@ class _ComposerBarState extends State<ComposerBar> {
               const SizedBox(height: UxnanSpacing.sm),
               Row(
                 children: [
-                  // FOR-DEV: attach is a placeholder (no file/image picker yet).
-                  _RoundIconButton(
-                    icon: Icons.add_rounded,
-                    tooltip: l10n.composerAttach,
-                    onPressed: null,
-                  ),
-                  const SizedBox(width: UxnanSpacing.xs),
+                  // FOR-DEV: attach is a placeholder (no file/image picker
+                  // yet); shown only when the agent advertises `images`.
+                  if (widget.showAttach) ...[
+                    _RoundIconButton(
+                      icon: Icons.add_rounded,
+                      tooltip: l10n.composerAttach,
+                      onPressed: null,
+                    ),
+                    const SizedBox(width: UxnanSpacing.xs),
+                  ],
                   Flexible(
                     child: _ModelChip(
                       model: widget.environment.modelName,

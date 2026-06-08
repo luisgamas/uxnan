@@ -120,14 +120,17 @@ Deferred implementation work (code the team/agent will do later). Distinct from
     report token usage (no fabricated fraction). ☐ Wire real usage from
     `bridge/status` or turn usage when available.
   - ◑ **Approval mode** (`ApprovalModeSheet`) → now an explicit local per-thread
-    setting (no sampled value). ☐ Read/persist via an access-mode RPC when one
-    exists.
+    setting (no sampled value); the status-sheet row is **gated by the agent's
+    `approvals` capability** (`agentCapabilitiesProvider`). ☐ Read/persist via an
+    access-mode RPC when one exists.
   - ☑ **Git branch / remote / local** (`_EnvironmentChip`, status-sheet git
     section) → real values from `git/status` via `gitRepoStateProvider`; the
     commit/push rows call `GitActionManager.commit` / `.push` against the active
     thread's `cwd`.
-  - ☐ **Attach** (`ComposerBar` add button) → file/image picker → upload as
-    `ImageContent` / attachment. Currently a disabled placeholder (FOR-DEV).
+  - ◑ **Attach** (`ComposerBar` add button) → the button is now **gated by the
+    agent's `images` capability** (hidden when unsupported). ☐ Still a disabled
+    placeholder when shown: file/image picker → upload as `ImageContent` /
+    attachment (FOR-DEV).
   - ☐ **Voice** (`ComposerBar` mic button) → speech-to-text into the composer.
     Currently a disabled placeholder (FOR-DEV).
   - ☑ Removed `SessionEnvironment.sample()`, `demo_seed.dart` and the home
