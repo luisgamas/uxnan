@@ -75,16 +75,17 @@ Deferred implementation work (code the team/agent will do later). Distinct from
   agent via `agent/list`, model via `agent/models`) → `ThreadManager.startThread`
   (`thread/start`) → navigates to the conversation. Threads are now scoped to the
   selected PC (`Thread.deviceId`).
-  - ☐ **Archive / delete thread** (deferred — user-requested): bridge handlers
-    `thread/archive` + `thread/delete` (update/remove in `thread-store.ts`) and
-    local mirror; UI as a long-press / swipe / per-thread menu on `ThreadsScreen`.
-  - ☐ **Rename thread** (deferred — user-requested): a `thread/rename { threadId,
-    title }` bridge method + local update; edit action in the thread menu.
-  - ☐ **Expose the thread id in the UI** (deferred — user-requested): show/copy
-    the thread id (and the agent's session id when available) so the user can
-    **resume the same conversation directly from the CLI on the PC** (e.g.
-    `opencode run --session <id>`). The bridge already keeps the OpenCode
-    `sessionID` per thread — surface it via `thread/read` and a copy button.
+  - ☑ **Delete thread** — DONE (mobile): long-press menu on `ThreadsScreen` →
+    `ThreadManager.deleteThread` removes locally + calls `thread/delete`
+    (best-effort, degrades gracefully). ☐ **Archive thread** still pending
+    (`thread/archive` + a `ThreadStatus.archived` filter/section).
+  - ☑ **Rename thread** — DONE (mobile): long-press menu → rename dialog →
+    `ThreadManager.renameThread` (local-first + `thread/rename`, graceful
+    degradation). Bridge `thread/rename` handler is the other agent's side.
+  - ◑ **Expose the thread id in the UI** — **thread id DONE**: long-press "Copy
+    thread ID" + a copyable **Thread ID** row in `SessionStatusSheet` (resume a
+    conversation from the CLI on the PC). ☐ Still: surface the agent's **session
+    id** (e.g. OpenCode `sessionID`) once the bridge exposes it via `thread/read`.
   - ☐ **Remove device** (deferred — user-requested): a "Remove" action on the PC
     card that deletes the `TrustedDevice` (+ its local threads) and calls
     `bridge/removeTrustedDevice`. Also lets the user clear a stale PC.
@@ -179,10 +180,12 @@ Deferred implementation work (code the team/agent will do later). Distinct from
   `notifications/register` on connect, raises local notifications on
   turn-completed/error). Builds/runs with no Firebase config. Native config is
   FOR-HUMAN (`FOR-HUMAN.md` §2) + the relay needs the matching service account.
-- ☐ **Notification tap → deep link** — opening a turn-completed notification
-  should route to `/conversation/:threadId` (the `threadId` is already the
-  notification payload); wire `onDidReceiveNotificationResponse` /
-  `getInitialMessage` to the router.
+- ☑ **Notification tap → deep link** — DONE: `PushNotificationService` exposes
+  `onNotificationTap` + `initialThreadId()` (wired to
+  `onDidReceiveNotificationResponse`, FCM `onMessageOpenedApp`,
+  `getNotificationAppLaunchDetails()` / `getInitialMessage()`); `_PushHost`
+  routes taps to `/conversation/:threadId` (incl. cold start after first frame).
+  Verify on a real device once Firebase creds exist (FOR-HUMAN).
 - ☐ **Notification preferences UI** — `preferences` is hard-coded to
   `{turnCompleted:true,turnError:true}`; add a settings toggle that calls
   `notifications/update`.

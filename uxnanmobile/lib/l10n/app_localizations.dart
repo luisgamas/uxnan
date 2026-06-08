@@ -458,6 +458,66 @@ abstract class AppLocalizations {
   /// **'Threads from this PC will appear here. Pull down to refresh.'**
   String get threadsEmptyBody;
 
+  /// No description provided for @threadActionRename.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename'**
+  String get threadActionRename;
+
+  /// No description provided for @threadActionCopyId.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy thread ID'**
+  String get threadActionCopyId;
+
+  /// No description provided for @threadActionDelete.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete'**
+  String get threadActionDelete;
+
+  /// No description provided for @threadRenameTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename thread'**
+  String get threadRenameTitle;
+
+  /// No description provided for @threadRenameHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Thread title'**
+  String get threadRenameHint;
+
+  /// No description provided for @threadIdCopied.
+  ///
+  /// In en, this message translates to:
+  /// **'Thread ID copied'**
+  String get threadIdCopied;
+
+  /// No description provided for @threadIdLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Thread ID'**
+  String get threadIdLabel;
+
+  /// No description provided for @threadDeleteTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete thread?'**
+  String get threadDeleteTitle;
+
+  /// No description provided for @threadDeleteBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This removes the conversation from this device.'**
+  String get threadDeleteBody;
+
+  /// No description provided for @threadDeleteConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete'**
+  String get threadDeleteConfirm;
+
   /// No description provided for @conversationTitle.
   ///
   /// In en, this message translates to:

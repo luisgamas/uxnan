@@ -202,6 +202,37 @@ class AppLocalizationsEn extends AppLocalizations {
       'Threads from this PC will appear here. Pull down to refresh.';
 
   @override
+  String get threadActionRename => 'Rename';
+
+  @override
+  String get threadActionCopyId => 'Copy thread ID';
+
+  @override
+  String get threadActionDelete => 'Delete';
+
+  @override
+  String get threadRenameTitle => 'Rename thread';
+
+  @override
+  String get threadRenameHint => 'Thread title';
+
+  @override
+  String get threadIdCopied => 'Thread ID copied';
+
+  @override
+  String get threadIdLabel => 'Thread ID';
+
+  @override
+  String get threadDeleteTitle => 'Delete thread?';
+
+  @override
+  String get threadDeleteBody =>
+      'This removes the conversation from this device.';
+
+  @override
+  String get threadDeleteConfirm => 'Delete';
+
+  @override
   String get conversationTitle => 'Conversation';
 
   @override

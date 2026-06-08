@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
@@ -240,12 +241,15 @@ class _AgentChipAvatar extends StatelessWidget {
   }
 }
 
-class _ThreadTile extends StatelessWidget {
+/// A per-thread action chosen from the long-press menu.
+enum _ThreadAction { rename, copyId, delete }
+
+class _ThreadTile extends ConsumerWidget {
   const _ThreadTile({required this.thread});
   final Thread thread;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final agent = AgentIdParsing.fromWireId(thread.agentId);
@@ -256,6 +260,7 @@ class _ThreadTile extends StatelessWidget {
       child: InkWell(
         borderRadius: const BorderRadius.all(UxnanRadius.lg),
         onTap: () => context.push(AppRoutes.conversation(thread.id)),
+        onLongPress: () => _showThreadActions(context, ref, thread),
         child: Padding(
           padding: const EdgeInsets.all(UxnanSpacing.md),
           child: Row(
@@ -319,6 +324,135 @@ class _ThreadTile extends StatelessWidget {
     final dir = thread.cwd?.split(RegExp(r'[\\/]')).last;
     return dir == null ? agent : '$agent · $dir';
   }
+}
+
+/// Shows the per-thread actions sheet (rename / copy id / delete) on long-press.
+Future<void> _showThreadActions(
+  BuildContext context,
+  WidgetRef ref,
+  Thread thread,
+) async {
+  final l10n = AppLocalizations.of(context);
+  final colors = Theme.of(context).colorScheme;
+  final action = await showModalBottomSheet<_ThreadAction>(
+    context: context,
+    showDragHandle: true,
+    builder: (context) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            title: Text(thread.title, overflow: TextOverflow.ellipsis),
+            subtitle: Text(
+              thread.id,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const Divider(height: 1),
+          ListTile(
+            leading: const Icon(Icons.edit_outlined),
+            title: Text(l10n.threadActionRename),
+            onTap: () => Navigator.pop(context, _ThreadAction.rename),
+          ),
+          ListTile(
+            leading: const Icon(Icons.content_copy_outlined),
+            title: Text(l10n.threadActionCopyId),
+            onTap: () => Navigator.pop(context, _ThreadAction.copyId),
+          ),
+          ListTile(
+            leading: Icon(Icons.delete_outline, color: colors.error),
+            title: Text(
+              l10n.threadActionDelete,
+              style: TextStyle(color: colors.error),
+            ),
+            onTap: () => Navigator.pop(context, _ThreadAction.delete),
+          ),
+        ],
+      ),
+    ),
+  );
+  if (action == null || !context.mounted) return;
+  switch (action) {
+    case _ThreadAction.rename:
+      await _promptRenameThread(context, ref, thread);
+    case _ThreadAction.copyId:
+      await Clipboard.setData(ClipboardData(text: thread.id));
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l10n.threadIdCopied)),
+        );
+      }
+    case _ThreadAction.delete:
+      await _confirmDeleteThread(context, ref, thread);
+  }
+}
+
+/// Prompts for a new title and renames the thread via the thread manager.
+Future<void> _promptRenameThread(
+  BuildContext context,
+  WidgetRef ref,
+  Thread thread,
+) async {
+  final l10n = AppLocalizations.of(context);
+  final controller = TextEditingController(text: thread.title);
+  final newTitle = await showDialog<String>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text(l10n.threadRenameTitle),
+      content: TextField(
+        controller: controller,
+        autofocus: true,
+        textInputAction: TextInputAction.done,
+        decoration: InputDecoration(labelText: l10n.threadRenameHint),
+        onSubmitted: (value) => Navigator.pop(context, value),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text(l10n.actionCancel),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, controller.text),
+          child: Text(l10n.actionSave),
+        ),
+      ],
+    ),
+  );
+  controller.dispose();
+  final trimmed = newTitle?.trim() ?? '';
+  if (trimmed.isEmpty || trimmed == thread.title) return;
+  await ref.read(threadManagerProvider).renameThread(thread.id, trimmed);
+}
+
+/// Confirms and deletes the thread via the thread manager.
+Future<void> _confirmDeleteThread(
+  BuildContext context,
+  WidgetRef ref,
+  Thread thread,
+) async {
+  final l10n = AppLocalizations.of(context);
+  final colors = Theme.of(context).colorScheme;
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text(l10n.threadDeleteTitle),
+      content: Text(l10n.threadDeleteBody),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: Text(l10n.actionCancel),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: colors.error),
+          onPressed: () => Navigator.pop(context, true),
+          child: Text(l10n.threadDeleteConfirm),
+        ),
+      ],
+    ),
+  );
+  if (confirmed != true) return;
+  await ref.read(threadManagerProvider).deleteThread(thread.id);
 }
 
 class _AgentAvatar extends StatelessWidget {
