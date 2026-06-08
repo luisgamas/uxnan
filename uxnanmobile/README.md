@@ -79,8 +79,15 @@ capability-aware conversation controls (approval/attach gated by the agent's
 `AgentCapabilities`), notification tap → deep-link to the conversation, Git
 status/commit/push, robust reconnection (app heartbeat + relay peer-close),
 "Verify connection", and gated FCM push notifications (builds/runs with no
-Firebase config). Remaining/deferred work (thread archive, notification
-preferences UI, advanced `approval`/`plan` content, LAN discovery, per-file
-diff, etc.) is tracked in [`FOR-DEV.md`](FOR-DEV.md); native Firebase config is
-in [`FOR-HUMAN.md`](FOR-HUMAN.md). See [`CHANGELOG.md`](CHANGELOG.md) for the
+Firebase config). Remaining/deferred work (interactive approval responses,
+notification preferences UI, LAN discovery, per-file diff, etc.) is tracked in
+[`FOR-DEV.md`](FOR-DEV.md); native Firebase config is in
+[`FOR-HUMAN.md`](FOR-HUMAN.md). See [`CHANGELOG.md`](CHANGELOG.md) for the
 full history.
+
+## Documentation
+
+Developer reference lives in [`docs/`](docs/README.md): the as-built
+[architecture](docs/architecture.md), the [testing guide](docs/testing.md), and
+the [conventions](docs/conventions.md). The product/design spec (source of
+truth) is the monorepo [`architecture/`](../architecture/00-index.md).
