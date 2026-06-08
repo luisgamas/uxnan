@@ -73,10 +73,14 @@ Wired MVP. All core modules are implemented and connected to live bridge data:
 E2EE crypto + secure transport, QR pairing/onboarding, the paired-PC list,
 threads scoped to the selected PC, the conversation timeline (streaming turns),
 the new-conversation flow (`project/list` + `agent/list` + `agent/models`),
-a per-thread model picker (`thread/setModel`), Git status/commit/push, robust
-reconnection (app heartbeat + relay peer-close), "Verify connection", and gated
-FCM push notifications (builds/runs with no Firebase config). Remaining/deferred
-work (thread archive/rename, notification deep-link, LAN discovery, per-file
+a per-thread model picker (`thread/setModel`), per-thread actions (rename /
+delete / copy id, with a new thread defaulting its title to its id),
+capability-aware conversation controls (approval/attach gated by the agent's
+`AgentCapabilities`), notification tap → deep-link to the conversation, Git
+status/commit/push, robust reconnection (app heartbeat + relay peer-close),
+"Verify connection", and gated FCM push notifications (builds/runs with no
+Firebase config). Remaining/deferred work (thread archive, notification
+preferences UI, advanced `approval`/`plan` content, LAN discovery, per-file
 diff, etc.) is tracked in [`FOR-DEV.md`](FOR-DEV.md); native Firebase config is
 in [`FOR-HUMAN.md`](FOR-HUMAN.md). See [`CHANGELOG.md`](CHANGELOG.md) for the
 full history.

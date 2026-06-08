@@ -118,4 +118,3 @@ credentials. Test the logic WITHOUT devices:
   full-revert/GC, per-project agent, etc.).
 - `relay/FOR-DEV.md` — relay routing/hardening + Phase 6 push plan.
 - `relay/FOR-HUMAN.md` — Firebase/APNs setup for Phase 6.
-- `ROADMAP.md` — phase status overview.

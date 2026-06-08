@@ -17,7 +17,7 @@ per-domain handlers.
 > selection** (`thread/start`, `agent/list`, `agent/models`, `thread/setModel`,
 > `project/list`/`resolve`) and a **push bridge** (`notifications/*`, gated behind
 > relay Firebase creds). Codex/Claude/Gemini adapters are the next piece — see
-> [FOR-DEV.md](./FOR-DEV.md) and [../ROADMAP.md](../ROADMAP.md).
+> [FOR-DEV.md](./FOR-DEV.md).
 
 ## Install (later, as a global package)
 
