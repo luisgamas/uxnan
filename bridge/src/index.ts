@@ -52,10 +52,17 @@ export {
   parseModelList,
   type OpenCodeAdapterOptions,
   type OpenCodeEvent,
-  type SpawnFn,
-  type SpawnedProcess,
 } from './adapters/opencode-adapter.js';
 export { resolveOpenCodeBinary, type ResolvedOpenCode } from './adapters/resolve-opencode.js';
+export { defaultSpawn, type SpawnFn, type SpawnedProcess } from './adapters/spawn.js';
+export {
+  ClaudeCodeAdapter,
+  parseClaudeLine,
+  type ClaudeCodeAdapterOptions,
+  type ClaudeEvent,
+  type ClaudePermissionMode,
+} from './adapters/claude-adapter.js';
+export { resolveClaudeBinary, type ResolvedClaude } from './adapters/resolve-claude.js';
 export { EchoAgentAdapter } from './adapters/echo-agent-adapter.js';
 export {
   ProcessAgentAdapter,

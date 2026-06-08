@@ -5,6 +5,38 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — Claude Code agent
+- **Claude Code adapter** (`src/adapters/claude-adapter.ts`): real agent driven by
+  `claude -p --output-format stream-json --verbose --include-partial-messages`.
+  Spawns one process per turn with stdin closed, parses its JSONL event stream
+  (`system`/`stream_event` `content_block_delta` `text_delta`/`assistant`/`result`)
+  into bridge events, keeps Claude's `session_id` per thread for `--resume`
+  continuity, and runs in the thread's cwd. The prompt is an argv element
+  (`shell:false`) — never shell-interpolated. Token deltas stream from
+  `text_delta`; if no partials arrive, the complete `assistant` message is emitted
+  as one chunk; the terminal `result` carries the authoritative final text (or
+  surfaces `is_error` as a turn error). `listModels()` exposes the stable `--model`
+  aliases (`opus`/`sonnet`/`haiku`) since Claude Code has no enumerate command.
+- **Binary resolution** (`src/adapters/resolve-claude.ts`): prefers the native
+  installer binary at `~/.local/bin/claude[.exe]`, then the npm-global
+  `@anthropic-ai/claude-code/cli.js` run via `node` (keeps `shell:false`), then the
+  `claude` launcher on PATH.
+- **Configurable headless permission posture** (`AgentSettings.permissionMode`):
+  `acceptEdits` (default — file edits auto-apply, other tools stay gated),
+  `default` (no flag), or `bypassPermissions` (`--dangerously-skip-permissions`).
+- Claude Code is registered in `startBridge` alongside OpenCode and exposed via
+  `agent/list` / `agent/models`; no shared-contract or mobile change was needed
+  (the `'claude-code'` AgentId already existed).
+- Shared spawn helper extracted to `src/adapters/spawn.ts` (reused by the OpenCode
+  and Claude Code adapters).
+- Tests: Claude parser + adapter (delta/complete/error/session continuity,
+  assistant-message fallback, permission-flag mapping, model aliases).
+
+### Changed — test runner
+- `npm test` now runs with `--test-concurrency=2` to avoid CPU-starvation flakes
+  in the bridge end-to-end conversation tests on Windows when all test files run
+  in parallel.
+
 ### Added — Phase 5b (real OpenCode agent + agent/project selection)
 - **OpenCode adapter** (`src/adapters/opencode-adapter.ts`): real agent driven by
   `opencode run --format json`. Spawns one process per turn with stdin closed

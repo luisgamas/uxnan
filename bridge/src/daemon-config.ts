@@ -5,12 +5,25 @@
  */
 import { DEFAULT_LAN_PORT, DEFAULT_RELAY_URL, type AgentId } from '@uxnan/shared';
 
-/** Per-agent overrides (binary location + default model). */
+/**
+ * Headless permission posture for agents that gate tool use (e.g. Claude Code):
+ *  - `default`           → no flag (tools needing approval are auto-denied headless);
+ *  - `acceptEdits`       → file edits auto-apply, other tools stay gated;
+ *  - `bypassPermissions` → all tools run without approval (full autonomy).
+ */
+export type AgentPermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions';
+
+/** Per-agent overrides (binary location + default model + permissions). */
 export interface AgentSettings {
   /** Absolute path to the agent CLI/binary; resolved from PATH/standard locations when omitted. */
   binaryPath?: string;
   /** Default model the agent uses (e.g. `provider/model` for OpenCode). */
   model?: string;
+  /**
+   * Headless permission posture for agents that support it (Claude Code).
+   * Defaults to `acceptEdits` when omitted. Ignored by agents that don't gate tools.
+   */
+  permissionMode?: AgentPermissionMode;
 }
 
 export interface DaemonConfig {

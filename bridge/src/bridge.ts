@@ -31,6 +31,8 @@ import { AgentManager } from './agents/agent-manager.js';
 import { EchoAgentAdapter } from './adapters/echo-agent-adapter.js';
 import { OpenCodeAdapter } from './adapters/opencode-adapter.js';
 import { resolveOpenCodeBinary } from './adapters/resolve-opencode.js';
+import { ClaudeCodeAdapter } from './adapters/claude-adapter.js';
+import { resolveClaudeBinary } from './adapters/resolve-claude.js';
 import { ProjectRegistry } from './projects/project-registry.js';
 import { PushService } from './push/push-service.js';
 
@@ -115,6 +117,22 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       displayName: 'OpenCode',
       available: openCode.available,
       ...(openCodeSettings.model !== undefined ? { defaultModel: openCodeSettings.model } : {}),
+    },
+  );
+  // Claude Code: real agent driven via `claude -p --output-format stream-json` (see FOR-DEV.md).
+  const claudeSettings = config.agents['claude-code'] ?? {};
+  const claude = resolveClaudeBinary(claudeSettings.binaryPath);
+  agentManager.register(
+    new ClaudeCodeAdapter({
+      binaryPath: claude.binaryPath,
+      prependArgs: claude.prependArgs,
+      permissionMode: claudeSettings.permissionMode ?? 'acceptEdits',
+      ...(claudeSettings.model !== undefined ? { defaultModel: claudeSettings.model } : {}),
+    }),
+    {
+      displayName: 'Claude Code',
+      available: claude.available,
+      ...(claudeSettings.model !== undefined ? { defaultModel: claudeSettings.model } : {}),
     },
   );
   const startedAt = now();

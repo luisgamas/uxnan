@@ -101,9 +101,19 @@ The OpenCode adapter is the template for any "one-shot per-turn CLI" agent:
 3. Register it in `startBridge` with display metadata + availability.
 - [ ] **Codex** — `codex exec --json` (JSONL events; `exec resume <id>` for
       continuity; `-m` model, `-s` sandbox, `-c` config). Scaffold:
-      `src/adapters/codex-adapter.ts` (still the generic stub).
-- [ ] **Claude Code** — `claude -p --output-format stream-json --verbose`
-      (`--resume <id>`, `--model`). New scaffold to add.
+      `src/adapters/codex-adapter.ts` (still the generic stub). Follow the
+      `claude-adapter.ts` / `opencode-adapter.ts` one-shot template.
+- [x] **Claude Code** — `src/adapters/claude-adapter.ts`. WIRED via
+      `claude -p --output-format stream-json --verbose --include-partial-messages`
+      (`--resume <session_id>`, `--model <alias|id>`). Parses the JSONL stream
+      (`system`/`stream_event` `text_delta`/`assistant`/`result`), keeps the
+      `session_id` per thread, runs in the thread's cwd. Headless permission
+      posture is configurable via `agents['claude-code'].permissionMode`
+      (default `acceptEdits`; also `default` / `bypassPermissions`). Binary
+      resolved by `resolve-claude.ts` (native `~/.local/bin/claude[.exe]` → npm
+      `cli.js` via node → PATH). `listModels()` returns the `opus`/`sonnet`/`haiku`
+      aliases (no enumerate command). Follow-up: richer model discovery if a
+      stable source appears.
 - [ ] **Gemini CLI** — capture its non-interactive JSON stream first. New scaffold.
 - [ ] **JSONL history fallback** (`session-jsonl-history`) — read agent session
       JSONL/SQLite from disk for `turn/list` when the runtime has no fresh data

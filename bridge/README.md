@@ -13,10 +13,12 @@ per-domain handlers.
 > handlers** (path-traversal-safe, including working-tree checkpoints), and the
 > **conversation engine** (threads/turns + streaming) are in place. The **real
 > OpenCode agent** is wired as the default (per-turn `opencode run --format json`,
-> session continuity, runs in the thread's cwd), with **per-thread agent/project
+> session continuity, runs in the thread's cwd), and **Claude Code** is wired too
+> (per-turn `claude -p --output-format stream-json`, `--resume` continuity,
+> configurable headless permission posture), with **per-thread agent/project
 > selection** (`thread/start`, `agent/list`, `agent/models`, `thread/setModel`,
 > `project/list`/`resolve`) and a **push bridge** (`notifications/*`, gated behind
-> relay Firebase creds). Codex/Claude/Gemini adapters are the next piece — see
+> relay Firebase creds). Codex/Gemini adapters are the next piece — see
 > [FOR-DEV.md](./FOR-DEV.md) and [../ROADMAP.md](../ROADMAP.md).
 
 ## Install (later, as a global package)
