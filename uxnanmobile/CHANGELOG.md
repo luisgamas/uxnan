@@ -8,6 +8,15 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Thread management (logic) — rename & delete** — user-requested:
+  - `ThreadManager.renameThread` mirrors the new title locally first (immediate
+    UI), then calls `thread/rename { threadId, title }`; ignores a blank title.
+  - `ThreadManager.deleteThread` removes the thread locally (clearing the active
+    timeline when it was active), then calls `thread/delete { threadId }`.
+  - Both are best-effort over the bridge and degrade gracefully when the method
+    is not yet implemented (the local change is kept). The long-press UI and a
+    copyable thread-id affordance land in a follow-up UI increment.
+
 - **Notification tap → deep-link to the conversation** — closes the push loop:
   - `PushNotificationService` now exposes `onNotificationTap` (a `threadId`
     stream from foreground / background-resume taps) and `initialThreadId()`

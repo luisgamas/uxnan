@@ -4,6 +4,7 @@ import 'package:collection/collection.dart';
 import 'package:rxdart/rxdart.dart';
 import 'package:uuid/uuid.dart';
 import 'package:uxnan/application/processors/domain_event.dart';
+import 'package:uxnan/core/utils/logger.dart';
 import 'package:uxnan/domain/entities/agent_descriptor.dart';
 import 'package:uxnan/domain/entities/message.dart';
 import 'package:uxnan/domain/entities/project.dart';
@@ -125,6 +126,54 @@ class ThreadManager {
     final thread = await _threadRepository.getThread(threadId);
     if (thread != null) {
       await _threadRepository.saveThread(thread.copyWith(model: model));
+    }
+  }
+
+  /// Renames a thread (`thread/rename`), mirroring the new title locally first
+  /// so the UI updates immediately. The bridge call is best-effort: it degrades
+  /// gracefully (keeping the local rename) when the bridge does not yet
+  /// implement the method.
+  Future<void> renameThread(String threadId, String title) async {
+    final trimmed = title.trim();
+    if (trimmed.isEmpty) return;
+    final thread = await _threadRepository.getThread(threadId);
+    if (thread != null) {
+      await _threadRepository.saveThread(thread.copyWith(title: trimmed));
+    }
+    try {
+      await _sendRequest('thread/rename', {
+        'threadId': threadId,
+        'title': trimmed,
+      });
+    } on Object catch (error, stackTrace) {
+      AppLogger.warn(
+        'thread/rename failed (kept local rename)',
+        error,
+        stackTrace,
+      );
+    }
+  }
+
+  /// Deletes a thread (`thread/delete`), removing it locally first. Clears the
+  /// active timeline if the deleted thread was active. The bridge call is
+  /// best-effort and degrades gracefully if unsupported (a later `loadThreads`
+  /// would re-sync it from the bridge until then).
+  Future<void> deleteThread(String threadId) async {
+    await _threadRepository.deleteThread(threadId);
+    if (_activeThreadId == threadId) {
+      await _messagesSub?.cancel();
+      _messagesSub = null;
+      _activeThreadId = null;
+      _timeline.add(const TurnTimelineSnapshot());
+    }
+    try {
+      await _sendRequest('thread/delete', {'threadId': threadId});
+    } on Object catch (error, stackTrace) {
+      AppLogger.warn(
+        'thread/delete failed (removed locally)',
+        error,
+        stackTrace,
+      );
     }
   }
 

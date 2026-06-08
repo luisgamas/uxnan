@@ -193,6 +193,62 @@ void main() {
     expect(persisted!.model, 'gpt-5');
   });
 
+  test('renameThread updates the local title and sends thread/rename',
+      () async {
+    await manager.loadThreads();
+    await manager.renameThread('th1', '  Renamed  ');
+
+    final thread = await threadRepo.getThread('th1');
+    expect(thread!.title, 'Renamed');
+    expect(sentMethods, contains('thread/rename'));
+  });
+
+  test('renameThread ignores a blank title', () async {
+    await manager.loadThreads();
+    await manager.renameThread('th1', '   ');
+
+    final thread = await threadRepo.getThread('th1');
+    expect(thread!.title, 'Thread 1');
+    expect(sentMethods, isNot(contains('thread/rename')));
+  });
+
+  test('renameThread keeps the local rename when the bridge call fails',
+      () async {
+    await manager.loadThreads();
+    final failingEvents = StreamController<DomainEvent>.broadcast();
+    final failing = ThreadManager(
+      threadRepository: threadRepo,
+      messageRepository: messageRepo,
+      domainEvents: failingEvents.stream,
+      sendRequest: (method, [params]) async =>
+          throw StateError('unsupported method'),
+    );
+
+    await failing.renameThread('th1', 'Renamed offline');
+    expect((await threadRepo.getThread('th1'))!.title, 'Renamed offline');
+
+    await failing.dispose();
+    await failingEvents.close();
+  });
+
+  test('deleteThread removes it locally and sends thread/delete', () async {
+    await manager.loadThreads();
+    await manager.deleteThread('th1');
+
+    expect(await threadRepo.getThread('th1'), isNull);
+    expect(sentMethods, contains('thread/delete'));
+  });
+
+  test('deleteThread clears the active timeline for the active thread',
+      () async {
+    await manager.loadThreads();
+    await manager.selectThread('th1');
+    await _settle();
+
+    await manager.deleteThread('th1');
+    expect(manager.activeThreadId, isNull);
+  });
+
   test('sendUserMessage persists locally and sends turn/send', () async {
     await manager.selectThread('th1');
     await _settle();
