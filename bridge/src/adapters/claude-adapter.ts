@@ -18,7 +18,7 @@
  *   { "type":"assistant", "message":{ "content":[ { "type":"text", "text":"…" } ] }, "session_id":"…" }
  *   { "type":"result", "subtype":"success", "is_error":false, "result":"<final text>", "session_id":"…" }
  *
- * See bridge/FOR-DEV.md (agent adapters) and TESTING.md (validating adapters).
+ * See bridge/FOR-DEV.md (agent adapters) and bridge/docs/testing.md (validating adapters).
  */
 import { createInterface } from 'node:readline';
 import type { AgentCapabilities, AgentConfig, AgentId, SendTurnOptions } from '@uxnan/shared';

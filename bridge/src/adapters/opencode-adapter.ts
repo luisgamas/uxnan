@@ -16,7 +16,7 @@
  *   { "type":"step_finish", "sessionID":"ses_…", "part":{ "tokens":{…}, "cost":… } }
  *   { "type":"error", "sessionID":"ses_…", "error":{ "data":{ "message":"…" } } }
  *
- * See bridge/FOR-DEV.md (agent adapters) and TESTING.md (validating adapters).
+ * See bridge/FOR-DEV.md (agent adapters) and bridge/docs/testing.md (validating adapters).
  */
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';

@@ -5,8 +5,9 @@ marker at its site in the code. (Distinct from `FOR-HUMAN.md`, which tracks asse
 only a human can provide.)
 
 > **How to run/validate everything** (automated tests, real-mobile E2EE interop,
-> adapter wiring, contract re-checks) is in [`../TESTING.md`](../TESTING.md).
-> Each deferred item below says what to build; TESTING.md says how to test it.
+> adapter wiring, contract re-checks) is in [`docs/testing.md`](docs/testing.md).
+> Each deferred item below says what to build; that doc says how to test it.
+> Install/config/agents/deploy docs are alongside it in [`docs/`](docs/).
 
 ## Plug-and-play "install and use" — remaining sequence
 The goal is: install on the PC, log into the agents you want, point the phone at a

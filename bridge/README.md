@@ -32,6 +32,15 @@ per-domain handlers.
 > (no shell injection). See [FOR-HUMAN.md](./FOR-HUMAN.md) for the per-agent
 > install/login prerequisites.
 
+## Docs
+
+Detailed docs live in [`docs/`](./docs/):
+[installation & autostart](./docs/installation.md) ·
+[configuration](./docs/configuration.md) ·
+[how agents are driven](./docs/agents.md) ·
+[testing](./docs/testing.md) ·
+[packaging & deploy](./docs/deploy.md).
+
 ## Install (later, as a global package)
 
 ```bash

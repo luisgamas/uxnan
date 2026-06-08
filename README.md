@@ -135,7 +135,8 @@ Push notifications are code-complete but **gated**: real delivery needs a Fireba
 project + native config (see each component's `FOR-HUMAN.md`). The next agent
 (Gemini) follows the OpenCode/Claude Code/Codex recipe in `bridge/FOR-DEV.md`.
 Per-component progress lives in each `CHANGELOG.md`; pending work in each
-`FOR-DEV.md`. How to run/test: [`TESTING.md`](TESTING.md).
+`FOR-DEV.md`. Per-component docs (install, config, agents, testing, deploy) live in
+[`bridge/docs/`](bridge/docs/) and [`relay/docs/`](relay/docs/).
 
 ---
 

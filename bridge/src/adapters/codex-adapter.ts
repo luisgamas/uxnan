@@ -25,7 +25,7 @@
  * here — those drive the desktop app / IDE / MCP integrations. `codex exec` is the
  * one-shot non-interactive entry point the bridge uses.
  *
- * See bridge/FOR-DEV.md (agent adapters) and TESTING.md (validating adapters).
+ * See bridge/FOR-DEV.md (agent adapters) and bridge/docs/testing.md (validating adapters).
  */
 import { createInterface } from 'node:readline';
 import type { AgentCapabilities, AgentConfig, AgentId, SendTurnOptions } from '@uxnan/shared';
