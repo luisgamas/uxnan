@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — autostart (install-service / uninstall-service)
+- **`uxnan-bridge install-service` / `uninstall-service`** (`src/service-installer.ts`
+  + `src/cli.ts`): register the bridge to start at user logon, **as the logged-in
+  user and never elevated** (`node <cli.js> start`; works for a global install or a
+  dev checkout). Per platform: Windows Task Scheduler logon task (`/SC ONLOGON /RL
+  LIMITED`) with a **hidden Startup-folder `.vbs` fallback** when Task Scheduler is
+  denied (restricted accounts/policy — no admin, no console window); macOS LaunchAgent
+  (`RunAtLoad`+`KeepAlive`); Linux systemd `--user` unit. `buildServicePlan` is pure
+  (unit-tested per platform); execution uses `execFile` (no shell). Validated
+  end-to-end on Windows (Task-Scheduler-denied → Startup `.vbs` launches node hidden).
+- Tests: per-platform plan shape + the Windows Startup fallback launcher.
+
 ### Added — plug-and-play directory browsing
 - **`workspace/browseDirs`** (`src/workspace/browse-service.ts` +
   `src/handlers/workspace-handler.ts`): the phone navigates sub-directories under a

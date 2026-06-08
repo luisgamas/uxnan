@@ -32,6 +32,18 @@ export {
 } from './keyring-secret-store.js';
 export { SessionState } from './session-state.js';
 export { LockFile, isProcessAlive, type LockInfo } from './lock-file.js';
+export {
+  buildServicePlan,
+  buildWindowsStartupPlan,
+  installService,
+  uninstallService,
+  currentServiceEnv,
+  isServicePlatformSupported,
+  type ServiceEnv,
+  type ServicePlan,
+  type ServiceCommand,
+  type ServicePlatform,
+} from './service-installer.js';
 export { buildBridgeStatus, type BridgeStatusInput } from './bridge-status.js';
 export { generatePairingPayload, renderPairingQr, type GeneratePairingOptions } from './qr.js';
 export {

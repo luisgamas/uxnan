@@ -12,12 +12,19 @@
  * In this skeleton increment `start` boots the daemon core without the live
  * relay/LAN transport; `stop`/`install-service` are deferred (FOR-DEV).
  */
+import { fileURLToPath } from 'node:url';
 import { encodePairingQr } from '@uxnan/shared';
 import { startBridge } from './bridge.js';
 import { renderPairingQr } from './qr.js';
 import { BRIDGE_VERSION } from './version.js';
 import { DaemonState, DAEMON_FILES } from './daemon-state.js';
 import { LockFile, isProcessAlive } from './lock-file.js';
+import {
+  currentServiceEnv,
+  installService,
+  isServicePlatformSupported,
+  uninstallService,
+} from './service-installer.js';
 
 const USAGE = `uxnan-bridge v${BRIDGE_VERSION}
 
@@ -27,8 +34,9 @@ Commands:
   start            Start the bridge daemon (skeleton: no live transport yet)
   status           Print the current bridge status
   qr               Print the pairing QR code in the terminal
-  stop             Stop the running daemon (FOR-DEV)
-  install-service  Configure autostart for this platform (FOR-DEV)
+  stop             Stop the running daemon
+  install-service    Start the bridge automatically at logon (as the current user)
+  uninstall-service  Remove the autostart entry
   help             Show this help
 `;
 
@@ -117,11 +125,28 @@ function errText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-function cmdInstallService(): void {
-  process.stdout.write(
-    'FOR-DEV: autostart installation is not implemented yet.\n' +
-      'See bridge/scripts/install-service-{windows.ps1,macos.sh,linux.sh}.\n',
-  );
+function bridgeCliPath(): string {
+  return fileURLToPath(import.meta.url);
+}
+
+async function cmdInstallService(): Promise<void> {
+  if (!isServicePlatformSupported(process.platform)) {
+    process.stderr.write(`Autostart is not supported on '${process.platform}'.\n`);
+    process.exitCode = 1;
+    return;
+  }
+  const plan = await installService(currentServiceEnv(bridgeCliPath()));
+  process.stdout.write(`${plan.note}\n`);
+}
+
+async function cmdUninstallService(): Promise<void> {
+  if (!isServicePlatformSupported(process.platform)) {
+    process.stderr.write(`Autostart is not supported on '${process.platform}'.\n`);
+    process.exitCode = 1;
+    return;
+  }
+  const plan = await uninstallService(currentServiceEnv(bridgeCliPath()));
+  process.stdout.write(`${plan.uninstallNote}\n`);
 }
 
 async function main(): Promise<number> {
@@ -140,7 +165,10 @@ async function main(): Promise<number> {
       await cmdStop();
       return 0;
     case 'install-service':
-      cmdInstallService();
+      await cmdInstallService();
+      return 0;
+    case 'uninstall-service':
+      await cmdUninstallService();
       return 0;
     case 'help':
     case '--help':

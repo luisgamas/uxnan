@@ -13,10 +13,10 @@ The goal is: install on the PC, log into the agents you want, point the phone at
 folder, and go. Tracked items, in order:
 1. **Directory browsing** — DONE (bridge side: `workspace/browseDirs`); the mobile
    browser UI is the remaining half (see Handlers → Plug-and-play below).
-2. **Autostart / `install-service`** — finish wiring the CLI to the platform scripts
-   so the bridge runs on login without an open terminal (see Daemon lifecycle).
+2. **Autostart / `install-service`** — DONE (`install-service`/`uninstall-service`
+   run the bridge at logon per platform; see Daemon lifecycle).
 3. **Packaging / publish** — bundle `@uxnan/shared` (or publish it first) and ship
-   the bridge as `npm i -g uxnan-bridge` / a single binary (see Packaging).
+   the bridge as `npm i -g uxnan-bridge` / a single binary (see Packaging). NEXT.
 Remote access (off-LAN) needs a hosted relay; **LAN-only works today with zero
 hosting** (the phone connects directly to the bridge on the same network).
 
@@ -153,26 +153,18 @@ The OpenCode adapter is the template for any "one-shot per-turn CLI" agent:
 ## Daemon lifecycle & ops
 - [x] **Single-instance lock + `stop`** (Phase 3) — `src/lock-file.ts`,
       `src/cli.ts` (`bridge.lock` + SIGTERM).
-- [~] **`install-service` / autostart (so the terminals don't need to stay open)**
-      — scripts exist (`scripts/install-service-{windows.ps1,macos.sh,linux.sh}`),
-      but the CLI command only prints their paths. TO FINISH + recommended SECURE
-      design (run as the logged-in user, NEVER elevated — the Ed25519 identity is
-      already per-user in the OS keychain, so no root/SYSTEM is needed):
-        - **Windows:** a **Task Scheduler** task `At log on` for the current user
-          (`schtasks /Create /SC ONLOGON /RL LIMITED`), running
-          `node <path>/cli.js start` (or the packed `uxnan-bridge start`). LIMITED
-          run level = the user's normal token, no admin.
-        - **macOS:** a **LaunchAgent** plist in `~/Library/LaunchAgents/`
-          (`RunAtLoad` + `KeepAlive`), loaded with `launchctl` — runs as the user,
-          not a root LaunchDaemon.
-        - **Linux:** a **systemd `--user`** unit (`~/.config/systemd/user/`,
-          `systemctl --user enable --now`) + `loginctl enable-linger` so it
-          survives logout. User scope, no system unit.
-      Wire the CLI to invoke the right script per `process.platform`, add an
-      `uninstall-service`, and keep the **relay** similarly autostartable (or use
-      the deployed relay) — both the relay and bridge must be running for the
-      phone to (re)connect. Security notes: bind the LAN server to the LAN iface
-      only, keep logs redacted (done), never run elevated.
+- [x] **`install-service` / `uninstall-service` autostart** — `src/service-installer.ts`
+      + `src/cli.ts`. Runs the bridge at logon **as the logged-in user, never
+      elevated** (`node <cli.js> start`, works global-install or dev). Per platform:
+        - **Windows:** a **Task Scheduler** logon task (`schtasks /SC ONLOGON /RL
+          LIMITED`); **falls back to a hidden Startup-folder `.vbs`** when Task
+          Scheduler is denied (restricted accounts/policy) — no admin, no console
+          window. Validated end-to-end on Windows.
+        - **macOS:** a per-user **LaunchAgent** (`RunAtLoad` + `KeepAlive`).
+        - **Linux:** a **systemd `--user`** unit (`loginctl enable-linger` tip
+          printed). `buildServicePlan` is pure (unit-tested per platform).
+      Follow-ups (FOR-DEV): **relay autostart** (only needed for remote/off-LAN —
+      LAN-only needs no relay); bind the LAN server to the LAN iface only.
 - [x] **File logging** (Phase 7) — `src/logger.ts` `createFileLogger`
       (`~/.uxnan/logs/bridge-YYYY-MM-DD.log`, daily rotation + secret redaction).
       Follow-up: size-based rotation + retention/pruning of old log files.
