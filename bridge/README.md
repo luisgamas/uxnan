@@ -20,7 +20,7 @@ per-domain handlers.
 > agent/project selection** (`thread/start`, `agent/list`, `agent/models`,
 > `thread/setModel`, `project/list`/`resolve`) and a **push bridge**
 > (`notifications/*`, gated behind relay Firebase creds). The Gemini adapter is the
-> next piece — see [FOR-DEV.md](./FOR-DEV.md) and [../ROADMAP.md](../ROADMAP.md).
+> next piece — see [FOR-DEV.md](./FOR-DEV.md).
 >
 > **How the bridge talks to agents:** it spawns each agent's **official local CLI**
 > (`opencode`, `claude`, `codex`) as a child process and drives it over stdio —
