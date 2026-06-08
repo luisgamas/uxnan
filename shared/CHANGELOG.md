@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 
 ### Added
+- **Plug-and-play directory browsing contracts** (`models/workspace.ts`):
+  `BrowseRoot`, `BrowseDirEntry`, `BrowseResult`, and the `workspace/browseDirs`
+  method (`{ rootId?, path? }` → `BrowseResult`) added to the method registry +
+  `METHOD_NAMES`. Lets the phone navigate sub-directories under a configured base
+  root, see which are git repos, and pick any directory as a thread's cwd. Additive
+  — existing consumers are unaffected (the mobile Dart side adds it when it builds
+  the browser UI).
 - Streaming notification contracts (`StreamNotification` + param types:
   turn started/delta/completed/error/aborted) in `jsonrpc/notifications.ts`.
 - `'echo'` added to `AgentId` (built-in reference/dev agent).
