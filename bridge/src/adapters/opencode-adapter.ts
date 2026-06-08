@@ -22,6 +22,10 @@ import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import type { AgentCapabilities, AgentConfig, AgentId, SendTurnOptions } from '@uxnan/shared';
 import { BaseAgentAdapter } from './base-adapter.js';
+import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
+
+// Re-exported for backwards-compatible imports (these types now live in spawn.ts).
+export type { SpawnFn, SpawnedProcess } from './spawn.js';
 
 const OPENCODE_CAPABILITIES: AgentCapabilities = {
   planMode: false,
@@ -30,25 +34,6 @@ const OPENCODE_CAPABILITIES: AgentCapabilities = {
   forking: true,
   images: true,
 };
-
-/** Minimal child-process surface the adapter relies on (so it can be faked in tests). */
-export interface SpawnedProcess {
-  stdout: NodeJS.ReadableStream;
-  on(event: 'close', listener: (code: number | null) => void): unknown;
-  on(event: 'error', listener: (err: Error) => void): unknown;
-  kill(signal?: NodeJS.Signals): unknown;
-}
-
-export type SpawnFn = (command: string, args: string[], cwd: string) => SpawnedProcess;
-
-const defaultSpawn: SpawnFn = (command, args, cwd) =>
-  spawn(command, args, {
-    cwd,
-    // stdin IGNORED: OpenCode hangs waiting for stdin EOF otherwise.
-    stdio: ['ignore', 'pipe', 'pipe'],
-    windowsHide: true,
-    shell: false,
-  });
 
 export interface OpenCodeAdapterOptions {
   /** Executable to spawn (resolved exe path; see resolve-opencode.ts). */
