@@ -8,6 +8,21 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Archive / unarchive threads + an "Archived" screen** — completes the
+  thread-actions set (rename/delete already shipped):
+  - `ThreadManager.archiveThread` / `unarchiveThread` flip the local
+    `ThreadStatus` first (archived threads leave the active list immediately),
+    then call `thread/archive` / `thread/unarchive` best-effort — **nothing is
+    deleted**; degrades gracefully if the bridge lacks the method.
+  - UI (proposal, pending on-device review): the long-press menu gains
+    **Archive** (active threads) / **Unarchive** (archived threads); the
+    `ThreadsScreen` hides archived threads and gets an **Archived** app-bar
+    action → a new per-PC `ArchivedThreadsScreen` (route
+    `/device/:deviceId/archived`) where archived threads can be reopened,
+    unarchived or deleted. The thread row + actions menu were extracted to a
+    shared `ThreadTile` (`thread_tile.dart`) reused by both screens. New en/es
+    strings. Archived threads are **per-PC** (not in the future app Settings).
+
 - **Advanced message content: `approval` / `plan` / `subagent`** — these blocks
   used to fall through to the generic `UnknownContent` placeholder; they now
   decode and render properly (exactly what Codex/Claude emit for plan mode &

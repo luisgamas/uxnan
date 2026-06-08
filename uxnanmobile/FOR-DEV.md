@@ -14,10 +14,10 @@ gracefully until the other agent wires the handler. Suggested order:
 1. ☑ **Advanced content `approval`/`plan`/`subagent`** (decode + read-only
    render) — DONE this round. Remaining: interactive approval (needs a bridge
    RPC) and verifying wire shapes against a real Codex/Claude turn.
-2. ☐ **Archive thread** (+ an "Archived" screen to recover them) — see
-   *Threads list → Archive thread* for the full plan.
+2. ☑ **Archive thread** (+ an "Archived" screen) — DONE this round; see
+   *Threads list → Archive / unarchive*.
 3. ☐ **Settings screen + notification preferences** (`notifications/update`) —
-   see *Push notifications*.
+   see *Push notifications*. (Next recommended.)
 4. ☐ **Remove device** (clear a stale paired PC) — see *Threads list*.
 5. ☐ **Voice → text in the composer** — pure device feature, but verification
    needs a real mic (defer while remote).
@@ -98,22 +98,17 @@ APNs) and is best done once a live bridge is reachable.
   - ☑ **Delete thread** — DONE (mobile): long-press menu on `ThreadsScreen` →
     `ThreadManager.deleteThread` removes locally + calls `thread/delete`
     (best-effort, degrades gracefully).
-  - ☐ **Archive thread** still pending. Plan (mobile-only, degrades without the
-    bridge `thread/archive`):
-    - **Where they go:** `ThreadManager.archiveThread` sets the local thread's
-      `status` to `ThreadStatus.archived` (via `Thread.copyWith` + `saveThread`)
-      and sends `thread/archive { threadId }` best-effort. Nothing is deleted —
-      the row stays in drift, only its status changes.
-    - **How they're hidden:** `ThreadsScreen` filters out
-      `ThreadStatus.archived` from the main list (active threads only), so
-      archiving just removes it from the default view.
-    - **How they're recovered:** a future **"Archived" screen/section** reads the
-      same drift repo filtered to `status == archived` (add an
-      `IThreadRepository.watchThreads(status:)`/a derived provider) with an
-      **Unarchive** action (set status back to `active`). Build that screen
-      together with this implementation so archive can be exercised end-to-end
-      (control + functionality verification). Until that screen exists, archived
-      threads are simply hidden but never lost.
+  - ☑ **Archive / unarchive thread + "Archived" screen** — DONE (mobile):
+    `ThreadManager.archiveThread`/`unarchiveThread` flip the local
+    `ThreadStatus` (best-effort `thread/archive`/`thread/unarchive`, graceful
+    degradation; nothing deleted). `ThreadsScreen` hides archived threads + an
+    **Archived** app-bar action → `ArchivedThreadsScreen`
+    (`/device/:deviceId/archived`, per-PC) where they're reopened / unarchived /
+    deleted. Shared `ThreadTile` (`thread_tile.dart`) backs both lists. Archived
+    threads are derived from `threadsProvider` filtered by
+    `status == archived` (no new repo query needed — the watch already streams
+    all threads). Bridge `thread/archive`/`thread/unarchive` handlers are the
+    other agent's side.
   - ☑ **Rename thread** — DONE (mobile): long-press menu → rename dialog →
     `ThreadManager.renameThread` (local-first + `thread/rename`, graceful
     degradation). Bridge `thread/rename` handler is the other agent's side.

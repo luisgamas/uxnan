@@ -470,11 +470,41 @@ abstract class AppLocalizations {
   /// **'Copy thread ID'**
   String get threadActionCopyId;
 
+  /// No description provided for @threadActionArchive.
+  ///
+  /// In en, this message translates to:
+  /// **'Archive'**
+  String get threadActionArchive;
+
+  /// No description provided for @threadActionUnarchive.
+  ///
+  /// In en, this message translates to:
+  /// **'Unarchive'**
+  String get threadActionUnarchive;
+
   /// No description provided for @threadActionDelete.
   ///
   /// In en, this message translates to:
   /// **'Delete'**
   String get threadActionDelete;
+
+  /// No description provided for @archivedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Archived'**
+  String get archivedTitle;
+
+  /// No description provided for @archivedEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No archived threads'**
+  String get archivedEmpty;
+
+  /// No description provided for @archivedEmptyBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Threads you archive are hidden here, not deleted. Long-press one to unarchive it.'**
+  String get archivedEmptyBody;
 
   /// No description provided for @threadRenameTitle.
   ///

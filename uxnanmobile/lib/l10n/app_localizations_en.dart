@@ -208,7 +208,23 @@ class AppLocalizationsEn extends AppLocalizations {
   String get threadActionCopyId => 'Copy thread ID';
 
   @override
+  String get threadActionArchive => 'Archive';
+
+  @override
+  String get threadActionUnarchive => 'Unarchive';
+
+  @override
   String get threadActionDelete => 'Delete';
+
+  @override
+  String get archivedTitle => 'Archived';
+
+  @override
+  String get archivedEmpty => 'No archived threads';
+
+  @override
+  String get archivedEmptyBody =>
+      'Threads you archive are hidden here, not deleted. Long-press one to unarchive it.';
 
   @override
   String get threadRenameTitle => 'Rename thread';

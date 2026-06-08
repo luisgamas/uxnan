@@ -209,7 +209,23 @@ class AppLocalizationsEs extends AppLocalizations {
   String get threadActionCopyId => 'Copiar ID del hilo';
 
   @override
+  String get threadActionArchive => 'Archivar';
+
+  @override
+  String get threadActionUnarchive => 'Desarchivar';
+
+  @override
   String get threadActionDelete => 'Eliminar';
+
+  @override
+  String get archivedTitle => 'Archivados';
+
+  @override
+  String get archivedEmpty => 'No hay conversaciones archivadas';
+
+  @override
+  String get archivedEmptyBody =>
+      'Las conversaciones que archivas se ocultan aquí, no se eliminan. Mantén pulsada una para desarchivarla.';
 
   @override
   String get threadRenameTitle => 'Renombrar hilo';
