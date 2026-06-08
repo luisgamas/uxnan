@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/application/managers/push_registrar.dart';
@@ -32,19 +34,55 @@ class UxnanApp extends ConsumerWidget {
   }
 }
 
-/// Keeps the [PushRegistrar] alive for the whole app lifetime and feeds it
-/// localized notification copy.
+/// Keeps the [PushRegistrar] alive for the whole app lifetime, feeds it
+/// localized notification copy, and deep-links notification taps to the
+/// matching conversation.
 ///
 /// Mounted under `MaterialApp` (via its `builder`) so a localized
 /// [AppLocalizations] context is available. Push init is best-effort and
 /// non-blocking; this widget only renders [child].
-class _PushHost extends ConsumerWidget {
+class _PushHost extends ConsumerStatefulWidget {
   const _PushHost({required this.child});
 
   final Widget child;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_PushHost> createState() => _PushHostState();
+}
+
+class _PushHostState extends ConsumerState<_PushHost> {
+  StreamSubscription<String>? _tapSub;
+
+  @override
+  void initState() {
+    super.initState();
+    final registrar = ref.read(pushRegistrarProvider);
+    // Taps while the app is alive or resumed from the background.
+    _tapSub = registrar.onNotificationTap.listen(_openThread);
+    // Cold start: if a tapped notification launched the app, deep-link once the
+    // first frame is laid out (so the router is mounted).
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final threadId = await registrar.initialThreadId();
+      if (!mounted || threadId == null) return;
+      _openThread(threadId);
+    });
+  }
+
+  void _openThread(String threadId) {
+    if (threadId.isEmpty) return;
+    unawaited(
+      ref.read(appRouterProvider).push(AppRoutes.conversation(threadId)),
+    );
+  }
+
+  @override
+  void dispose() {
+    _tapSub?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     // Instantiate and keep the registrar alive for the app's lifetime.
     final registrar = ref.watch(pushRegistrarProvider);
     final l10n = AppLocalizations.of(context);
@@ -54,6 +92,6 @@ class _PushHost extends ConsumerWidget {
       turnErrorTitle: l10n.pushTurnErrorTitle,
       turnErrorBody: l10n.pushTurnErrorBody,
     );
-    return child;
+    return widget.child;
   }
 }

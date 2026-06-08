@@ -8,6 +8,16 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Notification tap → deep-link to the conversation** — closes the push loop:
+  - `PushNotificationService` now exposes `onNotificationTap` (a `threadId`
+    stream from foreground / background-resume taps) and `initialThreadId()`
+    (the `threadId` that cold-started the app). Wires the local-notification
+    `onDidReceiveNotificationResponse`, FCM `onMessageOpenedApp`, plus
+    `getNotificationAppLaunchDetails()` / `getInitialMessage()` for cold start.
+  - `PushRegistrar` re-exposes both; `_PushHost` (`app.dart`) subscribes and
+    deep-links taps to `/conversation/:threadId` (cold start navigates after the
+    first frame). Fully guarded: a no-op when Firebase config is absent.
+
 - **Per-thread model picker (`thread/setModel`)** — spec 02a §5.4:
   - `ThreadManager.setThreadModel` calls `thread/setModel { threadId, model }`
     and mirrors the new model onto the local `Thread`; `loadAgentModels`

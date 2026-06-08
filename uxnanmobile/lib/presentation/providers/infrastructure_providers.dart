@@ -61,7 +61,11 @@ final phoneIdentityStoreProvider = Provider<PhoneIdentityStore>(
 /// runs without Firebase native config. Initialized lazily by the push module;
 /// `isAvailable` is `false` until [PushNotificationService.init] succeeds.
 final pushNotificationServiceProvider = Provider<PushNotificationService>(
-  (ref) => PushNotificationService(),
+  (ref) {
+    final service = PushNotificationService();
+    ref.onDispose(service.dispose);
+    return service;
+  },
 );
 
 /// Trusted-device repository (drift for metadata + secure storage for the

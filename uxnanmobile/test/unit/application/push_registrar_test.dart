@@ -10,14 +10,24 @@ import 'package:uxnan/infrastructure/notifications/push_notification_service.dar
 /// A fake push service that avoids any Firebase / platform calls.
 class _FakePushService extends PushNotificationService {
   String? token = 'tok-1';
+  String? initial;
   final StreamController<String> _refresh =
       StreamController<String>.broadcast();
+  final StreamController<String> _taps = StreamController<String>.broadcast();
   final List<({String title, String body, String? payload})> shown = [];
 
   void emitTokenRefresh(String value) => _refresh.add(value);
 
+  void emitTap(String value) => _taps.add(value);
+
   @override
   Stream<String> get onTokenRefresh => _refresh.stream;
+
+  @override
+  Stream<String> get onNotificationTap => _taps.stream;
+
+  @override
+  Future<String?> initialThreadId() async => initial;
 
   @override
   Future<String?> getToken() async => token;
@@ -31,7 +41,10 @@ class _FakePushService extends PushNotificationService {
     shown.add((title: title, body: body, payload: payload));
   }
 
-  Future<void> close() => _refresh.close();
+  Future<void> close() async {
+    await _refresh.close();
+    await _taps.close();
+  }
 }
 
 Future<void> _settle() =>
@@ -134,5 +147,22 @@ void main() {
       ..add(const MessageDeltaEvent(turnId: 't1', delta: 'x'));
     await _settle();
     expect(push.shown, isEmpty);
+  });
+
+  test('forwards notification taps for deep-linking', () async {
+    final tapped = <String>[];
+    final sub = registrar.onNotificationTap.listen(tapped.add);
+    push
+      ..emitTap('th-42')
+      ..emitTap('th-7');
+    await _settle();
+    await sub.cancel();
+
+    expect(tapped, ['th-42', 'th-7']);
+  });
+
+  test('forwards the cold-start thread id', () async {
+    push.initial = 'th-cold';
+    expect(await registrar.initialThreadId(), 'th-cold');
   });
 }
