@@ -249,6 +249,26 @@ void main() {
     expect(manager.activeThreadId, isNull);
   });
 
+  test('startThread defaults the title to the thread id when unnamed',
+      () async {
+    final thread = await manager.startThread(projectId: 'p1', agentId: 'codex');
+
+    expect(thread.id, 'th-new');
+    expect(thread.title, 'th-new');
+    final persisted = await threadRepo.getThread('th-new');
+    expect(persisted!.title, 'th-new');
+  });
+
+  test('startThread keeps an explicit user title', () async {
+    final thread = await manager.startThread(
+      projectId: 'p1',
+      title: 'My thread',
+      agentId: 'codex',
+    );
+
+    expect(thread.title, 'My thread');
+  });
+
   test('sendUserMessage persists locally and sends turn/send', () async {
     await manager.selectThread('th1');
     await _settle();

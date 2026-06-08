@@ -8,6 +8,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **New threads default their title to the thread id** — when a conversation is
+  started without an explicit title, `ThreadManager.startThread` sets the local
+  title to the new thread's own id (instead of a generic "New thread"), so it's
+  identifiable in the list and resumable from the CLI on the PC. The user can
+  rename it afterwards (see thread actions). An explicit title is preserved.
+
 - **Thread management — rename, delete & copy id** — user-requested:
   - `ThreadManager.renameThread` mirrors the new title locally first (immediate
     UI), then calls `thread/rename { threadId, title }`; ignores a blank title.

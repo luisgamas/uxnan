@@ -221,7 +221,13 @@ class ThreadManager {
             status: ThreadStatus.active,
             lastActivity: DateTime.now(),
           );
-    final thread = deviceId != null ? base.copyWith(deviceId: deviceId) : base;
+    // Auto-title: when the user did not name the thread, default its title to
+    // the thread's own id so it is identifiable in the list and resumable from
+    // the CLI on the PC. The user can rename it afterwards.
+    final hasUserTitle = title != null && title.trim().isNotEmpty;
+    final titled = hasUserTitle ? base : base.copyWith(title: base.id);
+    final thread =
+        deviceId != null ? titled.copyWith(deviceId: deviceId) : titled;
     await _threadRepository.saveThread(thread);
     return thread;
   }
