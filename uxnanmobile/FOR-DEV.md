@@ -6,6 +6,26 @@ Deferred implementation work (code the team/agent will do later). Distinct from
 
 > Convention defined in the root `AGENTS.md` → "Pending developer work".
 
+## Recommended next steps (mobile-only, no live bridge needed)
+
+These can be built and unit/widget-tested locally; bridge calls degrade
+gracefully until the other agent wires the handler. Suggested order:
+
+1. ☑ **Advanced content `approval`/`plan`/`subagent`** (decode + read-only
+   render) — DONE this round. Remaining: interactive approval (needs a bridge
+   RPC) and verifying wire shapes against a real Codex/Claude turn.
+2. ☐ **Archive thread** (+ an "Archived" screen to recover them) — see
+   *Threads list → Archive thread* for the full plan.
+3. ☐ **Settings screen + notification preferences** (`notifications/update`) —
+   see *Push notifications*.
+4. ☐ **Remove device** (clear a stale paired PC) — see *Threads list*.
+5. ☐ **Voice → text in the composer** — pure device feature, but verification
+   needs a real mic (defer while remote).
+
+Everything else below needs the bridge/relay (history pagination, real token
+usage, per-file diff, extended git actions, LAN discovery, manual-code pairing,
+APNs) and is best done once a live bridge is reachable.
+
 ---
 
 ## Pairing module
@@ -77,8 +97,23 @@ Deferred implementation work (code the team/agent will do later). Distinct from
   selected PC (`Thread.deviceId`).
   - ☑ **Delete thread** — DONE (mobile): long-press menu on `ThreadsScreen` →
     `ThreadManager.deleteThread` removes locally + calls `thread/delete`
-    (best-effort, degrades gracefully). ☐ **Archive thread** still pending
-    (`thread/archive` + a `ThreadStatus.archived` filter/section).
+    (best-effort, degrades gracefully).
+  - ☐ **Archive thread** still pending. Plan (mobile-only, degrades without the
+    bridge `thread/archive`):
+    - **Where they go:** `ThreadManager.archiveThread` sets the local thread's
+      `status` to `ThreadStatus.archived` (via `Thread.copyWith` + `saveThread`)
+      and sends `thread/archive { threadId }` best-effort. Nothing is deleted —
+      the row stays in drift, only its status changes.
+    - **How they're hidden:** `ThreadsScreen` filters out
+      `ThreadStatus.archived` from the main list (active threads only), so
+      archiving just removes it from the default view.
+    - **How they're recovered:** a future **"Archived" screen/section** reads the
+      same drift repo filtered to `status == archived` (add an
+      `IThreadRepository.watchThreads(status:)`/a derived provider) with an
+      **Unarchive** action (set status back to `active`). Build that screen
+      together with this implementation so archive can be exercised end-to-end
+      (control + functionality verification). Until that screen exists, archived
+      threads are simply hidden but never lost.
   - ☑ **Rename thread** — DONE (mobile): long-press menu → rename dialog →
     `ThreadManager.renameThread` (local-first + `thread/rename`, graceful
     degradation). Bridge `thread/rename` handler is the other agent's side.
@@ -92,9 +127,19 @@ Deferred implementation work (code the team/agent will do later). Distinct from
 
 ## Conversation / timeline
 
-- ☐ **Advanced `MessageContent` types** — `approval`, `plan`, `subagent` (and
-  their `ApprovalRequest` / `PlanState` / `SubagentState` payloads). Currently
-  decoded as `UnknownContent` (lossless). Post-MVP per spec.
+- ◑ **Advanced `MessageContent` types** — `approval`, `plan`, `subagent`:
+  - ☑ **Decode + read-only render** — DONE: `ApprovalContent`/`PlanContent`/
+    `SubagentContent` + value objects (`ApprovalRequest`, `PlanState`/`PlanStep`,
+    `SubagentState`/`SubagentAction`) + enums (`ApprovalRisk`, `PlanStepStatus`,
+    `SubagentActionKind`); tolerant codec (nested or flat) with graceful enum
+    fallback. Renderers: approval card, plan checklist, subagent card
+    (`message_content_view.dart`). Covered by round-trip + render tests.
+  - ☐ **Interactive approval** — the Approve/Reject buttons are disabled; wiring
+    a response needs a bridge RPC (`turn/send { approvalResponse: { approvalId,
+    approved } }`, spec 01 §283). Add an `approvalRespond` seam on `ThreadManager`
+    when the bridge exposes it; then enable the buttons.
+  - ☐ **Verify wire shapes** against a real Codex/Claude turn (field names for
+    plan steps / subagent actions are assumed; the parser is tolerant).
 - ☑ **Application managers** — DONE: `ThreadManager` (timeline build + streaming
   reducer application, `loadThreads`, `sendUserMessage`) and
   `IncomingMessageProcessor`.

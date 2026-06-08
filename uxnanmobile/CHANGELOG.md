@@ -8,6 +8,20 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Advanced message content: `approval` / `plan` / `subagent`** — these blocks
+  used to fall through to the generic `UnknownContent` placeholder; they now
+  decode and render properly (exactly what Codex/Claude emit for plan mode &
+  approvals):
+  - Domain: `ApprovalContent`/`PlanContent`/`SubagentContent` + value objects
+    `ApprovalRequest`, `PlanState`/`PlanStep`, `SubagentState`/`SubagentAction`
+    and enums `ApprovalRisk`, `PlanStepStatus`, `SubagentActionKind`. The codec
+    is tolerant of both nested (`{request|state:{…}}`) and flat payloads and
+    falls back gracefully on unknown enum values; JSON round-trips.
+  - UI (proposal, pending on-device review): an approval card (action + risk
+    badge + **disabled** Approve/Reject — FOR-DEV: the response RPC needs the
+    bridge), a plan checklist (per-step status icons), and a subagent card
+    (name/status + its actions). Read-only for now.
+
 - **Capability-aware conversation UI** (proposal, pending on-device review) —
   the conversation now adapts to the active agent's advertised
   `AgentCapabilities` (from `agent/list`):
