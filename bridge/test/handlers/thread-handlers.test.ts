@@ -59,7 +59,7 @@ test('thread/start then turn/send routes through the echo agent end-to-end', asy
   await rm(baseDir, { recursive: true, force: true });
 });
 
-test('agent/list reports the registered agents (echo + opencode + claude-code)', async () => {
+test('agent/list reports the registered agents (echo + opencode + claude-code + codex)', async () => {
   const { bridge, baseDir } = await boot();
   const res = await bridge.router.dispatch(makeRequest('1', 'agent/list', {}));
   assert.ok('result' in res);
@@ -67,6 +67,7 @@ test('agent/list reports the registered agents (echo + opencode + claude-code)',
   assert.ok(ids.includes('echo'));
   assert.ok(ids.includes('opencode'));
   assert.ok(ids.includes('claude-code'));
+  assert.ok(ids.includes('codex'));
   await bridge.stop();
   await rm(baseDir, { recursive: true, force: true });
 });

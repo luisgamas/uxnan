@@ -99,10 +99,19 @@ The OpenCode adapter is the template for any "one-shot per-turn CLI" agent:
    session/continue flag, cwd flag) and `parseLine` for that CLI's event shape.
    Keep `shell:false` and pass the prompt as an argv element (no injection).
 3. Register it in `startBridge` with display metadata + availability.
-- [ ] **Codex** — `codex exec --json` (JSONL events; `exec resume <id>` for
-      continuity; `-m` model, `-s` sandbox, `-c` config). Scaffold:
-      `src/adapters/codex-adapter.ts` (still the generic stub). Follow the
-      `claude-adapter.ts` / `opencode-adapter.ts` one-shot template.
+- [x] **Codex** — `src/adapters/codex-adapter.ts`. WIRED via `codex exec --json`
+      (`exec resume <thread_id>` for continuity, `-m` model, `-C` cwd, always
+      `--skip-git-repo-check`). Parses the JSONL stream (`thread.started` /
+      `item.completed` `agent_message` / `turn.completed` / `turn.failed`), keeps
+      the `thread_id` per thread. Sandbox posture is configurable via
+      `agents['codex'].permissionMode` (default `acceptEdits` → `-s workspace-write`;
+      also `default` → `-s read-only`, `bypassPermissions` →
+      `--dangerously-bypass-approvals-and-sandbox`). Binary resolved by
+      `resolve-codex.ts` (npm `@openai/codex/bin/codex.js` via node → PATH).
+      **`codex-server` is NOT needed**: Codex's `app-server`/`exec-server`/
+      `mcp-server` modes drive the desktop app / IDE / MCP — the bridge uses the
+      one-shot `codex exec` entry point. No model-list command, so `agent/models`
+      returns `[]` for Codex (use the default model or set `agents.codex.model`).
 - [x] **Claude Code** — `src/adapters/claude-adapter.ts`. WIRED via
       `claude -p --output-format stream-json --verbose --include-partial-messages`
       (`--resume <session_id>`, `--model <alias|id>`). Parses the JSONL stream

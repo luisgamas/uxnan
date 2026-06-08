@@ -33,6 +33,8 @@ import { OpenCodeAdapter } from './adapters/opencode-adapter.js';
 import { resolveOpenCodeBinary } from './adapters/resolve-opencode.js';
 import { ClaudeCodeAdapter } from './adapters/claude-adapter.js';
 import { resolveClaudeBinary } from './adapters/resolve-claude.js';
+import { CodexAdapter } from './adapters/codex-adapter.js';
+import { resolveCodexBinary } from './adapters/resolve-codex.js';
 import { ProjectRegistry } from './projects/project-registry.js';
 import { PushService } from './push/push-service.js';
 
@@ -133,6 +135,22 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       displayName: 'Claude Code',
       available: claude.available,
       ...(claudeSettings.model !== undefined ? { defaultModel: claudeSettings.model } : {}),
+    },
+  );
+  // Codex: real agent driven via `codex exec --json` (see FOR-DEV.md).
+  const codexSettings = config.agents['codex'] ?? {};
+  const codex = resolveCodexBinary(codexSettings.binaryPath);
+  agentManager.register(
+    new CodexAdapter({
+      binaryPath: codex.binaryPath,
+      prependArgs: codex.prependArgs,
+      permissionMode: codexSettings.permissionMode ?? 'acceptEdits',
+      ...(codexSettings.model !== undefined ? { defaultModel: codexSettings.model } : {}),
+    }),
+    {
+      displayName: 'Codex',
+      available: codex.available,
+      ...(codexSettings.model !== undefined ? { defaultModel: codexSettings.model } : {}),
     },
   );
   const startedAt = now();

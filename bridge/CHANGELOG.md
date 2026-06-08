@@ -5,6 +5,31 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — Codex agent
+- **Codex adapter** (`src/adapters/codex-adapter.ts`): real agent driven by
+  `codex exec --json`. Spawns one process per turn with stdin closed (Codex blocks
+  on an open stdin pipe), parses its JSONL event stream (`thread.started` /
+  `item.completed` `agent_message` / `turn.completed` / `turn.failed`) into bridge
+  events, keeps Codex's `thread_id` per thread for `exec resume <id>` continuity,
+  and runs in the thread's cwd (`-C`). The prompt is an argv element
+  (`shell:false`) — never shell-interpolated. Always passes `--skip-git-repo-check`
+  so a thread can run in any directory. Codex emits complete `agent_message` items
+  (no token deltas), so each is streamed as one chunk; `turn.completed` finalizes,
+  `turn.failed` surfaces as a turn error. Resume continuity validated live against
+  `codex-cli` 0.137.
+- **Binary resolution** (`src/adapters/resolve-codex.ts`): runs the npm
+  `@openai/codex/bin/codex.js` entry via `node` (keeps `shell:false`; the entry
+  locates the right native binary), or the `codex` launcher on PATH.
+- **Configurable headless sandbox posture** (reuses `AgentSettings.permissionMode`):
+  `acceptEdits` (default — `-s workspace-write`), `default` (`-s read-only`), or
+  `bypassPermissions` (`--dangerously-bypass-approvals-and-sandbox`).
+- Codex is registered in `startBridge` alongside OpenCode and Claude Code and
+  exposed via `agent/list`; no shared-contract or mobile change was needed (the
+  `'codex'` AgentId already existed). Codex's `app-server`/`exec-server`/
+  `mcp-server` modes are **not** used — `codex exec` is the one-shot entry point.
+- Tests: Codex parser + adapter (delta/complete/error/thread resume, sandbox-flag
+  mapping).
+
 ### Added — Claude Code agent
 - **Claude Code adapter** (`src/adapters/claude-adapter.ts`): real agent driven by
   `claude -p --output-format stream-json --verbose --include-partial-messages`.
@@ -33,9 +58,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   assistant-message fallback, permission-flag mapping, model aliases).
 
 ### Changed — test runner
-- `npm test` now runs with `--test-concurrency=2` to avoid CPU-starvation flakes
-  in the bridge end-to-end conversation tests on Windows when all test files run
-  in parallel.
+- `npm test` now runs with `--test-concurrency=1` (serialized) to avoid
+  CPU-starvation flakes in the bridge end-to-end tests on Windows: several suites
+  boot a full bridge and/or spawn real child processes (git, fake agents), and
+  running them in parallel starved the conversation tests' `waitFor` polling. The
+  `waitFor` guards were also raised to 30s as a backstop.
 
 ### Added — Phase 5b (real OpenCode agent + agent/project selection)
 - **OpenCode adapter** (`src/adapters/opencode-adapter.ts`): real agent driven by

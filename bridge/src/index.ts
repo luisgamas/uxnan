@@ -45,7 +45,14 @@ export {
 } from './logger.js';
 
 export { BaseAgentAdapter } from './adapters/base-adapter.js';
-export { CodexAdapter } from './adapters/codex-adapter.js';
+export {
+  CodexAdapter,
+  parseCodexLine,
+  type CodexAdapterOptions,
+  type CodexEvent,
+  type CodexPermissionMode,
+} from './adapters/codex-adapter.js';
+export { resolveCodexBinary, type ResolvedCodex } from './adapters/resolve-codex.js';
 export {
   OpenCodeAdapter,
   parseOpenCodeLine,

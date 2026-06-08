@@ -13,13 +13,22 @@ per-domain handlers.
 > handlers** (path-traversal-safe, including working-tree checkpoints), and the
 > **conversation engine** (threads/turns + streaming) are in place. The **real
 > OpenCode agent** is wired as the default (per-turn `opencode run --format json`,
-> session continuity, runs in the thread's cwd), and **Claude Code** is wired too
-> (per-turn `claude -p --output-format stream-json`, `--resume` continuity,
-> configurable headless permission posture), with **per-thread agent/project
-> selection** (`thread/start`, `agent/list`, `agent/models`, `thread/setModel`,
-> `project/list`/`resolve`) and a **push bridge** (`notifications/*`, gated behind
-> relay Firebase creds). Codex/Gemini adapters are the next piece — see
-> [FOR-DEV.md](./FOR-DEV.md) and [../ROADMAP.md](../ROADMAP.md).
+> session continuity, runs in the thread's cwd), and **Claude Code** (per-turn
+> `claude -p --output-format stream-json`, `--resume` continuity) and **Codex**
+> (per-turn `codex exec --json`, `exec resume` continuity) are wired too, each with
+> a configurable headless permission/sandbox posture, with **per-thread
+> agent/project selection** (`thread/start`, `agent/list`, `agent/models`,
+> `thread/setModel`, `project/list`/`resolve`) and a **push bridge**
+> (`notifications/*`, gated behind relay Firebase creds). The Gemini adapter is the
+> next piece — see [FOR-DEV.md](./FOR-DEV.md) and [../ROADMAP.md](../ROADMAP.md).
+>
+> **How the bridge talks to agents:** it spawns each agent's **official local CLI**
+> (`opencode`, `claude`, `codex`) as a child process and drives it over stdio —
+> exactly as you would in a terminal. It does **not** use any provider HTTP API,
+> API key, or language SDK; each CLI runs under the account/subscription you already
+> authenticated it with. Prompts are passed as argv elements with `shell:false`
+> (no shell injection). See [FOR-HUMAN.md](./FOR-HUMAN.md) for the per-agent
+> install/login prerequisites.
 
 ## Install (later, as a global package)
 
