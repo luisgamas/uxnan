@@ -37,6 +37,28 @@ overrides live in `~/.uxnan/daemon-config.json` under `agents.<id>`
 > This is operational guidance, not a secret asset — no credentials are ever
 > committed or stored by the bridge.
 
+### Browse root & what the agent can reach (operational)
+
+Set `browseRoots` in `~/.uxnan/daemon-config.json` to the folder you want the
+phone to browse, e.g. your `Documents`:
+
+```json
+{ "browseRoots": ["C:\\Users\\you\\Documents"] }
+```
+
+The phone can then navigate sub-folders under that root, pick any directory as a
+thread, and start an agent rooted there — **without ever browsing above the root**
+(the `workspace/browseDirs` API rejects `..`/escape attempts).
+
+**Important scope caveat:** that "can't go above the root" confinement applies to
+the **phone's browse/read API**. The **agent process** (Claude/Codex/OpenCode) is a
+normal child process: once you start a thread in a directory, the agent runs there
+and can act on that directory and its sub-folders; its **writes** are bounded by
+the agent's sandbox posture (`permissionMode` — Codex `workspace-write`, Claude
+`acceptEdits`), but a hard OS-level read-confinement to the subtree is not provided
+(it would need a container/sandbox; tracked in `FOR-DEV.md`). Choose a `browseRoots`
+folder you are comfortable giving a coding agent access to.
+
 ### Cross-references (assets owned by other components)
 - **Push credentials** (Firebase service account / APNs `.p8`) belong to the
   **relay** — see [`../relay/FOR-HUMAN.md`](../relay/FOR-HUMAN.md) (Phase 6).

@@ -36,6 +36,7 @@ import { resolveClaudeBinary } from './adapters/resolve-claude.js';
 import { CodexAdapter } from './adapters/codex-adapter.js';
 import { resolveCodexBinary } from './adapters/resolve-codex.js';
 import { ProjectRegistry } from './projects/project-registry.js';
+import { BrowseService } from './workspace/browse-service.js';
 import { PushService } from './push/push-service.js';
 
 export interface StartBridgeOptions {
@@ -96,6 +97,10 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   const trustStore = new FileTrustStore(state);
   const threadStore = new ThreadStore(state);
   const projects = new ProjectRegistry(config.workspaceRoots);
+  // Browse roots fall back to the project roots, then the user's home directory.
+  const browse = new BrowseService(
+    config.browseRoots.length > 0 ? config.browseRoots : config.workspaceRoots,
+  );
   const pushService = new PushService({ relayUrl: config.relayUrl, config, logger });
   const agentManager = new AgentManager({
     store: threadStore,
@@ -166,6 +171,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
     threadStore,
     agentManager,
     projects,
+    browse,
     pushService,
     logger,
     now,

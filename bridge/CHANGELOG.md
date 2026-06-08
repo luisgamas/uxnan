@@ -5,6 +5,27 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — plug-and-play directory browsing
+- **`workspace/browseDirs`** (`src/workspace/browse-service.ts` +
+  `src/handlers/workspace-handler.ts`): the phone navigates sub-directories under a
+  configured base root (e.g. `Documents`), sees which are git repos, and picks ANY
+  directory (git or not) as a thread's cwd — no per-project pre-configuration. The
+  result includes the list of configured roots (for a root picker), the current
+  path/parent (`parent` is `null` at the root — the phone cannot go above it), the
+  absolute `cwd` to pass to `thread/start`, and the sub-directories. Confinement
+  reuses `resolveWithinRoot` (rejects `..`/absolute escapes; excludes `.git` and
+  sensitive names).
+- **Config `browseRoots`** (`daemon-config.ts`): absolute base dirs the phone may
+  browse; falls back to `workspaceRoots`, then the user's home directory. Exposed
+  on `BridgeContext.browse` (`BrowseService`).
+- **Security note:** this confines the phone-facing browse/workspace API, NOT the
+  agent process — once a directory is chosen, the agent CLI runs there and acts on
+  that subtree (writes bounded by each agent's sandbox posture). Documented in
+  `FOR-HUMAN.md`.
+- Tests: `BrowseService` (root listing, git-repo marking, `.git`/sensitive
+  exclusion, descend path/parent/cwd, escape rejection, unknown-root rejection,
+  empty-roots fallback).
+
 ### Added — Codex agent
 - **Codex adapter** (`src/adapters/codex-adapter.ts`): real agent driven by
   `codex exec --json`. Spawns one process per turn with stdin closed (Codex blocks

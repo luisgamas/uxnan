@@ -8,6 +8,18 @@ only a human can provide.)
 > adapter wiring, contract re-checks) is in [`../TESTING.md`](../TESTING.md).
 > Each deferred item below says what to build; TESTING.md says how to test it.
 
+## Plug-and-play "install and use" — remaining sequence
+The goal is: install on the PC, log into the agents you want, point the phone at a
+folder, and go. Tracked items, in order:
+1. **Directory browsing** — DONE (bridge side: `workspace/browseDirs`); the mobile
+   browser UI is the remaining half (see Handlers → Plug-and-play below).
+2. **Autostart / `install-service`** — finish wiring the CLI to the platform scripts
+   so the bridge runs on login without an open terminal (see Daemon lifecycle).
+3. **Packaging / publish** — bundle `@uxnan/shared` (or publish it first) and ship
+   the bridge as `npm i -g uxnan-bridge` / a single binary (see Packaging).
+Remote access (off-LAN) needs a hosted relay; **LAN-only works today with zero
+hosting** (the phone connects directly to the bridge on the same network).
+
 ## Transport & connectivity
 - [x] **Secure transport / E2EE handshake** — `src/transport/` (Phase 2). Relay
       `mac` client + LAN server, handshake, AES-256-GCM channel; interoperable
@@ -48,13 +60,22 @@ only a human can provide.)
           supporting checkpoints on an unborn branch if a use case appears.
 - [x] **Thread/turn** (Phase 5) — `src/handlers/thread-context-handler.ts` +
       `src/conversation/thread-store.ts` + `src/agents/agent-manager.ts`.
-- [~] **Project** — `src/handlers/project-handler.ts`: `project/list`/`project/resolve`
-      return the configured `workspaceRoots` (manual). PLANNED (plug-and-play): a
-      `workspace/browseDirs { path? }` method so the phone can browse the
-      sub-directories under a root (a configured base, the bridge cwd, or the
-      user's home), mark which are git repos, and pick ANY directory (git or not)
-      as the project for a thread — no per-project pre-configuration. Pairing
-      stays once; project selection becomes a directory browse on the phone.
+- [x] **Plug-and-play directory browsing (bridge side)** — `workspace/browseDirs`
+      (`src/workspace/browse-service.ts` + `workspace-handler.ts`) lets the phone
+      browse sub-directories under a configured base root (`config.browseRoots`,
+      falling back to `workspaceRoots` → home), mark which are git repos, and pick
+      ANY directory as a thread's cwd (`thread/start { cwd }`) — no per-project
+      pre-config. Root-confined via `resolveWithinRoot`. `project/list`/`resolve`
+      (the manual `workspaceRoots` list) stay as-is for explicitly configured
+      projects. **Next steps (deja en FOR-DEV):**
+        - **Mobile UI** (uxnanmobile branch): a directory-browser screen that calls
+          `workspace/browseDirs`, shows the root picker + git-repo badges, navigates
+          with `parent`/`dirs`, and opens a thread on the chosen `cwd`.
+        - **Hard agent confinement** (optional): browseDirs confines the *phone API*,
+          not the agent *process*. True read-confinement of the agent to the chosen
+          subtree needs OS sandboxing (container/chroot) — out of MVP scope; for now
+          writes are bounded by each agent's sandbox posture (Codex `workspace-write`,
+          Claude `acceptEdits`). See FOR-HUMAN.md.
 - [ ] **Per-project agent selection from `AgentConfig`** — the shared
       `AgentConfig` (`agentId`, `binaryPath`, `extraArgs`, `cwd`) is defined but
       not consumed: `thread/start` currently takes an explicit `agentId/model/cwd`.

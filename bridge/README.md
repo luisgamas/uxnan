@@ -18,7 +18,9 @@ per-domain handlers.
 > (per-turn `codex exec --json`, `exec resume` continuity) are wired too, each with
 > a configurable headless permission/sandbox posture, with **per-thread
 > agent/project selection** (`thread/start`, `agent/list`, `agent/models`,
-> `thread/setModel`, `project/list`/`resolve`) and a **push bridge**
+> `thread/setModel`, `project/list`/`resolve`), **plug-and-play folder browsing**
+> (`workspace/browseDirs` — navigate sub-folders under a configured root, can't
+> escape it, pick any directory as a thread's cwd) and a **push bridge**
 > (`notifications/*`, gated behind relay Firebase creds). The Gemini adapter is the
 > next piece — see [FOR-DEV.md](./FOR-DEV.md).
 >

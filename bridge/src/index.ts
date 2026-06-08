@@ -137,5 +137,6 @@ export { SessionRegistry, type SessionSink } from './transport/session-registry.
 export { GitService } from './git/git-service.js';
 export { runGit, GitCommandError, sanitizePaths, type RunGitResult } from './git/git-runner.js';
 export { WorkspaceService } from './workspace/workspace-service.js';
+export { BrowseService, browseRootIdFor } from './workspace/browse-service.js';
 export { CheckpointService, type CaptureOptions } from './workspace/checkpoint-service.js';
 export { resolveWithinRoot, isSensitiveName } from './workspace/path-guard.js';

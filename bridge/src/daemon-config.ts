@@ -43,6 +43,13 @@ export interface DaemonConfig {
    * working directory is exposed as the single project.
    */
   workspaceRoots: string[];
+  /**
+   * Absolute base directories the phone may BROWSE under via `workspace/browseDirs`
+   * (descend into sub-folders, pick any directory as a thread's cwd) without
+   * escaping the root. Empty → falls back to {@link workspaceRoots}, then the
+   * user's home directory. Set this to e.g. your `Documents` folder.
+   */
+  browseRoots: string[];
   /** Per-agent settings keyed by {@link AgentId}. */
   agents: Partial<Record<AgentId, AgentSettings>>;
 }
@@ -59,6 +66,7 @@ export const DEFAULT_DAEMON_CONFIG: DaemonConfig = {
   sessionTimeoutMinutes: 30,
   defaultAgent: 'opencode',
   workspaceRoots: [],
+  browseRoots: [],
   agents: {},
 };
 
