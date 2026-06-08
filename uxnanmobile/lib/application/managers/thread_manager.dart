@@ -177,6 +177,39 @@ class ThreadManager {
     }
   }
 
+  /// Archives a thread (`thread/archive`): sets its local status to
+  /// [ThreadStatus.archived] first (so it leaves the active list immediately),
+  /// then calls the bridge best-effort. Nothing is deleted — the thread stays
+  /// in local storage and can be restored with [unarchiveThread]. Degrades
+  /// gracefully when the bridge does not implement the method.
+  Future<void> archiveThread(String threadId) =>
+      _setArchived(threadId, archived: true, method: 'thread/archive');
+
+  /// Restores an archived thread (`thread/unarchive`): sets its local status
+  /// back to [ThreadStatus.active], then calls the bridge best-effort.
+  Future<void> unarchiveThread(String threadId) =>
+      _setArchived(threadId, archived: false, method: 'thread/unarchive');
+
+  Future<void> _setArchived(
+    String threadId, {
+    required bool archived,
+    required String method,
+  }) async {
+    final thread = await _threadRepository.getThread(threadId);
+    if (thread != null) {
+      await _threadRepository.saveThread(
+        thread.copyWith(
+          status: archived ? ThreadStatus.archived : ThreadStatus.active,
+        ),
+      );
+    }
+    try {
+      await _sendRequest(method, {'threadId': threadId});
+    } on Object catch (error, stackTrace) {
+      AppLogger.warn('$method failed (kept local change)', error, stackTrace);
+    }
+  }
+
   /// Loads the models the bridge reports for [agentId] (`agent/models`).
   Future<List<String>> loadModels(String agentId) async {
     final response = await _sendRequest('agent/models', {'agentId': agentId});

@@ -8,6 +8,7 @@ import 'package:uxnan/application/processors/domain_event.dart';
 import 'package:uxnan/domain/entities/message.dart';
 import 'package:uxnan/domain/enums/message_delivery_state.dart';
 import 'package:uxnan/domain/enums/message_role.dart';
+import 'package:uxnan/domain/enums/thread_status.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
 import 'package:uxnan/domain/value_objects/rpc_message.dart';
 import 'package:uxnan/infrastructure/repositories/drift_message_repository.dart';
@@ -247,6 +248,26 @@ void main() {
 
     await manager.deleteThread('th1');
     expect(manager.activeThreadId, isNull);
+  });
+
+  test('archiveThread sets the local status and sends thread/archive',
+      () async {
+    await manager.loadThreads();
+    await manager.archiveThread('th1');
+
+    final thread = await threadRepo.getThread('th1');
+    expect(thread!.status, ThreadStatus.archived);
+    expect(sentMethods, contains('thread/archive'));
+  });
+
+  test('unarchiveThread restores active and sends thread/unarchive', () async {
+    await manager.loadThreads();
+    await manager.archiveThread('th1');
+    await manager.unarchiveThread('th1');
+
+    final thread = await threadRepo.getThread('th1');
+    expect(thread!.status, ThreadStatus.active);
+    expect(sentMethods, contains('thread/unarchive'));
   });
 
   test('startThread defaults the title to the thread id when unnamed',
