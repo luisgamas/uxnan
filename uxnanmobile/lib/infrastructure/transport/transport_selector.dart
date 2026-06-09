@@ -24,13 +24,18 @@ class DirectTransportSelector implements TransportSelector {
   /// Creates a [DirectTransportSelector]. `createTransport` builds a fresh
   /// transport per attempt (injected so tests can supply an in-memory one).
   /// [directTimeout] bounds each direct host attempt before moving on.
+  /// [relayTimeout] bounds the fallback relay connection (prevents hanging when
+  /// the relay URL is unreachable).
   DirectTransportSelector(
     this._createTransport, {
     Duration directTimeout = const Duration(seconds: 2),
-  }) : _directTimeout = directTimeout;
+    Duration relayTimeout = const Duration(seconds: 10),
+  })  : _directTimeout = directTimeout,
+        _relayTimeout = relayTimeout;
 
   final WebSocketTransport Function() _createTransport;
   final Duration _directTimeout;
+  final Duration _relayTimeout;
 
   @override
   Future<WebSocketTransport> select(TrustedDevice device) async {
@@ -47,7 +52,8 @@ class DirectTransportSelector implements TransportSelector {
       }
     }
 
-    // 2. Relay fallback (WAN), routed with the session headers.
+    // 2. Relay fallback (WAN), routed with the session headers. Bounded by
+    //    [_relayTimeout] so an unreachable relay never hangs the caller.
     if (device.relayUrl.isEmpty) {
       throw const TransportException(
         TransportErrorKind.connection,
@@ -55,14 +61,24 @@ class DirectTransportSelector implements TransportSelector {
       );
     }
     final transport = _createTransport();
-    await transport.connect(
-      device.relayUrl,
-      headers: {
-        'x-role': 'iphone',
-        'x-session-id': device.sessionId,
-      },
-    );
-    return transport;
+    try {
+      await transport
+          .connect(
+            device.relayUrl,
+            headers: {
+              'x-role': 'iphone',
+              'x-session-id': device.sessionId,
+            },
+          )
+          .timeout(_relayTimeout);
+      return transport;
+    } on Object catch (error) {
+      await transport.disconnect().catchError((_) {});
+      throw TransportException(
+        TransportErrorKind.connection,
+        'Relay unreachable after ${_relayTimeout.inSeconds}s: $error',
+      );
+    }
   }
 
   /// Builds a `ws://` URL from a bare `host:port`, leaving an explicit

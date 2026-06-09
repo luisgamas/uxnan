@@ -54,12 +54,14 @@ class SecureTransportLayer {
   /// Runs the full handshake over [transport] and returns the [SecureSession].
   ///
   /// Throws a [TransportException] of kind [TransportErrorKind.handshake] if
-  /// any verification step fails (nonce echo, expiry, identity, signature).
+  /// any verification step fails (nonce echo, expiry, identity, signature) or
+  /// if the bridge does not respond within [stepTimeout] per handshake step.
   Future<SecureSession> performHandshake({
     required WebSocketTransport transport,
     required PhoneIdentity phoneIdentity,
     required TrustedDevice device,
     required HandshakeMode mode,
+    Duration stepTimeout = const Duration(seconds: 15),
   }) async {
     final ephemeral = await _keyGen.generateEphemeralKeyPair();
     final clientNonce = _keyGen.randomBytes(32);
@@ -78,7 +80,9 @@ class SecureTransportLayer {
         ).toJson(),
       );
 
-      final serverHello = ServerHello.fromJson(await _nextJson(queue));
+      final serverHello = ServerHello.fromJson(
+        await _nextJson(queue).timeout(stepTimeout),
+      );
       _verifyServerHello(serverHello, clientNonce, device, mode);
 
       final transcript = _handshake.buildTranscript(
@@ -126,7 +130,9 @@ class SecureTransportLayer {
         ).toJson(),
       );
 
-      final ready = Ready.fromJson(await _nextJson(queue));
+      final ready = Ready.fromJson(
+        await _nextJson(queue).timeout(stepTimeout),
+      );
       if (ready.sessionId != device.sessionId) {
         throw const TransportException(
           TransportErrorKind.handshake,

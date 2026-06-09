@@ -49,7 +49,7 @@ abstract class WebSocketTransport {
 class WebSocketChannelTransport implements WebSocketTransport {
   WebSocketChannel? _channel;
   StreamSubscription<dynamic>? _subscription;
-  final StreamController<Uint8List> _incoming =
+  StreamController<Uint8List> _incoming =
       StreamController<Uint8List>.broadcast();
   final StreamController<TransportState> _state =
       StreamController<TransportState>.broadcast();
@@ -62,6 +62,9 @@ class WebSocketChannelTransport implements WebSocketTransport {
 
   @override
   Future<void> connect(String url, {Map<String, String>? headers}) async {
+    // Fresh stream controller so old listeners (e.g. a handshake StreamQueue
+    // from a previous attempt) fail fast instead of hanging forever.
+    _resetIncoming();
     _state.add(TransportState.connecting);
     final channel = IOWebSocketChannel.connect(
       Uri.parse(url),
@@ -75,7 +78,13 @@ class WebSocketChannelTransport implements WebSocketTransport {
     await channel.ready;
     _subscription = channel.stream.listen(
       (dynamic data) => _incoming.add(_asBytes(data)),
-      onDone: () => _state.add(TransportState.disconnected),
+      onDone: () {
+        _state.add(TransportState.disconnected);
+        // Close the data stream so any in-flight StreamQueue.next() in
+        // performHandshake rejects instead of hanging forever when the remote
+        // drops the connection mid-handshake.
+        _resetIncoming();
+      },
       onError: _incoming.addError,
     );
     _state.add(TransportState.connected);
@@ -96,7 +105,18 @@ class WebSocketChannelTransport implements WebSocketTransport {
     await _subscription?.cancel();
     await _channel?.sink.close();
     _channel = null;
+    _resetIncoming();
     _state.add(TransportState.disconnected);
+  }
+
+  /// Safely closes the current [_incoming] controller and creates a fresh one.
+  /// Called whenever the transport disconnects or reconnects so old listeners
+  /// (StreamQueue, coordinator subscription) terminate promptly.
+  void _resetIncoming() {
+    if (!_incoming.isClosed) {
+      _incoming.close();
+    }
+    _incoming = StreamController<Uint8List>.broadcast();
   }
 
   static Uint8List _asBytes(dynamic data) {
