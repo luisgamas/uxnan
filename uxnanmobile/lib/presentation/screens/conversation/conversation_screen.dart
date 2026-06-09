@@ -111,16 +111,22 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
     Thread? thread,
     String? gitBranch,
     String? resolvedModel,
+    ({int tokens, int? contextWindow})? usage,
   ) {
     final agent = AgentIdParsing.fromWireId(thread?.agentId ?? 'custom');
     final modelName = thread?.model?.isNotEmpty ?? false
         ? thread!.model!
         : AgentVisuals.labelFor(agent);
+    final window = usage?.contextWindow;
     return SessionEnvironment(
       modelName: modelName,
       resolvedModel: resolvedModel,
       approvalMode: _approvalMode,
       gitBranch: gitBranch,
+      contextTokens: usage?.tokens,
+      contextUsedFraction: (usage != null && window != null && window > 0)
+          ? (usage.tokens / window).clamp(0.0, 1.0)
+          : null,
     );
   }
 
@@ -133,7 +139,9 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
     final thread = ref.watch(threadByIdProvider(widget.threadId));
     final gitBranch = ref.watch(gitRepoStateProvider).value?.branch;
     final resolvedModel = ref.watch(resolvedModelProvider(widget.threadId));
-    final environment = _buildEnvironment(thread, gitBranch, resolvedModel);
+    final usage = ref.watch(contextUsageForProvider(widget.threadId));
+    final environment =
+        _buildEnvironment(thread, gitBranch, resolvedModel, usage);
     final cwd = thread?.cwd;
     final snapshot = timelineAsync.value;
 

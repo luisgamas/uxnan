@@ -52,7 +52,12 @@ class MessageDeltaEvent extends DomainEvent {
 /// A turn finished successfully.
 class TurnCompletedEvent extends DomainEvent {
   /// Creates a [TurnCompletedEvent].
-  const TurnCompletedEvent({required this.turnId, this.threadId});
+  const TurnCompletedEvent({
+    required this.turnId,
+    this.threadId,
+    this.tokens,
+    this.contextWindow,
+  });
 
   /// The completed turn.
   final String turnId;
@@ -60,8 +65,14 @@ class TurnCompletedEvent extends DomainEvent {
   /// The owning thread, if provided.
   final String? threadId;
 
+  /// Context-occupying token count for the turn, when the agent reported it.
+  final int? tokens;
+
+  /// The model's context window, when known (Claude tiers); null otherwise.
+  final int? contextWindow;
+
   @override
-  List<Object?> get props => [turnId, threadId];
+  List<Object?> get props => [turnId, threadId, tokens, contextWindow];
 }
 
 /// A turn ended in an error.

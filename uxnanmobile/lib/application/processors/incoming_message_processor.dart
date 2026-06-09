@@ -27,8 +27,12 @@ class IncomingMessageProcessor {
           threadId: threadId,
           delta: params['delta'] is String ? params['delta'] as String : '',
         ),
-      'stream/turn/completed' =>
-        TurnCompletedEvent(turnId: turnId, threadId: threadId),
+      'stream/turn/completed' => TurnCompletedEvent(
+          turnId: turnId,
+          threadId: threadId,
+          tokens: _usageInt(params['usage'], 'tokens'),
+          contextWindow: _usageInt(params['usage'], 'contextWindow'),
+        ),
       'stream/turn/error' => TurnErrorEvent(
           turnId: turnId,
           threadId: threadId,
@@ -55,6 +59,13 @@ class IncomingMessageProcessor {
 
   /// Maps a stream of inbound [source] messages to a stream of domain events.
   Stream<DomainEvent> bind(Stream<RpcMessage> source) => source.map(classify);
+
+  /// Reads an int field from the `usage` map of a turn-completed notification.
+  static int? _usageInt(Object? usage, String key) {
+    if (usage is! Map) return null;
+    final value = usage[key];
+    return value is int ? value : (value is num ? value.toInt() : null);
+  }
 
   static GitActionPhaseStatus _phaseStatus(String? name) {
     for (final value in GitActionPhaseStatus.values) {

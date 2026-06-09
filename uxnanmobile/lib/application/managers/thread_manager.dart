@@ -72,6 +72,11 @@ class ThreadManager {
   /// composed with any [_LiveTurn] overlay to build the active timeline.
   List<Message> _activePersisted = const [];
 
+  /// Token usage of each thread's most recent turn (context occupied, and the
+  /// model's window when known), reported via `turn/completed`. In memory only.
+  final BehaviorSubject<Map<String, ({int tokens, int? contextWindow})>>
+      _contextUsage = BehaviorSubject.seeded(const {});
+
   /// Concrete model each thread's agent resolved its alias to most recently
   /// (e.g. `opus` → `claude-opus-4-8`), reported via `stream/model/resolved`.
   /// Kept in memory only: re-derived on the next turn, never persisted.
@@ -94,6 +99,11 @@ class ThreadManager {
   /// Map of threadId → live [ThreadActivity] (running/error), for the list.
   /// Idle threads are omitted from the map.
   Stream<Map<String, ThreadActivity>> get activityStream => _activity.stream;
+
+  /// Map of threadId → most recent turn token usage (`tokens` occupied and the
+  /// model `contextWindow` when known), for the context indicator.
+  Stream<Map<String, ({int tokens, int? contextWindow})>>
+      get contextUsageStream => _contextUsage.stream;
 
   /// The active thread's current timeline snapshot.
   TurnTimelineSnapshot get timeline => _timeline.value;
@@ -410,6 +420,7 @@ class ThreadManager {
     await _timeline.close();
     await _resolvedModels.close();
     await _activity.close();
+    await _contextUsage.close();
   }
 
   /// Applies a streaming [event] for ANY thread (not just the active one): the
@@ -443,7 +454,18 @@ class ThreadManager {
           live.text += delta;
           if (threadId == _activeThreadId) _rebuildActiveTimeline();
         }
-      case TurnCompletedEvent(:final turnId):
+      case TurnCompletedEvent(
+          :final turnId,
+          :final tokens,
+          :final contextWindow,
+        ):
+        if (tokens != null) {
+          final next = Map<String, ({int tokens, int? contextWindow})>.from(
+            _contextUsage.value,
+          );
+          next[threadId] = (tokens: tokens, contextWindow: contextWindow);
+          _contextUsage.add(next);
+        }
         unawaited(_finishTurn(threadId, turnId, failed: false));
       case TurnErrorEvent(:final turnId):
         unawaited(_finishTurn(threadId, turnId, failed: true));

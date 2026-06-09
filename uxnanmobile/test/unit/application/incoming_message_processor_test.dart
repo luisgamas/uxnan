@@ -45,6 +45,26 @@ void main() {
       expect(event, isA<TurnCompletedEvent>());
     });
 
+    test('stream/turn/completed carries token usage when present', () {
+      final event = processor.classify(
+        note('stream/turn/completed', {
+          'turnId': 't1',
+          'threadId': 'th1',
+          'usage': {'tokens': 1250, 'contextWindow': 1000000},
+        }),
+      ) as TurnCompletedEvent;
+      expect(event.tokens, 1250);
+      expect(event.contextWindow, 1000000);
+    });
+
+    test('stream/turn/completed without usage leaves tokens null', () {
+      final event = processor.classify(
+        note('stream/turn/completed', {'turnId': 't1'}),
+      ) as TurnCompletedEvent;
+      expect(event.tokens, isNull);
+      expect(event.contextWindow, isNull);
+    });
+
     test('stream/turn/error carries the message', () {
       final event = processor.classify(
         note('stream/turn/error', {'turnId': 't1', 'message': 'boom'}),

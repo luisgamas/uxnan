@@ -126,6 +126,21 @@ final threadActivityForProvider =
   return map?[threadId] ?? ThreadActivity.idle;
 });
 
+/// Map of threadId → most recent turn token usage, for the context indicator.
+final contextUsageProvider =
+    StreamProvider<Map<String, ({int tokens, int? contextWindow})>>(
+  (ref) => ref.watch(threadManagerProvider).contextUsageStream,
+);
+
+/// Token usage for one thread (null until its first turn completes).
+final contextUsageForProvider =
+    Provider.family<({int tokens, int? contextWindow})?, String>((
+  ref,
+  threadId,
+) {
+  return ref.watch(contextUsageProvider).value?[threadId];
+});
+
 /// The active thread's timeline, for the UI.
 final activeTimelineProvider = StreamProvider<TurnTimelineSnapshot>(
   (ref) => ref.watch(threadManagerProvider).timelineStream,

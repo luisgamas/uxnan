@@ -13,6 +13,7 @@ class SessionEnvironment {
     required this.approvalMode,
     this.resolvedModel,
     this.contextUsedFraction,
+    this.contextTokens,
     this.gitBranch,
     this.isLocal = true,
   });
@@ -24,11 +25,13 @@ class SessionEnvironment {
   /// (e.g. `claude-opus-4-8` for the `opus` alias), or null when unknown.
   final String? resolvedModel;
 
-  /// Context window usage as a 0–1 fraction, or null when unknown.
-  ///
-  /// FOR-DEV: the bridge does not yet report token usage; the context badge is
-  /// hidden while this is null instead of showing a fabricated percentage.
+  /// Context window usage as a 0–1 fraction, or null when the model's context
+  /// window is unknown (e.g. Codex) — in that case [contextTokens] carries the
+  /// raw count so the UI can still show usage without a percentage.
   final double? contextUsedFraction;
+
+  /// Raw context-occupying token count of the latest turn, when reported.
+  final int? contextTokens;
 
   /// Current approval mode.
   ///
@@ -48,11 +51,20 @@ class SessionEnvironment {
   /// Context usage as a whole-number percentage (0 when unknown).
   int get contextPercent => ((contextUsedFraction ?? 0) * 100).round();
 
+  /// Compact label for the raw token count (e.g. `13.4k`), null when unknown.
+  String? get contextTokensLabel {
+    final tokens = contextTokens;
+    if (tokens == null) return null;
+    if (tokens < 1000) return '$tokens';
+    return '${(tokens / 1000).toStringAsFixed(1)}k';
+  }
+
   /// Returns a copy with the approval mode replaced.
   SessionEnvironment withApprovalMode(ApprovalMode mode) => SessionEnvironment(
         modelName: modelName,
         resolvedModel: resolvedModel,
         contextUsedFraction: contextUsedFraction,
+        contextTokens: contextTokens,
         approvalMode: mode,
         gitBranch: gitBranch,
         isLocal: isLocal,
@@ -68,6 +80,7 @@ class SessionEnvironment {
         modelName: modelName ?? this.modelName,
         resolvedModel: resolvedModel ?? this.resolvedModel,
         contextUsedFraction: contextUsedFraction,
+        contextTokens: contextTokens,
         approvalMode: approvalMode,
         gitBranch: gitBranch ?? this.gitBranch,
         isLocal: isLocal,

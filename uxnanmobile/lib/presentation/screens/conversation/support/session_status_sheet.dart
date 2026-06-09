@@ -146,12 +146,14 @@ class _SessionStatusSheetState extends State<SessionStatusSheet> {
                   label: l10n.environmentActiveModel,
                   value: _env.resolvedModel,
                 ),
-              // FOR-DEV: the bridge does not report token usage yet; show a
-              // neutral placeholder instead of a fabricated percentage.
+              // Context usage: a percentage when the model's window is known
+              // (Claude), otherwise the raw token count (Codex), else a dash.
               _StatusRow(
                 icon: Icons.donut_large_outlined,
                 label: l10n.environmentContext,
-                value: _env.hasContext ? '${_env.contextPercent}%' : '—',
+                value: _env.hasContext
+                    ? '${_env.contextPercent}%'
+                    : (_env.contextTokensLabel ?? '—'),
               ),
               if (widget.showApprovalMode)
                 _StatusRow(
