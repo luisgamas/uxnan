@@ -137,6 +137,12 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
     final phase = ref.watch(connectionPhaseProvider).value ??
         ConnectionPhase.disconnected;
     final thread = ref.watch(threadByIdProvider(widget.threadId));
+    // This thread lives on a specific PC; live actions (send, git) only work
+    // when we actually hold that PC's channel — never a different connected PC.
+    final connectedId = ref.watch(connectedDeviceProvider).value?.macDeviceId;
+    final connectedHere = connectedId != null &&
+        (thread?.deviceId == null || thread!.deviceId == connectedId);
+    final effectivePhase = connectedHere ? phase : ConnectionPhase.disconnected;
     final gitBranch = ref.watch(gitRepoStateProvider).value?.branch;
     final resolvedModel = ref.watch(resolvedModelProvider(widget.threadId));
     final usage = ref.watch(contextUsageForProvider(widget.threadId));
@@ -146,7 +152,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
     final snapshot = timelineAsync.value;
 
     // Resolve git state for the real workspace once the thread's cwd is known.
-    if (phase == ConnectionPhase.connected) _refreshGitFor(cwd);
+    if (connectedHere) _refreshGitFor(cwd);
 
     // Auto-scroll to the bottom on new content while the user is near it.
     ref.listen(activeTimelineProvider, (previous, next) {
@@ -181,7 +187,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
                           thread?.title ?? l10n.conversationTitle,
                           overflow: TextOverflow.ellipsis,
                         ),
-                        _ConnectionLabel(phase: phase),
+                        _ConnectionLabel(phase: effectivePhase),
                       ],
                     ),
                     actions: [
@@ -216,7 +222,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
           ),
           ComposerBar(
             environment: environment,
-            enabled: phase == ConnectionPhase.connected,
+            enabled: connectedHere,
             showAttach: thread != null &&
                 ref.watch(agentCapabilitiesProvider(thread.agentId)).images,
             onModelTap: thread != null ? () => _pickModel(thread) : null,

@@ -18,10 +18,10 @@ class MyDevicesScreen extends ConsumerWidget {
   /// Creates the devices screen.
   const MyDevicesScreen({super.key});
 
-  void _open(WidgetRef ref, BuildContext context, TrustedDevice device) {
-    // Mark the device active locally and show its threads; connecting is an
-    // explicit action (the "Connect" CTA), so navigation never blocks.
-    ref.read(sessionCoordinatorProvider).setActiveDevice(device);
+  void _open(BuildContext context, TrustedDevice device) {
+    // Browsing a PC's threads is read-only and must NOT change the connection
+    // target: connecting stays an explicit, validated action (the "Connect"
+    // CTA here or on the threads screen). Just navigate to its cached threads.
     context.push(AppRoutes.deviceThreads(device.macDeviceId));
   }
 
@@ -128,7 +128,7 @@ class MyDevicesScreen extends ConsumerWidget {
                   device: device,
                   isConnected: device.macDeviceId == connectedId,
                   isConnecting: device.macDeviceId == connectingId,
-                  onOpen: () => _open(ref, context, device),
+                  onOpen: () => _open(context, device),
                   onConnect: () => _connect(ref, context, device),
                   onRename: () => _rename(ref, context, device),
                   onVerify: () => _verify(ref, context, device),

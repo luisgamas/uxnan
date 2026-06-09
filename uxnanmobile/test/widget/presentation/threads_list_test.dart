@@ -4,7 +4,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/entities/trusted_device.dart';
-import 'package:uxnan/domain/enums/connection_phase.dart';
 import 'package:uxnan/domain/enums/thread_activity.dart';
 import 'package:uxnan/domain/enums/thread_status.dart';
 import 'package:uxnan/domain/enums/thread_sync_state.dart';
@@ -38,8 +37,8 @@ Widget _wrap({required List<Thread> threads}) {
       ),
       trustedDevicesProvider
           .overrideWith((ref) => Stream.value(const <TrustedDevice>[])),
-      connectionPhaseProvider
-          .overrideWith((ref) => Stream.value(ConnectionPhase.connected)),
+      connectedDeviceProvider.overrideWith((ref) => Stream.value(null)),
+      connectingDeviceProvider.overrideWith((ref) => Stream.value(null)),
     ],
     child: MaterialApp.router(
       routerConfig: router,

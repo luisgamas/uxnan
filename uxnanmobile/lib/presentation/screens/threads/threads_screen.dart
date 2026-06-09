@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -7,7 +8,6 @@ import 'package:go_router/go_router.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/entities/trusted_device.dart';
 import 'package:uxnan/domain/enums/agent_id.dart';
-import 'package:uxnan/domain/enums/connection_phase.dart';
 import 'package:uxnan/domain/enums/thread_status.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
@@ -43,9 +43,16 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _refresh());
   }
 
+  /// Whether the live session is actually connected to THIS PC (not merely some
+  /// other paired PC). All live operations are gated on this so browsing a PC
+  /// we aren't connected to can't accidentally drive a different one.
+  bool get _connectedHere =>
+      ref.read(connectedDeviceProvider).value?.macDeviceId == widget.deviceId;
+
   Future<void> _refresh() async {
-    final phase = ref.read(connectionPhaseProvider).value;
-    if (phase != ConnectionPhase.connected) return;
+    // Only pull from the bridge when connected to THIS PC; otherwise a refresh
+    // would load the other PC's threads over the live channel and mistag them.
+    if (!_connectedHere) return;
     try {
       await ref
           .read(threadManagerProvider)
@@ -53,6 +60,28 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
           .timeout(const Duration(seconds: 15));
     } on Object {
       // Best effort: surface nothing if the refresh fails or times out.
+    }
+  }
+
+  /// Connects to this PC (validated; stays put on failure) from the offline
+  /// banner, so the user can go live without leaving the threads list.
+  Future<void> _connectHere() async {
+    final devices = ref.read(trustedDevicesProvider).value ?? const [];
+    final device = devices.firstWhereOrNull(
+      (d) => d.macDeviceId == widget.deviceId,
+    );
+    if (device == null) return;
+    final l10n = AppLocalizations.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref.read(sessionCoordinatorProvider).switchMac(device);
+      unawaited(_refresh());
+    } on Object {
+      messenger
+        ..clearSnackBars()
+        ..showSnackBar(
+          SnackBar(content: Text(l10n.deviceConnectFailed(device.displayName))),
+        );
     }
   }
 
@@ -83,8 +112,14 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
         .where((t) => t.deviceId == null || t.deviceId == widget.deviceId)
         .toList();
     final devices = ref.watch(trustedDevicesProvider).value ?? const [];
-    final phase = ref.watch(connectionPhaseProvider).value ??
-        ConnectionPhase.disconnected;
+    // Live operations target the PC we actually hold a channel to. Browsing a
+    // different PC's threads is read-only until we connect to it.
+    final connectedHere =
+        ref.watch(connectedDeviceProvider).value?.macDeviceId ==
+            widget.deviceId;
+    final connectingHere =
+        ref.watch(connectingDeviceProvider).value?.macDeviceId ==
+            widget.deviceId;
 
     final agents = _agentsPresent(threads);
     final visible = _agentFilter == null
@@ -99,11 +134,11 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
 
     return Scaffold(
       floatingActionButton: FloatingActionButton.extended(
-        onPressed:
-            phase == ConnectionPhase.connected ? _newConversation : null,
+        // New conversations only make sense against the live PC.
+        onPressed: connectedHere ? _newConversation : null,
         icon: const Icon(Icons.add_comment_outlined),
         label: Text(l10n.newThreadAction),
-        backgroundColor: phase == ConnectionPhase.connected
+        backgroundColor: connectedHere
             ? null
             : Theme.of(context).colorScheme.surfaceContainerHighest,
       ),
@@ -126,7 +161,10 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
                     AppRoutes.deviceArchived(widget.deviceId),
                   ),
                 ),
-                _ConnectionDot(phase: phase),
+                _ConnectionDot(
+                  connected: connectedHere,
+                  connecting: connectingHere,
+                ),
                 const SizedBox(width: UxnanSpacing.lg),
               ],
               bottom: agents.length > 1
@@ -138,6 +176,13 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
                     )
                   : null,
             ),
+            if (!connectedHere)
+              SliverToBoxAdapter(
+                child: _OfflineBanner(
+                  connecting: connectingHere,
+                  onConnect: _connectHere,
+                ),
+              ),
             if (visible.isEmpty)
               const SliverFillRemaining(
                 hasScrollBody: false,
@@ -254,27 +299,77 @@ class _AgentChipAvatar extends StatelessWidget {
   }
 }
 
+/// Truthful online dot for THIS PC: green only when we hold its live channel,
+/// amber while its own connection attempt is in flight, else grey.
 class _ConnectionDot extends StatelessWidget {
-  const _ConnectionDot({required this.phase});
-  final ConnectionPhase phase;
+  const _ConnectionDot({required this.connected, required this.connecting});
+  final bool connected;
+  final bool connecting;
 
   @override
   Widget build(BuildContext context) {
-    final color = switch (phase) {
-      ConnectionPhase.connected => UxnanColors.connected,
-      ConnectionPhase.connecting ||
-      ConnectionPhase.handshaking ||
-      ConnectionPhase.syncing ||
-      ConnectionPhase.reconnecting =>
-        UxnanColors.connecting,
-      ConnectionPhase.disconnected ||
-      ConnectionPhase.error =>
-        UxnanColors.disconnected,
-    };
+    final color = connected
+        ? UxnanColors.connected
+        : connecting
+            ? UxnanColors.connecting
+            : UxnanColors.disconnected;
     return Container(
       width: 8,
       height: 8,
       decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+    );
+  }
+}
+
+/// Shown above the list when we are NOT connected to this PC: the threads are a
+/// cached, read-only view and going live needs a (validated) connection here.
+class _OfflineBanner extends StatelessWidget {
+  const _OfflineBanner({required this.connecting, required this.onConnect});
+  final bool connecting;
+  final VoidCallback onConnect;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(
+        UxnanSpacing.lg,
+        UxnanSpacing.sm,
+        UxnanSpacing.lg,
+        0,
+      ),
+      padding: const EdgeInsets.all(UxnanSpacing.md),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerHighest,
+        borderRadius: const BorderRadius.all(UxnanRadius.lg),
+        border: Border.all(color: colors.outline),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.cloud_off_outlined,
+            size: 18,
+            color: colors.onSurfaceVariant,
+          ),
+          const SizedBox(width: UxnanSpacing.sm),
+          Expanded(
+            child: Text(
+              l10n.threadsNotConnected,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: colors.onSurfaceVariant,
+                  ),
+            ),
+          ),
+          const SizedBox(width: UxnanSpacing.sm),
+          FilledButton.tonal(
+            onPressed: connecting ? null : onConnect,
+            child: Text(
+              connecting ? l10n.connectionConnecting : l10n.deviceConnect,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
