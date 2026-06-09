@@ -9,7 +9,7 @@
 - `shared/` — **implemented**: JSON-RPC + E2EE contracts and validators.
 - `relay/` — **implemented**: E2EE envelope relay by `sessionId`, rate limiting, peer-close, push endpoints (gated on Firebase/APNs creds).
 - `bridge/` — **implemented**: E2EE transport (relay + LAN), **OpenCode, Claude Code and Codex wired as real agents** (each spawns its official local CLI over stdio — no provider API/SDK/keys), per-thread agent/model/project selection, Git + workspace + checkpoints, conversation engine, push (gated), resilient relay reconnection. The remaining agent (Gemini) follows the recipe in `bridge/FOR-DEV.md`.
-- `uxnanmobile/` — **MVP wired**: pairing/E2EE, auto-reconnect, streaming conversation, real model picker, Git, per-PC threads, FCM push registration (gated).
+- `uxnanmobile/` — **MVP wired**: pairing/E2EE, auto-reconnect, streaming conversation, real model picker, per-thread actions (rename/delete/copy id, auto-title from id), capability-aware controls, notification deep-link, Git, per-PC threads, FCM push registration (gated).
 - `uxnandesktop/` — **not started** (architecture spec only).
 
 All code is new — no legacy, no users, no production data. Push notifications are code-complete but **gated** behind human-provided Firebase/APNs credentials (see the relevant `FOR-HUMAN.md`).

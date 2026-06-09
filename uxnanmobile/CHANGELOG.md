@@ -8,6 +8,77 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Archive / unarchive threads + an "Archived" screen** — completes the
+  thread-actions set (rename/delete already shipped):
+  - `ThreadManager.archiveThread` / `unarchiveThread` flip the local
+    `ThreadStatus` first (archived threads leave the active list immediately),
+    then call `thread/archive` / `thread/unarchive` best-effort — **nothing is
+    deleted**; degrades gracefully if the bridge lacks the method.
+  - UI (proposal, pending on-device review): the long-press menu gains
+    **Archive** (active threads) / **Unarchive** (archived threads); the
+    `ThreadsScreen` hides archived threads and gets an **Archived** app-bar
+    action → a new per-PC `ArchivedThreadsScreen` (route
+    `/device/:deviceId/archived`) where archived threads can be reopened,
+    unarchived or deleted. The thread row + actions menu were extracted to a
+    shared `ThreadTile` (`thread_tile.dart`) reused by both screens. New en/es
+    strings. Archived threads are **per-PC** (not in the future app Settings).
+
+- **Advanced message content: `approval` / `plan` / `subagent`** — these blocks
+  used to fall through to the generic `UnknownContent` placeholder; they now
+  decode and render properly (exactly what Codex/Claude emit for plan mode &
+  approvals):
+  - Domain: `ApprovalContent`/`PlanContent`/`SubagentContent` + value objects
+    `ApprovalRequest`, `PlanState`/`PlanStep`, `SubagentState`/`SubagentAction`
+    and enums `ApprovalRisk`, `PlanStepStatus`, `SubagentActionKind`. The codec
+    is tolerant of both nested (`{request|state:{…}}`) and flat payloads and
+    falls back gracefully on unknown enum values; JSON round-trips.
+  - UI (proposal, pending on-device review): an approval card (action + risk
+    badge + **disabled** Approve/Reject — FOR-DEV: the response RPC needs the
+    bridge), a plan checklist (per-step status icons), and a subagent card
+    (name/status + its actions). Read-only for now.
+
+- **Capability-aware conversation UI** (proposal, pending on-device review) —
+  the conversation now adapts to the active agent's advertised
+  `AgentCapabilities` (from `agent/list`):
+  - `agentCapabilitiesProvider` resolves a thread's agent capabilities, falling
+    back to an all-permissive default (`AgentCapabilities.permissive()`) when the
+    agent list isn't loaded yet, so controls are never hidden spuriously.
+  - The `SessionStatusSheet` approval-mode row is shown only when the agent
+    advertises `approvals`; the `ComposerBar` attach button only when it
+    advertises `images` (the picker itself stays FOR-DEV). OpenCode (no
+    approvals/images) hides both; Codex/Claude will surface them once the bridge
+    exposes those agents. Verify on-device when they land.
+
+- **New threads default their title to the thread id** — when a conversation is
+  started without an explicit title, `ThreadManager.startThread` sets the local
+  title to the new thread's own id (instead of a generic "New thread"), so it's
+  identifiable in the list and resumable from the CLI on the PC. The user can
+  rename it afterwards (see thread actions). An explicit title is preserved.
+
+- **Thread management — rename, delete & copy id** — user-requested:
+  - `ThreadManager.renameThread` mirrors the new title locally first (immediate
+    UI), then calls `thread/rename { threadId, title }`; ignores a blank title.
+  - `ThreadManager.deleteThread` removes the thread locally (clearing the active
+    timeline when it was active), then calls `thread/delete { threadId }`.
+  - Both are best-effort over the bridge and degrade gracefully when the method
+    is not yet implemented (the local change is kept).
+  - UI (proposal, pending on-device review): long-pressing a thread on
+    `ThreadsScreen` opens an actions sheet (Rename / Copy thread ID / Delete)
+    with a rename dialog and a delete confirmation. The conversation
+    `SessionStatusSheet` gains a copyable **Thread ID** row (shortened display,
+    copies the full id) so the same conversation can be resumed from the CLI on
+    the PC. New en/es strings.
+
+- **Notification tap → deep-link to the conversation** — closes the push loop:
+  - `PushNotificationService` now exposes `onNotificationTap` (a `threadId`
+    stream from foreground / background-resume taps) and `initialThreadId()`
+    (the `threadId` that cold-started the app). Wires the local-notification
+    `onDidReceiveNotificationResponse`, FCM `onMessageOpenedApp`, plus
+    `getNotificationAppLaunchDetails()` / `getInitialMessage()` for cold start.
+  - `PushRegistrar` re-exposes both; `_PushHost` (`app.dart`) subscribes and
+    deep-links taps to `/conversation/:threadId` (cold start navigates after the
+    first frame). Fully guarded: a no-op when Firebase config is absent.
+
 - **Per-thread model picker (`thread/setModel`)** — spec 02a §5.4:
   - `ThreadManager.setThreadModel` calls `thread/setModel { threadId, model }`
     and mirrors the new model onto the local `Thread`; `loadAgentModels`

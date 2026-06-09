@@ -84,6 +84,13 @@ class PushRegistrar {
   /// The platform string sent to the bridge (`"android"` or `"ios"`).
   String get _platform => _isAndroid ? 'android' : 'ios';
 
+  /// Stream of `threadId`s from tapped notifications, for deep-linking into the
+  /// matching conversation (presentation subscribes to this).
+  Stream<String> get onNotificationTap => _push.onNotificationTap;
+
+  /// The `threadId` that cold-started the app via a notification tap, or null.
+  Future<String?> initialThreadId() => _push.initialThreadId();
+
   void _onPhase(ConnectionPhase phase) {
     final wasConnected = _connected;
     _connected = phase == ConnectionPhase.connected;

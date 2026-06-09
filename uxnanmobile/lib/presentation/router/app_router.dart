@@ -4,6 +4,7 @@ import 'package:uxnan/presentation/screens/conversation/conversation_screen.dart
 import 'package:uxnan/presentation/screens/devices/my_devices_screen.dart';
 import 'package:uxnan/presentation/screens/onboarding/onboarding_screen.dart';
 import 'package:uxnan/presentation/screens/pairing/qr_scanner_screen.dart';
+import 'package:uxnan/presentation/screens/threads/archived_threads_screen.dart';
 import 'package:uxnan/presentation/screens/threads/threads_screen.dart';
 
 /// Route path constants used across the app.
@@ -27,6 +28,13 @@ class AppRoutes {
 
   /// Builds the threads route for the PC with [deviceId].
   static String deviceThreads(String deviceId) => '/device/$deviceId/threads';
+
+  /// Per-device archived-threads screen path pattern (`:deviceId`).
+  static const String deviceArchivedPattern = '/device/:deviceId/archived';
+
+  /// Builds the archived-threads route for the PC with [deviceId].
+  static String deviceArchived(String deviceId) =>
+      '/device/$deviceId/archived';
 
   /// Conversation screen path pattern (`:threadId`).
   static const String conversationPattern = '/conversation/:threadId';
@@ -54,6 +62,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.deviceThreadsPattern,
         builder: (context, state) => ThreadsScreen(
+          deviceId: state.pathParameters['deviceId']!,
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.deviceArchivedPattern,
+        builder: (context, state) => ArchivedThreadsScreen(
           deviceId: state.pathParameters['deviceId']!,
         ),
       ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:uxnan/domain/enums/approval_mode.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/screens/conversation/git/git_actions_sheet.dart';
@@ -17,6 +18,7 @@ class SessionStatusSheet extends StatefulWidget {
     this.threadId,
     this.cwd,
     this.onModelTap,
+    this.showApprovalMode = true,
     super.key,
   });
 
@@ -25,6 +27,10 @@ class SessionStatusSheet extends StatefulWidget {
 
   /// Called when the user picks a new approval mode.
   final ValueChanged<ApprovalMode>? onApprovalModeChanged;
+
+  /// Whether to show the approval-mode row. Hidden for agents that don't
+  /// advertise the `approvals` capability (e.g. OpenCode).
+  final bool showApprovalMode;
 
   /// Owning thread, forwarded to the source-control panel.
   final String? threadId;
@@ -43,6 +49,7 @@ class SessionStatusSheet extends StatefulWidget {
     String? threadId,
     String? cwd,
     VoidCallback? onModelTap,
+    bool showApprovalMode = true,
   }) {
     return showModalBottomSheet<void>(
       context: context,
@@ -53,6 +60,7 @@ class SessionStatusSheet extends StatefulWidget {
         threadId: threadId,
         cwd: cwd,
         onModelTap: onModelTap,
+        showApprovalMode: showApprovalMode,
       ),
     );
   }
@@ -82,6 +90,21 @@ class _SessionStatusSheetState extends State<SessionStatusSheet> {
         cwd: widget.cwd,
         threadId: widget.threadId,
       );
+
+  /// Copies the full thread id; the row shows a shortened form. Lets the user
+  /// resume the same conversation from the CLI on the PC.
+  Future<void> _copyThreadId(AppLocalizations l10n) async {
+    final id = widget.threadId;
+    if (id == null) return;
+    await Clipboard.setData(ClipboardData(text: id));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(l10n.threadIdCopied)),
+    );
+  }
+
+  String _shortId(String id) =>
+      id.length <= 12 ? id : '${id.substring(0, 8)}…';
 
   @override
   Widget build(BuildContext context) {
@@ -119,12 +142,20 @@ class _SessionStatusSheetState extends State<SessionStatusSheet> {
               label: l10n.environmentContext,
               value: _env.hasContext ? '${_env.contextPercent}%' : '—',
             ),
-            _StatusRow(
-              icon: Icons.shield_outlined,
-              label: l10n.environmentApprovalMode,
-              value: _approvalLabel(l10n),
-              onTap: _editApprovalMode,
-            ),
+            if (widget.showApprovalMode)
+              _StatusRow(
+                icon: Icons.shield_outlined,
+                label: l10n.environmentApprovalMode,
+                value: _approvalLabel(l10n),
+                onTap: _editApprovalMode,
+              ),
+            if (widget.threadId != null)
+              _StatusRow(
+                icon: Icons.tag_outlined,
+                label: l10n.threadIdLabel,
+                value: _shortId(widget.threadId!),
+                onTap: () => _copyThreadId(l10n),
+              ),
             const Divider(height: UxnanSpacing.xl),
             _SectionHeader(label: l10n.environmentGit),
             _StatusRow(

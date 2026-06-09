@@ -4,8 +4,11 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uxnan/domain/entities/message.dart';
 import 'package:uxnan/domain/enums/approval_mode.dart';
+import 'package:uxnan/domain/enums/approval_risk.dart';
 import 'package:uxnan/domain/enums/message_delivery_state.dart';
 import 'package:uxnan/domain/enums/message_role.dart';
+import 'package:uxnan/domain/enums/plan_step_status.dart';
+import 'package:uxnan/domain/enums/subagent_action_kind.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_bar.dart';
@@ -48,6 +51,61 @@ void main() {
     expect(find.byType(MessageContentView), findsNWidgets(2));
     expect(find.byType(MarkdownBody), findsOneWidget);
     expect(find.byType(HighlightView), findsOneWidget);
+  });
+
+  testWidgets('renders approval, plan and subagent cards', (tester) async {
+    final message = Message(
+      id: 'm2',
+      threadId: 'th1',
+      turnId: 't1',
+      role: MessageRole.assistant,
+      contents: const [
+        ApprovalContent(
+          ApprovalRequest(
+            approvalId: 'a1',
+            action: 'Delete build/',
+            risk: ApprovalRisk.high,
+          ),
+        ),
+        PlanContent(
+          PlanState(
+            steps: [
+              PlanStep(
+                description: 'Write tests',
+                status: PlanStepStatus.completed,
+              ),
+            ],
+          ),
+        ),
+        SubagentContent(
+          SubagentState(
+            id: 's1',
+            name: 'reviewer',
+            actions: [
+              SubagentAction(
+                label: 'Read main.dart',
+                kind: SubagentActionKind.tool,
+              ),
+            ],
+          ),
+        ),
+      ],
+      deliveryState: MessageDeliveryState.delivered,
+      orderIndex: 0,
+      createdAt: DateTime(2026),
+    );
+
+    await tester.pumpWidget(_wrap(MessageBubble(message: message)));
+    await tester.pump();
+
+    expect(find.text('Needs approval'), findsOneWidget);
+    expect(find.text('Delete build/'), findsOneWidget);
+    expect(find.text('High risk'), findsOneWidget);
+    expect(find.text('Write tests'), findsOneWidget);
+    expect(find.text('reviewer'), findsOneWidget);
+    expect(find.text('Read main.dart'), findsOneWidget);
+    // Approve/Reject are present but disabled (FOR-DEV).
+    expect(find.widgetWithText(FilledButton, 'Approve'), findsOneWidget);
   });
 
   testWidgets('ComposerBar sends trimmed text and clears the field',

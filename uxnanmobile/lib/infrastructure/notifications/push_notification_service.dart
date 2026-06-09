@@ -52,6 +52,12 @@ class PushNotificationService {
   bool _available = false;
   bool _initialized = false;
 
+  /// Broadcasts the `threadId` carried by a tapped notification (while the app
+  /// is alive or resumed from the background). Cold-start launches are surfaced
+  /// separately via [initialThreadId].
+  final StreamController<String> _tapController =
+      StreamController<String>.broadcast();
+
   static const AndroidNotificationChannel _channel = AndroidNotificationChannel(
     'uxnan_turns',
     'Agent activity',
@@ -74,6 +80,11 @@ class PushNotificationService {
       ? _messaging!.onTokenRefresh
       : const Stream.empty();
 
+  /// Stream of `threadId`s extracted from tapped notifications, for deep-links
+  /// into the matching conversation. Emits for foreground/background-resume
+  /// taps; for taps that cold-started the app use [initialThreadId].
+  Stream<String> get onNotificationTap => _tapController.stream;
+
   /// Initializes Firebase, local notifications and the foreground message
   /// listener. Safe to call multiple times; never throws.
   Future<void> init() async {
@@ -86,6 +97,8 @@ class PushNotificationService {
       await requestPermission();
       _available = true;
       FirebaseMessaging.onMessage.listen(_handleForegroundMessage);
+      // A push notification tapped while the app was backgrounded.
+      FirebaseMessaging.onMessageOpenedApp.listen(_handleOpenedAppMessage);
       AppLogger.info('Push notifications initialized');
     } on Object catch (error, stackTrace) {
       _available = false;
@@ -152,16 +165,74 @@ class PushNotificationService {
     }
   }
 
+  /// The `threadId` of the notification that cold-started the app (tapped while
+  /// the app was terminated), or `null` when the app launched normally. Checks
+  /// both a local-notification launch and an FCM initial message. Never throws.
+  Future<String?> initialThreadId() async {
+    try {
+      final launch =
+          await _localNotifications.getNotificationAppLaunchDetails();
+      if (launch?.didNotificationLaunchApp ?? false) {
+        final payload = launch?.notificationResponse?.payload;
+        if (payload != null && payload.isNotEmpty) return payload;
+      }
+    } on Object catch (error, stackTrace) {
+      AppLogger.warn(
+        'Failed to read notification launch details',
+        error,
+        stackTrace,
+      );
+    }
+    final messaging = _messaging;
+    if (messaging != null) {
+      try {
+        final initial = await messaging.getInitialMessage();
+        final threadId = initial?.data['threadId'] as String?;
+        if (threadId != null && threadId.isNotEmpty) return threadId;
+      } on Object catch (error, stackTrace) {
+        AppLogger.warn(
+          'Failed to read the initial push message',
+          error,
+          stackTrace,
+        );
+      }
+    }
+    return null;
+  }
+
+  /// Closes the tap stream. The service lives for the whole app, so this is
+  /// called from the owning provider's `onDispose`.
+  Future<void> dispose() async {
+    await _tapController.close();
+  }
+
   Future<void> _initLocalNotifications() async {
     const initSettings = InitializationSettings(
       android: AndroidInitializationSettings('@mipmap/ic_launcher'),
       iOS: DarwinInitializationSettings(),
     );
-    await _localNotifications.initialize(initSettings);
+    await _localNotifications.initialize(
+      initSettings,
+      onDidReceiveNotificationResponse: _handleNotificationResponse,
+    );
     final androidImpl =
         _localNotifications.resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>();
     await androidImpl?.createNotificationChannel(_channel);
+  }
+
+  void _handleNotificationResponse(NotificationResponse response) {
+    _emitTap(response.payload);
+  }
+
+  void _handleOpenedAppMessage(RemoteMessage message) {
+    _emitTap(message.data['threadId'] as String?);
+  }
+
+  void _emitTap(String? threadId) {
+    if (threadId == null || threadId.isEmpty) return;
+    if (_tapController.isClosed) return;
+    _tapController.add(threadId);
   }
 
   void _handleForegroundMessage(RemoteMessage message) {

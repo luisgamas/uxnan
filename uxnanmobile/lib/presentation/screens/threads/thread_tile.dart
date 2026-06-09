@@ -1,0 +1,312 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
+import 'package:uxnan/domain/entities/thread.dart';
+import 'package:uxnan/domain/enums/agent_id.dart';
+import 'package:uxnan/domain/enums/thread_status.dart';
+import 'package:uxnan/l10n/app_localizations.dart';
+import 'package:uxnan/presentation/providers/application_providers.dart';
+import 'package:uxnan/presentation/router/app_router.dart';
+import 'package:uxnan/presentation/theme/colors.dart';
+import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/widgets/agent_logo_chip.dart';
+import 'package:uxnan/presentation/widgets/agent_visuals.dart';
+
+/// A per-thread action chosen from the long-press menu.
+enum _ThreadAction { rename, copyId, archive, unarchive, delete }
+
+/// A conversation row used by both the active threads list and the archived
+/// list. Tapping opens the conversation; long-pressing opens the actions menu
+/// (rename / copy id / archive · unarchive / delete), adapted to the thread's
+/// status.
+class ThreadTile extends ConsumerWidget {
+  /// Creates a [ThreadTile].
+  const ThreadTile({required this.thread, super.key});
+
+  /// The thread to render.
+  final Thread thread;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final agent = AgentIdParsing.fromWireId(thread.agentId);
+
+    return Material(
+      color: colors.surfaceContainerHighest,
+      borderRadius: const BorderRadius.all(UxnanRadius.lg),
+      child: InkWell(
+        borderRadius: const BorderRadius.all(UxnanRadius.lg),
+        onTap: () => context.push(AppRoutes.conversation(thread.id)),
+        onLongPress: () => showThreadActions(context, ref, thread),
+        child: Padding(
+          padding: const EdgeInsets.all(UxnanSpacing.md),
+          child: Row(
+            children: [
+              _AgentAvatar(agent: agent),
+              const SizedBox(width: UxnanSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            thread.title,
+                            style: textTheme.titleSmall,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (thread.lastActivity != null) ...[
+                          const SizedBox(width: UxnanSpacing.sm),
+                          Text(
+                            _relativeTime(thread.lastActivity!),
+                            style: textTheme.bodySmall?.copyWith(
+                              color: colors.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: UxnanSpacing.xs),
+                    Row(
+                      children: [
+                        _StatusDot(status: thread.status),
+                        const SizedBox(width: UxnanSpacing.xs),
+                        Flexible(
+                          child: Text(
+                            _subtitle(),
+                            style: textTheme.bodySmall?.copyWith(
+                              color: colors.onSurfaceVariant,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _subtitle() {
+    final agent = AgentVisuals.labelFor(
+      AgentIdParsing.fromWireId(thread.agentId),
+    );
+    final dir = thread.cwd?.split(RegExp(r'[\\/]')).last;
+    return dir == null ? agent : '$agent · $dir';
+  }
+}
+
+/// Shows the per-thread actions sheet on long-press. The archive / unarchive
+/// entry adapts to the thread's current status.
+Future<void> showThreadActions(
+  BuildContext context,
+  WidgetRef ref,
+  Thread thread,
+) async {
+  final l10n = AppLocalizations.of(context);
+  final colors = Theme.of(context).colorScheme;
+  final isArchived = thread.status == ThreadStatus.archived;
+  final action = await showModalBottomSheet<_ThreadAction>(
+    context: context,
+    showDragHandle: true,
+    builder: (context) => SafeArea(
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              title: Text(thread.title, overflow: TextOverflow.ellipsis),
+              subtitle: Text(
+                thread.id,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.edit_outlined),
+              title: Text(l10n.threadActionRename),
+              onTap: () => Navigator.pop(context, _ThreadAction.rename),
+            ),
+            ListTile(
+              leading: const Icon(Icons.content_copy_outlined),
+              title: Text(l10n.threadActionCopyId),
+              onTap: () => Navigator.pop(context, _ThreadAction.copyId),
+            ),
+            if (isArchived)
+              ListTile(
+                leading: const Icon(Icons.unarchive_outlined),
+                title: Text(l10n.threadActionUnarchive),
+                onTap: () => Navigator.pop(context, _ThreadAction.unarchive),
+              )
+            else
+              ListTile(
+                leading: const Icon(Icons.archive_outlined),
+                title: Text(l10n.threadActionArchive),
+                onTap: () => Navigator.pop(context, _ThreadAction.archive),
+              ),
+            ListTile(
+              leading: Icon(Icons.delete_outline, color: colors.error),
+              title: Text(
+                l10n.threadActionDelete,
+                style: TextStyle(color: colors.error),
+              ),
+              onTap: () => Navigator.pop(context, _ThreadAction.delete),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+  if (action == null || !context.mounted) return;
+  switch (action) {
+    case _ThreadAction.rename:
+      await _promptRenameThread(context, ref, thread);
+    case _ThreadAction.copyId:
+      await Clipboard.setData(ClipboardData(text: thread.id));
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l10n.threadIdCopied)),
+        );
+      }
+    case _ThreadAction.archive:
+      await ref.read(threadManagerProvider).archiveThread(thread.id);
+    case _ThreadAction.unarchive:
+      await ref.read(threadManagerProvider).unarchiveThread(thread.id);
+    case _ThreadAction.delete:
+      await _confirmDeleteThread(context, ref, thread);
+  }
+}
+
+/// Prompts for a new title and renames the thread via the thread manager.
+Future<void> _promptRenameThread(
+  BuildContext context,
+  WidgetRef ref,
+  Thread thread,
+) async {
+  final l10n = AppLocalizations.of(context);
+  final controller = TextEditingController(text: thread.title);
+  final newTitle = await showDialog<String>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text(l10n.threadRenameTitle),
+      content: TextField(
+        controller: controller,
+        autofocus: true,
+        textInputAction: TextInputAction.done,
+        decoration: InputDecoration(labelText: l10n.threadRenameHint),
+        onSubmitted: (value) => Navigator.pop(context, value),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text(l10n.actionCancel),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, controller.text),
+          child: Text(l10n.actionSave),
+        ),
+      ],
+    ),
+  );
+  controller.dispose();
+  final trimmed = newTitle?.trim() ?? '';
+  if (trimmed.isEmpty || trimmed == thread.title) return;
+  await ref.read(threadManagerProvider).renameThread(thread.id, trimmed);
+}
+
+/// Confirms and deletes the thread via the thread manager.
+Future<void> _confirmDeleteThread(
+  BuildContext context,
+  WidgetRef ref,
+  Thread thread,
+) async {
+  final l10n = AppLocalizations.of(context);
+  final colors = Theme.of(context).colorScheme;
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text(l10n.threadDeleteTitle),
+      content: Text(l10n.threadDeleteBody),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: Text(l10n.actionCancel),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: colors.error),
+          onPressed: () => Navigator.pop(context, true),
+          child: Text(l10n.threadDeleteConfirm),
+        ),
+      ],
+    ),
+  );
+  if (confirmed != true) return;
+  await ref.read(threadManagerProvider).deleteThread(thread.id);
+}
+
+class _AgentAvatar extends StatelessWidget {
+  const _AgentAvatar({required this.agent});
+  final AgentId agent;
+
+  @override
+  Widget build(BuildContext context) {
+    final logo = AgentVisuals.logoFor(agent);
+    if (logo != null) return AgentLogoChip(asset: logo, size: 44);
+
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      width: 44,
+      height: 44,
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerHigh,
+        borderRadius: const BorderRadius.all(UxnanRadius.lg),
+        border: Border.all(color: colors.outline),
+      ),
+      child: Icon(
+        Icons.smart_toy_outlined,
+        size: 22,
+        color: AgentVisuals.colorFor(agent),
+      ),
+    );
+  }
+}
+
+class _StatusDot extends StatelessWidget {
+  const _StatusDot({required this.status});
+  final ThreadStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = switch (status) {
+      ThreadStatus.active => UxnanColors.connected,
+      ThreadStatus.syncing => UxnanColors.syncing,
+      ThreadStatus.error => UxnanColors.error,
+      ThreadStatus.archived => UxnanColors.onSurfaceMuted,
+    };
+    return Container(
+      width: 6,
+      height: 6,
+      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+    );
+  }
+}
+
+String _relativeTime(DateTime time) {
+  final now = DateTime.now();
+  final isSameDay =
+      now.year == time.year && now.month == time.month && now.day == time.day;
+  return isSameDay
+      ? DateFormat.Hm().format(time)
+      : DateFormat.MMMd().format(time);
+}

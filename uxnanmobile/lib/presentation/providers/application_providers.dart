@@ -127,6 +127,20 @@ final agentModelsProvider = FutureProvider.family<List<String>, String>(
   (ref, agentId) => ref.watch(threadManagerProvider).loadModels(agentId),
 );
 
+/// The capabilities the bridge reports for an agent (from `agent/list`), or a
+/// permissive default when the agent list is unavailable or the agent is
+/// unknown — so capability-gated UI never hides a control spuriously (e.g.
+/// while offline or before `agent/list` resolves).
+final agentCapabilitiesProvider =
+    Provider.family<AgentCapabilities, String>((ref, agentId) {
+  final agents = ref.watch(agentsProvider).value;
+  if (agents == null) return const AgentCapabilities.permissive();
+  for (final agent in agents) {
+    if (agent.agentId == agentId) return agent.capabilities;
+  }
+  return const AgentCapabilities.permissive();
+});
+
 /// Registers the FCM push token with the bridge once the session connects and
 /// raises local notifications for turn-completed / turn-error events.
 ///

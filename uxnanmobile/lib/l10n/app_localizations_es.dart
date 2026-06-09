@@ -203,6 +203,53 @@ class AppLocalizationsEs extends AppLocalizations {
       'Las conversaciones de esta PC aparecerán aquí. Desliza para actualizar.';
 
   @override
+  String get threadActionRename => 'Renombrar';
+
+  @override
+  String get threadActionCopyId => 'Copiar ID del hilo';
+
+  @override
+  String get threadActionArchive => 'Archivar';
+
+  @override
+  String get threadActionUnarchive => 'Desarchivar';
+
+  @override
+  String get threadActionDelete => 'Eliminar';
+
+  @override
+  String get archivedTitle => 'Archivados';
+
+  @override
+  String get archivedEmpty => 'No hay conversaciones archivadas';
+
+  @override
+  String get archivedEmptyBody =>
+      'Las conversaciones que archivas se ocultan aquí, no se eliminan. Mantén pulsada una para desarchivarla.';
+
+  @override
+  String get threadRenameTitle => 'Renombrar hilo';
+
+  @override
+  String get threadRenameHint => 'Título del hilo';
+
+  @override
+  String get threadIdCopied => 'ID del hilo copiado';
+
+  @override
+  String get threadIdLabel => 'ID del hilo';
+
+  @override
+  String get threadDeleteTitle => '¿Eliminar hilo?';
+
+  @override
+  String get threadDeleteBody =>
+      'Esto quita la conversación de este dispositivo.';
+
+  @override
+  String get threadDeleteConfirm => 'Eliminar';
+
+  @override
   String get conversationTitle => 'Conversación';
 
   @override
