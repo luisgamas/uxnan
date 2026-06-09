@@ -135,8 +135,8 @@ class _SessionStatusSheetState extends State<SessionStatusSheet> {
                         widget.onModelTap!.call();
                       },
               ),
-              // Concrete version the selected model/alias resolved to on the last
-              // turn (e.g. `opus` → `claude-opus-4-8`); shown only when known and
+              // Concrete version the selected alias resolved to on the last
+              // turn (e.g. opus -> claude-opus-4-8); shown only when known and
               // it adds information beyond the selected name.
               if (_env.resolvedModel != null &&
                   _env.resolvedModel!.isNotEmpty &&

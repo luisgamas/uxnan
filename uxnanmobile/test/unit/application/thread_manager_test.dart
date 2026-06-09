@@ -8,6 +8,7 @@ import 'package:uxnan/application/processors/domain_event.dart';
 import 'package:uxnan/domain/entities/message.dart';
 import 'package:uxnan/domain/enums/message_delivery_state.dart';
 import 'package:uxnan/domain/enums/message_role.dart';
+import 'package:uxnan/domain/enums/thread_activity.dart';
 import 'package:uxnan/domain/enums/thread_status.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
 import 'package:uxnan/domain/value_objects/rpc_message.dart';
@@ -149,6 +150,42 @@ void main() {
     events.add(const TurnStartedEvent(turnId: 'x', threadId: 'other'));
     await _settle();
     expect(manager.timeline.isStreaming, isFalse);
+  });
+
+  test('tracks activity and persists a streaming turn for a background thread',
+      () async {
+    await manager.selectThread('th1');
+    await _settle();
+
+    // A turn streams on a DIFFERENT thread than the active one.
+    events
+      ..add(const TurnStartedEvent(turnId: 't2', threadId: 'other'))
+      ..add(
+        const MessageDeltaEvent(
+          turnId: 't2',
+          threadId: 'other',
+          delta: 'background',
+        ),
+      );
+    await _settle();
+
+    // The active timeline is untouched, but the other thread reads as running.
+    expect(manager.timeline.isStreaming, isFalse);
+    expect(
+      (await manager.activityStream.first)['other'],
+      ThreadActivity.running,
+    );
+
+    events.add(const TurnCompletedEvent(turnId: 't2', threadId: 'other'));
+    await _settle();
+
+    // Completed off-screen: persisted to the repo and no longer running.
+    final persisted = await messageRepo.getMessages('other');
+    expect(
+      persisted.any((m) => m.id == 'stream-t2' && _text(m) == 'background'),
+      isTrue,
+    );
+    expect((await manager.activityStream.first).containsKey('other'), isFalse);
   });
 
   test('loadThreads parses and persists the thread list (incl. model)',

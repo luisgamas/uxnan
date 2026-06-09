@@ -1,6 +1,6 @@
 import 'dart:async';
+import 'dart:math';
 
-import 'package:collection/collection.dart';
 import 'package:rxdart/rxdart.dart';
 import 'package:uuid/uuid.dart';
 import 'package:uxnan/application/processors/domain_event.dart';
@@ -12,11 +12,11 @@ import 'package:uxnan/domain/entities/project.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/enums/message_delivery_state.dart';
 import 'package:uxnan/domain/enums/message_role.dart';
+import 'package:uxnan/domain/enums/thread_activity.dart';
 import 'package:uxnan/domain/enums/thread_status.dart';
 import 'package:uxnan/domain/enums/thread_sync_state.dart';
 import 'package:uxnan/domain/repositories/i_message_repository.dart';
 import 'package:uxnan/domain/repositories/i_thread_repository.dart';
-import 'package:uxnan/domain/services/message_deduplicator.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
 import 'package:uxnan/domain/value_objects/rpc_message.dart';
 import 'package:uxnan/domain/value_objects/turn_timeline_snapshot.dart';
@@ -41,12 +41,10 @@ class ThreadManager {
     required Stream<DomainEvent> domainEvents,
     required RpcSend sendRequest,
     Uuid? uuid,
-    MessageDeduplicator? deduplicator,
   })  : _threadRepository = threadRepository,
         _messageRepository = messageRepository,
         _sendRequest = sendRequest,
-        _uuid = uuid ?? const Uuid(),
-        _deduplicator = deduplicator ?? MessageDeduplicator() {
+        _uuid = uuid ?? const Uuid() {
     _eventsSub = domainEvents.listen(_applyEvent);
   }
 
@@ -54,10 +52,25 @@ class ThreadManager {
   final IMessageRepository _messageRepository;
   final RpcSend _sendRequest;
   final Uuid _uuid;
-  final MessageDeduplicator _deduplicator;
 
   final BehaviorSubject<TurnTimelineSnapshot> _timeline =
       BehaviorSubject.seeded(const TurnTimelineSnapshot());
+
+  /// In-flight turn per thread, kept in memory so a streaming response survives
+  /// leaving and re-entering the conversation screen (the manager is a
+  /// singleton). The agent on the PC keeps running regardless; this just keeps
+  /// the phone's view of it alive. Keyed by threadId.
+  final Map<String, _LiveTurn> _live = {};
+
+  /// Per-thread live activity (running/error), surfaced on the thread list so
+  /// each card shows whether its conversation is currently working — even when
+  /// its screen is closed. Idle threads are absent from the map.
+  final BehaviorSubject<Map<String, ThreadActivity>> _activity =
+      BehaviorSubject.seeded(const {});
+
+  /// Latest persisted messages for the active thread (from the local repo),
+  /// composed with any [_LiveTurn] overlay to build the active timeline.
+  List<Message> _activePersisted = const [];
 
   /// Concrete model each thread's agent resolved its alias to most recently
   /// (e.g. `opus` → `claude-opus-4-8`), reported via `stream/model/resolved`.
@@ -77,6 +90,10 @@ class ThreadManager {
   /// Map of threadId → concrete resolved model id (current value replayed).
   Stream<Map<String, String>> get resolvedModelsStream =>
       _resolvedModels.stream;
+
+  /// Map of threadId → live [ThreadActivity] (running/error), for the list.
+  /// Idle threads are omitted from the map.
+  Stream<Map<String, ThreadActivity>> get activityStream => _activity.stream;
 
   /// The active thread's current timeline snapshot.
   TurnTimelineSnapshot get timeline => _timeline.value;
@@ -171,10 +188,13 @@ class ThreadManager {
   /// would re-sync it from the bridge until then).
   Future<void> deleteThread(String threadId) async {
     await _threadRepository.deleteThread(threadId);
+    _live.remove(threadId);
+    _setActivity(threadId, ThreadActivity.idle);
     if (_activeThreadId == threadId) {
       await _messagesSub?.cancel();
       _messagesSub = null;
       _activeThreadId = null;
+      _activePersisted = const [];
       _timeline.add(const TurnTimelineSnapshot());
     }
     try {
@@ -280,18 +300,85 @@ class ThreadManager {
   }
 
   /// Selects [threadId] as active and (re)builds its timeline from local
-  /// storage.
+  /// storage, overlaying any in-flight streaming turn (so a response that began
+  /// while the screen was closed keeps rendering and updating live), then
+  /// re-syncs the thread from the bridge to recover anything missed.
   Future<void> selectThread(String threadId) async {
     _activeThreadId = threadId;
-    _deduplicator.reset();
+    _activePersisted = const [];
     _timeline.add(const TurnTimelineSnapshot());
     await _messagesSub?.cancel();
     _messagesSub =
         _messageRepository.watchMessages(threadId).listen((messages) {
-      final fresh =
-          messages.where((m) => !_deduplicator.isDuplicate(m)).toList();
-      _timeline.add(_timeline.value.reconcile(fresh));
+      _activePersisted = messages;
+      _rebuildActiveTimeline();
     });
+    // The bridge is the source of truth: pull its record so an answer that
+    // completed while the app was away (and was never persisted locally) shows
+    // up. Reconciled by the deterministic assistant id, so it never duplicates.
+    unawaited(_resyncThread(threadId));
+  }
+
+  /// Pulls the bridge's turns for [threadId] (`turn/list`) and persists any
+  /// assistant answer not already stored, keyed by the deterministic
+  /// `stream-<turnId>` id. User messages are authored locally and persisted on
+  /// send, so they are never re-synced (which would duplicate them).
+  Future<void> _resyncThread(String threadId) async {
+    final RpcMessage response;
+    try {
+      response = await _sendRequest('turn/list', {'threadId': threadId});
+    } on Object catch (error, stackTrace) {
+      AppLogger.warn('turn/list resync failed (kept local)', error, stackTrace);
+      return;
+    }
+    final result = response.result;
+    final turns = result is Map ? result['turns'] : null;
+    if (turns is! List) return;
+
+    final existing = await _messageRepository.getMessages(threadId);
+    final byId = {for (final m in existing) m.id: m};
+    var order = _maxOrder(existing);
+    final toSave = <Message>[];
+    for (final rawTurn in turns) {
+      if (rawTurn is! Map) continue;
+      final turnId = rawTurn['id'] as String?;
+      final messages = rawTurn['messages'];
+      if (turnId == null || messages is! List) continue;
+      for (final rawMsg in messages) {
+        if (rawMsg is! Map || rawMsg['role'] != 'assistant') continue;
+        final content = rawMsg['content'];
+        if (content is! String || content.isEmpty) continue;
+        // Don't clobber a turn that is still streaming live on this device.
+        if (_live[threadId]?.turnId == turnId) continue;
+        final id = _streamId(turnId);
+        final present = byId[id];
+        if (present != null) {
+          if (present.plainText != content) {
+            toSave.add(
+              present.copyWith(
+                contents: [TextContent(content)],
+                deliveryState: MessageDeliveryState.delivered,
+              ),
+            );
+          }
+          continue;
+        }
+        order += 1;
+        toSave.add(
+          Message(
+            id: id,
+            threadId: threadId,
+            turnId: turnId,
+            role: MessageRole.assistant,
+            contents: [TextContent(content)],
+            deliveryState: MessageDeliveryState.delivered,
+            orderIndex: order,
+            createdAt: _millisToDate(rawMsg['createdAt']),
+          ),
+        );
+      }
+    }
+    if (toSave.isNotEmpty) await _messageRepository.saveMessages(toSave);
   }
 
   /// Saves a user [text] message locally and sends it to the active turn.
@@ -322,8 +409,13 @@ class ThreadManager {
     await _messagesSub?.cancel();
     await _timeline.close();
     await _resolvedModels.close();
+    await _activity.close();
   }
 
+  /// Applies a streaming [event] for ANY thread (not just the active one): the
+  /// in-flight turn is buffered per-thread and its activity recorded so the
+  /// list reflects work happening off-screen, and the active timeline is
+  /// rebuilt when the event belongs to it.
   void _applyEvent(DomainEvent event) {
     // Resolved-model updates are keyed by their own thread and recorded
     // regardless of which thread is active in the UI.
@@ -335,43 +427,118 @@ class ThreadManager {
       return;
     }
 
-    final active = _activeThreadId;
-    if (active == null) return;
-    final eventThread = _threadOf(event);
-    if (eventThread != null && eventThread != active) return;
+    // Events that don't carry their own threadId belong to the active thread
+    // (the bridge tags turn notifications with threadId; deltas may not).
+    final threadId = _threadOf(event) ?? _activeThreadId;
+    if (threadId == null) return;
 
     switch (event) {
       case TurnStartedEvent(:final turnId):
-        final placeholder = Message(
-          id: _streamId(turnId),
-          threadId: active,
-          turnId: turnId,
-          role: MessageRole.assistant,
-          contents: const [TextContent('', isStreaming: true)],
-          deliveryState: MessageDeliveryState.delivered,
-          orderIndex: _nextOrderIndex(),
-          createdAt: DateTime.now(),
-        );
-        _timeline.add(_timeline.value.startStreaming(placeholder));
+        _live[threadId] = _LiveTurn(turnId: turnId);
+        _setActivity(threadId, ThreadActivity.running);
+        if (threadId == _activeThreadId) _rebuildActiveTimeline();
       case MessageDeltaEvent(:final turnId, :final delta):
-        _timeline.add(_timeline.value.appendStreamingDelta(turnId, delta));
+        final live = _live[threadId];
+        if (live != null && live.turnId == turnId) {
+          live.text += delta;
+          if (threadId == _activeThreadId) _rebuildActiveTimeline();
+        }
       case TurnCompletedEvent(:final turnId):
-        final completed = _timeline.value.completeStreaming(turnId);
-        _timeline.add(completed);
-        final finalized = completed.messages
-            .firstWhereOrNull((m) => m.id == _streamId(turnId));
-        if (finalized != null) {
-          unawaited(_messageRepository.saveMessage(finalized));
-        }
-      case TurnErrorEvent() || TurnAbortedEvent():
-        final streamingTurn = _timeline.value.streamingTurnId;
-        if (streamingTurn != null) {
-          _timeline.add(_timeline.value.completeStreaming(streamingTurn));
-        }
+        unawaited(_finishTurn(threadId, turnId, failed: false));
+      case TurnErrorEvent(:final turnId):
+        unawaited(_finishTurn(threadId, turnId, failed: true));
+      case TurnAbortedEvent(:final turnId):
+        unawaited(_finishTurn(threadId, turnId, failed: false));
       case GitProgressEvent() || ModelResolvedEvent() || UnknownDomainEvent():
         break;
     }
   }
+
+  /// Finalizes a turn for [threadId]: persists the buffered assistant text
+  /// (keyed by the deterministic id so it reconciles with a later re-sync),
+  /// clears the live buffer and updates the thread's activity.
+  Future<void> _finishTurn(
+    String threadId,
+    String turnId, {
+    required bool failed,
+  }) async {
+    final live = _live.remove(threadId);
+    _setActivity(threadId, failed ? ThreadActivity.error : ThreadActivity.idle);
+    if (live == null) return;
+    final finalized = Message(
+      id: _streamId(turnId),
+      threadId: threadId,
+      turnId: turnId,
+      role: MessageRole.assistant,
+      contents: [TextContent(live.text)],
+      deliveryState:
+          failed ? MessageDeliveryState.failed : MessageDeliveryState.delivered,
+      orderIndex: await _orderIndexFor(threadId),
+      createdAt: live.startedAt,
+    );
+    if (threadId == _activeThreadId) {
+      // Reflect immediately so the bubble doesn't flicker out before the repo
+      // round-trip emits it back.
+      _activePersisted = _upsert(_activePersisted, finalized);
+      _rebuildActiveTimeline();
+    }
+    await _messageRepository.saveMessage(finalized);
+  }
+
+  /// Rebuilds the active timeline from persisted messages plus any in-flight
+  /// streaming overlay from the live buffer.
+  void _rebuildActiveTimeline() {
+    final threadId = _activeThreadId;
+    if (threadId == null) return;
+    var snapshot = const TurnTimelineSnapshot().reconcile(_activePersisted);
+    final live = _live[threadId];
+    if (live != null) {
+      final streaming = Message(
+        id: _streamId(live.turnId),
+        threadId: threadId,
+        turnId: live.turnId,
+        role: MessageRole.assistant,
+        contents: [TextContent(live.text, isStreaming: true)],
+        deliveryState: MessageDeliveryState.delivered,
+        orderIndex: _maxOrder(_activePersisted) + 1,
+        createdAt: live.startedAt,
+      );
+      snapshot = snapshot
+          .reconcile([streaming]).copyWith(streamingTurnId: live.turnId);
+    }
+    _timeline.add(snapshot);
+  }
+
+  void _setActivity(String threadId, ThreadActivity activity) {
+    final next = Map<String, ThreadActivity>.from(_activity.value);
+    if (activity == ThreadActivity.idle) {
+      next.remove(threadId);
+    } else {
+      next[threadId] = activity;
+    }
+    _activity.add(next);
+  }
+
+  Future<int> _orderIndexFor(String threadId) async {
+    if (threadId == _activeThreadId) return _maxOrder(_activePersisted) + 1;
+    final existing = await _messageRepository.getMessages(threadId);
+    return _maxOrder(existing) + 1;
+  }
+
+  static int _maxOrder(List<Message> messages) =>
+      messages.isEmpty ? -1 : messages.map((m) => m.orderIndex).reduce(max);
+
+  static List<Message> _upsert(List<Message> messages, Message message) {
+    final next = [
+      for (final m in messages)
+        if (m.id != message.id) m,
+      message,
+    ]..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
+    return next;
+  }
+
+  static DateTime _millisToDate(Object? raw) =>
+      raw is int ? DateTime.fromMillisecondsSinceEpoch(raw) : DateTime.now();
 
   String _streamId(String turnId) => 'stream-$turnId';
 
@@ -415,4 +582,15 @@ class ThreadManager {
     }
     return ThreadStatus.active;
   }
+}
+
+/// A turn streaming in memory for one thread. Survives leaving the conversation
+/// screen because the [ThreadManager] is a singleton; the agent on the PC keeps
+/// running either way.
+class _LiveTurn {
+  _LiveTurn({required this.turnId}) : startedAt = DateTime.now();
+
+  final String turnId;
+  final DateTime startedAt;
+  String text = '';
 }

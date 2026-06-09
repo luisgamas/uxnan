@@ -8,6 +8,32 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Live conversations survive leaving the screen + per-thread activity** — the
+  `ThreadManager` now buffers each thread's in-flight turn in memory (it is a
+  singleton) and applies streaming events for **all** threads, not just the one
+  on screen. Leaving and re-entering a conversation keeps the streaming response
+  rendering and updating; an answer that completes off-screen is persisted
+  (keyed by the deterministic `stream-<turnId>` id) and shown on return.
+  Entering a thread also re-syncs it from the bridge (`turn/list`) to recover
+  anything missed (e.g. after an app restart). A new `ThreadActivity`
+  (`running`/`error`/idle) is exposed per thread and the list card shows a
+  **"Responding…" spinner** while a conversation is working — replacing the
+  unclear static dot for active turns (`threadActivityProvider`).
+
+### Fixed
+
+- **Switching PCs no longer fakes the connection status** — tapping a paired PC
+  to browse its threads previously flipped it to "connected" (and the current PC
+  to "disconnected") because the indicator keyed off the *selected* device plus
+  the stale global phase. Status now follows the device that actually holds the
+  live channel (`connectedDeviceProvider`) and the one being attempted
+  (`connectingDeviceProvider`). The **Connect** action validates reachability
+  first (`SessionCoordinator.switchMac` probes then commits): if the target is
+  unreachable it stays on the current PC and surfaces a message, instead of
+  optimistically switching. Browsing a PC never implies a connection.
+
+### Added
+
 - **Structured model picker + resolved-version display** — consumes the
   bridge's richer `agent/models` contract so model selection is plug-and-play
   across Claude Code, Codex and OpenCode:

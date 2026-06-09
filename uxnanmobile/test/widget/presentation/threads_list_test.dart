@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/entities/trusted_device.dart';
 import 'package:uxnan/domain/enums/connection_phase.dart';
+import 'package:uxnan/domain/enums/thread_activity.dart';
 import 'package:uxnan/domain/enums/thread_status.dart';
 import 'package:uxnan/domain/enums/thread_sync_state.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
@@ -32,6 +33,9 @@ Widget _wrap({required List<Thread> threads}) {
   return ProviderScope(
     overrides: [
       threadsProvider.overrideWith((ref) => Stream.value(threads)),
+      threadActivityProvider.overrideWith(
+        (ref) => Stream.value(const <String, ThreadActivity>{}),
+      ),
       trustedDevicesProvider
           .overrideWith((ref) => Stream.value(const <TrustedDevice>[])),
       connectionPhaseProvider

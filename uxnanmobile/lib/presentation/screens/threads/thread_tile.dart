@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/enums/agent_id.dart';
+import 'package:uxnan/domain/enums/thread_activity.dart';
 import 'package:uxnan/domain/enums/thread_status.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
@@ -32,7 +33,11 @@ class ThreadTile extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
+    final l10n = AppLocalizations.of(context);
     final agent = AgentIdParsing.fromWireId(thread.agentId);
+    // Live activity of the conversation (running/error), independent of the
+    // thread's sync status — tracked even while this screen is closed.
+    final activity = ref.watch(threadActivityForProvider(thread.id));
 
     return Material(
       color: colors.surfaceContainerHighest,
@@ -74,13 +79,20 @@ class ThreadTile extends ConsumerWidget {
                     const SizedBox(height: UxnanSpacing.xs),
                     Row(
                       children: [
-                        _StatusDot(status: thread.status),
+                        _ActivityIndicator(
+                          activity: activity,
+                          status: thread.status,
+                        ),
                         const SizedBox(width: UxnanSpacing.xs),
                         Flexible(
                           child: Text(
-                            _subtitle(),
+                            activity == ThreadActivity.running
+                                ? l10n.threadResponding
+                                : _subtitle(),
                             style: textTheme.bodySmall?.copyWith(
-                              color: colors.onSurfaceVariant,
+                              color: activity == ThreadActivity.running
+                                  ? colors.primary
+                                  : colors.onSurfaceVariant,
                             ),
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -283,6 +295,33 @@ class _AgentAvatar extends StatelessWidget {
   }
 }
 
+/// Leading indicator on the subtitle row: a spinner while the agent is
+/// responding, a red dot on error, otherwise the thread's sync-status dot.
+class _ActivityIndicator extends StatelessWidget {
+  const _ActivityIndicator({required this.activity, required this.status});
+  final ThreadActivity activity;
+  final ThreadStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    switch (activity) {
+      case ThreadActivity.running:
+        return SizedBox(
+          width: 10,
+          height: 10,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+        );
+      case ThreadActivity.error:
+        return const _Dot(color: UxnanColors.error);
+      case ThreadActivity.idle:
+        return _StatusDot(status: status);
+    }
+  }
+}
+
 class _StatusDot extends StatelessWidget {
   const _StatusDot({required this.status});
   final ThreadStatus status;
@@ -295,6 +334,16 @@ class _StatusDot extends StatelessWidget {
       ThreadStatus.error => UxnanColors.error,
       ThreadStatus.archived => UxnanColors.onSurfaceMuted,
     };
+    return _Dot(color: color);
+  }
+}
+
+class _Dot extends StatelessWidget {
+  const _Dot({required this.color});
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
       width: 6,
       height: 6,
