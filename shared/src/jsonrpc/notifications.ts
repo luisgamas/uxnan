@@ -28,11 +28,25 @@ export interface MessageDeltaParams {
   delta: string;
 }
 
+/**
+ * Token usage for a completed turn, as reported by the agent's CLI.
+ * `tokens` is the context the conversation now occupies (≈ the latest turn's
+ * input + the output it produced). `contextWindow` is the model's limit when
+ * known (Claude tiers); omitted when the CLI doesn't expose it (Codex), in
+ * which case the phone shows the raw token count instead of a percentage.
+ */
+export interface TurnUsage {
+  tokens: number;
+  contextWindow?: number;
+}
+
 export interface TurnCompletedParams {
   threadId: string;
   turnId: string;
   messageId: string;
   text: string;
+  /** Token usage for this turn, when the agent reported it. */
+  usage?: TurnUsage;
 }
 
 export interface TurnErrorParams {
