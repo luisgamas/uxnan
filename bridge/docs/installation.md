@@ -43,9 +43,12 @@ Scan the QR with the Uxnan mobile app to pair (once). After pairing, the phone
 reconnects to the trusted device without re-scanning.
 
 - **Same network (LAN):** the phone connects **directly** to the bridge — no relay,
-  no hosting needed.
-- **Remote (off-LAN):** needs a reachable relay; see
-  [`../../relay/docs/deploy.md`](../../relay/docs/deploy.md).
+  no hosting. (Primary plug-and-play path.)
+- **Remote (off-LAN):** recommended is **Tailscale** (or any mesh VPN) — also no
+  hosting; the bridge's Tailscale address is advertised automatically. A hosted
+  relay is the optional alternative.
+
+See [`connectivity.md`](./connectivity.md) for the three modes.
 
 ## Autostart (run at logon, no open terminal)
 

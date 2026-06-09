@@ -8,8 +8,9 @@ file is optional; create it to override. Defaults live in
 
 | Field | Default | Purpose |
 |---|---|---|
-| `relayUrl` | built-in default | WebSocket URL of the relay (remote/off-LAN path). |
-| `lanEnabled` | `true` | Serve the LAN WebSocket so the phone can connect directly on the same network. |
+| `relayUrl` | built-in default | WebSocket URL of the relay (remote/off-LAN fallback). |
+| `relayEnabled` | `true` | Use the hosted relay. Set `false` for a pure LAN/Tailscale setup: the bridge skips the relay and the pairing QR advertises only the direct `hosts`. See [`connectivity.md`](./connectivity.md). |
+| `lanEnabled` | `true` | Serve the LAN WebSocket so the phone can connect directly. Its non-internal IPv4s (LAN + Tailscale `100.x`) are advertised as `hosts` in the pairing QR. |
 | `lanPort` | built-in default | LAN server port. |
 | `autoReconnect` | `true` | Keep re-arming the relay session after a phone disconnects. |
 | `maxConcurrentSessions` | `1` | Concurrent phone sessions. |

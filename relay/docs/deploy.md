@@ -8,16 +8,24 @@ all phones/bridges point at its URL (baked into the pairing QR / the bridge's
 
 ## Do you even need it?
 
-- **LAN-only → no.** On the same network the phone connects **directly** to the
-  bridge's LAN server. Zero hosting. This is the simplest way to start.
-- **Remote (off-LAN) → yes.** The relay bridges phone↔PC when they aren't on the
-  same network.
+The relay is **optional** — it's the remote fallback, not the only path. See
+[`../../bridge/docs/connectivity.md`](../../bridge/docs/connectivity.md) for the
+full picture.
+
+- **Same network → no.** The phone connects **directly** to the bridge's LAN
+  server. Zero hosting. Primary plug-and-play path.
+- **Remote with a mesh VPN → no.** With **Tailscale** (or ZeroTier/WireGuard) the
+  phone and PC share one virtual network, so the bridge's direct address works from
+  anywhere — no hosted relay. **Recommended for remote.**
+- **Remote without a VPN → yes.** Host a relay so the bridge has an internet-
+  reachable fallback.
 
 ## Hosting options (free-tier friendly)
 
 | Option | Effort | Notes |
 |---|---|---|
 | **LAN-only** | none | No relay deployed. Direct phone↔bridge on the same network. |
+| **Tailscale / mesh VPN** | none | **Recommended for remote.** No relay at all — the bridge's direct address is reachable over the tailnet. See [`../../bridge/docs/connectivity.md`](../../bridge/docs/connectivity.md). |
 | **Self-host + Cloudflare Tunnel** | low | Run the Node relay on your PC / a small box; `cloudflared` exposes it at a stable hostname with TLS. Free, **no code change**. |
 | **Fly.io / Render / Koyeb** (Node) | low | Deploy the existing Node relay as an always-on service. **Fly.io** suits a long-lived WebSocket best; Render's free tier sleeps on idle (bad for an always-reachable relay). |
 | **Cloudflare Workers + Durable Objects** | high | Serverless, generous free tier, but requires **rewriting** the relay from Node `ws` to the Workers/Durable-Objects model (one DO per `sessionId`). |

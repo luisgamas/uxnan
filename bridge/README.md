@@ -37,6 +37,7 @@ per-domain handlers.
 Detailed docs live in [`docs/`](./docs/):
 [installation & autostart](./docs/installation.md) ·
 [configuration](./docs/configuration.md) ·
+[connectivity (LAN/Tailscale/relay)](./docs/connectivity.md) ·
 [how agents are driven](./docs/agents.md) ·
 [testing](./docs/testing.md) ·
 [packaging & deploy](./docs/deploy.md).
