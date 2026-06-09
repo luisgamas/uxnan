@@ -84,13 +84,20 @@ async function cmdStart(): Promise<void> {
   const payload = bridge.generatePairingQr();
   const qr = await renderPairingQr(payload);
   process.stdout.write(`${qr}\nScan with the Uxnan mobile app.\n`);
-  try {
-    await bridge.connectRelay(payload.sessionId);
-    process.stdout.write(`Connected to relay ${payload.relay}; waiting for a phone.\n`);
-  } catch (err) {
-    process.stderr.write(
-      `Relay connection failed (${errText(err)}); LAN remains available if enabled.\n`,
-    );
+  if (payload.hosts && payload.hosts.length > 0) {
+    process.stdout.write(`Direct addresses (LAN/Tailscale): ${payload.hosts.join(', ')}\n`);
+  }
+  if (bridge.context.config.relayEnabled && payload.relay) {
+    try {
+      await bridge.connectRelay(payload.sessionId);
+      process.stdout.write(`Connected to relay ${payload.relay}; waiting for a phone.\n`);
+    } catch (err) {
+      process.stderr.write(
+        `Relay connection failed (${errText(err)}); the direct LAN/Tailscale path remains available.\n`,
+      );
+    }
+  } else {
+    process.stdout.write('Relay disabled; using the direct LAN/Tailscale path only.\n');
   }
 
   process.stdout.write('Press Ctrl+C to stop.\n');

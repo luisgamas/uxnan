@@ -25,6 +25,7 @@ import { FileTrustStore, type TrustStore } from './transport/trust-store.js';
 import { handleSecureConnection } from './transport/session-handler.js';
 import { connectRelayAsMac, type RelayConnection } from './transport/relay-client.js';
 import { startLanServer, type LanServerHandle } from './transport/lan-server.js';
+import { localHostPorts } from './transport/local-hosts.js';
 import { SessionRegistry } from './transport/session-registry.js';
 import { ThreadStore } from './conversation/thread-store.js';
 import { AgentManager } from './agents/agent-manager.js';
@@ -208,7 +209,8 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       }),
     generatePairingQr: () =>
       generatePairingPayload({
-        relayUrl: config.relayUrl,
+        ...(config.relayEnabled ? { relayUrl: config.relayUrl } : {}),
+        ...(config.lanEnabled ? { hosts: localHostPorts(config.lanPort) } : {}),
         macDeviceId: deviceState.identity.macDeviceId,
         macIdentityPublicKey: deviceState.identity.macIdentityPublicKey,
         displayName: hostname(),

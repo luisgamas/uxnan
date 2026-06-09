@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — direct LAN/Tailscale transport (relay now optional)
+- **Advertise direct addresses in the pairing QR**: `src/transport/local-hosts.ts`
+  enumerates the bridge's non-internal IPv4s (LAN + a Tailscale `100.x` address) and
+  `generatePairingQr` includes them as `hosts`. The phone tries these first and
+  falls back to the relay. Verified on a real machine (QR carried the LAN + Tailscale
+  addresses).
+- **`relayEnabled` config** (`daemon-config.ts`, default `true`): set `false` for a
+  pure LAN/Tailscale setup — the bridge skips the relay connection and the QR carries
+  only `hosts`. `cli.ts start` prints the direct addresses and only dials the relay
+  when enabled.
+- This makes **LAN-direct the primary plug-and-play path**, **Tailscale (or any mesh
+  VPN) the recommended remote option with no hosting**, and the **hosted relay
+  optional**. Docs: [`docs/connectivity.md`](docs/connectivity.md).
+- Tests: `localHostPorts` enumeration; QR includes/omits `hosts`/`relay`; shared
+  pairing validation for the optional-transport contract.
+
 ### Added — autostart (install-service / uninstall-service)
 - **`uxnan-bridge install-service` / `uninstall-service`** (`src/service-installer.ts`
   + `src/cli.ts`): register the bridge to start at user logon, **as the logged-in

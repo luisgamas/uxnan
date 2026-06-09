@@ -13,7 +13,10 @@ import {
 } from '@uxnan/shared';
 
 export interface GeneratePairingOptions {
-  relayUrl: string;
+  /** Relay URL (remote fallback). Omit for a LAN/Tailscale-only QR. */
+  relayUrl?: string;
+  /** Direct `host:port` addresses the phone should try first (LAN/Tailscale). */
+  hosts?: string[];
   macDeviceId: string;
   macIdentityPublicKey: string;
   displayName: string;
@@ -24,15 +27,17 @@ export interface GeneratePairingOptions {
 }
 
 export function generatePairingPayload(options: GeneratePairingOptions): PairingPayload {
-  return {
+  const payload: PairingPayload = {
     v: PAIRING_QR_VERSION,
-    relay: options.relayUrl,
     sessionId: options.sessionId ?? randomUUID(),
     macDeviceId: options.macDeviceId,
     macIdentityPublicKey: options.macIdentityPublicKey,
     expiresAt: defaultPairingExpiry(options.now),
     displayName: options.displayName,
   };
+  if (options.relayUrl) payload.relay = options.relayUrl;
+  if (options.hosts && options.hosts.length > 0) payload.hosts = options.hosts;
+  return payload;
 }
 
 /** Render a pairing payload as an ASCII QR code (for terminal display). */

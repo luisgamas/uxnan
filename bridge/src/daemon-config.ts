@@ -28,6 +28,12 @@ export interface AgentSettings {
 
 export interface DaemonConfig {
   relayUrl: string;
+  /**
+   * Use the hosted relay (remote/off-LAN fallback). Default `true`. Set `false` for
+   * a pure LAN/Tailscale setup: the bridge skips the relay connection and the
+   * pairing QR advertises only the direct `hosts` (see {@link lanEnabled}).
+   */
+  relayEnabled: boolean;
   lanEnabled: boolean;
   lanPort: number;
   pushEnabled: boolean;
@@ -56,6 +62,7 @@ export interface DaemonConfig {
 
 export const DEFAULT_DAEMON_CONFIG: DaemonConfig = {
   relayUrl: DEFAULT_RELAY_URL,
+  relayEnabled: true,
   lanEnabled: true,
   lanPort: DEFAULT_LAN_PORT,
   pushEnabled: true,

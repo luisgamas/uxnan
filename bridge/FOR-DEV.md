@@ -34,6 +34,19 @@ hosting** (the phone connects directly to the bridge on the same network).
 - [x] **Relay connection survives phone reconnects** — `connectRelay`
       (`src/bridge.ts`) runs a background loop: serve one phone session, then
       immediately re-arm on the relay so trusted-reconnect works without re-scanning.
+- [x] **Direct LAN/Tailscale addressing (relay optional)** —
+      `src/transport/local-hosts.ts` advertises the bridge's non-internal IPv4s
+      (LAN + Tailscale `100.x`) as `hosts` in the pairing QR; `relay` is optional in
+      the contract; `relayEnabled` config skips the relay for a pure direct setup.
+      LAN-direct is the primary path, Tailscale the recommended remote option (no
+      hosting), relay optional. See `docs/connectivity.md`. **Next steps:**
+        - **Mobile (uxnanmobile branch):** consume `hosts` — try the direct
+          addresses first, fall back to `relay`; tolerate a missing `relay` (the
+          current Dart parser requires it). This is the half that makes direct/
+          Tailscale actually used by the app.
+        - **Bind the LAN server to chosen interface(s)** — today it binds all
+          interfaces (good for Tailscale; advertise virtual-NIC IPs too). Optionally
+          let the user restrict which interfaces are served/advertised.
 - [ ] **Seq-based catch-up on reconnect** — `src/transport/server-handshake.ts`.
       Read `clientHello.resumeState.lastAppliedBridgeOutboundSeq` and replay
       envelopes with a greater `seq`. **Blocked:** the mobile `clientHello` does
