@@ -70,17 +70,25 @@ flutter test               # unit + widget tests
 ## Status
 
 Wired MVP. All core modules are implemented and connected to live bridge data:
-E2EE crypto + secure transport, QR pairing/onboarding, the paired-PC list,
-threads scoped to the selected PC, the conversation timeline (streaming turns),
-the new-conversation flow (`project/list` + `agent/list` + `agent/models`),
-a per-thread model picker (`thread/setModel`), per-thread actions (rename /
-delete / copy id, with a new thread defaulting its title to its id),
-capability-aware conversation controls (approval/attach gated by the agent's
-`AgentCapabilities`), notification tap → deep-link to the conversation, Git
-status/commit/push, robust reconnection (app heartbeat + relay peer-close),
-"Verify connection", and gated FCM push notifications (builds/runs with no
-Firebase config). Remaining/deferred work (interactive approval responses,
-notification preferences UI, LAN discovery, per-file diff, etc.) is tracked in
+E2EE crypto + secure transport, QR pairing/onboarding, the paired-PC list with
+**truthful, connection-targeted multi-PC status** (every live action targets the
+PC we actually hold a channel to — browsing another PC is read-only until you
+connect to it), threads scoped to the selected PC, **live streaming
+conversations that survive leaving/re-entering the screen** (per-thread buffers
++ `turn/list` re-sync) with a per-thread **"Responding…" activity** indicator,
+the new-conversation flow (`project/list` + `agent/list` + `agent/models`) with
+a **folder browser** (`workspace/browseDirs`) to root a thread anywhere, a
+per-thread **structured model picker** (readable names, default badge, Claude
+alias "(latest)" + pinned versions + resolved-version row; `thread/setModel`), a
+**context-usage indicator** (percentage when the model's window is known, raw
+token count otherwise), per-thread actions (rename / delete / copy id, with a new
+thread defaulting its title to its id), capability-aware conversation controls
+(approval/attach gated by the agent's `AgentCapabilities`), notification tap →
+deep-link to the conversation, Git status/commit/push, robust reconnection (app
+heartbeat + relay peer-close), "Verify connection", and gated FCM push
+notifications (builds/runs with no Firebase config). Remaining/deferred work
+(interactive approval responses, notification preferences UI, LAN discovery,
+per-file diff, etc.) is tracked in
 [`FOR-DEV.md`](FOR-DEV.md); native Firebase config is in
 [`FOR-HUMAN.md`](FOR-HUMAN.md). See [`CHANGELOG.md`](CHANGELOG.md) for the
 full history.

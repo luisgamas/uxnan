@@ -12,8 +12,10 @@ only a human can provide.)
 ## Plug-and-play "install and use" — remaining sequence
 The goal is: install on the PC, log into the agents you want, point the phone at a
 folder, and go. Tracked items, in order:
-1. **Directory browsing** — DONE (bridge side: `workspace/browseDirs`); the mobile
-   browser UI is the remaining half (see Handlers → Plug-and-play below).
+1. **Directory browsing** — DONE (bridge `workspace/browseDirs` **and** the mobile
+   browser UI: a `WorkspaceBrowserSheet` with root picker / breadcrumb / git-repo
+   badges wired into the new-conversation flow → `thread/start { cwd }`). See
+   Handlers → Plug-and-play below.
 2. **Autostart / `install-service`** — DONE (`install-service`/`uninstall-service`
    run the bridge at logon per platform; see Daemon lifecycle).
 3. **Packaging / publish** — bundle `@uxnan/shared` (or publish it first) and ship
@@ -81,10 +83,11 @@ hosting** (the phone connects directly to the bridge on the same network).
       ANY directory as a thread's cwd (`thread/start { cwd }`) — no per-project
       pre-config. Root-confined via `resolveWithinRoot`. `project/list`/`resolve`
       (the manual `workspaceRoots` list) stay as-is for explicitly configured
-      projects. **Next steps (deja en FOR-DEV):**
-        - **Mobile UI** (uxnanmobile branch): a directory-browser screen that calls
+      projects. **Status / next steps:**
+        - **Mobile UI** — DONE (uxnanmobile): `WorkspaceBrowserSheet` calls
           `workspace/browseDirs`, shows the root picker + git-repo badges, navigates
-          with `parent`/`dirs`, and opens a thread on the chosen `cwd`.
+          with `parent`/`dirs`, and opens a thread on the chosen `cwd` (resolved to
+          a project via `project/resolve`). Remaining: on-device verification.
         - **Hard agent confinement** (optional): browseDirs confines the *phone API*,
           not the agent *process*. True read-confinement of the agent to the chosen
           subtree needs OS sandboxing (container/chroot) — out of MVP scope; for now
@@ -119,9 +122,20 @@ hosting** (the phone connects directly to the bridge on the same network).
 - [x] **Per-thread agent selection** — `thread/start { agentId, model, cwd }`
       persists the choice; `turn/send` drives the thread's agent in its cwd.
       `agent/list` exposes registered agents + capabilities + availability.
-- [x] **Agent model discovery** — `agent/models` runs `opencode models` via
-      `OpenCodeAdapter.listModels()` → `AgentManager.getModels()` (optional
-      `IAgentAdapter.listModels`; agents without it return `[]`).
+- [x] **Agent model discovery** — `agent/models` now returns a **structured
+      `AgentModel[]`** (`id`/`displayName`/`description?`/`version?`/`isDefault?`),
+      account-aware per agent: OpenCode runs `opencode models`; **Codex** drives
+      `codex app-server` (`initialize` → `model/list`, the desktop app's source)
+      with a `~/.codex/config.toml` fallback; **Claude Code** exposes the stable
+      `opus`/`sonnet`/`haiku` aliases (labelled "(latest)") plus any concrete
+      versions pinned in `agents.claude-code.models`. The concrete model an alias
+      resolves to is reported per-run via the `stream/model/resolved` notification
+      (`model_resolved` adapter event).
+- [x] **Per-turn token usage** — `stream/turn/completed` now carries
+      `usage { tokens, contextWindow? }`: Claude parses the `result` event's
+      `usage` and maps the tier context window (Opus/Sonnet 1M, Haiku 200K);
+      Codex sums `turn.completed.usage` (no window in exec mode); `AgentManager`
+      forwards it. Lets the phone show a context-usage indicator.
 - [x] **Change a thread's model mid-conversation** — `thread/setModel`
       (`ThreadStore.setModel` + `thread-context-handler.ts`).
 
@@ -143,10 +157,12 @@ The OpenCode adapter is the template for any "one-shot per-turn CLI" agent:
       also `default` → `-s read-only`, `bypassPermissions` →
       `--dangerously-bypass-approvals-and-sandbox`). Binary resolved by
       `resolve-codex.ts` (npm `@openai/codex/bin/codex.js` via node → PATH).
-      **`codex-server` is NOT needed**: Codex's `app-server`/`exec-server`/
-      `mcp-server` modes drive the desktop app / IDE / MCP — the bridge uses the
-      one-shot `codex exec` entry point. No model-list command, so `agent/models`
-      returns `[]` for Codex (use the default model or set `agents.codex.model`).
+      Turns use the one-shot `codex exec` entry point. **Model discovery (done):**
+      `codex exec` has no enumerate command, so `listModels()` briefly spawns
+      `codex app-server` and runs the `initialize` → `model/list` JSON-RPC
+      handshake (account-aware, the desktop app's source), falling back to
+      `~/.codex/config.toml`. `turn.completed.usage` is parsed for the context
+      indicator.
 - [x] **Claude Code** — `src/adapters/claude-adapter.ts`. WIRED via
       `claude -p --output-format stream-json --verbose --include-partial-messages`
       (`--resume <session_id>`, `--model <alias|id>`). Parses the JSONL stream
@@ -155,9 +171,12 @@ The OpenCode adapter is the template for any "one-shot per-turn CLI" agent:
       posture is configurable via `agents['claude-code'].permissionMode`
       (default `acceptEdits`; also `default` / `bypassPermissions`). Binary
       resolved by `resolve-claude.ts` (native `~/.local/bin/claude[.exe]` → npm
-      `cli.js` via node → PATH). `listModels()` returns the `opus`/`sonnet`/`haiku`
-      aliases (no enumerate command). Follow-up: richer model discovery if a
-      stable source appears.
+      `cli.js` via node → PATH). **Model discovery (done):** `listModels()`
+      exposes the `opus`/`sonnet`/`haiku` aliases (labelled "(latest)") plus any
+      concrete versions pinned in `agents.claude-code.models`; the version an
+      alias resolves to is captured from the `system/init` event and emitted as
+      `model_resolved`. `result.usage` is parsed (with the tier context window)
+      for the context indicator.
 - [ ] **Gemini CLI** — capture its non-interactive JSON stream first. New scaffold.
 - [ ] **JSONL history fallback** (`session-jsonl-history`) — read agent session
       JSONL/SQLite from disk for `turn/list` when the runtime has no fresh data

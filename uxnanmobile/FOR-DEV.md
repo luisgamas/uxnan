@@ -22,9 +22,10 @@ gracefully until the other agent wires the handler. Suggested order:
 5. ☐ **Voice → text in the composer** — pure device feature, but verification
    needs a real mic (defer while remote).
 
-Everything else below needs the bridge/relay (history pagination, real token
-usage, per-file diff, extended git actions, LAN discovery, manual-code pairing,
-APNs) and is best done once a live bridge is reachable.
+Everything else below needs the bridge/relay (history pagination, per-file diff,
+extended git actions, LAN discovery, manual-code pairing, APNs) and is best done
+once a live bridge is reachable. (Real token usage, model discovery, the folder
+browser and multi-PC connection correctness are now DONE — see below.)
 
 ---
 
@@ -46,12 +47,16 @@ APNs) and is best done once a live bridge is reachable.
   Connect CTA → `SessionCoordinator.switchMac`). Reactive via the new
   `watchDevices()` / `trustedDevicesProvider`. Tapping a card sets the active
   device and opens its threads. Empty → the pair/onboarding state.
-- ◑ **Connect UX polish** — a per-device **"Verify connection"** action now
-  probes the bridge (`SessionCoordinator.verifyConnection` → encrypted
-  `bridge/status`, reconnecting first when disconnected) and reports the result.
-  ☐ Still: `switchMac` itself is fire-and-forget from the card; surface a
-  connecting spinner/errors on the Connect CTA, and verify the switch flow
-  end-to-end against a live bridge.
+- ☑ **Connect UX polish — validated, truthful per-device status.** Per-device
+  status now keys off the device that actually holds the live channel
+  (`connectedDeviceProvider`) and the one being attempted
+  (`connectingDeviceProvider`), not the global phase — so browsing a PC never
+  fakes a connection. `switchMac` is **probe-then-commit**: it opens the target
+  session and only swaps once the handshake completes, staying on the current PC
+  (with an error message) if the target is unreachable. The Connect CTA shows a
+  connecting state and surfaces failures; a **"Verify connection"** action still
+  probes via encrypted `bridge/status`. ☐ Remaining: end-to-end verification on
+  a live bridge across two PCs.
 - ☐ **On-device pairing verification** — the QR happy path needs a running
   bridge/relay to complete `processPairingPayload`; verify end-to-end once the
   bridge exists.
@@ -98,17 +103,27 @@ APNs) and is best done once a live bridge is reachable.
   present), and navigates to `/conversation/:id`. Pull-to-refresh calls
   `ThreadManager.loadThreads` **only when connected** (guarded + 15s timeout, so
   the indicator no longer spins forever offline).
-- ◑ **Scope threads to the connected PC / project** — **PC scoping DONE**:
-  `Thread.deviceId` tags each thread with the active device and the list filters
-  by it (drift v3 migration purged the old demo data). ☐ Still open:
+- ◑ **Scope threads to the connected PC / project** — **PC scoping DONE +
+  connection-targeting DONE**: `Thread.deviceId` tags each thread with its PC and
+  the list filters by it. Crucially, **all live actions now target the PC we
+  actually hold a channel to**, not merely the one being browsed: the threads
+  online dot, the new-conversation FAB and refresh are gated on
+  `connectedDeviceProvider == this PC` (with an offline banner offering a
+  validated Connect), and the conversation composer is disabled unless connected
+  to the thread's PC — so a message can never be sent over a *different*
+  connected PC's channel. Browsing a PC no longer changes the connection target
+  (`setActiveDevice` removed from the browse path). ☐ Still open:
   **project**-level scoping (drive `loadThreads(projectId:)` once the session
   exposes the active project). The `thread/list` JSON shape is still assumed
   (tolerant parser) — verify against the real bridge.
 - ◑ **Thread actions** — **new thread DONE**: a "New conversation" FAB on
   `ThreadsScreen` opens `NewConversationSheet` (pick project via `project/list`,
   agent via `agent/list`, model via `agent/models`) → `ThreadManager.startThread`
-  (`thread/start`) → navigates to the conversation. Threads are now scoped to the
-  selected PC (`Thread.deviceId`).
+  (`thread/start`) → navigates to the conversation. Threads are scoped to the
+  selected PC (`Thread.deviceId`). The sheet also offers a **"Browse…"** action
+  (folder browser, see *Conversation / timeline → Folder browser* below) to root
+  a thread in any directory; the chosen folder is resolved to a project
+  (`project/resolve`) and started via `thread/start { cwd }`.
   - ☑ **Delete thread** — DONE (mobile): long-press menu on `ThreadsScreen` →
     `ThreadManager.deleteThread` removes locally + calls `thread/delete`
     (best-effort, degrades gracefully).
@@ -152,10 +167,31 @@ APNs) and is best done once a live bridge is reachable.
 - ☑ **Application managers** — DONE: `ThreadManager` (timeline build + streaming
   reducer application, `loadThreads`, `sendUserMessage`) and
   `IncomingMessageProcessor`.
-- ☐ **Remote history pagination** — `ThreadManager.loadMoreHistory` via
-  `thread/turns/list` (cursor) → `TurnTimelineSnapshot.prependHistory`; plus
-  `startNewThread`/`resumeThread`/`forkThread`. The bridge `thread/list` JSON
-  shape is assumed (tolerant parser); verify against the real bridge.
+- ☑ **Live conversations survive navigation + per-thread activity** — DONE:
+  `ThreadManager` (a singleton) buffers each thread's in-flight turn in memory
+  and applies streaming events for **all** threads, not just the on-screen one,
+  so leaving and re-entering a conversation keeps the streaming response
+  rendering/updating. Answers that complete off-screen are persisted (keyed by
+  the deterministic `stream-<turnId>` id) and shown on return; entering a thread
+  re-syncs it from the bridge (`turn/list`) to recover anything missed (e.g.
+  after an app restart). A new `ThreadActivity` (running/error/idle) is exposed
+  per thread (`threadActivityProvider`) and the list card shows a **"Responding…"
+  spinner** while a conversation is working.
+- ☑ **Folder browser (`workspace/browseDirs`)** — DONE (the mobile half the
+  bridge `FOR-DEV.md` was waiting on): `BrowseRoot`/`BrowseDirEntry`/
+  `BrowseResult` entities (tolerant parsers), a `WorkspaceBrowser` manager +
+  provider, and a `WorkspaceBrowserSheet` (root picker, breadcrumb, git-repo
+  badges, "Open here"). Wired into `NewConversationSheet` as **"Browse…"** →
+  resolve the chosen `cwd` to a project (`project/resolve`) → `thread/start
+  { cwd }`. The configured `project/list` stays as the shortcut. ☐ Remaining:
+  on-device verification against a live bridge with real browse roots.
+- ◑ **Remote history pagination** — `ThreadManager.selectThread` now **re-syncs**
+  a thread from the bridge (`turn/list`) on open, persisting any assistant answer
+  not stored locally (keyed by `stream-<turnId>`, so it never duplicates) — this
+  recovers in-flight turns after an app restart. ☐ Still open: true paged
+  back-history (`loadMoreHistory` with a cursor → `prependHistory`) and
+  `resumeThread`/`forkThread`. The `turn/list` JSON shape is assumed (tolerant
+  parser); verify against the real bridge.
 - ☑ **Conversation UI (visual layer)** — DONE: `ConversationScreen`
   (`SliverAppBar.large`, floating + snap, auto-scroll), message renderers
   (`MessageBubble` + `MessageContentView`: markdown, code, command card, diff,
@@ -166,13 +202,26 @@ APNs) and is best done once a live bridge is reachable.
   `SessionEnvironment.sample()`); remaining items below need real RPCs:
   - ☑ **Model indicator + selector** (`ComposerBar._ModelChip`,
     `SessionStatusSheet` model row) → shows the real thread model (from
-    `Thread.model`, falling back to the agent label) and the chip now opens
+    `Thread.model`, falling back to the agent label) and the chip opens
     `ModelPickerSheet` (`agent/models`) → `ThreadManager.setThreadModel`
-    (`thread/setModel`), persisting the pick locally. DONE.
-  - ☑ **Context badge** (`ComposerBar._ContextBadge`, status-sheet context row)
-    → hidden / shown as a neutral `—` placeholder while the bridge does not
-    report token usage (no fabricated fraction). ☐ Wire real usage from
-    `bridge/status` or turn usage when available.
+    (`thread/setModel`), persisting the pick locally. DONE. **Enhanced since:**
+    `agent/models` is now a structured `AgentModel[]` (`id`/`displayName`/
+    `description`/`version`/`isDefault`); the picker shows readable names, a
+    **Default** badge and id/version/description. Claude Code exposes the
+    `opus`/`sonnet`/`haiku` aliases as **"(latest)"** plus any concrete versions
+    pinned in `agents.claude-code.models`, and the **resolved** version of an
+    alias (from the `stream/model/resolved` event) shows as an "Active version"
+    row in the status sheet. Codex enumerates its account-aware models via
+    `codex app-server` (`model/list`).
+  - ☑ **Context badge — wired to real token usage.** The bridge now reports a
+    turn's `usage { tokens, contextWindow? }` on `stream/turn/completed`
+    (Claude parses the `result` event + maps the tier window — Opus/Sonnet 1M,
+    Haiku 200K; Codex sums `turn.completed.usage`, no window in exec mode).
+    `ThreadManager` tracks it per-thread (`contextUsageProvider`); the composer
+    shows a **percentage ring** when the window is known and a **raw token
+    count** otherwise (Codex), and the status-sheet context row mirrors it.
+    OpenCode reports no usage. (Verified the Codex/Claude `usage` shapes against
+    a real turn.)
   - ◑ **Approval mode** (`ApprovalModeSheet`) → now an explicit local per-thread
     setting (no sampled value); the status-sheet row is **gated by the agent's
     `approvals` capability** (`agentCapabilitiesProvider`). ☐ Read/persist via an
