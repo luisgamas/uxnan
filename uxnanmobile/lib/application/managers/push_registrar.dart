@@ -150,6 +150,7 @@ class PushRegistrar {
       case TurnStartedEvent() ||
             MessageDeltaEvent() ||
             TurnAbortedEvent() ||
+            ModelResolvedEvent() ||
             GitProgressEvent() ||
             UnknownDomainEvent():
         break;

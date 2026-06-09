@@ -11,13 +11,18 @@ class SessionEnvironment {
   const SessionEnvironment({
     required this.modelName,
     required this.approvalMode,
+    this.resolvedModel,
     this.contextUsedFraction,
     this.gitBranch,
     this.isLocal = true,
   });
 
-  /// Active model display name.
+  /// Active model display name (the selected alias/id, the routing key).
   final String modelName;
+
+  /// Concrete model the agent resolved [modelName] to for the latest turn
+  /// (e.g. `claude-opus-4-8` for the `opus` alias), or null when unknown.
+  final String? resolvedModel;
 
   /// Context window usage as a 0–1 fraction, or null when unknown.
   ///
@@ -46,6 +51,7 @@ class SessionEnvironment {
   /// Returns a copy with the approval mode replaced.
   SessionEnvironment withApprovalMode(ApprovalMode mode) => SessionEnvironment(
         modelName: modelName,
+        resolvedModel: resolvedModel,
         contextUsedFraction: contextUsedFraction,
         approvalMode: mode,
         gitBranch: gitBranch,
@@ -53,9 +59,14 @@ class SessionEnvironment {
       );
 
   /// Returns a copy with the model and git branch replaced.
-  SessionEnvironment copyWith({String? modelName, String? gitBranch}) =>
+  SessionEnvironment copyWith({
+    String? modelName,
+    String? resolvedModel,
+    String? gitBranch,
+  }) =>
       SessionEnvironment(
         modelName: modelName ?? this.modelName,
+        resolvedModel: resolvedModel ?? this.resolvedModel,
         contextUsedFraction: contextUsedFraction,
         approvalMode: approvalMode,
         gitBranch: gitBranch ?? this.gitBranch,

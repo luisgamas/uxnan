@@ -59,6 +59,20 @@ void main() {
       expect(event, isA<TurnAbortedEvent>());
     });
 
+    test('stream/model/resolved carries the resolved model', () {
+      final event = processor.classify(
+        note('stream/model/resolved', {
+          'turnId': 't1',
+          'threadId': 'th1',
+          'model': 'claude-opus-4-8',
+        }),
+      );
+      expect(event, isA<ModelResolvedEvent>());
+      final resolved = event as ModelResolvedEvent;
+      expect(resolved.model, 'claude-opus-4-8');
+      expect(resolved.threadId, 'th1');
+    });
+
     test('stream/git/progress carries the phase and status', () {
       final event = processor.classify(
         note('stream/git/progress', {

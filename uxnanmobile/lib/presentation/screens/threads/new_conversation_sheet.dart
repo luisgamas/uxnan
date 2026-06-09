@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/domain/entities/agent_descriptor.dart';
+import 'package:uxnan/domain/entities/agent_model.dart';
 import 'package:uxnan/domain/entities/project.dart';
 import 'package:uxnan/domain/enums/agent_id.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
@@ -288,7 +289,7 @@ class _ModelField extends StatelessWidget {
 
   final TextEditingController controller;
   final bool enabled;
-  final AsyncValue<List<String>>? models;
+  final AsyncValue<List<AgentModel>>? models;
   final ValueChanged<String> onChanged;
 
   @override
@@ -307,7 +308,10 @@ class _ModelField extends StatelessWidget {
         onSelected: (value) => onChanged(value ?? ''),
         dropdownMenuEntries: [
           for (final model in list)
-            DropdownMenuEntry<String>(value: model, label: model),
+            DropdownMenuEntry<String>(
+              value: model.id,
+              label: model.displayName,
+            ),
         ],
       );
     }
@@ -355,8 +359,7 @@ class _ModelTextField extends StatelessWidget {
         decoration: InputDecoration(
           isCollapsed: true,
           border: InputBorder.none,
-          contentPadding:
-              const EdgeInsets.symmetric(vertical: UxnanSpacing.md),
+          contentPadding: const EdgeInsets.symmetric(vertical: UxnanSpacing.md),
           icon: Icon(
             Icons.auto_awesome_outlined,
             size: 18,

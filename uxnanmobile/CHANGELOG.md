@@ -8,6 +8,24 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Structured model picker + resolved-version display** — consumes the
+  bridge's richer `agent/models` contract so model selection is plug-and-play
+  across Claude Code, Codex and OpenCode:
+  - New `AgentModel` entity (`domain/entities/agent_model.dart`) parsing the
+    structured contract (`id`, `displayName`, `description?`, `version?`,
+    `isDefault?`) and tolerating bare-string responses from older bridges.
+    `ThreadManager.loadModels` / `agentModelsProvider` now return
+    `List<AgentModel>`.
+  - The model picker and the new-conversation model field show readable names,
+    a "Default" badge, and a secondary line with the wire id / resolved version
+    / description; selection still routes by `id`.
+  - **Resolved-version surfacing**: a new `stream/model/resolved`
+    (`ModelResolvedEvent`) updates an in-memory `resolvedModelsProvider`; the
+    session status sheet shows the concrete version an alias resolved to (e.g.
+    `opus` → `claude-opus-4-8`) under a new "Active version" row.
+
+### Added
+
 - **Direct LAN/Tailscale transport (relay now optional)** — consumes the
   bridge's pairing-QR `hosts` so the phone connects directly, with the relay as
   a fallback (spec 02a §5.9.3; bridge `docs/connectivity.md`):

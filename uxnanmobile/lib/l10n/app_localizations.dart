@@ -656,6 +656,12 @@ abstract class AppLocalizations {
   /// **'No matching models'**
   String get modelPickerEmpty;
 
+  /// No description provided for @modelPickerDefault.
+  ///
+  /// In en, this message translates to:
+  /// **'Default'**
+  String get modelPickerDefault;
+
   /// No description provided for @newThreadFailed.
   ///
   /// In en, this message translates to:
@@ -721,6 +727,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Model'**
   String get environmentModel;
+
+  /// No description provided for @environmentActiveModel.
+  ///
+  /// In en, this message translates to:
+  /// **'Active version'**
+  String get environmentActiveModel;
 
   /// No description provided for @environmentContext.
   ///

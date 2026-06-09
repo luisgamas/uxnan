@@ -7,6 +7,7 @@ import 'package:uxnan/application/managers/push_registrar.dart';
 import 'package:uxnan/application/managers/thread_manager.dart';
 import 'package:uxnan/application/processors/incoming_message_processor.dart';
 import 'package:uxnan/domain/entities/agent_descriptor.dart';
+import 'package:uxnan/domain/entities/agent_model.dart';
 import 'package:uxnan/domain/entities/connection_recovery_state.dart';
 import 'package:uxnan/domain/entities/git/git_action_log_entry.dart';
 import 'package:uxnan/domain/entities/git/git_repo_state.dart';
@@ -124,9 +125,21 @@ final agentsProvider = FutureProvider<List<AgentDescriptor>>(
 );
 
 /// The models a given agent reports (`agent/models`), for the model picker.
-final agentModelsProvider = FutureProvider.family<List<String>, String>(
+final agentModelsProvider = FutureProvider.family<List<AgentModel>, String>(
   (ref, agentId) => ref.watch(threadManagerProvider).loadModels(agentId),
 );
+
+/// Map of threadId → the concrete model id the agent resolved most recently
+/// (`stream/model/resolved`), e.g. `opus` → `claude-opus-4-8`.
+final resolvedModelsProvider = StreamProvider<Map<String, String>>(
+  (ref) => ref.watch(threadManagerProvider).resolvedModelsStream,
+);
+
+/// The concrete resolved model for a given thread, or null when not yet known.
+final resolvedModelProvider = Provider.family<String?, String>((ref, threadId) {
+  final models = ref.watch(resolvedModelsProvider).value;
+  return models?[threadId];
+});
 
 /// The capabilities the bridge reports for an agent (from `agent/list`), or a
 /// permissive default when the agent list is unavailable or the agent is

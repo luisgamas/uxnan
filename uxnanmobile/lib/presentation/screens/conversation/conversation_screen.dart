@@ -107,13 +107,18 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
 
   /// Builds the environment snapshot from the active thread, the live git
   /// state and the local approval-mode setting.
-  SessionEnvironment _buildEnvironment(Thread? thread, String? gitBranch) {
+  SessionEnvironment _buildEnvironment(
+    Thread? thread,
+    String? gitBranch,
+    String? resolvedModel,
+  ) {
     final agent = AgentIdParsing.fromWireId(thread?.agentId ?? 'custom');
     final modelName = thread?.model?.isNotEmpty ?? false
         ? thread!.model!
         : AgentVisuals.labelFor(agent);
     return SessionEnvironment(
       modelName: modelName,
+      resolvedModel: resolvedModel,
       approvalMode: _approvalMode,
       gitBranch: gitBranch,
     );
@@ -127,7 +132,8 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
         ConnectionPhase.disconnected;
     final thread = ref.watch(threadByIdProvider(widget.threadId));
     final gitBranch = ref.watch(gitRepoStateProvider).value?.branch;
-    final environment = _buildEnvironment(thread, gitBranch);
+    final resolvedModel = ref.watch(resolvedModelProvider(widget.threadId));
+    final environment = _buildEnvironment(thread, gitBranch, resolvedModel);
     final cwd = thread?.cwd;
     final snapshot = timelineAsync.value;
 

@@ -305,6 +305,9 @@ class AppLocalizationsEs extends AppLocalizations {
   String get modelPickerEmpty => 'Sin modelos coincidentes';
 
   @override
+  String get modelPickerDefault => 'Predeterminado';
+
+  @override
   String get newThreadFailed => 'No se pudo iniciar la conversación';
 
   @override
@@ -336,6 +339,9 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get environmentModel => 'Modelo';
+
+  @override
+  String get environmentActiveModel => 'Versión activa';
 
   @override
   String get environmentContext => 'Contexto';

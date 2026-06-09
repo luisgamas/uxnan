@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uxnan/domain/entities/agent_model.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
@@ -38,6 +39,11 @@ class ModelPickerSheet extends ConsumerStatefulWidget {
 
 class _ModelPickerSheetState extends ConsumerState<ModelPickerSheet> {
   String _query = '';
+
+  bool _matchesQuery(AgentModel m) =>
+      m.displayName.toLowerCase().contains(_query) ||
+      m.id.toLowerCase().contains(_query) ||
+      (m.description?.toLowerCase().contains(_query) ?? false);
 
   @override
   Widget build(BuildContext context) {
@@ -111,9 +117,7 @@ class _ModelPickerSheetState extends ConsumerState<ModelPickerSheet> {
                 data: (models) => _ModelList(
                   models: _query.isEmpty
                       ? models
-                      : models
-                          .where((m) => m.toLowerCase().contains(_query))
-                          .toList(),
+                      : models.where(_matchesQuery).toList(),
                   current: widget.current,
                 ),
               ),
@@ -128,16 +132,18 @@ class _ModelPickerSheetState extends ConsumerState<ModelPickerSheet> {
 class _ModelList extends StatelessWidget {
   const _ModelList({required this.models, required this.current});
 
-  final List<String> models;
+  final List<AgentModel> models;
   final String? current;
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
     if (models.isEmpty) {
       return Padding(
         padding: const EdgeInsets.all(UxnanSpacing.md),
-        child: Text(AppLocalizations.of(context).modelPickerEmpty),
+        child: Text(l10n.modelPickerEmpty),
       );
     }
     return ListView.builder(
@@ -145,7 +151,16 @@ class _ModelList extends StatelessWidget {
       itemCount: models.length,
       itemBuilder: (context, index) {
         final model = models[index];
-        final selected = model == current;
+        final selected = model.id == current;
+        // Secondary line: the resolved version (for aliases) and/or the wire id
+        // when it differs from the display name, then any description.
+        final detail = <String>[
+          if (model.version != null && model.version != model.id)
+            model.version!
+          else if (model.id != model.displayName)
+            model.id,
+          if (model.description != null) model.description!,
+        ].join(' · ');
         return ListTile(
           dense: true,
           shape: const RoundedRectangleBorder(
@@ -153,13 +168,64 @@ class _ModelList extends StatelessWidget {
           ),
           selected: selected,
           selectedTileColor: colors.primaryContainer.withValues(alpha: 0.4),
-          title: Text(model, style: UxnanTypography.codeSmall),
+          title: Row(
+            children: [
+              Flexible(
+                child: Text(
+                  model.displayName,
+                  style: textTheme.bodyMedium,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (model.isDefault) ...[
+                const SizedBox(width: UxnanSpacing.sm),
+                _DefaultBadge(label: l10n.modelPickerDefault),
+              ],
+            ],
+          ),
+          subtitle: detail.isEmpty
+              ? null
+              : Text(
+                  detail,
+                  style: UxnanTypography.codeSmall.copyWith(
+                    color: colors.onSurfaceVariant,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
           trailing: selected
               ? Icon(Icons.check_rounded, color: colors.primary, size: 20)
               : null,
-          onTap: () => Navigator.of(context).pop(model),
+          onTap: () => Navigator.of(context).pop(model.id),
         );
       },
+    );
+  }
+}
+
+class _DefaultBadge extends StatelessWidget {
+  const _DefaultBadge({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: UxnanSpacing.sm,
+        vertical: 2,
+      ),
+      decoration: BoxDecoration(
+        color: colors.secondaryContainer,
+        borderRadius: const BorderRadius.all(UxnanRadius.sm),
+      ),
+      child: Text(
+        label,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: colors.onSecondaryContainer,
+            ),
+      ),
     );
   }
 }

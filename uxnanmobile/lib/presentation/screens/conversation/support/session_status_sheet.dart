@@ -103,8 +103,7 @@ class _SessionStatusSheetState extends State<SessionStatusSheet> {
     );
   }
 
-  String _shortId(String id) =>
-      id.length <= 12 ? id : '${id.substring(0, 8)}…';
+  String _shortId(String id) => id.length <= 12 ? id : '${id.substring(0, 8)}…';
 
   @override
   Widget build(BuildContext context) {
@@ -124,62 +123,73 @@ class _SessionStatusSheetState extends State<SessionStatusSheet> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-            _SectionHeader(label: l10n.environmentTitle),
-            _StatusRow(
-              icon: Icons.auto_awesome_outlined,
-              label: l10n.environmentModel,
-              value: _env.modelName,
-              onTap: widget.onModelTap == null
-                  ? null
-                  : () {
-                      Navigator.of(context).pop();
-                      widget.onModelTap!.call();
-                    },
-            ),
-            // FOR-DEV: the bridge does not report token usage yet; show a
-            // neutral placeholder instead of a fabricated percentage.
-            _StatusRow(
-              icon: Icons.donut_large_outlined,
-              label: l10n.environmentContext,
-              value: _env.hasContext ? '${_env.contextPercent}%' : '—',
-            ),
-            if (widget.showApprovalMode)
+              _SectionHeader(label: l10n.environmentTitle),
               _StatusRow(
-                icon: Icons.shield_outlined,
-                label: l10n.environmentApprovalMode,
-                value: _approvalLabel(l10n),
-                onTap: _editApprovalMode,
+                icon: Icons.auto_awesome_outlined,
+                label: l10n.environmentModel,
+                value: _env.modelName,
+                onTap: widget.onModelTap == null
+                    ? null
+                    : () {
+                        Navigator.of(context).pop();
+                        widget.onModelTap!.call();
+                      },
               ),
-            if (widget.threadId != null)
+              // Concrete version the selected model/alias resolved to on the last
+              // turn (e.g. `opus` → `claude-opus-4-8`); shown only when known and
+              // it adds information beyond the selected name.
+              if (_env.resolvedModel != null &&
+                  _env.resolvedModel!.isNotEmpty &&
+                  _env.resolvedModel != _env.modelName)
+                _StatusRow(
+                  icon: Icons.verified_outlined,
+                  label: l10n.environmentActiveModel,
+                  value: _env.resolvedModel,
+                ),
+              // FOR-DEV: the bridge does not report token usage yet; show a
+              // neutral placeholder instead of a fabricated percentage.
               _StatusRow(
-                icon: Icons.tag_outlined,
-                label: l10n.threadIdLabel,
-                value: _shortId(widget.threadId!),
-                onTap: () => _copyThreadId(l10n),
+                icon: Icons.donut_large_outlined,
+                label: l10n.environmentContext,
+                value: _env.hasContext ? '${_env.contextPercent}%' : '—',
               ),
-            const Divider(height: UxnanSpacing.xl),
-            _SectionHeader(label: l10n.environmentGit),
-            _StatusRow(
-              icon: Icons.account_tree_outlined,
-              label: l10n.environmentBranch,
-              value: _env.gitBranch ?? '—',
-              onTap: _openGit,
-            ),
-            _StatusRow(
-              icon: Icons.computer_outlined,
-              label: l10n.environmentLocal,
-              value: _env.isLocal ? l10n.environmentLocal : '',
-            ),
-            _StatusRow(
-              icon: Icons.cloud_upload_outlined,
-              label: l10n.environmentCommitOrPush,
-              onTap: _openGit,
-            ),
-          ],
+              if (widget.showApprovalMode)
+                _StatusRow(
+                  icon: Icons.shield_outlined,
+                  label: l10n.environmentApprovalMode,
+                  value: _approvalLabel(l10n),
+                  onTap: _editApprovalMode,
+                ),
+              if (widget.threadId != null)
+                _StatusRow(
+                  icon: Icons.tag_outlined,
+                  label: l10n.threadIdLabel,
+                  value: _shortId(widget.threadId!),
+                  onTap: () => _copyThreadId(l10n),
+                ),
+              const Divider(height: UxnanSpacing.xl),
+              _SectionHeader(label: l10n.environmentGit),
+              _StatusRow(
+                icon: Icons.account_tree_outlined,
+                label: l10n.environmentBranch,
+                value: _env.gitBranch ?? '—',
+                onTap: _openGit,
+              ),
+              _StatusRow(
+                icon: Icons.computer_outlined,
+                label: l10n.environmentLocal,
+                value: _env.isLocal ? l10n.environmentLocal : '',
+              ),
+              _StatusRow(
+                icon: Icons.cloud_upload_outlined,
+                label: l10n.environmentCommitOrPush,
+                onTap: _openGit,
+              ),
+            ],
+          ),
         ),
       ),
-    ),
-  );
+    );
   }
 }
 

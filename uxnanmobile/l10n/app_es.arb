@@ -98,6 +98,7 @@
   "modelPickerSearchHint": "Buscar modelos",
   "modelPickerLoadFailed": "No se pudieron cargar los modelos",
   "modelPickerEmpty": "Sin modelos coincidentes",
+  "modelPickerDefault": "Predeterminado",
   "newThreadFailed": "No se pudo iniciar la conversación",
   "newThreadLoadFailed": "No se pudo cargar desde el bridge",
   "newThreadNoProjects": "No hay proyectos disponibles en esta PC.",
@@ -110,6 +111,7 @@
 
   "environmentTitle": "Entorno",
   "environmentModel": "Modelo",
+  "environmentActiveModel": "Versión activa",
   "environmentContext": "Contexto",
   "environmentApprovalMode": "Modo de aprobación",
   "environmentGit": "Git",

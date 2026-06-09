@@ -36,6 +36,11 @@ class IncomingMessageProcessor {
         ),
       'stream/turn/aborted' =>
         TurnAbortedEvent(turnId: turnId, threadId: threadId),
+      'stream/model/resolved' => ModelResolvedEvent(
+          model: params['model'] is String ? params['model'] as String : '',
+          turnId: turnId,
+          threadId: threadId,
+        ),
       'stream/git/progress' => GitProgressEvent(
           phase: params['phase'] as String? ?? '',
           status: _phaseStatus(params['status'] as String?),

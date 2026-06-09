@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 import 'package:uxnan/application/processors/domain_event.dart';
 import 'package:uxnan/core/utils/logger.dart';
 import 'package:uxnan/domain/entities/agent_descriptor.dart';
+import 'package:uxnan/domain/entities/agent_model.dart';
 import 'package:uxnan/domain/entities/message.dart';
 import 'package:uxnan/domain/entities/project.dart';
 import 'package:uxnan/domain/entities/thread.dart';
@@ -57,6 +58,12 @@ class ThreadManager {
 
   final BehaviorSubject<TurnTimelineSnapshot> _timeline =
       BehaviorSubject.seeded(const TurnTimelineSnapshot());
+
+  /// Concrete model each thread's agent resolved its alias to most recently
+  /// (e.g. `opus` → `claude-opus-4-8`), reported via `stream/model/resolved`.
+  /// Kept in memory only: re-derived on the next turn, never persisted.
+  final BehaviorSubject<Map<String, String>> _resolvedModels =
+      BehaviorSubject.seeded(const {});
   String? _activeThreadId;
   StreamSubscription<List<Message>>? _messagesSub;
   late final StreamSubscription<DomainEvent> _eventsSub;
@@ -66,6 +73,10 @@ class ThreadManager {
 
   /// The active thread's timeline (current value replayed on listen).
   Stream<TurnTimelineSnapshot> get timelineStream => _timeline.stream;
+
+  /// Map of threadId → concrete resolved model id (current value replayed).
+  Stream<Map<String, String>> get resolvedModelsStream =>
+      _resolvedModels.stream;
 
   /// The active thread's current timeline snapshot.
   TurnTimelineSnapshot get timeline => _timeline.value;
@@ -211,14 +222,17 @@ class ThreadManager {
   }
 
   /// Loads the models the bridge reports for [agentId] (`agent/models`).
-  Future<List<String>> loadModels(String agentId) async {
+  ///
+  /// Tolerates both the structured contract (objects with displayName/version/
+  /// description/isDefault) and legacy bridges that report bare id strings.
+  Future<List<AgentModel>> loadModels(String agentId) async {
     final response = await _sendRequest('agent/models', {'agentId': agentId});
     final result = response.result;
     final models = result is Map ? result['models'] : null;
     if (models is! List) return const [];
     return [
       for (final raw in models)
-        if (raw is String) raw,
+        if (AgentModel.fromAny(raw) case final model?) model,
     ];
   }
 
@@ -307,9 +321,20 @@ class ThreadManager {
     await _eventsSub.cancel();
     await _messagesSub?.cancel();
     await _timeline.close();
+    await _resolvedModels.close();
   }
 
   void _applyEvent(DomainEvent event) {
+    // Resolved-model updates are keyed by their own thread and recorded
+    // regardless of which thread is active in the UI.
+    if (event case ModelResolvedEvent(:final threadId, :final model)
+        when threadId != null && model.isNotEmpty) {
+      final next = Map<String, String>.from(_resolvedModels.value)
+        ..[threadId] = model;
+      _resolvedModels.add(next);
+      return;
+    }
+
     final active = _activeThreadId;
     if (active == null) return;
     final eventThread = _threadOf(event);
@@ -343,7 +368,7 @@ class ThreadManager {
         if (streamingTurn != null) {
           _timeline.add(_timeline.value.completeStreaming(streamingTurn));
         }
-      case GitProgressEvent() || UnknownDomainEvent():
+      case GitProgressEvent() || ModelResolvedEvent() || UnknownDomainEvent():
         break;
     }
   }
@@ -362,6 +387,7 @@ class ThreadManager {
         TurnErrorEvent(:final threadId) => threadId,
         TurnAbortedEvent(:final threadId) => threadId,
         GitProgressEvent(:final threadId) => threadId,
+        ModelResolvedEvent(:final threadId) => threadId,
         UnknownDomainEvent() => null,
       };
 

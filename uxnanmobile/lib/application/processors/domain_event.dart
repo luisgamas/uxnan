@@ -97,6 +97,29 @@ class TurnAbortedEvent extends DomainEvent {
   List<Object?> get props => [turnId, threadId];
 }
 
+/// The agent resolved its alias to a concrete model for a turn
+/// (`stream/model/resolved`), e.g. `opus` → `claude-opus-4-8`.
+class ModelResolvedEvent extends DomainEvent {
+  /// Creates a [ModelResolvedEvent].
+  const ModelResolvedEvent({
+    required this.model,
+    this.turnId,
+    this.threadId,
+  });
+
+  /// The concrete model id the agent resolved.
+  final String model;
+
+  /// The turn it was resolved for, if provided.
+  final String? turnId;
+
+  /// The owning thread, if provided.
+  final String? threadId;
+
+  @override
+  List<Object?> get props => [model, turnId, threadId];
+}
+
 /// A progress update for a long-running git action (`stream/git/progress`).
 class GitProgressEvent extends DomainEvent {
   /// Creates a [GitProgressEvent].
