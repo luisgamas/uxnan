@@ -195,31 +195,32 @@ Future<void> _promptRenameThread(
   Thread thread,
 ) async {
   final l10n = AppLocalizations.of(context);
-  final controller = TextEditingController(text: thread.title);
   final newTitle = await showDialog<String>(
     context: context,
-    builder: (context) => AlertDialog(
-      title: Text(l10n.threadRenameTitle),
-      content: TextField(
-        controller: controller,
-        autofocus: true,
-        textInputAction: TextInputAction.done,
-        decoration: InputDecoration(labelText: l10n.threadRenameHint),
-        onSubmitted: (value) => Navigator.pop(context, value),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: Text(l10n.actionCancel),
+    builder: (dialogContext) {
+      final controller = TextEditingController(text: thread.title);
+      return AlertDialog(
+        title: Text(l10n.threadRenameTitle),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textInputAction: TextInputAction.done,
+          decoration: InputDecoration(labelText: l10n.threadRenameHint),
+          onSubmitted: (value) => Navigator.pop(dialogContext, value),
         ),
-        FilledButton(
-          onPressed: () => Navigator.pop(context, controller.text),
-          child: Text(l10n.actionSave),
-        ),
-      ],
-    ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(l10n.actionCancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, controller.text),
+            child: Text(l10n.actionSave),
+          ),
+        ],
+      );
+    },
   );
-  controller.dispose();
   final trimmed = newTitle?.trim() ?? '';
   if (trimmed.isEmpty || trimmed == thread.title) return;
   await ref.read(threadManagerProvider).renameThread(thread.id, trimmed);
