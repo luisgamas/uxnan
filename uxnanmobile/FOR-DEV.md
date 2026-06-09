@@ -6,6 +6,26 @@ Deferred implementation work (code the team/agent will do later). Distinct from
 
 > Convention defined in the root `AGENTS.md` → "Pending developer work".
 
+## Recommended next steps (mobile-only, no live bridge needed)
+
+These can be built and unit/widget-tested locally; bridge calls degrade
+gracefully until the other agent wires the handler. Suggested order:
+
+1. ☑ **Advanced content `approval`/`plan`/`subagent`** (decode + read-only
+   render) — DONE this round. Remaining: interactive approval (needs a bridge
+   RPC) and verifying wire shapes against a real Codex/Claude turn.
+2. ☑ **Archive thread** (+ an "Archived" screen) — DONE this round; see
+   *Threads list → Archive / unarchive*.
+3. ☐ **Settings screen + notification preferences** (`notifications/update`) —
+   see *Push notifications*. (Next recommended.)
+4. ☐ **Remove device** (clear a stale paired PC) — see *Threads list*.
+5. ☐ **Voice → text in the composer** — pure device feature, but verification
+   needs a real mic (defer while remote).
+
+Everything else below needs the bridge/relay (history pagination, real token
+usage, per-file diff, extended git actions, LAN discovery, manual-code pairing,
+APNs) and is best done once a live bridge is reachable.
+
 ---
 
 ## Pairing module
@@ -75,25 +95,46 @@ Deferred implementation work (code the team/agent will do later). Distinct from
   agent via `agent/list`, model via `agent/models`) → `ThreadManager.startThread`
   (`thread/start`) → navigates to the conversation. Threads are now scoped to the
   selected PC (`Thread.deviceId`).
-  - ☐ **Archive / delete thread** (deferred — user-requested): bridge handlers
-    `thread/archive` + `thread/delete` (update/remove in `thread-store.ts`) and
-    local mirror; UI as a long-press / swipe / per-thread menu on `ThreadsScreen`.
-  - ☐ **Rename thread** (deferred — user-requested): a `thread/rename { threadId,
-    title }` bridge method + local update; edit action in the thread menu.
-  - ☐ **Expose the thread id in the UI** (deferred — user-requested): show/copy
-    the thread id (and the agent's session id when available) so the user can
-    **resume the same conversation directly from the CLI on the PC** (e.g.
-    `opencode run --session <id>`). The bridge already keeps the OpenCode
-    `sessionID` per thread — surface it via `thread/read` and a copy button.
+  - ☑ **Delete thread** — DONE (mobile): long-press menu on `ThreadsScreen` →
+    `ThreadManager.deleteThread` removes locally + calls `thread/delete`
+    (best-effort, degrades gracefully).
+  - ☑ **Archive / unarchive thread + "Archived" screen** — DONE (mobile):
+    `ThreadManager.archiveThread`/`unarchiveThread` flip the local
+    `ThreadStatus` (best-effort `thread/archive`/`thread/unarchive`, graceful
+    degradation; nothing deleted). `ThreadsScreen` hides archived threads + an
+    **Archived** app-bar action → `ArchivedThreadsScreen`
+    (`/device/:deviceId/archived`, per-PC) where they're reopened / unarchived /
+    deleted. Shared `ThreadTile` (`thread_tile.dart`) backs both lists. Archived
+    threads are derived from `threadsProvider` filtered by
+    `status == archived` (no new repo query needed — the watch already streams
+    all threads). Bridge `thread/archive`/`thread/unarchive` handlers are the
+    other agent's side.
+  - ☑ **Rename thread** — DONE (mobile): long-press menu → rename dialog →
+    `ThreadManager.renameThread` (local-first + `thread/rename`, graceful
+    degradation). Bridge `thread/rename` handler is the other agent's side.
+  - ◑ **Expose the thread id in the UI** — **thread id DONE**: long-press "Copy
+    thread ID" + a copyable **Thread ID** row in `SessionStatusSheet` (resume a
+    conversation from the CLI on the PC). ☐ Still: surface the agent's **session
+    id** (e.g. OpenCode `sessionID`) once the bridge exposes it via `thread/read`.
   - ☐ **Remove device** (deferred — user-requested): a "Remove" action on the PC
     card that deletes the `TrustedDevice` (+ its local threads) and calls
     `bridge/removeTrustedDevice`. Also lets the user clear a stale PC.
 
 ## Conversation / timeline
 
-- ☐ **Advanced `MessageContent` types** — `approval`, `plan`, `subagent` (and
-  their `ApprovalRequest` / `PlanState` / `SubagentState` payloads). Currently
-  decoded as `UnknownContent` (lossless). Post-MVP per spec.
+- ◑ **Advanced `MessageContent` types** — `approval`, `plan`, `subagent`:
+  - ☑ **Decode + read-only render** — DONE: `ApprovalContent`/`PlanContent`/
+    `SubagentContent` + value objects (`ApprovalRequest`, `PlanState`/`PlanStep`,
+    `SubagentState`/`SubagentAction`) + enums (`ApprovalRisk`, `PlanStepStatus`,
+    `SubagentActionKind`); tolerant codec (nested or flat) with graceful enum
+    fallback. Renderers: approval card, plan checklist, subagent card
+    (`message_content_view.dart`). Covered by round-trip + render tests.
+  - ☐ **Interactive approval** — the Approve/Reject buttons are disabled; wiring
+    a response needs a bridge RPC (`turn/send { approvalResponse: { approvalId,
+    approved } }`, spec 01 §283). Add an `approvalRespond` seam on `ThreadManager`
+    when the bridge exposes it; then enable the buttons.
+  - ☐ **Verify wire shapes** against a real Codex/Claude turn (field names for
+    plan steps / subagent actions are assumed; the parser is tolerant).
 - ☑ **Application managers** — DONE: `ThreadManager` (timeline build + streaming
   reducer application, `loadThreads`, `sendUserMessage`) and
   `IncomingMessageProcessor`.
@@ -119,14 +160,17 @@ Deferred implementation work (code the team/agent will do later). Distinct from
     report token usage (no fabricated fraction). ☐ Wire real usage from
     `bridge/status` or turn usage when available.
   - ◑ **Approval mode** (`ApprovalModeSheet`) → now an explicit local per-thread
-    setting (no sampled value). ☐ Read/persist via an access-mode RPC when one
-    exists.
+    setting (no sampled value); the status-sheet row is **gated by the agent's
+    `approvals` capability** (`agentCapabilitiesProvider`). ☐ Read/persist via an
+    access-mode RPC when one exists.
   - ☑ **Git branch / remote / local** (`_EnvironmentChip`, status-sheet git
     section) → real values from `git/status` via `gitRepoStateProvider`; the
     commit/push rows call `GitActionManager.commit` / `.push` against the active
     thread's `cwd`.
-  - ☐ **Attach** (`ComposerBar` add button) → file/image picker → upload as
-    `ImageContent` / attachment. Currently a disabled placeholder (FOR-DEV).
+  - ◑ **Attach** (`ComposerBar` add button) → the button is now **gated by the
+    agent's `images` capability** (hidden when unsupported). ☐ Still a disabled
+    placeholder when shown: file/image picker → upload as `ImageContent` /
+    attachment (FOR-DEV).
   - ☐ **Voice** (`ComposerBar` mic button) → speech-to-text into the composer.
     Currently a disabled placeholder (FOR-DEV).
   - ☑ Removed `SessionEnvironment.sample()`, `demo_seed.dart` and the home
@@ -179,10 +223,12 @@ Deferred implementation work (code the team/agent will do later). Distinct from
   `notifications/register` on connect, raises local notifications on
   turn-completed/error). Builds/runs with no Firebase config. Native config is
   FOR-HUMAN (`FOR-HUMAN.md` §2) + the relay needs the matching service account.
-- ☐ **Notification tap → deep link** — opening a turn-completed notification
-  should route to `/conversation/:threadId` (the `threadId` is already the
-  notification payload); wire `onDidReceiveNotificationResponse` /
-  `getInitialMessage` to the router.
+- ☑ **Notification tap → deep link** — DONE: `PushNotificationService` exposes
+  `onNotificationTap` + `initialThreadId()` (wired to
+  `onDidReceiveNotificationResponse`, FCM `onMessageOpenedApp`,
+  `getNotificationAppLaunchDetails()` / `getInitialMessage()`); `_PushHost`
+  routes taps to `/conversation/:threadId` (incl. cold start after first frame).
+  Verify on a real device once Firebase creds exist (FOR-HUMAN).
 - ☐ **Notification preferences UI** — `preferences` is hard-coded to
   `{turnCompleted:true,turnError:true}`; add a settings toggle that calls
   `notifications/update`.

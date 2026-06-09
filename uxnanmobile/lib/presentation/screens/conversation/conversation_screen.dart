@@ -77,11 +77,16 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
     String? cwd,
     Thread? thread,
   ) {
+    // Only agents that advertise the `approvals` capability get the approval
+    // mode row; permissive when the agent/capabilities aren't known yet.
+    final showApprovalMode = thread == null ||
+        ref.read(agentCapabilitiesProvider(thread.agentId)).approvals;
     SessionStatusSheet.show(
       context,
       environment,
       threadId: widget.threadId,
       cwd: cwd,
+      showApprovalMode: showApprovalMode,
       onApprovalModeChanged: (mode) => setState(() => _approvalMode = mode),
       onModelTap: thread != null ? () => _pickModel(thread) : null,
     );
@@ -198,6 +203,8 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
           ComposerBar(
             environment: environment,
             enabled: phase == ConnectionPhase.connected,
+            showAttach: thread != null &&
+                ref.watch(agentCapabilitiesProvider(thread.agentId)).images,
             onModelTap: thread != null ? () => _pickModel(thread) : null,
             onSend: (text) => ref
                 .read(threadManagerProvider)

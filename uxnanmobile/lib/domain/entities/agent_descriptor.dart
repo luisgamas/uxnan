@@ -11,6 +11,16 @@ class AgentCapabilities extends Equatable {
     this.images = false,
   });
 
+  /// All-permissive capabilities: a safe default for capability-gated UI when
+  /// the bridge has not reported an agent's real capabilities yet, so the UI
+  /// never hides a control spuriously (e.g. while offline).
+  const AgentCapabilities.permissive()
+      : planMode = true,
+        streaming = true,
+        approvals = true,
+        forking = true,
+        images = true;
+
   /// Reconstructs capabilities from a JSON map (tolerant).
   factory AgentCapabilities.fromJson(Map<String, dynamic> json) =>
       AgentCapabilities(

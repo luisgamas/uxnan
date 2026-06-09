@@ -8,6 +8,7 @@ import 'package:uxnan/application/processors/domain_event.dart';
 import 'package:uxnan/domain/entities/message.dart';
 import 'package:uxnan/domain/enums/message_delivery_state.dart';
 import 'package:uxnan/domain/enums/message_role.dart';
+import 'package:uxnan/domain/enums/thread_status.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
 import 'package:uxnan/domain/value_objects/rpc_message.dart';
 import 'package:uxnan/infrastructure/repositories/drift_message_repository.dart';
@@ -191,6 +192,102 @@ void main() {
     final persisted = await threadRepo.getThread('th-new');
     expect(persisted, isNotNull);
     expect(persisted!.model, 'gpt-5');
+  });
+
+  test('renameThread updates the local title and sends thread/rename',
+      () async {
+    await manager.loadThreads();
+    await manager.renameThread('th1', '  Renamed  ');
+
+    final thread = await threadRepo.getThread('th1');
+    expect(thread!.title, 'Renamed');
+    expect(sentMethods, contains('thread/rename'));
+  });
+
+  test('renameThread ignores a blank title', () async {
+    await manager.loadThreads();
+    await manager.renameThread('th1', '   ');
+
+    final thread = await threadRepo.getThread('th1');
+    expect(thread!.title, 'Thread 1');
+    expect(sentMethods, isNot(contains('thread/rename')));
+  });
+
+  test('renameThread keeps the local rename when the bridge call fails',
+      () async {
+    await manager.loadThreads();
+    final failingEvents = StreamController<DomainEvent>.broadcast();
+    final failing = ThreadManager(
+      threadRepository: threadRepo,
+      messageRepository: messageRepo,
+      domainEvents: failingEvents.stream,
+      sendRequest: (method, [params]) async =>
+          throw StateError('unsupported method'),
+    );
+
+    await failing.renameThread('th1', 'Renamed offline');
+    expect((await threadRepo.getThread('th1'))!.title, 'Renamed offline');
+
+    await failing.dispose();
+    await failingEvents.close();
+  });
+
+  test('deleteThread removes it locally and sends thread/delete', () async {
+    await manager.loadThreads();
+    await manager.deleteThread('th1');
+
+    expect(await threadRepo.getThread('th1'), isNull);
+    expect(sentMethods, contains('thread/delete'));
+  });
+
+  test('deleteThread clears the active timeline for the active thread',
+      () async {
+    await manager.loadThreads();
+    await manager.selectThread('th1');
+    await _settle();
+
+    await manager.deleteThread('th1');
+    expect(manager.activeThreadId, isNull);
+  });
+
+  test('archiveThread sets the local status and sends thread/archive',
+      () async {
+    await manager.loadThreads();
+    await manager.archiveThread('th1');
+
+    final thread = await threadRepo.getThread('th1');
+    expect(thread!.status, ThreadStatus.archived);
+    expect(sentMethods, contains('thread/archive'));
+  });
+
+  test('unarchiveThread restores active and sends thread/unarchive', () async {
+    await manager.loadThreads();
+    await manager.archiveThread('th1');
+    await manager.unarchiveThread('th1');
+
+    final thread = await threadRepo.getThread('th1');
+    expect(thread!.status, ThreadStatus.active);
+    expect(sentMethods, contains('thread/unarchive'));
+  });
+
+  test('startThread defaults the title to the thread id when unnamed',
+      () async {
+    final thread = await manager.startThread(projectId: 'p1', agentId: 'codex');
+
+    expect(thread.id, 'th-new');
+    expect(thread.title, 'th-new');
+    final persisted = await threadRepo.getThread('th-new');
+    expect(persisted!.title, 'th-new');
+  });
+
+  test('startThread keeps an explicit user title', () async {
+    final thread = await manager.startThread(
+      projectId: 'p1',
+      title: 'My thread',
+      agentId: 'codex',
+    );
+
+    expect(thread.title, 'My thread');
   });
 
   test('sendUserMessage persists locally and sends turn/send', () async {

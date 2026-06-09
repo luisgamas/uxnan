@@ -3,6 +3,9 @@
 How to run the automated tests and how to validate the parts that automated tests
 on this machine can't fully cover (real-device E2EE, real agent CLIs, push).
 
+> This guide covers the **Node** side (`shared`/`bridge`/`relay`). For the
+> Flutter app see [`uxnanmobile/docs/testing.md`](uxnanmobile/docs/testing.md).
+
 ---
 
 ## 1. Automated tests
@@ -118,4 +121,3 @@ credentials. Test the logic WITHOUT devices:
   full-revert/GC, per-project agent, etc.).
 - `relay/FOR-DEV.md` — relay routing/hardening + Phase 6 push plan.
 - `relay/FOR-HUMAN.md` — Firebase/APNs setup for Phase 6.
-- `ROADMAP.md` — phase status overview.

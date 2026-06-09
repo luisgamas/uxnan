@@ -202,6 +202,53 @@ class AppLocalizationsEn extends AppLocalizations {
       'Threads from this PC will appear here. Pull down to refresh.';
 
   @override
+  String get threadActionRename => 'Rename';
+
+  @override
+  String get threadActionCopyId => 'Copy thread ID';
+
+  @override
+  String get threadActionArchive => 'Archive';
+
+  @override
+  String get threadActionUnarchive => 'Unarchive';
+
+  @override
+  String get threadActionDelete => 'Delete';
+
+  @override
+  String get archivedTitle => 'Archived';
+
+  @override
+  String get archivedEmpty => 'No archived threads';
+
+  @override
+  String get archivedEmptyBody =>
+      'Threads you archive are hidden here, not deleted. Long-press one to unarchive it.';
+
+  @override
+  String get threadRenameTitle => 'Rename thread';
+
+  @override
+  String get threadRenameHint => 'Thread title';
+
+  @override
+  String get threadIdCopied => 'Thread ID copied';
+
+  @override
+  String get threadIdLabel => 'Thread ID';
+
+  @override
+  String get threadDeleteTitle => 'Delete thread?';
+
+  @override
+  String get threadDeleteBody =>
+      'This removes the conversation from this device.';
+
+  @override
+  String get threadDeleteConfirm => 'Delete';
+
+  @override
   String get conversationTitle => 'Conversation';
 
   @override

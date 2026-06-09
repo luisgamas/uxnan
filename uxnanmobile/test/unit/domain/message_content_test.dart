@@ -1,5 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uxnan/domain/enums/approval_risk.dart';
 import 'package:uxnan/domain/enums/command_status.dart';
+import 'package:uxnan/domain/enums/plan_step_status.dart';
+import 'package:uxnan/domain/enums/subagent_action_kind.dart';
 import 'package:uxnan/domain/enums/system_content_kind.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
 
@@ -62,17 +65,105 @@ void main() {
       );
       expect(roundTrip(c), c);
     });
+
+    test('approval', () {
+      const c = ApprovalContent(
+        ApprovalRequest(
+          approvalId: 'a1',
+          action: 'rm -rf build',
+          risk: ApprovalRisk.high,
+          detail: 'in /project',
+        ),
+      );
+      expect(roundTrip(c), c);
+    });
+
+    test('plan', () {
+      const c = PlanContent(
+        PlanState(
+          title: 'Refactor',
+          steps: [
+            PlanStep(description: 'a', status: PlanStepStatus.completed),
+            PlanStep(description: 'b', status: PlanStepStatus.inProgress),
+            PlanStep(description: 'c'),
+          ],
+        ),
+      );
+      expect(roundTrip(c), c);
+    });
+
+    test('subagent', () {
+      const c = SubagentContent(
+        SubagentState(
+          id: 's1',
+          name: 'reviewer',
+          status: 'running',
+          actions: [
+            SubagentAction(label: 'read file', kind: SubagentActionKind.tool),
+            SubagentAction(label: 'note'),
+          ],
+        ),
+      );
+      expect(roundTrip(c), c);
+    });
+  });
+
+  group('advanced content tolerant parsing', () {
+    test('approval accepts a flat payload', () {
+      final c = MessageContent.fromJson({
+        'type': 'approval',
+        'approvalId': 'a1',
+        'action': 'delete a file',
+        'risk': 'medium',
+      });
+      expect(c, isA<ApprovalContent>());
+      final request = (c as ApprovalContent).request;
+      expect(request.approvalId, 'a1');
+      expect(request.risk, ApprovalRisk.medium);
+    });
+
+    test('plan maps the in_progress wire status', () {
+      final c = MessageContent.fromJson({
+        'type': 'plan',
+        'state': {
+          'steps': [
+            {'description': 'x', 'status': 'in_progress'},
+          ],
+        },
+      }) as PlanContent;
+      expect(c.state.steps.single.status, PlanStepStatus.inProgress);
+    });
+
+    test('unknown risk and subagent kind fall back gracefully', () {
+      final approval = MessageContent.fromJson({
+        'type': 'approval',
+        'action': 'x',
+        'risk': 'nope',
+      }) as ApprovalContent;
+      expect(approval.request.risk, ApprovalRisk.unknown);
+
+      final subagent = MessageContent.fromJson({
+        'type': 'subagent',
+        'state': {
+          'name': 'n',
+          'actions': [
+            {'label': 'l', 'kind': 'weird'},
+          ],
+        },
+      }) as SubagentContent;
+      expect(subagent.state.actions.single.kind, SubagentActionKind.unknown);
+    });
   });
 
   group('unknown content', () {
     test('preserves the raw JSON of an unmodeled type', () {
       final json = {
-        'type': 'plan',
-        'state': {'steps': 3},
+        'type': 'holographic',
+        'frames': 3,
       };
       final decoded = MessageContent.fromJson(json);
       expect(decoded, isA<UnknownContent>());
-      expect((decoded as UnknownContent).type, 'plan');
+      expect((decoded as UnknownContent).type, 'holographic');
       expect(decoded.toJson(), json);
     });
 

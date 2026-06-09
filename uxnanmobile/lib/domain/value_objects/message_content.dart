@@ -1,5 +1,8 @@
 import 'package:equatable/equatable.dart';
+import 'package:uxnan/domain/enums/approval_risk.dart';
 import 'package:uxnan/domain/enums/command_status.dart';
+import 'package:uxnan/domain/enums/plan_step_status.dart';
+import 'package:uxnan/domain/enums/subagent_action_kind.dart';
 import 'package:uxnan/domain/enums/system_content_kind.dart';
 
 /// A single block of message content (spec 02a §6.2).
@@ -8,7 +11,8 @@ import 'package:uxnan/domain/enums/system_content_kind.dart';
 /// [MessageContent.fromJson] factory dispatches on `type`; any unrecognized
 /// type round-trips losslessly as an [UnknownContent], so newer bridge content
 /// never breaks decoding. The advanced `approval` / `plan` / `subagent` types
-/// are deferred (FOR-DEV) and also fall through to [UnknownContent] for now.
+/// decode into [ApprovalContent] / [PlanContent] / [SubagentContent] and are
+/// tolerant of both nested (`{request|state: {...}}`) and flat payloads.
 sealed class MessageContent {
   const MessageContent();
 
@@ -24,6 +28,9 @@ sealed class MessageContent {
       SystemContent.typeName => SystemContent.fromJson(json),
       CommandExecutionContent.typeName =>
         CommandExecutionContent.fromJson(json),
+      ApprovalContent.typeName => ApprovalContent.fromJson(json),
+      PlanContent.typeName => PlanContent.fromJson(json),
+      SubagentContent.typeName => SubagentContent.fromJson(json),
       _ => UnknownContent(
           type: json['type'] is String ? json['type'] as String : 'unknown',
           raw: json,
@@ -427,6 +434,322 @@ class CommandExecutionContent extends MessageContent with EquatableMixin {
 
   @override
   List<Object?> get props => [command, output, exitCode, status];
+}
+
+/// A pending approval the agent requests before performing an action
+/// (spec 02a §6.2; `stream/approval/requested { approvalId, action, risk }`).
+class ApprovalRequest extends Equatable {
+  /// Creates an [ApprovalRequest].
+  const ApprovalRequest({
+    required this.approvalId,
+    required this.action,
+    this.risk = ApprovalRisk.unknown,
+    this.detail,
+  });
+
+  /// Decodes an [ApprovalRequest].
+  factory ApprovalRequest.fromJson(Map<String, dynamic> json) =>
+      ApprovalRequest(
+        approvalId: json['approvalId'] as String? ?? '',
+        action: json['action'] as String? ?? '',
+        risk: _riskFromName(json['risk'] as String?),
+        detail: json['detail'] as String?,
+      );
+
+  /// Bridge id used to respond to this request.
+  final String approvalId;
+
+  /// Human description of what the agent wants to do.
+  final String action;
+
+  /// Risk level the agent assigned.
+  final ApprovalRisk risk;
+
+  /// Optional extra detail (e.g. the command or affected paths).
+  final String? detail;
+
+  /// Serializes this request.
+  Map<String, dynamic> toJson() => {
+        'approvalId': approvalId,
+        'action': action,
+        'risk': risk.name,
+        if (detail != null) 'detail': detail,
+      };
+
+  @override
+  List<Object?> get props => [approvalId, action, risk, detail];
+}
+
+/// One step of an agent plan (plan mode).
+class PlanStep extends Equatable {
+  /// Creates a [PlanStep].
+  const PlanStep({
+    required this.description,
+    this.status = PlanStepStatus.pending,
+  });
+
+  /// Decodes a [PlanStep].
+  factory PlanStep.fromJson(Map<String, dynamic> json) => PlanStep(
+        description:
+            json['description'] as String? ?? json['text'] as String? ?? '',
+        status: _planStepStatusFromName(json['status'] as String?),
+      );
+
+  /// What the step does.
+  final String description;
+
+  /// The step's progress.
+  final PlanStepStatus status;
+
+  /// Serializes this step.
+  Map<String, dynamic> toJson() => {
+        'description': description,
+        'status': _planStepStatusToName(status),
+      };
+
+  @override
+  List<Object?> get props => [description, status];
+}
+
+/// An agent plan: an ordered list of steps with statuses (spec 02a §6.2).
+class PlanState extends Equatable {
+  /// Creates a [PlanState].
+  const PlanState({this.steps = const [], this.title});
+
+  /// Decodes a [PlanState].
+  factory PlanState.fromJson(Map<String, dynamic> json) => PlanState(
+        title: json['title'] as String?,
+        steps: [
+          for (final raw in (json['steps'] as List? ?? const []))
+            if (raw is Map) PlanStep.fromJson(raw.cast<String, dynamic>()),
+        ],
+      );
+
+  /// The plan's steps, in order.
+  final List<PlanStep> steps;
+
+  /// Optional plan heading / explanation.
+  final String? title;
+
+  /// Serializes this plan.
+  Map<String, dynamic> toJson() => {
+        if (title != null) 'title': title,
+        'steps': [for (final step in steps) step.toJson()],
+      };
+
+  @override
+  List<Object?> get props => [steps, title];
+}
+
+/// A single action a subagent performed.
+class SubagentAction extends Equatable {
+  /// Creates a [SubagentAction].
+  const SubagentAction({
+    required this.label,
+    this.kind = SubagentActionKind.unknown,
+  });
+
+  /// Decodes a [SubagentAction].
+  factory SubagentAction.fromJson(Map<String, dynamic> json) => SubagentAction(
+        label: json['label'] as String? ?? json['text'] as String? ?? '',
+        kind: _subagentKindFromName(json['kind'] as String?),
+      );
+
+  /// Human description of the action.
+  final String label;
+
+  /// The kind of action.
+  final SubagentActionKind kind;
+
+  /// Serializes this action.
+  Map<String, dynamic> toJson() => {'label': label, 'kind': kind.name};
+
+  @override
+  List<Object?> get props => [label, kind];
+}
+
+/// State of a subagent launched by the main agent (spec 02a §6.2).
+class SubagentState extends Equatable {
+  /// Creates a [SubagentState].
+  const SubagentState({
+    required this.id,
+    required this.name,
+    this.status,
+    this.actions = const [],
+  });
+
+  /// Decodes a [SubagentState].
+  factory SubagentState.fromJson(Map<String, dynamic> json) => SubagentState(
+        id: json['id'] as String? ?? '',
+        name: json['name'] as String? ?? '',
+        status: json['status'] as String?,
+        actions: [
+          for (final raw in (json['actions'] as List? ?? const []))
+            if (raw is Map)
+              SubagentAction.fromJson(raw.cast<String, dynamic>()),
+        ],
+      );
+
+  /// Subagent id.
+  final String id;
+
+  /// Subagent name / role.
+  final String name;
+
+  /// Free-form status (e.g. `running`, `done`), if reported.
+  final String? status;
+
+  /// The actions the subagent has taken.
+  final List<SubagentAction> actions;
+
+  /// Serializes this subagent.
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        if (status != null) 'status': status,
+        'actions': [for (final action in actions) action.toJson()],
+      };
+
+  @override
+  List<Object?> get props => [id, name, status, actions];
+}
+
+/// An approval the agent is requesting before acting.
+///
+/// Tolerant of both nested (`{type:'approval', request:{...}}`) and flat
+/// (`{type:'approval', approvalId, action, risk}`) payloads.
+class ApprovalContent extends MessageContent with EquatableMixin {
+  /// Creates an [ApprovalContent].
+  const ApprovalContent(this.request);
+
+  /// Decodes an [ApprovalContent].
+  factory ApprovalContent.fromJson(Map<String, dynamic> json) {
+    final req = json['request'] is Map
+        ? (json['request'] as Map).cast<String, dynamic>()
+        : json;
+    return ApprovalContent(ApprovalRequest.fromJson(req));
+  }
+
+  /// The pending approval.
+  final ApprovalRequest request;
+
+  /// Wire type discriminator.
+  static const String typeName = 'approval';
+
+  @override
+  String get type => typeName;
+
+  @override
+  String get asPlainText => '[approval: ${request.action}]';
+
+  @override
+  Map<String, dynamic> toJson() => {
+        'type': typeName,
+        'request': request.toJson(),
+      };
+
+  @override
+  List<Object?> get props => [request];
+}
+
+/// An agent plan (plan mode).
+///
+/// Tolerant of both nested (`{type:'plan', state:{...}}`) and flat payloads.
+class PlanContent extends MessageContent with EquatableMixin {
+  /// Creates a [PlanContent].
+  const PlanContent(this.state);
+
+  /// Decodes a [PlanContent].
+  factory PlanContent.fromJson(Map<String, dynamic> json) {
+    final st = json['state'] is Map
+        ? (json['state'] as Map).cast<String, dynamic>()
+        : json;
+    return PlanContent(PlanState.fromJson(st));
+  }
+
+  /// The plan.
+  final PlanState state;
+
+  /// Wire type discriminator.
+  static const String typeName = 'plan';
+
+  @override
+  String get type => typeName;
+
+  @override
+  String get asPlainText => '[plan: ${state.steps.length} steps]';
+
+  @override
+  Map<String, dynamic> toJson() => {
+        'type': typeName,
+        'state': state.toJson(),
+      };
+
+  @override
+  List<Object?> get props => [state];
+}
+
+/// A subagent launched by the main agent.
+///
+/// Tolerant of both nested (`{type:'subagent', state:{...}}`) and flat forms.
+class SubagentContent extends MessageContent with EquatableMixin {
+  /// Creates a [SubagentContent].
+  const SubagentContent(this.state);
+
+  /// Decodes a [SubagentContent].
+  factory SubagentContent.fromJson(Map<String, dynamic> json) {
+    final st = json['state'] is Map
+        ? (json['state'] as Map).cast<String, dynamic>()
+        : json;
+    return SubagentContent(SubagentState.fromJson(st));
+  }
+
+  /// The subagent's state.
+  final SubagentState state;
+
+  /// Wire type discriminator.
+  static const String typeName = 'subagent';
+
+  @override
+  String get type => typeName;
+
+  @override
+  String get asPlainText => '[subagent: ${state.name}]';
+
+  @override
+  Map<String, dynamic> toJson() => {
+        'type': typeName,
+        'state': state.toJson(),
+      };
+
+  @override
+  List<Object?> get props => [state];
+}
+
+ApprovalRisk _riskFromName(String? name) {
+  for (final value in ApprovalRisk.values) {
+    if (value.name == name) return value;
+  }
+  return ApprovalRisk.unknown;
+}
+
+PlanStepStatus _planStepStatusFromName(String? name) => switch (name) {
+      'in_progress' => PlanStepStatus.inProgress,
+      'completed' => PlanStepStatus.completed,
+      _ => PlanStepStatus.pending,
+    };
+
+String _planStepStatusToName(PlanStepStatus status) => switch (status) {
+      PlanStepStatus.inProgress => 'in_progress',
+      PlanStepStatus.completed => 'completed',
+      PlanStepStatus.pending => 'pending',
+    };
+
+SubagentActionKind _subagentKindFromName(String? name) {
+  for (final value in SubagentActionKind.values) {
+    if (value.name == name) return value;
+  }
+  return SubagentActionKind.unknown;
 }
 
 /// A content type this app version does not model yet.

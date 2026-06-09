@@ -93,4 +93,20 @@ void main() {
 
     expect(find.text('No threads yet'), findsOneWidget);
   });
+
+  testWidgets('long-pressing a thread opens the actions menu', (tester) async {
+    await tester.pumpWidget(
+      _wrap(threads: [_thread('th-9', 'Fix the login bug', 'codex')]),
+    );
+    await tester.pump();
+
+    await tester.longPress(find.text('Fix the login bug'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Rename'), findsOneWidget);
+    expect(find.text('Copy thread ID'), findsOneWidget);
+    expect(find.text('Delete'), findsOneWidget);
+    // The sheet header shows the thread id for reference.
+    expect(find.text('th-9'), findsOneWidget);
+  });
 }
