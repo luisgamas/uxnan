@@ -16,7 +16,6 @@
 import { existsSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
-import { homedir } from 'node:os';
 import { basename, join, relative, resolve, sep } from 'node:path';
 import { JsonRpcErrorCode, RpcError, type BrowseResult, type BrowseRoot } from '@uxnan/shared';
 import { isSensitiveName, resolveWithinRoot } from './path-guard.js';
@@ -29,7 +28,11 @@ export function browseRootIdFor(cwd: string): string {
 export class BrowseService {
   readonly #roots: string[];
 
-  constructor(roots: string[], fallback: string = homedir()) {
+  // Defaults the root to the bridge's launch directory (`process.cwd()`) so a
+  // zero-config install is plug-and-play: start the bridge inside the folder you
+  // want the phone to reach, and that folder (plus its sub-directories) is the
+  // root — no `browseRoots`/`workspaceRoots` to configure. Matches ProjectRegistry.
+  constructor(roots: string[], fallback: string = process.cwd()) {
     const resolved = [...new Set(roots.map((r) => resolve(r)).filter((r) => r.length > 0))];
     this.#roots = resolved.length > 0 ? resolved : [resolve(fallback)];
   }

@@ -57,9 +57,12 @@ export interface AgentSettings {
 export interface DaemonConfig {
   relayUrl: string;
   /**
-   * Use the hosted relay (remote/off-LAN fallback). Default `true`. Set `false` for
-   * a pure LAN/Tailscale setup: the bridge skips the relay connection and the
-   * pairing QR advertises only the direct `hosts` (see {@link lanEnabled}).
+   * Use a relay as an off-LAN fallback. **Default `false`** — the bridge is
+   * LAN/Tailscale-direct out of the box (no hosting), and the pairing QR
+   * advertises only the direct `hosts` (see {@link lanEnabled}). The relay is
+   * **optional and self-hosted**: set `true` (and point {@link relayUrl} at your
+   * own relay) to also fall back through it for users who don't run a mesh VPN.
+   * See `docs/connectivity.md` and `relay/docs/deploy.md`.
    */
   relayEnabled: boolean;
   lanEnabled: boolean;
@@ -90,7 +93,8 @@ export interface DaemonConfig {
 
 export const DEFAULT_DAEMON_CONFIG: DaemonConfig = {
   relayUrl: DEFAULT_RELAY_URL,
-  relayEnabled: true,
+  // Relay is optional + self-hosted; off by default (LAN/Tailscale-direct).
+  relayEnabled: false,
   lanEnabled: true,
   lanPort: DEFAULT_LAN_PORT,
   pushEnabled: true,

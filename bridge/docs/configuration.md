@@ -9,7 +9,7 @@ file is optional; create it to override. Defaults live in
 | Field | Default | Purpose |
 |---|---|---|
 | `relayUrl` | built-in default | WebSocket URL of the relay (remote/off-LAN fallback). |
-| `relayEnabled` | `true` | Use the hosted relay. Set `false` for a pure LAN/Tailscale setup: the bridge skips the relay and the pairing QR advertises only the direct `hosts`. See [`connectivity.md`](./connectivity.md). |
+| `relayEnabled` | `false` | **Off by default** — the bridge is LAN/Tailscale-direct (no hosting) and the pairing QR carries only the direct `hosts`. The relay is **optional and self-hosted**: set `true` and point `relayUrl` at your own relay to also fall back through it (for users without a mesh VPN). See [`connectivity.md`](./connectivity.md) and [`../../relay/docs/deploy.md`](../../relay/docs/deploy.md). |
 | `lanEnabled` | `true` | Serve the LAN WebSocket so the phone can connect directly. Its non-internal IPv4s (LAN + Tailscale `100.x`) are advertised as `hosts` in the pairing QR. |
 | `lanPort` | built-in default | LAN server port. |
 | `autoReconnect` | `true` | Keep re-arming the relay session after a phone disconnects. |
@@ -17,7 +17,7 @@ file is optional; create it to override. Defaults live in
 | `sessionTimeoutMinutes` | `30` | Idle session timeout. |
 | `defaultAgent` | `opencode` | Agent used when a thread doesn't pick one. |
 | `workspaceRoots` | `[]` | Absolute project dirs exposed via `project/list` (empty → the bridge cwd). |
-| `browseRoots` | `[]` | Absolute base dirs the phone may **browse** under (`workspace/browseDirs`). Empty → falls back to `workspaceRoots`, then your home dir. |
+| `browseRoots` | `[]` | Absolute base dirs the phone may **browse** under (`workspace/browseDirs`). Empty → falls back to `workspaceRoots`, then the **bridge's launch directory** (`process.cwd()`). So with nothing configured, the phone browses from wherever you started the bridge — zero-config plug-and-play. |
 | `agents.<id>` | `{}` | Per-agent overrides (see below). |
 | `pushEnabled` / `pushOnAgentDone` / `pushOnAgentError` | `true` | Push-notification toggles (delivery is gated on relay Firebase/APNs creds). |
 

@@ -8,14 +8,15 @@ the phone picks one. There are three modes — pick by where you need to use it.
 |---|---|---|
 | **1. Direct LAN** | none | Phone + PC on the same network. **Primary plug-and-play path.** |
 | **2. Tailscale (or any mesh VPN)** | none | Remote, recommended. Puts both devices on one virtual network so the direct path "just works". |
-| **3. Hosted relay** | a server you run | Remote, optional — for users who don't want to install a VPN. |
+| **3. Self-hosted relay** | a server you run | Remote, **optional and off by default** — for users who don't want to install a VPN. |
 
 The pairing QR carries:
 - **`hosts`** — the bridge's direct `host:port` addresses (its non-internal IPv4s:
   LAN address(es) and, if Tailscale is up, the `100.x` tailnet address). The phone
   tries these **first**.
-- **`relay`** — the relay URL, used as a **fallback** (present unless you disable
-  the relay). At least one of `hosts`/`relay` is always present.
+- **`relay`** — the relay URL, used as a **fallback**. Present **only when you
+  enable a (self-hosted) relay** (`relayEnabled: true`); it is **off by default**.
+  At least one of `hosts`/`relay` is always present.
 
 ## 1. Direct LAN (default, no hosting)
 
@@ -40,16 +41,23 @@ same tailnet reaches the bridge directly from anywhere, **with no hosted relay**
    (confirm it's listed in the "Direct addresses" line).
 3. Off-LAN, the phone connects over Tailscale exactly like it would on the LAN.
 
-Optional: `uxnan-bridge` works fine with the relay disabled in this mode — set
-`relayEnabled: false` in [`configuration.md`](./configuration.md) for a pure
-direct setup (the QR then carries only `hosts`).
+No extra config needed: the relay is **off by default**, so this mode is pure
+direct (the QR carries only `hosts`).
 
-## 3. Hosted relay (optional)
+## 3. Self-hosted relay (optional — off by default)
 
-If you'd rather not install a VPN on the phone, run a relay reachable from the
-internet; the bridge falls back to it when the direct `hosts` aren't reachable. This
-is the only mode that requires hosting — options (Cloudflare Tunnel, Fly.io, …) are
-in [`../../relay/docs/deploy.md`](../../relay/docs/deploy.md).
+The relay is **disabled by default** (`relayEnabled: false`) — install-and-run is
+LAN/Tailscale-direct with zero hosting. Enable it only if you'd rather not put a
+VPN on the phone and want an internet-reachable fallback. **To turn it on:**
+
+1. **Run your own relay** — it's the `uxnan-relay` package in this repo. Hosting
+   options (Cloudflare Tunnel, Fly.io, a small VPS, …) are in
+   [`../../relay/docs/deploy.md`](../../relay/docs/deploy.md). The relay only ever
+   sees opaque E2EE envelopes, so it needs no secrets or trust.
+2. **Point the bridge at it and enable it** — in [`configuration.md`](./configuration.md)
+   set `relayEnabled: true` and `relayUrl` to your relay's `wss://…` URL.
+3. Re-pair (or regenerate the QR): it now carries your `relay` as a fallback after
+   the direct `hosts`.
 
 ## Notes
 

@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed
+- **Relay is off by default** (`daemon-config.ts`): `relayEnabled` now defaults
+  to `false`, so a fresh install is LAN/Tailscale-direct with **zero hosting**
+  and the pairing QR carries only the direct `hosts`. The relay is **optional
+  and self-hosted** — set `relayEnabled: true` + `relayUrl` to your own relay to
+  add an off-LAN fallback. Docs updated with how to enable + self-host
+  (`docs/connectivity.md`, `docs/configuration.md`, `relay/docs/deploy.md`).
+- **Directory browsing defaults to the bridge's launch directory** — when no
+  `browseRoots`/`workspaceRoots` are configured, `workspace/browseDirs` now
+  roots at `process.cwd()` (where the bridge was started) instead of the user's
+  home directory, matching `ProjectRegistry`. Zero-config plug-and-play: start
+  the bridge in the folder you want the phone to reach and that folder (plus its
+  sub-directories) is the root. (`workspace/browse-service.ts`.)
+
 ### Added — per-turn token usage
 - **Context usage reporting** (`adapters/claude-adapter.ts`,
   `adapters/codex-adapter.ts`, `agents/agent-manager.ts`): Claude parses the
