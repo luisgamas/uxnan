@@ -10,6 +10,8 @@ export const StreamNotification = {
   TurnCompleted: 'stream/turn/completed',
   TurnError: 'stream/turn/error',
   TurnAborted: 'stream/turn/aborted',
+  /** The agent resolved an alias (e.g. `opus`) to a concrete model id for this turn. */
+  ModelResolved: 'stream/model/resolved',
 } as const;
 
 export type StreamNotification = (typeof StreamNotification)[keyof typeof StreamNotification];
@@ -42,4 +44,11 @@ export interface TurnErrorParams {
 export interface TurnAbortedParams {
   threadId: string;
   turnId: string;
+}
+
+export interface ModelResolvedParams {
+  threadId: string;
+  turnId: string;
+  /** Concrete model id the agent resolved for this turn (e.g. `claude-opus-4-8`). */
+  model: string;
 }

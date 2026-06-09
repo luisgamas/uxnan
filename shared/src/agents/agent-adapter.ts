@@ -3,12 +3,19 @@
  *
  * Source: architecture/02a-system-architecture.md §5.8.2 (adapters/base-adapter).
  */
-import type { AgentCapabilities, AgentId } from './agent-capabilities.js';
+import type { AgentCapabilities, AgentId, AgentModel } from './agent-capabilities.js';
 import type { AgentConfig } from './agent-config.js';
 
 /** A single streamed event produced by a running agent turn. */
 export interface AgentStreamEvent {
-  type: 'delta' | 'turn_started' | 'turn_completed' | 'turn_error' | 'turn_aborted';
+  type:
+    | 'delta'
+    | 'turn_started'
+    | 'turn_completed'
+    | 'turn_error'
+    | 'turn_aborted'
+    /** The agent reported the concrete model it resolved an alias to (`data.text`). */
+    | 'model_resolved';
   threadId: string;
   turnId: string;
   /** Free-form payload depending on `type`. */
@@ -47,5 +54,5 @@ export interface IAgentAdapter {
   onEvent(listener: (event: AgentStreamEvent) => void): () => void;
 
   /** List the models this agent's CLI reports as available (optional). */
-  listModels?(): Promise<string[]>;
+  listModels?(): Promise<AgentModel[]>;
 }

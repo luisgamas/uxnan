@@ -5,7 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added
+- **`stream/model/resolved` notification** (`jsonrpc/notifications.ts`):
+  `StreamNotification.ModelResolved` + `ModelResolvedParams { threadId, turnId,
+  model }`. Carries the concrete model an agent resolved an alias to for a turn
+  (e.g. `opus` → `claude-opus-4-8`), and a `'model_resolved'` `AgentStreamEvent`
+  kind for adapters to emit it.
+
 ### Changed
+- **`agent/models` now returns structured models** (`jsonrpc/methods.ts`,
+  `agents/agent-capabilities.ts`): `AgentModelsResult.models` changed from
+  `string[]` to **`AgentModel[]`** (`{ id, displayName, description?, version?,
+  isDefault? }`). `id` is the routing key (Claude alias, `provider/model`, or a
+  Codex model id); the rest are presentation hints. The adapter contract
+  `IAgentAdapter.listModels?()` returns `AgentModel[]` accordingly. Lets the
+  phone show readable names, the default model, and an alias's resolved version.
 - **Pairing payload transports** (`e2ee/pairing-payload.ts` + Ajv schema): `relay`
   is now **optional** and a new optional **`hosts: string[]`** carries the bridge's
   direct `host:port` addresses (LAN + Tailscale `100.x`). Validation requires **at

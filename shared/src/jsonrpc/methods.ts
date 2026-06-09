@@ -28,7 +28,7 @@ import type {
 import type { AuthStatus, Project } from '../models/project.js';
 import type { BridgeStatus, ConnectedPhone, TrustedDevice } from '../models/session.js';
 import type { PairingPayload } from '../e2ee/pairing-payload.js';
-import type { AgentDescriptor, AgentId } from '../agents/agent-capabilities.js';
+import type { AgentDescriptor, AgentId, AgentModel } from '../agents/agent-capabilities.js';
 import type { PushPlatform } from '../notifications/push-payload.js';
 
 // --- Param shapes -----------------------------------------------------------
@@ -123,8 +123,8 @@ export interface AgentModelsParams {
   agentId: AgentId;
 }
 export interface AgentModelsResult {
-  /** Models the agent can use (e.g. `provider/model`), as reported by its CLI. */
-  models: string[];
+  /** Models the agent can use, with presentation metadata, as reported by its CLI. */
+  models: AgentModel[];
 }
 
 /** What the phone wants to be notified about (background push). */
