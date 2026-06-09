@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed
+- **Pairing payload transports** (`e2ee/pairing-payload.ts` + Ajv schema): `relay`
+  is now **optional** and a new optional **`hosts: string[]`** carries the bridge's
+  direct `host:port` addresses (LAN + Tailscale `100.x`). Validation requires **at
+  least one** transport (`relay` or `hosts`) and adds the `missing_transport` error.
+  Enables LAN/Tailscale-direct pairing with no hosted relay. The mobile parser must
+  tolerate a missing `relay` and prefer `hosts` (try direct → relay).
+
 ### Added
 - **Plug-and-play directory browsing contracts** (`models/workspace.ts`):
   `BrowseRoot`, `BrowseDirEntry`, `BrowseResult`, and the `workspace/browseDirs`

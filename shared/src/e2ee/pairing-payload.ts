@@ -16,8 +16,18 @@ import { MAX_PAIRING_AGE_MS, PAIRING_QR_VERSION } from '../constants.js';
 export interface PairingPayload {
   /** Payload version. Always {@link PAIRING_QR_VERSION}. */
   v: number;
-  /** Relay WebSocket URL. */
-  relay: string;
+  /**
+   * Relay WebSocket URL — the remote fallback transport. OPTIONAL: a LAN/Tailscale
+   * setup pairs over {@link hosts} alone with no hosted relay.
+   */
+  relay?: string;
+  /**
+   * Direct `host:port` addresses where the bridge's LAN server listens (the bridge's
+   * non-internal IPv4s — LAN and e.g. a Tailscale `100.x` address). The phone should
+   * try these FIRST and fall back to {@link relay}. At least one of `hosts`/`relay`
+   * must be present.
+   */
+  hosts?: string[];
   sessionId: string;
   macDeviceId: string;
   /** Bridge Ed25519 identity public key (hex, 32 bytes). */
@@ -32,6 +42,7 @@ export type PairingValidationError =
   | 'not_an_object'
   | 'unsupported_version'
   | 'missing_field'
+  | 'missing_transport'
   | 'expired';
 
 export type PairingValidationResult =
@@ -39,7 +50,6 @@ export type PairingValidationResult =
   | { valid: false; error: PairingValidationError; detail?: string };
 
 const REQUIRED_STRING_FIELDS: (keyof PairingPayload)[] = [
-  'relay',
   'sessionId',
   'macDeviceId',
   'macIdentityPublicKey',
@@ -75,6 +85,24 @@ export function validatePairingPayload(value: unknown, now: number): PairingVali
   }
   if ((obj['expiresAt'] as number) <= now) {
     return { valid: false, error: 'expired' };
+  }
+
+  // Transport fields: `relay` (string) and/or `hosts` (string[]) — at least one.
+  const relay = obj['relay'];
+  if (relay !== undefined && (typeof relay !== 'string' || relay.length === 0)) {
+    return { valid: false, error: 'missing_field', detail: 'relay' };
+  }
+  const hosts = obj['hosts'];
+  if (
+    hosts !== undefined &&
+    (!Array.isArray(hosts) || hosts.some((h) => typeof h !== 'string' || h.length === 0))
+  ) {
+    return { valid: false, error: 'missing_field', detail: 'hosts' };
+  }
+  const hasRelay = typeof relay === 'string' && relay.length > 0;
+  const hasHosts = Array.isArray(hosts) && hosts.length > 0;
+  if (!hasRelay && !hasHosts) {
+    return { valid: false, error: 'missing_transport' };
   }
 
   return { valid: true, payload: obj as unknown as PairingPayload };
