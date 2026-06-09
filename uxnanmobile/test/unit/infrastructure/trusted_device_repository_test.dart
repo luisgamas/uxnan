@@ -23,12 +23,19 @@ class _InMemorySecureStore implements SecureStore {
   Future<void> clearAll() async => data.clear();
 }
 
-TrustedDevice _device(String id, {Uint8List? key}) => TrustedDevice(
+TrustedDevice _device(
+  String id, {
+  Uint8List? key,
+  String relayUrl = 'wss://relay.test',
+  List<String> hosts = const [],
+}) =>
+    TrustedDevice(
       macDeviceId: id,
       displayName: 'Device $id',
       macIdentityPublicKey:
           key ?? Uint8List.fromList(List<int>.generate(32, (i) => i)),
-      relayUrl: 'wss://relay.test',
+      relayUrl: relayUrl,
+      hosts: hosts,
       sessionId: 'session-$id',
       pairedAt: DateTime(2026),
     );
@@ -63,6 +70,20 @@ void main() {
       expect(loaded!.displayName, 'Device mac-1');
       expect(loaded.macIdentityPublicKey, key);
       expect(loaded.relayUrl, 'wss://relay.test');
+    });
+
+    test('round-trips direct LAN/Tailscale hosts', () async {
+      await repo.saveDevice(
+        _device('mac-1', hosts: const ['192.168.1.5:8765', '100.64.0.2:8765']),
+      );
+      final loaded = await repo.getDevice('mac-1');
+      expect(loaded!.hosts, ['192.168.1.5:8765', '100.64.0.2:8765']);
+    });
+
+    test('a relay-only device loads with empty hosts', () async {
+      await repo.saveDevice(_device('mac-1'));
+      final loaded = await repo.getDevice('mac-1');
+      expect(loaded!.hosts, isEmpty);
     });
 
     test('getDevice returns null for an unknown id', () async {

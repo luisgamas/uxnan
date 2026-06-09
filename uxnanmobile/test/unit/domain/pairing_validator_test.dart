@@ -12,11 +12,14 @@ void main() {
     int version = 2,
     int? expiresAt,
     String sessionId = 'session-1',
+    String relayUrl = 'wss://relay.uxnan.io',
+    List<String> hosts = const [],
     Uint8List? key,
   }) =>
       PairingPayload(
         version: version,
-        relayUrl: 'wss://relay.uxnan.io',
+        relayUrl: relayUrl,
+        hosts: hosts,
         sessionId: sessionId,
         macDeviceId: 'mac-1',
         macIdentityPublicKey: key ?? macKey,
@@ -54,6 +57,18 @@ void main() {
 
     test('rejects a payload with missing required fields', () {
       final result = validator.validatePayload(payload(sessionId: ''));
+      expect(result.status, PairingValidationStatus.malformed);
+    });
+
+    test('accepts a hosts-only payload (no relay)', () {
+      final result = validator.validatePayload(
+        payload(relayUrl: '', hosts: const ['192.168.1.5:8765']),
+      );
+      expect(result.isValid, isTrue);
+    });
+
+    test('rejects a payload advertising no transport', () {
+      final result = validator.validatePayload(payload(relayUrl: ''));
       expect(result.status, PairingValidationStatus.malformed);
     });
   });

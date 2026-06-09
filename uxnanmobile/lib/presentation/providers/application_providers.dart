@@ -31,9 +31,10 @@ import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
 final secureTransportLayerProvider =
     Provider<SecureTransportLayer>((ref) => SecureTransportLayer());
 
-/// Chooses and opens the transport for a device (relay; LAN deferred).
+/// Chooses and opens the transport for a device: direct LAN/Tailscale hosts
+/// first, then the relay fallback (spec 02a §5.9.3).
 final transportSelectorProvider = Provider<TransportSelector>(
-  (ref) => RelayTransportSelector(WebSocketChannelTransport.new),
+  (ref) => DirectTransportSelector(WebSocketChannelTransport.new),
 );
 
 /// Validates pairing QR payloads.

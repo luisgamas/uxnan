@@ -1998,6 +1998,11 @@ class $TrustedDevicesTableTable extends TrustedDevicesTable
   late final GeneratedColumn<String> relayUrl = GeneratedColumn<String>(
       'relay_url', aliasedName, false,
       type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _hostsMeta = const VerificationMeta('hosts');
+  @override
+  late final GeneratedColumn<String> hosts = GeneratedColumn<String>(
+      'hosts', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   static const VerificationMeta _sessionIdMeta =
       const VerificationMeta('sessionId');
   @override
@@ -2017,8 +2022,15 @@ class $TrustedDevicesTableTable extends TrustedDevicesTable
       'last_seen_ms', aliasedName, true,
       type: DriftSqlType.int, requiredDuringInsert: false);
   @override
-  List<GeneratedColumn> get $columns =>
-      [macDeviceId, displayName, relayUrl, sessionId, pairedAtMs, lastSeenMs];
+  List<GeneratedColumn> get $columns => [
+        macDeviceId,
+        displayName,
+        relayUrl,
+        hosts,
+        sessionId,
+        pairedAtMs,
+        lastSeenMs
+      ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -2050,6 +2062,10 @@ class $TrustedDevicesTableTable extends TrustedDevicesTable
           relayUrl.isAcceptableOrUnknown(data['relay_url']!, _relayUrlMeta));
     } else if (isInserting) {
       context.missing(_relayUrlMeta);
+    }
+    if (data.containsKey('hosts')) {
+      context.handle(
+          _hostsMeta, hosts.isAcceptableOrUnknown(data['hosts']!, _hostsMeta));
     }
     if (data.containsKey('session_id')) {
       context.handle(_sessionIdMeta,
@@ -2086,6 +2102,8 @@ class $TrustedDevicesTableTable extends TrustedDevicesTable
           .read(DriftSqlType.string, data['${effectivePrefix}display_name'])!,
       relayUrl: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}relay_url'])!,
+      hosts: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}hosts']),
       sessionId: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}session_id'])!,
       pairedAtMs: attachedDatabase.typeMapping
@@ -2109,8 +2127,12 @@ class TrustedDeviceRow extends DataClass
   /// Human readable device name.
   final String displayName;
 
-  /// Relay URL used to reach the bridge.
+  /// Relay URL used to reach the bridge (empty for a LAN/Tailscale-only device).
   final String relayUrl;
+
+  /// Direct `host:port` addresses (LAN / Tailscale) advertised in the pairing
+  /// QR, stored newline-separated. Nullable/absent for older rows (schema < 4).
+  final String? hosts;
 
   /// Session id established during pairing.
   final String sessionId;
@@ -2124,6 +2146,7 @@ class TrustedDeviceRow extends DataClass
       {required this.macDeviceId,
       required this.displayName,
       required this.relayUrl,
+      this.hosts,
       required this.sessionId,
       required this.pairedAtMs,
       this.lastSeenMs});
@@ -2133,6 +2156,9 @@ class TrustedDeviceRow extends DataClass
     map['mac_device_id'] = Variable<String>(macDeviceId);
     map['display_name'] = Variable<String>(displayName);
     map['relay_url'] = Variable<String>(relayUrl);
+    if (!nullToAbsent || hosts != null) {
+      map['hosts'] = Variable<String>(hosts);
+    }
     map['session_id'] = Variable<String>(sessionId);
     map['paired_at_ms'] = Variable<int>(pairedAtMs);
     if (!nullToAbsent || lastSeenMs != null) {
@@ -2146,6 +2172,8 @@ class TrustedDeviceRow extends DataClass
       macDeviceId: Value(macDeviceId),
       displayName: Value(displayName),
       relayUrl: Value(relayUrl),
+      hosts:
+          hosts == null && nullToAbsent ? const Value.absent() : Value(hosts),
       sessionId: Value(sessionId),
       pairedAtMs: Value(pairedAtMs),
       lastSeenMs: lastSeenMs == null && nullToAbsent
@@ -2161,6 +2189,7 @@ class TrustedDeviceRow extends DataClass
       macDeviceId: serializer.fromJson<String>(json['macDeviceId']),
       displayName: serializer.fromJson<String>(json['displayName']),
       relayUrl: serializer.fromJson<String>(json['relayUrl']),
+      hosts: serializer.fromJson<String?>(json['hosts']),
       sessionId: serializer.fromJson<String>(json['sessionId']),
       pairedAtMs: serializer.fromJson<int>(json['pairedAtMs']),
       lastSeenMs: serializer.fromJson<int?>(json['lastSeenMs']),
@@ -2173,6 +2202,7 @@ class TrustedDeviceRow extends DataClass
       'macDeviceId': serializer.toJson<String>(macDeviceId),
       'displayName': serializer.toJson<String>(displayName),
       'relayUrl': serializer.toJson<String>(relayUrl),
+      'hosts': serializer.toJson<String?>(hosts),
       'sessionId': serializer.toJson<String>(sessionId),
       'pairedAtMs': serializer.toJson<int>(pairedAtMs),
       'lastSeenMs': serializer.toJson<int?>(lastSeenMs),
@@ -2183,6 +2213,7 @@ class TrustedDeviceRow extends DataClass
           {String? macDeviceId,
           String? displayName,
           String? relayUrl,
+          Value<String?> hosts = const Value.absent(),
           String? sessionId,
           int? pairedAtMs,
           Value<int?> lastSeenMs = const Value.absent()}) =>
@@ -2190,6 +2221,7 @@ class TrustedDeviceRow extends DataClass
         macDeviceId: macDeviceId ?? this.macDeviceId,
         displayName: displayName ?? this.displayName,
         relayUrl: relayUrl ?? this.relayUrl,
+        hosts: hosts.present ? hosts.value : this.hosts,
         sessionId: sessionId ?? this.sessionId,
         pairedAtMs: pairedAtMs ?? this.pairedAtMs,
         lastSeenMs: lastSeenMs.present ? lastSeenMs.value : this.lastSeenMs,
@@ -2201,6 +2233,7 @@ class TrustedDeviceRow extends DataClass
       displayName:
           data.displayName.present ? data.displayName.value : this.displayName,
       relayUrl: data.relayUrl.present ? data.relayUrl.value : this.relayUrl,
+      hosts: data.hosts.present ? data.hosts.value : this.hosts,
       sessionId: data.sessionId.present ? data.sessionId.value : this.sessionId,
       pairedAtMs:
           data.pairedAtMs.present ? data.pairedAtMs.value : this.pairedAtMs,
@@ -2215,6 +2248,7 @@ class TrustedDeviceRow extends DataClass
           ..write('macDeviceId: $macDeviceId, ')
           ..write('displayName: $displayName, ')
           ..write('relayUrl: $relayUrl, ')
+          ..write('hosts: $hosts, ')
           ..write('sessionId: $sessionId, ')
           ..write('pairedAtMs: $pairedAtMs, ')
           ..write('lastSeenMs: $lastSeenMs')
@@ -2223,8 +2257,8 @@ class TrustedDeviceRow extends DataClass
   }
 
   @override
-  int get hashCode => Object.hash(
-      macDeviceId, displayName, relayUrl, sessionId, pairedAtMs, lastSeenMs);
+  int get hashCode => Object.hash(macDeviceId, displayName, relayUrl, hosts,
+      sessionId, pairedAtMs, lastSeenMs);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -2232,6 +2266,7 @@ class TrustedDeviceRow extends DataClass
           other.macDeviceId == this.macDeviceId &&
           other.displayName == this.displayName &&
           other.relayUrl == this.relayUrl &&
+          other.hosts == this.hosts &&
           other.sessionId == this.sessionId &&
           other.pairedAtMs == this.pairedAtMs &&
           other.lastSeenMs == this.lastSeenMs);
@@ -2241,6 +2276,7 @@ class TrustedDevicesTableCompanion extends UpdateCompanion<TrustedDeviceRow> {
   final Value<String> macDeviceId;
   final Value<String> displayName;
   final Value<String> relayUrl;
+  final Value<String?> hosts;
   final Value<String> sessionId;
   final Value<int> pairedAtMs;
   final Value<int?> lastSeenMs;
@@ -2249,6 +2285,7 @@ class TrustedDevicesTableCompanion extends UpdateCompanion<TrustedDeviceRow> {
     this.macDeviceId = const Value.absent(),
     this.displayName = const Value.absent(),
     this.relayUrl = const Value.absent(),
+    this.hosts = const Value.absent(),
     this.sessionId = const Value.absent(),
     this.pairedAtMs = const Value.absent(),
     this.lastSeenMs = const Value.absent(),
@@ -2258,6 +2295,7 @@ class TrustedDevicesTableCompanion extends UpdateCompanion<TrustedDeviceRow> {
     required String macDeviceId,
     required String displayName,
     required String relayUrl,
+    this.hosts = const Value.absent(),
     required String sessionId,
     required int pairedAtMs,
     this.lastSeenMs = const Value.absent(),
@@ -2271,6 +2309,7 @@ class TrustedDevicesTableCompanion extends UpdateCompanion<TrustedDeviceRow> {
     Expression<String>? macDeviceId,
     Expression<String>? displayName,
     Expression<String>? relayUrl,
+    Expression<String>? hosts,
     Expression<String>? sessionId,
     Expression<int>? pairedAtMs,
     Expression<int>? lastSeenMs,
@@ -2280,6 +2319,7 @@ class TrustedDevicesTableCompanion extends UpdateCompanion<TrustedDeviceRow> {
       if (macDeviceId != null) 'mac_device_id': macDeviceId,
       if (displayName != null) 'display_name': displayName,
       if (relayUrl != null) 'relay_url': relayUrl,
+      if (hosts != null) 'hosts': hosts,
       if (sessionId != null) 'session_id': sessionId,
       if (pairedAtMs != null) 'paired_at_ms': pairedAtMs,
       if (lastSeenMs != null) 'last_seen_ms': lastSeenMs,
@@ -2291,6 +2331,7 @@ class TrustedDevicesTableCompanion extends UpdateCompanion<TrustedDeviceRow> {
       {Value<String>? macDeviceId,
       Value<String>? displayName,
       Value<String>? relayUrl,
+      Value<String?>? hosts,
       Value<String>? sessionId,
       Value<int>? pairedAtMs,
       Value<int?>? lastSeenMs,
@@ -2299,6 +2340,7 @@ class TrustedDevicesTableCompanion extends UpdateCompanion<TrustedDeviceRow> {
       macDeviceId: macDeviceId ?? this.macDeviceId,
       displayName: displayName ?? this.displayName,
       relayUrl: relayUrl ?? this.relayUrl,
+      hosts: hosts ?? this.hosts,
       sessionId: sessionId ?? this.sessionId,
       pairedAtMs: pairedAtMs ?? this.pairedAtMs,
       lastSeenMs: lastSeenMs ?? this.lastSeenMs,
@@ -2317,6 +2359,9 @@ class TrustedDevicesTableCompanion extends UpdateCompanion<TrustedDeviceRow> {
     }
     if (relayUrl.present) {
       map['relay_url'] = Variable<String>(relayUrl.value);
+    }
+    if (hosts.present) {
+      map['hosts'] = Variable<String>(hosts.value);
     }
     if (sessionId.present) {
       map['session_id'] = Variable<String>(sessionId.value);
@@ -2339,6 +2384,7 @@ class TrustedDevicesTableCompanion extends UpdateCompanion<TrustedDeviceRow> {
           ..write('macDeviceId: $macDeviceId, ')
           ..write('displayName: $displayName, ')
           ..write('relayUrl: $relayUrl, ')
+          ..write('hosts: $hosts, ')
           ..write('sessionId: $sessionId, ')
           ..write('pairedAtMs: $pairedAtMs, ')
           ..write('lastSeenMs: $lastSeenMs, ')
@@ -4050,6 +4096,7 @@ typedef $$TrustedDevicesTableTableCreateCompanionBuilder
   required String macDeviceId,
   required String displayName,
   required String relayUrl,
+  Value<String?> hosts,
   required String sessionId,
   required int pairedAtMs,
   Value<int?> lastSeenMs,
@@ -4060,6 +4107,7 @@ typedef $$TrustedDevicesTableTableUpdateCompanionBuilder
   Value<String> macDeviceId,
   Value<String> displayName,
   Value<String> relayUrl,
+  Value<String?> hosts,
   Value<String> sessionId,
   Value<int> pairedAtMs,
   Value<int?> lastSeenMs,
@@ -4083,6 +4131,9 @@ class $$TrustedDevicesTableTableFilterComposer
 
   ColumnFilters<String> get relayUrl => $composableBuilder(
       column: $table.relayUrl, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get hosts => $composableBuilder(
+      column: $table.hosts, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get sessionId => $composableBuilder(
       column: $table.sessionId, builder: (column) => ColumnFilters(column));
@@ -4112,6 +4163,9 @@ class $$TrustedDevicesTableTableOrderingComposer
   ColumnOrderings<String> get relayUrl => $composableBuilder(
       column: $table.relayUrl, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<String> get hosts => $composableBuilder(
+      column: $table.hosts, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<String> get sessionId => $composableBuilder(
       column: $table.sessionId, builder: (column) => ColumnOrderings(column));
 
@@ -4139,6 +4193,9 @@ class $$TrustedDevicesTableTableAnnotationComposer
 
   GeneratedColumn<String> get relayUrl =>
       $composableBuilder(column: $table.relayUrl, builder: (column) => column);
+
+  GeneratedColumn<String> get hosts =>
+      $composableBuilder(column: $table.hosts, builder: (column) => column);
 
   GeneratedColumn<String> get sessionId =>
       $composableBuilder(column: $table.sessionId, builder: (column) => column);
@@ -4183,6 +4240,7 @@ class $$TrustedDevicesTableTableTableManager extends RootTableManager<
             Value<String> macDeviceId = const Value.absent(),
             Value<String> displayName = const Value.absent(),
             Value<String> relayUrl = const Value.absent(),
+            Value<String?> hosts = const Value.absent(),
             Value<String> sessionId = const Value.absent(),
             Value<int> pairedAtMs = const Value.absent(),
             Value<int?> lastSeenMs = const Value.absent(),
@@ -4192,6 +4250,7 @@ class $$TrustedDevicesTableTableTableManager extends RootTableManager<
             macDeviceId: macDeviceId,
             displayName: displayName,
             relayUrl: relayUrl,
+            hosts: hosts,
             sessionId: sessionId,
             pairedAtMs: pairedAtMs,
             lastSeenMs: lastSeenMs,
@@ -4201,6 +4260,7 @@ class $$TrustedDevicesTableTableTableManager extends RootTableManager<
             required String macDeviceId,
             required String displayName,
             required String relayUrl,
+            Value<String?> hosts = const Value.absent(),
             required String sessionId,
             required int pairedAtMs,
             Value<int?> lastSeenMs = const Value.absent(),
@@ -4210,6 +4270,7 @@ class $$TrustedDevicesTableTableTableManager extends RootTableManager<
             macDeviceId: macDeviceId,
             displayName: displayName,
             relayUrl: relayUrl,
+            hosts: hosts,
             sessionId: sessionId,
             pairedAtMs: pairedAtMs,
             lastSeenMs: lastSeenMs,

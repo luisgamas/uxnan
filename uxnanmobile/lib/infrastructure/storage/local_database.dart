@@ -34,7 +34,7 @@ class UxnanDatabase extends _$UxnanDatabase {
   UxnanDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -55,6 +55,11 @@ class UxnanDatabase extends _$UxnanDatabase {
             await (delete(trustedDevicesTable)
                   ..where((d) => d.macDeviceId.equals('demo-mac')))
                 .go();
+          }
+          // v4: trusted devices carry direct LAN/Tailscale hosts (nullable) so
+          // the phone can connect directly before falling back to the relay.
+          if (from < 4) {
+            await m.addColumn(trustedDevicesTable, trustedDevicesTable.hosts);
           }
         },
         beforeOpen: (details) async {

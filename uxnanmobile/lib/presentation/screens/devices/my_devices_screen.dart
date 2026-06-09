@@ -156,7 +156,7 @@ class _DeviceCard extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-    final host = _relayHost(device.relayUrl);
+    final host = _addressLabel(device);
 
     return Material(
       color: colors.surfaceContainerHighest,
@@ -281,9 +281,15 @@ class _DeviceCard extends StatelessWidget {
     return '${l10n.deviceLastSeenLabel}: ${_relativeTime(lastSeen)}';
   }
 
-  static String _relayHost(String relayUrl) {
-    final host = Uri.tryParse(relayUrl)?.host;
-    return host == null || host.isEmpty ? relayUrl : host;
+  /// The address shown under the device name: the relay host when a relay is
+  /// configured, otherwise the first direct LAN/Tailscale host (a pure
+  /// LAN/Tailscale device has no relay).
+  static String _addressLabel(TrustedDevice device) {
+    if (device.relayUrl.isNotEmpty) {
+      final host = Uri.tryParse(device.relayUrl)?.host;
+      return host == null || host.isEmpty ? device.relayUrl : host;
+    }
+    return device.hosts.isNotEmpty ? device.hosts.first : '';
   }
 }
 

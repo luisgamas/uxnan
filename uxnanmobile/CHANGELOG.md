@@ -8,6 +8,29 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Direct LAN/Tailscale transport (relay now optional)** — consumes the
+  bridge's pairing-QR `hosts` so the phone connects directly, with the relay as
+  a fallback (spec 02a §5.9.3; bridge `docs/connectivity.md`):
+  - `PairingPayload` now parses `hosts: List<String>` and treats `relay` as
+    optional (a pure LAN/Tailscale QR carries only `hosts`); the structural
+    parser is tolerant and `PairingValidator` enforces "at least one transport"
+    — mirroring `shared` `validatePairingPayload`. **Fixes** the old parser,
+    which threw on a relay-less QR.
+  - `TrustedDevice` carries `hosts`, persisted by `TrustedDeviceRepository`
+    (drift schema → v4: additive, nullable `trusted_devices.hosts` column,
+    newline-separated; relay-only devices load with empty hosts).
+  - `DirectTransportSelector` (now the default `transportSelectorProvider`)
+    tries each direct host as a plain `ws://host:port` endpoint (the bridge's
+    LAN server needs no relay routing headers) with a short per-host timeout,
+    then falls back to the relay with the `x-role`/`x-session-id` headers.
+    `processPairingPayload` carries the scanned `hosts` onto the device.
+  - UI (proposal, pending on-device review): the `MyDevicesScreen` card shows
+    the first direct host when a device has no relay (instead of a blank).
+  - Tests: payload hosts parse + relay-optional, validator transport rule,
+    repository hosts round-trip, and `DirectTransportSelector` (direct-first,
+    host→host→relay fallback, per-host timeout, no-transport error, scheme
+    passthrough).
+
 - **Archive / unarchive threads + an "Archived" screen** — completes the
   thread-actions set (rename/delete already shipped):
   - `ThreadManager.archiveThread` / `unarchiveThread` flip the local

@@ -176,6 +176,7 @@ class SessionCoordinator {
       displayName: payload.displayName,
       macIdentityPublicKey: payload.macIdentityPublicKey,
       relayUrl: payload.relayUrl,
+      hosts: payload.hosts,
       sessionId: payload.sessionId,
       pairedAt: DateTime.now(),
     );

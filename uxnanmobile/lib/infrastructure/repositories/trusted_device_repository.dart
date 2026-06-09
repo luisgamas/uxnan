@@ -24,6 +24,7 @@ class TrustedDeviceRepository implements ITrustedDeviceRepository {
             macDeviceId: Value(device.macDeviceId),
             displayName: Value(device.displayName),
             relayUrl: Value(device.relayUrl),
+            hosts: Value(_encodeHosts(device.hosts)),
             sessionId: Value(device.sessionId),
             pairedAtMs: Value(device.pairedAt.millisecondsSinceEpoch),
             lastSeenMs: Value(device.lastSeen?.millisecondsSinceEpoch),
@@ -87,10 +88,24 @@ class TrustedDeviceRepository implements ITrustedDeviceRepository {
         displayName: row.displayName,
         macIdentityPublicKey: macKey,
         relayUrl: row.relayUrl,
+        hosts: _decodeHosts(row.hosts),
         sessionId: row.sessionId,
         pairedAt: DateTime.fromMillisecondsSinceEpoch(row.pairedAtMs),
         lastSeen: row.lastSeenMs != null
             ? DateTime.fromMillisecondsSinceEpoch(row.lastSeenMs!)
             : null,
       );
+
+  /// Serializes hosts newline-separated; `null` for an empty list so older rows
+  /// and relay-only devices stay indistinguishable on read.
+  static String? _encodeHosts(List<String> hosts) =>
+      hosts.isEmpty ? null : hosts.join('\n');
+
+  static List<String> _decodeHosts(String? raw) {
+    if (raw == null || raw.isEmpty) return const [];
+    return raw
+        .split('\n')
+        .where((h) => h.isNotEmpty)
+        .toList(growable: false);
+  }
 }

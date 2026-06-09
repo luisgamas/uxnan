@@ -85,9 +85,16 @@ class PairingValidator {
     }
     if (payload.sessionId.isEmpty ||
         payload.macDeviceId.isEmpty ||
-        payload.relayUrl.isEmpty ||
         payload.macIdentityPublicKey.isEmpty) {
       return PairingValidationResult.malformed('Missing required fields');
+    }
+    // At least one transport must be advertised: a relay URL and/or direct
+    // LAN/Tailscale hosts (mirrors `shared` `validatePairingPayload`). A pure
+    // LAN/Tailscale QR carries only `hosts`.
+    final hasRelay = payload.relayUrl.isNotEmpty;
+    final hasHosts = payload.hosts.isNotEmpty;
+    if (!hasRelay && !hasHosts) {
+      return PairingValidationResult.malformed('No transport advertised');
     }
     final nowMs = DateTime.now().millisecondsSinceEpoch;
     final toleranceMs = ProtocolConstants.clockSkewTolerance.inMilliseconds;

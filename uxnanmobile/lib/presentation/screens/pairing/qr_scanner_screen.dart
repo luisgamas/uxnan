@@ -248,10 +248,10 @@ class _PermissionRequest extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(
+            Icon(
               Icons.photo_camera_rounded,
               size: 56,
-              color: Colors.white,
+              color: colorScheme.onSurface,
               semanticLabel: 'Camera',
             ),
             const SizedBox(height: UxnanSpacing.lg),

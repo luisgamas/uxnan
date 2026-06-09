@@ -12,8 +12,12 @@ class TrustedDevicesTable extends Table {
   /// Human readable device name.
   TextColumn get displayName => text()();
 
-  /// Relay URL used to reach the bridge.
+  /// Relay URL used to reach the bridge (empty for a LAN/Tailscale-only device).
   TextColumn get relayUrl => text()();
+
+  /// Direct `host:port` addresses (LAN / Tailscale) advertised in the pairing
+  /// QR, stored newline-separated. Nullable/absent for older rows (schema < 4).
+  TextColumn get hosts => text().nullable()();
 
   /// Session id established during pairing.
   TextColumn get sessionId => text()();

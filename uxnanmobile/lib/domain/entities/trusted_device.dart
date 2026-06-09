@@ -16,6 +16,7 @@ class TrustedDevice extends Equatable {
     required this.relayUrl,
     required this.sessionId,
     required this.pairedAt,
+    this.hosts = const [],
     this.lastSeen,
   });
 
@@ -28,8 +29,14 @@ class TrustedDevice extends Equatable {
   /// Bridge's Ed25519 identity public key (32 bytes).
   final Uint8List macIdentityPublicKey;
 
-  /// Relay URL used to reach the bridge.
+  /// Relay URL used to reach the bridge, or empty for a pure LAN/Tailscale
+  /// device that is only reachable through [hosts].
   final String relayUrl;
+
+  /// Direct `host:port` addresses (LAN / Tailscale `100.x`) advertised in the
+  /// pairing QR. The transport selector tries these before [relayUrl]. May be
+  /// empty (relay-only device).
+  final List<String> hosts;
 
   /// Session id established during pairing.
   final String sessionId;
@@ -44,6 +51,7 @@ class TrustedDevice extends Equatable {
   TrustedDevice copyWith({
     String? displayName,
     String? relayUrl,
+    List<String>? hosts,
     String? sessionId,
     DateTime? lastSeen,
   }) {
@@ -52,6 +60,7 @@ class TrustedDevice extends Equatable {
       displayName: displayName ?? this.displayName,
       macIdentityPublicKey: macIdentityPublicKey,
       relayUrl: relayUrl ?? this.relayUrl,
+      hosts: hosts ?? this.hosts,
       sessionId: sessionId ?? this.sessionId,
       pairedAt: pairedAt,
       lastSeen: lastSeen ?? this.lastSeen,
@@ -64,6 +73,7 @@ class TrustedDevice extends Equatable {
         displayName,
         macIdentityPublicKey,
         relayUrl,
+        hosts,
         sessionId,
         pairedAt,
         lastSeen,

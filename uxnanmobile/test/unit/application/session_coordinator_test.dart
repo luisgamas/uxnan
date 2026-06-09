@@ -347,6 +347,7 @@ void main() {
     final payload = PairingPayload(
       version: 2,
       relayUrl: 'wss://relay.test',
+      hosts: const [],
       sessionId: 'session-xyz',
       macDeviceId: 'mac-1',
       macIdentityPublicKey: bridgeId.publicKey,

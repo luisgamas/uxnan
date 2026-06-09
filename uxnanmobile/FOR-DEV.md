@@ -63,8 +63,22 @@ APNs) and is best done once a live bridge is reachable.
 ## Connection / transport
 
 - ☑ **IncomingMessageProcessor** — DONE (conversation managers).
-- ☐ **TransportSelector LAN discovery** — prefer a direct LAN socket before the
-  relay (spec §5.9.3); needs mDNS/Bonjour + the iOS local-network permission.
+- ☑ **Direct LAN/Tailscale transport (hosts-first, relay fallback)** — DONE:
+  the bridge advertises its direct `host:port` addresses in the pairing QR
+  (`hosts`), so the phone no longer needs mDNS/Bonjour discovery.
+  `DirectTransportSelector` tries each direct host (`ws://host:port`, short
+  timeout) before falling back to the relay (spec §5.9.3); `PairingPayload`/
+  `TrustedDevice`/the drift `trusted_devices` table (v4) carry `hosts`, and
+  `relay` is now optional. **Still open:**
+  - ☐ **On-device verification** on a real LAN and over Tailscale (the QR's
+    direct addresses reachable end-to-end against a live bridge).
+  - ☐ **iOS local-network permission** (`NSLocalNetworkUsageDescription`) — a
+    direct LAN socket on iOS prompts for local-network access; add the Info.plist
+    key (FOR-HUMAN once the iOS build exists) so direct LAN works on iPhone.
+    Tailscale/relay are unaffected.
+  - ☐ **mDNS/Bonjour discovery** — only needed for a bridge that did NOT
+    advertise reachable `hosts` (e.g. dynamic IPs); the QR `hosts` cover the
+    common case, so this is now optional.
 - ☐ **Live WebSocket integration test** against a real bridge (current tests use
   an in-memory simulated bridge).
 

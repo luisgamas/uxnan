@@ -14,6 +14,7 @@ class PairingPayload extends Equatable {
   const PairingPayload({
     required this.version,
     required this.relayUrl,
+    required this.hosts,
     required this.sessionId,
     required this.macDeviceId,
     required this.macIdentityPublicKey,
@@ -35,6 +36,12 @@ class PairingPayload extends Equatable {
   }
 
   /// Parses a [PairingPayload] from its decoded JSON map.
+  ///
+  /// `relay` and `hosts` are both optional transports — the bridge guarantees
+  /// at least one is present (`shared` `validatePairingPayload`), but the
+  /// structural parse here is tolerant; the "at least one transport" rule is
+  /// enforced by `PairingValidator`. A pure LAN/Tailscale QR carries only
+  /// `hosts`.
   factory PairingPayload.fromJson(Map<String, dynamic> json) {
     T field<T>(String key) {
       final value = json[key];
@@ -44,9 +51,27 @@ class PairingPayload extends Equatable {
       return value;
     }
 
+    final rawRelay = json['relay'];
+    if (rawRelay != null && rawRelay is! String) {
+      throw const FormatException('Invalid pairing field: relay');
+    }
+    final rawHosts = json['hosts'];
+    if (rawHosts != null && rawHosts is! List) {
+      throw const FormatException('Invalid pairing field: hosts');
+    }
+    final hosts = rawHosts == null
+        ? const <String>[]
+        : (rawHosts as List).map((h) {
+            if (h is! String) {
+              throw const FormatException('Invalid pairing host entry');
+            }
+            return h;
+          }).toList(growable: false);
+
     return PairingPayload(
       version: field<int>('v'),
-      relayUrl: field<String>('relay'),
+      relayUrl: rawRelay as String? ?? '',
+      hosts: hosts,
       sessionId: field<String>('sessionId'),
       macDeviceId: field<String>('macDeviceId'),
       macIdentityPublicKey: field<String>('macIdentityPublicKey').fromHex(),
@@ -58,8 +83,14 @@ class PairingPayload extends Equatable {
   /// QR format version.
   final int version;
 
-  /// Relay URL the bridge is reachable through.
+  /// Relay URL the bridge is reachable through, or empty for a pure
+  /// LAN/Tailscale setup that advertises only [hosts].
   final String relayUrl;
+
+  /// Direct `host:port` addresses where the bridge's LAN server listens (its
+  /// non-internal IPv4s — LAN and, if up, a Tailscale `100.x` address). The
+  /// phone tries these FIRST and falls back to [relayUrl]. May be empty.
+  final List<String> hosts;
 
   /// Session id to use for the connection.
   final String sessionId;
@@ -84,6 +115,7 @@ class PairingPayload extends Equatable {
   List<Object?> get props => [
         version,
         relayUrl,
+        hosts,
         sessionId,
         macDeviceId,
         macIdentityPublicKey,
