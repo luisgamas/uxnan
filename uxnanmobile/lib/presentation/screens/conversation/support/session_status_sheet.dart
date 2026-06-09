@@ -119,10 +119,11 @@ class _SessionStatusSheetState extends State<SessionStatusSheet> {
           UxnanSpacing.lg,
           UxnanSpacing.lg,
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
             _SectionHeader(label: l10n.environmentTitle),
             _StatusRow(
               icon: Icons.auto_awesome_outlined,
@@ -177,7 +178,8 @@ class _SessionStatusSheetState extends State<SessionStatusSheet> {
           ],
         ),
       ),
-    );
+    ),
+  );
   }
 }
 
