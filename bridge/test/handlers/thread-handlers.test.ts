@@ -17,7 +17,10 @@ async function boot(): Promise<{ bridge: Bridge; baseDir: string }> {
   return { bridge, baseDir };
 }
 
-async function waitFor(predicate: () => Promise<boolean>, timeoutMs = 10000): Promise<void> {
+// 30s default: the predicate resolves in ~50ms in isolation; the generous budget
+// only guards against CPU starvation when node:test runs all files in parallel on
+// Windows (documented flake — not a correctness issue).
+async function waitFor(predicate: () => Promise<boolean>, timeoutMs = 30000): Promise<void> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     if (await predicate()) return;
@@ -56,13 +59,15 @@ test('thread/start then turn/send routes through the echo agent end-to-end', asy
   await rm(baseDir, { recursive: true, force: true });
 });
 
-test('agent/list reports the registered agents (echo + opencode)', async () => {
+test('agent/list reports the registered agents (echo + opencode + claude-code + codex)', async () => {
   const { bridge, baseDir } = await boot();
   const res = await bridge.router.dispatch(makeRequest('1', 'agent/list', {}));
   assert.ok('result' in res);
   const ids = (res.result as { agents: { agentId: string }[] }).agents.map((a) => a.agentId);
   assert.ok(ids.includes('echo'));
   assert.ok(ids.includes('opencode'));
+  assert.ok(ids.includes('claude-code'));
+  assert.ok(ids.includes('codex'));
   await bridge.stop();
   await rm(baseDir, { recursive: true, force: true });
 });

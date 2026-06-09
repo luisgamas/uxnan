@@ -5,10 +5,59 @@ must always build and run without them.
 
 ## Open items
 
-_None for the bridge itself._
+_No secret assets for the bridge itself._
 
-The bridge needs no human-provided assets: its Ed25519 identity is generated and
+The bridge needs no human-provided secrets: its Ed25519 identity is generated and
 stored in the OS keychain at runtime (no key files to provide).
+
+### Agent CLIs — install + login (per agent you want to use)
+
+The bridge does **not** embed any AI model or call a provider API. For each agent
+it drives, it spawns that vendor's **official local CLI** as a child process and
+talks to it over stdio — exactly as you would in a terminal. So each agent you
+want available must be **installed and logged in by you, with your own account /
+subscription**, on the PC running the bridge. The bridge stores **no** API keys or
+tokens; auth and billing are entirely the CLI's own (its existing login). This is
+the supported "headless" use of each official CLI (`claude -p`, `codex exec`,
+`opencode run`) — it is **not** an unofficial API wrapper, token re-use, SDK
+embedding, or reselling, and it does not require a separate paid account beyond
+whatever that CLI is already authenticated with.
+
+| Agent | CLI | Install | Login | Notes |
+|---|---|---|---|---|
+| OpenCode | `opencode` | vendor installer / npm | per OpenCode | default agent; native `opencode.exe` resolved on Windows |
+| Claude Code | `claude` | native installer (`~/.local/bin/claude`) or npm `@anthropic-ai/claude-code` | `claude` (Anthropic account / subscription) | runs `claude -p`; default permission posture `acceptEdits` (configurable) |
+| Codex | `codex` | npm `@openai/codex` (or native) | `codex login` (your OpenAI/ChatGPT account) | runs `codex exec`; default sandbox `workspace-write` (configurable). Codex's `app-server`/`exec-server` are **not** needed |
+
+A missing or logged-out CLI does not break the bridge: that agent simply shows as
+`available: false` in `agent/list`, and the others keep working. Optional per-agent
+overrides live in `~/.uxnan/daemon-config.json` under `agents.<id>`
+(`binaryPath`, `model`, `permissionMode`).
+
+> This is operational guidance, not a secret asset — no credentials are ever
+> committed or stored by the bridge.
+
+### Browse root & what the agent can reach (operational)
+
+Set `browseRoots` in `~/.uxnan/daemon-config.json` to the folder you want the
+phone to browse, e.g. your `Documents`:
+
+```json
+{ "browseRoots": ["C:\\Users\\you\\Documents"] }
+```
+
+The phone can then navigate sub-folders under that root, pick any directory as a
+thread, and start an agent rooted there — **without ever browsing above the root**
+(the `workspace/browseDirs` API rejects `..`/escape attempts).
+
+**Important scope caveat:** that "can't go above the root" confinement applies to
+the **phone's browse/read API**. The **agent process** (Claude/Codex/OpenCode) is a
+normal child process: once you start a thread in a directory, the agent runs there
+and can act on that directory and its sub-folders; its **writes** are bounded by
+the agent's sandbox posture (`permissionMode` — Codex `workspace-write`, Claude
+`acceptEdits`), but a hard OS-level read-confinement to the subtree is not provided
+(it would need a container/sandbox; tracked in `FOR-DEV.md`). Choose a `browseRoots`
+folder you are comfortable giving a coding agent access to.
 
 ### Cross-references (assets owned by other components)
 - **Push credentials** (Firebase service account / APNs `.p8`) belong to the

@@ -32,6 +32,18 @@ export {
 } from './keyring-secret-store.js';
 export { SessionState } from './session-state.js';
 export { LockFile, isProcessAlive, type LockInfo } from './lock-file.js';
+export {
+  buildServicePlan,
+  buildWindowsStartupPlan,
+  installService,
+  uninstallService,
+  currentServiceEnv,
+  isServicePlatformSupported,
+  type ServiceEnv,
+  type ServicePlan,
+  type ServiceCommand,
+  type ServicePlatform,
+} from './service-installer.js';
 export { buildBridgeStatus, type BridgeStatusInput } from './bridge-status.js';
 export { generatePairingPayload, renderPairingQr, type GeneratePairingOptions } from './qr.js';
 export {
@@ -45,17 +57,31 @@ export {
 } from './logger.js';
 
 export { BaseAgentAdapter } from './adapters/base-adapter.js';
-export { CodexAdapter } from './adapters/codex-adapter.js';
+export {
+  CodexAdapter,
+  parseCodexLine,
+  type CodexAdapterOptions,
+  type CodexEvent,
+  type CodexPermissionMode,
+} from './adapters/codex-adapter.js';
+export { resolveCodexBinary, type ResolvedCodex } from './adapters/resolve-codex.js';
 export {
   OpenCodeAdapter,
   parseOpenCodeLine,
   parseModelList,
   type OpenCodeAdapterOptions,
   type OpenCodeEvent,
-  type SpawnFn,
-  type SpawnedProcess,
 } from './adapters/opencode-adapter.js';
 export { resolveOpenCodeBinary, type ResolvedOpenCode } from './adapters/resolve-opencode.js';
+export { defaultSpawn, type SpawnFn, type SpawnedProcess } from './adapters/spawn.js';
+export {
+  ClaudeCodeAdapter,
+  parseClaudeLine,
+  type ClaudeCodeAdapterOptions,
+  type ClaudeEvent,
+  type ClaudePermissionMode,
+} from './adapters/claude-adapter.js';
+export { resolveClaudeBinary, type ResolvedClaude } from './adapters/resolve-claude.js';
 export { EchoAgentAdapter } from './adapters/echo-agent-adapter.js';
 export {
   ProcessAgentAdapter,
@@ -116,6 +142,7 @@ export {
   type LanServerHandle,
 } from './transport/lan-server.js';
 export { wsToMessageIO, rawDataToBuffer } from './transport/ws-adapter.js';
+export { localHostPorts, type InterfaceMap } from './transport/local-hosts.js';
 export { OutboundMessageBuffer } from './transport/outbound-buffer.js';
 export { SessionRegistry, type SessionSink } from './transport/session-registry.js';
 
@@ -123,5 +150,6 @@ export { SessionRegistry, type SessionSink } from './transport/session-registry.
 export { GitService } from './git/git-service.js';
 export { runGit, GitCommandError, sanitizePaths, type RunGitResult } from './git/git-runner.js';
 export { WorkspaceService } from './workspace/workspace-service.js';
+export { BrowseService, browseRootIdFor } from './workspace/browse-service.js';
 export { CheckpointService, type CaptureOptions } from './workspace/checkpoint-service.js';
 export { resolveWithinRoot, isSensitiveName } from './workspace/path-guard.js';

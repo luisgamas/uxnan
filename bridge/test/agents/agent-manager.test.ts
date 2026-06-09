@@ -13,9 +13,11 @@ import {
   createLogger,
 } from '../../src/index.js';
 
+// 30s default: the predicate resolves in ~50ms; the generous budget only guards
+// against CPU starvation when node:test runs all files in parallel on Windows.
 async function waitFor(
   predicate: () => Promise<boolean> | boolean,
-  timeoutMs = 10000,
+  timeoutMs = 30000,
 ): Promise<void> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {

@@ -5,8 +5,21 @@ marker at its site in the code. (Distinct from `FOR-HUMAN.md`, which tracks asse
 only a human can provide.)
 
 > **How to run/validate everything** (automated tests, real-mobile E2EE interop,
-> adapter wiring, contract re-checks) is in [`../TESTING.md`](../TESTING.md).
-> Each deferred item below says what to build; TESTING.md says how to test it.
+> adapter wiring, contract re-checks) is in [`docs/testing.md`](docs/testing.md).
+> Each deferred item below says what to build; that doc says how to test it.
+> Install/config/agents/deploy docs are alongside it in [`docs/`](docs/).
+
+## Plug-and-play "install and use" — remaining sequence
+The goal is: install on the PC, log into the agents you want, point the phone at a
+folder, and go. Tracked items, in order:
+1. **Directory browsing** — DONE (bridge side: `workspace/browseDirs`); the mobile
+   browser UI is the remaining half (see Handlers → Plug-and-play below).
+2. **Autostart / `install-service`** — DONE (`install-service`/`uninstall-service`
+   run the bridge at logon per platform; see Daemon lifecycle).
+3. **Packaging / publish** — bundle `@uxnan/shared` (or publish it first) and ship
+   the bridge as `npm i -g uxnan-bridge` / a single binary (see Packaging). NEXT.
+Remote access (off-LAN) needs a hosted relay; **LAN-only works today with zero
+hosting** (the phone connects directly to the bridge on the same network).
 
 ## Transport & connectivity
 - [x] **Secure transport / E2EE handshake** — `src/transport/` (Phase 2). Relay
@@ -21,6 +34,19 @@ only a human can provide.)
 - [x] **Relay connection survives phone reconnects** — `connectRelay`
       (`src/bridge.ts`) runs a background loop: serve one phone session, then
       immediately re-arm on the relay so trusted-reconnect works without re-scanning.
+- [x] **Direct LAN/Tailscale addressing (relay optional)** —
+      `src/transport/local-hosts.ts` advertises the bridge's non-internal IPv4s
+      (LAN + Tailscale `100.x`) as `hosts` in the pairing QR; `relay` is optional in
+      the contract; `relayEnabled` config skips the relay for a pure direct setup.
+      LAN-direct is the primary path, Tailscale the recommended remote option (no
+      hosting), relay optional. See `docs/connectivity.md`. **Next steps:**
+        - **Mobile (uxnanmobile branch):** consume `hosts` — try the direct
+          addresses first, fall back to `relay`; tolerate a missing `relay` (the
+          current Dart parser requires it). This is the half that makes direct/
+          Tailscale actually used by the app.
+        - **Bind the LAN server to chosen interface(s)** — today it binds all
+          interfaces (good for Tailscale; advertise virtual-NIC IPs too). Optionally
+          let the user restrict which interfaces are served/advertised.
 - [ ] **Seq-based catch-up on reconnect** — `src/transport/server-handshake.ts`.
       Read `clientHello.resumeState.lastAppliedBridgeOutboundSeq` and replay
       envelopes with a greater `seq`. **Blocked:** the mobile `clientHello` does
@@ -48,13 +74,22 @@ only a human can provide.)
           supporting checkpoints on an unborn branch if a use case appears.
 - [x] **Thread/turn** (Phase 5) — `src/handlers/thread-context-handler.ts` +
       `src/conversation/thread-store.ts` + `src/agents/agent-manager.ts`.
-- [~] **Project** — `src/handlers/project-handler.ts`: `project/list`/`project/resolve`
-      return the configured `workspaceRoots` (manual). PLANNED (plug-and-play): a
-      `workspace/browseDirs { path? }` method so the phone can browse the
-      sub-directories under a root (a configured base, the bridge cwd, or the
-      user's home), mark which are git repos, and pick ANY directory (git or not)
-      as the project for a thread — no per-project pre-configuration. Pairing
-      stays once; project selection becomes a directory browse on the phone.
+- [x] **Plug-and-play directory browsing (bridge side)** — `workspace/browseDirs`
+      (`src/workspace/browse-service.ts` + `workspace-handler.ts`) lets the phone
+      browse sub-directories under a configured base root (`config.browseRoots`,
+      falling back to `workspaceRoots` → home), mark which are git repos, and pick
+      ANY directory as a thread's cwd (`thread/start { cwd }`) — no per-project
+      pre-config. Root-confined via `resolveWithinRoot`. `project/list`/`resolve`
+      (the manual `workspaceRoots` list) stay as-is for explicitly configured
+      projects. **Next steps (deja en FOR-DEV):**
+        - **Mobile UI** (uxnanmobile branch): a directory-browser screen that calls
+          `workspace/browseDirs`, shows the root picker + git-repo badges, navigates
+          with `parent`/`dirs`, and opens a thread on the chosen `cwd`.
+        - **Hard agent confinement** (optional): browseDirs confines the *phone API*,
+          not the agent *process*. True read-confinement of the agent to the chosen
+          subtree needs OS sandboxing (container/chroot) — out of MVP scope; for now
+          writes are bounded by each agent's sandbox posture (Codex `workspace-write`,
+          Claude `acceptEdits`). See FOR-HUMAN.md.
 - [ ] **Per-project agent selection from `AgentConfig`** — the shared
       `AgentConfig` (`agentId`, `binaryPath`, `extraArgs`, `cwd`) is defined but
       not consumed: `thread/start` currently takes an explicit `agentId/model/cwd`.
@@ -99,11 +134,30 @@ The OpenCode adapter is the template for any "one-shot per-turn CLI" agent:
    session/continue flag, cwd flag) and `parseLine` for that CLI's event shape.
    Keep `shell:false` and pass the prompt as an argv element (no injection).
 3. Register it in `startBridge` with display metadata + availability.
-- [ ] **Codex** — `codex exec --json` (JSONL events; `exec resume <id>` for
-      continuity; `-m` model, `-s` sandbox, `-c` config). Scaffold:
-      `src/adapters/codex-adapter.ts` (still the generic stub).
-- [ ] **Claude Code** — `claude -p --output-format stream-json --verbose`
-      (`--resume <id>`, `--model`). New scaffold to add.
+- [x] **Codex** — `src/adapters/codex-adapter.ts`. WIRED via `codex exec --json`
+      (`exec resume <thread_id>` for continuity, `-m` model, `-C` cwd, always
+      `--skip-git-repo-check`). Parses the JSONL stream (`thread.started` /
+      `item.completed` `agent_message` / `turn.completed` / `turn.failed`), keeps
+      the `thread_id` per thread. Sandbox posture is configurable via
+      `agents['codex'].permissionMode` (default `acceptEdits` → `-s workspace-write`;
+      also `default` → `-s read-only`, `bypassPermissions` →
+      `--dangerously-bypass-approvals-and-sandbox`). Binary resolved by
+      `resolve-codex.ts` (npm `@openai/codex/bin/codex.js` via node → PATH).
+      **`codex-server` is NOT needed**: Codex's `app-server`/`exec-server`/
+      `mcp-server` modes drive the desktop app / IDE / MCP — the bridge uses the
+      one-shot `codex exec` entry point. No model-list command, so `agent/models`
+      returns `[]` for Codex (use the default model or set `agents.codex.model`).
+- [x] **Claude Code** — `src/adapters/claude-adapter.ts`. WIRED via
+      `claude -p --output-format stream-json --verbose --include-partial-messages`
+      (`--resume <session_id>`, `--model <alias|id>`). Parses the JSONL stream
+      (`system`/`stream_event` `text_delta`/`assistant`/`result`), keeps the
+      `session_id` per thread, runs in the thread's cwd. Headless permission
+      posture is configurable via `agents['claude-code'].permissionMode`
+      (default `acceptEdits`; also `default` / `bypassPermissions`). Binary
+      resolved by `resolve-claude.ts` (native `~/.local/bin/claude[.exe]` → npm
+      `cli.js` via node → PATH). `listModels()` returns the `opus`/`sonnet`/`haiku`
+      aliases (no enumerate command). Follow-up: richer model discovery if a
+      stable source appears.
 - [ ] **Gemini CLI** — capture its non-interactive JSON stream first. New scaffold.
 - [ ] **JSONL history fallback** (`session-jsonl-history`) — read agent session
       JSONL/SQLite from disk for `turn/list` when the runtime has no fresh data
@@ -113,26 +167,18 @@ The OpenCode adapter is the template for any "one-shot per-turn CLI" agent:
 ## Daemon lifecycle & ops
 - [x] **Single-instance lock + `stop`** (Phase 3) — `src/lock-file.ts`,
       `src/cli.ts` (`bridge.lock` + SIGTERM).
-- [~] **`install-service` / autostart (so the terminals don't need to stay open)**
-      — scripts exist (`scripts/install-service-{windows.ps1,macos.sh,linux.sh}`),
-      but the CLI command only prints their paths. TO FINISH + recommended SECURE
-      design (run as the logged-in user, NEVER elevated — the Ed25519 identity is
-      already per-user in the OS keychain, so no root/SYSTEM is needed):
-        - **Windows:** a **Task Scheduler** task `At log on` for the current user
-          (`schtasks /Create /SC ONLOGON /RL LIMITED`), running
-          `node <path>/cli.js start` (or the packed `uxnan-bridge start`). LIMITED
-          run level = the user's normal token, no admin.
-        - **macOS:** a **LaunchAgent** plist in `~/Library/LaunchAgents/`
-          (`RunAtLoad` + `KeepAlive`), loaded with `launchctl` — runs as the user,
-          not a root LaunchDaemon.
-        - **Linux:** a **systemd `--user`** unit (`~/.config/systemd/user/`,
-          `systemctl --user enable --now`) + `loginctl enable-linger` so it
-          survives logout. User scope, no system unit.
-      Wire the CLI to invoke the right script per `process.platform`, add an
-      `uninstall-service`, and keep the **relay** similarly autostartable (or use
-      the deployed relay) — both the relay and bridge must be running for the
-      phone to (re)connect. Security notes: bind the LAN server to the LAN iface
-      only, keep logs redacted (done), never run elevated.
+- [x] **`install-service` / `uninstall-service` autostart** — `src/service-installer.ts`
+      + `src/cli.ts`. Runs the bridge at logon **as the logged-in user, never
+      elevated** (`node <cli.js> start`, works global-install or dev). Per platform:
+        - **Windows:** a **Task Scheduler** logon task (`schtasks /SC ONLOGON /RL
+          LIMITED`); **falls back to a hidden Startup-folder `.vbs`** when Task
+          Scheduler is denied (restricted accounts/policy) — no admin, no console
+          window. Validated end-to-end on Windows.
+        - **macOS:** a per-user **LaunchAgent** (`RunAtLoad` + `KeepAlive`).
+        - **Linux:** a **systemd `--user`** unit (`loginctl enable-linger` tip
+          printed). `buildServicePlan` is pure (unit-tested per platform).
+      Follow-ups (FOR-DEV): **relay autostart** (only needed for remote/off-LAN —
+      LAN-only needs no relay); bind the LAN server to the LAN iface only.
 - [x] **File logging** (Phase 7) — `src/logger.ts` `createFileLogger`
       (`~/.uxnan/logs/bridge-YYYY-MM-DD.log`, daily rotation + secret redaction).
       Follow-up: size-based rotation + retention/pruning of old log files.

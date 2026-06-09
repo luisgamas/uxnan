@@ -12,12 +12,19 @@
  * In this skeleton increment `start` boots the daemon core without the live
  * relay/LAN transport; `stop`/`install-service` are deferred (FOR-DEV).
  */
+import { fileURLToPath } from 'node:url';
 import { encodePairingQr } from '@uxnan/shared';
 import { startBridge } from './bridge.js';
 import { renderPairingQr } from './qr.js';
 import { BRIDGE_VERSION } from './version.js';
 import { DaemonState, DAEMON_FILES } from './daemon-state.js';
 import { LockFile, isProcessAlive } from './lock-file.js';
+import {
+  currentServiceEnv,
+  installService,
+  isServicePlatformSupported,
+  uninstallService,
+} from './service-installer.js';
 
 const USAGE = `uxnan-bridge v${BRIDGE_VERSION}
 
@@ -27,8 +34,9 @@ Commands:
   start            Start the bridge daemon (skeleton: no live transport yet)
   status           Print the current bridge status
   qr               Print the pairing QR code in the terminal
-  stop             Stop the running daemon (FOR-DEV)
-  install-service  Configure autostart for this platform (FOR-DEV)
+  stop             Stop the running daemon
+  install-service    Start the bridge automatically at logon (as the current user)
+  uninstall-service  Remove the autostart entry
   help             Show this help
 `;
 
@@ -76,13 +84,20 @@ async function cmdStart(): Promise<void> {
   const payload = bridge.generatePairingQr();
   const qr = await renderPairingQr(payload);
   process.stdout.write(`${qr}\nScan with the Uxnan mobile app.\n`);
-  try {
-    await bridge.connectRelay(payload.sessionId);
-    process.stdout.write(`Connected to relay ${payload.relay}; waiting for a phone.\n`);
-  } catch (err) {
-    process.stderr.write(
-      `Relay connection failed (${errText(err)}); LAN remains available if enabled.\n`,
-    );
+  if (payload.hosts && payload.hosts.length > 0) {
+    process.stdout.write(`Direct addresses (LAN/Tailscale): ${payload.hosts.join(', ')}\n`);
+  }
+  if (bridge.context.config.relayEnabled && payload.relay) {
+    try {
+      await bridge.connectRelay(payload.sessionId);
+      process.stdout.write(`Connected to relay ${payload.relay}; waiting for a phone.\n`);
+    } catch (err) {
+      process.stderr.write(
+        `Relay connection failed (${errText(err)}); the direct LAN/Tailscale path remains available.\n`,
+      );
+    }
+  } else {
+    process.stdout.write('Relay disabled; using the direct LAN/Tailscale path only.\n');
   }
 
   process.stdout.write('Press Ctrl+C to stop.\n');
@@ -117,11 +132,28 @@ function errText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-function cmdInstallService(): void {
-  process.stdout.write(
-    'FOR-DEV: autostart installation is not implemented yet.\n' +
-      'See bridge/scripts/install-service-{windows.ps1,macos.sh,linux.sh}.\n',
-  );
+function bridgeCliPath(): string {
+  return fileURLToPath(import.meta.url);
+}
+
+async function cmdInstallService(): Promise<void> {
+  if (!isServicePlatformSupported(process.platform)) {
+    process.stderr.write(`Autostart is not supported on '${process.platform}'.\n`);
+    process.exitCode = 1;
+    return;
+  }
+  const plan = await installService(currentServiceEnv(bridgeCliPath()));
+  process.stdout.write(`${plan.note}\n`);
+}
+
+async function cmdUninstallService(): Promise<void> {
+  if (!isServicePlatformSupported(process.platform)) {
+    process.stderr.write(`Autostart is not supported on '${process.platform}'.\n`);
+    process.exitCode = 1;
+    return;
+  }
+  const plan = await uninstallService(currentServiceEnv(bridgeCliPath()));
+  process.stdout.write(`${plan.uninstallNote}\n`);
 }
 
 async function main(): Promise<number> {
@@ -140,7 +172,10 @@ async function main(): Promise<number> {
       await cmdStop();
       return 0;
     case 'install-service':
-      cmdInstallService();
+      await cmdInstallService();
+      return 0;
+    case 'uninstall-service':
+      await cmdUninstallService();
       return 0;
     case 'help':
     case '--help':

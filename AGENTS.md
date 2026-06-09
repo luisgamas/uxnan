@@ -8,7 +8,7 @@
 **ALPHA — MVP in progress.** Architecture documentation is complete and the mobile MVP runs end-to-end with a real agent. State by component (details in each `CHANGELOG.md`; pending work in each `FOR-DEV.md`):
 - `shared/` — **implemented**: JSON-RPC + E2EE contracts and validators.
 - `relay/` — **implemented**: E2EE envelope relay by `sessionId`, rate limiting, peer-close, push endpoints (gated on Firebase/APNs creds).
-- `bridge/` — **implemented**: E2EE transport (relay + LAN), **OpenCode wired as a real agent**, per-thread agent/model/project selection, Git + workspace + checkpoints, conversation engine, push (gated), resilient relay reconnection. Remaining agents (Codex/Claude/Gemini) follow the recipe in `bridge/FOR-DEV.md`.
+- `bridge/` — **implemented**: E2EE transport (relay + LAN), **OpenCode, Claude Code and Codex wired as real agents** (each spawns its official local CLI over stdio — no provider API/SDK/keys), per-thread agent/model/project selection, Git + workspace + checkpoints, conversation engine, push (gated), resilient relay reconnection. The remaining agent (Gemini) follows the recipe in `bridge/FOR-DEV.md`.
 - `uxnanmobile/` — **MVP wired**: pairing/E2EE, auto-reconnect, streaming conversation, real model picker, per-thread actions (rename/delete/copy id, auto-title from id), capability-aware controls, notification deep-link, Git, per-PC threads, FCM push registration (gated).
 - `uxnandesktop/` — **not started** (architecture spec only).
 

@@ -133,10 +133,11 @@ punta con un agente real; la app de escritorio aún no se ha comenzado.
 
 Las push notifications están completas en código pero **gated**: la entrega real
 necesita un proyecto Firebase + config nativa (ver el `FOR-HUMAN.md` de cada
-componente). Los siguientes agentes (Codex, Claude Code, Gemini) siguen la receta
-de OpenCode en `bridge/FOR-DEV.md`. El avance por componente vive en cada
-`CHANGELOG.md`; lo pendiente en cada `FOR-DEV.md`. Cómo correr/probar:
-[`TESTING.md`](TESTING.md).
+componente). El siguiente agente (Gemini) sigue la receta de
+OpenCode/Claude Code/Codex en `bridge/FOR-DEV.md`. El avance por componente vive en
+cada `CHANGELOG.md`; lo pendiente en cada `FOR-DEV.md`. La documentación por
+componente (instalación, config, agentes, testing, deploy) vive en
+[`bridge/docs/`](bridge/docs/) y [`relay/docs/`](relay/docs/).
 
 ---
 

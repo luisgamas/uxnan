@@ -16,6 +16,7 @@ function fakeContext(): BridgeContext {
     threadStore: {} as BridgeContext['threadStore'],
     agentManager: {} as BridgeContext['agentManager'],
     projects: {} as BridgeContext['projects'],
+    browse: {} as BridgeContext['browse'],
     pushService: {} as BridgeContext['pushService'],
     logger: createLogger('test', 'error'),
     now: () => 1000,

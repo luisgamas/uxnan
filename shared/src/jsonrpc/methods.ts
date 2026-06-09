@@ -17,6 +17,7 @@ import type {
 } from '../models/git.js';
 import type {
   ApplyResult,
+  BrowseResult,
   Checkpoint,
   CheckpointDiff,
   FileContent,
@@ -97,6 +98,13 @@ export interface GitWorktreeParams {
   managed?: boolean;
 }
 
+export interface BrowseDirsParams {
+  /** Which configured root to browse (defaults to the first when omitted). */
+  rootId?: string;
+  /** Path relative to the root (`''` or omitted = the root itself). */
+  path?: string;
+}
+
 export interface CheckpointParams {
   cwd: string;
   threadId?: string;
@@ -172,6 +180,7 @@ export interface JsonRpcMethodRegistry {
   'workspace/readFile': { params: { cwd: string; path: string }; result: FileContent };
   'workspace/readImage': { params: { cwd: string; path: string }; result: ImageContent };
   'workspace/list': { params: { cwd: string }; result: WorkspaceListing };
+  'workspace/browseDirs': { params: BrowseDirsParams; result: BrowseResult };
   'workspace/checkpoint': { params: CheckpointParams; result: Checkpoint };
   'workspace/diffCheckpoint': { params: { id: string }; result: CheckpointDiff };
   'workspace/applyCheckpoint': { params: { id: string }; result: void };

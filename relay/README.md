@@ -45,3 +45,8 @@ npm run build && npm test
 ```
 
 Requires Node ≥18. ESM-only.
+
+## Docs
+
+See [`docs/`](./docs/): [deployment & hosting](./docs/deploy.md) (LAN-only vs
+Cloudflare Tunnel / Fly.io / Workers) · [testing](./docs/testing.md).

@@ -5,6 +5,114 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — direct LAN/Tailscale transport (relay now optional)
+- **Advertise direct addresses in the pairing QR**: `src/transport/local-hosts.ts`
+  enumerates the bridge's non-internal IPv4s (LAN + a Tailscale `100.x` address) and
+  `generatePairingQr` includes them as `hosts`. The phone tries these first and
+  falls back to the relay. Verified on a real machine (QR carried the LAN + Tailscale
+  addresses).
+- **`relayEnabled` config** (`daemon-config.ts`, default `true`): set `false` for a
+  pure LAN/Tailscale setup — the bridge skips the relay connection and the QR carries
+  only `hosts`. `cli.ts start` prints the direct addresses and only dials the relay
+  when enabled.
+- This makes **LAN-direct the primary plug-and-play path**, **Tailscale (or any mesh
+  VPN) the recommended remote option with no hosting**, and the **hosted relay
+  optional**. Docs: [`docs/connectivity.md`](docs/connectivity.md).
+- Tests: `localHostPorts` enumeration; QR includes/omits `hosts`/`relay`; shared
+  pairing validation for the optional-transport contract.
+
+### Added — autostart (install-service / uninstall-service)
+- **`uxnan-bridge install-service` / `uninstall-service`** (`src/service-installer.ts`
+  + `src/cli.ts`): register the bridge to start at user logon, **as the logged-in
+  user and never elevated** (`node <cli.js> start`; works for a global install or a
+  dev checkout). Per platform: Windows Task Scheduler logon task (`/SC ONLOGON /RL
+  LIMITED`) with a **hidden Startup-folder `.vbs` fallback** when Task Scheduler is
+  denied (restricted accounts/policy — no admin, no console window); macOS LaunchAgent
+  (`RunAtLoad`+`KeepAlive`); Linux systemd `--user` unit. `buildServicePlan` is pure
+  (unit-tested per platform); execution uses `execFile` (no shell). Validated
+  end-to-end on Windows (Task-Scheduler-denied → Startup `.vbs` launches node hidden).
+- Tests: per-platform plan shape + the Windows Startup fallback launcher.
+
+### Added — plug-and-play directory browsing
+- **`workspace/browseDirs`** (`src/workspace/browse-service.ts` +
+  `src/handlers/workspace-handler.ts`): the phone navigates sub-directories under a
+  configured base root (e.g. `Documents`), sees which are git repos, and picks ANY
+  directory (git or not) as a thread's cwd — no per-project pre-configuration. The
+  result includes the list of configured roots (for a root picker), the current
+  path/parent (`parent` is `null` at the root — the phone cannot go above it), the
+  absolute `cwd` to pass to `thread/start`, and the sub-directories. Confinement
+  reuses `resolveWithinRoot` (rejects `..`/absolute escapes; excludes `.git` and
+  sensitive names).
+- **Config `browseRoots`** (`daemon-config.ts`): absolute base dirs the phone may
+  browse; falls back to `workspaceRoots`, then the user's home directory. Exposed
+  on `BridgeContext.browse` (`BrowseService`).
+- **Security note:** this confines the phone-facing browse/workspace API, NOT the
+  agent process — once a directory is chosen, the agent CLI runs there and acts on
+  that subtree (writes bounded by each agent's sandbox posture). Documented in
+  `FOR-HUMAN.md`.
+- Tests: `BrowseService` (root listing, git-repo marking, `.git`/sensitive
+  exclusion, descend path/parent/cwd, escape rejection, unknown-root rejection,
+  empty-roots fallback).
+
+### Added — Codex agent
+- **Codex adapter** (`src/adapters/codex-adapter.ts`): real agent driven by
+  `codex exec --json`. Spawns one process per turn with stdin closed (Codex blocks
+  on an open stdin pipe), parses its JSONL event stream (`thread.started` /
+  `item.completed` `agent_message` / `turn.completed` / `turn.failed`) into bridge
+  events, keeps Codex's `thread_id` per thread for `exec resume <id>` continuity,
+  and runs in the thread's cwd (`-C`). The prompt is an argv element
+  (`shell:false`) — never shell-interpolated. Always passes `--skip-git-repo-check`
+  so a thread can run in any directory. Codex emits complete `agent_message` items
+  (no token deltas), so each is streamed as one chunk; `turn.completed` finalizes,
+  `turn.failed` surfaces as a turn error. Resume continuity validated live against
+  `codex-cli` 0.137.
+- **Binary resolution** (`src/adapters/resolve-codex.ts`): runs the npm
+  `@openai/codex/bin/codex.js` entry via `node` (keeps `shell:false`; the entry
+  locates the right native binary), or the `codex` launcher on PATH.
+- **Configurable headless sandbox posture** (reuses `AgentSettings.permissionMode`):
+  `acceptEdits` (default — `-s workspace-write`), `default` (`-s read-only`), or
+  `bypassPermissions` (`--dangerously-bypass-approvals-and-sandbox`).
+- Codex is registered in `startBridge` alongside OpenCode and Claude Code and
+  exposed via `agent/list`; no shared-contract or mobile change was needed (the
+  `'codex'` AgentId already existed). Codex's `app-server`/`exec-server`/
+  `mcp-server` modes are **not** used — `codex exec` is the one-shot entry point.
+- Tests: Codex parser + adapter (delta/complete/error/thread resume, sandbox-flag
+  mapping).
+
+### Added — Claude Code agent
+- **Claude Code adapter** (`src/adapters/claude-adapter.ts`): real agent driven by
+  `claude -p --output-format stream-json --verbose --include-partial-messages`.
+  Spawns one process per turn with stdin closed, parses its JSONL event stream
+  (`system`/`stream_event` `content_block_delta` `text_delta`/`assistant`/`result`)
+  into bridge events, keeps Claude's `session_id` per thread for `--resume`
+  continuity, and runs in the thread's cwd. The prompt is an argv element
+  (`shell:false`) — never shell-interpolated. Token deltas stream from
+  `text_delta`; if no partials arrive, the complete `assistant` message is emitted
+  as one chunk; the terminal `result` carries the authoritative final text (or
+  surfaces `is_error` as a turn error). `listModels()` exposes the stable `--model`
+  aliases (`opus`/`sonnet`/`haiku`) since Claude Code has no enumerate command.
+- **Binary resolution** (`src/adapters/resolve-claude.ts`): prefers the native
+  installer binary at `~/.local/bin/claude[.exe]`, then the npm-global
+  `@anthropic-ai/claude-code/cli.js` run via `node` (keeps `shell:false`), then the
+  `claude` launcher on PATH.
+- **Configurable headless permission posture** (`AgentSettings.permissionMode`):
+  `acceptEdits` (default — file edits auto-apply, other tools stay gated),
+  `default` (no flag), or `bypassPermissions` (`--dangerously-skip-permissions`).
+- Claude Code is registered in `startBridge` alongside OpenCode and exposed via
+  `agent/list` / `agent/models`; no shared-contract or mobile change was needed
+  (the `'claude-code'` AgentId already existed).
+- Shared spawn helper extracted to `src/adapters/spawn.ts` (reused by the OpenCode
+  and Claude Code adapters).
+- Tests: Claude parser + adapter (delta/complete/error/session continuity,
+  assistant-message fallback, permission-flag mapping, model aliases).
+
+### Changed — test runner
+- `npm test` now runs with `--test-concurrency=1` (serialized) to avoid
+  CPU-starvation flakes in the bridge end-to-end tests on Windows: several suites
+  boot a full bridge and/or spawn real child processes (git, fake agents), and
+  running them in parallel starved the conversation tests' `waitFor` polling. The
+  `waitFor` guards were also raised to 30s as a backstop.
+
 ### Added — Phase 5b (real OpenCode agent + agent/project selection)
 - **OpenCode adapter** (`src/adapters/opencode-adapter.ts`): real agent driven by
   `opencode run --format json`. Spawns one process per turn with stdin closed

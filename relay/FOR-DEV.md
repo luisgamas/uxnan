@@ -59,6 +59,6 @@ Endpoints (architecture §5.10.1–§5.10.4), in `src/push.ts` + `src/relay-serv
 - Manual smoke: `node relay/dist/src/cli.js 8787`, then `curl http://127.0.0.1:8787/health`.
 - End-to-end with the bridge: see `bridge/test/transport/relay-e2e.test.ts`
   (relay + bridge + a fake phone over a real WebSocket) and the manual plan in
-  `../TESTING.md`.
+  `docs/testing.md` / `../bridge/docs/testing.md`.
 - Push (Phase 6): test endpoints with a fake `PushSender`; real delivery needs a
   device + Firebase project (see `relay/FOR-HUMAN.md`).

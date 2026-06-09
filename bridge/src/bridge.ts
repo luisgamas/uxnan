@@ -25,13 +25,19 @@ import { FileTrustStore, type TrustStore } from './transport/trust-store.js';
 import { handleSecureConnection } from './transport/session-handler.js';
 import { connectRelayAsMac, type RelayConnection } from './transport/relay-client.js';
 import { startLanServer, type LanServerHandle } from './transport/lan-server.js';
+import { localHostPorts } from './transport/local-hosts.js';
 import { SessionRegistry } from './transport/session-registry.js';
 import { ThreadStore } from './conversation/thread-store.js';
 import { AgentManager } from './agents/agent-manager.js';
 import { EchoAgentAdapter } from './adapters/echo-agent-adapter.js';
 import { OpenCodeAdapter } from './adapters/opencode-adapter.js';
 import { resolveOpenCodeBinary } from './adapters/resolve-opencode.js';
+import { ClaudeCodeAdapter } from './adapters/claude-adapter.js';
+import { resolveClaudeBinary } from './adapters/resolve-claude.js';
+import { CodexAdapter } from './adapters/codex-adapter.js';
+import { resolveCodexBinary } from './adapters/resolve-codex.js';
 import { ProjectRegistry } from './projects/project-registry.js';
+import { BrowseService } from './workspace/browse-service.js';
 import { PushService } from './push/push-service.js';
 
 export interface StartBridgeOptions {
@@ -92,6 +98,10 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   const trustStore = new FileTrustStore(state);
   const threadStore = new ThreadStore(state);
   const projects = new ProjectRegistry(config.workspaceRoots);
+  // Browse roots fall back to the project roots, then the user's home directory.
+  const browse = new BrowseService(
+    config.browseRoots.length > 0 ? config.browseRoots : config.workspaceRoots,
+  );
   const pushService = new PushService({ relayUrl: config.relayUrl, config, logger });
   const agentManager = new AgentManager({
     store: threadStore,
@@ -117,6 +127,38 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       ...(openCodeSettings.model !== undefined ? { defaultModel: openCodeSettings.model } : {}),
     },
   );
+  // Claude Code: real agent driven via `claude -p --output-format stream-json` (see FOR-DEV.md).
+  const claudeSettings = config.agents['claude-code'] ?? {};
+  const claude = resolveClaudeBinary(claudeSettings.binaryPath);
+  agentManager.register(
+    new ClaudeCodeAdapter({
+      binaryPath: claude.binaryPath,
+      prependArgs: claude.prependArgs,
+      permissionMode: claudeSettings.permissionMode ?? 'acceptEdits',
+      ...(claudeSettings.model !== undefined ? { defaultModel: claudeSettings.model } : {}),
+    }),
+    {
+      displayName: 'Claude Code',
+      available: claude.available,
+      ...(claudeSettings.model !== undefined ? { defaultModel: claudeSettings.model } : {}),
+    },
+  );
+  // Codex: real agent driven via `codex exec --json` (see FOR-DEV.md).
+  const codexSettings = config.agents['codex'] ?? {};
+  const codex = resolveCodexBinary(codexSettings.binaryPath);
+  agentManager.register(
+    new CodexAdapter({
+      binaryPath: codex.binaryPath,
+      prependArgs: codex.prependArgs,
+      permissionMode: codexSettings.permissionMode ?? 'acceptEdits',
+      ...(codexSettings.model !== undefined ? { defaultModel: codexSettings.model } : {}),
+    }),
+    {
+      displayName: 'Codex',
+      available: codex.available,
+      ...(codexSettings.model !== undefined ? { defaultModel: codexSettings.model } : {}),
+    },
+  );
   const startedAt = now();
 
   const context: BridgeContext = {
@@ -130,6 +172,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
     threadStore,
     agentManager,
     projects,
+    browse,
     pushService,
     logger,
     now,
@@ -166,7 +209,8 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       }),
     generatePairingQr: () =>
       generatePairingPayload({
-        relayUrl: config.relayUrl,
+        ...(config.relayEnabled ? { relayUrl: config.relayUrl } : {}),
+        ...(config.lanEnabled ? { hosts: localHostPorts(config.lanPort) } : {}),
         macDeviceId: deviceState.identity.macDeviceId,
         macIdentityPublicKey: deviceState.identity.macIdentityPublicKey,
         displayName: hostname(),

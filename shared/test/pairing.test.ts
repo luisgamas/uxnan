@@ -72,3 +72,25 @@ test('parsePairingQr reports invalid JSON', () => {
   assert.ok(!result.valid);
   assert.equal(result.valid === false && result.error, 'invalid_json');
 });
+
+test('validatePairingPayload accepts a hosts-only (relay-less) payload', () => {
+  const payload = freshPayload({ hosts: ['192.168.1.20:7777', '100.64.0.5:7777'] });
+  delete (payload as Partial<PairingPayload>).relay;
+  const result = validatePairingPayload(payload, NOW);
+  assert.ok(result.valid);
+});
+
+test('validatePairingPayload requires at least one transport (relay or hosts)', () => {
+  const payload = freshPayload();
+  delete (payload as Partial<PairingPayload>).relay;
+  const result = validatePairingPayload(payload, NOW);
+  assert.ok(!result.valid);
+  assert.equal(result.valid === false && result.error, 'missing_transport');
+});
+
+test('validatePairingPayload rejects a non-array / non-string hosts', () => {
+  const bad = validatePairingPayload(freshPayload({ hosts: 'x' as unknown as string[] }), NOW);
+  assert.equal(bad.valid === false && bad.error, 'missing_field');
+  const empty = validatePairingPayload(freshPayload({ hosts: [''] }), NOW);
+  assert.equal(empty.valid === false && empty.error, 'missing_field');
+});

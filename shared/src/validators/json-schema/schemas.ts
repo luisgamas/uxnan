@@ -62,18 +62,13 @@ export const e2eeEnvelopeSchema: SchemaObject = {
 export const pairingPayloadSchema: SchemaObject = {
   $id: 'uxnan:pairing-payload',
   type: 'object',
-  required: [
-    'v',
-    'relay',
-    'sessionId',
-    'macDeviceId',
-    'macIdentityPublicKey',
-    'expiresAt',
-    'displayName',
-  ],
+  required: ['v', 'sessionId', 'macDeviceId', 'macIdentityPublicKey', 'expiresAt', 'displayName'],
+  // `relay` (string) and `hosts` (string[]) are optional transports — at least one.
+  anyOf: [{ required: ['relay'] }, { required: ['hosts'] }],
   properties: {
     v: { const: PAIRING_QR_VERSION },
     relay: { type: 'string', minLength: 1 },
+    hosts: { type: 'array', items: { type: 'string', minLength: 1 }, minItems: 1 },
     sessionId: { type: 'string', minLength: 1 },
     macDeviceId: { type: 'string', minLength: 1 },
     macIdentityPublicKey: { type: 'string', minLength: 1 },

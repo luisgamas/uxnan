@@ -24,7 +24,7 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "tsc && node --test \"dist/test/**/*.test.js\"",
+    "test": "tsc && node --test --test-concurrency=1 \"dist/test/**/*.test.js\"",
     "start": "node dist/src/cli.js start",
     "prepublishOnly": "tsc"
   },

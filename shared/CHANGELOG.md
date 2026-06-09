@@ -5,7 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed
+- **Pairing payload transports** (`e2ee/pairing-payload.ts` + Ajv schema): `relay`
+  is now **optional** and a new optional **`hosts: string[]`** carries the bridge's
+  direct `host:port` addresses (LAN + Tailscale `100.x`). Validation requires **at
+  least one** transport (`relay` or `hosts`) and adds the `missing_transport` error.
+  Enables LAN/Tailscale-direct pairing with no hosted relay. The mobile parser must
+  tolerate a missing `relay` and prefer `hosts` (try direct → relay).
+
 ### Added
+- **Plug-and-play directory browsing contracts** (`models/workspace.ts`):
+  `BrowseRoot`, `BrowseDirEntry`, `BrowseResult`, and the `workspace/browseDirs`
+  method (`{ rootId?, path? }` → `BrowseResult`) added to the method registry +
+  `METHOD_NAMES`. Lets the phone navigate sub-directories under a configured base
+  root, see which are git repos, and pick any directory as a thread's cwd. Additive
+  — existing consumers are unaffected (the mobile Dart side adds it when it builds
+  the browser UI).
 - Streaming notification contracts (`StreamNotification` + param types:
   turn started/delta/completed/error/aborted) in `jsonrpc/notifications.ts`.
 - `'echo'` added to `AgentId` (built-in reference/dev agent).
