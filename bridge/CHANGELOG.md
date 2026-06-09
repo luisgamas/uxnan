@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — per-turn token usage
+- **Context usage reporting** (`adapters/claude-adapter.ts`,
+  `adapters/codex-adapter.ts`, `agents/agent-manager.ts`): Claude parses the
+  `result` event's `usage` and reports `tokens` (input + cache + output) with
+  the model's context window (Opus/Sonnet 1M, Haiku 200K); Codex sums
+  input + output + reasoning tokens from `turn.completed.usage` (no window in
+  exec mode). `AgentManager` forwards `usage` onto the `turn/completed`
+  notification. Exposes `claudeContextWindow`/`claudeUsageTokens`/`codexUsageTokens`.
+
 ### Added — account-aware model discovery for Codex & Claude Code
 - **Codex `listModels()`** (`adapters/codex-adapter.ts`): `codex exec` has no
   enumerate command, so the adapter drives the same protocol the desktop app

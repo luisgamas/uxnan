@@ -8,6 +8,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Context-usage indicator** — consumes the new `turn/completed` `usage`:
+  `ThreadManager` tracks per-thread token usage (`contextUsageProvider`) and the
+  session environment shows a **percentage** when the model's context window is
+  known (Claude tiers) or the **raw token count** otherwise (Codex), replacing
+  the FOR-DEV placeholder in the status sheet. OpenCode reports no usage.
 - **Live conversations survive leaving the screen + per-thread activity** — the
   `ThreadManager` now buffers each thread's in-flight turn in memory (it is a
   singleton) and applies streaming events for **all** threads, not just the one

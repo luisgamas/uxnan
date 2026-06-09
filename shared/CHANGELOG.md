@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 
 ### Added
+- **Token usage on `turn/completed`** (`jsonrpc/notifications.ts`): new
+  `TurnUsage { tokens, contextWindow? }` and optional `usage` on
+  `TurnCompletedParams`, so the bridge can report a turn's context consumption
+  (and the model's window when known) for the phone's context indicator.
 - **`stream/model/resolved` notification** (`jsonrpc/notifications.ts`):
   `StreamNotification.ModelResolved` + `ModelResolvedParams { threadId, turnId,
   model }`. Carries the concrete model an agent resolved an alias to for a turn
