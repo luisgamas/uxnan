@@ -212,8 +212,14 @@ class _AgentFilterBar extends StatelessWidget implements PreferredSizeWidget {
             Padding(
               padding: const EdgeInsets.only(right: UxnanSpacing.sm),
               child: ChoiceChip(
-                avatar: _AgentChipAvatar(agent: agent),
-                label: Text(AgentVisuals.labelFor(agent)),
+                label: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _AgentChipAvatar(agent: agent),
+                    const SizedBox(width: UxnanSpacing.xs),
+                    Text(AgentVisuals.labelFor(agent)),
+                  ],
+                ),
                 selected: selected == agent,
                 onSelected: (_) => onSelected(agent),
               ),
