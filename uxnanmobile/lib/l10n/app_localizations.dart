@@ -626,17 +626,35 @@ abstract class AppLocalizations {
   /// **'Project'**
   String get newThreadProject;
 
+  /// No description provided for @newThreadWorkingDir.
+  ///
+  /// In en, this message translates to:
+  /// **'Working directory'**
+  String get newThreadWorkingDir;
+
   /// No description provided for @newThreadBrowse.
   ///
   /// In en, this message translates to:
   /// **'Browse…'**
   String get newThreadBrowse;
 
+  /// No description provided for @newThreadChangeFolder.
+  ///
+  /// In en, this message translates to:
+  /// **'Change'**
+  String get newThreadChangeFolder;
+
   /// No description provided for @newThreadFolderLabel.
   ///
   /// In en, this message translates to:
   /// **'Folder'**
   String get newThreadFolderLabel;
+
+  /// No description provided for @newThreadCapForking.
+  ///
+  /// In en, this message translates to:
+  /// **'Forking'**
+  String get newThreadCapForking;
 
   /// No description provided for @workspaceBrowseTitle.
   ///

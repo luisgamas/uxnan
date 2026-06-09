@@ -6,6 +6,17 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **New-conversation flow redesigned (Material 3).** It is now a **full-screen
+  M3 dialog** (roomier than a bottom sheet for a multi-input creation task)
+  with: a **working-directory card** that defaults to the bridge's root and a
+  "Browse…" action to pick any sub-folder (the manual project list is gone — the
+  bridge auto-roots at its launch dir), **agent cards** that clearly show each
+  agent's logo, name and **capability chips** (Streaming / Plan / Approvals /
+  Forking / Images) with a selected state, and the model field. The built-in
+  **Echo (dev) agent is hidden** from the picker.
+
 ### Added
 
 - **Folder browser for new conversations (`workspace/browseDirs`)** — a

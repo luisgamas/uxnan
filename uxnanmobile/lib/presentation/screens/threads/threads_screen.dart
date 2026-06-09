@@ -12,7 +12,7 @@ import 'package:uxnan/domain/enums/thread_status.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
-import 'package:uxnan/presentation/screens/threads/new_conversation_sheet.dart';
+import 'package:uxnan/presentation/screens/threads/new_conversation_screen.dart';
 import 'package:uxnan/presentation/screens/threads/thread_tile.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
@@ -86,7 +86,7 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
   }
 
   Future<void> _newConversation() async {
-    final threadId = await NewConversationSheet.show(context);
+    final threadId = await NewConversationScreen.show(context);
     if (threadId == null || !mounted) return;
     await ref
         .read(threadManagerProvider)
