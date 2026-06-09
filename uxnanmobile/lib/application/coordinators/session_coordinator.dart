@@ -82,6 +82,15 @@ class SessionCoordinator {
   );
   final BehaviorSubject<TrustedDevice?> _activeMac =
       BehaviorSubject<TrustedDevice?>.seeded(null);
+  // The device with a LIVE encrypted channel right now. Distinct from
+  // `_activeMac` (the device the user is browsing/selected): browsing a PC must
+  // not make it look connected. The connection indicators key off this.
+  final BehaviorSubject<TrustedDevice?> _connectedDevice =
+      BehaviorSubject<TrustedDevice?>.seeded(null);
+  // The device a connection attempt is currently in flight for (so only that
+  // PC shows "connecting", never the others).
+  final BehaviorSubject<TrustedDevice?> _connectingDevice =
+      BehaviorSubject<TrustedDevice?>.seeded(null);
   final StreamController<RpcMessage> _incoming =
       StreamController<RpcMessage>.broadcast();
 
@@ -121,6 +130,15 @@ class SessionCoordinator {
   /// The currently active bridge device, if any.
   TrustedDevice? get activeMac => _activeMac.value;
 
+  /// Stream of the device that currently has a live channel (or null).
+  Stream<TrustedDevice?> get connectedDeviceStream => _connectedDevice.stream;
+
+  /// The device that currently has a live channel, if any.
+  TrustedDevice? get connectedDevice => _connectedDevice.value;
+
+  /// Stream of the device a connection attempt is in flight for (or null).
+  Stream<TrustedDevice?> get connectingDeviceStream => _connectingDevice.stream;
+
   /// Stream of inbound requests and notifications from the bridge (responses
   /// are routed to their pending [sendRequest] futures instead).
   Stream<RpcMessage> get incomingMessages => _incoming.stream;
@@ -144,11 +162,28 @@ class SessionCoordinator {
     );
   }
 
-  /// Switches to a different trusted device, reconnecting.
+  /// Switches the live session to a different trusted device, **validating
+  /// reachability first**. The current session is kept intact and is only torn
+  /// down once the target completes its handshake — so tapping an unreachable
+  /// PC never flips it to "connected"; it stays on the current PC and the
+  /// attempt surfaces as an error. Throws if the target can't be reached.
   Future<void> switchMac(TrustedDevice device) async {
-    await disconnect();
-    setActiveDevice(device);
-    await connect();
+    if (_connectedDevice.value?.macDeviceId == device.macDeviceId &&
+        _connectionPhase.value == ConnectionPhase.connected) {
+      return; // already the live device
+    }
+    _intentionalDisconnect = false;
+    _connectingDevice.add(device);
+    try {
+      final session = await _openSession(
+        device,
+        HandshakeMode.trustedReconnect,
+      );
+      await _commitSession(device, session);
+    } on Object {
+      _connectingDevice.add(null);
+      rethrow;
+    }
   }
 
   /// Registers a scanned [payload] as a trusted device and starts the QR
@@ -246,8 +281,7 @@ class SessionCoordinator {
   }
 
   Future<void> _heartbeatTick() async {
-    final notConnected =
-        _connectionPhase.value != ConnectionPhase.connected;
+    final notConnected = _connectionPhase.value != ConnectionPhase.connected;
     if (notConnected || _channel == null) {
       return;
     }
@@ -276,6 +310,7 @@ class SessionCoordinator {
     await _transport?.disconnect().catchError((_) {});
     _transport = null;
     _channel = null;
+    _connectedDevice.add(null);
     unawaited(handleReconnect());
   }
 
@@ -294,7 +329,11 @@ class SessionCoordinator {
         'Session disconnected',
       ),
     );
-    if (!_disposed) _connectionPhase.add(ConnectionPhase.disconnected);
+    if (!_disposed) {
+      _connectedDevice.add(null);
+      _connectingDevice.add(null);
+      _connectionPhase.add(ConnectionPhase.disconnected);
+    }
   }
 
   /// Runs the reconnection loop with exponential backoff. Single-flight: a
@@ -316,6 +355,7 @@ class SessionCoordinator {
 
   Future<void> _runReconnectLoop(TrustedDevice device) async {
     _connectionPhase.add(ConnectionPhase.reconnecting);
+    _connectedDevice.add(null);
     await _rxSubscription?.cancel();
     _rxSubscription = null;
 
@@ -367,15 +407,36 @@ class SessionCoordinator {
     await _connectionPhase.close();
     await _recoveryState.close();
     await _activeMac.close();
+    await _connectedDevice.close();
+    await _connectingDevice.close();
     await _incoming.close();
   }
 
+  /// Connect/reconnect path: drives the global phase (`connecting`), opens a
+  /// session and commits it. On failure the global phase is left for the caller
+  /// (reconnect loop) or the error handler to resolve.
   Future<void> _establish(TrustedDevice device, HandshakeMode mode) async {
     _connectionPhase.add(ConnectionPhase.connecting);
+    _connectingDevice.add(device);
+    try {
+      _connectionPhase.add(ConnectionPhase.handshaking);
+      final session = await _openSession(device, mode);
+      await _commitSession(device, session);
+    } on Object {
+      _connectingDevice.add(null);
+      rethrow;
+    }
+  }
+
+  /// Opens a transport + secure channel for [device] into locals, with NO side
+  /// effects on the current session/phase — so a failed attempt (e.g. an
+  /// unreachable device during a switch) leaves any existing session untouched.
+  Future<(WebSocketTransport, SecureChannel)> _openSession(
+    TrustedDevice device,
+    HandshakeMode mode,
+  ) async {
     final transport = await _transportSelector.select(device);
     try {
-      _transport = transport;
-      _connectionPhase.add(ConnectionPhase.handshaking);
       final identity = await _identityResolver();
       final session = await _secureTransport.performHandshake(
         transport: transport,
@@ -383,24 +444,43 @@ class SessionCoordinator {
         device: device,
         mode: mode,
       );
-      _channel = _secureTransport.openChannel(session);
-      _connectionPhase.add(ConnectionPhase.syncing);
-      _startReceiving(transport);
-      await _flushOutbound();
-      _connectionPhase.add(ConnectionPhase.connected);
-      _startHeartbeat();
-      _touchLastSeen(device);
-      _recoveryState.add(
-        ConnectionRecoveryState(lastConnectedAt: DateTime.now()),
-      );
+      final channel = _secureTransport.openChannel(session);
+      return (transport, channel);
     } on Object {
       await transport.disconnect().catchError((_) {});
-      if (identical(_transport, transport)) {
-        _transport = null;
-        _channel = null;
-      }
       rethrow;
     }
+  }
+
+  /// Commits a freshly-opened [session] as the live one: tears down the
+  /// previous transport, swaps in the new channel, flushes buffered requests
+  /// and marks the phase connected. Used by the connect path and a validated
+  /// switch.
+  Future<void> _commitSession(
+    TrustedDevice device,
+    (WebSocketTransport, SecureChannel) session,
+  ) async {
+    final (transport, channel) = session;
+    _stopHeartbeat();
+    await _rxSubscription?.cancel();
+    _rxSubscription = null;
+    final previous = _transport;
+    _transport = transport;
+    _channel = channel;
+    if (previous != null && !identical(previous, transport)) {
+      await previous.disconnect().catchError((_) {});
+    }
+    _connectionPhase.add(ConnectionPhase.syncing);
+    _startReceiving(transport);
+    await _flushOutbound();
+    _connectedDevice.add(device);
+    _connectingDevice.add(null);
+    _connectionPhase.add(ConnectionPhase.connected);
+    _startHeartbeat();
+    _touchLastSeen(device);
+    _recoveryState.add(
+      ConnectionRecoveryState(lastConnectedAt: DateTime.now()),
+    );
   }
 
   void _startReceiving(WebSocketTransport transport) {

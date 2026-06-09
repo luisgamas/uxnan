@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:uxnan/domain/entities/trusted_device.dart';
-import 'package:uxnan/domain/enums/connection_phase.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
@@ -26,11 +25,23 @@ class MyDevicesScreen extends ConsumerWidget {
     context.push(AppRoutes.deviceThreads(device.macDeviceId));
   }
 
-  Future<void> _connect(WidgetRef ref, TrustedDevice device) async {
+  Future<void> _connect(
+    WidgetRef ref,
+    BuildContext context,
+    TrustedDevice device,
+  ) async {
+    final l10n = AppLocalizations.of(context);
+    final messenger = ScaffoldMessenger.of(context);
     try {
       await ref.read(sessionCoordinatorProvider).switchMac(device);
     } on Object {
-      // Connection errors surface through the connection-phase indicator.
+      // The switch validates reachability first and stays on the current PC on
+      // failure; tell the user the target couldn't be reached.
+      messenger
+        ..clearSnackBars()
+        ..showSnackBar(
+          SnackBar(content: Text(l10n.deviceConnectFailed(device.displayName))),
+        );
     }
   }
 
@@ -69,9 +80,11 @@ class MyDevicesScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
     final devices = ref.watch(trustedDevicesProvider).value ?? const [];
-    final activeId = ref.watch(activeMacProvider).value?.macDeviceId;
-    final phase = ref.watch(connectionPhaseProvider).value ??
-        ConnectionPhase.disconnected;
+    // Status keys off the device that is ACTUALLY connected / being connected,
+    // not the one merely selected for browsing — so opening a PC's threads
+    // never makes it appear connected when it isn't reachable.
+    final connectedId = ref.watch(connectedDeviceProvider).value?.macDeviceId;
+    final connectingId = ref.watch(connectingDeviceProvider).value?.macDeviceId;
 
     if (devices.isEmpty) {
       return const Scaffold(body: _PairEmptyState());
@@ -111,13 +124,12 @@ class MyDevicesScreen extends ConsumerWidget {
                   const SizedBox(height: UxnanSpacing.md),
               itemBuilder: (context, index) {
                 final device = devices[index];
-                final isActive = device.macDeviceId == activeId;
                 return _DeviceCard(
                   device: device,
-                  isActive: isActive,
-                  phase: phase,
+                  isConnected: device.macDeviceId == connectedId,
+                  isConnecting: device.macDeviceId == connectingId,
                   onOpen: () => _open(ref, context, device),
-                  onConnect: () => _connect(ref, device),
+                  onConnect: () => _connect(ref, context, device),
                   onRename: () => _rename(ref, context, device),
                   onVerify: () => _verify(ref, context, device),
                 );
@@ -133,8 +145,8 @@ class MyDevicesScreen extends ConsumerWidget {
 class _DeviceCard extends StatelessWidget {
   const _DeviceCard({
     required this.device,
-    required this.isActive,
-    required this.phase,
+    required this.isConnected,
+    required this.isConnecting,
     required this.onOpen,
     required this.onConnect,
     required this.onRename,
@@ -142,14 +154,14 @@ class _DeviceCard extends StatelessWidget {
   });
 
   final TrustedDevice device;
-  final bool isActive;
-  final ConnectionPhase phase;
+  final bool isConnected;
+  final bool isConnecting;
   final VoidCallback onOpen;
   final VoidCallback onConnect;
   final VoidCallback onRename;
   final VoidCallback onVerify;
 
-  bool get _isConnected => isActive && phase == ConnectionPhase.connected;
+  bool get _isConnected => isConnected;
 
   @override
   Widget build(BuildContext context) {
@@ -259,12 +271,19 @@ class _DeviceCard extends StatelessWidget {
               Row(
                 children: [
                   Expanded(
-                    child: _StatusLine(isActive: isActive, phase: phase),
+                    child: _StatusLine(
+                      isConnected: isConnected,
+                      isConnecting: isConnecting,
+                    ),
                   ),
-                  if (!_isConnected)
+                  if (!isConnected)
                     FilledButton.tonal(
-                      onPressed: onConnect,
-                      child: Text(l10n.deviceConnect),
+                      onPressed: isConnecting ? null : onConnect,
+                      child: Text(
+                        isConnecting
+                            ? l10n.connectionConnecting
+                            : l10n.deviceConnect,
+                      ),
                     ),
                 ],
               ),
@@ -318,33 +337,23 @@ class _PcAvatar extends StatelessWidget {
 }
 
 class _StatusLine extends StatelessWidget {
-  const _StatusLine({required this.isActive, required this.phase});
-  final bool isActive;
-  final ConnectionPhase phase;
+  const _StatusLine({required this.isConnected, required this.isConnecting});
+  final bool isConnected;
+  final bool isConnecting;
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final textTheme = Theme.of(context).textTheme;
 
-    // A device only reflects the live phase while it is the active one; any
-    // other paired PC reads as disconnected.
-    final effective = isActive ? phase : ConnectionPhase.disconnected;
-    final (label, color) = switch (effective) {
-      ConnectionPhase.connected => (
-          l10n.connectionConnected,
-          UxnanColors.connected,
-        ),
-      ConnectionPhase.connecting ||
-      ConnectionPhase.handshaking ||
-      ConnectionPhase.syncing ||
-      ConnectionPhase.reconnecting =>
-        (l10n.connectionConnecting, UxnanColors.connecting),
-      ConnectionPhase.disconnected || ConnectionPhase.error => (
-          l10n.connectionDisconnected,
-          UxnanColors.disconnected,
-        ),
-    };
+    // Truthful per-device status: connected only when this PC holds the live
+    // channel, connecting only while its own attempt is in flight, else
+    // disconnected — regardless of which PC is selected for browsing.
+    final (label, color) = isConnected
+        ? (l10n.connectionConnected, UxnanColors.connected)
+        : isConnecting
+            ? (l10n.connectionConnecting, UxnanColors.connecting)
+            : (l10n.connectionDisconnected, UxnanColors.disconnected);
 
     return Row(
       mainAxisSize: MainAxisSize.min,

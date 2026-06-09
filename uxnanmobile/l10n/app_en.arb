@@ -63,6 +63,12 @@
   "devicesTitle": "Devices",
   "deviceActive": "Active",
   "deviceConnect": "Connect",
+  "deviceConnectFailed": "Couldn't reach {device}. Staying on the current PC.",
+  "@deviceConnectFailed": {
+    "placeholders": {
+      "device": { "type": "String" }
+    }
+  },
   "deviceLastSeenLabel": "Last seen",
   "deviceNeverConnected": "Never connected",
   "devicePairedLabel": "Paired",
@@ -90,6 +96,7 @@
   "threadRenameTitle": "Rename thread",
   "threadRenameHint": "Thread title",
   "threadIdCopied": "Thread ID copied",
+  "threadResponding": "Responding…",
   "threadIdLabel": "Thread ID",
   "threadDeleteTitle": "Delete thread?",
   "threadDeleteBody": "This removes the conversation from this device.",

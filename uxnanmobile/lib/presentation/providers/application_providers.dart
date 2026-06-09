@@ -15,6 +15,7 @@ import 'package:uxnan/domain/entities/project.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/entities/trusted_device.dart';
 import 'package:uxnan/domain/enums/connection_phase.dart';
+import 'package:uxnan/domain/enums/thread_activity.dart';
 import 'package:uxnan/domain/services/pairing_validator.dart';
 import 'package:uxnan/domain/value_objects/git/git_action_progress.dart';
 import 'package:uxnan/domain/value_objects/turn_timeline_snapshot.dart';
@@ -70,6 +71,18 @@ final activeMacProvider = StreamProvider<TrustedDevice?>(
   (ref) => ref.watch(sessionCoordinatorProvider).activeMacStream,
 );
 
+/// The device that currently has a LIVE channel (or null). Drives the truthful
+/// per-device "connected" indicator — distinct from the browsed/selected device.
+final connectedDeviceProvider = StreamProvider<TrustedDevice?>(
+  (ref) => ref.watch(sessionCoordinatorProvider).connectedDeviceStream,
+);
+
+/// The device a connection attempt is in flight for (or null) — drives the
+/// per-device "connecting" indicator without flipping the others.
+final connectingDeviceProvider = StreamProvider<TrustedDevice?>(
+  (ref) => ref.watch(sessionCoordinatorProvider).connectingDeviceStream,
+);
+
 /// Reactive list of paired trusted devices (PCs), for the UI.
 final trustedDevicesProvider = StreamProvider<List<TrustedDevice>>(
   (ref) => ref.watch(trustedDeviceRepositoryProvider).watchDevices(),
@@ -99,6 +112,19 @@ final threadManagerProvider = Provider<ThreadManager>((ref) {
 final threadsProvider = StreamProvider<List<Thread>>(
   (ref) => ref.watch(threadManagerProvider).threadsStream,
 );
+
+/// Map of threadId → live [ThreadActivity] (running/error); idle threads are
+/// absent. Drives the per-thread activity indicator on the list.
+final threadActivityProvider = StreamProvider<Map<String, ThreadActivity>>(
+  (ref) => ref.watch(threadManagerProvider).activityStream,
+);
+
+/// The live activity for one thread (idle when not present in the map).
+final threadActivityForProvider =
+    Provider.family<ThreadActivity, String>((ref, threadId) {
+  final map = ref.watch(threadActivityProvider).value;
+  return map?[threadId] ?? ThreadActivity.idle;
+});
 
 /// The active thread's timeline, for the UI.
 final activeTimelineProvider = StreamProvider<TurnTimelineSnapshot>(

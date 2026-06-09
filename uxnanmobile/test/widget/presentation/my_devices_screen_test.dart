@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uxnan/domain/entities/trusted_device.dart';
-import 'package:uxnan/domain/enums/connection_phase.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/screens/devices/my_devices_screen.dart';
@@ -29,9 +28,8 @@ Widget _wrap({required List<TrustedDevice> devices}) {
   return ProviderScope(
     overrides: [
       trustedDevicesProvider.overrideWith((ref) => Stream.value(devices)),
-      activeMacProvider.overrideWith((ref) => Stream.value(null)),
-      connectionPhaseProvider
-          .overrideWith((ref) => Stream.value(ConnectionPhase.disconnected)),
+      connectedDeviceProvider.overrideWith((ref) => Stream.value(null)),
+      connectingDeviceProvider.overrideWith((ref) => Stream.value(null)),
     ],
     child: MaterialApp.router(
       routerConfig: router,

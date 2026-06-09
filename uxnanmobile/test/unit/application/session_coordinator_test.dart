@@ -173,8 +173,14 @@ class _FakeSelector implements TransportSelector {
   final List<_InMemoryTransport> phoneSides = [];
   _FakeBridge? currentBridge;
 
+  /// Device ids the selector should treat as unreachable (throws on select).
+  final Set<String> unreachable = {};
+
   @override
   Future<WebSocketTransport> select(TrustedDevice device) async {
+    if (unreachable.contains(device.macDeviceId)) {
+      throw StateError('unreachable: ${device.macDeviceId}');
+    }
     final phone = _InMemoryTransport();
     final bridge = _InMemoryTransport();
     phone.peer = bridge;
@@ -273,6 +279,35 @@ void main() {
 
     expect(harness.coordinator.connectionPhase, ConnectionPhase.connected);
     expect(harness.coordinator.activeMac?.macDeviceId, 'mac-1');
+    expect(harness.coordinator.connectedDevice?.macDeviceId, 'mac-1');
+  });
+
+  test('switchMac keeps the current session when the target is unreachable',
+      () async {
+    final harness = await build(echo);
+    addTearDown(harness.coordinator.dispose);
+
+    await harness.coordinator.connect();
+    expect(harness.coordinator.connectedDevice?.macDeviceId, 'mac-1');
+
+    harness.selector.unreachable.add('mac-2');
+    final target = TrustedDevice(
+      macDeviceId: 'mac-2',
+      displayName: 'PC2',
+      macIdentityPublicKey: bridgeId.publicKey,
+      relayUrl: 'wss://relay.test',
+      sessionId: 'session-2',
+      pairedAt: DateTime(2026),
+    );
+
+    await expectLater(
+      harness.coordinator.switchMac(target),
+      throwsA(anything),
+    );
+
+    // The unreachable target must NOT become the live device; we stay on mac-1.
+    expect(harness.coordinator.connectionPhase, ConnectionPhase.connected);
+    expect(harness.coordinator.connectedDevice?.macDeviceId, 'mac-1');
   });
 
   test('sendRequest resolves with the bridge response', () async {

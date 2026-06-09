@@ -48,6 +48,12 @@
   "devicesTitle": "Mis PCs",
   "deviceActive": "Activa",
   "deviceConnect": "Conectar",
+  "deviceConnectFailed": "No se pudo conectar con {device}. Se mantiene la PC actual.",
+  "@deviceConnectFailed": {
+    "placeholders": {
+      "device": { "type": "String" }
+    }
+  },
   "deviceLastSeenLabel": "Última conexión",
   "deviceNeverConnected": "Nunca conectado",
   "devicePairedLabel": "Pareado",
@@ -75,6 +81,7 @@
   "threadRenameTitle": "Renombrar hilo",
   "threadRenameHint": "Título del hilo",
   "threadIdCopied": "ID del hilo copiado",
+  "threadResponding": "Respondiendo…",
   "threadIdLabel": "ID del hilo",
   "threadDeleteTitle": "¿Eliminar hilo?",
   "threadDeleteBody": "Esto quita la conversación de este dispositivo.",

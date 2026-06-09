@@ -153,6 +153,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get deviceConnect => 'Connect';
 
   @override
+  String deviceConnectFailed(String device) {
+    return 'Couldn\'t reach $device. Staying on the current PC.';
+  }
+
+  @override
   String get deviceLastSeenLabel => 'Last seen';
 
   @override
@@ -234,6 +239,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get threadIdCopied => 'Thread ID copied';
+
+  @override
+  String get threadResponding => 'Responding…';
 
   @override
   String get threadIdLabel => 'Thread ID';

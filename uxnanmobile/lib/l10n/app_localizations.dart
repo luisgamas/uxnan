@@ -362,6 +362,12 @@ abstract class AppLocalizations {
   /// **'Connect'**
   String get deviceConnect;
 
+  /// No description provided for @deviceConnectFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t reach {device}. Staying on the current PC.'**
+  String deviceConnectFailed(String device);
+
   /// No description provided for @deviceLastSeenLabel.
   ///
   /// In en, this message translates to:
@@ -523,6 +529,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Thread ID copied'**
   String get threadIdCopied;
+
+  /// No description provided for @threadResponding.
+  ///
+  /// In en, this message translates to:
+  /// **'Responding…'**
+  String get threadResponding;
 
   /// No description provided for @threadIdLabel.
   ///

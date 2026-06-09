@@ -154,6 +154,11 @@ class AppLocalizationsEs extends AppLocalizations {
   String get deviceConnect => 'Conectar';
 
   @override
+  String deviceConnectFailed(String device) {
+    return 'No se pudo conectar con $device. Se mantiene la PC actual.';
+  }
+
+  @override
   String get deviceLastSeenLabel => 'Última conexión';
 
   @override
@@ -235,6 +240,9 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get threadIdCopied => 'ID del hilo copiado';
+
+  @override
+  String get threadResponding => 'Respondiendo…';
 
   @override
   String get threadIdLabel => 'ID del hilo';
