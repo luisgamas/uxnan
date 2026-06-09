@@ -140,10 +140,13 @@ class _ComposerBarState extends State<ComposerBar> {
                     ),
                   ),
                   const Spacer(),
-                  // The badge is hidden until the bridge reports real token
-                  // usage (no fabricated percentage).
+                  // Context usage: a percentage ring when the model's window is
+                  // known (Claude), or a raw token count otherwise (Codex).
                   if (widget.environment.hasContext) ...[
                     _ContextBadge(percent: widget.environment.contextPercent),
+                    const SizedBox(width: UxnanSpacing.xs),
+                  ] else if (widget.environment.contextTokensLabel != null) ...[
+                    _TokenChip(label: widget.environment.contextTokensLabel!),
                     const SizedBox(width: UxnanSpacing.xs),
                   ],
                   // FOR-DEV: voice input is a placeholder (no speech-to-text).
@@ -265,6 +268,48 @@ class _ContextBadge extends StatelessWidget {
               ),
             ),
             Text('$percent', style: UxnanTypography.codeSmall),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Raw token-count chip, shown when the context window is unknown (Codex) so
+/// usage is still visible without a percentage.
+class _TokenChip extends StatelessWidget {
+  const _TokenChip({required this.label});
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Tooltip(
+      message: 'Context: $label tokens',
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: UxnanSpacing.sm,
+          vertical: 4,
+        ),
+        decoration: BoxDecoration(
+          color: colors.surfaceContainerHighest,
+          borderRadius: const BorderRadius.all(UxnanRadius.full),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.donut_large_outlined,
+              size: 13,
+              color: colors.onSurfaceVariant,
+            ),
+            const SizedBox(width: UxnanSpacing.xs),
+            Text(
+              label,
+              style: UxnanTypography.codeSmall.copyWith(
+                color: colors.onSurfaceVariant,
+              ),
+            ),
           ],
         ),
       ),
