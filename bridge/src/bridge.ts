@@ -130,12 +130,19 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   // Claude Code: real agent driven via `claude -p --output-format stream-json` (see FOR-DEV.md).
   const claudeSettings = config.agents['claude-code'] ?? {};
   const claude = resolveClaudeBinary(claudeSettings.binaryPath);
+  // Normalize the configured extra models (bare id strings or {id,...} specs)
+  // into the adapter's spec shape; they appear in the picker alongside the
+  // auto-updating opus/sonnet/haiku aliases. See docs/agents.md.
+  const claudePinnedModels = (claudeSettings.models ?? []).map((m) =>
+    typeof m === 'string' ? { id: m } : m,
+  );
   agentManager.register(
     new ClaudeCodeAdapter({
       binaryPath: claude.binaryPath,
       prependArgs: claude.prependArgs,
       permissionMode: claudeSettings.permissionMode ?? 'acceptEdits',
       ...(claudeSettings.model !== undefined ? { defaultModel: claudeSettings.model } : {}),
+      ...(claudePinnedModels.length > 0 ? { pinnedModels: claudePinnedModels } : {}),
     }),
     {
       displayName: 'Claude Code',

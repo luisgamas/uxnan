@@ -194,7 +194,66 @@ test('ClaudeCodeAdapter maps the permission posture to the right CLI flag', asyn
   }
 });
 
-test('ClaudeCodeAdapter lists the stable model aliases', async () => {
-  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude' });
-  assert.deepEqual(await adapter.listModels(), ['opus', 'sonnet', 'haiku']);
+test('ClaudeCodeAdapter lists the stable aliases as "latest" labelled models', async () => {
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', defaultModel: 'sonnet' });
+  const models = await adapter.listModels();
+  assert.deepEqual(
+    models.map((m) => m.id),
+    ['opus', 'sonnet', 'haiku'],
+  );
+  assert.deepEqual(
+    models.map((m) => m.displayName),
+    ['Opus (latest)', 'Sonnet (latest)', 'Haiku (latest)'],
+  );
+  assert.equal(models.find((m) => m.id === 'sonnet')?.isDefault, true);
+  assert.equal(models.find((m) => m.id === 'opus')?.isDefault, false);
+});
+
+test('ClaudeCodeAdapter appends pinned concrete models after the aliases', async () => {
+  const adapter = new ClaudeCodeAdapter({
+    binaryPath: 'claude',
+    defaultModel: 'claude-opus-4-7',
+    pinnedModels: [
+      { id: 'claude-opus-4-8', displayName: 'Opus 4.8' },
+      { id: 'claude-opus-4-7' },
+      // collides with an alias → dropped (the alias is the "latest" entry)
+      { id: 'opus' },
+      { id: '   ' }, // blank → skipped
+    ],
+  });
+  const models = await adapter.listModels();
+  assert.deepEqual(
+    models.map((m) => m.id),
+    ['opus', 'sonnet', 'haiku', 'claude-opus-4-8', 'claude-opus-4-7'],
+  );
+  // explicit displayName kept; missing one falls back to the id
+  assert.equal(models.find((m) => m.id === 'claude-opus-4-8')?.displayName, 'Opus 4.8');
+  assert.equal(models.find((m) => m.id === 'claude-opus-4-7')?.displayName, 'claude-opus-4-7');
+  // the pinned id matching defaultModel is the default, not an alias
+  assert.equal(models.find((m) => m.id === 'claude-opus-4-7')?.isDefault, true);
+  assert.equal(models.find((m) => m.id === 'opus')?.isDefault, false);
+});
+
+test('parseClaudeLine extracts the resolved model from the init event', () => {
+  assert.equal(
+    parseClaudeLine('{"type":"system","subtype":"init","session_id":"s","model":"claude-opus-4-8"}')
+      ?.model,
+    'claude-opus-4-8',
+  );
+});
+
+test('ClaudeCodeAdapter emits model_resolved from the init event', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
+  const { done } = collect(adapter);
+
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi' });
+  last().feed([
+    '{"type":"system","subtype":"init","session_id":"s","model":"claude-opus-4-8"}',
+    '{"type":"result","subtype":"success","result":"ok","session_id":"s"}',
+  ]);
+
+  const events = await done;
+  const resolved = events.find((e) => e.type === 'model_resolved');
+  assert.equal((resolved?.data as { text: string }).text, 'claude-opus-4-8');
 });

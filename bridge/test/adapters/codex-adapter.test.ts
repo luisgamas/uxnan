@@ -2,7 +2,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { PassThrough } from 'node:stream';
 import { EventEmitter } from 'node:events';
-import { CodexAdapter, parseCodexLine, type SpawnedProcess } from '../../src/index.js';
+import {
+  CodexAdapter,
+  parseCodexConfigModels,
+  parseCodexLine,
+  parseCodexModelList,
+  type SpawnedProcess,
+} from '../../src/index.js';
 import type { AgentStreamEvent } from '@uxnan/shared';
 
 // --- a fake `codex` process whose stdout we feed with `exec --json` lines ---
@@ -166,4 +172,51 @@ test('CodexAdapter maps the permission posture to the right sandbox flag', async
     if (sandbox) assert.equal(args[args.indexOf('-s') + 1], sandbox);
     else assert.equal(args.includes('-s'), false);
   }
+});
+
+test('parseCodexModelList maps app-server models and skips hidden ones', () => {
+  const data = [
+    {
+      id: 'gpt-5.5',
+      model: 'gpt-5.5',
+      displayName: 'GPT-5.5',
+      description: 'Frontier model.',
+      isDefault: true,
+      hidden: false,
+    },
+    { id: 'gpt-5.4-mini', displayName: 'GPT-5.4-Mini', description: '', isDefault: false },
+    { id: 'secret', displayName: 'Secret', hidden: true },
+    { model: 'fallback-id' },
+    { displayName: 'no id here' },
+  ];
+  const models = parseCodexModelList(data);
+  assert.deepEqual(
+    models.map((m) => m.id),
+    ['gpt-5.5', 'gpt-5.4-mini', 'fallback-id'],
+  );
+  assert.equal(models[0]?.displayName, 'GPT-5.5');
+  assert.equal(models[0]?.description, 'Frontier model.');
+  assert.equal(models[0]?.isDefault, true);
+  // empty description is omitted; missing displayName falls back to id
+  assert.equal(models[1]?.description, undefined);
+  assert.equal(models[2]?.displayName, 'fallback-id');
+  assert.deepEqual(parseCodexModelList('not an array'), []);
+});
+
+test('parseCodexConfigModels reads model + availability table from config.toml', () => {
+  const toml = [
+    'personality = "pragmatic"',
+    'model = "gpt-5.5"',
+    'model_reasoning_effort = "low"',
+    '[tui.model_availability_nux]',
+    '"gpt-5.5" = 1',
+    '"gpt-5.4-mini" = 1',
+    "[projects.'c:\\users\\agent']",
+    'trust_level = "trusted"',
+  ].join('\n');
+  const models = parseCodexConfigModels(toml);
+  assert.deepEqual(models.map((m) => m.id).sort(), ['gpt-5.4-mini', 'gpt-5.5']);
+  assert.equal(models.find((m) => m.id === 'gpt-5.5')?.isDefault, true);
+  assert.equal(models.find((m) => m.id === 'gpt-5.4-mini')?.isDefault, false);
+  assert.deepEqual(parseCodexConfigModels(''), []);
 });

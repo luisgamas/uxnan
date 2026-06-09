@@ -26,17 +26,65 @@ is closed (these CLIs hang on an open stdin pipe).
 | Agent | CLI invocation | Continuity | Permission posture | Models |
 |---|---|---|---|---|
 | **OpenCode** (default) | `opencode run --format json` | `--session <id>` | n/a | `opencode models` (real list) |
-| **Claude Code** | `claude -p --output-format stream-json --verbose --include-partial-messages` | `--resume <session_id>` | `permissionMode` → `--permission-mode acceptEdits` / none / `--dangerously-skip-permissions` | `opus`/`sonnet`/`haiku` aliases |
-| **Codex** | `codex exec --json --skip-git-repo-check` | `exec resume <thread_id>` | `permissionMode` → `-s workspace-write` / `-s read-only` / `--dangerously-bypass-approvals-and-sandbox` | none (set `agents.codex.model`) |
+| **Claude Code** | `claude -p --output-format stream-json --verbose --include-partial-messages` | `--resume <session_id>` | `permissionMode` → `--permission-mode acceptEdits` / none / `--dangerously-skip-permissions` | `opus`/`sonnet`/`haiku` aliases (latest) **+ `agents.claude-code.models`** |
+| **Codex** | `codex exec --json --skip-git-repo-check` | `exec resume <thread_id>` | `permissionMode` → `-s workspace-write` / `-s read-only` / `--dangerously-bypass-approvals-and-sandbox` | `codex app-server` → `model/list` (account-aware) → `~/.codex/config.toml` fallback |
 
-Each runs in the thread's `cwd`. Codex's `app-server`/`exec-server`/`mcp-server`
-modes are **not** used — the one-shot `codex exec` entry point is what the bridge
-drives. Binary resolution (`resolve-*.ts`) prefers a directly-spawnable executable
-(native binary or `node <cli.js>`) so `shell:false` always holds.
+Each runs in the thread's `cwd`. Codex's `exec-server`/`mcp-server` modes are
+**not** used for turns — the one-shot `codex exec` entry point drives them — but
+the bridge does spawn `codex app-server` once to enumerate models (`initialize`
+→ `model/list`, the same source the desktop app uses). Binary resolution
+(`resolve-*.ts`) prefers a directly-spawnable executable (native binary or
+`node <cli.js>`) so `shell:false` always holds.
 
 Per-thread selection: `thread/start { agentId, model, cwd }`; `agent/list` reports
-availability/capabilities; `agent/models` lists models; `thread/setModel` repoints
-a thread's model mid-conversation.
+availability/capabilities; `agent/models` lists models (now `AgentModel[]` with
+`id`/`displayName`/`description?`/`version?`/`isDefault?`); `thread/setModel`
+repoints a thread's model mid-conversation. The id the phone sends back is passed
+verbatim to the CLI's `--model`/`-m` flag.
+
+## Claude Code models: latest aliases + pinned versions
+
+Claude Code has **no enumerate command** — `--model` accepts either a stable
+alias (`opus`/`sonnet`/`haiku`) or a full id (e.g. `claude-opus-4-8`). The bridge
+exposes both, so users get plug-and-play "latest" *and* explicit version control:
+
+- **Aliases (always present):** `opus`/`sonnet`/`haiku` are shown as
+  `Opus (latest)` / `Sonnet (latest)` / `Haiku (latest)`. They auto-track the
+  newest model of that tier the account can use — nothing to maintain. After a
+  turn runs, the concrete version the alias resolved to (e.g. `claude-opus-4-8`)
+  is reported via the `model_resolved` event and shown in the phone's session
+  status sheet.
+- **Pinned concrete versions (declared in config):** add exact, versioned ids in
+  `agents.claude-code.models` to make them selectable alongside the aliases —
+  e.g. to use an older-but-still-available model. They show their exact id in the
+  picker. An entry may be a bare id string or `{ id, displayName?, description? }`.
+  Ids equal to an alias are dropped (the alias is the canonical "latest" entry).
+
+```jsonc
+// ~/.uxnan/config.json
+{
+  "agents": {
+    "claude-code": {
+      "model": "opus",                 // default: the latest Opus alias
+      "models": [                       // extra concrete versions in the picker
+        { "id": "claude-opus-4-8",  "displayName": "Opus 4.8" },
+        { "id": "claude-opus-4-7",  "displayName": "Opus 4.7" },
+        { "id": "claude-sonnet-4-6","displayName": "Sonnet 4.6" },
+        { "id": "claude-haiku-4-5", "displayName": "Haiku 4.5" },
+        "claude-opus-4-1"               // bare id — displayName falls back to the id
+      ]
+    }
+  }
+}
+```
+
+The bridge ships this list as the **default** (see `DEFAULT_DAEMON_CONFIG`), so a
+fresh install already shows those versions. Curate it as models are released or
+retired — the aliases cover "latest" regardless, so pinning is purely for
+explicit/older-version selection. Use only ids Claude Code accepts (the alias
+resolves to one such id; `claude --model <id>` validates them). The same
+`models` field works for any agent the adapter honors it for; today that's
+Claude Code (OpenCode and Codex enumerate their own models).
 
 ## Adding a new agent (e.g. Gemini)
 

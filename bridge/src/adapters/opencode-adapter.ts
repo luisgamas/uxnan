@@ -20,7 +20,13 @@
  */
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
-import type { AgentCapabilities, AgentConfig, AgentId, SendTurnOptions } from '@uxnan/shared';
+import type {
+  AgentCapabilities,
+  AgentConfig,
+  AgentId,
+  AgentModel,
+  SendTurnOptions,
+} from '@uxnan/shared';
 import { BaseAgentAdapter } from './base-adapter.js';
 import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
 
@@ -213,7 +219,8 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   }
 
   /** Run `opencode models` and return the `provider/model` ids it reports. */
-  listModels(): Promise<string[]> {
+  listModels(): Promise<AgentModel[]> {
+    const def = this.#defaultModel;
     return new Promise((resolve) => {
       let stdout = '';
       let child;
@@ -231,7 +238,13 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
         stdout += chunk.toString('utf-8');
       });
       child.on('error', () => resolve([]));
-      child.on('close', () => resolve(parseModelList(stdout)));
+      child.on('close', () =>
+        resolve(
+          parseModelList(stdout).map(
+            (id) => ({ id, displayName: id, isDefault: def === id }) satisfies AgentModel,
+          ),
+        ),
+      );
     });
   }
 

@@ -28,7 +28,8 @@ file is optional; create it to override. Defaults live in
 | Field | Purpose |
 |---|---|
 | `binaryPath` | Absolute path to the agent CLI (else auto-resolved). |
-| `model` | Default model for that agent. |
+| `model` | Default model for that agent (an alias like `opus`, or an exact id). |
+| `models` | Extra explicit models to show in the picker **alongside** the ones the agent reports itself. Each entry is a bare id string or `{ id, displayName?, description? }`. For **Claude Code** this pins concrete versions (e.g. `claude-opus-4-7`) next to the auto-updating `opus`/`sonnet`/`haiku` aliases — see [agents.md](./agents.md#claude-code-models-latest-aliases--pinned-versions). Ignored by agents that enumerate their own models (OpenCode, Codex). |
 | `permissionMode` | Headless posture for agents that gate tools: `acceptEdits` (default — edits auto-apply), `default` (read-only/no-edit), `bypassPermissions` (full autonomy). Maps to each CLI's flag (Claude `--permission-mode`/`--dangerously-skip-permissions`; Codex `-s workspace-write`/`read-only`/`--dangerously-bypass-approvals-and-sandbox`). |
 
 ## Example
@@ -38,7 +39,15 @@ file is optional; create it to override. Defaults live in
   "browseRoots": ["C:\\Users\\you\\Documents"],
   "defaultAgent": "claude-code",
   "agents": {
-    "claude-code": { "permissionMode": "acceptEdits" },
+    "claude-code": {
+      "permissionMode": "acceptEdits",
+      "model": "opus",
+      "models": [
+        { "id": "claude-opus-4-8", "displayName": "Opus 4.8" },
+        { "id": "claude-sonnet-4-6", "displayName": "Sonnet 4.6" },
+        "claude-haiku-4-5"
+      ]
+    },
     "codex": { "permissionMode": "acceptEdits" },
     "opencode": { "model": "provider/model" }
   }

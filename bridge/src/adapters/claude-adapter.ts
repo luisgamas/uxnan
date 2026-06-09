@@ -21,7 +21,13 @@
  * See bridge/FOR-DEV.md (agent adapters) and bridge/docs/testing.md (validating adapters).
  */
 import { createInterface } from 'node:readline';
-import type { AgentCapabilities, AgentConfig, AgentId, SendTurnOptions } from '@uxnan/shared';
+import type {
+  AgentCapabilities,
+  AgentConfig,
+  AgentId,
+  AgentModel,
+  SendTurnOptions,
+} from '@uxnan/shared';
 import { BaseAgentAdapter } from './base-adapter.js';
 import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
 
@@ -33,8 +39,22 @@ const CLAUDE_CAPABILITIES: AgentCapabilities = {
   images: true,
 };
 
-/** Stable `--model` aliases Claude Code accepts (it has no enumerate command). */
-const CLAUDE_MODEL_ALIASES = ['opus', 'sonnet', 'haiku'];
+/**
+ * Stable `--model` aliases Claude Code accepts. Claude Code has no enumerate
+ * command (verified against `claude` 2.x `--help`): `--model` takes an alias or
+ * a full id, and the alias is the plug-and-play routing key — it always resolves
+ * to the latest model of that tier the account can use. The concrete version a
+ * run resolved to is reported in the `system/init` event and surfaced via the
+ * `model_resolved` stream event (so the user can see e.g. `opus → claude-opus-4-8`).
+ */
+const CLAUDE_MODEL_ALIASES = ['opus', 'sonnet', 'haiku'] as const;
+
+/** Human-facing labels for the stable aliases. */
+const CLAUDE_ALIAS_LABELS: Record<string, string> = {
+  opus: 'Opus',
+  sonnet: 'Sonnet',
+  haiku: 'Haiku',
+};
 
 /**
  * Headless permission posture passed to the CLI:
@@ -44,6 +64,16 @@ const CLAUDE_MODEL_ALIASES = ['opus', 'sonnet', 'haiku'];
  */
 export type ClaudePermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions';
 
+/** An explicit, concrete model to add to the picker beyond the stable aliases. */
+export interface ClaudeModelSpec {
+  /** Exact model id passed to `--model` (e.g. `claude-opus-4-8`). */
+  id: string;
+  /** Human-facing label (defaults to `id`). */
+  displayName?: string;
+  /** Optional one-line description. */
+  description?: string;
+}
+
 export interface ClaudeCodeAdapterOptions {
   /** Executable to spawn (resolved path; see resolve-claude.ts). */
   binaryPath?: string;
@@ -51,6 +81,13 @@ export interface ClaudeCodeAdapterOptions {
   prependArgs?: string[];
   /** Default model (`alias` or full id) when the thread/turn doesn't pick one. */
   defaultModel?: string;
+  /**
+   * Concrete, versioned models to surface in the picker **in addition** to the
+   * stable `opus`/`sonnet`/`haiku` aliases — declared in daemon config
+   * (`agents.claude-code.models`). Lets users pick an exact/older version while
+   * the aliases keep tracking "latest". Deduplicated against the aliases by id.
+   */
+  pinnedModels?: ClaudeModelSpec[];
   /** Headless permission posture (default `acceptEdits`). */
   permissionMode?: ClaudePermissionMode;
   /** Injected spawn function (tests). */
@@ -67,6 +104,8 @@ export interface ClaudeEvent {
   kind: 'init' | 'delta' | 'assistant_text' | 'result' | 'other';
   sessionId?: string;
   text?: string;
+  /** Only set for `init`: the concrete model id the run resolved the alias to. */
+  model?: string;
   /** Only set for `result`: whether the turn ended in error. */
   isError?: boolean;
 }
@@ -84,8 +123,10 @@ export function parseClaudeLine(line: string): ClaudeEvent | null {
   const sessionId = typeof parsed['session_id'] === 'string' ? parsed['session_id'] : undefined;
   const base = { sessionId } as const;
   switch (parsed['type']) {
-    case 'system':
-      return { kind: 'init', ...base };
+    case 'system': {
+      const model = typeof parsed['model'] === 'string' ? parsed['model'] : undefined;
+      return { kind: 'init', ...base, ...(model !== undefined ? { model } : {}) };
+    }
     case 'stream_event': {
       const event = isRecord(parsed['event']) ? parsed['event'] : undefined;
       if (event && event['type'] === 'content_block_delta') {
@@ -118,6 +159,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   readonly #binaryPath: string;
   readonly #prependArgs: string[];
   readonly #defaultModel: string | undefined;
+  readonly #pinnedModels: ClaudeModelSpec[];
   readonly #permissionMode: ClaudePermissionMode;
   readonly #spawn: SpawnFn;
   /** threadId → Claude session id, for `--resume` continuity. */
@@ -131,6 +173,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     this.#binaryPath = options.binaryPath ?? 'claude';
     this.#prependArgs = options.prependArgs ?? [];
     this.#defaultModel = options.defaultModel;
+    this.#pinnedModels = options.pinnedModels ?? [];
     this.#permissionMode = options.permissionMode ?? 'acceptEdits';
     this.#spawn = options.spawnFn ?? defaultSpawn;
   }
@@ -190,6 +233,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
 
     let full = '';
     let sawPartial = false;
+    let sawModel = false;
     let errored = false;
     let completed = false;
 
@@ -198,7 +242,12 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       const event = parseClaudeLine(line);
       if (!event) return;
       if (event.sessionId) this.#sessionByThread.set(threadId, event.sessionId);
-      if (event.kind === 'delta' && event.text) {
+      if (event.kind === 'init' && event.model && !sawModel) {
+        // Surface the concrete model the alias resolved to (e.g. `opus` →
+        // `claude-opus-4-8`) so the phone can show the exact version in use.
+        sawModel = true;
+        this.emit({ type: 'model_resolved', threadId, turnId, data: { text: event.model } });
+      } else if (event.kind === 'delta' && event.text) {
         sawPartial = true;
         full += event.text;
         this.emit({ type: 'delta', threadId, turnId, data: { text: event.text } });
@@ -260,9 +309,45 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     return Promise.resolve();
   }
 
-  /** Claude Code has no model-list command; expose the stable `--model` aliases. */
-  listModels(): Promise<string[]> {
-    return Promise.resolve([...CLAUDE_MODEL_ALIASES]);
+  /**
+   * Claude Code has no model-list command. Expose the stable `--model` aliases
+   * (each tracks the latest model of its tier the account can use — the concrete
+   * version is reported per-run via the `model_resolved` event), followed by any
+   * concrete versions pinned in config. Pinned ids that collide with an alias
+   * are dropped so the alias (the "latest" entry) wins.
+   */
+  listModels(): Promise<AgentModel[]> {
+    const def = this.#defaultModel;
+    const aliasModels = CLAUDE_MODEL_ALIASES.map((alias) => {
+      const label = CLAUDE_ALIAS_LABELS[alias] ?? alias;
+      return {
+        id: alias,
+        // The "(latest)" suffix flags that the alias auto-tracks the newest
+        // model; the picker also shows the bare alias id beneath it.
+        displayName: `${label} (latest)`,
+        description: `Always the newest ${label} your account can use`,
+        isDefault: def === alias,
+      } satisfies AgentModel;
+    });
+
+    const aliasIds = new Set<string>(CLAUDE_MODEL_ALIASES);
+    const seen = new Set<string>(aliasIds);
+    const pinnedModels: AgentModel[] = [];
+    for (const spec of this.#pinnedModels) {
+      const id = spec.id.trim();
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      pinnedModels.push({
+        id,
+        displayName: spec.displayName && spec.displayName.length > 0 ? spec.displayName : id,
+        ...(spec.description && spec.description.length > 0
+          ? { description: spec.description }
+          : {}),
+        isDefault: def === id,
+      });
+    }
+
+    return Promise.resolve([...aliasModels, ...pinnedModels]);
   }
 }
 

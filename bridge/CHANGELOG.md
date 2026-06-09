@@ -5,6 +5,42 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — account-aware model discovery for Codex & Claude Code
+- **Codex `listModels()`** (`adapters/codex-adapter.ts`): `codex exec` has no
+  enumerate command, so the adapter drives the same protocol the desktop app
+  uses — spawns `codex app-server` and runs the `initialize` → `model/list`
+  JSON-RPC handshake (newline-delimited JSON over stdio). The list is
+  account-aware (free vs paid changes it). Falls back to `~/.codex/config.toml`
+  (`model` + the `[tui.model_availability_nux]` table) when the app-server is
+  unavailable. Exposes `parseCodexModelList` / `parseCodexConfigModels`.
+  Verified live against `codex-cli` 0.138 (returned `gpt-5.5` + `gpt-5.4-mini`).
+- **Claude Code resolved-version surfacing** (`adapters/claude-adapter.ts`):
+  `parseClaudeLine` now extracts `model` from the `system/init` event and the
+  adapter emits a `model_resolved` stream event, so the phone can show the
+  concrete version an alias mapped to (e.g. `opus` → `claude-opus-4-8`).
+  `model_resolved` is forwarded as `stream/model/resolved` by `AgentManager`.
+
+- **Pinned Claude Code models via config** (`daemon-config.ts`,
+  `adapters/claude-adapter.ts`): new `agents.<id>.models` setting — an array of
+  bare id strings or `{ id, displayName?, description? }` specs — surfaces
+  concrete, versioned models in the picker **alongside** Claude Code's stable
+  aliases. The aliases now render as `Opus (latest)` / `Sonnet (latest)` /
+  `Haiku (latest)`; pinned ids that collide with an alias are dropped.
+  `DEFAULT_DAEMON_CONFIG` seeds Claude Code with `claude-opus-4-8`/`-4-7`,
+  `claude-sonnet-4-6`, `claude-haiku-4-5` so a fresh install shows exact
+  versions out of the box. Docs: [`docs/agents.md`](docs/agents.md),
+  [`docs/configuration.md`](docs/configuration.md).
+- **Per-agent config merge** (`resolveDaemonConfig`): agent settings are now
+  deep-merged one level, so a partial override (e.g. just `permissionMode`)
+  preserves seeded defaults like `models` instead of replacing the whole agents
+  map. Set an explicit empty value (`models: []`) to clear a seeded default.
+
+### Changed
+- **`listModels()` / `agent/models` return structured `AgentModel[]`** instead
+  of bare id strings (Claude/OpenCode/Codex adapters + `AgentManager.getModels`).
+  Claude exposes the stable aliases with readable labels (`Opus`/`Sonnet`/
+  `Haiku`) and a description; OpenCode/Codex carry id + displayName + default.
+
 ### Added — direct LAN/Tailscale transport (relay now optional)
 - **Advertise direct addresses in the pairing QR**: `src/transport/local-hosts.ts`
   enumerates the bridge's non-internal IPv4s (LAN + a Tailscale `100.x` address) and

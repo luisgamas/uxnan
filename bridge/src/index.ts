@@ -15,6 +15,7 @@ export {
   resolveDaemonConfig,
   type DaemonConfig,
   type AgentSettings,
+  type AgentModelSpec,
 } from './daemon-config.js';
 export { ProjectRegistry, projectIdFor } from './projects/project-registry.js';
 export {
@@ -59,7 +60,9 @@ export {
 export { BaseAgentAdapter } from './adapters/base-adapter.js';
 export {
   CodexAdapter,
+  parseCodexConfigModels,
   parseCodexLine,
+  parseCodexModelList,
   type CodexAdapterOptions,
   type CodexEvent,
   type CodexPermissionMode,

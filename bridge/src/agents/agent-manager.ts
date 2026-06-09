@@ -16,6 +16,7 @@ import {
   makeNotification,
   type AgentDescriptor,
   type AgentId,
+  type AgentModel,
   type AgentStreamEvent,
   type IAgentAdapter,
 } from '@uxnan/shared';
@@ -101,7 +102,7 @@ export class AgentManager {
   }
 
   /** Models the given agent's CLI reports (empty if it can't enumerate them). */
-  async getModels(agentId: AgentId): Promise<string[]> {
+  async getModels(agentId: AgentId): Promise<AgentModel[]> {
     const adapter = this.#adapters.get(agentId);
     if (!adapter?.listModels) return [];
     try {
@@ -172,6 +173,15 @@ export class AgentManager {
             makeNotification(StreamNotification.TurnStarted, { threadId, turnId }),
           );
           break;
+        case 'model_resolved': {
+          const model = readText(event.data);
+          if (model) {
+            this.#options.notify(
+              makeNotification(StreamNotification.ModelResolved, { threadId, turnId, model }),
+            );
+          }
+          break;
+        }
         case 'delta': {
           const delta = readText(event.data);
           await this.#options.store.appendDelta(threadId, turnId, delta, now);

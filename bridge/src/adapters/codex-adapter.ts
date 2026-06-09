@@ -27,10 +27,26 @@
  *
  * See bridge/FOR-DEV.md (agent adapters) and bridge/docs/testing.md (validating adapters).
  */
+import { spawn } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { createInterface } from 'node:readline';
-import type { AgentCapabilities, AgentConfig, AgentId, SendTurnOptions } from '@uxnan/shared';
+import type {
+  AgentCapabilities,
+  AgentConfig,
+  AgentId,
+  AgentModel,
+  SendTurnOptions,
+} from '@uxnan/shared';
 import { BaseAgentAdapter } from './base-adapter.js';
 import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
+
+/** JSON-RPC ids for the app-server model-discovery handshake. */
+const INIT_ID = 1;
+const MODEL_LIST_ID = 2;
+/** Hard cap on the app-server handshake before falling back to config.toml. */
+const MODEL_LIST_TIMEOUT_MS = 8000;
 
 const CODEX_CAPABILITIES: AgentCapabilities = {
   planMode: true,
@@ -243,10 +259,183 @@ export class CodexAdapter extends BaseAgentAdapter {
     }
     return Promise.resolve();
   }
+
+  /**
+   * List the models the account can use, account-aware (free vs paid changes
+   * the set). `codex exec` has no enumerate command, so we drive the same
+   * protocol the desktop app uses: spawn `codex app-server` and run the
+   * `initialize` → `model/list` JSON-RPC handshake (newline-delimited JSON over
+   * stdio). Falls back to `~/.codex/config.toml` (`model` + the
+   * `[tui.model_availability_nux]` table) if the app-server is unavailable.
+   */
+  listModels(): Promise<AgentModel[]> {
+    return new Promise((resolve) => {
+      let settled = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      let child: ReturnType<typeof spawn>;
+
+      const finish = (models: AgentModel[]): void => {
+        if (settled) return;
+        settled = true;
+        if (timer) clearTimeout(timer);
+        try {
+          child.kill();
+        } catch {
+          /* already gone */
+        }
+        resolve(models.length > 0 ? models : this.#modelsFromConfig());
+      };
+
+      try {
+        // Direct spawn (not the injected SpawnFn): app-server needs a writable
+        // stdin for the JSON-RPC handshake, which the shared one-shot spawn closes.
+        child = spawn(this.#binaryPath, [...this.#prependArgs, 'app-server'], {
+          stdio: ['pipe', 'pipe', 'ignore'],
+          windowsHide: true,
+          shell: false,
+        });
+      } catch {
+        resolve(this.#modelsFromConfig());
+        return;
+      }
+
+      if (!child.stdout) {
+        finish([]);
+        return;
+      }
+
+      timer = setTimeout(() => finish([]), MODEL_LIST_TIMEOUT_MS);
+      const send = (msg: unknown): void => {
+        try {
+          child.stdin?.write(`${JSON.stringify(msg)}\n`);
+        } catch {
+          /* pipe closed */
+        }
+      };
+
+      const reader = createInterface({ input: child.stdout });
+      reader.on('line', (line) => {
+        const parsed = safeParse(line);
+        if (!parsed) return;
+        if (parsed['id'] === INIT_ID) {
+          // Init acknowledged — now ask for the model catalog.
+          send({ jsonrpc: '2.0', id: MODEL_LIST_ID, method: 'model/list', params: {} });
+        } else if (parsed['id'] === MODEL_LIST_ID && isRecord(parsed['result'])) {
+          finish(parseCodexModelList(parsed['result']['data']));
+        }
+      });
+      child.on('error', () => finish([]));
+      child.on('close', () => finish([]));
+
+      send({
+        jsonrpc: '2.0',
+        id: INIT_ID,
+        method: 'initialize',
+        params: {
+          clientInfo: { name: 'uxnan-bridge', title: null, version: '1.0.0' },
+          capabilities: { experimentalApi: false, requestAttestation: false },
+        },
+      });
+    });
+  }
+
+  /** Fallback model list read straight from `~/.codex/config.toml`. */
+  #modelsFromConfig(): AgentModel[] {
+    try {
+      const path = join(homedir(), '.codex', 'config.toml');
+      if (!existsSync(path)) return [];
+      return parseCodexConfigModels(readFileSync(path, 'utf-8'));
+    } catch {
+      return [];
+    }
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** Parse one newline-delimited JSON-RPC line, or null if it isn't a JSON object. */
+function safeParse(line: string): Record<string, unknown> | null {
+  const trimmed = line.trim();
+  if (!trimmed) return null;
+  try {
+    const parsed: unknown = JSON.parse(trimmed);
+    return isRecord(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Map the app-server `model/list` → `result.data` array into {@link AgentModel}s,
+ * skipping models hidden from the default picker.
+ */
+export function parseCodexModelList(data: unknown): AgentModel[] {
+  if (!Array.isArray(data)) return [];
+  const out: AgentModel[] = [];
+  for (const entry of data) {
+    if (!isRecord(entry)) continue;
+    if (entry['hidden'] === true) continue;
+    const id =
+      typeof entry['id'] === 'string'
+        ? entry['id']
+        : typeof entry['model'] === 'string'
+          ? entry['model']
+          : undefined;
+    if (!id) continue;
+    const displayName =
+      typeof entry['displayName'] === 'string' && entry['displayName'].length > 0
+        ? entry['displayName']
+        : id;
+    const description =
+      typeof entry['description'] === 'string' && entry['description'].length > 0
+        ? entry['description']
+        : undefined;
+    out.push({
+      id,
+      displayName,
+      ...(description !== undefined ? { description } : {}),
+      isDefault: entry['isDefault'] === true,
+    });
+  }
+  return out;
+}
+
+/**
+ * Fallback parse of `~/.codex/config.toml`: the top-level `model` plus the keys
+ * of the `[tui.model_availability_nux]` table (models the account has seen).
+ * The configured `model` is flagged `isDefault`. Minimal hand-rolled scan — no
+ * TOML dependency — tolerant of comments and quoting.
+ */
+export function parseCodexConfigModels(toml: string): AgentModel[] {
+  let section = '';
+  let configuredModel: string | undefined;
+  const ids = new Set<string>();
+  for (const raw of toml.split(/\r?\n/)) {
+    const line = raw.replace(/#.*$/, '').trim();
+    if (!line) continue;
+    const header = /^\[([^\]]+)\]$/.exec(line);
+    if (header?.[1]) {
+      section = header[1].trim();
+      continue;
+    }
+    const kv = /^("?)([^"=]+?)\1\s*=\s*(.+)$/.exec(line);
+    const key = kv?.[2]?.trim();
+    if (!key) continue;
+    if (section === '' && key === 'model') {
+      const value = (kv?.[3] ?? '').trim().replace(/^["']|["']$/g, '');
+      if (value) {
+        configuredModel = value;
+        ids.add(value);
+      }
+    } else if (section === 'tui.model_availability_nux') {
+      ids.add(key);
+    }
+  }
+  return [...ids].map(
+    (id) => ({ id, displayName: id, isDefault: id === configuredModel }) satisfies AgentModel,
+  );
 }
 
 function readErrorMessage(error: unknown): string {
