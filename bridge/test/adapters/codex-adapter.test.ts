@@ -4,6 +4,7 @@ import { PassThrough } from 'node:stream';
 import { EventEmitter } from 'node:events';
 import {
   CodexAdapter,
+  codexUsageTokens,
   parseCodexConfigModels,
   parseCodexLine,
   parseCodexModelList,
@@ -172,6 +173,29 @@ test('CodexAdapter maps the permission posture to the right sandbox flag', async
     if (sandbox) assert.equal(args[args.indexOf('-s') + 1], sandbox);
     else assert.equal(args.includes('-s'), false);
   }
+});
+
+test('codexUsageTokens sums input, output and reasoning (not cached)', () => {
+  assert.equal(
+    codexUsageTokens({
+      input_tokens: 13334,
+      cached_input_tokens: 2432,
+      output_tokens: 15,
+      reasoning_output_tokens: 8,
+    }),
+    13357,
+  );
+  assert.equal(codexUsageTokens({}), undefined);
+  assert.equal(codexUsageTokens('nope'), undefined);
+});
+
+test('parseCodexLine reads usage tokens from turn.completed', () => {
+  const event = parseCodexLine(
+    '{"type":"turn.completed","usage":{"input_tokens":100,"output_tokens":20,' +
+      '"reasoning_output_tokens":5}}',
+  );
+  assert.equal(event?.kind, 'completed');
+  assert.equal(event?.tokens, 125);
 });
 
 test('parseCodexModelList maps app-server models and skips hidden ones', () => {

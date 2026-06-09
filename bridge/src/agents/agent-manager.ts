@@ -199,12 +199,14 @@ export class AgentManager {
           const provided = readOptionalText(event.data);
           await this.#options.store.completeTurn(threadId, turnId, provided, now);
           const text = await this.#assistantText(turnId, provided);
+          const usage = readUsage(event.data);
           this.#options.notify(
             makeNotification(StreamNotification.TurnCompleted, {
               threadId,
               turnId,
               messageId,
               text,
+              ...(usage !== undefined ? { usage } : {}),
             }),
           );
           this.#assistantByTurn.delete(turnId);
@@ -266,4 +268,18 @@ function readOptionalText(data: unknown): string | undefined {
     if (typeof text === 'string') return text;
   }
   return undefined;
+}
+
+/** Extract `{ tokens, contextWindow? }` from a turn_completed event's data. */
+function readUsage(data: unknown): { tokens: number; contextWindow?: number } | undefined {
+  if (!data || typeof data !== 'object' || !('usage' in data)) return undefined;
+  const usage = (data as { usage: unknown }).usage;
+  if (!usage || typeof usage !== 'object') return undefined;
+  const tokens = (usage as { tokens?: unknown }).tokens;
+  if (typeof tokens !== 'number') return undefined;
+  const window = (usage as { contextWindow?: unknown }).contextWindow;
+  return {
+    tokens,
+    ...(typeof window === 'number' ? { contextWindow: window } : {}),
+  };
 }

@@ -60,6 +60,7 @@ export {
 export { BaseAgentAdapter } from './adapters/base-adapter.js';
 export {
   CodexAdapter,
+  codexUsageTokens,
   parseCodexConfigModels,
   parseCodexLine,
   parseCodexModelList,
@@ -79,9 +80,12 @@ export { resolveOpenCodeBinary, type ResolvedOpenCode } from './adapters/resolve
 export { defaultSpawn, type SpawnFn, type SpawnedProcess } from './adapters/spawn.js';
 export {
   ClaudeCodeAdapter,
+  claudeContextWindow,
+  claudeUsageTokens,
   parseClaudeLine,
   type ClaudeCodeAdapterOptions,
   type ClaudeEvent,
+  type ClaudeModelSpec,
   type ClaudePermissionMode,
 } from './adapters/claude-adapter.js';
 export { resolveClaudeBinary, type ResolvedClaude } from './adapters/resolve-claude.js';

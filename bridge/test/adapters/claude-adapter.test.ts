@@ -2,7 +2,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { PassThrough } from 'node:stream';
 import { EventEmitter } from 'node:events';
-import { ClaudeCodeAdapter, parseClaudeLine, type SpawnedProcess } from '../../src/index.js';
+import {
+  ClaudeCodeAdapter,
+  claudeContextWindow,
+  claudeUsageTokens,
+  parseClaudeLine,
+  type SpawnedProcess,
+} from '../../src/index.js';
 import type { AgentStreamEvent } from '@uxnan/shared';
 
 // --- a fake `claude` process whose stdout we feed with stream-json lines ---
@@ -232,6 +238,50 @@ test('ClaudeCodeAdapter appends pinned concrete models after the aliases', async
   // the pinned id matching defaultModel is the default, not an alias
   assert.equal(models.find((m) => m.id === 'claude-opus-4-7')?.isDefault, true);
   assert.equal(models.find((m) => m.id === 'opus')?.isDefault, false);
+});
+
+test('claudeContextWindow maps tiers and ids to window sizes', () => {
+  assert.equal(claudeContextWindow('opus'), 1_000_000);
+  assert.equal(claudeContextWindow('sonnet'), 1_000_000);
+  assert.equal(claudeContextWindow('haiku'), 200_000);
+  assert.equal(claudeContextWindow('claude-opus-4-8'), 1_000_000);
+  assert.equal(claudeContextWindow('claude-haiku-4-5'), 200_000);
+  assert.equal(claudeContextWindow('mystery'), undefined);
+  assert.equal(claudeContextWindow(undefined), undefined);
+});
+
+test('claudeUsageTokens sums input, cache and output tokens', () => {
+  assert.equal(
+    claudeUsageTokens({
+      input_tokens: 100,
+      cache_read_input_tokens: 20,
+      cache_creation_input_tokens: 5,
+      output_tokens: 30,
+    }),
+    155,
+  );
+  assert.equal(claudeUsageTokens({}), undefined);
+  assert.equal(claudeUsageTokens('nope'), undefined);
+});
+
+test('ClaudeCodeAdapter reports usage with a context window on completion', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
+  const { done } = collect(adapter);
+
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi' });
+  last().feed([
+    '{"type":"system","subtype":"init","session_id":"s","model":"claude-opus-4-8"}',
+    '{"type":"result","subtype":"success","result":"ok","session_id":"s","usage":' +
+      '{"input_tokens":1000,"cache_read_input_tokens":200,"output_tokens":50}}',
+  ]);
+
+  const events = await done;
+  const completed = events.find((e) => e.type === 'turn_completed');
+  const usage = (completed?.data as { usage?: { tokens: number; contextWindow?: number } })
+    .usage;
+  assert.equal(usage?.tokens, 1250);
+  assert.equal(usage?.contextWindow, 1_000_000);
 });
 
 test('parseClaudeLine extracts the resolved model from the init event', () => {

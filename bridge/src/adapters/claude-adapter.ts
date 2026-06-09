@@ -108,6 +108,34 @@ export interface ClaudeEvent {
   model?: string;
   /** Only set for `result`: whether the turn ended in error. */
   isError?: boolean;
+  /** Only set for `result`: the raw `usage` object (token counts), if present. */
+  usage?: unknown;
+}
+
+/**
+ * Context-window size (tokens) for a Claude model id or alias, so the phone can
+ * show context usage as a percentage. Opus/Sonnet are 1M, Haiku is 200K
+ * (matches the current model catalog); unknown ids return undefined.
+ */
+export function claudeContextWindow(model: string | undefined): number | undefined {
+  if (!model) return undefined;
+  const m = model.toLowerCase();
+  if (m.includes('haiku')) return 200_000;
+  if (m.includes('opus') || m.includes('sonnet')) return 1_000_000;
+  return undefined;
+}
+
+/** Sum the context-occupying token counts from a Claude `result.usage` object. */
+export function claudeUsageTokens(usage: unknown): number | undefined {
+  if (!isRecord(usage)) return undefined;
+  const count = (key: string): number =>
+    typeof usage[key] === 'number' ? (usage[key] as number) : 0;
+  const total =
+    count('input_tokens') +
+    count('cache_read_input_tokens') +
+    count('cache_creation_input_tokens') +
+    count('output_tokens');
+  return total > 0 ? total : undefined;
 }
 
 /** Parse one `claude … --output-format stream-json` line, or null if it isn't JSON. */
@@ -145,7 +173,13 @@ export function parseClaudeLine(line: string): ClaudeEvent | null {
     case 'result': {
       const isError = parsed['is_error'] === true || parsed['subtype'] !== 'success';
       const text = typeof parsed['result'] === 'string' ? parsed['result'] : undefined;
-      return { kind: 'result', ...base, text, isError };
+      return {
+        kind: 'result',
+        ...base,
+        text,
+        isError,
+        ...(parsed['usage'] !== undefined ? { usage: parsed['usage'] } : {}),
+      };
     }
     default:
       return { kind: 'other', ...base };
@@ -234,6 +268,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     let full = '';
     let sawPartial = false;
     let sawModel = false;
+    let resolvedModel: string | undefined;
     let errored = false;
     let completed = false;
 
@@ -246,6 +281,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         // Surface the concrete model the alias resolved to (e.g. `opus` →
         // `claude-opus-4-8`) so the phone can show the exact version in use.
         sawModel = true;
+        resolvedModel = event.model;
         this.emit({ type: 'model_resolved', threadId, turnId, data: { text: event.model } });
       } else if (event.kind === 'delta' && event.text) {
         sawPartial = true;
@@ -268,7 +304,18 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         } else {
           completed = true;
           const finalText = event.text && event.text.length > 0 ? event.text : full;
-          this.emit({ type: 'turn_completed', threadId, turnId, data: { text: finalText } });
+          const tokens = claudeUsageTokens(event.usage);
+          const window = claudeContextWindow(resolvedModel ?? model);
+          const usage =
+            tokens !== undefined
+              ? { tokens, ...(window !== undefined ? { contextWindow: window } : {}) }
+              : undefined;
+          this.emit({
+            type: 'turn_completed',
+            threadId,
+            turnId,
+            data: { text: finalText, ...(usage !== undefined ? { usage } : {}) },
+          });
         }
       }
     });

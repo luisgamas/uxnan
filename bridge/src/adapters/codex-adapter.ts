@@ -87,6 +87,22 @@ export interface CodexEvent {
   kind: 'thread' | 'message' | 'completed' | 'error' | 'other';
   threadId?: string;
   text?: string;
+  /** Only set for `completed`: context-occupying token count, if reported. */
+  tokens?: number;
+}
+
+/**
+ * Sum the context-occupying tokens from a Codex `turn.completed.usage` object
+ * (`{ input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens }`
+ * — `cached_input_tokens` is a subset of `input_tokens`, so it isn't added).
+ */
+export function codexUsageTokens(usage: unknown): number | undefined {
+  if (!isRecord(usage)) return undefined;
+  const count = (key: string): number =>
+    typeof usage[key] === 'number' ? (usage[key] as number) : 0;
+  const total =
+    count('input_tokens') + count('output_tokens') + count('reasoning_output_tokens');
+  return total > 0 ? total : undefined;
 }
 
 /** Parse one `codex exec --json` line, or null if it isn't JSON. */
@@ -112,7 +128,7 @@ export function parseCodexLine(line: string): CodexEvent | null {
       return { kind: 'other' };
     }
     case 'turn.completed':
-      return { kind: 'completed' };
+      return { kind: 'completed', tokens: codexUsageTokens(parsed['usage']) };
     case 'turn.failed':
     case 'error':
       return { kind: 'error', text: readErrorMessage(parsed['error']) };
@@ -220,7 +236,13 @@ export class CodexAdapter extends BaseAgentAdapter {
         });
       } else if (event.kind === 'completed') {
         completed = true;
-        this.emit({ type: 'turn_completed', threadId, turnId, data: { text: full } });
+        const usage = event.tokens !== undefined ? { tokens: event.tokens } : undefined;
+        this.emit({
+          type: 'turn_completed',
+          threadId,
+          turnId,
+          data: { text: full, ...(usage !== undefined ? { usage } : {}) },
+        });
       }
     });
 
