@@ -203,6 +203,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get threadsEmpty => 'No threads yet';
 
   @override
+  String get threadsNotConnected =>
+      'Not connected to this PC — showing a cached view.';
+
+  @override
   String get threadsEmptyBody =>
       'Threads from this PC will appear here. Pull down to refresh.';
 
@@ -286,6 +290,27 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get newThreadProject => 'Project';
+
+  @override
+  String get newThreadBrowse => 'Browse…';
+
+  @override
+  String get newThreadFolderLabel => 'Folder';
+
+  @override
+  String get workspaceBrowseTitle => 'Choose a folder';
+
+  @override
+  String get workspaceBrowseOpenHere => 'Open here';
+
+  @override
+  String get workspaceBrowseEmpty => 'No sub-folders here';
+
+  @override
+  String get workspaceBrowseFailed => 'Couldn\'t browse folders';
+
+  @override
+  String get workspaceBrowseGitRepo => 'Git repository';
 
   @override
   String get newThreadAgent => 'Agent';

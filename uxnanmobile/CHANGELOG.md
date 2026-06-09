@@ -8,6 +8,30 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Folder browser for new conversations (`workspace/browseDirs`)** — a
+  plug-and-play way to root a thread anywhere under the bridge's configured
+  browse roots, alongside the configured project list. New `BrowseRoot` /
+  `BrowseDirEntry` / `BrowseResult` entities (tolerant parsers), a
+  `WorkspaceBrowser` manager + provider, and a `WorkspaceBrowserSheet` (root
+  picker, breadcrumb, git-repo badges, "Open here"). The new-conversation sheet
+  gains a **"Browse…"** action: the chosen folder is resolved to a project
+  (`project/resolve`) and started via `thread/start { cwd }`.
+
+### Fixed
+
+- **Everything now targets the PC we are actually connected to.** Browsing a
+  paired PC's threads no longer implies a connection: the threads-screen online
+  dot, the new-conversation FAB, and refresh are gated on holding *that* PC's
+  live channel (`connectedDeviceProvider`), not the global phase — and an
+  offline banner offers a validated "Connect" here. The conversation composer is
+  disabled unless connected to the thread's PC, so messages can never be sent
+  over a different connected PC's channel. Tapping a PC to browse no longer
+  changes the connection/reconnect target (`setActiveDevice` removed from the
+  browse path).
+- **Codex context usage is now visible in the composer** — the context chip
+  showed only Claude's percentage; it now also renders the raw token count when
+  the model's window is unknown (Codex).
+
 - **Context-usage indicator** — consumes the new `turn/completed` `usage`:
   `ThreadManager` tracks per-thread token usage (`contextUsageProvider`) and the
   session environment shows a **percentage** when the model's context window is

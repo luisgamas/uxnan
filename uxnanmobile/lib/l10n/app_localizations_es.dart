@@ -204,6 +204,10 @@ class AppLocalizationsEs extends AppLocalizations {
   String get threadsEmpty => 'Aún no hay conversaciones';
 
   @override
+  String get threadsNotConnected =>
+      'Sin conexión con esta PC — vista en caché.';
+
+  @override
   String get threadsEmptyBody =>
       'Las conversaciones de esta PC aparecerán aquí. Desliza para actualizar.';
 
@@ -287,6 +291,27 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get newThreadProject => 'Proyecto';
+
+  @override
+  String get newThreadBrowse => 'Examinar…';
+
+  @override
+  String get newThreadFolderLabel => 'Carpeta';
+
+  @override
+  String get workspaceBrowseTitle => 'Elegir una carpeta';
+
+  @override
+  String get workspaceBrowseOpenHere => 'Abrir aquí';
+
+  @override
+  String get workspaceBrowseEmpty => 'No hay subcarpetas aquí';
+
+  @override
+  String get workspaceBrowseFailed => 'No se pudieron explorar las carpetas';
+
+  @override
+  String get workspaceBrowseGitRepo => 'Repositorio git';
 
   @override
   String get newThreadAgent => 'Agente';

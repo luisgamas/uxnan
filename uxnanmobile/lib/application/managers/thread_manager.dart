@@ -131,6 +131,16 @@ class ThreadManager {
     }
   }
 
+  /// Resolves (or creates) the project rooted at [cwd] (`project/resolve`), so
+  /// a folder picked via the workspace browser can be started as a thread.
+  Future<Project?> resolveProject(String cwd) async {
+    final response = await _sendRequest('project/resolve', {'cwd': cwd});
+    final result = response.result;
+    return result is Map
+        ? Project.fromJson(result.cast<String, dynamic>())
+        : null;
+  }
+
   /// Loads the bridge's project list (`project/list`).
   Future<List<Project>> loadProjects() async {
     final response = await _sendRequest('project/list');

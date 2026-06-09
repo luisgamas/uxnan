@@ -5,6 +5,7 @@ import 'package:uxnan/application/coordinators/session_coordinator.dart';
 import 'package:uxnan/application/managers/git_action_manager.dart';
 import 'package:uxnan/application/managers/push_registrar.dart';
 import 'package:uxnan/application/managers/thread_manager.dart';
+import 'package:uxnan/application/managers/workspace_browser.dart';
 import 'package:uxnan/application/processors/incoming_message_processor.dart';
 import 'package:uxnan/domain/entities/agent_descriptor.dart';
 import 'package:uxnan/domain/entities/agent_model.dart';
@@ -158,6 +159,12 @@ final threadByIdProvider = Provider.family<Thread?, String>((ref, threadId) {
 /// The bridge's projects (`project/list`) for the new-conversation flow.
 final projectsProvider = FutureProvider<List<Project>>(
   (ref) => ref.watch(threadManagerProvider).loadProjects(),
+);
+
+/// Navigates the bridge's browse roots (`workspace/browseDirs`) for the
+/// folder picker in the new-conversation flow.
+final workspaceBrowserProvider = Provider<WorkspaceBrowser>(
+  (ref) => WorkspaceBrowser(ref.watch(sessionCoordinatorProvider).sendRequest),
 );
 
 /// The bridge's agents (`agent/list`) for the new-conversation flow.

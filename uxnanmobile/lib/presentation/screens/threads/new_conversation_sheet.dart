@@ -6,6 +6,7 @@ import 'package:uxnan/domain/entities/project.dart';
 import 'package:uxnan/domain/enums/agent_id.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
+import 'package:uxnan/presentation/screens/threads/workspace_browser_sheet.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
@@ -41,6 +42,10 @@ class _NewConversationSheetState extends ConsumerState<NewConversationSheet> {
   bool _modelTouched = false;
   bool _starting = false;
 
+  /// Absolute working dir chosen via the folder browser (overrides the
+  /// resolved project's cwd); null when a configured project is used directly.
+  String? _browsedCwd;
+
   @override
   void dispose() {
     _model.dispose();
@@ -59,6 +64,34 @@ class _NewConversationSheetState extends ConsumerState<NewConversationSheet> {
 
   bool get _canStart => _project != null && _agent != null && !_starting;
 
+  /// Opens the folder browser; the chosen directory is resolved to a project
+  /// (`project/resolve`) and used as the new thread's working directory — the
+  /// plug-and-play path alongside the configured project list.
+  Future<void> _browseFolder() async {
+    final l10n = AppLocalizations.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final cwd = await WorkspaceBrowserSheet.show(context);
+    if (cwd == null || !mounted) return;
+    final project = await ref.read(threadManagerProvider).resolveProject(cwd);
+    if (!mounted) return;
+    if (project == null) {
+      messenger
+        ..clearSnackBars()
+        ..showSnackBar(SnackBar(content: Text(l10n.newThreadLoadFailed)));
+      return;
+    }
+    setState(() {
+      _project = project;
+      _browsedCwd = cwd;
+    });
+  }
+
+  static String _basename(String path) {
+    final parts =
+        path.split(RegExp(r'[\\/]')).where((s) => s.isNotEmpty).toList();
+    return parts.isEmpty ? path : parts.last;
+  }
+
   Future<void> _start() async {
     final project = _project;
     final agent = _agent;
@@ -66,12 +99,14 @@ class _NewConversationSheetState extends ConsumerState<NewConversationSheet> {
     setState(() => _starting = true);
     try {
       final coordinator = ref.read(sessionCoordinatorProvider);
-      final deviceId = coordinator.activeMac?.macDeviceId;
+      // Tag with the PC we actually hold a live channel to (new conversations
+      // are only reachable while connected to it).
+      final deviceId = coordinator.connectedDevice?.macDeviceId;
       final thread = await ref.read(threadManagerProvider).startThread(
             projectId: project.id,
             agentId: agent.agentId,
             model: _model.text.trim(),
-            cwd: project.cwd,
+            cwd: _browsedCwd ?? project.cwd,
             deviceId: deviceId,
           );
       if (mounted) Navigator.of(context).pop(thread.id);
@@ -116,12 +151,32 @@ class _NewConversationSheetState extends ConsumerState<NewConversationSheet> {
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
               ),
-              _SectionHeader(label: l10n.newThreadProject),
+              Row(
+                children: [
+                  Expanded(child: _SectionHeader(label: l10n.newThreadProject)),
+                  TextButton.icon(
+                    onPressed: _starting ? null : _browseFolder,
+                    icon: const Icon(Icons.folder_open_outlined, size: 18),
+                    label: Text(l10n.newThreadBrowse),
+                  ),
+                ],
+              ),
               _ProjectPicker(
                 projects: projects,
                 selected: _project,
-                onSelected: (p) => setState(() => _project = p),
+                onSelected: (p) => setState(() {
+                  _project = p;
+                  _browsedCwd = null;
+                }),
               ),
+              if (_browsedCwd != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: UxnanSpacing.sm),
+                  child: _FolderChip(
+                    label: '${l10n.newThreadFolderLabel}: '
+                        '${_basename(_browsedCwd!)}',
+                  ),
+                ),
               const SizedBox(height: UxnanSpacing.lg),
               _SectionHeader(label: l10n.newThreadAgent),
               _AgentPicker(
@@ -152,6 +207,45 @@ class _NewConversationSheetState extends ConsumerState<NewConversationSheet> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _FolderChip extends StatelessWidget {
+  const _FolderChip({required this.label});
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: UxnanSpacing.md,
+        vertical: UxnanSpacing.sm,
+      ),
+      decoration: BoxDecoration(
+        color: colors.secondaryContainer,
+        borderRadius: const BorderRadius.all(UxnanRadius.md),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.folder_outlined,
+            size: 16,
+            color: colors.onSecondaryContainer,
+          ),
+          const SizedBox(width: UxnanSpacing.sm),
+          Expanded(
+            child: Text(
+              label,
+              style: UxnanTypography.codeSmall.copyWith(
+                color: colors.onSecondaryContainer,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
       ),
     );
   }

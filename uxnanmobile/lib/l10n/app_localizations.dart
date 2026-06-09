@@ -458,6 +458,12 @@ abstract class AppLocalizations {
   /// **'No threads yet'**
   String get threadsEmpty;
 
+  /// No description provided for @threadsNotConnected.
+  ///
+  /// In en, this message translates to:
+  /// **'Not connected to this PC — showing a cached view.'**
+  String get threadsNotConnected;
+
   /// No description provided for @threadsEmptyBody.
   ///
   /// In en, this message translates to:
@@ -619,6 +625,48 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Project'**
   String get newThreadProject;
+
+  /// No description provided for @newThreadBrowse.
+  ///
+  /// In en, this message translates to:
+  /// **'Browse…'**
+  String get newThreadBrowse;
+
+  /// No description provided for @newThreadFolderLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Folder'**
+  String get newThreadFolderLabel;
+
+  /// No description provided for @workspaceBrowseTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose a folder'**
+  String get workspaceBrowseTitle;
+
+  /// No description provided for @workspaceBrowseOpenHere.
+  ///
+  /// In en, this message translates to:
+  /// **'Open here'**
+  String get workspaceBrowseOpenHere;
+
+  /// No description provided for @workspaceBrowseEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No sub-folders here'**
+  String get workspaceBrowseEmpty;
+
+  /// No description provided for @workspaceBrowseFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t browse folders'**
+  String get workspaceBrowseFailed;
+
+  /// No description provided for @workspaceBrowseGitRepo.
+  ///
+  /// In en, this message translates to:
+  /// **'Git repository'**
+  String get workspaceBrowseGitRepo;
 
   /// No description provided for @newThreadAgent.
   ///
