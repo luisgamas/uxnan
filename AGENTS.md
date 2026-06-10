@@ -22,6 +22,20 @@ This means:
 
 ---
 
+## Language
+
+**Everything written into the repository or any project platform MUST be in English.** This keeps the project ready to go global. The rule is non-negotiable and applies to:
+
+- Source code: identifiers, comments, docstrings, log/error messages, test names.
+- Documentation: READMEs, CHANGELOGs, `FOR-DEV.md`/`FOR-HUMAN.md`, architecture docs, in-repo notes.
+- Git: commit messages, branch names, tags.
+- GitHub (and any future platform): pull request titles/descriptions, issue titles/bodies, review comments, labels, release notes.
+- User-facing strings stay localized through the normal i18n flow (e.g. the Flutter ARB files) — English is the source/base locale; other locales are additions, never a replacement.
+
+The only exception is direct conversational communication with the maintainer (chat replies, end-of-task summaries), which may be in the maintainer's preferred language. That exception never leaks into anything committed or published.
+
+---
+
 ## Monorepo structure
 
 ```
