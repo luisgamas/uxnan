@@ -44,10 +44,16 @@ Layer import rules (enforced by review + analysis), per spec 03 §1.5:
 flutter pub get
 flutter gen-l10n          # regenerate localizations after editing l10n/*.arb
 flutter run \
-  --dart-define=RELAY_URL=wss://relay-dev.uxnan.io \
   --dart-define=ENV=dev \
   --dart-define=ENABLE_LOGGING=true
 ```
+
+> **No `RELAY_URL` needed to connect.** The bridge address comes from the
+> **pairing QR**: a fresh bridge is **LAN/Tailscale-direct** (`relayEnabled`
+> defaults to `false`) and advertises its direct `host:port`s, which the phone
+> tries first. The relay is **optional** — self-hosted, used only as a remote
+> fallback and for **background push** (FCM). When a paired bridge advertises a
+> relay URL, the phone reads it from the QR; nothing is injected at compile time.
 
 ### Build flavors
 
@@ -55,7 +61,6 @@ Configuration is injected at compile time with `--dart-define` (spec 03 §3.3):
 
 | Variable | dev | staging | prod (default) |
 |---|---|---|---|
-| `RELAY_URL` | `wss://relay-dev.uxnan.io` | `wss://relay-staging.uxnan.io` | `wss://relay.uxnan.io` |
 | `ENV` | `dev` | `staging` | `prod` |
 | `ENABLE_LOGGING` | `true` | `true` | `false` |
 

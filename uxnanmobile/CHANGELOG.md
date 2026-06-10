@@ -8,6 +8,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Drop the unused `RELAY_URL` compile-time define.** The bridge address comes
+  entirely from the pairing QR (`PairingPayload` `hosts`/`relay`, persisted on
+  the `TrustedDevice`), so the `AppConstants.relayUrl` `--dart-define` was dead
+  (never read). Removed the constant and the `--dart-define=RELAY_URL=…` from the
+  README run command + build-flavors table, with a note that a fresh bridge is
+  LAN/Tailscale-direct (relay optional, only for background push).
+
 - **New-conversation flow redesigned (Material 3).** It is now a **full-screen
   M3 dialog** (roomier than a bottom sheet for a multi-input creation task)
   with: a **working-directory card** that defaults to the bridge's root and a

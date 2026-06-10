@@ -6,11 +6,10 @@
 class AppConstants {
   const AppConstants._();
 
-  /// Relay WebSocket URL, injected at build time.
-  static const String relayUrl = String.fromEnvironment(
-    'RELAY_URL',
-    defaultValue: 'wss://relay.uxnan.io',
-  );
+  // Note: the bridge address is NOT a compile-time constant. A paired bridge's
+  // transports (direct LAN/Tailscale `hosts` and the optional `relay`) come from
+  // the pairing QR (`PairingPayload`) and are persisted on the `TrustedDevice`.
+  // There is intentionally no `RELAY_URL` define.
 
   /// Active environment: `dev`, `staging` or `prod`.
   static const String env = String.fromEnvironment(
