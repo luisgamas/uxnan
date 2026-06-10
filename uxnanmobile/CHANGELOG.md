@@ -6,6 +6,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **"Responding…" header in the conversation.** While the agent is producing a
+  turn, the conversation app-bar shows a small spinner + "Responding…" (primary
+  colour) in place of the connection label, so a reply is clearly on the way
+  even before the first streamed delta. Driven by the per-thread activity that
+  already powers the threads list.
+
 ### Fixed
 
 - **Thread `createdAt`/last-activity now parsed from the bridge.** The parser

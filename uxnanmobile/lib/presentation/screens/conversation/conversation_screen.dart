@@ -5,6 +5,7 @@ import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/enums/agent_id.dart';
 import 'package:uxnan/domain/enums/approval_mode.dart';
 import 'package:uxnan/domain/enums/connection_phase.dart';
+import 'package:uxnan/domain/enums/thread_activity.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_bar.dart';
@@ -149,6 +150,9 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
     final gitBranch = ref.watch(gitRepoStateProvider).value?.branch;
     final resolvedModel = ref.watch(resolvedModelProvider(widget.threadId));
     final usage = ref.watch(contextUsageForProvider(widget.threadId));
+    // Live activity of this thread's turn (running/error), so the header shows
+    // "Responding…" while we wait for the agent — even before the first delta.
+    final activity = ref.watch(threadActivityForProvider(widget.threadId));
     final environment = _buildEnvironment(thread, gitBranch, usage);
     final cwd = thread?.cwd;
     final snapshot = timelineAsync.value;
@@ -189,7 +193,10 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
                           thread?.title ?? l10n.conversationTitle,
                           overflow: TextOverflow.ellipsis,
                         ),
-                        _ConnectionLabel(phase: effectivePhase),
+                        if (activity == ThreadActivity.running)
+                          const _RespondingLabel()
+                        else
+                          _ConnectionLabel(phase: effectivePhase),
                       ],
                     ),
                     actions: [
@@ -286,6 +293,38 @@ class _EmptyState extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Header status shown while the agent is producing a turn: a small spinner and
+/// "Responding…", in the primary colour. Replaces the connection label (being
+/// connected is implied) so the user knows a reply is on the way.
+class _RespondingLabel extends StatelessWidget {
+  const _RespondingLabel();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          width: 10,
+          height: 10,
+          child:
+              CircularProgressIndicator(strokeWidth: 2, color: colors.primary),
+        ),
+        const SizedBox(width: UxnanSpacing.xs),
+        Text(
+          l10n.threadResponding,
+          style: Theme.of(context)
+              .textTheme
+              .bodySmall
+              ?.copyWith(color: colors.primary),
+        ),
+      ],
     );
   }
 }
