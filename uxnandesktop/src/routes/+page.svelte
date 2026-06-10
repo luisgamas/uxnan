@@ -1,5 +1,6 @@
 <script lang="ts">
   import { app } from "$lib/state/app.svelte";
+  import TerminalArea from "$lib/components/TerminalArea.svelte";
 
   // Resize bounds for each sidebar (px).
   const LEFT_MIN = 200;
@@ -137,16 +138,9 @@
       ></div>
     {/if}
 
-    <!-- Center area -->
-    <main class="flex min-w-0 flex-1 flex-col items-center justify-center p-6">
-      <div class="max-w-md text-center">
-        <h1 class="mb-2 text-lg font-semibold">Terminal area</h1>
-        <p class="text-sm text-muted-foreground">
-          Multiplexed terminals (xterm.js + PTY) with tabs and splits will live
-          here. This is the Phase 0 skeleton — the three panels are wired and
-          resizable, and the Rust backend round-trip is connected.
-        </p>
-      </div>
+    <!-- Center area: multiplexed terminals (xterm.js + PTY) -->
+    <main class="flex min-w-0 flex-1 flex-col">
+      <TerminalArea />
     </main>
 
     {#if app.settings.rightSidebarOpen}
