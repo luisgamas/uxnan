@@ -20,6 +20,14 @@
   "connectionConnecting": "Connecting…",
   "connectionDisconnected": "Disconnected",
   "connectionReconnecting": "Reconnecting…",
+  "connectionRelay": "Relay",
+  "@connectionRelay": {
+    "description": "Transport indicator: the live connection runs over the hosted relay."
+  },
+  "connectionDirect": "Direct",
+  "@connectionDirect": {
+    "description": "Transport indicator: the live connection is a direct LAN/Tailscale link."
+  },
 
   "onboardingSkip": "Skip",
   "onboardingNext": "Next",

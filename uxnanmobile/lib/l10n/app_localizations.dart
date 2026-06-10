@@ -146,6 +146,18 @@ abstract class AppLocalizations {
   /// **'Reconnecting…'**
   String get connectionReconnecting;
 
+  /// Transport indicator: the live connection runs over the hosted relay.
+  ///
+  /// In en, this message translates to:
+  /// **'Relay'**
+  String get connectionRelay;
+
+  /// Transport indicator: the live connection is a direct LAN/Tailscale link.
+  ///
+  /// In en, this message translates to:
+  /// **'Direct'**
+  String get connectionDirect;
+
   /// No description provided for @onboardingSkip.
   ///
   /// In en, this message translates to:

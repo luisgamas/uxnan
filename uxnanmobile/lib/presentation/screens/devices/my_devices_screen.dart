@@ -123,6 +123,11 @@ class MyDevicesScreen extends ConsumerWidget {
     // never makes it appear connected when it isn't reachable.
     final connectedId = ref.watch(connectedDeviceProvider).value?.macDeviceId;
     final connectingId = ref.watch(connectingDeviceProvider).value?.macDeviceId;
+    // Whether the live connection runs over the relay (vs direct LAN/Tailscale),
+    // as reported by `bridge/status`. Null until known; only the connected PC
+    // shows it.
+    final relayConnected =
+        ref.watch(bridgeStatusProvider).value?.relayConnected;
 
     if (devices.isEmpty) {
       return const Scaffold(body: _PairEmptyState());
@@ -166,6 +171,8 @@ class MyDevicesScreen extends ConsumerWidget {
                   device: device,
                   isConnected: device.macDeviceId == connectedId,
                   isConnecting: device.macDeviceId == connectingId,
+                  relayConnected:
+                      device.macDeviceId == connectedId ? relayConnected : null,
                   onOpen: () => _open(context, device),
                   onConnect: () => _connect(ref, context, device),
                   onRename: () => _rename(ref, context, device),
@@ -186,6 +193,7 @@ class _DeviceCard extends StatelessWidget {
     required this.device,
     required this.isConnected,
     required this.isConnecting,
+    required this.relayConnected,
     required this.onOpen,
     required this.onConnect,
     required this.onRename,
@@ -196,6 +204,10 @@ class _DeviceCard extends StatelessWidget {
   final TrustedDevice device;
   final bool isConnected;
   final bool isConnecting;
+
+  /// For the connected PC: whether the live channel runs over the relay (true)
+  /// or direct LAN/Tailscale (false); null when unknown / not connected.
+  final bool? relayConnected;
   final VoidCallback onOpen;
   final VoidCallback onConnect;
   final VoidCallback onRename;
@@ -334,6 +346,7 @@ class _DeviceCard extends StatelessWidget {
                     child: _StatusLine(
                       isConnected: isConnected,
                       isConnecting: isConnecting,
+                      relayConnected: relayConnected,
                     ),
                   ),
                   if (!isConnected)
@@ -397,13 +410,19 @@ class _PcAvatar extends StatelessWidget {
 }
 
 class _StatusLine extends StatelessWidget {
-  const _StatusLine({required this.isConnected, required this.isConnecting});
+  const _StatusLine({
+    required this.isConnected,
+    required this.isConnecting,
+    this.relayConnected,
+  });
   final bool isConnected;
   final bool isConnecting;
+  final bool? relayConnected;
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
 
     // Truthful per-device status: connected only when this PC holds the live
@@ -424,7 +443,24 @@ class _StatusLine extends StatelessWidget {
           decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
         const SizedBox(width: UxnanSpacing.xs),
-        Text(label, style: textTheme.bodySmall?.copyWith(color: color)),
+        Flexible(
+          child: Text(
+            label,
+            style: textTheme.bodySmall?.copyWith(color: color),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        // How we're connected: relay vs direct LAN/Tailscale (connected only).
+        if (isConnected && relayConnected != null) ...[
+          const SizedBox(width: UxnanSpacing.xs),
+          Text(
+            '· '
+            '${relayConnected! ? l10n.connectionRelay : l10n.connectionDirect}',
+            style: textTheme.bodySmall?.copyWith(
+              color: colors.onSurfaceVariant,
+            ),
+          ),
+        ],
       ],
     );
   }

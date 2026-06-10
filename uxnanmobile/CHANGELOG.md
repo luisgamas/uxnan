@@ -8,6 +8,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Relay-vs-direct transport indicator.** The connected PC's card now shows how
+  the live channel runs — **Relay** or **Direct** (LAN/Tailscale) — read from
+  the bridge's `bridge/status.relayConnected`, which the app previously ignored
+  (it used `bridge/status` only as a reachability ping). New `BridgeStatus`
+  entity (tolerant parser) and a `bridgeStatusProvider` that refreshes whenever
+  the connected device changes and short-circuits to nothing while offline.
 - **Remove device.** The paired-PC card's overflow menu now has a destructive
   **Remove device** action: after a confirmation dialog it tells the bridge to
   revoke this phone's trust (`bridge/removeTrustedDevice` with the phone's own

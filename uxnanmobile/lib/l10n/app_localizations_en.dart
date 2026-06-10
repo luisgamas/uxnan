@@ -34,6 +34,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get connectionReconnecting => 'Reconnecting…';
 
   @override
+  String get connectionRelay => 'Relay';
+
+  @override
+  String get connectionDirect => 'Direct';
+
+  @override
   String get onboardingSkip => 'Skip';
 
   @override

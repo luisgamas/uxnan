@@ -8,6 +8,8 @@
   "connectionConnecting": "Conectando…",
   "connectionDisconnected": "Desconectado",
   "connectionReconnecting": "Reconectando…",
+  "connectionRelay": "Relay",
+  "connectionDirect": "Directa",
 
   "onboardingSkip": "Omitir",
   "onboardingNext": "Siguiente",

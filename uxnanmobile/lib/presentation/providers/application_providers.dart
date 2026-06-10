@@ -10,6 +10,7 @@ import 'package:uxnan/application/processors/incoming_message_processor.dart';
 import 'package:uxnan/domain/entities/agent_descriptor.dart';
 import 'package:uxnan/domain/entities/agent_model.dart';
 import 'package:uxnan/domain/entities/auth_status.dart';
+import 'package:uxnan/domain/entities/bridge_status.dart';
 import 'package:uxnan/domain/entities/connection_recovery_state.dart';
 import 'package:uxnan/domain/entities/git/git_action_log_entry.dart';
 import 'package:uxnan/domain/entities/git/git_repo_state.dart';
@@ -86,6 +87,21 @@ final connectedDeviceProvider = StreamProvider<TrustedDevice?>(
 final connectingDeviceProvider = StreamProvider<TrustedDevice?>(
   (ref) => ref.watch(sessionCoordinatorProvider).connectingDeviceStream,
 );
+
+/// The connected bridge's status (`bridge/status`), refreshed whenever the
+/// connected device changes. Null while not connected or against an older
+/// bridge — short-circuits before touching the session when offline. Drives the
+/// relay-vs-direct transport indicator on the connected device.
+final bridgeStatusProvider = FutureProvider<BridgeStatus?>((ref) async {
+  final connected = ref.watch(connectedDeviceProvider).value;
+  if (connected == null) return null;
+  final response =
+      await ref.watch(sessionCoordinatorProvider).sendRequest('bridge/status');
+  final result = response.result;
+  return result is Map
+      ? BridgeStatus.fromJson(result.cast<String, dynamic>())
+      : null;
+});
 
 /// Reactive list of paired trusted devices (PCs), for the UI.
 final trustedDevicesProvider = StreamProvider<List<TrustedDevice>>(

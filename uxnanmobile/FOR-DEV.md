@@ -69,6 +69,12 @@ browser and multi-PC connection correctness are now DONE — see below.)
 ## Connection / transport
 
 - ☑ **IncomingMessageProcessor** — DONE (conversation managers).
+- ☑ **Consume `bridge/status.relayConnected`** — DONE: `BridgeStatus` entity +
+  `bridgeStatusProvider` (refreshes when the connected device changes) drive a
+  **Relay / Direct** transport indicator on the connected PC card. Previously
+  `bridge/status` was only used as a reachability ping and the field was
+  ignored. ☐ On-device: verify it reads Relay over a hosted-relay session and
+  Direct on a LAN/Tailscale session.
 - ☑ **Direct LAN/Tailscale transport (hosts-first, relay fallback)** — DONE:
   the bridge advertises its direct `host:port` addresses in the pairing QR
   (`hosts`), so the phone no longer needs mDNS/Bonjour discovery.

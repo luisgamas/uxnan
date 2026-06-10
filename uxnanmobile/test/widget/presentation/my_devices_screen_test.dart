@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:uxnan/domain/entities/bridge_status.dart';
 import 'package:uxnan/domain/entities/trusted_device.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
@@ -19,7 +20,11 @@ TrustedDevice _device(String id, String name) => TrustedDevice(
       lastSeen: DateTime(2026, 6, 6, 9),
     );
 
-Widget _wrap({required List<TrustedDevice> devices}) {
+Widget _wrap({
+  required List<TrustedDevice> devices,
+  TrustedDevice? connected,
+  BridgeStatus? bridgeStatus,
+}) {
   final router = GoRouter(
     routes: [
       GoRoute(path: '/', builder: (_, __) => const MyDevicesScreen()),
@@ -28,8 +33,9 @@ Widget _wrap({required List<TrustedDevice> devices}) {
   return ProviderScope(
     overrides: [
       trustedDevicesProvider.overrideWith((ref) => Stream.value(devices)),
-      connectedDeviceProvider.overrideWith((ref) => Stream.value(null)),
+      connectedDeviceProvider.overrideWith((ref) => Stream.value(connected)),
       connectingDeviceProvider.overrideWith((ref) => Stream.value(null)),
+      bridgeStatusProvider.overrideWith((ref) async => bridgeStatus),
     ],
     child: MaterialApp.router(
       routerConfig: router,
@@ -80,6 +86,39 @@ void main() {
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
     expect(find.text("Jorge's MacBook"), findsOneWidget);
+  });
+
+  testWidgets('shows the transport (relay vs direct) on the connected PC', (
+    tester,
+  ) async {
+    final device = _device('mac-1', 'My Mac');
+    await tester.pumpWidget(
+      _wrap(
+        devices: [device],
+        connected: device,
+        bridgeStatus: const BridgeStatus(relayConnected: true),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Connected'), findsOneWidget);
+    expect(find.text('· Relay'), findsOneWidget);
+  });
+
+  testWidgets('shows a direct transport when not over the relay', (
+    tester,
+  ) async {
+    final device = _device('mac-1', 'My Mac');
+    await tester.pumpWidget(
+      _wrap(
+        devices: [device],
+        connected: device,
+        bridgeStatus: const BridgeStatus(relayConnected: false),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('· Direct'), findsOneWidget);
   });
 
   testWidgets('shows the pair empty state with no devices', (tester) async {
