@@ -93,11 +93,19 @@ hosting** (the phone connects directly to the bridge on the same network).
           subtree needs OS sandboxing (container/chroot) — out of MVP scope; for now
           writes are bounded by each agent's sandbox posture (Codex `workspace-write`,
           Claude `acceptEdits`). See FOR-HUMAN.md.
-- [ ] **Per-project agent selection from `AgentConfig`** — the shared
-      `AgentConfig` (`agentId`, `binaryPath`, `extraArgs`, `cwd`) is defined but
-      not consumed: `thread/start` currently takes an explicit `agentId/model/cwd`.
-      Resolve the default agent/model per project (from config) so a project can
-      pin its own agent without the phone passing it every time.
+- [x] **Per-project agent selection from `AgentConfig`** — a `projectAgents:
+      AgentConfig[]` config (keyed by each entry's absolute `cwd`) pins a
+      project's default `agentId`/`model`. `ProjectRegistry` consumes it
+      (`agentConfigFor(cwd)` + the pin surfaced on `Project.agentId`/`model`), and
+      `thread/start` falls back to the pinned agent → global `defaultAgent` when
+      the phone omits `agentId`; the pinned model applies only when the resolved
+      agent matches the pin. **Still not consumed:** `AgentConfig.binaryPath` /
+      `extraArgs` (per-project binary/arg overrides) — wire them into the adapter
+      spawn if a use case appears. **Mobile linkage (no uxnanmobile change
+      required):** `project/list`/`resolve` now return `agentId`/`model` on each
+      `Project`; the phone MAY pre-select them in `NewConversationSheet` (today it
+      lets the user pick) — purely optional UX. Server-side resolution already
+      makes omitting them work.
 - [x] **Thread management** — `thread/rename` / `thread/archive` /
       `thread/unarchive` / `thread/delete` (`thread-context-handler.ts` +
       `thread-store.ts`, contracted in `@uxnan/shared`). Rename/archive/unarchive

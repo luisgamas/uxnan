@@ -97,7 +97,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   const sessionRegistry = new SessionRegistry();
   const trustStore = new FileTrustStore(state);
   const threadStore = new ThreadStore(state);
-  const projects = new ProjectRegistry(config.workspaceRoots);
+  const projects = new ProjectRegistry(config.workspaceRoots, process.cwd(), config.projectAgents);
   // Browse roots fall back to the project roots, then the bridge's launch
   // directory (`process.cwd()`) — so an unconfigured install browses from
   // wherever the bridge was started, no `browseRoots`/`workspaceRoots` needed.

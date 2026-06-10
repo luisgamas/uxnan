@@ -6,6 +6,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 
 ### Added
+- **Per-project agent/model pins** (`src/daemon-config.ts`,
+  `src/projects/project-registry.ts`, `src/handlers/thread-context-handler.ts`):
+  a new `projectAgents: AgentConfig[]` config (each entry's `cwd` identifies the
+  project) lets a repo pin a default `agentId`/`model`. `ProjectRegistry` now
+  consumes it — `project/list`/`resolve` surface the pin on `Project` and a new
+  `agentConfigFor(cwd)` exposes it — and `thread/start` falls back to the pinned
+  agent (then the global `defaultAgent`) when the phone omits `agentId`. The
+  pinned model only applies when the resolved agent IS the pinned one, so an
+  explicit agent override never inherits a foreign model. Consumes the shared
+  `AgentConfig` that was previously defined-but-unused.
 - **Push registrations persist + multi-session** (`src/push/push-service.ts`,
   `src/bridge.ts`): registrations are now keyed by relay `sessionId` and stored
   to `~/.uxnan/push-state.json` (atomic write), restored at startup via

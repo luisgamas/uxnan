@@ -33,3 +33,19 @@ test('resolve synthesizes a project for an unknown cwd', () => {
   assert.equal(project.cwd, resolve('/tmp/elsewhere'));
   assert.equal(project.id, projectIdFor('/tmp/elsewhere'));
 });
+
+test('per-project agent/model pin surfaces on the project and via agentConfigFor', () => {
+  const registry = new ProjectRegistry(['/tmp/proj-a', '/tmp/proj-b'], process.cwd(), [
+    { agentId: 'codex', cwd: '/tmp/proj-a', model: 'gpt-5-codex' },
+  ]);
+  const [a, b] = registry.list();
+  assert.equal(a?.agentId, 'codex');
+  assert.equal(a?.model, 'gpt-5-codex');
+  // The unpinned project carries no agent/model.
+  assert.equal(b?.agentId, undefined);
+  assert.equal(b?.model, undefined);
+
+  const pin = registry.agentConfigFor('/tmp/proj-a');
+  assert.equal(pin?.agentId, 'codex');
+  assert.equal(registry.agentConfigFor('/tmp/proj-b'), undefined);
+});

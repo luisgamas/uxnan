@@ -3,7 +3,7 @@
  *
  * Source: uxnandesktop/architecture/02e-bridge-integration.md §6.1.
  */
-import { DEFAULT_LAN_PORT, DEFAULT_RELAY_URL, type AgentId } from '@uxnan/shared';
+import { DEFAULT_LAN_PORT, DEFAULT_RELAY_URL, type AgentConfig, type AgentId } from '@uxnan/shared';
 
 /**
  * Headless permission posture for agents that gate tool use (e.g. Claude Code):
@@ -89,6 +89,17 @@ export interface DaemonConfig {
   browseRoots: string[];
   /** Per-agent settings keyed by {@link AgentId}. */
   agents: Partial<Record<AgentId, AgentSettings>>;
+  /**
+   * Per-project agent/model pins, identified by each entry's absolute `cwd`
+   * (the project directory). When a thread starts in a project (or browsed
+   * folder) whose path matches an entry and the phone did NOT pass an explicit
+   * `agentId`/`model`, the bridge uses the pinned `agentId` (and `model`, when it
+   * matches that agent). Lets a repo always open with e.g. Codex without the
+   * phone choosing each time. Reuses the shared {@link AgentConfig}; only
+   * `cwd`/`agentId`/`model` are consumed today (binaryPath/extraArgs are not yet
+   * wired — see FOR-DEV.md).
+   */
+  projectAgents: AgentConfig[];
 }
 
 export const DEFAULT_DAEMON_CONFIG: DaemonConfig = {
@@ -106,6 +117,7 @@ export const DEFAULT_DAEMON_CONFIG: DaemonConfig = {
   defaultAgent: 'opencode',
   workspaceRoots: [],
   browseRoots: [],
+  projectAgents: [],
   // Seed Claude Code with a few concrete, currently-available versions so the
   // picker shows exact models out of the box, alongside the auto-updating
   // `opus`/`sonnet`/`haiku` aliases. Curate this list as models are released or
