@@ -141,6 +141,44 @@ void main() {
     expect(push.shown.single.body, 'boom');
   });
 
+  test('suppresses the notification for the conversation in the foreground',
+      () async {
+    // Isolated registrar (the shared one in setUp also listens to events).
+    final localPush = _FakePushService();
+    final localEvents = StreamController<DomainEvent>.broadcast();
+    String? foreground = 'th1';
+    final local = PushRegistrar(
+      pushService: localPush,
+      sendRequest: (method, [params]) async =>
+          RpcMessage.response(id: 'r1', result: const {'ok': true}),
+      connectionPhases: phases.stream,
+      domainEvents: localEvents.stream,
+      foregroundThreadId: () => foreground,
+      isAndroid: true,
+    );
+
+    // Viewing th1: a turn-end for th1 is suppressed...
+    localEvents.add(const TurnCompletedEvent(turnId: 't1', threadId: 'th1'));
+    await _settle();
+    expect(localPush.shown, isEmpty);
+
+    // ...but a turn-end for a DIFFERENT thread still notifies...
+    localEvents.add(const TurnCompletedEvent(turnId: 't2', threadId: 'th2'));
+    await _settle();
+    expect(localPush.shown, hasLength(1));
+    expect(localPush.shown.single.payload, 'th2');
+
+    // ...and once the user leaves (foreground cleared), th1 notifies again.
+    foreground = null;
+    localEvents.add(const TurnCompletedEvent(turnId: 't3', threadId: 'th1'));
+    await _settle();
+    expect(localPush.shown, hasLength(2));
+
+    await local.dispose();
+    await localPush.close();
+    await localEvents.close();
+  });
+
   test('ignores other domain events', () async {
     events
       ..add(const TurnStartedEvent(turnId: 't1'))

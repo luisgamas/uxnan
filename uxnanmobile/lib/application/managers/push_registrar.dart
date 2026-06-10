@@ -57,9 +57,11 @@ class PushRegistrar {
     required Stream<ConnectionPhase> connectionPhases,
     required Stream<DomainEvent> domainEvents,
     this.strings = const PushNotificationStrings.fallback(),
+    String? Function()? foregroundThreadId,
     bool? isAndroid,
   })  : _push = pushService,
         _sendRequest = sendRequest,
+        _foregroundThreadId = foregroundThreadId,
         _isAndroid = isAndroid ?? !Platform.isIOS {
     _phaseSub = connectionPhases.listen(_onPhase);
     _eventsSub = domainEvents.listen(_onDomainEvent);
@@ -68,6 +70,13 @@ class PushRegistrar {
 
   final PushNotificationService _push;
   final RpcSend _sendRequest;
+
+  /// Returns the threadId of the conversation the user is currently viewing in
+  /// the foreground (null when none). A turn-end notification for that thread
+  /// is suppressed — the user already sees the reply live. Null/absent disables
+  /// the suppression (e.g. in tests).
+  final String? Function()? _foregroundThreadId;
+
   final bool _isAndroid;
 
   /// The localized notification copy currently in use. The UI assigns this once
@@ -129,9 +138,15 @@ class PushRegistrar {
     }
   }
 
+  /// Whether the user is currently viewing [threadId]'s conversation in the
+  /// foreground — in which case a turn-end notification for it is redundant.
+  bool _isViewing(String? threadId) =>
+      threadId != null && _foregroundThreadId?.call() == threadId;
+
   void _onDomainEvent(DomainEvent event) {
     switch (event) {
       case TurnCompletedEvent():
+        if (_isViewing(event.threadId)) break;
         unawaited(
           _push.showLocalNotification(
             title: strings.turnCompletedTitle,
@@ -140,6 +155,7 @@ class PushRegistrar {
           ),
         );
       case TurnErrorEvent(:final message):
+        if (_isViewing(event.threadId)) break;
         unawaited(
           _push.showLocalNotification(
             title: strings.turnErrorTitle,

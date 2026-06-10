@@ -30,6 +30,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **No redundant local notification for the conversation you're watching.** A
+  turn-end (completed/error) local notification is now **suppressed while that
+  thread's conversation is on screen in the foreground** — you already see the
+  reply live. It still fires for a turn that ends in a *different* thread, and
+  while the app is backgrounded (you're no longer watching). Wired via a new
+  `foregroundThreadProvider` the conversation screen sets on enter and clears on
+  leave / app-background; `PushRegistrar` reads it before raising the notice.
+
 - **Thread `createdAt`/last-activity now parsed from the bridge.** The parser
   read `json['lastActivity']`, a field the wire never carries, so a thread's
   last-activity time was always null (blank in the list). It now maps the

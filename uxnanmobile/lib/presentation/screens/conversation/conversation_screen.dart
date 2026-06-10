@@ -31,7 +31,8 @@ class ConversationScreen extends ConsumerStatefulWidget {
   ConsumerState<ConversationScreen> createState() => _ConversationScreenState();
 }
 
-class _ConversationScreenState extends ConsumerState<ConversationScreen> {
+class _ConversationScreenState extends ConsumerState<ConversationScreen>
+    with WidgetsBindingObserver {
   // FOR-DEV: there is no bridge RPC for the approval/access mode yet, so it is
   // a local per-thread setting (no sampled default — see SessionEnvironment).
   ApprovalMode _approvalMode = ApprovalMode.approveForMe;
@@ -41,9 +42,25 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(threadManagerProvider).selectThread(widget.threadId);
+      // Mark this conversation as the foreground one so its turn-end
+      // notifications are suppressed while it's on screen.
+      ref.read(foregroundThreadProvider.notifier).enter(widget.threadId);
     });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Suppress this thread's notifications only while in the foreground; when
+    // backgrounded the user is no longer watching, so let them through.
+    final foreground = ref.read(foregroundThreadProvider.notifier);
+    if (state == AppLifecycleState.resumed) {
+      foreground.enter(widget.threadId);
+    } else {
+      foreground.leave(widget.threadId);
+    }
   }
 
   /// Fetches `git/status` for the thread's [cwd] once it is known/changes.
@@ -57,6 +74,8 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    ref.read(foregroundThreadProvider.notifier).leave(widget.threadId);
     _scroll.dispose();
     super.dispose();
   }

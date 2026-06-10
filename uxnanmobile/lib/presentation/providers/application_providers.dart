@@ -203,6 +203,30 @@ final agentCapabilitiesProvider =
   return const AgentCapabilities.permissive();
 });
 
+/// Holds the threadId of the conversation the user is currently viewing in the
+/// foreground (null when none). The conversation screen sets it while visible
+/// and clears it on leave/background; [pushRegistrarProvider] reads it to
+/// suppress a redundant local notification for the conversation already on
+/// screen.
+class ForegroundThread extends Notifier<String?> {
+  @override
+  String? build() => null;
+
+  /// Marks [threadId]'s conversation as the foreground one.
+  // ignore: use_setters_to_change_properties — paired with leave() for symmetry.
+  void enter(String threadId) => state = threadId;
+
+  /// Clears the foreground thread when leaving [threadId] (ignored if a
+  /// different thread is now in front).
+  void leave(String threadId) {
+    if (state == threadId) state = null;
+  }
+}
+
+/// The conversation currently on screen in the foreground, or null.
+final foregroundThreadProvider =
+    NotifierProvider<ForegroundThread, String?>(ForegroundThread.new);
+
 /// Registers the FCM push token with the bridge once the session connects and
 /// raises local notifications for turn-completed / turn-error events.
 ///
@@ -221,6 +245,8 @@ final pushRegistrarProvider = Provider<PushRegistrar>((ref) {
     sendRequest: coordinator.sendRequest,
     connectionPhases: coordinator.connectionPhaseStream,
     domainEvents: processor.bind(coordinator.incomingMessages),
+    // Suppress a turn-end notification for the conversation already on screen.
+    foregroundThreadId: () => ref.read(foregroundThreadProvider),
   );
   ref.onDispose(registrar.dispose);
   return registrar;
