@@ -203,8 +203,8 @@ export interface JsonRpcMethodRegistry {
   'agent/list': { params: void; result: AgentListResult };
   'agent/models': { params: AgentModelsParams; result: AgentModelsResult };
 
-  // Auth
-  'auth/status': { params: void; result: AuthStatus };
+  // Auth (sanitized — never carries tokens/keys; see AuthStatus)
+  'auth/status': { params: { agentId: AgentId }; result: AuthStatus };
   'auth/login': { params: { provider: string }; result: void };
   'auth/logout': { params: void; result: void };
 

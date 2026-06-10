@@ -29,6 +29,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   kind for adapters to emit it.
 
 ### Changed
+- **`auth/status` is now per-agent** (`jsonrpc/methods.ts`): its params changed
+  from `void` to `{ agentId }`, matching the spec's per-agent `getAuthStatus`
+  (the phone queries the active project's agent). The `AuthStatus` result is
+  unchanged and remains sanitized — it never carries tokens/keys.
 - **`agent/models` now returns structured models** (`jsonrpc/methods.ts`,
   `agents/agent-capabilities.ts`): `AgentModelsResult.models` changed from
   `string[]` to **`AgentModel[]`** (`{ id, displayName, description?, version?,
