@@ -6,6 +6,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 
 ### Added
+- **Thread lifecycle methods** (`jsonrpc/methods.ts`, `jsonrpc/method-registry.ts`):
+  `thread/rename` (`ThreadRenameParams { threadId, title }` → `Thread`),
+  `thread/archive` / `thread/unarchive` (`{ threadId }` → `Thread`) and
+  `thread/delete` (`{ threadId }` → `void`). The mobile app already called these
+  best-effort; they are now part of the contract so the bridge can implement them
+  and the changes survive a reinstall or a second device.
 - **Token usage on `turn/completed`** (`jsonrpc/notifications.ts`): new
   `TurnUsage { tokens, contextWindow? }` and optional `usage` on
   `TurnCompletedParams`, so the bridge can report a turn's context consumption

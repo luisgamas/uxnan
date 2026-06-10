@@ -65,6 +65,11 @@ export interface ThreadSetModelParams {
   threadId: string;
   model: string;
 }
+export interface ThreadRenameParams {
+  threadId: string;
+  /** New, non-empty title for the thread. */
+  title: string;
+}
 export interface TurnSendResult {
   turnId: string;
 }
@@ -161,6 +166,10 @@ export interface JsonRpcMethodRegistry {
   'thread/resume': { params: { threadId: string }; result: void };
   'thread/fork': { params: ForkParams; result: Thread };
   'thread/setModel': { params: ThreadSetModelParams; result: void };
+  'thread/rename': { params: ThreadRenameParams; result: Thread };
+  'thread/archive': { params: { threadId: string }; result: Thread };
+  'thread/unarchive': { params: { threadId: string }; result: Thread };
+  'thread/delete': { params: { threadId: string }; result: void };
   'turn/list': { params: TurnListParams; result: TurnList };
   'turn/read': { params: { turnId: string }; result: Turn };
   'turn/send': { params: TurnSendParams; result: TurnSendResult };
