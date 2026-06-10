@@ -131,8 +131,11 @@ real agent; the desktop app has not been started.
 | `shared/` | **Implemented.** JSON-RPC + E2EE contracts, validators. |
 | `uxnandesktop/` | **Not started** — architecture spec only. |
 
-Push notifications are code-complete but **gated**: real delivery needs a Firebase
-project + native config (see each component's `FOR-HUMAN.md`). The next agent
+Push notifications are code-complete and **Android is live** against a Firebase
+project; iOS delivery is pending an APNs key (macOS + Apple Developer). To
+activate them on your own Firebase account, test delivery, and decide what's safe
+to commit, see [`relay/docs/push-notifications.md`](relay/docs/push-notifications.md)
+(asset checklist in each component's `FOR-HUMAN.md`). The next agent
 (Gemini) follows the OpenCode/Claude Code/Codex recipe in `bridge/FOR-DEV.md`.
 Per-component progress lives in each `CHANGELOG.md`; pending work in each
 `FOR-DEV.md`. Per-component docs (install, config, agents, testing, deploy) live in
