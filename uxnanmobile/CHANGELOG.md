@@ -6,6 +6,15 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Personalized turn notifications.** A turn-end local notification is now
+  titled with the **thread name** and its body reads **"{agent} replied"** /
+  **"{agent} reported an error"** (e.g. *"Cambio de rutina" — "Opencode te
+  respondió"*) — was a generic "Turn completed / Your agent finished a turn."
+  The agent label + thread title are resolved per event; copy is parameterized
+  in l10n.
+
 ### Added
 
 - **Threads list: search, sort and density controls (active + archived).**

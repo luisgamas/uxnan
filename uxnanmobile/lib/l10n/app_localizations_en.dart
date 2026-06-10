@@ -522,14 +522,15 @@ class AppLocalizationsEn extends AppLocalizations {
       'Turn completions and errors from your coding agents.';
 
   @override
-  String get pushTurnCompletedTitle => 'Turn completed';
+  String get pushFallbackTitle => 'Uxnan';
 
   @override
-  String get pushTurnCompletedBody => 'Your agent finished a turn.';
+  String pushTurnCompletedBody(String agent) {
+    return '$agent replied';
+  }
 
   @override
-  String get pushTurnErrorTitle => 'Turn failed';
-
-  @override
-  String get pushTurnErrorBody => 'Your agent reported an error.';
+  String pushTurnErrorBody(String agent) {
+    return '$agent reported an error';
+  }
 }

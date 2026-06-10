@@ -15,31 +15,30 @@ import 'package:uxnan/infrastructure/notifications/push_notification_service.dar
 class PushNotificationStrings {
   /// Creates a [PushNotificationStrings].
   const PushNotificationStrings({
-    required this.turnCompletedTitle,
     required this.turnCompletedBody,
-    required this.turnErrorTitle,
     required this.turnErrorBody,
+    required this.fallbackTitle,
   });
 
   /// Default English copy (used until the UI provides localized strings).
   const PushNotificationStrings.fallback()
-      : turnCompletedTitle = 'Turn completed',
-        turnCompletedBody = 'Your agent finished a turn.',
-        turnErrorTitle = 'Turn failed',
-        turnErrorBody = 'Your agent reported an error.';
+      : turnCompletedBody = _fallbackCompleted,
+        turnErrorBody = _fallbackError,
+        fallbackTitle = 'Uxnan';
 
-  /// Title for the turn-completed notification.
-  final String turnCompletedTitle;
+  /// Body for a completed turn given the agent label, e.g. "Opencode replied".
+  /// The notification's title is the thread's name (or [fallbackTitle]).
+  final String Function(String agent) turnCompletedBody;
 
-  /// Body for the turn-completed notification.
-  final String turnCompletedBody;
+  /// Body for a failed turn given the agent label.
+  final String Function(String agent) turnErrorBody;
 
-  /// Title for the turn-error notification.
-  final String turnErrorTitle;
-
-  /// Fallback body for the turn-error notification.
-  final String turnErrorBody;
+  /// Title used when the thread's name is unknown.
+  final String fallbackTitle;
 }
+
+String _fallbackCompleted(String agent) => '$agent replied';
+String _fallbackError(String agent) => '$agent reported an error';
 
 /// Registers the phone's FCM token with the bridge and surfaces local
 /// notifications for turn-completed events (application layer, spec 02a §5.2).
@@ -58,10 +57,12 @@ class PushRegistrar {
     required Stream<DomainEvent> domainEvents,
     this.strings = const PushNotificationStrings.fallback(),
     String? Function()? foregroundThreadId,
+    ({String title, String agent})? Function(String threadId)? threadInfo,
     bool? isAndroid,
   })  : _push = pushService,
         _sendRequest = sendRequest,
         _foregroundThreadId = foregroundThreadId,
+        _threadInfo = threadInfo,
         _isAndroid = isAndroid ?? !Platform.isIOS {
     _phaseSub = connectionPhases.listen(_onPhase);
     _eventsSub = domainEvents.listen(_onDomainEvent);
@@ -76,6 +77,10 @@ class PushRegistrar {
   /// is suppressed — the user already sees the reply live. Null/absent disables
   /// the suppression (e.g. in tests).
   final String? Function()? _foregroundThreadId;
+
+  /// Resolves the thread's display title + agent label for the notification
+  /// copy. Null/absent falls back to the app name + an empty agent.
+  final ({String title, String agent})? Function(String threadId)? _threadInfo;
 
   final bool _isAndroid;
 
@@ -143,23 +148,36 @@ class PushRegistrar {
   bool _isViewing(String? threadId) =>
       threadId != null && _foregroundThreadId?.call() == threadId;
 
+  /// Resolves the notification (title = thread name, body templated with the
+  /// agent label) for [threadId]: e.g. title "Cambio de rutina", body
+  /// "Opencode te respondió".
+  ({String title, String agent}) _info(String? threadId) {
+    final info = threadId == null ? null : _threadInfo?.call(threadId);
+    final title = (info != null && info.title.isNotEmpty)
+        ? info.title
+        : strings.fallbackTitle;
+    return (title: title, agent: info?.agent ?? '');
+  }
+
   void _onDomainEvent(DomainEvent event) {
     switch (event) {
       case TurnCompletedEvent():
         if (_isViewing(event.threadId)) break;
+        final info = _info(event.threadId);
         unawaited(
           _push.showLocalNotification(
-            title: strings.turnCompletedTitle,
-            body: strings.turnCompletedBody,
+            title: info.title,
+            body: strings.turnCompletedBody(info.agent),
             payload: event.threadId,
           ),
         );
-      case TurnErrorEvent(:final message):
+      case TurnErrorEvent():
         if (_isViewing(event.threadId)) break;
+        final info = _info(event.threadId);
         unawaited(
           _push.showLocalNotification(
-            title: strings.turnErrorTitle,
-            body: message ?? strings.turnErrorBody,
+            title: info.title,
+            body: strings.turnErrorBody(info.agent),
             payload: event.threadId,
           ),
         );

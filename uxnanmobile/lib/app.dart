@@ -87,10 +87,9 @@ class _PushHostState extends ConsumerState<_PushHost> {
     final registrar = ref.watch(pushRegistrarProvider);
     final l10n = AppLocalizations.of(context);
     registrar.strings = PushNotificationStrings(
-      turnCompletedTitle: l10n.pushTurnCompletedTitle,
       turnCompletedBody: l10n.pushTurnCompletedBody,
-      turnErrorTitle: l10n.pushTurnErrorTitle,
       turnErrorBody: l10n.pushTurnErrorBody,
+      fallbackTitle: l10n.pushFallbackTitle,
     );
     return widget.child;
   }

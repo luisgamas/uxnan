@@ -197,20 +197,18 @@
   "@pushChannelDescription": {
     "description": "Description of the Android notification channel."
   },
-  "pushTurnCompletedTitle": "Turn completed",
-  "@pushTurnCompletedTitle": {
-    "description": "Title of the local notification shown when an agent turn completes."
+  "pushFallbackTitle": "Uxnan",
+  "@pushFallbackTitle": {
+    "description": "Notification title used when the thread name is unknown."
   },
-  "pushTurnCompletedBody": "Your agent finished a turn.",
+  "pushTurnCompletedBody": "{agent} replied",
   "@pushTurnCompletedBody": {
-    "description": "Body of the turn-completed notification."
+    "description": "Body of the turn-completed notification (titled with the thread name).",
+    "placeholders": { "agent": { "type": "String" } }
   },
-  "pushTurnErrorTitle": "Turn failed",
-  "@pushTurnErrorTitle": {
-    "description": "Title of the local notification shown when an agent turn errors."
-  },
-  "pushTurnErrorBody": "Your agent reported an error.",
+  "pushTurnErrorBody": "{agent} reported an error",
   "@pushTurnErrorBody": {
-    "description": "Fallback body of the turn-error notification."
+    "description": "Body of the turn-error notification.",
+    "placeholders": { "agent": { "type": "String" } }
   }
 }

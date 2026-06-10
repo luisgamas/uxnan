@@ -131,14 +131,43 @@ void main() {
     expect(push.shown.single.payload, 'th1');
   });
 
-  test('shows a local notification on turn error with its message', () async {
+  test('shows a local notification on turn error', () async {
     events.add(
       const TurnErrorEvent(turnId: 't1', threadId: 'th1', message: 'boom'),
     );
     await _settle();
 
     expect(push.shown, hasLength(1));
-    expect(push.shown.single.body, 'boom');
+    expect(push.shown.single.payload, 'th1');
+  });
+
+  test('titles with the thread name and bodies with the agent label', () async {
+    final localPush = _FakePushService();
+    final localEvents = StreamController<DomainEvent>.broadcast();
+    final local = PushRegistrar(
+      pushService: localPush,
+      sendRequest: (method, [params]) async =>
+          RpcMessage.response(id: 'r1', result: const {'ok': true}),
+      connectionPhases: phases.stream,
+      domainEvents: localEvents.stream,
+      threadInfo: (id) =>
+          id == 'th1' ? (title: 'Cambio de rutina', agent: 'Opencode') : null,
+      strings: PushNotificationStrings(
+        turnCompletedBody: (agent) => '$agent te respondió',
+        turnErrorBody: (agent) => '$agent reportó un error',
+        fallbackTitle: 'Uxnan',
+      ),
+      isAndroid: true,
+    );
+
+    localEvents.add(const TurnCompletedEvent(turnId: 't1', threadId: 'th1'));
+    await _settle();
+    expect(localPush.shown.single.title, 'Cambio de rutina');
+    expect(localPush.shown.single.body, 'Opencode te respondió');
+
+    await local.dispose();
+    await localPush.close();
+    await localEvents.close();
   });
 
   test('suppresses the notification for the conversation in the foreground',

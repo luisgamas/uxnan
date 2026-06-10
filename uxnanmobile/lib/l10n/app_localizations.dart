@@ -1076,29 +1076,23 @@ abstract class AppLocalizations {
   /// **'Turn completions and errors from your coding agents.'**
   String get pushChannelDescription;
 
-  /// Title of the local notification shown when an agent turn completes.
+  /// Notification title used when the thread name is unknown.
   ///
   /// In en, this message translates to:
-  /// **'Turn completed'**
-  String get pushTurnCompletedTitle;
+  /// **'Uxnan'**
+  String get pushFallbackTitle;
 
-  /// Body of the turn-completed notification.
+  /// Body of the turn-completed notification (titled with the thread name).
   ///
   /// In en, this message translates to:
-  /// **'Your agent finished a turn.'**
-  String get pushTurnCompletedBody;
+  /// **'{agent} replied'**
+  String pushTurnCompletedBody(String agent);
 
-  /// Title of the local notification shown when an agent turn errors.
+  /// Body of the turn-error notification.
   ///
   /// In en, this message translates to:
-  /// **'Turn failed'**
-  String get pushTurnErrorTitle;
-
-  /// Fallback body of the turn-error notification.
-  ///
-  /// In en, this message translates to:
-  /// **'Your agent reported an error.'**
-  String get pushTurnErrorBody;
+  /// **'{agent} reported an error'**
+  String pushTurnErrorBody(String agent);
 }
 
 class _AppLocalizationsDelegate

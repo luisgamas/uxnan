@@ -523,14 +523,15 @@ class AppLocalizationsEs extends AppLocalizations {
       'Turnos completados y errores de tus agentes de código.';
 
   @override
-  String get pushTurnCompletedTitle => 'Turno completado';
+  String get pushFallbackTitle => 'Uxnan';
 
   @override
-  String get pushTurnCompletedBody => 'Tu agente terminó un turno.';
+  String pushTurnCompletedBody(String agent) {
+    return '$agent te respondió';
+  }
 
   @override
-  String get pushTurnErrorTitle => 'El turno falló';
-
-  @override
-  String get pushTurnErrorBody => 'Tu agente reportó un error.';
+  String pushTurnErrorBody(String agent) {
+    return '$agent reportó un error';
+  }
 }
