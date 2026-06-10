@@ -25,8 +25,36 @@ export function reasoningValue(options: SendTurnOptions): string | undefined {
 }
 
 /** Build a `reasoning` enum knob from the given selectable values. */
-export function reasoningOption(values: AgentModelOptionValue[]): AgentModelOption {
-  return { key: REASONING_KEY, kind: 'enum', label: 'Reasoning effort', values };
+export function reasoningOption(
+  values: AgentModelOptionValue[],
+  defaultValue?: string,
+): AgentModelOption {
+  return {
+    key: REASONING_KEY,
+    kind: 'enum',
+    label: 'Reasoning effort',
+    values,
+    ...(defaultValue !== undefined ? { default: defaultValue } : {}),
+  };
+}
+
+/** Friendly label for a known reasoning-effort level (else Title-cased). */
+export function effortLabel(value: string): string {
+  const known: Record<string, string> = {
+    minimal: 'Minimal',
+    low: 'Low',
+    medium: 'Medium',
+    high: 'High',
+    xhigh: 'Extra high',
+    max: 'Max',
+  };
+  if (known[value]) return known[value];
+  return value.length === 0 ? value : value[0]!.toUpperCase() + value.slice(1);
+}
+
+/** Build the selectable values for an effort knob from raw level strings. */
+export function effortValues(levels: readonly string[]): AgentModelOptionValue[] {
+  return levels.map((value) => ({ value, label: effortLabel(value) }));
 }
 
 /** Attach `options` to every model (replacing any prior options). */

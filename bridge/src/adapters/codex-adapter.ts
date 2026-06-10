@@ -41,7 +41,7 @@ import type {
   SendTurnOptions,
 } from '@uxnan/shared';
 import { BaseAgentAdapter } from './base-adapter.js';
-import { reasoningOption, reasoningValue, withOptions } from './run-options.js';
+import { effortValues, reasoningOption, reasoningValue, withOptions } from './run-options.js';
 import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
 
 /** JSON-RPC ids for the app-server model-discovery handshake. */
@@ -59,15 +59,14 @@ const CODEX_CAPABILITIES: AgentCapabilities = {
 };
 
 /**
- * Reasoning-effort knob advertised on every Codex model. Maps to the
- * `-c model_reasoning_effort=<low|medium|high>` config override. Applies to
- * reasoning models; non-reasoning models ignore it.
+ * Reasoning-effort knob for Codex models discovered without an effort list
+ * (the `~/.codex/config.toml` fallback path). The app-server `model/list`
+ * reports the REAL per-model efforts (see `parseCodexReasoning`); this covers
+ * only the config-only fallback. Maps to `-c model_reasoning_effort=<level>`.
  */
-const CODEX_REASONING_OPTION: AgentModelOption = reasoningOption([
-  { value: 'low', label: 'Low' },
-  { value: 'medium', label: 'Medium' },
-  { value: 'high', label: 'High' },
-]);
+const CODEX_FALLBACK_REASONING: AgentModelOption = reasoningOption(
+  effortValues(['low', 'medium', 'high', 'xhigh']),
+);
 
 /**
  * Headless sandbox posture passed to `codex exec`:
@@ -323,9 +322,9 @@ export class CodexAdapter extends BaseAgentAdapter {
         } catch {
           /* already gone */
         }
-        const resolved = models.length > 0 ? models : this.#modelsFromConfig();
-        // Advertise the reasoning knob on each model (account-aware list above).
-        resolve(withOptions(resolved, [CODEX_REASONING_OPTION]));
+        // parseCodexModelList already attaches each model's REAL per-model
+        // reasoning efforts; the config fallback gets a generic effort knob.
+        resolve(models.length > 0 ? models : this.#modelsFromConfig());
       };
 
       try {
@@ -386,7 +385,11 @@ export class CodexAdapter extends BaseAgentAdapter {
     try {
       const path = join(homedir(), '.codex', 'config.toml');
       if (!existsSync(path)) return [];
-      return parseCodexConfigModels(readFileSync(path, 'utf-8'));
+      // No effort metadata in config.toml — attach the generic effort knob.
+      return withOptions(
+        parseCodexConfigModels(readFileSync(path, 'utf-8')),
+        [CODEX_FALLBACK_REASONING],
+      );
     } catch {
       return [];
     }
@@ -434,14 +437,42 @@ export function parseCodexModelList(data: unknown): AgentModel[] {
       typeof entry['description'] === 'string' && entry['description'].length > 0
         ? entry['description']
         : undefined;
+    const options = parseCodexReasoning(
+      entry['supportedReasoningEfforts'],
+      entry['defaultReasoningEffort'],
+    );
     out.push({
       id,
       displayName,
       ...(description !== undefined ? { description } : {}),
       isDefault: entry['isDefault'] === true,
+      ...(options.length > 0 ? { options } : {}),
     });
   }
   return out;
+}
+
+/**
+ * Build the per-model reasoning knob from the app-server's
+ * `supportedReasoningEfforts` (`[{ reasoningEffort, description }]`) and
+ * `defaultReasoningEffort`. Returns `[]` when the model reports no efforts.
+ */
+export function parseCodexReasoning(raw: unknown, defaultEffort: unknown): AgentModelOption[] {
+  if (!Array.isArray(raw)) return [];
+  const levels: string[] = [];
+  for (const entry of raw) {
+    const level =
+      isRecord(entry) && typeof entry['reasoningEffort'] === 'string'
+        ? entry['reasoningEffort']
+        : undefined;
+    if (level && !levels.includes(level)) levels.push(level);
+  }
+  if (levels.length === 0) return [];
+  const def =
+    typeof defaultEffort === 'string' && levels.includes(defaultEffort)
+      ? defaultEffort
+      : undefined;
+  return [reasoningOption(effortValues(levels), def)];
 }
 
 /**

@@ -8,6 +8,7 @@ import {
   parseCodexConfigModels,
   parseCodexLine,
   parseCodexModelList,
+  parseCodexReasoning,
   type SpawnedProcess,
 } from '../../src/index.js';
 import type { AgentStreamEvent } from '@uxnan/shared';
@@ -252,6 +253,12 @@ test('parseCodexModelList maps app-server models and skips hidden ones', () => {
       description: 'Frontier model.',
       isDefault: true,
       hidden: false,
+      supportedReasoningEfforts: [
+        { reasoningEffort: 'low', description: 'Fast' },
+        { reasoningEffort: 'high', description: 'Deep' },
+        { reasoningEffort: 'xhigh', description: 'Extra deep' },
+      ],
+      defaultReasoningEffort: 'high',
     },
     { id: 'gpt-5.4-mini', displayName: 'GPT-5.4-Mini', description: '', isDefault: false },
     { id: 'secret', displayName: 'Secret', hidden: true },
@@ -269,7 +276,36 @@ test('parseCodexModelList maps app-server models and skips hidden ones', () => {
   // empty description is omitted; missing displayName falls back to id
   assert.equal(models[1]?.description, undefined);
   assert.equal(models[2]?.displayName, 'fallback-id');
+  // the model's REAL per-model reasoning efforts are advertised (incl. xhigh)
+  const reasoning = models[0]?.options?.find((o) => o.key === 'reasoning');
+  assert.deepEqual(
+    reasoning?.values?.map((v) => v.value),
+    ['low', 'high', 'xhigh'],
+  );
+  assert.equal(reasoning?.values?.find((v) => v.value === 'xhigh')?.label, 'Extra high');
+  assert.equal(reasoning?.default, 'high');
+  // a model with no efforts advertises no reasoning knob
+  assert.equal(models[1]?.options, undefined);
   assert.deepEqual(parseCodexModelList('not an array'), []);
+});
+
+test('parseCodexReasoning builds a knob from supportedReasoningEfforts', () => {
+  const opts = parseCodexReasoning(
+    [{ reasoningEffort: 'low' }, { reasoningEffort: 'high' }, { reasoningEffort: 'xhigh' }],
+    'high',
+  );
+  assert.equal(opts[0]?.key, 'reasoning');
+  assert.deepEqual(
+    opts[0]?.values?.map((v) => v.value),
+    ['low', 'high', 'xhigh'],
+  );
+  assert.equal(opts[0]?.default, 'high');
+  // no efforts → no knob; a default outside the list is dropped
+  assert.deepEqual(parseCodexReasoning(undefined, 'high'), []);
+  assert.equal(
+    parseCodexReasoning([{ reasoningEffort: 'low' }], 'bogus')[0]?.default,
+    undefined,
+  );
 });
 
 test('parseCodexConfigModels reads model + availability table from config.toml', () => {

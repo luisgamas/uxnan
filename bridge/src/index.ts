@@ -65,6 +65,7 @@ export {
   parseCodexConfigModels,
   parseCodexLine,
   parseCodexModelList,
+  parseCodexReasoning,
   type CodexAdapterOptions,
   type CodexEvent,
   type CodexPermissionMode,

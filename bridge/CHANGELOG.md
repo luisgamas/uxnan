@@ -9,13 +9,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 - **Per-model run-option knobs advertised + applied** (`src/adapters/run-options.ts`,
   `claude-adapter.ts`, `codex-adapter.ts`, `opencode-adapter.ts`,
   `agent-manager.ts`, `handlers/thread-context-handler.ts`): `agent/models` now
-  advertises a `reasoning` effort enum on each Claude (low/medium/high/xhigh/max)
-  and Codex (low/medium/high) model, and `turn/send` accepts the chosen values
-  under `options` (mapped to `--effort` / `-c model_reasoning_effort=` /
-  OpenCode `--variant`). The legacy flat `effort` remains a fallback. Phase 2 of
-  the per-model run-options seam (the data-driven contract; the phone renders it
-  in phase 3). OpenCode advertises no knob yet (its variants are provider/model-
-  specific and enumerated at runtime).
+  advertises a `reasoning` effort enum per model, and `turn/send` accepts the
+  chosen values under `options` (mapped to `--effort` / `-c
+  model_reasoning_effort=` / OpenCode `--variant`). The legacy flat `effort`
+  remains a fallback. The effort levels are the **real per-agent options**:
+  **Codex** discovers them per model from the app-server `model/list`
+  (`supportedReasoningEfforts` + `defaultReasoningEffort` — so each model offers
+  exactly what it supports, e.g. `low/medium/high/xhigh` with the right default;
+  the `config.toml` fallback uses a generic set); **Claude** uses the levels its
+  `--effort` flag accepts (`low/medium/high/xhigh/max`, verified against `claude
+  --help` — `ultrathink`-style keywords are prompt triggers, not effort levels).
+  OpenCode advertises no knob yet (its `--variant`s are provider/model-specific,
+  enumerated at runtime). Phase 2–3 of the per-model run-options seam (the phone
+  renders whatever is advertised, so new levels need no app change).
 
 ### Fixed
 - **Reasoning effort now reaches Claude Code and Codex** (`src/adapters/claude-adapter.ts`,

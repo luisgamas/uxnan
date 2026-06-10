@@ -2,11 +2,30 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   REASONING_KEY,
+  effortLabel,
+  effortValues,
   reasoningOption,
   reasoningValue,
   withOptions,
 } from '../../src/adapters/run-options.js';
 import type { AgentModel } from '@uxnan/shared';
+
+test('effortLabel maps known levels and title-cases the rest', () => {
+  assert.equal(effortLabel('xhigh'), 'Extra high');
+  assert.equal(effortLabel('medium'), 'Medium');
+  assert.equal(effortLabel('minimal'), 'Minimal');
+  assert.equal(effortLabel('turbo'), 'Turbo');
+});
+
+test('reasoningOption carries an optional default; effortValues labels values', () => {
+  const opt = reasoningOption(effortValues(['low', 'xhigh']), 'xhigh');
+  assert.equal(opt.default, 'xhigh');
+  assert.deepEqual(
+    opt.values?.map((v) => v.label),
+    ['Low', 'Extra high'],
+  );
+  assert.equal(reasoningOption(effortValues(['low'])).default, undefined);
+});
 
 test('reasoningValue prefers the reasoning knob over the legacy effort', () => {
   assert.equal(

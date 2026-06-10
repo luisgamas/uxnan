@@ -297,14 +297,19 @@ hosting** (the phone connects directly to the bridge on the same network).
           discipline as the tolerant `AgentModel` parser.
         - Capture each CLI's real flags first (don't trust a flag unseen in the
           installed CLI's `--help`/stream); some "options" are config-file, not argv.
-        - Phase it: **(1) DONE** — `effort` wired end-to-end for Codex + Claude
-          (closed the silent-drop gap with the existing contract); **(2)** add the
-          generic per-model option schema to `shared/` + `agent/models`; **(3)**
-          mobile renderer; **(4)** fast-mode + context-variant as opt-in knobs where
-          the CLI supports them. NOTE (validated): Claude has **no** fast-mode/
-          context argv flag (`claude --help`), and context variants aren't simple
-          flags — phase 4 has little to wire today; keep the schema forward-
-          compatible and only advertise knobs that map to a real flag.
+        - Phase it: **(1) DONE** — `effort` wired end-to-end for Codex + Claude;
+          **(2) DONE** — generic per-model option schema in `shared/` +
+          `agent/models`; **(3) DONE** — mobile data-driven renderer; **(4)**
+          fast-mode + context-variant as opt-in knobs where the CLI supports them.
+          The advertised levels are the **real per-agent options**: Codex
+          discovers them per model from the app-server `model/list`
+          (`supportedReasoningEfforts`/`defaultReasoningEffort`, incl. `xhigh`);
+          Claude uses its validated `--effort` set (`low/medium/high/xhigh/max`).
+          NOTE (validated): Claude has **no** fast-mode/context argv flag (`claude
+          --help`), `ultrathink`-style keywords are prompt triggers not effort
+          levels, and context variants aren't simple flags — phase 4 has little to
+          wire today; keep the schema forward-compatible and only advertise knobs
+          that map to a real flag.
 
 ### Adding the next agent (recipe — do these one by one)
 The OpenCode adapter is the template for any "one-shot per-turn CLI" agent:

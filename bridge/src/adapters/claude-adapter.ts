@@ -30,7 +30,7 @@ import type {
   SendTurnOptions,
 } from '@uxnan/shared';
 import { BaseAgentAdapter } from './base-adapter.js';
-import { reasoningOption, reasoningValue, withOptions } from './run-options.js';
+import { effortValues, reasoningOption, reasoningValue, withOptions } from './run-options.js';
 import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
 
 const CLAUDE_CAPABILITIES: AgentCapabilities = {
@@ -59,17 +59,18 @@ const CLAUDE_ALIAS_LABELS: Record<string, string> = {
 };
 
 /**
- * Reasoning-effort knob advertised on every Claude model. Maps to the
- * session-level `claude --effort <level>` flag (verified against `claude --help`:
- * low, medium, high, xhigh, max).
+ * Reasoning-effort levels Claude Code's `--effort` flag accepts (verified against
+ * `claude --help`: low, medium, high, xhigh, max). Claude Code has no enumerate
+ * API, so this is a maintained table — kept in lock-step with the CLI, the same
+ * way the model aliases are. (`ultrathink` and friends are prompt-level thinking
+ * triggers, NOT `--effort` levels, so they don't belong here.)
  */
-const CLAUDE_REASONING_OPTION: AgentModelOption = reasoningOption([
-  { value: 'low', label: 'Low' },
-  { value: 'medium', label: 'Medium' },
-  { value: 'high', label: 'High' },
-  { value: 'xhigh', label: 'Extra high' },
-  { value: 'max', label: 'Max' },
-]);
+const CLAUDE_EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
+
+/** Reasoning-effort knob advertised on every Claude model. */
+const CLAUDE_REASONING_OPTION: AgentModelOption = reasoningOption(
+  effortValues(CLAUDE_EFFORT_LEVELS),
+);
 
 /**
  * Headless permission posture passed to the CLI:
