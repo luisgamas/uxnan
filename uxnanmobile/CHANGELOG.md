@@ -6,6 +6,21 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Agent sign-in banner (`auth/status`).** The conversation screen now queries
+  the bridge's sanitized per-agent `auth/status` for the active thread's agent
+  and shows a warning banner above the composer when that agent is **not signed
+  in on the PC** (turns won't run until the user logs into its CLI there). New
+  `AuthStatus` entity (tolerant parser, never carries tokens),
+  `ThreadManager.loadAuthStatus(agentId)` and an `authStatusProvider`
+  `FutureProvider.family`, mirroring the existing `agentModels`/
+  `agentCapabilities` providers. The banner is gated on actually holding this
+  thread's PC channel (`connectedHere`) and degrades to nothing while offline or
+  against an older bridge. Informational only for now — there is no in-app login
+  yet (the bridge's `auth/login` is still a stub), so it points the user to the
+  PC; it also renders a "Signing in…" state for `loginInProgress`.
+
 ### Fixed
 
 - **Notifications wrongly suppressed on the threads list.** The "currently

@@ -9,6 +9,7 @@ import 'package:uxnan/application/managers/workspace_browser.dart';
 import 'package:uxnan/application/processors/incoming_message_processor.dart';
 import 'package:uxnan/domain/entities/agent_descriptor.dart';
 import 'package:uxnan/domain/entities/agent_model.dart';
+import 'package:uxnan/domain/entities/auth_status.dart';
 import 'package:uxnan/domain/entities/connection_recovery_state.dart';
 import 'package:uxnan/domain/entities/git/git_action_log_entry.dart';
 import 'package:uxnan/domain/entities/git/git_repo_state.dart';
@@ -190,6 +191,15 @@ final agentsProvider = FutureProvider<List<AgentDescriptor>>(
 /// The models a given agent reports (`agent/models`), for the model picker.
 final agentModelsProvider = FutureProvider.family<List<AgentModel>, String>(
   (ref, agentId) => ref.watch(threadManagerProvider).loadModels(agentId),
+);
+
+/// The sanitized auth status the bridge reports for an agent (`auth/status`),
+/// or null when unavailable (offline, or an older bridge). Drives the
+/// "requires login" banner on the conversation screen. Resolves to an
+/// AsyncError while offline; consumers read `.value` so a missing status simply
+/// shows no banner.
+final authStatusProvider = FutureProvider.family<AuthStatus?, String>(
+  (ref, agentId) => ref.watch(threadManagerProvider).loadAuthStatus(agentId),
 );
 
 /// Map of threadId → the concrete model id the agent resolved most recently

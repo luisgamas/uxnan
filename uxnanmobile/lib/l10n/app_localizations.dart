@@ -950,6 +950,24 @@ abstract class AppLocalizations {
   /// **'Unrestricted access to the internet and any file.'**
   String get approvalFullBody;
 
+  /// Banner title shown when the active thread's agent is not logged in on the PC.
+  ///
+  /// In en, this message translates to:
+  /// **'Agent not signed in'**
+  String get authRequiresLoginTitle;
+
+  /// Banner body explaining the agent must be logged in on the PC.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in to this agent\'s CLI on your PC to start sending messages.'**
+  String get authRequiresLoginBody;
+
+  /// Banner shown while an interactive login is in progress on the PC.
+  ///
+  /// In en, this message translates to:
+  /// **'Signing in on your PC…'**
+  String get authLoginInProgress;
+
   /// No description provided for @gitActionsTitle.
   ///
   /// In en, this message translates to:

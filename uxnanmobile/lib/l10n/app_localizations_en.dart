@@ -457,6 +457,16 @@ class AppLocalizationsEn extends AppLocalizations {
       'Unrestricted access to the internet and any file.';
 
   @override
+  String get authRequiresLoginTitle => 'Agent not signed in';
+
+  @override
+  String get authRequiresLoginBody =>
+      'Sign in to this agent\'s CLI on your PC to start sending messages.';
+
+  @override
+  String get authLoginInProgress => 'Signing in on your PC…';
+
+  @override
   String get gitActionsTitle => 'Source control';
 
   @override

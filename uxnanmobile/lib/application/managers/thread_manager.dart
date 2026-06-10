@@ -7,6 +7,7 @@ import 'package:uxnan/application/processors/domain_event.dart';
 import 'package:uxnan/core/utils/logger.dart';
 import 'package:uxnan/domain/entities/agent_descriptor.dart';
 import 'package:uxnan/domain/entities/agent_model.dart';
+import 'package:uxnan/domain/entities/auth_status.dart';
 import 'package:uxnan/domain/entities/message.dart';
 import 'package:uxnan/domain/entities/project.dart';
 import 'package:uxnan/domain/entities/thread.dart';
@@ -301,6 +302,19 @@ class ThreadManager {
       for (final raw in models)
         if (AgentModel.fromAny(raw) case final model?) model,
     ];
+  }
+
+  /// Loads the sanitized auth status the bridge reports for [agentId]
+  /// (`auth/status`), or null when the bridge does not answer with a status
+  /// (e.g. an older bridge that left the method unimplemented). The result
+  /// never carries tokens — it only says whether the agent needs a login on
+  /// the PC. Used to surface a "requires login" banner.
+  Future<AuthStatus?> loadAuthStatus(String agentId) async {
+    final response = await _sendRequest('auth/status', {'agentId': agentId});
+    final result = response.result;
+    return result is Map
+        ? AuthStatus.fromJson(result.cast<String, dynamic>())
+        : null;
   }
 
   /// Starts a new thread (`thread/start`) for [projectId], optionally overriding

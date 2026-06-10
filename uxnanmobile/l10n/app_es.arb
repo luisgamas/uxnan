@@ -154,6 +154,10 @@
   "approvalFullTitle": "Acceso completo",
   "approvalFullBody": "Acceso sin restricciones a internet y a cualquier archivo.",
 
+  "authRequiresLoginTitle": "Agente sin sesión iniciada",
+  "authRequiresLoginBody": "Inicia sesión en la CLI de este agente en tu PC para empezar a enviar mensajes.",
+  "authLoginInProgress": "Iniciando sesión en tu PC…",
+
   "gitActionsTitle": "Control de versiones",
   "gitCleanState": "Árbol de trabajo limpio",
   "gitDirtyState": "Cambios sin confirmar",

@@ -329,6 +329,23 @@ browser and multi-PC connection correctness are now DONE — see below.)
 - ☐ **iOS APNs** — verify end-to-end on a real device once the Firebase project
   + APNs key exist (FOR-HUMAN).
 
+## Account / auth
+
+- ☑ **Sign-in status banner (`auth/status`)** — DONE: the conversation screen
+  queries the bridge's sanitized per-agent `auth/status` for the active thread's
+  agent (`AuthStatus` entity + `ThreadManager.loadAuthStatus` +
+  `authStatusProvider` family) and shows a warning banner above the composer
+  when the agent is not signed in on the PC. Gated on `connectedHere`; degrades
+  to nothing offline / against an older bridge. ☐ On-device: verify the banner
+  appears when the agent CLI is logged out on the PC and clears once it's
+  authenticated.
+- ⊘ **Interactive login from the app — OUT OF SCOPE (product decision).** The
+  banner is informational by design: signing an agent in/out is done on the PC
+  (each agent's own CLI login), not from the phone. The app deliberately does
+  NOT drive `auth/login`/`auth/logout`. The `loginInProgress` state is still
+  rendered for completeness if a bridge ever reports it, but no in-app login
+  action is planned.
+
 ## Tooling
 
 - ☐ Adopt `freezed`/`json_serializable` if/when entity boilerplate warrants it.
