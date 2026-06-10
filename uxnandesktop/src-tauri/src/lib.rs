@@ -9,6 +9,7 @@ mod commands;
 mod error;
 mod model;
 mod persistence;
+mod pty;
 mod state;
 
 use tauri::Manager;
@@ -37,6 +38,10 @@ pub fn run() {
             commands::get_app_state,
             commands::update_settings,
             commands::ping,
+            commands::pty_create,
+            commands::pty_write,
+            commands::pty_resize,
+            commands::pty_close,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

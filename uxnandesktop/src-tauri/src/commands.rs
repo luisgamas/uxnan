@@ -5,7 +5,7 @@
 //! `FOR-DEV.md` and the full planned list in
 //! `architecture/03-implementation-guide.md` §2.1).
 
-use tauri::State;
+use tauri::{AppHandle, Emitter, State};
 
 use crate::error::CommandError;
 use crate::model::{AppData, AppSettings};
@@ -38,4 +38,78 @@ pub async fn update_settings(
 #[tauri::command]
 pub fn ping() -> &'static str {
     "pong"
+}
+
+// --- Terminals (PTY) -------------------------------------------------------
+//
+// The frontend chooses `id` (so it can subscribe to `pty:output:{id}` before
+// the process produces any output), then calls `pty_create`. Output streams via
+// `pty:output:{id}` events; `pty:exit:{id}` fires once the process ends.
+
+/// Spawn a shell in a new pseudoterminal sized `cols`×`rows`.
+#[tauri::command]
+pub async fn pty_create(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+    cwd: Option<String>,
+    shell: Option<String>,
+    cols: u16,
+    rows: u16,
+) -> Result<(), CommandError> {
+    let out_app = app.clone();
+    let out_id = id.clone();
+    let on_output = move |bytes: &[u8]| {
+        let _ = out_app.emit(&format!("pty:output:{out_id}"), bytes.to_vec());
+    };
+    let exit_app = app.clone();
+    let exit_id = id.clone();
+    let on_exit = move || {
+        let _ = exit_app.emit(&format!("pty:exit:{exit_id}"), ());
+    };
+
+    state
+        .pty
+        .create(
+            crate::pty::PtySpec {
+                id,
+                cwd,
+                shell,
+                cols,
+                rows,
+            },
+            on_output,
+            on_exit,
+        )
+        .map_err(CommandError::from)
+}
+
+/// Send user input to a PTY's stdin.
+#[tauri::command]
+pub async fn pty_write(
+    state: State<'_, AppState>,
+    id: String,
+    data: String,
+) -> Result<(), CommandError> {
+    state.pty.write(&id, &data).map_err(CommandError::from)
+}
+
+/// Resize a PTY when its pane changes size.
+#[tauri::command]
+pub async fn pty_resize(
+    state: State<'_, AppState>,
+    id: String,
+    cols: u16,
+    rows: u16,
+) -> Result<(), CommandError> {
+    state
+        .pty
+        .resize(&id, cols, rows)
+        .map_err(CommandError::from)
+}
+
+/// Kill a PTY's process and drop the session (idempotent).
+#[tauri::command]
+pub async fn pty_close(state: State<'_, AppState>, id: String) -> Result<(), CommandError> {
+    state.pty.close(&id).map_err(CommandError::from)
 }

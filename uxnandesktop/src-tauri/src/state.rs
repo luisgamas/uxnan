@@ -9,6 +9,7 @@ use tokio::sync::RwLock;
 
 use crate::model::AppData;
 use crate::persistence::PersistenceManager;
+use crate::pty::PtyManager;
 
 /// Process-wide state shared across all Tauri commands.
 pub struct AppState {
@@ -16,6 +17,8 @@ pub struct AppState {
     pub data: RwLock<AppData>,
     /// Atomic disk persistence for `data`.
     pub persistence: PersistenceManager,
+    /// Live pseudoterminal sessions.
+    pub pty: PtyManager,
 }
 
 impl AppState {
@@ -23,6 +26,7 @@ impl AppState {
         Self {
             data: RwLock::new(data),
             persistence,
+            pty: PtyManager::default(),
         }
     }
 }
