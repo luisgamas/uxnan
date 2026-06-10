@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added
+- **Per-model run-option knobs advertised + applied** (`src/adapters/run-options.ts`,
+  `claude-adapter.ts`, `codex-adapter.ts`, `opencode-adapter.ts`,
+  `agent-manager.ts`, `handlers/thread-context-handler.ts`): `agent/models` now
+  advertises a `reasoning` effort enum on each Claude (low/medium/high/xhigh/max)
+  and Codex (low/medium/high) model, and `turn/send` accepts the chosen values
+  under `options` (mapped to `--effort` / `-c model_reasoning_effort=` /
+  OpenCode `--variant`). The legacy flat `effort` remains a fallback. Phase 2 of
+  the per-model run-options seam (the data-driven contract; the phone renders it
+  in phase 3). OpenCode advertises no knob yet (its variants are provider/model-
+  specific and enumerated at runtime).
+
 ### Fixed
 - **Reasoning effort now reaches Claude Code and Codex** (`src/adapters/claude-adapter.ts`,
   `src/adapters/codex-adapter.ts`): `turn/send`'s `effort` was carried by the

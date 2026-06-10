@@ -26,9 +26,11 @@ import type {
   AgentConfig,
   AgentId,
   AgentModel,
+  AgentModelOption,
   SendTurnOptions,
 } from '@uxnan/shared';
 import { BaseAgentAdapter } from './base-adapter.js';
+import { reasoningOption, reasoningValue, withOptions } from './run-options.js';
 import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
 
 const CLAUDE_CAPABILITIES: AgentCapabilities = {
@@ -55,6 +57,19 @@ const CLAUDE_ALIAS_LABELS: Record<string, string> = {
   sonnet: 'Sonnet',
   haiku: 'Haiku',
 };
+
+/**
+ * Reasoning-effort knob advertised on every Claude model. Maps to the
+ * session-level `claude --effort <level>` flag (verified against `claude --help`:
+ * low, medium, high, xhigh, max).
+ */
+const CLAUDE_REASONING_OPTION: AgentModelOption = reasoningOption([
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high', label: 'High' },
+  { value: 'xhigh', label: 'Extra high' },
+  { value: 'max', label: 'Max' },
+]);
 
 /**
  * Headless permission posture passed to the CLI:
@@ -248,8 +263,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     if (model) args.push('--model', model);
     // Reasoning effort (low|medium|high|xhigh|max). Pass-through — the CLI
     // validates the level; `claude --effort` is a session flag (verified
-    // against `claude --help`).
-    if (options.effort) args.push('--effort', options.effort);
+    // against `claude --help`). Reads the `reasoning` knob, then legacy effort.
+    const effort = reasoningValue(options);
+    if (effort) args.push('--effort', effort);
     if (sessionId) args.push('--resume', sessionId);
     args.push(text);
 
@@ -398,7 +414,11 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       });
     }
 
-    return Promise.resolve([...aliasModels, ...pinnedModels]);
+    // Every Claude model accepts the same `--effort` levels, so advertise the
+    // reasoning knob on each.
+    return Promise.resolve(
+      withOptions([...aliasModels, ...pinnedModels], [CLAUDE_REASONING_OPTION]),
+    );
   }
 }
 

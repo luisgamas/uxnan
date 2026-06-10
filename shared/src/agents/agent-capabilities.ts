@@ -41,6 +41,36 @@ export interface AgentDescriptor {
   defaultModel?: string;
 }
 
+/** One selectable value of an {@link AgentModelOption} of kind `enum`. */
+export interface AgentModelOptionValue {
+  /** Value sent back in `turn/send` `options` when chosen. */
+  value: string;
+  /** Human-facing label for this value. */
+  label: string;
+}
+
+/**
+ * A per-model run-option "knob" the phone should let the user set for a turn
+ * (e.g. reasoning effort). Declared per {@link AgentModel} because the same
+ * agent's models can differ. The phone is a generic renderer: it shows only the
+ * knobs the bridge advertises and sends the chosen values back on `turn/send`
+ * (keyed by {@link AgentModelOption.key}); the bridge translates them into each
+ * CLI's real flag. Consumers MUST ignore an unknown `kind` so adding a knob
+ * never breaks an older app.
+ */
+export interface AgentModelOption {
+  /** Stable key echoed back in `turn/send` `options` (e.g. `reasoning`). */
+  key: string;
+  /** Control kind. Unknown kinds are ignored by the phone (forward-compatible). */
+  kind: 'enum' | 'toggle';
+  /** Human-facing label for the control. */
+  label: string;
+  /** For `enum`: the selectable values (omit for `toggle`). */
+  values?: AgentModelOptionValue[];
+  /** Default value when the agent has one (string for `enum`, boolean for `toggle`). */
+  default?: string | boolean;
+}
+
 /**
  * A selectable model an agent reports, returned by `agent/models`.
  *
@@ -65,4 +95,10 @@ export interface AgentModel {
   version?: string;
   /** Whether this is the agent's current default model. */
   isDefault?: boolean;
+  /**
+   * Per-model run-option knobs (reasoning effort, etc.) the phone may let the
+   * user set. Absent/empty when the model has none. The phone renders these
+   * generically and sends chosen values on `turn/send` via `options`.
+   */
+  options?: AgentModelOption[];
 }

@@ -226,6 +226,39 @@ test('ClaudeCodeAdapter omits --effort when none is set', async () => {
   assert.equal(last().args.includes('--effort'), false);
 });
 
+test('ClaudeCodeAdapter maps the reasoning knob (options) to --effort', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
+  const { done } = collect(adapter);
+
+  await adapter.sendTurn({
+    threadId: 't1',
+    turnId: 'u1',
+    text: 'hi',
+    options: { reasoning: 'max' },
+  });
+  last().feed(['{"type":"result","subtype":"success","result":"ok","session_id":"s"}']);
+  await done;
+
+  const args = last().args;
+  assert.equal(args[args.indexOf('--effort') + 1], 'max');
+});
+
+test('ClaudeCodeAdapter advertises the reasoning knob on every model', async () => {
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude' });
+  const models = await adapter.listModels();
+  assert.ok(models.length > 0);
+  for (const model of models) {
+    const opt = model.options?.find((o) => o.key === 'reasoning');
+    assert.ok(opt, `model ${model.id} advertises the reasoning knob`);
+    assert.equal(opt?.kind, 'enum');
+    assert.deepEqual(
+      opt?.values?.map((v) => v.value),
+      ['low', 'medium', 'high', 'xhigh', 'max'],
+    );
+  }
+});
+
 test('ClaudeCodeAdapter lists the stable aliases as "latest" labelled models', async () => {
   const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', defaultModel: 'sonnet' });
   const models = await adapter.listModels();

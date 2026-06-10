@@ -98,6 +98,7 @@ export function registerThreadHandlers(router: HandlerRouter): void {
       ...(runtime.agentId !== undefined ? { agentId: runtime.agentId as AgentId } : {}),
       ...(service !== undefined ? { service } : {}),
       ...optionalEffort(p),
+      ...optionalRunOptions(p),
       ...(runtime.cwd !== undefined ? { cwd: runtime.cwd } : {}),
     };
     return ctx.agentManager.sendTurn(threadId, text, options);
@@ -111,4 +112,22 @@ export function registerThreadHandlers(router: HandlerRouter): void {
 function optionalEffort(params: unknown): { effort?: string } {
   const value = optionalString(params, 'effort');
   return value === undefined ? {} : { effort: value };
+}
+
+/**
+ * Extracts the per-model run-option values (`{ options: { key: value } }`) from
+ * `turn/send` params, keeping only string/boolean values (tolerant — unknown
+ * shapes are dropped, never thrown).
+ */
+function optionalRunOptions(params: unknown): {
+  options?: Record<string, string | boolean>;
+} {
+  if (!params || typeof params !== 'object') return {};
+  const raw = (params as Record<string, unknown>)['options'];
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const out: Record<string, string | boolean> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof value === 'string' || typeof value === 'boolean') out[key] = value;
+  }
+  return Object.keys(out).length > 0 ? { options: out } : {};
 }

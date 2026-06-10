@@ -6,6 +6,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 
 ### Added
+- **Per-model run-option knobs** (`agents/agent-capabilities.ts`,
+  `jsonrpc/methods.ts`, `agents/agent-adapter.ts`): a new `AgentModelOption`
+  (`{ key, kind: 'enum'|'toggle', label, values?, default? }`) plus an optional
+  `AgentModel.options` so `agent/models` can advertise the run-option knobs a
+  model supports (today: a `reasoning` effort enum). `TurnSendParams.options`
+  and `SendTurnOptions.options` (`Record<string, string|boolean>`) carry the
+  user's chosen values back on `turn/send`; the bridge maps them to each CLI's
+  flag. The legacy flat `effort` still works as a fallback for `reasoning`.
+  Consumers must ignore unknown `kind`s (forward-compatible). Phase 2 of the
+  per-model run-options seam.
 - **Per-project agent/model pin fields** (`agents/agent-config.ts`,
   `models/project.ts`): `AgentConfig` gains an optional `model` (a project's
   pinned default model, alongside the existing `agentId`/`cwd`), and `Project`

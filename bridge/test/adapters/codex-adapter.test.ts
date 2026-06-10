@@ -123,6 +123,24 @@ test('CodexAdapter maps reasoning effort to -c model_reasoning_effort', async ()
   assert.equal(args[i + 1], 'model_reasoning_effort=high');
 });
 
+test('CodexAdapter maps the reasoning knob (options) to -c model_reasoning_effort', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new CodexAdapter({ binaryPath: 'codex', spawnFn });
+  const { done } = collect(adapter);
+
+  await adapter.sendTurn({
+    threadId: 't1',
+    turnId: 'u1',
+    text: 'hi',
+    options: { reasoning: 'low' },
+  });
+  last().feed(['{"type":"turn.completed","usage":{}}']);
+  await done;
+
+  const args = last().args;
+  assert.equal(args[args.indexOf('-c') + 1], 'model_reasoning_effort=low');
+});
+
 test('CodexAdapter omits the reasoning override when no effort is set', async () => {
   const { spawnFn, last } = fakeSpawner();
   const adapter = new CodexAdapter({ binaryPath: 'codex', spawnFn });

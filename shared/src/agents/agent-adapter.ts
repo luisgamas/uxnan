@@ -28,8 +28,14 @@ export interface SendTurnOptions {
   text: string;
   /** Model/service identifier (e.g. `provider/model`) for adapters that accept one. */
   service?: string;
-  /** Reasoning effort / variant (e.g. `high`, `max`, `minimal`). */
+  /** Legacy flat reasoning effort / variant (e.g. `high`, `max`, `minimal`). */
   effort?: string;
+  /**
+   * Chosen per-model run-option values keyed by `AgentModelOption.key` (e.g.
+   * `{ reasoning: 'high' }`). Adapters translate these into CLI flags; the
+   * legacy `effort` is used as a fallback for the `reasoning` knob.
+   */
+  options?: Record<string, string | boolean>;
   /** Working directory the agent should run in for this turn. */
   cwd?: string;
 }

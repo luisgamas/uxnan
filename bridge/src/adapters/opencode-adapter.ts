@@ -28,6 +28,7 @@ import type {
   SendTurnOptions,
 } from '@uxnan/shared';
 import { BaseAgentAdapter } from './base-adapter.js';
+import { reasoningValue } from './run-options.js';
 import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
 
 // Re-exported for backwards-compatible imports (these types now live in spawn.ts).
@@ -136,7 +137,11 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
 
     const args = ['run', '--format', 'json'];
     if (model) args.push('--model', model);
-    if (options.effort) args.push('--variant', options.effort);
+    // OpenCode's reasoning knob is the provider/model `--variant`; it reads the
+    // generic `reasoning` value, then legacy effort. (Variants are
+    // provider-specific and enumerated at runtime, so they aren't advertised.)
+    const variant = reasoningValue(options);
+    if (variant) args.push('--variant', variant);
     if (sessionId) args.push('--session', sessionId);
     if (cwd) args.push('--dir', cwd);
     args.push(text);

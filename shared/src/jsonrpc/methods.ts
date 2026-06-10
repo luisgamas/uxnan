@@ -59,7 +59,17 @@ export interface TurnSendParams {
   threadId: string;
   text: string;
   service?: string;
+  /**
+   * Legacy flat reasoning-effort field. Still honored; new clients should send
+   * the value under `options` (keyed by the advertised knob, e.g. `reasoning`).
+   */
   effort?: string;
+  /**
+   * Chosen per-model run-option values, keyed by `AgentModelOption.key` (the
+   * knobs advertised on the thread's model via `agent/models`). The bridge maps
+   * each into the agent CLI's real flag; unknown keys are ignored.
+   */
+  options?: Record<string, string | boolean>;
 }
 export interface ThreadSetModelParams {
   threadId: string;

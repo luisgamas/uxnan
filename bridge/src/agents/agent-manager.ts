@@ -52,6 +52,8 @@ export interface SendTurnOptions {
   agentId?: AgentId;
   service?: string;
   effort?: string;
+  /** Chosen per-model run-option values keyed by `AgentModelOption.key`. */
+  options?: Record<string, string | boolean>;
   cwd?: string;
 }
 
@@ -146,6 +148,7 @@ export class AgentManager {
       text: userText,
       ...(options.service !== undefined ? { service: options.service } : {}),
       ...(options.effort !== undefined ? { effort: options.effort } : {}),
+      ...(options.options !== undefined ? { options: options.options } : {}),
       ...(options.cwd !== undefined ? { cwd: options.cwd } : {}),
     });
     return { turnId: started.turnId };

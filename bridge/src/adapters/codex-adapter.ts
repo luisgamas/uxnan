@@ -37,9 +37,11 @@ import type {
   AgentConfig,
   AgentId,
   AgentModel,
+  AgentModelOption,
   SendTurnOptions,
 } from '@uxnan/shared';
 import { BaseAgentAdapter } from './base-adapter.js';
+import { reasoningOption, reasoningValue, withOptions } from './run-options.js';
 import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
 
 /** JSON-RPC ids for the app-server model-discovery handshake. */
@@ -55,6 +57,17 @@ const CODEX_CAPABILITIES: AgentCapabilities = {
   forking: true,
   images: true,
 };
+
+/**
+ * Reasoning-effort knob advertised on every Codex model. Maps to the
+ * `-c model_reasoning_effort=<low|medium|high>` config override. Applies to
+ * reasoning models; non-reasoning models ignore it.
+ */
+const CODEX_REASONING_OPTION: AgentModelOption = reasoningOption([
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high', label: 'High' },
+]);
 
 /**
  * Headless sandbox posture passed to `codex exec`:
@@ -194,7 +207,9 @@ export class CodexAdapter extends BaseAgentAdapter {
     // Reasoning effort → Codex config override (`-c model_reasoning_effort=…`,
     // low|medium|high). Applies to reasoning models; others ignore it. The `-c`
     // key=value override mechanism is verified against `codex exec --help`.
-    if (options.effort) args.push('-c', `model_reasoning_effort=${options.effort}`);
+    // Reads the `reasoning` knob, then legacy effort.
+    const effort = reasoningValue(options);
+    if (effort) args.push('-c', `model_reasoning_effort=${effort}`);
     if (cwd) args.push('-C', cwd);
     if (resumeId) args.push('resume', resumeId);
     args.push(text);
@@ -308,7 +323,9 @@ export class CodexAdapter extends BaseAgentAdapter {
         } catch {
           /* already gone */
         }
-        resolve(models.length > 0 ? models : this.#modelsFromConfig());
+        const resolved = models.length > 0 ? models : this.#modelsFromConfig();
+        // Advertise the reasoning knob on each model (account-aware list above).
+        resolve(withOptions(resolved, [CODEX_REASONING_OPTION]));
       };
 
       try {
