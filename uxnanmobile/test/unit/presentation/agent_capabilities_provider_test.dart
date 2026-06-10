@@ -25,6 +25,16 @@ void main() {
     final caps = container.read(agentCapabilitiesProvider('codex'));
     expect(caps.approvals, isTrue);
     expect(caps.images, isFalse);
+    expect(caps.reportsContextUsage, isFalse);
+  });
+
+  test('AgentCapabilities.fromJson parses reportsContextUsage', () {
+    expect(
+      AgentCapabilities.fromJson(const {'reportsContextUsage': true})
+          .reportsContextUsage,
+      isTrue,
+    );
+    expect(AgentCapabilities.fromJson(const {}).reportsContextUsage, isFalse);
   });
 
   test('is permissive when the agent is unknown', () async {
@@ -40,5 +50,6 @@ void main() {
     expect(caps.approvals, isTrue);
     expect(caps.images, isTrue);
     expect(caps.planMode, isTrue);
+    expect(caps.reportsContextUsage, isTrue);
   });
 }

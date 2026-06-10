@@ -25,6 +25,13 @@ export interface AgentCapabilities {
   forking: boolean;
   /** Agent supports image inputs. */
   images: boolean;
+  /**
+   * Agent reports per-turn token/context usage (`usage` on `turn/completed`),
+   * so the phone can show a context meter (at 0 until the first turn). Optional
+   * for back-compat; absent/false means the agent reports no usage (e.g.
+   * OpenCode) and the meter stays hidden.
+   */
+  reportsContextUsage?: boolean;
 }
 
 /**

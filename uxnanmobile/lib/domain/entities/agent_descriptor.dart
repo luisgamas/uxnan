@@ -9,6 +9,7 @@ class AgentCapabilities extends Equatable {
     this.approvals = false,
     this.forking = false,
     this.images = false,
+    this.reportsContextUsage = false,
   });
 
   /// All-permissive capabilities: a safe default for capability-gated UI when
@@ -19,7 +20,8 @@ class AgentCapabilities extends Equatable {
         streaming = true,
         approvals = true,
         forking = true,
-        images = true;
+        images = true,
+        reportsContextUsage = true;
 
   /// Reconstructs capabilities from a JSON map (tolerant).
   factory AgentCapabilities.fromJson(Map<String, dynamic> json) =>
@@ -29,6 +31,7 @@ class AgentCapabilities extends Equatable {
         approvals: json['approvals'] == true,
         forking: json['forking'] == true,
         images: json['images'] == true,
+        reportsContextUsage: json['reportsContextUsage'] == true,
       );
 
   /// Whether the agent supports a planning mode.
@@ -46,8 +49,13 @@ class AgentCapabilities extends Equatable {
   /// Whether the agent accepts image inputs.
   final bool images;
 
+  /// Whether the agent reports per-turn token/context usage (drives the context
+  /// meter, shown at 0 until the first turn).
+  final bool reportsContextUsage;
+
   @override
-  List<Object?> get props => [planMode, streaming, approvals, forking, images];
+  List<Object?> get props =>
+      [planMode, streaming, approvals, forking, images, reportsContextUsage];
 }
 
 /// A coding agent exposed by the bridge (`agent/list`).

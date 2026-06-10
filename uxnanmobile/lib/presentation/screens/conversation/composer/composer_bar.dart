@@ -138,13 +138,17 @@ class _ComposerBarState extends State<ComposerBar> {
                     ),
                   ),
                   const Spacer(),
-                  // Context usage: a percentage ring when the window is known
-                  // (Claude), or a raw token count otherwise (Codex).
-                  if (widget.environment.hasContext) ...[
-                    _ContextBadge(percent: widget.environment.contextPercent),
-                    const SizedBox(width: UxnanSpacing.xs),
-                  ] else if (widget.environment.contextTokensLabel != null) ...[
-                    _TokenChip(label: widget.environment.contextTokensLabel!),
+                  // Context usage (only for agents that report it): a percent
+                  // ring once the window is known (Claude), else a raw token
+                  // count (Codex). Shown at 0 until the first turn reports it,
+                  // so the meter is always present for usage-reporting agents.
+                  if (widget.environment.showContext) ...[
+                    if (widget.environment.hasContext)
+                      _ContextBadge(percent: widget.environment.contextPercent)
+                    else
+                      _TokenChip(
+                        label: widget.environment.contextTokensLabel ?? '0',
+                      ),
                     const SizedBox(width: UxnanSpacing.xs),
                   ],
                   // FOR-DEV: voice input is a placeholder (no STT yet).

@@ -127,6 +127,39 @@ void main() {
     expect(find.text('  hola  '), findsNothing);
   });
 
+  testWidgets('ComposerBar shows a 0 context meter for usage-reporting agents',
+      (tester) async {
+    await tester.pumpWidget(
+      _wrap(
+        ComposerBar(
+          environment: const SessionEnvironment(
+            modelName: 'Opus',
+            showContext: true,
+          ),
+          onSend: (_) {},
+        ),
+      ),
+    );
+
+    // No usage yet → the meter is present at a 0 baseline.
+    expect(find.text('0'), findsOneWidget);
+  });
+
+  testWidgets('ComposerBar hides the context meter when usage is unreported',
+      (tester) async {
+    await tester.pumpWidget(
+      _wrap(
+        ComposerBar(
+          // showContext defaults to false (e.g. OpenCode).
+          environment: const SessionEnvironment(modelName: 'Opus'),
+          onSend: (_) {},
+        ),
+      ),
+    );
+
+    expect(find.text('0'), findsNothing);
+  });
+
   testWidgets('ComposerBar does not send when disabled', (tester) async {
     var sentCount = 0;
     await tester.pumpWidget(

@@ -6,6 +6,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 
 ### Added
+- **`AgentCapabilities.reportsContextUsage`** (`agents/agent-capabilities.ts`):
+  optional per-agent flag for whether the agent reports per-turn token/context
+  usage (`usage` on `turn/completed`), so the phone can show a context meter at
+  0 before the first turn. Optional/back-compat (absent = false). Set by the
+  Claude and Codex adapters; OpenCode leaves it false.
 - **Per-model run-option knobs** (`agents/agent-capabilities.ts`,
   `jsonrpc/methods.ts`, `agents/agent-adapter.ts`): a new `AgentModelOption`
   (`{ key, kind: 'enum'|'toggle', label, values?, default? }`) plus an optional

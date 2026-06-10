@@ -149,8 +149,9 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   SessionEnvironment _buildEnvironment(
     Thread? thread,
     String? gitBranch,
-    ({int tokens, int? contextWindow})? usage,
-  ) {
+    ({int tokens, int? contextWindow})? usage, {
+    required bool showContext,
+  }) {
     final agent = AgentIdParsing.fromWireId(thread?.agentId ?? 'custom');
     final modelName = thread?.model?.isNotEmpty ?? false
         ? thread!.model!
@@ -159,6 +160,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     return SessionEnvironment(
       modelName: modelName,
       gitBranch: gitBranch,
+      showContext: showContext,
       contextTokens: usage?.tokens,
       contextUsedFraction: (usage != null && window != null && window > 0)
           ? (usage.tokens / window).clamp(0.0, 1.0)
@@ -195,7 +197,15 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     // Live activity of this thread's turn (running/error), so the header shows
     // "Responding…" while we wait for the agent — even before the first delta.
     final activity = ref.watch(threadActivityForProvider(widget.threadId));
-    final environment = _buildEnvironment(thread, gitBranch, usage);
+    final environment = _buildEnvironment(
+      thread,
+      gitBranch,
+      usage,
+      showContext: thread != null &&
+          ref
+              .watch(agentCapabilitiesProvider(thread.agentId))
+              .reportsContextUsage,
+    );
     final cwd = thread?.cwd;
     final snapshot = timelineAsync.value;
 

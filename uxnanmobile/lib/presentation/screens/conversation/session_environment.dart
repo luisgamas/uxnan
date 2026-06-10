@@ -10,6 +10,7 @@ class SessionEnvironment {
     required this.modelName,
     this.contextUsedFraction,
     this.contextTokens,
+    this.showContext = false,
     this.gitBranch,
     this.isLocal = true,
   });
@@ -24,6 +25,10 @@ class SessionEnvironment {
 
   /// Raw context-occupying token count of the latest turn, when reported.
   final int? contextTokens;
+
+  /// Whether to show the context meter at all — true for agents that report
+  /// usage (so it's visible at 0 before the first turn), false otherwise.
+  final bool showContext;
 
   /// Current git branch, if a repo is open.
   final String? gitBranch;
@@ -51,6 +56,7 @@ class SessionEnvironment {
         modelName: modelName ?? this.modelName,
         contextUsedFraction: contextUsedFraction,
         contextTokens: contextTokens,
+        showContext: showContext,
         gitBranch: gitBranch ?? this.gitBranch,
         isLocal: isLocal,
       );

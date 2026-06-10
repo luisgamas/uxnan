@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 
 ### Added
+- **Agents advertise `reportsContextUsage`** (`claude-adapter.ts`,
+  `codex-adapter.ts`): Claude and Codex set the new capability flag so the phone
+  shows their context meter (at 0 before the first turn); OpenCode leaves it
+  false (it reports no usage).
 - **Per-model run-option knobs advertised + applied** (`src/adapters/run-options.ts`,
   `claude-adapter.ts`, `codex-adapter.ts`, `opencode-adapter.ts`,
   `agent-manager.ts`, `handlers/thread-context-handler.ts`): `agent/models` now

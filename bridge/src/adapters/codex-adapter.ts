@@ -56,6 +56,7 @@ const CODEX_CAPABILITIES: AgentCapabilities = {
   approvals: true,
   forking: true,
   images: true,
+  reportsContextUsage: true,
 };
 
 /**

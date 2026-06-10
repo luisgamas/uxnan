@@ -6,8 +6,23 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Agent sign-in status refreshes after a PC-side login.** `auth/status` is
+  cached per agent and the PC's sign-in state can change with no phone-side
+  reconnect, so a re-login on the PC left the app showing the agent as "not
+  signed in". The app now re-queries `auth/status` on **app resume** (a new
+  `authStatusRefreshProvider` tick that `authStatusProvider` watches; `_PushHost`
+  bumps it on `AppLifecycleState.resumed`), clearing the stale banner / red dot.
+
 ### Added
 
+- **Context meter always visible for usage-reporting agents.** The composer's
+  context meter now shows for any agent that reports token/context usage (new
+  per-agent `reportsContextUsage` capability — Claude/Codex true, OpenCode
+  false), at a **0 baseline** until the first turn reports usage (then the
+  percentage ring once the window is known, or the raw token count). Agents that
+  report no usage show nothing, as before.
 - **Data-driven run-option knobs.** The conversation screen now renders the
   per-model run options the bridge advertises on `agent/models` (today a
   **Reasoning effort** enum on Claude/Codex models) as a generic control bar
