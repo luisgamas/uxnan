@@ -44,6 +44,28 @@ agent turn ends ─► bridge (PushService.onTurnEnd)
   service-account key; otherwise it accepts the calls but no-ops (gracefully
   degraded). Routing/dedupe/secret-validation are unit-tested with a fake sender.
 
+### Do I need the relay?
+
+The relay in this project is **optional and self-hosted** (`relayEnabled` defaults
+to `false` — a fresh install is LAN/Tailscale-direct with no hosting). How that
+interacts with notifications:
+
+| Notification | Needs the relay? | Why |
+|---|---|---|
+| **Local** (app open/foreground) | **No** | The app raises them itself from the live E2EE session's `stream/turn/*` events — they ride the same direct (LAN/Tailscale) or relayed channel the app is already on. No FCM, no relay-push endpoints. |
+| **Push / FCM** (app backgrounded or closed) | **Yes** | The bridge holds **no** FCM credentials by design; it `POST`s `/push/notify` to the relay, which owns the Firebase service account and calls FCM. Token registration (`/push/register`) also goes through the relay. |
+
+So with the **default relay-off setup you get local notifications only** (while the
+app is open). To also receive **background** push you must run your self-hosted
+relay with `UXNAN_FCM_SERVICE_ACCOUNT` set and pair the phone with a `relayUrl`.
+They're complementary: local covers "app open", FCM covers "app backgrounded/closed"
+(when the OS suspends the socket and live events stop arriving).
+
+> This keeps the relay-optional philosophy intact for everything **except**
+> background push. A relay-less direct-FCM-from-the-bridge path is deliberately
+> **not** built — it's tracked in `bridge/FOR-DEV.md` as an opt-in only to be done
+> under an explicit developer request.
+
 ---
 
 ## 3. Current status

@@ -106,6 +106,19 @@ hosting** (the phone connects directly to the bridge on the same network).
       registers the token with the relay and pushes on turn-end (gated by
       `config.push*` + Firebase creds on the relay). Follow-ups: persist the
       registration to `~/.uxnan/push-state.json`; support multiple sessions.
+- [ ] **(OPT-IN — explicit developer request ONLY) Direct FCM from the bridge,
+      push without the relay.** Today background push **requires a running relay**:
+      the bridge holds no FCM credentials and `POST`s `/push/notify` to the relay,
+      which owns the Firebase service account and calls FCM. This is intentional —
+      it keeps the bridge credential-free and the relay optional for *everything
+      except* background push (foreground local notifications already work
+      relay-free; see `relay/docs/push-notifications.md` → "Do I need the relay?").
+      If — and only if — a developer explicitly asks for background push in a pure
+      relay-less (LAN/Tailscale-direct) setup, add an alternative `PushSender` in
+      the bridge that calls FCM directly via `firebase-admin` using a local
+      `UXNAN_FCM_SERVICE_ACCOUNT`, selected when `relayEnabled === false`. **Do NOT
+      build this by default**: the relay-based path stays the default so the bridge
+      ships with no push secrets. Implement strictly on request.
 - [ ] **Desktop** — `src/handlers/desktop-handler.ts` (embedded mode IPC).
 - [ ] **bridge/removeTrustedDevice** — `src/handlers/bridge-control-handler.ts`.
 - [ ] **bridge/status `relayConnected`** — reflect the real relay connection.
