@@ -214,8 +214,31 @@ final agentModelsProvider = FutureProvider.family<List<AgentModel>, String>(
 /// "requires login" banner on the conversation screen. Resolves to an
 /// AsyncError while offline; consumers read `.value` so a missing status simply
 /// shows no banner.
+/// A tick [authStatusProvider] watches so it can be re-fetched on demand. The
+/// PC's per-agent sign-in state can change WITHOUT any phone-side connection
+/// change (the user logs the CLI in/out on the PC), so bumping this on app
+/// resume re-queries `auth/status` and clears a stale "not signed in" state.
+class AuthStatusRefresh extends Notifier<int> {
+  @override
+  int build() => 0;
+
+  /// Forces every [authStatusProvider] to re-fetch.
+  void bump() => state = state + 1;
+}
+
+/// Drives on-demand refresh of [authStatusProvider].
+final authStatusRefreshProvider =
+    NotifierProvider<AuthStatusRefresh, int>(AuthStatusRefresh.new);
+
+/// The sanitized per-agent auth status (`auth/status`), or null when unknown.
+/// Re-fetched whenever [authStatusRefreshProvider] bumps (e.g. on app resume),
+/// so a sign-in/out done on the PC is picked up without a phone reconnect.
 final authStatusProvider = FutureProvider.family<AuthStatus?, String>(
-  (ref, agentId) => ref.watch(threadManagerProvider).loadAuthStatus(agentId),
+  (ref, agentId) {
+    // Re-fetch whenever the refresh tick bumps (e.g. on app resume).
+    ref.watch(authStatusRefreshProvider);
+    return ref.watch(threadManagerProvider).loadAuthStatus(agentId);
+  },
 );
 
 /// Per-thread chosen run-option values (`threadId → { optionKey → value }`),

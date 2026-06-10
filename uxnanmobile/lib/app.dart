@@ -50,12 +50,14 @@ class _PushHost extends ConsumerStatefulWidget {
   ConsumerState<_PushHost> createState() => _PushHostState();
 }
 
-class _PushHostState extends ConsumerState<_PushHost> {
+class _PushHostState extends ConsumerState<_PushHost>
+    with WidgetsBindingObserver {
   StreamSubscription<String>? _tapSub;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     final registrar = ref.read(pushRegistrarProvider);
     // Taps while the app is alive or resumed from the background.
     _tapSub = registrar.onNotificationTap.listen(_openThread);
@@ -68,6 +70,15 @@ class _PushHostState extends ConsumerState<_PushHost> {
     });
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // The user may have signed an agent in/out on the PC while we were away;
+    // re-query auth/status on resume so a stale "not signed in" state clears.
+    if (state == AppLifecycleState.resumed) {
+      ref.read(authStatusRefreshProvider.notifier).bump();
+    }
+  }
+
   void _openThread(String threadId) {
     if (threadId.isEmpty) return;
     unawaited(
@@ -77,6 +88,7 @@ class _PushHostState extends ConsumerState<_PushHost> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _tapSub?.cancel();
     super.dispose();
   }
