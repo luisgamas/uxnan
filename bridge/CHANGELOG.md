@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed
+- **Reasoning effort now reaches Claude Code and Codex** (`src/adapters/claude-adapter.ts`,
+  `src/adapters/codex-adapter.ts`): `turn/send`'s `effort` was carried by the
+  contract but silently dropped by both adapters (only OpenCode consumed it via
+  `--variant`). Claude now passes `--effort <low|medium|high|xhigh|max>` and Codex
+  passes `-c model_reasoning_effort=<low|medium|high>` (both flags verified against
+  the installed CLIs' `--help`). Closes the silent-drop gap with the existing
+  `effort` field — phase 1 of "Per-model run options" in `FOR-DEV.md`.
+
 ### Added
 - **Claude Fable 5 model** (`src/daemon-config.ts`, `src/adapters/claude-adapter.ts`):
   seed Claude Code's picker with `claude-fable-5` ("Fable 5", the new top tier

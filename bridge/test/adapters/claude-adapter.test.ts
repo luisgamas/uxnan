@@ -200,6 +200,32 @@ test('ClaudeCodeAdapter maps the permission posture to the right CLI flag', asyn
   }
 });
 
+test('ClaudeCodeAdapter passes the reasoning effort as --effort', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
+  const { done } = collect(adapter);
+
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi', effort: 'high' });
+  last().feed(['{"type":"result","subtype":"success","result":"ok","session_id":"s"}']);
+  await done;
+
+  const args = last().args;
+  assert.ok(args.includes('--effort'));
+  assert.equal(args[args.indexOf('--effort') + 1], 'high');
+});
+
+test('ClaudeCodeAdapter omits --effort when none is set', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
+  const { done } = collect(adapter);
+
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi' });
+  last().feed(['{"type":"result","subtype":"success","result":"ok","session_id":"s"}']);
+  await done;
+
+  assert.equal(last().args.includes('--effort'), false);
+});
+
 test('ClaudeCodeAdapter lists the stable aliases as "latest" labelled models', async () => {
   const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', defaultModel: 'sonnet' });
   const models = await adapter.listModels();

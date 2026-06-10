@@ -233,10 +233,6 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     const { threadId, turnId, text } = options;
     const cwd = options.cwd ?? this.#defaultCwd;
     const model = options.service ?? this.#defaultModel;
-    // FOR-DEV: `options.effort` (and a future "fast mode" knob) is accepted by the
-    // contract but NOT applied here yet — wire it to Claude Code's effort/fast flags
-    // as part of "Per-model run options" in FOR-DEV.md (capture the real CLI flags
-    // first; some are config, not argv).
     const sessionId = this.#sessionByThread.get(threadId);
 
     const args = [
@@ -250,6 +246,10 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     else if (this.#permissionMode === 'bypassPermissions')
       args.push('--dangerously-skip-permissions');
     if (model) args.push('--model', model);
+    // Reasoning effort (low|medium|high|xhigh|max). Pass-through — the CLI
+    // validates the level; `claude --effort` is a session flag (verified
+    // against `claude --help`).
+    if (options.effort) args.push('--effort', options.effort);
     if (sessionId) args.push('--resume', sessionId);
     args.push(text);
 

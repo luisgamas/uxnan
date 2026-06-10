@@ -191,9 +191,10 @@ export class CodexAdapter extends BaseAgentAdapter {
       args.push('--dangerously-bypass-approvals-and-sandbox');
     else args.push('-s', 'read-only');
     if (model) args.push('-m', model);
-    // FOR-DEV: `options.effort` is accepted by the contract but NOT applied here
-    // yet — map it to Codex's reasoning effort (`-c model_reasoning_effort=<low|
-    // medium|high>`) as part of "Per-model run options" in FOR-DEV.md.
+    // Reasoning effort → Codex config override (`-c model_reasoning_effort=…`,
+    // low|medium|high). Applies to reasoning models; others ignore it. The `-c`
+    // key=value override mechanism is verified against `codex exec --help`.
+    if (options.effort) args.push('-c', `model_reasoning_effort=${options.effort}`);
     if (cwd) args.push('-C', cwd);
     if (resumeId) args.push('resume', resumeId);
     args.push(text);

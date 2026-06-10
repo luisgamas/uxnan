@@ -108,6 +108,33 @@ test('CodexAdapter streams agent messages as deltas and completes', async () => 
   assert.equal(args[args.length - 1], 'hi');
 });
 
+test('CodexAdapter maps reasoning effort to -c model_reasoning_effort', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new CodexAdapter({ binaryPath: 'codex', spawnFn });
+  const { done } = collect(adapter);
+
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi', effort: 'high' });
+  last().feed(['{"type":"turn.completed","usage":{}}']);
+  await done;
+
+  const args = last().args;
+  const i = args.indexOf('-c');
+  assert.notEqual(i, -1);
+  assert.equal(args[i + 1], 'model_reasoning_effort=high');
+});
+
+test('CodexAdapter omits the reasoning override when no effort is set', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new CodexAdapter({ binaryPath: 'codex', spawnFn });
+  const { done } = collect(adapter);
+
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi' });
+  last().feed(['{"type":"turn.completed","usage":{}}']);
+  await done;
+
+  assert.equal(last().args.includes('-c'), false);
+});
+
 test('CodexAdapter reuses the captured thread id with `resume` on the next turn', async () => {
   const { spawnFn, last } = fakeSpawner();
   const adapter = new CodexAdapter({ binaryPath: 'codex', spawnFn });
