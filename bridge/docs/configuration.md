@@ -67,6 +67,7 @@ reserved and not yet consumed.)
       "permissionMode": "acceptEdits",
       "model": "opus",
       "models": [
+        { "id": "claude-fable-5", "displayName": "Fable 5" },
         { "id": "claude-opus-4-8", "displayName": "Opus 4.8" },
         { "id": "claude-sonnet-4-6", "displayName": "Sonnet 4.6" },
         "claude-haiku-4-5"

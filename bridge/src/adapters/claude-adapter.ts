@@ -114,14 +114,14 @@ export interface ClaudeEvent {
 
 /**
  * Context-window size (tokens) for a Claude model id or alias, so the phone can
- * show context usage as a percentage. Opus/Sonnet are 1M, Haiku is 200K
+ * show context usage as a percentage. Fable/Opus/Sonnet are 1M, Haiku is 200K
  * (matches the current model catalog); unknown ids return undefined.
  */
 export function claudeContextWindow(model: string | undefined): number | undefined {
   if (!model) return undefined;
   const m = model.toLowerCase();
   if (m.includes('haiku')) return 200_000;
-  if (m.includes('opus') || m.includes('sonnet')) return 1_000_000;
+  if (m.includes('fable') || m.includes('opus') || m.includes('sonnet')) return 1_000_000;
   return undefined;
 }
 

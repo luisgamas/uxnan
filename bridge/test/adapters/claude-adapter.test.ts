@@ -241,9 +241,11 @@ test('ClaudeCodeAdapter appends pinned concrete models after the aliases', async
 });
 
 test('claudeContextWindow maps tiers and ids to window sizes', () => {
+  assert.equal(claudeContextWindow('fable'), 1_000_000);
   assert.equal(claudeContextWindow('opus'), 1_000_000);
   assert.equal(claudeContextWindow('sonnet'), 1_000_000);
   assert.equal(claudeContextWindow('haiku'), 200_000);
+  assert.equal(claudeContextWindow('claude-fable-5'), 1_000_000);
   assert.equal(claudeContextWindow('claude-opus-4-8'), 1_000_000);
   assert.equal(claudeContextWindow('claude-haiku-4-5'), 200_000);
   assert.equal(claudeContextWindow('mystery'), undefined);
@@ -278,8 +280,7 @@ test('ClaudeCodeAdapter reports usage with a context window on completion', asyn
 
   const events = await done;
   const completed = events.find((e) => e.type === 'turn_completed');
-  const usage = (completed?.data as { usage?: { tokens: number; contextWindow?: number } })
-    .usage;
+  const usage = (completed?.data as { usage?: { tokens: number; contextWindow?: number } }).usage;
   assert.equal(usage?.tokens, 1250);
   assert.equal(usage?.contextWindow, 1_000_000);
 });

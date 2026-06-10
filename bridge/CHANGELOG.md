@@ -6,6 +6,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 
 ### Added
+- **Claude Fable 5 model** (`src/daemon-config.ts`, `src/adapters/claude-adapter.ts`):
+  seed Claude Code's picker with `claude-fable-5` ("Fable 5", the new top tier
+  above Opus) and map it to a 1M context window in `claudeContextWindow()` so the
+  phone shows context usage as a percentage. The `opus`/`sonnet`/`haiku` aliases
+  still cover "latest" for their tiers.
 - **`auth/status` sanitized, per-agent** (`src/account-status.ts`,
   `src/handlers/account-handler.ts`): replaces the not-implemented stub with a
   real handler that takes `{ agentId }` and returns a SANITIZED `AuthStatus`
