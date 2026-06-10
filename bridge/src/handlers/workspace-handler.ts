@@ -2,8 +2,8 @@
  * Workspace JSON-RPC handlers — file reads, listing and patch application,
  * confined to the project root with sensitive files excluded.
  *
- * Checkpoints (capture/diff/apply) are deferred to a follow-up increment
- * (FOR-DEV) and remain registered as clear not-implemented stubs.
+ * Checkpoints (capture/diff/apply) are backed by {@link CheckpointService};
+ * `capture` prunes old checkpoints per the configured retention.
  *
  * Source: architecture/02a-system-architecture.md §5.8.7 / §5.8.9.
  */
@@ -22,6 +22,14 @@ function checkpointOp<T>(fn: () => Promise<T>): Promise<T> {
       throw new RpcError(JsonRpcErrorCode.GitOperationFailed, err.message, { stderr: err.stderr });
     }
     throw err;
+  });
+}
+
+/** A checkpoint service wired with the daemon's configured retention bounds. */
+function checkpoints(ctx: BridgeContext): CheckpointService {
+  return new CheckpointService(ctx.state, {
+    maxPerProject: ctx.config.checkpointMaxPerProject,
+    ttlDays: ctx.config.checkpointTtlDays,
   });
 }
 
@@ -50,13 +58,13 @@ export function registerWorkspaceHandlers(router: HandlerRouter): void {
       ...optionalField(p, 'label'),
       ...optionalThreadId(p),
     };
-    return checkpointOp(() => new CheckpointService(ctx.state).capture(cwd, options));
+    return checkpointOp(() => checkpoints(ctx).capture(cwd, options));
   });
   router.register('workspace/diffCheckpoint', (p, ctx: BridgeContext) =>
-    checkpointOp(() => new CheckpointService(ctx.state).diff(requireString(p, 'id'))),
+    checkpointOp(() => checkpoints(ctx).diff(requireString(p, 'id'))),
   );
   router.register('workspace/applyCheckpoint', (p, ctx: BridgeContext) =>
-    checkpointOp(() => new CheckpointService(ctx.state).apply(requireString(p, 'id'))),
+    checkpointOp(() => checkpoints(ctx).apply(requireString(p, 'id'))),
   );
 }
 

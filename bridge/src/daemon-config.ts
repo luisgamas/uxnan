@@ -76,6 +76,13 @@ export interface DaemonConfig {
   /** Agent the bridge uses when a thread does not pick one. */
   defaultAgent: AgentId;
   /**
+   * Keep at most N newest workspace checkpoints per project (`cwd`); older ones
+   * are pruned (ref + metadata) on the next capture. `0` = unlimited.
+   */
+  checkpointMaxPerProject: number;
+  /** Delete workspace checkpoints older than N days on capture. `0` = no TTL. */
+  checkpointTtlDays: number;
+  /**
    * Absolute project directories the phone may open. Empty → the bridge's own
    * working directory is exposed as the single project.
    */
@@ -115,6 +122,8 @@ export const DEFAULT_DAEMON_CONFIG: DaemonConfig = {
   maxConcurrentSessions: 1,
   sessionTimeoutMinutes: 30,
   defaultAgent: 'opencode',
+  checkpointMaxPerProject: 25,
+  checkpointTtlDays: 0,
   workspaceRoots: [],
   browseRoots: [],
   projectAgents: [],

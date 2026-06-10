@@ -6,6 +6,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 
 ### Added
+- **Checkpoint retention (prune)** (`src/workspace/checkpoint-service.ts`,
+  `src/daemon-config.ts`): each `workspace/checkpoint` now prunes old checkpoints
+  beyond a per-project count cap (`checkpointMaxPerProject`, default 25) and/or an
+  age TTL (`checkpointTtlDays`, default 0 = off), deleting both the
+  `refs/uxnan/checkpoints/*` anchor and the `checkpoints.json` entry — so the set
+  no longer grows unbounded.
 - **Per-project agent/model pins** (`src/daemon-config.ts`,
   `src/projects/project-registry.ts`, `src/handlers/thread-context-handler.ts`):
   a new `projectAgents: AgentConfig[]` config (each entry's `cwd` identifies the
@@ -42,6 +48,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   device. Closes the "Thread management" item in `FOR-DEV.md`.
 
 ### Changed
+- **Checkpoint `apply` is now a true worktree restore**
+  (`src/workspace/checkpoint-service.ts`): besides restoring the snapshot's file
+  contents (recreating deleted files, overwriting modified ones), it now also
+  DELETES files created after the checkpoint, so the working tree matches the
+  snapshot exactly — full parity with the mobile `AiChangeSet` revert. Extras are
+  detected by snapshotting the current tree into a temp index (HEAD + `add -A`,
+  respecting `.gitignore`, leaving the user's real index untouched) and diffing
+  snapshot → now; the op stays worktree-only and never removes gitignored files.
 - **`bridge/status.relayConnected` reflects the real relay connection**
   (`src/bridge-context.ts`, `src/bridge.ts`, `src/handlers/bridge-control-handler.ts`):
   the handler previously hard-coded `false`. `BridgeContext` now exposes

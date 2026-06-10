@@ -66,13 +66,20 @@ hosting** (the phone connects directly to the bridge on the same network).
 - [x] **Workspace** reads/list/applyPatch (Phase 4) — `src/workspace/`.
 - [x] **Workspace checkpoints** (Phase 4b) — `src/workspace/checkpoint-service.ts`
       (full-tree snapshot via temp index + `commit-tree`, anchored ref + metadata).
-      Follow-ups still needed:
-        - `apply` restores contents but does NOT delete files created after the
-          checkpoint — implement a true restore (diff current vs snapshot, remove
-          extras) for full revert parity with the mobile `AiChangeSet` revert.
-        - prune/GC old checkpoint refs + `checkpoints.json` entries (TTL or count
-          cap) so `refs/uxnan/checkpoints/*` doesn't grow unbounded.
-        - checkpoints require at least one commit (no HEAD → `-32003`); consider
+      Follow-ups:
+        - ☑ **True restore** — `apply` now deletes files created after the
+          checkpoint AND restores snapshot contents (recreating deleted, overwriting
+          modified), so the worktree matches the snapshot exactly. Extras are found
+          by snapshotting the current tree into a temp index (HEAD + `add -A`) and
+          diffing snapshot → now; worktree-only, never removes gitignored files.
+          Full parity with the mobile `AiChangeSet` revert. **Mobile linkage:** no
+          uxnanmobile change needed — `workspace/applyCheckpoint` is unchanged on
+          the wire; verify on-device that a revert removes files the agent created.
+        - ☑ **Prune/GC** — each `capture` prunes checkpoints beyond
+          `checkpointMaxPerProject` (default 25, per `cwd`) and/or older than
+          `checkpointTtlDays` (default 0 = off), deleting the `refs/uxnan/checkpoints/*`
+          anchor + the `checkpoints.json` entry. See `docs/configuration.md`.
+        - ☐ checkpoints require at least one commit (no HEAD → `-32003`); consider
           supporting checkpoints on an unborn branch if a use case appears.
 - [x] **Thread/turn** (Phase 5) — `src/handlers/thread-context-handler.ts` +
       `src/conversation/thread-store.ts` + `src/agents/agent-manager.ts`.
