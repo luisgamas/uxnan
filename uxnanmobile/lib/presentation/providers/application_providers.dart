@@ -15,6 +15,7 @@ import 'package:uxnan/domain/entities/git/git_repo_state.dart';
 import 'package:uxnan/domain/entities/project.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/entities/trusted_device.dart';
+import 'package:uxnan/domain/enums/agent_id.dart';
 import 'package:uxnan/domain/enums/connection_phase.dart';
 import 'package:uxnan/domain/enums/thread_activity.dart';
 import 'package:uxnan/domain/services/pairing_validator.dart';
@@ -24,6 +25,7 @@ import 'package:uxnan/infrastructure/transport/secure_transport_layer.dart';
 import 'package:uxnan/infrastructure/transport/transport_selector.dart';
 import 'package:uxnan/infrastructure/transport/websocket_transport.dart';
 import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
+import 'package:uxnan/presentation/widgets/agent_visuals.dart';
 
 /// Application-layer providers (coordinators and their derived UI state).
 ///
@@ -104,10 +106,23 @@ final threadManagerProvider = Provider<ThreadManager>((ref) {
     messageRepository: ref.watch(messageRepositoryProvider),
     domainEvents: processor.bind(coordinator.incomingMessages),
     sendRequest: coordinator.sendRequest,
+    // A reply in a thread the user isn't viewing is marked unread.
+    foregroundThreadId: () => ref.read(foregroundThreadProvider),
   );
   ref.onDispose(manager.dispose);
   return manager;
 });
+
+/// Set of thread ids with an unread agent reply, for the list's unread style.
+final unreadThreadsProvider = StreamProvider<Set<String>>(
+  (ref) => ref.watch(threadManagerProvider).unreadStream,
+);
+
+/// Whether the thread with the given id has an unread agent reply.
+final unreadForProvider = Provider.family<bool, String>(
+  (ref, threadId) =>
+      ref.watch(unreadThreadsProvider).value?.contains(threadId) ?? false,
+);
 
 /// Reactive list of threads, for the UI.
 final threadsProvider = StreamProvider<List<Thread>>(
@@ -247,6 +262,20 @@ final pushRegistrarProvider = Provider<PushRegistrar>((ref) {
     domainEvents: processor.bind(coordinator.incomingMessages),
     // Suppress a turn-end notification for the conversation already on screen.
     foregroundThreadId: () => ref.read(foregroundThreadProvider),
+    // Resolve the agent label + thread title for the notification copy
+    // ("{agent} replied" titled with the thread name).
+    threadInfo: (id) {
+      final threads = ref.read(threadsProvider).value ?? const <Thread>[];
+      for (final t in threads) {
+        if (t.id == id) {
+          return (
+            title: t.title,
+            agent: AgentVisuals.labelFor(AgentIdParsing.fromWireId(t.agentId)),
+          );
+        }
+      }
+      return null;
+    },
   );
   ref.onDispose(registrar.dispose);
   return registrar;

@@ -40,9 +40,16 @@ class ThreadTile extends ConsumerWidget {
     // Live activity of the conversation (running/error), independent of the
     // thread's sync status — tracked even while this screen is closed.
     final activity = ref.watch(threadActivityForProvider(thread.id));
+    // Unread agent reply: tint the tile and emphasize it so it stands out.
+    final unread = ref.watch(unreadForProvider(thread.id));
 
     return Material(
-      color: colors.surfaceContainerHighest,
+      color: unread
+          ? Color.alphaBlend(
+              colors.primary.withValues(alpha: 0.10),
+              colors.surfaceContainerHighest,
+            )
+          : colors.surfaceContainerHighest,
       borderRadius: const BorderRadius.all(UxnanRadius.lg),
       child: InkWell(
         borderRadius: const BorderRadius.all(UxnanRadius.lg),
@@ -61,8 +68,16 @@ class ThreadTile extends ConsumerWidget {
               SizedBox(width: compact ? UxnanSpacing.sm : UxnanSpacing.md),
               Expanded(
                 child: compact
-                    ? _CompactContent(thread: thread, activity: activity)
-                    : _FullContent(thread: thread, activity: activity),
+                    ? _CompactContent(
+                        thread: thread,
+                        activity: activity,
+                        unread: unread,
+                      )
+                    : _FullContent(
+                        thread: thread,
+                        activity: activity,
+                        unread: unread,
+                      ),
               ),
             ],
           ),
@@ -72,12 +87,34 @@ class ThreadTile extends ConsumerWidget {
   }
 }
 
+/// A small filled primary dot marking an unread thread.
+class _UnreadDot extends StatelessWidget {
+  const _UnreadDot();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 8,
+      height: 8,
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.primary,
+        shape: BoxShape.circle,
+      ),
+    );
+  }
+}
+
 /// The full, two-line tile body: title + last-activity time, then the activity
 /// indicator with the agent·folder subtitle (or "Responding…" while running).
 class _FullContent extends StatelessWidget {
-  const _FullContent({required this.thread, required this.activity});
+  const _FullContent({
+    required this.thread,
+    required this.activity,
+    required this.unread,
+  });
   final Thread thread;
   final ThreadActivity activity;
+  final bool unread;
 
   @override
   Widget build(BuildContext context) {
@@ -93,10 +130,16 @@ class _FullContent extends StatelessWidget {
             Expanded(
               child: Text(
                 thread.title,
-                style: textTheme.titleSmall,
+                style: textTheme.titleSmall?.copyWith(
+                  fontWeight: unread ? FontWeight.w700 : null,
+                ),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
+            if (unread) ...[
+              const SizedBox(width: UxnanSpacing.sm),
+              const _UnreadDot(),
+            ],
             if (thread.lastActivity != null) ...[
               const SizedBox(width: UxnanSpacing.sm),
               Text(
@@ -132,9 +175,14 @@ class _FullContent extends StatelessWidget {
 /// The compact, single-line tile body: the activity indicator, the title, and
 /// the last-activity time — no subtitle row.
 class _CompactContent extends StatelessWidget {
-  const _CompactContent({required this.thread, required this.activity});
+  const _CompactContent({
+    required this.thread,
+    required this.activity,
+    required this.unread,
+  });
   final Thread thread;
   final ThreadActivity activity;
+  final bool unread;
 
   @override
   Widget build(BuildContext context) {
@@ -147,10 +195,16 @@ class _CompactContent extends StatelessWidget {
         Expanded(
           child: Text(
             thread.title,
-            style: textTheme.titleSmall,
+            style: textTheme.titleSmall?.copyWith(
+              fontWeight: unread ? FontWeight.w700 : null,
+            ),
             overflow: TextOverflow.ellipsis,
           ),
         ),
+        if (unread) ...[
+          const SizedBox(width: UxnanSpacing.sm),
+          const _UnreadDot(),
+        ],
         if (thread.lastActivity != null) ...[
           const SizedBox(width: UxnanSpacing.sm),
           Text(

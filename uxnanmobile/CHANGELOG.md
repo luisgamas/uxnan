@@ -6,6 +6,15 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Unread thread indicator.** When an agent reply lands in a thread you're not
+  viewing, its row in the threads list is emphasized — a primary-tinted surface,
+  a **bold title** and a small **unread dot** — so it's easy to spot without
+  tapping the notification. Cleared when you open (or return to) the
+  conversation. In memory only (resets on restart). `ThreadManager` tracks the
+  unread set, gated by the foreground thread.
+
 ### Changed
 
 - **Personalized turn notifications.** A turn-end local notification is now

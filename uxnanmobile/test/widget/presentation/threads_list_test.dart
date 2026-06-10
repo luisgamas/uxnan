@@ -35,6 +35,9 @@ Widget _wrap({required List<Thread> threads}) {
       threadActivityProvider.overrideWith(
         (ref) => Stream.value(const <String, ThreadActivity>{}),
       ),
+      unreadThreadsProvider.overrideWith(
+        (ref) => Stream.value(const <String>{}),
+      ),
       trustedDevicesProvider
           .overrideWith((ref) => Stream.value(const <TrustedDevice>[])),
       connectedDeviceProvider.overrideWith((ref) => Stream.value(null)),

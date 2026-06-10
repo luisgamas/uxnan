@@ -40,10 +40,12 @@ class ThreadManager {
     required IMessageRepository messageRepository,
     required Stream<DomainEvent> domainEvents,
     required RpcSend sendRequest,
+    String? Function()? foregroundThreadId,
     Uuid? uuid,
   })  : _threadRepository = threadRepository,
         _messageRepository = messageRepository,
         _sendRequest = sendRequest,
+        _foregroundThreadId = foregroundThreadId,
         _uuid = uuid ?? const Uuid() {
     _eventsSub = domainEvents.listen(_applyEvent);
   }
@@ -51,6 +53,12 @@ class ThreadManager {
   final IThreadRepository _threadRepository;
   final IMessageRepository _messageRepository;
   final RpcSend _sendRequest;
+
+  /// Returns the threadId of the conversation the user is currently viewing in
+  /// the foreground (null when none). A reply that lands in a thread the user
+  /// is NOT viewing is marked unread.
+  final String? Function()? _foregroundThreadId;
+
   final Uuid _uuid;
 
   final BehaviorSubject<TurnTimelineSnapshot> _timeline =
@@ -67,6 +75,11 @@ class ThreadManager {
   /// its screen is closed. Idle threads are absent from the map.
   final BehaviorSubject<Map<String, ThreadActivity>> _activity =
       BehaviorSubject.seeded(const {});
+
+  /// Thread ids with an unread agent reply (a turn completed while the user was
+  /// not viewing that conversation). Cleared when the conversation is opened.
+  /// In memory only (resets on restart).
+  final BehaviorSubject<Set<String>> _unread = BehaviorSubject.seeded(const {});
 
   /// Latest persisted messages for the active thread (from the local repo),
   /// composed with any [_LiveTurn] overlay to build the active timeline.
@@ -99,6 +112,20 @@ class ThreadManager {
   /// Map of threadId → live [ThreadActivity] (running/error), for the list.
   /// Idle threads are omitted from the map.
   Stream<Map<String, ThreadActivity>> get activityStream => _activity.stream;
+
+  /// Set of thread ids with an unread agent reply, for the list's unread style.
+  Stream<Set<String>> get unreadStream => _unread.stream;
+
+  /// Clears the unread flag for [threadId] (the user opened/returned to it).
+  void markRead(String threadId) {
+    if (!_unread.value.contains(threadId)) return;
+    _unread.add({..._unread.value}..remove(threadId));
+  }
+
+  void _markUnread(String threadId) {
+    if (_unread.value.contains(threadId)) return;
+    _unread.add({..._unread.value, threadId});
+  }
 
   /// Map of threadId → most recent turn token usage (`tokens` occupied and the
   /// model `contextWindow` when known), for the context indicator.
@@ -322,6 +349,7 @@ class ThreadManager {
   /// re-syncs the thread from the bridge to recover anything missed.
   Future<void> selectThread(String threadId) async {
     _activeThreadId = threadId;
+    markRead(threadId); // opening the conversation clears its unread flag
     _activePersisted = const [];
     _timeline.add(const TurnTimelineSnapshot());
     await _messagesSub?.cancel();
@@ -442,6 +470,7 @@ class ThreadManager {
     await _timeline.close();
     await _resolvedModels.close();
     await _activity.close();
+    await _unread.close();
     await _contextUsage.close();
   }
 
@@ -488,6 +517,8 @@ class ThreadManager {
           next[threadId] = (tokens: tokens, contextWindow: contextWindow);
           _contextUsage.add(next);
         }
+        // A reply landing in a thread the user isn't viewing is unread.
+        if (threadId != _foregroundThreadId?.call()) _markUnread(threadId);
         unawaited(_finishTurn(threadId, turnId, failed: false));
       case TurnErrorEvent(:final turnId):
         unawaited(_finishTurn(threadId, turnId, failed: true));

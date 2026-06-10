@@ -40,6 +40,9 @@ Widget _wrap({required List<Thread> threads}) {
       threadActivityProvider.overrideWith(
         (ref) => Stream.value(const <String, ThreadActivity>{}),
       ),
+      unreadThreadsProvider.overrideWith(
+        (ref) => Stream.value(const <String>{}),
+      ),
     ],
     child: MaterialApp.router(
       routerConfig: router,
