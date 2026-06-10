@@ -18,7 +18,7 @@ gracefully until the other agent wires the handler. Suggested order:
    *Threads list → Archive / unarchive*.
 3. ☐ **Settings screen + notification preferences** (`notifications/update`) —
    see *Push notifications*. (Next recommended.)
-4. ☐ **Remove device** (clear a stale paired PC) — see *Threads list*.
+4. ☑ **Remove device** (clear a stale paired PC) — DONE; see *Threads list*.
 5. ☐ **Voice → text in the composer** — pure device feature, but verification
    needs a real mic (defer while remote).
 
@@ -162,9 +162,16 @@ browser and multi-PC connection correctness are now DONE — see below.)
     thread ID" + a copyable **Thread ID** row in `SessionStatusSheet` (resume a
     conversation from the CLI on the PC). ☐ Still: surface the agent's **session
     id** (e.g. OpenCode `sessionID`) once the bridge exposes it via `thread/read`.
-  - ☐ **Remove device** (deferred — user-requested): a "Remove" action on the PC
-    card that deletes the `TrustedDevice` (+ its local threads) and calls
-    `bridge/removeTrustedDevice`. Also lets the user clear a stale PC.
+  - ☑ **Remove device** — DONE: a destructive "Remove device" action in the PC
+    card's overflow menu (`my_devices_screen.dart`). After a confirm dialog it
+    calls `SessionCoordinator.removeTrustedDevice` (sends
+    `bridge/removeTrustedDevice` with the phone's OWN id — the bridge keys trust
+    by phone — best-effort, only while connected to that PC; then disconnects),
+    deletes the device's local threads/messages/turns
+    (`IThreadRepository.deleteThreadsByDeviceId`) and the `TrustedDevice`. Lets
+    the user clear a stale PC and fully unpair. ☐ On-device: verify a removed PC
+    disappears, its threads are gone, and the bridge drops trust (no
+    trusted-reconnect afterwards).
 
 ## Conversation / timeline
 

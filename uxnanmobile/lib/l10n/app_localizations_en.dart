@@ -188,6 +188,21 @@ class AppLocalizationsEn extends AppLocalizations {
   String get deviceNameHint => 'e.g. Work MacBook';
 
   @override
+  String get deviceRemove => 'Remove device';
+
+  @override
+  String deviceRemoveTitle(String device) {
+    return 'Remove $device?';
+  }
+
+  @override
+  String get deviceRemoveBody =>
+      'Removes this PC and its conversations from your phone. You can pair again anytime.';
+
+  @override
+  String get deviceRemoveConfirm => 'Remove';
+
+  @override
   String get actionSave => 'Save';
 
   @override

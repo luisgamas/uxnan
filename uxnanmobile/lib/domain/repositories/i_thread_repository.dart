@@ -18,6 +18,10 @@ abstract class IThreadRepository {
   /// Deletes the thread with the given [id].
   Future<void> deleteThread(String id);
 
+  /// Deletes every thread belonging to [deviceId] (a paired PC), along with
+  /// their messages and turns. Used when removing a device.
+  Future<void> deleteThreadsByDeviceId(String deviceId);
+
   /// Emits the thread list whenever it changes, optionally filtered by
   /// [projectId].
   Stream<List<Thread>> watchThreads({String? projectId});

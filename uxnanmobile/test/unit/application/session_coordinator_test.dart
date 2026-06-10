@@ -375,6 +375,64 @@ void main() {
     expect((response.result! as Map)['echo'], 'ping');
   });
 
+  test('removeTrustedDevice notifies the bridge with the phone id, disconnects',
+      () async {
+    final requests = <RpcMessage>[];
+    final harness = await build((req) {
+      requests.add(req);
+      return RpcMessage.response(id: req.id!);
+    });
+    addTearDown(harness.coordinator.dispose);
+    await harness.coordinator.connect(forceQrBootstrap: true);
+    expect(harness.coordinator.connectedDevice?.macDeviceId, 'mac-1');
+
+    await harness.coordinator.removeTrustedDevice(
+      TrustedDevice(
+        macDeviceId: 'mac-1',
+        displayName: 'Test Bridge',
+        macIdentityPublicKey: bridgeId.publicKey,
+        relayUrl: 'wss://relay.test',
+        sessionId: 'session-xyz',
+        pairedAt: DateTime(2026),
+      ),
+    );
+
+    final removal = requests.firstWhere(
+      (r) => r.method == 'bridge/removeTrustedDevice',
+    );
+    // Revokes THIS phone's trust (the phone's own id), not the PC id.
+    expect((removal.params! as Map)['deviceId'], 'phone-1');
+    expect(harness.coordinator.connectionPhase, ConnectionPhase.disconnected);
+  });
+
+  test('removeTrustedDevice is a no-op for a device we are not connected to',
+      () async {
+    final requests = <RpcMessage>[];
+    final harness = await build((req) {
+      requests.add(req);
+      return RpcMessage.response(id: req.id!);
+    });
+    addTearDown(harness.coordinator.dispose);
+    await harness.coordinator.connect(forceQrBootstrap: true);
+
+    await harness.coordinator.removeTrustedDevice(
+      TrustedDevice(
+        macDeviceId: 'mac-other',
+        displayName: 'Other PC',
+        macIdentityPublicKey: bridgeId.publicKey,
+        relayUrl: 'wss://relay.test',
+        sessionId: 'session-other',
+        pairedAt: DateTime(2026),
+      ),
+    );
+
+    expect(
+      requests.where((r) => r.method == 'bridge/removeTrustedDevice'),
+      isEmpty,
+    );
+    expect(harness.coordinator.connectionPhase, ConnectionPhase.connected);
+  });
+
   test('processPairingPayload registers the device and connects', () async {
     final harness = await build(echo, setActive: false);
     addTearDown(harness.coordinator.dispose);

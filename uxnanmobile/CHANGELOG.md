@@ -8,6 +8,15 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Remove device.** The paired-PC card's overflow menu now has a destructive
+  **Remove device** action: after a confirmation dialog it tells the bridge to
+  revoke this phone's trust (`bridge/removeTrustedDevice` with the phone's own
+  id, best-effort and only when connected to that PC), tears down the session if
+  it was the connected one, and wipes the PC's local data — the `TrustedDevice`
+  plus all its threads, messages and turns (new
+  `IThreadRepository.deleteThreadsByDeviceId` and
+  `SessionCoordinator.removeTrustedDevice`). Lets the user clear a stale PC and
+  fully unpair. Menu labels are now `Flexible` so long entries never overflow.
 - **Agent sign-in banner (`auth/status`).** The conversation screen now queries
   the bridge's sanitized per-agent `auth/status` for the active thread's agent
   and shows a warning banner above the composer when that agent is **not signed

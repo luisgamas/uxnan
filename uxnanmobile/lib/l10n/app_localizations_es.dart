@@ -189,6 +189,21 @@ class AppLocalizationsEs extends AppLocalizations {
   String get deviceNameHint => 'p. ej. MacBook del trabajo';
 
   @override
+  String get deviceRemove => 'Eliminar dispositivo';
+
+  @override
+  String deviceRemoveTitle(String device) {
+    return '¿Eliminar $device?';
+  }
+
+  @override
+  String get deviceRemoveBody =>
+      'Elimina esta PC y sus conversaciones de tu teléfono. Puedes volver a vincularla cuando quieras.';
+
+  @override
+  String get deviceRemoveConfirm => 'Eliminar';
+
+  @override
   String get actionSave => 'Guardar';
 
   @override

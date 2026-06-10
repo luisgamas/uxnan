@@ -6,13 +6,20 @@ import 'package:uxnan/domain/enums/thread_sync_state.dart';
 import 'package:uxnan/infrastructure/repositories/drift_thread_repository.dart';
 import 'package:uxnan/infrastructure/storage/local_database.dart';
 
-Thread _thread(String id, {String? projectId, int? lastActivityMs}) => Thread(
+Thread _thread(
+  String id, {
+  String? projectId,
+  String? deviceId,
+  int? lastActivityMs,
+}) =>
+    Thread(
       id: id,
       title: 'Thread $id',
       agentId: 'codex',
       syncState: ThreadSyncState.synced,
       status: ThreadStatus.active,
       projectId: projectId,
+      deviceId: deviceId,
       lastActivity: lastActivityMs == null
           ? null
           : DateTime.fromMillisecondsSinceEpoch(lastActivityMs),
@@ -87,6 +94,71 @@ void main() {
       await repo.saveThread(_thread('t1', lastActivityMs: 1));
       await repo.deleteThread('t1');
       expect(await repo.getThread('t1'), isNull);
+    });
+
+    test('deleteThreadsByDeviceId wipes a device threads + messages + turns',
+        () async {
+      await repo.saveThread(_thread('a', deviceId: 'mac-1', lastActivityMs: 1));
+      await repo.saveThread(_thread('b', deviceId: 'mac-1', lastActivityMs: 2));
+      await repo.saveThread(_thread('c', deviceId: 'mac-2', lastActivityMs: 3));
+      // A message + turn under a mac-1 thread (a) and a mac-2 thread (c).
+      await db.into(db.messagesTable).insert(
+            MessagesTableCompanion.insert(
+              id: 'm-a',
+              threadId: 'a',
+              turnId: 'tn-a',
+              role: 'user',
+              contentsJson: '[]',
+              deliveryState: 'sent',
+              orderIndex: 0,
+              createdAtMs: 0,
+            ),
+          );
+      await db.into(db.messagesTable).insert(
+            MessagesTableCompanion.insert(
+              id: 'm-c',
+              threadId: 'c',
+              turnId: 'tn-c',
+              role: 'user',
+              contentsJson: '[]',
+              deliveryState: 'sent',
+              orderIndex: 0,
+              createdAtMs: 0,
+            ),
+          );
+      await db.into(db.turnsTable).insert(
+            TurnsTableCompanion.insert(
+              id: 'tn-a',
+              threadId: 'a',
+              status: 'completed',
+              startedAtMs: 0,
+            ),
+          );
+      await db.into(db.turnsTable).insert(
+            TurnsTableCompanion.insert(
+              id: 'tn-c',
+              threadId: 'c',
+              status: 'completed',
+              startedAtMs: 0,
+            ),
+          );
+
+      await repo.deleteThreadsByDeviceId('mac-1');
+
+      // Only mac-2's thread and its dependent rows survive.
+      expect((await repo.getThreads()).map((t) => t.id).toList(), ['c']);
+      final msgIds =
+          (await db.select(db.messagesTable).get()).map((m) => m.id).toList();
+      expect(msgIds, ['m-c']);
+      final turnIds =
+          (await db.select(db.turnsTable).get()).map((t) => t.id).toList();
+      expect(turnIds, ['tn-c']);
+    });
+
+    test('deleteThreadsByDeviceId is a no-op when no thread matches', () async {
+      await repo.saveThread(_thread('a', deviceId: 'mac-1', lastActivityMs: 1));
+      await repo.deleteThreadsByDeviceId('mac-unknown');
+      expect((await repo.getThreads()).length, 1);
     });
 
     test('watchThreads emits on changes', () async {

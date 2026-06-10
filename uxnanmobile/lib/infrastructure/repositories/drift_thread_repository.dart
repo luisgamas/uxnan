@@ -61,6 +61,27 @@ class DriftThreadRepository implements IThreadRepository {
   }
 
   @override
+  Future<void> deleteThreadsByDeviceId(String deviceId) async {
+    // Wipe the device's threads and their dependent rows in one transaction.
+    // Messages/turns key off threadId with no DB cascade, so clear them
+    // explicitly to avoid orphan rows when a whole PC is removed.
+    await _db.transaction(() async {
+      final ids = await (_db.select(_db.threadsTable)
+            ..where((t) => t.deviceId.equals(deviceId)))
+          .map((row) => row.id)
+          .get();
+      if (ids.isEmpty) return;
+      await (_db.delete(_db.messagesTable)..where((m) => m.threadId.isIn(ids)))
+          .go();
+      await (_db.delete(_db.turnsTable)..where((t) => t.threadId.isIn(ids)))
+          .go();
+      await (_db.delete(_db.threadsTable)
+            ..where((t) => t.deviceId.equals(deviceId)))
+          .go();
+    });
+  }
+
+  @override
   Stream<List<Thread>> watchThreads({String? projectId}) {
     final query = _db.select(_db.threadsTable);
     if (projectId != null) {

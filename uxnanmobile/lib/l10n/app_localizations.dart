@@ -428,6 +428,30 @@ abstract class AppLocalizations {
   /// **'e.g. Work MacBook'**
   String get deviceNameHint;
 
+  /// Menu action that unpairs/removes a paired PC from the phone.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove device'**
+  String get deviceRemove;
+
+  /// Confirmation dialog title when removing a paired PC.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove {device}?'**
+  String deviceRemoveTitle(String device);
+
+  /// Confirmation dialog body for removing a paired PC.
+  ///
+  /// In en, this message translates to:
+  /// **'Removes this PC and its conversations from your phone. You can pair again anytime.'**
+  String get deviceRemoveBody;
+
+  /// Confirm button label in the remove-device dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove'**
+  String get deviceRemoveConfirm;
+
   /// No description provided for @actionSave.
   ///
   /// In en, this message translates to:

@@ -57,6 +57,44 @@ class MyDevicesScreen extends ConsumerWidget {
         .saveDevice(device.copyWith(displayName: name));
   }
 
+  Future<void> _remove(
+    WidgetRef ref,
+    BuildContext context,
+    TrustedDevice device,
+  ) async {
+    final l10n = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(l10n.deviceRemoveTitle(device.displayName)),
+        content: Text(l10n.deviceRemoveBody),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(l10n.actionCancel),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: colors.error),
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(l10n.deviceRemoveConfirm),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    // Tell the bridge to forget this phone (best-effort) and drop the session
+    // if this PC is the connected one, then wipe its local data. Order matters:
+    // the RPC must go out while we still hold the channel, before disconnect.
+    await ref.read(sessionCoordinatorProvider).removeTrustedDevice(device);
+    await ref
+        .read(threadRepositoryProvider)
+        .deleteThreadsByDeviceId(device.macDeviceId);
+    await ref
+        .read(trustedDeviceRepositoryProvider)
+        .deleteDevice(device.macDeviceId);
+  }
+
   Future<void> _verify(
     WidgetRef ref,
     BuildContext context,
@@ -132,6 +170,7 @@ class MyDevicesScreen extends ConsumerWidget {
                   onConnect: () => _connect(ref, context, device),
                   onRename: () => _rename(ref, context, device),
                   onVerify: () => _verify(ref, context, device),
+                  onRemove: () => _remove(ref, context, device),
                 );
               },
             ),
@@ -151,6 +190,7 @@ class _DeviceCard extends StatelessWidget {
     required this.onConnect,
     required this.onRename,
     required this.onVerify,
+    required this.onRemove,
   });
 
   final TrustedDevice device;
@@ -160,6 +200,7 @@ class _DeviceCard extends StatelessWidget {
   final VoidCallback onConnect;
   final VoidCallback onRename;
   final VoidCallback onVerify;
+  final VoidCallback onRemove;
 
   bool get _isConnected => isConnected;
 
@@ -229,7 +270,7 @@ class _DeviceCard extends StatelessWidget {
                           children: [
                             const Icon(Icons.wifi_tethering_rounded, size: 18),
                             const SizedBox(width: UxnanSpacing.sm),
-                            Text(l10n.deviceVerifyConnection),
+                            Flexible(child: Text(l10n.deviceVerifyConnection)),
                           ],
                         ),
                       ),
@@ -239,7 +280,26 @@ class _DeviceCard extends StatelessWidget {
                           children: [
                             const Icon(Icons.edit_outlined, size: 18),
                             const SizedBox(width: UxnanSpacing.sm),
-                            Text(l10n.deviceRename),
+                            Flexible(child: Text(l10n.deviceRename)),
+                          ],
+                        ),
+                      ),
+                      PopupMenuItem<void>(
+                        onTap: onRemove,
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.link_off_rounded,
+                              size: 18,
+                              color: colors.error,
+                            ),
+                            const SizedBox(width: UxnanSpacing.sm),
+                            Flexible(
+                              child: Text(
+                                l10n.deviceRemove,
+                                style: TextStyle(color: colors.error),
+                              ),
+                            ),
                           ],
                         ),
                       ),

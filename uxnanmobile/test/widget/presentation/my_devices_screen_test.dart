@@ -53,6 +53,35 @@ void main() {
     expect(find.widgetWithText(FilledButton, 'Connect'), findsOneWidget);
   });
 
+  testWidgets('offers a Remove device action that confirms first', (
+    tester,
+  ) async {
+    // A roomy surface so the popup menu / dialog lay out without overflow.
+    tester.view.physicalSize = const Size(1200, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      _wrap(devices: [_device('mac-1', "Jorge's MacBook")]),
+    );
+    await tester.pump();
+
+    await tester.tap(find.byIcon(Icons.more_vert_rounded));
+    await tester.pumpAndSettle();
+    expect(find.text('Remove device'), findsOneWidget);
+
+    await tester.tap(find.text('Remove device'));
+    await tester.pumpAndSettle();
+    // Destructive: it asks for confirmation, naming the device.
+    expect(find.text("Remove Jorge's MacBook?"), findsOneWidget);
+
+    // Cancelling keeps the device (no provider work triggered).
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(find.text("Jorge's MacBook"), findsOneWidget);
+  });
+
   testWidgets('shows the pair empty state with no devices', (tester) async {
     await tester.pumpWidget(_wrap(devices: const []));
     await tester.pump();

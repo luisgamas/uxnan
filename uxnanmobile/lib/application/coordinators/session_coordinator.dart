@@ -336,6 +336,31 @@ class SessionCoordinator {
     }
   }
 
+  /// Tells [device]'s bridge to revoke THIS phone's trust (so it can no longer
+  /// trusted-reconnect) and tears down the session when [device] is the
+  /// connected one. The bridge is only reachable while we hold that device's
+  /// live channel, so this only sends the RPC when connected here; otherwise it
+  /// is a no-op on the wire and the caller still removes the device locally
+  /// (clearing a stale PC). Best-effort: a failed/Unsupported call is logged,
+  /// never thrown, so local removal always proceeds.
+  Future<void> removeTrustedDevice(TrustedDevice device) async {
+    if (connectedDevice?.macDeviceId != device.macDeviceId) return;
+    try {
+      final identity = await _identityResolver();
+      await sendRequest(
+        'bridge/removeTrustedDevice',
+        {'deviceId': identity.phoneDeviceId},
+      ).timeout(const Duration(seconds: 5));
+    } on Object catch (error, stackTrace) {
+      AppLogger.warn(
+        'bridge/removeTrustedDevice failed (removed locally)',
+        error,
+        stackTrace,
+      );
+    }
+    await disconnect();
+  }
+
   /// Runs the reconnection loop with exponential backoff. Single-flight: a
   /// second caller (heartbeat, verify, socket close) while a loop is already
   /// running is a no-op, so overlapping attempts can't sabotage each other's

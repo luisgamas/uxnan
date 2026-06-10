@@ -79,6 +79,25 @@
   "deviceVerifyFailed": "The bridge did not respond. Reconnecting…",
   "deviceNameTitle": "Device name",
   "deviceNameHint": "e.g. Work MacBook",
+  "deviceRemove": "Remove device",
+  "@deviceRemove": {
+    "description": "Menu action that unpairs/removes a paired PC from the phone."
+  },
+  "deviceRemoveTitle": "Remove {device}?",
+  "@deviceRemoveTitle": {
+    "description": "Confirmation dialog title when removing a paired PC.",
+    "placeholders": {
+      "device": { "type": "String" }
+    }
+  },
+  "deviceRemoveBody": "Removes this PC and its conversations from your phone. You can pair again anytime.",
+  "@deviceRemoveBody": {
+    "description": "Confirmation dialog body for removing a paired PC."
+  },
+  "deviceRemoveConfirm": "Remove",
+  "@deviceRemoveConfirm": {
+    "description": "Confirm button label in the remove-device dialog."
+  },
   "actionSave": "Save",
   "actionCancel": "Cancel",
   "threadsTitle": "Threads",
