@@ -10,7 +10,8 @@ per-domain handlers.
 > compatible with the mobile app, with a background reconnect loop and a stable
 > pairing session), bridge→phone notifications, **OS-keychain identity
 > persistence**, a **single-instance lock**, the **real Git and Workspace
-> handlers** (path-traversal-safe, including working-tree checkpoints), and the
+> handlers** (path-traversal-safe, including working-tree checkpoints with a true
+> restore + retention pruning), and the
 > **conversation engine** (threads/turns + streaming) are in place. The **real
 > OpenCode agent** is wired as the default (per-turn `opencode run --format json`,
 > session continuity, runs in the thread's cwd), and **Claude Code** (per-turn
@@ -18,11 +19,15 @@ per-domain handlers.
 > (per-turn `codex exec --json`, `exec resume` continuity) are wired too, each with
 > a configurable headless permission/sandbox posture, with **per-thread
 > agent/project selection** (`thread/start`, `agent/list`, `agent/models`,
-> `thread/setModel`, `project/list`/`resolve`), **plug-and-play folder browsing**
-> (`workspace/browseDirs` — navigate sub-folders under a configured root, can't
-> escape it, pick any directory as a thread's cwd) and a **push bridge**
-> (`notifications/*`, gated behind relay Firebase creds). The Gemini adapter is the
-> next piece — see [FOR-DEV.md](./FOR-DEV.md).
+> `thread/setModel`, `project/list`/`resolve`) plus **per-project agent/model pins**
+> and the **full thread lifecycle** (`thread/rename|archive|unarchive|delete`),
+> **plug-and-play folder browsing** (`workspace/browseDirs` — navigate sub-folders
+> under a configured root, can't escape it, pick any directory as a thread's cwd),
+> a **push bridge** (`notifications/*`, gated behind relay Firebase creds,
+> **persisted across restarts + multi-device**), a **sanitized per-agent
+> `auth/status`** (never tokens), trusted-device management
+> (`bridge/removeTrustedDevice`) and a real `bridge/status.relayConnected`. The
+> Gemini adapter is the next piece — see [FOR-DEV.md](./FOR-DEV.md).
 >
 > **How the bridge talks to agents:** it spawns each agent's **official local CLI**
 > (`opencode`, `claude`, `codex`) as a child process and drives it over stdio —
