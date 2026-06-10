@@ -19,6 +19,16 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Android push notifications activated (Firebase project `uxnan-app`).** The
+  `com.uxnan.mobile` Android app is registered in Firebase, `google-services.json`
+  is provisioned (gitignored), and the **Google Services Gradle plugin is wired
+  conditionally** — `settings.gradle.kts` keeps it on the classpath (`apply
+  false`) and `app/build.gradle.kts` applies it only `if
+  (file("google-services.json").exists())`, so the build stays green without the
+  config. iOS is registered in the same project (`GoogleService-Info.plist`
+  placed) but push remains **pending** the APNs key (macOS + Apple Developer);
+  see `FOR-HUMAN.md`.
+
 - **Folder browser for new conversations (`workspace/browseDirs`)** — a
   plug-and-play way to root a thread anywhere under the bridge's configured
   browse roots, alongside the configured project list. New `BrowseRoot` /

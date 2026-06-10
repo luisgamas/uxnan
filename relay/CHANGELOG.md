@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — FCM sender never activated (push delivery)
+- `loadFcmSender` dereferenced the `firebase-admin` namespace directly, but under
+  ESM dynamic `import()` the CommonJS module's API lands on the `.default` interop
+  key — so `admin.credential` was `undefined`, init threw, and the relay silently
+  fell back to the `NoopPushSender` (no push ever delivered even with valid
+  credentials). Now reaches through `imported.default ?? imported`. Verified the
+  real FCM sender loads and a dry-run send to FCM succeeds.
+
 ### Changed — reconnection support
 - When one side of a paired session disconnects, the relay now closes the paired
   peer's socket (instead of leaving it half-open) so the phone detects a dead

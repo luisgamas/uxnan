@@ -5,6 +5,30 @@ run **without** these; push (Phase 6) simply stays disabled until they're set.
 
 ---
 
+## ✅ STATUS (2026-06-09): Android push LIVE — iOS pending
+
+Push is **activated for Android** end-to-end on this PC:
+
+- Firebase project **`uxnan-app`** (project number `97810225919`), Cloud
+  Messaging (FCM HTTP v1) enabled. Path chosen: **FCM-for-both**.
+- Relay service account: `firebase-adminsdk-fbsvc@uxnan-app.iam.gserviceaccount.com`,
+  key at **`C:\Users\<you>\.uxnan\firebase-service-account.json`** (gitignored).
+- Env var **`UXNAN_FCM_SERVICE_ACCOUNT`** set persistently (Windows *User* scope)
+  → points at the key above. New terminals/relay launches pick it up; restart any
+  already-running shell so it sees the variable.
+- `firebase-admin` resolves from the workspace root `node_modules` (declared as a
+  relay `optionalDependency`) — no extra install needed.
+- Verified: `createDefaultPushSender` loads the **FCM sender** (not the noop) and a
+  real FCM **dry-run** send to project `uxnan-app` succeeded.
+
+**Still pending — iOS APNs** (needs a paid Apple Developer account; the `.p8`
+upload itself is done in the Firebase console, doable from any OS, but creating
+the key requires Apple enrollment). See the iOS checklist below and
+`uxnanmobile/FOR-HUMAN.md`. No relay code changes are needed for iOS — once the
+APNs key is uploaded to Firebase, the existing FCM path delivers to iOS too.
+
+---
+
 ## Phase 6 — Push notifications (Firebase / APNs)
 
 Push flow (architecture §5.10.2): bridge detects a turn completed → `POST
@@ -75,11 +99,13 @@ Firebase client config files from the **same** Firebase project:
   project + a device token; do this once the mobile push module is wired.
 
 ### Open items checklist
-- [ ] Firebase project created + Cloud Messaging enabled.
-- [ ] Service account JSON downloaded → `~/.uxnan/firebase-service-account.json` +
-      `UXNAN_FCM_SERVICE_ACCOUNT` set.
-- [ ] APNs auth key created and uploaded to Firebase (recommended) or placed
-      locally (direct path).
-- [ ] Mobile `google-services.json` / `GoogleService-Info.plist` added (mobile repo).
-- [ ] Decide: **FCM-for-both** (recommended) vs **direct APNs**. Tell the agent so
-      the relay's `PushSender` is implemented for the chosen path.
+- [x] Firebase project created (`uxnan-app`) + Cloud Messaging enabled.
+- [x] Service account JSON generated → `~/.uxnan/firebase-service-account.json` +
+      `UXNAN_FCM_SERVICE_ACCOUNT` set (Windows User scope).
+- [x] Decide path: **FCM-for-both** (chosen). Relay `PushSender` already
+      implements it (FCM HTTP v1 via `firebase-admin`).
+- [x] Mobile `google-services.json` (Android) + `GoogleService-Info.plist` (iOS)
+      added in the mobile repo (same project) — see `uxnanmobile/FOR-HUMAN.md`.
+- [ ] **iOS only:** APNs auth key created (Apple Developer) and uploaded to
+      Firebase → Cloud Messaging → Apple app configuration. Needed before iOS
+      devices receive push; Android is unaffected.

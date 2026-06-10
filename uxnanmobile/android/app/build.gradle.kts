@@ -4,6 +4,13 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// FOR-HUMAN: apply the Google Services plugin ONLY when google-services.json is
+// present, so the app keeps building without Firebase config (push just stays
+// disabled). Drop the json into this folder to enable FCM. See FOR-HUMAN.md.
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
 android {
     namespace = "com.uxnan.mobile"
     compileSdk = flutter.compileSdkVersion
