@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — docs
+- **`docs/` directory**: `development.md` (prerequisites, running in debug, UI
+  iteration, the npm-not-pnpm gotcha), `build.md` (release builds, bundle
+  targets, signing pointers), `testing.md` (verification gates), and
+  `architecture.md` (orientation + monorepo context). Linked from a `## Docs`
+  section in the README. The monorepo `AGENTS.md` now requires a `docs/` per
+  component (development / build / testing / component-specific).
+
 ### Added — Phase 0 (base infrastructure)
 - **Project scaffold**: Tauri 2 + SvelteKit (SPA via `adapter-static`,
   `ssr=false`) + Svelte 5, branded as `uxnan-desktop` / `com.uxnan.desktop`.

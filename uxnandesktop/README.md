@@ -20,6 +20,19 @@ and a validated Tauri command round-trip. Terminals, git/worktrees, diffs,
 agent monitoring, and bridge integration are the subsequent phases (see
 `FOR-DEV.md`).
 
+## Docs
+
+Detailed docs live in [`docs/`](./docs/):
+[development & running in debug](./docs/development.md) ·
+[release builds & packaging](./docs/build.md) ·
+[testing & verification](./docs/testing.md) ·
+[architecture orientation](./docs/architecture.md).
+
+The full product/engineering specification is in
+[`architecture/`](architecture/00-index.md); the phased roadmap and deferred
+work are in [`FOR-DEV.md`](FOR-DEV.md); human-provided assets in
+[`FOR-HUMAN.md`](FOR-HUMAN.md).
+
 ## Layout
 
 ```
