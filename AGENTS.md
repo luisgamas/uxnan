@@ -43,6 +43,40 @@ uxnan/
 
 ## Before implementing anything
 
+### 0. Verify required skills
+
+This project requires four Flutter skills installed **globally** on the machine. They encode the exact architectural style used by `uxnanmobile/`. They must be available regardless of which agent is working (OpenCode, Claude Code, Codex, Pi, or any other).
+
+**Required skills (canonical source: `https://github.com/luisgamas/skills`):**
+
+| Skill | Purpose |
+|---|---|
+| `flutter-init-project` | Bootstrap/reset a Flutter project baseline |
+| `flutter-clean-architect` | Module/layer structure (domain, infrastructure, presentation) |
+| `flutter-riverpod-expert` | Providers, notifiers, auth/router wiring |
+| `flutter-m3-uiux` | Theme, design tokens, responsive UI |
+
+**Verification:** Before doing any Flutter work, check that all four skills are present. Look for a `SKILL.md` file inside any of these global skill directories:
+
+- `~/.agents/skills/<name>/SKILL.md`
+- `~/.config/opencode/skills/<name>/SKILL.md`
+- `~/.claude/skills/<name>/SKILL.md`
+
+If the skill exists in **any** of these locations, it is considered installed.
+
+**Installation:** If any skill is missing, install it globally with the exact commands from the canonical source. The `-g` flag installs globally and the CLI automatically creates symlinks for every agent detected on the machine — no manual symlink steps are needed:
+
+```bash
+npx skills add https://github.com/luisgamas/skills/tree/main/flutter-init-project -g -y
+npx skills add https://github.com/luisgamas/skills/tree/main/flutter-clean-architect -g -y
+npx skills add https://github.com/luisgamas/skills/tree/main/flutter-riverpod-expert -g -y
+npx skills add https://github.com/luisgamas/skills/tree/main/flutter-m3-uiux -g -y
+```
+
+After installation, **inform the user they must restart their agent** for the new skills to be detected. Do not proceed with Flutter work until the skills are available.
+
+If `npx skills` is not available on the machine, stop and instruct the human to install the four skills manually using the commands above, then restart their agent.
+
 ### 1. Analyze the architecture
 
 Before writing code in any component, you MUST read the corresponding architecture documentation:
