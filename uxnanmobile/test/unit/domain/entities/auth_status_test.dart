@@ -4,7 +4,7 @@ import 'package:uxnan/domain/entities/auth_status.dart';
 void main() {
   group('AuthStatus.fromJson', () {
     test('parses a full sanitized status', () {
-      final status = AuthStatus.fromJson({
+      final status = AuthStatus.fromJson(const {
         'agentId': 'claude-code',
         'requiresLogin': false,
         'loginInProgress': true,
@@ -23,7 +23,7 @@ void main() {
     });
 
     test('defaults the booleans to false and leaves optionals null', () {
-      final status = AuthStatus.fromJson({'agentId': 'codex'});
+      final status = AuthStatus.fromJson(const {'agentId': 'codex'});
       expect(status.agentId, 'codex');
       expect(status.requiresLogin, isFalse);
       expect(status.loginInProgress, isFalse);
@@ -34,7 +34,7 @@ void main() {
     });
 
     test('treats non-bool truthy values as false (tolerant)', () {
-      final status = AuthStatus.fromJson({
+      final status = AuthStatus.fromJson(const {
         'agentId': 'codex',
         'requiresLogin': 'yes',
         'loginInProgress': 1,

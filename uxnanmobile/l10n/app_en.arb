@@ -181,6 +181,10 @@
   "@authLoginInProgress": {
     "description": "Banner shown while an interactive login is in progress on the PC."
   },
+  "agentSignInRequired": "Sign in required",
+  "@agentSignInRequired": {
+    "description": "Short marker shown on an agent (new-conversation card and threads-list dot) when it is not signed in on the PC."
+  },
 
   "gitActionsTitle": "Source control",
   "gitCleanState": "Working tree clean",

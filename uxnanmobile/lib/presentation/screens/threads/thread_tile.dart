@@ -42,6 +42,11 @@ class ThreadTile extends ConsumerWidget {
     final activity = ref.watch(threadActivityForProvider(thread.id));
     // Unread agent reply: tint the tile and emphasize it so it stands out.
     final unread = ref.watch(unreadForProvider(thread.id));
+    // Whether this thread's agent is not signed in on the PC — turns it red.
+    // Cached per agentId; null (offline / older bridge) keeps the normal dot.
+    final requiresLogin =
+        ref.watch(authStatusProvider(thread.agentId)).value?.requiresLogin ??
+            false;
 
     return Material(
       color: unread
@@ -72,11 +77,13 @@ class ThreadTile extends ConsumerWidget {
                         thread: thread,
                         activity: activity,
                         unread: unread,
+                        requiresLogin: requiresLogin,
                       )
                     : _FullContent(
                         thread: thread,
                         activity: activity,
                         unread: unread,
+                        requiresLogin: requiresLogin,
                       ),
               ),
             ],
@@ -111,10 +118,12 @@ class _FullContent extends StatelessWidget {
     required this.thread,
     required this.activity,
     required this.unread,
+    required this.requiresLogin,
   });
   final Thread thread;
   final ThreadActivity activity;
   final bool unread;
+  final bool requiresLogin;
 
   @override
   Widget build(BuildContext context) {
@@ -154,7 +163,11 @@ class _FullContent extends StatelessWidget {
         const SizedBox(height: UxnanSpacing.xs),
         Row(
           children: [
-            _ActivityIndicator(activity: activity, status: thread.status),
+            _ActivityIndicator(
+              activity: activity,
+              status: thread.status,
+              requiresLogin: requiresLogin,
+            ),
             const SizedBox(width: UxnanSpacing.xs),
             Flexible(
               child: Text(
@@ -179,10 +192,12 @@ class _CompactContent extends StatelessWidget {
     required this.thread,
     required this.activity,
     required this.unread,
+    required this.requiresLogin,
   });
   final Thread thread;
   final ThreadActivity activity;
   final bool unread;
+  final bool requiresLogin;
 
   @override
   Widget build(BuildContext context) {
@@ -190,7 +205,11 @@ class _CompactContent extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
     return Row(
       children: [
-        _ActivityIndicator(activity: activity, status: thread.status),
+        _ActivityIndicator(
+          activity: activity,
+          status: thread.status,
+          requiresLogin: requiresLogin,
+        ),
         const SizedBox(width: UxnanSpacing.sm),
         Expanded(
           child: Text(
@@ -405,11 +424,17 @@ class _AgentAvatar extends StatelessWidget {
 }
 
 /// Leading indicator on the subtitle row: a spinner while the agent is
-/// responding, a red dot on error, otherwise the thread's sync-status dot.
+/// responding, a red dot on error, a red dot when the agent is not signed in
+/// on the PC, otherwise the thread's sync-status dot.
 class _ActivityIndicator extends StatelessWidget {
-  const _ActivityIndicator({required this.activity, required this.status});
+  const _ActivityIndicator({
+    required this.activity,
+    required this.status,
+    required this.requiresLogin,
+  });
   final ThreadActivity activity;
   final ThreadStatus status;
+  final bool requiresLogin;
 
   @override
   Widget build(BuildContext context) {
@@ -426,6 +451,14 @@ class _ActivityIndicator extends StatelessWidget {
       case ThreadActivity.error:
         return const _Dot(color: UxnanColors.error);
       case ThreadActivity.idle:
+        // Not signed in on the PC: flag the otherwise-active thread red so the
+        // user sees it needs a sign-in before its turns can run.
+        if (requiresLogin && status == ThreadStatus.active) {
+          return Tooltip(
+            message: AppLocalizations.of(context).agentSignInRequired,
+            child: const _Dot(color: UxnanColors.error),
+          );
+        }
         return _StatusDot(status: status);
     }
   }

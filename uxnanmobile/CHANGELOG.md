@@ -20,9 +20,22 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   against an older bridge. Informational only for now — there is no in-app login
   yet (the bridge's `auth/login` is still a stub), so it points the user to the
   PC; it also renders a "Signing in…" state for `loginInProgress`.
+- **Sign-in status before entering a conversation.** The agent's sign-in state
+  (`auth/status`) is now surfaced earlier, reusing `authStatusProvider`: the
+  **new-conversation** agent card shows a red "Sign in required" marker when the
+  agent is installed but not signed in (distinct from "Unavailable" — the card
+  stays selectable), and a thread's **status dot in the list turns red** (with a
+  tooltip) when its agent is not signed in, instead of the usual active green.
+  Both degrade to no marker while offline or against an older bridge.
 
 ### Fixed
 
+- **Crash when leaving a conversation (`Tried to modify a provider while the
+  widget tree was building`).** The conversation screen cleared the foreground
+  marker by mutating `foregroundThreadProvider` synchronously in `dispose()`,
+  which Riverpod rejects during unmount. It now defers the clear to the next
+  event-loop tick (`leave()` stays a no-op if another thread is already in
+  front), so back-navigation no longer throws.
 - **Notifications wrongly suppressed on the threads list.** The "currently
   viewing" thread was cleared inside `dispose()` via `ref`, which is unreliable
   in Riverpod — the clear could be dropped, leaving the last-opened thread

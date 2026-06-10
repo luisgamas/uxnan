@@ -468,6 +468,9 @@ class AppLocalizationsEs extends AppLocalizations {
   String get authLoginInProgress => 'Iniciando sesión en tu PC…';
 
   @override
+  String get agentSignInRequired => 'Falta iniciar sesión';
+
+  @override
   String get gitActionsTitle => 'Control de versiones';
 
   @override

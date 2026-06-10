@@ -467,6 +467,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get authLoginInProgress => 'Signing in on your PC…';
 
   @override
+  String get agentSignInRequired => 'Sign in required';
+
+  @override
   String get gitActionsTitle => 'Source control';
 
   @override

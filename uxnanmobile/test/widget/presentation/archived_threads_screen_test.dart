@@ -43,6 +43,9 @@ Widget _wrap({required List<Thread> threads}) {
       unreadThreadsProvider.overrideWith(
         (ref) => Stream.value(const <String>{}),
       ),
+      // No live bridge in the widget test: report no auth info so tiles keep
+      // their normal status dot (the real provider would hit the session).
+      authStatusProvider.overrideWith((ref, agentId) => null),
     ],
     child: MaterialApp.router(
       routerConfig: router,

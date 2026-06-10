@@ -968,6 +968,12 @@ abstract class AppLocalizations {
   /// **'Signing in on your PC…'**
   String get authLoginInProgress;
 
+  /// Short marker shown on an agent (new-conversation card and threads-list dot) when it is not signed in on the PC.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in required'**
+  String get agentSignInRequired;
+
   /// No description provided for @gitActionsTitle.
   ///
   /// In en, this message translates to:

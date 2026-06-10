@@ -216,6 +216,11 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
                         _AgentCard(
                           agent: a,
                           selected: a.agentId == _agent?.agentId,
+                          requiresLogin: ref
+                                  .watch(authStatusProvider(a.agentId))
+                                  .value
+                                  ?.requiresLogin ??
+                              false,
                           onTap: a.available ? () => _selectAgent(a) : null,
                         ),
                     ],
@@ -319,11 +324,17 @@ class _AgentCard extends StatelessWidget {
   const _AgentCard({
     required this.agent,
     required this.selected,
+    required this.requiresLogin,
     required this.onTap,
   });
 
   final AgentDescriptor agent;
   final bool selected;
+
+  /// Whether this agent is not signed in on the PC (distinct from
+  /// [AgentDescriptor.available], which is binary availability).
+  final bool requiresLogin;
+
   final VoidCallback? onTap;
 
   @override
@@ -373,8 +384,16 @@ class _AgentCard extends StatelessWidget {
                             color: UxnanColors.disconnected,
                           ),
                         )
-                      else if (selected)
-                        Icon(Icons.check_circle_rounded, color: colors.primary),
+                      else ...[
+                        if (requiresLogin) const _SignInRequiredMarker(),
+                        if (requiresLogin && selected)
+                          const SizedBox(width: UxnanSpacing.sm),
+                        if (selected)
+                          Icon(
+                            Icons.check_circle_rounded,
+                            color: colors.primary,
+                          ),
+                      ],
                     ],
                   ),
                   if (caps.isNotEmpty) ...[
@@ -410,6 +429,33 @@ class _AgentCard extends StatelessWidget {
       if (c.forking) (Icons.call_split_rounded, l10n.newThreadCapForking),
       if (c.images) (Icons.image_outlined, l10n.newThreadCapImages),
     ];
+  }
+}
+
+/// A small red marker on an agent card meaning the agent is installed but not
+/// signed in on the PC. The agent can still be selected — the conversation
+/// shows a sign-in banner and turns run once it's authenticated on the PC.
+class _SignInRequiredMarker extends StatelessWidget {
+  const _SignInRequiredMarker();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.login_rounded, size: 14, color: colors.error),
+        const SizedBox(width: UxnanSpacing.xs),
+        Text(
+          l10n.agentSignInRequired,
+          style: Theme.of(context)
+              .textTheme
+              .bodySmall
+              ?.copyWith(color: colors.error),
+        ),
+      ],
+    );
   }
 }
 
