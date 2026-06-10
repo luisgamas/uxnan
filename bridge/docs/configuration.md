@@ -8,8 +8,8 @@ file is optional; create it to override. Defaults live in
 
 | Field | Default | Purpose |
 |---|---|---|
-| `relayUrl` | built-in default | WebSocket URL of the relay (remote/off-LAN fallback). |
-| `relayEnabled` | `false` | **Off by default** — the bridge is LAN/Tailscale-direct (no hosting) and the pairing QR carries only the direct `hosts`. The relay is **optional and self-hosted**: set `true` and point `relayUrl` at your own relay to also fall back through it (for users without a mesh VPN). See [`connectivity.md`](./connectivity.md) and [`../../relay/docs/deploy.md`](../../relay/docs/deploy.md). |
+| `relayUrl` | built-in default (placeholder) | WebSocket URL of the relay (remote/off-LAN fallback). The built-in default is a **placeholder** — set this to **your own** self-hosted relay's `wss://…` URL *before* you flip `relayEnabled`, so turning the relay on is a one-line change with nothing else to wire. |
+| `relayEnabled` | `false` | **Off by default** — the bridge is LAN/Tailscale-direct (no hosting) and the pairing QR carries only the direct `hosts`. The relay is **optional and self-hosted**: pre-set `relayUrl` to your relay, then flip this to `true` and re-pair (or regenerate the QR) — the QR then carries your `relay` as a fallback after the direct `hosts`. Needed only for off-LAN access without a mesh VPN, and for **background push** (FCM). See [`connectivity.md`](./connectivity.md), [`../../relay/docs/deploy.md`](../../relay/docs/deploy.md) and [`../../relay/docs/push-notifications.md`](../../relay/docs/push-notifications.md). |
 | `lanEnabled` | `true` | Serve the LAN WebSocket so the phone can connect directly. Its non-internal IPv4s (LAN + Tailscale `100.x`) are advertised as `hosts` in the pairing QR. |
 | `lanPort` | built-in default | LAN server port. |
 | `autoReconnect` | `true` | Keep re-arming the relay session after a phone disconnects. |

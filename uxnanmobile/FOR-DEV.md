@@ -75,8 +75,12 @@ browser and multi-PC connection correctness are now DONE — see below.)
   timeout) before falling back to the relay (spec §5.9.3); `PairingPayload`/
   `TrustedDevice`/the drift `trusted_devices` table (v4) carry `hosts`, and
   `relay` is now optional. **Still open:**
-  - ☐ **On-device verification** on a real LAN and over Tailscale (the QR's
-    direct addresses reachable end-to-end against a live bridge).
+  - ☑ **On-device verification (Android)** — DONE: paired end-to-end against a
+    live bridge over **Tailscale** (`100.x`), and over the **LAN** once allowed
+    through **Windows Firewall** (the block was the sole connection failure — the
+    phone couldn't even ping the PC; the fix was enabling *File and Printer
+    Sharing (Echo Request - ICMPv4-In)* plus the TCP LAN port — see
+    `bridge/docs/connectivity.md` Troubleshooting). iOS still pending (below).
   - ☐ **iOS local-network permission** (`NSLocalNetworkUsageDescription`) — a
     direct LAN socket on iOS prompts for local-network access; add the Info.plist
     key (FOR-HUMAN once the iOS build exists) so direct LAN works on iPhone.

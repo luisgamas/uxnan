@@ -63,6 +63,38 @@ VPN on the phone and want an internet-reachable fallback. **To turn it on:**
 
 - All modes are E2EE end-to-end; the relay only ever sees opaque envelopes.
 - `hosts` may include virtual-NIC addresses (Docker/WSL/Hyper-V) the phone can't
-  reach — harmless, it just tries the next one and falls back to the relay.
-- **Mobile side:** consuming `hosts` (try direct → relay) is a change on the
-  `uxnanmobile` branch — see [`../FOR-DEV.md`](../FOR-DEV.md).
+  reach — harmless, it just tries the next one (each with a short timeout) and
+  finally falls back to the relay when one is configured.
+- **Mobile side:** the app consumes `hosts` (tries each direct address first,
+  then the relay), tolerates a relay-less QR, and persists the hosts on the
+  trusted device — implemented and verified on Android over LAN and Tailscale.
+
+## Troubleshooting Direct LAN
+
+If the phone can't reach the bridge on the **LAN** (it works over Tailscale but
+not on the same Wi-Fi, or the phone can't even ping the PC), it's almost always
+**Windows Firewall**. Two distinct rules matter — check both:
+
+- **ICMP echo (ping) — the usual culprit for "can't even reach the PC".** Windows
+  blocks inbound ping by default, so the phone can't reach the PC at all on the
+  LAN. Enable **File and Printer Sharing (Echo Request - ICMPv4-In)** for the
+  active profile (this is the exact toggle that fixed it here):
+  *Windows Security → Firewall & network protection → Advanced settings →
+  Inbound Rules*, or run once (admin):
+  ```powershell
+  Enable-NetFirewallRule -DisplayName "File and Printer Sharing (Echo Request - ICMPv4-In)"
+  ```
+- **The LAN port itself (TCP 19850).** On the first `start`, Windows prompts to
+  allow `node.exe` on private networks; if that was dismissed/denied, inbound TCP
+  to the LAN port is blocked. Allow **Node.js** on **Private** under *Allow an app
+  through firewall*, or:
+  ```powershell
+  New-NetFirewallRule -DisplayName "uxnan-bridge LAN" -Direction Inbound `
+    -Action Allow -Protocol TCP -LocalPort 19850 -Profile Private
+  ```
+- **Confirm reachability** from the phone: `ping <PC-LAN-IP>` should answer, and
+  `http://<PC-LAN-IP>:19850` in the browser should connect (a blank/"Upgrade
+  Required" page is fine — the port is open). Also check both devices are on the
+  same subnet (guest/AP-isolated Wi-Fi blocks device-to-device traffic).
+- **Tailscale always works** even when the LAN is blocked — its `100.x` address
+  is advertised in the QR, so it's the reliable fallback with no hosting.
