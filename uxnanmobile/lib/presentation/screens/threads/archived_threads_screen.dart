@@ -1,17 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/enums/thread_status.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
+import 'package:uxnan/presentation/router/app_router.dart';
+import 'package:uxnan/presentation/screens/threads/thread_list_controls.dart';
 import 'package:uxnan/presentation/screens/threads/thread_tile.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 
 /// The archived threads of a paired PC. Archived threads are hidden from the
 /// main threads list but never deleted; from here the user can reopen them,
 /// unarchive (restore to the active list) or delete them — all via the same
-/// long-press menu as the active list.
-class ArchivedThreadsScreen extends ConsumerWidget {
+/// long-press menu as the active list. Carries the same search / sort /
+/// density controls as the active list.
+class ArchivedThreadsScreen extends ConsumerStatefulWidget {
   /// Creates an [ArchivedThreadsScreen] for the device with [deviceId].
   const ArchivedThreadsScreen({required this.deviceId, super.key});
 
@@ -19,13 +23,23 @@ class ArchivedThreadsScreen extends ConsumerWidget {
   final String deviceId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ArchivedThreadsScreen> createState() =>
+      _ArchivedThreadsScreenState();
+}
+
+class _ArchivedThreadsScreenState extends ConsumerState<ArchivedThreadsScreen> {
+  ThreadSort _sort = ThreadSort.created;
+  bool _compact = false;
+
+  @override
+  Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final allThreads = ref.watch(threadsProvider).value ?? const <Thread>[];
     final archived = allThreads
         .where((t) => t.status == ThreadStatus.archived)
-        .where((t) => t.deviceId == null || t.deviceId == deviceId)
+        .where((t) => t.deviceId == null || t.deviceId == widget.deviceId)
         .toList();
+    final visible = sortThreads(archived, _sort);
 
     return Scaffold(
       body: CustomScrollView(
@@ -37,8 +51,23 @@ class ArchivedThreadsScreen extends ConsumerWidget {
             floating: true,
             snap: true,
             title: Text(l10n.archivedTitle, overflow: TextOverflow.ellipsis),
+            actions: [
+              ThreadSearchAnchor(
+                threads: archived,
+                onSelect: (id) => context.push(AppRoutes.conversation(id)),
+              ),
+              ThreadSortMenu(
+                sort: _sort,
+                onChanged: (value) => setState(() => _sort = value),
+              ),
+              ThreadMoreMenu(
+                compact: _compact,
+                onCompactChanged: (value) => setState(() => _compact = value),
+              ),
+              const SizedBox(width: UxnanSpacing.sm),
+            ],
           ),
-          if (archived.isEmpty)
+          if (visible.isEmpty)
             const SliverFillRemaining(
               hasScrollBody: false,
               child: _EmptyArchived(),
@@ -52,11 +81,12 @@ class ArchivedThreadsScreen extends ConsumerWidget {
                 UxnanSpacing.lg,
               ),
               sliver: SliverList.separated(
-                itemCount: archived.length,
-                separatorBuilder: (_, __) =>
-                    const SizedBox(height: UxnanSpacing.md),
+                itemCount: visible.length,
+                separatorBuilder: (_, __) => SizedBox(
+                  height: _compact ? UxnanSpacing.sm : UxnanSpacing.md,
+                ),
                 itemBuilder: (context, index) =>
-                    ThreadTile(thread: archived[index]),
+                    ThreadTile(thread: visible[index], compact: _compact),
               ),
             ),
         ],

@@ -161,9 +161,8 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
             Padding(
               padding: const EdgeInsets.only(right: UxnanSpacing.sm),
               child: TextButton(
-                onPressed: canStart
-                    ? () => _start(activeProject, workingCwd)
-                    : null,
+                onPressed:
+                    canStart ? () => _start(activeProject, workingCwd) : null,
                 child: Text(l10n.newThreadStart),
               ),
             ),

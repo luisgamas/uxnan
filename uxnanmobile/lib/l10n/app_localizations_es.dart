@@ -201,6 +201,36 @@ class AppLocalizationsEs extends AppLocalizations {
   String get threadsFilterAll => 'Todos';
 
   @override
+  String get threadsViewOptions => 'Opciones de vista';
+
+  @override
+  String get threadsSortBy => 'Ordenar por';
+
+  @override
+  String get threadsSortCreated => 'Fecha de creación';
+
+  @override
+  String get threadsSortName => 'Nombre';
+
+  @override
+  String get threadsSortFolder => 'Carpeta';
+
+  @override
+  String get threadsCompact => 'Lista compacta';
+
+  @override
+  String get threadsMore => 'Más opciones';
+
+  @override
+  String get threadsSearch => 'Buscar conversaciones';
+
+  @override
+  String get threadsSearchHint => 'Busca por nombre, ID, agente o carpeta';
+
+  @override
+  String get threadsSearchEmpty => 'Ninguna conversación coincide';
+
+  @override
   String get threadsEmpty => 'Aún no hay conversaciones';
 
   @override

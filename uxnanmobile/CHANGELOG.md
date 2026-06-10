@@ -8,6 +8,20 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Threads list: search, sort and density controls (active + archived).**
+  Shared `thread_list_controls.dart` so both lists behave identically:
+  - **Search** — the M3 full-screen `SearchAnchor` view, matching by title, id,
+    agent (label or wire id) and working folder; tapping a result opens it.
+  - **Sort** — an M3 menu (check on the active order): creation date (newest
+    first, the **new default**), name, or folder. The per-agent filter chips are
+    unchanged.
+  - **Density** — a compact, single-line tile variant (the full tile stays the
+    default).
+  - App-bar kept to the M3 ≤3-actions guideline: **Search + Sort** stay visible;
+    **Density** (checkable) and **Archived** (navigation) live in a `⋮` overflow
+    menu. The archived screen gained the same search/sort/density controls.
+  - Preferences are in-memory per screen (not yet persisted).
+
 - **"Responding…" header in the conversation.** While the agent is producing a
   turn, the conversation app-bar shows a small spinner + "Responding…" (primary
   colour) in place of the connection label, so a reply is clearly on the way

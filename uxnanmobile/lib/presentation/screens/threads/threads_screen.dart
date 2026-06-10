@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/entities/trusted_device.dart';
@@ -13,6 +12,7 @@ import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/screens/threads/new_conversation_screen.dart';
+import 'package:uxnan/presentation/screens/threads/thread_list_controls.dart';
 import 'package:uxnan/presentation/screens/threads/thread_tile.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
@@ -34,6 +34,12 @@ class ThreadsScreen extends ConsumerStatefulWidget {
 class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
   /// The selected agent filter; null means "all agents".
   AgentId? _agentFilter;
+
+  /// Current ordering of the list. Default: newest created first.
+  ThreadSort _sort = ThreadSort.created;
+
+  /// Whether to render the denser, single-line tile. Default: the full tile.
+  bool _compact = false;
 
   @override
   void initState() {
@@ -122,13 +128,14 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
             widget.deviceId;
 
     final agents = _agentsPresent(threads);
-    final visible = _agentFilter == null
+    final filtered = _agentFilter == null
         ? threads
         : threads
             .where(
               (t) => AgentIdParsing.fromWireId(t.agentId) == _agentFilter,
             )
             .toList();
+    final visible = sortThreads(filtered, _sort);
 
     final l10n = AppLocalizations.of(context);
 
@@ -154,10 +161,19 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
               snap: true,
               title: Text(_title(devices), overflow: TextOverflow.ellipsis),
               actions: [
-                IconButton(
-                  tooltip: l10n.archivedTitle,
-                  icon: const Icon(Icons.archive_outlined),
-                  onPressed: () => context.push(
+                // Search all of this PC's threads (ignores the agent filter).
+                ThreadSearchAnchor(
+                  threads: threads,
+                  onSelect: (id) => context.push(AppRoutes.conversation(id)),
+                ),
+                ThreadSortMenu(
+                  sort: _sort,
+                  onChanged: (value) => setState(() => _sort = value),
+                ),
+                ThreadMoreMenu(
+                  compact: _compact,
+                  onCompactChanged: (value) => setState(() => _compact = value),
+                  onArchived: () => context.push(
                     AppRoutes.deviceArchived(widget.deviceId),
                   ),
                 ),
@@ -198,10 +214,11 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
                 ),
                 sliver: SliverList.separated(
                   itemCount: visible.length,
-                  separatorBuilder: (_, __) =>
-                      const SizedBox(height: UxnanSpacing.md),
+                  separatorBuilder: (_, __) => SizedBox(
+                    height: _compact ? UxnanSpacing.sm : UxnanSpacing.md,
+                  ),
                   itemBuilder: (context, index) =>
-                      ThreadTile(thread: visible[index]),
+                      ThreadTile(thread: visible[index], compact: _compact),
                 ),
               ),
           ],
@@ -260,7 +277,7 @@ class _AgentFilterBar extends StatelessWidget implements PreferredSizeWidget {
                 label: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    _AgentChipAvatar(agent: agent),
+                    AgentChipAvatar(agent: agent),
                     const SizedBox(width: UxnanSpacing.xs),
                     Text(AgentVisuals.labelFor(agent)),
                   ],
@@ -271,30 +288,6 @@ class _AgentFilterBar extends StatelessWidget implements PreferredSizeWidget {
             ),
         ],
       ),
-    );
-  }
-}
-
-class _AgentChipAvatar extends StatelessWidget {
-  const _AgentChipAvatar({required this.agent});
-  final AgentId agent;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    final logo = AgentVisuals.logoFor(agent);
-    if (logo == null) {
-      return Icon(
-        Icons.smart_toy_outlined,
-        size: 16,
-        color: AgentVisuals.colorFor(agent),
-      );
-    }
-    return SvgPicture.asset(
-      logo,
-      width: 16,
-      height: 16,
-      theme: SvgTheme(currentColor: colors.onSurface),
     );
   }
 }

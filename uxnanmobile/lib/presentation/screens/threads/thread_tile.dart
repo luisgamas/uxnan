@@ -24,16 +24,18 @@ enum _ThreadAction { rename, copyId, archive, unarchive, delete }
 /// status.
 class ThreadTile extends ConsumerWidget {
   /// Creates a [ThreadTile].
-  const ThreadTile({required this.thread, super.key});
+  const ThreadTile({required this.thread, this.compact = false, super.key});
 
   /// The thread to render.
   final Thread thread;
 
+  /// Whether to use the denser, single-line layout (smaller avatar, no
+  /// subtitle row). Defaults to the full two-line tile.
+  final bool compact;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-    final l10n = AppLocalizations.of(context);
     final agent = AgentIdParsing.fromWireId(thread.agentId);
     // Live activity of the conversation (running/error), independent of the
     // thread's sync status — tracked even while this screen is closed.
@@ -47,60 +49,20 @@ class ThreadTile extends ConsumerWidget {
         onTap: () => context.push(AppRoutes.conversation(thread.id)),
         onLongPress: () => showThreadActions(context, ref, thread),
         child: Padding(
-          padding: const EdgeInsets.all(UxnanSpacing.md),
+          padding: compact
+              ? const EdgeInsets.symmetric(
+                  horizontal: UxnanSpacing.md,
+                  vertical: UxnanSpacing.sm,
+                )
+              : const EdgeInsets.all(UxnanSpacing.md),
           child: Row(
             children: [
-              _AgentAvatar(agent: agent),
-              const SizedBox(width: UxnanSpacing.md),
+              _AgentAvatar(agent: agent, size: compact ? 34 : 44),
+              SizedBox(width: compact ? UxnanSpacing.sm : UxnanSpacing.md),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            thread.title,
-                            style: textTheme.titleSmall,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        if (thread.lastActivity != null) ...[
-                          const SizedBox(width: UxnanSpacing.sm),
-                          Text(
-                            _relativeTime(thread.lastActivity!),
-                            style: textTheme.bodySmall?.copyWith(
-                              color: colors.onSurfaceVariant,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                    const SizedBox(height: UxnanSpacing.xs),
-                    Row(
-                      children: [
-                        _ActivityIndicator(
-                          activity: activity,
-                          status: thread.status,
-                        ),
-                        const SizedBox(width: UxnanSpacing.xs),
-                        Flexible(
-                          child: Text(
-                            activity == ThreadActivity.running
-                                ? l10n.threadResponding
-                                : _subtitle(),
-                            style: textTheme.bodySmall?.copyWith(
-                              color: activity == ThreadActivity.running
-                                  ? colors.primary
-                                  : colors.onSurfaceVariant,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+                child: compact
+                    ? _CompactContent(thread: thread, activity: activity)
+                    : _FullContent(thread: thread, activity: activity),
               ),
             ],
           ),
@@ -108,14 +70,106 @@ class ThreadTile extends ConsumerWidget {
       ),
     );
   }
+}
 
-  String _subtitle() {
-    final agent = AgentVisuals.labelFor(
-      AgentIdParsing.fromWireId(thread.agentId),
+/// The full, two-line tile body: title + last-activity time, then the activity
+/// indicator with the agent·folder subtitle (or "Responding…" while running).
+class _FullContent extends StatelessWidget {
+  const _FullContent({required this.thread, required this.activity});
+  final Thread thread;
+  final ThreadActivity activity;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final l10n = AppLocalizations.of(context);
+    final responding = activity == ThreadActivity.running;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                thread.title,
+                style: textTheme.titleSmall,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (thread.lastActivity != null) ...[
+              const SizedBox(width: UxnanSpacing.sm),
+              Text(
+                _relativeTime(thread.lastActivity!),
+                style: textTheme.bodySmall?.copyWith(
+                  color: colors.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ],
+        ),
+        const SizedBox(height: UxnanSpacing.xs),
+        Row(
+          children: [
+            _ActivityIndicator(activity: activity, status: thread.status),
+            const SizedBox(width: UxnanSpacing.xs),
+            Flexible(
+              child: Text(
+                responding ? l10n.threadResponding : _subtitleFor(thread),
+                style: textTheme.bodySmall?.copyWith(
+                  color: responding ? colors.primary : colors.onSurfaceVariant,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      ],
     );
-    final dir = thread.cwd?.split(RegExp(r'[\\/]')).last;
-    return dir == null ? agent : '$agent · $dir';
   }
+}
+
+/// The compact, single-line tile body: the activity indicator, the title, and
+/// the last-activity time — no subtitle row.
+class _CompactContent extends StatelessWidget {
+  const _CompactContent({required this.thread, required this.activity});
+  final Thread thread;
+  final ThreadActivity activity;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    return Row(
+      children: [
+        _ActivityIndicator(activity: activity, status: thread.status),
+        const SizedBox(width: UxnanSpacing.sm),
+        Expanded(
+          child: Text(
+            thread.title,
+            style: textTheme.titleSmall,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        if (thread.lastActivity != null) ...[
+          const SizedBox(width: UxnanSpacing.sm),
+          Text(
+            _relativeTime(thread.lastActivity!),
+            style: textTheme.bodySmall?.copyWith(
+              color: colors.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+String _subtitleFor(Thread thread) {
+  final agent =
+      AgentVisuals.labelFor(AgentIdParsing.fromWireId(thread.agentId));
+  final dir = thread.cwd?.split(RegExp(r'[\\/]')).last;
+  return dir == null ? agent : '$agent · $dir';
 }
 
 /// Shows the per-thread actions sheet on long-press. The archive / unarchive
@@ -269,18 +323,19 @@ Future<void> _confirmDeleteThread(
 }
 
 class _AgentAvatar extends StatelessWidget {
-  const _AgentAvatar({required this.agent});
+  const _AgentAvatar({required this.agent, this.size = 44});
   final AgentId agent;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
     final logo = AgentVisuals.logoFor(agent);
-    if (logo != null) return AgentLogoChip(asset: logo, size: 44);
+    if (logo != null) return AgentLogoChip(asset: logo, size: size);
 
     final colors = Theme.of(context).colorScheme;
     return Container(
-      width: 44,
-      height: 44,
+      width: size,
+      height: size,
       decoration: BoxDecoration(
         color: colors.surfaceContainerHigh,
         borderRadius: const BorderRadius.all(UxnanRadius.lg),
@@ -288,7 +343,7 @@ class _AgentAvatar extends StatelessWidget {
       ),
       child: Icon(
         Icons.smart_toy_outlined,
-        size: 22,
+        size: size * 0.5,
         color: AgentVisuals.colorFor(agent),
       ),
     );

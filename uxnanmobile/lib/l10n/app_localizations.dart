@@ -452,6 +452,66 @@ abstract class AppLocalizations {
   /// **'All'**
   String get threadsFilterAll;
 
+  /// No description provided for @threadsViewOptions.
+  ///
+  /// In en, this message translates to:
+  /// **'View options'**
+  String get threadsViewOptions;
+
+  /// No description provided for @threadsSortBy.
+  ///
+  /// In en, this message translates to:
+  /// **'Sort by'**
+  String get threadsSortBy;
+
+  /// No description provided for @threadsSortCreated.
+  ///
+  /// In en, this message translates to:
+  /// **'Creation date'**
+  String get threadsSortCreated;
+
+  /// No description provided for @threadsSortName.
+  ///
+  /// In en, this message translates to:
+  /// **'Name'**
+  String get threadsSortName;
+
+  /// No description provided for @threadsSortFolder.
+  ///
+  /// In en, this message translates to:
+  /// **'Folder'**
+  String get threadsSortFolder;
+
+  /// No description provided for @threadsCompact.
+  ///
+  /// In en, this message translates to:
+  /// **'Compact list'**
+  String get threadsCompact;
+
+  /// No description provided for @threadsMore.
+  ///
+  /// In en, this message translates to:
+  /// **'More options'**
+  String get threadsMore;
+
+  /// No description provided for @threadsSearch.
+  ///
+  /// In en, this message translates to:
+  /// **'Search threads'**
+  String get threadsSearch;
+
+  /// No description provided for @threadsSearchHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Search by name, ID, agent or folder'**
+  String get threadsSearchHint;
+
+  /// No description provided for @threadsSearchEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No threads match'**
+  String get threadsSearchEmpty;
+
   /// No description provided for @threadsEmpty.
   ///
   /// In en, this message translates to:

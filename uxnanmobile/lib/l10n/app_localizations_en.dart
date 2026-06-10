@@ -200,6 +200,36 @@ class AppLocalizationsEn extends AppLocalizations {
   String get threadsFilterAll => 'All';
 
   @override
+  String get threadsViewOptions => 'View options';
+
+  @override
+  String get threadsSortBy => 'Sort by';
+
+  @override
+  String get threadsSortCreated => 'Creation date';
+
+  @override
+  String get threadsSortName => 'Name';
+
+  @override
+  String get threadsSortFolder => 'Folder';
+
+  @override
+  String get threadsCompact => 'Compact list';
+
+  @override
+  String get threadsMore => 'More options';
+
+  @override
+  String get threadsSearch => 'Search threads';
+
+  @override
+  String get threadsSearchHint => 'Search by name, ID, agent or folder';
+
+  @override
+  String get threadsSearchEmpty => 'No threads match';
+
+  @override
   String get threadsEmpty => 'No threads yet';
 
   @override
