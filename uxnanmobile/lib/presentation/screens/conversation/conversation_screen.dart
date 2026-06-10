@@ -81,7 +81,13 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _foreground?.leave(widget.threadId);
+    // Clear the foreground marker on the next event-loop tick, NOT inline:
+    // mutating a provider synchronously during unmount throws "Tried to modify
+    // a provider while the widget tree was building". Deferring runs it after
+    // the tree settles; leave() is a no-op if another thread is now in front.
+    final foreground = _foreground;
+    final threadId = widget.threadId;
+    Future(() => foreground?.leave(threadId));
     _scroll.dispose();
     super.dispose();
   }
