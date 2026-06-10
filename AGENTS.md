@@ -22,6 +22,13 @@ This means:
 
 ---
 
+## Language
+
+- Everything written into the repository or any project platform (code, docs, commits, branches, PRs, issues) is in **English**, to keep the project ready to go global.
+- The assistant communicates with the maintainer in **Spanish** (this is local conversation only and never enters anything committed or published).
+
+---
+
 ## Monorepo structure
 
 ```
