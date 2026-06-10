@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed
+- **`thread/start` on a browsed folder no longer fails with "unknown project".**
+  `src/handlers/thread-context-handler.ts` required `projects.byId(projectId)`
+  to resolve, but a directory picked via `workspace/browseDirs` is SYNTHESIZED
+  into a project that isn't in `workspaceRoots`, so `byId` threw
+  `ResourceNotFound` and the thread was never created — every later `turn/send`
+  then failed with `-32008 thread not found`. The phone always sends the chosen
+  `cwd`, so use it directly and only resolve the project by id as a cwd fallback
+  when none is given. This unblocks the plug-and-play folder-browser flow.
+
 ### Changed
 - **Relay is off by default** (`daemon-config.ts`): `relayEnabled` now defaults
   to `false`, so a fresh install is LAN/Tailscale-direct with **zero hosting**

@@ -20,10 +20,14 @@ export function registerThreadHandlers(router: HandlerRouter): void {
   );
   router.register('thread/start', (p, ctx: BridgeContext) => {
     const projectId = requireString(p, 'projectId');
-    const project = ctx.projects.byId(projectId);
     const agentId =
       (optionalString(p, 'agentId') as AgentId | undefined) ?? ctx.agentManager.defaultAgent;
-    const cwd = optionalString(p, 'cwd') ?? project.cwd;
+    // The phone provides the cwd (e.g. a folder-browser directory, which
+    // `project/resolve` SYNTHESIZES into a project that is NOT in
+    // workspaceRoots). Use that cwd directly; only resolve the project by id to
+    // get a cwd fallback when none is given — otherwise a browsed folder failed
+    // `byId` with "unknown project", and the thread was never created.
+    const cwd = optionalString(p, 'cwd') ?? ctx.projects.byId(projectId).cwd;
     return ctx.threadStore.startThread(
       {
         projectId,
