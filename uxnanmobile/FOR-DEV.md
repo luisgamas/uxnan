@@ -57,9 +57,10 @@ browser and multi-PC connection correctness are now DONE — see below.)
   connecting state and surfaces failures; a **"Verify connection"** action still
   probes via encrypted `bridge/status`. ☐ Remaining: end-to-end verification on
   a live bridge across two PCs.
-- ☐ **On-device pairing verification** — the QR happy path needs a running
-  bridge/relay to complete `processPairingPayload`; verify end-to-end once the
-  bridge exists.
+- ☑ **On-device pairing verification** — DONE: the QR happy path completes
+  `processPairingPayload` end-to-end against a live bridge on a real Android
+  device, over both **Tailscale** (`100.x`) and the **LAN** (once allowed through
+  Windows Firewall). Trusted-reconnect on a later launch also works.
 - ☐ **Standalone pairing use cases** — the spec lists `StartPairing`,
   `RegisterTrustedDevice`, `RemoveTrustedDevice` under `domain/usecases/pairing/`.
   Currently folded into `SessionCoordinator.processPairingPayload` +
@@ -88,8 +89,11 @@ browser and multi-PC connection correctness are now DONE — see below.)
   - ☐ **mDNS/Bonjour discovery** — only needed for a bridge that did NOT
     advertise reachable `hosts` (e.g. dynamic IPs); the QR `hosts` cover the
     common case, so this is now optional.
-- ☐ **Live WebSocket integration test** against a real bridge (current tests use
-  an in-memory simulated bridge).
+- ◑ **Live WebSocket integration test** against a real bridge — the real-bridge
+  interaction is now **manually validated on-device** (pairing, `thread/list`,
+  `thread/start`, `turn/send` + streamed `stream/*` replies, `turn/list`
+  re-sync). ☐ Still: an **automated** integration test (current automated tests
+  use an in-memory simulated bridge).
 
 ## Persistence
 
@@ -107,6 +111,15 @@ browser and multi-PC connection correctness are now DONE — see below.)
   present), and navigates to `/conversation/:id`. Pull-to-refresh calls
   `ThreadManager.loadThreads` **only when connected** (guarded + 15s timeout, so
   the indicator no longer spins forever offline).
+- ☑ **Search / sort / density + unread style** — DONE (new, beyond the original
+  scope): shared `thread_list_controls.dart` powers both the active and archived
+  lists. **Search** is the M3 full-screen `SearchAnchor` (title / id / agent /
+  folder); **sort** is an M3 menu (creation date — newest first by default —,
+  name, folder); a **compact** density toggle; all kept to the M3 ≤3-actions
+  app-bar guideline (Search + Sort visible, density + Archived in a `⋮` overflow
+  menu). Threads with an **unread agent reply** are emphasized (tint + bold +
+  dot), cleared on open. Sort/density preference is in-memory (☐ persistence is
+  an optional follow-up).
 - ◑ **Scope threads to the connected PC / project** — **PC scoping DONE +
   connection-targeting DONE**: `Thread.deviceId` tags each thread with its PC and
   the list filters by it. Crucially, **all live actions now target the PC we
@@ -187,8 +200,12 @@ browser and multi-PC connection correctness are now DONE — see below.)
   provider, and a `WorkspaceBrowserSheet` (root picker, breadcrumb, git-repo
   badges, "Open here"). Wired into `NewConversationSheet` as **"Browse…"** →
   resolve the chosen `cwd` to a project (`project/resolve`) → `thread/start
-  { cwd }`. The configured `project/list` stays as the shortcut. ☐ Remaining:
-  on-device verification against a live bridge with real browse roots.
+  { cwd }`. The configured `project/list` stays as the shortcut. ☑ **On-device
+  verification DONE**: browsing a real root, picking a folder and starting a
+  thread there works against a live bridge. (This flow surfaced a bridge bug —
+  `thread/start` required a *registered* project, failing for a browsed,
+  synthesized one — fixed in `bridge/`; the phone also no longer fabricates a
+  phantom local thread when `thread/start` errors.)
 - ◑ **Remote history pagination** — `ThreadManager.selectThread` now **re-syncs**
   a thread from the bridge (`turn/list`) on open, persisting any assistant answer
   not stored locally (keyed by `stream-<turnId>`, so it never duplicates) — this
@@ -199,8 +216,12 @@ browser and multi-PC connection correctness are now DONE — see below.)
 - ☑ **Conversation UI (visual layer)** — DONE: `ConversationScreen`
   (`SliverAppBar.large`, floating + snap, auto-scroll), message renderers
   (`MessageBubble` + `MessageContentView`: markdown, code, command card, diff,
-  system banner, streaming dots), floating `ComposerBar`, `SessionStatusSheet`
-  and `ApprovalModeSheet`. Reviewable via the FOR-DEV home preview + `demo_seed`.
+  system banner, streaming dots), the `ComposerBar`, `SessionStatusSheet` and
+  `ApprovalModeSheet`. **Refined since (M3):** the composer is now a
+  **bottom-anchored bar** (`surfaceContainer` + hairline, no floating card); the
+  app-bar git affordance is a single commit `IconButton` (the redundant branch
+  chip was dropped); and the header shows a **"Responding…"** spinner while the
+  agent works (the per-thread activity, also on the list).
 - ◑ **Wire conversation controls to real bridge data** — the environment is now
   built from the active `Thread` + live git state (no more
   `SessionEnvironment.sample()`); remaining items below need real RPCs:
@@ -296,6 +317,12 @@ browser and multi-PC connection correctness are now DONE — see below.)
   `getNotificationAppLaunchDetails()` / `getInitialMessage()`); `_PushHost`
   routes taps to `/conversation/:threadId` (incl. cold start after first frame).
   Verify on a real device once Firebase creds exist (FOR-HUMAN).
+- ☑ **Personalized copy + foreground suppression** — DONE (new, beyond the
+  original scope): the turn-end notification is titled with the **thread name**
+  and bodied **"{agent} replied" / "{agent} reported an error"** (resolved per
+  event). A notification is **suppressed while its conversation is on screen**
+  (foreground), and still fires for other threads / while backgrounded — tracked
+  via `foregroundThreadProvider`. Pairs with the unread-thread style above.
 - ☐ **Notification preferences UI** — `preferences` is hard-coded to
   `{turnCompleted:true,turnError:true}`; add a settings toggle that calls
   `notifications/update`.
