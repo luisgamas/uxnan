@@ -6,6 +6,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 
 ### Added
+- **`auth/status` sanitized, per-agent** (`src/account-status.ts`,
+  `src/handlers/account-handler.ts`): replaces the not-implemented stub with a
+  real handler that takes `{ agentId }` and returns a SANITIZED `AuthStatus`
+  (`agentId`, `requiresLogin`, `loginInProgress`, `authenticatedProvider?`,
+  `transportMode: 'local'`, `platform`) — **never** tokens/keys. Login is detected
+  by the EXISTENCE only of each agent's well-known auth file (Codex
+  `~/.codex/auth.json`, Claude `~/.claude/.credentials.json`/`~/.claude.json`,
+  OpenCode `~/.local/share/opencode/auth.json`) — contents are never read; an
+  agent without a mapping falls back to binary availability, an unknown agent is
+  rejected with `-32602`. `AgentManager` gains `isAvailable(agentId)`.
+  `auth/login`/`auth/logout` remain stubs (interactive CLI login is a follow-up).
 - **Checkpoint retention (prune)** (`src/workspace/checkpoint-service.ts`,
   `src/daemon-config.ts`): each `workspace/checkpoint` now prunes old checkpoints
   beyond a per-project count cap (`checkpointMaxPerProject`, default 25) and/or an

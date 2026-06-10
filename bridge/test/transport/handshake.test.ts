@@ -47,7 +47,7 @@ test('a phone completes the handshake and exchanges encrypted JSON-RPC', async (
   const status = await phone.request('bridge/status');
   assert.ok('result' in status);
 
-  const stubbed = await phone.request('auth/status', {});
+  const stubbed = await phone.request('auth/login', { provider: 'anthropic' });
   assert.ok('error' in stubbed && stubbed.error.code === JsonRpcErrorCode.BridgeError);
 
   // The handshake (qr_bootstrap) should have persisted the phone as trusted.

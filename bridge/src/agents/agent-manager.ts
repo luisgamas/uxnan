@@ -82,6 +82,11 @@ export class AgentManager {
     return this.#adapters.has(agentId);
   }
 
+  /** Whether the agent's binary resolved (its CLI is installed/usable). */
+  isAvailable(agentId: AgentId): boolean {
+    return this.#meta.get(agentId)?.available ?? false;
+  }
+
   /** Registered agents the phone can pick, with capabilities + availability. */
   listAgents(): AgentDescriptor[] {
     return [...this.#adapters.values()].map((adapter) => {

@@ -40,8 +40,29 @@ test('startBridge generates a valid pairing payload via the router', async () =>
 
 test('stubbed domain methods return a bridge error, not a crash', async () => {
   const { bridge, baseDir } = await bootBridge();
-  const res = await bridge.router.dispatch(makeRequest('3', 'auth/status', {}));
+  const res = await bridge.router.dispatch(makeRequest('3', 'auth/login', { provider: 'x' }));
   assert.ok('error' in res && res.error.code === JsonRpcErrorCode.BridgeError);
+  await bridge.stop();
+  await rm(baseDir, { recursive: true, force: true });
+});
+
+test('auth/status returns a sanitized per-agent snapshot (no tokens)', async () => {
+  const { bridge, baseDir } = await bootBridge();
+  const res = await bridge.router.dispatch(makeRequest('9', 'auth/status', { agentId: 'echo' }));
+  assert.ok('result' in res);
+  const status = res.result as Record<string, unknown>;
+  assert.equal(status['agentId'], 'echo');
+  assert.equal(status['transportMode'], 'local');
+  assert.equal(typeof status['requiresLogin'], 'boolean');
+  assert.equal(status['loginInProgress'], false);
+  // Sanitized: never any token/secret/key field.
+  const keys = Object.keys(status);
+  assert.ok(!keys.some((k) => /token|secret|key|password/i.test(k)));
+
+  // An unknown agent is rejected with invalid params.
+  const bad = await bridge.router.dispatch(makeRequest('10', 'auth/status', { agentId: 'nope' }));
+  assert.ok('error' in bad && bad.error.code === JsonRpcErrorCode.InvalidParams);
+
   await bridge.stop();
   await rm(baseDir, { recursive: true, force: true });
 });

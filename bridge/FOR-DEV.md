@@ -128,7 +128,17 @@ hosting** (the phone connects directly to the bridge on the same network).
       parser maps `status: 'archived'`. The bridge now RETURNS the updated
       `Thread` on rename/archive/unarchive; the phone currently ignores it (keeps
       its optimistic copy) — optional future reconcile against the returned value.
-- [ ] **Account/auth** — `src/handlers/account-handler.ts` (sanitized, no tokens).
+- [◑] **Account/auth** — `src/handlers/account-handler.ts` + `src/account-status.ts`.
+      **`auth/status` DONE (sanitized, per-agent):** takes `{ agentId }`, returns a
+      sanitized `AuthStatus` (never tokens — login is detected by auth-file
+      EXISTENCE only, contents never read; unmapped agent → availability; unknown
+      agent → `-32602`). **Still deferred:** `auth/login`/`auth/logout` (driving a
+      CLI's interactive login/logout flow) remain stubs — and an authoritative
+      `requiresLogin` would run the CLI's own `whoami`/auth command instead of the
+      file-existence heuristic (slower, per-CLI). **Mobile linkage:** the spec's
+      `authStatusProvider` already calls `getAuthStatus(agentId)` per the active
+      project's agent; the bridge now answers it. On-device: verify the
+      requires-login banner appears when the agent CLI is logged out on the PC.
 - [x] **Notifications** — `src/handlers/notifications-handler.ts` +
       `src/push/push-service.ts`. `notifications/register|update|unregister` wired;
       registers the token with the relay and pushes on turn-end (gated by
