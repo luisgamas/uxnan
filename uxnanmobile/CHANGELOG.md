@@ -6,6 +6,17 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **No more phantom threads or silent send failures** (chat was broken: messages
+  sent, no responses). `ThreadManager.startThread` fabricated a local `uuid`
+  thread whenever `thread/start` returned an error or no result — so the bridge
+  never had that thread and every `turn/send` failed with `-32008 thread not
+  found`, silently. It now surfaces the error (the new-conversation flow reports
+  it) instead of inventing an id, and `sendUserMessage` marks the user's message
+  **failed** when the bridge rejects the turn, so a failure is visible rather
+  than swallowed. (Pairs with the bridge `thread/start` browsed-cwd fix.)
+
 ### Changed
 
 - **Conversation composer + app bar aligned to Material 3.** The composer was a

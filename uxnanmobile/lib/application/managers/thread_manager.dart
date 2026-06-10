@@ -293,21 +293,18 @@ class ThreadManager {
       if (model != null && model.isNotEmpty) 'model': model,
       if (cwd != null && cwd.isNotEmpty) 'cwd': cwd,
     });
+    // The bridge MUST return the created thread (with its own id). Do NOT
+    // fabricate a local id on failure: a phantom thread the bridge never
+    // created makes every later turn/send fail with `thread not found`. Surface
+    // the error instead so the new-conversation flow reports it.
+    if (response.error != null) {
+      throw StateError('thread/start failed: ${response.error!.message}');
+    }
     final result = response.result;
-    final json = result is Map ? result.cast<String, dynamic>() : null;
-    final base = json != null
-        ? _parseThread(json)
-        : Thread(
-            id: _uuid.v4(),
-            title: title ?? projectId,
-            agentId: agentId ?? 'custom',
-            projectId: projectId,
-            cwd: cwd,
-            model: model,
-            syncState: ThreadSyncState.synced,
-            status: ThreadStatus.active,
-            lastActivity: DateTime.now(),
-          );
+    if (result is! Map) {
+      throw StateError('thread/start returned no thread');
+    }
+    final base = _parseThread(result.cast<String, dynamic>());
     // Auto-title: when the user did not name the thread, default its title to
     // the thread's own id so it is identifiable in the list and resumable from
     // the CLI on the PC. The user can rename it afterwards.
@@ -417,10 +414,25 @@ class ThreadManager {
     // Bridge contract (TurnSendParams): { threadId, text, service?, effort? }.
     // `text` is required at the top level; nesting it under `content` made the
     // bridge reject the turn with invalid params, so no turn was created.
-    await _sendRequest('turn/send', {
-      'threadId': threadId,
-      'text': text,
-    });
+    // Surface failures: if the bridge rejects the turn (e.g. `thread not
+    // found`), mark the user's message FAILED instead of swallowing it.
+    try {
+      final res = await _sendRequest('turn/send', {
+        'threadId': threadId,
+        'text': text,
+      });
+      if (res.error != null) {
+        await _messageRepository.saveMessage(
+          message.copyWith(deliveryState: MessageDeliveryState.failed),
+        );
+        AppLogger.warn('turn/send rejected: ${res.error!.message}');
+      }
+    } on Object catch (error, stackTrace) {
+      await _messageRepository.saveMessage(
+        message.copyWith(deliveryState: MessageDeliveryState.failed),
+      );
+      AppLogger.warn('turn/send failed', error, stackTrace);
+    }
   }
 
   /// Releases resources.
