@@ -1,6 +1,7 @@
 # Miscellaneous
 *.class
 *.log
+flutter_mobile_logs.txt
 *.pyc
 *.swp
 .DS_Store
