@@ -160,6 +160,44 @@ export class ThreadStore {
     });
   }
 
+  /** Renames a thread; returns the updated thread for the phone to echo. */
+  renameThread(threadId: string, title: string, now: number): Promise<Thread> {
+    return this.#mutate(async (threads) => {
+      const thread = await this.#requireThread(threads, threadId);
+      thread.title = title;
+      thread.updatedAt = now;
+      return toThread(thread);
+    });
+  }
+
+  /** Archives a thread (status → `archived`). Nothing is removed; reversible. */
+  archiveThread(threadId: string, now: number): Promise<Thread> {
+    return this.#setStatus(threadId, 'archived', now);
+  }
+
+  /** Restores an archived thread (status → `active`). */
+  unarchiveThread(threadId: string, now: number): Promise<Thread> {
+    return this.#setStatus(threadId, 'active', now);
+  }
+
+  /** Permanently removes a thread (and its turns). Rejects if it is unknown. */
+  deleteThread(threadId: string): Promise<void> {
+    return this.#mutate(async (threads) => {
+      const index = threads.findIndex((t) => t.id === threadId);
+      if (index === -1) throw notFound(`thread not found: ${threadId}`);
+      threads.splice(index, 1);
+    });
+  }
+
+  #setStatus(threadId: string, status: ThreadStatus, now: number): Promise<Thread> {
+    return this.#mutate(async (threads) => {
+      const thread = await this.#requireThread(threads, threadId);
+      thread.status = status;
+      thread.updatedAt = now;
+      return toThread(thread);
+    });
+  }
+
   forkThread(threadId: string, now: number): Promise<Thread> {
     return this.#mutate(async (threads) => {
       const source = await this.#requireThread(threads, threadId);

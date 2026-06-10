@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added
+- **Thread lifecycle handlers** (`src/handlers/thread-context-handler.ts` +
+  `src/conversation/thread-store.ts`): `thread/rename`, `thread/archive`,
+  `thread/unarchive` and `thread/delete` are now wired. `ThreadStore` gains
+  `renameThread` / `archiveThread` / `unarchiveThread` (status → `archived` /
+  `active`, returning the updated `Thread`) and `deleteThread` (removes the
+  thread and its turns, rejecting an unknown id with `-32008`). The mobile app
+  already called these best-effort to mirror local changes; they now persist on
+  the bridge so archive/rename/delete survive a phone reinstall or a second
+  device. Closes the "Thread management" item in `FOR-DEV.md`.
+
 ### Fixed
 - **`thread/start` on a browsed folder no longer fails with "unknown project".**
   `src/handlers/thread-context-handler.ts` required `projects.byId(projectId)`

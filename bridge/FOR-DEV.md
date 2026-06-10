@@ -98,8 +98,21 @@ hosting** (the phone connects directly to the bridge on the same network).
       not consumed: `thread/start` currently takes an explicit `agentId/model/cwd`.
       Resolve the default agent/model per project (from config) so a project can
       pin its own agent without the phone passing it every time.
-- [ ] **Thread management** — `thread/archive` / `thread/delete` / `thread/rename`
-      (`thread-context-handler.ts` + `thread-store.ts`); not yet contracted/wired.
+- [x] **Thread management** — `thread/rename` / `thread/archive` /
+      `thread/unarchive` / `thread/delete` (`thread-context-handler.ts` +
+      `thread-store.ts`, contracted in `@uxnan/shared`). Rename/archive/unarchive
+      return the updated `Thread`; delete removes the thread + its turns (unknown
+      id → `-32008`). The mobile app already called these best-effort; they now
+      persist on the bridge so the change survives a phone reinstall / second
+      device.
+      **Mobile linkage (no uxnanmobile code change needed):** the phone already
+      calls all four local-first and degrades gracefully, so nothing new is
+      required there. To VALIDATE on-device once a live bridge is reachable: after
+      archive/rename a `thread/list` re-sync should reflect the new status/title,
+      and a deleted thread must not reappear — confirm the mobile `thread/list`
+      parser maps `status: 'archived'`. The bridge now RETURNS the updated
+      `Thread` on rename/archive/unarchive; the phone currently ignores it (keeps
+      its optimistic copy) — optional future reconcile against the returned value.
 - [ ] **Account/auth** — `src/handlers/account-handler.ts` (sanitized, no tokens).
 - [x] **Notifications** — `src/handlers/notifications-handler.ts` +
       `src/push/push-service.ts`. `notifications/register|update|unregister` wired;

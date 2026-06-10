@@ -72,6 +72,44 @@ test('agent/list reports the registered agents (echo + opencode + claude-code + 
   await rm(baseDir, { recursive: true, force: true });
 });
 
+test('thread rename/archive/unarchive/delete lifecycle over the router', async () => {
+  const { bridge, baseDir } = await boot();
+
+  const projectsRes = await bridge.router.dispatch(makeRequest('0', 'project/list', {}));
+  assert.ok('result' in projectsRes);
+  const projectId = (projectsRes.result as Project[])[0]!.id;
+
+  const startRes = await bridge.router.dispatch(
+    makeRequest('1', 'thread/start', { projectId, title: 'Orig', agentId: 'echo' }),
+  );
+  assert.ok('result' in startRes);
+  const threadId = (startRes.result as { id: string }).id;
+
+  const renameRes = await bridge.router.dispatch(
+    makeRequest('2', 'thread/rename', { threadId, title: 'Renamed' }),
+  );
+  assert.ok('result' in renameRes);
+  assert.equal((renameRes.result as { title: string }).title, 'Renamed');
+
+  const archiveRes = await bridge.router.dispatch(makeRequest('3', 'thread/archive', { threadId }));
+  assert.ok('result' in archiveRes);
+  assert.equal((archiveRes.result as { status: string }).status, 'archived');
+
+  const unarchiveRes = await bridge.router.dispatch(
+    makeRequest('4', 'thread/unarchive', { threadId }),
+  );
+  assert.ok('result' in unarchiveRes);
+  assert.equal((unarchiveRes.result as { status: string }).status, 'active');
+
+  const deleteRes = await bridge.router.dispatch(makeRequest('5', 'thread/delete', { threadId }));
+  assert.ok('result' in deleteRes);
+  const readRes = await bridge.router.dispatch(makeRequest('6', 'thread/read', { threadId }));
+  assert.ok('error' in readRes && readRes.error.code === -32008);
+
+  await bridge.stop();
+  await rm(baseDir, { recursive: true, force: true });
+});
+
 test('thread/start with an unknown project id is rejected', async () => {
   const { bridge, baseDir } = await boot();
   const res = await bridge.router.dispatch(

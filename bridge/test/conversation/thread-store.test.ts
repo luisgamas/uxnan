@@ -60,6 +60,33 @@ test('listTurns paginates with a cursor', async () => {
   await rm(baseDir, { recursive: true, force: true });
 });
 
+test('rename/archive/unarchive update the thread; delete removes it', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p', title: 'Orig' }, 1);
+
+  const renamed = await store.renameThread(thread.id, 'Renamed', 2);
+  assert.equal(renamed.title, 'Renamed');
+  assert.equal(renamed.updatedAt, 2);
+
+  const archived = await store.archiveThread(thread.id, 3);
+  assert.equal(archived.status, 'archived');
+  const restored = await store.unarchiveThread(thread.id, 4);
+  assert.equal(restored.status, 'active');
+
+  await store.deleteThread(thread.id);
+  assert.equal((await store.listThreads('p')).threads.length, 0);
+  await rm(baseDir, { recursive: true, force: true });
+});
+
+test('rename/archive/unarchive/delete reject unknown ids', async () => {
+  const { store, baseDir } = newStore();
+  await assert.rejects(store.renameThread('nope', 'x', 1), RpcError);
+  await assert.rejects(store.archiveThread('nope', 1), RpcError);
+  await assert.rejects(store.unarchiveThread('nope', 1), RpcError);
+  await assert.rejects(store.deleteThread('nope'), RpcError);
+  await rm(baseDir, { recursive: true, force: true });
+});
+
 test('fork copies a thread; unknown ids reject', async () => {
   const { store, baseDir } = newStore();
   const thread = await store.startThread({ projectId: 'p', title: 'Orig' }, 1);

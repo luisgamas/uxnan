@@ -53,6 +53,23 @@ export function registerThreadHandlers(router: HandlerRouter): void {
     );
     return null;
   });
+  router.register('thread/rename', (p, ctx: BridgeContext) =>
+    ctx.threadStore.renameThread(
+      requireString(p, 'threadId'),
+      requireString(p, 'title'),
+      ctx.now(),
+    ),
+  );
+  router.register('thread/archive', (p, ctx: BridgeContext) =>
+    ctx.threadStore.archiveThread(requireString(p, 'threadId'), ctx.now()),
+  );
+  router.register('thread/unarchive', (p, ctx: BridgeContext) =>
+    ctx.threadStore.unarchiveThread(requireString(p, 'threadId'), ctx.now()),
+  );
+  router.register('thread/delete', async (p, ctx: BridgeContext) => {
+    await ctx.threadStore.deleteThread(requireString(p, 'threadId'));
+    return null;
+  });
 
   router.register('turn/list', (p, ctx: BridgeContext) =>
     ctx.threadStore.listTurns(
