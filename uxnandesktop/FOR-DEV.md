@@ -226,12 +226,14 @@ reference; this phase embeds it.
       (assets) markers. Don't break the build when deferring (stubs throw or are
       unwired).
 
-## Documentation discrepancies to confirm with the maintainer
-- `architecture/00-index.md` and `01-product-vision.md` link to filenames that
-  don't exist: `02b-terminals-and-pty.md`, `02c-git-worktrees-diffs.md` /
-  `02c-git-and-worktrees.md`, `02d-orchestration-and-monitoring.md`,
-  `02e-implementation-guide.md`. The actual files are `02b-terminal-engine.md`,
-  `02c-git-worktrees.md`, `02d-agent-monitoring.md`, `02e-bridge-integration.md`.
-  Content is consistent; only the cross-links are stale. **Flagged, not silently
-  fixed** (per AGENTS.md conflict-resolution rule) — confirm before editing the
-  spec.
+## Documentation cross-links — FIXED
+The stale internal links in `architecture/00-index.md`, `01-product-vision.md`
+and `02d-agent-monitoring.md` were corrected so every reference resolves to an
+existing file. They came from the pre-reorganization numbering; mapped by topic:
+`02b-terminals-and-pty.md` → `02b-terminal-engine.md`,
+`02c-git-worktrees-diffs.md` / `02c-git-and-worktrees.md` → `02c-git-worktrees.md`,
+`02d-orchestration-and-monitoring.md` → `02d-agent-monitoring.md`, and the old
+`02e-implementation-guide.md` → `03-implementation-guide.md` (the "Guía de
+Implementación" nav) or `04-technical-reference.md` (where the context was
+"fases, MVP, estimaciones", which is doc 04). `01`'s "Ver también" header was
+also completed to list all sibling docs.

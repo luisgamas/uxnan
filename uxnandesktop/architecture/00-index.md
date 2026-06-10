@@ -41,7 +41,7 @@ El ADE no es un IDE: no edita codigo directamente. Es un **orquestador terminal-
 | 01 | [Vision del Producto](01-product-vision.md) | Que es el ADE, principios fundamentales (terminal-centrico, worktrees como aislamiento), diseno de tres paneles, posicionamiento dentro del ecosistema Uxnan, MVP y roadmap | Product owners, stakeholders, nuevos miembros del equipo |
 | 02a | [Arquitectura del Sistema](02a-system-architecture.md) | Tres paneles, modelo de datos (Repo, Worktree, Tab, Pane, AgentState), mapa de conexiones Backend Rust <-> Frontend Svelte <-> PTY, flujos de sincronizacion, persistencia Serde | Desarrolladores, arquitectos |
 | 02b | [Motor de Terminales y PTY](02b-terminal-engine.md) | xterm.js, portable-pty, splits/tabs, buffers async con Tokio, ciclo de vida de sesiones de terminal, lanzamiento de agentes CLI, Tauri commands/events para PTY I/O bidireccional | Desarrolladores backend Rust + frontend Svelte |
-| 02c | [Git, Worktrees y Diffs](02c-git-worktrees-diffs.md) | Worktree lifecycle (creacion, uso, eliminacion segura), git2 + CLI fallback, polling de status cada 3s, sidebar derecha con diffs, CodeMirror 6 como visor, staging parcial por hunk, commits, limpieza segura de ramas | Desarrolladores |
+| 02c | [Git, Worktrees y Diffs](02c-git-worktrees.md) | Worktree lifecycle (creacion, uso, eliminacion segura), git2 + CLI fallback, polling de status cada 3s, sidebar derecha con diffs, CodeMirror 6 como visor, staging parcial por hunk, commits, limpieza segura de ramas | Desarrolladores |
 | 02d | [Monitoreo y Orquestacion de Agentes](02d-agent-monitoring.md) | Hook HTTP local (axum), deteccion por titulo de terminal y proceso en ejecucion, estados (working/waiting/blocked/done), cache persistente con TTL, notificaciones nativas del OS, orquestacion multi-agente con grafo de tareas | Desarrolladores |
 | 02e | [Integracion del Bridge y Conexion Movil](02e-bridge-integration.md) | Bridge embebido vs standalone, como el desktop integra el bridge Node.js, conexion E2EE con la app movil, relay server, contratos compartidos entre componentes | Arquitectos, desarrolladores |
 | 03 | [Guia de Implementacion](03-implementation-guide.md) | Stack detallado (Rust, Tauri 2, Svelte 5, shadcn-svelte, Tailwind CSS, xterm.js, CodeMirror 6), crates Rust esenciales, patrones Svelte 5 con Runes ($state/$derived), Tauri 2 commands/events, persistencia con Serde, seguridad con Stronghold, CI/CD multiplataforma | Desarrolladores, contribuidores |
@@ -122,7 +122,7 @@ uxnan/                           # Monorepo raiz
 │       ├── 01-product-vision.md     # Vision del producto
 │       ├── 02a-system-architecture.md
 │       ├── 02b-terminal-engine.md
-│       ├── 02c-git-worktrees-diffs.md
+│       ├── 02c-git-worktrees.md
 │       ├── 02d-agent-monitoring.md
 │       ├── 02e-bridge-integration.md
 │       ├── 03-implementation-guide.md

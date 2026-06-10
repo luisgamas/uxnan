@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — docs
+- **Stale internal cross-links in the architecture spec** corrected so every
+  reference resolves to an existing file (`architecture/00-index.md`,
+  `01-product-vision.md`, `02d-agent-monitoring.md`). The broken targets came
+  from the pre-reorganization numbering; mapped by topic to
+  `02b-terminal-engine.md`, `02c-git-worktrees.md`, `02d-agent-monitoring.md`,
+  and the old `02e-implementation-guide.md` → `03-implementation-guide.md` (the
+  "Guía de Implementación" nav) / `04-technical-reference.md` (the "fases, MVP,
+  estimaciones" reference). `01`'s "Ver también" header now lists every sibling
+  doc.
+
 ### Added — docs
 - **`docs/` directory**: `development.md` (prerequisites, running in debug, UI
   iteration, the npm-not-pnpm gotcha), `build.md` (release builds, bundle
