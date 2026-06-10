@@ -156,7 +156,15 @@ async function loadFcmSender(serviceAccountPath: string, logger: RelayLogger): P
   // dependency is not statically resolved at build time (it may not be installed).
   // FOR-HUMAN: install `firebase-admin` + provide the service account (relay/FOR-HUMAN.md).
   const moduleName = 'firebase-admin';
-  const admin = (await import(moduleName)) as unknown as FirebaseAdminLike;
+  // firebase-admin is CommonJS: under ESM dynamic import its API lands on the
+  // `.default` interop key (the namespace itself only exposes `default`), so
+  // reach through it — falling back to the namespace should a bundler ever hoist
+  // the named exports. Without this the admin object is undefined and FCM init
+  // silently degrades to the noop sender.
+  const imported = (await import(moduleName)) as unknown as {
+    default?: FirebaseAdminLike;
+  } & FirebaseAdminLike;
+  const admin = imported.default ?? imported;
   const { readFile } = await import('node:fs/promises');
   const credential = JSON.parse(await readFile(serviceAccountPath, 'utf-8')) as object;
   const app = admin.initializeApp({ credential: admin.credential.cert(credential) }, 'uxnan-relay');

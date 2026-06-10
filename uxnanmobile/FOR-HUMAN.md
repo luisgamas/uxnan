@@ -44,36 +44,61 @@ theme (`lib/presentation/theme/typography.dart`) names these families.
 
 ---
 
-## ☐ 2. Firebase / FCM config — push notifications (module IS wired)
+## ☑ 2. Firebase / FCM config — push notifications
 
-The push module is implemented and **fully guarded**: the app builds and runs
-without any of the files below — push simply stays disabled until you add them.
-Provide these to receive background notifications when an agent turn completes.
+Firebase project **`uxnan-app`** (project number `97810225919`) hosts both the
+Android and iOS apps and the relay's service account. The same project is used
+end-to-end (mobile token ⇄ relay delivery). Path chosen: **FCM-for-both**
+(Android direct; iOS routed through FCM once the APNs key is uploaded).
 
-**Use the SAME Firebase project the relay uses** (the relay needs that project's
-service account via `UXNAN_FCM_SERVICE_ACCOUNT` — see `relay/FOR-HUMAN.md`).
+The push module is implemented and **fully guarded**: the app still builds and
+runs without the config files below — push just stays disabled until they exist.
 
-**Android:**
-1. Firebase Console → add an Android app with package id **`com.uxnan.mobile`**.
-2. Download **`google-services.json`** → place at `uxnanmobile/android/app/google-services.json`.
-3. Apply the Google Services Gradle plugin (only after the json exists):
-   - In `android/settings.gradle.kts` plugins block, add:
-     `id("com.google.gms.google-services") version "4.4.2" apply false`
-   - In `android/app/build.gradle.kts` plugins block, add:
-     `id("com.google.gms.google-services")`
-   - (Core-library desugaring is already enabled for `flutter_local_notifications`.)
-4. `flutter clean && flutter pub get && flutter run`.
+### ☑ Android — DONE (2026-06-09)
 
-**iOS:**
-1. Firebase Console → add an iOS app with bundle id **`com.uxnan.mobile`**.
-2. Download **`GoogleService-Info.plist`** → `uxnanmobile/ios/Runner/` (add to the Runner target in Xcode).
-3. Xcode → Runner target → Signing & Capabilities → **+ Push Notifications** and
-   **+ Background Modes → Remote notifications**.
-4. Upload your **APNs Auth Key** to the Firebase project (so FCM can reach iOS) —
-   same key referenced in `relay/FOR-HUMAN.md`.
+- App registered: package **`com.uxnan.mobile`**, app id
+  `1:97810225919:android:0905f8a9f35a77955f0aca`.
+- `google-services.json` placed at `uxnanmobile/android/app/google-services.json`
+  (gitignored, machine-local — **never committed**).
+- Google Services Gradle plugin wired **conditionally** so the build stays green
+  without the json:
+  - `android/settings.gradle.kts` → `id("com.google.gms.google-services")
+    version "4.4.2" apply false` (on the classpath).
+  - `android/app/build.gradle.kts` → applied only `if
+    (file("google-services.json").exists())`.
+  - (Core-library desugaring already enabled for `flutter_local_notifications`.)
+- To build with push live: `flutter clean && flutter pub get && flutter run`.
 
-**Never commit** these files (already covered by `.gitignore`). Without them
-`Firebase.initializeApp()` fails silently and push is disabled — by design.
+> Re-provisioning on another PC: pull `google-services.json` from the Firebase
+> console (or `firebase apps:sdkconfig ANDROID
+> 1:97810225919:android:0905f8a9f35a77955f0aca`) into the same path.
+
+### ☐ iOS — PENDING (requires macOS + a paid Apple Developer account)
+
+The Firebase side is already prepared on Windows:
+- iOS app registered: bundle **`com.uxnan.mobile`**, app id
+  `1:97810225919:ios:0d917b9407c2a5f05f0aca`.
+- `GoogleService-Info.plist` already placed at `uxnanmobile/ios/Runner/`
+  (gitignored). It still needs to be **added to the Runner target in Xcode**.
+
+What only a human on macOS can finish (cannot be done from this Windows PC):
+1. **Apple Developer Program** enrollment ($99/yr) — required for any APNs key.
+2. Apple Developer portal → Certificates, Identifiers & Profiles → **Keys → +** →
+   enable **Apple Push Notifications service (APNs)** → download
+   `AuthKey_XXXXXXXXXX.p8` (downloadable once). Record the **Key ID** + **Team ID**.
+3. Firebase Console → Project settings → **Cloud Messaging → Apple app
+   configuration → APNs Authentication Key → Upload** the `.p8` (Key ID + Team ID).
+   This is what lets FCM reach iOS — see `relay/FOR-HUMAN.md`.
+4. **Xcode** (macOS) → Runner target → Signing & Capabilities →
+   **+ Push Notifications** and **+ Background Modes → Remote notifications**, and
+   confirm `GoogleService-Info.plist` is a member of the Runner target.
+
+No relay or app code changes are needed for iOS — once the APNs key is uploaded
+the existing FCM path delivers to iOS automatically.
+
+**Never commit** the Firebase config files (covered by `.gitignore` on this
+branch). Without them `Firebase.initializeApp()` fails silently and push is
+disabled — by design.
 
 ---
 

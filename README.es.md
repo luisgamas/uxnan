@@ -131,9 +131,12 @@ punta con un agente real; la app de escritorio aún no se ha comenzado.
 | `shared/` | **Implementado.** Contratos JSON-RPC + E2EE, validadores. |
 | `uxnandesktop/` | **Sin comenzar** — solo especificación. |
 
-Las push notifications están completas en código pero **gated**: la entrega real
-necesita un proyecto Firebase + config nativa (ver el `FOR-HUMAN.md` de cada
-componente). El siguiente agente (Gemini) sigue la receta de
+Las push notifications están completas en código y **Android ya está activo**
+contra un proyecto Firebase; iOS queda pendiente de una clave APNs (macOS + cuenta
+Apple Developer). Para activarlas en tu propia cuenta de Firebase, probar la
+entrega y decidir qué es seguro subir al repo, ver
+[`relay/docs/push-notifications.md`](relay/docs/push-notifications.md) (checklist
+de assets en el `FOR-HUMAN.md` de cada componente). El siguiente agente (Gemini) sigue la receta de
 OpenCode/Claude Code/Codex en `bridge/FOR-DEV.md`. El avance por componente vive en
 cada `CHANGELOG.md`; lo pendiente en cada `FOR-DEV.md`. La documentación por
 componente (instalación, config, agentes, testing, deploy) vive en
