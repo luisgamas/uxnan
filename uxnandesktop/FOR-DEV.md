@@ -30,8 +30,8 @@ models live in:
 
 | Phase | Theme | Status |
 |---|---|---|
-| **0** | Base infrastructure (3-panel shell, IPC, persistence) | ✅ **DONE** (this increment) |
-| 1 | Terminal core (PTY, tabs, splits) | ☐ not started |
+| **0** | Base infrastructure (3-panel shell, IPC, persistence) | ✅ **DONE** |
+| **1** | Terminal core (PTY, tabs, splits) | ◑ **IN PROGRESS** — working terminal + tabs; splits & layout-persist deferred |
 | 2 | Git & worktrees | ☐ not started |
 | 3 | Git status & diffs | ☐ not started |
 | 4 | Agent monitoring (hooks, notifications) | ☐ not started |
@@ -86,34 +86,52 @@ Phase 0 follow-ups (do next, before/with Phase 1):
 
 ---
 
-## Phase 1 — Terminal core ☐
+## Phase 1 — Terminal core ◑ IN PROGRESS
 
 **Goal:** run commands in an integrated terminal with tabs and splits.
 
 ### Backend (Rust)
-- [ ] Add `portable-pty` (`0.9+`). New `pty` module: `PtyManager` owning a
-      `HashMap<String, PtySession>` (id → master/child/writer).
-- [ ] Commands: `pty_create { cwd, cols, rows, shell? }`, `pty_write { id,
-      data }`, `pty_resize { id, cols, rows }`, `pty_close { id }`.
-- [ ] Stream output: reader task per PTY → `tokio::sync::mpsc` → emit
-      `pty:output:{id}` (raw bytes) via `AppHandle::emit`.
-- [ ] Hidden-tab buffering: bounded ring buffer (spec: 2 MB/hidden PTY) with a
-      snapshot/restore on re-show (`VecDeque<u8>`, drain oldest 4 KB blocks).
-- [ ] Kill child on `pty_close` and on app exit; reap zombies.
+- [x] `portable-pty` `0.9`. `pty` module: `PtyManager` owning a
+      `HashMap<String, PtySession>` (id → master/writer/child). Sinks-based
+      `create(PtySpec, on_output, on_exit)` so it's unit-testable without an
+      `AppHandle`. Default shell = PowerShell (Windows) / `$SHELL` else; default
+      cwd = home.
+- [x] Commands: `pty_create { id, cwd?, shell?, cols, rows }`, `pty_write
+      { id, data }`, `pty_resize { id, cols, rows }`, `pty_close { id }`
+      (`commands.rs`, registered in `lib.rs`). The frontend chooses `id` and
+      subscribes before spawning so no early output is lost.
+- [x] Stream output: dedicated reader thread per PTY → `on_output` → emit
+      `pty:output:{id}` (raw bytes); `pty:exit:{id}` on process end.
+- [x] Kill child on `pty_close` (idempotent); slave dropped after spawn for
+      clean EOF.
+- [ ] **Hidden-tab buffering** (bounded 2 MB ring + snapshot/restore on re-show).
+      Not needed yet — the webview keeps every xterm mounted so background
+      output is retained client-side. Add this when capping memory or restoring
+      after a reload. **FOR-DEV** (marker in `pty.rs` module doc).
+- [ ] Kill all children on app exit / reap zombies (today they're killed on
+      explicit close only). **FOR-DEV.**
 
 ### Frontend (Svelte)
-- [ ] `@xterm/xterm` + `@xterm/addon-fit` + `@xterm/addon-webgl` in a
-      `Terminal.svelte` component; `onData → invoke('pty_write')`,
-      `listen('pty:output:{id}') → term.write`. `ResizeObserver → pty_resize`.
-- [ ] Terminal tab bar per TabGroup (create/close/reorder, MRU).
-- [ ] Recursive binary split tree for panes inside a tab (drag-to-resize).
-- [ ] Persist the tab/split layout per worktree (via backend Serde + the
-      debounced writer from the Phase 0 follow-up).
+- [x] `@xterm/xterm` + `@xterm/addon-fit` + `@xterm/addon-webgl` in
+      `Terminal.svelte`: `onData → pty_write`, `listen('pty:output:{id}') →
+      term.write`, `ResizeObserver → pty_resize`, WebGL with DOM fallback.
+- [x] Terminal tab bar (`TerminalArea.svelte`): create / close / switch; hidden
+      tabs stay mounted so their PTYs keep streaming. Wired into the center panel
+      of `+page.svelte`. State in `lib/state/terminals.svelte.ts`.
+- [ ] Tab reorder / MRU. **FOR-DEV.**
+- [ ] **Recursive binary split tree** for panes inside a tab (drag-to-resize).
+      Deferred — the highest-effort remaining Phase 1 piece. **FOR-DEV.**
+- [ ] **Persist the tab/split layout** per worktree (needs the Phase 0 debounced
+      writer + the worktree model from Phase 2). **FOR-DEV.**
 
 ### Notes / gotchas
+- ConPTY (Windows) queries cursor position (`ESC[6n`) at startup and waits for a
+  reply; a live xterm.js answers automatically (the unit test answers it
+  manually). PowerShell hangs without that answer — hence the test uses
+  `cmd.exe`, while the app uses PowerShell against a real xterm.
 - Some CLI agents block on an open stdin pipe — match the bridge's lesson and
   manage stdin deliberately.
-- WebGL addon must fall back to the canvas renderer when unavailable.
+- WebGL addon falls back to the DOM renderer when unavailable.
 
 ---
 

@@ -5,6 +5,32 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — Phase 1 (terminal core, in progress)
+- **PTY backend** (`src-tauri/src/pty.rs`): `PtyManager` over `portable-pty` 0.9
+  (ConPTY on Windows). `create(PtySpec, on_output, on_exit)` spawns a shell in a
+  pseudoterminal and streams stdout/stderr from a dedicated reader thread via
+  caller-supplied sinks (so it's unit-testable without an `AppHandle`); plus
+  `write`, `resize`, and idempotent `close` (kills the child). Default shell =
+  PowerShell on Windows / `$SHELL` elsewhere; default cwd = home.
+- **PTY commands** (`commands.rs`, registered in `lib.rs`): `pty_create`,
+  `pty_write`, `pty_resize`, `pty_close`. The frontend picks the `id` and
+  subscribes to `pty:output:{id}` before spawning, so no early output is lost;
+  `pty:exit:{id}` fires when the process ends. `AppState` now owns the
+  `PtyManager`. New `AppError::Pty` / `AppError::NotFound` variants.
+- **Terminal UI**: `Terminal.svelte` (xterm.js + fit + WebGL-with-DOM-fallback,
+  bidirectional PTY wiring, refit on resize/activate) and `TerminalArea.svelte`
+  (tab bar: create / close / switch; hidden tabs stay mounted so their PTYs keep
+  streaming). Wired into the center panel; tab state in
+  `src/lib/state/terminals.svelte.ts`. Deps: `@xterm/xterm`,
+  `@xterm/addon-fit`, `@xterm/addon-webgl`.
+- Tests: 4 PTY unit tests (lifecycle incl. real shell write→echo→read→close with
+  a ConPTY `ESC[6n` responder, unknown-id `NotFound`, idempotent close, default
+  shell). Backend `cargo test` 12 passing, clippy + fmt clean; frontend
+  `npm run check` 0/0, `npm run build` OK.
+- Deferred to later Phase 1 increments (see `FOR-DEV.md`): pane splits
+  (recursive binary tree), tab reorder/MRU, tab/split layout persistence,
+  backend hidden-tab ring buffer, kill-all-on-exit.
+
 ### Fixed — docs
 - **Stale internal cross-links in the architecture spec** corrected so every
   reference resolves to an existing file (`architecture/00-index.md`,
