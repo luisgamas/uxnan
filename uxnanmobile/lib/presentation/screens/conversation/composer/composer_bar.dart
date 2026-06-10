@@ -6,9 +6,11 @@ import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
 
-/// The floating message composer: a Material 3 elevated surface with an
-/// expandable text field and a toolbar (attach, model selector, context usage,
-/// voice, send). Attach and voice are placeholders (FOR-DEV).
+/// The message composer: a Material 3 bottom bar **anchored to the screen
+/// edge** (not a floating card) — a `surfaceContainer` surface with a top
+/// hairline that reads as chrome, holding an expandable text field and a
+/// toolbar (attach, model selector, context usage, voice, send). Attach and
+/// voice are placeholders (FOR-DEV).
 class ComposerBar extends StatefulWidget {
   /// Creates a [ComposerBar].
   const ComposerBar({
@@ -82,93 +84,84 @@ class _ComposerBarState extends State<ComposerBar> {
     final l10n = AppLocalizations.of(context);
     final canSend = _hasText && widget.enabled;
 
-    return SafeArea(
-      top: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(
-          UxnanSpacing.md,
-          UxnanSpacing.sm,
-          UxnanSpacing.md,
-          UxnanSpacing.lg,
-        ),
-        // M3 elevated surface (tonal elevation + subtle shadow) instead of a
-        // heavy custom BoxShadow.
-        child: Material(
-          color: colors.surfaceContainerHigh,
-          elevation: 3,
-          shadowColor: colors.shadow,
-          surfaceTintColor: colors.surfaceTint,
-          borderRadius: const BorderRadius.all(Radius.circular(24)),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(
-              UxnanSpacing.lg,
-              UxnanSpacing.sm,
-              UxnanSpacing.sm,
-              UxnanSpacing.sm,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: _controller,
-                  enabled: widget.enabled,
-                  minLines: 1,
-                  maxLines: 6,
-                  style: textTheme.bodyMedium,
-                  decoration: InputDecoration(
-                    isCollapsed: true,
-                    border: InputBorder.none,
-                    hintText: l10n.composerHint,
-                    hintStyle: TextStyle(color: colors.onSurfaceVariant),
-                  ),
+    // M3 bottom-anchored input bar: a `surfaceContainer` tone (the BottomAppBar
+    // default) with a top hairline, no rounded card / no shadow — it reads as
+    // chrome that's part of the screen, letting the conversation breathe.
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors.surfaceContainer,
+        border: Border(top: BorderSide(color: colors.outlineVariant)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            UxnanSpacing.lg,
+            UxnanSpacing.sm,
+            UxnanSpacing.sm,
+            UxnanSpacing.sm,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: _controller,
+                enabled: widget.enabled,
+                minLines: 1,
+                maxLines: 6,
+                style: textTheme.bodyMedium,
+                decoration: InputDecoration(
+                  isCollapsed: true,
+                  border: InputBorder.none,
+                  hintText: l10n.composerHint,
+                  hintStyle: TextStyle(color: colors.onSurfaceVariant),
                 ),
-                const SizedBox(height: UxnanSpacing.sm),
-                Row(
-                  children: [
-                    // FOR-DEV: attach is a placeholder (no file/image picker
-                    // yet); shown only when the agent advertises `images`.
-                    if (widget.showAttach) ...[
-                      _RoundIconButton(
-                        icon: Icons.add_rounded,
-                        tooltip: l10n.composerAttach,
-                        onPressed: null,
-                      ),
-                      const SizedBox(width: UxnanSpacing.xs),
-                    ],
-                    Flexible(
-                      child: _ModelChip(
-                        model: widget.environment.modelName,
-                        resolvedModel: widget.resolvedModel,
-                        onTap: widget.onModelTap,
-                      ),
-                    ),
-                    const Spacer(),
-                    // Context usage: a percentage ring when the window is known
-                    // (Claude), or a raw token count otherwise (Codex).
-                    if (widget.environment.hasContext) ...[
-                      _ContextBadge(percent: widget.environment.contextPercent),
-                      const SizedBox(width: UxnanSpacing.xs),
-                    ] else if (widget.environment.contextTokensLabel !=
-                        null) ...[
-                      _TokenChip(label: widget.environment.contextTokensLabel!),
-                      const SizedBox(width: UxnanSpacing.xs),
-                    ],
-                    // FOR-DEV: voice input is a placeholder (no STT yet).
+              ),
+              const SizedBox(height: UxnanSpacing.sm),
+              Row(
+                children: [
+                  // FOR-DEV: attach is a placeholder (no file/image picker
+                  // yet); shown only when the agent advertises `images`.
+                  if (widget.showAttach) ...[
                     _RoundIconButton(
-                      icon: Icons.mic_none_rounded,
-                      tooltip: l10n.composerVoice,
+                      icon: Icons.add_rounded,
+                      tooltip: l10n.composerAttach,
                       onPressed: null,
                     ),
                     const SizedBox(width: UxnanSpacing.xs),
-                    IconButton.filled(
-                      tooltip: l10n.composerSend,
-                      onPressed: canSend ? _send : null,
-                      icon: const Icon(Icons.arrow_upward_rounded),
-                    ),
                   ],
-                ),
-              ],
-            ),
+                  Flexible(
+                    child: _ModelChip(
+                      model: widget.environment.modelName,
+                      resolvedModel: widget.resolvedModel,
+                      onTap: widget.onModelTap,
+                    ),
+                  ),
+                  const Spacer(),
+                  // Context usage: a percentage ring when the window is known
+                  // (Claude), or a raw token count otherwise (Codex).
+                  if (widget.environment.hasContext) ...[
+                    _ContextBadge(percent: widget.environment.contextPercent),
+                    const SizedBox(width: UxnanSpacing.xs),
+                  ] else if (widget.environment.contextTokensLabel != null) ...[
+                    _TokenChip(label: widget.environment.contextTokensLabel!),
+                    const SizedBox(width: UxnanSpacing.xs),
+                  ],
+                  // FOR-DEV: voice input is a placeholder (no STT yet).
+                  _RoundIconButton(
+                    icon: Icons.mic_none_rounded,
+                    tooltip: l10n.composerVoice,
+                    onPressed: null,
+                  ),
+                  const SizedBox(width: UxnanSpacing.xs),
+                  IconButton.filled(
+                    tooltip: l10n.composerSend,
+                    onPressed: canSend ? _send : null,
+                    icon: const Icon(Icons.arrow_upward_rounded),
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
       ),

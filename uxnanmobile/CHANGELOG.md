@@ -8,6 +8,15 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Conversation composer + app bar aligned to Material 3.** The composer was a
+  floating rounded card (`elevation`/shadow + `circular(24)`) — replaced with a
+  **bottom-anchored bar** on `surfaceContainer` with a top `outlineVariant`
+  hairline (no card, no shadow), so it reads as screen chrome and lets the
+  thread breathe (the M3 surface-tone pattern over a custom floating surface).
+  The app-bar git affordance dropped the redundant branch `ActionChip` (chips
+  aren't an app-bar action widget) for a single `IconButton` with a commit icon
+  that opens the git sheet; the branch now shows in its tooltip.
+
 - **Drop the unused `RELAY_URL` compile-time define.** The bridge address comes
   entirely from the pairing QR (`PairingPayload` `hosts`/`relay`, persisted on
   the `TrustedDevice`), so the `AppConstants.relayUrl` `--dart-define` was dead

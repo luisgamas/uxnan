@@ -193,13 +193,14 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
                       ],
                     ),
                     actions: [
-                      _BranchChip(
-                        branch: environment.gitBranch,
-                        onTap: cwd != null ? () => _openGit(cwd) : null,
-                      ),
+                      // One git affordance (was a redundant branch chip + an
+                      // upload button): an IconButton — the M3-correct app-bar
+                      // action — opens the git sheet; branch in its tooltip.
                       IconButton(
-                        tooltip: l10n.environmentCommitOrPush,
-                        icon: const Icon(Icons.cloud_upload_outlined),
+                        tooltip: gitBranch != null
+                            ? '${l10n.environmentGit} · $gitBranch'
+                            : l10n.environmentCommitOrPush,
+                        icon: const Icon(Icons.commit_rounded),
                         onPressed: cwd != null ? () => _openGit(cwd) : null,
                       ),
                       _ConversationMenu(onCopyId: _copyThreadId),
@@ -329,29 +330,6 @@ class _ConnectionLabel extends StatelessWidget {
         const SizedBox(width: UxnanSpacing.xs),
         Text(label, style: textTheme.bodySmall),
       ],
-    );
-  }
-}
-
-/// App-bar git affordance: an M3 [ActionChip] showing the current branch (or
-/// "Git" when unknown); opens the git actions sheet.
-class _BranchChip extends StatelessWidget {
-  const _BranchChip({required this.branch, required this.onTap});
-
-  final String? branch;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    return ActionChip(
-      avatar: const Icon(Icons.account_tree_outlined, size: 18),
-      label: Text(
-        branch ?? l10n.environmentGit,
-        overflow: TextOverflow.ellipsis,
-      ),
-      onPressed: onTap,
-      visualDensity: VisualDensity.compact,
     );
   }
 }
