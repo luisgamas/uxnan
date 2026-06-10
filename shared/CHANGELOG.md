@@ -6,6 +6,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 
 ### Added
+- **Per-project agent/model pin fields** (`agents/agent-config.ts`,
+  `models/project.ts`): `AgentConfig` gains an optional `model` (a project's
+  pinned default model, alongside the existing `agentId`/`cwd`), and `Project`
+  gains an optional `model` next to `agentId`. The bridge fills these from its
+  `projectAgents` config so `project/list` advertises a project's pinned
+  agent/model and `thread/start` can default to them when the phone omits them.
 - **Thread lifecycle methods** (`jsonrpc/methods.ts`, `jsonrpc/method-registry.ts`):
   `thread/rename` (`ThreadRenameParams { threadId, title }` → `Thread`),
   `thread/archive` / `thread/unarchive` (`{ threadId }` → `Thread`) and

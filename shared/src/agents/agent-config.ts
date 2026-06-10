@@ -13,4 +13,6 @@ export interface AgentConfig {
   extraArgs?: string[];
   /** Working directory override; defaults to the project cwd. */
   cwd?: string;
+  /** Default model for this project/agent (e.g. `provider/model`), when pinned. */
+  model?: string;
 }
