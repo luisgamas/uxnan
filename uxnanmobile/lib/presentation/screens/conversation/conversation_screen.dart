@@ -172,6 +172,13 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     final connectedHere = connectedId != null &&
         (thread?.deviceId == null || thread!.deviceId == connectedId);
     final effectivePhase = connectedHere ? phase : ConnectionPhase.disconnected;
+    // The active agent's sign-in status on the PC (only meaningful while we
+    // hold this thread's channel). `.value` is null while offline or on an
+    // older bridge, so a missing status simply shows no banner.
+    final authStatus = connectedHere && thread != null
+        ? ref.watch(authStatusProvider(thread.agentId)).value
+        : null;
+    final requiresLogin = authStatus?.requiresLogin ?? false;
     final gitBranch = ref.watch(gitRepoStateProvider).value?.branch;
     final resolvedModel = ref.watch(resolvedModelProvider(widget.threadId));
     final usage = ref.watch(contextUsageForProvider(widget.threadId));
@@ -261,6 +268,13 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
               ),
             ),
           ),
+          // Sign-in warning: the agent on this PC is not logged in, so turns
+          // won't run until the user signs into its CLI on the PC. Kept above
+          // the composer (not in the scrolling list) so it stays visible.
+          if (requiresLogin)
+            _LoginRequiredBanner(
+              loginInProgress: authStatus!.loginInProgress,
+            ),
           // Access/approval mode lives directly above the composer (its own
           // affordance, alert-coloured on full access), shown only for agents
           // that gate tools.
@@ -421,6 +435,88 @@ class _ConversationMenu extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// A full-width warning above the composer when the active thread's agent is
+/// not signed in on the PC: turns won't run until the user logs into the
+/// agent's CLI there. There is no in-app login yet (the bridge's `auth/login`
+/// is a stub), so this is informational — it points the user to the PC.
+class _LoginRequiredBanner extends StatelessWidget {
+  const _LoginRequiredBanner({required this.loginInProgress});
+
+  /// Whether an interactive login is currently running on the PC.
+  final bool loginInProgress;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final l10n = AppLocalizations.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        UxnanSpacing.lg,
+        UxnanSpacing.xs,
+        UxnanSpacing.lg,
+        0,
+      ),
+      child: Material(
+        color: colors.errorContainer,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: UxnanSpacing.md,
+            vertical: UxnanSpacing.sm,
+          ),
+          child: Row(
+            children: [
+              if (loginInProgress)
+                SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: colors.onErrorContainer,
+                  ),
+                )
+              else
+                Icon(
+                  Icons.login_rounded,
+                  size: 20,
+                  color: colors.onErrorContainer,
+                ),
+              const SizedBox(width: UxnanSpacing.sm),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      loginInProgress
+                          ? l10n.authLoginInProgress
+                          : l10n.authRequiresLoginTitle,
+                      style: textTheme.bodyMedium?.copyWith(
+                        color: colors.onErrorContainer,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    if (!loginInProgress) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        l10n.authRequiresLoginBody,
+                        style: textTheme.bodySmall?.copyWith(
+                          color: colors.onErrorContainer,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

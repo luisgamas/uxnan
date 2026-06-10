@@ -77,6 +77,13 @@ void main() {
                 {'agentId': 'codex', 'displayName': 'Codex', 'available': true},
               ],
             },
+          'auth/status' => {
+              'agentId': params?['agentId'],
+              'requiresLogin': true,
+              'loginInProgress': false,
+              'transportMode': 'local',
+              'platform': 'win32',
+            },
           'thread/start' => {
               'id': 'th-new',
               'title': params?['title'] ?? 'New',
@@ -210,6 +217,17 @@ void main() {
     expect(agents.single.agentId, 'codex');
     expect(agents.single.available, isTrue);
     expect(sentMethods, contains('agent/list'));
+  });
+
+  test('loadAuthStatus sends auth/status with the agentId and parses it',
+      () async {
+    final status = await manager.loadAuthStatus('codex');
+    expect(status, isNotNull);
+    expect(status!.agentId, 'codex');
+    expect(status.requiresLogin, isTrue);
+    expect(status.loginInProgress, isFalse);
+    expect(status.transportMode, 'local');
+    expect(sentMethods, contains('auth/status'));
   });
 
   test('startThread sends thread/start and persists the result', () async {

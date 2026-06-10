@@ -458,6 +458,16 @@ class AppLocalizationsEs extends AppLocalizations {
       'Acceso sin restricciones a internet y a cualquier archivo.';
 
   @override
+  String get authRequiresLoginTitle => 'Agente sin sesión iniciada';
+
+  @override
+  String get authRequiresLoginBody =>
+      'Inicia sesión en la CLI de este agente en tu PC para empezar a enviar mensajes.';
+
+  @override
+  String get authLoginInProgress => 'Iniciando sesión en tu PC…';
+
+  @override
   String get gitActionsTitle => 'Control de versiones';
 
   @override
