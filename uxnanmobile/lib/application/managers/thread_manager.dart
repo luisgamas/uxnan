@@ -603,7 +603,12 @@ class ThreadManager {
       };
 
   Thread _parseThread(Map<String, dynamic> json) {
-    final lastActivity = json['lastActivity'];
+    // The bridge sends `createdAt` and `updatedAt` (epoch ms). The old parser
+    // read `lastActivity`, which the wire never carries — so last-activity was
+    // always null. Map `updatedAt` to lastActivity and keep `createdAt` for the
+    // default newest-first ordering.
+    final createdAt = json['createdAt'];
+    final updatedAt = json['updatedAt'] ?? json['lastActivity'];
     return Thread(
       id: json['id'] as String,
       title: json['title'] as String? ?? json['id'] as String,
@@ -614,8 +619,11 @@ class ThreadManager {
       model: json['model'] as String?,
       syncState: ThreadSyncState.synced,
       status: _parseStatus(json['status'] as String?),
-      lastActivity: lastActivity is int
-          ? DateTime.fromMillisecondsSinceEpoch(lastActivity)
+      lastActivity: updatedAt is int
+          ? DateTime.fromMillisecondsSinceEpoch(updatedAt)
+          : null,
+      createdAt: createdAt is int
+          ? DateTime.fromMillisecondsSinceEpoch(createdAt)
           : null,
     );
   }

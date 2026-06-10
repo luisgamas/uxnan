@@ -45,7 +45,12 @@ class DriftThreadRepository implements IThreadRepository {
             syncState: Value(thread.syncState.name),
             status: Value(thread.status.name),
             lastActivityMs: Value(thread.lastActivity?.millisecondsSinceEpoch),
-            createdAtMs: Value(DateTime.now().millisecondsSinceEpoch),
+            // Preserve the real creation time (from the bridge) instead of
+            // stamping `now()` on every update, so "newest first" is stable.
+            createdAtMs: Value(
+              thread.createdAt?.millisecondsSinceEpoch ??
+                  DateTime.now().millisecondsSinceEpoch,
+            ),
           ),
         );
   }
@@ -79,5 +84,6 @@ class DriftThreadRepository implements IThreadRepository {
         lastActivity: row.lastActivityMs != null
             ? DateTime.fromMillisecondsSinceEpoch(row.lastActivityMs!)
             : null,
+        createdAt: DateTime.fromMillisecondsSinceEpoch(row.createdAtMs),
       );
 }

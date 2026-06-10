@@ -8,6 +8,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Thread `createdAt`/last-activity now parsed from the bridge.** The parser
+  read `json['lastActivity']`, a field the wire never carries, so a thread's
+  last-activity time was always null (blank in the list). It now maps the
+  bridge's `updatedAt` to last-activity and keeps `createdAt` — exposed on the
+  `Thread` entity and persisted by the drift repo (which previously stamped
+  `now()` on every save, clobbering the real creation time). Enables a stable
+  "newest first" ordering.
+
 - **No more phantom threads or silent send failures** (chat was broken: messages
   sent, no responses). `ThreadManager.startThread` fabricated a local `uuid`
   thread whenever `thread/start` returned an error or no result — so the bridge

@@ -21,6 +21,7 @@ class Thread extends Equatable {
     this.worktreePath,
     this.model,
     this.lastActivity,
+    this.createdAt,
   });
 
   /// Unique thread identifier.
@@ -53,6 +54,10 @@ class Thread extends Equatable {
   /// Timestamp of the last activity in the thread, if any.
   final DateTime? lastActivity;
 
+  /// When the thread was created (bridge `createdAt`), if known. Used to sort
+  /// the threads list "newest first" by default.
+  final DateTime? createdAt;
+
   /// Wire identifier of the agent that handles this thread.
   final String agentId;
 
@@ -67,6 +72,7 @@ class Thread extends Equatable {
     ThreadSyncState? syncState,
     ThreadStatus? status,
     DateTime? lastActivity,
+    DateTime? createdAt,
     String? agentId,
   }) {
     return Thread(
@@ -80,6 +86,7 @@ class Thread extends Equatable {
       syncState: syncState ?? this.syncState,
       status: status ?? this.status,
       lastActivity: lastActivity ?? this.lastActivity,
+      createdAt: createdAt ?? this.createdAt,
       agentId: agentId ?? this.agentId,
     );
   }
@@ -96,6 +103,7 @@ class Thread extends Equatable {
         syncState,
         status,
         lastActivity,
+        createdAt,
         agentId,
       ];
 }
