@@ -6,14 +6,15 @@ import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
 
-/// The floating message composer: a rounded, elevated card with an expandable
-/// text field and a toolbar (attach, model, context, voice, send). Attach and
-/// voice are placeholders (FOR-DEV).
+/// The floating message composer: a Material 3 elevated surface with an
+/// expandable text field and a toolbar (attach, model selector, context usage,
+/// voice, send). Attach and voice are placeholders (FOR-DEV).
 class ComposerBar extends StatefulWidget {
   /// Creates a [ComposerBar].
   const ComposerBar({
     required this.onSend,
     required this.environment,
+    this.resolvedModel,
     this.onModelTap,
     this.enabled = true,
     this.showAttach = true,
@@ -25,6 +26,10 @@ class ComposerBar extends StatefulWidget {
 
   /// The session environment (model, context) shown in the toolbar.
   final SessionEnvironment environment;
+
+  /// Concrete model the alias resolved to (e.g. `claude-opus-4-8`), shown as
+  /// the model chip's tooltip when known.
+  final String? resolvedModel;
 
   /// Opens the model picker for the active thread, if available.
   final VoidCallback? onModelTap;
@@ -73,6 +78,7 @@ class _ComposerBarState extends State<ComposerBar> {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
     final l10n = AppLocalizations.of(context);
     final canSend = _hasText && widget.enabled;
 
@@ -85,81 +91,84 @@ class _ComposerBarState extends State<ComposerBar> {
           UxnanSpacing.md,
           UxnanSpacing.lg,
         ),
-        child: Container(
-          decoration: BoxDecoration(
-            color: colors.surfaceContainerHigh,
-            borderRadius: const BorderRadius.all(Radius.circular(24)),
-            border: Border.all(color: colors.outline.withValues(alpha: 0.6)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.18),
-                blurRadius: 18,
-                offset: const Offset(0, 6),
-              ),
-            ],
-          ),
-          padding: const EdgeInsets.fromLTRB(
-            UxnanSpacing.lg,
-            UxnanSpacing.sm,
-            UxnanSpacing.sm,
-            UxnanSpacing.sm,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: _controller,
-                enabled: widget.enabled,
-                minLines: 1,
-                maxLines: 6,
-                style: Theme.of(context).textTheme.bodyMedium,
-                decoration: InputDecoration(
-                  isCollapsed: true,
-                  border: InputBorder.none,
-                  hintText: l10n.composerHint,
-                  hintStyle: TextStyle(color: colors.onSurfaceVariant),
+        // M3 elevated surface (tonal elevation + subtle shadow) instead of a
+        // heavy custom BoxShadow.
+        child: Material(
+          color: colors.surfaceContainerHigh,
+          elevation: 3,
+          shadowColor: colors.shadow,
+          surfaceTintColor: colors.surfaceTint,
+          borderRadius: const BorderRadius.all(Radius.circular(24)),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              UxnanSpacing.lg,
+              UxnanSpacing.sm,
+              UxnanSpacing.sm,
+              UxnanSpacing.sm,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: _controller,
+                  enabled: widget.enabled,
+                  minLines: 1,
+                  maxLines: 6,
+                  style: textTheme.bodyMedium,
+                  decoration: InputDecoration(
+                    isCollapsed: true,
+                    border: InputBorder.none,
+                    hintText: l10n.composerHint,
+                    hintStyle: TextStyle(color: colors.onSurfaceVariant),
+                  ),
                 ),
-              ),
-              const SizedBox(height: UxnanSpacing.sm),
-              Row(
-                children: [
-                  // FOR-DEV: attach is a placeholder (no file/image picker
-                  // yet); shown only when the agent advertises `images`.
-                  if (widget.showAttach) ...[
+                const SizedBox(height: UxnanSpacing.sm),
+                Row(
+                  children: [
+                    // FOR-DEV: attach is a placeholder (no file/image picker
+                    // yet); shown only when the agent advertises `images`.
+                    if (widget.showAttach) ...[
+                      _RoundIconButton(
+                        icon: Icons.add_rounded,
+                        tooltip: l10n.composerAttach,
+                        onPressed: null,
+                      ),
+                      const SizedBox(width: UxnanSpacing.xs),
+                    ],
+                    Flexible(
+                      child: _ModelChip(
+                        model: widget.environment.modelName,
+                        resolvedModel: widget.resolvedModel,
+                        onTap: widget.onModelTap,
+                      ),
+                    ),
+                    const Spacer(),
+                    // Context usage: a percentage ring when the window is known
+                    // (Claude), or a raw token count otherwise (Codex).
+                    if (widget.environment.hasContext) ...[
+                      _ContextBadge(percent: widget.environment.contextPercent),
+                      const SizedBox(width: UxnanSpacing.xs),
+                    ] else if (widget.environment.contextTokensLabel !=
+                        null) ...[
+                      _TokenChip(label: widget.environment.contextTokensLabel!),
+                      const SizedBox(width: UxnanSpacing.xs),
+                    ],
+                    // FOR-DEV: voice input is a placeholder (no STT yet).
                     _RoundIconButton(
-                      icon: Icons.add_rounded,
-                      tooltip: l10n.composerAttach,
+                      icon: Icons.mic_none_rounded,
+                      tooltip: l10n.composerVoice,
                       onPressed: null,
                     ),
                     const SizedBox(width: UxnanSpacing.xs),
-                  ],
-                  Flexible(
-                    child: _ModelChip(
-                      model: widget.environment.modelName,
-                      onTap: widget.onModelTap,
+                    IconButton.filled(
+                      tooltip: l10n.composerSend,
+                      onPressed: canSend ? _send : null,
+                      icon: const Icon(Icons.arrow_upward_rounded),
                     ),
-                  ),
-                  const Spacer(),
-                  // Context usage: a percentage ring when the model's window is
-                  // known (Claude), or a raw token count otherwise (Codex).
-                  if (widget.environment.hasContext) ...[
-                    _ContextBadge(percent: widget.environment.contextPercent),
-                    const SizedBox(width: UxnanSpacing.xs),
-                  ] else if (widget.environment.contextTokensLabel != null) ...[
-                    _TokenChip(label: widget.environment.contextTokensLabel!),
-                    const SizedBox(width: UxnanSpacing.xs),
                   ],
-                  // FOR-DEV: voice input is a placeholder (no speech-to-text).
-                  _RoundIconButton(
-                    icon: Icons.mic_none_rounded,
-                    tooltip: l10n.composerVoice,
-                    onPressed: null,
-                  ),
-                  const SizedBox(width: UxnanSpacing.xs),
-                  _SendButton(enabled: canSend, onPressed: _send),
-                ],
-              ),
-            ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -190,49 +199,28 @@ class _RoundIconButton extends StatelessWidget {
   }
 }
 
+/// Model selector: an M3 [ActionChip] (the only model selector — the old status
+/// sheet's model row was removed). Its tooltip surfaces the resolved version.
 class _ModelChip extends StatelessWidget {
-  const _ModelChip({required this.model, this.onTap});
+  const _ModelChip({required this.model, this.resolvedModel, this.onTap});
   final String model;
+  final String? resolvedModel;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    return Material(
-      color: colors.surfaceContainerHighest,
-      shape: const StadiumBorder(),
-      child: InkWell(
-        customBorder: const StadiumBorder(),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: UxnanSpacing.md,
-            vertical: UxnanSpacing.sm,
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons.auto_awesome,
-                size: 14,
-                color: UxnanColors.claudeCodeAgent,
-              ),
-              const SizedBox(width: UxnanSpacing.xs),
-              Flexible(
-                child: Text(
-                  model,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ),
-              Icon(
-                Icons.expand_more_rounded,
-                size: 16,
-                color: colors.onSurfaceVariant,
-              ),
-            ],
-          ),
+    return Tooltip(
+      message: resolvedModel ?? model,
+      child: ActionChip(
+        avatar: Icon(
+          Icons.auto_awesome_outlined,
+          size: 16,
+          color: colors.onSurfaceVariant,
         ),
+        label: Text(model, overflow: TextOverflow.ellipsis),
+        visualDensity: VisualDensity.compact,
+        onPressed: onTap,
       ),
     );
   }
@@ -311,36 +299,6 @@ class _TokenChip extends StatelessWidget {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SendButton extends StatelessWidget {
-  const _SendButton({required this.enabled, required this.onPressed});
-  final bool enabled;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    final bg = enabled
-        ? colors.primary
-        : colors.onSurfaceVariant.withValues(alpha: 0.25);
-    return Material(
-      color: bg,
-      shape: const CircleBorder(),
-      child: InkWell(
-        customBorder: const CircleBorder(),
-        onTap: enabled ? onPressed : null,
-        child: Padding(
-          padding: const EdgeInsets.all(UxnanSpacing.sm),
-          child: Icon(
-            Icons.arrow_upward_rounded,
-            size: 20,
-            color: enabled ? colors.onPrimary : colors.surface,
-          ),
         ),
       ),
     );

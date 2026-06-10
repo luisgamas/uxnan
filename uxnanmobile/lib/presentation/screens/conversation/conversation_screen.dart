@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/enums/agent_id.dart';
@@ -7,10 +8,11 @@ import 'package:uxnan/domain/enums/connection_phase.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_bar.dart';
+import 'package:uxnan/presentation/screens/conversation/git/git_actions_sheet.dart';
 import 'package:uxnan/presentation/screens/conversation/messages/message_bubble.dart';
 import 'package:uxnan/presentation/screens/conversation/session_environment.dart';
+import 'package:uxnan/presentation/screens/conversation/support/approval_mode_sheet.dart';
 import 'package:uxnan/presentation/screens/conversation/support/model_picker_sheet.dart';
-import 'package:uxnan/presentation/screens/conversation/support/session_status_sheet.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/agent_visuals.dart';
@@ -72,24 +74,28 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
     );
   }
 
-  void _openEnvironment(
-    SessionEnvironment environment,
-    String? cwd,
-    Thread? thread,
-  ) {
-    // Only agents that advertise the `approvals` capability get the approval
-    // mode row; permissive when the agent/capabilities aren't known yet.
-    final showApprovalMode = thread == null ||
-        ref.read(agentCapabilitiesProvider(thread.agentId)).approvals;
-    SessionStatusSheet.show(
-      context,
-      environment,
-      threadId: widget.threadId,
-      cwd: cwd,
-      showApprovalMode: showApprovalMode,
-      onApprovalModeChanged: (mode) => setState(() => _approvalMode = mode),
-      onModelTap: thread != null ? () => _pickModel(thread) : null,
-    );
+  /// Opens the git actions sheet (branch state, changed files, commit/push) for
+  /// the thread's workspace. Reached from both the branch chip and the
+  /// commit/push action in the app bar.
+  void _openGit(String? cwd) =>
+      GitActionsSheet.show(context, cwd: cwd, threadId: widget.threadId);
+
+  /// Opens the access/approval-mode picker (a small single-select bottom sheet).
+  Future<void> _editApprovalMode() async {
+    final mode = await ApprovalModeSheet.show(context, _approvalMode);
+    if (mode != null && mounted) setState(() => _approvalMode = mode);
+  }
+
+  /// Copies the full thread id so the same conversation can be resumed from the
+  /// CLI on the PC.
+  Future<void> _copyThreadId() async {
+    final l10n = AppLocalizations.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    await Clipboard.setData(ClipboardData(text: widget.threadId));
+    if (!mounted) return;
+    messenger
+      ..clearSnackBars()
+      ..showSnackBar(SnackBar(content: Text(l10n.threadIdCopied)));
   }
 
   /// Opens the model picker and applies the choice to the thread's agent.
@@ -105,12 +111,11 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
         .setThreadModel(widget.threadId, selected);
   }
 
-  /// Builds the environment snapshot from the active thread, the live git
-  /// state and the local approval-mode setting.
+  /// Builds the environment snapshot (model + context + git branch) from the
+  /// active thread, the live git state and the reported token usage.
   SessionEnvironment _buildEnvironment(
     Thread? thread,
     String? gitBranch,
-    String? resolvedModel,
     ({int tokens, int? contextWindow})? usage,
   ) {
     final agent = AgentIdParsing.fromWireId(thread?.agentId ?? 'custom');
@@ -120,8 +125,6 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
     final window = usage?.contextWindow;
     return SessionEnvironment(
       modelName: modelName,
-      resolvedModel: resolvedModel,
-      approvalMode: _approvalMode,
       gitBranch: gitBranch,
       contextTokens: usage?.tokens,
       contextUsedFraction: (usage != null && window != null && window > 0)
@@ -146,8 +149,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
     final gitBranch = ref.watch(gitRepoStateProvider).value?.branch;
     final resolvedModel = ref.watch(resolvedModelProvider(widget.threadId));
     final usage = ref.watch(contextUsageForProvider(widget.threadId));
-    final environment =
-        _buildEnvironment(thread, gitBranch, resolvedModel, usage);
+    final environment = _buildEnvironment(thread, gitBranch, usage);
     final cwd = thread?.cwd;
     final snapshot = timelineAsync.value;
 
@@ -191,11 +193,17 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
                       ],
                     ),
                     actions: [
-                      _EnvironmentChip(
+                      _BranchChip(
                         branch: environment.gitBranch,
-                        onTap: () => _openEnvironment(environment, cwd, thread),
+                        onTap: cwd != null ? () => _openGit(cwd) : null,
                       ),
-                      const SizedBox(width: UxnanSpacing.md),
+                      IconButton(
+                        tooltip: l10n.environmentCommitOrPush,
+                        icon: const Icon(Icons.cloud_upload_outlined),
+                        onPressed: cwd != null ? () => _openGit(cwd) : null,
+                      ),
+                      _ConversationMenu(onCopyId: _copyThreadId),
+                      const SizedBox(width: UxnanSpacing.xs),
                     ],
                   ),
                   if (snapshot == null)
@@ -220,8 +228,15 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
               ),
             ),
           ),
+          // Access/approval mode lives directly above the composer (its own
+          // affordance, alert-coloured on full access), shown only for agents
+          // that gate tools.
+          if (thread != null &&
+              ref.watch(agentCapabilitiesProvider(thread.agentId)).approvals)
+            _ApprovalBar(mode: _approvalMode, onTap: _editApprovalMode),
           ComposerBar(
             environment: environment,
+            resolvedModel: resolvedModel,
             enabled: connectedHere,
             showAttach: thread != null &&
                 ref.watch(agentCapabilitiesProvider(thread.agentId)).images,
@@ -318,49 +333,106 @@ class _ConnectionLabel extends StatelessWidget {
   }
 }
 
-/// AppBar chip showing the git branch; opens the environment sheet.
-class _EnvironmentChip extends StatelessWidget {
-  const _EnvironmentChip({required this.branch, required this.onTap});
+/// App-bar git affordance: an M3 [ActionChip] showing the current branch (or
+/// "Git" when unknown); opens the git actions sheet.
+class _BranchChip extends StatelessWidget {
+  const _BranchChip({required this.branch, required this.onTap});
 
   final String? branch;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return ActionChip(
+      avatar: const Icon(Icons.account_tree_outlined, size: 18),
+      label: Text(
+        branch ?? l10n.environmentGit,
+        overflow: TextOverflow.ellipsis,
+      ),
+      onPressed: onTap,
+      visualDensity: VisualDensity.compact,
+    );
+  }
+}
+
+/// App-bar overflow for low-frequency, thread-level actions (copy id).
+class _ConversationMenu extends StatelessWidget {
+  const _ConversationMenu({required this.onCopyId});
+
+  final VoidCallback onCopyId;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return PopupMenuButton<void>(
+      icon: const Icon(Icons.more_vert_rounded),
+      itemBuilder: (context) => [
+        PopupMenuItem<void>(
+          onTap: onCopyId,
+          child: Row(
+            children: [
+              const Icon(Icons.content_copy_outlined, size: 18),
+              const SizedBox(width: UxnanSpacing.sm),
+              Text(l10n.threadActionCopyId),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Access/approval-mode control above the composer: an M3 [ActionChip] that
+/// shows the current mode and turns **alert-coloured on full access**; tapping
+/// opens the mode picker.
+class _ApprovalBar extends StatelessWidget {
+  const _ApprovalBar({required this.mode, required this.onTap});
+
+  final ApprovalMode mode;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
+    final l10n = AppLocalizations.of(context);
+    final isFull = mode == ApprovalMode.fullAccess;
+    final (label, icon) = switch (mode) {
+      ApprovalMode.requestApproval => (
+          l10n.approvalRequestTitle,
+          Icons.shield_outlined,
+        ),
+      ApprovalMode.approveForMe => (
+          l10n.approvalAutoTitle,
+          Icons.verified_user_outlined,
+        ),
+      ApprovalMode.fullAccess => (
+          l10n.approvalFullTitle,
+          Icons.lock_open_rounded,
+        ),
+    };
 
-    return Material(
-      color: colors.surfaceContainerHighest,
-      shape: const StadiumBorder(),
-      child: InkWell(
-        customBorder: const StadiumBorder(),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: UxnanSpacing.md,
-            vertical: UxnanSpacing.sm,
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        UxnanSpacing.lg,
+        UxnanSpacing.xs,
+        UxnanSpacing.lg,
+        0,
+      ),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: ActionChip(
+          avatar: Icon(
+            icon,
+            size: 18,
+            color: isFull ? colors.onErrorContainer : colors.onSurfaceVariant,
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.account_tree_outlined,
-                size: 14,
-                color: colors.onSurfaceVariant,
-              ),
-              if (branch != null) ...[
-                const SizedBox(width: UxnanSpacing.xs),
-                Text(branch!, style: textTheme.bodySmall),
-              ],
-              const SizedBox(width: UxnanSpacing.xs),
-              Icon(
-                Icons.tune_rounded,
-                size: 15,
-                color: colors.onSurfaceVariant,
-              ),
-            ],
-          ),
+          label: Text(label),
+          labelStyle: isFull ? TextStyle(color: colors.onErrorContainer) : null,
+          backgroundColor: isFull ? colors.errorContainer : null,
+          side: isFull ? BorderSide(color: colors.error) : null,
+          visualDensity: VisualDensity.compact,
+          onPressed: onTap,
         ),
       ),
     );

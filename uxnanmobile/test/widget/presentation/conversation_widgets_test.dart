@@ -3,7 +3,6 @@ import 'package:flutter_highlight/flutter_highlight.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uxnan/domain/entities/message.dart';
-import 'package:uxnan/domain/enums/approval_mode.dart';
 import 'package:uxnan/domain/enums/approval_risk.dart';
 import 'package:uxnan/domain/enums/message_delivery_state.dart';
 import 'package:uxnan/domain/enums/message_role.dart';
@@ -18,7 +17,6 @@ import 'package:uxnan/presentation/screens/conversation/session_environment.dart
 
 const _environment = SessionEnvironment(
   modelName: 'Claude Opus 4.8',
-  approvalMode: ApprovalMode.approveForMe,
   gitBranch: 'main',
 );
 
