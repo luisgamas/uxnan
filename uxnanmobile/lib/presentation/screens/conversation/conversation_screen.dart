@@ -39,15 +39,21 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   final ScrollController _scroll = ScrollController();
   String? _gitCwd;
 
+  // Captured in initState: using `ref` inside dispose() is unreliable in
+  // Riverpod (the clear could be dropped, leaving this thread marked as
+  // "foreground" and wrongly suppressing its notifications back on the list).
+  ForegroundThread? _foreground;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _foreground = ref.read(foregroundThreadProvider.notifier);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(threadManagerProvider).selectThread(widget.threadId);
       // Mark this conversation as the foreground one so its turn-end
       // notifications are suppressed while it's on screen.
-      ref.read(foregroundThreadProvider.notifier).enter(widget.threadId);
+      _foreground?.enter(widget.threadId);
     });
   }
 
@@ -55,11 +61,11 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // Suppress this thread's notifications only while in the foreground; when
     // backgrounded the user is no longer watching, so let them through.
-    final foreground = ref.read(foregroundThreadProvider.notifier);
     if (state == AppLifecycleState.resumed) {
-      foreground.enter(widget.threadId);
+      _foreground?.enter(widget.threadId);
+      ref.read(threadManagerProvider).markRead(widget.threadId);
     } else {
-      foreground.leave(widget.threadId);
+      _foreground?.leave(widget.threadId);
     }
   }
 
@@ -75,7 +81,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    ref.read(foregroundThreadProvider.notifier).leave(widget.threadId);
+    _foreground?.leave(widget.threadId);
     _scroll.dispose();
     super.dispose();
   }

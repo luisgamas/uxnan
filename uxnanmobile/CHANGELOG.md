@@ -6,6 +6,16 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Notifications wrongly suppressed on the threads list.** The "currently
+  viewing" thread was cleared inside `dispose()` via `ref`, which is unreliable
+  in Riverpod — the clear could be dropped, leaving the last-opened thread
+  marked as foreground and suppressing its notifications even after leaving the
+  conversation. The conversation screen now captures the notifier in `initState`
+  and clears on leave, so suppression applies only while its conversation is on
+  screen.
+
 ### Added
 
 - **Unread thread indicator.** When an agent reply lands in a thread you're not
