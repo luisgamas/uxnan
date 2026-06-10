@@ -222,6 +222,84 @@ hosting** (the phone connects directly to the bridge on the same network).
       forwards it. Lets the phone show a context-usage indicator.
 - [x] **Change a thread's model mid-conversation** — `thread/setModel`
       (`ThreadStore.setModel` + `thread-context-handler.ts`).
+- [ ] **Per-model run options (reasoning effort / context / fast mode) — advertise
+      + apply, data-driven.** IMPORTANT (not urgent): this is the next big seam to
+      link with mobile. The phone should let the user pick a model's *run knobs*
+      (reasoning/thinking level, and where it applies a context-window variant or a
+      "fast mode"), but these differ **per agent AND per model**, and some are only
+      knowable at runtime (OpenCode depends on the provider/model). So the phone
+      must NOT hardcode any of it — the bridge advertises the available knobs per
+      model and translates the chosen values into each CLI's real flags.
+
+      **This is bridge-first** (a small `shared/` contract change + the real work
+      in the adapters; mobile is a generic renderer afterwards).
+
+      **Current state (what exists today):**
+        - The contract already carries a flat `effort?: string` on `TurnSendParams`
+          (+ `service?` as a per-turn model override). `agent/models` returns
+          `AgentModel[]` (id/displayName/description/version/isDefault).
+        - **Only OpenCode consumes `effort`** → maps it to `--variant <effort>`
+          (`opencode-adapter.ts`). **Claude and Codex receive `effort` but drop it**
+          (they only use model + permissionMode) — see the inline `FOR-DEV:` markers
+          in `claude-adapter.ts` / `codex-adapter.ts`.
+        - Context *usage* is already shown as a % (`claudeContextWindow`, Codex/
+          Claude usage). That is DISPLAY, distinct from *choosing* a context window.
+        - `AgentCapabilities` (shared) only declares `planMode/streaming/approvals/
+          forking/images` — there is no schema for run-option knobs.
+
+      **Per-agent reality (verify each flag against the installed CLI — versions
+      differ; follow the "Adding the next agent" capture recipe below):**
+        - **Claude Code**: reasoning = `effort` (low→max) + adaptive thinking;
+          models = `opus/sonnet/haiku` aliases + pinned ids; context window is fixed
+          by the model EXCEPT narrow beta cases (e.g. 1M context); **fast mode** is a
+          Claude-Code-specific toggle. (Confirm the exact CLI flags for effort/fast —
+          they may be config, not argv.)
+        - **Codex**: reasoning = `model_reasoning_effort` low/med/high (via
+          `-c model_reasoning_effort=...`); models via `model/list`; context fixed by
+          model; no fast mode.
+        - **OpenCode**: reasoning/variant already wired (`--variant`); everything is
+          provider/model-dependent and must be enumerated at runtime, never assumed.
+        - **Gemini / pi-agent / aider**: TBD when those adapters land.
+
+      **Proposed design (3 layers):**
+        1. **`shared/`** — extend per-model discovery so each `AgentModel` (or a
+           sibling shape returned by `agent/models`) declares a list of typed
+           **option knobs**: `{ key, kind: 'enum'|'toggle'|'select', label, values?,
+           default? }` (e.g. `enum reasoning [low,medium,high]`, `toggle fastMode`,
+           `select context [200k,1m]`). Plus fields on `turn/send` (and/or a
+           per-thread settings RPC) to carry the chosen values. Keep `effort` working
+           for back-compat, or fold it into the generic options.
+        2. **`bridge/`** — the real work: per adapter, (a) DISCOVER the knobs for a
+           given agent/model (Codex + OpenCode by real CLI enumeration; Claude by a
+           known table) and surface them via `agent/models`; (b) TRANSLATE the chosen
+           values into the right CLI flag at turn time (`-c model_reasoning_effort=…`
+           for Codex, `--variant` for OpenCode, the effort/fast flags for Claude).
+           Start by wiring the `effort` that Codex/Claude currently ignore.
+        3. **`uxnanmobile/`** — a **data-driven** renderer (reuse the existing
+           capability-gated-control pattern): show only the knobs the bridge
+           advertises for the active model, send the chosen values on `turn/send`.
+           Zero per-agent knowledge in the app → future agents work with no app
+           change. **Mobile linkage:** nothing to build on the phone until the
+           contract lands; then it's purely additive UI.
+
+      **Recommendations:**
+        - Model knobs **per (agent, model)**, not per agent — the same agent's
+          models differ (a Codex reasoning model vs a non-reasoning one; OpenCode
+          varies by provider). Returning them on `agent/models` keeps it per-model.
+        - **Do NOT build a generic context-window selector by default** — the window
+          is almost always fixed by the model. Model `context` as an option that
+          appears ONLY on models that genuinely offer a choice (Claude 1M beta).
+          Keep the existing usage-% display as-is.
+        - Make the option schema **tolerant/forward-compatible** (unknown `kind`
+          ignored by the phone) so adding a knob never breaks an older app — same
+          discipline as the tolerant `AgentModel` parser.
+        - Capture each CLI's real flags first (don't trust a flag unseen in the
+          installed CLI's `--help`/stream); some "options" are config-file, not argv.
+        - Phase it: **(1)** wire `effort` end-to-end for Codex + Claude (closes the
+          silent-drop gap with the contract that already exists); **(2)** add the
+          generic per-model option schema to `shared/` + `agent/models`; **(3)**
+          mobile renderer; **(4)** fast-mode + context-variant as opt-in knobs where
+          the CLI supports them.
 
 ### Adding the next agent (recipe — do these one by one)
 The OpenCode adapter is the template for any "one-shot per-turn CLI" agent:

@@ -233,6 +233,10 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     const { threadId, turnId, text } = options;
     const cwd = options.cwd ?? this.#defaultCwd;
     const model = options.service ?? this.#defaultModel;
+    // FOR-DEV: `options.effort` (and a future "fast mode" knob) is accepted by the
+    // contract but NOT applied here yet — wire it to Claude Code's effort/fast flags
+    // as part of "Per-model run options" in FOR-DEV.md (capture the real CLI flags
+    // first; some are config, not argv).
     const sessionId = this.#sessionByThread.get(threadId);
 
     const args = [
