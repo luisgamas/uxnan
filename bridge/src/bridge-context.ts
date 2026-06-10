@@ -6,6 +6,7 @@ import type { DaemonState } from './daemon-state.js';
 import type { SecureDeviceState } from './secure-device-state.js';
 import type { SessionState } from './session-state.js';
 import type { SessionRegistry } from './transport/session-registry.js';
+import type { TrustStore } from './transport/trust-store.js';
 import type { ThreadStore } from './conversation/thread-store.js';
 import type { AgentManager } from './agents/agent-manager.js';
 import type { ProjectRegistry } from './projects/project-registry.js';
@@ -22,6 +23,8 @@ export interface BridgeContext {
   readonly sessions: SessionState;
   /** Live encrypted sinks for connected phones (bridge → phone notifications). */
   readonly sessionRegistry: SessionRegistry;
+  /** Persisted trusted phones (Ed25519 identity + metadata, no secrets). */
+  readonly trustStore: TrustStore;
   /** Persistent conversation store. */
   readonly threadStore: ThreadStore;
   /** Agent turn orchestration. */
@@ -33,6 +36,8 @@ export interface BridgeContext {
   /** Push-notification coordination (token registration + turn-end delivery). */
   readonly pushService: PushService;
   readonly logger: Logger;
+  /** Whether at least one relay connection is currently serving a phone. */
+  relayConnected(): boolean;
   /** Injected clock (epoch ms) for testability. */
   now(): number;
 }

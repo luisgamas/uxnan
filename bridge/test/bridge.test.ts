@@ -53,3 +53,45 @@ test('bridge/disconnectPhone validates its params', async () => {
   await bridge.stop();
   await rm(baseDir, { recursive: true, force: true });
 });
+
+test('bridge/status reports the real relay-connection state (false when idle)', async () => {
+  const { bridge, baseDir } = await bootBridge();
+  const res = await bridge.router.dispatch(makeRequest('5', 'bridge/status'));
+  assert.ok('result' in res);
+  assert.equal((res.result as { relayConnected: boolean }).relayConnected, false);
+  await bridge.stop();
+  await rm(baseDir, { recursive: true, force: true });
+});
+
+test('bridge/removeTrustedDevice revokes trust and is idempotent', async () => {
+  const { bridge, baseDir } = await bootBridge();
+  await bridge.context.trustStore.upsert({
+    deviceId: 'phone-1',
+    displayName: 'Pixel',
+    publicKey: 'ab12',
+    pairedAt: NOW,
+  });
+  assert.equal((await bridge.context.trustStore.list()).length, 1);
+
+  const removed = await bridge.router.dispatch(
+    makeRequest('6', 'bridge/removeTrustedDevice', { deviceId: 'phone-1' }),
+  );
+  assert.ok('result' in removed);
+  assert.equal((await bridge.context.trustStore.list()).length, 0);
+
+  // Removing an already-absent device is not an error (phone calls best-effort).
+  const again = await bridge.router.dispatch(
+    makeRequest('7', 'bridge/removeTrustedDevice', { deviceId: 'phone-1' }),
+  );
+  assert.ok('result' in again);
+  await bridge.stop();
+  await rm(baseDir, { recursive: true, force: true });
+});
+
+test('bridge/removeTrustedDevice validates its params', async () => {
+  const { bridge, baseDir } = await bootBridge();
+  const res = await bridge.router.dispatch(makeRequest('8', 'bridge/removeTrustedDevice', {}));
+  assert.ok('error' in res && res.error.code === JsonRpcErrorCode.InvalidParams);
+  await bridge.stop();
+  await rm(baseDir, { recursive: true, force: true });
+});

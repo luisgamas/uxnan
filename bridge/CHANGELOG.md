@@ -6,6 +6,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 
 ### Added
+- **`bridge/removeTrustedDevice` implemented** (`src/handlers/bridge-control-handler.ts`):
+  revokes a phone's trust (`trustStore.remove`) and drops any live session/sink
+  (`sessions.remove` + `sessionRegistry.unregister`) so a removed device is both
+  untrusted and disconnected immediately. Idempotent — removing an absent device
+  is not an error (the phone deletes locally first and calls this best-effort).
+  Previously threw `methodNotImplemented`. Unblocks the device-management UI.
 - **Thread lifecycle handlers** (`src/handlers/thread-context-handler.ts` +
   `src/conversation/thread-store.ts`): `thread/rename`, `thread/archive`,
   `thread/unarchive` and `thread/delete` are now wired. `ThreadStore` gains
@@ -15,6 +21,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   already called these best-effort to mirror local changes; they now persist on
   the bridge so archive/rename/delete survive a phone reinstall or a second
   device. Closes the "Thread management" item in `FOR-DEV.md`.
+
+### Changed
+- **`bridge/status.relayConnected` reflects the real relay connection**
+  (`src/bridge-context.ts`, `src/bridge.ts`, `src/handlers/bridge-control-handler.ts`):
+  the handler previously hard-coded `false`. `BridgeContext` now exposes
+  `relayConnected()`, backed by the live relay-serve state (`relayState.connected`),
+  so the phone's `bridge/status` reports whether a relay session is actually
+  serving. `bridge/trustedDevices` also reads through `ctx.trustStore` now.
 
 ### Fixed
 - **`thread/start` on a browsed folder no longer fails with "unknown project".**

@@ -133,8 +133,23 @@ hosting** (the phone connects directly to the bridge on the same network).
       build this by default**: the relay-based path stays the default so the bridge
       ships with no push secrets. Implement strictly on request.
 - [ ] **Desktop** — `src/handlers/desktop-handler.ts` (embedded mode IPC).
-- [ ] **bridge/removeTrustedDevice** — `src/handlers/bridge-control-handler.ts`.
-- [ ] **bridge/status `relayConnected`** — reflect the real relay connection.
+- [x] **bridge/removeTrustedDevice** — `src/handlers/bridge-control-handler.ts`.
+      Revokes trust (`ctx.trustStore.remove`) and drops any live session/sink
+      (`sessions.remove` + `sessionRegistry.unregister`) so a removed device is
+      both untrusted and disconnected now. Idempotent (removing an absent device
+      is not an error). `bridge/trustedDevices` now reads through `ctx.trustStore`
+      too. **Mobile linkage:** the uxnanmobile "Remove device" card action is
+      still DEFERRED (its `FOR-DEV.md` → *Threads list → Remove device*); the
+      bridge side is now ready, so when that UI lands it just calls this method
+      (`{ deviceId }`) after deleting the local `TrustedDevice` + threads. No
+      further bridge work needed.
+- [x] **bridge/status `relayConnected`** — reflects the real relay connection.
+      `BridgeContext.relayConnected()` reads the live relay-serve state (the
+      `relayState.connected` holder in `src/bridge.ts`, true while a relay
+      connection is serving a phone), so the `bridge/status` handler no longer
+      hard-codes `false`. **Mobile linkage:** the phone's `bridge/status` parser
+      already consumes `relayConnected`; verify on-device that it flips true while
+      a relay session is live and false on LAN-only/idle.
 
 ## Agent adapters
 - [x] **Framework + reference** (Phase 5) — `ProcessAgentAdapter` (generic CLI
