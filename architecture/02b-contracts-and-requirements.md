@@ -93,6 +93,11 @@ thread/turns/list       -> turnos de un thread, con paginacion por cursor
 thread/start            -> iniciar nuevo thread
 thread/turn/start       -> iniciar nuevo turno en un thread
 thread/fork             -> hacer fork de un thread
+thread/setModel         -> cambiar el modelo de un thread
+thread/rename           -> renombrar un thread (devuelve el thread actualizado)
+thread/archive          -> archivar un thread (status -> archived, reversible)
+thread/unarchive        -> restaurar un thread archivado (status -> active)
+thread/delete           -> eliminar un thread y sus turnos
 turn/send               -> enviar contenido a un turno activo
 turn/cancel             -> cancelar turno en curso
 ```

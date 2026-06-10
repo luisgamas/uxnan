@@ -67,6 +67,7 @@ exposes both, so users get plug-and-play "latest" *and* explicit version control
     "claude-code": {
       "model": "opus",                 // default: the latest Opus alias
       "models": [                       // extra concrete versions in the picker
+        { "id": "claude-fable-5",   "displayName": "Fable 5" },
         { "id": "claude-opus-4-8",  "displayName": "Opus 4.8" },
         { "id": "claude-opus-4-7",  "displayName": "Opus 4.7" },
         { "id": "claude-sonnet-4-6","displayName": "Sonnet 4.6" },

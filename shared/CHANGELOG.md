@@ -6,6 +6,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 
 ### Added
+- **Per-project agent/model pin fields** (`agents/agent-config.ts`,
+  `models/project.ts`): `AgentConfig` gains an optional `model` (a project's
+  pinned default model, alongside the existing `agentId`/`cwd`), and `Project`
+  gains an optional `model` next to `agentId`. The bridge fills these from its
+  `projectAgents` config so `project/list` advertises a project's pinned
+  agent/model and `thread/start` can default to them when the phone omits them.
+- **Thread lifecycle methods** (`jsonrpc/methods.ts`, `jsonrpc/method-registry.ts`):
+  `thread/rename` (`ThreadRenameParams { threadId, title }` → `Thread`),
+  `thread/archive` / `thread/unarchive` (`{ threadId }` → `Thread`) and
+  `thread/delete` (`{ threadId }` → `void`). The mobile app already called these
+  best-effort; they are now part of the contract so the bridge can implement them
+  and the changes survive a reinstall or a second device.
 - **Token usage on `turn/completed`** (`jsonrpc/notifications.ts`): new
   `TurnUsage { tokens, contextWindow? }` and optional `usage` on
   `TurnCompletedParams`, so the bridge can report a turn's context consumption
@@ -17,6 +29,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   kind for adapters to emit it.
 
 ### Changed
+- **`auth/status` is now per-agent** (`jsonrpc/methods.ts`): its params changed
+  from `void` to `{ agentId }`, matching the spec's per-agent `getAuthStatus`
+  (the phone queries the active project's agent). The `AuthStatus` result is
+  unchanged and remains sanitized — it never carries tokens/keys.
 - **`agent/models` now returns structured models** (`jsonrpc/methods.ts`,
   `agents/agent-capabilities.ts`): `AgentModelsResult.models` changed from
   `string[]` to **`AgentModel[]`** (`{ id, displayName, description?, version?,

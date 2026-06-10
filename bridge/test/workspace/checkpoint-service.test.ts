@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { GitCommandError } from '../../src/index.js';
 import { CheckpointService, DaemonState, runGit } from '../../src/index.js';
 import { rmrf } from '../helpers/fs.js';
@@ -57,6 +57,83 @@ test('apply restores file contents captured by the checkpoint', async () => {
   await service.apply(checkpoint.id);
 
   assert.equal(await readFile(join(repo, 'tracked.txt'), 'utf-8'), 'checkpoint-state\n');
+  await rmrf(repo);
+});
+
+test('apply deletes files created after the checkpoint and restores the rest', async () => {
+  const repo = await newRepoWithCommit();
+  const service = new CheckpointService(newState());
+
+  await writeFile(join(repo, 'tracked.txt'), 'snap\n');
+  const checkpoint = await service.capture(repo, { now: 1000 });
+
+  // Diverge: modify a tracked file and add a brand-new untracked one.
+  await writeFile(join(repo, 'tracked.txt'), 'after\n');
+  await writeFile(join(repo, 'extra.txt'), 'created after the checkpoint\n');
+  await service.apply(checkpoint.id);
+
+  assert.equal(await readFile(join(repo, 'tracked.txt'), 'utf-8'), 'snap\n');
+  // The post-checkpoint file is gone (true revert parity).
+  await assert.rejects(readFile(join(repo, 'extra.txt'), 'utf-8'));
+  await rmrf(repo);
+});
+
+test('apply recreates a file deleted after the checkpoint', async () => {
+  const repo = await newRepoWithCommit();
+  const service = new CheckpointService(newState());
+
+  await writeFile(join(repo, 'keep.txt'), 'keep\n');
+  await runGit(repo, ['add', '-A']);
+  await runGit(repo, ['commit', '-m', 'add keep']);
+  const checkpoint = await service.capture(repo, { now: 1000 });
+
+  await rm(join(repo, 'keep.txt'), { force: true }); // delete after the checkpoint
+  await service.apply(checkpoint.id);
+
+  assert.equal(await readFile(join(repo, 'keep.txt'), 'utf-8'), 'keep\n');
+  await rmrf(repo);
+});
+
+test('capture prunes checkpoints beyond the per-project cap (ref + metadata)', async () => {
+  const repo = await newRepoWithCommit();
+  const service = new CheckpointService(newState(), { maxPerProject: 2, ttlDays: 0 });
+
+  await writeFile(join(repo, 'tracked.txt'), 'a\n');
+  const c1 = await service.capture(repo, { now: 1000 });
+  await writeFile(join(repo, 'tracked.txt'), 'b\n');
+  const c2 = await service.capture(repo, { now: 2000 });
+  await writeFile(join(repo, 'tracked.txt'), 'c\n');
+  const c3 = await service.capture(repo, { now: 3000 });
+
+  // The oldest (c1) is pruned: its ref is deleted and its metadata is gone.
+  await assert.rejects(runGit(repo, ['rev-parse', '--verify', `refs/uxnan/checkpoints/${c1.id}`]));
+  await assert.rejects(service.diff(c1.id));
+  // The two newest survive (refs resolve, diff works).
+  assert.ok(
+    (
+      await runGit(repo, ['rev-parse', '--verify', `refs/uxnan/checkpoints/${c2.id}`])
+    ).stdout.trim(),
+  );
+  assert.ok(
+    (
+      await runGit(repo, ['rev-parse', '--verify', `refs/uxnan/checkpoints/${c3.id}`])
+    ).stdout.trim(),
+  );
+  await rmrf(repo);
+});
+
+test('capture prunes checkpoints older than the TTL', async () => {
+  const repo = await newRepoWithCommit();
+  const service = new CheckpointService(newState(), { maxPerProject: 0, ttlDays: 1 });
+
+  await writeFile(join(repo, 'tracked.txt'), 'old\n');
+  const old = await service.capture(repo, { now: 0 });
+  // A capture two days later prunes the day-0 checkpoint.
+  await writeFile(join(repo, 'tracked.txt'), 'new\n');
+  const fresh = await service.capture(repo, { now: 2 * 24 * 60 * 60 * 1000 });
+
+  await assert.rejects(service.diff(old.id));
+  assert.equal((await service.diff(fresh.id)).files.length >= 0, true);
   await rmrf(repo);
 });
 

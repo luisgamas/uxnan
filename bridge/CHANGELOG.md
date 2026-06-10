@@ -5,6 +5,80 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added
+- **Claude Fable 5 model** (`src/daemon-config.ts`, `src/adapters/claude-adapter.ts`):
+  seed Claude Code's picker with `claude-fable-5` ("Fable 5", the new top tier
+  above Opus) and map it to a 1M context window in `claudeContextWindow()` so the
+  phone shows context usage as a percentage. The `opus`/`sonnet`/`haiku` aliases
+  still cover "latest" for their tiers.
+- **`auth/status` sanitized, per-agent** (`src/account-status.ts`,
+  `src/handlers/account-handler.ts`): replaces the not-implemented stub with a
+  real handler that takes `{ agentId }` and returns a SANITIZED `AuthStatus`
+  (`agentId`, `requiresLogin`, `loginInProgress`, `authenticatedProvider?`,
+  `transportMode: 'local'`, `platform`) — **never** tokens/keys. Login is detected
+  by the EXISTENCE only of each agent's well-known auth file (Codex
+  `~/.codex/auth.json`, Claude `~/.claude/.credentials.json`/`~/.claude.json`,
+  OpenCode `~/.local/share/opencode/auth.json`) — contents are never read; an
+  agent without a mapping falls back to binary availability, an unknown agent is
+  rejected with `-32602`. `AgentManager` gains `isAvailable(agentId)`.
+  `auth/login`/`auth/logout` remain stubs (interactive CLI login is a follow-up).
+- **Checkpoint retention (prune)** (`src/workspace/checkpoint-service.ts`,
+  `src/daemon-config.ts`): each `workspace/checkpoint` now prunes old checkpoints
+  beyond a per-project count cap (`checkpointMaxPerProject`, default 25) and/or an
+  age TTL (`checkpointTtlDays`, default 0 = off), deleting both the
+  `refs/uxnan/checkpoints/*` anchor and the `checkpoints.json` entry — so the set
+  no longer grows unbounded.
+- **Per-project agent/model pins** (`src/daemon-config.ts`,
+  `src/projects/project-registry.ts`, `src/handlers/thread-context-handler.ts`):
+  a new `projectAgents: AgentConfig[]` config (each entry's `cwd` identifies the
+  project) lets a repo pin a default `agentId`/`model`. `ProjectRegistry` now
+  consumes it — `project/list`/`resolve` surface the pin on `Project` and a new
+  `agentConfigFor(cwd)` exposes it — and `thread/start` falls back to the pinned
+  agent (then the global `defaultAgent`) when the phone omits `agentId`. The
+  pinned model only applies when the resolved agent IS the pinned one, so an
+  explicit agent override never inherits a foreign model. Consumes the shared
+  `AgentConfig` that was previously defined-but-unused.
+- **Push registrations persist + multi-session** (`src/push/push-service.ts`,
+  `src/bridge.ts`): registrations are now keyed by relay `sessionId` and stored
+  to `~/.uxnan/push-state.json` (atomic write), restored at startup via
+  `PushService.load()`. Background push therefore survives a bridge restart
+  WITHOUT the phone re-registering (the relay still holds its sessionId→token
+  map; the bridge only needs `sessionId` + `notificationSecret` to notify). A
+  turn-end now pushes to **every** registered phone, so multiple paired devices
+  each receive background push. `register`/`updatePreferences`/`unregister` act
+  on the active session.
+- **`bridge/removeTrustedDevice` implemented** (`src/handlers/bridge-control-handler.ts`):
+  revokes a phone's trust (`trustStore.remove`) and drops any live session/sink
+  (`sessions.remove` + `sessionRegistry.unregister`) so a removed device is both
+  untrusted and disconnected immediately. Idempotent — removing an absent device
+  is not an error (the phone deletes locally first and calls this best-effort).
+  Previously threw `methodNotImplemented`. Unblocks the device-management UI.
+- **Thread lifecycle handlers** (`src/handlers/thread-context-handler.ts` +
+  `src/conversation/thread-store.ts`): `thread/rename`, `thread/archive`,
+  `thread/unarchive` and `thread/delete` are now wired. `ThreadStore` gains
+  `renameThread` / `archiveThread` / `unarchiveThread` (status → `archived` /
+  `active`, returning the updated `Thread`) and `deleteThread` (removes the
+  thread and its turns, rejecting an unknown id with `-32008`). The mobile app
+  already called these best-effort to mirror local changes; they now persist on
+  the bridge so archive/rename/delete survive a phone reinstall or a second
+  device. Closes the "Thread management" item in `FOR-DEV.md`.
+
+### Changed
+- **Checkpoint `apply` is now a true worktree restore**
+  (`src/workspace/checkpoint-service.ts`): besides restoring the snapshot's file
+  contents (recreating deleted files, overwriting modified ones), it now also
+  DELETES files created after the checkpoint, so the working tree matches the
+  snapshot exactly — full parity with the mobile `AiChangeSet` revert. Extras are
+  detected by snapshotting the current tree into a temp index (HEAD + `add -A`,
+  respecting `.gitignore`, leaving the user's real index untouched) and diffing
+  snapshot → now; the op stays worktree-only and never removes gitignored files.
+- **`bridge/status.relayConnected` reflects the real relay connection**
+  (`src/bridge-context.ts`, `src/bridge.ts`, `src/handlers/bridge-control-handler.ts`):
+  the handler previously hard-coded `false`. `BridgeContext` now exposes
+  `relayConnected()`, backed by the live relay-serve state (`relayState.connected`),
+  so the phone's `bridge/status` reports whether a relay session is actually
+  serving. `bridge/trustedDevices` also reads through `ctx.trustStore` now.
+
 ### Fixed
 - **`thread/start` on a browsed folder no longer fails with "unknown project".**
   `src/handlers/thread-context-handler.ts` required `projects.byId(projectId)`

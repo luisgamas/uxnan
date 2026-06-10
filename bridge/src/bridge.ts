@@ -97,14 +97,16 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   const sessionRegistry = new SessionRegistry();
   const trustStore = new FileTrustStore(state);
   const threadStore = new ThreadStore(state);
-  const projects = new ProjectRegistry(config.workspaceRoots);
+  const projects = new ProjectRegistry(config.workspaceRoots, process.cwd(), config.projectAgents);
   // Browse roots fall back to the project roots, then the bridge's launch
   // directory (`process.cwd()`) — so an unconfigured install browses from
   // wherever the bridge was started, no `browseRoots`/`workspaceRoots` needed.
   const browse = new BrowseService(
     config.browseRoots.length > 0 ? config.browseRoots : config.workspaceRoots,
   );
-  const pushService = new PushService({ relayUrl: config.relayUrl, config, logger });
+  const pushService = new PushService({ relayUrl: config.relayUrl, config, logger, state });
+  // Restore persisted push registrations so background push survives a restart.
+  await pushService.load();
   const agentManager = new AgentManager({
     store: threadStore,
     notify: (message) => sessionRegistry.broadcast(message),
@@ -170,6 +172,10 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   );
   const startedAt = now();
 
+  // Live relay-connection state, mutated by the relay serve loop below and read
+  // by both the CLI `status()` and the `bridge/status` handler (via the context).
+  const relayState = { connected: false };
+
   const context: BridgeContext = {
     version: BRIDGE_VERSION,
     startedAt,
@@ -178,12 +184,14 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
     deviceState,
     sessions,
     sessionRegistry,
+    trustStore,
     threadStore,
     agentManager,
     projects,
     browse,
     pushService,
     logger,
+    relayConnected: () => relayState.connected,
     now,
   };
 
@@ -192,7 +200,6 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
 
   const relayConnections: RelayConnection[] = [];
   let lanHandle: LanServerHandle | undefined;
-  let relayConnected = false;
   let stopping = false;
   const RELAY_RECONNECT_DELAY_MS = 2000;
   const delay = (ms: number): Promise<void> =>
@@ -210,7 +217,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
     status: () =>
       buildBridgeStatus({
         version: BRIDGE_VERSION,
-        relayConnected,
+        relayConnected: relayState.connected,
         lanEnabled: config.lanEnabled,
         activeSessions: sessions.count,
         startedAt,
@@ -240,7 +247,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       // connection closes (the relay closes our socket when the phone drops).
       const serve = async (connection: RelayConnection): Promise<void> => {
         relayConnections.push(connection);
-        relayConnected = true;
+        relayState.connected = true;
         try {
           await handleSecureConnection({
             io: connection.io,
@@ -259,7 +266,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
           } catch {
             /* already closed */
           }
-          relayConnected = relayConnections.length > 0;
+          relayState.connected = relayConnections.length > 0;
         }
       };
 
@@ -319,7 +326,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
         connection.ws.close();
       }
       relayConnections.length = 0;
-      relayConnected = false;
+      relayState.connected = false;
       if (lanHandle) {
         await lanHandle.close();
         lanHandle = undefined;

@@ -114,14 +114,14 @@ export interface ClaudeEvent {
 
 /**
  * Context-window size (tokens) for a Claude model id or alias, so the phone can
- * show context usage as a percentage. Opus/Sonnet are 1M, Haiku is 200K
+ * show context usage as a percentage. Fable/Opus/Sonnet are 1M, Haiku is 200K
  * (matches the current model catalog); unknown ids return undefined.
  */
 export function claudeContextWindow(model: string | undefined): number | undefined {
   if (!model) return undefined;
   const m = model.toLowerCase();
   if (m.includes('haiku')) return 200_000;
-  if (m.includes('opus') || m.includes('sonnet')) return 1_000_000;
+  if (m.includes('fable') || m.includes('opus') || m.includes('sonnet')) return 1_000_000;
   return undefined;
 }
 
@@ -233,6 +233,10 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     const { threadId, turnId, text } = options;
     const cwd = options.cwd ?? this.#defaultCwd;
     const model = options.service ?? this.#defaultModel;
+    // FOR-DEV: `options.effort` (and a future "fast mode" knob) is accepted by the
+    // contract but NOT applied here yet — wire it to Claude Code's effort/fast flags
+    // as part of "Per-model run options" in FOR-DEV.md (capture the real CLI flags
+    // first; some are config, not argv).
     const sessionId = this.#sessionByThread.get(threadId);
 
     const args = [

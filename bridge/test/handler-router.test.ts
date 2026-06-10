@@ -13,12 +13,14 @@ function fakeContext(): BridgeContext {
     deviceState: {} as BridgeContext['deviceState'],
     sessions: {} as BridgeContext['sessions'],
     sessionRegistry: new SessionRegistry(),
+    trustStore: {} as BridgeContext['trustStore'],
     threadStore: {} as BridgeContext['threadStore'],
     agentManager: {} as BridgeContext['agentManager'],
     projects: {} as BridgeContext['projects'],
     browse: {} as BridgeContext['browse'],
     pushService: {} as BridgeContext['pushService'],
     logger: createLogger('test', 'error'),
+    relayConnected: () => false,
     now: () => 1000,
   };
 }

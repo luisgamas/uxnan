@@ -46,6 +46,7 @@ export {
   type ServicePlatform,
 } from './service-installer.js';
 export { buildBridgeStatus, type BridgeStatusInput } from './bridge-status.js';
+export { getAuthStatus, type AccountStatusDeps } from './account-status.js';
 export { generatePairingPayload, renderPairingQr, type GeneratePairingOptions } from './qr.js';
 export {
   createLogger,

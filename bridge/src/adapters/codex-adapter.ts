@@ -100,8 +100,7 @@ export function codexUsageTokens(usage: unknown): number | undefined {
   if (!isRecord(usage)) return undefined;
   const count = (key: string): number =>
     typeof usage[key] === 'number' ? (usage[key] as number) : 0;
-  const total =
-    count('input_tokens') + count('output_tokens') + count('reasoning_output_tokens');
+  const total = count('input_tokens') + count('output_tokens') + count('reasoning_output_tokens');
   return total > 0 ? total : undefined;
 }
 
@@ -192,6 +191,9 @@ export class CodexAdapter extends BaseAgentAdapter {
       args.push('--dangerously-bypass-approvals-and-sandbox');
     else args.push('-s', 'read-only');
     if (model) args.push('-m', model);
+    // FOR-DEV: `options.effort` is accepted by the contract but NOT applied here
+    // yet — map it to Codex's reasoning effort (`-c model_reasoning_effort=<low|
+    // medium|high>`) as part of "Per-model run options" in FOR-DEV.md.
     if (cwd) args.push('-C', cwd);
     if (resumeId) args.push('resume', resumeId);
     args.push(text);

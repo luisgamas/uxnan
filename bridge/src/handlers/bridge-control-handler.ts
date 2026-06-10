@@ -8,19 +8,17 @@
  * See uxnandesktop/architecture/02e-bridge-integration.md §4.4.
  */
 import { hostname } from 'node:os';
-import { RpcError, type TrustedDevice } from '@uxnan/shared';
+import { RpcError } from '@uxnan/shared';
 import type { BridgeContext } from '../bridge-context.js';
 import type { HandlerRouter } from '../handler-router.js';
 import { buildBridgeStatus } from '../bridge-status.js';
 import { generatePairingPayload } from '../qr.js';
-import { DAEMON_FILES } from '../daemon-state.js';
-import { notImplemented } from './not-implemented.js';
 
 export function registerBridgeControlHandlers(router: HandlerRouter): void {
   router.register('bridge/status', (_params, ctx: BridgeContext) =>
     buildBridgeStatus({
       version: ctx.version,
-      relayConnected: false, // FOR-DEV: reflect real relay connection once wired
+      relayConnected: ctx.relayConnected(),
       lanEnabled: ctx.config.lanEnabled,
       activeSessions: ctx.sessions.count,
       startedAt: ctx.startedAt,
@@ -40,10 +38,7 @@ export function registerBridgeControlHandlers(router: HandlerRouter): void {
 
   router.register('bridge/connectedPhones', (_params, ctx: BridgeContext) => ctx.sessions.list());
 
-  router.register('bridge/trustedDevices', async (_params, ctx: BridgeContext) => {
-    const devices = await ctx.state.readJson<TrustedDevice[]>(DAEMON_FILES.trustedPhones);
-    return devices ?? [];
-  });
+  router.register('bridge/trustedDevices', (_params, ctx: BridgeContext) => ctx.trustStore.list());
 
   router.register('bridge/disconnectPhone', (params, ctx: BridgeContext) => {
     const deviceId = requireDeviceId(params);
@@ -52,10 +47,16 @@ export function registerBridgeControlHandlers(router: HandlerRouter): void {
     return null;
   });
 
-  router.register('bridge/removeTrustedDevice', () => {
-    // FOR-DEV: remove the device from trusted-phones.json and revoke its trust
-    // (src/handlers/bridge-control-handler.ts). Unblocks: device management UI.
-    throw notImplemented('bridge/removeTrustedDevice');
+  router.register('bridge/removeTrustedDevice', async (params, ctx: BridgeContext) => {
+    const deviceId = requireDeviceId(params);
+    // Revoke trust so the phone can no longer trusted-reconnect, and drop any
+    // live session/sink so a currently-connected device is disconnected now.
+    // Idempotent: removing an already-absent device is not an error (the phone
+    // deletes locally first and calls this best-effort).
+    await ctx.trustStore.remove(deviceId);
+    ctx.sessions.remove(deviceId);
+    ctx.sessionRegistry.unregister(deviceId);
+    return null;
   });
 }
 

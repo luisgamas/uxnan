@@ -1,6 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { PushService, createLogger, DEFAULT_DAEMON_CONFIG } from '../../src/index.js';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { rm } from 'node:fs/promises';
+import { PushService, DaemonState, createLogger, DEFAULT_DAEMON_CONFIG } from '../../src/index.js';
 
 interface Call {
   url: string;
@@ -26,12 +30,13 @@ function fakeFetch(calls: Call[], registerSecret = 'sec-1') {
   };
 }
 
-function service(calls: Call[]) {
+function service(calls: Call[], state?: DaemonState) {
   return new PushService({
     relayUrl: 'wss://relay.example/ws',
     config: DEFAULT_DAEMON_CONFIG,
     logger: createLogger('test', 'error'),
     fetchFn: fakeFetch(calls) as never,
+    ...(state ? { state } : {}),
   });
 }
 
@@ -78,4 +83,70 @@ test('onTurnEnd does nothing without a registration', async () => {
   svc.onTurnEnd({ threadId: 'th', turnId: 'tn', status: 'completed', text: 'x' });
   await new Promise((r) => setTimeout(r, 10));
   assert.equal(calls.length, 0);
+});
+
+test('onTurnEnd pushes to every registered session (multi-device)', async () => {
+  const calls: Call[] = [];
+  const svc = service(calls);
+  svc.setActiveSession('ses_1');
+  await svc.register('tok-1', 'android');
+  svc.setActiveSession('ses_2');
+  await svc.register('tok-2', 'ios');
+
+  svc.onTurnEnd({ threadId: 'th', turnId: 'tn', status: 'completed', text: 'done' });
+  await new Promise((r) => setTimeout(r, 10));
+
+  const notified = calls
+    .filter((c) => c.url.endsWith('/push/notify'))
+    .map((c) => c.body['sessionId']);
+  assert.deepEqual(notified.sort(), ['ses_1', 'ses_2']);
+});
+
+test('unregister removes only the active session', async () => {
+  const calls: Call[] = [];
+  const svc = service(calls);
+  svc.setActiveSession('ses_1');
+  await svc.register('tok-1', 'android');
+  svc.setActiveSession('ses_2');
+  await svc.register('tok-2', 'ios');
+
+  // The active session is ses_2; unregister it, ses_1 must still be notified.
+  svc.unregister();
+  svc.onTurnEnd({ threadId: 'th', turnId: 'tn', status: 'completed', text: 'done' });
+  await new Promise((r) => setTimeout(r, 10));
+
+  const notified = calls
+    .filter((c) => c.url.endsWith('/push/notify'))
+    .map((c) => c.body['sessionId']);
+  assert.deepEqual(notified, ['ses_1']);
+});
+
+test('registrations persist across a restart via push-state.json', async () => {
+  const baseDir = join(tmpdir(), `uxnan-push-${randomUUID()}`);
+  const state = new DaemonState(baseDir);
+  try {
+    const calls1: Call[] = [];
+    const svc1 = service(calls1, state);
+    svc1.setActiveSession('ses_1');
+    await svc1.register('tok-1', 'android');
+
+    // A fresh service (simulating a bridge restart) loads the persisted state and
+    // can push WITHOUT the phone re-registering.
+    const calls2: Call[] = [];
+    const svc2 = service(calls2, state);
+    await svc2.load();
+    svc2.onTurnEnd({ threadId: 'th', turnId: 'tn', status: 'completed', text: 'done' });
+    await new Promise((r) => setTimeout(r, 10));
+
+    const notify = calls2.find((c) => c.url.endsWith('/push/notify'));
+    assert.ok(notify, 'expected a /push/notify after reload');
+    assert.equal(notify?.body['sessionId'], 'ses_1');
+    assert.equal(notify?.body['notificationSecret'], 'sec-1');
+    assert.equal(
+      calls2.some((c) => c.url.endsWith('/push/register')),
+      false,
+    );
+  } finally {
+    await rm(baseDir, { recursive: true, force: true });
+  }
 });

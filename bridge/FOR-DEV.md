@@ -66,13 +66,20 @@ hosting** (the phone connects directly to the bridge on the same network).
 - [x] **Workspace** reads/list/applyPatch (Phase 4) — `src/workspace/`.
 - [x] **Workspace checkpoints** (Phase 4b) — `src/workspace/checkpoint-service.ts`
       (full-tree snapshot via temp index + `commit-tree`, anchored ref + metadata).
-      Follow-ups still needed:
-        - `apply` restores contents but does NOT delete files created after the
-          checkpoint — implement a true restore (diff current vs snapshot, remove
-          extras) for full revert parity with the mobile `AiChangeSet` revert.
-        - prune/GC old checkpoint refs + `checkpoints.json` entries (TTL or count
-          cap) so `refs/uxnan/checkpoints/*` doesn't grow unbounded.
-        - checkpoints require at least one commit (no HEAD → `-32003`); consider
+      Follow-ups:
+        - ☑ **True restore** — `apply` now deletes files created after the
+          checkpoint AND restores snapshot contents (recreating deleted, overwriting
+          modified), so the worktree matches the snapshot exactly. Extras are found
+          by snapshotting the current tree into a temp index (HEAD + `add -A`) and
+          diffing snapshot → now; worktree-only, never removes gitignored files.
+          Full parity with the mobile `AiChangeSet` revert. **Mobile linkage:** no
+          uxnanmobile change needed — `workspace/applyCheckpoint` is unchanged on
+          the wire; verify on-device that a revert removes files the agent created.
+        - ☑ **Prune/GC** — each `capture` prunes checkpoints beyond
+          `checkpointMaxPerProject` (default 25, per `cwd`) and/or older than
+          `checkpointTtlDays` (default 0 = off), deleting the `refs/uxnan/checkpoints/*`
+          anchor + the `checkpoints.json` entry. See `docs/configuration.md`.
+        - ☐ checkpoints require at least one commit (no HEAD → `-32003`); consider
           supporting checkpoints on an unborn branch if a use case appears.
 - [x] **Thread/turn** (Phase 5) — `src/handlers/thread-context-handler.ts` +
       `src/conversation/thread-store.ts` + `src/agents/agent-manager.ts`.
@@ -93,19 +100,68 @@ hosting** (the phone connects directly to the bridge on the same network).
           subtree needs OS sandboxing (container/chroot) — out of MVP scope; for now
           writes are bounded by each agent's sandbox posture (Codex `workspace-write`,
           Claude `acceptEdits`). See FOR-HUMAN.md.
-- [ ] **Per-project agent selection from `AgentConfig`** — the shared
-      `AgentConfig` (`agentId`, `binaryPath`, `extraArgs`, `cwd`) is defined but
-      not consumed: `thread/start` currently takes an explicit `agentId/model/cwd`.
-      Resolve the default agent/model per project (from config) so a project can
-      pin its own agent without the phone passing it every time.
-- [ ] **Thread management** — `thread/archive` / `thread/delete` / `thread/rename`
-      (`thread-context-handler.ts` + `thread-store.ts`); not yet contracted/wired.
-- [ ] **Account/auth** — `src/handlers/account-handler.ts` (sanitized, no tokens).
+- [x] **Per-project agent selection from `AgentConfig`** — a `projectAgents:
+      AgentConfig[]` config (keyed by each entry's absolute `cwd`) pins a
+      project's default `agentId`/`model`. `ProjectRegistry` consumes it
+      (`agentConfigFor(cwd)` + the pin surfaced on `Project.agentId`/`model`), and
+      `thread/start` falls back to the pinned agent → global `defaultAgent` when
+      the phone omits `agentId`; the pinned model applies only when the resolved
+      agent matches the pin. **Still not consumed:** `AgentConfig.binaryPath` /
+      `extraArgs` (per-project binary/arg overrides) — wire them into the adapter
+      spawn if a use case appears. **Mobile linkage (no uxnanmobile change
+      required):** `project/list`/`resolve` now return `agentId`/`model` on each
+      `Project`; the phone MAY pre-select them in `NewConversationSheet` (today it
+      lets the user pick) — purely optional UX. Server-side resolution already
+      makes omitting them work.
+- [x] **Thread management** — `thread/rename` / `thread/archive` /
+      `thread/unarchive` / `thread/delete` (`thread-context-handler.ts` +
+      `thread-store.ts`, contracted in `@uxnan/shared`). Rename/archive/unarchive
+      return the updated `Thread`; delete removes the thread + its turns (unknown
+      id → `-32008`). The mobile app already called these best-effort; they now
+      persist on the bridge so the change survives a phone reinstall / second
+      device.
+      **Mobile linkage (no uxnanmobile code change needed):** the phone already
+      calls all four local-first and degrades gracefully, so nothing new is
+      required there. To VALIDATE on-device once a live bridge is reachable: after
+      archive/rename a `thread/list` re-sync should reflect the new status/title,
+      and a deleted thread must not reappear — confirm the mobile `thread/list`
+      parser maps `status: 'archived'`. The bridge now RETURNS the updated
+      `Thread` on rename/archive/unarchive; the phone currently ignores it (keeps
+      its optimistic copy) — optional future reconcile against the returned value.
+- [◑] **Account/auth** — `src/handlers/account-handler.ts` + `src/account-status.ts`.
+      **`auth/status` DONE (sanitized, per-agent):** takes `{ agentId }`, returns a
+      sanitized `AuthStatus` (never tokens — login is detected by auth-file
+      EXISTENCE only, contents never read; unmapped agent → availability; unknown
+      agent → `-32602`). **Still deferred:** `auth/login`/`auth/logout` (driving a
+      CLI's interactive login/logout flow) remain stubs — and an authoritative
+      `requiresLogin` would run the CLI's own `whoami`/auth command instead of the
+      file-existence heuristic (slower, per-CLI). **Mobile linkage:** the spec's
+      `authStatusProvider` already calls `getAuthStatus(agentId)` per the active
+      project's agent; the bridge now answers it. On-device: verify the
+      requires-login banner appears when the agent CLI is logged out on the PC.
 - [x] **Notifications** — `src/handlers/notifications-handler.ts` +
       `src/push/push-service.ts`. `notifications/register|update|unregister` wired;
       registers the token with the relay and pushes on turn-end (gated by
-      `config.push*` + Firebase creds on the relay). Follow-ups: persist the
-      registration to `~/.uxnan/push-state.json`; support multiple sessions.
+      `config.push*` + Firebase creds on the relay). **Persistence + multi-session
+      DONE:** registrations are keyed by relay `sessionId` and persisted to
+      `~/.uxnan/push-state.json` (atomic), loaded at startup via
+      `PushService.load()`, so background push survives a bridge restart WITHOUT
+      the phone re-registering (the relay keeps its own sessionId→token map; the
+      bridge only needs `sessionId` + `notificationSecret` to call `/push/notify`).
+      A turn-end pushes to **every** registered phone, so multiple paired devices
+      each get background push. Remaining follow-ups:
+        - `register`/`updatePreferences`/`unregister` act on the *active* session
+          (exact with `maxConcurrentSessions: 1`); to target a specific phone when
+          several sessions are concurrent, thread per-request session identity
+          through the router to the handler. **FOR-DEV.**
+        - prune registrations for devices removed via `bridge/removeTrustedDevice`
+          (today they linger until `unregister`/overwrite) — wire trust-removal to
+          drop the matching push registration.
+        - **Mobile linkage:** no uxnanmobile change needed — the phone already
+          calls `notifications/register` on connect. To VALIDATE end-to-end needs
+          the Firebase/APNs creds (FOR-HUMAN) + a real device; confirm a turn-end
+          push arrives while backgrounded, and still arrives after restarting the
+          bridge (without reopening the app).
 - [ ] **(OPT-IN — explicit developer request ONLY) Direct FCM from the bridge,
       push without the relay.** Today background push **requires a running relay**:
       the bridge holds no FCM credentials and `POST`s `/push/notify` to the relay,
@@ -120,8 +176,23 @@ hosting** (the phone connects directly to the bridge on the same network).
       build this by default**: the relay-based path stays the default so the bridge
       ships with no push secrets. Implement strictly on request.
 - [ ] **Desktop** — `src/handlers/desktop-handler.ts` (embedded mode IPC).
-- [ ] **bridge/removeTrustedDevice** — `src/handlers/bridge-control-handler.ts`.
-- [ ] **bridge/status `relayConnected`** — reflect the real relay connection.
+- [x] **bridge/removeTrustedDevice** — `src/handlers/bridge-control-handler.ts`.
+      Revokes trust (`ctx.trustStore.remove`) and drops any live session/sink
+      (`sessions.remove` + `sessionRegistry.unregister`) so a removed device is
+      both untrusted and disconnected now. Idempotent (removing an absent device
+      is not an error). `bridge/trustedDevices` now reads through `ctx.trustStore`
+      too. **Mobile linkage:** the uxnanmobile "Remove device" card action is
+      still DEFERRED (its `FOR-DEV.md` → *Threads list → Remove device*); the
+      bridge side is now ready, so when that UI lands it just calls this method
+      (`{ deviceId }`) after deleting the local `TrustedDevice` + threads. No
+      further bridge work needed.
+- [x] **bridge/status `relayConnected`** — reflects the real relay connection.
+      `BridgeContext.relayConnected()` reads the live relay-serve state (the
+      `relayState.connected` holder in `src/bridge.ts`, true while a relay
+      connection is serving a phone), so the `bridge/status` handler no longer
+      hard-codes `false`. **Mobile linkage:** the phone's `bridge/status` parser
+      already consumes `relayConnected`; verify on-device that it flips true while
+      a relay session is live and false on LAN-only/idle.
 
 ## Agent adapters
 - [x] **Framework + reference** (Phase 5) — `ProcessAgentAdapter` (generic CLI
@@ -151,6 +222,84 @@ hosting** (the phone connects directly to the bridge on the same network).
       forwards it. Lets the phone show a context-usage indicator.
 - [x] **Change a thread's model mid-conversation** — `thread/setModel`
       (`ThreadStore.setModel` + `thread-context-handler.ts`).
+- [ ] **Per-model run options (reasoning effort / context / fast mode) — advertise
+      + apply, data-driven.** IMPORTANT (not urgent): this is the next big seam to
+      link with mobile. The phone should let the user pick a model's *run knobs*
+      (reasoning/thinking level, and where it applies a context-window variant or a
+      "fast mode"), but these differ **per agent AND per model**, and some are only
+      knowable at runtime (OpenCode depends on the provider/model). So the phone
+      must NOT hardcode any of it — the bridge advertises the available knobs per
+      model and translates the chosen values into each CLI's real flags.
+
+      **This is bridge-first** (a small `shared/` contract change + the real work
+      in the adapters; mobile is a generic renderer afterwards).
+
+      **Current state (what exists today):**
+        - The contract already carries a flat `effort?: string` on `TurnSendParams`
+          (+ `service?` as a per-turn model override). `agent/models` returns
+          `AgentModel[]` (id/displayName/description/version/isDefault).
+        - **Only OpenCode consumes `effort`** → maps it to `--variant <effort>`
+          (`opencode-adapter.ts`). **Claude and Codex receive `effort` but drop it**
+          (they only use model + permissionMode) — see the inline `FOR-DEV:` markers
+          in `claude-adapter.ts` / `codex-adapter.ts`.
+        - Context *usage* is already shown as a % (`claudeContextWindow`, Codex/
+          Claude usage). That is DISPLAY, distinct from *choosing* a context window.
+        - `AgentCapabilities` (shared) only declares `planMode/streaming/approvals/
+          forking/images` — there is no schema for run-option knobs.
+
+      **Per-agent reality (verify each flag against the installed CLI — versions
+      differ; follow the "Adding the next agent" capture recipe below):**
+        - **Claude Code**: reasoning = `effort` (low→max) + adaptive thinking;
+          models = `opus/sonnet/haiku` aliases + pinned ids; context window is fixed
+          by the model EXCEPT narrow beta cases (e.g. 1M context); **fast mode** is a
+          Claude-Code-specific toggle. (Confirm the exact CLI flags for effort/fast —
+          they may be config, not argv.)
+        - **Codex**: reasoning = `model_reasoning_effort` low/med/high (via
+          `-c model_reasoning_effort=...`); models via `model/list`; context fixed by
+          model; no fast mode.
+        - **OpenCode**: reasoning/variant already wired (`--variant`); everything is
+          provider/model-dependent and must be enumerated at runtime, never assumed.
+        - **Gemini / pi-agent / aider**: TBD when those adapters land.
+
+      **Proposed design (3 layers):**
+        1. **`shared/`** — extend per-model discovery so each `AgentModel` (or a
+           sibling shape returned by `agent/models`) declares a list of typed
+           **option knobs**: `{ key, kind: 'enum'|'toggle'|'select', label, values?,
+           default? }` (e.g. `enum reasoning [low,medium,high]`, `toggle fastMode`,
+           `select context [200k,1m]`). Plus fields on `turn/send` (and/or a
+           per-thread settings RPC) to carry the chosen values. Keep `effort` working
+           for back-compat, or fold it into the generic options.
+        2. **`bridge/`** — the real work: per adapter, (a) DISCOVER the knobs for a
+           given agent/model (Codex + OpenCode by real CLI enumeration; Claude by a
+           known table) and surface them via `agent/models`; (b) TRANSLATE the chosen
+           values into the right CLI flag at turn time (`-c model_reasoning_effort=…`
+           for Codex, `--variant` for OpenCode, the effort/fast flags for Claude).
+           Start by wiring the `effort` that Codex/Claude currently ignore.
+        3. **`uxnanmobile/`** — a **data-driven** renderer (reuse the existing
+           capability-gated-control pattern): show only the knobs the bridge
+           advertises for the active model, send the chosen values on `turn/send`.
+           Zero per-agent knowledge in the app → future agents work with no app
+           change. **Mobile linkage:** nothing to build on the phone until the
+           contract lands; then it's purely additive UI.
+
+      **Recommendations:**
+        - Model knobs **per (agent, model)**, not per agent — the same agent's
+          models differ (a Codex reasoning model vs a non-reasoning one; OpenCode
+          varies by provider). Returning them on `agent/models` keeps it per-model.
+        - **Do NOT build a generic context-window selector by default** — the window
+          is almost always fixed by the model. Model `context` as an option that
+          appears ONLY on models that genuinely offer a choice (Claude 1M beta).
+          Keep the existing usage-% display as-is.
+        - Make the option schema **tolerant/forward-compatible** (unknown `kind`
+          ignored by the phone) so adding a knob never breaks an older app — same
+          discipline as the tolerant `AgentModel` parser.
+        - Capture each CLI's real flags first (don't trust a flag unseen in the
+          installed CLI's `--help`/stream); some "options" are config-file, not argv.
+        - Phase it: **(1)** wire `effort` end-to-end for Codex + Claude (closes the
+          silent-drop gap with the contract that already exists); **(2)** add the
+          generic per-model option schema to `shared/` + `agent/models`; **(3)**
+          mobile renderer; **(4)** fast-mode + context-variant as opt-in knobs where
+          the CLI supports them.
 
 ### Adding the next agent (recipe — do these one by one)
 The OpenCode adapter is the template for any "one-shot per-turn CLI" agent:
