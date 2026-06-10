@@ -126,6 +126,49 @@ workspace root `node_modules` — no separate install needed.
    **+ Background Modes → Remote notifications**; ensure `GoogleService-Info.plist`
    is a member of the Runner target.
 
+### 4.5 Re-provisioning on another machine (these files are NOT in git)
+
+**For security, none of the config files are committed** — `.gitignore` excludes
+`firebase-service-account.json`, `google-services.json`, `GoogleService-Info.plist`
+and `*.p8`, so `git push` never carries them and a fresh clone on another PC won't
+have them. Push stays gated until you re-create them locally on that machine. None
+of the commands below hardcode secrets; where an identifier is needed, it's a
+placeholder with a pointer to where you obtain it.
+
+**Identifiers you'll need** (none are secret; substitute your own):
+- `<project>` — your Firebase **project id**. Get it from the Firebase Console
+  (Project settings → General) or `firebase projects:list`.
+- `<android-app-id>` / `<ios-app-id>` — the app ids. Get them from the Firebase
+  Console (Project settings → General → *Your apps*) or `firebase apps:list
+  --project <project>`.
+
+**1) Mobile client config** (`google-services.json` / `GoogleService-Info.plist`):
+
+```bash
+# discover the app ids for your project
+firebase apps:list --project <project>
+
+# Android → writes uxnanmobile/android/app/google-services.json
+firebase apps:sdkconfig ANDROID <android-app-id> --project <project> \
+  --out uxnanmobile/android/app/google-services.json
+
+# iOS → writes uxnanmobile/ios/Runner/GoogleService-Info.plist
+firebase apps:sdkconfig IOS <ios-app-id> --project <project> \
+  --out uxnanmobile/ios/Runner/GoogleService-Info.plist
+```
+
+**2) Relay service-account key** (`firebase-service-account.json`): this is a
+secret and **cannot** be re-downloaded — generate a **new** key on the new
+machine and point the relay at it:
+
+- Firebase Console → Project settings → **Service accounts → Generate new private
+  key** → save the JSON to `~/.uxnan/firebase-service-account.json`.
+- Set `UXNAN_FCM_SERVICE_ACCOUNT` to that path (see §4.3).
+- Optionally revoke old/unused keys in Google Cloud Console → IAM & Admin →
+  Service Accounts → the `firebase-adminsdk-…` account → **Keys**.
+
+(See §7 for the full rationale on what is and isn't safe to commit.)
+
 ---
 
 ## 5. Test that it works
