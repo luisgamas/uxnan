@@ -260,6 +260,15 @@ browser and multi-PC connection correctness are now DONE — see below.)
     count** otherwise (Codex), and the status-sheet context row mirrors it.
     OpenCode reports no usage. (Verified the Codex/Claude `usage` shapes against
     a real turn.)
+  - ☑ **Per-model run-option knobs (data-driven).** DONE (phase 3 of the bridge
+    seam): a generic control bar above the composer renders the knobs the bridge
+    advertises on `agent/models` (`AgentModel.options`) for the thread's model —
+    today a `reasoning` effort enum on Claude/Codex — and sends the chosen values
+    on `turn/send` via `options` (`runOptionSelections` notifier, per thread).
+    `enum` → value menu, `toggle` → filter chip, unknown kinds ignored, so new
+    knobs/agents need no app change. ☐ On-device: verify picking an effort
+    changes the agent's behavior on a live bridge. (Phase 4 — fast-mode/context —
+    has no validated CLI argv flag yet; the renderer is already forward-ready.)
   - ◑ **Approval mode** (`ApprovalModeSheet`) → now an explicit local per-thread
     setting (no sampled value); the status-sheet row is **gated by the agent's
     `approvals` capability** (`agentCapabilitiesProvider`). ☐ Read/persist via an

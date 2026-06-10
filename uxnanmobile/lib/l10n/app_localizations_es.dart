@@ -479,6 +479,9 @@ class AppLocalizationsEs extends AppLocalizations {
       'Acceso sin restricciones a internet y a cualquier archivo.';
 
   @override
+  String get runOptionAuto => 'Automático';
+
+  @override
   String get authRequiresLoginTitle => 'Agente sin sesión iniciada';
 
   @override

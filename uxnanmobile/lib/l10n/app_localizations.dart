@@ -986,6 +986,12 @@ abstract class AppLocalizations {
   /// **'Unrestricted access to the internet and any file.'**
   String get approvalFullBody;
 
+  /// Run-option value meaning 'leave the agent's default' (no explicit choice).
+  ///
+  /// In en, this message translates to:
+  /// **'Auto'**
+  String get runOptionAuto;
+
   /// Banner title shown when the active thread's agent is not logged in on the PC.
   ///
   /// In en, this message translates to:

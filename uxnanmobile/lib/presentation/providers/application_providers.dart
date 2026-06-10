@@ -218,6 +218,66 @@ final authStatusProvider = FutureProvider.family<AuthStatus?, String>(
   (ref, agentId) => ref.watch(threadManagerProvider).loadAuthStatus(agentId),
 );
 
+/// Per-thread chosen run-option values (`threadId → { optionKey → value }`),
+/// the data-driven "knobs" (reasoning effort, …) advertised per model. In
+/// memory only (resets on restart); sent on each `turn/send`.
+class RunOptionSelections extends Notifier<Map<String, Map<String, Object>>> {
+  @override
+  Map<String, Map<String, Object>> build() => const {};
+
+  /// Sets [key] to [value] for [threadId].
+  void set(String threadId, String key, Object value) {
+    final next = {
+      for (final entry in state.entries) entry.key: {...entry.value},
+    };
+    (next[threadId] ??= <String, Object>{})[key] = value;
+    state = next;
+  }
+
+  /// Clears [key] for [threadId] (revert to the agent's default).
+  void clear(String threadId, String key) {
+    if (state[threadId]?.containsKey(key) != true) return;
+    final next = {
+      for (final entry in state.entries) entry.key: {...entry.value},
+    };
+    next[threadId]?.remove(key);
+    state = next;
+  }
+}
+
+/// Holds the per-thread run-option selections.
+final runOptionSelectionsProvider =
+    NotifierProvider<RunOptionSelections, Map<String, Map<String, Object>>>(
+  RunOptionSelections.new,
+);
+
+/// The chosen run-option values for a thread (empty when none picked).
+final threadRunOptionsProvider =
+    Provider.family<Map<String, Object>, String>((ref, threadId) {
+  return ref.watch(runOptionSelectionsProvider)[threadId] ??
+      const <String, Object>{};
+});
+
+/// The run-option knobs advertised for a thread's current model (empty when the
+/// model has none, or the list isn't available yet). Resolves the thread's
+/// model id against the agent's `agent/models`, falling back to the default.
+final activeModelOptionsProvider =
+    Provider.family<List<AgentModelOption>, String>((ref, threadId) {
+  final thread = ref.watch(threadByIdProvider(threadId));
+  if (thread == null) return const [];
+  final models = ref.watch(agentModelsProvider(thread.agentId)).value;
+  if (models == null || models.isEmpty) return const [];
+  AgentModel? match;
+  for (final model in models) {
+    if (model.id == thread.model) {
+      match = model;
+      break;
+    }
+    if (match == null && model.isDefault) match = model;
+  }
+  return (match ?? models.first).options;
+});
+
 /// Map of threadId → the concrete model id the agent resolved most recently
 /// (`stream/model/resolved`), e.g. `opus` → `claude-opus-4-8`.
 final resolvedModelsProvider = StreamProvider<Map<String, String>>(

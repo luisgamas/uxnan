@@ -54,5 +54,44 @@ void main() {
       expect(AgentModel.fromAny(42), isNull);
       expect(AgentModel.fromAny(null), isNull);
     });
+
+    test('parses per-model run-option knobs (enum values)', () {
+      final model = AgentModel.fromAny({
+        'id': 'opus',
+        'displayName': 'Opus',
+        'options': [
+          {
+            'key': 'reasoning',
+            'kind': 'enum',
+            'label': 'Reasoning effort',
+            'values': [
+              {'value': 'low', 'label': 'Low'},
+              {'value': 'high', 'label': 'High'},
+            ],
+          },
+        ],
+      });
+      expect(model!.options.length, 1);
+      final opt = model.options.first;
+      expect(opt.key, 'reasoning');
+      expect(opt.kind, 'enum');
+      expect(opt.label, 'Reasoning effort');
+      expect(opt.values.map((v) => v.value).toList(), ['low', 'high']);
+      expect(opt.values.first.label, 'Low');
+    });
+
+    test('drops malformed options and defaults to no knobs', () {
+      final plain = AgentModel.fromAny({'id': 'a', 'displayName': 'A'});
+      expect(plain!.options, isEmpty);
+      final model = AgentModel.fromAny({
+        'id': 'a',
+        'options': [
+          {'kind': 'enum'}, // no key → dropped
+          {'key': 'fast', 'kind': 'toggle', 'label': 'Fast'},
+        ],
+      });
+      expect(model!.options.map((o) => o.key).toList(), ['fast']);
+      expect(model.options.first.values, isEmpty);
+    });
   });
 }

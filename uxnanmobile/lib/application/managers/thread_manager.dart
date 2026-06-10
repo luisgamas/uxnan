@@ -441,7 +441,11 @@ class ThreadManager {
   }
 
   /// Saves a user [text] message locally and sends it to the active turn.
-  Future<void> sendUserMessage(String threadId, String text) async {
+  Future<void> sendUserMessage(
+    String threadId,
+    String text, {
+    Map<String, Object>? options,
+  }) async {
     final message = Message(
       id: _uuid.v4(),
       threadId: threadId,
@@ -453,15 +457,17 @@ class ThreadManager {
       createdAt: DateTime.now(),
     );
     await _messageRepository.saveMessage(message);
-    // Bridge contract (TurnSendParams): { threadId, text, service?, effort? }.
-    // `text` is required at the top level; nesting it under `content` made the
-    // bridge reject the turn with invalid params, so no turn was created.
+    // Bridge contract (TurnSendParams): { threadId, text, service?, effort?,
+    // options? }. `text` is required at the top level; nesting it under
+    // `content` made the bridge reject the turn with invalid params, so no turn
+    // was created. `options` carries the chosen per-model run-option knobs.
     // Surface failures: if the bridge rejects the turn (e.g. `thread not
     // found`), mark the user's message FAILED instead of swallowing it.
     try {
       final res = await _sendRequest('turn/send', {
         'threadId': threadId,
         'text': text,
+        if (options != null && options.isNotEmpty) 'options': options,
       });
       if (res.error != null) {
         await _messageRepository.saveMessage(

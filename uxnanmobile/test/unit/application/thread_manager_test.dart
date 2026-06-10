@@ -45,6 +45,7 @@ void main() {
   late DriftMessageRepository messageRepo;
   late StreamController<DomainEvent> events;
   late List<String> sentMethods;
+  Map<String, dynamic>? turnSendParams;
   late ThreadManager manager;
 
   setUp(() {
@@ -53,12 +54,14 @@ void main() {
     messageRepo = DriftMessageRepository(db);
     events = StreamController<DomainEvent>.broadcast();
     sentMethods = [];
+    turnSendParams = null;
     manager = ThreadManager(
       threadRepository: threadRepo,
       messageRepository: messageRepo,
       domainEvents: events.stream,
       sendRequest: (method, [params]) async {
         sentMethods.add(method);
+        if (method == 'turn/send') turnSendParams = params;
         final result = switch (method) {
           'thread/list' => [
               {
@@ -359,5 +362,25 @@ void main() {
     );
     expect(user, isNotNull);
     expect(_text(user!), 'hola');
+  });
+
+  test('sendUserMessage forwards chosen run options on turn/send', () async {
+    await manager.selectThread('th1');
+    await _settle();
+
+    await manager.sendUserMessage('th1', 'hi', options: {'reasoning': 'high'});
+    await _settle();
+
+    expect(turnSendParams?['options'], {'reasoning': 'high'});
+  });
+
+  test('sendUserMessage omits options when none are chosen', () async {
+    await manager.selectThread('th1');
+    await _settle();
+
+    await manager.sendUserMessage('th1', 'hi', options: const {});
+    await _settle();
+
+    expect(turnSendParams?.containsKey('options'), isFalse);
   });
 }

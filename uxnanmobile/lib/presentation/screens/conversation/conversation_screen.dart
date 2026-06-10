@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uxnan/domain/entities/agent_model.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/enums/agent_id.dart';
 import 'package:uxnan/domain/enums/approval_mode.dart';
@@ -185,6 +186,9 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
         ? ref.watch(authStatusProvider(thread.agentId)).value
         : null;
     final requiresLogin = authStatus?.requiresLogin ?? false;
+    // Data-driven run-option knobs the bridge advertises for this thread's
+    // model (e.g. reasoning effort); empty when none or offline.
+    final runOptions = ref.watch(activeModelOptionsProvider(widget.threadId));
     final gitBranch = ref.watch(gitRepoStateProvider).value?.branch;
     final resolvedModel = ref.watch(resolvedModelProvider(widget.threadId));
     final usage = ref.watch(contextUsageForProvider(widget.threadId));
@@ -281,6 +285,10 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
             _LoginRequiredBanner(
               loginInProgress: authStatus!.loginInProgress,
             ),
+          // Per-model run-option knobs (reasoning effort, …) the bridge
+          // advertises for the active model — a generic, data-driven control.
+          if (connectedHere && runOptions.isNotEmpty)
+            _RunOptionsBar(threadId: widget.threadId, options: runOptions),
           // Access/approval mode lives directly above the composer (its own
           // affordance, alert-coloured on full access), shown only for agents
           // that gate tools.
@@ -294,9 +302,11 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
             showAttach: thread != null &&
                 ref.watch(agentCapabilitiesProvider(thread.agentId)).images,
             onModelTap: thread != null ? () => _pickModel(thread) : null,
-            onSend: (text) => ref
-                .read(threadManagerProvider)
-                .sendUserMessage(widget.threadId, text),
+            onSend: (text) => ref.read(threadManagerProvider).sendUserMessage(
+                  widget.threadId,
+                  text,
+                  options: ref.read(threadRunOptionsProvider(widget.threadId)),
+                ),
           ),
         ],
       ),
@@ -521,6 +531,128 @@ class _LoginRequiredBanner extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A data-driven row of run-option "knobs" the bridge advertises for the active
+/// model (reasoning effort, etc.). Generic: enum knobs render as a value menu,
+/// toggles as a filter chip; unknown kinds are ignored (forward-compatible), so
+/// new knobs need no app change. Choices persist per thread and ride on
+/// `turn/send`.
+class _RunOptionsBar extends ConsumerWidget {
+  const _RunOptionsBar({required this.threadId, required this.options});
+
+  final String threadId;
+  final List<AgentModelOption> options;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final selections = ref.watch(threadRunOptionsProvider(threadId));
+    final notifier = ref.read(runOptionSelectionsProvider.notifier);
+    final visible =
+        options.where((o) => o.kind == 'enum' || o.kind == 'toggle').toList();
+    if (visible.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        UxnanSpacing.lg,
+        UxnanSpacing.xs,
+        UxnanSpacing.lg,
+        0,
+      ),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Wrap(
+          spacing: UxnanSpacing.xs,
+          runSpacing: UxnanSpacing.xs,
+          children: [
+            for (final option in visible)
+              if (option.kind == 'toggle')
+                FilterChip(
+                  label: Text(option.label),
+                  selected: selections[option.key] == true,
+                  visualDensity: VisualDensity.compact,
+                  onSelected: (value) =>
+                      notifier.set(threadId, option.key, value),
+                )
+              else
+                _EnumOptionChip(
+                  threadId: threadId,
+                  option: option,
+                  selected: selections[option.key],
+                ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// An enum run-option knob: a chip showing `label: value` that opens a menu of
+/// the advertised values plus an "Auto" entry (clears the choice → default).
+class _EnumOptionChip extends ConsumerWidget {
+  const _EnumOptionChip({
+    required this.threadId,
+    required this.option,
+    required this.selected,
+  });
+
+  final String threadId;
+  final AgentModelOption option;
+  final Object? selected;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final notifier = ref.read(runOptionSelectionsProvider.notifier);
+
+    var currentLabel = l10n.runOptionAuto;
+    for (final value in option.values) {
+      if (value.value == selected) {
+        currentLabel = value.label;
+        break;
+      }
+    }
+
+    return PopupMenuButton<String?>(
+      tooltip: option.label,
+      onSelected: (value) => value == null
+          ? notifier.clear(threadId, option.key)
+          : notifier.set(threadId, option.key, value),
+      itemBuilder: (context) => [
+        PopupMenuItem<String?>(child: Text(l10n.runOptionAuto)),
+        for (final value in option.values)
+          PopupMenuItem<String?>(value: value.value, child: Text(value.label)),
+      ],
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: UxnanSpacing.sm,
+          vertical: 6,
+        ),
+        decoration: BoxDecoration(
+          color: colors.surfaceContainerHigh,
+          borderRadius: const BorderRadius.all(UxnanRadius.full),
+          border: Border.all(color: colors.outlineVariant),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.tune_rounded, size: 14, color: colors.onSurfaceVariant),
+            const SizedBox(width: UxnanSpacing.xs),
+            Text(
+              '${option.label}: $currentLabel',
+              style: textTheme.labelMedium,
+            ),
+            Icon(
+              Icons.arrow_drop_down_rounded,
+              size: 16,
+              color: colors.onSurfaceVariant,
+            ),
+          ],
         ),
       ),
     );

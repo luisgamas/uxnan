@@ -159,6 +159,7 @@
   "approvalAutoBody": "Solicitar aprobación solo para acciones detectadas como potencialmente riesgosas.",
   "approvalFullTitle": "Acceso completo",
   "approvalFullBody": "Acceso sin restricciones a internet y a cualquier archivo.",
+  "runOptionAuto": "Automático",
 
   "authRequiresLoginTitle": "Agente sin sesión iniciada",
   "authRequiresLoginBody": "Inicia sesión en la CLI de este agente en tu PC para empezar a enviar mensajes.",

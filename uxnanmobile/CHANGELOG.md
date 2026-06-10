@@ -8,6 +8,16 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Data-driven run-option knobs.** The conversation screen now renders the
+  per-model run options the bridge advertises on `agent/models` (today a
+  **Reasoning effort** enum on Claude/Codex models) as a generic control bar
+  above the composer, and sends the chosen values on `turn/send` via `options`
+  (persisted per thread, in memory). The renderer is fully data-driven —
+  `AgentModelOption`/`AgentModelOptionValue` entities, an `activeModelOptions`
+  provider that resolves the thread's model, and a `runOptionSelections`
+  notifier — so a new knob (or a new agent) needs **no app change**; `enum`
+  renders as a value menu, `toggle` as a filter chip, and unknown kinds are
+  ignored. Phase 3 of the per-model run-options seam.
 - **Relay-vs-direct transport indicator.** The connected PC's card now shows how
   the live channel runs — **Relay** or **Direct** (LAN/Tailscale) — read from
   the bridge's `bridge/status.relayConnected`, which the app previously ignored

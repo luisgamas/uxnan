@@ -478,6 +478,9 @@ class AppLocalizationsEn extends AppLocalizations {
       'Unrestricted access to the internet and any file.';
 
   @override
+  String get runOptionAuto => 'Auto';
+
+  @override
   String get authRequiresLoginTitle => 'Agent not signed in';
 
   @override
