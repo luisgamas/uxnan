@@ -115,6 +115,24 @@ shared/CHANGELOG.md
 shared/README.md
 ```
 
+#### `docs/` per component (required)
+
+Every component maintains a `docs/` directory with task-focused topic files,
+linked from a `## Docs` section in its `README.md` (see `bridge/docs/` and
+`uxnandesktop/docs/` for the pattern). At minimum, each component's `docs/`
+covers:
+
+- **How to run it in development / debug** (and how to iterate on UI for
+  GUI apps — e.g. the desktop's frontend-only browser flow).
+- **How to build it for release / production** (and packaging targets, if any).
+- **How to test and verify it** (the lint/format/test gates from "After
+  implementing").
+- Anything component-specific a contributor needs (configuration, connectivity,
+  installation, how agents are driven, etc.).
+
+Keep these docs current as part of the same change that alters behavior, build,
+or configuration (same rule as CHANGELOG/README below).
+
 ### 3. Understand the scope of the change
 
 - Does this change affect a single component or multiple?
