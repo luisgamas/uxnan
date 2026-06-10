@@ -104,7 +104,9 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   const browse = new BrowseService(
     config.browseRoots.length > 0 ? config.browseRoots : config.workspaceRoots,
   );
-  const pushService = new PushService({ relayUrl: config.relayUrl, config, logger });
+  const pushService = new PushService({ relayUrl: config.relayUrl, config, logger, state });
+  // Restore persisted push registrations so background push survives a restart.
+  await pushService.load();
   const agentManager = new AgentManager({
     store: threadStore,
     notify: (message) => sessionRegistry.broadcast(message),

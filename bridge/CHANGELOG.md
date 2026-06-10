@@ -6,6 +6,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 
 ### Added
+- **Push registrations persist + multi-session** (`src/push/push-service.ts`,
+  `src/bridge.ts`): registrations are now keyed by relay `sessionId` and stored
+  to `~/.uxnan/push-state.json` (atomic write), restored at startup via
+  `PushService.load()`. Background push therefore survives a bridge restart
+  WITHOUT the phone re-registering (the relay still holds its sessionId→token
+  map; the bridge only needs `sessionId` + `notificationSecret` to notify). A
+  turn-end now pushes to **every** registered phone, so multiple paired devices
+  each receive background push. `register`/`updatePreferences`/`unregister` act
+  on the active session.
 - **`bridge/removeTrustedDevice` implemented** (`src/handlers/bridge-control-handler.ts`):
   revokes a phone's trust (`trustStore.remove`) and drops any live session/sink
   (`sessions.remove` + `sessionRegistry.unregister`) so a removed device is both

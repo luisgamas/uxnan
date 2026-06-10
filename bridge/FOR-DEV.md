@@ -117,8 +117,26 @@ hosting** (the phone connects directly to the bridge on the same network).
 - [x] **Notifications** — `src/handlers/notifications-handler.ts` +
       `src/push/push-service.ts`. `notifications/register|update|unregister` wired;
       registers the token with the relay and pushes on turn-end (gated by
-      `config.push*` + Firebase creds on the relay). Follow-ups: persist the
-      registration to `~/.uxnan/push-state.json`; support multiple sessions.
+      `config.push*` + Firebase creds on the relay). **Persistence + multi-session
+      DONE:** registrations are keyed by relay `sessionId` and persisted to
+      `~/.uxnan/push-state.json` (atomic), loaded at startup via
+      `PushService.load()`, so background push survives a bridge restart WITHOUT
+      the phone re-registering (the relay keeps its own sessionId→token map; the
+      bridge only needs `sessionId` + `notificationSecret` to call `/push/notify`).
+      A turn-end pushes to **every** registered phone, so multiple paired devices
+      each get background push. Remaining follow-ups:
+        - `register`/`updatePreferences`/`unregister` act on the *active* session
+          (exact with `maxConcurrentSessions: 1`); to target a specific phone when
+          several sessions are concurrent, thread per-request session identity
+          through the router to the handler. **FOR-DEV.**
+        - prune registrations for devices removed via `bridge/removeTrustedDevice`
+          (today they linger until `unregister`/overwrite) — wire trust-removal to
+          drop the matching push registration.
+        - **Mobile linkage:** no uxnanmobile change needed — the phone already
+          calls `notifications/register` on connect. To VALIDATE end-to-end needs
+          the Firebase/APNs creds (FOR-HUMAN) + a real device; confirm a turn-end
+          push arrives while backgrounded, and still arrives after restarting the
+          bridge (without reopening the app).
 - [ ] **(OPT-IN — explicit developer request ONLY) Direct FCM from the bridge,
       push without the relay.** Today background push **requires a running relay**:
       the bridge holds no FCM credentials and `POST`s `/push/notify` to the relay,
