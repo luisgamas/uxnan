@@ -503,10 +503,9 @@ class _LoginRequiredBanner extends ConsumerWidget {
             UxnanSpacing.sm,
             UxnanSpacing.sm,
           ),
-          // Icon on the left; the right section stacks title → body → action,
-          // all left-aligned (M3 alert-with-action, vertical layout).
+          // Icon on the left (vertically centered — Row's default); the right
+          // section stacks title → body → action, all left-aligned.
           child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               if (loginInProgress)
                 SizedBox(
