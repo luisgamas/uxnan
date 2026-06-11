@@ -5,6 +5,32 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — Settings screen & terminal profiles
+- **Settings screen** (`Settings.svelte`, opened from a gear in the title bar):
+  a dialog with a section nav — **General** (theme: System/Light/Dark, applied
+  live and persisted) and **Terminal**. New `app.settingsOpen` state.
+- **Configurable terminal profiles** (`TerminalProfile { command, args }` in
+  `AppSettings`): each new terminal is spawned from a profile, so PowerShell,
+  Command Prompt and WSL (Windows) — or any shell — are first-class. The backend
+  seeds a single **empty starter profile** (placeholders teach configuration) and
+  replaces an untouched legacy auto-seed; a blank command falls back to the
+  platform default shell. `pty_create` now accepts `args` (`PtySpec.args`).
+- **OS-grouped profile templates** (`terminalTemplates.ts`): Settings → Terminal
+  → **"Add profile ▾"** offers presets grouped by Windows / macOS / Linux (plus a
+  blank profile); a per-profile editor (name, command, args) and a default-profile
+  picker.
+- **Profile-aware new terminals**: the title-strip **+ Terminal** opens the
+  default profile and its ▾ caret picks any profile; region "+", splits, the
+  context menu and project/worktree "open terminal" all use the default profile.
+  The chosen shell/args **persist in the saved layout**.
+
+### Changed
+- **Terminal follows the app theme**: xterm colors and the terminal-area
+  background switch with light/dark (`app.terminalPalette()`) and re-theme live —
+  fixing unreadable text on a forced-dark surface in light mode.
+- **Terminal content padding**: panes get inner padding (the FitAddon accounts
+  for it) so output no longer touches the edges.
+
 ### Added — Phase 2 (git & worktrees) — left-panel UX rework
 - **shadcn-svelte component library**: real components from the official registry
   under `src/lib/components/ui/` (button, input, dialog, dropdown-menu,

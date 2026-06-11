@@ -32,13 +32,49 @@ models live in:
 |---|---|---|
 | **0** | Base infrastructure (3-panel shell, IPC, persistence) | ✅ **DONE** |
 | **1** | Terminal core (PTY, tabs, splits) | ✅ **DONE** — terminals, region splits, copy/paste, file-drop, layout persistence, kill-on-exit (reorder/MRU = Tier 2; per-worktree assoc = Phase 2) |
-| **2** | Git & worktrees | ◑ **IN PROGRESS** — reworked single-panel UI (search + collapsible Projects/Worktrees, cards, new-worktree dialog with base-branch picker), worktree create (base + `--no-track`) / list / safe remove. Remaining: active-worktree terminal association, agent auto-launch, status/dirty badges, in-app directory picker |
+| **2** | Git & worktrees | ◑ **IN PROGRESS** — reworked single-panel UI (search + collapsible Projects/Worktrees, cards, new-worktree dialog with base-branch picker), worktree create (base + `--no-track`) / list / safe remove. Remaining: active-worktree terminal association, agent auto-launch (needs the agents registry), status/dirty badges, in-app directory picker |
 | 3 | Git status & diffs | ☐ not started |
 | 4 | Agent monitoring (hooks, notifications) | ☐ not started |
 | 5 | Polish & UX (hunk staging, side-by-side, virtual scroll) | ☐ not started |
 | 6 | Bridge integration (mobile pairing) | ☐ not started |
+| **S** | Settings & terminal profiles (cross-cutting) | ◑ **IN PROGRESS** — Settings screen (theme + terminal profiles with OS-grouped templates) done; agents registry + agent launch pending (see below) |
 
 Estimate (spec §2): 11–17 weeks for Phases 0–5 solo; +2–3 wk for Phase 6.
+
+---
+
+## Settings, profiles & agents (cross-cutting track)
+
+A Settings screen (`Settings.svelte`, gear in the title bar) is the home for
+user configuration. Built incrementally alongside the phases.
+
+**Done:**
+- [x] **Settings foundation**: Dialog with a section nav; **General** (theme:
+      System/Light/Dark, applied live + persisted).
+- [x] **Terminal profiles**: `TerminalProfile { command, args }` in `AppSettings`,
+      seeded with one empty starter (placeholders teach configuration; an
+      untouched legacy auto-seed is replaced). Per-profile editor + default
+      profile; **OS-grouped templates** (`terminalTemplates.ts`) to add presets
+      (Windows/macOS/Linux). `pty_create` takes `args`; new terminals spawn from
+      the chosen/default profile and the shell/args persist in the layout.
+- [x] **Terminal theming**: xterm + terminal-area background follow light/dark
+      (`app.terminalPalette()`), re-themed live; terminal content padding.
+
+**Pending — agents (new, in Settings):**
+- [ ] **Agents registry in Settings** — define agents (name, command, args,
+      env), pick a default agent. Persist in `AppSettings` (mirror the bridge's
+      agent concept). **FOR-DEV.**
+- [ ] **Agent launch** — auto-launch the worktree's agent on create (inject the
+      command into a new PTY, spec `02b §5.1`), a manual **"Launch agent"** action,
+      and a **per-worktree agent** selection. Closes the Tier-2 **T2.2**
+      auto-launch item; **depends on the agents registry**. **FOR-DEV.**
+
+**Pending — Settings polish:**
+- [ ] **Custom / import-export themes** — beyond the 3 built-ins, let users define
+      custom color sets (component tokens) and **import/export** them as JSON, for
+      deeper personalization. **FOR-DEV.**
+- [ ] **In-app directory picker** (shared with Phase 2; see below) — replace the
+      OS-native folder dialog. **FOR-DEV.**
 
 ---
 
