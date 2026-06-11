@@ -9,6 +9,12 @@ import { spawn } from 'node:child_process';
 /** Minimal child-process surface the adapters rely on (so it can be faked in tests). */
 export interface SpawnedProcess {
   stdout: NodeJS.ReadableStream;
+  /**
+   * Optional stderr stream. Most adapters read JSON from stdout, but some CLI
+   * sub-commands (e.g. `pi --list-models`) print their human-facing table to
+   * stderr, so adapters that need it read from here too.
+   */
+  stderr?: NodeJS.ReadableStream;
   on(event: 'close', listener: (code: number | null) => void): unknown;
   on(event: 'error', listener: (err: Error) => void): unknown;
   kill(signal?: NodeJS.Signals): unknown;

@@ -38,6 +38,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   renders whatever is advertised, so new levels need no app change).
 
 ### Fixed
+- **pi model picker no longer empty** (`src/adapters/pi-adapter.ts`, `src/adapters/spawn.ts`):
+  `pi --list-models` prints its table to **stderr**, but `listModels()` only read
+  stdout, so `agent/models` returned `[]` and the phone's model selector showed no
+  models when pi was the agent. The adapter now accumulates **both** stdout and
+  stderr before parsing (stdin/stdout split verified against `pi` 0.79.1: `-p --mode
+  json` events stay on stdout, so turn streaming is unaffected). `SpawnedProcess`
+  gains an optional `stderr` stream.
 - **Reasoning effort now reaches Claude Code and Codex** (`src/adapters/claude-adapter.ts`,
   `src/adapters/codex-adapter.ts`): `turn/send`'s `effort` was carried by the
   contract but silently dropped by both adapters (only OpenCode consumed it via

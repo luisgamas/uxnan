@@ -369,6 +369,10 @@ export class PiAdapter extends BaseAgentAdapter {
    * List the models pi reports via `pi --list-models` (account-aware: only
    * providers the user has configured appear). The output is a table, parsed by
    * {@link parsePiModelList}. Resolves to `[]` if the spawn fails or times out.
+   *
+   * Note: pi prints the `--list-models` table to STDERR, not stdout (verified
+   * against pi 0.79.1), so we accumulate BOTH streams. Without this the phone's
+   * model picker shows no models for the pi agent.
    */
   listModels(): Promise<AgentModel[]> {
     return new Promise((resolve) => {
@@ -395,10 +399,13 @@ export class PiAdapter extends BaseAgentAdapter {
       }
 
       const timer = setTimeout(() => finish([]), MODEL_LIST_TIMEOUT_MS);
-      const reader = createInterface({ input: child.stdout });
-      reader.on('line', (line) => {
-        output += `${line}\n`;
-      });
+      // pi emits the table on stderr; read stdout too so we stay correct if a
+      // future version moves it. Parse the combined output on close.
+      const collect = (chunk: unknown): void => {
+        output += String(chunk);
+      };
+      child.stdout.on('data', collect);
+      child.stderr?.on('data', collect);
       child.on('error', () => finish([]));
       child.on('close', () => finish(parsePiModelList(output, this.#defaultModel)));
     });

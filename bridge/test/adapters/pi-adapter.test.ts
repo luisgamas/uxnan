@@ -15,6 +15,8 @@ import type { AgentStreamEvent } from '@uxnan/shared';
 interface FakeSpawn {
   args: string[];
   feed(lines: string[]): void;
+  /** Write lines to STDERR (where `pi --list-models` prints its table), then close. */
+  feedStderr(lines: string[]): void;
 }
 
 function fakeSpawner(): {
@@ -24,10 +26,12 @@ function fakeSpawner(): {
   const spawns: FakeSpawn[] = [];
   const spawnFn = (_command: string, args: string[]): SpawnedProcess => {
     const stdout = new PassThrough();
+    const stderr = new PassThrough();
     const emitter = new EventEmitter();
     stdout.on('end', () => emitter.emit('close', 0));
     const proc: SpawnedProcess = {
       stdout,
+      stderr,
       on: (event: string, listener: (...a: unknown[]) => void) => emitter.on(event, listener),
       kill: () => emitter.emit('close', 0),
     } as SpawnedProcess;
@@ -35,6 +39,11 @@ function fakeSpawner(): {
       args,
       feed: (lines) => {
         for (const line of lines) stdout.write(`${line}\n`);
+        stdout.end();
+      },
+      feedStderr: (lines) => {
+        for (const line of lines) stderr.write(`${line}\n`);
+        stderr.end();
         stdout.end();
       },
     });
@@ -251,4 +260,23 @@ test('parsePiModelList parses the --list-models table', () => {
     models[0]?.options?.[0]?.values?.map((v) => v.value),
     ['off', 'minimal', 'low', 'medium', 'high', 'xhigh'],
   );
+});
+
+test('PiAdapter.listModels parses the table pi prints to stderr', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new PiAdapter({ binaryPath: 'pi', spawnFn, defaultModel: 'google/gemini-2.5-pro' });
+  const promise = adapter.listModels();
+  // pi prints the --list-models table to STDERR, not stdout.
+  last().feedStderr([
+    'provider      model                    context  max-out  thinking  images',
+    'google        gemini-2.5-pro           1.0M     65.5K    yes       yes',
+    'deepseek      deepseek-v4-pro          1M       384K     yes       no',
+  ]);
+  const models = await promise;
+  assert.deepEqual(
+    models.map((m) => m.id),
+    ['google/gemini-2.5-pro', 'deepseek/deepseek-v4-pro'],
+  );
+  assert.equal(last().args.includes('--list-models'), true);
+  assert.equal(models[0]?.isDefault, true);
 });
