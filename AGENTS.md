@@ -52,9 +52,22 @@ uxnan/
 
 ### 0. Verify required skills
 
-This project requires four Flutter skills installed **globally** on the machine. They encode the exact architectural style used by `uxnanmobile/`. They must be available regardless of which agent is working (OpenCode, Claude Code, Codex, Pi, or any other).
+This project relies on skills installed **globally** on the machine. They encode
+the exact architectural and UI style of each app and must be available regardless
+of which agent is working (OpenCode, Claude Code, Codex, Pi, or any other). The
+skills are **scoped per monorepo** — use each set **only** in its target
+component:
 
-**Required skills (canonical source: `https://github.com/luisgamas/skills`):**
+- **Flutter skills → use exclusively with `uxnanmobile/`.**
+- **Svelte/desktop skills → use exclusively with `uxnandesktop/`.**
+
+Do not invoke a Flutter skill while working on the desktop app, or a Svelte skill
+while working on the mobile app.
+
+#### Flutter skills — `uxnanmobile/` only
+
+The four Flutter skills encode the exact architectural style used by
+`uxnanmobile/`. **Canonical source: `https://github.com/luisgamas/skills`.**
 
 | Skill | Purpose |
 |---|---|
@@ -63,15 +76,10 @@ This project requires four Flutter skills installed **globally** on the machine.
 | `flutter-riverpod-expert` | Providers, notifiers, auth/router wiring |
 | `flutter-m3-uiux` | Theme, design tokens, responsive UI |
 
-**Verification:** Before doing any Flutter work, check that all four skills are present. Look for a `SKILL.md` file inside any of these global skill directories:
-
-- `~/.agents/skills/<name>/SKILL.md`
-- `~/.config/opencode/skills/<name>/SKILL.md`
-- `~/.claude/skills/<name>/SKILL.md`
-
-If the skill exists in **any** of these locations, it is considered installed.
-
-**Installation:** If any skill is missing, install it globally with the exact commands from the canonical source. The `-g` flag installs globally and the CLI automatically creates symlinks for every agent detected on the machine — no manual symlink steps are needed:
+**Installation:** If any skill is missing, install it globally with the exact
+commands from the canonical source. The `-g` flag installs globally and the CLI
+automatically creates symlinks for every agent detected on the machine — no
+manual symlink steps are needed:
 
 ```bash
 npx skills add https://github.com/luisgamas/skills/tree/main/flutter-init-project -g -y
@@ -80,9 +88,42 @@ npx skills add https://github.com/luisgamas/skills/tree/main/flutter-riverpod-ex
 npx skills add https://github.com/luisgamas/skills/tree/main/flutter-m3-uiux -g -y
 ```
 
-After installation, **inform the user they must restart their agent** for the new skills to be detected. Do not proceed with Flutter work until the skills are available.
+#### Svelte / desktop skills — `uxnandesktop/` only
 
-If `npx skills` is not available on the machine, stop and instruct the human to install the four skills manually using the commands above, then restart their agent.
+These three skills encode the Svelte 5 + shadcn-svelte style used by the desktop
+ADE frontend. Use them when building or refactoring `uxnandesktop/` UI.
+
+| Skill | Purpose |
+|---|---|
+| `shadcn-svelte` | Add/update/compose shadcn-svelte components and design-system presets |
+| `svelte-code-writer` | Svelte 5 docs lookup + code analysis when writing/editing `.svelte` / `.svelte.ts` |
+| `svelte-core-bestpractices` | Modern Svelte 5 reactivity, events, styling, library integration |
+
+**Installation:** If any skill is missing, install it globally with the exact
+commands below. `shadcn-svelte` comes from the huntabyte registry; the two
+`svelte-*` skills both ship from the official `sveltejs/ai-tools` bundle:
+
+```bash
+npx skills add https://github.com/huntabyte/shadcn-svelte --skill shadcn-svelte
+npx skills add https://github.com/sveltejs/ai-tools
+```
+
+#### Verification (both sets)
+
+Before doing any work in a component, check that its skills are present. Look for
+a `SKILL.md` file inside any of these global skill directories:
+
+- `~/.agents/skills/<name>/SKILL.md`
+- `~/.config/opencode/skills/<name>/SKILL.md`
+- `~/.claude/skills/<name>/SKILL.md`
+
+If the skill exists in **any** of these locations, it is considered installed.
+
+After installation, **inform the user they must restart their agent** for the new
+skills to be detected. Do not proceed with work in a component until its skills
+are available. If `npx skills` is not available on the machine, stop and instruct
+the human to install the skills manually using the commands above, then restart
+their agent.
 
 ### 1. Analyze the architecture
 
