@@ -50,7 +50,17 @@ pub fn run() {
             commands::repo_list,
             commands::worktree_create,
             commands::worktree_list,
+            commands::set_terminal_layout,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            // Kill every live PTY child when the app exits, so no shell/agent
+            // is left running in the background.
+            if let tauri::RunEvent::ExitRequested { .. } = event {
+                if let Some(state) = app_handle.try_state::<AppState>() {
+                    state.pty.close_all();
+                }
+            }
+        });
 }

@@ -42,6 +42,18 @@ pub fn ping() -> &'static str {
     "pong"
 }
 
+/// Persist the frontend-owned terminal region/tab layout (opaque JSON). The
+/// frontend debounces these writes; restored on next startup via `get_app_state`.
+#[tauri::command]
+pub async fn set_terminal_layout(
+    state: State<'_, AppState>,
+    layout: serde_json::Value,
+) -> Result<(), CommandError> {
+    let mut data = state.data.write().await;
+    data.terminal_layout = Some(layout);
+    state.persistence.save(&data).map_err(CommandError::from)
+}
+
 // --- Terminals (PTY) -------------------------------------------------------
 //
 // The frontend chooses `id` (so it can subscribe to `pty:output:{id}` before

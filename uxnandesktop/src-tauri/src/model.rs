@@ -27,6 +27,10 @@ pub struct AppData {
     /// Last-known agent states (TTL-pruned in a later phase).
     #[serde(default)]
     pub agent_cache: Vec<AgentStateEntry>,
+    /// Opaque, frontend-owned serialization of the terminal region/tab layout
+    /// (restored on startup; the backend never interprets it).
+    #[serde(default)]
+    pub terminal_layout: Option<serde_json::Value>,
 }
 
 impl Default for AppData {
@@ -36,6 +40,7 @@ impl Default for AppData {
             repos: Vec::new(),
             settings: AppSettings::default(),
             agent_cache: Vec::new(),
+            terminal_layout: None,
         }
     }
 }

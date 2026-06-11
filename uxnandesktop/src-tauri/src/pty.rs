@@ -159,6 +159,14 @@ impl PtyManager {
         Ok(())
     }
 
+    /// Kill every live session. Called on app exit so no shell/agent is leaked.
+    pub fn close_all(&self) {
+        let mut sessions = self.sessions.lock().unwrap();
+        for (_id, mut session) in sessions.drain() {
+            let _ = session.child.kill();
+        }
+    }
+
     /// Number of live sessions (used by tests).
     #[cfg(test)]
     fn len(&self) -> usize {
