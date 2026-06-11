@@ -22,6 +22,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 - **Persistence** now stores every workspace's layout + the active key
   (`SavedTerminalLayout`); restored on startup.
 
+### Changed — directory picker: manual path entry
+- The in-app directory picker's current-path display is now an editable input:
+  type or paste any path and press Enter to jump there (git repos in the listing
+  are still flagged). Complements click-to-navigate.
+
 ### Added — Phase 2: in-app directory picker
 - **In-app project picker** (`DirectoryPicker.svelte`) replaces the OS-native
   folder dialog: a shadcn `Dialog` that browses sub-folders (up/down), flags git

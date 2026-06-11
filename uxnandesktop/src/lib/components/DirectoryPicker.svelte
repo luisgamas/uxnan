@@ -1,6 +1,7 @@
 <script lang="ts">
   import * as Dialog from "$lib/components/ui/dialog";
   import { Button } from "$lib/components/ui/button";
+  import { Input } from "$lib/components/ui/input";
   import { Badge } from "$lib/components/ui/badge";
   import { browseDirs } from "$lib/api";
   import { projects } from "$lib/state/projects.svelte";
@@ -12,6 +13,7 @@
   let { open = $bindable(false) }: { open?: boolean } = $props();
 
   let listing = $state<DirListing | null>(null);
+  let pathInput = $state("");
   let loading = $state(false);
   let error = $state<string | null>(null);
   let busy = $state(false);
@@ -26,6 +28,7 @@
     error = null;
     try {
       listing = await browseDirs(path);
+      pathInput = listing.path;
     } catch (e) {
       error = msg(e);
     } finally {
@@ -75,12 +78,18 @@
       >
         <CornerLeftUpIcon class="size-3.5" />
       </Button>
-      <code
-        class="min-w-0 flex-1 truncate rounded bg-muted px-2 py-1 text-xs"
-        title={listing?.path}
-      >
-        {listing?.path ?? "…"}
-      </code>
+      <Input
+        class="h-7 flex-1 font-mono text-xs"
+        placeholder="Type or paste a path, then Enter…"
+        bind:value={pathInput}
+        spellcheck={false}
+        onkeydown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            void go(pathInput.trim() || undefined);
+          }
+        }}
+      />
     </div>
 
     <!-- Sub-folders -->
