@@ -7,6 +7,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import type {
   AppData,
   AppSettings,
+  BranchList,
   RepoData,
   SavedTermNode,
   WorktreeEntry,
@@ -27,13 +28,17 @@ export function ping(): Promise<string> {
   return invoke<string>("ping");
 }
 
-/** Persist the terminal region/tab layout (restored on next startup). */
-export function setTerminalLayout(layout: SavedTermNode): Promise<void> {
+/** Persist the terminal region/tab layout (restored on next startup). `null`
+ *  records an empty area (no terminals open). */
+export function setTerminalLayout(layout: SavedTermNode | null): Promise<void> {
   return invoke("set_terminal_layout", { layout });
 }
 
 // --- Repositories & worktrees ----------------------------------------------
 
+// FOR-DEV: replace this OS-native folder dialog with an in-app shadcn-svelte
+// directory picker (Dialog + tree) backed by a Rust `browse_dirs` command, so
+// "Add project" stays inside the ADE's own UI. See uxnandesktop/FOR-DEV.md.
 /** Open a native folder picker; resolves to the chosen path or null. */
 export async function pickDirectory(title?: string): Promise<string | null> {
   const result = await open({ directory: true, multiple: false, title });
@@ -55,12 +60,34 @@ export function repoList(): Promise<RepoData[]> {
   return invoke<RepoData[]>("repo_list");
 }
 
-/** Create a worktree on a new branch in a repo. */
+/** List a repo's local branches + the resolved default base. */
+export function branchList(repoId: string): Promise<BranchList> {
+  return invoke<BranchList>("branch_list", { repoId });
+}
+
+/** Create a worktree on a new branch in a repo. `base` is the ref to branch
+ *  from; omit it to let the backend resolve the repo's default base. */
 export function worktreeCreate(
   repoId: string,
   branch: string,
+  base?: string,
 ): Promise<WorktreeEntry> {
-  return invoke<WorktreeEntry>("worktree_create", { repoId, branch });
+  return invoke<WorktreeEntry>("worktree_create", {
+    repoId,
+    branch,
+    base: base ?? null,
+  });
+}
+
+/** Remove a worktree. Without `force`, the backend refuses when the worktree has
+ *  uncommitted changes (surface the error and offer a forced retry). */
+export function worktreeRemove(
+  repoId: string,
+  path: string,
+  branch: string | null,
+  force: boolean,
+): Promise<void> {
+  return invoke("worktree_remove", { repoId, path, branch: branch ?? null, force });
 }
 
 /** List a repo's worktrees (ADE- and agent-created). */

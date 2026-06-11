@@ -1,255 +1,191 @@
 <script lang="ts">
   import { app } from "$lib/state/app.svelte";
-  import { terminals } from "$lib/state/terminals.svelte";
-  import {
-    pickDirectory,
-    repoAdd,
-    repoRemove,
-    worktreeCreate,
-    worktreeList,
-  } from "$lib/api";
-  import type { WorktreeEntry } from "$lib/types";
+  import { projects } from "$lib/state/projects.svelte";
+  import { Input } from "$lib/components/ui/input";
+  import { Button } from "$lib/components/ui/button";
+  import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
+  import ProjectCard from "./ProjectCard.svelte";
+  import WorktreeCard from "./WorktreeCard.svelte";
+  import { cn } from "$lib/utils";
+  import SearchIcon from "@lucide/svelte/icons/search";
+  import FolderPlusIcon from "@lucide/svelte/icons/folder-plus";
+  import ArrowUpDownIcon from "@lucide/svelte/icons/arrow-up-down";
+  import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
+  import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
 
-  type Tab = "projects" | "worktrees";
-  let tab = $state<Tab>("projects");
+  type Sort = "manual" | "name-asc" | "name-desc";
+  let sort = $state<Sort>("manual");
 
-  // Worktrees per repo id, loaded on demand.
-  let worktreesByRepo = $state<Record<string, WorktreeEntry[]>>({});
-  let selectedRepoId = $state<string | null>(null);
-  let newBranch = $state("");
-  let busy = $state(false);
-  let error = $state<string | null>(null);
-
-  const msg = (e: unknown) =>
-    e && typeof e === "object" && "message" in e
-      ? String((e as { message: unknown }).message)
-      : String(e);
-
-  const baseName = (p: string) => p.replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? p;
-
-  async function loadWorktrees(repoId: string) {
-    try {
-      worktreesByRepo = {
-        ...worktreesByRepo,
-        [repoId]: await worktreeList(repoId),
-      };
-    } catch (e) {
-      error = msg(e);
-    }
-  }
-
-  async function addProject() {
-    error = null;
-    try {
-      const path = await pickDirectory("Select a git repository");
-      if (!path) return;
-      const repo = await repoAdd(path);
-      if (!app.repos.find((r) => r.id === repo.id)) app.repos.push(repo);
-      selectedRepoId ??= repo.id;
-      await loadWorktrees(repo.id);
-    } catch (e) {
-      error = msg(e);
-    }
-  }
-
-  async function removeProject(id: string) {
-    error = null;
-    try {
-      await repoRemove(id);
-      app.repos = app.repos.filter((r) => r.id !== id);
-      const { [id]: _removed, ...rest } = worktreesByRepo;
-      worktreesByRepo = rest;
-      if (selectedRepoId === id) selectedRepoId = app.repos[0]?.id ?? null;
-    } catch (e) {
-      error = msg(e);
-    }
-  }
-
-  async function createWorktree() {
-    const repoId = selectedRepoId ?? app.repos[0]?.id;
-    if (!repoId || !newBranch.trim()) return;
-    error = null;
-    busy = true;
-    try {
-      await worktreeCreate(repoId, newBranch.trim());
-      newBranch = "";
-      await loadWorktrees(repoId);
-    } catch (e) {
-      error = msg(e);
-    } finally {
-      busy = false;
-    }
-  }
-
-  function openTerminalAt(path: string) {
-    terminals.create({ cwd: path, title: baseName(path) });
-  }
-
-  // When entering the Worktrees tab, make sure each repo's list is loaded.
+  // Load every repo's worktrees once the backend is ready.
+  let initialized = false;
   $effect(() => {
-    if (tab === "worktrees") {
-      selectedRepoId ??= app.repos[0]?.id ?? null;
-      for (const repo of app.repos) {
-        if (!(repo.id in worktreesByRepo)) void loadWorktrees(repo.id);
-      }
+    if (app.backend === "ready" && !initialized) {
+      initialized = true;
+      void projects.init();
     }
   });
+
+  const sortedRepos = $derived.by(() => {
+    const repos = [...projects.filteredRepos];
+    if (sort === "name-asc") repos.sort((a, b) => a.name.localeCompare(b.name));
+    else if (sort === "name-desc")
+      repos.sort((a, b) => b.name.localeCompare(a.name));
+    return repos;
+  });
+
+  function stop(e: Event) {
+    e.stopPropagation();
+  }
 </script>
 
-<div class="flex h-full flex-col">
-  <!-- Tabs -->
-  <div
-    class="flex shrink-0 items-center gap-1 border-b border-sidebar-border p-1"
-  >
-    <button
-      class="flex-1 rounded px-2 py-1 text-xs font-medium {tab === 'projects'
-        ? 'bg-accent text-accent-foreground'
-        : 'text-muted-foreground hover:bg-accent/50'}"
-      onclick={() => (tab = "projects")}
-    >
-      Projects
-    </button>
-    <button
-      class="flex-1 rounded px-2 py-1 text-xs font-medium {tab === 'worktrees'
-        ? 'bg-accent text-accent-foreground'
-        : 'text-muted-foreground hover:bg-accent/50'}"
-      onclick={() => (tab = "worktrees")}
-    >
-      Worktrees
-    </button>
+<div class="flex h-full min-h-0 flex-col">
+  <!-- Section 1 — search (auto height) -->
+  <div class="shrink-0 border-b border-sidebar-border p-2">
+    <div class="relative">
+      <SearchIcon
+        class="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
+      />
+      <Input
+        class="h-8 pl-8 text-xs"
+        placeholder="Search projects & worktrees…"
+        bind:value={projects.query}
+      />
+    </div>
   </div>
 
-  {#if error}
-    <p class="border-b border-sidebar-border px-3 py-1.5 text-xs text-destructive">
-      {error}
+  {#if projects.error}
+    <p class="shrink-0 border-b border-sidebar-border px-3 py-1.5 text-xs text-destructive">
+      {projects.error}
     </p>
   {/if}
 
-  <div class="min-h-0 flex-1 overflow-y-auto">
-    {#if tab === "projects"}
-      <div class="p-2">
-        <button
-          class="mb-2 w-full rounded border border-border px-2 py-1.5 text-xs font-medium hover:bg-accent hover:text-accent-foreground"
-          onclick={addProject}
-        >
-          + Add project…
-        </button>
+  <!-- Section 2 — Projects (collapsible) -->
+  <section
+    class={cn(
+      "flex min-h-0 flex-col border-b border-sidebar-border",
+      projects.projectsCollapsed ? "shrink-0" : "flex-1",
+    )}
+  >
+    <header
+      class="flex h-8 shrink-0 items-center gap-1 px-2"
+    >
+      <button
+        class="flex min-w-0 flex-1 items-center gap-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+        onclick={() => (projects.projectsCollapsed = !projects.projectsCollapsed)}
+      >
+        <ChevronRightIcon
+          class={cn(
+            "size-3.5 transition-transform",
+            !projects.projectsCollapsed && "rotate-90",
+          )}
+        />
+        Projects
+        <span class="text-muted-foreground/60">({projects.filteredRepos.length})</span>
+      </button>
+      <Button
+        variant="ghost"
+        size="icon"
+        class="size-6"
+        title="Add project…"
+        onclick={() => projects.addProject()}
+      >
+        <FolderPlusIcon />
+      </Button>
+      <DropdownMenu.Root>
+        <DropdownMenu.Trigger>
+          {#snippet child({ props })}
+            <Button variant="ghost" size="icon" class="size-6" title="Organize" {...props}>
+              <ArrowUpDownIcon />
+            </Button>
+          {/snippet}
+        </DropdownMenu.Trigger>
+        <DropdownMenu.Content align="end">
+          <DropdownMenu.Label>Sort by</DropdownMenu.Label>
+          <DropdownMenu.RadioGroup bind:value={sort}>
+            <DropdownMenu.RadioItem value="manual">Added order</DropdownMenu.RadioItem>
+            <DropdownMenu.RadioItem value="name-asc">Name (A–Z)</DropdownMenu.RadioItem>
+            <DropdownMenu.RadioItem value="name-desc">Name (Z–A)</DropdownMenu.RadioItem>
+          </DropdownMenu.RadioGroup>
+        </DropdownMenu.Content>
+      </DropdownMenu.Root>
+    </header>
 
-        {#if app.repos.length === 0}
-          <p class="px-1 text-xs text-muted-foreground">
-            No repositories yet. Add a git repository to get started.
-          </p>
-        {:else}
-          <ul class="flex flex-col gap-1">
-            {#each app.repos as repo (repo.id)}
-              <li
-                class="group flex items-center justify-between gap-2 rounded px-2 py-1.5 hover:bg-accent/50"
-              >
-                <div class="min-w-0">
-                  <div class="truncate text-xs font-medium" title={repo.name}>
-                    {repo.name}
-                  </div>
-                  <div class="truncate text-[11px] text-muted-foreground" title={repo.path}>
-                    {repo.path}
-                  </div>
-                </div>
-                <button
-                  class="shrink-0 rounded px-1 text-xs text-muted-foreground opacity-0 hover:bg-destructive/20 hover:text-foreground group-hover:opacity-100"
-                  title="Remove project"
-                  aria-label="Remove project"
-                  onclick={() => removeProject(repo.id)}
-                >
-                  ×
-                </button>
-              </li>
-            {/each}
-          </ul>
-        {/if}
-      </div>
-    {:else}
-      <div class="p-2">
-        {#if app.repos.length === 0}
-          <p class="px-1 text-xs text-muted-foreground">
-            Add a project in the <button
-              class="underline"
-              onclick={() => (tab = "projects")}>Projects</button
-            > tab first.
-          </p>
-        {:else}
-          <!-- New worktree form -->
-          <div class="mb-2 flex flex-col gap-1.5 rounded border border-border p-2">
-            {#if app.repos.length > 1}
-              <select
-                class="rounded border border-border bg-background px-2 py-1 text-xs"
-                bind:value={selectedRepoId}
-              >
-                {#each app.repos as repo (repo.id)}
-                  <option value={repo.id}>{repo.name}</option>
-                {/each}
-              </select>
+    {#if !projects.projectsCollapsed}
+      <div class="uxnan-scroll min-h-0 flex-1 overflow-y-auto px-2 pb-2 pt-1.5">
+        {#if sortedRepos.length === 0}
+          <div class="flex flex-col items-center gap-2 px-2 py-6 text-center">
+            <p class="text-xs text-muted-foreground">
+              {projects.query ? "No projects match your search." : "No projects yet."}
+            </p>
+            {#if !projects.query}
+              <Button variant="outline" size="sm" onclick={() => projects.addProject()}>
+                <FolderPlusIcon data-icon="inline-start" />
+                Add a git repository
+              </Button>
             {/if}
-            <div class="flex gap-1.5">
-              <input
-                class="min-w-0 flex-1 rounded border border-border bg-background px-2 py-1 text-xs"
-                placeholder="branch name (e.g. feature/x)"
-                bind:value={newBranch}
-                onkeydown={(e) => e.key === "Enter" && createWorktree()}
-              />
-              <button
-                class="shrink-0 rounded border border-border px-2 py-1 text-xs font-medium hover:bg-accent hover:text-accent-foreground disabled:opacity-50"
-                disabled={busy || !newBranch.trim()}
-                onclick={createWorktree}
-              >
-                Create
-              </button>
-            </div>
           </div>
-
-          <!-- Worktree lists -->
-          {#each app.repos as repo (repo.id)}
-            <div class="mb-2">
-              <div
-                class="px-1 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground"
-              >
-                {repo.name}
-              </div>
-              <ul class="flex flex-col gap-1">
-                {#each worktreesByRepo[repo.id] ?? [] as wt (wt.path)}
-                  <li
-                    class="group flex items-center justify-between gap-2 rounded px-2 py-1.5 hover:bg-accent/50"
-                  >
-                    <div class="min-w-0">
-                      <div class="flex items-center gap-1">
-                        <span class="truncate text-xs font-medium">
-                          {wt.branch ?? "(detached)"}
-                        </span>
-                        {#if wt.isMain}
-                          <span
-                            class="rounded border border-border px-1 text-[9px] uppercase text-muted-foreground"
-                            >main</span
-                          >
-                        {/if}
-                      </div>
-                      <div class="truncate text-[11px] text-muted-foreground" title={wt.path}>
-                        {wt.path}
-                      </div>
-                    </div>
-                    <button
-                      class="shrink-0 rounded border border-border px-1.5 py-0.5 text-[11px] text-muted-foreground opacity-0 hover:bg-accent hover:text-accent-foreground group-hover:opacity-100"
-                      title="Open a terminal here"
-                      onclick={() => openTerminalAt(wt.path)}
-                    >
-                      Terminal
-                    </button>
-                  </li>
-                {:else}
-                  <li class="px-2 text-[11px] text-muted-foreground">No worktrees.</li>
-                {/each}
-              </ul>
-            </div>
-          {/each}
+        {:else}
+          <div class="flex flex-col gap-1.5">
+            {#each sortedRepos as repo (repo.id)}
+              <ProjectCard {repo} />
+            {/each}
+          </div>
         {/if}
       </div>
     {/if}
-  </div>
+  </section>
+
+  <!-- Section 3 — Worktrees (collapsible, collapsed by default) -->
+  <section
+    class={cn(
+      "flex min-h-0 flex-col",
+      projects.worktreesCollapsed ? "shrink-0" : "flex-1",
+    )}
+  >
+    <header class="flex h-8 shrink-0 items-center gap-1 px-2">
+      <button
+        class="flex min-w-0 flex-1 items-center gap-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+        onclick={() => (projects.worktreesCollapsed = !projects.worktreesCollapsed)}
+      >
+        <ChevronRightIcon
+          class={cn(
+            "size-3.5 transition-transform",
+            !projects.worktreesCollapsed && "rotate-90",
+          )}
+        />
+        Worktrees
+        <span class="text-muted-foreground/60">({projects.filteredWorktrees.length})</span>
+      </button>
+      <Button
+        variant="ghost"
+        size="icon"
+        class="size-6"
+        title="Refresh worktrees"
+        onclick={(e) => {
+          stop(e);
+          void projects.init();
+        }}
+      >
+        <RefreshCwIcon />
+      </Button>
+    </header>
+
+    {#if !projects.worktreesCollapsed}
+      <div class="uxnan-scroll min-h-0 flex-1 overflow-y-auto px-2 pb-2 pt-1.5">
+        {#if projects.filteredWorktrees.length === 0}
+          <p class="px-2 py-6 text-center text-xs text-muted-foreground">
+            {projects.query
+              ? "No worktrees match your search."
+              : "No worktrees yet. Create one from a project above."}
+          </p>
+        {:else}
+          <div class="flex flex-col gap-1.5">
+            {#each projects.filteredWorktrees as row (row.path)}
+              <WorktreeCard {row} />
+            {/each}
+          </div>
+        {/if}
+      </div>
+    {/if}
+  </section>
 </div>

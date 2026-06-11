@@ -41,6 +41,13 @@ export interface WorktreeEntry {
   isMain: boolean;
 }
 
+/** A repo's local branches + the resolved default base for the new-worktree
+ *  dialog (mirror of the Rust `BranchList` command DTO). */
+export interface BranchList {
+  branches: string[];
+  defaultBase: string;
+}
+
 export interface AgentStateEntry {
   worktreeId: string;
   status: AgentStatus;
