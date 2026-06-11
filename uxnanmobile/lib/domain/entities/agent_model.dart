@@ -163,3 +163,51 @@ class AgentModel extends Equatable {
   List<Object?> get props =>
       [id, displayName, description, version, isDefault, options];
 }
+
+/// A provider-labelled group of models, for a sectioned model picker.
+class AgentModelGroup extends Equatable {
+  /// Creates an [AgentModelGroup].
+  const AgentModelGroup({required this.provider, required this.models});
+
+  /// The provider name shown as the section header (e.g. `google`, `opencode`).
+  final String provider;
+
+  /// The models that belong to [provider], in their original order.
+  final List<AgentModel> models;
+
+  @override
+  List<Object?> get props => [provider, models];
+}
+
+/// Groups [models] by provider so the picker can show provider headers over
+/// their models. The provider is the `id` prefix before the first `/` (pi and
+/// OpenCode report `provider/model` ids), falling back to [AgentModel.description]
+/// and then `"Other"`. First-seen order is preserved both across groups and
+/// within each group.
+///
+/// Callers should treat a single returned group as a flat list (no header):
+/// agents like Claude/Codex report bare ids that all collapse into one group.
+List<AgentModelGroup> groupModelsByProvider(List<AgentModel> models) {
+  final order = <String>[];
+  final byProvider = <String, List<AgentModel>>{};
+  for (final model in models) {
+    final provider = providerOfModel(model);
+    byProvider.putIfAbsent(provider, () {
+      order.add(provider);
+      return <AgentModel>[];
+    }).add(model);
+  }
+  return [
+    for (final provider in order)
+      AgentModelGroup(provider: provider, models: byProvider[provider]!),
+  ];
+}
+
+/// The provider a [model] belongs to: the `id` prefix before the first `/`,
+/// else its [AgentModel.description], else `"Other"`.
+String providerOfModel(AgentModel model) {
+  final slash = model.id.indexOf('/');
+  if (slash > 0) return model.id.substring(0, slash);
+  final description = model.description;
+  return description != null && description.isNotEmpty ? description : 'Other';
+}

@@ -37,6 +37,9 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   // FOR-DEV: there is no bridge RPC for the approval/access mode yet, so it is
   // a local per-thread setting (no sampled default — see SessionEnvironment).
   ApprovalMode _approvalMode = ApprovalMode.approveForMe;
+  // Whether the run-option + approval strip above the composer is expanded.
+  // Toggled from the composer's options button.
+  bool _optionsVisible = true;
   final ScrollController _scroll = ScrollController();
   String? _gitCwd;
 
@@ -209,6 +212,14 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     final cwd = thread?.cwd;
     final snapshot = timelineAsync.value;
 
+    // What the collapsible options strip above the composer holds: the
+    // data-driven run-option knobs and/or the approval-mode control. The
+    // composer's toggle is shown only when there is at least one of them.
+    final showRunOptions = connectedHere && runOptions.isNotEmpty;
+    final showApproval = thread != null &&
+        ref.watch(agentCapabilitiesProvider(thread.agentId)).approvals;
+    final hasOptions = showRunOptions || showApproval;
+
     // Resolve git state for the real workspace once the thread's cwd is known.
     if (connectedHere) _refreshGitFor(cwd);
 
@@ -234,24 +245,27 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                   parent: AlwaysScrollableScrollPhysics(),
                 ),
                 slivers: [
+                  // Quick-return large app bar: NOT pinned, so it scrolls
+                  // fully away with the content for a clean reading surface;
+                  // `floating` (without `snap`) brings it back proportionally
+                  // as the user scrolls up, instead of snapping the tall
+                  // header open.
                   SliverAppBar.large(
                     floating: true,
-                    snap: true,
-                    title: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          thread?.title ?? l10n.conversationTitle,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        if (activity == ThreadActivity.running)
-                          const _RespondingLabel()
-                        else
-                          _ConnectionLabel(phase: effectivePhase),
-                      ],
+                    // Single-line title (the thread title only) so this bar's
+                    // title sits at the same level and size as the other
+                    // .large bars (devices, threads, archived). The live
+                    // connection / "Responding…" state moved to a compact
+                    // indicator in the actions (no extra height).
+                    title: Text(
+                      thread?.title ?? l10n.conversationTitle,
+                      overflow: TextOverflow.ellipsis,
                     ),
                     actions: [
+                      _StatusIndicator(
+                        phase: effectivePhase,
+                        running: activity == ThreadActivity.running,
+                      ),
                       // One git affordance (was a redundant branch chip + an
                       // upload button): an IconButton — the M3-correct app-bar
                       // action — opens the git sheet; branch in its tooltip.
@@ -290,25 +304,60 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
           ),
           // Sign-in warning: the agent on this PC is not logged in, so turns
           // won't run until the user signs into its CLI on the PC. Kept above
-          // the composer (not in the scrolling list) so it stays visible.
+          // the composer (not in the scrolling list) so it stays visible, and
+          // outside the collapsible strip (it's not dismissible).
           if (requiresLogin && thread != null)
             _LoginRequiredBanner(agentId: thread.agentId),
-          // Per-model run-option knobs (reasoning effort, …) the bridge
-          // advertises for the active model — a generic, data-driven control.
-          if (connectedHere && runOptions.isNotEmpty)
-            _RunOptionsBar(threadId: widget.threadId, options: runOptions),
-          // Access/approval mode lives directly above the composer (its own
-          // affordance, alert-coloured on full access), shown only for agents
-          // that gate tools.
-          if (thread != null &&
-              ref.watch(agentCapabilitiesProvider(thread.agentId)).approvals)
-            _ApprovalBar(mode: _approvalMode, onTap: _editApprovalMode),
+          // Collapsible options strip: the per-model run-option knobs
+          // (reasoning effort, …) the bridge advertises plus the approval mode
+          // (for agents that gate tools). One container with consistent
+          // vertical rhythm so spacing reads the same whether one or both
+          // controls show; AnimatedSize animates the show/hide driven by the
+          // composer toggle.
+          if (hasOptions)
+            AnimatedSize(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOutCubic,
+              alignment: Alignment.bottomCenter,
+              child: _optionsVisible
+                  ? Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                        UxnanSpacing.lg,
+                        UxnanSpacing.sm,
+                        UxnanSpacing.lg,
+                        UxnanSpacing.sm,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (showRunOptions)
+                            _RunOptionsBar(
+                              threadId: widget.threadId,
+                              options: runOptions,
+                            ),
+                          if (showRunOptions && showApproval)
+                            const SizedBox(height: UxnanSpacing.sm),
+                          if (showApproval)
+                            _ApprovalBar(
+                              mode: _approvalMode,
+                              onTap: _editApprovalMode,
+                            ),
+                        ],
+                      ),
+                    )
+                  : const SizedBox(width: double.infinity),
+            ),
           ComposerBar(
             environment: environment,
             resolvedModel: resolvedModel,
             enabled: connectedHere,
             showAttach: thread != null &&
                 ref.watch(agentCapabilitiesProvider(thread.agentId)).images,
+            showOptionsToggle: hasOptions,
+            optionsVisible: _optionsVisible,
+            onToggleOptions: () =>
+                setState(() => _optionsVisible = !_optionsVisible),
             onModelTap: thread != null ? () => _pickModel(thread) : null,
             onSend: (text) => ref.read(threadManagerProvider).sendUserMessage(
                   widget.threadId,
@@ -360,47 +409,37 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-/// Header status shown while the agent is producing a turn: a small spinner and
-/// "Responding…", in the primary colour. Replaces the connection label (being
-/// connected is implied) so the user knows a reply is on the way.
-class _RespondingLabel extends StatelessWidget {
-  const _RespondingLabel();
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    final l10n = AppLocalizations.of(context);
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        SizedBox(
-          width: 10,
-          height: 10,
-          child:
-              CircularProgressIndicator(strokeWidth: 2, color: colors.primary),
-        ),
-        const SizedBox(width: UxnanSpacing.xs),
-        Text(
-          l10n.threadResponding,
-          style: Theme.of(context)
-              .textTheme
-              .bodySmall
-              ?.copyWith(color: colors.primary),
-        ),
-      ],
-    );
-  }
-}
-
-class _ConnectionLabel extends StatelessWidget {
-  const _ConnectionLabel({required this.phase});
+/// Compact live-status indicator in the app-bar actions: a small spinner while
+/// the agent is producing a turn ("Responding…"), otherwise a colour-coded
+/// connection dot. Kept out of the title so this bar's title aligns with the
+/// other `.large` bars; the textual state rides in the tooltip.
+class _StatusIndicator extends StatelessWidget {
+  const _StatusIndicator({required this.phase, required this.running});
 
   final ConnectionPhase phase;
+  final bool running;
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final textTheme = Theme.of(context).textTheme;
+    final colors = Theme.of(context).colorScheme;
+
+    if (running) {
+      return Tooltip(
+        message: l10n.threadResponding,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: UxnanSpacing.sm),
+          child: SizedBox(
+            width: 14,
+            height: 14,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: colors.primary,
+            ),
+          ),
+        ),
+      );
+    }
 
     final (label, color) = switch (phase) {
       ConnectionPhase.connected => (
@@ -421,17 +460,16 @@ class _ConnectionLabel extends StatelessWidget {
         ),
     };
 
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 7,
-          height: 7,
+    return Tooltip(
+      message: label,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: UxnanSpacing.sm),
+        child: Container(
+          width: 8,
+          height: 8,
           decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
-        const SizedBox(width: UxnanSpacing.xs),
-        Text(label, style: textTheme.bodySmall),
-      ],
+      ),
     );
   }
 }
@@ -605,36 +643,28 @@ class _RunOptionsBar extends ConsumerWidget {
     final visible =
         options.where((o) => o.kind == 'enum' || o.kind == 'toggle').toList();
     if (visible.isEmpty) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        UxnanSpacing.lg,
-        UxnanSpacing.xs,
-        UxnanSpacing.lg,
-        0,
-      ),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: Wrap(
-          spacing: UxnanSpacing.xs,
-          runSpacing: UxnanSpacing.xs,
-          children: [
-            for (final option in visible)
-              if (option.kind == 'toggle')
-                FilterChip(
-                  label: Text(option.label),
-                  selected: selections[option.key] == true,
-                  visualDensity: VisualDensity.compact,
-                  onSelected: (value) =>
-                      notifier.set(threadId, option.key, value),
-                )
-              else
-                _EnumOptionChip(
-                  threadId: threadId,
-                  option: option,
-                  selected: selections[option.key],
-                ),
-          ],
-        ),
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Wrap(
+        spacing: UxnanSpacing.xs,
+        runSpacing: UxnanSpacing.xs,
+        children: [
+          for (final option in visible)
+            if (option.kind == 'toggle')
+              FilterChip(
+                label: Text(option.label),
+                selected: selections[option.key] == true,
+                visualDensity: VisualDensity.compact,
+                onSelected: (value) =>
+                    notifier.set(threadId, option.key, value),
+              )
+            else
+              _EnumOptionChip(
+                threadId: threadId,
+                option: option,
+                selected: selections[option.key],
+              ),
+        ],
       ),
     );
   }
@@ -738,28 +768,20 @@ class _ApprovalBar extends StatelessWidget {
         ),
     };
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        UxnanSpacing.lg,
-        UxnanSpacing.xs,
-        UxnanSpacing.lg,
-        0,
-      ),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: ActionChip(
-          avatar: Icon(
-            icon,
-            size: 18,
-            color: isFull ? colors.onErrorContainer : colors.onSurfaceVariant,
-          ),
-          label: Text(label),
-          labelStyle: isFull ? TextStyle(color: colors.onErrorContainer) : null,
-          backgroundColor: isFull ? colors.errorContainer : null,
-          side: isFull ? BorderSide(color: colors.error) : null,
-          visualDensity: VisualDensity.compact,
-          onPressed: onTap,
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: ActionChip(
+        avatar: Icon(
+          icon,
+          size: 18,
+          color: isFull ? colors.onErrorContainer : colors.onSurfaceVariant,
         ),
+        label: Text(label),
+        labelStyle: isFull ? TextStyle(color: colors.onErrorContainer) : null,
+        backgroundColor: isFull ? colors.errorContainer : null,
+        side: isFull ? BorderSide(color: colors.error) : null,
+        visualDensity: VisualDensity.compact,
+        onPressed: onTap,
       ),
     );
   }

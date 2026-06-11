@@ -20,6 +20,9 @@ class ComposerBar extends StatefulWidget {
     this.onModelTap,
     this.enabled = true,
     this.showAttach = true,
+    this.showOptionsToggle = false,
+    this.optionsVisible = true,
+    this.onToggleOptions,
     super.key,
   });
 
@@ -42,6 +45,17 @@ class ComposerBar extends StatefulWidget {
   /// Whether to show the attach button. Hidden for agents that don't advertise
   /// the `images` capability (the picker itself is still FOR-DEV).
   final bool showAttach;
+
+  /// Whether to show the toggle that collapses/expands the run-option and
+  /// approval-mode strip above the composer. Hidden when there's nothing to
+  /// toggle (the agent advertises no run options and no approvals).
+  final bool showOptionsToggle;
+
+  /// Whether the options strip is currently expanded (drives the toggle icon).
+  final bool optionsVisible;
+
+  /// Toggles the options strip. Required when [showOptionsToggle] is true.
+  final VoidCallback? onToggleOptions;
 
   @override
   State<ComposerBar> createState() => _ComposerBarState();
@@ -130,6 +144,21 @@ class _ComposerBarState extends State<ComposerBar> {
                     ),
                     const SizedBox(width: UxnanSpacing.xs),
                   ],
+                  // Collapse/expand the run-option + approval strip above the
+                  // composer, shown only when there's something to toggle.
+                  if (widget.showOptionsToggle) ...[
+                    _RoundIconButton(
+                      icon: widget.optionsVisible
+                          ? Icons.tune_rounded
+                          : Icons.tune_outlined,
+                      tooltip: widget.optionsVisible
+                          ? l10n.composerOptionsHide
+                          : l10n.composerOptionsShow,
+                      selected: widget.optionsVisible,
+                      onPressed: widget.onToggleOptions,
+                    ),
+                    const SizedBox(width: UxnanSpacing.xs),
+                  ],
                   Flexible(
                     child: _ModelChip(
                       model: widget.environment.modelName,
@@ -178,11 +207,16 @@ class _RoundIconButton extends StatelessWidget {
     required this.icon,
     required this.tooltip,
     required this.onPressed,
+    this.selected = false,
   });
 
   final IconData icon;
   final String tooltip;
   final VoidCallback? onPressed;
+
+  /// When true, the button reads as "on" (primary tint over a soft container) —
+  /// used for the options-strip toggle.
+  final bool selected;
 
   @override
   Widget build(BuildContext context) {
@@ -190,7 +224,18 @@ class _RoundIconButton extends StatelessWidget {
     return IconButton(
       tooltip: tooltip,
       visualDensity: VisualDensity.compact,
-      icon: Icon(icon, size: 20, color: colors.onSurfaceVariant),
+      isSelected: selected,
+      style: selected
+          ? IconButton.styleFrom(
+              backgroundColor: colors.secondaryContainer,
+              foregroundColor: colors.onSecondaryContainer,
+            )
+          : null,
+      icon: Icon(
+        icon,
+        size: 20,
+        color: selected ? colors.onSecondaryContainer : colors.onSurfaceVariant,
+      ),
       onPressed: onPressed,
     );
   }
