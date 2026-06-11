@@ -36,4 +36,7 @@ class AgentLogos {
 
   /// Kilo Code logo (monochrome).
   static const String kilocode = '$_base/kilocode.svg';
+
+  /// pi logo (monochrome — uses `currentColor`).
+  static const String pi = '$_base/pi.svg';
 }

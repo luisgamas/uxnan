@@ -16,7 +16,7 @@ class AgentVisuals {
         AgentId.opencode => AgentLogos.opencode,
         AgentId.claudeCode => AgentLogos.claude,
         AgentId.geminiCli => AgentLogos.gemini,
-        AgentId.piAgent => null,
+        AgentId.piAgent => AgentLogos.pi,
         AgentId.custom => null,
       };
 

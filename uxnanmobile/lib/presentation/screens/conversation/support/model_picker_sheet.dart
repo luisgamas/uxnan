@@ -138,67 +138,144 @@ class _ModelList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final colors = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
     if (models.isEmpty) {
       return Padding(
         padding: const EdgeInsets.all(UxnanSpacing.md),
         child: Text(l10n.modelPickerEmpty),
       );
     }
+    // Group by provider so big multi-provider agents (pi, OpenCode) read as
+    // sections. A single group (Claude/Codex bare ids) renders flat: we skip
+    // the headers and the per-row provider stripping.
+    final groups = groupModelsByProvider(models);
+    final grouped = groups.length > 1;
+    // Flatten to a single lazy list of header (String) + model rows, so even
+    // hundreds of models stay cheap to build.
+    final entries = <Object>[];
+    if (grouped) {
+      for (final group in groups) {
+        entries
+          ..add(group.provider)
+          ..addAll(group.models);
+      }
+    } else {
+      entries.addAll(models);
+    }
     return ListView.builder(
       shrinkWrap: true,
-      itemCount: models.length,
+      itemCount: entries.length,
       itemBuilder: (context, index) {
-        final model = models[index];
-        final selected = model.id == current;
-        // Secondary line: the resolved version (for aliases) and/or the wire id
-        // when it differs from the display name, then any description.
-        final detail = <String>[
-          if (model.version != null && model.version != model.id)
-            model.version!
-          else if (model.id != model.displayName)
-            model.id,
-          if (model.description != null) model.description!,
-        ].join(' · ');
-        return ListTile(
-          dense: true,
-          shape: const RoundedRectangleBorder(
-            borderRadius: BorderRadius.all(UxnanRadius.md),
-          ),
-          selected: selected,
-          selectedTileColor: colors.primaryContainer.withValues(alpha: 0.4),
-          title: Row(
-            children: [
-              Flexible(
-                child: Text(
-                  model.displayName,
-                  style: textTheme.bodyMedium,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              if (model.isDefault) ...[
-                const SizedBox(width: UxnanSpacing.sm),
-                _DefaultBadge(label: l10n.modelPickerDefault),
-              ],
-            ],
-          ),
-          subtitle: detail.isEmpty
-              ? null
-              : Text(
-                  detail,
-                  style: UxnanTypography.codeSmall.copyWith(
-                    color: colors.onSurfaceVariant,
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-          trailing: selected
-              ? Icon(Icons.check_rounded, color: colors.primary, size: 20)
-              : null,
-          onTap: () => Navigator.of(context).pop(model.id),
+        final entry = entries[index];
+        if (entry is String) return _ProviderHeader(provider: entry);
+        final model = entry as AgentModel;
+        return _ModelTile(
+          model: model,
+          grouped: grouped,
+          selected: model.id == current,
         );
       },
+    );
+  }
+}
+
+/// A provider section header (M3 list subheader) over its models.
+class _ProviderHeader extends StatelessWidget {
+  const _ProviderHeader({required this.provider});
+
+  final String provider;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        UxnanSpacing.sm,
+        UxnanSpacing.md,
+        UxnanSpacing.sm,
+        UxnanSpacing.xs,
+      ),
+      child: Text(
+        provider.toUpperCase(),
+        style: textTheme.labelMedium?.copyWith(
+          color: colors.primary,
+          letterSpacing: 0.6,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
+class _ModelTile extends StatelessWidget {
+  const _ModelTile({
+    required this.model,
+    required this.grouped,
+    required this.selected,
+  });
+
+  final AgentModel model;
+  final bool grouped;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final slash = model.id.indexOf('/');
+    // Under a provider header, drop the redundant `provider/` prefix when the
+    // display name is just the wire id (OpenCode); pi already shows the bare
+    // model name.
+    final title = grouped && model.displayName == model.id && slash > 0
+        ? model.id.substring(slash + 1)
+        : model.displayName;
+    // Secondary line: the resolved version (for aliases) and/or the wire id
+    // when it differs from the shown title, then any description. The provider
+    // is already in the header when grouped, so it's omitted there.
+    final detail = <String>[
+      if (model.version != null && model.version != model.id)
+        model.version!
+      else if (model.id != title)
+        model.id,
+      if (!grouped && model.description != null) model.description!,
+    ].join(' · ');
+    return ListTile(
+      dense: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.all(UxnanRadius.md),
+      ),
+      selected: selected,
+      selectedTileColor: colors.primaryContainer.withValues(alpha: 0.4),
+      title: Row(
+        children: [
+          Flexible(
+            child: Text(
+              title,
+              style: textTheme.bodyMedium,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (model.isDefault) ...[
+            const SizedBox(width: UxnanSpacing.sm),
+            _DefaultBadge(label: l10n.modelPickerDefault),
+          ],
+        ],
+      ),
+      subtitle: detail.isEmpty
+          ? null
+          : Text(
+              detail,
+              style: UxnanTypography.codeSmall.copyWith(
+                color: colors.onSurfaceVariant,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+      trailing: selected
+          ? Icon(Icons.check_rounded, color: colors.primary, size: 20)
+          : null,
+      onTap: () => Navigator.of(context).pop(model.id),
     );
   }
 }

@@ -334,6 +334,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get composerVoice => 'Voice input';
 
   @override
+  String get composerOptionsShow => 'Show options';
+
+  @override
+  String get composerOptionsHide => 'Hide options';
+
+  @override
   String get newThreadAction => 'New conversation';
 
   @override

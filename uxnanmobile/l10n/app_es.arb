@@ -110,6 +110,8 @@
   "composerSend": "Enviar",
   "composerAttach": "Adjuntar",
   "composerVoice": "Entrada de voz",
+  "composerOptionsShow": "Mostrar opciones",
+  "composerOptionsHide": "Ocultar opciones",
 
   "newThreadAction": "Nueva conversación",
   "newThreadTitle": "Nueva conversación",

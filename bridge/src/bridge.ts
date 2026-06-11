@@ -36,6 +36,8 @@ import { ClaudeCodeAdapter } from './adapters/claude-adapter.js';
 import { resolveClaudeBinary } from './adapters/resolve-claude.js';
 import { CodexAdapter } from './adapters/codex-adapter.js';
 import { resolveCodexBinary } from './adapters/resolve-codex.js';
+import { PiAdapter } from './adapters/pi-adapter.js';
+import { resolvePiBinary } from './adapters/resolve-pi.js';
 import { ProjectRegistry } from './projects/project-registry.js';
 import { BrowseService } from './workspace/browse-service.js';
 import { PushService } from './push/push-service.js';
@@ -168,6 +170,22 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       displayName: 'Codex',
       available: codex.available,
       ...(codexSettings.model !== undefined ? { defaultModel: codexSettings.model } : {}),
+    },
+  );
+  // pi: real agent driven via `pi -p --mode json` (see FOR-DEV.md).
+  const piSettings = config.agents['pi-agent'] ?? {};
+  const pi = resolvePiBinary(piSettings.binaryPath);
+  agentManager.register(
+    new PiAdapter({
+      binaryPath: pi.binaryPath,
+      prependArgs: pi.prependArgs,
+      permissionMode: piSettings.permissionMode ?? 'acceptEdits',
+      ...(piSettings.model !== undefined ? { defaultModel: piSettings.model } : {}),
+    }),
+    {
+      displayName: 'pi',
+      available: pi.available,
+      ...(piSettings.model !== undefined ? { defaultModel: piSettings.model } : {}),
     },
   );
   const startedAt = now();

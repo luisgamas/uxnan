@@ -72,6 +72,16 @@ export {
 } from './adapters/codex-adapter.js';
 export { resolveCodexBinary, type ResolvedCodex } from './adapters/resolve-codex.js';
 export {
+  PiAdapter,
+  parsePiLine,
+  parsePiModelList,
+  parsePiUsageTokens,
+  type PiAdapterOptions,
+  type PiEvent,
+  type PiPermissionMode,
+} from './adapters/pi-adapter.js';
+export { resolvePiBinary, type ResolvedPi } from './adapters/resolve-pi.js';
+export {
   OpenCodeAdapter,
   parseOpenCodeLine,
   parseModelList,

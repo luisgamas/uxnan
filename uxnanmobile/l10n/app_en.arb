@@ -146,6 +146,8 @@
   "composerSend": "Send",
   "composerAttach": "Attach",
   "composerVoice": "Voice input",
+  "composerOptionsShow": "Show options",
+  "composerOptionsHide": "Hide options",
 
   "newThreadAction": "New conversation",
   "newThreadTitle": "New conversation",

@@ -7,6 +7,7 @@ import 'package:uxnan/domain/entities/project.dart';
 import 'package:uxnan/domain/enums/agent_id.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
+import 'package:uxnan/presentation/screens/conversation/support/model_picker_sheet.dart';
 import 'package:uxnan/presentation/screens/threads/workspace_browser_sheet.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
@@ -228,7 +229,8 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
                 controller: _model,
                 enabled: agent != null,
                 models: models,
-                onChanged: (_) => _modelTouched = true,
+                agentId: agent?.agentId,
+                onChanged: (_) => setState(() => _modelTouched = true),
               ),
             ],
           ),
@@ -546,109 +548,94 @@ class _AgentLeading extends StatelessWidget {
   }
 }
 
-/// Model picker. When the bridge reports models for the selected agent it shows
-/// a filterable M3 [DropdownMenu] (the user can still type a custom id); while
-/// loading or when no list is available it falls back to a free-text field.
+/// Model picker. A tappable field that opens the shared [ModelPickerSheet]
+/// (lazy, searchable, grouped by provider) rather than an inline dropdown —
+/// agents like pi/OpenCode report hundreds of models, which made an inline
+/// `DropdownMenu` janky to build. Shows the selected model id (or a hint), with
+/// a spinner while the bridge's model list is still loading.
 class _ModelField extends StatelessWidget {
   const _ModelField({
     required this.controller,
     required this.enabled,
     required this.models,
+    required this.agentId,
     required this.onChanged,
   });
 
   final TextEditingController controller;
   final bool enabled;
   final AsyncValue<List<AgentModel>>? models;
+  final String? agentId;
   final ValueChanged<String> onChanged;
 
-  @override
-  Widget build(BuildContext context) {
-    final list = models?.asData?.value;
-    if (enabled && list != null && list.isNotEmpty) {
-      return DropdownMenu<String>(
-        controller: controller,
-        enableFilter: true,
-        requestFocusOnTap: true,
-        expandedInsets: EdgeInsets.zero,
-        menuHeight: 320,
-        hintText: AppLocalizations.of(context).newThreadModelHint,
-        leadingIcon: const Icon(Icons.auto_awesome_outlined, size: 18),
-        initialSelection: controller.text.isEmpty ? null : controller.text,
-        onSelected: (value) => onChanged(value ?? ''),
-        dropdownMenuEntries: [
-          for (final model in list)
-            DropdownMenuEntry<String>(
-              value: model.id,
-              label: model.displayName,
-            ),
-        ],
-      );
-    }
-    return _ModelTextField(
-      controller: controller,
-      enabled: enabled,
-      loading: models?.isLoading ?? false,
-      onChanged: onChanged,
+  Future<void> _pick(BuildContext context) async {
+    final id = agentId;
+    if (id == null) return;
+    final picked = await ModelPickerSheet.show(
+      context,
+      agentId: id,
+      current: controller.text.isEmpty ? null : controller.text,
     );
+    if (picked == null) return;
+    controller.text = picked;
+    onChanged(picked);
   }
-}
-
-class _ModelTextField extends StatelessWidget {
-  const _ModelTextField({
-    required this.controller,
-    required this.enabled,
-    required this.loading,
-    required this.onChanged,
-  });
-
-  final TextEditingController controller;
-  final bool enabled;
-  final bool loading;
-  final ValueChanged<String> onChanged;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
     final l10n = AppLocalizations.of(context);
-    return Container(
-      decoration: BoxDecoration(
-        color: colors.surfaceContainerHighest,
+    final loading = models?.isLoading ?? false;
+    final hasModel = controller.text.isNotEmpty;
+    final tappable = enabled && agentId != null && !loading;
+
+    return Material(
+      color: colors.surfaceContainerHighest,
+      shape: RoundedRectangleBorder(
         borderRadius: const BorderRadius.all(UxnanRadius.lg),
-        border: Border.all(color: colors.outline),
+        side: BorderSide(color: colors.outline),
       ),
-      padding: const EdgeInsets.symmetric(
-        horizontal: UxnanSpacing.md,
-        vertical: 2,
-      ),
-      child: TextField(
-        controller: controller,
-        enabled: enabled,
-        onChanged: onChanged,
-        style: Theme.of(context).textTheme.bodyMedium,
-        decoration: InputDecoration(
-          isCollapsed: true,
-          border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(vertical: UxnanSpacing.md),
-          icon: Icon(
-            Icons.auto_awesome_outlined,
-            size: 18,
-            color: colors.onSurfaceVariant,
+      child: InkWell(
+        borderRadius: const BorderRadius.all(UxnanRadius.lg),
+        onTap: tappable ? () => _pick(context) : null,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: UxnanSpacing.md,
+            vertical: UxnanSpacing.md,
           ),
-          suffixIconConstraints:
-              const BoxConstraints(maxHeight: 20, maxWidth: 36),
-          suffixIcon: loading
-              ? const Padding(
-                  padding: EdgeInsets.only(right: 10),
-                  child: SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+          child: Row(
+            children: [
+              Icon(
+                Icons.auto_awesome_outlined,
+                size: 18,
+                color: colors.onSurfaceVariant,
+              ),
+              const SizedBox(width: UxnanSpacing.md),
+              Expanded(
+                child: Text(
+                  hasModel ? controller.text : l10n.newThreadModelHint,
+                  style: textTheme.bodyMedium?.copyWith(
+                    color: hasModel ? null : colors.onSurfaceVariant,
                   ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: UxnanSpacing.sm),
+              if (loading)
+                const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : null,
-          hintText: l10n.newThreadModelHint,
-          hintStyle: TextStyle(color: colors.onSurfaceVariant),
+              else if (enabled && agentId != null)
+                Icon(
+                  Icons.unfold_more_rounded,
+                  size: 20,
+                  color: colors.onSurfaceVariant,
+                ),
+            ],
+          ),
         ),
       ),
     );

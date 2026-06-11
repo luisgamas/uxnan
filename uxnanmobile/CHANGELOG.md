@@ -6,8 +6,44 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **pi agent support.** The `pi` CLI is now a fully wired agent on the bridge,
+  so it appears in the app like the others through the existing data-driven UI
+  (model picker, reasoning-effort knob via `--thinking`, context meter, sign-in
+  status). Added its monochrome logo (`assets/images/agents/pi.svg`, tinted via
+  `currentColor`) and wired `AgentVisuals` (logo/label "pi"/accent). No UI code
+  changes were needed — the app already renders any agent the bridge advertises.
+
 ### Changed
 
+- **Model picker grouped by provider + no inline-dropdown jank.** The model
+  picker (`model_picker_sheet.dart`) now groups models under provider headers
+  (M3 list subheaders) for multi-provider agents like pi/OpenCode, flattened
+  into one lazy `ListView.builder` so hundreds of models stay cheap; agents with
+  a single provider (Claude/Codex) render flat without headers. Grouping is a
+  pure domain helper (`groupModelsByProvider` in `agent_model.dart`, unit-tested).
+  The new-conversation dialog's model field no longer builds a giant inline
+  `DropdownMenu` (which stalled for pi's ~326 models) — it's a tappable field
+  that opens the same sheet, showing the selected model and a spinner while the
+  list loads.
+- **Conversation app bar scrolls away for more reading room.** The large app
+  bar drops `snap` (keeps `floating`, stays non-pinned), so it scrolls fully out
+  of the way with the content and returns proportionally on scroll-up instead of
+  snapping the tall header open — more clean space for messages.
+- **Consistent `.large` app-bar title height across screens.** The conversation
+  app bar used a two-line `Column` title (title + connection/"Responding…"
+  status), which sat at a different level/size than the single-line titles on
+  the devices, threads and archived screens. Its title is now a single-line
+  `Text` like the others, and the live connection / responding state moved to a
+  compact dot/spinner indicator in the actions (tooltip carries the label) — so
+  all four `.large` bars align at the same title level and size.
+- **Conversation options strip: coherent spacing + collapsible.** The reasoning
+  (run-option) and approval-mode controls are now one strip above the composer
+  with consistent vertical rhythm (fixes the run-option chip sitting flush
+  against the composer for pi, and the over-large gap when both showed). A
+  `tune` toggle in the composer toolbar collapses/expands the strip
+  (`AnimatedSize`), shown only when there's something to toggle.
 - **Manual "Check sign-in" on the not-signed-in surfaces.** Both the
   new-conversation agent card and the **conversation login banner** now offer a
   **Check sign-in** `TextButton` that re-queries `auth/status` on tap (spinner

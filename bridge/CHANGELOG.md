@@ -6,6 +6,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 
 ### Added
+- **pi agent wired** (`src/adapters/pi-adapter.ts`, `resolve-pi.ts`, registered in
+  `bridge.ts`): drives the `pi` CLI (`@earendil-works/pi-coding-agent`) via
+  `pi -p --mode json`, parsing its newline-JSON stream (streamed `text_delta`s,
+  final text + `usage.totalTokens`, `session` id for `--session-id` continuity,
+  `stopReason`/`errorMessage` and plain-text startup errors). Model selection
+  (`--model provider/model`), reasoning effort (`--thinking`, advertised per model
+  from `pi --list-models`' `thinking` column), and a tool posture
+  (`permissionMode`: `acceptEdits` default / `default` read-only / `bypassPermissions`)
+  are all wired. Auth detected by `~/.pi/agent/auth.json` existence. Reports
+  `reportsContextUsage`. Validated against `pi` 0.79.1.
 - **Agents advertise `reportsContextUsage`** (`claude-adapter.ts`,
   `codex-adapter.ts`): Claude and Codex set the new capability flag so the phone
   shows their context meter (at 0 before the first turn); OpenCode leaves it
@@ -28,6 +38,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   renders whatever is advertised, so new levels need no app change).
 
 ### Fixed
+- **pi model picker no longer empty** (`src/adapters/pi-adapter.ts`, `src/adapters/spawn.ts`):
+  `pi --list-models` prints its table to **stderr**, but `listModels()` only read
+  stdout, so `agent/models` returned `[]` and the phone's model selector showed no
+  models when pi was the agent. The adapter now accumulates **both** stdout and
+  stderr before parsing (stdin/stdout split verified against `pi` 0.79.1: `-p --mode
+  json` events stay on stdout, so turn streaming is unaffected). `SpawnedProcess`
+  gains an optional `stderr` stream.
 - **Reasoning effort now reaches Claude Code and Codex** (`src/adapters/claude-adapter.ts`,
   `src/adapters/codex-adapter.ts`): `turn/send`'s `effort` was carried by the
   contract but silently dropped by both adapters (only OpenCode consumed it via

@@ -704,6 +704,18 @@ abstract class AppLocalizations {
   /// **'Voice input'**
   String get composerVoice;
 
+  /// No description provided for @composerOptionsShow.
+  ///
+  /// In en, this message translates to:
+  /// **'Show options'**
+  String get composerOptionsShow;
+
+  /// No description provided for @composerOptionsHide.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide options'**
+  String get composerOptionsHide;
+
   /// No description provided for @newThreadAction.
   ///
   /// In en, this message translates to:
