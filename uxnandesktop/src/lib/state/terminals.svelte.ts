@@ -11,6 +11,8 @@ export interface TermTab {
   /** PTY id (also the event channel suffix: `pty:output:{id}`). */
   id: string;
   title: string;
+  /** Working directory for the shell (undefined = home). */
+  cwd?: string;
   /** Set once the underlying process has exited. */
   exited: boolean;
 }
@@ -21,9 +23,14 @@ class TerminalStore {
 
   /** Open a new terminal tab and make it active. The PTY itself is spawned by
    *  the Terminal component once it has measured its size. */
-  create(): string {
+  create(opts?: { cwd?: string; title?: string }): string {
     const id = crypto.randomUUID();
-    this.tabs.push({ id, title: `Terminal ${this.tabs.length + 1}`, exited: false });
+    this.tabs.push({
+      id,
+      title: opts?.title ?? `Terminal ${this.tabs.length + 1}`,
+      cwd: opts?.cwd,
+      exited: false,
+    });
     this.activeId = id;
     return id;
   }

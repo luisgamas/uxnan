@@ -49,15 +49,17 @@
   </div>
 
   <!-- Terminal stack: all tabs stay mounted; only the active one is shown so
-       background terminals keep streaming output. -->
-  <div class="relative min-h-0 flex-1 bg-[#0b0b0c]">
+       background terminals keep streaming output. `overflow-hidden` clips the
+       xterm canvas so it can never paint over the adjacent panels. -->
+  <div class="relative min-h-0 flex-1 overflow-hidden bg-[#0b0b0c]">
     {#each terminals.tabs as tab (tab.id)}
       <div
-        class="absolute inset-0 p-1"
+        class="absolute inset-0 overflow-hidden p-1"
         style:display={terminals.activeId === tab.id ? "block" : "none"}
       >
         <Terminal
           id={tab.id}
+          cwd={tab.cwd}
           active={terminals.activeId === tab.id}
           onexit={() => terminals.markExited(tab.id)}
         />

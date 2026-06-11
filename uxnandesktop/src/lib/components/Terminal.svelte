@@ -10,8 +10,10 @@
   let {
     id,
     active,
+    cwd,
     onexit,
-  }: { id: string; active: boolean; onexit?: () => void } = $props();
+  }: { id: string; active: boolean; cwd?: string; onexit?: () => void } =
+    $props();
 
   let el: HTMLDivElement;
   let term: Terminal | undefined;
@@ -71,6 +73,7 @@
 
     await invoke("pty_create", {
       id,
+      cwd,
       cols: term.cols || 80,
       rows: term.rows || 24,
     }).catch(() => {});

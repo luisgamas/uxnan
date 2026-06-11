@@ -33,6 +33,14 @@ export interface RepoData {
   worktrees: WorktreeData[];
 }
 
+/** A worktree as reported by `git worktree list` (ADE- or agent-created). */
+export interface WorktreeEntry {
+  path: string;
+  branch: string | null;
+  head: string | null;
+  isMain: boolean;
+}
+
 export interface AgentStateEntry {
   worktreeId: string;
   status: AgentStatus;

@@ -1,6 +1,8 @@
 <script lang="ts">
   import { app } from "$lib/state/app.svelte";
   import TerminalArea from "$lib/components/TerminalArea.svelte";
+  import TitleBar from "$lib/components/TitleBar.svelte";
+  import LeftSidebar from "$lib/components/LeftSidebar.svelte";
 
   // Resize bounds for each sidebar (px).
   const LEFT_MIN = 200;
@@ -49,16 +51,6 @@
     void app.persistSettings();
   }
 
-  function toggleLeft() {
-    app.settings.leftSidebarOpen = !app.settings.leftSidebarOpen;
-    void app.persistSettings();
-  }
-
-  function toggleRight() {
-    app.settings.rightSidebarOpen = !app.settings.rightSidebarOpen;
-    void app.persistSettings();
-  }
-
   const backendLabel = $derived(
     app.backend === "ready"
       ? "Backend connected"
@@ -77,54 +69,17 @@
 </script>
 
 <div class="flex h-screen w-screen flex-col bg-background text-foreground">
-  <!-- Title bar -->
-  <header
-    class="flex h-10 shrink-0 items-center gap-2 border-b border-border px-3 text-sm"
-  >
-    <button
-      class="rounded px-2 py-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-      title="Toggle left sidebar"
-      onclick={toggleLeft}
-    >
-      ☰
-    </button>
-    <span class="font-semibold tracking-tight">Uxnan Desktop</span>
-    <span class="text-xs text-muted-foreground">ADE</span>
-    <div class="flex-1"></div>
-    <button
-      class="rounded px-2 py-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-      title="Toggle right sidebar"
-      onclick={toggleRight}
-    >
-      ⇆
-    </button>
-  </header>
+  <!-- Custom title bar (OS chrome disabled) -->
+  <TitleBar />
 
   <!-- Three-panel body -->
   <div class="flex min-h-0 flex-1">
     {#if app.settings.leftSidebarOpen}
       <aside
-        class="flex shrink-0 flex-col overflow-y-auto bg-sidebar text-sidebar-foreground"
+        class="flex shrink-0 flex-col overflow-hidden bg-sidebar text-sidebar-foreground"
         style="width: {app.settings.leftSidebarWidth}px"
       >
-        <section class="border-b border-sidebar-border p-3">
-          <h2
-            class="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
-          >
-            Projects
-          </h2>
-          <p class="text-xs text-muted-foreground">No repositories yet.</p>
-        </section>
-        <section class="border-b border-sidebar-border p-3">
-          <h2
-            class="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
-          >
-            Worktrees
-          </h2>
-          <p class="text-xs text-muted-foreground">
-            Worktree cards and agent status will appear here.
-          </p>
-        </section>
+        <LeftSidebar />
       </aside>
 
       <!-- Left resize handle -->
@@ -139,7 +94,7 @@
     {/if}
 
     <!-- Center area: multiplexed terminals (xterm.js + PTY) -->
-    <main class="flex min-w-0 flex-1 flex-col">
+    <main class="flex min-w-0 flex-1 flex-col overflow-hidden">
       <TerminalArea />
     </main>
 
