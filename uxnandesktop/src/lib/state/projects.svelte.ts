@@ -17,6 +17,7 @@ import {
 } from "$lib/api";
 import type { BranchList, WorktreeEntry, WorktreeStatus } from "$lib/types";
 import { app } from "$lib/state/app.svelte";
+import { terminals } from "$lib/state/terminals.svelte";
 
 const msg = (e: unknown) =>
   e && typeof e === "object" && "message" in e
@@ -176,6 +177,7 @@ class ProjectsStore {
     try {
       await worktreeRemove(row.repoId, row.path, row.branch, force);
       await this.loadWorktrees(row.repoId);
+      terminals.dropWorkspace(row.path);
       if (this.activeWorktreePath === row.path) this.activeWorktreePath = null;
       return true;
     } catch (e) {
@@ -184,13 +186,16 @@ class ProjectsStore {
     }
   }
 
+  /** Select a worktree: highlight it and show its terminal workspace. */
   setActiveWorktree(path: string): void {
     this.activeWorktreePath = path;
+    terminals.setWorkspace(path);
   }
 
-  /** Open a terminal (default profile) whose shell starts in `path`. */
+  /** Open a terminal in `path`'s workspace (and switch to it). */
   openTerminalAt(path: string): void {
-    app.openTerminal({ cwd: path, title: baseName(path) });
+    this.activeWorktreePath = path;
+    app.openTerminal({ cwd: path, title: baseName(path), workspace: path });
   }
 }
 

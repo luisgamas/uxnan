@@ -3,11 +3,12 @@
   import { invoke } from "@tauri-apps/api/core";
   import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { app } from "$lib/state/app.svelte";
+  import { projects } from "$lib/state/projects.svelte";
   import { setTerminalLayout } from "$lib/api";
   import {
     terminals,
     computeAreaLayout,
-    serializeArea,
+    GLOBAL_WORKSPACE,
     type AreaDivider,
     type AreaSplit,
     type Rect,
@@ -18,6 +19,7 @@
   import PlusIcon from "@lucide/svelte/icons/plus";
   import TerminalIcon from "@lucide/svelte/icons/terminal";
   import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
+  import LayersIcon from "@lucide/svelte/icons/layers";
 
   /** Default profile's shell/args, for region-level + and splits. A blank
    *  command falls back to the backend's platform default shell. */
@@ -30,11 +32,34 @@
   // The terminal area background follows the app theme (matches xterm's bg).
   const paneBg = $derived(app.terminalPalette().background);
 
-  const layout = $derived(
-    terminals.root
-      ? computeAreaLayout(terminals.root)
-      : { groups: [], dividers: [] },
-  );
+  // --- Workspaces (one terminal set per worktree + a Global space) ---------
+  const baseName = (p: string) =>
+    p.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || p;
+
+  function workspaceLabel(key: string): string {
+    if (key === GLOBAL_WORKSPACE) return "Global";
+    for (const list of Object.values(projects.worktreesByRepo)) {
+      const wt = list.find((w) => w.path === key);
+      if (wt) return wt.branch ?? baseName(key);
+    }
+    return baseName(key);
+  }
+
+  /** Workspaces offered in the switcher: Global + any open + the active one. */
+  const workspaceOptions = $derived.by(() => {
+    const keys = new Set<string>([GLOBAL_WORKSPACE, ...terminals.openWorkspaceKeys]);
+    keys.add(terminals.activeWorkspace);
+    return [...keys];
+  });
+
+  function switchWorkspace(key: string) {
+    if (key === GLOBAL_WORKSPACE) {
+      projects.activeWorktreePath = null;
+      terminals.setWorkspace(GLOBAL_WORKSPACE);
+    } else {
+      projects.setActiveWorktree(key);
+    }
+  }
 
   let unlistenDrop: (() => void) | undefined;
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -57,10 +82,10 @@
     clearTimeout(saveTimer);
   });
 
-  // Persist the region/tab layout (debounced) whenever it changes, once the
-  // store has hydrated from disk. Reading the tree here makes it reactive.
+  // Persist every workspace's layout (debounced) once the store has hydrated.
+  // Reading the snapshot here makes it reactive to any workspace change.
   $effect(() => {
-    const snapshot = terminals.root ? serializeArea(terminals.root) : null;
+    const snapshot = terminals.serialize();
     if (!terminals.hydrated) return;
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
@@ -188,8 +213,7 @@
 />
 
 <div class="flex h-full flex-col">
-  <!-- Slim strip: global new-terminal action + right-panel toggle (stays visible
-       when the right panel is hidden) -->
+  <!-- Slim strip: new-terminal action, workspace switcher, right-panel toggle -->
   <div class="flex h-8 shrink-0 items-center gap-1 border-b border-border bg-card px-2">
     <div class="flex items-center">
       <button
@@ -227,6 +251,36 @@
         </DropdownMenu.Content>
       </DropdownMenu.Root>
     </div>
+
+    <!-- Workspace switcher (which worktree's terminals are shown) -->
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger>
+        {#snippet child({ props })}
+          <button
+            class="ml-1 inline-flex max-w-[180px] items-center gap-1 rounded px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+            title="Terminal workspace"
+            {...props}
+          >
+            <LayersIcon class="size-3.5 shrink-0" />
+            <span class="truncate">{workspaceLabel(terminals.activeWorkspace)}</span>
+            <ChevronDownIcon class="size-3 shrink-0" />
+          </button>
+        {/snippet}
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Content align="start" class="min-w-48">
+        <DropdownMenu.Label class="text-[11px]">Workspace</DropdownMenu.Label>
+        {#each workspaceOptions as key (key)}
+          <DropdownMenu.CheckboxItem
+            class="text-xs"
+            checked={terminals.activeWorkspace === key}
+            onclick={() => switchWorkspace(key)}
+          >
+            {workspaceLabel(key)}
+          </DropdownMenu.CheckboxItem>
+        {/each}
+      </DropdownMenu.Content>
+    </DropdownMenu.Root>
+
     <div class="flex-1"></div>
     <button
       class="rounded px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground"
@@ -238,132 +292,147 @@
     </button>
   </div>
 
-  <!-- Regions: each is a TabGroup (own tab strip + “+ New”). Every region and
-       tab stays mounted (id-keyed) and is positioned from the computed layout,
-       so splitting / closing never remounts xterm or restarts a PTY. -->
-  <div
-    data-pane-container
-    class="relative min-h-0 flex-1 overflow-hidden"
-    style:background-color={paneBg}
-  >
-    {#if terminals.hydrated && layout.groups.length === 0}
-      <!-- Empty area: the app starts with no terminal; open one here or from a
-           project / worktree in the left panel. -->
-      <div class="flex h-full flex-col items-center justify-center gap-3 text-center">
-        <TerminalIcon class="size-8 text-muted-foreground/60" />
-        <div class="text-sm text-muted-foreground">No terminals open</div>
-        <button
-          class="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent hover:text-accent-foreground"
-          onclick={() => app.openTerminal()}
-        >
-          <PlusIcon class="size-3.5" />
-          New terminal
-        </button>
-      </div>
-    {/if}
-
+  <!-- Each workspace's region tree is rendered (and stays mounted) but only the
+       active workspace is shown, so background worktrees keep streaming. -->
+  <div class="relative min-h-0 flex-1 overflow-hidden" style:background-color={paneBg}>
     {#if terminals.hydrated}
-      {#each layout.groups as g (g.group.id)}
-      {@const activeRegion = terminals.activeGroupId === g.group.id}
-      <div
-        class="absolute flex flex-col overflow-hidden rounded-sm border {activeRegion
-          ? 'border-ring'
-          : 'border-transparent'}"
-        style="left:{g.rect.x}%; top:{g.rect.y}%; width:{g.rect.w}%; height:{g
-          .rect.h}%"
-        role="group"
-        onpointerdown={() => terminals.setActiveGroup(g.group.id)}
-      >
-        <!-- Region tab strip -->
+      {#each terminals.openWorkspaceKeys as wsKey (wsKey)}
+        {@const wsRoot = terminals.workspaceRoot(wsKey)}
         <div
-          class="uxnan-scroll flex h-8 shrink-0 items-center gap-1 overflow-x-auto border-b border-border bg-card px-1"
+          data-pane-container
+          class="absolute inset-0 overflow-hidden"
+          style:display={wsKey === terminals.activeWorkspace ? "block" : "none"}
         >
-          {#each g.group.tabs as t (t.id)}
-            <div
-              class="flex shrink-0 items-center gap-1 rounded px-2 py-0.5 text-xs {g
-                .group.activeTabId === t.id
-                ? 'bg-background text-foreground'
-                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'}"
-              role="group"
-              oncontextmenu={(e) => tabMenu(e, g.group.id, t.id)}
-            >
-              <button
-                class="max-w-[120px] truncate {t.exited ? 'line-through' : ''}"
-                onclick={() => terminals.setActiveTab(g.group.id, t.id)}
-                title="{t.title} — right-click for options"
-              >
-                {t.title}
-              </button>
-              <button
-                class="rounded px-0.5 text-muted-foreground opacity-60 hover:bg-destructive/20 hover:text-foreground hover:opacity-100"
-                title="Close terminal"
-                aria-label="Close terminal"
-                onclick={() => terminals.closeTab(g.group.id, t.id)}
-              >
-                ×
-              </button>
+          {#if wsRoot}
+            {@const wsLayout = computeAreaLayout(wsRoot)}
+            {@const wsActiveGroup = terminals.workspaceActiveGroupId(wsKey)}
+            {@const isActiveWs = wsKey === terminals.activeWorkspace}
+            <div class="relative h-full w-full">
+              {#each wsLayout.groups as g (g.group.id)}
+                {@const activeRegion = isActiveWs && wsActiveGroup === g.group.id}
+                <div
+                  class="absolute flex flex-col overflow-hidden rounded-sm border {activeRegion
+                    ? 'border-ring'
+                    : 'border-transparent'}"
+                  style="left:{g.rect.x}%; top:{g.rect.y}%; width:{g.rect.w}%; height:{g
+                    .rect.h}%"
+                  role="group"
+                  onpointerdown={() => terminals.setActiveGroup(g.group.id)}
+                >
+                  <!-- Region tab strip -->
+                  <div
+                    class="uxnan-scroll flex h-8 shrink-0 items-center gap-1 overflow-x-auto border-b border-border bg-card px-1"
+                  >
+                    {#each g.group.tabs as t (t.id)}
+                      <div
+                        class="flex shrink-0 items-center gap-1 rounded px-2 py-0.5 text-xs {g
+                          .group.activeTabId === t.id
+                          ? 'bg-background text-foreground'
+                          : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'}"
+                        role="group"
+                        oncontextmenu={(e) => tabMenu(e, g.group.id, t.id)}
+                      >
+                        <button
+                          class="max-w-[120px] truncate {t.exited ? 'line-through' : ''}"
+                          onclick={() => terminals.setActiveTab(g.group.id, t.id)}
+                          title="{t.title} — right-click for options"
+                        >
+                          {t.title}
+                        </button>
+                        <button
+                          class="rounded px-0.5 text-muted-foreground opacity-60 hover:bg-destructive/20 hover:text-foreground hover:opacity-100"
+                          title="Close terminal"
+                          aria-label="Close terminal"
+                          onclick={() => terminals.closeTab(g.group.id, t.id)}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    {/each}
+                    <button
+                      class="ml-0.5 shrink-0 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                      title="New terminal in this region"
+                      aria-label="New terminal"
+                      onclick={() =>
+                        terminals.create({ groupId: g.group.id, ...defaultShellArgs() })}
+                    >
+                      +
+                    </button>
+                  </div>
+
+                  <!-- Terminal stack for this region (active tab shown) -->
+                  <div class="relative min-h-0 flex-1">
+                    {#each g.group.tabs as t (t.id)}
+                      <div
+                        class="absolute inset-0 overflow-hidden"
+                        style:display={g.group.activeTabId === t.id ? "block" : "none"}
+                        role="group"
+                        data-pty-id={t.id}
+                        onpointerdown={() => terminals.setActiveTab(g.group.id, t.id)}
+                        oncontextmenu={(e) => terminalMenu(e, g.group.id, t.id)}
+                      >
+                        {#if t.exited}
+                          <span
+                            class="absolute left-1 top-1 z-10 rounded bg-card/80 px-1 text-[10px] text-muted-foreground"
+                            >exited</span
+                          >
+                        {/if}
+                        <Terminal
+                          id={t.id}
+                          cwd={t.cwd}
+                          shell={t.shell}
+                          args={t.args}
+                          focused={activeRegion && g.group.activeTabId === t.id}
+                          onexit={() => terminals.markExited(t.id)}
+                        />
+                      </div>
+                    {/each}
+                  </div>
+                </div>
+              {/each}
+
+              {#each wsLayout.dividers as d (d.node)}
+                <div
+                  class="absolute z-20 flex {d.dir === 'row'
+                    ? 'cursor-col-resize'
+                    : 'cursor-row-resize'}"
+                  style={dividerStyle(d)}
+                  role="separator"
+                  aria-orientation={d.dir === "row" ? "vertical" : "horizontal"}
+                  onpointerdown={(e) => dividerDown(e, d)}
+                  onpointermove={dividerMove}
+                  onpointerup={dividerUp}
+                >
+                  <div
+                    class="bg-border transition-colors hover:bg-ring {d.dir === 'row'
+                      ? 'mx-auto h-full w-px'
+                      : 'my-auto h-px w-full'}"
+                  ></div>
+                </div>
+              {/each}
             </div>
-          {/each}
+          {/if}
+        </div>
+      {/each}
+
+      {#if !terminals.root}
+        <!-- Active workspace has no terminal open. -->
+        <div class="flex h-full flex-col items-center justify-center gap-3 text-center">
+          <TerminalIcon class="size-8 text-muted-foreground/60" />
+          <div class="text-sm text-muted-foreground">
+            No terminals in <span class="font-medium text-foreground"
+              >{workspaceLabel(terminals.activeWorkspace)}</span
+            >
+          </div>
           <button
-            class="ml-0.5 shrink-0 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-            title="New terminal in this region"
-            aria-label="New terminal"
-            onclick={() => terminals.create({ groupId: g.group.id, ...defaultShellArgs() })}
+            class="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent hover:text-accent-foreground"
+            onclick={() => app.openTerminal()}
           >
-            +
+            <PlusIcon class="size-3.5" />
+            New terminal
           </button>
         </div>
-
-        <!-- Terminal stack for this region (active tab shown; others hidden) -->
-        <div class="relative min-h-0 flex-1">
-          {#each g.group.tabs as t (t.id)}
-            <div
-              class="absolute inset-0 overflow-hidden"
-              style:display={g.group.activeTabId === t.id ? "block" : "none"}
-              role="group"
-              data-pty-id={t.id}
-              onpointerdown={() => terminals.setActiveTab(g.group.id, t.id)}
-              oncontextmenu={(e) => terminalMenu(e, g.group.id, t.id)}
-            >
-              {#if t.exited}
-                <span
-                  class="absolute left-1 top-1 z-10 rounded bg-card/80 px-1 text-[10px] text-muted-foreground"
-                  >exited</span
-                >
-              {/if}
-              <Terminal
-                id={t.id}
-                cwd={t.cwd}
-                shell={t.shell}
-                args={t.args}
-                focused={activeRegion && g.group.activeTabId === t.id}
-                onexit={() => terminals.markExited(t.id)}
-              />
-            </div>
-          {/each}
-        </div>
-      </div>
-    {/each}
-
-    {#each layout.dividers as d (d.node)}
-      <div
-        class="absolute z-20 flex {d.dir === 'row'
-          ? 'cursor-col-resize'
-          : 'cursor-row-resize'}"
-        style={dividerStyle(d)}
-        role="separator"
-        aria-orientation={d.dir === "row" ? "vertical" : "horizontal"}
-        onpointerdown={(e) => dividerDown(e, d)}
-        onpointermove={dividerMove}
-        onpointerup={dividerUp}
-      >
-        <div
-          class="bg-border transition-colors hover:bg-ring {d.dir === 'row'
-            ? 'mx-auto h-full w-px'
-            : 'my-auto h-px w-full'}"
-        ></div>
-      </div>
-    {/each}
+      {/if}
     {/if}
   </div>
 </div>

@@ -86,6 +86,8 @@ class AppStore {
     cwd?: string;
     title?: string;
     profileId?: string;
+    /** Workspace to open in (worktree path, or "" for Global). */
+    workspace?: string;
   }): void {
     const profile = this.profile(opts?.profileId);
     const command = profile?.command?.trim();
@@ -95,6 +97,7 @@ class AppStore {
       title: opts?.title ?? (name || undefined),
       shell: command || undefined,
       args: command ? profile?.args : undefined,
+      workspace: opts?.workspace,
     });
   }
 

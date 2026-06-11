@@ -5,6 +5,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — Phase 2: per-worktree terminal workspaces (completes Phase 2)
+- **Terminals are now grouped into workspaces** (`terminals.svelte.ts`): one per
+  worktree (keyed by its path) plus a **Global** space (`""`) for unassigned
+  terminals. Selecting a worktree shows its terminal set and hides the others,
+  while every workspace (and every region/tab) stays mounted so background
+  worktrees keep streaming and their PTYs keep running. The store gained a
+  workspace layer (proxying the existing region/split logic to the active
+  workspace via getters), `setWorkspace`/`dropWorkspace`, all-workspace
+  serialize/restore, and cross-workspace `markExited`.
+- **Workspace switcher** in the terminal top strip (`TerminalArea.svelte`): a
+  dropdown listing Global + each worktree that has terminals, showing the active
+  one. Clicking a worktree card (`projects.setActiveWorktree`) or its "open
+  terminal" / a project's "open terminal" switches to that workspace; removing a
+  worktree drops its workspace (killing its PTYs).
+- **Persistence** now stores every workspace's layout + the active key
+  (`SavedTerminalLayout`); restored on startup.
+
 ### Added — Phase 2: in-app directory picker
 - **In-app project picker** (`DirectoryPicker.svelte`) replaces the OS-native
   folder dialog: a shadcn `Dialog` that browses sub-folders (up/down), flags git

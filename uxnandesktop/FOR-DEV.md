@@ -32,7 +32,7 @@ models live in:
 |---|---|---|
 | **0** | Base infrastructure (3-panel shell, IPC, persistence) | ✅ **DONE** |
 | **1** | Terminal core (PTY, tabs, splits) | ✅ **DONE** — terminals, region splits, copy/paste, file-drop, layout persistence, kill-on-exit (reorder/MRU = Tier 2; per-worktree assoc = Phase 2) |
-| **2** | Git & worktrees | ◑ **IN PROGRESS** — reworked single-panel UI (search + collapsible Projects/Worktrees, cards, new-worktree dialog with base-branch picker), worktree create / list / safe remove, **status/dirty + ahead/behind badges**, **in-app directory picker**. Remaining: active-worktree terminal association (agent auto-launch = Settings agents track) |
+| **2** | Git & worktrees | ✅ **DONE** — single-panel UI (search + collapsible Projects/Worktrees, cards, new-worktree dialog with base-branch picker), worktree create / list / safe remove, status/dirty + ahead/behind badges, in-app directory picker, **per-worktree terminal workspaces** (select a worktree → its terminals show, others keep running hidden). Agent auto-launch is the Settings **agents track** (S) |
 | 3 | Git status & diffs | ☐ not started |
 | 4 | Agent monitoring (hooks, notifications) | ☐ not started |
 | 5 | Polish & UX (hunk staging, side-by-side, virtual scroll) | ☐ not started |

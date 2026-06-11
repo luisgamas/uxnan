@@ -9,7 +9,7 @@ import type {
   BranchList,
   DirListing,
   RepoData,
-  SavedTermNode,
+  SavedTerminalLayout,
   WorktreeEntry,
   WorktreeStatus,
 } from "./types";
@@ -29,9 +29,10 @@ export function ping(): Promise<string> {
   return invoke<string>("ping");
 }
 
-/** Persist the terminal region/tab layout (restored on next startup). `null`
- *  records an empty area (no terminals open). */
-export function setTerminalLayout(layout: SavedTermNode | null): Promise<void> {
+/** Persist the per-workspace terminal layout (restored on next startup). */
+export function setTerminalLayout(
+  layout: SavedTerminalLayout | null,
+): Promise<void> {
   return invoke("set_terminal_layout", { layout });
 }
 

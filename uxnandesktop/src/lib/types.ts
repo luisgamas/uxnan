@@ -110,12 +110,19 @@ export type SavedTermNode =
       b: SavedTermNode;
     };
 
+/** Persisted terminal layout: one region tree per workspace (worktree path, or
+ *  `""` for the unassigned "Global" space), plus which workspace was active. */
+export interface SavedTerminalLayout {
+  active: string;
+  workspaces: Record<string, SavedTermNode>;
+}
+
 export interface AppData {
   version: number;
   repos: RepoData[];
   settings: AppSettings;
   agentCache: AgentStateEntry[];
-  terminalLayout?: SavedTermNode | null;
+  terminalLayout?: SavedTerminalLayout | null;
 }
 
 /** Mirror of the Rust `CommandError` returned across the command boundary. */

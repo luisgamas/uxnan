@@ -1,18 +1,23 @@
-// Terminal area state (Svelte 5 runes) — TabGroup model.
+// Terminal area state (Svelte 5 runes) — per-workspace TabGroup model.
 //
-// The center area is a recursive tree of regions. A `TabGroup` is one region
-// with its own tab strip (each tab = one PTY) and "+ New" button; an
-// `AreaSplit` divides the area into two regions with an adjustable ratio.
-// "New terminal" adds a tab to a region (only the active tab is shown there);
-// "Split" divides a region into two side-by-side/stacked regions, each with its
-// own tab strip. Every tab of every region stays mounted, so background and
-// hidden terminals keep streaming losslessly, and restructuring the tree never
-// remounts xterm or restarts a PTY.
+// Terminals are grouped into **workspaces**: one per worktree (keyed by its
+// path) plus a "Global" space (key `""`) for terminals not tied to a worktree.
+// Switching the active workspace shows that worktree's terminals and hides the
+// others — but every workspace (and every region/tab) stays mounted, so hidden
+// terminals keep streaming losslessly and their PTYs keep running.
+//
+// Within a workspace the layout is a recursive tree of regions. A `TabGroup` is
+// one region with its own tab strip (each tab = one PTY) and "+ New" button; an
+// `AreaSplit` divides a region into two with an adjustable ratio. Restructuring
+// the tree never remounts xterm or restarts a PTY.
 
 import { invoke } from "@tauri-apps/api/core";
-import type { SavedTermNode } from "$lib/types";
+import type { SavedTermNode, SavedTerminalLayout } from "$lib/types";
 
 export type SplitDir = "row" | "col";
+
+/** The unassigned "Global" workspace key. */
+export const GLOBAL_WORKSPACE = "";
 
 /** One terminal tab inside a region, backed by a single PTY. */
 export interface GroupTab {
@@ -55,9 +60,11 @@ export interface NewTabOptions {
   shell?: string;
   args?: string[];
   groupId?: string;
+  /** Workspace to open in (switches the active workspace first). */
+  workspace?: string;
 }
 
-function newTab(opts?: Omit<NewTabOptions, "groupId">): GroupTab {
+function newTab(opts?: Omit<NewTabOptions, "groupId" | "workspace">): GroupTab {
   termCount += 1;
   return {
     id: crypto.randomUUID(),
@@ -69,7 +76,7 @@ function newTab(opts?: Omit<NewTabOptions, "groupId">): GroupTab {
   };
 }
 
-function newGroup(opts?: Omit<NewTabOptions, "groupId">): TabGroup {
+function newGroup(opts?: Omit<NewTabOptions, "groupId" | "workspace">): TabGroup {
   const tab = newTab(opts);
   return { kind: "group", id: crypto.randomUUID(), tabs: [tab], activeTabId: tab.id };
 }
@@ -81,6 +88,10 @@ function* groups(node: AreaNode): Generator<TabGroup> {
     yield* groups(node.a);
     yield* groups(node.b);
   }
+}
+
+function* allTabs(node: AreaNode): Generator<GroupTab> {
+  for (const group of groups(node)) yield* group.tabs;
 }
 
 function firstGroup(node: AreaNode): TabGroup {
@@ -182,7 +193,7 @@ export function computeAreaLayout(root: AreaNode): {
 
 // --- Persistence (structure only; fresh shells spawn on restore) ----------
 
-/** Serialize the area tree to a structure-only snapshot (no PTY ids/state). */
+/** Serialize one area tree to a structure-only snapshot (no PTY ids/state). */
 export function serializeArea(node: AreaNode): SavedTermNode {
   if (node.kind === "group") {
     const activeTab = Math.max(
@@ -253,35 +264,86 @@ export interface TermController {
 }
 
 class TerminalStore {
-  /** The region tree, or `null` when no terminals are open. The app starts with
-   *  no terminal by default — the user opens one from the title-bar action, a
-   *  project, or a worktree. */
-  root = $state<AreaNode | null>(null);
-  activeGroupId = $state<string>("");
+  /** Region tree per workspace (worktree path, or `""` for Global). `null` = the
+   *  workspace exists but has no terminal open. */
+  workspaces = $state<Record<string, AreaNode | null>>({});
+  /** Active region id per workspace. */
+  activeGroups = $state<Record<string, string>>({});
+  /** The currently-shown workspace key. */
+  activeWorkspace = $state<string>(GLOBAL_WORKSPACE);
   /** True once the persisted layout has been restored (or defaulted). The UI
    *  waits for this before mounting terminals, so no shell is spawned and then
    *  discarded by a restore. */
   hydrated = $state(false);
   private controllers = new Map<string, TermController>();
 
-  /** Restore the area tree from a saved snapshot (or stay empty when there is
-   *  none), then mark the store hydrated. Always call once at startup. */
-  restore(saved: SavedTermNode | null | undefined): void {
-    if (saved) {
-      try {
-        const root = buildFromSaved(saved);
-        this.root = root;
-        this.activeGroupId = firstGroup(root).id;
-      } catch {
-        // Corrupt layout — fall back to an empty area.
-        this.root = null;
-        this.activeGroupId = "";
-      }
-    } else {
-      this.root = null;
-      this.activeGroupId = "";
+  // The active workspace's tree / active region, proxied so all the per-tree
+  // methods below operate on the visible workspace without change.
+  get root(): AreaNode | null {
+    return this.workspaces[this.activeWorkspace] ?? null;
+  }
+  set root(value: AreaNode | null) {
+    this.workspaces = { ...this.workspaces, [this.activeWorkspace]: value };
+  }
+  get activeGroupId(): string {
+    return this.activeGroups[this.activeWorkspace] ?? "";
+  }
+  set activeGroupId(value: string) {
+    this.activeGroups = { ...this.activeGroups, [this.activeWorkspace]: value };
+  }
+
+  /** Workspace keys that currently have at least one terminal open. */
+  get openWorkspaceKeys(): string[] {
+    return Object.keys(this.workspaces).filter((k) => this.workspaces[k] != null);
+  }
+  /** A specific workspace's tree (for rendering every workspace mounted). */
+  workspaceRoot(key: string): AreaNode | null {
+    return this.workspaces[key] ?? null;
+  }
+  /** A specific workspace's active region id. */
+  workspaceActiveGroupId(key: string): string {
+    return this.activeGroups[key] ?? "";
+  }
+
+  /** Switch the visible workspace (creating an empty entry if unknown). */
+  setWorkspace(key: string): void {
+    if (!(key in this.workspaces)) {
+      this.workspaces = { ...this.workspaces, [key]: null };
     }
+    this.activeWorkspace = key;
+  }
+
+  /** Restore per-workspace trees from a saved snapshot, then mark hydrated. */
+  restore(saved: SavedTerminalLayout | null | undefined): void {
+    const ws: Record<string, AreaNode | null> = {};
+    const ag: Record<string, string> = {};
+    if (saved?.workspaces) {
+      for (const [key, node] of Object.entries(saved.workspaces)) {
+        try {
+          const tree = buildFromSaved(node);
+          ws[key] = tree;
+          ag[key] = firstGroup(tree).id;
+        } catch {
+          // Skip a corrupt workspace entry.
+        }
+      }
+    }
+    const active = saved?.active ?? GLOBAL_WORKSPACE;
+    if (!(active in ws)) ws[active] = null;
+    this.workspaces = ws;
+    this.activeGroups = ag;
+    this.activeWorkspace = active;
     this.hydrated = true;
+  }
+
+  /** Snapshot of every non-empty workspace + the active key (for persistence). */
+  serialize(): SavedTerminalLayout {
+    const workspaces: Record<string, SavedTermNode> = {};
+    for (const key of Object.keys(this.workspaces)) {
+      const tree = this.workspaces[key];
+      if (tree) workspaces[key] = serializeArea(tree);
+    }
+    return { active: this.activeWorkspace, workspaces };
   }
 
   // --- Focus / selection ---------------------------------------------------
@@ -294,7 +356,7 @@ class TerminalStore {
     if (group) group.activeTabId = tabId;
     this.activeGroupId = groupId;
   }
-  /** PTY id of the active tab of the active region, or null when the area is empty. */
+  /** PTY id of the active tab of the active region, or null when empty. */
   activePtyId(): string | null {
     if (!this.root) return null;
     const group = findGroup(this.root, this.activeGroupId) ?? firstGroup(this.root);
@@ -302,9 +364,11 @@ class TerminalStore {
   }
 
   // --- Tabs ----------------------------------------------------------------
-  /** Add a tab to a region (defaults to the active region). When the area is
-   *  empty, this opens the first region. */
+  /** Add a tab to a region (defaults to the active region of the active
+   *  workspace). `opts.workspace` switches workspace first; an empty workspace
+   *  opens its first region. */
   create(opts?: NewTabOptions): string {
+    if (opts?.workspace !== undefined) this.setWorkspace(opts.workspace);
     if (!this.root) {
       const group = newGroup(opts);
       this.root = group;
@@ -320,15 +384,23 @@ class TerminalStore {
     return tab.id;
   }
 
+  /** Mark a pane's process as exited (searches every workspace, since a
+   *  background workspace's tab can exit while hidden). */
   markExited(ptyId: string): void {
-    if (!this.root) return;
-    const group = groupOfTab(this.root, ptyId);
-    const tab = group?.tabs.find((t) => t.id === ptyId);
-    if (tab) tab.exited = true;
+    for (const key of Object.keys(this.workspaces)) {
+      const tree = this.workspaces[key];
+      if (!tree) continue;
+      const group = groupOfTab(tree, ptyId);
+      const tab = group?.tabs.find((t) => t.id === ptyId);
+      if (tab) {
+        tab.exited = true;
+        return;
+      }
+    }
   }
 
-  /** Close one tab: kill its PTY; if it was the region's last tab, collapse the
-   *  region (or reset to a fresh one if it was the only region). */
+  /** Close one tab in the active workspace: kill its PTY; if it was the region's
+   *  last tab, collapse the region (or empty the workspace if it was the last). */
   async closeTab(groupId: string, tabId: string): Promise<void> {
     if (!this.root) return;
     const group = findGroup(this.root, groupId);
@@ -381,14 +453,29 @@ class TerminalStore {
   private collapseGroup(groupId: string): void {
     if (!this.root) return;
     const newRoot = removeGroup(this.root, groupId);
-    // `null` means the last region was closed → the area becomes empty (no
-    // terminal is auto-spawned to replace it).
+    // `null` means the last region closed → the workspace becomes empty.
     this.root = newRoot;
     if (newRoot === null) {
       this.activeGroupId = "";
     } else if (!findGroup(newRoot, this.activeGroupId)) {
       this.activeGroupId = firstGroup(newRoot).id;
     }
+  }
+
+  /** Drop a workspace entirely: kill all its PTYs and forget it (used when its
+   *  worktree is removed). Switches to Global if it was active. */
+  dropWorkspace(key: string): void {
+    const tree = this.workspaces[key];
+    if (tree) {
+      for (const tab of allTabs(tree)) {
+        invoke("pty_close", { id: tab.id }).catch(() => {});
+      }
+    }
+    const { [key]: _root, ...restWs } = this.workspaces;
+    const { [key]: _grp, ...restAg } = this.activeGroups;
+    this.workspaces = restWs;
+    this.activeGroups = restAg;
+    if (this.activeWorkspace === key) this.activeWorkspace = GLOBAL_WORKSPACE;
   }
 
   // --- Controllers ---------------------------------------------------------
