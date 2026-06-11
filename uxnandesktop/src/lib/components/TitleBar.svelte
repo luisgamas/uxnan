@@ -1,6 +1,7 @@
 <script lang="ts">
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { app } from "$lib/state/app.svelte";
+  import SettingsIcon from "@lucide/svelte/icons/settings";
 
   // Window controls degrade gracefully in a plain browser (no Tauri runtime).
   function windowAction(fn: (w: ReturnType<typeof getCurrentWindow>) => void) {
@@ -45,6 +46,16 @@
 
   <!-- Draggable filler -->
   <div data-tauri-drag-region class="h-full flex-1"></div>
+
+  <!-- Settings -->
+  <button
+    class="flex size-7 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+    title="Settings"
+    aria-label="Settings"
+    onclick={() => (app.settingsOpen = true)}
+  >
+    <SettingsIcon class="size-4" />
+  </button>
 
   <!-- Window controls -->
   <div class="ml-1 flex items-center">

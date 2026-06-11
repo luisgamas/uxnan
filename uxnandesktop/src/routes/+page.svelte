@@ -3,6 +3,7 @@
   import TerminalArea from "$lib/components/TerminalArea.svelte";
   import TitleBar from "$lib/components/TitleBar.svelte";
   import LeftSidebar from "$lib/components/LeftSidebar.svelte";
+  import Settings from "$lib/components/Settings.svelte";
 
   // Resize bounds for each sidebar (px).
   const LEFT_MIN = 200;
@@ -83,6 +84,9 @@
 <div class="flex h-screen w-screen flex-col bg-background text-foreground">
   <!-- Custom title bar (OS chrome disabled) -->
   <TitleBar />
+
+  <!-- Settings dialog (controlled by app.settingsOpen) -->
+  <Settings />
 
   <!-- Three-panel body -->
   <div class="flex min-h-0 flex-1">

@@ -17,7 +17,6 @@ import {
 } from "$lib/api";
 import type { BranchList, WorktreeEntry } from "$lib/types";
 import { app } from "$lib/state/app.svelte";
-import { terminals } from "$lib/state/terminals.svelte";
 
 const msg = (e: unknown) =>
   e && typeof e === "object" && "message" in e
@@ -165,9 +164,9 @@ class ProjectsStore {
     this.activeWorktreePath = path;
   }
 
-  /** Open a terminal whose shell starts in `path`. */
+  /** Open a terminal (default profile) whose shell starts in `path`. */
   openTerminalAt(path: string): void {
-    terminals.create({ cwd: path, title: baseName(path) });
+    app.openTerminal({ cwd: path, title: baseName(path) });
   }
 }
 

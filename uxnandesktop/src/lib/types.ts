@@ -6,12 +6,26 @@ export type Theme = "light" | "dark" | "system";
 
 export type AgentStatus = "working" | "blocked" | "waiting" | "done";
 
+/** A configurable terminal/shell profile (mirror of the Rust `TerminalProfile`). */
+export interface TerminalProfile {
+  id: string;
+  name: string;
+  /** Executable to launch (e.g. `powershell.exe`, `wsl.exe`, `/bin/bash`). */
+  command: string;
+  /** Arguments passed to the command (e.g. `["-NoLogo"]`, `["-d", "Ubuntu"]`). */
+  args: string[];
+}
+
 export interface AppSettings {
   theme: Theme;
   leftSidebarWidth: number;
   rightSidebarWidth: number;
   leftSidebarOpen: boolean;
   rightSidebarOpen: boolean;
+  /** Configurable terminal/shell profiles (seeded with platform defaults). */
+  terminalProfiles: TerminalProfile[];
+  /** Id of the profile used for new terminals unless one is picked explicitly. */
+  defaultProfileId: string | null;
 }
 
 export interface WorktreeData {
@@ -60,7 +74,7 @@ export interface AgentStateEntry {
 export type SavedTermNode =
   | {
       type: "group";
-      tabs: { title: string; cwd?: string }[];
+      tabs: { title: string; cwd?: string; shell?: string; args?: string[] }[];
       activeTab: number;
     }
   | {
@@ -91,4 +105,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   rightSidebarWidth: 350,
   leftSidebarOpen: true,
   rightSidebarOpen: true,
+  // The backend seeds real platform profiles; this fallback is only used before
+  // hydration (or in the plain web preview, which can't spawn PTYs anyway).
+  terminalProfiles: [],
+  defaultProfileId: null,
 };

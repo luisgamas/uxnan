@@ -8,14 +8,26 @@
   import "@xterm/xterm/css/xterm.css";
   import { clipboardRead, clipboardWrite } from "$lib/clipboard";
   import { terminals } from "$lib/state/terminals.svelte";
+  import { app } from "$lib/state/app.svelte";
+
+  // xterm colors follow the app theme (light/dark).
+  const palette = $derived(app.terminalPalette());
 
   let {
     id,
     focused,
     cwd,
+    shell,
+    args,
     onexit,
-  }: { id: string; focused: boolean; cwd?: string; onexit?: () => void } =
-    $props();
+  }: {
+    id: string;
+    focused: boolean;
+    cwd?: string;
+    shell?: string;
+    args?: string[];
+    onexit?: () => void;
+  } = $props();
 
   let el: HTMLDivElement;
   let term: Terminal | undefined;
@@ -56,11 +68,7 @@
       scrollback: 5000,
       fontFamily:
         'ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, monospace',
-      theme: {
-        background: "#0b0b0c",
-        foreground: "#e6e6e6",
-        cursor: "#e6e6e6",
-      },
+      theme: { ...palette },
     });
     fit = new FitAddon();
     term.loadAddon(fit);
@@ -111,6 +119,8 @@
     await invoke("pty_create", {
       id,
       cwd,
+      shell,
+      args,
       cols: term.cols || 80,
       rows: term.rows || 24,
     }).catch(() => {});
@@ -143,6 +153,11 @@
     }
   });
 
+  // Re-theme the live terminal when the app theme changes.
+  $effect(() => {
+    if (term) term.options.theme = { ...palette };
+  });
+
   onDestroy(() => {
     terminals.unregisterController(id);
     unlisteners.forEach((fn) => fn());
@@ -151,4 +166,11 @@
   });
 </script>
 
-<div bind:this={el} class="h-full w-full"></div>
+<!-- p-2 gives the terminal content breathing room; the FitAddon subtracts this
+     padding so cols/rows still fit. The background matches the xterm theme so
+     the padding blends seamlessly. -->
+<div
+  bind:this={el}
+  class="h-full w-full p-2"
+  style:background-color={palette.background}
+></div>

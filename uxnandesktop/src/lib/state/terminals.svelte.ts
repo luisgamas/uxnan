@@ -20,6 +20,10 @@ export interface GroupTab {
   id: string;
   title: string;
   cwd?: string;
+  /** Shell executable for this tab's PTY (from the chosen terminal profile). */
+  shell?: string;
+  /** Shell arguments (from the chosen terminal profile). */
+  args?: string[];
   exited: boolean;
 }
 
@@ -44,18 +48,29 @@ export type AreaNode = TabGroup | AreaSplit;
 
 let termCount = 0;
 
-function newTab(cwd?: string, title?: string): GroupTab {
+/** Options for opening a new terminal tab/region. */
+export interface NewTabOptions {
+  cwd?: string;
+  title?: string;
+  shell?: string;
+  args?: string[];
+  groupId?: string;
+}
+
+function newTab(opts?: Omit<NewTabOptions, "groupId">): GroupTab {
   termCount += 1;
   return {
     id: crypto.randomUUID(),
-    title: title ?? `Terminal ${termCount}`,
-    cwd,
+    title: opts?.title ?? `Terminal ${termCount}`,
+    cwd: opts?.cwd,
+    shell: opts?.shell,
+    args: opts?.args,
     exited: false,
   };
 }
 
-function newGroup(cwd?: string, title?: string): TabGroup {
-  const tab = newTab(cwd, title);
+function newGroup(opts?: Omit<NewTabOptions, "groupId">): TabGroup {
+  const tab = newTab(opts);
   return { kind: "group", id: crypto.randomUUID(), tabs: [tab], activeTabId: tab.id };
 }
 
@@ -176,7 +191,12 @@ export function serializeArea(node: AreaNode): SavedTermNode {
     );
     return {
       type: "group",
-      tabs: node.tabs.map((t) => ({ title: t.title, cwd: t.cwd })),
+      tabs: node.tabs.map((t) => ({
+        title: t.title,
+        cwd: t.cwd,
+        shell: t.shell,
+        args: t.args,
+      })),
       activeTab,
     };
   }
@@ -200,6 +220,8 @@ function buildFromSaved(saved: SavedTermNode): AreaNode {
               id: crypto.randomUUID(),
               title: t.title,
               cwd: t.cwd,
+              shell: t.shell,
+              args: t.args,
               exited: false,
             };
           })
@@ -282,16 +304,16 @@ class TerminalStore {
   // --- Tabs ----------------------------------------------------------------
   /** Add a tab to a region (defaults to the active region). When the area is
    *  empty, this opens the first region. */
-  create(opts?: { cwd?: string; title?: string; groupId?: string }): string {
+  create(opts?: NewTabOptions): string {
     if (!this.root) {
-      const group = newGroup(opts?.cwd, opts?.title);
+      const group = newGroup(opts);
       this.root = group;
       this.activeGroupId = group.id;
       return group.tabs[0].id;
     }
     const groupId = opts?.groupId ?? this.activeGroupId;
     const group = findGroup(this.root, groupId) ?? firstGroup(this.root);
-    const tab = newTab(opts?.cwd, opts?.title);
+    const tab = newTab(opts);
     group.tabs.push(tab);
     group.activeTabId = tab.id;
     this.activeGroupId = group.id;
@@ -326,11 +348,15 @@ class TerminalStore {
 
   // --- Regions (split / close) --------------------------------------------
   /** Split a region into two, spawning a new region beside/below it. */
-  split(groupId: string, dir: SplitDir, opts?: { cwd?: string }): void {
+  split(
+    groupId: string,
+    dir: SplitDir,
+    opts?: { cwd?: string; shell?: string; args?: string[] },
+  ): void {
     if (!this.root) return;
     const group = findGroup(this.root, groupId);
     if (!group) return;
-    const fresh = newGroup(opts?.cwd);
+    const fresh = newGroup(opts);
     this.root = replaceGroup(this.root, groupId, {
       kind: "split",
       dir,

@@ -14,8 +14,21 @@
     type SplitDir,
   } from "$lib/state/terminals.svelte";
   import Terminal from "./Terminal.svelte";
+  import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import PlusIcon from "@lucide/svelte/icons/plus";
   import TerminalIcon from "@lucide/svelte/icons/terminal";
+  import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
+
+  /** Default profile's shell/args, for region-level + and splits. A blank
+   *  command falls back to the backend's platform default shell. */
+  function defaultShellArgs() {
+    const p = app.defaultProfile();
+    const command = p?.command?.trim();
+    return { shell: command || undefined, args: command ? p?.args : undefined };
+  }
+
+  // The terminal area background follows the app theme (matches xterm's bg).
+  const paneBg = $derived(app.terminalPalette().background);
 
   const layout = $derived(
     terminals.root
@@ -123,13 +136,22 @@
 
   function splitItems(groupId: string): MenuItem[] {
     return [
-      { label: "Split right", action: () => terminals.split(groupId, "row") },
-      { label: "Split down", action: () => terminals.split(groupId, "col") },
+      {
+        label: "Split right",
+        action: () => terminals.split(groupId, "row", defaultShellArgs()),
+      },
+      {
+        label: "Split down",
+        action: () => terminals.split(groupId, "col", defaultShellArgs()),
+      },
     ];
   }
   function regionItems(groupId: string, tabId: string): MenuItem[] {
     return [
-      { label: "New terminal", action: () => terminals.create({ groupId }) },
+      {
+        label: "New terminal",
+        action: () => terminals.create({ groupId, ...defaultShellArgs() }),
+      },
       {
         label: "Close terminal",
         action: () => void terminals.closeTab(groupId, tabId),
@@ -169,14 +191,42 @@
   <!-- Slim strip: global new-terminal action + right-panel toggle (stays visible
        when the right panel is hidden) -->
   <div class="flex h-8 shrink-0 items-center gap-1 border-b border-border bg-card px-2">
-    <button
-      class="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-      title="New terminal"
-      onclick={() => terminals.create()}
-    >
-      <PlusIcon class="size-3.5" />
-      Terminal
-    </button>
+    <div class="flex items-center">
+      <button
+        class="inline-flex items-center gap-1 rounded-l px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+        title="New terminal (default profile)"
+        onclick={() => app.openTerminal()}
+      >
+        <PlusIcon class="size-3.5" />
+        Terminal
+      </button>
+      <DropdownMenu.Root>
+        <DropdownMenu.Trigger>
+          {#snippet child({ props })}
+            <button
+              class="rounded-r px-0.5 py-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              title="Choose a terminal profile"
+              aria-label="Choose a terminal profile"
+              {...props}
+            >
+              <ChevronDownIcon class="size-3.5" />
+            </button>
+          {/snippet}
+        </DropdownMenu.Trigger>
+        <DropdownMenu.Content align="start" class="min-w-44">
+          <DropdownMenu.Label class="text-[11px]">New terminal</DropdownMenu.Label>
+          {#each app.terminalProfiles as p (p.id)}
+            <DropdownMenu.Item
+              class="text-xs"
+              onclick={() => app.openTerminal({ profileId: p.id })}
+            >
+              <TerminalIcon class="size-3.5" />
+              {p.name.trim() || "Unnamed profile"}
+            </DropdownMenu.Item>
+          {/each}
+        </DropdownMenu.Content>
+      </DropdownMenu.Root>
+    </div>
     <div class="flex-1"></div>
     <button
       class="rounded px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground"
@@ -193,7 +243,8 @@
        so splitting / closing never remounts xterm or restarts a PTY. -->
   <div
     data-pane-container
-    class="relative min-h-0 flex-1 overflow-hidden bg-[#0b0b0c]"
+    class="relative min-h-0 flex-1 overflow-hidden"
+    style:background-color={paneBg}
   >
     {#if terminals.hydrated && layout.groups.length === 0}
       <!-- Empty area: the app starts with no terminal; open one here or from a
@@ -203,7 +254,7 @@
         <div class="text-sm text-muted-foreground">No terminals open</div>
         <button
           class="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent hover:text-accent-foreground"
-          onclick={() => terminals.create()}
+          onclick={() => app.openTerminal()}
         >
           <PlusIcon class="size-3.5" />
           New terminal
@@ -257,7 +308,7 @@
             class="ml-0.5 shrink-0 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground"
             title="New terminal in this region"
             aria-label="New terminal"
-            onclick={() => terminals.create({ groupId: g.group.id })}
+            onclick={() => terminals.create({ groupId: g.group.id, ...defaultShellArgs() })}
           >
             +
           </button>
@@ -283,6 +334,8 @@
               <Terminal
                 id={t.id}
                 cwd={t.cwd}
+                shell={t.shell}
+                args={t.args}
                 focused={activeRegion && g.group.activeTabId === t.id}
                 onexit={() => terminals.markExited(t.id)}
               />
