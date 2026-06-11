@@ -258,8 +258,11 @@ browser and multi-PC connection correctness are now DONE — see below.)
     `ThreadManager` tracks it per-thread (`contextUsageProvider`); the composer
     shows a **percentage ring** when the window is known and a **raw token
     count** otherwise (Codex), and the status-sheet context row mirrors it.
-    OpenCode reports no usage. (Verified the Codex/Claude `usage` shapes against
-    a real turn.)
+    The meter is now **always visible at a 0 baseline** for agents that report
+    usage — gated on the per-agent `reportsContextUsage` capability (Claude/Codex
+    true, OpenCode false) — so it no longer only appears after the first turn.
+    OpenCode reports no usage and shows nothing. (Verified the Codex/Claude
+    `usage` shapes against a real turn.)
   - ☑ **Per-model run-option knobs (data-driven).** DONE (phase 3 of the bridge
     seam): a generic control bar above the composer renders the knobs the bridge
     advertises on `agent/models` (`AgentModel.options`) for the thread's model —
@@ -353,14 +356,17 @@ browser and multi-PC connection correctness are now DONE — see below.)
 
 ## Account / auth
 
-- ☑ **Sign-in status banner (`auth/status`)** — DONE: the conversation screen
-  queries the bridge's sanitized per-agent `auth/status` for the active thread's
-  agent (`AuthStatus` entity + `ThreadManager.loadAuthStatus` +
-  `authStatusProvider` family) and shows a warning banner above the composer
-  when the agent is not signed in on the PC. Gated on `connectedHere`; degrades
-  to nothing offline / against an older bridge. ☐ On-device: verify the banner
-  appears when the agent CLI is logged out on the PC and clears once it's
-  authenticated.
+- ☑ **Sign-in status surfaced everywhere (`auth/status`)** — DONE: `AuthStatus`
+  entity + `ThreadManager.loadAuthStatus` + `authStatusProvider` family drive,
+  for an agent not signed in on the PC: a warning **banner** above the composer
+  (gated on `connectedHere`), a **red status dot** on its threads in the list,
+  and on the **new-conversation card** a soft error tint plus a **"Check
+  sign-in"** button that re-queries `auth/status` (`ref.invalidate`, spinner
+  while checking). Stale state also auto-refreshes on **app resume**
+  (`authStatusRefreshProvider` bumped by `_PushHost`), since a PC-side login
+  doesn't change anything phone-side. All degrade to nothing offline / against
+  an older bridge. ☐ On-device: verify each surface clears once the agent is
+  signed in on the PC (via resume or the manual button).
 - ⊘ **Interactive login from the app — OUT OF SCOPE (product decision).** The
   banner is informational by design: signing an agent in/out is done on the PC
   (each agent's own CLI login), not from the phone. The app deliberately does
