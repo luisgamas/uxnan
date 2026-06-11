@@ -31,7 +31,7 @@ models live in:
 | Phase | Theme | Status |
 |---|---|---|
 | **0** | Base infrastructure (3-panel shell, IPC, persistence) | ✅ **DONE** |
-| **1** | Terminal core (PTY, tabs, splits) | ◑ **IN PROGRESS** — working terminal + tabs; splits & layout-persist deferred |
+| **1** | Terminal core (PTY, tabs, splits) | ◑ **IN PROGRESS** — terminals + region splits + copy/paste + file-drop done; layout-persist, reorder/MRU deferred |
 | **2** | Git & worktrees | ◑ **IN PROGRESS** — repo add + worktree create/list/open-terminal working, but the UX is superficial and must be reworked |
 | 3 | Git status & diffs | ☐ not started |
 | 4 | Agent monitoring (hooks, notifications) | ☐ not started |
@@ -115,20 +115,35 @@ Phase 0 follow-ups (do next, before/with Phase 1):
 - [x] `@xterm/xterm` + `@xterm/addon-fit` + `@xterm/addon-webgl` in
       `Terminal.svelte`: `onData → pty_write`, `listen('pty:output:{id}') →
       term.write`, `ResizeObserver → pty_resize`, WebGL with DOM fallback.
-- [x] Terminal tab bar (`TerminalArea.svelte`): create / close / switch; hidden
-      tabs stay mounted so their PTYs keep streaming. Wired into the center panel
-      of `+page.svelte`. State in `lib/state/terminals.svelte.ts`.
-- [ ] Tab reorder / MRU. **FOR-DEV.**
-- [ ] **Recursive binary split tree** for panes inside a tab (drag-to-resize).
-      Deferred — the highest-effort remaining Phase 1 piece. **FOR-DEV.**
-- [ ] **Persist the tab/split layout** per worktree (needs the Phase 0 debounced
-      writer + the worktree model from Phase 2). **FOR-DEV.**
+- [x] **TabGroup region layout** (`TerminalArea.svelte` +
+      `lib/state/terminals.svelte.ts`): the center area is a tree of regions
+      (`AreaNode = TabGroup | AreaSplit`). Each region has its own tab strip
+      (each tab = one PTY) + "+ New" button; **Split right/down** divides a
+      region into two with a draggable ratio. Terminals render in a flat,
+      id-keyed layer positioned from `computeAreaLayout`, so splitting/closing
+      **never remounts xterm or restarts a PTY** (backed by the idempotent
+      `pty_create`). Background/hidden tabs stay mounted (lossless).
+- [x] **Terminal interaction**: copy (`Ctrl+C` with selection) / paste
+      (`Ctrl+V`) and a right-click context menu (Copy/Paste · Split · New/Close
+      terminal); clipboard via `tauri-plugin-clipboard-manager`
+      (`lib/clipboard.ts`, web fallback). Native **file drag-and-drop** inserts
+      quoted paths into the terminal under the cursor (`onDragDropEvent`).
+- [ ] Tab/region reorder, drag tabs between regions, MRU. **FOR-DEV.**
+- [ ] **Persist the region/tab layout** per worktree (needs the Phase 0
+      debounced writer + the worktree model from Phase 2). **FOR-DEV.**
 
 ### Notes / gotchas
 - ConPTY (Windows) queries cursor position (`ESC[6n`) at startup and waits for a
   reply; a live xterm.js answers automatically (the unit test answers it
   manually). PowerShell hangs without that answer — hence the test uses
   `cmd.exe`, while the app uses PowerShell against a real xterm.
+- Restructuring the layout must not remount the affected `Terminal` (it would
+  re-run `pty_create` and restart the shell). Keep terminals in the flat,
+  id-keyed layer; `pty_create` is idempotent as a backstop.
+- Keyboard copy uses `Ctrl+C`/`Ctrl+V` (NOT `Ctrl+Shift+C/V`): `Ctrl+Shift+C` is
+  the webview DevTools shortcut and can't be reliably suppressed; the Shift
+  paste also double-pasted (manual `term.paste` + native paste). `Ctrl+V` calls
+  `preventDefault` to drop the duplicate native paste.
 - Some CLI agents block on an open stdin pipe — match the bridge's lesson and
   manage stdin deliberately.
 - WebGL addon falls back to the DOM renderer when unavailable.

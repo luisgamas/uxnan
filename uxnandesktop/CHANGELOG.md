@@ -5,6 +5,37 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — Phase 1 (terminal splits & interaction)
+- **TabGroup region layout** (`src/lib/state/terminals.svelte.ts`,
+  `TerminalArea.svelte`): the center area is now a tree of regions
+  (`AreaNode = TabGroup | AreaSplit`). Each region has its own tab strip (each
+  tab = one PTY) and "+ New" button; **Split right/down** divides a region into
+  two with a draggable ratio (nestable). Terminals render in a flat,
+  PTY-id-keyed layer positioned from `computeAreaLayout`, so splitting/closing
+  **never remounts xterm or restarts a process** — fixing the earlier bug where
+  the first pane reprinted its shell startup and running processes were killed
+  on split/close.
+- **Terminal copy/paste**: `Ctrl+C` (copies when there's a selection, else
+  SIGINT) / `Ctrl+V`, plus a right-click context menu (Copy · Paste · Split
+  right/down · New terminal · Close terminal) on both the terminal and the tab.
+  Clipboard via `tauri-plugin-clipboard-manager` (`src/lib/clipboard.ts`, with a
+  `navigator.clipboard` fallback for the web preview).
+- **File drag-and-drop**: dropping files onto a terminal inserts their quoted
+  paths into the terminal under the cursor (Tauri `onDragDropEvent`).
+
+### Fixed
+- **`pty_create` is idempotent** (`src-tauri/src/pty.rs`): re-creating an
+  existing PTY id is a no-op instead of spawning a replacement, so a stray
+  double-create can never restart a live shell/agent. +1 test (16 → 17 passing).
+
+### Changed — UI
+- **Right-panel toggle relocated** out of the title bar (next to min/max/close)
+  into a slim strip at the top-right of the center panel, so it stays visible
+  when the right panel is hidden.
+- **Slim themed scrollbars** for the terminal viewport and sidebars
+  (`.xterm-viewport` / `.uxnan-scroll` in `app.css`) instead of the chunky OS
+  default.
+
 ### Added — Phase 2 (git & worktrees, in progress)
 - **Git backend** (`src-tauri/src/git.rs`): repo/worktree ops via the git CLI
   (`tokio::process::Command`, `shell:false`) — `is_git_repo`, `repo_name`,
