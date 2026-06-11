@@ -8,13 +8,15 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- **New-conversation agent card: manual "Check sign-in".** An installed but
-  not-signed-in agent now gets a soft error tint on its card plus a **Check
-  sign-in** `TextButton` (replacing the static "Sign in required" text) that
-  re-queries `auth/status` on tap (showing a spinner while it checks); the card
-  un-tints once the agent is signed in on the PC. This gives a manual way to
-  verify sign-in without leaving the dialog — complementing the on-resume
-  refresh. Reuses `authStatusProvider` + `ref.invalidate`.
+- **Manual "Check sign-in" on the not-signed-in surfaces.** Both the
+  new-conversation agent card and the **conversation login banner** now offer a
+  **Check sign-in** `TextButton` that re-queries `auth/status` on tap (spinner
+  while checking), so the user can verify sign-in without leaving the screen —
+  complementing the on-resume refresh. The card also gains a soft error tint
+  (replacing its static "Sign in required" text); the banner keeps its
+  error-container strip (the M3 alert-with-action shape — not a `MaterialBanner`,
+  which is a top-of-content component) and adds the action at the end. Both
+  reuse `authStatusProvider` + `ref.invalidate` and un-resolve once signed in.
 
 ### Fixed
 

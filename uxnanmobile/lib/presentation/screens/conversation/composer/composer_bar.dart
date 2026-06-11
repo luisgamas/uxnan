@@ -97,7 +97,7 @@ class _ComposerBarState extends State<ComposerBar> {
         child: Padding(
           padding: const EdgeInsets.fromLTRB(
             UxnanSpacing.lg,
-            UxnanSpacing.sm,
+            UxnanSpacing.lg,
             UxnanSpacing.sm,
             UxnanSpacing.sm,
           ),

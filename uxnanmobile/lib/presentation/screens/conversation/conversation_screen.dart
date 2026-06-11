@@ -291,10 +291,8 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
           // Sign-in warning: the agent on this PC is not logged in, so turns
           // won't run until the user signs into its CLI on the PC. Kept above
           // the composer (not in the scrolling list) so it stays visible.
-          if (requiresLogin)
-            _LoginRequiredBanner(
-              loginInProgress: authStatus!.loginInProgress,
-            ),
+          if (requiresLogin && thread != null)
+            _LoginRequiredBanner(agentId: thread.agentId),
           // Per-model run-option knobs (reasoning effort, …) the bridge
           // advertises for the active model — a generic, data-driven control.
           if (connectedHere && runOptions.isNotEmpty)
@@ -466,20 +464,28 @@ class _ConversationMenu extends StatelessWidget {
 }
 
 /// A full-width warning above the composer when the active thread's agent is
-/// not signed in on the PC: turns won't run until the user logs into the
-/// agent's CLI there. There is no in-app login yet (the bridge's `auth/login`
-/// is a stub), so this is informational — it points the user to the PC.
-class _LoginRequiredBanner extends StatelessWidget {
-  const _LoginRequiredBanner({required this.loginInProgress});
+/// not signed in on the PC. Signing in happens on the PC (the bridge's
+/// `auth/login` is a stub), so this surfaces the state and offers a **Check
+/// sign-in** action that re-queries `auth/status` — mirroring the
+/// new-conversation card — alongside the on-resume auto-refresh.
+class _LoginRequiredBanner extends ConsumerWidget {
+  const _LoginRequiredBanner({required this.agentId});
 
-  /// Whether an interactive login is currently running on the PC.
-  final bool loginInProgress;
+  /// Wire id of the active thread's agent (the one to re-check).
+  final String agentId;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final l10n = AppLocalizations.of(context);
+
+    final auth = ref.watch(authStatusProvider(agentId));
+    final loginInProgress = auth.value?.loginInProgress ?? false;
+    // Riverpod retains the previous value across an invalidate, so a re-check
+    // shows a spinner while the banner stays visible.
+    final checking = auth.isLoading;
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         UxnanSpacing.lg,
@@ -491,9 +497,11 @@ class _LoginRequiredBanner extends StatelessWidget {
         color: colors.errorContainer,
         borderRadius: BorderRadius.circular(12),
         child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: UxnanSpacing.md,
-            vertical: UxnanSpacing.sm,
+          padding: const EdgeInsets.fromLTRB(
+            UxnanSpacing.md,
+            UxnanSpacing.sm,
+            UxnanSpacing.sm,
+            UxnanSpacing.sm,
           ),
           child: Row(
             children: [
@@ -539,6 +547,30 @@ class _LoginRequiredBanner extends StatelessWidget {
                   ],
                 ),
               ),
+              // Manual re-check (M3 alert-with-action): a trailing text button
+              // on the error surface. Hidden while a PC-side login is running.
+              if (!loginInProgress) ...[
+                const SizedBox(width: UxnanSpacing.xs),
+                TextButton(
+                  onPressed: checking
+                      ? null
+                      : () => ref.invalidate(authStatusProvider(agentId)),
+                  style: TextButton.styleFrom(
+                    foregroundColor: colors.onErrorContainer,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  child: checking
+                      ? SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: colors.onErrorContainer,
+                          ),
+                        )
+                      : Text(l10n.agentCheckSignIn),
+                ),
+              ],
             ],
           ),
         ),

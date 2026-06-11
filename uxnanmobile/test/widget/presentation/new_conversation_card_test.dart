@@ -58,7 +58,9 @@ void main() {
     expect(find.widgetWithText(TextButton, 'Check sign-in'), findsOneWidget);
   });
 
-  testWidgets('a signed-in agent shows no Check sign-in action', (tester) async {
+  testWidgets('a signed-in agent shows no Check sign-in action', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(1200, 2400);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
