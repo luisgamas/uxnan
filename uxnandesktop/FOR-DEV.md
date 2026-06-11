@@ -32,7 +32,7 @@ models live in:
 |---|---|---|
 | **0** | Base infrastructure (3-panel shell, IPC, persistence) | ✅ **DONE** |
 | **1** | Terminal core (PTY, tabs, splits) | ✅ **DONE** — terminals, region splits, copy/paste, file-drop, layout persistence, kill-on-exit (reorder/MRU = Tier 2; per-worktree assoc = Phase 2) |
-| **2** | Git & worktrees | ◑ **IN PROGRESS** — repo add + worktree create/list/open-terminal working, but the UX is superficial and must be reworked |
+| **2** | Git & worktrees | ◑ **IN PROGRESS** — reworked single-panel UI (search + collapsible Projects/Worktrees, cards, new-worktree dialog with base-branch picker), worktree create (base + `--no-track`) / list / safe remove. Remaining: active-worktree terminal association, agent auto-launch, status/dirty badges, in-app directory picker |
 | 3 | Git status & diffs | ☐ not started |
 | 4 | Agent monitoring (hooks, notifications) | ☐ not started |
 | 5 | Polish & UX (hunk staging, side-by-side, virtual scroll) | ☐ not started |
@@ -190,25 +190,38 @@ killed on close and on exit.
       parser, path flattening).
 - [x] Commands: `repo_add` / `repo_remove` / `repo_list` (repos persisted in
       `AppData`), `worktree_create`, `worktree_list`.
-- [ ] **Base-branch resolution** (probe `origin/HEAD` → `main` → `master`).
-      Today `worktree_create` always branches off the repo's current HEAD.
-      **FOR-DEV.**
-- [ ] `worktree_remove` with a dirty-changes preflight + safe branch cleanup.
-      **FOR-DEV.**
+- [x] **Base-branch resolution** (`branch_list` + `default_base`: probe
+      `origin/HEAD` → `main` → `master` → `HEAD`). `worktree_create` now takes an
+      optional `base` and uses `--no-track`.
+- [x] `worktree_remove` with a dirty-changes preflight + prune + a *safe* branch
+      delete (`git branch -d`, kept if unmerged). Aggressive cleanup for
+      squash-merged branches (patch-equivalence) is still deferred. **FOR-DEV.**
 - [ ] Move high-frequency status/diff to `git2` (`0.20+`); branch listing. **FOR-DEV.**
 - [ ] WSL path detection (`\\wsl.localhost\…`) → route through `wsl.exe`. **FOR-DEV.**
 - [ ] Persist created worktrees' metadata (today they're discovered live via
       `git worktree list`; fine for now). **FOR-DEV.**
 
 ### Frontend (Svelte)
-- [x] Left sidebar is now **tabbed** (`LeftSidebar.svelte`): **Projects** (add via
-      native folder picker → `repo_add`; list; remove) and **Worktrees** (create
-      via a minimal branch-name form → `worktree_create`; list per repo via
-      `worktree_list`; "Terminal" action opens a shell in the worktree's cwd —
-      `terminals.create({ cwd })`).
-- [ ] **Rework the UX** per the warning above (proper dialog, validation,
-      feedback, base-branch picker, agent auto-launch, richer cards,
-      shadcn-svelte components). **FOR-DEV — highest-priority Phase 2 item.**
+- [x] **Single-panel left sidebar** (`LeftSidebar.svelte`): top search (filters
+      projects + worktrees together) over two **collapsible** sections — Projects
+      and Worktrees (collapsed by default; one expands to fill or both share 50/50).
+      Built from real **shadcn-svelte** components.
+- [x] **Project cards** (`ProjectCard.svelte`): name, path, worktree-count badge;
+      actions to open a terminal, **New worktree…**, and a ⋯ menu (copy path,
+      remove with confirm). **Worktree cards** (`WorktreeCard.svelte`): branch
+      (+ `main` badge), repo, path; click to mark active; open-terminal + ⋯ menu
+      (copy path, remove → escalates to forced remove when dirty).
+- [x] **New-worktree dialog** (`NewWorktreeDialog.svelte`): branch name +
+      shadcn `Select` base-branch picker (preloaded default) + folder-path preview.
+- [ ] **Remaining UX polish**: agent auto-launch on create, richer status/dirty
+      badges on cards, validation hints, and the in-app directory picker (below).
+      **FOR-DEV.**
+- [ ] **In-app directory picker (no OS-native dialog).** `pickDirectory`
+      (`src/lib/api.ts`) currently opens the operating system's native folder
+      dialog via `tauri-plugin-dialog`. Replace it with an **in-app picker built
+      from shadcn-svelte components** (Dialog + a directory tree), backed by a
+      Rust `browse_dirs` command, so "Add project" stays inside the ADE's own
+      look-and-feel instead of summoning each OS's window. **FOR-DEV.**
 - [ ] Active-worktree switch (click → show/hide associated terminals; PTYs keep
       running in the background). **FOR-DEV.**
 - [ ] Hierarchical repos → worktrees tree with status/dirty/branch indicators.

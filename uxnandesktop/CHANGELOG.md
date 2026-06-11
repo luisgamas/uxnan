@@ -5,6 +5,47 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — Phase 2 (git & worktrees) — left-panel UX rework
+- **shadcn-svelte component library**: real components from the official registry
+  under `src/lib/components/ui/` (button, input, dialog, dropdown-menu,
+  collapsible, separator, badge, card, tooltip, select), plus the canonical
+  `WithElementRef` / `WithoutChild*` type helpers in `utils.ts`. `tailwind-merge`
+  bumped to v3 (correct for Tailwind v4); `bits-ui`, `tailwind-variants` and
+  `@lucide/svelte` added. The monorepo `AGENTS.md` now scopes the Svelte/desktop
+  skills (shadcn-svelte, svelte-code-writer, svelte-core-bestpractices) to
+  `uxnandesktop/` and the Flutter skills to `uxnanmobile/`.
+- **Redesigned left panel** (`LeftSidebar.svelte`): the Projects/Worktrees tabs
+  are gone. One panel with a top **search** box (filters projects *and* worktrees
+  together) over two **collapsible** sections — Projects and Worktrees (collapsed
+  by default). Either section expands to fill the remaining height while the
+  other is collapsed, or they share it 50/50.
+- **Project cards** (`ProjectCard.svelte`): name, path and a worktree-count badge,
+  with top-right actions — open a terminal in the repo, **New worktree…**, and a
+  ⋯ menu (copy path, remove project with confirmation).
+- **New-worktree dialog** (`NewWorktreeDialog.svelte`): branch name + a
+  **base-branch picker** (shadcn `Select`, preloaded with the resolved default)
+  + a live preview of the worktree folder path.
+- **Worktree cards** (`WorktreeCard.svelte`): branch (+ `main` badge), owning
+  repo and path; click to mark active; actions to open a terminal there and a ⋯
+  menu (copy path, remove). Removal **escalates to a forced remove** when the
+  worktree has uncommitted changes.
+- **Worktree backend** (`git.rs`, `commands.rs`): `branch_list` (local branches +
+  resolved default base `origin/HEAD` → `main` → `master` → `HEAD`);
+  `worktree_create` now takes a `base` and uses `--no-track` (avoids a false
+  "behind upstream" before first push); `worktree_remove` with a dirty-changes
+  preflight, `prune`, and a safe branch delete. +1 test (17 → 18 passing).
+
+### Changed
+- **The app starts with no terminal open** (`terminals.svelte.ts`,
+  `TerminalArea.svelte`): the center area begins empty with a "New terminal"
+  empty-state and a global **+ Terminal** button in the top strip; terminals are
+  opened from a project/worktree or that button. A persisted layout from a
+  previous session is still restored, and closing the last terminal now leaves
+  the area empty instead of respawning a shell.
+- **Webview default context menu suppressed** (`+page.svelte`): the browser/dev
+  right-click menu no longer appears (kept on text fields for paste); the
+  terminal's own tab/pane menus are unaffected.
+
 ### Added — Phase 1 completion (persistence & lifecycle)
 - **Terminal layout persistence**: the region/tab layout is serialized
   (structure only — splits, ratios, per-tab title/cwd, active tab) and saved
