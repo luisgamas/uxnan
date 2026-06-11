@@ -216,11 +216,6 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
                         _AgentCard(
                           agent: a,
                           selected: a.agentId == _agent?.agentId,
-                          requiresLogin: ref
-                                  .watch(authStatusProvider(a.agentId))
-                                  .value
-                                  ?.requiresLogin ??
-                              false,
                           onTap: a.available ? () => _selectAgent(a) : null,
                         ),
                     ],
@@ -319,44 +314,62 @@ class _WorkingDirCard extends StatelessWidget {
 }
 
 /// An agent option: logo, name, availability, and capability chips, with a
-/// selected state. Unavailable agents are dimmed and not selectable.
-class _AgentCard extends StatelessWidget {
+/// selected state. Unavailable agents are dimmed and not selectable. An agent
+/// that is installed but **not signed in** on the PC gets a soft error tint and
+/// a "Check sign-in" button that re-queries `auth/status` (so the user can sign
+/// in on the PC and re-verify without leaving the dialog).
+class _AgentCard extends ConsumerWidget {
   const _AgentCard({
     required this.agent,
     required this.selected,
-    required this.requiresLogin,
     required this.onTap,
   });
 
   final AgentDescriptor agent;
   final bool selected;
-
-  /// Whether this agent is not signed in on the PC (distinct from
-  /// [AgentDescriptor.available], which is binary availability).
-  final bool requiresLogin;
-
   final VoidCallback? onTap;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final l10n = AppLocalizations.of(context);
     final caps = _capabilities(agent, l10n);
+
+    final auth = ref.watch(authStatusProvider(agent.agentId));
+    final requiresLogin =
+        agent.available && (auth.value?.requiresLogin ?? false);
+    // Keep the previous value while a re-check is in flight (Riverpod retains
+    // it across an invalidate), so we swap the button for a spinner.
+    final checking = requiresLogin && auth.isLoading;
+
+    // Soft but noticeable error tint for an installed, not-signed-in agent.
+    final notSignedInTint = Color.alphaBlend(
+      colors.error.withValues(alpha: 0.09),
+      colors.surfaceContainerHighest,
+    );
+    final background = requiresLogin
+        ? notSignedInTint
+        : selected
+            ? colors.primaryContainer.withValues(alpha: 0.45)
+            : colors.surfaceContainerHighest;
+    final borderSide = selected
+        ? BorderSide(color: colors.primary, width: 1.5)
+        : BorderSide(
+            color: requiresLogin
+                ? colors.error.withValues(alpha: 0.5)
+                : colors.outlineVariant,
+          );
 
     return Padding(
       padding: const EdgeInsets.only(bottom: UxnanSpacing.sm),
       child: Opacity(
         opacity: agent.available ? 1 : 0.5,
         child: Material(
-          color: selected
-              ? colors.primaryContainer.withValues(alpha: 0.45)
-              : colors.surfaceContainerHighest,
+          color: background,
           shape: RoundedRectangleBorder(
             borderRadius: const BorderRadius.all(UxnanRadius.lg),
-            side: selected
-                ? BorderSide(color: colors.primary, width: 1.5)
-                : BorderSide(color: colors.outlineVariant),
+            side: borderSide,
           ),
           child: InkWell(
             borderRadius: const BorderRadius.all(UxnanRadius.lg),
@@ -385,9 +398,14 @@ class _AgentCard extends StatelessWidget {
                           ),
                         )
                       else ...[
-                        if (requiresLogin) const _SignInRequiredMarker(),
+                        if (requiresLogin)
+                          _CheckSignInButton(
+                            checking: checking,
+                            onPressed: () => ref
+                                .invalidate(authStatusProvider(agent.agentId)),
+                          ),
                         if (requiresLogin && selected)
-                          const SizedBox(width: UxnanSpacing.sm),
+                          const SizedBox(width: UxnanSpacing.xs),
                         if (selected)
                           Icon(
                             Icons.check_circle_rounded,
@@ -432,29 +450,36 @@ class _AgentCard extends StatelessWidget {
   }
 }
 
-/// A small red marker on an agent card meaning the agent is installed but not
-/// signed in on the PC. The agent can still be selected — the conversation
-/// shows a sign-in banner and turns run once it's authenticated on the PC.
-class _SignInRequiredMarker extends StatelessWidget {
-  const _SignInRequiredMarker();
+/// Trailing action on a not-signed-in agent card: an error-toned [TextButton]
+/// that re-queries `auth/status` (the agent's card un-tints once the user signs
+/// in on the PC). Shows a spinner while the re-check is in flight.
+class _CheckSignInButton extends StatelessWidget {
+  const _CheckSignInButton({required this.checking, required this.onPressed});
+
+  final bool checking;
+  final VoidCallback onPressed;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final l10n = AppLocalizations.of(context);
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(Icons.login_rounded, size: 14, color: colors.error),
-        const SizedBox(width: UxnanSpacing.xs),
-        Text(
-          l10n.agentSignInRequired,
-          style: Theme.of(context)
-              .textTheme
-              .bodySmall
-              ?.copyWith(color: colors.error),
-        ),
-      ],
+    return TextButton.icon(
+      onPressed: checking ? null : onPressed,
+      style: TextButton.styleFrom(
+        foregroundColor: colors.error,
+        visualDensity: VisualDensity.compact,
+      ),
+      icon: checking
+          ? SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: colors.error,
+              ),
+            )
+          : const Icon(Icons.login_rounded, size: 16),
+      label: Text(l10n.agentCheckSignIn),
     );
   }
 }

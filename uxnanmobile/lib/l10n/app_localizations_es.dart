@@ -495,6 +495,9 @@ class AppLocalizationsEs extends AppLocalizations {
   String get agentSignInRequired => 'Falta iniciar sesión';
 
   @override
+  String get agentCheckSignIn => 'Comprobar sesión';
+
+  @override
   String get gitActionsTitle => 'Control de versiones';
 
   @override

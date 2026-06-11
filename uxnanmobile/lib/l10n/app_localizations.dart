@@ -1016,6 +1016,12 @@ abstract class AppLocalizations {
   /// **'Sign in required'**
   String get agentSignInRequired;
 
+  /// Button on a not-signed-in agent card that re-queries the agent's sign-in status (after the user logs in on the PC).
+  ///
+  /// In en, this message translates to:
+  /// **'Check sign-in'**
+  String get agentCheckSignIn;
+
   /// No description provided for @gitActionsTitle.
   ///
   /// In en, this message translates to:

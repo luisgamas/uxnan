@@ -216,6 +216,10 @@
   "@agentSignInRequired": {
     "description": "Short marker shown on an agent (new-conversation card and threads-list dot) when it is not signed in on the PC."
   },
+  "agentCheckSignIn": "Check sign-in",
+  "@agentCheckSignIn": {
+    "description": "Button on a not-signed-in agent card that re-queries the agent's sign-in status (after the user logs in on the PC)."
+  },
 
   "gitActionsTitle": "Source control",
   "gitCleanState": "Working tree clean",

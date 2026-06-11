@@ -494,6 +494,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get agentSignInRequired => 'Sign in required';
 
   @override
+  String get agentCheckSignIn => 'Check sign-in';
+
+  @override
   String get gitActionsTitle => 'Source control';
 
   @override

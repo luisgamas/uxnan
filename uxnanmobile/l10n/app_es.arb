@@ -165,6 +165,7 @@
   "authRequiresLoginBody": "Inicia sesión en la CLI de este agente en tu PC para empezar a enviar mensajes.",
   "authLoginInProgress": "Iniciando sesión en tu PC…",
   "agentSignInRequired": "Falta iniciar sesión",
+  "agentCheckSignIn": "Comprobar sesión",
 
   "gitActionsTitle": "Control de versiones",
   "gitCleanState": "Árbol de trabajo limpio",

@@ -6,6 +6,16 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **New-conversation agent card: manual "Check sign-in".** An installed but
+  not-signed-in agent now gets a soft error tint on its card plus a **Check
+  sign-in** `TextButton` (replacing the static "Sign in required" text) that
+  re-queries `auth/status` on tap (showing a spinner while it checks); the card
+  un-tints once the agent is signed in on the PC. This gives a manual way to
+  verify sign-in without leaving the dialog — complementing the on-resume
+  refresh. Reuses `authStatusProvider` + `ref.invalidate`.
+
 ### Fixed
 
 - **Agent sign-in status refreshes after a PC-side login.** `auth/status` is
