@@ -59,6 +59,13 @@ impl PtyManager {
         FOut: Fn(&[u8]) + Send + 'static,
         FExit: FnOnce() + Send + 'static,
     {
+        // Idempotent: if a session with this id already exists, keep it running
+        // instead of spawning a replacement (a stray double-create must never
+        // restart a live shell / agent).
+        if self.sessions.lock().unwrap().contains_key(&spec.id) {
+            return Ok(());
+        }
+
         let pty_system = native_pty_system();
         let pair = pty_system
             .openpty(PtySize {
@@ -259,6 +266,29 @@ mod tests {
         mgr.write("t1", "exit\r\n").ok();
         mgr.close("t1").expect("close");
         assert_eq!(mgr.len(), 0);
+    }
+
+    #[test]
+    fn create_is_idempotent_for_same_id() {
+        let mgr = PtyManager::default();
+        let shell = if cfg!(windows) {
+            Some("cmd.exe".to_string())
+        } else {
+            None
+        };
+        let spec = || PtySpec {
+            id: "dup".to_string(),
+            cwd: None,
+            shell: shell.clone(),
+            cols: 80,
+            rows: 24,
+        };
+        mgr.create(spec(), |_| {}, || {}).unwrap();
+        assert_eq!(mgr.len(), 1);
+        // Second create with the same id is a no-op, not a restart.
+        mgr.create(spec(), |_| {}, || {}).unwrap();
+        assert_eq!(mgr.len(), 1);
+        mgr.close("dup").unwrap();
     }
 
     #[test]
