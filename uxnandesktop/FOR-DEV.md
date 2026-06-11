@@ -32,7 +32,7 @@ models live in:
 |---|---|---|
 | **0** | Base infrastructure (3-panel shell, IPC, persistence) | ✅ **DONE** |
 | **1** | Terminal core (PTY, tabs, splits) | ◑ **IN PROGRESS** — working terminal + tabs; splits & layout-persist deferred |
-| 2 | Git & worktrees | ☐ not started |
+| **2** | Git & worktrees | ◑ **IN PROGRESS** — repo add + worktree create/list/open-terminal working, but the UX is superficial and must be reworked |
 | 3 | Git status & diffs | ☐ not started |
 | 4 | Agent monitoring (hooks, notifications) | ☐ not started |
 | 5 | Polish & UX (hunk staging, side-by-side, virtual scroll) | ☐ not started |
@@ -135,28 +135,52 @@ Phase 0 follow-ups (do next, before/with Phase 1):
 
 ---
 
-## Phase 2 — Git & worktrees ☐
+## Phase 2 — Git & worktrees ◑ IN PROGRESS
 
 **Goal:** create, list, and manage git worktrees.
 
+> ⚠️ **UX is SUPERFICIAL — reconsider before calling Phase 2 done.** The current
+> "Add project" and "Create worktree" flows are intentionally minimal scaffolding
+> to make the feature work end-to-end for review. They are **not** the intended
+> UX and must be reworked into something friendlier, e.g.: a proper "New
+> worktree" dialog (base-branch picker, validation, name preview, optional agent
+> to auto-launch); inline feedback/spinners and success/error toasts instead of a
+> single error line; confirm-on-remove; an empty-state with guidance; richer
+> worktree cards (status/dirty/branch badges, last activity); choosing where
+> worktrees are created instead of the hard-coded `<repo>--<branch>` sibling;
+> and using shadcn-svelte components (Dialog/Sidebar/Tree) for consistency.
+
 ### Backend (Rust)
-- [ ] Add `git2` (`0.20+`). `git` module: open repo, list branches, statuses.
-- [ ] Worktree ops via **git CLI** (`tokio::process::Command`, `shell:false`):
-      `git worktree add/remove/list` (libgit2's worktree support is limited).
-- [ ] Base-branch resolution (probe `origin/HEAD` → `main` → `master`).
-- [ ] Remove preflight: dirty-changes check via `git2::statuses()`; safe branch
-      cleanup on worktree removal.
-- [ ] WSL path detection (`\\wsl.localhost\…`) → route through `wsl.exe`.
-- [ ] Commands: `repo_add`, `repo_remove`, `repo_list`, `worktree_create`,
-      `worktree_remove`, `worktree_list`. Persist repos/worktrees via `AppState`.
+- [x] `git` module (`src-tauri/src/git.rs`) via the git **CLI**
+      (`tokio::process::Command`, `shell:false`): `is_git_repo`, `repo_name`,
+      `worktree_path_for`, `add_worktree` (`git worktree add -b`), `list_worktrees`
+      (`--porcelain` parser, incl. agent-created worktrees). Tested (porcelain
+      parser, path flattening).
+- [x] Commands: `repo_add` / `repo_remove` / `repo_list` (repos persisted in
+      `AppData`), `worktree_create`, `worktree_list`.
+- [ ] **Base-branch resolution** (probe `origin/HEAD` → `main` → `master`).
+      Today `worktree_create` always branches off the repo's current HEAD.
+      **FOR-DEV.**
+- [ ] `worktree_remove` with a dirty-changes preflight + safe branch cleanup.
+      **FOR-DEV.**
+- [ ] Move high-frequency status/diff to `git2` (`0.20+`); branch listing. **FOR-DEV.**
+- [ ] WSL path detection (`\\wsl.localhost\…`) → route through `wsl.exe`. **FOR-DEV.**
+- [ ] Persist created worktrees' metadata (today they're discovered live via
+      `git worktree list`; fine for now). **FOR-DEV.**
 
 ### Frontend (Svelte)
-- [ ] Left sidebar: hierarchical repos → worktrees (shadcn-svelte Sidebar/Tree),
-      worktree cards with branch + indicators.
+- [x] Left sidebar is now **tabbed** (`LeftSidebar.svelte`): **Projects** (add via
+      native folder picker → `repo_add`; list; remove) and **Worktrees** (create
+      via a minimal branch-name form → `worktree_create`; list per repo via
+      `worktree_list`; "Terminal" action opens a shell in the worktree's cwd —
+      `terminals.create({ cwd })`).
+- [ ] **Rework the UX** per the warning above (proper dialog, validation,
+      feedback, base-branch picker, agent auto-launch, richer cards,
+      shadcn-svelte components). **FOR-DEV — highest-priority Phase 2 item.**
 - [ ] Active-worktree switch (click → show/hide associated terminals; PTYs keep
-      running in the background).
-- [ ] "Create Worktree" dialog (repo, base branch, agent); auto-launch a
-      terminal (and optionally the chosen agent) on create.
+      running in the background). **FOR-DEV.**
+- [ ] Hierarchical repos → worktrees tree with status/dirty/branch indicators.
+      **FOR-DEV.**
 
 ---
 

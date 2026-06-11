@@ -5,6 +5,36 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — Phase 2 (git & worktrees, in progress)
+- **Git backend** (`src-tauri/src/git.rs`): repo/worktree ops via the git CLI
+  (`tokio::process::Command`, `shell:false`) — `is_git_repo`, `repo_name`,
+  `worktree_path_for`, `add_worktree` (`git worktree add -b`), and
+  `list_worktrees` with a `--porcelain` parser that surfaces **worktrees created
+  by CLI agents**, not just ADE-created ones. Commands: `repo_add` /
+  `repo_remove` / `repo_list` (repos persisted in `AppData`), `worktree_create`,
+  `worktree_list`. New `AppError::Git` / `AppError::Invalid`; Tokio `process`
+  feature enabled; `tauri-plugin-dialog` added for the native folder picker.
+- **Tabbed left sidebar** (`LeftSidebar.svelte`): **Projects** tab (add a repo
+  via the native folder picker → `repo_add`, list, remove) and **Worktrees** tab
+  (create on a new branch via a minimal form → `worktree_create`, list per repo,
+  and an "Open terminal here" action that spawns a shell in the worktree's cwd).
+  Terminals now accept an optional `cwd` (`terminals.create({ cwd })`).
+- ⚠️ The add-project / create-worktree **UX is intentionally superficial** for
+  this review pass and must be reworked (proper dialog, validation, feedback,
+  base-branch picker, richer cards). Tracked as the top Phase 2 item in
+  `FOR-DEV.md`.
+
+### Changed — UI
+- **Custom title bar** (`TitleBar.svelte`): the OS window chrome is disabled
+  (`decorations: false`) and replaced with an in-app bar matching the app's
+  surfaces — drag region, sidebar toggles, an **ALPHA** badge (neutral, readable
+  in light and dark), and minimize / maximize / close controls
+  (`@tauri-apps/api/window`; capability permissions added). Degrades gracefully
+  in a plain browser.
+- **Layout fix**: the center terminal area and its tab stack are now
+  `overflow-hidden`, so the xterm canvas can no longer paint over the right
+  panel when the left sidebar is toggled (was visible in the web build).
+
 ### Added — Phase 1 (terminal core, in progress)
 - **PTY backend** (`src-tauri/src/pty.rs`): `PtyManager` over `portable-pty` 0.9
   (ConPTY on Windows). `create(PtySpec, on_output, on_exit)` spawns a shell in a
