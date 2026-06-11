@@ -31,7 +31,7 @@ models live in:
 | Phase | Theme | Status |
 |---|---|---|
 | **0** | Base infrastructure (3-panel shell, IPC, persistence) | ✅ **DONE** |
-| **1** | Terminal core (PTY, tabs, splits) | ◑ **IN PROGRESS** — terminals + region splits + copy/paste + file-drop done; layout-persist, reorder/MRU deferred |
+| **1** | Terminal core (PTY, tabs, splits) | ✅ **DONE** — terminals, region splits, copy/paste, file-drop, layout persistence, kill-on-exit (reorder/MRU = Tier 2; per-worktree assoc = Phase 2) |
 | **2** | Git & worktrees | ◑ **IN PROGRESS** — repo add + worktree create/list/open-terminal working, but the UX is superficial and must be reworked |
 | 3 | Git status & diffs | ☐ not started |
 | 4 | Agent monitoring (hooks, notifications) | ☐ not started |
@@ -86,9 +86,11 @@ Phase 0 follow-ups (do next, before/with Phase 1):
 
 ---
 
-## Phase 1 — Terminal core ◑ IN PROGRESS
+## Phase 1 — Terminal core ✅ DONE
 
-**Goal:** run commands in an integrated terminal with tabs and splits.
+**Goal (met):** run commands in an integrated terminal with tabs and splits;
+multiple PTYs in parallel; bounded hidden buffers; layout persisted; processes
+killed on close and on exit.
 
 ### Backend (Rust)
 - [x] `portable-pty` `0.9`. `pty` module: `PtyManager` owning a
@@ -99,22 +101,26 @@ Phase 0 follow-ups (do next, before/with Phase 1):
 - [x] Commands: `pty_create { id, cwd?, shell?, cols, rows }`, `pty_write
       { id, data }`, `pty_resize { id, cols, rows }`, `pty_close { id }`
       (`commands.rs`, registered in `lib.rs`). The frontend chooses `id` and
-      subscribes before spawning so no early output is lost.
+      subscribes before spawning so no early output is lost. Idempotent create.
 - [x] Stream output: dedicated reader thread per PTY → `on_output` → emit
       `pty:output:{id}` (raw bytes); `pty:exit:{id}` on process end.
 - [x] Kill child on `pty_close` (idempotent); slave dropped after spawn for
-      clean EOF.
-- [ ] **Hidden-tab buffering** (bounded 2 MB ring + snapshot/restore on re-show).
-      Not needed yet — the webview keeps every xterm mounted so background
-      output is retained client-side. Add this when capping memory or restoring
-      after a reload. **FOR-DEV** (marker in `pty.rs` module doc).
-- [ ] Kill all children on app exit / reap zombies (today they're killed on
-      explicit close only). **FOR-DEV.**
+      clean EOF. **Kill all children on app exit** (`PtyManager::close_all` wired
+      to `RunEvent::ExitRequested` in `lib.rs`).
+- [x] **Layout persistence**: `set_terminal_layout` + `AppData.terminal_layout`
+      (opaque JSON, atomic write) so the region/tab layout survives a restart.
+- [~] **Hidden-tab buffering**: per-terminal memory is bounded by xterm
+      `scrollback: 5000` (hidden tabs stay mounted, so that's the effective cap)
+      — the functional "limited buffer + recovery" requirement is met. The
+      backend 2 MB ring buffer + unmount/snapshot-restore is a further memory
+      optimization, **deferred** (only needed if we later unmount hidden tabs or
+      want a tighter cap). **FOR-DEV** (marker in `pty.rs` module doc).
 
 ### Frontend (Svelte)
 - [x] `@xterm/xterm` + `@xterm/addon-fit` + `@xterm/addon-webgl` in
       `Terminal.svelte`: `onData → pty_write`, `listen('pty:output:{id}') →
-      term.write`, `ResizeObserver → pty_resize`, WebGL with DOM fallback.
+      term.write`, `ResizeObserver → pty_resize`, WebGL with DOM fallback,
+      bounded `scrollback`.
 - [x] **TabGroup region layout** (`TerminalArea.svelte` +
       `lib/state/terminals.svelte.ts`): the center area is a tree of regions
       (`AreaNode = TabGroup | AreaSplit`). Each region has its own tab strip
@@ -128,9 +134,20 @@ Phase 0 follow-ups (do next, before/with Phase 1):
       terminal); clipboard via `tauri-plugin-clipboard-manager`
       (`lib/clipboard.ts`, web fallback). Native **file drag-and-drop** inserts
       quoted paths into the terminal under the cursor (`onDragDropEvent`).
-- [ ] Tab/region reorder, drag tabs between regions, MRU. **FOR-DEV.**
-- [ ] **Persist the region/tab layout** per worktree (needs the Phase 0
-      debounced writer + the worktree model from Phase 2). **FOR-DEV.**
+- [x] **Persist + restore the region/tab layout** (`serializeArea` / `restore`
+      in the store, debounced save via `setTerminalLayout`, restored in
+      `app.init`). Structure-only (fresh shells spawn on restore); the UI waits
+      for `hydrated` before mounting terminals so no shell is spawned then
+      discarded.
+
+### Deferred beyond Phase 1 (tracked, not blocking)
+- **Tab/region reorder, drag tabs between regions, MRU** — these are spec
+  **Tier 2** (T2.2 "Drag & drop de tabs entre TabGroups"), not Phase 1 Tier 1.
+  **FOR-DEV.**
+- **Backend hidden-tab ring buffer** — memory optimization (see `[~]` above).
+- **Per-worktree terminal association** — wiring the active worktree to
+  show/hide its own terminals (and persisting layout *per worktree*) is a
+  **Phase 2** integration item; today the terminal area is global. **FOR-DEV.**
 
 ### Notes / gotchas
 - ConPTY (Windows) queries cursor position (`ESC[6n`) at startup and waits for a

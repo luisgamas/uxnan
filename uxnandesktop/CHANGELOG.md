@@ -5,6 +5,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — Phase 1 completion (persistence & lifecycle)
+- **Terminal layout persistence**: the region/tab layout is serialized
+  (structure only — splits, ratios, per-tab title/cwd, active tab) and saved
+  (debounced, atomic) via a new `set_terminal_layout` command into
+  `AppData.terminal_layout`; restored on startup in `app.init` (`serializeArea`
+  / `restore` in the store). Fresh shells spawn on restore; the UI waits for the
+  store to hydrate before mounting terminals so none is spawned then discarded.
+- **Kill all PTYs on app exit** (`PtyManager::close_all` wired to
+  `RunEvent::ExitRequested` in `lib.rs`) so no shell/agent is left running after
+  the window closes.
+- **Bounded terminal scrollback** (`scrollback: 5000`) caps per-terminal memory
+  — the effective limit for hidden terminals (which stay mounted).
+- With this, **Phase 1 (terminal core) is complete**; remaining terminal items
+  (tab reorder / drag-between-regions / MRU, the backend ring buffer, and
+  per-worktree terminal association) are Tier 2 / Phase 2 and tracked in
+  `FOR-DEV.md`.
+
 ### Added — Phase 1 (terminal splits & interaction)
 - **TabGroup region layout** (`src/lib/state/terminals.svelte.ts`,
   `TerminalArea.svelte`): the center area is now a tree of regions
