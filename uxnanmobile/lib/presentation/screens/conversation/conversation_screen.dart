@@ -503,7 +503,10 @@ class _LoginRequiredBanner extends ConsumerWidget {
             UxnanSpacing.sm,
             UxnanSpacing.sm,
           ),
+          // Icon on the left; the right section stacks title → body → action,
+          // all left-aligned (M3 alert-with-action, vertical layout).
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               if (loginInProgress)
                 SizedBox(
@@ -535,6 +538,8 @@ class _LoginRequiredBanner extends ConsumerWidget {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
+                    // Body line then the manual re-check button, stacked under
+                    // the title. Hidden while a PC-side login is running.
                     if (!loginInProgress) ...[
                       const SizedBox(height: 2),
                       Text(
@@ -543,34 +548,38 @@ class _LoginRequiredBanner extends ConsumerWidget {
                           color: colors.onErrorContainer,
                         ),
                       ),
+                      const SizedBox(height: UxnanSpacing.xs),
+                      TextButton(
+                        onPressed: checking
+                            ? null
+                            : () => ref.invalidate(authStatusProvider(agentId)),
+                        style: TextButton.styleFrom(
+                          foregroundColor: colors.onErrorContainer,
+                          visualDensity: VisualDensity.compact,
+                          // Flush-left label, aligned with the title/body above.
+                          padding: const EdgeInsets.fromLTRB(
+                            UxnanSpacing.sm,
+                            UxnanSpacing.xs,
+                            UxnanSpacing.sm,
+                            UxnanSpacing.xs,
+                          ),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: checking
+                            ? SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: colors.onErrorContainer,
+                                ),
+                              )
+                            : Text(l10n.agentCheckSignIn),
+                      ),
                     ],
                   ],
                 ),
               ),
-              // Manual re-check (M3 alert-with-action): a trailing text button
-              // on the error surface. Hidden while a PC-side login is running.
-              if (!loginInProgress) ...[
-                const SizedBox(width: UxnanSpacing.xs),
-                TextButton(
-                  onPressed: checking
-                      ? null
-                      : () => ref.invalidate(authStatusProvider(agentId)),
-                  style: TextButton.styleFrom(
-                    foregroundColor: colors.onErrorContainer,
-                    visualDensity: VisualDensity.compact,
-                  ),
-                  child: checking
-                      ? SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: colors.onErrorContainer,
-                          ),
-                        )
-                      : Text(l10n.agentCheckSignIn),
-                ),
-              ],
             ],
           ),
         ),
