@@ -6,13 +6,15 @@
   import { FitAddon } from "@xterm/addon-fit";
   import { WebglAddon } from "@xterm/addon-webgl";
   import "@xterm/xterm/css/xterm.css";
+  import { clipboardRead, clipboardWrite } from "$lib/clipboard";
+  import { terminals } from "$lib/state/terminals.svelte";
 
   let {
     id,
-    active,
+    focused,
     cwd,
     onexit,
-  }: { id: string; active: boolean; cwd?: string; onexit?: () => void } =
+  }: { id: string; focused: boolean; cwd?: string; onexit?: () => void } =
     $props();
 
   let el: HTMLDivElement;
@@ -20,6 +22,17 @@
   let fit: FitAddon | undefined;
   let unlisteners: UnlistenFn[] = [];
   let resizeObserver: ResizeObserver | undefined;
+
+  // --- Copy / paste --------------------------------------------------------
+  function copySelection() {
+    const selection = term?.getSelection();
+    if (selection) void clipboardWrite(selection);
+  }
+  async function pasteClipboard() {
+    const text = await clipboardRead();
+    if (text) term?.paste(text); // fires onData → pty_write
+  }
+  const hasSelection = () => !!term?.getSelection();
 
   // Re-fit (and resize the PTY) only when the pane is actually visible.
   function fitToPane() {
@@ -55,6 +68,27 @@
       // WebGL unavailable — xterm falls back to the DOM renderer.
     }
 
+    // Keyboard copy/paste (no Shift, to avoid the webview DevTools shortcut):
+    //  - Ctrl+C copies when there's a selection, else passes through as SIGINT.
+    //  - Ctrl+V pastes once (preventDefault stops a duplicate native paste).
+    term.attachCustomKeyEventHandler((e) => {
+      if (e.type !== "keydown" || !e.ctrlKey || e.altKey || e.shiftKey)
+        return true;
+      const key = e.key.toLowerCase();
+      if (key === "c" && term?.hasSelection()) {
+        copySelection();
+        term.clearSelection();
+        e.preventDefault();
+        return false;
+      }
+      if (key === "v") {
+        e.preventDefault();
+        void pasteClipboard();
+        return false;
+      }
+      return true;
+    });
+
     // Subscribe BEFORE spawning so no early output is missed.
     unlisteners.push(
       await listen<number[]>(`pty:output:${id}`, (e) => {
@@ -85,11 +119,20 @@
     resizeObserver = new ResizeObserver(() => fitToPane());
     resizeObserver.observe(el);
     term.focus();
+
+    // Expose imperative copy/paste/focus so the context menu can drive them.
+    terminals.registerController(id, {
+      copy: copySelection,
+      paste: pasteClipboard,
+      hasSelection,
+      focus: () => term?.focus(),
+    });
   });
 
-  // When this tab becomes active (was hidden, now shown), re-fit and focus.
+  // When this pane becomes the focused one, re-fit and grab keyboard focus.
+  // (Re-fitting on tab/pane resize is handled by the ResizeObserver above.)
   $effect(() => {
-    if (active && term) {
+    if (focused && term) {
       queueMicrotask(() => {
         fitToPane();
         term?.focus();
@@ -98,6 +141,7 @@
   });
 
   onDestroy(() => {
+    terminals.unregisterController(id);
     unlisteners.forEach((fn) => fn());
     resizeObserver?.disconnect();
     term?.dispose();

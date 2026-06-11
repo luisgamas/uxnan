@@ -15,10 +15,6 @@
     app.settings.leftSidebarOpen = !app.settings.leftSidebarOpen;
     void app.persistSettings();
   }
-  function toggleRight() {
-    app.settings.rightSidebarOpen = !app.settings.rightSidebarOpen;
-    void app.persistSettings();
-  }
 </script>
 
 <!-- Custom title bar (the OS chrome is disabled via `decorations: false`).
@@ -49,15 +45,6 @@
 
   <!-- Draggable filler -->
   <div data-tauri-drag-region class="h-full flex-1"></div>
-
-  <button
-    class="rounded px-2 py-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-    title="Toggle right sidebar"
-    aria-label="Toggle right sidebar"
-    onclick={toggleRight}
-  >
-    ⇆
-  </button>
 
   <!-- Window controls -->
   <div class="ml-1 flex items-center">

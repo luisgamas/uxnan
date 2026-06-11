@@ -1,62 +1,288 @@
-// Terminal tabs state (Svelte 5 runes).
+// Terminal area state (Svelte 5 runes) — TabGroup model.
 //
-// Tracks the open terminal tabs in the center area. Each tab maps to a backend
-// PTY session (created by the Terminal component, keyed by the `id` chosen
-// here). Hidden tabs stay mounted in the DOM so their PTY output keeps
-// streaming in the background — switching tabs is instant and lossless.
+// The center area is a recursive tree of regions. A `TabGroup` is one region
+// with its own tab strip (each tab = one PTY) and "+ New" button; an
+// `AreaSplit` divides the area into two regions with an adjustable ratio.
+// "New terminal" adds a tab to a region (only the active tab is shown there);
+// "Split" divides a region into two side-by-side/stacked regions, each with its
+// own tab strip. Every tab of every region stays mounted, so background and
+// hidden terminals keep streaming losslessly, and restructuring the tree never
+// remounts xterm or restarts a PTY.
 
 import { invoke } from "@tauri-apps/api/core";
 
-export interface TermTab {
+export type SplitDir = "row" | "col";
+
+/** One terminal tab inside a region, backed by a single PTY. */
+export interface GroupTab {
   /** PTY id (also the event channel suffix: `pty:output:{id}`). */
   id: string;
   title: string;
-  /** Working directory for the shell (undefined = home). */
   cwd?: string;
-  /** Set once the underlying process has exited. */
   exited: boolean;
 }
 
+/** A region: a tab strip over one-or-more terminals. */
+export interface TabGroup {
+  kind: "group";
+  id: string;
+  tabs: GroupTab[];
+  activeTabId: string;
+}
+
+/** A split of two regions/sub-splits with an adjustable ratio for child `a`. */
+export interface AreaSplit {
+  kind: "split";
+  dir: SplitDir;
+  ratio: number;
+  a: AreaNode;
+  b: AreaNode;
+}
+
+export type AreaNode = TabGroup | AreaSplit;
+
+let termCount = 0;
+
+function newTab(cwd?: string, title?: string): GroupTab {
+  termCount += 1;
+  return {
+    id: crypto.randomUUID(),
+    title: title ?? `Terminal ${termCount}`,
+    cwd,
+    exited: false,
+  };
+}
+
+function newGroup(cwd?: string, title?: string): TabGroup {
+  const tab = newTab(cwd, title);
+  return { kind: "group", id: crypto.randomUUID(), tabs: [tab], activeTabId: tab.id };
+}
+
+function* groups(node: AreaNode): Generator<TabGroup> {
+  if (node.kind === "group") {
+    yield node;
+  } else {
+    yield* groups(node.a);
+    yield* groups(node.b);
+  }
+}
+
+function firstGroup(node: AreaNode): TabGroup {
+  return groups(node).next().value as TabGroup;
+}
+
+function findGroup(node: AreaNode, groupId: string): TabGroup | null {
+  for (const group of groups(node)) {
+    if (group.id === groupId) return group;
+  }
+  return null;
+}
+
+function groupOfTab(node: AreaNode, tabId: string): TabGroup | null {
+  for (const group of groups(node)) {
+    if (group.tabs.some((t) => t.id === tabId)) return group;
+  }
+  return null;
+}
+
+/** Replace the group `groupId` with `replacement`, returning a new tree. */
+function replaceGroup(
+  node: AreaNode,
+  groupId: string,
+  replacement: AreaNode,
+): AreaNode {
+  if (node.kind === "group") {
+    return node.id === groupId ? replacement : node;
+  }
+  return {
+    ...node,
+    a: replaceGroup(node.a, groupId, replacement),
+    b: replaceGroup(node.b, groupId, replacement),
+  };
+}
+
+/** Remove the group `groupId`; returns the new tree, or null if it was the only
+ *  region. A split collapses to its surviving sibling. */
+function removeGroup(node: AreaNode, groupId: string): AreaNode | null {
+  if (node.kind === "group") {
+    return node.id === groupId ? null : node;
+  }
+  const a = removeGroup(node.a, groupId);
+  const b = removeGroup(node.b, groupId);
+  if (a === null) return b;
+  if (b === null) return a;
+  return { ...node, a, b };
+}
+
+// --- Layout ---------------------------------------------------------------
+
+/** A rectangle in percentages of the area (0..100). */
+export interface Rect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+export interface GroupRect {
+  group: TabGroup;
+  rect: Rect;
+}
+export interface AreaDivider {
+  node: AreaSplit;
+  dir: SplitDir;
+  rect: Rect;
+}
+
+/** Flatten the area tree into positioned regions + dividers. Rendering regions
+ *  from this flat, id-keyed list keeps each region (and its terminals) mounted
+ *  across tree changes. */
+export function computeAreaLayout(root: AreaNode): {
+  groups: GroupRect[];
+  dividers: AreaDivider[];
+} {
+  const groupRects: GroupRect[] = [];
+  const dividers: AreaDivider[] = [];
+
+  const walk = (node: AreaNode, rect: Rect) => {
+    if (node.kind === "group") {
+      groupRects.push({ group: node, rect });
+      return;
+    }
+    if (node.dir === "row") {
+      const aw = rect.w * node.ratio;
+      walk(node.a, { x: rect.x, y: rect.y, w: aw, h: rect.h });
+      walk(node.b, { x: rect.x + aw, y: rect.y, w: rect.w - aw, h: rect.h });
+    } else {
+      const ah = rect.h * node.ratio;
+      walk(node.a, { x: rect.x, y: rect.y, w: rect.w, h: ah });
+      walk(node.b, { x: rect.x, y: rect.y + ah, w: rect.w, h: rect.h - ah });
+    }
+    dividers.push({ node, dir: node.dir, rect });
+  };
+
+  walk(root, { x: 0, y: 0, w: 100, h: 100 });
+  return { groups: groupRects, dividers };
+}
+
+// --- Imperative pane handles (copy/paste/focus) ---------------------------
+
+export interface TermController {
+  copy: () => void;
+  paste: () => Promise<void>;
+  hasSelection: () => boolean;
+  focus: () => void;
+}
+
 class TerminalStore {
-  tabs = $state<TermTab[]>([]);
-  activeId = $state<string | null>(null);
+  root = $state<AreaNode>(newGroup());
+  activeGroupId = $state<string>("");
+  private controllers = new Map<string, TermController>();
 
-  /** Open a new terminal tab and make it active. The PTY itself is spawned by
-   *  the Terminal component once it has measured its size. */
-  create(opts?: { cwd?: string; title?: string }): string {
-    const id = crypto.randomUUID();
-    this.tabs.push({
-      id,
-      title: opts?.title ?? `Terminal ${this.tabs.length + 1}`,
-      cwd: opts?.cwd,
-      exited: false,
-    });
-    this.activeId = id;
-    return id;
+  constructor() {
+    this.activeGroupId = (this.root as TabGroup).id;
   }
 
-  setActive(id: string): void {
-    this.activeId = id;
+  // --- Focus / selection ---------------------------------------------------
+  setActiveGroup(groupId: string): void {
+    this.activeGroupId = groupId;
+  }
+  setActiveTab(groupId: string, tabId: string): void {
+    const group = findGroup(this.root, groupId);
+    if (group) group.activeTabId = tabId;
+    this.activeGroupId = groupId;
+  }
+  /** PTY id of the active tab of the active region. */
+  activePtyId(): string | null {
+    const group = findGroup(this.root, this.activeGroupId) ?? firstGroup(this.root);
+    return group?.activeTabId ?? null;
   }
 
-  /** Mark a tab's process as exited (e.g. the user typed `exit`). */
-  markExited(id: string): void {
-    const tab = this.tabs.find((t) => t.id === id);
+  // --- Tabs ----------------------------------------------------------------
+  /** Add a tab to a region (defaults to the active region). */
+  create(opts?: { cwd?: string; title?: string; groupId?: string }): string {
+    const groupId = opts?.groupId ?? this.activeGroupId;
+    const group = findGroup(this.root, groupId) ?? firstGroup(this.root);
+    const tab = newTab(opts?.cwd, opts?.title);
+    group.tabs.push(tab);
+    group.activeTabId = tab.id;
+    this.activeGroupId = group.id;
+    return tab.id;
+  }
+
+  markExited(ptyId: string): void {
+    const group = groupOfTab(this.root, ptyId);
+    const tab = group?.tabs.find((t) => t.id === ptyId);
     if (tab) tab.exited = true;
   }
 
-  /** Close a tab: kill its PTY and remove it, picking a new active tab. */
-  async close(id: string): Promise<void> {
+  /** Close one tab: kill its PTY; if it was the region's last tab, collapse the
+   *  region (or reset to a fresh one if it was the only region). */
+  async closeTab(groupId: string, tabId: string): Promise<void> {
+    const group = findGroup(this.root, groupId);
+    if (!group) return;
     try {
-      await invoke("pty_close", { id });
+      await invoke("pty_close", { id: tabId });
     } catch {
-      // Already gone / never created — closing is idempotent.
+      // Already gone — idempotent.
     }
-    const index = this.tabs.findIndex((t) => t.id === id);
-    if (index >= 0) this.tabs.splice(index, 1);
-    if (this.activeId === id) {
-      this.activeId = this.tabs.at(-1)?.id ?? null;
+    group.tabs = group.tabs.filter((t) => t.id !== tabId);
+    if (group.tabs.length === 0) {
+      this.collapseGroup(groupId);
+    } else if (group.activeTabId === tabId) {
+      group.activeTabId = group.tabs[group.tabs.length - 1].id;
     }
+  }
+
+  // --- Regions (split / close) --------------------------------------------
+  /** Split a region into two, spawning a new region beside/below it. */
+  split(groupId: string, dir: SplitDir, opts?: { cwd?: string }): void {
+    const group = findGroup(this.root, groupId);
+    if (!group) return;
+    const fresh = newGroup(opts?.cwd);
+    this.root = replaceGroup(this.root, groupId, {
+      kind: "split",
+      dir,
+      ratio: 0.5,
+      a: group,
+      b: fresh,
+    });
+    this.activeGroupId = fresh.id;
+  }
+
+  /** Close a whole region: kill every tab's PTY and collapse it. */
+  async closeGroup(groupId: string): Promise<void> {
+    const group = findGroup(this.root, groupId);
+    if (!group) return;
+    for (const tab of group.tabs) {
+      invoke("pty_close", { id: tab.id }).catch(() => {});
+    }
+    this.collapseGroup(groupId);
+  }
+
+  private collapseGroup(groupId: string): void {
+    const newRoot = removeGroup(this.root, groupId);
+    if (newRoot === null) {
+      // Was the only region — reset to a fresh one so there's always a shell.
+      const fresh = newGroup();
+      this.root = fresh;
+      this.activeGroupId = fresh.id;
+    } else {
+      this.root = newRoot;
+      if (!findGroup(this.root, this.activeGroupId)) {
+        this.activeGroupId = firstGroup(this.root).id;
+      }
+    }
+  }
+
+  // --- Controllers ---------------------------------------------------------
+  registerController(ptyId: string, controller: TermController): void {
+    this.controllers.set(ptyId, controller);
+  }
+  unregisterController(ptyId: string): void {
+    this.controllers.delete(ptyId);
+  }
+  controller(ptyId: string): TermController | undefined {
+    return this.controllers.get(ptyId);
   }
 }
 
