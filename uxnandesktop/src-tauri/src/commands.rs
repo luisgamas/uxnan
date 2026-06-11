@@ -278,3 +278,12 @@ pub async fn worktree_list(
         .await
         .map_err(CommandError::from)
 }
+
+/// Summarize a worktree's working-tree status (changed entries + ahead/behind)
+/// for its sidebar card badges. Runs git directly in `path`.
+#[tauri::command]
+pub async fn worktree_status(path: String) -> Result<git::WorktreeStatus, CommandError> {
+    git::worktree_status(&path)
+        .await
+        .map_err(CommandError::from)
+}

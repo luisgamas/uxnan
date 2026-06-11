@@ -17,6 +17,7 @@
 
   const active = $derived(projects.activeWorktreePath === row.path);
   const label = $derived(row.branch ?? "(detached)");
+  const status = $derived(projects.status(row.path));
 
   let removeOpen = $state(false);
   let forceNeeded = $state(false);
@@ -62,6 +63,35 @@
       <span class="text-muted-foreground/80">{row.repoName}</span>
       · {row.path}
     </Card.Description>
+
+    {#if status && (status.dirty > 0 || status.ahead > 0 || status.behind > 0)}
+      <div class="mt-1 flex items-center gap-1">
+        {#if status.dirty > 0}
+          <span
+            class="inline-flex items-center gap-0.5 rounded bg-amber-500/15 px-1 py-px text-[10px] font-medium text-amber-600 dark:text-amber-400"
+            title="{status.dirty} uncommitted change{status.dirty === 1 ? '' : 's'}"
+          >
+            <span class="size-1.5 rounded-full bg-amber-500"></span>{status.dirty}
+          </span>
+        {/if}
+        {#if status.ahead > 0}
+          <span
+            class="rounded bg-muted px-1 py-px text-[10px] text-muted-foreground"
+            title="{status.ahead} commit{status.ahead === 1 ? '' : 's'} ahead of upstream"
+          >
+            ↑{status.ahead}
+          </span>
+        {/if}
+        {#if status.behind > 0}
+          <span
+            class="rounded bg-muted px-1 py-px text-[10px] text-muted-foreground"
+            title="{status.behind} commit{status.behind === 1 ? '' : 's'} behind upstream"
+          >
+            ↓{status.behind}
+          </span>
+        {/if}
+      </div>
+    {/if}
 
     <Card.Action class="flex items-center gap-0.5">
       <Button

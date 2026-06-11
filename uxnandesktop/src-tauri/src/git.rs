@@ -24,6 +24,18 @@ pub struct WorktreeEntry {
     pub is_main: bool,
 }
 
+/// Working-tree status summary for a worktree card badge.
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct WorktreeStatus {
+    /// Number of changed entries (modified/added/deleted/untracked).
+    pub dirty: u32,
+    /// Commits ahead of the upstream (0 when there is none).
+    pub ahead: u32,
+    /// Commits behind the upstream (0 when there is none).
+    pub behind: u32,
+}
+
 /// Run `git` in `repo_path` and return stdout on success, mapping a non-zero
 /// exit (with stderr) to [`AppError::Git`].
 async fn git(repo_path: &str, args: &[&str]) -> Result<String, AppError> {
@@ -139,6 +151,37 @@ pub async fn default_base(repo_path: &str) -> String {
 pub async fn is_worktree_clean(worktree_path: &str) -> Result<bool, AppError> {
     let out = git(worktree_path, &["status", "--porcelain"]).await?;
     Ok(out.trim().is_empty())
+}
+
+/// Summarize a worktree's working-tree status (changed entries + ahead/behind)
+/// for its sidebar card. Uses `status --porcelain=v1 --branch`.
+pub async fn worktree_status(worktree_path: &str) -> Result<WorktreeStatus, AppError> {
+    let out = git(worktree_path, &["status", "--porcelain=v1", "--branch"]).await?;
+    Ok(parse_status_porcelain(&out))
+}
+
+/// Parse `git status --porcelain=v1 --branch` output: the first `## ` line
+/// carries the upstream ahead/behind (`[ahead N, behind M]`); every other
+/// non-empty line is one changed entry.
+pub fn parse_status_porcelain(input: &str) -> WorktreeStatus {
+    let mut status = WorktreeStatus::default();
+    for line in input.lines() {
+        if let Some(branch) = line.strip_prefix("## ") {
+            if let (Some(open), Some(close)) = (branch.find('['), branch.find(']')) {
+                for part in branch[open + 1..close].split(',') {
+                    let part = part.trim();
+                    if let Some(n) = part.strip_prefix("ahead ") {
+                        status.ahead = n.trim().parse().unwrap_or(0);
+                    } else if let Some(n) = part.strip_prefix("behind ") {
+                        status.behind = n.trim().parse().unwrap_or(0);
+                    }
+                }
+            }
+        } else if !line.trim().is_empty() {
+            status.dirty += 1;
+        }
+    }
+    status
 }
 
 /// Remove a worktree with safeguards (spec §2.3). With `force = false`, refuses
@@ -258,6 +301,22 @@ mod tests {
     #[test]
     fn repo_name_is_final_component() {
         assert_eq!(repo_name("/home/u/myrepo"), "myrepo");
+    }
+
+    #[test]
+    fn parses_status_dirty_and_ahead_behind() {
+        let input =
+            "## main...origin/main [ahead 2, behind 1]\n M src/a.rs\n?? new.txt\nA  added.rs\n";
+        let s = parse_status_porcelain(input);
+        assert_eq!(s.dirty, 3);
+        assert_eq!(s.ahead, 2);
+        assert_eq!(s.behind, 1);
+    }
+
+    #[test]
+    fn parses_status_clean_no_upstream() {
+        let s = parse_status_porcelain("## main\n");
+        assert_eq!(s, WorktreeStatus::default());
     }
 
     #[test]

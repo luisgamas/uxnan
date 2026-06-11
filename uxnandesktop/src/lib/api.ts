@@ -11,6 +11,7 @@ import type {
   RepoData,
   SavedTermNode,
   WorktreeEntry,
+  WorktreeStatus,
 } from "./types";
 
 /** Load the full persisted application state (called once at boot). */
@@ -93,4 +94,9 @@ export function worktreeRemove(
 /** List a repo's worktrees (ADE- and agent-created). */
 export function worktreeList(repoId: string): Promise<WorktreeEntry[]> {
   return invoke<WorktreeEntry[]>("worktree_list", { repoId });
+}
+
+/** Summarize a worktree's working-tree status (dirty count + ahead/behind). */
+export function worktreeStatus(path: string): Promise<WorktreeStatus> {
+  return invoke<WorktreeStatus>("worktree_status", { path });
 }

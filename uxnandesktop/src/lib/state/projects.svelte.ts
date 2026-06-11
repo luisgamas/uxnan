@@ -14,8 +14,9 @@ import {
   worktreeCreate,
   worktreeList,
   worktreeRemove,
+  worktreeStatus,
 } from "$lib/api";
-import type { BranchList, WorktreeEntry } from "$lib/types";
+import type { BranchList, WorktreeEntry, WorktreeStatus } from "$lib/types";
 import { app } from "$lib/state/app.svelte";
 
 const msg = (e: unknown) =>
@@ -41,6 +42,8 @@ class ProjectsStore {
 
   /** Worktrees per repo id, loaded on demand. */
   worktreesByRepo = $state<Record<string, WorktreeEntry[]>>({});
+  /** Working-tree status per worktree path (dirty/ahead/behind), best-effort. */
+  statusByPath = $state<Record<string, WorktreeStatus>>({});
   /** Active worktree, keyed by its path (WorktreeEntry has no stable id). */
   activeWorktreePath = $state<string | null>(null);
   /** Last error from a project/worktree action, surfaced in the panel. */
@@ -87,13 +90,33 @@ class ProjectsStore {
 
   async loadWorktrees(repoId: string): Promise<void> {
     try {
-      this.worktreesByRepo = {
-        ...this.worktreesByRepo,
-        [repoId]: await worktreeList(repoId),
-      };
+      const list = await worktreeList(repoId);
+      this.worktreesByRepo = { ...this.worktreesByRepo, [repoId]: list };
+      await this.refreshStatuses(list.map((w) => w.path));
     } catch (e) {
       this.error = msg(e);
     }
+  }
+
+  /** Best-effort refresh of the git status badges for the given worktree paths. */
+  async refreshStatuses(paths: string[]): Promise<void> {
+    const entries = await Promise.all(
+      paths.map(async (path) => {
+        try {
+          return [path, await worktreeStatus(path)] as const;
+        } catch {
+          return null;
+        }
+      }),
+    );
+    const merged = { ...this.statusByPath };
+    for (const entry of entries) if (entry) merged[entry[0]] = entry[1];
+    this.statusByPath = merged;
+  }
+
+  /** Status badge data for a worktree path (undefined until loaded). */
+  status(path: string): WorktreeStatus | undefined {
+    return this.statusByPath[path];
   }
 
   /** A repo's branches + resolved default base, for the new-worktree dialog. */

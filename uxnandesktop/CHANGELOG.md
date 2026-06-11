@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — Phase 2: worktree status badges
+- **Status badges on worktree cards** (`WorktreeCard.svelte`): each worktree
+  shows its uncommitted-change count and ahead/behind-upstream counts. Backed by
+  a new `worktree_status` command + `git::worktree_status` (parses
+  `git status --porcelain=v1 --branch`); the projects store keeps a
+  `statusByPath` map refreshed on load and after create/remove. +2 tests
+  (`parse_status_porcelain`), 24 passing.
+
 ### Added — Settings screen & terminal profiles
 - **Settings screen** (`Settings.svelte`, opened from a gear in the title bar):
   a dialog with a section nav — **General** (theme: System/Light/Dark, applied

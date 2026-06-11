@@ -55,6 +55,7 @@ pub fn run() {
             commands::worktree_create,
             commands::worktree_remove,
             commands::worktree_list,
+            commands::worktree_status,
             commands::set_terminal_layout,
         ])
         .build(tauri::generate_context!())

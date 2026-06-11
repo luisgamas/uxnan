@@ -62,6 +62,16 @@ export interface BranchList {
   defaultBase: string;
 }
 
+/** A worktree's working-tree status summary (mirror of Rust `WorktreeStatus`). */
+export interface WorktreeStatus {
+  /** Changed entries (modified/added/deleted/untracked). */
+  dirty: number;
+  /** Commits ahead of the upstream (0 when none). */
+  ahead: number;
+  /** Commits behind the upstream (0 when none). */
+  behind: number;
+}
+
 export interface AgentStateEntry {
   worktreeId: string;
   status: AgentStatus;
