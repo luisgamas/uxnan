@@ -66,7 +66,19 @@
         ? "bg-amber-500"
         : "bg-destructive",
   );
+
+  // Suppress the webview's built-in context menu (it's most visible in debug
+  // builds and exposes dev/inspect entries). Native menus stay on text fields so
+  // right-click paste keeps working; our terminal tab/pane menus call
+  // stopPropagation, so they never reach this handler.
+  function onContextMenu(e: MouseEvent) {
+    const t = e.target as HTMLElement | null;
+    if (t?.closest("input, textarea")) return;
+    e.preventDefault();
+  }
 </script>
+
+<svelte:window oncontextmenu={onContextMenu} />
 
 <div class="flex h-screen w-screen flex-col bg-background text-foreground">
   <!-- Custom title bar (OS chrome disabled) -->
