@@ -14,8 +14,14 @@
     type SplitDir,
   } from "$lib/state/terminals.svelte";
   import Terminal from "./Terminal.svelte";
+  import PlusIcon from "@lucide/svelte/icons/plus";
+  import TerminalIcon from "@lucide/svelte/icons/terminal";
 
-  const layout = $derived(computeAreaLayout(terminals.root));
+  const layout = $derived(
+    terminals.root
+      ? computeAreaLayout(terminals.root)
+      : { groups: [], dividers: [] },
+  );
 
   let unlistenDrop: (() => void) | undefined;
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -41,7 +47,7 @@
   // Persist the region/tab layout (debounced) whenever it changes, once the
   // store has hydrated from disk. Reading the tree here makes it reactive.
   $effect(() => {
-    const snapshot = serializeArea(terminals.root);
+    const snapshot = terminals.root ? serializeArea(terminals.root) : null;
     if (!terminals.hydrated) return;
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
@@ -160,8 +166,17 @@
 />
 
 <div class="flex h-full flex-col">
-  <!-- Slim strip for the right-panel toggle (stays visible when the panel is hidden) -->
-  <div class="flex h-8 shrink-0 items-center border-b border-border bg-card px-2">
+  <!-- Slim strip: global new-terminal action + right-panel toggle (stays visible
+       when the right panel is hidden) -->
+  <div class="flex h-8 shrink-0 items-center gap-1 border-b border-border bg-card px-2">
+    <button
+      class="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+      title="New terminal"
+      onclick={() => terminals.create()}
+    >
+      <PlusIcon class="size-3.5" />
+      Terminal
+    </button>
     <div class="flex-1"></div>
     <button
       class="rounded px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground"
@@ -180,6 +195,22 @@
     data-pane-container
     class="relative min-h-0 flex-1 overflow-hidden bg-[#0b0b0c]"
   >
+    {#if terminals.hydrated && layout.groups.length === 0}
+      <!-- Empty area: the app starts with no terminal; open one here or from a
+           project / worktree in the left panel. -->
+      <div class="flex h-full flex-col items-center justify-center gap-3 text-center">
+        <TerminalIcon class="size-8 text-muted-foreground/60" />
+        <div class="text-sm text-muted-foreground">No terminals open</div>
+        <button
+          class="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent hover:text-accent-foreground"
+          onclick={() => terminals.create()}
+        >
+          <PlusIcon class="size-3.5" />
+          New terminal
+        </button>
+      </div>
+    {/if}
+
     {#if terminals.hydrated}
       {#each layout.groups as g (g.group.id)}
       {@const activeRegion = terminals.activeGroupId === g.group.id}

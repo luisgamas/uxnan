@@ -231,7 +231,10 @@ export interface TermController {
 }
 
 class TerminalStore {
-  root = $state<AreaNode>(newGroup());
+  /** The region tree, or `null` when no terminals are open. The app starts with
+   *  no terminal by default — the user opens one from the title-bar action, a
+   *  project, or a worktree. */
+  root = $state<AreaNode | null>(null);
   activeGroupId = $state<string>("");
   /** True once the persisted layout has been restored (or defaulted). The UI
    *  waits for this before mounting terminals, so no shell is spawned and then
@@ -239,12 +242,8 @@ class TerminalStore {
   hydrated = $state(false);
   private controllers = new Map<string, TermController>();
 
-  constructor() {
-    this.activeGroupId = (this.root as TabGroup).id;
-  }
-
-  /** Restore the area tree from a saved snapshot (or keep the default), then
-   *  mark the store hydrated. Always call once at startup. */
+  /** Restore the area tree from a saved snapshot (or stay empty when there is
+   *  none), then mark the store hydrated. Always call once at startup. */
   restore(saved: SavedTermNode | null | undefined): void {
     if (saved) {
       try {
@@ -252,8 +251,13 @@ class TerminalStore {
         this.root = root;
         this.activeGroupId = firstGroup(root).id;
       } catch {
-        // Corrupt layout — fall back to the default group already in `root`.
+        // Corrupt layout — fall back to an empty area.
+        this.root = null;
+        this.activeGroupId = "";
       }
+    } else {
+      this.root = null;
+      this.activeGroupId = "";
     }
     this.hydrated = true;
   }
@@ -263,19 +267,28 @@ class TerminalStore {
     this.activeGroupId = groupId;
   }
   setActiveTab(groupId: string, tabId: string): void {
+    if (!this.root) return;
     const group = findGroup(this.root, groupId);
     if (group) group.activeTabId = tabId;
     this.activeGroupId = groupId;
   }
-  /** PTY id of the active tab of the active region. */
+  /** PTY id of the active tab of the active region, or null when the area is empty. */
   activePtyId(): string | null {
+    if (!this.root) return null;
     const group = findGroup(this.root, this.activeGroupId) ?? firstGroup(this.root);
     return group?.activeTabId ?? null;
   }
 
   // --- Tabs ----------------------------------------------------------------
-  /** Add a tab to a region (defaults to the active region). */
+  /** Add a tab to a region (defaults to the active region). When the area is
+   *  empty, this opens the first region. */
   create(opts?: { cwd?: string; title?: string; groupId?: string }): string {
+    if (!this.root) {
+      const group = newGroup(opts?.cwd, opts?.title);
+      this.root = group;
+      this.activeGroupId = group.id;
+      return group.tabs[0].id;
+    }
     const groupId = opts?.groupId ?? this.activeGroupId;
     const group = findGroup(this.root, groupId) ?? firstGroup(this.root);
     const tab = newTab(opts?.cwd, opts?.title);
@@ -286,6 +299,7 @@ class TerminalStore {
   }
 
   markExited(ptyId: string): void {
+    if (!this.root) return;
     const group = groupOfTab(this.root, ptyId);
     const tab = group?.tabs.find((t) => t.id === ptyId);
     if (tab) tab.exited = true;
@@ -294,6 +308,7 @@ class TerminalStore {
   /** Close one tab: kill its PTY; if it was the region's last tab, collapse the
    *  region (or reset to a fresh one if it was the only region). */
   async closeTab(groupId: string, tabId: string): Promise<void> {
+    if (!this.root) return;
     const group = findGroup(this.root, groupId);
     if (!group) return;
     try {
@@ -312,6 +327,7 @@ class TerminalStore {
   // --- Regions (split / close) --------------------------------------------
   /** Split a region into two, spawning a new region beside/below it. */
   split(groupId: string, dir: SplitDir, opts?: { cwd?: string }): void {
+    if (!this.root) return;
     const group = findGroup(this.root, groupId);
     if (!group) return;
     const fresh = newGroup(opts?.cwd);
@@ -327,6 +343,7 @@ class TerminalStore {
 
   /** Close a whole region: kill every tab's PTY and collapse it. */
   async closeGroup(groupId: string): Promise<void> {
+    if (!this.root) return;
     const group = findGroup(this.root, groupId);
     if (!group) return;
     for (const tab of group.tabs) {
@@ -336,17 +353,15 @@ class TerminalStore {
   }
 
   private collapseGroup(groupId: string): void {
+    if (!this.root) return;
     const newRoot = removeGroup(this.root, groupId);
+    // `null` means the last region was closed → the area becomes empty (no
+    // terminal is auto-spawned to replace it).
+    this.root = newRoot;
     if (newRoot === null) {
-      // Was the only region — reset to a fresh one so there's always a shell.
-      const fresh = newGroup();
-      this.root = fresh;
-      this.activeGroupId = fresh.id;
-    } else {
-      this.root = newRoot;
-      if (!findGroup(this.root, this.activeGroupId)) {
-        this.activeGroupId = firstGroup(this.root).id;
-      }
+      this.activeGroupId = "";
+    } else if (!findGroup(newRoot, this.activeGroupId)) {
+      this.activeGroupId = firstGroup(newRoot).id;
     }
   }
 
