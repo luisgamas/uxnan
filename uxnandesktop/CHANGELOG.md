@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — design tokens (sizing & emphasis)
+- **Reusable sizing/emphasis scale** in `src/lib/design.ts` (icon sizes, ghost
+  icon-button footprint, text roles) documented in `docs/design-tokens.md`.
+  Informational text/icons are intentionally smaller and muted; control icons
+  and titles get their own role. Applied across the left panel
+  (`LeftSidebar`, `ProjectCard`, `WorktreeRow`), the terminal top bar
+  (`TerminalArea`) and the directory picker to fix the uneven density (oversized
+  header/card icons, too-large floating-menu text, over-bold informational text).
+
 ### Changed — left panel redesign: projects with nested worktrees
 - **Single hierarchical Projects tree** (`LeftSidebar.svelte`, `ProjectCard.svelte`,
   new `WorktreeRow.svelte`; `WorktreeCard.svelte` removed) replaces the two flat

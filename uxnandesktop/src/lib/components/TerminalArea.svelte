@@ -16,6 +16,8 @@
   } from "$lib/state/terminals.svelte";
   import Terminal from "./Terminal.svelte";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
+  import { icon, text } from "$lib/design";
+  import { cn } from "$lib/utils";
   import PlusIcon from "@lucide/svelte/icons/plus";
   import TerminalIcon from "@lucide/svelte/icons/terminal";
   import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
@@ -211,11 +213,14 @@
   <div class="flex h-8 shrink-0 items-center gap-1 border-b border-border bg-card px-2">
     <div class="flex items-center">
       <button
-        class="inline-flex items-center gap-1 rounded-l px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+        class={cn(
+          "inline-flex items-center gap-1 rounded-l px-2 py-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+          text.body,
+        )}
         title="New terminal (default profile)"
         onclick={() => app.openTerminal()}
       >
-        <PlusIcon class="size-3.5" />
+        <PlusIcon class={icon.button} />
         Terminal
       </button>
       <DropdownMenu.Root>
@@ -227,18 +232,18 @@
               aria-label="Choose a terminal profile"
               {...props}
             >
-              <ChevronDownIcon class="size-3.5" />
+              <ChevronDownIcon class={icon.button} />
             </button>
           {/snippet}
         </DropdownMenu.Trigger>
         <DropdownMenu.Content align="start" class="min-w-44">
-          <DropdownMenu.Label class="text-[11px]">New terminal</DropdownMenu.Label>
+          <DropdownMenu.Label class={text.menuLabel}>New terminal</DropdownMenu.Label>
           {#each app.terminalProfiles as p (p.id)}
             <DropdownMenu.Item
-              class="text-xs"
+              class={text.menu}
               onclick={() => app.openTerminal({ profileId: p.id })}
             >
-              <TerminalIcon class="size-3.5" />
+              <TerminalIcon class={icon.button} />
               {p.name.trim() || "Unnamed profile"}
             </DropdownMenu.Item>
           {/each}
@@ -248,10 +253,13 @@
 
     <!-- Active terminal context (read-only; selected in the left panel) -->
     <div
-      class="ml-1 inline-flex max-w-[240px] items-center gap-1 px-1 text-xs text-muted-foreground"
+      class={cn(
+        "ml-1 inline-flex max-w-[240px] items-center gap-1 px-1 text-muted-foreground",
+        text.body,
+      )}
       title="Active terminal context — choose a project or worktree in the left panel"
     >
-      <LayersIcon class="size-3.5 shrink-0" />
+      <LayersIcon class={cn(icon.decorative, "shrink-0")} />
       {#if ctx.repo}
         <span class="truncate">{ctx.repo}</span>
         <span class="text-muted-foreground/50">/</span>
@@ -261,7 +269,10 @@
 
     <div class="flex-1"></div>
     <button
-      class="rounded px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+      class={cn(
+        "rounded px-2 py-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+        text.body,
+      )}
       title="Toggle right panel"
       aria-label="Toggle right panel"
       onclick={toggleRight}
@@ -396,17 +407,20 @@
       {#if !terminals.root}
         <!-- Active workspace has no terminal open. -->
         <div class="flex h-full flex-col items-center justify-center gap-3 text-center">
-          <TerminalIcon class="size-8 text-muted-foreground/60" />
-          <div class="text-sm text-muted-foreground">
+          <TerminalIcon class={cn(icon.empty, "text-muted-foreground/60")} />
+          <div class={cn("text-muted-foreground", text.body)}>
             No terminals in <span class="font-medium text-foreground"
               >{ctx.repo ? `${ctx.repo} / ${ctx.name}` : ctx.name}</span
             >
           </div>
           <button
-            class="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent hover:text-accent-foreground"
+            class={cn(
+              "inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 font-medium text-foreground hover:bg-accent hover:text-accent-foreground",
+              text.body,
+            )}
             onclick={() => app.openTerminal()}
           >
-            <PlusIcon class="size-3.5" />
+            <PlusIcon class={icon.button} />
             New terminal
           </button>
         </div>

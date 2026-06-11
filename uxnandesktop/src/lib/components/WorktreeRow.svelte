@@ -6,6 +6,7 @@
   import { terminals } from "$lib/state/terminals.svelte";
   import { clipboardWrite } from "$lib/clipboard";
   import { cn } from "$lib/utils";
+  import { icon, iconButton, text } from "$lib/design";
   import GitBranchIcon from "@lucide/svelte/icons/git-branch";
   import TerminalIcon from "@lucide/svelte/icons/terminal";
   import MoreVerticalIcon from "@lucide/svelte/icons/ellipsis-vertical";
@@ -59,72 +60,74 @@
       active ? "bg-ring" : "bg-transparent",
     )}
   ></span>
-  <GitBranchIcon class="size-3 shrink-0 text-muted-foreground" />
+  <GitBranchIcon class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
   <div class="flex min-w-0 flex-1 items-center gap-1.5">
-    <span class="truncate text-xs">{label}</span>
+    <span class={cn("truncate", text.body)}>{label}</span>
     {#if status && status.dirty > 0}
       <span
-        class="inline-flex shrink-0 items-center gap-0.5 text-[10px] text-amber-600 dark:text-amber-400"
+        class={cn(
+          "inline-flex shrink-0 items-center gap-0.5 text-amber-600 dark:text-amber-400",
+          text.indicator,
+        )}
         title="{status.dirty} uncommitted change{status.dirty === 1 ? '' : 's'}"
       >
         <span class="size-1.5 rounded-full bg-amber-500"></span>{status.dirty}
       </span>
     {/if}
     {#if status && status.ahead > 0}
-      <span class="shrink-0 text-[10px] text-muted-foreground" title="ahead of upstream">↑{status.ahead}</span>
+      <span class={cn("shrink-0 text-muted-foreground", text.indicator)} title="ahead of upstream">↑{status.ahead}</span>
     {/if}
     {#if status && status.behind > 0}
-      <span class="shrink-0 text-[10px] text-muted-foreground" title="behind upstream">↓{status.behind}</span>
+      <span class={cn("shrink-0 text-muted-foreground", text.indicator)} title="behind upstream">↓{status.behind}</span>
     {/if}
     {#if termCount > 0}
       <span
-        class="inline-flex shrink-0 items-center gap-0.5 text-[10px] text-emerald-600 dark:text-emerald-400"
+        class={cn(
+          "inline-flex shrink-0 items-center gap-0.5 text-emerald-600 dark:text-emerald-400",
+          text.indicator,
+        )}
         title="{termCount} terminal{termCount === 1 ? '' : 's'} running"
       >
-        <TerminalIcon class="size-3" />{termCount}
+        <TerminalIcon class={icon.decorative} />{termCount}
       </span>
     {/if}
   </div>
 
   <Button
     variant="ghost"
-    size="icon-sm"
-    class="size-6 opacity-0 group-hover:opacity-100"
+    size="icon"
+    class={cn(iconButton.action, "opacity-0 group-hover:opacity-100")}
     title="Open a terminal here"
     onclick={(e) => {
       e.stopPropagation();
       projects.openTerminalAt(row.path);
     }}
   >
-    <TerminalIcon class="size-3" />
+    <TerminalIcon class={icon.button} />
   </Button>
   <DropdownMenu.Root>
     <DropdownMenu.Trigger>
       {#snippet child({ props })}
         <Button
           variant="ghost"
-          size="icon-sm"
-          class="size-6 opacity-0 group-hover:opacity-100"
+          size="icon"
+          class={cn(iconButton.action, "opacity-0 group-hover:opacity-100")}
           title="More"
           onclick={(e: MouseEvent) => e.stopPropagation()}
           {...props}
         >
-          <MoreVerticalIcon class="size-3" />
+          <MoreVerticalIcon class={icon.button} />
         </Button>
       {/snippet}
     </DropdownMenu.Trigger>
     <DropdownMenu.Content align="end" class="min-w-44">
-      <DropdownMenu.Item class="text-xs" onclick={() => clipboardWrite(row.path)}>
-        <CopyIcon class="size-3.5" />
+      <DropdownMenu.Item class={text.menu} onclick={() => clipboardWrite(row.path)}>
+        <CopyIcon class={icon.button} />
         Copy path
       </DropdownMenu.Item>
       <DropdownMenu.Separator />
-      <DropdownMenu.Item
-        variant="destructive"
-        class="text-xs"
-        onclick={openRemove}
-      >
-        <Trash2Icon class="size-3.5" />
+      <DropdownMenu.Item variant="destructive" class={text.menu} onclick={openRemove}>
+        <Trash2Icon class={icon.button} />
         Remove worktree
       </DropdownMenu.Item>
     </DropdownMenu.Content>
@@ -145,7 +148,10 @@
 
     {#if removeError}
       <div
-        class="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive"
+        class={cn(
+          "rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-destructive",
+          text.body,
+        )}
       >
         {removeError}
       </div>

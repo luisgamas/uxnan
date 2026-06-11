@@ -6,6 +6,8 @@
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import ProjectCard from "./ProjectCard.svelte";
   import DirectoryPicker from "./DirectoryPicker.svelte";
+  import { icon, text } from "$lib/design";
+  import { cn } from "$lib/utils";
   import SearchIcon from "@lucide/svelte/icons/search";
   import FolderPlusIcon from "@lucide/svelte/icons/folder-plus";
   import ArrowUpDownIcon from "@lucide/svelte/icons/arrow-up-down";
@@ -40,7 +42,10 @@
   <div class="shrink-0 border-b border-sidebar-border p-2">
     <div class="relative">
       <SearchIcon
-        class="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
+        class={cn(
+          icon.button,
+          "pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground",
+        )}
       />
       <Input
         class="h-8 pl-8 text-xs"
@@ -58,9 +63,7 @@
 
   <!-- Header -->
   <header class="flex h-8 shrink-0 items-center gap-1 px-2">
-    <span
-      class="flex-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
-    >
+    <span class={cn("flex-1", text.section)}>
       Projects
       <span class="text-muted-foreground/60">({projects.filteredRepos.length})</span>
     </span>
@@ -71,7 +74,7 @@
       title="Add project…"
       onclick={() => (pickerOpen = true)}
     >
-      <FolderPlusIcon />
+      <FolderPlusIcon class={icon.button} />
     </Button>
     <Button
       variant="ghost"
@@ -80,22 +83,22 @@
       title="Refresh worktrees & status"
       onclick={() => void projects.init()}
     >
-      <RefreshCwIcon />
+      <RefreshCwIcon class={icon.button} />
     </Button>
     <DropdownMenu.Root>
       <DropdownMenu.Trigger>
         {#snippet child({ props })}
           <Button variant="ghost" size="icon" class="size-6" title="Sort" {...props}>
-            <ArrowUpDownIcon />
+            <ArrowUpDownIcon class={icon.button} />
           </Button>
         {/snippet}
       </DropdownMenu.Trigger>
       <DropdownMenu.Content align="end">
-        <DropdownMenu.Label>Sort by</DropdownMenu.Label>
+        <DropdownMenu.Label class={text.menuLabel}>Sort by</DropdownMenu.Label>
         <DropdownMenu.RadioGroup bind:value={sort}>
-          <DropdownMenu.RadioItem value="manual">Added order</DropdownMenu.RadioItem>
-          <DropdownMenu.RadioItem value="name-asc">Name (A–Z)</DropdownMenu.RadioItem>
-          <DropdownMenu.RadioItem value="name-desc">Name (Z–A)</DropdownMenu.RadioItem>
+          <DropdownMenu.RadioItem class={text.menu} value="manual">Added order</DropdownMenu.RadioItem>
+          <DropdownMenu.RadioItem class={text.menu} value="name-asc">Name (A–Z)</DropdownMenu.RadioItem>
+          <DropdownMenu.RadioItem class={text.menu} value="name-desc">Name (Z–A)</DropdownMenu.RadioItem>
         </DropdownMenu.RadioGroup>
       </DropdownMenu.Content>
     </DropdownMenu.Root>

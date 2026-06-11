@@ -5,6 +5,8 @@
   import { Badge } from "$lib/components/ui/badge";
   import { browseDirs } from "$lib/api";
   import { projects } from "$lib/state/projects.svelte";
+  import { cn } from "$lib/utils";
+  import { icon, text } from "$lib/design";
   import type { DirListing } from "$lib/types";
   import FolderIcon from "@lucide/svelte/icons/folder";
   import FolderGitIcon from "@lucide/svelte/icons/folder-git-2";
@@ -76,7 +78,7 @@
         disabled={!listing?.parent || loading}
         onclick={() => listing?.parent && go(listing.parent)}
       >
-        <CornerLeftUpIcon class="size-3.5" />
+        <CornerLeftUpIcon class={icon.button} />
       </Button>
       <Input
         class="h-7 flex-1 font-mono text-xs"
@@ -104,14 +106,14 @@
         {#each listing.entries as entry (entry.path)}
           <div class="group flex items-center gap-2 px-2 py-1.5 hover:bg-accent/50">
             <button
-              class="flex min-w-0 flex-1 items-center gap-2 text-left text-xs"
+              class={cn("flex min-w-0 flex-1 items-center gap-2 text-left", text.body)}
               title="Open {entry.name}"
               onclick={() => go(entry.path)}
             >
               {#if entry.isRepo}
-                <FolderGitIcon class="size-4 shrink-0 text-primary" />
+                <FolderGitIcon class={cn(icon.button, "shrink-0 text-primary")} />
               {:else}
-                <FolderIcon class="size-4 shrink-0 text-muted-foreground" />
+                <FolderIcon class={cn(icon.button, "shrink-0 text-muted-foreground")} />
               {/if}
               <span class="truncate">{entry.name}</span>
               {#if entry.isRepo}

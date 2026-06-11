@@ -6,6 +6,7 @@
   import { terminals } from "$lib/state/terminals.svelte";
   import { clipboardWrite } from "$lib/clipboard";
   import { cn } from "$lib/utils";
+  import { icon, iconButton, text } from "$lib/design";
   import NewWorktreeDialog from "./NewWorktreeDialog.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import WorktreeRow from "./WorktreeRow.svelte";
@@ -52,7 +53,7 @@
       onclick={() => (expanded = !isExpanded)}
     >
       <ChevronRightIcon
-        class={cn("size-3.5 transition-transform", isExpanded && "rotate-90")}
+        class={cn(icon.button, "transition-transform", isExpanded && "rotate-90")}
       />
     </button>
 
@@ -61,13 +62,16 @@
       title="Work in {repo.name} (main)"
       onclick={() => projects.setActiveWorktree(mainPath)}
     >
-      <FolderGitIcon class="size-3.5 shrink-0 text-muted-foreground" />
+      <FolderGitIcon class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
       <div class="min-w-0 flex-1">
         <div class="flex items-center gap-1.5">
-          <span class="truncate text-[13px] font-medium" title={repo.name}>{repo.name}</span>
+          <span class={cn("truncate", text.title)} title={repo.name}>{repo.name}</span>
           {#if mainStatus && mainStatus.dirty > 0}
             <span
-              class="inline-flex shrink-0 items-center gap-0.5 text-[10px] text-amber-600 dark:text-amber-400"
+              class={cn(
+                "inline-flex shrink-0 items-center gap-0.5 text-amber-600 dark:text-amber-400",
+                text.indicator,
+              )}
               title="{mainStatus.dirty} uncommitted change{mainStatus.dirty === 1 ? '' : 's'} on main"
             >
               <span class="size-1.5 rounded-full bg-amber-500"></span>{mainStatus.dirty}
@@ -75,14 +79,17 @@
           {/if}
           {#if mainTermCount > 0}
             <span
-              class="inline-flex shrink-0 items-center gap-0.5 text-[10px] text-emerald-600 dark:text-emerald-400"
+              class={cn(
+                "inline-flex shrink-0 items-center gap-0.5 text-emerald-600 dark:text-emerald-400",
+                text.indicator,
+              )}
               title="{mainTermCount} terminal{mainTermCount === 1 ? '' : 's'} running"
             >
-              <TerminalIcon class="size-3" />{mainTermCount}
+              <TerminalIcon class={icon.decorative} />{mainTermCount}
             </span>
           {/if}
         </div>
-        <div class="truncate text-[11px] text-muted-foreground" title={repo.path}>
+        <div class={cn("truncate", text.meta)} title={repo.path}>
           {repo.path}
         </div>
       </div>
@@ -91,40 +98,42 @@
     <div class="flex shrink-0 items-center gap-0.5">
       <Button
         variant="ghost"
-        size="icon-sm"
+        size="icon"
+        class={iconButton.action}
         title="Open a terminal in {repo.name} (main)"
         onclick={() => projects.openTerminalAt(mainPath)}
       >
-        <TerminalIcon class="size-3.5" />
+        <TerminalIcon class={icon.button} />
       </Button>
       <Button
         variant="ghost"
-        size="icon-sm"
+        size="icon"
+        class={iconButton.action}
         title="New worktree…"
         onclick={() => (newWorktreeOpen = true)}
       >
-        <GitBranchPlusIcon class="size-3.5" />
+        <GitBranchPlusIcon class={icon.button} />
       </Button>
       <DropdownMenu.Root>
         <DropdownMenu.Trigger>
           {#snippet child({ props })}
-            <Button variant="ghost" size="icon-sm" title="More" {...props}>
-              <MoreVerticalIcon class="size-3.5" />
+            <Button variant="ghost" size="icon" class={iconButton.action} title="More" {...props}>
+              <MoreVerticalIcon class={icon.button} />
             </Button>
           {/snippet}
         </DropdownMenu.Trigger>
         <DropdownMenu.Content align="end" class="min-w-44">
-          <DropdownMenu.Item class="text-xs" onclick={() => clipboardWrite(repo.path)}>
-            <CopyIcon class="size-3.5" />
+          <DropdownMenu.Item class={text.menu} onclick={() => clipboardWrite(repo.path)}>
+            <CopyIcon class={icon.button} />
             Copy path
           </DropdownMenu.Item>
           <DropdownMenu.Separator />
           <DropdownMenu.Item
             variant="destructive"
-            class="text-xs"
+            class={text.menu}
             onclick={() => (confirmRemoveOpen = true)}
           >
-            <Trash2Icon class="size-3.5" />
+            <Trash2Icon class={icon.button} />
             Remove project
           </DropdownMenu.Item>
         </DropdownMenu.Content>
@@ -137,14 +146,14 @@
     <div class="border-t border-sidebar-border bg-background/40 py-1 pl-3 pr-1">
       {#if childRows.length === 0}
         <div class="flex items-center justify-between px-1 py-0.5">
-          <span class="text-[11px] text-muted-foreground">No worktrees</span>
+          <span class={text.meta}>No worktrees</span>
           <Button
             variant="ghost"
             size="sm"
-            class="h-6 text-[11px]"
+            class={cn("h-6", text.body)}
             onclick={() => (newWorktreeOpen = true)}
           >
-            <GitBranchPlusIcon class="size-3" />
+            <GitBranchPlusIcon class={icon.decorative} />
             New
           </Button>
         </div>
@@ -159,7 +168,7 @@
   {:else if children.length > 0}
     <!-- Collapsed: a compact count so the relationship is visible -->
     <div class="px-2.5 pb-1.5">
-      <Badge variant="secondary" class="text-[10px] font-normal">
+      <Badge variant="secondary" class={cn("font-normal", text.indicator)}>
         {children.length}
         {children.length === 1 ? "worktree" : "worktrees"}
       </Badge>
