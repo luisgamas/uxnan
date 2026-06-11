@@ -70,16 +70,107 @@ pub fn worktree_path_for(repo_path: &str, branch: &str) -> String {
         .to_string()
 }
 
-/// Create a worktree on a new branch (`git worktree add -b <branch> <path>`),
-/// based on the repo's current HEAD.
+/// Create a worktree on a new branch
+/// (`git worktree add --no-track -b <branch> <path> [<base>]`). `--no-track`
+/// avoids inheriting the base's upstream so the new branch is not reported as
+/// "behind" before its first push (spec §2.1). When `base` is `None` the new
+/// branch starts from the repo's current `HEAD`.
 pub async fn add_worktree(
     repo_path: &str,
     branch: &str,
     worktree_path: &str,
+    base: Option<&str>,
 ) -> Result<(), AppError> {
-    git(repo_path, &["worktree", "add", "-b", branch, worktree_path])
-        .await
-        .map(|_| ())
+    let mut args = vec!["worktree", "add", "--no-track", "-b", branch, worktree_path];
+    if let Some(base) = base {
+        args.push(base);
+    }
+    git(repo_path, &args).await.map(|_| ())
+}
+
+/// List the repo's local branch names. Used to populate the base-branch picker
+/// when creating a worktree.
+pub async fn list_branches(repo_path: &str) -> Result<Vec<String>, AppError> {
+    let out = git(
+        repo_path,
+        &["for-each-ref", "--format=%(refname:short)", "refs/heads"],
+    )
+    .await?;
+    Ok(parse_branch_lines(&out))
+}
+
+/// Parse one-ref-per-line output (`for-each-ref --format=%(refname:short)`) into
+/// a clean, de-blanked list.
+fn parse_branch_lines(input: &str) -> Vec<String> {
+    input
+        .lines()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
+        .collect()
+}
+
+/// Resolve the most appropriate base ref for a new branch, probing in priority
+/// order (spec §2.1): the remote HEAD's target (e.g. `origin/main`), then a
+/// local `main`, then `master`, falling back to `HEAD`. Returns the short ref.
+pub async fn default_base(repo_path: &str) -> String {
+    if let Ok(out) = git(
+        repo_path,
+        &["symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
+    )
+    .await
+    {
+        let r = out.trim();
+        if !r.is_empty() {
+            return r.to_string();
+        }
+    }
+    for candidate in ["main", "master"] {
+        if git(repo_path, &["rev-parse", "--verify", "--quiet", candidate])
+            .await
+            .is_ok()
+        {
+            return candidate.to_string();
+        }
+    }
+    "HEAD".to_string()
+}
+
+/// Whether a worktree has no uncommitted changes (its porcelain status is empty).
+pub async fn is_worktree_clean(worktree_path: &str) -> Result<bool, AppError> {
+    let out = git(worktree_path, &["status", "--porcelain"]).await?;
+    Ok(out.trim().is_empty())
+}
+
+/// Remove a worktree with safeguards (spec §2.3). With `force = false`, refuses
+/// when the worktree has uncommitted changes. After removal it prunes the
+/// administrative files and attempts a *safe* branch delete (`git branch -d`,
+/// which fails — and is ignored — when the branch has unmerged commits, so work
+/// is never lost). Patch-equivalence detection for squash-merged branches is
+/// deferred (FOR-DEV: aggressive branch cleanup).
+pub async fn remove_worktree(
+    repo_path: &str,
+    worktree_path: &str,
+    branch: Option<&str>,
+    force: bool,
+) -> Result<(), AppError> {
+    if !force && !is_worktree_clean(worktree_path).await? {
+        return Err(AppError::Invalid(
+            "worktree has uncommitted changes; commit, stash, or force-remove".to_string(),
+        ));
+    }
+    let mut args = vec!["worktree", "remove"];
+    if force {
+        args.push("--force");
+    }
+    args.push(worktree_path);
+    git(repo_path, &args).await?;
+    // Best-effort cleanup; never fail the removal because pruning/branch delete
+    // hit a snag.
+    let _ = git(repo_path, &["worktree", "prune"]).await;
+    if let Some(branch) = branch {
+        let _ = git(repo_path, &["branch", "-d", branch]).await;
+    }
+    Ok(())
 }
 
 /// List all worktrees of a repo (ADE-created and external).
@@ -167,5 +258,14 @@ mod tests {
     #[test]
     fn repo_name_is_final_component() {
         assert_eq!(repo_name("/home/u/myrepo"), "myrepo");
+    }
+
+    #[test]
+    fn branch_lines_are_trimmed_and_deblanked() {
+        let input = "main\n feature/x \n\nrelease/1.0\n";
+        assert_eq!(
+            parse_branch_lines(input),
+            vec!["main", "feature/x", "release/1.0"]
+        );
     }
 }

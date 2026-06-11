@@ -5,6 +5,7 @@
 //! `FOR-DEV.md` and the full planned list in
 //! `architecture/03-implementation-guide.md` §2.1).
 
+use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 use uuid::Uuid;
 
@@ -184,13 +185,44 @@ async fn repo_path_of(state: &AppState, repo_id: &str) -> Result<String, Command
         .ok_or_else(|| CommandError::from(AppError::NotFound(format!("repo {repo_id}"))))
 }
 
+/// A repo's branches plus the resolved default base, for the new-worktree dialog.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BranchList {
+    /// Local branch names.
+    pub branches: Vec<String>,
+    /// The base ref the dialog should preselect (remote HEAD → main → master → HEAD).
+    pub default_base: String,
+}
+
+/// List a repo's local branches and the resolved default base ref. Powers the
+/// base-branch picker when creating a worktree.
+#[tauri::command]
+pub async fn branch_list(
+    state: State<'_, AppState>,
+    repo_id: String,
+) -> Result<BranchList, CommandError> {
+    let repo_path = repo_path_of(&state, &repo_id).await?;
+    let branches = git::list_branches(&repo_path)
+        .await
+        .map_err(CommandError::from)?;
+    let default_base = git::default_base(&repo_path).await;
+    Ok(BranchList {
+        branches,
+        default_base,
+    })
+}
+
 /// Create a worktree on a new branch in the given repo, at a sibling directory
-/// named `<repo>--<branch>`. Returns the created entry.
+/// named `<repo>--<branch>`. `base` is the ref to branch from; when omitted the
+/// backend resolves the repo's default base (remote HEAD → main → master → HEAD).
+/// Returns the created entry.
 #[tauri::command]
 pub async fn worktree_create(
     state: State<'_, AppState>,
     repo_id: String,
     branch: String,
+    base: Option<String>,
 ) -> Result<WorktreeEntry, CommandError> {
     let branch = branch.trim().to_string();
     if branch.is_empty() {
@@ -199,8 +231,12 @@ pub async fn worktree_create(
         )));
     }
     let repo_path = repo_path_of(&state, &repo_id).await?;
+    let base = match base.map(|b| b.trim().to_string()).filter(|b| !b.is_empty()) {
+        Some(base) => base,
+        None => git::default_base(&repo_path).await,
+    };
     let worktree_path = git::worktree_path_for(&repo_path, &branch);
-    git::add_worktree(&repo_path, &branch, &worktree_path)
+    git::add_worktree(&repo_path, &branch, &worktree_path, Some(&base))
         .await
         .map_err(CommandError::from)?;
     Ok(WorktreeEntry {
@@ -209,6 +245,23 @@ pub async fn worktree_create(
         head: None,
         is_main: false,
     })
+}
+
+/// Remove a worktree (spec §2.3). With `force = false` the backend refuses when
+/// the worktree has uncommitted changes; the frontend surfaces this so the user
+/// can confirm a forced removal. A safe branch delete is attempted afterwards.
+#[tauri::command]
+pub async fn worktree_remove(
+    state: State<'_, AppState>,
+    repo_id: String,
+    path: String,
+    branch: Option<String>,
+    force: bool,
+) -> Result<(), CommandError> {
+    let repo_path = repo_path_of(&state, &repo_id).await?;
+    git::remove_worktree(&repo_path, &path, branch.as_deref(), force)
+        .await
+        .map_err(CommandError::from)
 }
 
 /// List a repo's worktrees (ADE-created and ones made externally by agents).

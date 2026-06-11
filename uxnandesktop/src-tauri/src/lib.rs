@@ -48,7 +48,9 @@ pub fn run() {
             commands::repo_add,
             commands::repo_remove,
             commands::repo_list,
+            commands::branch_list,
             commands::worktree_create,
+            commands::worktree_remove,
             commands::worktree_list,
             commands::set_terminal_layout,
         ])
