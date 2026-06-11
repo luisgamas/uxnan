@@ -59,6 +59,12 @@ user configuration. Built incrementally alongside the phases.
       the chosen/default profile and the shell/args persist in the layout.
 - [x] **Terminal theming**: xterm + terminal-area background follow light/dark
       (`app.terminalPalette()`), re-themed live; terminal content padding.
+- [x] **Design tokens** (`src/lib/design.ts`, `docs/design-tokens.md`): reusable
+      icon/text/control sizing & emphasis scale, applied across the panel +
+      terminal bar to fix uneven density.
+- [x] **Internationalization** (`src/lib/i18n/`, `docs/i18n.md`): English + Spanish,
+      device-default with a **Settings → Language** picker
+      (`AppSettings.language`). Main surfaces translated.
 
 **Pending — agents (new, in Settings):**
 - [ ] **Agents registry in Settings** — define agents (name, command, args,
@@ -74,7 +80,11 @@ user configuration. Built incrementally alongside the phases.
       custom color sets (component tokens) and **import/export** them as JSON, for
       deeper personalization. **FOR-DEV.**
 - [ ] **In-app directory picker** (shared with Phase 2; see below) — replace the
-      OS-native folder dialog. **FOR-DEV.**
+      OS-native folder dialog. **FOR-DEV.** (Done.)
+- [ ] **Finish i18n coverage** — a few secondary strings are still English
+      (`TerminalProfileEditor` field labels, the status-bar text in `+page.svelte`,
+      the "exited" tab badge, the "Alpha" tooltip). Add their keys to every
+      locale. **FOR-DEV.**
 
 ---
 

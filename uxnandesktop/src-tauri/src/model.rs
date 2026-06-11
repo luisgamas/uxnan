@@ -166,6 +166,9 @@ pub struct AppSettings {
     /// Id of the profile used for new terminals unless one is picked explicitly.
     #[serde(default)]
     pub default_profile_id: Option<String>,
+    /// UI language: "system" (follow the device) or a locale code (e.g. "en", "es").
+    #[serde(default = "default_language")]
+    pub language: String,
 }
 
 impl Default for AppSettings {
@@ -180,8 +183,14 @@ impl Default for AppSettings {
             right_sidebar_open: true,
             terminal_profiles,
             default_profile_id,
+            language: default_language(),
         }
     }
+}
+
+/// Default UI language: follow the device.
+fn default_language() -> String {
+    "system".to_string()
 }
 
 impl AppSettings {

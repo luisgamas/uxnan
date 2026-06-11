@@ -1,6 +1,8 @@
 <script lang="ts">
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { app } from "$lib/state/app.svelte";
+  import { i18n } from "$lib/i18n";
+  import { icon } from "$lib/design";
   import SettingsIcon from "@lucide/svelte/icons/settings";
 
   // Window controls degrade gracefully in a plain browser (no Tauri runtime).
@@ -26,8 +28,8 @@
 >
   <button
     class="rounded px-2 py-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-    title="Toggle left sidebar"
-    aria-label="Toggle left sidebar"
+    title={i18n.t("titlebar.toggleLeft")}
+    aria-label={i18n.t("titlebar.toggleLeft")}
     onclick={toggleLeft}
   >
     ☰
@@ -50,35 +52,35 @@
   <!-- Settings -->
   <button
     class="flex size-7 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-    title="Settings"
-    aria-label="Settings"
+    title={i18n.t("titlebar.settings")}
+    aria-label={i18n.t("titlebar.settings")}
     onclick={() => (app.settingsOpen = true)}
   >
-    <SettingsIcon class="size-4" />
+    <SettingsIcon class={icon.button} />
   </button>
 
   <!-- Window controls -->
   <div class="ml-1 flex items-center">
     <button
       class="flex h-7 w-9 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-      title="Minimize"
-      aria-label="Minimize"
+      title={i18n.t("titlebar.minimize")}
+      aria-label={i18n.t("titlebar.minimize")}
       onclick={() => windowAction((w) => w.minimize())}
     >
       ﹣
     </button>
     <button
       class="flex h-7 w-9 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-      title="Maximize"
-      aria-label="Maximize"
+      title={i18n.t("titlebar.maximize")}
+      aria-label={i18n.t("titlebar.maximize")}
       onclick={() => windowAction((w) => w.toggleMaximize())}
     >
       ▢
     </button>
     <button
       class="flex h-7 w-9 items-center justify-center rounded text-muted-foreground hover:bg-destructive hover:text-white"
-      title="Close"
-      aria-label="Close"
+      title={i18n.t("titlebar.close")}
+      aria-label={i18n.t("titlebar.close")}
       onclick={() => windowAction((w) => w.close())}
     >
       ✕

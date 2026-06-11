@@ -18,6 +18,7 @@
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import { icon, text } from "$lib/design";
   import { cn } from "$lib/utils";
+  import { i18n } from "$lib/i18n";
   import PlusIcon from "@lucide/svelte/icons/plus";
   import TerminalIcon from "@lucide/svelte/icons/terminal";
   import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
@@ -41,7 +42,7 @@
   /** Friendly label for the active terminal context (repo / branch). The
    *  context is chosen in the left panel; here it's only displayed. */
   function contextLabel(key: string): { repo?: string; name: string } {
-    if (key === GLOBAL_WORKSPACE) return { name: "General" };
+    if (key === GLOBAL_WORKSPACE) return { name: i18n.t("terminal.general") };
     const mainRepo = app.repos.find((r) => r.path === key);
     if (mainRepo) {
       return {
@@ -158,11 +159,11 @@
   function splitItems(groupId: string): MenuItem[] {
     return [
       {
-        label: "Split right",
+        label: i18n.t("terminal.splitRight"),
         action: () => terminals.split(groupId, "row", defaultShellArgs()),
       },
       {
-        label: "Split down",
+        label: i18n.t("terminal.splitDown"),
         action: () => terminals.split(groupId, "col", defaultShellArgs()),
       },
     ];
@@ -170,11 +171,11 @@
   function regionItems(groupId: string, tabId: string): MenuItem[] {
     return [
       {
-        label: "New terminal",
+        label: i18n.t("terminal.newTerminal"),
         action: () => terminals.create({ groupId, ...defaultShellArgs() }),
       },
       {
-        label: "Close terminal",
+        label: i18n.t("terminal.closeTerminal"),
         action: () => void terminals.closeTab(groupId, tabId),
         danger: true,
       },
@@ -185,8 +186,8 @@
     terminals.setActiveTab(groupId, tabId);
     const ctrl = terminals.controller(tabId);
     openMenu(e, [
-      { label: "Copy", action: () => ctrl?.copy(), disabled: !ctrl?.hasSelection() },
-      { label: "Paste", action: () => void ctrl?.paste() },
+      { label: i18n.t("terminal.copy"), action: () => ctrl?.copy(), disabled: !ctrl?.hasSelection() },
+      { label: i18n.t("terminal.paste"), action: () => void ctrl?.paste() },
       { separator: true },
       ...splitItems(groupId),
       { separator: true },
@@ -217,19 +218,19 @@
           "inline-flex items-center gap-1 rounded-l px-2 py-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground",
           text.body,
         )}
-        title="New terminal (default profile)"
+        title={i18n.t("terminal.newDefault")}
         onclick={() => app.openTerminal()}
       >
         <PlusIcon class={icon.button} />
-        Terminal
+        {i18n.t("terminal.terminal")}
       </button>
       <DropdownMenu.Root>
         <DropdownMenu.Trigger>
           {#snippet child({ props })}
             <button
               class="rounded-r px-0.5 py-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-              title="Choose a terminal profile"
-              aria-label="Choose a terminal profile"
+              title={i18n.t("terminal.chooseProfile")}
+              aria-label={i18n.t("terminal.chooseProfile")}
               {...props}
             >
               <ChevronDownIcon class={icon.button} />
@@ -237,14 +238,14 @@
           {/snippet}
         </DropdownMenu.Trigger>
         <DropdownMenu.Content align="start" class="min-w-44">
-          <DropdownMenu.Label class={text.menuLabel}>New terminal</DropdownMenu.Label>
+          <DropdownMenu.Label class={text.menuLabel}>{i18n.t("terminal.newTerminal")}</DropdownMenu.Label>
           {#each app.terminalProfiles as p (p.id)}
             <DropdownMenu.Item
               class={text.menu}
               onclick={() => app.openTerminal({ profileId: p.id })}
             >
               <TerminalIcon class={icon.button} />
-              {p.name.trim() || "Unnamed profile"}
+              {p.name.trim() || i18n.t("terminal.unnamedProfile")}
             </DropdownMenu.Item>
           {/each}
         </DropdownMenu.Content>
@@ -257,7 +258,7 @@
         "ml-1 inline-flex max-w-[240px] items-center gap-1 px-1 text-muted-foreground",
         text.body,
       )}
-      title="Active terminal context — choose a project or worktree in the left panel"
+      title={i18n.t("terminal.context")}
     >
       <LayersIcon class={cn(icon.decorative, "shrink-0")} />
       {#if ctx.repo}
@@ -273,8 +274,8 @@
         "rounded px-2 py-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground",
         text.body,
       )}
-      title="Toggle right panel"
-      aria-label="Toggle right panel"
+      title={i18n.t("terminal.toggleRight")}
+      aria-label={i18n.t("terminal.toggleRight")}
       onclick={toggleRight}
     >
       ⇆
@@ -324,14 +325,14 @@
                         <button
                           class="max-w-[120px] truncate {t.exited ? 'line-through' : ''}"
                           onclick={() => terminals.setActiveTab(g.group.id, t.id)}
-                          title="{t.title} — right-click for options"
+                          title={t.title}
                         >
                           {t.title}
                         </button>
                         <button
                           class="rounded px-0.5 text-muted-foreground opacity-60 hover:bg-destructive/20 hover:text-foreground hover:opacity-100"
-                          title="Close terminal"
-                          aria-label="Close terminal"
+                          title={i18n.t("terminal.closeTerminal")}
+                          aria-label={i18n.t("terminal.closeTerminal")}
                           onclick={() => terminals.closeTab(g.group.id, t.id)}
                         >
                           ×
@@ -340,8 +341,8 @@
                     {/each}
                     <button
                       class="ml-0.5 shrink-0 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                      title="New terminal in this region"
-                      aria-label="New terminal"
+                      title={i18n.t("terminal.newInRegion")}
+                      aria-label={i18n.t("terminal.newTerminal")}
                       onclick={() =>
                         terminals.create({ groupId: g.group.id, ...defaultShellArgs() })}
                     >
@@ -409,9 +410,9 @@
         <div class="flex h-full flex-col items-center justify-center gap-3 text-center">
           <TerminalIcon class={cn(icon.empty, "text-muted-foreground/60")} />
           <div class={cn("text-muted-foreground", text.body)}>
-            No terminals in <span class="font-medium text-foreground"
-              >{ctx.repo ? `${ctx.repo} / ${ctx.name}` : ctx.name}</span
-            >
+            {i18n.t("terminal.noTerminalsIn", {
+              context: ctx.repo ? `${ctx.repo} / ${ctx.name}` : ctx.name,
+            })}
           </div>
           <button
             class={cn(
@@ -421,7 +422,7 @@
             onclick={() => app.openTerminal()}
           >
             <PlusIcon class={icon.button} />
-            New terminal
+            {i18n.t("terminal.newTerminal")}
           </button>
         </div>
       {/if}

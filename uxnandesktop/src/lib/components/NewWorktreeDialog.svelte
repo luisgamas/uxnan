@@ -4,6 +4,9 @@
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import { projects } from "$lib/state/projects.svelte";
+  import { cn } from "$lib/utils";
+  import { icon, text } from "$lib/design";
+  import { i18n } from "$lib/i18n";
   import type { RepoData } from "$lib/types";
   import GitBranchIcon from "@lucide/svelte/icons/git-branch";
 
@@ -38,7 +41,7 @@
   const baseOptions = $derived(
     base && !branches.includes(base) ? [base, ...branches] : branches,
   );
-  const baseLabel = $derived(base || "Select base branch…");
+  const baseLabel = $derived(base || i18n.t("newWorktree.selectBase"));
 
   // Load branches + default base each time the dialog opens.
   $effect(() => {
@@ -74,20 +77,18 @@
 <Dialog.Root bind:open>
   <Dialog.Content class="sm:max-w-[460px]">
     <Dialog.Header>
-      <Dialog.Title>New worktree</Dialog.Title>
+      <Dialog.Title>{i18n.t("newWorktree.title")}</Dialog.Title>
       <Dialog.Description>
-        Create an isolated working copy of <span class="font-medium text-foreground"
-          >{repo.name}</span
-        > on a new branch.
+        {i18n.t("newWorktree.desc", { name: repo.name })}
       </Dialog.Description>
     </Dialog.Header>
 
     <div class="flex flex-col gap-4 py-2">
       <div class="flex flex-col gap-1.5">
-        <label for="wt-branch" class="text-xs font-medium">Branch name</label>
+        <label for="wt-branch" class={cn("font-medium", text.body)}>{i18n.t("newWorktree.branch")}</label>
         <Input
           id="wt-branch"
-          placeholder="feature/my-change"
+          placeholder={i18n.t("newWorktree.branchPlaceholder")}
           bind:value={branch}
           autocomplete="off"
           onkeydown={(e) => e.key === "Enter" && submit()}
@@ -95,7 +96,7 @@
       </div>
 
       <div class="flex flex-col gap-1.5">
-        <span class="text-xs font-medium">Base branch</span>
+        <span class={cn("font-medium", text.body)}>{i18n.t("newWorktree.base")}</span>
         <Select.Root type="single" bind:value={base} disabled={loading}>
           <Select.Trigger class="w-full">{baseLabel}</Select.Trigger>
           <Select.Content>
@@ -104,14 +105,12 @@
             {/each}
           </Select.Content>
         </Select.Root>
-        <p class="text-[11px] text-muted-foreground">
-          The new branch starts from here. Defaults to the repo's main branch.
-        </p>
+        <p class={text.meta}>{i18n.t("newWorktree.baseDesc")}</p>
       </div>
 
       {#if previewPath}
         <div class="flex items-start gap-2 rounded-md bg-muted/50 px-3 py-2">
-          <GitBranchIcon class="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+          <GitBranchIcon class={cn(icon.decorative, "mt-0.5 shrink-0 text-muted-foreground")} />
           <code class="break-all text-[11px] text-muted-foreground">{previewPath}</code>
         </div>
       {/if}
@@ -122,9 +121,9 @@
     </div>
 
     <Dialog.Footer>
-      <Button variant="ghost" onclick={() => (open = false)}>Cancel</Button>
+      <Button variant="ghost" onclick={() => (open = false)}>{i18n.t("common.cancel")}</Button>
       <Button onclick={submit} disabled={!branch.trim() || busy || loading}>
-        {busy ? "Creating…" : "Create worktree"}
+        {busy ? i18n.t("common.creating") : i18n.t("newWorktree.create")}
       </Button>
     </Dialog.Footer>
   </Dialog.Content>

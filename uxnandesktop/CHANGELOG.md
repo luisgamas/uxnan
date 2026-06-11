@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — internationalization (i18n)
+- **Multilingual UI** (English default + Spanish): a dependency-free i18n layer
+  (`src/lib/i18n/`) with one dictionary file per locale (`en.ts` is the
+  source-of-truth `MessageKey` type; other locales are
+  `Record<MessageKey, string>`, so a missing key fails to compile). `i18n.t(key,
+  params)` interpolates `{placeholders}` and is reactive to the language setting;
+  `i18n.plural(n, …)` handles counts.
+- **Language follows the device** (`navigator.language`) by default and can be
+  set manually in **Settings → Language** (System / English / Español). Persisted
+  in `AppSettings.language` (backend `model.rs` + `types.ts`).
+- Translated the main surfaces: left panel (sidebar/project/worktree cards +
+  menus + dialogs), terminal area (top bar, breadcrumb, context menu, empty
+  state), the new-worktree and directory-picker dialogs, the title bar and
+  Settings. Adding a language is one file + one line — see `docs/i18n.md`.
+
 ### Added — design tokens (sizing & emphasis)
 - **Reusable sizing/emphasis scale** in `src/lib/design.ts` (icon sizes, ghost
   icon-button footprint, text roles) documented in `docs/design-tokens.md`.

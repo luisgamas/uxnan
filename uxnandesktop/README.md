@@ -27,7 +27,8 @@ Detailed docs live in [`docs/`](./docs/):
 [release builds & packaging](./docs/build.md) ·
 [testing & verification](./docs/testing.md) ·
 [architecture orientation](./docs/architecture.md) ·
-[design tokens](./docs/design-tokens.md).
+[design tokens](./docs/design-tokens.md) ·
+[internationalization (i18n)](./docs/i18n.md).
 
 The full product/engineering specification is in
 [`architecture/`](architecture/00-index.md); the phased roadmap and deferred

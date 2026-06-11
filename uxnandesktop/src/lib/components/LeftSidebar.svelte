@@ -8,6 +8,7 @@
   import DirectoryPicker from "./DirectoryPicker.svelte";
   import { icon, text } from "$lib/design";
   import { cn } from "$lib/utils";
+  import { i18n } from "$lib/i18n";
   import SearchIcon from "@lucide/svelte/icons/search";
   import FolderPlusIcon from "@lucide/svelte/icons/folder-plus";
   import ArrowUpDownIcon from "@lucide/svelte/icons/arrow-up-down";
@@ -49,7 +50,7 @@
       />
       <Input
         class="h-8 pl-8 text-xs"
-        placeholder="Search projects & worktrees…"
+        placeholder={i18n.t("sidebar.search")}
         bind:value={projects.query}
       />
     </div>
@@ -64,14 +65,14 @@
   <!-- Header -->
   <header class="flex h-8 shrink-0 items-center gap-1 px-2">
     <span class={cn("flex-1", text.section)}>
-      Projects
+      {i18n.t("sidebar.projects")}
       <span class="text-muted-foreground/60">({projects.filteredRepos.length})</span>
     </span>
     <Button
       variant="ghost"
       size="icon"
       class="size-6"
-      title="Add project…"
+      title={i18n.t("sidebar.addProject")}
       onclick={() => (pickerOpen = true)}
     >
       <FolderPlusIcon class={icon.button} />
@@ -80,7 +81,7 @@
       variant="ghost"
       size="icon"
       class="size-6"
-      title="Refresh worktrees & status"
+      title={i18n.t("sidebar.refresh")}
       onclick={() => void projects.init()}
     >
       <RefreshCwIcon class={icon.button} />
@@ -88,17 +89,17 @@
     <DropdownMenu.Root>
       <DropdownMenu.Trigger>
         {#snippet child({ props })}
-          <Button variant="ghost" size="icon" class="size-6" title="Sort" {...props}>
+          <Button variant="ghost" size="icon" class="size-6" title={i18n.t("sidebar.sort")} {...props}>
             <ArrowUpDownIcon class={icon.button} />
           </Button>
         {/snippet}
       </DropdownMenu.Trigger>
       <DropdownMenu.Content align="end">
-        <DropdownMenu.Label class={text.menuLabel}>Sort by</DropdownMenu.Label>
+        <DropdownMenu.Label class={text.menuLabel}>{i18n.t("sidebar.sortBy")}</DropdownMenu.Label>
         <DropdownMenu.RadioGroup bind:value={sort}>
-          <DropdownMenu.RadioItem class={text.menu} value="manual">Added order</DropdownMenu.RadioItem>
-          <DropdownMenu.RadioItem class={text.menu} value="name-asc">Name (A–Z)</DropdownMenu.RadioItem>
-          <DropdownMenu.RadioItem class={text.menu} value="name-desc">Name (Z–A)</DropdownMenu.RadioItem>
+          <DropdownMenu.RadioItem class={text.menu} value="manual">{i18n.t("sidebar.sortManual")}</DropdownMenu.RadioItem>
+          <DropdownMenu.RadioItem class={text.menu} value="name-asc">{i18n.t("sidebar.sortNameAsc")}</DropdownMenu.RadioItem>
+          <DropdownMenu.RadioItem class={text.menu} value="name-desc">{i18n.t("sidebar.sortNameDesc")}</DropdownMenu.RadioItem>
         </DropdownMenu.RadioGroup>
       </DropdownMenu.Content>
     </DropdownMenu.Root>
@@ -110,12 +111,12 @@
     {#if sortedRepos.length === 0}
       <div class="flex flex-col items-center gap-2 px-2 py-6 text-center">
         <p class="text-xs text-muted-foreground">
-          {projects.query ? "No projects match your search." : "No projects yet."}
+          {projects.query ? i18n.t("sidebar.noMatch") : i18n.t("sidebar.empty")}
         </p>
         {#if !projects.query}
           <Button variant="outline" size="sm" onclick={() => (pickerOpen = true)}>
             <FolderPlusIcon data-icon="inline-start" />
-            Add a git repository
+            {i18n.t("sidebar.addRepo")}
           </Button>
         {/if}
       </div>

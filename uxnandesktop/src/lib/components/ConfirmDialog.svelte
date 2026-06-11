@@ -1,6 +1,7 @@
 <script lang="ts">
   import * as Dialog from "$lib/components/ui/dialog";
   import { Button } from "$lib/components/ui/button";
+  import { i18n } from "$lib/i18n";
 
   let {
     open = $bindable(false),
@@ -40,7 +41,7 @@
       {/if}
     </Dialog.Header>
     <Dialog.Footer>
-      <Button variant="ghost" onclick={() => (open = false)}>Cancel</Button>
+      <Button variant="ghost" onclick={() => (open = false)}>{i18n.t("common.cancel")}</Button>
       <Button variant={danger ? "destructive" : "default"} onclick={confirm} disabled={busy}>
         {confirmLabel}
       </Button>

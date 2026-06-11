@@ -7,6 +7,7 @@
   import { projects } from "$lib/state/projects.svelte";
   import { cn } from "$lib/utils";
   import { icon, text } from "$lib/design";
+  import { i18n } from "$lib/i18n";
   import type { DirListing } from "$lib/types";
   import FolderIcon from "@lucide/svelte/icons/folder";
   import FolderGitIcon from "@lucide/svelte/icons/folder-git-2";
@@ -61,12 +62,8 @@
 <Dialog.Root bind:open>
   <Dialog.Content class="sm:max-w-[560px]">
     <Dialog.Header>
-      <Dialog.Title>Add project</Dialog.Title>
-      <Dialog.Description>
-        Browse to a git repository and add it. Folders tagged
-        <Badge variant="outline" class="px-1 py-0 text-[9px] uppercase">repo</Badge>
-        are git repositories.
-      </Dialog.Description>
+      <Dialog.Title>{i18n.t("picker.title")}</Dialog.Title>
+      <Dialog.Description>{i18n.t("picker.desc")}</Dialog.Description>
     </Dialog.Header>
 
     <!-- Current path + up -->
@@ -74,7 +71,7 @@
       <Button
         variant="outline"
         size="icon-sm"
-        title="Parent folder"
+        title={i18n.t("picker.parent")}
         disabled={!listing?.parent || loading}
         onclick={() => listing?.parent && go(listing.parent)}
       >
@@ -82,7 +79,7 @@
       </Button>
       <Input
         class="h-7 flex-1 font-mono text-xs"
-        placeholder="Type or paste a path, then Enter…"
+        placeholder={i18n.t("picker.pathPlaceholder")}
         bind:value={pathInput}
         spellcheck={false}
         onkeydown={(e) => {
@@ -97,17 +94,17 @@
     <!-- Sub-folders -->
     <div class="uxnan-scroll h-64 overflow-y-auto rounded-md border border-border">
       {#if loading}
-        <div class="p-4 text-center text-xs text-muted-foreground">Loading…</div>
+        <div class="p-4 text-center text-xs text-muted-foreground">{i18n.t("common.loading")}</div>
       {:else if listing && listing.entries.length === 0}
         <div class="p-4 text-center text-xs text-muted-foreground">
-          No sub-folders here.
+          {i18n.t("picker.empty")}
         </div>
       {:else if listing}
         {#each listing.entries as entry (entry.path)}
           <div class="group flex items-center gap-2 px-2 py-1.5 hover:bg-accent/50">
             <button
               class={cn("flex min-w-0 flex-1 items-center gap-2 text-left", text.body)}
-              title="Open {entry.name}"
+              title={i18n.t("picker.open", { name: entry.name })}
               onclick={() => go(entry.path)}
             >
               {#if entry.isRepo}
@@ -118,7 +115,7 @@
               <span class="truncate">{entry.name}</span>
               {#if entry.isRepo}
                 <Badge variant="outline" class="px-1 py-0 text-[9px] uppercase">
-                  repo
+                  {i18n.t("picker.repoBadge")}
                 </Badge>
               {/if}
             </button>
@@ -130,7 +127,7 @@
                 disabled={busy}
                 onclick={() => add(entry.path)}
               >
-                Add
+                {i18n.t("common.add")}
               </Button>
             {/if}
           </div>
@@ -147,12 +144,12 @@
     {/if}
 
     <Dialog.Footer>
-      <Button variant="ghost" onclick={() => (open = false)}>Cancel</Button>
+      <Button variant="ghost" onclick={() => (open = false)}>{i18n.t("common.cancel")}</Button>
       <Button
         disabled={!listing?.isRepo || busy}
         onclick={() => listing && add(listing.path)}
       >
-        {busy ? "Adding…" : "Add this folder"}
+        {busy ? i18n.t("common.adding") : i18n.t("picker.addFolder")}
       </Button>
     </Dialog.Footer>
   </Dialog.Content>

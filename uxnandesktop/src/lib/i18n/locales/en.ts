@@ -1,0 +1,128 @@
+// English — the source-of-truth locale. Every other locale mirrors these keys
+// (typed as `Record<MessageKey, string>`, so a missing key fails to compile).
+// Placeholders use `{name}` and are filled by `i18n.t(key, { name })`.
+//
+// To add a language, copy this file to `<code>.ts`, translate the values, and
+// register it in `../index.svelte.ts`. See docs/i18n.md.
+
+export const en = {
+  // Common
+  "common.cancel": "Cancel",
+  "common.remove": "Remove",
+  "common.add": "Add",
+  "common.create": "Create",
+  "common.new": "New",
+  "common.more": "More",
+  "common.copyPath": "Copy path",
+  "common.removing": "Removing…",
+  "common.adding": "Adding…",
+  "common.creating": "Creating…",
+  "common.loading": "Loading…",
+
+  // Left sidebar
+  "sidebar.search": "Search projects & worktrees…",
+  "sidebar.projects": "Projects",
+  "sidebar.addProject": "Add project…",
+  "sidebar.refresh": "Refresh worktrees & status",
+  "sidebar.sort": "Sort",
+  "sidebar.sortBy": "Sort by",
+  "sidebar.sortManual": "Added order",
+  "sidebar.sortNameAsc": "Name (A–Z)",
+  "sidebar.sortNameDesc": "Name (Z–A)",
+  "sidebar.noMatch": "No projects match your search.",
+  "sidebar.empty": "No projects yet.",
+  "sidebar.addRepo": "Add a git repository",
+
+  // Project card
+  "project.expand": "Expand",
+  "project.collapse": "Collapse",
+  "project.workIn": "Work in {name} (main)",
+  "project.openTerminal": "Open a terminal in {name} (main)",
+  "project.newWorktree": "New worktree…",
+  "project.removeProject": "Remove project",
+  "project.removeTitle": "Remove project?",
+  "project.removeDesc":
+    "“{name}” will be removed from the ADE. The repository on disk is not touched.",
+  "project.noWorktrees": "No worktrees",
+  "project.worktreeOne": "{n} worktree",
+  "project.worktreeOther": "{n} worktrees",
+  "project.dirtyTooltip": "{n} uncommitted change(s) on main",
+  "project.runningTooltip": "{n} terminal(s) running",
+
+  // Worktree row
+  "worktree.openTerminal": "Open a terminal here",
+  "worktree.removeWorktree": "Remove worktree",
+  "worktree.removeTitle": "Remove worktree?",
+  "worktree.removeDesc":
+    "Removes the worktree at {path}. Its branch “{branch}” is safe-deleted only if fully merged.",
+  "worktree.forceRemove": "Force remove",
+  "worktree.detached": "(detached)",
+  "worktree.dirtyTooltip": "{n} uncommitted change(s)",
+  "worktree.aheadTooltip": "ahead of upstream",
+  "worktree.behindTooltip": "behind upstream",
+  "worktree.runningTooltip": "{n} terminal(s) running",
+
+  // New-worktree dialog
+  "newWorktree.title": "New worktree",
+  "newWorktree.desc": "Create a worktree on a new branch in {name}.",
+  "newWorktree.branch": "Branch name",
+  "newWorktree.branchPlaceholder": "feature/login",
+  "newWorktree.base": "Base branch",
+  "newWorktree.selectBase": "Select base branch…",
+  "newWorktree.baseDesc":
+    "The new branch starts from here. Defaults to the repo's main branch.",
+  "newWorktree.create": "Create worktree",
+  "newWorktree.preview": "Worktree folder",
+
+  // Terminal area
+  "terminal.newDefault": "New terminal (default profile)",
+  "terminal.terminal": "Terminal",
+  "terminal.chooseProfile": "Choose a terminal profile",
+  "terminal.newTerminal": "New terminal",
+  "terminal.unnamedProfile": "Unnamed profile",
+  "terminal.context":
+    "Active terminal context — choose a project or worktree in the left panel",
+  "terminal.toggleRight": "Toggle right panel",
+  "terminal.general": "General",
+  "terminal.noTerminalsIn": "No terminals in {context}",
+  "terminal.newInRegion": "New terminal in this region",
+  "terminal.copy": "Copy",
+  "terminal.paste": "Paste",
+  "terminal.splitRight": "Split right",
+  "terminal.splitDown": "Split down",
+  "terminal.closeTerminal": "Close terminal",
+
+  // Directory picker
+  "picker.title": "Add project",
+  "picker.desc":
+    "Browse to a git repository and add it. Folders tagged “repo” are git repositories.",
+  "picker.pathPlaceholder": "Type or paste a path, then Enter…",
+  "picker.parent": "Parent folder",
+  "picker.empty": "No sub-folders here.",
+  "picker.open": "Open {name}",
+  "picker.addFolder": "Add this folder",
+  "picker.repoBadge": "repo",
+
+  // Settings
+  "settings.title": "Settings",
+  "settings.general": "General",
+  "settings.terminal": "Terminal",
+  "settings.language": "Language",
+  "settings.theme": "Theme",
+  "settings.theme.system": "System",
+  "settings.theme.light": "Light",
+  "settings.theme.dark": "Dark",
+  "settings.language.system": "System default",
+  "settings.language.desc":
+    "Interface language. Contributions for new languages are welcome — see docs/i18n.md.",
+
+  // Title bar
+  "titlebar.toggleLeft": "Toggle left sidebar",
+  "titlebar.settings": "Settings",
+  "titlebar.minimize": "Minimize",
+  "titlebar.maximize": "Maximize",
+  "titlebar.close": "Close",
+} as const;
+
+/** Union of every message key (drives `t()` and the locale type). */
+export type MessageKey = keyof typeof en;

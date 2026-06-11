@@ -7,6 +7,7 @@
   import { clipboardWrite } from "$lib/clipboard";
   import { cn } from "$lib/utils";
   import { icon, iconButton, text } from "$lib/design";
+  import { i18n } from "$lib/i18n";
   import NewWorktreeDialog from "./NewWorktreeDialog.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import WorktreeRow from "./WorktreeRow.svelte";
@@ -48,8 +49,8 @@
   >
     <button
       class="shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground"
-      title={isExpanded ? "Collapse" : "Expand"}
-      aria-label={isExpanded ? "Collapse" : "Expand"}
+      title={isExpanded ? i18n.t("project.collapse") : i18n.t("project.expand")}
+      aria-label={isExpanded ? i18n.t("project.collapse") : i18n.t("project.expand")}
       onclick={() => (expanded = !isExpanded)}
     >
       <ChevronRightIcon
@@ -59,7 +60,7 @@
 
     <button
       class="flex min-w-0 flex-1 items-center gap-1.5 text-left"
-      title="Work in {repo.name} (main)"
+      title={i18n.t("project.workIn", { name: repo.name })}
       onclick={() => projects.setActiveWorktree(mainPath)}
     >
       <FolderGitIcon class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
@@ -72,7 +73,7 @@
                 "inline-flex shrink-0 items-center gap-0.5 text-amber-600 dark:text-amber-400",
                 text.indicator,
               )}
-              title="{mainStatus.dirty} uncommitted change{mainStatus.dirty === 1 ? '' : 's'} on main"
+              title={i18n.t("project.dirtyTooltip", { n: mainStatus.dirty })}
             >
               <span class="size-1.5 rounded-full bg-amber-500"></span>{mainStatus.dirty}
             </span>
@@ -83,7 +84,7 @@
                 "inline-flex shrink-0 items-center gap-0.5 text-emerald-600 dark:text-emerald-400",
                 text.indicator,
               )}
-              title="{mainTermCount} terminal{mainTermCount === 1 ? '' : 's'} running"
+              title={i18n.t("project.runningTooltip", { n: mainTermCount })}
             >
               <TerminalIcon class={icon.decorative} />{mainTermCount}
             </span>
@@ -100,7 +101,7 @@
         variant="ghost"
         size="icon"
         class={iconButton.action}
-        title="Open a terminal in {repo.name} (main)"
+        title={i18n.t("project.openTerminal", { name: repo.name })}
         onclick={() => projects.openTerminalAt(mainPath)}
       >
         <TerminalIcon class={icon.button} />
@@ -109,7 +110,7 @@
         variant="ghost"
         size="icon"
         class={iconButton.action}
-        title="New worktree…"
+        title={i18n.t("project.newWorktree")}
         onclick={() => (newWorktreeOpen = true)}
       >
         <GitBranchPlusIcon class={icon.button} />
@@ -117,7 +118,7 @@
       <DropdownMenu.Root>
         <DropdownMenu.Trigger>
           {#snippet child({ props })}
-            <Button variant="ghost" size="icon" class={iconButton.action} title="More" {...props}>
+            <Button variant="ghost" size="icon" class={iconButton.action} title={i18n.t("common.more")} {...props}>
               <MoreVerticalIcon class={icon.button} />
             </Button>
           {/snippet}
@@ -125,7 +126,7 @@
         <DropdownMenu.Content align="end" class="min-w-44">
           <DropdownMenu.Item class={text.menu} onclick={() => clipboardWrite(repo.path)}>
             <CopyIcon class={icon.button} />
-            Copy path
+            {i18n.t("common.copyPath")}
           </DropdownMenu.Item>
           <DropdownMenu.Separator />
           <DropdownMenu.Item
@@ -134,7 +135,7 @@
             onclick={() => (confirmRemoveOpen = true)}
           >
             <Trash2Icon class={icon.button} />
-            Remove project
+            {i18n.t("project.removeProject")}
           </DropdownMenu.Item>
         </DropdownMenu.Content>
       </DropdownMenu.Root>
@@ -146,7 +147,7 @@
     <div class="border-t border-sidebar-border bg-background/40 py-1 pl-3 pr-1">
       {#if childRows.length === 0}
         <div class="flex items-center justify-between px-1 py-0.5">
-          <span class={text.meta}>No worktrees</span>
+          <span class={text.meta}>{i18n.t("project.noWorktrees")}</span>
           <Button
             variant="ghost"
             size="sm"
@@ -154,7 +155,7 @@
             onclick={() => (newWorktreeOpen = true)}
           >
             <GitBranchPlusIcon class={icon.decorative} />
-            New
+            {i18n.t("common.new")}
           </Button>
         </div>
       {:else}
@@ -169,8 +170,7 @@
     <!-- Collapsed: a compact count so the relationship is visible -->
     <div class="px-2.5 pb-1.5">
       <Badge variant="secondary" class={cn("font-normal", text.indicator)}>
-        {children.length}
-        {children.length === 1 ? "worktree" : "worktrees"}
+        {i18n.plural(children.length, "project.worktreeOne", "project.worktreeOther")}
       </Badge>
     </div>
   {/if}
@@ -179,9 +179,9 @@
 <NewWorktreeDialog {repo} bind:open={newWorktreeOpen} />
 <ConfirmDialog
   bind:open={confirmRemoveOpen}
-  title="Remove project?"
-  description={`"${repo.name}" will be removed from the ADE. The repository on disk is not touched.`}
-  confirmLabel="Remove"
+  title={i18n.t("project.removeTitle")}
+  description={i18n.t("project.removeDesc", { name: repo.name })}
+  confirmLabel={i18n.t("common.remove")}
   danger
   onconfirm={() => projects.removeProject(repo.id)}
 />
