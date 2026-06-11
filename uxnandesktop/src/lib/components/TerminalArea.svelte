@@ -36,30 +36,24 @@
   const baseName = (p: string) =>
     p.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || p;
 
-  function workspaceLabel(key: string): string {
-    if (key === GLOBAL_WORKSPACE) return "Global";
-    for (const list of Object.values(projects.worktreesByRepo)) {
-      const wt = list.find((w) => w.path === key);
-      if (wt) return wt.branch ?? baseName(key);
+  /** Friendly label for the active terminal context (repo / branch). The
+   *  context is chosen in the left panel; here it's only displayed. */
+  function contextLabel(key: string): { repo?: string; name: string } {
+    if (key === GLOBAL_WORKSPACE) return { name: "General" };
+    const mainRepo = app.repos.find((r) => r.path === key);
+    if (mainRepo) {
+      return {
+        repo: mainRepo.name,
+        name: projects.mainWorktree(mainRepo.id)?.branch ?? "main",
+      };
     }
-    return baseName(key);
-  }
-
-  /** Workspaces offered in the switcher: Global + any open + the active one. */
-  const workspaceOptions = $derived.by(() => {
-    const keys = new Set<string>([GLOBAL_WORKSPACE, ...terminals.openWorkspaceKeys]);
-    keys.add(terminals.activeWorkspace);
-    return [...keys];
-  });
-
-  function switchWorkspace(key: string) {
-    if (key === GLOBAL_WORKSPACE) {
-      projects.activeWorktreePath = null;
-      terminals.setWorkspace(GLOBAL_WORKSPACE);
-    } else {
-      projects.setActiveWorktree(key);
+    for (const r of app.repos) {
+      const wt = projects.worktreesOf(r.id).find((w) => w.path === key);
+      if (wt) return { repo: r.name, name: wt.branch ?? baseName(key) };
     }
+    return { name: baseName(key) };
   }
+  const ctx = $derived(contextLabel(terminals.activeWorkspace));
 
   let unlistenDrop: (() => void) | undefined;
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -252,34 +246,18 @@
       </DropdownMenu.Root>
     </div>
 
-    <!-- Workspace switcher (which worktree's terminals are shown) -->
-    <DropdownMenu.Root>
-      <DropdownMenu.Trigger>
-        {#snippet child({ props })}
-          <button
-            class="ml-1 inline-flex max-w-[180px] items-center gap-1 rounded px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-            title="Terminal workspace"
-            {...props}
-          >
-            <LayersIcon class="size-3.5 shrink-0" />
-            <span class="truncate">{workspaceLabel(terminals.activeWorkspace)}</span>
-            <ChevronDownIcon class="size-3 shrink-0" />
-          </button>
-        {/snippet}
-      </DropdownMenu.Trigger>
-      <DropdownMenu.Content align="start" class="min-w-48">
-        <DropdownMenu.Label class="text-[11px]">Workspace</DropdownMenu.Label>
-        {#each workspaceOptions as key (key)}
-          <DropdownMenu.CheckboxItem
-            class="text-xs"
-            checked={terminals.activeWorkspace === key}
-            onclick={() => switchWorkspace(key)}
-          >
-            {workspaceLabel(key)}
-          </DropdownMenu.CheckboxItem>
-        {/each}
-      </DropdownMenu.Content>
-    </DropdownMenu.Root>
+    <!-- Active terminal context (read-only; selected in the left panel) -->
+    <div
+      class="ml-1 inline-flex max-w-[240px] items-center gap-1 px-1 text-xs text-muted-foreground"
+      title="Active terminal context — choose a project or worktree in the left panel"
+    >
+      <LayersIcon class="size-3.5 shrink-0" />
+      {#if ctx.repo}
+        <span class="truncate">{ctx.repo}</span>
+        <span class="text-muted-foreground/50">/</span>
+      {/if}
+      <span class="truncate font-medium text-foreground">{ctx.name}</span>
+    </div>
 
     <div class="flex-1"></div>
     <button
@@ -421,7 +399,7 @@
           <TerminalIcon class="size-8 text-muted-foreground/60" />
           <div class="text-sm text-muted-foreground">
             No terminals in <span class="font-medium text-foreground"
-              >{workspaceLabel(terminals.activeWorkspace)}</span
+              >{ctx.repo ? `${ctx.repo} / ${ctx.name}` : ctx.name}</span
             >
           </div>
           <button

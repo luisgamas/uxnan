@@ -5,6 +5,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — left panel redesign: projects with nested worktrees
+- **Single hierarchical Projects tree** (`LeftSidebar.svelte`, `ProjectCard.svelte`,
+  new `WorktreeRow.svelte`; `WorktreeCard.svelte` removed) replaces the two flat
+  Projects/Worktrees lists that were confusing (duplicate "main"s, unclear
+  parent/child). Each **project header is its own "main" context** (selectable)
+  and **expands to show its non-main worktrees as nested sub-rows**. Selecting a
+  project or worktree makes it the active terminal context (its terminals show);
+  the row is highlighted. Search filters projects and their worktrees and
+  auto-expands matches.
+- **Per-row status + "running terminals" indicators**: each project/worktree
+  shows its dirty/ahead/behind badges and, when it has live terminals, a
+  terminal-count indicator — so you always see where your shells are.
+- **Terminal context is read-only in the top bar** (`TerminalArea.svelte`): the
+  confusing workspace-selector dropdown is replaced by a `repo / branch`
+  breadcrumb; the **left panel is the single place to switch context**. Creating
+  a worktree selects it.
+
 ### Added — Phase 2: per-worktree terminal workspaces (completes Phase 2)
 - **Terminals are now grouped into workspaces** (`terminals.svelte.ts`): one per
   worktree (keyed by its path) plus a **Global** space (`""`) for unassigned

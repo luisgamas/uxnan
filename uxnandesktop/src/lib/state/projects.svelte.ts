@@ -34,11 +34,8 @@ export interface WorktreeRow extends WorktreeEntry {
 }
 
 class ProjectsStore {
-  /** Shared search query filtering both sections. */
+  /** Shared search query (filters projects and their worktrees). */
   query = $state("");
-  /** Collapse state of the two stacked sections (worktrees collapsed by default). */
-  projectsCollapsed = $state(false);
-  worktreesCollapsed = $state(true);
 
   /** Worktrees per repo id, loaded on demand. */
   worktreesByRepo = $state<Record<string, WorktreeEntry[]>>({});
@@ -49,34 +46,58 @@ class ProjectsStore {
   /** Last error from a project/worktree action, surfaced in the panel. */
   error = $state<string | null>(null);
 
-  /** Projects filtered by the shared query (name or path). */
+  /** Projects visible for the search query: those whose name/path matches OR
+   *  that have a matching worktree. */
   filteredRepos = $derived.by(() => {
     const q = this.query.trim().toLowerCase();
-    const repos = app.repos;
-    if (!q) return repos;
-    return repos.filter(
-      (r) =>
-        r.name.toLowerCase().includes(q) || r.path.toLowerCase().includes(q),
-    );
+    if (!q) return app.repos;
+    return app.repos.filter((r) => {
+      if (r.name.toLowerCase().includes(q) || r.path.toLowerCase().includes(q))
+        return true;
+      return this.worktreesOf(r.id).some(
+        (w) =>
+          (w.branch ?? "").toLowerCase().includes(q) ||
+          w.path.toLowerCase().includes(q),
+      );
+    });
   });
 
-  /** All worktrees across every repo, flattened and filtered by the query. */
-  filteredWorktrees = $derived.by(() => {
-    const rows: WorktreeRow[] = [];
-    for (const repo of app.repos) {
-      for (const wt of this.worktreesByRepo[repo.id] ?? []) {
-        rows.push({ ...wt, repoId: repo.id, repoName: repo.name });
-      }
-    }
+  /** A repo's worktrees (empty until loaded). */
+  worktreesOf(repoId: string): WorktreeEntry[] {
+    return this.worktreesByRepo[repoId] ?? [];
+  }
+
+  /** A repo's primary (main) worktree — the project's own context. */
+  mainWorktree(repoId: string): WorktreeEntry | undefined {
+    const list = this.worktreesOf(repoId);
+    const main = list.find((w) => w.isMain);
+    if (main) return main;
+    const repo = app.repos.find((r) => r.id === repoId);
+    return repo ? list.find((w) => w.path === repo.path) : undefined;
+  }
+
+  /** A repo's non-main worktrees (shown as sub-rows under the project). */
+  childWorktrees(repoId: string): WorktreeEntry[] {
+    return this.worktreesOf(repoId).filter((w) => !w.isMain);
+  }
+
+  /** Non-main worktrees to show for a project under the current query. */
+  visibleChildWorktrees(repoId: string): WorktreeEntry[] {
+    const children = this.childWorktrees(repoId);
     const q = this.query.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter(
+    if (!q) return children;
+    const repo = app.repos.find((r) => r.id === repoId);
+    const projectMatches =
+      !!repo &&
+      (repo.name.toLowerCase().includes(q) ||
+        repo.path.toLowerCase().includes(q));
+    if (projectMatches) return children;
+    return children.filter(
       (w) =>
         (w.branch ?? "").toLowerCase().includes(q) ||
-        w.path.toLowerCase().includes(q) ||
-        w.repoName.toLowerCase().includes(q),
+        w.path.toLowerCase().includes(q),
     );
-  });
+  }
 
   /** Total worktrees known for a repo (for the project card badge). */
   worktreeCount(repoId: string): number {
@@ -161,8 +182,8 @@ class ProjectsStore {
     try {
       const created = await worktreeCreate(repoId, branch, base);
       await this.loadWorktrees(repoId);
-      this.worktreesCollapsed = false;
-      this.activeWorktreePath = created.path;
+      // Select the new worktree as the active context.
+      this.setActiveWorktree(created.path);
       return true;
     } catch (e) {
       this.error = msg(e);

@@ -1,12 +1,14 @@
 <script lang="ts">
-  import * as Card from "$lib/components/ui/card";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import { Button } from "$lib/components/ui/button";
   import { Badge } from "$lib/components/ui/badge";
   import { projects } from "$lib/state/projects.svelte";
+  import { terminals } from "$lib/state/terminals.svelte";
   import { clipboardWrite } from "$lib/clipboard";
+  import { cn } from "$lib/utils";
   import NewWorktreeDialog from "./NewWorktreeDialog.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
+  import WorktreeRow from "./WorktreeRow.svelte";
   import type { RepoData } from "$lib/types";
   import FolderGitIcon from "@lucide/svelte/icons/folder-git-2";
   import TerminalIcon from "@lucide/svelte/icons/terminal";
@@ -14,31 +16,84 @@
   import MoreVerticalIcon from "@lucide/svelte/icons/ellipsis-vertical";
   import CopyIcon from "@lucide/svelte/icons/copy";
   import Trash2Icon from "@lucide/svelte/icons/trash-2";
+  import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
 
   let { repo }: { repo: RepoData } = $props();
 
   let newWorktreeOpen = $state(false);
   let confirmRemoveOpen = $state(false);
+  let expanded = $state(false);
 
-  const count = $derived(projects.worktreeCount(repo.id));
+  // The project's own context = its main worktree (path === repo path).
+  const mainPath = $derived(projects.mainWorktree(repo.id)?.path ?? repo.path);
+  const activeProject = $derived(projects.activeWorktreePath === mainPath);
+  const mainStatus = $derived(projects.status(mainPath));
+  const mainTermCount = $derived(terminals.terminalCount(mainPath));
+  const children = $derived(projects.visibleChildWorktrees(repo.id));
+  const childRows = $derived(
+    children.map((w) => ({ ...w, repoId: repo.id, repoName: repo.name })),
+  );
+  // Auto-expand while searching so matching worktrees are visible.
+  const isExpanded = $derived(expanded || projects.query.trim().length > 0);
 </script>
 
-<Card.Root class="gap-0 rounded-md border border-sidebar-border py-2.5 shadow-none ring-0">
-  <Card.Header class="gap-0 px-2.5 [.border-b]:pb-0">
-    <div class="flex min-w-0 items-center gap-1.5">
-      <FolderGitIcon class="size-3.5 shrink-0 text-muted-foreground" />
-      <Card.Title class="truncate text-[13px]" title={repo.name}>{repo.name}</Card.Title>
-    </div>
-    <Card.Description class="truncate text-[11px]" title={repo.path}>
-      {repo.path}
-    </Card.Description>
+<div class="overflow-hidden rounded-md border border-sidebar-border">
+  <!-- Project header = the main worktree context (selectable) -->
+  <div
+    class={cn(
+      "flex items-center gap-1 px-1.5 py-1.5 transition-colors hover:bg-accent/40",
+      activeProject && "bg-accent/60",
+    )}
+  >
+    <button
+      class="shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground"
+      title={isExpanded ? "Collapse" : "Expand"}
+      aria-label={isExpanded ? "Collapse" : "Expand"}
+      onclick={() => (expanded = !isExpanded)}
+    >
+      <ChevronRightIcon
+        class={cn("size-3.5 transition-transform", isExpanded && "rotate-90")}
+      />
+    </button>
 
-    <Card.Action class="flex items-center gap-0.5">
+    <button
+      class="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+      title="Work in {repo.name} (main)"
+      onclick={() => projects.setActiveWorktree(mainPath)}
+    >
+      <FolderGitIcon class="size-3.5 shrink-0 text-muted-foreground" />
+      <div class="min-w-0 flex-1">
+        <div class="flex items-center gap-1.5">
+          <span class="truncate text-[13px] font-medium" title={repo.name}>{repo.name}</span>
+          {#if mainStatus && mainStatus.dirty > 0}
+            <span
+              class="inline-flex shrink-0 items-center gap-0.5 text-[10px] text-amber-600 dark:text-amber-400"
+              title="{mainStatus.dirty} uncommitted change{mainStatus.dirty === 1 ? '' : 's'} on main"
+            >
+              <span class="size-1.5 rounded-full bg-amber-500"></span>{mainStatus.dirty}
+            </span>
+          {/if}
+          {#if mainTermCount > 0}
+            <span
+              class="inline-flex shrink-0 items-center gap-0.5 text-[10px] text-emerald-600 dark:text-emerald-400"
+              title="{mainTermCount} terminal{mainTermCount === 1 ? '' : 's'} running"
+            >
+              <TerminalIcon class="size-3" />{mainTermCount}
+            </span>
+          {/if}
+        </div>
+        <div class="truncate text-[11px] text-muted-foreground" title={repo.path}>
+          {repo.path}
+        </div>
+      </div>
+    </button>
+
+    <div class="flex shrink-0 items-center gap-0.5">
       <Button
         variant="ghost"
         size="icon-sm"
-        title="Open a terminal in this project"
-        onclick={() => projects.openTerminalAt(repo.path)}
+        title="Open a terminal in {repo.name} (main)"
+        onclick={() => projects.openTerminalAt(mainPath)}
       >
         <TerminalIcon class="size-3.5" />
       </Button>
@@ -74,18 +129,43 @@
           </DropdownMenu.Item>
         </DropdownMenu.Content>
       </DropdownMenu.Root>
-    </Card.Action>
-  </Card.Header>
+    </div>
+  </div>
 
-  {#if count > 0}
-    <Card.Content class="px-2.5 pt-1.5">
+  <!-- Worktrees (non-main) as nested sub-rows -->
+  {#if isExpanded}
+    <div class="border-t border-sidebar-border bg-background/40 py-1 pl-3 pr-1">
+      {#if childRows.length === 0}
+        <div class="flex items-center justify-between px-1 py-0.5">
+          <span class="text-[11px] text-muted-foreground">No worktrees</span>
+          <Button
+            variant="ghost"
+            size="sm"
+            class="h-6 text-[11px]"
+            onclick={() => (newWorktreeOpen = true)}
+          >
+            <GitBranchPlusIcon class="size-3" />
+            New
+          </Button>
+        </div>
+      {:else}
+        <div class="flex flex-col">
+          {#each childRows as row (row.path)}
+            <WorktreeRow {row} />
+          {/each}
+        </div>
+      {/if}
+    </div>
+  {:else if children.length > 0}
+    <!-- Collapsed: a compact count so the relationship is visible -->
+    <div class="px-2.5 pb-1.5">
       <Badge variant="secondary" class="text-[10px] font-normal">
-        {count}
-        {count === 1 ? "worktree" : "worktrees"}
+        {children.length}
+        {children.length === 1 ? "worktree" : "worktrees"}
       </Badge>
-    </Card.Content>
+    </div>
   {/if}
-</Card.Root>
+</div>
 
 <NewWorktreeDialog {repo} bind:open={newWorktreeOpen} />
 <ConfirmDialog

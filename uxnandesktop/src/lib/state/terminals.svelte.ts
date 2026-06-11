@@ -304,6 +304,14 @@ class TerminalStore {
   workspaceActiveGroupId(key: string): string {
     return this.activeGroups[key] ?? "";
   }
+  /** Number of terminals open in a workspace (for the "running" indicator). */
+  terminalCount(key: string): number {
+    const tree = this.workspaces[key];
+    if (!tree) return 0;
+    let count = 0;
+    for (const _tab of allTabs(tree)) count += 1;
+    return count;
+  }
 
   /** Switch the visible workspace (creating an empty entry if unknown). */
   setWorkspace(key: string): void {

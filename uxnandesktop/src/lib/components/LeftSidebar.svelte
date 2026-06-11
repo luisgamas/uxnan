@@ -5,14 +5,11 @@
   import { Button } from "$lib/components/ui/button";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import ProjectCard from "./ProjectCard.svelte";
-  import WorktreeCard from "./WorktreeCard.svelte";
   import DirectoryPicker from "./DirectoryPicker.svelte";
-  import { cn } from "$lib/utils";
   import SearchIcon from "@lucide/svelte/icons/search";
   import FolderPlusIcon from "@lucide/svelte/icons/folder-plus";
   import ArrowUpDownIcon from "@lucide/svelte/icons/arrow-up-down";
   import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
-  import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
 
   type Sort = "manual" | "name-asc" | "name-desc";
   let sort = $state<Sort>("manual");
@@ -36,14 +33,10 @@
       repos.sort((a, b) => b.name.localeCompare(a.name));
     return repos;
   });
-
-  function stop(e: Event) {
-    e.stopPropagation();
-  }
 </script>
 
 <div class="flex h-full min-h-0 flex-col">
-  <!-- Section 1 — search (auto height) -->
+  <!-- Search (filters projects and their worktrees) -->
   <div class="shrink-0 border-b border-sidebar-border p-2">
     <div class="relative">
       <SearchIcon
@@ -63,135 +56,74 @@
     </p>
   {/if}
 
-  <!-- Section 2 — Projects (collapsible) -->
-  <section
-    class={cn(
-      "flex min-h-0 flex-col border-b border-sidebar-border",
-      projects.projectsCollapsed ? "shrink-0" : "flex-1",
-    )}
-  >
-    <header
-      class="flex h-8 shrink-0 items-center gap-1 px-2"
+  <!-- Header -->
+  <header class="flex h-8 shrink-0 items-center gap-1 px-2">
+    <span
+      class="flex-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
     >
-      <button
-        class="flex min-w-0 flex-1 items-center gap-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
-        onclick={() => (projects.projectsCollapsed = !projects.projectsCollapsed)}
-      >
-        <ChevronRightIcon
-          class={cn(
-            "size-3.5 transition-transform",
-            !projects.projectsCollapsed && "rotate-90",
-          )}
-        />
-        Projects
-        <span class="text-muted-foreground/60">({projects.filteredRepos.length})</span>
-      </button>
-      <Button
-        variant="ghost"
-        size="icon"
-        class="size-6"
-        title="Add project…"
-        onclick={() => (pickerOpen = true)}
-      >
-        <FolderPlusIcon />
-      </Button>
-      <DropdownMenu.Root>
-        <DropdownMenu.Trigger>
-          {#snippet child({ props })}
-            <Button variant="ghost" size="icon" class="size-6" title="Organize" {...props}>
-              <ArrowUpDownIcon />
-            </Button>
-          {/snippet}
-        </DropdownMenu.Trigger>
-        <DropdownMenu.Content align="end">
-          <DropdownMenu.Label>Sort by</DropdownMenu.Label>
-          <DropdownMenu.RadioGroup bind:value={sort}>
-            <DropdownMenu.RadioItem value="manual">Added order</DropdownMenu.RadioItem>
-            <DropdownMenu.RadioItem value="name-asc">Name (A–Z)</DropdownMenu.RadioItem>
-            <DropdownMenu.RadioItem value="name-desc">Name (Z–A)</DropdownMenu.RadioItem>
-          </DropdownMenu.RadioGroup>
-        </DropdownMenu.Content>
-      </DropdownMenu.Root>
-    </header>
+      Projects
+      <span class="text-muted-foreground/60">({projects.filteredRepos.length})</span>
+    </span>
+    <Button
+      variant="ghost"
+      size="icon"
+      class="size-6"
+      title="Add project…"
+      onclick={() => (pickerOpen = true)}
+    >
+      <FolderPlusIcon />
+    </Button>
+    <Button
+      variant="ghost"
+      size="icon"
+      class="size-6"
+      title="Refresh worktrees & status"
+      onclick={() => void projects.init()}
+    >
+      <RefreshCwIcon />
+    </Button>
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger>
+        {#snippet child({ props })}
+          <Button variant="ghost" size="icon" class="size-6" title="Sort" {...props}>
+            <ArrowUpDownIcon />
+          </Button>
+        {/snippet}
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Content align="end">
+        <DropdownMenu.Label>Sort by</DropdownMenu.Label>
+        <DropdownMenu.RadioGroup bind:value={sort}>
+          <DropdownMenu.RadioItem value="manual">Added order</DropdownMenu.RadioItem>
+          <DropdownMenu.RadioItem value="name-asc">Name (A–Z)</DropdownMenu.RadioItem>
+          <DropdownMenu.RadioItem value="name-desc">Name (Z–A)</DropdownMenu.RadioItem>
+        </DropdownMenu.RadioGroup>
+      </DropdownMenu.Content>
+    </DropdownMenu.Root>
+  </header>
 
-    {#if !projects.projectsCollapsed}
-      <div class="uxnan-scroll min-h-0 flex-1 overflow-y-auto px-2 pb-2 pt-1.5">
-        {#if sortedRepos.length === 0}
-          <div class="flex flex-col items-center gap-2 px-2 py-6 text-center">
-            <p class="text-xs text-muted-foreground">
-              {projects.query ? "No projects match your search." : "No projects yet."}
-            </p>
-            {#if !projects.query}
-              <Button variant="outline" size="sm" onclick={() => (pickerOpen = true)}>
-                <FolderPlusIcon data-icon="inline-start" />
-                Add a git repository
-              </Button>
-            {/if}
-          </div>
-        {:else}
-          <div class="flex flex-col gap-1.5">
-            {#each sortedRepos as repo (repo.id)}
-              <ProjectCard {repo} />
-            {/each}
-          </div>
+  <!-- Project tree: each project is selectable (= its main worktree) and
+       expands to show its non-main worktrees as sub-rows. -->
+  <div class="uxnan-scroll min-h-0 flex-1 overflow-y-auto px-2 pb-2 pt-1">
+    {#if sortedRepos.length === 0}
+      <div class="flex flex-col items-center gap-2 px-2 py-6 text-center">
+        <p class="text-xs text-muted-foreground">
+          {projects.query ? "No projects match your search." : "No projects yet."}
+        </p>
+        {#if !projects.query}
+          <Button variant="outline" size="sm" onclick={() => (pickerOpen = true)}>
+            <FolderPlusIcon data-icon="inline-start" />
+            Add a git repository
+          </Button>
         {/if}
       </div>
-    {/if}
-  </section>
-
-  <!-- Section 3 — Worktrees (collapsible, collapsed by default) -->
-  <section
-    class={cn(
-      "flex min-h-0 flex-col",
-      projects.worktreesCollapsed ? "shrink-0" : "flex-1",
-    )}
-  >
-    <header class="flex h-8 shrink-0 items-center gap-1 px-2">
-      <button
-        class="flex min-w-0 flex-1 items-center gap-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
-        onclick={() => (projects.worktreesCollapsed = !projects.worktreesCollapsed)}
-      >
-        <ChevronRightIcon
-          class={cn(
-            "size-3.5 transition-transform",
-            !projects.worktreesCollapsed && "rotate-90",
-          )}
-        />
-        Worktrees
-        <span class="text-muted-foreground/60">({projects.filteredWorktrees.length})</span>
-      </button>
-      <Button
-        variant="ghost"
-        size="icon"
-        class="size-6"
-        title="Refresh worktrees"
-        onclick={(e) => {
-          stop(e);
-          void projects.init();
-        }}
-      >
-        <RefreshCwIcon />
-      </Button>
-    </header>
-
-    {#if !projects.worktreesCollapsed}
-      <div class="uxnan-scroll min-h-0 flex-1 overflow-y-auto px-2 pb-2 pt-1.5">
-        {#if projects.filteredWorktrees.length === 0}
-          <p class="px-2 py-6 text-center text-xs text-muted-foreground">
-            {projects.query
-              ? "No worktrees match your search."
-              : "No worktrees yet. Create one from a project above."}
-          </p>
-        {:else}
-          <div class="flex flex-col gap-1.5">
-            {#each projects.filteredWorktrees as row (row.path)}
-              <WorktreeCard {row} />
-            {/each}
-          </div>
-        {/if}
+    {:else}
+      <div class="flex flex-col gap-1.5">
+        {#each sortedRepos as repo (repo.id)}
+          <ProjectCard {repo} />
+        {/each}
       </div>
     {/if}
-  </section>
+  </div>
 
   <DirectoryPicker bind:open={pickerOpen} />
 </div>
