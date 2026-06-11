@@ -261,7 +261,9 @@ hosting** (the phone connects directly to the bridge on the same network).
           model; no fast mode.
         - **OpenCode**: reasoning/variant already wired (`--variant`); everything is
           provider/model-dependent and must be enumerated at runtime, never assumed.
-        - **Gemini / pi-agent / aider**: TBD when those adapters land.
+        - **pi**: reasoning = `--thinking` (off/minimal/low/medium/high/xhigh),
+          advertised per model (the `thinking` column of `--list-models`).
+        - **Gemini / aider**: TBD when those adapters land.
 
       **Proposed design (3 layers):**
         1. **`shared/`** — extend per-model discovery so each `AgentModel` (or a
@@ -349,11 +351,31 @@ The OpenCode adapter is the template for any "one-shot per-turn CLI" agent:
       alias resolves to is captured from the `system/init` event and emitted as
       `model_resolved`. `result.usage` is parsed (with the tier context window)
       for the context indicator.
+- [x] **pi** — `src/adapters/pi-adapter.ts`. WIRED via `pi -p --mode json`
+      (`--session-id <id>` for continuity, `--model <provider/model>`,
+      `--thinking <off|minimal|low|medium|high|xhigh>` for reasoning effort).
+      Parses the newline-JSON stream (`session` → captures the session id;
+      `message_update`/`text_delta` → streamed text; `message_end` assistant →
+      final text + `usage.totalTokens` + `stopReason`/`errorMessage`; `agent_end`
+      → completion). `thinking_*` events are NOT emitted as answer text. Tool
+      posture via `agents['pi-agent'].permissionMode` (default `acceptEdits` →
+      pi's built-in read/bash/edit/write; `default` → `--tools read,grep,find,ls`
+      read-only; `bypassPermissions` → `--approve`). Binary resolved by
+      `resolve-pi.ts` (`node <@earendil-works/pi-coding-agent/dist/cli.js>`).
+      **Model discovery:** `pi --list-models` table → `AgentModel[]`
+      (id `provider/model`; the reasoning knob advertised for models whose
+      `thinking` column is `yes`). Validated live against `pi` 0.79.1.
+      **Auth:** detected by the existence of `~/.pi/agent/auth.json` (per-provider
+      credentials; multi-provider, so no single public provider name).
+      **FOR-DEV follow-ups:** map the resolved model's context window for a `%`
+      context ring (today pi reports raw `totalTokens`, shown as a count like
+      Codex); surface pi's `thinking`/tool-call events as structured content if a
+      use case appears.
 - [ ] **Gemini CLI** — capture its non-interactive JSON stream first. New scaffold.
 - [ ] **JSONL history fallback** (`session-jsonl-history`) — read agent session
       JSONL/SQLite from disk for `turn/list` when the runtime has no fresh data
       (§5.8.8). Needs each agent's real on-disk format.
-- [ ] Later: pi-agent, Aider.
+- [ ] Later: Aider.
 
 ## Daemon lifecycle & ops
 - [x] **Single-instance lock + `stop`** (Phase 3) — `src/lock-file.ts`,

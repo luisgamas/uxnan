@@ -35,6 +35,10 @@ const AUTH_FILES: Partial<Record<AgentId, string[]>> = {
   codex: ['.codex/auth.json'],
   'claude-code': ['.claude/.credentials.json', '.claude.json'],
   opencode: ['.local/share/opencode/auth.json', '.config/opencode/auth.json'],
+  // pi stores per-provider credentials (OAuth/API keys) in one auth file; its
+  // existence means at least one provider is logged in. pi is multi-provider, so
+  // no single public provider name is surfaced.
+  'pi-agent': ['.pi/agent/auth.json'],
 };
 
 export interface AccountStatusDeps {

@@ -6,6 +6,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 
 ### Added
+- **pi agent wired** (`src/adapters/pi-adapter.ts`, `resolve-pi.ts`, registered in
+  `bridge.ts`): drives the `pi` CLI (`@earendil-works/pi-coding-agent`) via
+  `pi -p --mode json`, parsing its newline-JSON stream (streamed `text_delta`s,
+  final text + `usage.totalTokens`, `session` id for `--session-id` continuity,
+  `stopReason`/`errorMessage` and plain-text startup errors). Model selection
+  (`--model provider/model`), reasoning effort (`--thinking`, advertised per model
+  from `pi --list-models`' `thinking` column), and a tool posture
+  (`permissionMode`: `acceptEdits` default / `default` read-only / `bypassPermissions`)
+  are all wired. Auth detected by `~/.pi/agent/auth.json` existence. Reports
+  `reportsContextUsage`. Validated against `pi` 0.79.1.
 - **Agents advertise `reportsContextUsage`** (`claude-adapter.ts`,
   `codex-adapter.ts`): Claude and Codex set the new capability flag so the phone
   shows their context meter (at 0 before the first turn); OpenCode leaves it
