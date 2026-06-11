@@ -3,11 +3,11 @@
 // `src-tauri/src/commands.rs`.
 
 import { invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
 import type {
   AppData,
   AppSettings,
   BranchList,
+  DirListing,
   RepoData,
   SavedTermNode,
   WorktreeEntry,
@@ -37,13 +37,10 @@ export function setTerminalLayout(layout: SavedTermNode | null): Promise<void> {
 
 // --- Repositories & worktrees ----------------------------------------------
 
-// FOR-DEV: replace this OS-native folder dialog with an in-app shadcn-svelte
-// directory picker (Dialog + tree) backed by a Rust `browse_dirs` command, so
-// "Add project" stays inside the ADE's own UI. See uxnandesktop/FOR-DEV.md.
-/** Open a native folder picker; resolves to the chosen path or null. */
-export async function pickDirectory(title?: string): Promise<string | null> {
-  const result = await open({ directory: true, multiple: false, title });
-  return typeof result === "string" ? result : null;
+/** List a directory's sub-folders (flagging git repos) for the in-app project
+ *  picker. Omit `path` to start at the home directory. */
+export function browseDirs(path?: string): Promise<DirListing> {
+  return invoke<DirListing>("browse_dirs", { path: path ?? null });
 }
 
 /** Register a git repository by path. */

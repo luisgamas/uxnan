@@ -62,6 +62,21 @@ export interface BranchList {
   defaultBase: string;
 }
 
+/** One sub-directory in the in-app directory browser (mirror of Rust `DirEntry`). */
+export interface DirEntry {
+  name: string;
+  path: string;
+  isRepo: boolean;
+}
+
+/** A directory listing for the in-app project picker (mirror of `DirListing`). */
+export interface DirListing {
+  path: string;
+  parent: string | null;
+  isRepo: boolean;
+  entries: DirEntry[];
+}
+
 /** A worktree's working-tree status summary (mirror of Rust `WorktreeStatus`). */
 export interface WorktreeStatus {
   /** Changed entries (modified/added/deleted/untracked). */

@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — Phase 2: in-app directory picker
+- **In-app project picker** (`DirectoryPicker.svelte`) replaces the OS-native
+  folder dialog: a shadcn `Dialog` that browses sub-folders (up/down), flags git
+  repositories, and adds the current or any listed repo. Backed by a new
+  `browse_dirs` command + `browse` module (lists dirs, marks `.git`, hidden
+  folders excluded, sorted; +1 test, 25 passing). The projects store gains
+  `addProjectPath`; the unused `pickDirectory`/`@tauri-apps/plugin-dialog`
+  frontend wrapper is removed.
+
 ### Added — Phase 2: worktree status badges
 - **Status badges on worktree cards** (`WorktreeCard.svelte`): each worktree
   shows its uncommitted-change count and ahead/behind-upstream counts. Backed by

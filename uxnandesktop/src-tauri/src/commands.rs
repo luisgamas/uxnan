@@ -287,3 +287,12 @@ pub async fn worktree_status(path: String) -> Result<git::WorktreeStatus, Comman
         .await
         .map_err(CommandError::from)
 }
+
+/// List a directory's sub-folders (flagging git repos) for the in-app project
+/// picker. Defaults to the home directory when `path` is omitted.
+#[tauri::command]
+pub async fn browse_dirs(path: Option<String>) -> Result<crate::browse::DirListing, CommandError> {
+    crate::browse::browse_dirs(path)
+        .await
+        .map_err(CommandError::from)
+}

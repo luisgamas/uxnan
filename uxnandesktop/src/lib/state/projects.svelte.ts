@@ -8,7 +8,6 @@
 
 import {
   branchList,
-  pickDirectory,
   repoAdd,
   repoRemove,
   worktreeCreate,
@@ -124,16 +123,18 @@ class ProjectsStore {
     return branchList(repoId);
   }
 
-  async addProject(): Promise<void> {
+  /** Register a git repository by path (from the in-app directory picker).
+   *  Returns false (with `error` set) when the path isn't a git repo. */
+  async addProjectPath(path: string): Promise<boolean> {
     this.error = null;
     try {
-      const path = await pickDirectory("Select a git repository");
-      if (!path) return;
       const repo = await repoAdd(path);
       if (!app.repos.find((r) => r.id === repo.id)) app.repos.push(repo);
       await this.loadWorktrees(repo.id);
+      return true;
     } catch (e) {
       this.error = msg(e);
+      return false;
     }
   }
 

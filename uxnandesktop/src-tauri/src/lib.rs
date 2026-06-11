@@ -5,6 +5,7 @@
 //! webview ⇄ PTY processes) is documented in
 //! `architecture/02a-system-architecture.md`.
 
+mod browse;
 mod commands;
 mod error;
 mod git;
@@ -56,6 +57,7 @@ pub fn run() {
             commands::worktree_remove,
             commands::worktree_list,
             commands::worktree_status,
+            commands::browse_dirs,
             commands::set_terminal_layout,
         ])
         .build(tauri::generate_context!())

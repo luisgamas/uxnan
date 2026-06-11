@@ -6,6 +6,7 @@
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import ProjectCard from "./ProjectCard.svelte";
   import WorktreeCard from "./WorktreeCard.svelte";
+  import DirectoryPicker from "./DirectoryPicker.svelte";
   import { cn } from "$lib/utils";
   import SearchIcon from "@lucide/svelte/icons/search";
   import FolderPlusIcon from "@lucide/svelte/icons/folder-plus";
@@ -15,6 +16,9 @@
 
   type Sort = "manual" | "name-asc" | "name-desc";
   let sort = $state<Sort>("manual");
+
+  /** In-app directory picker (replaces the OS-native folder dialog). */
+  let pickerOpen = $state(false);
 
   // Load every repo's worktrees once the backend is ready.
   let initialized = false;
@@ -87,7 +91,7 @@
         size="icon"
         class="size-6"
         title="Add project…"
-        onclick={() => projects.addProject()}
+        onclick={() => (pickerOpen = true)}
       >
         <FolderPlusIcon />
       </Button>
@@ -118,7 +122,7 @@
               {projects.query ? "No projects match your search." : "No projects yet."}
             </p>
             {#if !projects.query}
-              <Button variant="outline" size="sm" onclick={() => projects.addProject()}>
+              <Button variant="outline" size="sm" onclick={() => (pickerOpen = true)}>
                 <FolderPlusIcon data-icon="inline-start" />
                 Add a git repository
               </Button>
@@ -188,4 +192,6 @@
       </div>
     {/if}
   </section>
+
+  <DirectoryPicker bind:open={pickerOpen} />
 </div>
