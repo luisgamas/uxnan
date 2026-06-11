@@ -6,6 +6,15 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **pi agent support.** The `pi` CLI is now a fully wired agent on the bridge,
+  so it appears in the app like the others through the existing data-driven UI
+  (model picker, reasoning-effort knob via `--thinking`, context meter, sign-in
+  status). Added its monochrome logo (`assets/images/agents/pi.svg`, tinted via
+  `currentColor`) and wired `AgentVisuals` (logo/label "pi"/accent). No UI code
+  changes were needed — the app already renders any agent the bridge advertises.
+
 ### Changed
 
 - **Manual "Check sign-in" on the not-signed-in surfaces.** Both the
