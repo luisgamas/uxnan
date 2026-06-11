@@ -51,6 +51,9 @@
     term = new Terminal({
       cursorBlink: true,
       fontSize: 13,
+      // Bounded scrollback caps per-terminal memory (hidden terminals stay
+      // mounted, so this is the effective limit on their retained output).
+      scrollback: 5000,
       fontFamily:
         'ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, monospace',
       theme: {

@@ -10,6 +10,7 @@
 // remounts xterm or restarts a PTY.
 
 import { invoke } from "@tauri-apps/api/core";
+import type { SavedTermNode } from "$lib/types";
 
 export type SplitDir = "row" | "col";
 
@@ -164,6 +165,62 @@ export function computeAreaLayout(root: AreaNode): {
   return { groups: groupRects, dividers };
 }
 
+// --- Persistence (structure only; fresh shells spawn on restore) ----------
+
+/** Serialize the area tree to a structure-only snapshot (no PTY ids/state). */
+export function serializeArea(node: AreaNode): SavedTermNode {
+  if (node.kind === "group") {
+    const activeTab = Math.max(
+      0,
+      node.tabs.findIndex((t) => t.id === node.activeTabId),
+    );
+    return {
+      type: "group",
+      tabs: node.tabs.map((t) => ({ title: t.title, cwd: t.cwd })),
+      activeTab,
+    };
+  }
+  return {
+    type: "split",
+    dir: node.dir,
+    ratio: node.ratio,
+    a: serializeArea(node.a),
+    b: serializeArea(node.b),
+  };
+}
+
+/** Rebuild an area tree from a saved snapshot, assigning fresh PTY ids. */
+function buildFromSaved(saved: SavedTermNode): AreaNode {
+  if (saved.type === "group") {
+    const tabs: GroupTab[] =
+      saved.tabs.length > 0
+        ? saved.tabs.map((t) => {
+            termCount += 1;
+            return {
+              id: crypto.randomUUID(),
+              title: t.title,
+              cwd: t.cwd,
+              exited: false,
+            };
+          })
+        : [newTab()];
+    const activeIdx = Math.min(Math.max(0, saved.activeTab), tabs.length - 1);
+    return {
+      kind: "group",
+      id: crypto.randomUUID(),
+      tabs,
+      activeTabId: tabs[activeIdx].id,
+    };
+  }
+  return {
+    kind: "split",
+    dir: saved.dir,
+    ratio: saved.ratio,
+    a: buildFromSaved(saved.a),
+    b: buildFromSaved(saved.b),
+  };
+}
+
 // --- Imperative pane handles (copy/paste/focus) ---------------------------
 
 export interface TermController {
@@ -176,10 +233,29 @@ export interface TermController {
 class TerminalStore {
   root = $state<AreaNode>(newGroup());
   activeGroupId = $state<string>("");
+  /** True once the persisted layout has been restored (or defaulted). The UI
+   *  waits for this before mounting terminals, so no shell is spawned and then
+   *  discarded by a restore. */
+  hydrated = $state(false);
   private controllers = new Map<string, TermController>();
 
   constructor() {
     this.activeGroupId = (this.root as TabGroup).id;
+  }
+
+  /** Restore the area tree from a saved snapshot (or keep the default), then
+   *  mark the store hydrated. Always call once at startup. */
+  restore(saved: SavedTermNode | null | undefined): void {
+    if (saved) {
+      try {
+        const root = buildFromSaved(saved);
+        this.root = root;
+        this.activeGroupId = firstGroup(root).id;
+      } catch {
+        // Corrupt layout — fall back to the default group already in `root`.
+      }
+    }
+    this.hydrated = true;
   }
 
   // --- Focus / selection ---------------------------------------------------

@@ -4,7 +4,13 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import type { AppData, AppSettings, RepoData, WorktreeEntry } from "./types";
+import type {
+  AppData,
+  AppSettings,
+  RepoData,
+  SavedTermNode,
+  WorktreeEntry,
+} from "./types";
 
 /** Load the full persisted application state (called once at boot). */
 export function getAppState(): Promise<AppData> {
@@ -19,6 +25,11 @@ export function updateSettings(settings: AppSettings): Promise<AppData> {
 /** Backend liveness probe; resolves to `"pong"`. */
 export function ping(): Promise<string> {
   return invoke<string>("ping");
+}
+
+/** Persist the terminal region/tab layout (restored on next startup). */
+export function setTerminalLayout(layout: SavedTermNode): Promise<void> {
+  return invoke("set_terminal_layout", { layout });
 }
 
 // --- Repositories & worktrees ----------------------------------------------

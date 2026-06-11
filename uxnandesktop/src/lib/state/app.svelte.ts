@@ -6,6 +6,7 @@
 
 import { getAppState, ping, updateSettings } from "$lib/api";
 import { DEFAULT_SETTINGS, type AppSettings, type RepoData } from "$lib/types";
+import { terminals } from "$lib/state/terminals.svelte";
 
 /** Connection state of the Rust backend, surfaced in the status bar. */
 export type BackendStatus = "connecting" | "ready" | "error";
@@ -31,9 +32,13 @@ class AppStore {
       this.settings = data.settings;
       this.backend = "ready";
       this.errorMessage = null;
+      terminals.restore(data.terminalLayout ?? null);
     } catch (err) {
       this.backend = "error";
       this.errorMessage = err instanceof Error ? err.message : String(err);
+      // Still hydrate (with the default layout) so terminals render even when
+      // the backend is unreachable (e.g. the web preview).
+      terminals.restore(null);
     }
   }
 

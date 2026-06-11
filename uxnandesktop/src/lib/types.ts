@@ -48,11 +48,28 @@ export interface AgentStateEntry {
   lastUpdate: number;
 }
 
+/** Persisted terminal layout (structure only — fresh shells spawn on restore).
+ *  Mirrors the serialized form produced by the terminals store. */
+export type SavedTermNode =
+  | {
+      type: "group";
+      tabs: { title: string; cwd?: string }[];
+      activeTab: number;
+    }
+  | {
+      type: "split";
+      dir: "row" | "col";
+      ratio: number;
+      a: SavedTermNode;
+      b: SavedTermNode;
+    };
+
 export interface AppData {
   version: number;
   repos: RepoData[];
   settings: AppSettings;
   agentCache: AgentStateEntry[];
+  terminalLayout?: SavedTermNode | null;
 }
 
 /** Mirror of the Rust `CommandError` returned across the command boundary. */

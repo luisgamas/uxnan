@@ -3,9 +3,11 @@
   import { invoke } from "@tauri-apps/api/core";
   import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { app } from "$lib/state/app.svelte";
+  import { setTerminalLayout } from "$lib/api";
   import {
     terminals,
     computeAreaLayout,
+    serializeArea,
     type AreaDivider,
     type AreaSplit,
     type Rect,
@@ -16,6 +18,7 @@
   const layout = $derived(computeAreaLayout(terminals.root));
 
   let unlistenDrop: (() => void) | undefined;
+  let saveTimer: ReturnType<typeof setTimeout> | undefined;
 
   onMount(async () => {
     // Native file drag-and-drop: insert the dropped paths into the terminal the
@@ -30,7 +33,21 @@
       // Not running inside Tauri (web preview) — no native file drop.
     }
   });
-  onDestroy(() => unlistenDrop?.());
+  onDestroy(() => {
+    unlistenDrop?.();
+    clearTimeout(saveTimer);
+  });
+
+  // Persist the region/tab layout (debounced) whenever it changes, once the
+  // store has hydrated from disk. Reading the tree here makes it reactive.
+  $effect(() => {
+    const snapshot = serializeArea(terminals.root);
+    if (!terminals.hydrated) return;
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      void setTerminalLayout(snapshot);
+    }, 500);
+  });
 
   function quotePath(p: string): string {
     return /\s/.test(p) ? `"${p}"` : p;
@@ -163,7 +180,8 @@
     data-pane-container
     class="relative min-h-0 flex-1 overflow-hidden bg-[#0b0b0c]"
   >
-    {#each layout.groups as g (g.group.id)}
+    {#if terminals.hydrated}
+      {#each layout.groups as g (g.group.id)}
       {@const activeRegion = terminals.activeGroupId === g.group.id}
       <div
         class="absolute flex flex-col overflow-hidden rounded-sm border {activeRegion
@@ -262,6 +280,7 @@
         ></div>
       </div>
     {/each}
+    {/if}
   </div>
 </div>
 
