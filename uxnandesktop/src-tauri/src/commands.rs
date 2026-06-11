@@ -6,9 +6,11 @@
 //! `architecture/03-implementation-guide.md` §2.1).
 
 use tauri::{AppHandle, Emitter, State};
+use uuid::Uuid;
 
-use crate::error::CommandError;
-use crate::model::{AppData, AppSettings};
+use crate::error::{AppError, CommandError};
+use crate::git::{self, WorktreeEntry};
+use crate::model::{AppData, AppSettings, RepoData};
 use crate::state::AppState;
 
 /// Return the full persisted application state. The frontend calls this once at
@@ -112,4 +114,99 @@ pub async fn pty_resize(
 #[tauri::command]
 pub async fn pty_close(state: State<'_, AppState>, id: String) -> Result<(), CommandError> {
     state.pty.close(&id).map_err(CommandError::from)
+}
+
+// --- Repositories ----------------------------------------------------------
+
+/// Register a git repository (by absolute path) with the ADE. Idempotent: a
+/// path already registered returns the existing entry.
+#[tauri::command]
+pub async fn repo_add(state: State<'_, AppState>, path: String) -> Result<RepoData, CommandError> {
+    if !git::is_git_repo(&path).await {
+        return Err(CommandError::from(AppError::Invalid(format!(
+            "{path} is not a git repository"
+        ))));
+    }
+    let mut data = state.data.write().await;
+    if let Some(existing) = data.repos.iter().find(|r| r.path == path) {
+        return Ok(existing.clone());
+    }
+    let repo = RepoData {
+        id: Uuid::new_v4().to_string(),
+        name: git::repo_name(&path),
+        path,
+        worktrees: Vec::new(),
+    };
+    data.repos.push(repo.clone());
+    state.persistence.save(&data).map_err(CommandError::from)?;
+    Ok(repo)
+}
+
+/// Remove a repository from the ADE (does not touch the repo on disk).
+#[tauri::command]
+pub async fn repo_remove(state: State<'_, AppState>, id: String) -> Result<(), CommandError> {
+    let mut data = state.data.write().await;
+    data.repos.retain(|r| r.id != id);
+    state.persistence.save(&data).map_err(CommandError::from)
+}
+
+/// List the registered repositories.
+#[tauri::command]
+pub async fn repo_list(state: State<'_, AppState>) -> Result<Vec<RepoData>, CommandError> {
+    Ok(state.data.read().await.repos.clone())
+}
+
+// --- Worktrees -------------------------------------------------------------
+
+/// Resolve a registered repo's absolute path by id (read lock released before
+/// any git `await`, so we never hold the lock across a subprocess).
+async fn repo_path_of(state: &AppState, repo_id: &str) -> Result<String, CommandError> {
+    state
+        .data
+        .read()
+        .await
+        .repos
+        .iter()
+        .find(|r| r.id == repo_id)
+        .map(|r| r.path.clone())
+        .ok_or_else(|| CommandError::from(AppError::NotFound(format!("repo {repo_id}"))))
+}
+
+/// Create a worktree on a new branch in the given repo, at a sibling directory
+/// named `<repo>--<branch>`. Returns the created entry.
+#[tauri::command]
+pub async fn worktree_create(
+    state: State<'_, AppState>,
+    repo_id: String,
+    branch: String,
+) -> Result<WorktreeEntry, CommandError> {
+    let branch = branch.trim().to_string();
+    if branch.is_empty() {
+        return Err(CommandError::from(AppError::Invalid(
+            "branch name is required".to_string(),
+        )));
+    }
+    let repo_path = repo_path_of(&state, &repo_id).await?;
+    let worktree_path = git::worktree_path_for(&repo_path, &branch);
+    git::add_worktree(&repo_path, &branch, &worktree_path)
+        .await
+        .map_err(CommandError::from)?;
+    Ok(WorktreeEntry {
+        path: worktree_path,
+        branch: Some(branch),
+        head: None,
+        is_main: false,
+    })
+}
+
+/// List a repo's worktrees (ADE-created and ones made externally by agents).
+#[tauri::command]
+pub async fn worktree_list(
+    state: State<'_, AppState>,
+    repo_id: String,
+) -> Result<Vec<WorktreeEntry>, CommandError> {
+    let repo_path = repo_path_of(&state, &repo_id).await?;
+    git::list_worktrees(&repo_path)
+        .await
+        .map_err(CommandError::from)
 }

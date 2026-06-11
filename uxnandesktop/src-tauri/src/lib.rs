@@ -7,6 +7,7 @@
 
 mod commands;
 mod error;
+mod git;
 mod model;
 mod persistence;
 mod pty;
@@ -22,6 +23,7 @@ use crate::state::AppState;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             // Resolve the OS-specific app data directory and load (or default)
             // the persisted state, then publish it as managed state.
@@ -42,6 +44,11 @@ pub fn run() {
             commands::pty_write,
             commands::pty_resize,
             commands::pty_close,
+            commands::repo_add,
+            commands::repo_remove,
+            commands::repo_list,
+            commands::worktree_create,
+            commands::worktree_list,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

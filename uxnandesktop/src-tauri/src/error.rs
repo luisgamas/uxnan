@@ -20,6 +20,10 @@ pub enum AppError {
     Pty(String),
     #[error("not found: {0}")]
     NotFound(String),
+    #[error("git error: {0}")]
+    Git(String),
+    #[error("invalid input: {0}")]
+    Invalid(String),
 }
 
 /// Serializable error returned to the frontend. `code` is a stable,
@@ -48,6 +52,8 @@ impl From<AppError> for CommandError {
             AppError::UnsupportedVersion(_) => "UNSUPPORTED_VERSION",
             AppError::Pty(_) => "PTY_ERROR",
             AppError::NotFound(_) => "NOT_FOUND",
+            AppError::Git(_) => "GIT_ERROR",
+            AppError::Invalid(_) => "INVALID_INPUT",
         };
         CommandError::new(code, e.to_string())
     }
