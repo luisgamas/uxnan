@@ -264,5 +264,34 @@
   "@pushTurnErrorBody": {
     "description": "Body of the turn-error notification.",
     "placeholders": { "agent": { "type": "String" } }
+  },
+
+  "settingsTitle": "Settings",
+  "@settingsTitle": {
+    "description": "Title of the app settings screen (and its app-bar action tooltip)."
+  },
+  "settingsNotificationsSection": "Notifications",
+  "@settingsNotificationsSection": {
+    "description": "Section header for the notification preferences."
+  },
+  "settingsNotificationsHint": "Choose which agent events notify you. These apply to background push and on-device notifications.",
+  "@settingsNotificationsHint": {
+    "description": "Helper text under the notification preference toggles."
+  },
+  "settingsTurnCompletedTitle": "Replies",
+  "@settingsTurnCompletedTitle": {
+    "description": "Title of the turn-completed notification toggle."
+  },
+  "settingsTurnCompletedSubtitle": "Notify me when an agent finishes responding.",
+  "@settingsTurnCompletedSubtitle": {
+    "description": "Subtitle of the turn-completed notification toggle."
+  },
+  "settingsTurnErrorTitle": "Errors",
+  "@settingsTurnErrorTitle": {
+    "description": "Title of the turn-error notification toggle."
+  },
+  "settingsTurnErrorSubtitle": "Notify me when an agent run fails.",
+  "@settingsTurnErrorSubtitle": {
+    "description": "Subtitle of the turn-error notification toggle."
   }
 }

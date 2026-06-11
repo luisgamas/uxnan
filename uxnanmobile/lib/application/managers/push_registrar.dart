@@ -5,6 +5,7 @@ import 'package:uxnan/application/managers/thread_manager.dart' show RpcSend;
 import 'package:uxnan/application/processors/domain_event.dart';
 import 'package:uxnan/core/utils/logger.dart';
 import 'package:uxnan/domain/enums/connection_phase.dart';
+import 'package:uxnan/domain/value_objects/notification_preferences.dart';
 import 'package:uxnan/infrastructure/notifications/push_notification_service.dart';
 
 /// Localized copy for the local notifications the [PushRegistrar] raises.
@@ -58,11 +59,13 @@ class PushRegistrar {
     this.strings = const PushNotificationStrings.fallback(),
     String? Function()? foregroundThreadId,
     ({String title, String agent})? Function(String threadId)? threadInfo,
+    NotificationPreferences Function()? preferences,
     bool? isAndroid,
   })  : _push = pushService,
         _sendRequest = sendRequest,
         _foregroundThreadId = foregroundThreadId,
         _threadInfo = threadInfo,
+        _preferences = preferences,
         _isAndroid = isAndroid ?? !Platform.isIOS {
     _phaseSub = connectionPhases.listen(_onPhase);
     _eventsSub = domainEvents.listen(_onDomainEvent);
@@ -82,6 +85,10 @@ class PushRegistrar {
   /// copy. Null/absent falls back to the app name + an empty agent.
   final ({String title, String agent})? Function(String threadId)? _threadInfo;
 
+  /// Reads the user's current notification preferences. Null/absent falls back
+  /// to the fully opted-in default (both channels on).
+  final NotificationPreferences Function()? _preferences;
+
   final bool _isAndroid;
 
   /// The localized notification copy currently in use. The UI assigns this once
@@ -97,6 +104,10 @@ class PushRegistrar {
 
   /// The platform string sent to the bridge (`"android"` or `"ios"`).
   String get _platform => _isAndroid ? 'android' : 'ios';
+
+  /// The current notification preferences (opted-in default when unset).
+  NotificationPreferences get _prefs =>
+      _preferences?.call() ?? const NotificationPreferences();
 
   /// Stream of `threadId`s from tapped notifications, for deep-linking into the
   /// matching conversation (presentation subscribes to this).
@@ -131,10 +142,7 @@ class PushRegistrar {
       await _sendRequest('notifications/register', {
         'pushToken': token,
         'platform': _platform,
-        'preferences': {
-          'turnCompleted': true,
-          'turnError': true,
-        },
+        'preferences': _prefs.toJson(),
       });
       _registeredToken = token;
       AppLogger.info('Registered push token with the bridge');
@@ -162,6 +170,7 @@ class PushRegistrar {
   void _onDomainEvent(DomainEvent event) {
     switch (event) {
       case TurnCompletedEvent():
+        if (!_prefs.turnCompleted) break;
         if (_isViewing(event.threadId)) break;
         final info = _info(event.threadId);
         unawaited(
@@ -172,6 +181,7 @@ class PushRegistrar {
           ),
         );
       case TurnErrorEvent():
+        if (!_prefs.turnError) break;
         if (_isViewing(event.threadId)) break;
         final info = _info(event.threadId);
         unawaited(

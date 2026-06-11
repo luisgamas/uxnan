@@ -4,6 +4,7 @@ import 'package:uxnan/presentation/screens/conversation/conversation_screen.dart
 import 'package:uxnan/presentation/screens/devices/my_devices_screen.dart';
 import 'package:uxnan/presentation/screens/onboarding/onboarding_screen.dart';
 import 'package:uxnan/presentation/screens/pairing/qr_scanner_screen.dart';
+import 'package:uxnan/presentation/screens/settings/settings_screen.dart';
 import 'package:uxnan/presentation/screens/threads/archived_threads_screen.dart';
 import 'package:uxnan/presentation/screens/threads/threads_screen.dart';
 
@@ -22,6 +23,9 @@ class AppRoutes {
 
   /// QR pairing flow.
   static const String pairing = '/pairing';
+
+  /// App settings (notification preferences, …).
+  static const String settings = '/settings';
 
   /// Per-device threads screen path pattern (`:deviceId`).
   static const String deviceThreadsPattern = '/device/:deviceId/threads';
@@ -78,6 +82,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.pairing,
         builder: (context, state) => const QrScannerScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.settings,
+        builder: (context, state) => const SettingsScreen(),
       ),
       GoRoute(
         path: AppRoutes.conversationPattern,

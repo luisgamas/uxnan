@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uxnan/application/managers/push_registrar.dart';
 import 'package:uxnan/application/processors/domain_event.dart';
 import 'package:uxnan/domain/enums/connection_phase.dart';
+import 'package:uxnan/domain/value_objects/notification_preferences.dart';
 import 'package:uxnan/domain/value_objects/rpc_message.dart';
 import 'package:uxnan/infrastructure/notifications/push_notification_service.dart';
 
@@ -231,5 +232,65 @@ void main() {
   test('forwards the cold-start thread id', () async {
     push.initial = 'th-cold';
     expect(await registrar.initialThreadId(), 'th-cold');
+  });
+
+  group('notification preferences', () {
+    test('registers with the current preferences', () async {
+      final localPush = _FakePushService();
+      final localPhases = StreamController<ConnectionPhase>.broadcast();
+      final localSent = <({String method, Map<String, dynamic>? params})>[];
+      final local = PushRegistrar(
+        pushService: localPush,
+        sendRequest: (method, [params]) async {
+          localSent.add((method: method, params: params));
+          return RpcMessage.response(id: 'r1', result: const {'ok': true});
+        },
+        connectionPhases: localPhases.stream,
+        domainEvents: const Stream.empty(),
+        preferences: () => const NotificationPreferences(turnError: false),
+        isAndroid: true,
+      );
+
+      localPhases.add(ConnectionPhase.connected);
+      await _settle();
+
+      expect(localSent.single.params!['preferences'], {
+        'turnCompleted': true,
+        'turnError': false,
+      });
+
+      await local.dispose();
+      await localPush.close();
+      await localPhases.close();
+    });
+
+    test('suppresses a turn-completed notification when opted out', () async {
+      final localPush = _FakePushService();
+      final localEvents = StreamController<DomainEvent>.broadcast();
+      final local = PushRegistrar(
+        pushService: localPush,
+        sendRequest: (method, [params]) async =>
+            RpcMessage.response(id: 'r1', result: const {'ok': true}),
+        connectionPhases: phases.stream,
+        domainEvents: localEvents.stream,
+        preferences: () => const NotificationPreferences(turnCompleted: false),
+        isAndroid: true,
+      );
+
+      // turnCompleted is off → suppressed; turnError stays on → shown.
+      localEvents.add(const TurnCompletedEvent(turnId: 't1', threadId: 'th1'));
+      await _settle();
+      expect(localPush.shown, isEmpty);
+
+      localEvents.add(
+        const TurnErrorEvent(turnId: 't2', threadId: 'th2', message: 'boom'),
+      );
+      await _settle();
+      expect(localPush.shown, hasLength(1));
+
+      await local.dispose();
+      await localPush.close();
+      await localEvents.close();
+    });
   });
 }

@@ -16,8 +16,8 @@ gracefully until the other agent wires the handler. Suggested order:
    RPC) and verifying wire shapes against a real Codex/Claude turn.
 2. ☑ **Archive thread** (+ an "Archived" screen) — DONE this round; see
    *Threads list → Archive / unarchive*.
-3. ☐ **Settings screen + notification preferences** (`notifications/update`) —
-   see *Push notifications*. (Next recommended.)
+3. ☑ **Settings screen + notification preferences** (`notifications/update`) —
+   DONE this round; see *Push notifications → Notification preferences UI*.
 4. ☑ **Remove device** (clear a stale paired PC) — DONE; see *Threads list*.
 5. ☐ **Voice → text in the composer** — pure device feature, but verification
    needs a real mic (defer while remote).
@@ -348,9 +348,19 @@ browser and multi-PC connection correctness are now DONE — see below.)
   event). A notification is **suppressed while its conversation is on screen**
   (foreground), and still fires for other threads / while backgrounded — tracked
   via `foregroundThreadProvider`. Pairs with the unread-thread style above.
-- ☐ **Notification preferences UI** — `preferences` is hard-coded to
-  `{turnCompleted:true,turnError:true}`; add a settings toggle that calls
-  `notifications/update`.
+- ☑ **Notification preferences UI** — DONE: a `SettingsScreen` (route
+  `/settings`, opened from a gear action in the `MyDevicesScreen` app bar) with
+  M3 `SwitchListTile`s for the **Replies** (`turnCompleted`) and **Errors**
+  (`turnError`) channels. A `NotificationPreferences` value object +
+  `NotificationPreferencesStore` (persisted via `shared_preferences`) +
+  `notificationPreferencesProvider` (a `Notifier`) are now the **source of
+  truth**: the `PushRegistrar` reads them for the `preferences` it sends on
+  `notifications/register` AND gates the local notifications it raises. Toggling
+  persists locally and, while connected, best-effort calls `notifications/update`
+  (degrades to a no-op offline / against an older bridge — the prefs still ride
+  along on the next register). Covered by unit + widget tests. ☐ On-device:
+  verify a toggled-off channel stops both the background push and the local
+  notification against a live bridge + Firebase.
 - ☐ **iOS APNs** — verify end-to-end on a real device once the Firebase project
   + APNs key exist (FOR-HUMAN).
 

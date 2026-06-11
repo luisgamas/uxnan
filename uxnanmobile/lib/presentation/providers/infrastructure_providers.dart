@@ -11,6 +11,7 @@ import 'package:uxnan/infrastructure/repositories/drift_message_repository.dart'
 import 'package:uxnan/infrastructure/repositories/drift_thread_repository.dart';
 import 'package:uxnan/infrastructure/repositories/trusted_device_repository.dart';
 import 'package:uxnan/infrastructure/storage/local_database.dart';
+import 'package:uxnan/infrastructure/storage/notification_preferences_store.dart';
 import 'package:uxnan/infrastructure/storage/phone_identity_store.dart';
 import 'package:uxnan/infrastructure/storage/secure_store.dart';
 
@@ -55,6 +56,12 @@ final secureStoreProvider =
 /// Loads or creates the phone's persistent Ed25519 identity.
 final phoneIdentityStoreProvider = Provider<PhoneIdentityStore>(
   (ref) => PhoneIdentityStore(ref.watch(secureStoreProvider)),
+);
+
+/// Persists the user's notification preferences (non-sensitive, on-device).
+final notificationPreferencesStoreProvider =
+    Provider<NotificationPreferencesStore>(
+  (ref) => NotificationPreferencesStore(),
 );
 
 /// Firebase Cloud Messaging + local notifications, fully guarded so the app

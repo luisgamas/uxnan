@@ -8,6 +8,17 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Settings screen + notification preferences (`notifications/update`).** A new
+  `SettingsScreen` (route `/settings`, reached via a gear action in the devices
+  app bar) lets the user toggle the **Replies** (`turnCompleted`) and **Errors**
+  (`turnError`) notification channels with M3 `SwitchListTile`s. A
+  `NotificationPreferences` value object, an on-device `NotificationPreferencesStore`
+  (`shared_preferences`) and `notificationPreferencesProvider` are now the source
+  of truth: the `PushRegistrar` sends them as `preferences` on
+  `notifications/register` and gates the local notifications it raises, replacing
+  the hard-coded `{turnCompleted:true, turnError:true}`. Toggling persists locally
+  and best-effort calls `notifications/update` while a PC is connected (a silent
+  no-op offline / against an older bridge). Covered by unit + widget tests.
 - **pi agent support.** The `pi` CLI is now a fully wired agent on the bridge,
   so it appears in the app like the others through the existing data-driven UI
   (model picker, reasoning-effort knob via `--thinking`, context meter, sign-in

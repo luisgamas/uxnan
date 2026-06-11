@@ -151,6 +151,11 @@ class MyDevicesScreen extends ConsumerWidget {
                 // QR scanner. First-pair onboarding is the empty state below.
                 onPressed: () => context.push(AppRoutes.pairing),
               ),
+              IconButton(
+                tooltip: l10n.settingsTitle,
+                icon: const Icon(Icons.settings_outlined),
+                onPressed: () => context.push(AppRoutes.settings),
+              ),
               const SizedBox(width: UxnanSpacing.sm),
             ],
           ),

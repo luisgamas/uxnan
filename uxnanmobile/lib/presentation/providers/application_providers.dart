@@ -7,6 +7,7 @@ import 'package:uxnan/application/managers/push_registrar.dart';
 import 'package:uxnan/application/managers/thread_manager.dart';
 import 'package:uxnan/application/managers/workspace_browser.dart';
 import 'package:uxnan/application/processors/incoming_message_processor.dart';
+import 'package:uxnan/core/utils/logger.dart';
 import 'package:uxnan/domain/entities/agent_descriptor.dart';
 import 'package:uxnan/domain/entities/agent_model.dart';
 import 'package:uxnan/domain/entities/auth_status.dart';
@@ -22,6 +23,7 @@ import 'package:uxnan/domain/enums/connection_phase.dart';
 import 'package:uxnan/domain/enums/thread_activity.dart';
 import 'package:uxnan/domain/services/pairing_validator.dart';
 import 'package:uxnan/domain/value_objects/git/git_action_progress.dart';
+import 'package:uxnan/domain/value_objects/notification_preferences.dart';
 import 'package:uxnan/domain/value_objects/turn_timeline_snapshot.dart';
 import 'package:uxnan/infrastructure/transport/secure_transport_layer.dart';
 import 'package:uxnan/infrastructure/transport/transport_selector.dart';
@@ -351,6 +353,65 @@ class ForegroundThread extends Notifier<String?> {
 final foregroundThreadProvider =
     NotifierProvider<ForegroundThread, String?>(ForegroundThread.new);
 
+/// The user's notification preferences (`{ turnCompleted, turnError }`), loaded
+/// from on-device storage and the source of truth for both the local
+/// notifications the [PushRegistrar] raises and the `preferences` it sends on
+/// `notifications/register`.
+///
+/// `build()` returns the opted-in default synchronously, then hydrates from the
+/// store; toggling persists locally and, while connected, best-effort pushes
+/// the change to the bridge via `notifications/update` so background push
+/// updates without waiting for a reconnect.
+class NotificationPreferencesController
+    extends Notifier<NotificationPreferences> {
+  @override
+  NotificationPreferences build() {
+    unawaited(_hydrate());
+    return const NotificationPreferences();
+  }
+
+  Future<void> _hydrate() async {
+    final stored = await ref.read(notificationPreferencesStoreProvider).read();
+    if (stored == null || stored == state) return;
+    state = stored;
+    // Safety net for the cold-start race: if a PC connected before this (async)
+    // load finished, the registrar already registered with the default prefs —
+    // reconcile the bridge now. When not yet connected (the common case) this
+    // is a no-op and the next `notifications/register` carries the loaded prefs.
+    await _pushToBridge(stored);
+  }
+
+  /// Persists [next] and, while connected, pushes it to the bridge. A no-op
+  /// when it matches the current state.
+  Future<void> save(NotificationPreferences next) async {
+    if (next == state) return;
+    state = next;
+    await ref.read(notificationPreferencesStoreProvider).write(next);
+    await _pushToBridge(next);
+  }
+
+  /// Best-effort `notifications/update` — only while a PC is connected; a
+  /// missing channel or older bridge degrades to a silent no-op (the prefs
+  /// still persist and ride along on the next `notifications/register`).
+  Future<void> _pushToBridge(NotificationPreferences preferences) async {
+    final connected = ref.read(connectedDeviceProvider).value;
+    if (connected == null) return;
+    try {
+      await ref.read(sessionCoordinatorProvider).sendRequest(
+        'notifications/update',
+        {'preferences': preferences.toJson()},
+      );
+    } on Object catch (error, stackTrace) {
+      AppLogger.warn('notifications/update failed', error, stackTrace);
+    }
+  }
+}
+
+/// The user's notification preferences (persisted; drives push + local notifs).
+final notificationPreferencesProvider = NotifierProvider<
+    NotificationPreferencesController,
+    NotificationPreferences>(NotificationPreferencesController.new);
+
 /// Registers the FCM push token with the bridge once the session connects and
 /// raises local notifications for turn-completed / turn-error events.
 ///
@@ -371,6 +432,9 @@ final pushRegistrarProvider = Provider<PushRegistrar>((ref) {
     domainEvents: processor.bind(coordinator.incomingMessages),
     // Suppress a turn-end notification for the conversation already on screen.
     foregroundThreadId: () => ref.read(foregroundThreadProvider),
+    // The user's per-channel toggles gate both the local notification and the
+    // `preferences` sent on register.
+    preferences: () => ref.read(notificationPreferencesProvider),
     // Resolve the agent label + thread title for the notification copy
     // ("{agent} replied" titled with the thread name).
     threadInfo: (id) {

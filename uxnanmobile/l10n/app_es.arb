@@ -193,5 +193,13 @@
   "pushChannelDescription": "Turnos completados y errores de tus agentes de código.",
   "pushFallbackTitle": "Uxnan",
   "pushTurnCompletedBody": "{agent} te respondió",
-  "pushTurnErrorBody": "{agent} reportó un error"
+  "pushTurnErrorBody": "{agent} reportó un error",
+
+  "settingsTitle": "Ajustes",
+  "settingsNotificationsSection": "Notificaciones",
+  "settingsNotificationsHint": "Elige qué eventos del agente te notifican. Aplica a las notificaciones push en segundo plano y a las del dispositivo.",
+  "settingsTurnCompletedTitle": "Respuestas",
+  "settingsTurnCompletedSubtitle": "Notificarme cuando un agente termina de responder.",
+  "settingsTurnErrorTitle": "Errores",
+  "settingsTurnErrorSubtitle": "Notificarme cuando falla la ejecución de un agente."
 }

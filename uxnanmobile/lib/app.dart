@@ -58,6 +58,11 @@ class _PushHostState extends ConsumerState<_PushHost>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // Eager-load the saved notification preferences at startup so they're
+    // hydrated from disk well before any PC connection — the registrar then
+    // sends the user's choices (not the defaults) on the first
+    // `notifications/register`.
+    ref.read(notificationPreferencesProvider);
     final registrar = ref.read(pushRegistrarProvider);
     // Taps while the app is alive or resumed from the background.
     _tapSub = registrar.onNotificationTap.listen(_openThread);

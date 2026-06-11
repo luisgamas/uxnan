@@ -579,4 +579,27 @@ class AppLocalizationsEn extends AppLocalizations {
   String pushTurnErrorBody(String agent) {
     return '$agent reported an error';
   }
+
+  @override
+  String get settingsTitle => 'Settings';
+
+  @override
+  String get settingsNotificationsSection => 'Notifications';
+
+  @override
+  String get settingsNotificationsHint =>
+      'Choose which agent events notify you. These apply to background push and on-device notifications.';
+
+  @override
+  String get settingsTurnCompletedTitle => 'Replies';
+
+  @override
+  String get settingsTurnCompletedSubtitle =>
+      'Notify me when an agent finishes responding.';
+
+  @override
+  String get settingsTurnErrorTitle => 'Errors';
+
+  @override
+  String get settingsTurnErrorSubtitle => 'Notify me when an agent run fails.';
 }

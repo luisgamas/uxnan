@@ -1177,6 +1177,48 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{agent} reported an error'**
   String pushTurnErrorBody(String agent);
+
+  /// Title of the app settings screen (and its app-bar action tooltip).
+  ///
+  /// In en, this message translates to:
+  /// **'Settings'**
+  String get settingsTitle;
+
+  /// Section header for the notification preferences.
+  ///
+  /// In en, this message translates to:
+  /// **'Notifications'**
+  String get settingsNotificationsSection;
+
+  /// Helper text under the notification preference toggles.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose which agent events notify you. These apply to background push and on-device notifications.'**
+  String get settingsNotificationsHint;
+
+  /// Title of the turn-completed notification toggle.
+  ///
+  /// In en, this message translates to:
+  /// **'Replies'**
+  String get settingsTurnCompletedTitle;
+
+  /// Subtitle of the turn-completed notification toggle.
+  ///
+  /// In en, this message translates to:
+  /// **'Notify me when an agent finishes responding.'**
+  String get settingsTurnCompletedSubtitle;
+
+  /// Title of the turn-error notification toggle.
+  ///
+  /// In en, this message translates to:
+  /// **'Errors'**
+  String get settingsTurnErrorTitle;
+
+  /// Subtitle of the turn-error notification toggle.
+  ///
+  /// In en, this message translates to:
+  /// **'Notify me when an agent run fails.'**
+  String get settingsTurnErrorSubtitle;
 }
 
 class _AppLocalizationsDelegate
