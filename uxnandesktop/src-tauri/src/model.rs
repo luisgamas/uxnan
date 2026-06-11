@@ -74,7 +74,84 @@ pub struct WorktreeData {
     pub agent_id: Option<String>,
 }
 
-/// User-facing application settings (UI layout, theme).
+/// A user-configurable terminal/shell profile. Each new terminal is spawned from
+/// one of these (its `command` + `args`), so users can distinguish e.g.
+/// PowerShell, Command Prompt and WSL on Windows, or different shells on Unix.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalProfile {
+    pub id: String,
+    pub name: String,
+    /// Executable to launch (e.g. `powershell.exe`, `wsl.exe`, `/bin/bash`).
+    pub command: String,
+    /// Arguments passed to the command (e.g. `["-NoLogo"]`, `["-d", "Ubuntu"]`).
+    #[serde(default)]
+    pub args: Vec<String>,
+}
+
+/// The single, empty starter profile shown to new users. Its placeholder fields
+/// teach how a profile is configured; concrete shells are added from the
+/// OS-grouped template picker in the frontend. A blank `command` falls back to
+/// the platform default shell when a terminal is spawned.
+pub fn default_terminal_profiles() -> Vec<TerminalProfile> {
+    vec![TerminalProfile {
+        id: "default".to_string(),
+        name: String::new(),
+        command: String::new(),
+        args: Vec::new(),
+    }]
+}
+
+/// The profiles a previous version auto-seeded (PowerShell / CMD / WSL on
+/// Windows; login shell + bash elsewhere). Kept only so [`AppSettings::
+/// ensure_terminal_profiles`] can recognise an untouched legacy seed and replace
+/// it with the new single empty profile.
+fn legacy_default_profiles() -> Vec<TerminalProfile> {
+    if cfg!(windows) {
+        vec![
+            TerminalProfile {
+                id: "powershell".to_string(),
+                name: "PowerShell".to_string(),
+                command: "powershell.exe".to_string(),
+                args: vec!["-NoLogo".to_string()],
+            },
+            TerminalProfile {
+                id: "cmd".to_string(),
+                name: "Command Prompt".to_string(),
+                command: "cmd.exe".to_string(),
+                args: Vec::new(),
+            },
+            TerminalProfile {
+                id: "wsl".to_string(),
+                name: "WSL".to_string(),
+                command: "wsl.exe".to_string(),
+                args: Vec::new(),
+            },
+        ]
+    } else {
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
+        let name = std::path::Path::new(&shell)
+            .file_name()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| "Shell".to_string());
+        vec![
+            TerminalProfile {
+                id: "default".to_string(),
+                name: format!("{name} (login shell)"),
+                command: shell,
+                args: Vec::new(),
+            },
+            TerminalProfile {
+                id: "bash".to_string(),
+                name: "bash".to_string(),
+                command: "/bin/bash".to_string(),
+                args: Vec::new(),
+            },
+        ]
+    }
+}
+
+/// User-facing application settings (UI layout, theme, terminal profiles).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
@@ -83,16 +160,45 @@ pub struct AppSettings {
     pub right_sidebar_width: u32,
     pub left_sidebar_open: bool,
     pub right_sidebar_open: bool,
+    /// Configurable terminal/shell profiles (seeded with platform defaults).
+    #[serde(default)]
+    pub terminal_profiles: Vec<TerminalProfile>,
+    /// Id of the profile used for new terminals unless one is picked explicitly.
+    #[serde(default)]
+    pub default_profile_id: Option<String>,
 }
 
 impl Default for AppSettings {
     fn default() -> Self {
+        let terminal_profiles = default_terminal_profiles();
+        let default_profile_id = terminal_profiles.first().map(|p| p.id.clone());
         Self {
             theme: Theme::System,
             left_sidebar_width: 280,
             right_sidebar_width: 350,
             left_sidebar_open: true,
             right_sidebar_open: true,
+            terminal_profiles,
+            default_profile_id,
+        }
+    }
+}
+
+impl AppSettings {
+    /// Seed the starter profile when none are stored (fresh install or state
+    /// persisted before profiles existed), replace an untouched legacy auto-seed
+    /// with it, and make sure `default_profile_id` points at a real profile.
+    pub fn ensure_terminal_profiles(&mut self) {
+        if self.terminal_profiles.is_empty() || self.terminal_profiles == legacy_default_profiles()
+        {
+            self.terminal_profiles = default_terminal_profiles();
+        }
+        let valid_default = self
+            .default_profile_id
+            .as_ref()
+            .is_some_and(|id| self.terminal_profiles.iter().any(|p| &p.id == id));
+        if !valid_default {
+            self.default_profile_id = self.terminal_profiles.first().map(|p| p.id.clone());
         }
     }
 }
@@ -150,5 +256,61 @@ mod tests {
     #[test]
     fn theme_serializes_lowercase() {
         assert_eq!(serde_json::to_string(&Theme::System).unwrap(), "\"system\"");
+    }
+
+    #[test]
+    fn default_settings_seed_terminal_profiles() {
+        let settings = AppSettings::default();
+        assert!(!settings.terminal_profiles.is_empty());
+        let default_id = settings.default_profile_id.as_ref().unwrap();
+        assert!(settings
+            .terminal_profiles
+            .iter()
+            .any(|p| &p.id == default_id));
+    }
+
+    #[test]
+    fn ensure_seeds_when_empty_and_fixes_dangling_default() {
+        let mut settings = AppSettings {
+            terminal_profiles: Vec::new(),
+            default_profile_id: Some("ghost".to_string()),
+            ..AppSettings::default()
+        };
+        settings.ensure_terminal_profiles();
+        assert!(!settings.terminal_profiles.is_empty());
+        // The dangling default was repointed at a real profile.
+        let default_id = settings.default_profile_id.as_ref().unwrap();
+        assert!(settings
+            .terminal_profiles
+            .iter()
+            .any(|p| &p.id == default_id));
+    }
+
+    #[test]
+    fn ensure_replaces_untouched_legacy_seed_with_empty_starter() {
+        let mut settings = AppSettings {
+            terminal_profiles: legacy_default_profiles(),
+            ..AppSettings::default()
+        };
+        settings.ensure_terminal_profiles();
+        // The legacy auto-seed (>1 profile) collapses to the single empty starter.
+        assert_eq!(settings.terminal_profiles, default_terminal_profiles());
+    }
+
+    #[test]
+    fn ensure_keeps_user_customized_profiles() {
+        let custom = vec![TerminalProfile {
+            id: "mine".to_string(),
+            name: "My shell".to_string(),
+            command: "fish".to_string(),
+            args: Vec::new(),
+        }];
+        let mut settings = AppSettings {
+            terminal_profiles: custom.clone(),
+            default_profile_id: Some("mine".to_string()),
+            ..AppSettings::default()
+        };
+        settings.ensure_terminal_profiles();
+        assert_eq!(settings.terminal_profiles, custom);
     }
 }

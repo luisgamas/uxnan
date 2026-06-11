@@ -63,12 +63,14 @@ pub async fn set_terminal_layout(
 
 /// Spawn a shell in a new pseudoterminal sized `cols`×`rows`.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)] // Tauri command surface: flat params over the IPC boundary.
 pub async fn pty_create(
     app: AppHandle,
     state: State<'_, AppState>,
     id: String,
     cwd: Option<String>,
     shell: Option<String>,
+    args: Option<Vec<String>>,
     cols: u16,
     rows: u16,
 ) -> Result<(), CommandError> {
@@ -90,6 +92,7 @@ pub async fn pty_create(
                 id,
                 cwd,
                 shell,
+                args: args.unwrap_or_default(),
                 cols,
                 rows,
             },

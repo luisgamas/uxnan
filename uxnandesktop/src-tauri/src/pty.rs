@@ -26,6 +26,8 @@ pub struct PtySpec {
     pub id: String,
     pub cwd: Option<String>,
     pub shell: Option<String>,
+    /// Arguments for the shell/command (e.g. `["-d", "Ubuntu"]` for `wsl.exe`).
+    pub args: Vec<String>,
     pub cols: u16,
     pub rows: u16,
 }
@@ -77,6 +79,9 @@ impl PtyManager {
             .map_err(|e| AppError::Pty(e.to_string()))?;
 
         let mut cmd = CommandBuilder::new(spec.shell.unwrap_or_else(default_shell));
+        for arg in &spec.args {
+            cmd.arg(arg);
+        }
         cmd.cwd(spec.cwd.unwrap_or_else(default_cwd));
 
         let child = pair
@@ -227,6 +232,7 @@ mod tests {
                 id: "t1".to_string(),
                 cwd: None,
                 shell,
+                args: Vec::new(),
                 cols: 80,
                 rows: 24,
             },
@@ -288,6 +294,7 @@ mod tests {
             id: "dup".to_string(),
             cwd: None,
             shell: shell.clone(),
+            args: Vec::new(),
             cols: 80,
             rows: 24,
         };

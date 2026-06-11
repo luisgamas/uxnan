@@ -30,10 +30,13 @@ pub fn run() {
             // the persisted state, then publish it as managed state.
             let data_dir = app.path().app_data_dir()?;
             let persistence = PersistenceManager::new(&data_dir);
-            let data = persistence.load().unwrap_or_else(|err| {
+            let mut data = persistence.load().unwrap_or_else(|err| {
                 eprintln!("[uxnan-desktop] failed to load persisted state ({err}); starting fresh");
                 AppData::default()
             });
+            // Seed terminal profiles when missing (state persisted before they
+            // existed, or a fresh install where load() returned defaults anyway).
+            data.settings.ensure_terminal_profiles();
             app.manage(AppState::new(persistence, data));
             Ok(())
         })
