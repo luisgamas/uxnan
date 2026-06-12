@@ -6,6 +6,25 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Conversation centers within a max width on wide screens (tablets).** The
+  message list, the above-composer chrome (login banner, run-options strip,
+  "Last edits" strip) and the composer content are now constrained to
+  `UxnanSpacing.maxContentWidth` and centered, so extra horizontal space becomes
+  side margins instead of over-wide messages and a composer whose right-hand
+  controls floated far from the edge. The app bar and the composer's surface
+  still span the full width.
+
+### Fixed
+
+- **Part of an agent reply no longer disappears after leaving and re-opening a
+  conversation.** Fixed in the bridge (it was storing only the final segment of a
+  tool-using turn); see `bridge/CHANGELOG.md`. The phone already kept the full
+  streamed text live.
+- **Context meter no longer stuck at 0** for turns where the agent's `result`
+  event omitted token usage (bridge fallback to per-message usage).
+
 ### Added
 
 - **Work log & Changed files now populate (structured commands/tools/diffs).**

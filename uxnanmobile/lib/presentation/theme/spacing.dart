@@ -27,6 +27,11 @@ class UxnanSpacing {
 
   /// 48dp.
   static const double xxxl = 48;
+
+  /// Maximum width the conversation content (messages + composer) grows to
+  /// before it centers, so wide screens (tablets) don't stretch the layout —
+  /// extra horizontal space becomes margins instead of over-wide content.
+  static const double maxContentWidth = 760;
 }
 
 /// Corner-radius scale for the Uxnan design system.

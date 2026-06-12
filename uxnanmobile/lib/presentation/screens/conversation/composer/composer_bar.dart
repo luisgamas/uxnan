@@ -161,101 +161,111 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
       ),
       child: SafeArea(
         top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(
-            UxnanSpacing.lg,
-            UxnanSpacing.lg,
-            UxnanSpacing.sm,
-            UxnanSpacing.sm,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: _controller,
-                enabled: widget.enabled,
-                minLines: 1,
-                maxLines: 6,
-                style: textTheme.bodyMedium,
-                decoration: InputDecoration(
-                  isCollapsed: true,
-                  border: InputBorder.none,
-                  hintText: l10n.composerHint,
-                  hintStyle: TextStyle(color: colors.onSurfaceVariant),
-                ),
+        // The surface spans full width (chrome); its content centers within the
+        // max content width so it lines up with the messages on wide screens.
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(
+              maxWidth: UxnanSpacing.maxContentWidth,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(
+                UxnanSpacing.lg,
+                UxnanSpacing.lg,
+                UxnanSpacing.sm,
+                UxnanSpacing.sm,
               ),
-              const SizedBox(height: UxnanSpacing.sm),
-              Row(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  // FOR-DEV: attach is a placeholder (no file/image picker
-                  // yet); shown only when the agent advertises `images`.
-                  if (widget.showAttach) ...[
-                    _RoundIconButton(
-                      icon: Icons.add_rounded,
-                      tooltip: l10n.composerAttach,
-                      onPressed: null,
-                    ),
-                    const SizedBox(width: UxnanSpacing.xs),
-                  ],
-                  // Collapse/expand the run-option + approval strip above the
-                  // composer, shown only when there's something to toggle.
-                  if (widget.showOptionsToggle) ...[
-                    _RoundIconButton(
-                      icon: widget.optionsVisible
-                          ? Icons.tune_rounded
-                          : Icons.tune_outlined,
-                      tooltip: widget.optionsVisible
-                          ? l10n.composerOptionsHide
-                          : l10n.composerOptionsShow,
-                      selected: widget.optionsVisible,
-                      onPressed: widget.onToggleOptions,
-                    ),
-                    const SizedBox(width: UxnanSpacing.xs),
-                  ],
-                  Flexible(
-                    child: _ModelChip(
-                      model: widget.environment.modelName,
-                      resolvedModel: widget.resolvedModel,
-                      onTap: widget.onModelTap,
+                  TextField(
+                    controller: _controller,
+                    enabled: widget.enabled,
+                    minLines: 1,
+                    maxLines: 6,
+                    style: textTheme.bodyMedium,
+                    decoration: InputDecoration(
+                      isCollapsed: true,
+                      border: InputBorder.none,
+                      hintText: l10n.composerHint,
+                      hintStyle: TextStyle(color: colors.onSurfaceVariant),
                     ),
                   ),
-                  const Spacer(),
-                  // Context usage (only for agents that report it): a percent
-                  // ring once the window is known (Claude), else a raw token
-                  // count (Codex). Shown at 0 until the first turn reports it,
-                  // so the meter is always present for usage-reporting agents.
-                  if (widget.environment.showContext) ...[
-                    if (widget.environment.hasContext)
-                      _ContextBadge(percent: widget.environment.contextPercent)
-                    else
-                      _TokenChip(
-                        label: widget.environment.contextTokensLabel ?? '0',
+                  const SizedBox(height: UxnanSpacing.sm),
+                  Row(
+                    children: [
+                      // FOR-DEV: attach is a placeholder (no file/image picker
+                      // yet); shown only when the agent advertises `images`.
+                      if (widget.showAttach) ...[
+                        _RoundIconButton(
+                          icon: Icons.add_rounded,
+                          tooltip: l10n.composerAttach,
+                          onPressed: null,
+                        ),
+                        const SizedBox(width: UxnanSpacing.xs),
+                      ],
+                      // Collapse/expand the run-option + approval strip above the
+                      // composer, shown only when there's something to toggle.
+                      if (widget.showOptionsToggle) ...[
+                        _RoundIconButton(
+                          icon: widget.optionsVisible
+                              ? Icons.tune_rounded
+                              : Icons.tune_outlined,
+                          tooltip: widget.optionsVisible
+                              ? l10n.composerOptionsHide
+                              : l10n.composerOptionsShow,
+                          selected: widget.optionsVisible,
+                          onPressed: widget.onToggleOptions,
+                        ),
+                        const SizedBox(width: UxnanSpacing.xs),
+                      ],
+                      Flexible(
+                        child: _ModelChip(
+                          model: widget.environment.modelName,
+                          resolvedModel: widget.resolvedModel,
+                          onTap: widget.onModelTap,
+                        ),
                       ),
-                    const SizedBox(width: UxnanSpacing.xs),
-                  ],
-                  // Voice dictation: tap to start, tap again to stop. Recording
-                  // shows a filled mic on an error-toned chip.
-                  _RoundIconButton(
-                    icon: _listening
-                        ? Icons.mic_rounded
-                        : Icons.mic_none_rounded,
-                    tooltip: _listening
-                        ? l10n.composerVoiceStop
-                        : l10n.composerVoice,
-                    selected: _listening,
-                    selectedForeground: colors.onErrorContainer,
-                    selectedBackground: colors.errorContainer,
-                    onPressed: widget.enabled ? _toggleDictation : null,
-                  ),
-                  const SizedBox(width: UxnanSpacing.xs),
-                  IconButton.filled(
-                    tooltip: l10n.composerSend,
-                    onPressed: canSend ? _send : null,
-                    icon: const Icon(Icons.arrow_upward_rounded),
+                      const Spacer(),
+                      // Context usage (usage-reporting agents): a percent ring
+                      // when the window is known (Claude), else a raw token
+                      // count (Codex). Shown at 0 until the first turn reports.
+                      if (widget.environment.showContext) ...[
+                        if (widget.environment.hasContext)
+                          _ContextBadge(
+                            percent: widget.environment.contextPercent,
+                          )
+                        else
+                          _TokenChip(
+                            label: widget.environment.contextTokensLabel ?? '0',
+                          ),
+                        const SizedBox(width: UxnanSpacing.xs),
+                      ],
+                      // Voice dictation: tap to start/stop. Recording shows a
+                      // filled mic on an error-toned chip.
+                      _RoundIconButton(
+                        icon: _listening
+                            ? Icons.mic_rounded
+                            : Icons.mic_none_rounded,
+                        tooltip: _listening
+                            ? l10n.composerVoiceStop
+                            : l10n.composerVoice,
+                        selected: _listening,
+                        selectedForeground: colors.onErrorContainer,
+                        selectedBackground: colors.errorContainer,
+                        onPressed: widget.enabled ? _toggleDictation : null,
+                      ),
+                      const SizedBox(width: UxnanSpacing.xs),
+                      IconButton.filled(
+                        tooltip: l10n.composerSend,
+                        onPressed: canSend ? _send : null,
+                        icon: const Icon(Icons.arrow_upward_rounded),
+                      ),
+                    ],
                   ),
                 ],
               ),
-            ],
+            ),
           ),
         ),
       ),

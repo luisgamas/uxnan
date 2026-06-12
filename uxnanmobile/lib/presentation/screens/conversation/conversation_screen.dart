@@ -150,6 +150,14 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
         .setThreadModel(widget.threadId, selected);
   }
 
+  /// Horizontal inset that centers the conversation content within
+  /// [UxnanSpacing.maxContentWidth] on wide screens (tablets), falling back to
+  /// the normal gutter on phones.
+  double _horizontalInset(double width) {
+    final inset = (width - UxnanSpacing.maxContentWidth) / 2;
+    return inset > UxnanSpacing.lg ? inset : UxnanSpacing.lg;
+  }
+
   /// Builds the environment snapshot (model + context + git branch) from the
   /// active thread, the live git state and the reported token usage.
   SessionEnvironment _buildEnvironment(
@@ -217,6 +225,8 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     // Aggregated edits of the most recent assistant turn that changed files,
     // for the green/red strip just above the composer.
     final lastEdits = _lastTurnEdits(snapshot);
+    // Center the content within a max width on wide screens (tablets).
+    final contentInset = _horizontalInset(MediaQuery.sizeOf(context).width);
 
     // What the collapsible options strip above the composer holds: the
     // data-driven run-option knobs and/or the approval-mode control. The
@@ -297,7 +307,12 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                     )
                   else
                     SliverPadding(
-                      padding: const EdgeInsets.all(UxnanSpacing.lg),
+                      padding: EdgeInsets.fromLTRB(
+                        contentInset,
+                        UxnanSpacing.lg,
+                        contentInset,
+                        UxnanSpacing.lg,
+                      ),
                       sliver: SliverList.builder(
                         itemCount: snapshot.messages.length,
                         itemBuilder: (context, index) =>
@@ -313,7 +328,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
           // the composer (not in the scrolling list) so it stays visible, and
           // outside the collapsible strip (it's not dismissible).
           if (requiresLogin && thread != null)
-            _LoginRequiredBanner(agentId: thread.agentId),
+            _Centered(child: _LoginRequiredBanner(agentId: thread.agentId)),
           // Collapsible options strip: the per-model run-option knobs
           // (reasoning effort, …) the bridge advertises plus the approval mode
           // (for agents that gate tools). One container with consistent
@@ -321,40 +336,43 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
           // controls show; AnimatedSize animates the show/hide driven by the
           // composer toggle.
           if (hasOptions)
-            AnimatedSize(
-              duration: const Duration(milliseconds: 180),
-              curve: Curves.easeOutCubic,
-              alignment: Alignment.bottomCenter,
-              child: _optionsVisible
-                  ? Padding(
-                      padding: const EdgeInsets.fromLTRB(
-                        UxnanSpacing.lg,
-                        UxnanSpacing.sm,
-                        UxnanSpacing.lg,
-                        UxnanSpacing.sm,
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (showRunOptions)
-                            _RunOptionsBar(
-                              threadId: widget.threadId,
-                              options: runOptions,
-                            ),
-                          if (showRunOptions && showApproval)
-                            const SizedBox(height: UxnanSpacing.sm),
-                          if (showApproval)
-                            _ApprovalBar(
-                              mode: _approvalMode,
-                              onTap: _editApprovalMode,
-                            ),
-                        ],
-                      ),
-                    )
-                  : const SizedBox(width: double.infinity),
+            _Centered(
+              child: AnimatedSize(
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOutCubic,
+                alignment: Alignment.bottomCenter,
+                child: _optionsVisible
+                    ? Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                          UxnanSpacing.lg,
+                          UxnanSpacing.sm,
+                          UxnanSpacing.lg,
+                          UxnanSpacing.sm,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (showRunOptions)
+                              _RunOptionsBar(
+                                threadId: widget.threadId,
+                                options: runOptions,
+                              ),
+                            if (showRunOptions && showApproval)
+                              const SizedBox(height: UxnanSpacing.sm),
+                            if (showApproval)
+                              _ApprovalBar(
+                                mode: _approvalMode,
+                                onTap: _editApprovalMode,
+                              ),
+                          ],
+                        ),
+                      )
+                    : const SizedBox(width: double.infinity),
+              ),
             ),
-          if (lastEdits != null) _TurnDiffStrip(edits: lastEdits),
+          if (lastEdits != null)
+            _Centered(child: _TurnDiffStrip(edits: lastEdits)),
           ComposerBar(
             environment: environment,
             resolvedModel: resolvedModel,
@@ -373,6 +391,26 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                 ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Centers its [child] within [UxnanSpacing.maxContentWidth] so the above-
+/// composer chrome (banner, options, diff strip) lines up with the centered
+/// message column on wide screens.
+class _Centered extends StatelessWidget {
+  const _Centered({required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(
+          maxWidth: UxnanSpacing.maxContentWidth,
+        ),
+        child: child,
       ),
     );
   }
