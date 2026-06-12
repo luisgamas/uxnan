@@ -193,6 +193,7 @@ class PushRegistrar {
         );
       case TurnStartedEvent() ||
             MessageDeltaEvent() ||
+            ThinkingDeltaEvent() ||
             TurnAbortedEvent() ||
             ModelResolvedEvent() ||
             GitProgressEvent() ||

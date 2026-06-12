@@ -20,6 +20,7 @@ sealed class MessageContent {
   factory MessageContent.fromJson(Map<String, dynamic> json) {
     return switch (json['type']) {
       TextContent.typeName => TextContent.fromJson(json),
+      ThinkingContent.typeName => ThinkingContent.fromJson(json),
       CodeContent.typeName => CodeContent.fromJson(json),
       ImageContent.typeName => ImageContent.fromJson(json),
       ToolUseContent.typeName => ToolUseContent.fromJson(json),
@@ -73,6 +74,48 @@ class TextContent extends MessageContent with EquatableMixin {
 
   @override
   String get asPlainText => text;
+
+  @override
+  Map<String, dynamic> toJson() => {
+        'type': typeName,
+        'text': text,
+        'isStreaming': isStreaming,
+      };
+
+  @override
+  List<Object?> get props => [text, isStreaming];
+}
+
+/// The agent's reasoning ("thinking") for a turn.
+///
+/// Rendered in a collapsible section (gated by a user setting), kept out of the
+/// plain-text projection so it never leaks into previews, copy or
+/// fingerprints — it's meta, not the answer.
+class ThinkingContent extends MessageContent with EquatableMixin {
+  /// Creates a [ThinkingContent].
+  const ThinkingContent(this.text, {this.isStreaming = false});
+
+  /// Decodes a [ThinkingContent].
+  factory ThinkingContent.fromJson(Map<String, dynamic> json) =>
+      ThinkingContent(
+        json['text'] as String? ?? '',
+        isStreaming: json['isStreaming'] as bool? ?? false,
+      );
+
+  /// The reasoning text.
+  final String text;
+
+  /// Whether the reasoning is still streaming in.
+  final bool isStreaming;
+
+  /// Wire type discriminator.
+  static const String typeName = 'thinking';
+
+  @override
+  String get type => typeName;
+
+  @override
+  String get asPlainText => '';
 
   @override
   Map<String, dynamic> toJson() => {

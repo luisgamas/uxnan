@@ -49,6 +49,28 @@ class MessageDeltaEvent extends DomainEvent {
   List<Object?> get props => [turnId, threadId, delta];
 }
 
+/// A streaming reasoning ("thinking") delta for the active turn.
+class ThinkingDeltaEvent extends DomainEvent {
+  /// Creates a [ThinkingDeltaEvent].
+  const ThinkingDeltaEvent({
+    required this.turnId,
+    required this.delta,
+    this.threadId,
+  });
+
+  /// The turn being streamed.
+  final String turnId;
+
+  /// The owning thread, if provided.
+  final String? threadId;
+
+  /// The reasoning delta to append.
+  final String delta;
+
+  @override
+  List<Object?> get props => [turnId, threadId, delta];
+}
+
 /// A turn finished successfully.
 class TurnCompletedEvent extends DomainEvent {
   /// Creates a [TurnCompletedEvent].

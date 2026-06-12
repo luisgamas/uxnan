@@ -17,6 +17,8 @@ export interface Message {
   role: MessageRole;
   /** Serialized MessageContent blocks (text/code/image/tool/diff/...). */
   content: unknown;
+  /** The agent's reasoning ("thinking") for this message, when it emitted any. */
+  thinking?: string;
   createdAt: number;
 }
 

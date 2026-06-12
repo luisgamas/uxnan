@@ -412,6 +412,36 @@ final notificationPreferencesProvider = NotifierProvider<
     NotificationPreferencesController,
     NotificationPreferences>(NotificationPreferencesController.new);
 
+/// Whether the agent's "thinking" section is shown in conversations. Persisted
+/// on-device; defaults to shown (the section itself starts collapsed). Hydrates
+/// from the store after returning the default synchronously.
+class ShowAgentThinking extends Notifier<bool> {
+  @override
+  bool build() {
+    unawaited(_hydrate());
+    return true;
+  }
+
+  Future<void> _hydrate() async {
+    final stored =
+        await ref.read(conversationPreferencesStoreProvider).readShowThinking();
+    if (stored != null && stored != state) state = stored;
+  }
+
+  /// Persists and applies the show-thinking preference.
+  Future<void> set({required bool value}) async {
+    if (value == state) return;
+    state = value;
+    await ref
+        .read(conversationPreferencesStoreProvider)
+        .writeShowThinking(value: value);
+  }
+}
+
+/// Whether agent reasoning is shown in conversations (persisted toggle).
+final showAgentThinkingProvider =
+    NotifierProvider<ShowAgentThinking, bool>(ShowAgentThinking.new);
+
 /// Registers the FCM push token with the bridge once the session connects and
 /// raises local notifications for turn-completed / turn-error events.
 ///

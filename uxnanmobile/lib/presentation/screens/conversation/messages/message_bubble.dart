@@ -4,8 +4,15 @@ import 'package:uxnan/domain/enums/message_role.dart';
 import 'package:uxnan/presentation/screens/conversation/messages/message_content_view.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 
-/// Renders a [Message] as a chat bubble, aligned and colored by role. System
-/// messages render full-width without a bubble.
+/// Renders a [Message] in the timeline, by role:
+///
+/// - **user** → a right-aligned rounded bubble (the only role with a bubble);
+/// - **assistant** → a full-width, bubble-less structured turn
+///   ([AssistantTurnView]: work log → prose → changed files → copy);
+/// - **system / tool** → full-width banners (no bubble).
+///
+/// Dropping the bubble for agent output matches the design references and makes
+/// the whole answer one clean selectable surface instead of many fragments.
 class MessageBubble extends StatelessWidget {
   /// Creates a [MessageBubble].
   const MessageBubble({required this.message, super.key});
@@ -15,37 +22,28 @@ class MessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return switch (message.role) {
+      MessageRole.user => _UserBubble(message: message),
+      MessageRole.assistant => AssistantTurnView(message: message),
+      MessageRole.system ||
+      MessageRole.tool =>
+        _FullWidthBlocks(message: message),
+    };
+  }
+}
+
+/// The user's own message: a right-aligned primary-container bubble.
+class _UserBubble extends StatelessWidget {
+  const _UserBubble({required this.message});
+  final Message message;
+
+  @override
+  Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-
-    final blocks = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        for (var i = 0; i < message.contents.length; i++) ...[
-          if (i > 0) const SizedBox(height: UxnanSpacing.sm),
-          MessageContentView(content: message.contents[i]),
-        ],
-        if (message.isStreaming) ...[
-          const SizedBox(height: UxnanSpacing.sm),
-          const _StreamingDots(),
-        ],
-      ],
-    );
-
-    if (message.role == MessageRole.system) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: UxnanSpacing.xs),
-        child: blocks,
-      );
-    }
-
-    final isUser = message.role == MessageRole.user;
-    final bubbleColor =
-        isUser ? colors.primaryContainer : colors.surfaceContainerHighest;
     final maxWidth = MediaQuery.sizeOf(context).width * 0.82;
 
     return Align(
-      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+      alignment: Alignment.centerRight,
       child: ConstrainedBox(
         constraints: BoxConstraints(maxWidth: maxWidth),
         child: Container(
@@ -55,65 +53,51 @@ class MessageBubble extends StatelessWidget {
             vertical: UxnanSpacing.sm,
           ),
           decoration: BoxDecoration(
-            color: bubbleColor,
-            borderRadius: BorderRadius.only(
-              topLeft: const Radius.circular(14),
-              topRight: const Radius.circular(14),
-              bottomLeft: Radius.circular(isUser ? 14 : 4),
-              bottomRight: Radius.circular(isUser ? 4 : 14),
+            color: colors.primaryContainer,
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(14),
+              topRight: Radius.circular(14),
+              bottomLeft: Radius.circular(14),
+              bottomRight: Radius.circular(4),
             ),
           ),
-          child: blocks,
+          child: _Blocks(message: message),
         ),
       ),
     );
   }
 }
 
-class _StreamingDots extends StatefulWidget {
-  const _StreamingDots();
-
-  @override
-  State<_StreamingDots> createState() => _StreamingDotsState();
-}
-
-class _StreamingDotsState extends State<_StreamingDots>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 1100),
-  )..repeat();
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
+/// System / tool messages: full-width, no bubble.
+class _FullWidthBlocks extends StatelessWidget {
+  const _FullWidthBlocks({required this.message});
+  final Message message;
 
   @override
   Widget build(BuildContext context) {
-    final color = Theme.of(context).colorScheme.onSurfaceVariant;
-    return SizedBox(
-      height: 8,
-      width: 34,
-      child: AnimatedBuilder(
-        animation: _controller,
-        builder: (context, _) {
-          return Row(
-            children: List<Widget>.generate(3, (i) {
-              final t = (_controller.value + i / 3) % 1.0;
-              final opacity = 0.3 + 0.7 * (t < 0.5 ? t * 2 : (1 - t) * 2);
-              return Padding(
-                padding: const EdgeInsets.only(right: 5),
-                child: Opacity(
-                  opacity: opacity,
-                  child: CircleAvatar(radius: 3, backgroundColor: color),
-                ),
-              );
-            }),
-          );
-        },
-      ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: UxnanSpacing.xs),
+      child: _Blocks(message: message),
+    );
+  }
+}
+
+/// The ordered content blocks of a [message], stacked with consistent spacing.
+class _Blocks extends StatelessWidget {
+  const _Blocks({required this.message});
+  final Message message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var i = 0; i < message.contents.length; i++) ...[
+          if (i > 0) const SizedBox(height: UxnanSpacing.sm),
+          MessageContentView(content: message.contents[i]),
+        ],
+      ],
     );
   }
 }

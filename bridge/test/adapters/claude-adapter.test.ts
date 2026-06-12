@@ -71,6 +71,12 @@ test('parseClaudeLine maps the documented event shapes', () => {
   );
   assert.deepEqual(
     parseClaudeLine(
+      '{"type":"stream_event","session_id":"s","event":{"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"hmm"}}}',
+    ),
+    { kind: 'thinking', sessionId: 's', text: 'hmm' },
+  );
+  assert.deepEqual(
+    parseClaudeLine(
       '{"type":"assistant","session_id":"s","message":{"content":[{"type":"text","text":"done"}]}}',
     ),
     { kind: 'assistant_text', sessionId: 's', text: 'done' },
@@ -124,6 +130,31 @@ test('ClaudeCodeAdapter streams text_delta as deltas and completes with the resu
   assert.equal(args.includes('--resume'), false);
   // prompt is the final argv element, never shell-interpolated
   assert.equal(args[args.length - 1], 'hi');
+});
+
+test('ClaudeCodeAdapter streams thinking_delta as thinking events, separate from text', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
+  const { done } = collect(adapter);
+
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi' });
+  last().feed([
+    '{"type":"stream_event","session_id":"s","event":{"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"Let me "}}}',
+    '{"type":"stream_event","session_id":"s","event":{"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"think."}}}',
+    '{"type":"stream_event","session_id":"s","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"Answer"}}}',
+    '{"type":"result","subtype":"success","is_error":false,"result":"Answer","session_id":"s"}',
+  ]);
+
+  const events = await done;
+  const thinking = events
+    .filter((e) => e.type === 'thinking')
+    .map((e) => (e.data as { text: string }).text);
+  assert.deepEqual(thinking, ['Let me ', 'think.']);
+  // thinking is NOT mixed into the answer deltas
+  const deltas = events
+    .filter((e) => e.type === 'delta')
+    .map((e) => (e.data as { text: string }).text);
+  assert.deepEqual(deltas, ['Answer']);
 });
 
 test('ClaudeCodeAdapter falls back to the assistant message when no token deltas stream', async () => {

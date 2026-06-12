@@ -60,10 +60,48 @@ class SettingsScreen extends ConsumerWidget {
                         ),
                   ),
                 ),
+                const SizedBox(height: UxnanSpacing.xl),
+                _SectionHeader(label: l10n.settingsConversationSection),
+                const SizedBox(height: UxnanSpacing.sm),
+                _ConversationCard(
+                  showThinking: ref.watch(showAgentThinkingProvider),
+                  onShowThinkingChanged: (value) => ref
+                      .read(showAgentThinkingProvider.notifier)
+                      .set(value: value),
+                ),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ConversationCard extends StatelessWidget {
+  const _ConversationCard({
+    required this.showThinking,
+    required this.onShowThinkingChanged,
+  });
+
+  final bool showThinking;
+  final ValueChanged<bool> onShowThinkingChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
+
+    return Material(
+      color: colors.surfaceContainerHighest,
+      borderRadius: const BorderRadius.all(UxnanRadius.lg),
+      clipBehavior: Clip.antiAlias,
+      child: SwitchListTile(
+        secondary: const Icon(Icons.psychology_outlined),
+        title: Text(l10n.settingsShowThinkingTitle),
+        subtitle: Text(l10n.settingsShowThinkingSubtitle),
+        value: showThinking,
+        onChanged: onShowThinkingChanged,
       ),
     );
   }

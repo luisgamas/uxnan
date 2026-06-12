@@ -45,6 +45,23 @@ test('turn lifecycle: start, delta, complete', async () => {
   await rm(baseDir, { recursive: true, force: true });
 });
 
+test('appendThinking accumulates reasoning and surfaces it on the message', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  const { turnId } = await store.startTurn(thread.id, 'ask', 2);
+
+  await store.appendThinking(thread.id, turnId, 'Let me ', 3);
+  await store.appendThinking(thread.id, turnId, 'think.', 4);
+  await store.appendDelta(thread.id, turnId, 'Answer', 5);
+  await store.completeTurn(thread.id, turnId, undefined, 6);
+
+  const turn = await store.getTurn(turnId);
+  const assistant = turn.messages.find((m) => m.role === 'assistant');
+  assert.equal(assistant?.content, 'Answer');
+  assert.equal(assistant?.thinking, 'Let me think.');
+  await rm(baseDir, { recursive: true, force: true });
+});
+
 test('listTurns paginates with a cursor', async () => {
   const { store, baseDir } = newStore();
   const thread = await store.startThread({ projectId: 'p' }, 1);

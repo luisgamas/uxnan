@@ -38,6 +38,14 @@ void main() {
       expect(event.delta, '');
     });
 
+    test('stream/thinking/delta', () {
+      final event = processor.classify(
+        note('stream/thinking/delta', {'turnId': 't1', 'delta': 'hmm…'}),
+      );
+      expect(event, isA<ThinkingDeltaEvent>());
+      expect((event as ThinkingDeltaEvent).delta, 'hmm…');
+    });
+
     test('stream/turn/completed', () {
       final event = processor.classify(
         note('stream/turn/completed', {'turnId': 't1'}),

@@ -10,6 +10,8 @@ import type { AgentConfig } from './agent-config.js';
 export interface AgentStreamEvent {
   type:
     | 'delta'
+    /** A chunk of the agent's reasoning / "thinking" (`data.text`). */
+    | 'thinking'
     | 'turn_started'
     | 'turn_completed'
     | 'turn_error'

@@ -407,15 +407,29 @@ class ThreadManager {
         if (rawMsg is! Map || rawMsg['role'] != 'assistant') continue;
         final content = rawMsg['content'];
         if (content is! String || content.isEmpty) continue;
+        final thinking =
+            rawMsg['thinking'] is String ? rawMsg['thinking'] as String : '';
         // Don't clobber a turn that is still streaming live on this device.
         if (_live[threadId]?.turnId == turnId) continue;
         final id = _streamId(turnId);
+        final contents =
+            _assistantContents(content, thinking, streaming: false);
         final present = byId[id];
         if (present != null) {
-          if (present.plainText != content) {
+          // Compare text + thinking specifically (plainText omits thinking), so
+          // a turn whose reasoning arrived only via history is reconciled.
+          final presentText = present.contents
+              .whereType<TextContent>()
+              .map((t) => t.text)
+              .join();
+          final presentThinking = present.contents
+              .whereType<ThinkingContent>()
+              .map((t) => t.text)
+              .join();
+          if (presentText != content || presentThinking != thinking) {
             toSave.add(
               present.copyWith(
-                contents: [TextContent(content)],
+                contents: contents,
                 deliveryState: MessageDeliveryState.delivered,
               ),
             );
@@ -429,7 +443,7 @@ class ThreadManager {
             threadId: threadId,
             turnId: turnId,
             role: MessageRole.assistant,
-            contents: [TextContent(content)],
+            contents: contents,
             deliveryState: MessageDeliveryState.delivered,
             orderIndex: order,
             createdAt: _millisToDate(rawMsg['createdAt']),
@@ -525,6 +539,12 @@ class ThreadManager {
           live.text += delta;
           if (threadId == _activeThreadId) _rebuildActiveTimeline();
         }
+      case ThinkingDeltaEvent(:final turnId, :final delta):
+        final live = _live[threadId];
+        if (live != null && live.turnId == turnId) {
+          live.thinking += delta;
+          if (threadId == _activeThreadId) _rebuildActiveTimeline();
+        }
       case TurnCompletedEvent(
           :final turnId,
           :final tokens,
@@ -565,7 +585,7 @@ class ThreadManager {
       threadId: threadId,
       turnId: turnId,
       role: MessageRole.assistant,
-      contents: [TextContent(live.text)],
+      contents: _assistantContents(live.text, live.thinking, streaming: false),
       deliveryState:
           failed ? MessageDeliveryState.failed : MessageDeliveryState.delivered,
       orderIndex: await _orderIndexFor(threadId),
@@ -593,7 +613,7 @@ class ThreadManager {
         threadId: threadId,
         turnId: live.turnId,
         role: MessageRole.assistant,
-        contents: [TextContent(live.text, isStreaming: true)],
+        contents: _assistantContents(live.text, live.thinking, streaming: true),
         deliveryState: MessageDeliveryState.delivered,
         orderIndex: _maxOrder(_activePersisted) + 1,
         createdAt: live.startedAt,
@@ -637,6 +657,20 @@ class ThreadManager {
 
   String _streamId(String turnId) => 'stream-$turnId';
 
+  /// Builds an assistant message's content blocks from its answer [text] and
+  /// optional [thinking], in render order (thinking first, then the answer).
+  static List<MessageContent> _assistantContents(
+    String text,
+    String thinking, {
+    required bool streaming,
+  }) {
+    return [
+      if (thinking.isNotEmpty)
+        ThinkingContent(thinking, isStreaming: streaming),
+      TextContent(text, isStreaming: streaming),
+    ];
+  }
+
   int _nextOrderIndex() {
     final messages = _timeline.value.messages;
     return messages.isEmpty ? 0 : messages.last.orderIndex + 1;
@@ -645,6 +679,7 @@ class ThreadManager {
   static String? _threadOf(DomainEvent event) => switch (event) {
         TurnStartedEvent(:final threadId) => threadId,
         MessageDeltaEvent(:final threadId) => threadId,
+        ThinkingDeltaEvent(:final threadId) => threadId,
         TurnCompletedEvent(:final threadId) => threadId,
         TurnErrorEvent(:final threadId) => threadId,
         TurnAbortedEvent(:final threadId) => threadId,
@@ -696,4 +731,5 @@ class _LiveTurn {
   final String turnId;
   final DateTime startedAt;
   String text = '';
+  String thinking = '';
 }

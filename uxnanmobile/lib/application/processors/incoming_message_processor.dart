@@ -27,6 +27,11 @@ class IncomingMessageProcessor {
           threadId: threadId,
           delta: params['delta'] is String ? params['delta'] as String : '',
         ),
+      'stream/thinking/delta' => ThinkingDeltaEvent(
+          turnId: turnId,
+          threadId: threadId,
+          delta: params['delta'] is String ? params['delta'] as String : '',
+        ),
       'stream/turn/completed' => TurnCompletedEvent(
           turnId: turnId,
           threadId: threadId,

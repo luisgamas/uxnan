@@ -118,7 +118,7 @@ interface ActiveRun {
 
 /** A normalized Claude Code event extracted from one stream-json line. */
 export interface ClaudeEvent {
-  kind: 'init' | 'delta' | 'assistant_text' | 'result' | 'other';
+  kind: 'init' | 'delta' | 'thinking' | 'assistant_text' | 'result' | 'other';
   sessionId?: string;
   text?: string;
   /** Only set for `init`: the concrete model id the run resolved the alias to. */
@@ -178,6 +178,11 @@ export function parseClaudeLine(line: string): ClaudeEvent | null {
         const delta = isRecord(event['delta']) ? event['delta'] : undefined;
         if (delta && delta['type'] === 'text_delta' && typeof delta['text'] === 'string') {
           return { kind: 'delta', ...base, text: delta['text'] };
+        }
+        // Extended-thinking output streams as `thinking_delta` blocks (the
+        // signature_delta blocks that follow carry no readable text → ignored).
+        if (delta && delta['type'] === 'thinking_delta' && typeof delta['thinking'] === 'string') {
+          return { kind: 'thinking', ...base, text: delta['thinking'] };
         }
       }
       return { kind: 'other', ...base };
@@ -309,6 +314,10 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         sawPartial = true;
         full += event.text;
         this.emit({ type: 'delta', threadId, turnId, data: { text: event.text } });
+      } else if (event.kind === 'thinking' && event.text) {
+        // Reasoning chunk — streamed to the phone (and persisted) separately from
+        // the answer so it can be shown in a collapsible "thinking" section.
+        this.emit({ type: 'thinking', threadId, turnId, data: { text: event.text } });
       } else if (event.kind === 'assistant_text' && event.text && !sawPartial) {
         // Fallback when token streaming produced no deltas: emit the complete
         // assistant message text as one chunk.

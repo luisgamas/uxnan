@@ -203,6 +203,19 @@ export class AgentManager {
           );
           break;
         }
+        case 'thinking': {
+          const delta = readText(event.data);
+          await this.#options.store.appendThinking(threadId, turnId, delta, now);
+          this.#options.notify(
+            makeNotification(StreamNotification.ThinkingDelta, {
+              threadId,
+              turnId,
+              messageId,
+              delta,
+            }),
+          );
+          break;
+        }
         case 'turn_completed': {
           const provided = readOptionalText(event.data);
           await this.#options.store.completeTurn(threadId, turnId, provided, now);

@@ -1,15 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_highlight/flutter_highlight.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uxnan/domain/entities/message.dart';
 import 'package:uxnan/domain/enums/approval_risk.dart';
+import 'package:uxnan/domain/enums/command_status.dart';
 import 'package:uxnan/domain/enums/message_delivery_state.dart';
 import 'package:uxnan/domain/enums/message_role.dart';
 import 'package:uxnan/domain/enums/plan_step_status.dart';
 import 'package:uxnan/domain/enums/subagent_action_kind.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
+import 'package:uxnan/infrastructure/speech/speech_to_text_service.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
+import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_bar.dart';
 import 'package:uxnan/presentation/screens/conversation/messages/message_bubble.dart';
 import 'package:uxnan/presentation/screens/conversation/messages/message_content_view.dart';
@@ -20,13 +25,20 @@ const _environment = SessionEnvironment(
   gitBranch: 'main',
 );
 
-Widget _wrap(Widget child) => MaterialApp(
-      localizationsDelegates: AppLocalizations.localizationsDelegates,
-      supportedLocales: AppLocalizations.supportedLocales,
-      home: Scaffold(body: child),
+Widget _wrap(Widget child) => ProviderScope(
+      child: MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(body: child),
+      ),
     );
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  // The thinking section reads a shared_preferences-backed setting; default to
+  // empty (→ shown) so it hydrates cleanly without the platform channel.
+  setUp(() => SharedPreferences.setMockInitialValues({}));
+
   testWidgets('MessageBubble renders each content block with its renderer',
       (tester) async {
     final message = Message(
@@ -106,6 +118,112 @@ void main() {
     expect(find.widgetWithText(FilledButton, 'Approve'), findsOneWidget);
   });
 
+  testWidgets('assistant turn groups work log, changed files and copy',
+      (tester) async {
+    final message = Message(
+      id: 'm3',
+      threadId: 'th1',
+      turnId: 't1',
+      role: MessageRole.assistant,
+      contents: const [
+        TextContent('All set.'),
+        CommandExecutionContent(
+          command: 'flutter test',
+          status: CommandStatus.completed,
+        ),
+        DiffContent(
+          filename: 'lib/a.dart',
+          diff: '+added line\n-removed line',
+          additions: 10,
+          deletions: 2,
+        ),
+      ],
+      deliveryState: MessageDeliveryState.delivered,
+      orderIndex: 0,
+      createdAt: DateTime(2026),
+    );
+
+    await tester.pumpWidget(_wrap(MessageBubble(message: message)));
+    await tester.pump();
+
+    // Collapsed sections + totals + the copy action are visible.
+    expect(find.text('Work log'), findsOneWidget);
+    expect(find.text('Changed files'), findsOneWidget);
+    expect(find.text('+10'), findsOneWidget);
+    expect(find.text('−2'), findsOneWidget);
+    expect(find.text('Copy response'), findsOneWidget);
+    // Collapsed: the command and filename aren't shown yet.
+    expect(find.textContaining('flutter test'), findsNothing);
+    expect(find.text('lib/a.dart'), findsNothing);
+
+    // Expanding the work log reveals the command.
+    await tester.tap(find.text('Work log'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('flutter test'), findsOneWidget);
+
+    // Expanding changed files reveals the file row.
+    await tester.tap(find.text('Changed files'));
+    await tester.pumpAndSettle();
+    expect(find.text('lib/a.dart'), findsOneWidget);
+  });
+
+  testWidgets('assistant turn shows a collapsible thinking section',
+      (tester) async {
+    final message = Message(
+      id: 'm4',
+      threadId: 'th1',
+      turnId: 't1',
+      role: MessageRole.assistant,
+      contents: const [
+        ThinkingContent('weighing the options'),
+        TextContent('The answer.'),
+      ],
+      deliveryState: MessageDeliveryState.delivered,
+      orderIndex: 0,
+      createdAt: DateTime(2026),
+    );
+
+    await tester.pumpWidget(_wrap(MessageBubble(message: message)));
+    await tester.pumpAndSettle();
+
+    // Shown by default but collapsed: header visible, reasoning hidden.
+    expect(find.text('Thinking'), findsOneWidget);
+    expect(find.text('weighing the options'), findsNothing);
+    // The answer renders normally.
+    expect(find.text('The answer.'), findsOneWidget);
+
+    await tester.tap(find.text('Thinking'));
+    await tester.pumpAndSettle();
+    expect(find.text('weighing the options'), findsOneWidget);
+  });
+
+  testWidgets('thinking section is hidden when the setting is off',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({
+      'uxnan.conversation.showThinking': false,
+    });
+    final message = Message(
+      id: 'm5',
+      threadId: 'th1',
+      turnId: 't1',
+      role: MessageRole.assistant,
+      contents: const [
+        ThinkingContent('hidden reasoning'),
+        TextContent('Answer only.'),
+      ],
+      deliveryState: MessageDeliveryState.delivered,
+      orderIndex: 0,
+      createdAt: DateTime(2026),
+    );
+
+    await tester.pumpWidget(_wrap(MessageBubble(message: message)));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Thinking'), findsNothing);
+    expect(find.text('hidden reasoning'), findsNothing);
+    expect(find.text('Answer only.'), findsOneWidget);
+  });
+
   testWidgets('ComposerBar sends trimmed text and clears the field',
       (tester) async {
     String? sent;
@@ -179,4 +297,101 @@ void main() {
 
     expect(sentCount, 0);
   });
+
+  testWidgets('ComposerBar dictates recognized speech into the field',
+      (tester) async {
+    final speech = _FakeSpeech();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [speechToTextServiceProvider.overrideWithValue(speech)],
+        child: MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: ComposerBar(environment: _environment, onSend: (_) {}),
+          ),
+        ),
+      ),
+    );
+
+    // Tap the mic → dictation starts (icon flips to the filled, recording mic).
+    await tester.tap(find.byIcon(Icons.mic_none_rounded));
+    await tester.pump();
+    expect(speech.listening, isTrue);
+    expect(find.byIcon(Icons.mic_rounded), findsOneWidget);
+
+    // A partial result streams into the field…
+    speech.emit('hola');
+    await tester.pump();
+    expect(find.text('hola'), findsOneWidget);
+
+    // …and the final result stops the session (mic returns to idle).
+    speech.emit('hola mundo', isFinal: true);
+    await tester.pump();
+    expect(find.text('hola mundo'), findsOneWidget);
+    expect(find.byIcon(Icons.mic_none_rounded), findsOneWidget);
+  });
+
+  testWidgets('ComposerBar warns when voice input is unavailable',
+      (tester) async {
+    final speech = _FakeSpeech(available: false);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [speechToTextServiceProvider.overrideWithValue(speech)],
+        child: MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: ComposerBar(environment: _environment, onSend: (_) {}),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byIcon(Icons.mic_none_rounded));
+    await tester.pump();
+
+    expect(speech.listening, isFalse);
+    expect(
+      find.text("Voice input isn't available on this device."),
+      findsOneWidget,
+    );
+  });
+}
+
+/// A speech service that never touches the platform — drives dictation results
+/// on demand.
+class _FakeSpeech extends SpeechToTextService {
+  _FakeSpeech({this.available = true});
+
+  final bool available;
+  bool listening = false;
+  void Function(SpeechResult)? _onResult;
+
+  @override
+  bool get isAvailable => available;
+
+  @override
+  bool get isListening => listening;
+
+  @override
+  Future<bool> initialize() async => available;
+
+  @override
+  Future<void> start({
+    required void Function(SpeechResult result) onResult,
+    String? localeId,
+  }) async {
+    _onResult = onResult;
+    listening = true;
+  }
+
+  @override
+  Future<void> stop() async => listening = false;
+
+  @override
+  Future<void> cancel() async => listening = false;
+
+  void emit(String text, {bool isFinal = false}) =>
+      _onResult?.call(SpeechResult(text: text, isFinal: isFinal));
 }

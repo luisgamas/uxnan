@@ -239,6 +239,28 @@ browser and multi-PC connection correctness are now DONE — see below.)
   app-bar git affordance is a single commit `IconButton` (the redundant branch
   chip was dropped); and the header shows a **"Responding…"** spinner while the
   agent works (the per-thread activity, also on the list).
+- ☑ **Agent thinking (reasoning) — first structured-content slice** — DONE
+  (Claude Code, end-to-end): the bridge parses `thinking_delta` and emits
+  `stream/thinking/delta` (persisted via `Message.thinking`); the phone decodes a
+  `ThinkingContent` block and renders a **collapsible "Thinking" section**
+  (default collapsed) at the top of the turn, gated by **Settings → Conversation
+  → "Show agent thinking"** (`showAgentThinkingProvider` + on-device store).
+  Streams live; kept out of copy/previews. ☐ Next: Codex/pi thinking; **structured
+  commands/tools/diffs** so Work log / Changed files / the Last-edits strip
+  populate (today they're empty because the bridge still flattens those to text —
+  see [[project-bridge-flattens-to-text]]).
+- ☑ **Structured agent turns (no bubble) + work log / changed files / copy** —
+  DONE: assistant replies render full-width without a bubble (`AssistantTurnView`)
+  — only user messages keep a bubble — so the whole answer is one clean
+  selectable surface (consecutive text merged, fixing the fragmented-selection
+  copy bug). A collapsible **Work log (N)** groups the turn's command/tool runs;
+  a collapsible **Changed files (N) · +a −d** lists the turn's diffs (each file
+  expands to its unified diff); a **Copy response** action copies the full prose;
+  and a compact green/red **Last edits** strip above the composer mirrors the
+  latest turn's totals. Diff +/- counters are color-coded. Covered by widget
+  tests. ☐ Follow-ups: default-expanded work log while a turn streams; tap the
+  Last-edits strip to jump to the changed-files section; per-file diff viewer
+  (`git/diff`, see *Git*) for richer diffs.
 - ◑ **Wire conversation controls to real bridge data** — the environment is now
   built from the active `Thread` + live git state (no more
   `SessionEnvironment.sample()`); remaining items below need real RPCs:

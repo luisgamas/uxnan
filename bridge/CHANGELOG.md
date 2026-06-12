@@ -6,6 +6,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 
 ### Added
+- **Agent "thinking" streamed and persisted** (first structured-content slice).
+  The Claude adapter (`claude-adapter.ts`) now parses extended-thinking
+  `thinking_delta` blocks from the stream-json output and emits a new
+  `thinking` agent event (kept separate from answer text). The `AgentManager`
+  forwards it as a new `stream/thinking/delta` notification and accumulates it on
+  the assistant message via `ThreadStore.appendThinking`; `Message.thinking` is
+  serialized so it survives `turn/list`. Contracts: `AgentStreamEvent` gains
+  `'thinking'`, `StreamNotification.ThinkingDelta` + `ThinkingDeltaParams`, and
+  `Message.thinking?`. (Codex/pi thinking + structured commands/diffs are the
+  next slices.)
 - **pi agent wired** (`src/adapters/pi-adapter.ts`, `resolve-pi.ts`, registered in
   `bridge.ts`): drives the `pi` CLI (`@earendil-works/pi-coding-agent`) via
   `pi -p --mode json`, parsing its newline-JSON stream (streamed `text_delta`s,

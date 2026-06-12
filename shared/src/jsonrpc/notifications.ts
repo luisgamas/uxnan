@@ -7,6 +7,8 @@
 export const StreamNotification = {
   TurnStarted: 'stream/turn/started',
   MessageDelta: 'stream/message/delta',
+  /** A chunk of the agent's reasoning / "thinking" for this turn (`data.delta`). */
+  ThinkingDelta: 'stream/thinking/delta',
   TurnCompleted: 'stream/turn/completed',
   TurnError: 'stream/turn/error',
   TurnAborted: 'stream/turn/aborted',
@@ -22,6 +24,14 @@ export interface TurnStartedParams {
 }
 
 export interface MessageDeltaParams {
+  threadId: string;
+  turnId: string;
+  messageId: string;
+  delta: string;
+}
+
+/** A chunk of the agent's reasoning ("thinking") for a turn. */
+export interface ThinkingDeltaParams {
   threadId: string;
   turnId: string;
   messageId: string;

@@ -27,6 +27,8 @@ interface StoredMessage {
   turnId: string;
   role: MessageRole;
   text: string;
+  /** The agent's accumulated reasoning ("thinking") for this message, if any. */
+  thinking?: string;
   createdAt: number;
 }
 
@@ -251,6 +253,15 @@ export class ThreadStore {
     });
   }
 
+  /** Appends a reasoning ("thinking") chunk to the turn's assistant message. */
+  appendThinking(threadId: string, turnId: string, delta: string, now: number): Promise<void> {
+    return this.#mutate(async (threads) => {
+      const assistant = this.#assistantMessage(threads, threadId, turnId);
+      assistant.thinking = (assistant.thinking ?? '') + delta;
+      this.#touch(threads, threadId, now);
+    });
+  }
+
   completeTurn(
     threadId: string,
     turnId: string,
@@ -365,6 +376,9 @@ function toMessage(message: StoredMessage): Message {
     turnId: message.turnId,
     role: message.role,
     content: message.text,
+    ...(message.thinking && message.thinking.length > 0
+      ? { thinking: message.thinking }
+      : {}),
     createdAt: message.createdAt,
   };
 }

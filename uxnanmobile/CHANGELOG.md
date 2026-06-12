@@ -8,6 +8,34 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Agent "thinking" (reasoning) in conversations — first structured-content
+  slice.** Claude Code's extended-thinking output now flows end-to-end: the
+  bridge parses `thinking_delta` blocks and emits a new `stream/thinking/delta`
+  event (persisted on the message), and the phone renders it in a **collapsible
+  "Thinking" section** at the top of the agent's turn (`ThinkingContent` block,
+  default collapsed). A **Settings → Conversation → "Show agent thinking"**
+  toggle (persisted) controls whether it appears. Thinking is kept out of the
+  copied response / previews. (Commands, tools and diffs are the next slices —
+  they still arrive as text until the bridge emits structured blocks for them.)
+- **Workspace browser: "up one folder" button.** The folder-picker sheet now has
+  an explicit up-one-level button to the left of the breadcrumb (disabled at a
+  root); the breadcrumb still navigates on tap.
+- **Voice → text in the composer.** The composer mic now dictates into the
+  message field via on-device speech-to-text (`speech_to_text`): tap to start,
+  tap again (or a final result) to stop, with recognized words streaming in
+  live and a recording state on the mic chip. A guarded `SpeechToTextService`
+  (+ `speechToTextServiceProvider`) no-ops without the plugin / mic permission,
+  so the app and tests run unaffected; an "unavailable" snackbar covers the
+  denied/unsupported case. Android `RECORD_AUDIO` is wired; iOS Info.plist
+  usage strings are FOR-HUMAN. On-device verification is deferred (needs a mic).
+- **Structured agent turns in the conversation (work log, changed files,
+  copy).** An assistant reply now renders as a structured, full-width turn
+  (`AssistantTurnView`): a collapsible **Work log (N)** of the commands/tools it
+  ran, the prose answer, a collapsible **Changed files (N) · +a −d** summary at
+  the end (each file expands to its diff), and a **Copy response** action that
+  copies the full text. A compact green/red **Last edits** strip above the
+  composer mirrors the latest turn's `+a −d · N files`. Diff +/- counters are now
+  colored (green additions / red deletions) everywhere.
 - **Settings screen + notification preferences (`notifications/update`).** A new
   `SettingsScreen` (route `/settings`, reached via a gear action in the devices
   app bar) lets the user toggle the **Replies** (`turnCompleted`) and **Errors**
@@ -28,6 +56,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Agent replies no longer sit in a chat bubble.** Only the user's own
+  messages keep a (right-aligned) bubble; assistant turns render full-width, so
+  the whole answer is one clean selectable surface and consecutive text is merged
+  into a single selectable region instead of many fragments that copied as if
+  they were separate messages.
 - **Model picker grouped by provider + no inline-dropdown jank.** The model
   picker (`model_picker_sheet.dart`) now groups models under provider headers
   (M3 list subheaders) for multi-provider agents like pi/OpenCode, flattened

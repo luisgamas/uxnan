@@ -6,7 +6,10 @@ import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/enums/agent_id.dart';
 import 'package:uxnan/domain/enums/approval_mode.dart';
 import 'package:uxnan/domain/enums/connection_phase.dart';
+import 'package:uxnan/domain/enums/message_role.dart';
 import 'package:uxnan/domain/enums/thread_activity.dart';
+import 'package:uxnan/domain/value_objects/message_content.dart';
+import 'package:uxnan/domain/value_objects/turn_timeline_snapshot.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_bar.dart';
@@ -211,6 +214,9 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     );
     final cwd = thread?.cwd;
     final snapshot = timelineAsync.value;
+    // Aggregated edits of the most recent assistant turn that changed files,
+    // for the green/red strip just above the composer.
+    final lastEdits = _lastTurnEdits(snapshot);
 
     // What the collapsible options strip above the composer holds: the
     // data-driven run-option knobs and/or the approval-mode control. The
@@ -348,6 +354,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                     )
                   : const SizedBox(width: double.infinity),
             ),
+          if (lastEdits != null) _TurnDiffStrip(edits: lastEdits),
           ComposerBar(
             environment: environment,
             resolvedModel: resolvedModel,
@@ -365,6 +372,79 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                   options: ref.read(threadRunOptionsProvider(widget.threadId)),
                 ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The +additions / −deletions and file count of an assistant turn's edits.
+typedef _TurnEdits = ({int additions, int deletions, int files});
+
+/// Returns the aggregated diff totals of the most recent assistant turn that
+/// changed files, or null when the latest turns touched none.
+_TurnEdits? _lastTurnEdits(TurnTimelineSnapshot? snapshot) {
+  if (snapshot == null) return null;
+  for (final message in snapshot.messages.reversed) {
+    if (message.role != MessageRole.assistant) continue;
+    final diffs = message.contents.whereType<DiffContent>().toList();
+    if (diffs.isEmpty) continue;
+    var additions = 0;
+    var deletions = 0;
+    for (final diff in diffs) {
+      additions += diff.additions;
+      deletions += diff.deletions;
+    }
+    return (additions: additions, deletions: deletions, files: diffs.length);
+  }
+  return null;
+}
+
+/// A compact green/red summary of the latest agent turn's edits, shown just
+/// above the composer (`+a −d · N files`).
+class _TurnDiffStrip extends StatelessWidget {
+  const _TurnDiffStrip({required this.edits});
+
+  final _TurnEdits edits;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final muted =
+        textTheme.labelSmall?.copyWith(color: colors.onSurfaceVariant);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        UxnanSpacing.lg,
+        UxnanSpacing.xs,
+        UxnanSpacing.lg,
+        0,
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.difference_outlined,
+            size: 14,
+            color: colors.onSurfaceVariant,
+          ),
+          const SizedBox(width: UxnanSpacing.xs),
+          Text(l10n.conversationLastEdits, style: muted),
+          const SizedBox(width: UxnanSpacing.sm),
+          Text(
+            '+${edits.additions}',
+            style: textTheme.labelSmall?.copyWith(color: UxnanColors.gitAdded),
+          ),
+          const SizedBox(width: UxnanSpacing.xs),
+          Text(
+            '−${edits.deletions}',
+            style: textTheme.labelSmall?.copyWith(
+              color: UxnanColors.gitDeleted,
+            ),
+          ),
+          const Spacer(),
+          Text(l10n.conversationFilesCount(edits.files), style: muted),
         ],
       ),
     );
