@@ -98,9 +98,33 @@ class _WorkspaceBrowserSheetState extends ConsumerState<WorkspaceBrowserSheet> {
                 onSelected: (rootId) => _load(rootId: rootId, path: ''),
               ),
             if (current != null)
-              _Breadcrumb(
-                result: current,
-                onNavigate: (path) => _load(rootId: current.rootId, path: path),
+              Row(
+                children: [
+                  // Visual "up one level" affordance, left of the breadcrumb
+                  // (the breadcrumb itself already navigates on tap). Disabled
+                  // at a root, where there's no parent to ascend to.
+                  IconButton(
+                    tooltip: l10n.workspaceBrowseUp,
+                    visualDensity: VisualDensity.compact,
+                    icon: const Icon(
+                      Icons.drive_folder_upload_outlined,
+                      size: 20,
+                    ),
+                    onPressed: current.path.isEmpty
+                        ? null
+                        : () => _load(
+                              rootId: current.rootId,
+                              path: _parentPath(current.path),
+                            ),
+                  ),
+                  Expanded(
+                    child: _Breadcrumb(
+                      result: current,
+                      onNavigate: (path) =>
+                          _load(rootId: current.rootId, path: path),
+                    ),
+                  ),
+                ],
               ),
             const SizedBox(height: UxnanSpacing.sm),
             ConstrainedBox(
@@ -144,6 +168,13 @@ class _WorkspaceBrowserSheetState extends ConsumerState<WorkspaceBrowserSheet> {
       ),
     );
   }
+}
+
+/// The parent of a `/`-separated browse [path] (empty at a root).
+String _parentPath(String path) {
+  if (path.isEmpty) return '';
+  final index = path.lastIndexOf('/');
+  return index <= 0 ? '' : path.substring(0, index);
 }
 
 class _RootPicker extends StatelessWidget {
