@@ -29,8 +29,9 @@
  */
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { isAbsolute, join, relative } from 'node:path';
 import { createInterface } from 'node:readline';
 import type {
   AgentCapabilities,
@@ -40,8 +41,15 @@ import type {
   AgentModelOption,
   SendTurnOptions,
 } from '@uxnan/shared';
+import { runGit } from '../git/git-runner.js';
 import { BaseAgentAdapter } from './base-adapter.js';
-import { codexItemBlocks, codexReasoningText } from './codex-tools.js';
+import { unifiedDiffBlock, writeDiffBlock } from './content-blocks.js';
+import {
+  codexFileChanges,
+  codexItemBlocks,
+  codexReasoningText,
+  type CodexFileChange,
+} from './codex-tools.js';
 import { effortValues, reasoningOption, reasoningValue, withOptions } from './run-options.js';
 import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
 
@@ -98,13 +106,23 @@ interface ActiveRun {
 
 /** A normalized Codex event extracted from one `exec --json` line. */
 export interface CodexEvent {
-  kind: 'thread' | 'message' | 'thinking' | 'block' | 'completed' | 'error' | 'other';
+  kind:
+    | 'thread'
+    | 'message'
+    | 'thinking'
+    | 'block'
+    | 'file_change'
+    | 'completed'
+    | 'error'
+    | 'other';
   threadId?: string;
   text?: string;
   /** Only set for `completed`: context-occupying token count, if reported. */
   tokens?: number;
   /** Only set for `block`: the structured content block(s) for this item. */
   blocks?: Record<string, unknown>[];
+  /** Only set for `file_change`: the changed paths the adapter reads to diff. */
+  changes?: CodexFileChange[];
 }
 
 /**
@@ -144,6 +162,10 @@ export function parseCodexLine(line: string): CodexEvent | null {
       if (item['type'] === 'reasoning') {
         const text = codexReasoningText(item);
         return text.length > 0 ? { kind: 'thinking', text } : { kind: 'other' };
+      }
+      if (item['type'] === 'file_change') {
+        const changes = codexFileChanges(item);
+        return changes.length > 0 ? { kind: 'file_change', changes } : { kind: 'other' };
       }
       const blocks = codexItemBlocks(item);
       return blocks.length > 0 ? { kind: 'block', blocks } : { kind: 'other' };
@@ -259,6 +281,10 @@ export class CodexAdapter extends BaseAgentAdapter {
         for (const content of event.blocks) {
           this.emit({ type: 'block', threadId, turnId, data: { content } });
         }
+      } else if (event.kind === 'file_change' && event.changes) {
+        for (const change of event.changes) {
+          void this.#emitFileChange(threadId, turnId, change, cwd);
+        }
       } else if (event.kind === 'error') {
         errored = true;
         this.emit({
@@ -303,6 +329,42 @@ export class CodexAdapter extends BaseAgentAdapter {
     });
 
     return Promise.resolve();
+  }
+
+  /**
+   * Codex's `file_change` item reports only the path + kind (no hunk text). To
+   * show an accurate per-line diff we run `git diff HEAD -- <file>` first; if
+   * that's empty (a new/untracked file or non-git dir) we fall back to the
+   * file's current content as additions. A delete shows just the path.
+   *
+   * Caveat: `git diff HEAD` is the file's changes since the last commit, so it
+   * includes any other uncommitted edits — not strictly this turn's delta.
+   */
+  async #emitFileChange(
+    threadId: string,
+    turnId: string,
+    change: CodexFileChange,
+    cwd: string,
+  ): Promise<void> {
+    const name = isAbsolute(change.path) ? relative(cwd, change.path) || change.path : change.path;
+    let content: Record<string, unknown> | undefined;
+    if (change.kind !== 'delete') {
+      try {
+        const { stdout } = await runGit(cwd, ['diff', 'HEAD', '--', change.path]);
+        if (stdout.trim().length > 0) content = unifiedDiffBlock(name, stdout);
+      } catch {
+        /* not a git repo / no HEAD — fall through to reading the file */
+      }
+      if (!content) {
+        try {
+          content = writeDiffBlock(name, await readFile(change.path, 'utf-8'));
+        } catch {
+          /* unreadable */
+        }
+      }
+    }
+    content ??= { type: 'diff', filename: name, diff: '', additions: 0, deletions: 0 };
+    this.emit({ type: 'block', threadId, turnId, data: { content } });
   }
 
   cancelTurn(threadId: string, turnId: string): Promise<void> {

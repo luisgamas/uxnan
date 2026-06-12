@@ -236,6 +236,7 @@ export class AgentManager {
           await this.#options.store.completeTurn(threadId, turnId, provided, now);
           const text = await this.#assistantText(turnId, provided);
           const usage = readUsage(event.data);
+          if (usage) await this.#options.store.setUsage(threadId, turnId, usage, now);
           this.#options.notify(
             makeNotification(StreamNotification.TurnCompleted, {
               threadId,

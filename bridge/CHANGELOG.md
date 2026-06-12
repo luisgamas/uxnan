@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed (agent wiring, validated live)
+- **pi file edits now show as diffs** — pi's `edit` tool is
+  `{ path, edits: [{ oldText, newText }] }` (verified live), not
+  `old_string`/`new_string`; the mapper handles the `edits` array, so edits land
+  in Changed files instead of an empty block.
+- **Codex file changes now show a real per-line diff** — `file_change` reports
+  only the path + kind, so the adapter runs `git diff HEAD -- <file>` to get the
+  actual `−old/+new` hunks with accurate +/- counts (instead of painting the
+  whole file green), falling back to the file's content as additions for new/
+  untracked files or non-git dirs. (Caveat: `git diff HEAD` is the change since
+  the last commit, so it includes any other uncommitted edits to that file.)
+- **Context usage persists across re-open** — a turn's `usage` is now stored on
+  its assistant message (`Message.usage`, via `ThreadStore.setUsage`) and
+  returned in `turn/list`, so the phone restores the context meter instead of
+  resetting it to 0.
+
 ### Added
 - **Thinking + structured commands/tools/diffs for Codex, pi and OpenCode**
   (extends the Claude Code slices to every agent). A shared `content-blocks.ts`

@@ -62,6 +62,21 @@ test('appendThinking accumulates reasoning and surfaces it on the message', asyn
   await rm(baseDir, { recursive: true, force: true });
 });
 
+test('setUsage records token usage on the assistant message (context meter)', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  const { turnId } = await store.startTurn(thread.id, 'ask', 2);
+
+  await store.appendDelta(thread.id, turnId, 'answer', 3);
+  await store.setUsage(thread.id, turnId, { tokens: 1234, contextWindow: 1_000_000 }, 4);
+  await store.completeTurn(thread.id, turnId, undefined, 5);
+
+  const turn = await store.getTurn(turnId);
+  const assistant = turn.messages.find((m) => m.role === 'assistant');
+  assert.deepEqual(assistant?.usage, { tokens: 1234, contextWindow: 1_000_000 });
+  await rm(baseDir, { recursive: true, force: true });
+});
+
 test('appendBlock accumulates structured blocks and surfaces them on the message', async () => {
   const { store, baseDir } = newStore();
   const thread = await store.startThread({ projectId: 'p' }, 1);

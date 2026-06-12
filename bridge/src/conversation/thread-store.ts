@@ -31,6 +31,8 @@ interface StoredMessage {
   thinking?: string;
   /** Structured content blocks (command_execution/diff/tool) for this message. */
   blocks?: unknown[];
+  /** Token usage for this turn (so the phone restores the context meter). */
+  usage?: { tokens: number; contextWindow?: number };
   createdAt: number;
 }
 
@@ -273,6 +275,20 @@ export class ThreadStore {
     });
   }
 
+  /** Records a turn's token usage on its assistant message (context meter). */
+  setUsage(
+    threadId: string,
+    turnId: string,
+    usage: { tokens: number; contextWindow?: number },
+    now: number,
+  ): Promise<void> {
+    return this.#mutate(async (threads) => {
+      const assistant = this.#assistantMessage(threads, threadId, turnId);
+      assistant.usage = usage;
+      this.#touch(threads, threadId, now);
+    });
+  }
+
   completeTurn(
     threadId: string,
     turnId: string,
@@ -391,6 +407,7 @@ function toMessage(message: StoredMessage): Message {
       ? { thinking: message.thinking }
       : {}),
     ...(message.blocks && message.blocks.length > 0 ? { blocks: message.blocks } : {}),
+    ...(message.usage ? { usage: message.usage } : {}),
     createdAt: message.createdAt,
   };
 }

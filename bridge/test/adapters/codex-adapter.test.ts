@@ -11,6 +11,8 @@ import {
   parseCodexReasoning,
   type SpawnedProcess,
 } from '../../src/index.js';
+import { codexFileChanges } from '../../src/adapters/codex-tools.js';
+import { unifiedDiffBlock } from '../../src/adapters/content-blocks.js';
 import type { AgentStreamEvent } from '@uxnan/shared';
 
 // --- a fake `codex` process whose stdout we feed with `exec --json` lines ---
@@ -128,7 +130,6 @@ test('CodexAdapter emits thinking and structured blocks from items', async () =>
   last().feed([
     '{"type":"item.completed","item":{"type":"reasoning","text":"thinking it through"}}',
     '{"type":"item.completed","item":{"type":"command_execution","command":"type a.txt","aggregated_output":"hello","exit_code":0,"status":"completed"}}',
-    '{"type":"item.completed","item":{"type":"file_change","changes":[{"path":"a.dart","kind":"update"}]}}',
     '{"type":"item.completed","item":{"type":"agent_message","text":"done"}}',
     '{"type":"turn.completed","usage":{}}',
   ]);
@@ -141,10 +142,49 @@ test('CodexAdapter emits thinking and structured blocks from items', async () =>
   const blocks = events
     .filter((e) => e.type === 'block')
     .map((e) => (e.data as { content: Record<string, unknown> }).content);
-  assert.equal(blocks.length, 2);
+  assert.equal(blocks.length, 1);
   assert.equal(blocks[0]?.['type'], 'command_execution');
-  assert.equal(blocks[1]?.['type'], 'diff');
-  assert.equal(blocks[1]?.['filename'], 'a.dart');
+});
+
+test('unifiedDiffBlock parses a git diff into hunks + real +/- counts', () => {
+  const gitDiff = [
+    'diff --git a/file.txt b/file.txt',
+    'index e69de29..1234567 100644',
+    '--- a/file.txt',
+    '+++ b/file.txt',
+    '@@ -1,3 +1,4 @@',
+    ' line one',
+    '-line two',
+    '+line two edited',
+    '+brand new line',
+    ' line three',
+    '',
+  ].join('\n');
+  const block = unifiedDiffBlock('file.txt', gitDiff);
+  assert.equal(block['type'], 'diff');
+  assert.equal(block['filename'], 'file.txt');
+  // one removal, two additions — not the whole file
+  assert.equal(block['additions'], 2);
+  assert.equal(block['deletions'], 1);
+  // the file-level header is stripped; the @@ hunk + content kept
+  assert.equal(
+    block['diff'],
+    '@@ -1,3 +1,4 @@\n line one\n-line two\n+line two edited\n+brand new line\n line three',
+  );
+});
+
+test('codexFileChanges extracts changed paths/kinds (adapter reads the content)', () => {
+  const changes = codexFileChanges({
+    type: 'file_change',
+    changes: [
+      { path: 'a.dart', kind: 'update' },
+      { path: 'b.dart', kind: 'add' },
+    ],
+  });
+  assert.deepEqual(changes, [
+    { path: 'a.dart', kind: 'update' },
+    { path: 'b.dart', kind: 'add' },
+  ]);
 });
 
 test('CodexAdapter maps reasoning effort to -c model_reasoning_effort', async () => {

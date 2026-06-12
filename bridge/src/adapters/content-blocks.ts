@@ -37,21 +37,31 @@ export function commandBlock(
   };
 }
 
-/** A `diff` block for an edit (old → new) — synthesized −old/+new hunks. */
+/** A `diff` block for one or more edits (old → new) — synthesized −old/+new. */
+export function multiEditDiffBlock(
+  filename: string,
+  edits: { old: string; new: string }[],
+): Record<string, unknown> {
+  const parts: string[] = [];
+  let added = 0;
+  let removed = 0;
+  for (const edit of edits) {
+    const oldLines = lines(edit.old);
+    const newLines = lines(edit.new);
+    removed += oldLines.length;
+    added += newLines.length;
+    parts.push(...oldLines.map((l) => `-${l}`), ...newLines.map((l) => `+${l}`));
+  }
+  return { type: 'diff', filename, diff: parts.join('\n'), additions: added, deletions: removed };
+}
+
+/** A `diff` block for a single edit (old → new). */
 export function editDiffBlock(
   filename: string,
   oldText: string,
   newText: string,
 ): Record<string, unknown> {
-  const removed = lines(oldText);
-  const added = lines(newText);
-  return {
-    type: 'diff',
-    filename,
-    diff: [...removed.map((l) => `-${l}`), ...added.map((l) => `+${l}`)].join('\n'),
-    additions: added.length,
-    deletions: removed.length,
-  };
+  return multiEditDiffBlock(filename, [{ old: oldText, new: newText }]);
 }
 
 /** A `diff` block for a whole-file write (all additions). */
@@ -77,6 +87,42 @@ export function fileChangeBlock(
   deletions = 0,
 ): Record<string, unknown> {
   return { type: 'diff', filename, diff: '', additions, deletions };
+}
+
+/**
+ * A `diff` block from a real unified diff (e.g. `git diff` output): strips the
+ * file-level header, keeps the `@@` hunks + content, and counts real +/- lines.
+ * Used to show an accurate per-line diff (not a whole-file "all additions").
+ */
+export function unifiedDiffBlock(filename: string, diffText: string): Record<string, unknown> {
+  const body: string[] = [];
+  let added = 0;
+  let removed = 0;
+  for (const line of diffText.split('\n')) {
+    if (
+      line.startsWith('diff --git') ||
+      line.startsWith('index ') ||
+      line.startsWith('--- ') ||
+      line.startsWith('+++ ') ||
+      line.startsWith('new file') ||
+      line.startsWith('deleted file') ||
+      line.startsWith('similarity ') ||
+      line.startsWith('rename ') ||
+      line.startsWith('\\ No newline')
+    ) {
+      continue;
+    }
+    body.push(line);
+    if (line.startsWith('+')) added += 1;
+    else if (line.startsWith('-')) removed += 1;
+  }
+  return {
+    type: 'diff',
+    filename,
+    diff: body.join('\n').replace(/^\n+|\n+$/g, ''),
+    additions: added,
+    deletions: removed,
+  };
 }
 
 /** A generic `tool` block (a non-shell, non-edit tool call and its output). */

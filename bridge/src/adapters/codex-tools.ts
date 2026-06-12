@@ -9,7 +9,7 @@
  * ASSUMED SHAPES — need on-device verification against a real Codex turn (the
  * adapter's documented event list only covered `agent_message`).
  */
-import { commandBlock, fileChangeBlock, toolBlock } from './content-blocks.js';
+import { commandBlock, toolBlock } from './content-blocks.js';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -61,10 +61,32 @@ export function codexReasoningText(item: Record<string, unknown>): string {
   return '';
 }
 
+/** A changed path + kind from a Codex `file_change` item. */
+export interface CodexFileChange {
+  path: string;
+  kind: string;
+}
+
 /**
- * The structured block(s) for a Codex item, or `[]` for items that aren't
- * commands / file changes / tool calls. A `file_change` yields one diff block
- * per changed path (Codex reports paths + kind, not the hunk text).
+ * The changed paths/kinds of a `file_change` item — the adapter reads the files
+ * to synthesize a diff (Codex reports only path + kind, not the hunk text).
+ */
+export function codexFileChanges(item: Record<string, unknown>): CodexFileChange[] {
+  if (item['type'] !== 'file_change') return [];
+  const changes = Array.isArray(item['changes']) ? item['changes'] : [];
+  const out: CodexFileChange[] = [];
+  for (const change of changes) {
+    if (isRecord(change) && typeof change['path'] === 'string') {
+      out.push({ path: change['path'], kind: str(change['kind']) });
+    }
+  }
+  return out;
+}
+
+/**
+ * The structured block(s) for a Codex `command_execution` / `mcp_tool_call`
+ * item (`file_change` is handled by the adapter so it can read the file
+ * content), or `[]` otherwise.
  */
 export function codexItemBlocks(item: Record<string, unknown>): Record<string, unknown>[] {
   switch (item['type']) {
@@ -73,16 +95,6 @@ export function codexItemBlocks(item: Record<string, unknown>): Record<string, u
       const isError = item['status'] === 'failed' || (typeof exit === 'number' && exit !== 0);
       const output = str(item['aggregated_output']) || str(item['output']);
       return [commandBlock(str(item['command']), output, isError)];
-    }
-    case 'file_change': {
-      const changes = Array.isArray(item['changes']) ? item['changes'] : [];
-      const blocks: Record<string, unknown>[] = [];
-      for (const change of changes) {
-        if (isRecord(change) && typeof change['path'] === 'string') {
-          blocks.push(fileChangeBlock(change['path']));
-        }
-      }
-      return blocks;
     }
     case 'mcp_tool_call': {
       const name = str(item['tool']) || str(item['name']) || 'tool';

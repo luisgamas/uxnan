@@ -21,6 +21,8 @@ export interface Message {
   thinking?: string;
   /** Structured content blocks (command_execution/diff/tool) produced this turn. */
   blocks?: unknown[];
+  /** Token usage for this turn, so the phone restores the context meter on re-sync. */
+  usage?: { tokens: number; contextWindow?: number };
   createdAt: number;
 }
 

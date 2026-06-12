@@ -7,7 +7,13 @@
  * events; the adapter pairs them by `toolCallId`. Tool/arg names verified live
  * against pi 0.79.1: `bash`→`command`, `write`→`path`+`content`, `read`→`path`.
  */
-import { commandBlock, editDiffBlock, toolBlock, writeDiffBlock } from './content-blocks.js';
+import {
+  commandBlock,
+  editDiffBlock,
+  multiEditDiffBlock,
+  toolBlock,
+  writeDiffBlock,
+} from './content-blocks.js';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -50,12 +56,23 @@ export function piToolBlock(
     case 'bash':
       return commandBlock(str(tool.input['command']), output, isError);
     case 'edit':
-    case 'str_replace':
+    case 'str_replace': {
+      // pi's edit tool: `{ path, edits: [{ oldText, newText }] }` (verified live
+      // against pi 0.79.1); tolerant of single old/new string shapes too.
+      const raw = tool.input['edits'];
+      if (Array.isArray(raw)) {
+        const edits = raw.filter(isRecord).map((e) => ({
+          old: str(e['oldText']) || str(e['old_string']) || str(e['old_str']),
+          new: str(e['newText']) || str(e['new_string']) || str(e['new_str']),
+        }));
+        return multiEditDiffBlock(path, edits);
+      }
       return editDiffBlock(
         path,
-        str(tool.input['old_str']) || str(tool.input['old_string']),
-        str(tool.input['new_str']) || str(tool.input['new_string']),
+        str(tool.input['oldText']) || str(tool.input['old_string']) || str(tool.input['old_str']),
+        str(tool.input['newText']) || str(tool.input['new_string']) || str(tool.input['new_str']),
       );
+    }
     case 'write':
     case 'create':
       return writeDiffBlock(path, str(tool.input['content']));
