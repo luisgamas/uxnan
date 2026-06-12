@@ -33,7 +33,7 @@ models live in:
 | **0** | Base infrastructure (3-panel shell, IPC, persistence) | ✅ **DONE** |
 | **1** | Terminal core (PTY, tabs, splits) | ✅ **DONE** — terminals, region splits, copy/paste, file-drop, layout persistence, kill-on-exit (reorder/MRU = Tier 2; per-worktree assoc = Phase 2) |
 | **2** | Git & worktrees | ✅ **DONE** — single-panel UI (search + collapsible Projects/Worktrees, cards, new-worktree dialog with base-branch picker), worktree create / list / safe remove, status/dirty + ahead/behind badges, in-app directory picker, **per-worktree terminal workspaces** (select a worktree → its terminals show, others keep running hidden). Agent auto-launch is the Settings **agents track** (S) |
-| **3** | Git status & diffs | ◑ **IN PROGRESS** — right-panel review (status/diff/stage/discard/commit), live status watcher (3 s, focus-paused) + push/pull done; `git2`, CodeMirror, hunk staging deferred |
+| **3** | Git status & diffs | ✅ **DONE** — right-panel review (status/diff/stage/discard/commit), live status watcher (3 s, focus-paused), push/pull, CodeMirror 6 diff viewer; `git2` migration + side-by-side/hunk staging → Phase 5 |
 | 4 | Agent monitoring (hooks, notifications) | ☐ not started |
 | 5 | Polish & UX (hunk staging, side-by-side, virtual scroll) | ☐ not started |
 | 6 | Bridge integration (mobile pairing) | ☐ not started |
@@ -43,24 +43,30 @@ Estimate (spec §2): 11–17 weeks for Phases 0–5 solo; +2–3 wk for Phase 6.
 
 ### Where we are (2026-06-12)
 
-**Phases 0, 1 and 2 are complete** (terminal core + splits + per-worktree
-terminal workspaces; full git-worktree management with the redesigned, i18n'd
-panel). The cross-cutting track has Settings, design tokens, full i18n, and the
-**agents registry + manual launch** done — you can register CLI agents in
-Settings → Agents and launch one into any worktree (it runs in that worktree's
-terminal workspace).
+**Phases 0–3 are complete**, plus the cross-cutting track:
+- **0** infra · **1** terminals (splits, copy/paste, file-drop, persisted layout)
+  · **2** git worktrees (hierarchical Projects tree, create/list/safe-remove,
+  status badges, in-app picker, per-worktree terminal workspaces).
+- **3** git status & diffs — right-panel review (Staged/Changes, per-file
+  stage/unstage/discard, commit), **live status watcher** (3 s, focus-paused) +
+  **push/pull**, and a **CodeMirror 6** diff viewer.
+- **Cross-cutting (S):** Settings, design tokens, full **i18n (EN/ES)**, and the
+  **agents track** — registry + install-detection **catalog** with brand logos,
+  **run-inside-chosen-shell** launch, and **auto-launch a default agent on
+  worktree create**.
 
-**Next up — Phase 3 (Git status & diffs):** the right-panel review experience
-(status polling, diff viewer, stage/commit). The remaining Tier-1 pillar; will
-pull in `git2`. This is the recommended next phase.
+**Next up — Phase 4 (Agent monitoring):** the remaining Tier-1 pillar and the
+ADE's differentiator — know what each agent is doing per worktree
+(`working`/`waiting`/`blocked`/`done`) + native notifications. Recommended as an
+increment-based build: (1) process/terminal-title inference → status badges,
+(2) native notifications on `done`, (3) the local HTTP hook server.
 
-**Agent follow-ups (smaller, after the registry):** auto-launch the worktree's
-agent on create (Tier-2 **T2.2**), and the whole of **Phase 4** (status
-monitoring via hooks/OSC, native notifications, orchestration).
+**Then:** Phase 5 (polish — side-by-side diff, hunk/line staging, virtual
+scroll) and Phase 6 (bridge integration / mobile pairing).
 
-Smaller follow-ups that are NOT blockers (tracked below): backend debounced
-persistence + rotating backups, `git2` migration, WSL paths, tab reorder/MRU,
-branded icons (`FOR-HUMAN.md`).
+Smaller non-blockers (tracked below): backend debounced persistence + rotating
+backups, `git2` migration, WSL paths, tab reorder/MRU, per-worktree agent
+override, branded icons (`FOR-HUMAN.md`).
 
 ---
 
@@ -109,14 +115,16 @@ user configuration. Built incrementally alongside the phases.
       Deep-links to Settings → Agents when none are configured;
       `app.openSettings(section)`.
 
+**Done — agents (cont.):**
+- [x] **Auto-launch a default agent on worktree create** — `AppSettings.
+      defaultAgentId` (Settings → Agents → "Default agent", `None`/off by default);
+      `projects.createWorktree` launches it via `app.launchAgent` (run-inside-shell)
+      in the new worktree after creating + selecting it. Opt-in. Closes Tier-2
+      **T2.2** (spec `02b §5.1`).
+
 **Pending — agents:**
-- [ ] **Auto-launch a default agent on worktree create** — let the user pick a
-      **default agent** (a setting, e.g. `AppSettings.defaultAgentId`, with an
-      "off/none" option) and, when a worktree is created, automatically launch it
-      in the new worktree's terminal workspace (reusing `app.launchAgent` →
-      run-inside-shell). Optionally allow a per-worktree override before/at
-      creation. Opt-in (defaults to off) so a worktree never spawns a process the
-      user didn't ask for. Closes Tier-2 **T2.2** (spec `02b §5.1`). **FOR-DEV.**
+- [ ] **Per-worktree agent override** at/before creation (today it's the global
+      default agent). **FOR-DEV.**
 - [ ] **Env vars per agent**, if a launch flow needs them.
 - [ ] **Arg quoting** in the injected command is best-effort (quote-if-spaces);
       revisit if an agent needs shell-specific escaping. **FOR-DEV.**
@@ -308,7 +316,7 @@ earlier "superficial UX" warning is resolved.
 
 ---
 
-## Phase 3 — Git status & diffs ◑ (increments 1–2 done)
+## Phase 3 — Git status & diffs ✅
 
 **Goal:** see and act on file changes in real time.
 
@@ -321,7 +329,8 @@ earlier "superficial UX" warning is resolved.
       can appear in both), per-file stage/unstage/discard (discard confirms),
       stage-all/unstage-all, commit composer. Reloads on worktree switch / after
       each action / manual refresh.
-- [x] Diff viewer (`DiffView.svelte`): colorized unified diff in a dialog.
+- [x] Diff viewer (`DiffView.svelte`): colorized unified diff in a dialog (since
+      rebuilt on CodeMirror 6 — see increment 3).
 
 **Done (increment 2 — live status + push/pull):**
 - [x] **Real-time status**: a Tokio-interval watcher (3 s) polls the watched
@@ -333,19 +342,21 @@ earlier "superficial UX" warning is resolved.
 - [x] **Push / pull**: `git_push`, `git_pull --ff-only`, with an ahead/behind bar
       in the commit composer (Pull/Push buttons enabled per ahead/behind).
 
-**Deferred (later Phase 3 increments):**
+**Done (increment 3 — CodeMirror diff viewer):**
+- [x] **CodeMirror 6 diff viewer** (`@codemirror/state` + `@codemirror/view`):
+      read-only, virtual-scrolls large diffs, text selection, add/remove/hunk
+      line decorations (replaces the hand-rolled renderer). Diff fetch aborts
+      after **30 s** so the UI can't hang.
+
+**Deferred → Phase 5 (polish) or tracked below:**
 - [ ] **`git2` migration** for high-frequency status/diff (Phase 3 uses the CLI,
       consistent with Phase 2; `git2` avoids per-poll subprocess overhead).
       **FOR-DEV.**
-- [ ] **CodeMirror 6** inline diff viewer (lazy per-file; 30 s compute timeout)
-      to replace the lightweight `DiffView`. **FOR-DEV.**
-- [ ] **Hunk/line-level staging**, **AI commit message**, **image diffs**, virtual
-      scroll for huge changesets. **FOR-DEV.**
-- [ ] **`git_push`/`git_pull`** (CLI; retry-with-backoff for idempotent reads
-      only, never retry push) + a contextual primary action (Commit/Push/Sync/
-      Publish). **FOR-DEV.**
-- [ ] A textarea is a plain styled element; could adopt the shadcn `Textarea`/
-      `Field` components. **FOR-DEV.**
+- [ ] **Side-by-side diff**, **hunk/line-level staging**, virtual-scroll polish for
+      huge changesets → **Phase 5**.
+- [ ] **AI commit message** (needs an agent/bridge), **image diffs** → later.
+- [ ] The commit composer uses a plain styled `<textarea>`; could adopt the
+      shadcn `Textarea`/`Field` components. **FOR-DEV.**
 
 ---
 

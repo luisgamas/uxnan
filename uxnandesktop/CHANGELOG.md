@@ -5,6 +5,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — auto-launch a default agent on worktree create
+- **Default agent** setting (Settings → Agents → "Default agent", `None` by
+  default): when set, creating a worktree auto-launches that agent in the new
+  worktree's terminal workspace. Opt-in — `None` never starts an agent unasked.
+  New `AppSettings.defaultAgentId`; `projects.createWorktree` calls
+  `app.launchAgent` after the worktree is created and selected.
+
+### Changed — Phase 3 closed: diff viewer on CodeMirror 6
+- **Diff viewer rebuilt on CodeMirror 6** (`@codemirror/state` + `@codemirror/
+  view`): read-only, **virtual-scrolls large diffs**, supports text selection,
+  and colorizes add/remove/hunk lines via line decorations (replacing the
+  hand-rolled renderer). Diff fetches now abort after **30 s** so the UI can't
+  hang on a pathological diff.
+- This closes Phase 3 (status + diffs + live watcher + push/pull + diff viewer).
+  Side-by-side view, hunk/line staging and virtual-scroll polish move to Phase 5;
+  the `git2` migration and AI commit messages remain tracked in FOR-DEV.
+
 ### Added — Phase 3 (increment 2): live status + push / pull
 - **Real-time status.** A background watcher (Tokio interval, 3 s) polls the
   worktree the right panel is reviewing and emits `git:status-changed` only when
