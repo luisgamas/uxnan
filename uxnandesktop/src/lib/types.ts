@@ -25,6 +25,10 @@ export interface AgentProfile {
   command: string;
   /** Arguments passed to the command (e.g. `["--model", "opus"]`). */
   args: string[];
+  /** Terminal profile (shell) to launch the agent in; null → default profile. */
+  terminalProfileId?: string | null;
+  /** Logo key for the UI (a catalog id, e.g. `claudecode`); null → generic. */
+  icon?: string | null;
 }
 
 export interface AppSettings {

@@ -104,6 +104,14 @@ pub struct AgentProfile {
     /// Arguments passed to the command (e.g. `["--model", "opus"]`).
     #[serde(default)]
     pub args: Vec<String>,
+    /// Terminal profile (shell) to launch the agent in. The agent runs *inside*
+    /// this interactive shell so PATH/PATHEXT shims (`.cmd`/`.ps1`) resolve.
+    /// `None` falls back to the default terminal profile.
+    #[serde(default)]
+    pub terminal_profile_id: Option<String>,
+    /// Logo key for the UI (a catalog id, e.g. `claudecode`); `None` → generic.
+    #[serde(default)]
+    pub icon: Option<String>,
 }
 
 /// The single, empty starter profile shown to new users. Its placeholder fields
@@ -300,10 +308,17 @@ mod tests {
             name: "Claude Code".to_string(),
             command: "claude".to_string(),
             args: vec!["--model".to_string(), "opus".to_string()],
+            terminal_profile_id: Some("pwsh7".to_string()),
+            icon: Some("claudecode".to_string()),
         };
         let json = serde_json::to_string(&agent).unwrap();
+        assert!(json.contains("terminalProfileId"));
         let back: AgentProfile = serde_json::from_str(&json).unwrap();
         assert_eq!(agent, back);
+        // Older agents (pre-shell/icon) still deserialize.
+        let legacy: AgentProfile =
+            serde_json::from_str(r#"{"id":"x","name":"X","command":"x"}"#).unwrap();
+        assert!(legacy.terminal_profile_id.is_none() && legacy.icon.is_none());
     }
 
     #[test]

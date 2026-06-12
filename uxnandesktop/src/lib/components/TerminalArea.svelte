@@ -370,6 +370,7 @@
                           cwd={t.cwd}
                           shell={t.shell}
                           args={t.args}
+                          runCommand={t.runCommand}
                           focused={activeRegion && g.group.activeTabId === t.id}
                           onexit={() => terminals.markExited(t.id)}
                         />

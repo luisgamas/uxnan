@@ -17,6 +17,12 @@ import { terminals } from "$lib/state/terminals.svelte";
 /** Connection state of the Rust backend, surfaced in the status bar. */
 export type BackendStatus = "connecting" | "ready" | "error";
 
+/** Quote an argument for the shell when it contains whitespace (best-effort;
+ *  double quotes work across PowerShell, cmd and POSIX shells). */
+function quoteArg(arg: string): string {
+  return /\s/.test(arg) ? `"${arg}"` : arg;
+}
+
 /** A pane in the Settings dialog (also the deep-link target of `openSettings`). */
 export type SettingsSection = "general" | "language" | "agents" | "terminal";
 
@@ -125,20 +131,26 @@ class AppStore {
     return this.agentProfiles.filter((a) => a.command.trim().length > 0);
   }
 
-  /** Launch an agent: open a terminal running its command/args in `workspace`
-   *  (a worktree path, or "" for Global), with `cwd` as the working directory.
-   *  No-op for an agent with a blank command. */
+  /** Launch an agent: open a terminal on its chosen shell (its terminal profile,
+   *  or the default one) in `workspace` (a worktree path, or "" for Global) and
+   *  type the agent command into it. Running inside an interactive shell — rather
+   *  than spawning the bare command — lets PATH/PATHEXT shims (`.cmd`/`.ps1`)
+   *  resolve. No-op for an agent with a blank command. */
   launchAgent(
     agent: AgentProfile,
     opts: { cwd?: string; workspace?: string; title?: string },
   ): void {
     const command = agent.command.trim();
     if (!command) return;
+    const shellProfile = this.profile(agent.terminalProfileId ?? undefined);
+    const shell = shellProfile?.command?.trim() || undefined;
+    const runCommand = [command, ...agent.args.map(quoteArg)].join(" ");
     terminals.create({
       cwd: opts.cwd,
       title: opts.title ?? (agent.name.trim() || command),
-      shell: command,
-      args: agent.args,
+      shell,
+      args: shell ? shellProfile?.args : undefined,
+      runCommand,
       workspace: opts.workspace,
     });
   }

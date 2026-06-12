@@ -19,6 +19,7 @@
     cwd,
     shell,
     args,
+    runCommand,
     onexit,
   }: {
     id: string;
@@ -26,8 +27,13 @@
     cwd?: string;
     shell?: string;
     args?: string[];
+    runCommand?: string;
     onexit?: () => void;
   } = $props();
+
+  // Give an interactive shell a moment to load its profile and draw a prompt
+  // before we type the agent command into it (otherwise it can land mid-init).
+  const RUN_COMMAND_DELAY_MS = 400;
 
   let el: HTMLDivElement;
   let term: Terminal | undefined;
@@ -124,6 +130,15 @@
       cols: term.cols || 80,
       rows: term.rows || 24,
     }).catch(() => {});
+
+    // Agent launch: type the command into the freshly-started shell. Running it
+    // inside the shell (rather than as the PTY process) lets PATH/PATHEXT shims
+    // resolve (`codex.cmd`/`.ps1`), which spawning the bare command cannot.
+    if (runCommand) {
+      setTimeout(() => {
+        invoke("pty_write", { id, data: `${runCommand}\r` }).catch(() => {});
+      }, RUN_COMMAND_DELAY_MS);
+    }
 
     term.onData((data) => {
       invoke("pty_write", { id, data }).catch(() => {});

@@ -29,6 +29,9 @@ export interface GroupTab {
   shell?: string;
   /** Shell arguments (from the chosen terminal profile). */
   args?: string[];
+  /** One-shot command typed into the shell once it starts (agent launch).
+   *  Transient — never serialized, so a restored layout doesn't re-run it. */
+  runCommand?: string;
   exited: boolean;
 }
 
@@ -59,6 +62,8 @@ export interface NewTabOptions {
   title?: string;
   shell?: string;
   args?: string[];
+  /** One-shot command to type into the shell once it starts (agent launch). */
+  runCommand?: string;
   groupId?: string;
   /** Workspace to open in (switches the active workspace first). */
   workspace?: string;
@@ -72,6 +77,7 @@ function newTab(opts?: Omit<NewTabOptions, "groupId" | "workspace">): GroupTab {
     cwd: opts?.cwd,
     shell: opts?.shell,
     args: opts?.args,
+    runCommand: opts?.runCommand,
     exited: false,
   };
 }
