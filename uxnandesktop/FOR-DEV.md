@@ -37,9 +37,27 @@ models live in:
 | 4 | Agent monitoring (hooks, notifications) | ☐ not started |
 | 5 | Polish & UX (hunk staging, side-by-side, virtual scroll) | ☐ not started |
 | 6 | Bridge integration (mobile pairing) | ☐ not started |
-| **S** | Settings & terminal profiles (cross-cutting) | ◑ **IN PROGRESS** — Settings screen (theme + terminal profiles with OS-grouped templates) done; agents registry + agent launch pending (see below) |
+| **S** | Settings, design system & i18n (cross-cutting) | ◑ **IN PROGRESS** — Settings (theme + terminal profiles w/ OS templates), **design tokens**, and **full i18n (EN/ES + Language picker)** done; **agents registry + launch** pending (the ADE differentiator) |
 
 Estimate (spec §2): 11–17 weeks for Phases 0–5 solo; +2–3 wk for Phase 6.
+
+### Where we are (2026-06-12)
+
+**Phases 0, 1 and 2 are complete** (terminal core + splits + per-worktree
+terminal workspaces; full git-worktree management with the redesigned, i18n'd
+panel). The cross-cutting track has Settings, design tokens and full i18n done.
+
+**Nothing blocks the next phase.** The two open fronts are independent — pick
+either:
+- **Agents track** (in Settings) — define agents + launch them in worktrees. The
+  ADE's core differentiator; also unblocks Phase 4 (agent monitoring).
+- **Phase 3 — Git status & diffs** — the right-panel review experience
+  (status polling, diff viewer, stage/commit). The other Tier-1 pillar; will pull
+  in `git2`.
+
+Smaller follow-ups that are NOT blockers (tracked below): backend debounced
+persistence + rotating backups, `git2` migration, WSL paths, tab reorder/MRU,
+branded icons (`FOR-HUMAN.md`).
 
 ---
 
@@ -64,7 +82,10 @@ user configuration. Built incrementally alongside the phases.
       terminal bar to fix uneven density.
 - [x] **Internationalization** (`src/lib/i18n/`, `docs/i18n.md`): English + Spanish,
       device-default with a **Settings → Language** picker
-      (`AppSettings.language`). Main surfaces translated.
+      (`AppSettings.language`). **Whole app translated** (panel, terminal area,
+      right panel, status bar, every dialog incl. the shadcn dialog close, the
+      profile editor, the title bar). **From here on, every new string must be
+      added via `i18n.t` (a key in every locale) — non-negotiable.**
 
 **Pending — agents (new, in Settings):**
 - [ ] **Agents registry in Settings** — define agents (name, command, args,
@@ -75,16 +96,14 @@ user configuration. Built incrementally alongside the phases.
       and a **per-worktree agent** selection. Closes the Tier-2 **T2.2**
       auto-launch item; **depends on the agents registry**. **FOR-DEV.**
 
+**Done (cross-cutting):**
+- [x] **In-app directory picker** (`DirectoryPicker.svelte` + `browse_dirs`) —
+      replaced the OS-native folder dialog (see Phase 2).
+
 **Pending — Settings polish:**
 - [ ] **Custom / import-export themes** — beyond the 3 built-ins, let users define
       custom color sets (component tokens) and **import/export** them as JSON, for
       deeper personalization. **FOR-DEV.**
-- [ ] **In-app directory picker** (shared with Phase 2; see below) — replace the
-      OS-native folder dialog. **FOR-DEV.** (Done.)
-- [ ] **Finish i18n coverage** — a few secondary strings are still English
-      (`TerminalProfileEditor` field labels, the status-bar text in `+page.svelte`,
-      the "exited" tab badge, the "Alpha" tooltip). Add their keys to every
-      locale. **FOR-DEV.**
 
 ---
 
@@ -115,11 +134,10 @@ Done in this increment:
 - [x] Verified: `npm run check` (0/0), `npm run build` (SPA → `build/`),
       `cargo test` (8 passing), `cargo clippy` + `cargo fmt` clean.
 
-Phase 0 follow-ups (do next, before/with Phase 1):
-- [ ] **shadcn-svelte components** — run `npx shadcn-svelte@latest add button
-      dialog` etc. as real UI lands (Phase 1+). Foundation (`components.json`,
-      tokens, `cn`) is in place; no components generated yet to keep Phase 0
-      minimal. **FOR-DEV.**
+Phase 0 follow-ups:
+- [x] **shadcn-svelte components** — the component library (button, input, dialog,
+      dropdown-menu, select, card, badge, separator, tooltip, collapsible) is
+      installed under `src/lib/components/ui/` and used across the app.
 - [ ] **Debounced async persistence** — current `save` is synchronous
       write-rename on the command thread. Add the 250 ms Tokio debounce +
       5 rotating backups described in spec §7 (`persistence.rs`). Defer until
@@ -191,9 +209,8 @@ killed on close and on exit.
   **Tier 2** (T2.2 "Drag & drop de tabs entre TabGroups"), not Phase 1 Tier 1.
   **FOR-DEV.**
 - **Backend hidden-tab ring buffer** — memory optimization (see `[~]` above).
-- **Per-worktree terminal association** — wiring the active worktree to
-  show/hide its own terminals (and persisting layout *per worktree*) is a
-  **Phase 2** integration item; today the terminal area is global. **FOR-DEV.**
+- ✅ **Per-worktree terminal association** — DONE in Phase 2 (per-worktree
+  terminal workspaces; layout persisted per workspace).
 
 ### Notes / gotchas
 - ConPTY (Windows) queries cursor position (`ESC[6n`) at startup and waits for a
@@ -213,65 +230,54 @@ killed on close and on exit.
 
 ---
 
-## Phase 2 — Git & worktrees ◑ IN PROGRESS
+## Phase 2 — Git & worktrees ✅ DONE
 
-**Goal:** create, list, and manage git worktrees.
-
-> ⚠️ **UX is SUPERFICIAL — reconsider before calling Phase 2 done.** The current
-> "Add project" and "Create worktree" flows are intentionally minimal scaffolding
-> to make the feature work end-to-end for review. They are **not** the intended
-> UX and must be reworked into something friendlier, e.g.: a proper "New
-> worktree" dialog (base-branch picker, validation, name preview, optional agent
-> to auto-launch); inline feedback/spinners and success/error toasts instead of a
-> single error line; confirm-on-remove; an empty-state with guidance; richer
-> worktree cards (status/dirty/branch badges, last activity); choosing where
-> worktrees are created instead of the hard-coded `<repo>--<branch>` sibling;
-> and using shadcn-svelte components (Dialog/Sidebar/Tree) for consistency.
+**Goal (met):** register git repos; create / list / safely remove worktrees;
+tie terminals to the active worktree. The left panel was **redesigned** (per
+review) from two flat lists into a single hierarchical Projects tree — the
+earlier "superficial UX" warning is resolved.
 
 ### Backend (Rust)
-- [x] `git` module (`src-tauri/src/git.rs`) via the git **CLI**
-      (`tokio::process::Command`, `shell:false`): `is_git_repo`, `repo_name`,
-      `worktree_path_for`, `add_worktree` (`git worktree add -b`), `list_worktrees`
-      (`--porcelain` parser, incl. agent-created worktrees). Tested (porcelain
-      parser, path flattening).
-- [x] Commands: `repo_add` / `repo_remove` / `repo_list` (repos persisted in
-      `AppData`), `worktree_create`, `worktree_list`.
-- [x] **Base-branch resolution** (`branch_list` + `default_base`: probe
-      `origin/HEAD` → `main` → `master` → `HEAD`). `worktree_create` now takes an
-      optional `base` and uses `--no-track`.
-- [x] `worktree_remove` with a dirty-changes preflight + prune + a *safe* branch
-      delete (`git branch -d`, kept if unmerged). Aggressive cleanup for
-      squash-merged branches (patch-equivalence) is still deferred. **FOR-DEV.**
-- [ ] Move high-frequency status/diff to `git2` (`0.20+`); branch listing. **FOR-DEV.**
+- [x] `git` module (`src-tauri/src/git.rs`) via the git **CLI** (`tokio::process`,
+      `shell:false`): `is_git_repo`, `repo_name`, `worktree_path_for`,
+      `add_worktree`, `list_worktrees` (`--porcelain`, incl. agent-created),
+      `branch_list` + `default_base` (probe `origin/HEAD` → `main` → `master` →
+      `HEAD`), `worktree_status` (dirty + ahead/behind), and a safe
+      `remove_worktree` (dirty preflight + prune + `git branch -d`). Tested.
+- [x] `browse.rs` — `browse_dirs` for the in-app directory picker.
+- [x] Commands: `repo_add/remove/list`, `worktree_create` (optional `base`,
+      `--no-track`), `worktree_list`, `worktree_status`, `branch_list`,
+      `worktree_remove`, `browse_dirs`.
+- [ ] Move high-frequency status/diff to `git2` (`0.20+`). **FOR-DEV** (Phase 3 will use it).
 - [ ] WSL path detection (`\\wsl.localhost\…`) → route through `wsl.exe`. **FOR-DEV.**
-- [ ] Persist created worktrees' metadata (today they're discovered live via
-      `git worktree list`; fine for now). **FOR-DEV.**
+- [ ] Aggressive branch cleanup for squash-merged branches (patch-equivalence). **FOR-DEV.**
 
 ### Frontend (Svelte)
-- [x] **Single-panel left sidebar** (`LeftSidebar.svelte`): top search (filters
-      projects + worktrees together) over two **collapsible** sections — Projects
-      and Worktrees (collapsed by default; one expands to fill or both share 50/50).
-      Built from real **shadcn-svelte** components.
-- [x] **Project cards** (`ProjectCard.svelte`): name, path, worktree-count badge;
-      actions to open a terminal, **New worktree…**, and a ⋯ menu (copy path,
-      remove with confirm). **Worktree cards** (`WorktreeCard.svelte`): branch
-      (+ `main` badge), repo, path; click to mark active; open-terminal + ⋯ menu
-      (copy path, remove → escalates to forced remove when dirty).
-- [x] **New-worktree dialog** (`NewWorktreeDialog.svelte`): branch name +
-      shadcn `Select` base-branch picker (preloaded default) + folder-path preview.
-- [ ] **Remaining UX polish**: agent auto-launch on create, richer status/dirty
-      badges on cards, validation hints, and the in-app directory picker (below).
-      **FOR-DEV.**
-- [ ] **In-app directory picker (no OS-native dialog).** `pickDirectory`
-      (`src/lib/api.ts`) currently opens the operating system's native folder
-      dialog via `tauri-plugin-dialog`. Replace it with an **in-app picker built
-      from shadcn-svelte components** (Dialog + a directory tree), backed by a
-      Rust `browse_dirs` command, so "Add project" stays inside the ADE's own
-      look-and-feel instead of summoning each OS's window. **FOR-DEV.**
-- [ ] Active-worktree switch (click → show/hide associated terminals; PTYs keep
-      running in the background). **FOR-DEV.**
-- [ ] Hierarchical repos → worktrees tree with status/dirty/branch indicators.
-      **FOR-DEV.**
+- [x] **Single hierarchical Projects tree** (`LeftSidebar.svelte`,
+      `ProjectCard.svelte`, `WorktreeRow.svelte`): a project header is its own
+      "main" context and **expands to show its non-main worktrees as nested
+      sub-rows**. Search filters projects + worktrees and auto-expands matches.
+      (Replaced the two flat Projects/Worktrees lists + `WorktreeCard.svelte`.)
+- [x] **Selectable contexts**: clicking a project (= its main) or a worktree makes
+      it the active context — the row highlights and its terminals show.
+- [x] **Per-row indicators**: dirty / ahead / behind status badges and a
+      "running terminals" count on each project/worktree.
+- [x] **New-worktree dialog** (`NewWorktreeDialog.svelte`): branch + shadcn
+      `Select` base-branch picker (preloaded default) + folder-path preview.
+      Confirm-on-remove (`ConfirmDialog`); worktree remove escalates to forced
+      when dirty.
+- [x] **In-app directory picker** (`DirectoryPicker.svelte`): a shadcn Dialog that
+      browses sub-folders (click or type/paste a path), flags git repos — replaces
+      the OS-native folder dialog.
+- [x] **Per-worktree terminal workspaces** (`terminals.svelte.ts`,
+      `TerminalArea.svelte`): one terminal set per worktree (+ a Global space);
+      selecting a worktree shows its terminals and hides the others (which keep
+      running, mounted). A read-only `repo / branch` breadcrumb shows the active
+      context (the left panel is the single selector).
+
+### Deferred (Settings **agents track**, not Phase 2)
+- **Agent auto-launch on worktree create** + a manual "Launch agent" — depends on
+  the agents registry. **FOR-DEV.**
 
 ---
 
