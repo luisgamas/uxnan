@@ -68,6 +68,10 @@ class SettingsScreen extends ConsumerWidget {
                   onShowThinkingChanged: (value) => ref
                       .read(showAgentThinkingProvider.notifier)
                       .set(value: value),
+                  scrollOnSend: ref.watch(scrollToBottomOnSendProvider),
+                  onScrollOnSendChanged: (value) => ref
+                      .read(scrollToBottomOnSendProvider.notifier)
+                      .set(value: value),
                 ),
               ],
             ),
@@ -82,10 +86,14 @@ class _ConversationCard extends StatelessWidget {
   const _ConversationCard({
     required this.showThinking,
     required this.onShowThinkingChanged,
+    required this.scrollOnSend,
+    required this.onScrollOnSendChanged,
   });
 
   final bool showThinking;
   final ValueChanged<bool> onShowThinkingChanged;
+  final bool scrollOnSend;
+  final ValueChanged<bool> onScrollOnSendChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -96,12 +104,24 @@ class _ConversationCard extends StatelessWidget {
       color: colors.surfaceContainerHighest,
       borderRadius: const BorderRadius.all(UxnanRadius.lg),
       clipBehavior: Clip.antiAlias,
-      child: SwitchListTile(
-        secondary: const Icon(Icons.psychology_outlined),
-        title: Text(l10n.settingsShowThinkingTitle),
-        subtitle: Text(l10n.settingsShowThinkingSubtitle),
-        value: showThinking,
-        onChanged: onShowThinkingChanged,
+      child: Column(
+        children: [
+          SwitchListTile(
+            secondary: const Icon(Icons.psychology_outlined),
+            title: Text(l10n.settingsShowThinkingTitle),
+            subtitle: Text(l10n.settingsShowThinkingSubtitle),
+            value: showThinking,
+            onChanged: onShowThinkingChanged,
+          ),
+          Divider(height: 1, color: colors.outlineVariant),
+          SwitchListTile(
+            secondary: const Icon(Icons.vertical_align_bottom_rounded),
+            title: Text(l10n.settingsScrollOnSendTitle),
+            subtitle: Text(l10n.settingsScrollOnSendSubtitle),
+            value: scrollOnSend,
+            onChanged: onScrollOnSendChanged,
+          ),
+        ],
       ),
     );
   }

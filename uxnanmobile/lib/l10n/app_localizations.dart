@@ -1315,6 +1315,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Display the agent\'s reasoning in a collapsible section.'**
   String get settingsShowThinkingSubtitle;
+
+  /// Title of the toggle that jumps the conversation to the bottom when you send a message.
+  ///
+  /// In en, this message translates to:
+  /// **'Scroll to latest on send'**
+  String get settingsScrollOnSendTitle;
+
+  /// Subtitle of the scroll-on-send toggle.
+  ///
+  /// In en, this message translates to:
+  /// **'Jump to your message when you send, even if you\'ve scrolled up.'**
+  String get settingsScrollOnSendSubtitle;
 }
 
 class _AppLocalizationsDelegate

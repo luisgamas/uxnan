@@ -45,6 +45,10 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   bool _optionsVisible = true;
   final ScrollController _scroll = ScrollController();
   String? _gitCwd;
+  // Set when the user sends a message and the "scroll to latest on send"
+  // setting is on: forces the next timeline update to jump to the bottom if the
+  // user had scrolled up. Cleared once that scroll happens.
+  bool _forceScrollOnSend = false;
 
   // Captured in initState: using `ref` inside dispose() is unreliable in
   // Riverpod (the clear could be dropped, leaving this thread marked as
@@ -239,9 +243,12 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     // Resolve git state for the real workspace once the thread's cwd is known.
     if (connectedHere) _refreshGitFor(cwd);
 
-    // Auto-scroll to the bottom on new content while the user is near it.
+    // Auto-scroll to the bottom on new content while the user is near it; a
+    // just-sent message (with the setting on) forces the jump even from a
+    // manually-scrolled position.
     ref.listen(activeTimelineProvider, (previous, next) {
-      if (next.value != null && _isNearBottom()) {
+      if (next.value != null && (_forceScrollOnSend || _isNearBottom())) {
+        _forceScrollOnSend = false;
         WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
       }
     });
@@ -389,11 +396,18 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
             onStop: () =>
                 ref.read(threadManagerProvider).cancelTurn(widget.threadId),
             onModelTap: thread != null ? () => _pickModel(thread) : null,
-            onSend: (text) => ref.read(threadManagerProvider).sendUserMessage(
-                  widget.threadId,
-                  text,
-                  options: ref.read(threadRunOptionsProvider(widget.threadId)),
-                ),
+            onSend: (text) {
+              // Honor the scroll-to-latest-on-send setting: arm a forced scroll
+              // so the user sees their message even if they'd scrolled up.
+              if (ref.read(scrollToBottomOnSendProvider)) {
+                _forceScrollOnSend = true;
+              }
+              final options =
+                  ref.read(threadRunOptionsProvider(widget.threadId));
+              ref
+                  .read(threadManagerProvider)
+                  .sendUserMessage(widget.threadId, text, options: options);
+            },
           ),
         ],
       ),

@@ -662,4 +662,11 @@ class AppLocalizationsEs extends AppLocalizations {
   @override
   String get settingsShowThinkingSubtitle =>
       'Muestra el razonamiento del agente en una sección colapsable.';
+
+  @override
+  String get settingsScrollOnSendTitle => 'Ir al final al enviar';
+
+  @override
+  String get settingsScrollOnSendSubtitle =>
+      'Salta a tu mensaje al enviarlo, aunque hayas subido el scroll.';
 }

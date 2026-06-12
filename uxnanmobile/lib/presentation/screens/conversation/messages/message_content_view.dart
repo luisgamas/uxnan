@@ -683,42 +683,66 @@ class AssistantTurnView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Partition the turn: reasoning → the thinking section; command/tool runs →
-    // the work log; diffs → the changed-files summary; everything else is the
-    // body, with consecutive text merged so the prose is one selectable region.
     final showThinking = ref.watch(showAgentThinkingProvider);
     final thinking = StringBuffer();
-    final workLog = <MessageContent>[];
     final diffs = <DiffContent>[];
-    final body = <MessageContent>[];
+    final prose = StringBuffer();
+    // Ordered segments: work-log cards and prose/other blocks IN THE ORDER the
+    // agent produced them, so a work log sits just above the response it
+    // precedes and interleaved responses don't collapse into one block.
+    // Reasoning is lifted to the top; diffs to the changed-files summary.
+    final segments = <Widget>[];
+    final pendingCommands = <MessageContent>[];
+    final pendingText = StringBuffer();
+
+    void gap() {
+      if (segments.isNotEmpty) {
+        segments.add(const SizedBox(height: UxnanSpacing.sm));
+      }
+    }
+
+    void flushText() {
+      if (pendingText.isEmpty) return;
+      final text = pendingText.toString();
+      pendingText.clear();
+      gap();
+      segments.add(MessageContentView(content: TextContent(text)));
+    }
+
+    void flushCommands() {
+      if (pendingCommands.isEmpty) return;
+      final items = List<MessageContent>.of(pendingCommands);
+      pendingCommands.clear();
+      gap();
+      segments.add(_WorkLogSection(items: items));
+    }
+
     for (final content in message.contents) {
       switch (content) {
         case final ThinkingContent reasoning:
           thinking.write(reasoning.text);
-        case CommandExecutionContent() || ToolUseContent():
-          workLog.add(content);
         case final DiffContent diff:
           diffs.add(diff);
+        case CommandExecutionContent() || ToolUseContent():
+          flushText();
+          pendingCommands.add(content);
         case final TextContent text:
-          if (body.isNotEmpty && body.last is TextContent) {
-            final prev = body.last as TextContent;
-            body[body.length - 1] = TextContent(
-              '${prev.text}\n\n${text.text}',
-              isStreaming: text.isStreaming,
-            );
-          } else {
-            body.add(text);
+          flushCommands();
+          if (text.text.isNotEmpty) {
+            if (pendingText.isNotEmpty) pendingText.write('\n\n');
+            pendingText.write(text.text);
+            if (prose.isNotEmpty) prose.write('\n\n');
+            prose.write(text.text);
           }
         default:
-          body.add(content);
+          flushCommands();
+          flushText();
+          gap();
+          segments.add(MessageContentView(content: content));
       }
     }
-
-    final prose = body
-        .whereType<TextContent>()
-        .map((t) => t.text)
-        .where((t) => t.isNotEmpty)
-        .join('\n\n');
+    flushCommands();
+    flushText();
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: UxnanSpacing.xs),
@@ -729,14 +753,7 @@ class AssistantTurnView extends ConsumerWidget {
             _ThinkingSection(text: thinking.toString()),
             const SizedBox(height: UxnanSpacing.sm),
           ],
-          if (workLog.isNotEmpty) ...[
-            _WorkLogSection(items: workLog),
-            const SizedBox(height: UxnanSpacing.sm),
-          ],
-          for (var i = 0; i < body.length; i++) ...[
-            if (i > 0) const SizedBox(height: UxnanSpacing.sm),
-            MessageContentView(content: body[i]),
-          ],
+          ...segments,
           if (message.isStreaming) ...[
             const SizedBox(height: UxnanSpacing.sm),
             const _StreamingDots(),
@@ -747,7 +764,7 @@ class AssistantTurnView extends ConsumerWidget {
           ],
           if (prose.isNotEmpty && !message.isStreaming) ...[
             const SizedBox(height: UxnanSpacing.xs),
-            _ResponseActions(text: prose),
+            _ResponseActions(text: prose.toString()),
           ],
         ],
       ),

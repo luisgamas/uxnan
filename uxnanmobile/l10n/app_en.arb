@@ -358,5 +358,13 @@
   "settingsShowThinkingSubtitle": "Display the agent's reasoning in a collapsible section.",
   "@settingsShowThinkingSubtitle": {
     "description": "Subtitle of the show-thinking toggle."
+  },
+  "settingsScrollOnSendTitle": "Scroll to latest on send",
+  "@settingsScrollOnSendTitle": {
+    "description": "Title of the toggle that jumps the conversation to the bottom when you send a message."
+  },
+  "settingsScrollOnSendSubtitle": "Jump to your message when you send, even if you've scrolled up.",
+  "@settingsScrollOnSendSubtitle": {
+    "description": "Subtitle of the scroll-on-send toggle."
   }
 }

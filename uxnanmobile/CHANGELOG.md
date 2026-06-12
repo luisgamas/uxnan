@@ -7,6 +7,24 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **"Scroll to latest on send" setting** (Settings → Conversation, on by
+  default). When you send a message the conversation jumps to your message even
+  if you'd scrolled up; turn it off to keep your manual scroll position on send.
+  (Auto-scroll still follows the stream while you're near the bottom.)
+
+### Fixed
+- **Agent responses no longer collapse into one block.** An assistant turn now
+  renders its work logs and responses **in chronological order** (a work log
+  sits just above the response it precedes) instead of stacking every work log
+  on top of one merged prose block — interleaved responses read as separate
+  paragraphs again. Thinking stays at the top; the Changed files summary at the
+  end. (No functionality lost.)
+- **Context meter persists when you re-open a chat** — the bridge now stores a
+  turn's token usage and returns it in history, and the phone restores the meter
+  on re-sync, so it no longer resets to 0 on leaving and returning to the same
+  conversation.
+
+### Added
 
 - **Stop the agent mid-turn.** While the agent is producing a turn, the composer
   Send button becomes a red **Stop** button that cancels the in-flight turn

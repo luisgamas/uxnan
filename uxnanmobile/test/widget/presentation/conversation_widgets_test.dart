@@ -167,6 +167,36 @@ void main() {
     expect(find.text('lib/a.dart'), findsOneWidget);
   });
 
+  testWidgets('assistant turn interleaves work logs with responses in order',
+      (tester) async {
+    final message = Message(
+      id: 'm6',
+      threadId: 'th1',
+      turnId: 't1',
+      role: MessageRole.assistant,
+      contents: const [
+        CommandExecutionContent(command: 'ls', status: CommandStatus.completed),
+        TextContent('First part.'),
+        CommandExecutionContent(
+          command: 'cat a',
+          status: CommandStatus.completed,
+        ),
+        TextContent('Second part.'),
+      ],
+      deliveryState: MessageDeliveryState.delivered,
+      orderIndex: 0,
+      createdAt: DateTime(2026),
+    );
+
+    await tester.pumpWidget(_wrap(MessageBubble(message: message)));
+    await tester.pumpAndSettle();
+
+    // Two separate work logs (one before each response), not one on top.
+    expect(find.text('Work log'), findsNWidgets(2));
+    expect(find.textContaining('First part.'), findsOneWidget);
+    expect(find.textContaining('Second part.'), findsOneWidget);
+  });
+
   testWidgets('assistant turn shows a collapsible thinking section',
       (tester) async {
     final message = Message(

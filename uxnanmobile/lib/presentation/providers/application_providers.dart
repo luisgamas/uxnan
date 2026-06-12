@@ -442,6 +442,37 @@ class ShowAgentThinking extends Notifier<bool> {
 final showAgentThinkingProvider =
     NotifierProvider<ShowAgentThinking, bool>(ShowAgentThinking.new);
 
+/// Whether sending a message jumps the scroll to the latest even when the user
+/// has scrolled up. Persisted; defaults to on (the natural behaviour). When
+/// off, a manual scroll position is preserved on send (auto-scroll still
+/// follows the stream while the user is near the bottom).
+class ScrollToBottomOnSend extends Notifier<bool> {
+  @override
+  bool build() {
+    unawaited(_hydrate());
+    return true;
+  }
+
+  Future<void> _hydrate() async {
+    final stored =
+        await ref.read(conversationPreferencesStoreProvider).readScrollOnSend();
+    if (stored != null && stored != state) state = stored;
+  }
+
+  /// Persists and applies the scroll-on-send preference.
+  Future<void> set({required bool value}) async {
+    if (value == state) return;
+    state = value;
+    await ref
+        .read(conversationPreferencesStoreProvider)
+        .writeScrollOnSend(value: value);
+  }
+}
+
+/// Whether sending a message scrolls to the latest (persisted toggle).
+final scrollToBottomOnSendProvider =
+    NotifierProvider<ScrollToBottomOnSend, bool>(ScrollToBottomOnSend.new);
+
 /// Registers the FCM push token with the bridge once the session connects and
 /// raises local notifications for turn-completed / turn-error events.
 ///

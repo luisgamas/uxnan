@@ -217,5 +217,7 @@
   "settingsTurnErrorSubtitle": "Notificarme cuando falla la ejecución de un agente.",
   "settingsConversationSection": "Conversación",
   "settingsShowThinkingTitle": "Mostrar el razonamiento del agente",
-  "settingsShowThinkingSubtitle": "Muestra el razonamiento del agente en una sección colapsable."
+  "settingsShowThinkingSubtitle": "Muestra el razonamiento del agente en una sección colapsable.",
+  "settingsScrollOnSendTitle": "Ir al final al enviar",
+  "settingsScrollOnSendSubtitle": "Salta a tu mensaje al enviarlo, aunque hayas subido el scroll."
 }

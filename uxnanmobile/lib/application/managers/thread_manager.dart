@@ -398,6 +398,9 @@ class ThreadManager {
     final byId = {for (final m in existing) m.id: m};
     var order = _maxOrder(existing);
     final toSave = <Message>[];
+    // The latest turn's usage (turns are in order) restores the context meter
+    // on re-open — it lives in memory only, so leaving and returning resets it.
+    ({int tokens, int? contextWindow})? latestUsage;
     for (final rawTurn in turns) {
       if (rawTurn is! Map) continue;
       final turnId = rawTurn['id'] as String?;
@@ -410,6 +413,8 @@ class ThreadManager {
         final thinking =
             rawMsg['thinking'] is String ? rawMsg['thinking'] as String : '';
         final blocks = _decodeBlocks(rawMsg['blocks']);
+        final usage = _parseUsage(rawMsg['usage']);
+        if (usage != null) latestUsage = usage;
         // Don't clobber a turn that is still streaming live on this device.
         if (_live[threadId]?.turnId == turnId) continue;
         final id = _streamId(turnId);
@@ -458,6 +463,23 @@ class ThreadManager {
       }
     }
     if (toSave.isNotEmpty) await _messageRepository.saveMessages(toSave);
+    // Restore the context meter from the latest turn's stored usage, unless a
+    // live turn already set a fresher value for this thread.
+    if (latestUsage != null && !_contextUsage.value.containsKey(threadId)) {
+      final next = Map<String, ({int tokens, int? contextWindow})>.from(
+        _contextUsage.value,
+      )..[threadId] = latestUsage;
+      _contextUsage.add(next);
+    }
+  }
+
+  /// Parses a wire `usage` map (`{ tokens, contextWindow? }`) from `turn/list`.
+  static ({int tokens, int? contextWindow})? _parseUsage(Object? raw) {
+    if (raw is! Map) return null;
+    final tokens = raw['tokens'];
+    if (tokens is! int) return null;
+    final window = raw['contextWindow'];
+    return (tokens: tokens, contextWindow: window is int ? window : null);
   }
 
   /// Saves a user [text] message locally and sends it to the active turn.

@@ -1,7 +1,8 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Persists conversation-view preferences (non-sensitive, on-device) — for now
-/// just whether the agent's "thinking" section is shown.
+/// Persists conversation-view preferences (non-sensitive, on-device): whether
+/// the agent's "thinking" section is shown, and whether sending a message jumps
+/// the scroll to the latest.
 class ConversationPreferencesStore {
   /// Creates a store, optionally injecting a [SharedPreferences] future
   /// (for tests).
@@ -11,6 +12,7 @@ class ConversationPreferencesStore {
   final Future<SharedPreferences> _prefs;
 
   static const String _showThinkingKey = 'uxnan.conversation.showThinking';
+  static const String _scrollOnSendKey = 'uxnan.conversation.scrollOnSend';
 
   /// Whether the agent-thinking section is shown, or `null` if never set (so
   /// the caller keeps the default).
@@ -24,5 +26,19 @@ class ConversationPreferencesStore {
   Future<void> writeShowThinking({required bool value}) async {
     final prefs = await _prefs;
     await prefs.setBool(_showThinkingKey, value);
+  }
+
+  /// Whether sending a message jumps the scroll to the latest even when the
+  /// user has scrolled up, or `null` if never set (keep the default).
+  Future<bool?> readScrollOnSend() async {
+    final prefs = await _prefs;
+    if (!prefs.containsKey(_scrollOnSendKey)) return null;
+    return prefs.getBool(_scrollOnSendKey);
+  }
+
+  /// Persists the scroll-to-latest-on-send preference.
+  Future<void> writeScrollOnSend({required bool value}) async {
+    final prefs = await _prefs;
+    await prefs.setBool(_scrollOnSendKey, value);
   }
 }

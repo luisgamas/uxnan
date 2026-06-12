@@ -660,4 +660,11 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get settingsShowThinkingSubtitle =>
       'Display the agent\'s reasoning in a collapsible section.';
+
+  @override
+  String get settingsScrollOnSendTitle => 'Scroll to latest on send';
+
+  @override
+  String get settingsScrollOnSendSubtitle =>
+      'Jump to your message when you send, even if you\'ve scrolled up.';
 }
