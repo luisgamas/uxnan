@@ -145,6 +145,12 @@ class ProjectsStore {
     return this.statusByPath[path];
   }
 
+  /** Set a worktree's status badge directly. The git review panel calls this so
+   *  the project card stays in sync with the live status (e.g. after a commit). */
+  setStatus(path: string, status: WorktreeStatus): void {
+    this.statusByPath = { ...this.statusByPath, [path]: status };
+  }
+
   /** A repo's branches + resolved default base, for the new-worktree dialog. */
   branchInfo(repoId: string): Promise<BranchList> {
     return branchList(repoId);
@@ -204,10 +210,15 @@ class ProjectsStore {
   async removeWorktree(row: WorktreeRow, force: boolean): Promise<boolean> {
     this.error = null;
     try {
-      await worktreeRemove(row.repoId, row.path, row.branch, force);
-      await this.loadWorktrees(row.repoId);
+      // Kill the worktree's terminals/agents FIRST: on Windows a process whose
+      // working directory is inside the worktree holds the folder open and
+      // blocks git from deleting it (which left half-removed worktrees before).
       terminals.dropWorkspace(row.path);
       if (this.activeWorktreePath === row.path) this.activeWorktreePath = null;
+      // Let the OS release the just-killed processes' directory handles.
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      await worktreeRemove(row.repoId, row.path, row.branch, force);
+      await this.loadWorktrees(row.repoId);
       return true;
     } catch (e) {
       this.error = msg(e);

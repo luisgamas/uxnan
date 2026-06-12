@@ -13,6 +13,7 @@
   import FolderPlusIcon from "@lucide/svelte/icons/folder-plus";
   import ArrowUpDownIcon from "@lucide/svelte/icons/arrow-up-down";
   import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
+  import XIcon from "@lucide/svelte/icons/x";
 
   type Sort = "manual" | "name-asc" | "name-desc";
   let sort = $state<Sort>("manual");
@@ -57,9 +58,17 @@
   </div>
 
   {#if projects.error}
-    <p class="shrink-0 border-b border-sidebar-border px-3 py-1.5 text-xs text-destructive">
-      {projects.error}
-    </p>
+    <div class="flex shrink-0 items-start gap-1.5 border-b border-sidebar-border px-3 py-1.5">
+      <p class="min-w-0 flex-1 text-xs text-destructive">{projects.error}</p>
+      <button
+        class="shrink-0 rounded p-0.5 text-destructive/70 hover:text-destructive"
+        title={i18n.t("common.dismiss")}
+        aria-label={i18n.t("common.dismiss")}
+        onclick={() => (projects.error = null)}
+      >
+        <XIcon class={icon.decorative} />
+      </button>
+    </div>
   {/if}
 
   <!-- Header -->

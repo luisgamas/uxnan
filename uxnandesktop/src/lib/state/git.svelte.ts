@@ -20,6 +20,7 @@ import {
   gitUnstageAll,
   worktreeStatus,
 } from "$lib/api";
+import { projects } from "$lib/state/projects.svelte";
 import type { FileChange, GitStatusEvent } from "$lib/types";
 
 const msg = (e: unknown) =>
@@ -83,6 +84,12 @@ class GitStore {
         this.files = ev.files.map(classify);
         this.ahead = ev.ahead;
         this.behind = ev.behind;
+        // Keep the project card badge live too.
+        projects.setStatus(ev.path, {
+          dirty: ev.files.length,
+          ahead: ev.ahead,
+          behind: ev.behind,
+        });
       });
     } catch {
       // No Tauri event bus (e.g. the plain web preview) — on-demand only.
@@ -109,6 +116,8 @@ class GitStore {
       const st = await worktreeStatus(path);
       this.ahead = st.ahead;
       this.behind = st.behind;
+      // Keep the project card badge in sync (e.g. after a commit clears it).
+      projects.setStatus(path, st);
     } catch (e) {
       this.error = msg(e);
       this.files = [];

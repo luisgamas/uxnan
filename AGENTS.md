@@ -25,7 +25,7 @@ This means:
 ## Language
 
 - Everything written into the repository or any project platform (code, docs, commits, branches, PRs, issues) is in **English**, to keep the project ready to go global.
-- The assistant communicates with the maintainer in **Spanish** (this is local conversation only and never enters anything committed or published).
+- The assistant communicates with the maintenance manager in the same language or in the language explicitly specified by the maintenance manager (this is solely an internal conversation and is never included in any confirmed or published version).
 
 ---
 

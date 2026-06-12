@@ -19,6 +19,7 @@
   import GitCommitIcon from "@lucide/svelte/icons/git-commit-horizontal";
   import ArrowUpIcon from "@lucide/svelte/icons/arrow-up";
   import ArrowDownIcon from "@lucide/svelte/icons/arrow-down";
+  import XIcon from "@lucide/svelte/icons/x";
 
   type Area = "staged" | "changes";
 
@@ -162,9 +163,17 @@
     <p class={cn("p-3", text.meta)}>{i18n.t("rightPanel.selectWorktree")}</p>
   {:else}
     {#if git.error}
-      <p class={cn("shrink-0 border-b border-sidebar-border px-3 py-1.5 text-destructive", text.body)}>
-        {git.error}
-      </p>
+      <div class="flex shrink-0 items-start gap-1.5 border-b border-sidebar-border px-3 py-1.5">
+        <p class={cn("min-w-0 flex-1 text-destructive", text.body)}>{git.error}</p>
+        <button
+          class="shrink-0 rounded p-0.5 text-destructive/70 hover:text-destructive"
+          title={i18n.t("common.dismiss")}
+          aria-label={i18n.t("common.dismiss")}
+          onclick={() => (git.error = null)}
+        >
+          <XIcon class={icon.decorative} />
+        </button>
+      </div>
     {/if}
 
     <div class="uxnan-scroll min-h-0 flex-1 overflow-y-auto p-2">

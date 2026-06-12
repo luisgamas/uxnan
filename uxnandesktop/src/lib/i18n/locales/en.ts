@@ -14,6 +14,7 @@ export const en = {
   "common.new": "New",
   "common.more": "More",
   "common.close": "Close",
+  "common.dismiss": "Dismiss",
   "common.copyPath": "Copy path",
   "common.removing": "Removing…",
   "common.adding": "Adding…",

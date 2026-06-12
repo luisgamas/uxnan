@@ -11,6 +11,7 @@ export const es: Record<MessageKey, string> = {
   "common.new": "Nuevo",
   "common.more": "Más",
   "common.close": "Cerrar",
+  "common.dismiss": "Descartar",
   "common.copyPath": "Copiar ruta",
   "common.removing": "Eliminando…",
   "common.adding": "Agregando…",
