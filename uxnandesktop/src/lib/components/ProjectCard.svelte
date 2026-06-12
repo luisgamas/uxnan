@@ -11,6 +11,7 @@
   import NewWorktreeDialog from "./NewWorktreeDialog.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import WorktreeRow from "./WorktreeRow.svelte";
+  import LaunchAgentMenu from "./LaunchAgentMenu.svelte";
   import type { RepoData } from "$lib/types";
   import FolderGitIcon from "@lucide/svelte/icons/folder-git-2";
   import TerminalIcon from "@lucide/svelte/icons/terminal";
@@ -106,6 +107,7 @@
       >
         <TerminalIcon class={icon.button} />
       </Button>
+      <LaunchAgentMenu label={repo.name} path={mainPath} />
       <Button
         variant="ghost"
         size="icon"

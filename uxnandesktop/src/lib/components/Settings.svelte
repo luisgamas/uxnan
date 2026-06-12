@@ -11,17 +11,17 @@
     TERMINAL_TEMPLATES,
     type TerminalTemplate,
   } from "$lib/terminalTemplates";
+  import { AGENT_TEMPLATES, type AgentTemplate } from "$lib/agentTemplates";
   import TerminalProfileEditor from "./TerminalProfileEditor.svelte";
+  import AgentProfileEditor from "./AgentProfileEditor.svelte";
   import { cn } from "$lib/utils";
   import { icon, text } from "$lib/design";
   import SlidersIcon from "@lucide/svelte/icons/sliders-horizontal";
   import TerminalIcon from "@lucide/svelte/icons/terminal";
+  import BotIcon from "@lucide/svelte/icons/bot";
   import LanguagesIcon from "@lucide/svelte/icons/languages";
   import PlusIcon from "@lucide/svelte/icons/plus";
   import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
-
-  type Section = "general" | "language" | "terminal";
-  let section = $state<Section>("general");
 
   // Persist (debounced for typing; immediate for discrete actions).
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -92,9 +92,36 @@
     persistNow();
   }
 
+  // --- Agents ---------------------------------------------------------------
+  function addBlankAgent() {
+    app.settings.agentProfiles.push({
+      id: crypto.randomUUID(),
+      name: "",
+      command: "",
+      args: [],
+    });
+    persistNow();
+  }
+  function addAgentTemplate(t: AgentTemplate) {
+    app.settings.agentProfiles.push({
+      id: crypto.randomUUID(),
+      name: t.name,
+      command: t.command,
+      args: [...t.args],
+    });
+    persistNow();
+  }
+  function removeAgent(id: string) {
+    app.settings.agentProfiles = app.settings.agentProfiles.filter(
+      (a) => a.id !== id,
+    );
+    persistNow();
+  }
+
   const navItems = [
     { id: "general", key: "settings.general", icon: SlidersIcon },
     { id: "language", key: "settings.language", icon: LanguagesIcon },
+    { id: "agents", key: "settings.agents", icon: BotIcon },
     { id: "terminal", key: "settings.terminal", icon: TerminalIcon },
   ] as const;
 </script>
@@ -114,11 +141,11 @@
             class={cn(
               "flex items-center gap-2 rounded-md px-2 py-1.5 text-left font-medium",
               text.body,
-              section === item.id
+              app.settingsSection === item.id
                 ? "bg-accent text-accent-foreground"
                 : "text-muted-foreground hover:bg-accent/50",
             )}
-            onclick={() => (section = item.id)}
+            onclick={() => (app.settingsSection = item.id)}
           >
             <Icon class={icon.button} />
             {i18n.t(item.key)}
@@ -128,7 +155,7 @@
 
       <!-- Section content -->
       <div class="uxnan-scroll max-h-[60vh] min-h-0 flex-1 overflow-y-auto p-4">
-        {#if section === "general"}
+        {#if app.settingsSection === "general"}
           <div class="flex flex-col gap-4">
             <div class="flex flex-col gap-1.5">
               <span class={cn("font-medium", text.body)}>{i18n.t("settings.theme")}</span>
@@ -150,7 +177,7 @@
               </Select.Root>
             </div>
           </div>
-        {:else if section === "language"}
+        {:else if app.settingsSection === "language"}
           <div class="flex flex-col gap-1.5">
             <span class={cn("font-medium", text.body)}>{i18n.t("settings.language")}</span>
             <Select.Root
@@ -174,6 +201,54 @@
               </Select.Content>
             </Select.Root>
             <p class={text.meta}>{i18n.t("settings.language.desc")}</p>
+          </div>
+        {:else if app.settingsSection === "agents"}
+          <div class="flex flex-col gap-4">
+            <div class="flex items-center justify-between">
+              <span class={cn("font-medium", text.body)}>{i18n.t("settings.agents")}</span>
+              <DropdownMenu.Root>
+                <DropdownMenu.Trigger>
+                  {#snippet child({ props })}
+                    <Button variant="outline" size="sm" {...props}>
+                      <PlusIcon data-icon="inline-start" />
+                      {i18n.t("settings.addAgent")}
+                      <ChevronDownIcon data-icon="inline-end" />
+                    </Button>
+                  {/snippet}
+                </DropdownMenu.Trigger>
+                <DropdownMenu.Content align="end" class="min-w-48">
+                  {#each AGENT_TEMPLATES as t (t.name)}
+                    <DropdownMenu.Item
+                      class={text.menu}
+                      onclick={() => addAgentTemplate(t)}
+                    >
+                      <BotIcon class={icon.button} />
+                      {t.name}
+                    </DropdownMenu.Item>
+                  {/each}
+                  <DropdownMenu.Separator />
+                  <DropdownMenu.Item class={text.menu} onclick={addBlankAgent}>
+                    <PlusIcon class={icon.button} />
+                    {i18n.t("settings.blankAgent")}
+                  </DropdownMenu.Item>
+                </DropdownMenu.Content>
+              </DropdownMenu.Root>
+            </div>
+            <p class={text.meta}>{i18n.t("settings.agentsDesc")}</p>
+
+            <div class="flex flex-col gap-2">
+              {#each app.agentProfiles as agent (agent.id)}
+                <AgentProfileEditor
+                  {agent}
+                  onchange={schedulePersist}
+                  onremove={() => removeAgent(agent.id)}
+                />
+              {:else}
+                <p class={cn("text-muted-foreground", text.body)}>
+                  {i18n.t("settings.noAgents")}
+                </p>
+              {/each}
+            </div>
           </div>
         {:else}
           <div class="flex flex-col gap-4">

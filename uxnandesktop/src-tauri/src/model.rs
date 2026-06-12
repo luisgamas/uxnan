@@ -89,6 +89,23 @@ pub struct TerminalProfile {
     pub args: Vec<String>,
 }
 
+/// A user-registered CLI coding agent (Claude Code, Codex, Aider, …). Launching
+/// it spawns a terminal running its `command` + `args` in a worktree, so the
+/// agent works inside that worktree's isolated checkout. Same shape as a
+/// [`TerminalProfile`] but a distinct concept: a terminal is a shell, an agent
+/// is a tool the user runs *inside* one.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentProfile {
+    pub id: String,
+    pub name: String,
+    /// Executable to launch (e.g. `claude`, `codex`, `aider`).
+    pub command: String,
+    /// Arguments passed to the command (e.g. `["--model", "opus"]`).
+    #[serde(default)]
+    pub args: Vec<String>,
+}
+
 /// The single, empty starter profile shown to new users. Its placeholder fields
 /// teach how a profile is configured; concrete shells are added from the
 /// OS-grouped template picker in the frontend. A blank `command` falls back to
@@ -166,6 +183,10 @@ pub struct AppSettings {
     /// Id of the profile used for new terminals unless one is picked explicitly.
     #[serde(default)]
     pub default_profile_id: Option<String>,
+    /// Registered CLI coding agents, launchable into any worktree. Empty by
+    /// default; the user adds them from the templates in Settings → Agents.
+    #[serde(default)]
+    pub agent_profiles: Vec<AgentProfile>,
     /// UI language: "system" (follow the device) or a locale code (e.g. "en", "es").
     #[serde(default = "default_language")]
     pub language: String,
@@ -183,6 +204,7 @@ impl Default for AppSettings {
             right_sidebar_open: true,
             terminal_profiles,
             default_profile_id,
+            agent_profiles: Vec::new(),
             language: default_language(),
         }
     }
@@ -260,6 +282,37 @@ mod tests {
         assert!(json.contains("rightSidebarOpen"));
         // snake_case keys must NOT leak to the frontend.
         assert!(!json.contains("left_sidebar_width"));
+    }
+
+    #[test]
+    fn agent_profiles_default_empty_and_serialize_camel_case() {
+        let settings = AppSettings::default();
+        assert!(settings.agent_profiles.is_empty());
+        let json = serde_json::to_string(&settings).unwrap();
+        assert!(json.contains("agentProfiles"));
+        assert!(!json.contains("agent_profiles"));
+    }
+
+    #[test]
+    fn agent_profile_round_trips() {
+        let agent = AgentProfile {
+            id: "claude".to_string(),
+            name: "Claude Code".to_string(),
+            command: "claude".to_string(),
+            args: vec!["--model".to_string(), "opus".to_string()],
+        };
+        let json = serde_json::to_string(&agent).unwrap();
+        let back: AgentProfile = serde_json::from_str(&json).unwrap();
+        assert_eq!(agent, back);
+    }
+
+    #[test]
+    fn settings_deserialize_without_agent_profiles_defaults_empty() {
+        // State persisted before agents existed must still load.
+        let json = r#"{"theme":"system","leftSidebarWidth":280,"rightSidebarWidth":350,
+            "leftSidebarOpen":true,"rightSidebarOpen":true}"#;
+        let settings: AppSettings = serde_json::from_str(json).unwrap();
+        assert!(settings.agent_profiles.is_empty());
     }
 
     #[test]

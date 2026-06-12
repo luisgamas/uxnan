@@ -15,7 +15,12 @@ import {
   worktreeRemove,
   worktreeStatus,
 } from "$lib/api";
-import type { BranchList, WorktreeEntry, WorktreeStatus } from "$lib/types";
+import type {
+  AgentProfile,
+  BranchList,
+  WorktreeEntry,
+  WorktreeStatus,
+} from "$lib/types";
 import { app } from "$lib/state/app.svelte";
 import { terminals } from "$lib/state/terminals.svelte";
 
@@ -217,6 +222,12 @@ class ProjectsStore {
   openTerminalAt(path: string): void {
     this.activeWorktreePath = path;
     app.openTerminal({ cwd: path, title: baseName(path), workspace: path });
+  }
+
+  /** Launch an agent in `path`'s workspace (and switch to it). */
+  launchAgentAt(path: string, agent: AgentProfile): void {
+    this.activeWorktreePath = path;
+    app.launchAgent(agent, { cwd: path, workspace: path });
   }
 }
 

@@ -7,6 +7,7 @@
 import { getAppState, ping, updateSettings } from "$lib/api";
 import {
   DEFAULT_SETTINGS,
+  type AgentProfile,
   type AppSettings,
   type RepoData,
   type TerminalProfile,
@@ -15,6 +16,9 @@ import { terminals } from "$lib/state/terminals.svelte";
 
 /** Connection state of the Rust backend, surfaced in the status bar. */
 export type BackendStatus = "connecting" | "ready" | "error";
+
+/** A pane in the Settings dialog (also the deep-link target of `openSettings`). */
+export type SettingsSection = "general" | "language" | "agents" | "terminal";
 
 class AppStore {
   /** Registered repositories (and their worktrees). */
@@ -29,6 +33,14 @@ class AppStore {
   errorMessage = $state<string | null>(null);
   /** Whether the Settings dialog is open. */
   settingsOpen = $state(false);
+  /** Which Settings pane is shown (deep-linked via `openSettings`). */
+  settingsSection = $state<SettingsSection>("general");
+
+  /** Open the Settings dialog, optionally jumping straight to a pane. */
+  openSettings(section: SettingsSection = "general"): void {
+    this.settingsSection = section;
+    this.settingsOpen = true;
+  }
 
   /** Hydrate from the backend: confirm liveness, then load persisted state. */
   async init(): Promise<void> {
@@ -98,6 +110,36 @@ class AppStore {
       shell: command || undefined,
       args: command ? profile?.args : undefined,
       workspace: opts?.workspace,
+    });
+  }
+
+  // --- Agents --------------------------------------------------------------
+
+  /** The registered CLI coding agents. */
+  get agentProfiles(): AgentProfile[] {
+    return this.settings.agentProfiles;
+  }
+
+  /** The agents that can actually be launched (a non-blank command). */
+  get launchableAgents(): AgentProfile[] {
+    return this.agentProfiles.filter((a) => a.command.trim().length > 0);
+  }
+
+  /** Launch an agent: open a terminal running its command/args in `workspace`
+   *  (a worktree path, or "" for Global), with `cwd` as the working directory.
+   *  No-op for an agent with a blank command. */
+  launchAgent(
+    agent: AgentProfile,
+    opts: { cwd?: string; workspace?: string; title?: string },
+  ): void {
+    const command = agent.command.trim();
+    if (!command) return;
+    terminals.create({
+      cwd: opts.cwd,
+      title: opts.title ?? (agent.name.trim() || command),
+      shell: command,
+      args: agent.args,
+      workspace: opts.workspace,
     });
   }
 

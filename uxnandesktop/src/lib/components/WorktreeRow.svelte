@@ -8,6 +8,7 @@
   import { cn } from "$lib/utils";
   import { icon, iconButton, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
+  import LaunchAgentMenu from "./LaunchAgentMenu.svelte";
   import GitBranchIcon from "@lucide/svelte/icons/git-branch";
   import TerminalIcon from "@lucide/svelte/icons/terminal";
   import MoreVerticalIcon from "@lucide/svelte/icons/ellipsis-vertical";
@@ -106,6 +107,11 @@
   >
     <TerminalIcon class={icon.button} />
   </Button>
+  <LaunchAgentMenu
+    {label}
+    path={row.path}
+    triggerClass="opacity-0 group-hover:opacity-100"
+  />
   <DropdownMenu.Root>
     <DropdownMenu.Trigger>
       {#snippet child({ props })}

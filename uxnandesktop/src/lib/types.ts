@@ -16,6 +16,17 @@ export interface TerminalProfile {
   args: string[];
 }
 
+/** A registered CLI coding agent (mirror of the Rust `AgentProfile`). Launching
+ *  it spawns a terminal running `command` + `args` in a worktree. */
+export interface AgentProfile {
+  id: string;
+  name: string;
+  /** Executable to launch (e.g. `claude`, `codex`, `aider`). */
+  command: string;
+  /** Arguments passed to the command (e.g. `["--model", "opus"]`). */
+  args: string[];
+}
+
 export interface AppSettings {
   theme: Theme;
   leftSidebarWidth: number;
@@ -26,6 +37,8 @@ export interface AppSettings {
   terminalProfiles: TerminalProfile[];
   /** Id of the profile used for new terminals unless one is picked explicitly. */
   defaultProfileId: string | null;
+  /** Registered CLI coding agents, launchable into any worktree. */
+  agentProfiles: AgentProfile[];
   /** UI language: "system" (follow the device) or a locale code ("en", "es"). */
   language: string;
 }
@@ -143,5 +156,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   // hydration (or in the plain web preview, which can't spawn PTYs anyway).
   terminalProfiles: [],
   defaultProfileId: null,
+  agentProfiles: [],
   language: "system",
 };

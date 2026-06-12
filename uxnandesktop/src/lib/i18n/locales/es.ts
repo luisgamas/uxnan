@@ -151,4 +151,25 @@ export const es: Record<MessageKey, string> = {
   "profileEditor.removeProfile": "Eliminar perfil",
   "profileEditor.commandPlaceholder": "comando (p. ej. wsl.exe)",
   "profileEditor.argsPlaceholder": "argumentos (separados por espacios)",
+
+  // Settings — agents section
+  "settings.agents": "Agentes",
+  "settings.agentsDesc":
+    "Agentes de CLI que puedes lanzar en cualquier worktree — cada uno corre en una terminal dentro del checkout de ese worktree.",
+  "settings.addAgent": "Agregar agente",
+  "settings.blankAgent": "Agente en blanco",
+  "settings.noAgents":
+    "Aún no hay agentes. Agrega uno para lanzarlo en cualquier worktree.",
+
+  // Agent profile editor
+  "agentEditor.namePlaceholder": "Nombre del agente (p. ej. Claude Code)",
+  "agentEditor.removeAgent": "Eliminar agente",
+  "agentEditor.commandPlaceholder": "comando (p. ej. claude)",
+  "agentEditor.argsPlaceholder": "argumentos (separados por espacios)",
+
+  // Launch agent (sidebar)
+  "agent.launch": "Lanzar agente",
+  "agent.launchIn": "Lanzar un agente en {name}",
+  "agent.none": "Sin agentes configurados",
+  "agent.configure": "Configurar agentes…",
 };

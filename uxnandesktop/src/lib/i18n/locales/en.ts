@@ -154,6 +154,26 @@ export const en = {
   "profileEditor.removeProfile": "Remove profile",
   "profileEditor.commandPlaceholder": "command (e.g. wsl.exe)",
   "profileEditor.argsPlaceholder": "arguments (space-separated)",
+
+  // Settings — agents section
+  "settings.agents": "Agents",
+  "settings.agentsDesc":
+    "CLI coding agents you can launch into any worktree — each runs in a terminal inside that worktree's checkout.",
+  "settings.addAgent": "Add agent",
+  "settings.blankAgent": "Blank agent",
+  "settings.noAgents": "No agents yet. Add one to launch it into any worktree.",
+
+  // Agent profile editor
+  "agentEditor.namePlaceholder": "Agent name (e.g. Claude Code)",
+  "agentEditor.removeAgent": "Remove agent",
+  "agentEditor.commandPlaceholder": "command (e.g. claude)",
+  "agentEditor.argsPlaceholder": "arguments (space-separated)",
+
+  // Launch agent (sidebar)
+  "agent.launch": "Launch agent",
+  "agent.launchIn": "Launch an agent in {name}",
+  "agent.none": "No agents configured",
+  "agent.configure": "Configure agents…",
 } as const;
 
 /** Union of every message key (drives `t()` and the locale type). */
