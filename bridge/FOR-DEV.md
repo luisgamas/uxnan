@@ -162,19 +162,26 @@ hosting** (the phone connects directly to the bridge on the same network).
           the Firebase/APNs creds (FOR-HUMAN) + a real device; confirm a turn-end
           push arrives while backgrounded, and still arrives after restarting the
           bridge (without reopening the app).
-- [ ] **(OPT-IN — explicit developer request ONLY) Direct FCM from the bridge,
-      push without the relay.** Today background push **requires a running relay**:
-      the bridge holds no FCM credentials and `POST`s `/push/notify` to the relay,
-      which owns the Firebase service account and calls FCM. This is intentional —
-      it keeps the bridge credential-free and the relay optional for *everything
-      except* background push (foreground local notifications already work
-      relay-free; see `relay/docs/push-notifications.md` → "Do I need the relay?").
-      If — and only if — a developer explicitly asks for background push in a pure
-      relay-less (LAN/Tailscale-direct) setup, add an alternative `PushSender` in
-      the bridge that calls FCM directly via `firebase-admin` using a local
-      `UXNAN_FCM_SERVICE_ACCOUNT`, selected when `relayEnabled === false`. **Do NOT
-      build this by default**: the relay-based path stays the default so the bridge
-      ships with no push secrets. Implement strictly on request.
+- [ ] **Direct FCM from the bridge — the PRIMARY push path (relay optional).**
+      DIRECTION (decided 2026-06-12): background push should be sent **by the
+      bridge itself**, so it works on **any** transport — direct LAN, **Tailscale**,
+      or relay — not only when a hosted relay is in the loop. The relay is now
+      **optional and self-hosted** (for those who want hosted off-LAN access); the
+      bridge must keep working — securely, E2EE end-to-end — **with or without it**.
+      - **Build:** add an FCM `PushSender` in the bridge (lazy `firebase-admin`,
+        FCM HTTP v1) that reads a local `UXNAN_FCM_SERVICE_ACCOUNT` and delivers
+        directly; use it whenever the credential is present, regardless of
+        `relayEnabled`. Keep the existing `POST /push/notify`→relay path as a
+        **fallback** for setups that prefer to keep creds on a hosted relay.
+      - **Guarding:** with no `UXNAN_FCM_SERVICE_ACCOUNT` and no relay, push is a
+        silent no-op (foreground local notifications still work, relay-free).
+      - **Security:** push payloads stay minimal/non-secret (title + thread id);
+        no plaintext conversation content leaves the device. The bridge owning the
+        FCM service account is the same trust model as the relay owning it today —
+        a local, gitignored credential the user provides (see `FOR-HUMAN.md`).
+      - **Mobile:** no change — the phone registers an FCM token via
+        `notifications/register` and the bridge delivers; works whichever side
+        holds the credential.
 - [ ] **Desktop** — `src/handlers/desktop-handler.ts` (embedded mode IPC).
 - [x] **bridge/removeTrustedDevice** — `src/handlers/bridge-control-handler.ts`.
       Revokes trust (`ctx.trustStore.remove`) and drops any live session/sink

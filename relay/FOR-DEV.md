@@ -12,7 +12,17 @@ are in `relay/FOR-HUMAN.md`.)
       stale/replaced socket's close is ignored so it doesn't tear down a freshly
       reconnected peer's handshake (`relay-server.ts` `#register`).
 
-## Done — push (Phase 6, gated)
+## Direction (2026-06-12): push is moving to the bridge; the relay is optional
+The product is **bridge-first**: background push should be sent **by the bridge**
+so it works on **any** transport (direct LAN, **Tailscale**, or relay), not only
+when a hosted relay is in the loop. The relay is now **optional and self-hosted**
+(for hosted off-LAN access). The relay's push endpoints below stay valid and
+supported as a **fallback** for anyone who prefers to keep the Firebase
+credential on a hosted relay — but they are no longer the primary path. The
+bridge must keep working (securely, E2EE) **with or without** the relay. See
+`bridge/FOR-DEV.md` → *Direct FCM from the bridge*.
+
+## Done — push (Phase 6, gated; now the optional relay-hosted path)
 - [x] `POST /push/register` + `POST /push/notify`, `PushRegistry`, `PushSender`
       seam (noop default; lazy `firebase-admin` FCM sender via
       `UXNAN_FCM_SERVICE_ACCOUNT`). Unit-tested with a fake sender. Real delivery

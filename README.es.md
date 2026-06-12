@@ -125,20 +125,21 @@ punta con agentes reales; la app de escritorio está en construcción en su prop
 
 | Componente | Estado |
 |---|---|
-| `uxnanmobile/` | **MVP cableado.** Pairing QR + reconexión confiable, transporte E2EE con reconexión automática (heartbeat), conversación con streaming y **turnos estructurados** (registro de actividad, archivos modificados y razonamiento colapsables — con toggle en ajustes), selector de modelos real + opciones por modelo, medidor de contexto real, **dictado voz→texto**, **detener el turno** en curso, acciones de copiar (respuesta + tu propio mensaje), Git (status/commit/push), threads por PC, **ajustes + preferencias de notificación**, registro de push FCM (gated), layout centrado para tablet. |
+| `uxnanmobile/` | **MVP cableado.** Pairing QR + reconexión confiable, transporte E2EE con reconexión automática (heartbeat), conversación con streaming y **turnos estructurados** (registro de actividad, archivos modificados y razonamiento — intercalados en orden, con toggle en ajustes), selector de modelos real + opciones por modelo, **medidor de contexto persistente**, **dictado voz→texto**, **detener el turno** en curso, acciones de copiar (respuesta + tu propio mensaje), Git (status/commit/push), threads por PC, **ajustes + preferencias de notificación + scroll al enviar**, registro de push FCM (gated), layout centrado para tablet. |
 | `bridge/` | **Implementado.** Transporte E2EE (relay + LAN), **Claude Code, Codex, OpenCode y pi cableados como agentes reales** (cada uno lanza su CLI local oficial por stdio — sin API/SDK/keys de proveedor), **contenido estructurado transmitido para cada agente** (razonamiento + comandos/herramientas/diffs vía `stream/thinking/delta` + `stream/content/block`, verificado en vivo), selección de agente/modelo/proyecto por thread (`agent/list`, `agent/models`, `project/list`), Git + workspace + checkpoints, motor de conversación, push (gated), reconexión resiliente al relay. |
-| `relay/` | **Implementado.** Relay de sobres E2EE por `sessionId`, rate-limit por IP, cierre del peer al desconectar, endpoints de push (gated por credenciales Firebase/APNs). |
+| `relay/` | **Implementado — ahora OPCIONAL / self-hosted.** Relay de sobres E2EE por `sessionId`, rate-limit por IP, cierre del peer al desconectar, endpoints de push. El producto es **bridge-first**: LAN-directo y **Tailscale** no necesitan relay; el relay solo añade acceso hosted fuera de la LAN para quien quiera correr el suyo. |
 | `shared/` | **Implementado.** Contratos JSON-RPC + E2EE, validadores. |
 | `uxnandesktop/` | **En construcción** (Tauri 2 ADE) en su propia rama/worktree — `main` contiene la especificación de arquitectura; la app se construye por separado. |
 
-Las push notifications están completas en código y **Android ya está activo**
-contra un proyecto Firebase; iOS queda pendiente de una clave APNs (macOS + cuenta
-Apple Developer). Para activarlas en tu propia cuenta de Firebase, probar la
-entrega y decidir qué es seguro subir al repo, ver
-[`relay/docs/push-notifications.md`](relay/docs/push-notifications.md) (checklist
-de assets en el `FOR-HUMAN.md` de cada componente). El siguiente agente (Gemini) sigue la receta de
-Claude Code/Codex/OpenCode/pi en `bridge/FOR-DEV.md`. El avance por componente vive en
-cada `CHANGELOG.md`; lo pendiente en cada `FOR-DEV.md`. La documentación por
+Las **push notifications** están completas en código y **Android ya está activo**;
+iOS queda pendiente de una clave APNs (macOS + cuenta Apple Developer).
+**Dirección:** la push se moverá para ser enviada **por el bridge** directamente,
+de modo que funcione en **cualquier** transporte — LAN directo, **Tailscale** o
+relay — manteniendo el bridge seguro y E2EE **con o sin** relay (el camino de push
+vía relay queda como fallback opcional). Ver `bridge/FOR-DEV.md` → *Direct FCM from
+the bridge*. El siguiente agente (Gemini) sigue la receta de
+Claude Code/Codex/OpenCode/pi en `bridge/FOR-DEV.md`. El avance por componente vive
+en cada `CHANGELOG.md`; lo pendiente en cada `FOR-DEV.md`. La documentación por
 componente (instalación, config, agentes, testing, deploy) vive en
 [`bridge/docs/`](bridge/docs/) y [`relay/docs/`](relay/docs/).
 

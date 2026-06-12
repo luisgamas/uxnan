@@ -3,6 +3,14 @@
 Assets/configuration only a human can provide. The relay must always build and
 run **without** these; push (Phase 6) simply stays disabled until they're set.
 
+> **Direction (2026-06-12): the relay is now OPTIONAL/self-hosted, and push is
+> moving to the bridge.** Background push will be sent by the **bridge** directly
+> (works on direct LAN / Tailscale / relay alike — see `bridge/FOR-HUMAN.md`),
+> so the Firebase service account moves there. The relay push setup below stays
+> valid **only if you self-host a hosted relay and prefer to keep the credential
+> on it**. For the default bridge-first setup, provide the credential to the
+> bridge instead.
+
 ---
 
 ## ✅ STATUS (2026-06-09): Android push LIVE — iOS pending

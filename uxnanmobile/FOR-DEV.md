@@ -383,7 +383,10 @@ browser and multi-PC connection correctness are now DONE — see below.)
   notifications) and `PushRegistrar` (registers the token via
   `notifications/register` on connect, raises local notifications on
   turn-completed/error). Builds/runs with no Firebase config. Native config is
-  FOR-HUMAN (`FOR-HUMAN.md` §2) + the relay needs the matching service account.
+  FOR-HUMAN (`FOR-HUMAN.md` §2). **No mobile change for the bridge-first push
+  direction** — the phone registers an FCM token via `notifications/register`
+  and whichever side holds the Firebase service account (bridge directly, or a
+  self-hosted relay) delivers; works on direct LAN / Tailscale / relay alike.
 - ☑ **Notification tap → deep link** — DONE: `PushNotificationService` exposes
   `onNotificationTap` + `initialThreadId()` (wired to
   `onDidReceiveNotificationResponse`, FCM `onMessageOpenedApp`,
