@@ -114,42 +114,29 @@ pub struct AgentProfile {
     pub icon: Option<String>,
 }
 
-/// The single, empty starter profile shown to new users. Its placeholder fields
-/// teach how a profile is configured; concrete shells are added from the
-/// OS-grouped template picker in the frontend. A blank `command` falls back to
-/// the platform default shell when a terminal is spawned.
+/// Starter profiles seeded on a fresh install: the shells guaranteed to be
+/// present on the platform, ready to use. On Windows, PowerShell launches with
+/// `-ExecutionPolicy Bypass` so npm-installed agent shims (`.ps1`) run without
+/// tripping the default Restricted policy. Optional shells (PowerShell 7, Git
+/// Bash, WSL, zsh, fish) are added by the user from the detection-aware template
+/// picker in Settings → Terminal.
 pub fn default_terminal_profiles() -> Vec<TerminalProfile> {
-    vec![TerminalProfile {
-        id: "default".to_string(),
-        name: String::new(),
-        command: String::new(),
-        args: Vec::new(),
-    }]
-}
-
-/// The profiles a previous version auto-seeded (PowerShell / CMD / WSL on
-/// Windows; login shell + bash elsewhere). Kept only so [`AppSettings::
-/// ensure_terminal_profiles`] can recognise an untouched legacy seed and replace
-/// it with the new single empty profile.
-fn legacy_default_profiles() -> Vec<TerminalProfile> {
     if cfg!(windows) {
         vec![
             TerminalProfile {
                 id: "powershell".to_string(),
-                name: "PowerShell".to_string(),
+                name: "Windows PowerShell".to_string(),
                 command: "powershell.exe".to_string(),
-                args: vec!["-NoLogo".to_string()],
+                args: vec![
+                    "-NoLogo".to_string(),
+                    "-ExecutionPolicy".to_string(),
+                    "Bypass".to_string(),
+                ],
             },
             TerminalProfile {
                 id: "cmd".to_string(),
                 name: "Command Prompt".to_string(),
                 command: "cmd.exe".to_string(),
-                args: Vec::new(),
-            },
-            TerminalProfile {
-                id: "wsl".to_string(),
-                name: "WSL".to_string(),
-                command: "wsl.exe".to_string(),
                 args: Vec::new(),
             },
         ]
@@ -161,7 +148,7 @@ fn legacy_default_profiles() -> Vec<TerminalProfile> {
             .unwrap_or_else(|| "Shell".to_string());
         vec![
             TerminalProfile {
-                id: "default".to_string(),
+                id: "login".to_string(),
                 name: format!("{name} (login shell)"),
                 command: shell,
                 args: Vec::new(),
@@ -174,6 +161,18 @@ fn legacy_default_profiles() -> Vec<TerminalProfile> {
             },
         ]
     }
+}
+
+/// The single empty-starter profile a previous version seeded. Kept only so
+/// [`AppSettings::ensure_terminal_profiles`] can recognise an untouched install
+/// and upgrade it to the real [`default_terminal_profiles`] seed.
+fn empty_starter_profiles() -> Vec<TerminalProfile> {
+    vec![TerminalProfile {
+        id: "default".to_string(),
+        name: String::new(),
+        command: String::new(),
+        args: Vec::new(),
+    }]
 }
 
 /// User-facing application settings (UI layout, theme, terminal profiles).
@@ -229,12 +228,12 @@ fn default_language() -> String {
 }
 
 impl AppSettings {
-    /// Seed the starter profile when none are stored (fresh install or state
-    /// persisted before profiles existed), replace an untouched legacy auto-seed
-    /// with it, and make sure `default_profile_id` points at a real profile.
+    /// Seed the platform's default profiles when none are stored (fresh install
+    /// or state persisted before profiles existed), upgrade an untouched
+    /// empty-starter install to them, and make sure `default_profile_id` points
+    /// at a real profile.
     pub fn ensure_terminal_profiles(&mut self) {
-        if self.terminal_profiles.is_empty() || self.terminal_profiles == legacy_default_profiles()
-        {
+        if self.terminal_profiles.is_empty() || self.terminal_profiles == empty_starter_profiles() {
             self.terminal_profiles = default_terminal_profiles();
         }
         let valid_default = self
@@ -369,14 +368,27 @@ mod tests {
     }
 
     #[test]
-    fn ensure_replaces_untouched_legacy_seed_with_empty_starter() {
+    fn ensure_upgrades_untouched_empty_starter_to_real_seed() {
         let mut settings = AppSettings {
-            terminal_profiles: legacy_default_profiles(),
+            terminal_profiles: empty_starter_profiles(),
             ..AppSettings::default()
         };
         settings.ensure_terminal_profiles();
-        // The legacy auto-seed (>1 profile) collapses to the single empty starter.
+        // The old single empty starter is upgraded to the real platform seed.
         assert_eq!(settings.terminal_profiles, default_terminal_profiles());
+    }
+
+    #[test]
+    fn windows_seed_powershell_bypasses_execution_policy() {
+        // The seeded PowerShell profile must carry -ExecutionPolicy Bypass so npm
+        // .ps1 agent shims run under the default Restricted policy.
+        if cfg!(windows) {
+            let ps = default_terminal_profiles()
+                .into_iter()
+                .find(|p| p.command == "powershell.exe")
+                .expect("seed includes Windows PowerShell");
+            assert!(ps.args.iter().any(|a| a == "Bypass"));
+        }
     }
 
     #[test]
