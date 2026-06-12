@@ -143,6 +143,8 @@ export const es: Record<MessageKey, string> = {
   "rightPanel.diffEmpty": "No hay nada que mostrar para este archivo.",
   "rightPanel.diffStaged": "Preparado",
   "rightPanel.diffUnstaged": "Árbol de trabajo",
+  "rightPanel.push": "Push",
+  "rightPanel.pull": "Pull",
 
   // Status bar
   "status.connected": "Backend conectado",

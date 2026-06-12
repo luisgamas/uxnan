@@ -146,6 +146,8 @@ export const en = {
   "rightPanel.diffEmpty": "Nothing to show for this file.",
   "rightPanel.diffStaged": "Staged",
   "rightPanel.diffUnstaged": "Working tree",
+  "rightPanel.push": "Push",
+  "rightPanel.pull": "Pull",
 
   // Status bar
   "status.connected": "Backend connected",

@@ -155,3 +155,18 @@ export function gitDiscard(
 export function gitCommit(path: string, message: string): Promise<void> {
   return invoke("git_commit", { path, message });
 }
+
+/** Set (or clear) the worktree the backend watcher polls for live status. */
+export function gitSetWatch(path: string | null): Promise<void> {
+  return invoke("git_set_watch", { path });
+}
+
+/** Push the current branch. */
+export function gitPush(path: string): Promise<void> {
+  return invoke("git_push", { path });
+}
+
+/** Pull fast-forward-only. */
+export function gitPull(path: string): Promise<void> {
+  return invoke("git_pull", { path });
+}

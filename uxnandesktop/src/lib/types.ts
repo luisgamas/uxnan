@@ -107,6 +107,14 @@ export interface FileChange {
   worktree: string;
 }
 
+/** Payload of the `git:status-changed` event (mirror of Rust `GitStatusEvent`). */
+export interface GitStatusEvent {
+  path: string;
+  files: FileChange[];
+  ahead: number;
+  behind: number;
+}
+
 /** A worktree's working-tree status summary (mirror of Rust `WorktreeStatus`). */
 export interface WorktreeStatus {
   /** Changed entries (modified/added/deleted/untracked). */

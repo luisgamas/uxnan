@@ -5,17 +5,22 @@
 // each action, on a manual refresh, and when the active worktree changes); the
 // real-time 3 s status polling + Tauri events are a Phase 3 follow-up (FOR-DEV).
 
+import { listen } from "@tauri-apps/api/event";
 import {
   gitCommit,
   gitDiff,
   gitDiscard,
+  gitPull,
+  gitPush,
+  gitSetWatch,
   gitStage,
   gitStageAll,
   gitStatus,
   gitUnstage,
   gitUnstageAll,
+  worktreeStatus,
 } from "$lib/api";
-import type { FileChange } from "$lib/types";
+import type { FileChange, GitStatusEvent } from "$lib/types";
 
 const msg = (e: unknown) =>
   e && typeof e === "object" && "message" in e
@@ -48,6 +53,12 @@ class GitStore {
   /** Commit message composer. */
   message = $state("");
   committing = $state(false);
+  /** Commits ahead / behind the upstream (for the push/pull bar). */
+  ahead = $state(0);
+  behind = $state(0);
+  /** A push/pull is in flight. */
+  syncing = $state(false);
+  private listening = false;
 
   /** The file whose diff is open in the viewer, or null when closed. */
   selected = $state<{ file: string; staged: boolean } | null>(null);
@@ -58,11 +69,36 @@ class GitStore {
   staged = $derived(this.files.filter((f) => f.staged));
   changed = $derived(this.files.filter((f) => f.unstaged));
 
-  /** Point the panel at a worktree (or clear it) and load its status. */
+  /** Subscribe to the backend's live `git:status-changed` events (once). The
+   *  watcher polls the worktree set via `gitSetWatch`; we apply updates for the
+   *  worktree we're showing (and not mid-action, to avoid flicker). */
+  async startListening(): Promise<void> {
+    if (this.listening) return;
+    this.listening = true;
+    try {
+      await listen<GitStatusEvent>("git:status-changed", (e) => {
+        const ev = e.payload;
+        if (ev.path !== this.path || this.busy || this.committing || this.syncing)
+          return;
+        this.files = ev.files.map(classify);
+        this.ahead = ev.ahead;
+        this.behind = ev.behind;
+      });
+    } catch {
+      // No Tauri event bus (e.g. the plain web preview) — on-demand only.
+      this.listening = false;
+    }
+  }
+
+  /** Point the panel at a worktree (or clear it), load its status, and tell the
+   *  backend watcher to poll it. */
   async load(path: string | null): Promise<void> {
     this.path = path;
     this.error = null;
     this.selected = null;
+    this.ahead = 0;
+    this.behind = 0;
+    void gitSetWatch(path).catch(() => {});
     if (!path) {
       this.files = [];
       return;
@@ -70,6 +106,9 @@ class GitStore {
     this.loading = true;
     try {
       this.files = (await gitStatus(path)).map(classify);
+      const st = await worktreeStatus(path);
+      this.ahead = st.ahead;
+      this.behind = st.behind;
     } catch (e) {
       this.error = msg(e);
       this.files = [];
@@ -150,6 +189,28 @@ class GitStore {
     } finally {
       this.committing = false;
     }
+  }
+
+  /** Push or pull the current branch, then refresh ahead/behind + status. */
+  private async sync(fn: (path: string) => Promise<void>): Promise<void> {
+    const path = this.path;
+    if (!path) return;
+    this.syncing = true;
+    this.error = null;
+    try {
+      await fn(path);
+      await this.refresh();
+    } catch (e) {
+      this.error = msg(e);
+    } finally {
+      this.syncing = false;
+    }
+  }
+  push(): Promise<void> {
+    return this.sync((p) => gitPush(p));
+  }
+  pull(): Promise<void> {
+    return this.sync((p) => gitPull(p));
   }
 }
 

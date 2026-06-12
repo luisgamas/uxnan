@@ -1,6 +1,8 @@
 <script lang="ts">
   // Right-panel review: the active worktree's changed files (staged / changes),
-  // per-file stage / unstage / discard, a commit composer, and a diff viewer.
+  // per-file stage / unstage / discard, a commit composer, push/pull, and a
+  // diff viewer. Status updates live via the backend `git:status-changed` event.
+  import { onMount } from "svelte";
   import * as Dialog from "$lib/components/ui/dialog";
   import { Button } from "$lib/components/ui/button";
   import { projects } from "$lib/state/projects.svelte";
@@ -15,8 +17,13 @@
   import MinusIcon from "@lucide/svelte/icons/minus";
   import Trash2Icon from "@lucide/svelte/icons/trash-2";
   import GitCommitIcon from "@lucide/svelte/icons/git-commit-horizontal";
+  import ArrowUpIcon from "@lucide/svelte/icons/arrow-up";
+  import ArrowDownIcon from "@lucide/svelte/icons/arrow-down";
 
   type Area = "staged" | "changes";
+
+  // Subscribe to live status events once.
+  onMount(() => void git.startListening());
 
   // Reload whenever the active worktree changes.
   $effect(() => {
@@ -214,7 +221,7 @@
       {/if}
     </div>
 
-    <!-- Commit composer -->
+    <!-- Commit composer + sync -->
     <div class="shrink-0 border-t border-sidebar-border p-2">
       <textarea
         class="uxnan-scroll w-full resize-none rounded-md border border-input bg-transparent px-2 py-1.5 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -231,6 +238,35 @@
         <GitCommitIcon data-icon="inline-start" />
         {git.committing ? i18n.t("rightPanel.committing") : i18n.t("rightPanel.commit")}
       </Button>
+
+      {#if git.ahead > 0 || git.behind > 0}
+        <div class="mt-1.5 flex gap-1.5">
+          <Button
+            variant="outline"
+            size="sm"
+            class="flex-1"
+            disabled={git.syncing || git.behind === 0}
+            title={i18n.t("rightPanel.pull")}
+            onclick={() => void git.pull()}
+          >
+            <ArrowDownIcon data-icon="inline-start" />
+            {i18n.t("rightPanel.pull")}
+            {#if git.behind > 0}<span class={text.indicator}>{git.behind}</span>{/if}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            class="flex-1"
+            disabled={git.syncing || git.ahead === 0}
+            title={i18n.t("rightPanel.push")}
+            onclick={() => void git.push()}
+          >
+            <ArrowUpIcon data-icon="inline-start" />
+            {i18n.t("rightPanel.push")}
+            {#if git.ahead > 0}<span class={text.indicator}>{git.ahead}</span>{/if}
+          </Button>
+        </div>
+      {/if}
     </div>
   {/if}
 </div>
