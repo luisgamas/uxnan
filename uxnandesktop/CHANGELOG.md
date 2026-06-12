@@ -5,6 +5,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — Phase 3 (first increment): git status & diffs in the right panel
+- **Right-panel review** (`RightPanel`): the active worktree's changed files split
+  into **Staged** and **Changes** (untracked included), each row showing its
+  status code; click a file to see its diff.
+- **Diff viewer** (`DiffView`): a colorized unified diff in a dialog (added/removed/
+  hunk lines). CodeMirror 6 is a follow-up.
+- **Staging & commit**: per-file stage / unstage / discard (discard confirms
+  first), stage-all / unstage-all, and a commit composer (message + Commit).
+- **Backend** (git CLI, `git.rs`): `git_status` (porcelain v1 `-z`, rename-aware),
+  `git_diff` (tracked + untracked via `--no-index`), `git_stage`/`git_unstage`/
+  `git_stage_all`/`git_unstage_all`/`git_discard`/`git_commit`. New `FileChange`
+  type (`types.ts`), `api.ts` wrappers, and a `git` store keyed by the active
+  worktree (reloads on switch / after each action / manual refresh).
+- Deferred (FOR-DEV): real-time 3 s status polling + Tauri events, CodeMirror,
+  hunk/line-level staging, AI commit message, image diffs, push/pull/sync, the
+  `git2` migration.
+
 ### Changed — agents: shell-aware launch, install detection, brand logos
 - **Agents now launch inside a shell.** Instead of spawning the bare command —
   which only worked for real `.exe` agents (`claude`, `agy`) and failed for npm

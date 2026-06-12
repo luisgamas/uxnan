@@ -110,10 +110,14 @@ user configuration. Built incrementally alongside the phases.
       `app.openSettings(section)`.
 
 **Pending — agents:**
-- [ ] **Auto-launch on worktree create** — inject the (per-worktree) agent's
-      command into a new PTY when a worktree is created (spec `02b §5.1`); needs a
-      per-worktree agent selection. Closes Tier-2 **T2.2**. **FOR-DEV.**
-- [ ] **Env vars per agent** + a **default agent**, if a launch flow needs them.
+- [ ] **Auto-launch a default agent on worktree create** — let the user pick a
+      **default agent** (a setting, e.g. `AppSettings.defaultAgentId`, with an
+      "off/none" option) and, when a worktree is created, automatically launch it
+      in the new worktree's terminal workspace (reusing `app.launchAgent` →
+      run-inside-shell). Optionally allow a per-worktree override before/at
+      creation. Opt-in (defaults to off) so a worktree never spawns a process the
+      user didn't ask for. Closes Tier-2 **T2.2** (spec `02b §5.1`). **FOR-DEV.**
+- [ ] **Env vars per agent**, if a launch flow needs them.
 - [ ] **Arg quoting** in the injected command is best-effort (quote-if-spaces);
       revisit if an agent needs shell-specific escaping. **FOR-DEV.**
 
@@ -304,22 +308,37 @@ earlier "superficial UX" warning is resolved.
 
 ---
 
-## Phase 3 — Git status & diffs ☐
+## Phase 3 — Git status & diffs ◑ (first increment done)
 
 **Goal:** see and act on file changes in real time.
 
-### Backend (Rust)
-- [ ] `git2::Repository::statuses()` polled every 3 s with `tokio::time::interval`
-      (coalesce; **pause when the window is hidden** via Tauri focus events).
-- [ ] Emit `git:status-changed { worktreeId, files, ahead, behind }`.
-- [ ] Ops: `git_stage`, `git_unstage`, `git_discard`, `git_commit`, `git_status`,
-      `git_diff` (hunks/lines via `git2::Diff`), plus `git_push`/`git_pull` (CLI,
-      retry-with-backoff for idempotent reads only; never retry push).
-### Frontend (Svelte)
-- [ ] Right sidebar: file tree by area (Changes / Staged / Untracked).
-- [ ] CodeMirror 6 inline diff viewer (lazy per-file; 30 s compute timeout).
-- [ ] Per-file stage/unstage/discard; commit composer (message textarea +
-      contextual primary action: Commit/Push/Sync/Publish).
+**Done (increment 1 — on-demand review loop, git CLI):**
+- [x] Ops via git CLI (`git.rs`): `git_status` (porcelain v1 `-z`, rename-aware →
+      `FileChange`), `git_diff` (tracked + untracked via `--no-index`),
+      `git_stage`/`git_unstage`/`git_stage_all`/`git_unstage_all`/`git_discard`/
+      `git_commit`. `api.ts` wrappers + `git` store keyed by the active worktree.
+- [x] Right panel (`RightPanel.svelte`): **Staged** / **Changes** sections (a file
+      can appear in both), per-file stage/unstage/discard (discard confirms),
+      stage-all/unstage-all, commit composer. Reloads on worktree switch / after
+      each action / manual refresh.
+- [x] Diff viewer (`DiffView.svelte`): colorized unified diff in a dialog.
+
+**Deferred (later Phase 3 increments):**
+- [ ] **Real-time status**: `git2::Repository::statuses()` polled every 3 s with
+      `tokio::time::interval` (coalesce; **pause when the window is hidden** via
+      Tauri focus events); emit `git:status-changed { worktreeId, files, ahead,
+      behind }`. (Increment 1 reloads on demand instead.) **FOR-DEV.**
+- [ ] **`git2` migration** for high-frequency status/diff (increment 1 uses the
+      CLI, consistent with Phase 2). **FOR-DEV.**
+- [ ] **CodeMirror 6** inline diff viewer (lazy per-file; 30 s compute timeout)
+      to replace the lightweight `DiffView`. **FOR-DEV.**
+- [ ] **Hunk/line-level staging**, **AI commit message**, **image diffs**, virtual
+      scroll for huge changesets. **FOR-DEV.**
+- [ ] **`git_push`/`git_pull`** (CLI; retry-with-backoff for idempotent reads
+      only, never retry push) + a contextual primary action (Commit/Push/Sync/
+      Publish). **FOR-DEV.**
+- [ ] A textarea is a plain styled element; could adopt the shadcn `Textarea`/
+      `Field` components. **FOR-DEV.**
 
 ---
 
