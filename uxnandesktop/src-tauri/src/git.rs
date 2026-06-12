@@ -36,6 +36,20 @@ pub struct WorktreeStatus {
     pub behind: u32,
 }
 
+/// One changed file in a worktree, as reported by `git status --porcelain=v1`.
+/// `index`/`worktree` are the two single-character XY status codes (` ` = clean,
+/// `M`/`A`/`D`/`R`/`C`/`U` for tracked changes, `?` = untracked). The frontend
+/// derives "staged", "modified" and "untracked" from these.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct FileChange {
+    pub path: String,
+    /// Index (staged) status code — the `X` of `XY`.
+    pub index: String,
+    /// Working-tree (unstaged) status code — the `Y` of `XY`.
+    pub worktree: String,
+}
+
 /// Run `git` in `repo_path` and return stdout on success, mapping a non-zero
 /// exit (with stderr) to [`AppError::Git`].
 async fn git(repo_path: &str, args: &[&str]) -> Result<String, AppError> {
@@ -51,6 +65,24 @@ async fn git(repo_path: &str, args: &[&str]) -> Result<String, AppError> {
         return Err(AppError::Git(stderr.trim().to_string()));
     }
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+/// Like [`git`] but tolerates exit code 1, which `git diff --no-index` uses to
+/// signal "files differ" (not an error). Any other non-zero is still an error.
+async fn git_diff_tolerant(repo_path: &str, args: &[&str]) -> Result<String, AppError> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(repo_path)
+        .args(args)
+        .output()
+        .await
+        .map_err(|e| AppError::Git(e.to_string()))?;
+    match output.status.code() {
+        Some(0) | Some(1) => Ok(String::from_utf8_lossy(&output.stdout).to_string()),
+        _ => Err(AppError::Git(
+            String::from_utf8_lossy(&output.stderr).trim().to_string(),
+        )),
+    }
 }
 
 /// Whether `path` is inside a git work tree.
@@ -265,6 +297,127 @@ pub fn parse_worktree_porcelain(input: &str) -> Vec<WorktreeEntry> {
     entries
 }
 
+// --- Status, diffs & staging (Phase 3) -------------------------------------
+
+/// List a worktree's changed files (`git status --porcelain=v1 -z
+/// --untracked-files=all`). NUL-terminated so paths with spaces/newlines are
+/// safe; rename/copy entries carry the original path in a trailing NUL field.
+pub async fn status_files(worktree_path: &str) -> Result<Vec<FileChange>, AppError> {
+    let out = git(
+        worktree_path,
+        &["status", "--porcelain=v1", "-z", "--untracked-files=all"],
+    )
+    .await?;
+    Ok(parse_status_files(&out))
+}
+
+/// Parse the NUL-separated `status --porcelain=v1 -z` output into [`FileChange`]s.
+pub fn parse_status_files(input: &str) -> Vec<FileChange> {
+    let fields: Vec<&str> = input.split('\0').collect();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < fields.len() {
+        let entry = fields[i];
+        // Each entry is "XY <path>"; trailing empty field after the last NUL.
+        if entry.len() < 4 {
+            i += 1;
+            continue;
+        }
+        let index = entry[0..1].to_string();
+        let worktree = entry[1..2].to_string();
+        let path = entry[3..].to_string();
+        // Rename/copy entries are followed by the original path in the next field.
+        if index == "R" || index == "C" || worktree == "R" || worktree == "C" {
+            i += 1;
+        }
+        out.push(FileChange {
+            path,
+            index,
+            worktree,
+        });
+        i += 1;
+    }
+    out
+}
+
+/// Unified diff for one file. `staged` selects the index-vs-HEAD diff; otherwise
+/// the worktree-vs-index diff, falling back to a whole-file "added" diff for an
+/// untracked file (which has no tracked diff).
+pub async fn diff_file(worktree_path: &str, file: &str, staged: bool) -> Result<String, AppError> {
+    if staged {
+        return git(worktree_path, &["diff", "--staged", "--", file]).await;
+    }
+    let tracked = git(worktree_path, &["diff", "--", file]).await?;
+    if !tracked.trim().is_empty() {
+        return Ok(tracked);
+    }
+    // Untracked: show the whole file as added (`--no-index` exits 1 on diff).
+    git_diff_tolerant(
+        worktree_path,
+        &["diff", "--no-index", "--", "/dev/null", file],
+    )
+    .await
+}
+
+/// Stage a file (`git add`).
+pub async fn stage_file(worktree_path: &str, file: &str) -> Result<(), AppError> {
+    git(worktree_path, &["add", "--", file]).await.map(|_| ())
+}
+
+/// Unstage a file (`git restore --staged`).
+pub async fn unstage_file(worktree_path: &str, file: &str) -> Result<(), AppError> {
+    git(worktree_path, &["restore", "--staged", "--", file])
+        .await
+        .map(|_| ())
+}
+
+/// Stage every change (`git add -A`).
+pub async fn stage_all(worktree_path: &str) -> Result<(), AppError> {
+    git(worktree_path, &["add", "-A"]).await.map(|_| ())
+}
+
+/// Unstage everything (`git reset -q`).
+pub async fn unstage_all(worktree_path: &str) -> Result<(), AppError> {
+    git(worktree_path, &["reset", "-q"]).await.map(|_| ())
+}
+
+/// Discard a file's local changes. For a tracked file, restore it to `HEAD`
+/// (both index and worktree); for an untracked file, delete it (`git clean`).
+/// Destructive — the frontend confirms first.
+pub async fn discard_file(
+    worktree_path: &str,
+    file: &str,
+    untracked: bool,
+) -> Result<(), AppError> {
+    if untracked {
+        git(worktree_path, &["clean", "-fd", "--", file])
+            .await
+            .map(|_| ())
+    } else {
+        git(
+            worktree_path,
+            &[
+                "restore",
+                "--source=HEAD",
+                "--staged",
+                "--worktree",
+                "--",
+                file,
+            ],
+        )
+        .await
+        .map(|_| ())
+    }
+}
+
+/// Commit the staged changes with `message` (`git commit -m`). Fails (surfaced to
+/// the user) when nothing is staged.
+pub async fn commit(worktree_path: &str, message: &str) -> Result<(), AppError> {
+    git(worktree_path, &["commit", "-m", message])
+        .await
+        .map(|_| ())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -326,5 +479,41 @@ mod tests {
             parse_branch_lines(input),
             vec!["main", "feature/x", "release/1.0"]
         );
+    }
+
+    #[test]
+    fn parses_status_files_codes_and_paths() {
+        // NUL-separated: staged-modified, unstaged-modified, untracked, staged-add.
+        let input = "M  src/a.rs\0 M src/b.rs\0?? new file.txt\0A  added.rs\0";
+        let files = parse_status_files(input);
+        assert_eq!(files.len(), 4);
+        assert_eq!(files[0].path, "src/a.rs");
+        assert_eq!(
+            (files[0].index.as_str(), files[0].worktree.as_str()),
+            ("M", " ")
+        );
+        assert_eq!(
+            (files[1].index.as_str(), files[1].worktree.as_str()),
+            (" ", "M")
+        );
+        assert_eq!(files[2].path, "new file.txt");
+        assert_eq!(files[2].index, "?");
+        assert_eq!(files[3].index, "A");
+    }
+
+    #[test]
+    fn parses_status_files_consumes_rename_orig_path() {
+        // A rename entry is followed by the original path in the next NUL field.
+        let input = "R  new.rs\0old.rs\0 M other.rs\0";
+        let files = parse_status_files(input);
+        assert_eq!(files.len(), 2);
+        assert_eq!(files[0].index, "R");
+        assert_eq!(files[0].path, "new.rs"); // orig "old.rs" consumed, not its own entry
+        assert_eq!(files[1].path, "other.rs");
+    }
+
+    #[test]
+    fn parses_status_files_empty() {
+        assert!(parse_status_files("").is_empty());
     }
 }

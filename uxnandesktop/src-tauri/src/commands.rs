@@ -307,3 +307,71 @@ pub async fn browse_dirs(path: Option<String>) -> Result<crate::browse::DirListi
         .await
         .map_err(CommandError::from)
 }
+
+// --- Git status, diffs & staging (Phase 3) ---------------------------------
+//
+// These run git directly in the worktree `path` (the right panel's review view).
+
+/// List a worktree's changed files (staged + unstaged + untracked).
+#[tauri::command]
+pub async fn git_status(path: String) -> Result<Vec<git::FileChange>, CommandError> {
+    git::status_files(&path).await.map_err(CommandError::from)
+}
+
+/// Unified diff for one file. `staged` selects the index-vs-HEAD diff.
+#[tauri::command]
+pub async fn git_diff(path: String, file: String, staged: bool) -> Result<String, CommandError> {
+    git::diff_file(&path, &file, staged)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Stage one file.
+#[tauri::command]
+pub async fn git_stage(path: String, file: String) -> Result<(), CommandError> {
+    git::stage_file(&path, &file)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Unstage one file.
+#[tauri::command]
+pub async fn git_unstage(path: String, file: String) -> Result<(), CommandError> {
+    git::unstage_file(&path, &file)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Stage every change.
+#[tauri::command]
+pub async fn git_stage_all(path: String) -> Result<(), CommandError> {
+    git::stage_all(&path).await.map_err(CommandError::from)
+}
+
+/// Unstage everything.
+#[tauri::command]
+pub async fn git_unstage_all(path: String) -> Result<(), CommandError> {
+    git::unstage_all(&path).await.map_err(CommandError::from)
+}
+
+/// Discard a file's local changes (tracked → restore to HEAD; untracked → delete).
+#[tauri::command]
+pub async fn git_discard(path: String, file: String, untracked: bool) -> Result<(), CommandError> {
+    git::discard_file(&path, &file, untracked)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Commit the staged changes with `message`.
+#[tauri::command]
+pub async fn git_commit(path: String, message: String) -> Result<(), CommandError> {
+    let message = message.trim();
+    if message.is_empty() {
+        return Err(CommandError::from(AppError::Invalid(
+            "commit message is required".to_string(),
+        )));
+    }
+    git::commit(&path, message)
+        .await
+        .map_err(CommandError::from)
+}

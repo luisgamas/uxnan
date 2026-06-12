@@ -61,6 +61,14 @@ pub fn run() {
             commands::browse_dirs,
             commands::set_terminal_layout,
             commands::agents_detect,
+            commands::git_status,
+            commands::git_diff,
+            commands::git_stage,
+            commands::git_unstage,
+            commands::git_stage_all,
+            commands::git_unstage_all,
+            commands::git_discard,
+            commands::git_commit,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

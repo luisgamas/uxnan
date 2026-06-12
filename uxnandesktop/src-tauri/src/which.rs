@@ -66,7 +66,9 @@ mod tests {
 
     #[test]
     fn random_command_is_unavailable() {
-        assert!(!is_command_available("uxnan-definitely-not-a-real-binary-xyz"));
+        assert!(!is_command_available(
+            "uxnan-definitely-not-a-real-binary-xyz"
+        ));
     }
 
     #[test]
