@@ -103,6 +103,12 @@ pub fn repo_name(path: &str) -> String {
 
 /// Where a new worktree for `branch` is created: a sibling of the repo named
 /// `<repo>--<branch>` (branch separators flattened so it's a valid folder).
+///
+/// The path is returned with forward slashes so it matches what `git worktree
+/// list` reports (git normalizes to `/` even on Windows). Keeping one canonical
+/// form means the frontend's per-worktree workspace keys line up — otherwise a
+/// freshly-created worktree's backslash path wouldn't match its list entry, and
+/// e.g. an auto-launched agent would open in an invisible workspace.
 pub fn worktree_path_for(repo_path: &str, branch: &str) -> String {
     let repo = Path::new(repo_path);
     let parent = repo.parent().unwrap_or(repo);
@@ -111,7 +117,7 @@ pub fn worktree_path_for(repo_path: &str, branch: &str) -> String {
     parent
         .join(format!("{name}--{safe_branch}"))
         .to_string_lossy()
-        .to_string()
+        .replace('\\', "/")
 }
 
 /// Create a worktree on a new branch
@@ -228,24 +234,54 @@ pub async fn remove_worktree(
     branch: Option<&str>,
     force: bool,
 ) -> Result<(), AppError> {
-    if !force && !is_worktree_clean(worktree_path).await? {
-        return Err(AppError::Invalid(
-            "worktree has uncommitted changes; commit, stash, or force-remove".to_string(),
-        ));
+    // Only block on uncommitted changes when the worktree is still a valid,
+    // intact checkout. If `status` errors (a half-removed / broken worktree),
+    // fall through so this call can finish cleaning it up.
+    if !force {
+        match is_worktree_clean(worktree_path).await {
+            Ok(true) => {}
+            Ok(false) => {
+                return Err(AppError::Invalid(
+                    "worktree has uncommitted changes; commit, stash, or force-remove".to_string(),
+                ));
+            }
+            Err(_) => {}
+        }
     }
-    let mut args = vec!["worktree", "remove"];
-    if force {
-        args.push("--force");
+    // Try a graceful remove, then a forced one. Ignore their errors — git can
+    // reject a broken/locked worktree ("not a working tree"), but the prune +
+    // directory cleanup below still tidies up, so removal is best-effort and
+    // idempotent rather than fatal.
+    if git(repo_path, &["worktree", "remove", worktree_path])
+        .await
+        .is_err()
+    {
+        let _ = git(repo_path, &["worktree", "remove", "--force", worktree_path]).await;
     }
-    args.push(worktree_path);
-    git(repo_path, &args).await?;
-    // Best-effort cleanup; never fail the removal because pruning/branch delete
-    // hit a snag.
+    // Drop stale admin entries, then delete any directory git left behind (on
+    // Windows a process that still had its CWD inside can block the delete; the
+    // frontend kills the worktree's terminals first, and we retry briefly).
     let _ = git(repo_path, &["worktree", "prune"]).await;
+    remove_dir_with_retry(worktree_path).await;
     if let Some(branch) = branch {
         let _ = git(repo_path, &["branch", "-d", branch]).await;
     }
     Ok(())
+}
+
+/// Delete `path` if it still exists, retrying a few times so a just-released
+/// Windows directory handle has a moment to clear.
+async fn remove_dir_with_retry(path: &str) {
+    let p = Path::new(path);
+    for _ in 0..4 {
+        if !p.exists() {
+            return;
+        }
+        if tokio::fs::remove_dir_all(p).await.is_ok() {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+    }
 }
 
 /// List all worktrees of a repo (ADE-created and external).
