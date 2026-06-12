@@ -122,14 +122,18 @@ class GitStore {
     return this.load(this.path);
   }
 
-  /** Open the diff viewer for a file in the given area (staged or not). */
+  /** Open the diff viewer for a file in the given area (staged or not). A diff
+   *  that takes longer than 30 s is abandoned so the UI never hangs. */
   async openDiff(file: string, staged: boolean): Promise<void> {
     if (!this.path) return;
     this.selected = { file, staged };
     this.diff = "";
     this.diffLoading = true;
     try {
-      this.diff = await gitDiff(this.path, file, staged);
+      const timeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("diff timed out")), 30_000),
+      );
+      this.diff = await Promise.race([gitDiff(this.path, file, staged), timeout]);
     } catch (e) {
       this.error = msg(e);
     } finally {
