@@ -43,6 +43,8 @@ export interface AppSettings {
   defaultProfileId: string | null;
   /** Registered CLI coding agents, launchable into any worktree. */
   agentProfiles: AgentProfile[];
+  /** Agent auto-launched when a worktree is created; null = off (default). */
+  defaultAgentId?: string | null;
   /** UI language: "system" (follow the device) or a locale code ("en", "es"). */
   language: string;
 }
@@ -180,5 +182,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   terminalProfiles: [],
   defaultProfileId: null,
   agentProfiles: [],
+  defaultAgentId: null,
   language: "system",
 };

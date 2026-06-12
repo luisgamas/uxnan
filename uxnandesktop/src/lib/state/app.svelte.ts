@@ -131,6 +131,13 @@ class AppStore {
     return this.agentProfiles.filter((a) => a.command.trim().length > 0);
   }
 
+  /** The agent auto-launched on worktree create, if one is set and launchable. */
+  defaultAgent(): AgentProfile | undefined {
+    const id = this.settings.defaultAgentId;
+    if (!id) return undefined;
+    return this.launchableAgents.find((a) => a.id === id);
+  }
+
   /** Launch an agent: open a terminal on its chosen shell (its terminal profile,
    *  or the default one) in `workspace` (a worktree path, or "" for Global) and
    *  type the agent command into it. Running inside an interactive shell — rather

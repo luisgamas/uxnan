@@ -185,6 +185,10 @@ export const es: Record<MessageKey, string> = {
   "settings.addCustomAgent": "Agregar agente personalizado",
   "settings.noAgents":
     "Aún no hay agentes. Agrega uno arriba para lanzarlo en cualquier worktree.",
+  "settings.defaultAgent": "Agente predeterminado",
+  "settings.defaultAgentNone": "Ninguno",
+  "settings.defaultAgentDesc":
+    "Se lanza automáticamente en un worktree justo después de crearlo. Déjalo en “Ninguno” para no iniciar ningún agente automáticamente.",
 
   // Agent profile editor
   "agentEditor.namePlaceholder": "Nombre del agente (p. ej. Claude Code)",

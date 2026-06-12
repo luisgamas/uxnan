@@ -195,6 +195,10 @@ pub struct AppSettings {
     /// default; the user adds them from the templates in Settings → Agents.
     #[serde(default)]
     pub agent_profiles: Vec<AgentProfile>,
+    /// Agent auto-launched in a worktree right after it is created. `None` = off
+    /// (the default), so creating a worktree never spawns an agent unasked.
+    #[serde(default)]
+    pub default_agent_id: Option<String>,
     /// UI language: "system" (follow the device) or a locale code (e.g. "en", "es").
     #[serde(default = "default_language")]
     pub language: String,
@@ -213,6 +217,7 @@ impl Default for AppSettings {
             terminal_profiles,
             default_profile_id,
             agent_profiles: Vec::new(),
+            default_agent_id: None,
             language: default_language(),
         }
     }

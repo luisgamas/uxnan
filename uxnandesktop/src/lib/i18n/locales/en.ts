@@ -187,6 +187,10 @@ export const en = {
   "settings.yourAgents": "Your agents",
   "settings.addCustomAgent": "Add custom agent",
   "settings.noAgents": "No agents yet. Add one above to launch it into any worktree.",
+  "settings.defaultAgent": "Default agent",
+  "settings.defaultAgentNone": "None",
+  "settings.defaultAgentDesc":
+    "Auto-launched in a worktree right after you create it. Leave on “None” to never start an agent automatically.",
 
   // Agent profile editor
   "agentEditor.namePlaceholder": "Agent name (e.g. Claude Code)",

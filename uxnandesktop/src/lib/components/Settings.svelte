@@ -154,6 +154,15 @@
     AGENT_CATALOG.filter((c) => isInstalled(c) && !isConfigured(c)).length,
   );
 
+  // Default agent (auto-launched on worktree create); "__none__" = off.
+  const NO_DEFAULT_AGENT = "__none__";
+  const defaultAgentLabel = $derived.by(() => {
+    const id = app.settings.defaultAgentId;
+    if (!id) return i18n.t("settings.defaultAgentNone");
+    const a = app.agentProfiles.find((x) => x.id === id);
+    return a?.name.trim() || a?.command || i18n.t("settings.defaultAgentNone");
+  });
+
   const navItems = [
     { id: "general", key: "settings.general", icon: SlidersIcon },
     { id: "language", key: "settings.language", icon: LanguagesIcon },
@@ -243,6 +252,31 @@
             <div class="flex flex-col gap-1">
               <span class={cn("font-medium", text.body)}>{i18n.t("settings.agents")}</span>
               <p class={text.meta}>{i18n.t("settings.agentsDesc")}</p>
+            </div>
+
+            <!-- Default agent: auto-launched when a worktree is created. -->
+            <div class="flex flex-col gap-1.5">
+              <span class={cn("font-medium", text.body)}>{i18n.t("settings.defaultAgent")}</span>
+              <Select.Root
+                type="single"
+                value={app.settings.defaultAgentId ?? NO_DEFAULT_AGENT}
+                onValueChange={(v) => {
+                  app.settings.defaultAgentId = v === NO_DEFAULT_AGENT ? null : (v ?? null);
+                  persistNow();
+                }}
+              >
+                <Select.Trigger class="w-56">{defaultAgentLabel}</Select.Trigger>
+                <Select.Content>
+                  <Select.Item value={NO_DEFAULT_AGENT} label={i18n.t("settings.defaultAgentNone")}>
+                    {i18n.t("settings.defaultAgentNone")}
+                  </Select.Item>
+                  {#each app.launchableAgents as a (a.id)}
+                    {@const label = a.name.trim() || a.command}
+                    <Select.Item value={a.id} {label}>{label}</Select.Item>
+                  {/each}
+                </Select.Content>
+              </Select.Root>
+              <p class={text.meta}>{i18n.t("settings.defaultAgentDesc")}</p>
             </div>
 
             <!-- Catalog: every known agent; only the installed ones are addable. -->

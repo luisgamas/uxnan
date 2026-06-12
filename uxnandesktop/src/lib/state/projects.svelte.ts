@@ -189,6 +189,9 @@ class ProjectsStore {
       await this.loadWorktrees(repoId);
       // Select the new worktree as the active context.
       this.setActiveWorktree(created.path);
+      // Auto-launch the default agent into it, if one is configured (opt-in).
+      const agent = app.defaultAgent();
+      if (agent) app.launchAgent(agent, { cwd: created.path, workspace: created.path });
       return true;
     } catch (e) {
       this.error = msg(e);
