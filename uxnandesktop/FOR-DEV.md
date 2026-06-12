@@ -33,7 +33,7 @@ models live in:
 | **0** | Base infrastructure (3-panel shell, IPC, persistence) | ✅ **DONE** |
 | **1** | Terminal core (PTY, tabs, splits) | ✅ **DONE** — terminals, region splits, copy/paste, file-drop, layout persistence, kill-on-exit (reorder/MRU = Tier 2; per-worktree assoc = Phase 2) |
 | **2** | Git & worktrees | ✅ **DONE** — single-panel UI (search + collapsible Projects/Worktrees, cards, new-worktree dialog with base-branch picker), worktree create / list / safe remove, status/dirty + ahead/behind badges, in-app directory picker, **per-worktree terminal workspaces** (select a worktree → its terminals show, others keep running hidden). Agent auto-launch is the Settings **agents track** (S) |
-| 3 | Git status & diffs | ☐ not started |
+| **3** | Git status & diffs | ◑ **IN PROGRESS** — right-panel review (status/diff/stage/discard/commit), live status watcher (3 s, focus-paused) + push/pull done; `git2`, CodeMirror, hunk staging deferred |
 | 4 | Agent monitoring (hooks, notifications) | ☐ not started |
 | 5 | Polish & UX (hunk staging, side-by-side, virtual scroll) | ☐ not started |
 | 6 | Bridge integration (mobile pairing) | ☐ not started |
@@ -308,11 +308,11 @@ earlier "superficial UX" warning is resolved.
 
 ---
 
-## Phase 3 — Git status & diffs ◑ (first increment done)
+## Phase 3 — Git status & diffs ◑ (increments 1–2 done)
 
 **Goal:** see and act on file changes in real time.
 
-**Done (increment 1 — on-demand review loop, git CLI):**
+**Done (increment 1 — review loop, git CLI):**
 - [x] Ops via git CLI (`git.rs`): `git_status` (porcelain v1 `-z`, rename-aware →
       `FileChange`), `git_diff` (tracked + untracked via `--no-index`),
       `git_stage`/`git_unstage`/`git_stage_all`/`git_unstage_all`/`git_discard`/
@@ -323,13 +323,20 @@ earlier "superficial UX" warning is resolved.
       each action / manual refresh.
 - [x] Diff viewer (`DiffView.svelte`): colorized unified diff in a dialog.
 
+**Done (increment 2 — live status + push/pull):**
+- [x] **Real-time status**: a Tokio-interval watcher (3 s) polls the watched
+      worktree and emits `git:status-changed { path, files, ahead, behind }` only
+      when it changes; **pauses while the window is unfocused** (Tauri
+      `WindowEvent::Focused`). `git_set_watch` selects the worktree; the store
+      applies events for the shown worktree (skipping mid-action). Uses the git
+      CLI (the `git2` migration below is still open).
+- [x] **Push / pull**: `git_push`, `git_pull --ff-only`, with an ahead/behind bar
+      in the commit composer (Pull/Push buttons enabled per ahead/behind).
+
 **Deferred (later Phase 3 increments):**
-- [ ] **Real-time status**: `git2::Repository::statuses()` polled every 3 s with
-      `tokio::time::interval` (coalesce; **pause when the window is hidden** via
-      Tauri focus events); emit `git:status-changed { worktreeId, files, ahead,
-      behind }`. (Increment 1 reloads on demand instead.) **FOR-DEV.**
-- [ ] **`git2` migration** for high-frequency status/diff (increment 1 uses the
-      CLI, consistent with Phase 2). **FOR-DEV.**
+- [ ] **`git2` migration** for high-frequency status/diff (Phase 3 uses the CLI,
+      consistent with Phase 2; `git2` avoids per-poll subprocess overhead).
+      **FOR-DEV.**
 - [ ] **CodeMirror 6** inline diff viewer (lazy per-file; 30 s compute timeout)
       to replace the lightweight `DiffView`. **FOR-DEV.**
 - [ ] **Hunk/line-level staging**, **AI commit message**, **image diffs**, virtual

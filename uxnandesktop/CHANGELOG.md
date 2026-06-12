@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — Phase 3 (increment 2): live status + push / pull
+- **Real-time status.** A background watcher (Tokio interval, 3 s) polls the
+  worktree the right panel is reviewing and emits `git:status-changed` only when
+  it changes; the panel updates live as an agent edits files. The watcher
+  **pauses while the window is unfocused** (Tauri `WindowEvent::Focused`). The
+  frontend sets the watched worktree via `git_set_watch` and applies events for
+  the worktree it's showing (skipping mid-action to avoid flicker).
+- **Push / pull.** `git_push` and `git_pull --ff-only` with an ahead/behind bar
+  in the commit composer (counts + Pull/Push buttons, enabled per ahead/behind).
+  Push is never retried; pull is fast-forward-only so it can't start a surprise
+  merge.
+
 ### Added — Phase 3 (first increment): git status & diffs in the right panel
 - **Right-panel review** (`RightPanel`): the active worktree's changed files split
   into **Staged** and **Changes** (untracked included), each row showing its
