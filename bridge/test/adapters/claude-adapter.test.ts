@@ -157,6 +157,36 @@ test('ClaudeCodeAdapter streams thinking_delta as thinking events, separate from
   assert.deepEqual(deltas, ['Answer']);
 });
 
+test('ClaudeCodeAdapter pairs tool_use with tool_result and emits structured blocks', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
+  const { done } = collect(adapter);
+
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'do it' });
+  last().feed([
+    // assistant message carries the (complete) tool_use inputs
+    '{"type":"assistant","session_id":"s","message":{"content":[{"type":"tool_use","id":"tu_1","name":"Bash","input":{"command":"type a.txt"}},{"type":"tool_use","id":"tu_2","name":"Edit","input":{"file_path":"a.dart","old_string":"x","new_string":"y"}}]}}',
+    // the tool results come back in user messages
+    '{"type":"user","session_id":"s","message":{"content":[{"type":"tool_result","tool_use_id":"tu_1","content":"hello"}]}}',
+    '{"type":"user","session_id":"s","message":{"content":[{"type":"tool_result","tool_use_id":"tu_2","content":""}]}}',
+    '{"type":"result","subtype":"success","is_error":false,"result":"done","session_id":"s"}',
+  ]);
+
+  const events = await done;
+  const blocks = events
+    .filter((e) => e.type === 'block')
+    .map((e) => (e.data as { content: Record<string, unknown> }).content);
+  assert.equal(blocks.length, 2);
+  assert.deepEqual(blocks[0], {
+    type: 'command_execution',
+    command: 'type a.txt',
+    status: 'completed',
+    output: 'hello',
+  });
+  assert.equal(blocks[1]?.['type'], 'diff');
+  assert.equal(blocks[1]?.['filename'], 'a.dart');
+});
+
 test('ClaudeCodeAdapter falls back to the assistant message when no token deltas stream', async () => {
   const { spawnFn, last } = fakeSpawner();
   const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });

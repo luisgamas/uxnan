@@ -9,6 +9,8 @@ export const StreamNotification = {
   MessageDelta: 'stream/message/delta',
   /** A chunk of the agent's reasoning / "thinking" for this turn (`data.delta`). */
   ThinkingDelta: 'stream/thinking/delta',
+  /** A structured content block (command/diff/tool) the agent produced this turn. */
+  ContentBlock: 'stream/content/block',
   TurnCompleted: 'stream/turn/completed',
   TurnError: 'stream/turn/error',
   TurnAborted: 'stream/turn/aborted',
@@ -36,6 +38,19 @@ export interface ThinkingDeltaParams {
   turnId: string;
   messageId: string;
   delta: string;
+}
+
+/**
+ * A structured content block (a serialized MessageContent: `command_execution`,
+ * `diff`, `tool`, …) the agent produced during a turn. The phone decodes
+ * `content` straight into a MessageContent and folds it into the streaming
+ * message (Work log / Changed files).
+ */
+export interface ContentBlockParams {
+  threadId: string;
+  turnId: string;
+  messageId: string;
+  content: unknown;
 }
 
 /**

@@ -216,6 +216,21 @@ export class AgentManager {
           );
           break;
         }
+        case 'block': {
+          const content = readContent(event.data);
+          if (content !== undefined) {
+            await this.#options.store.appendBlock(threadId, turnId, content, now);
+            this.#options.notify(
+              makeNotification(StreamNotification.ContentBlock, {
+                threadId,
+                turnId,
+                messageId,
+                content,
+              }),
+            );
+          }
+          break;
+        }
         case 'turn_completed': {
           const provided = readOptionalText(event.data);
           await this.#options.store.completeTurn(threadId, turnId, provided, now);
@@ -281,6 +296,14 @@ function readText(data: unknown): string {
     if (typeof text === 'string') return text;
   }
   return '';
+}
+
+/** Extract a structured `content` block (MessageContent JSON) from a block event. */
+function readContent(data: unknown): unknown {
+  if (data && typeof data === 'object' && 'content' in data) {
+    return (data as { content: unknown }).content;
+  }
+  return undefined;
 }
 
 function readOptionalText(data: unknown): string | undefined {

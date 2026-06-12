@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uxnan/application/managers/thread_manager.dart';
 import 'package:uxnan/application/processors/domain_event.dart';
 import 'package:uxnan/domain/entities/message.dart';
+import 'package:uxnan/domain/enums/command_status.dart';
 import 'package:uxnan/domain/enums/message_delivery_state.dart';
 import 'package:uxnan/domain/enums/message_role.dart';
 import 'package:uxnan/domain/enums/thread_activity.dart';
@@ -152,6 +153,44 @@ void main() {
     // The finalized message is persisted.
     final persisted = await messageRepo.getMessages('th1');
     expect(persisted.any((m) => m.id == 'stream-turn1'), isTrue);
+  });
+
+  test('folds a streaming content block (command) into the turn', () async {
+    await manager.selectThread('th1');
+    await _settle();
+    events.add(const TurnStartedEvent(turnId: 'turn1', threadId: 'th1'));
+    await _settle();
+
+    events.add(
+      const ContentBlockEvent(
+        turnId: 'turn1',
+        threadId: 'th1',
+        content: CommandExecutionContent(
+          command: 'ls',
+          status: CommandStatus.completed,
+        ),
+      ),
+    );
+    await _settle();
+
+    final streaming = manager.timeline.messages
+        .firstWhereOrNull((m) => m.id == 'stream-turn1');
+    expect(streaming, isNotNull);
+    final commands =
+        streaming!.contents.whereType<CommandExecutionContent>().toList();
+    expect(commands, hasLength(1));
+    expect(commands.first.command, 'ls');
+
+    events.add(const TurnCompletedEvent(turnId: 'turn1', threadId: 'th1'));
+    await _settle();
+
+    // The block is persisted with the finalized message.
+    final persisted = await messageRepo.getMessages('th1');
+    final finalMsg = persisted.firstWhere((m) => m.id == 'stream-turn1');
+    expect(
+      finalMsg.contents.whereType<CommandExecutionContent>(),
+      hasLength(1),
+    );
   });
 
   test('ignores events for a non-active thread', () async {

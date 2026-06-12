@@ -62,6 +62,24 @@ test('appendThinking accumulates reasoning and surfaces it on the message', asyn
   await rm(baseDir, { recursive: true, force: true });
 });
 
+test('appendBlock accumulates structured blocks and surfaces them on the message', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  const { turnId } = await store.startTurn(thread.id, 'ask', 2);
+
+  await store.appendBlock(thread.id, turnId, { type: 'command_execution', command: 'ls' }, 3);
+  await store.appendBlock(thread.id, turnId, { type: 'diff', filename: 'a.dart' }, 4);
+  await store.completeTurn(thread.id, turnId, undefined, 5);
+
+  const turn = await store.getTurn(turnId);
+  const assistant = turn.messages.find((m) => m.role === 'assistant');
+  assert.deepEqual(assistant?.blocks, [
+    { type: 'command_execution', command: 'ls' },
+    { type: 'diff', filename: 'a.dart' },
+  ]);
+  await rm(baseDir, { recursive: true, force: true });
+});
+
 test('listTurns paginates with a cursor', async () => {
   const { store, baseDir } = newStore();
   const thread = await store.startThread({ projectId: 'p' }, 1);

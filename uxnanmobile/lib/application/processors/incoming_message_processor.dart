@@ -1,5 +1,6 @@
 import 'package:uxnan/application/processors/domain_event.dart';
 import 'package:uxnan/domain/enums/git_action_phase_status.dart';
+import 'package:uxnan/domain/value_objects/message_content.dart';
 import 'package:uxnan/domain/value_objects/rpc_message.dart';
 
 /// Classifies inbound bridge notifications into [DomainEvent]s (spec 02a
@@ -32,6 +33,7 @@ class IncomingMessageProcessor {
           threadId: threadId,
           delta: params['delta'] is String ? params['delta'] as String : '',
         ),
+      'stream/content/block' => _contentBlock(turnId, threadId, params['content']),
       'stream/turn/completed' => TurnCompletedEvent(
           turnId: turnId,
           threadId: threadId,
@@ -60,6 +62,19 @@ class IncomingMessageProcessor {
           params: message.params,
         ),
     };
+  }
+
+  /// Decodes a `stream/content/block` payload into a [ContentBlockEvent], or an
+  /// [UnknownDomainEvent] when the content isn't a decodable block.
+  DomainEvent _contentBlock(String turnId, String? threadId, Object? content) {
+    if (content is Map) {
+      return ContentBlockEvent(
+        turnId: turnId,
+        threadId: threadId,
+        content: MessageContent.fromJson(content.cast<String, dynamic>()),
+      );
+    }
+    return const UnknownDomainEvent(method: 'stream/content/block');
   }
 
   /// Maps a stream of inbound [source] messages to a stream of domain events.

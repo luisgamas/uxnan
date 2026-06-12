@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uxnan/application/processors/domain_event.dart';
 import 'package:uxnan/application/processors/incoming_message_processor.dart';
 import 'package:uxnan/domain/enums/git_action_phase_status.dart';
+import 'package:uxnan/domain/value_objects/message_content.dart';
 import 'package:uxnan/domain/value_objects/rpc_message.dart';
 
 void main() {
@@ -44,6 +45,30 @@ void main() {
       );
       expect(event, isA<ThinkingDeltaEvent>());
       expect((event as ThinkingDeltaEvent).delta, 'hmm…');
+    });
+
+    test('stream/content/block decodes the block into a MessageContent', () {
+      final event = processor.classify(
+        note('stream/content/block', {
+          'turnId': 't1',
+          'content': {
+            'type': 'command_execution',
+            'command': 'ls',
+            'status': 'completed',
+          },
+        }),
+      );
+      expect(event, isA<ContentBlockEvent>());
+      final content = (event as ContentBlockEvent).content;
+      expect(content, isA<CommandExecutionContent>());
+      expect((content as CommandExecutionContent).command, 'ls');
+    });
+
+    test('stream/content/block with non-map content degrades gracefully', () {
+      final event = processor.classify(
+        note('stream/content/block', {'turnId': 't1', 'content': 'nope'}),
+      );
+      expect(event, isA<UnknownDomainEvent>());
     });
 
     test('stream/turn/completed', () {

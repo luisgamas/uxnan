@@ -194,6 +194,7 @@ class PushRegistrar {
       case TurnStartedEvent() ||
             MessageDeltaEvent() ||
             ThinkingDeltaEvent() ||
+            ContentBlockEvent() ||
             TurnAbortedEvent() ||
             ModelResolvedEvent() ||
             GitProgressEvent() ||

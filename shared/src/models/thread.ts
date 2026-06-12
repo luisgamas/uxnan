@@ -19,6 +19,8 @@ export interface Message {
   content: unknown;
   /** The agent's reasoning ("thinking") for this message, when it emitted any. */
   thinking?: string;
+  /** Structured content blocks (command_execution/diff/tool) produced this turn. */
+  blocks?: unknown[];
   createdAt: number;
 }
 

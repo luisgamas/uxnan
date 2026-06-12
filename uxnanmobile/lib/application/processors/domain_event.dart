@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 import 'package:uxnan/domain/enums/git_action_phase_status.dart';
+import 'package:uxnan/domain/value_objects/message_content.dart';
 
 /// A classified event derived from an inbound bridge notification
 /// (spec 02a §5.2.5).
@@ -69,6 +70,29 @@ class ThinkingDeltaEvent extends DomainEvent {
 
   @override
   List<Object?> get props => [turnId, threadId, delta];
+}
+
+/// A structured content block (command/diff/tool) produced during the turn,
+/// already decoded into a [MessageContent] (`stream/content/block`).
+class ContentBlockEvent extends DomainEvent {
+  /// Creates a [ContentBlockEvent].
+  const ContentBlockEvent({
+    required this.turnId,
+    required this.content,
+    this.threadId,
+  });
+
+  /// The turn that produced the block.
+  final String turnId;
+
+  /// The owning thread, if provided.
+  final String? threadId;
+
+  /// The decoded content block.
+  final MessageContent content;
+
+  @override
+  List<Object?> get props => [turnId, threadId, content];
 }
 
 /// A turn finished successfully.

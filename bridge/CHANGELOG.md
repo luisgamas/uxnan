@@ -6,6 +6,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 
 ### Added
+- **Structured tool / command / diff blocks** (second structured-content slice).
+  The Claude adapter (`claude-adapter.ts` + new `claude-tools.ts`) parses the
+  `tool_use` blocks from each `assistant` message and pairs them with the
+  matching `tool_result` from the following `user` message, mapping them to
+  MessageContent JSON: **Bash → `command_execution`**, **Edit/MultiEdit/Write/
+  NotebookEdit → `diff`** (synthesized −old/+new hunks with +/- counts), and
+  **everything else → a generic `tool`** block (output truncated to 4 KB). The
+  `AgentManager` emits each as a new `stream/content/block` notification and
+  `ThreadStore.appendBlock` persists it; `Message.blocks` is serialized so it
+  survives `turn/list`. Contracts: `AgentStreamEvent 'block'`,
+  `StreamNotification.ContentBlock` + `ContentBlockParams`, `Message.blocks?`.
+  This is what populates the phone's Work log / Changed files. (Codex/pi next.)
 - **Agent "thinking" streamed and persisted** (first structured-content slice).
   The Claude adapter (`claude-adapter.ts`) now parses extended-thinking
   `thinking_delta` blocks from the stream-json output and emits a new

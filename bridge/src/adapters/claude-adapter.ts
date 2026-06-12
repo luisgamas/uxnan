@@ -30,6 +30,13 @@ import type {
   SendTurnOptions,
 } from '@uxnan/shared';
 import { BaseAgentAdapter } from './base-adapter.js';
+import {
+  extractToolResults,
+  extractToolUses,
+  toolUseToBlock,
+  type ClaudeToolResult,
+  type ClaudeToolUse,
+} from './claude-tools.js';
 import { effortValues, reasoningOption, reasoningValue, withOptions } from './run-options.js';
 import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
 
@@ -118,7 +125,7 @@ interface ActiveRun {
 
 /** A normalized Claude Code event extracted from one stream-json line. */
 export interface ClaudeEvent {
-  kind: 'init' | 'delta' | 'thinking' | 'assistant_text' | 'result' | 'other';
+  kind: 'init' | 'delta' | 'thinking' | 'assistant_text' | 'tool_result' | 'result' | 'other';
   sessionId?: string;
   text?: string;
   /** Only set for `init`: the concrete model id the run resolved the alias to. */
@@ -127,6 +134,10 @@ export interface ClaudeEvent {
   isError?: boolean;
   /** Only set for `result`: the raw `usage` object (token counts), if present. */
   usage?: unknown;
+  /** Only set for `assistant_text`: any tool invocations in the message. */
+  toolUses?: ClaudeToolUse[];
+  /** Only set for `tool_result`: results the agent fed back from its tools. */
+  toolResults?: ClaudeToolResult[];
 }
 
 /**
@@ -189,8 +200,20 @@ export function parseClaudeLine(line: string): ClaudeEvent | null {
     }
     case 'assistant': {
       const message = isRecord(parsed['message']) ? parsed['message'] : undefined;
-      const text = message ? extractAssistantText(message['content']) : '';
-      return { kind: 'assistant_text', ...base, text };
+      const content = message ? message['content'] : undefined;
+      const text = extractAssistantText(content);
+      const toolUses = extractToolUses(content);
+      return {
+        kind: 'assistant_text',
+        ...base,
+        text,
+        ...(toolUses.length > 0 ? { toolUses } : {}),
+      };
+    }
+    case 'user': {
+      const message = isRecord(parsed['message']) ? parsed['message'] : undefined;
+      const toolResults = extractToolResults(message ? message['content'] : undefined);
+      return { kind: 'tool_result', ...base, ...(toolResults.length > 0 ? { toolResults } : {}) };
     }
     case 'result': {
       const isError = parsed['is_error'] === true || parsed['subtype'] !== 'success';
@@ -298,12 +321,34 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     let resolvedModel: string | undefined;
     let errored = false;
     let completed = false;
+    // tool_use id → its (complete) invocation, until the matching tool_result
+    // arrives and the two are paired into a structured content block.
+    const pendingTools = new Map<string, ClaudeToolUse>();
 
     const reader = createInterface({ input: child.stdout });
     reader.on('line', (line) => {
       const event = parseClaudeLine(line);
       if (!event) return;
       if (event.sessionId) this.#sessionByThread.set(threadId, event.sessionId);
+      // Register tool invocations (with their inputs) so the result can pair.
+      if (event.toolUses) {
+        for (const tool of event.toolUses) pendingTools.set(tool.id, tool);
+      }
+      // A tool_result completes a tool → emit a structured block (command/diff/
+      // tool) for the Work log / Changed files sections.
+      if (event.kind === 'tool_result' && event.toolResults) {
+        for (const result of event.toolResults) {
+          const tool = pendingTools.get(result.toolUseId);
+          if (!tool) continue;
+          pendingTools.delete(result.toolUseId);
+          this.emit({
+            type: 'block',
+            threadId,
+            turnId,
+            data: { content: toolUseToBlock(tool, result) },
+          });
+        }
+      }
       if (event.kind === 'init' && event.model && !sawModel) {
         // Surface the concrete model the alias resolved to (e.g. `opus` →
         // `claude-opus-4-8`) so the phone can show the exact version in use.

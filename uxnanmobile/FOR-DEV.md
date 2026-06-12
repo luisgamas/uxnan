@@ -245,10 +245,18 @@ browser and multi-PC connection correctness are now DONE — see below.)
   `ThinkingContent` block and renders a **collapsible "Thinking" section**
   (default collapsed) at the top of the turn, gated by **Settings → Conversation
   → "Show agent thinking"** (`showAgentThinkingProvider` + on-device store).
-  Streams live; kept out of copy/previews. ☐ Next: Codex/pi thinking; **structured
-  commands/tools/diffs** so Work log / Changed files / the Last-edits strip
-  populate (today they're empty because the bridge still flattens those to text —
-  see [[project-bridge-flattens-to-text]]).
+  Streams live; kept out of copy/previews. ☐ Next: Codex/pi thinking.
+- ☑ **Structured commands / tools / diffs (second slice) — Work log & Changed
+  files now populate** — DONE (Claude Code, end-to-end): the bridge pairs each
+  `tool_use` with its `tool_result` and emits a `stream/content/block`
+  (`command_execution` for Bash, `diff` for Edit/Write, generic `tool`
+  otherwise; persisted via `Message.blocks`). The phone decodes it
+  (`ContentBlockEvent` → reducer → `_LiveTurn.blocks`) and `AssistantTurnView`
+  already routes those into the **Work log** / **Changed files** sections and the
+  **Last edits** strip — so they fill in live and after a re-sync. Covered by
+  unit tests both sides. ☐ Next: Codex/pi structured blocks; richer per-file diff
+  (the synthesized −old/+new hunk is the edited snippet, not a full file diff —
+  the `git/diff` viewer is the eventual home for full diffs).
 - ☑ **Structured agent turns (no bubble) + work log / changed files / copy** —
   DONE: assistant replies render full-width without a bubble (`AssistantTurnView`)
   — only user messages keep a bubble — so the whole answer is one clean

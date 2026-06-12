@@ -409,15 +409,16 @@ class ThreadManager {
         if (content is! String || content.isEmpty) continue;
         final thinking =
             rawMsg['thinking'] is String ? rawMsg['thinking'] as String : '';
+        final blocks = _decodeBlocks(rawMsg['blocks']);
         // Don't clobber a turn that is still streaming live on this device.
         if (_live[threadId]?.turnId == turnId) continue;
         final id = _streamId(turnId);
         final contents =
-            _assistantContents(content, thinking, streaming: false);
+            _assistantContents(content, thinking, blocks, streaming: false);
         final present = byId[id];
         if (present != null) {
-          // Compare text + thinking specifically (plainText omits thinking), so
-          // a turn whose reasoning arrived only via history is reconciled.
+          // Compare text + thinking + block count (plainText omits both), so a
+          // turn whose reasoning/blocks arrived only via history is reconciled.
           final presentText = present.contents
               .whereType<TextContent>()
               .map((t) => t.text)
@@ -426,7 +427,12 @@ class ThreadManager {
               .whereType<ThinkingContent>()
               .map((t) => t.text)
               .join();
-          if (presentText != content || presentThinking != thinking) {
+          final presentBlocks = present.contents
+              .where((c) => c is! TextContent && c is! ThinkingContent)
+              .length;
+          if (presentText != content ||
+              presentThinking != thinking ||
+              presentBlocks != blocks.length) {
             toSave.add(
               present.copyWith(
                 contents: contents,
@@ -545,6 +551,12 @@ class ThreadManager {
           live.thinking += delta;
           if (threadId == _activeThreadId) _rebuildActiveTimeline();
         }
+      case ContentBlockEvent(:final turnId, :final content):
+        final live = _live[threadId];
+        if (live != null && live.turnId == turnId) {
+          live.blocks.add(content);
+          if (threadId == _activeThreadId) _rebuildActiveTimeline();
+        }
       case TurnCompletedEvent(
           :final turnId,
           :final tokens,
@@ -585,7 +597,12 @@ class ThreadManager {
       threadId: threadId,
       turnId: turnId,
       role: MessageRole.assistant,
-      contents: _assistantContents(live.text, live.thinking, streaming: false),
+      contents: _assistantContents(
+        live.text,
+        live.thinking,
+        live.blocks,
+        streaming: false,
+      ),
       deliveryState:
           failed ? MessageDeliveryState.failed : MessageDeliveryState.delivered,
       orderIndex: await _orderIndexFor(threadId),
@@ -613,7 +630,12 @@ class ThreadManager {
         threadId: threadId,
         turnId: live.turnId,
         role: MessageRole.assistant,
-        contents: _assistantContents(live.text, live.thinking, streaming: true),
+        contents: _assistantContents(
+          live.text,
+          live.thinking,
+          live.blocks,
+          streaming: true,
+        ),
         deliveryState: MessageDeliveryState.delivered,
         orderIndex: _maxOrder(_activePersisted) + 1,
         createdAt: live.startedAt,
@@ -657,16 +679,31 @@ class ThreadManager {
 
   String _streamId(String turnId) => 'stream-$turnId';
 
-  /// Builds an assistant message's content blocks from its answer [text] and
-  /// optional [thinking], in render order (thinking first, then the answer).
+  /// Decodes the wire `blocks` array (structured MessageContent JSON) from a
+  /// `turn/list` message into content blocks; tolerant of missing/malformed.
+  static List<MessageContent> _decodeBlocks(Object? raw) {
+    if (raw is! List) return const [];
+    return [
+      for (final block in raw)
+        if (block is Map)
+          MessageContent.fromJson(block.cast<String, dynamic>()),
+    ];
+  }
+
+  /// Builds an assistant message's content blocks from its answer [text],
+  /// optional [thinking] and any structured [blocks] (commands/diffs/tools), in
+  /// render order. AssistantTurnView re-groups blocks into the Work log /
+  /// Changed files sections regardless of their position here.
   static List<MessageContent> _assistantContents(
     String text,
-    String thinking, {
+    String thinking,
+    List<MessageContent> blocks, {
     required bool streaming,
   }) {
     return [
       if (thinking.isNotEmpty)
         ThinkingContent(thinking, isStreaming: streaming),
+      ...blocks,
       TextContent(text, isStreaming: streaming),
     ];
   }
@@ -680,6 +717,7 @@ class ThreadManager {
         TurnStartedEvent(:final threadId) => threadId,
         MessageDeltaEvent(:final threadId) => threadId,
         ThinkingDeltaEvent(:final threadId) => threadId,
+        ContentBlockEvent(:final threadId) => threadId,
         TurnCompletedEvent(:final threadId) => threadId,
         TurnErrorEvent(:final threadId) => threadId,
         TurnAbortedEvent(:final threadId) => threadId,
@@ -732,4 +770,5 @@ class _LiveTurn {
   final DateTime startedAt;
   String text = '';
   String thinking = '';
+  final List<MessageContent> blocks = [];
 }

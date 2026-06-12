@@ -8,6 +8,15 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Work log & Changed files now populate (structured commands/tools/diffs).**
+  The bridge emits the agent's shell commands, file edits and tool calls as
+  structured `stream/content/block` events; the phone decodes each into a
+  `MessageContent` (`ContentBlockEvent` → timeline reducer) and folds it into the
+  turn, so the collapsible **Work log** (Bash → command cards, other tools →
+  rows) and **Changed files** (Edit/Write → per-file diffs with +/- counts) — and
+  the green/red **Last edits** strip above the composer — finally fill in. Blocks
+  stream live and are persisted (survive `turn/list`). Claude Code today; Codex/pi
+  next.
 - **Agent "thinking" (reasoning) in conversations — first structured-content
   slice.** Claude Code's extended-thinking output now flows end-to-end: the
   bridge parses `thinking_delta` blocks and emits a new `stream/thinking/delta`

@@ -29,6 +29,8 @@ interface StoredMessage {
   text: string;
   /** The agent's accumulated reasoning ("thinking") for this message, if any. */
   thinking?: string;
+  /** Structured content blocks (command_execution/diff/tool) for this message. */
+  blocks?: unknown[];
   createdAt: number;
 }
 
@@ -262,6 +264,15 @@ export class ThreadStore {
     });
   }
 
+  /** Appends a structured content block (command/diff/tool) to the message. */
+  appendBlock(threadId: string, turnId: string, content: unknown, now: number): Promise<void> {
+    return this.#mutate(async (threads) => {
+      const assistant = this.#assistantMessage(threads, threadId, turnId);
+      assistant.blocks = [...(assistant.blocks ?? []), content];
+      this.#touch(threads, threadId, now);
+    });
+  }
+
   completeTurn(
     threadId: string,
     turnId: string,
@@ -379,6 +390,7 @@ function toMessage(message: StoredMessage): Message {
     ...(message.thinking && message.thinking.length > 0
       ? { thinking: message.thinking }
       : {}),
+    ...(message.blocks && message.blocks.length > 0 ? { blocks: message.blocks } : {}),
     createdAt: message.createdAt,
   };
 }

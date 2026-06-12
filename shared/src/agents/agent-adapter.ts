@@ -12,6 +12,8 @@ export interface AgentStreamEvent {
     | 'delta'
     /** A chunk of the agent's reasoning / "thinking" (`data.text`). */
     | 'thinking'
+    /** A structured content block — command/diff/tool (`data.content`). */
+    | 'block'
     | 'turn_started'
     | 'turn_completed'
     | 'turn_error'
