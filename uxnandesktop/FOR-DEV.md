@@ -74,20 +74,16 @@ dismissible error banners (left sidebar `projects.error`, right panel
 (e.g. "worktree removed", "pushed"). Distinct from the **OS-level** notifications
 in Phase 4, which are for agent-completion events. **FOR-DEV.**
 
-**Windows shells out-of-the-box + npm-shim execution.** A fresh Windows box only
-guarantees **Windows PowerShell** (`powershell.exe`) and **CMD** (`cmd.exe`);
-PowerShell 7 (`pwsh`), Git Bash and WSL are user-added. Two improvements:
-- **Detect installed shells** with the existing `which`/`agents_detect`
-  machinery and seed/flag the terminal templates accordingly (always offer
-  PowerShell + CMD; surface pwsh/git-bash/WSL only when present, grey out the
-  rest) so a new user isn't stuck on the single empty default profile.
-- **npm `.ps1` shims + execution policy.** Agents installed via npm
-  (`codex`/`gemini`/…) ship `.ps1`/`.cmd` shims; under Windows PowerShell's
-  default **Restricted** policy the `.ps1` is blocked (why they only ran in the
-  user's pwsh 7). Options: launch PowerShell-family agent shells with
-  `-ExecutionPolicy Bypass` (process-scoped; document the trade-off), and/or
-  prefer **CMD** for agent launch on Windows (the `.cmd` shim runs regardless of
-  policy). Decide per-agent vs global. **FOR-DEV.**
+**Windows shells out-of-the-box + npm-shim execution.**
+- [x] **Detect installed shells** — Settings → Terminal greys out uninstalled
+      template shells and offers "Add detected shells" (reuses `agents_detect`);
+      the fresh-install seed is now PowerShell + CMD (Windows) / login shell +
+      bash (Unix), and an untouched empty-starter is upgraded on load.
+- [x] **`-ExecutionPolicy Bypass`** on the seeded + template PowerShell profiles
+      so npm `.ps1` shims run under the default Restricted policy.
+- [ ] Still open: optionally **prefer CMD for agent launch** on Windows (the
+      `.cmd` shim runs regardless of policy) as an alternative to Bypass; decide
+      per-agent vs global. **FOR-DEV.**
 
 ---
 

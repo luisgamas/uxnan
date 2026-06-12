@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — terminal shell detection + working default profiles
+- **Seeded profiles** on a fresh install are now the platform's guaranteed shells
+  (Windows: **Windows PowerShell** with `-ExecutionPolicy Bypass` + **Command
+  Prompt**; Unix: login shell + bash) instead of one empty placeholder. An
+  untouched empty-starter install is upgraded to this seed on load.
+- **PowerShell launches with `-ExecutionPolicy Bypass`** (process-scoped) so
+  npm-installed agent shims (`.ps1`) run under Windows' default Restricted policy
+  — fixes agents that wouldn't start in Windows PowerShell.
+- **Shell detection in Settings → Terminal**: the Add-profile template picker
+  greys out shells that aren't installed and offers **"Add detected shells"** to
+  seed every installed one in one click (PowerShell 7, Git Bash, WSL surface only
+  when present). Reuses the command-detection backend.
+
 ### Fixed — worktrees, status sync & error banners
 - **Robust worktree removal.** The worktree's terminals/agents are now killed
   *before* removal — on Windows a shell whose CWD was inside the worktree held
