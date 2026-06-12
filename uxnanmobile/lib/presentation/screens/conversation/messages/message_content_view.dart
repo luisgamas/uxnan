@@ -24,15 +24,23 @@ import 'package:uxnan/presentation/theme/typography.dart';
 /// background; this widget renders the block's body.
 class MessageContentView extends StatelessWidget {
   /// Creates a [MessageContentView].
-  const MessageContentView({required this.content, super.key});
+  const MessageContentView({
+    required this.content,
+    this.selectableText = true,
+    super.key,
+  });
 
   /// The content block to render.
   final MessageContent content;
 
+  /// Whether text/markdown is selectable. Disabled for the user's own bubble so
+  /// a tap on it toggles its copy affordance instead of placing a text cursor.
+  final bool selectableText;
+
   @override
   Widget build(BuildContext context) {
     return switch (content) {
-      final TextContent c => _TextBlock(content: c),
+      final TextContent c => _TextBlock(content: c, selectable: selectableText),
       // Thinking is normally lifted into the turn's dedicated section by
       // AssistantTurnView; rendered here too for completeness.
       final ThinkingContent c => _ThinkingSection(text: c.text),
@@ -351,14 +359,15 @@ IconData _subagentActionIcon(SubagentActionKind kind) => switch (kind) {
     };
 
 class _TextBlock extends StatelessWidget {
-  const _TextBlock({required this.content});
+  const _TextBlock({required this.content, this.selectable = true});
   final TextContent content;
+  final bool selectable;
 
   @override
   Widget build(BuildContext context) {
     return MarkdownBody(
       data: content.text.isEmpty ? '…' : content.text,
-      selectable: true,
+      selectable: selectable,
       styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
         p: Theme.of(context).textTheme.bodyMedium,
         code: UxnanTypography.codeBody,

@@ -383,6 +383,11 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
             optionsVisible: _optionsVisible,
             onToggleOptions: () =>
                 setState(() => _optionsVisible = !_optionsVisible),
+            // While the agent is producing a turn, Send becomes Stop — cancels
+            // the turn (without closing the thread) so the user can rewrite.
+            running: connectedHere && activity == ThreadActivity.running,
+            onStop: () =>
+                ref.read(threadManagerProvider).cancelTurn(widget.threadId),
             onModelTap: thread != null ? () => _pickModel(thread) : null,
             onSend: (text) => ref.read(threadManagerProvider).sendUserMessage(
                   widget.threadId,

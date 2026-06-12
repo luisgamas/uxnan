@@ -710,6 +710,18 @@ abstract class AppLocalizations {
   /// **'Response copied'**
   String get conversationResponseCopied;
 
+  /// Action that copies the user's own message (revealed by tapping the bubble).
+  ///
+  /// In en, this message translates to:
+  /// **'Copy message'**
+  String get conversationCopyMessage;
+
+  /// Snackbar confirming the user's message was copied.
+  ///
+  /// In en, this message translates to:
+  /// **'Message copied'**
+  String get conversationMessageCopied;
+
   /// Label of the diff summary strip above the composer.
   ///
   /// In en, this message translates to:
@@ -739,6 +751,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Attach'**
   String get composerAttach;
+
+  /// Tooltip on the button that cancels the in-flight agent turn (replaces Send while running).
+  ///
+  /// In en, this message translates to:
+  /// **'Stop'**
+  String get composerStop;
 
   /// No description provided for @composerVoice.
   ///

@@ -162,6 +162,14 @@
   "@conversationResponseCopied": {
     "description": "Snackbar confirming the agent response was copied."
   },
+  "conversationCopyMessage": "Copy message",
+  "@conversationCopyMessage": {
+    "description": "Action that copies the user's own message (revealed by tapping the bubble)."
+  },
+  "conversationMessageCopied": "Message copied",
+  "@conversationMessageCopied": {
+    "description": "Snackbar confirming the user's message was copied."
+  },
   "conversationLastEdits": "Last edits",
   "@conversationLastEdits": {
     "description": "Label of the diff summary strip above the composer."
@@ -174,6 +182,10 @@
   "composerHint": "Message…",
   "composerSend": "Send",
   "composerAttach": "Attach",
+  "composerStop": "Stop",
+  "@composerStop": {
+    "description": "Tooltip on the button that cancels the in-flight agent turn (replaces Send while running)."
+  },
   "composerVoice": "Voice input",
   "composerVoiceStop": "Stop dictation",
   "@composerVoiceStop": {

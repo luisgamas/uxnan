@@ -503,6 +503,23 @@ class ThreadManager {
     }
   }
 
+  /// Cancels the in-flight turn for [threadId] (`turn/cancel`) without closing
+  /// the thread — e.g. the user hit Send by mistake and wants to stop the agent
+  /// and rewrite. The bridge aborts the run and emits `stream/turn/aborted`,
+  /// which finalizes the partial turn locally. No-op if nothing is streaming.
+  Future<void> cancelTurn(String threadId) async {
+    final turnId = _live[threadId]?.turnId;
+    if (turnId == null) return;
+    try {
+      await _sendRequest('turn/cancel', {
+        'threadId': threadId,
+        'turnId': turnId,
+      });
+    } on Object catch (error, stackTrace) {
+      AppLogger.warn('turn/cancel failed', error, stackTrace);
+    }
+  }
+
   /// Releases resources.
   Future<void> dispose() async {
     await _eventsSub.cancel();

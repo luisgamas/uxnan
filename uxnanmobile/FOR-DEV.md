@@ -245,7 +245,7 @@ browser and multi-PC connection correctness are now DONE — see below.)
   `ThinkingContent` block and renders a **collapsible "Thinking" section**
   (default collapsed) at the top of the turn, gated by **Settings → Conversation
   → "Show agent thinking"** (`showAgentThinkingProvider` + on-device store).
-  Streams live; kept out of copy/previews. ☐ Next: Codex/pi thinking.
+  Streams live; kept out of copy/previews. Extended to **all agents** (below).
 - ☑ **Structured commands / tools / diffs (second slice) — Work log & Changed
   files now populate** — DONE (Claude Code, end-to-end): the bridge pairs each
   `tool_use` with its `tool_result` and emits a `stream/content/block`
@@ -254,9 +254,18 @@ browser and multi-PC connection correctness are now DONE — see below.)
   (`ContentBlockEvent` → reducer → `_LiveTurn.blocks`) and `AssistantTurnView`
   already routes those into the **Work log** / **Changed files** sections and the
   **Last edits** strip — so they fill in live and after a re-sync. Covered by
-  unit tests both sides. ☐ Next: Codex/pi structured blocks; richer per-file diff
-  (the synthesized −old/+new hunk is the edited snippet, not a full file diff —
-  the `git/diff` viewer is the eventual home for full diffs).
+  unit tests both sides.
+- ☑ **Thinking + structured blocks for Codex, pi & OpenCode** — DONE &
+  **verified live** (codex-cli 0.139 / opencode 1.17.4 / pi 0.79.1, by running
+  real turns and inspecting the JSON). Bridge-only (the phone was already
+  generic): shared `content-blocks.ts` builders + per-agent mappers
+  (`codex-tools.ts`, `opencode-tools.ts`, `pi-tools.ts`). Codex `command_execution`
+  /`file_change`/`mcp_tool_call`; OpenCode `tool_use` parts; pi paired
+  `tool_execution_start`+`_end`. End-to-end checked against captured logs — all
+  produce the right command/diff/tool blocks. ☐ Remaining: Codex `file_change`
+  carries the path only (no hunk/counts); Codex/OpenCode `reasoning`→thinking is
+  wired but the probe models didn't emit reasoning (re-verify with a reasoning
+  model); richer per-file diff via a `git/diff` viewer.
 - ☑ **Structured agent turns (no bubble) + work log / changed files / copy** —
   DONE: assistant replies render full-width without a bubble (`AssistantTurnView`)
   — only user messages keep a bubble — so the whole answer is one clean

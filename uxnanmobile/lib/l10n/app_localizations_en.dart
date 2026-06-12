@@ -337,6 +337,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get conversationResponseCopied => 'Response copied';
 
   @override
+  String get conversationCopyMessage => 'Copy message';
+
+  @override
+  String get conversationMessageCopied => 'Message copied';
+
+  @override
   String get conversationLastEdits => 'Last edits';
 
   @override
@@ -358,6 +364,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get composerAttach => 'Attach';
+
+  @override
+  String get composerStop => 'Stop';
 
   @override
   String get composerVoice => 'Voice input';

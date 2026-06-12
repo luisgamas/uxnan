@@ -224,6 +224,59 @@ void main() {
     expect(find.text('Answer only.'), findsOneWidget);
   });
 
+  testWidgets('tapping a user bubble toggles a copy-message action',
+      (tester) async {
+    final message = Message(
+      id: 'u1',
+      threadId: 'th1',
+      turnId: 't1',
+      role: MessageRole.user,
+      contents: const [TextContent('my prompt')],
+      deliveryState: MessageDeliveryState.delivered,
+      orderIndex: 0,
+      createdAt: DateTime(2026),
+    );
+
+    await tester.pumpWidget(_wrap(MessageBubble(message: message)));
+    await tester.pumpAndSettle();
+
+    // Hidden by default.
+    expect(find.text('Copy message'), findsNothing);
+
+    // Tap the bubble → the copy action appears.
+    await tester.tap(find.byType(MarkdownBody));
+    await tester.pumpAndSettle();
+    expect(find.text('Copy message'), findsOneWidget);
+
+    // Tap again → it hides.
+    await tester.tap(find.byType(MarkdownBody));
+    await tester.pumpAndSettle();
+    expect(find.text('Copy message'), findsNothing);
+  });
+
+  testWidgets('ComposerBar shows a Stop button while running and calls onStop',
+      (tester) async {
+    var stops = 0;
+    await tester.pumpWidget(
+      _wrap(
+        ComposerBar(
+          environment: _environment,
+          onSend: (_) {},
+          running: true,
+          onStop: () => stops++,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byIcon(Icons.stop_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.arrow_upward_rounded), findsNothing);
+
+    await tester.tap(find.byIcon(Icons.stop_rounded));
+    await tester.pump();
+    expect(stops, 1);
+  });
+
   testWidgets('ComposerBar sends trimmed text and clears the field',
       (tester) async {
     String? sent;

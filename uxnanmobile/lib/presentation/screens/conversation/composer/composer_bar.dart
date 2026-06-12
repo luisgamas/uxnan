@@ -27,6 +27,8 @@ class ComposerBar extends ConsumerStatefulWidget {
     this.showOptionsToggle = false,
     this.optionsVisible = true,
     this.onToggleOptions,
+    this.running = false,
+    this.onStop,
     super.key,
   });
 
@@ -60,6 +62,13 @@ class ComposerBar extends ConsumerStatefulWidget {
 
   /// Toggles the options strip. Required when [showOptionsToggle] is true.
   final VoidCallback? onToggleOptions;
+
+  /// Whether the agent is currently producing a turn — the Send button becomes
+  /// a Stop button that calls [onStop] (cancels the turn without closing it).
+  final bool running;
+
+  /// Cancels the in-flight turn. Required when [running] is true.
+  final VoidCallback? onStop;
 
   @override
   ConsumerState<ComposerBar> createState() => _ComposerBarState();
@@ -257,11 +266,22 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
                         onPressed: widget.enabled ? _toggleDictation : null,
                       ),
                       const SizedBox(width: UxnanSpacing.xs),
-                      IconButton.filled(
-                        tooltip: l10n.composerSend,
-                        onPressed: canSend ? _send : null,
-                        icon: const Icon(Icons.arrow_upward_rounded),
-                      ),
+                      if (widget.running)
+                        IconButton.filled(
+                          tooltip: l10n.composerStop,
+                          onPressed: widget.onStop,
+                          style: IconButton.styleFrom(
+                            backgroundColor: colors.error,
+                            foregroundColor: colors.onError,
+                          ),
+                          icon: const Icon(Icons.stop_rounded),
+                        )
+                      else
+                        IconButton.filled(
+                          tooltip: l10n.composerSend,
+                          onPressed: canSend ? _send : null,
+                          icon: const Icon(Icons.arrow_upward_rounded),
+                        ),
                     ],
                   ),
                 ],

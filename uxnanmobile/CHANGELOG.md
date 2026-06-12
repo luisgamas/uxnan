@@ -6,6 +6,21 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Stop the agent mid-turn.** While the agent is producing a turn, the composer
+  Send button becomes a red **Stop** button that cancels the in-flight turn
+  (`turn/cancel`, via `ThreadManager.cancelTurn`) without closing the thread — so
+  a message sent by mistake can be stopped and rewritten.
+- **Copy your own message.** Tapping a user (right-side) bubble toggles a **Copy
+  message** action beneath it (hidden by default), mirroring the agent turn's
+  copy action. The user bubble's text is no longer selectable (the tap toggles
+  the copy affordance instead of placing a cursor).
+- **Work log / Changed files / thinking now also populate for Codex, pi and
+  OpenCode** (the phone already decodes the structured events; the bridge now
+  emits them for every agent — see `bridge/CHANGELOG.md`). Pending on-device
+  verification of each CLI's tool shapes.
+
 ### Changed
 
 - **Conversation centers within a max width on wide screens (tablets).** The
