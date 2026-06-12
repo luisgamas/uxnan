@@ -91,22 +91,31 @@ user configuration. Built incrementally alongside the phases.
       added via `i18n.t` (a key in every locale) — non-negotiable.**
 
 **Done — agents (in Settings):**
-- [x] **Agents registry in Settings** — register agents (name, command, args) in
-      **Settings → Agents**, from built-in templates (Claude Code, Codex, Gemini,
-      Aider, opencode) or blank. Persisted in `AppSettings.agentProfiles` (Rust
-      `AgentProfile` + `types.ts`, `#[serde(default)]`). `Settings.svelte` +
-      `AgentProfileEditor.svelte` + `agentTemplates.ts`.
-- [x] **Manual agent launch** — a Bot menu (`LaunchAgentMenu.svelte`) on every
-      project header and worktree row launches the chosen agent into that
-      worktree's terminal workspace (`app.launchAgent` → `terminals.create` with
-      the agent's command/args), or deep-links to Settings → Agents when none are
-      configured. Settings panes are deep-linkable via `app.openSettings(section)`.
+- [x] **Agents registry + catalog with install detection** — **Settings → Agents**
+      shows a catalog of known agents (Claude Code, Codex, Gemini CLI, OpenCode,
+      Pi, Antigravity, Goose, Grok, Kilo Code, Kimi, Qwen Code) with brand logos;
+      the backend (`agents_detect` → `which.rs`, PATH+PATHEXT) detects which are
+      installed and only those are addable (one-click / "Add all installed").
+      Plus "Add custom agent". Persisted in `AppSettings.agentProfiles` (Rust
+      `AgentProfile` {command, args, `terminalProfileId`, `icon`} + `types.ts`,
+      `#[serde(default)]`). `agentCatalog.ts`, `AgentLogo.svelte`,
+      `static/agents/*.svg`, `Settings.svelte`, `AgentProfileEditor.svelte`.
+- [x] **Manual agent launch (shell-aware)** — a Bot menu (`LaunchAgentMenu.svelte`)
+      on every project header and worktree row launches the chosen agent into that
+      worktree's terminal workspace. The agent runs **inside its chosen terminal
+      profile** (per-agent shell, default = default profile): the ADE opens that
+      shell and types the command (`runCommand`, transient), so PATH/PATHEXT shims
+      (`.cmd`/`.ps1`) resolve — fixes agents not starting under Windows PowerShell.
+      Deep-links to Settings → Agents when none are configured;
+      `app.openSettings(section)`.
 
 **Pending — agents:**
 - [ ] **Auto-launch on worktree create** — inject the (per-worktree) agent's
       command into a new PTY when a worktree is created (spec `02b §5.1`); needs a
       per-worktree agent selection. Closes Tier-2 **T2.2**. **FOR-DEV.**
 - [ ] **Env vars per agent** + a **default agent**, if a launch flow needs them.
+- [ ] **Arg quoting** in the injected command is best-effort (quote-if-spaces);
+      revisit if an agent needs shell-specific escaping. **FOR-DEV.**
 
 **Done (cross-cutting):**
 - [x] **In-app directory picker** (`DirectoryPicker.svelte` + `browse_dirs`) —

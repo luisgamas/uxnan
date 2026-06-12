@@ -5,6 +5,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — agents: shell-aware launch, install detection, brand logos
+- **Agents now launch inside a shell.** Instead of spawning the bare command —
+  which only worked for real `.exe` agents (`claude`, `agy`) and failed for npm
+  `.ps1`/`.cmd` shims (`codex`, `gemini`, `opencode`, `pi`) — the ADE opens the
+  agent's terminal profile and types the command into it, so PATH/PATHEXT shims
+  resolve. Fixes agents not starting under Windows PowerShell.
+- **Per-agent terminal.** Each agent picks which terminal profile (shell) to
+  launch in — any built-in or user-added profile — defaulting to the default
+  terminal profile. New `AgentProfile.terminalProfileId`. The command is typed
+  into the freshly-started shell (transient, never persisted/re-run on restore).
+- **Install detection + catalog.** Settings → Agents shows a catalog of known
+  agents (Claude Code, Codex, Gemini CLI, OpenCode, Pi, Antigravity, Goose,
+  Grok, Kilo Code, Kimi, Qwen Code); the backend (`agents_detect`, PATH+PATHEXT)
+  reports which are installed and only those are addable — one-click, or "Add all
+  installed". Replaces the old static template list. "Add custom agent" remains.
+- **Brand logos** (`static/agents/*.svg`, `AgentLogo`) in the catalog, the agent
+  editor and the launch menu. New `AgentProfile.icon` stores the logo key; logos
+  also resolve by command (`agentLogoKey`), so agents added before icons existed
+  still show their brand mark.
+
+### Fixed
+- **Project sort menu**: relabel the default ordering "Default" (was the awkward
+  "Added order"), and widen the menu (`min-w-44`) to match the other dropdowns.
+
 ### Added — agents track (registry + launch)
 - **Agents registry** in **Settings → Agents**: register CLI coding agents
   (name + command + args) from built-in templates (Claude Code, Codex, Gemini,
