@@ -94,7 +94,7 @@
           </Button>
         {/snippet}
       </DropdownMenu.Trigger>
-      <DropdownMenu.Content align="end">
+      <DropdownMenu.Content align="end" class="min-w-44">
         <DropdownMenu.Label class={text.menuLabel}>{i18n.t("sidebar.sortBy")}</DropdownMenu.Label>
         <DropdownMenu.RadioGroup bind:value={sort}>
           <DropdownMenu.RadioItem class={text.menu} value="manual">{i18n.t("sidebar.sortManual")}</DropdownMenu.RadioItem>
