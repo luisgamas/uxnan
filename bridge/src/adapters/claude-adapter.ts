@@ -203,11 +203,16 @@ export function parseClaudeLine(line: string): ClaudeEvent | null {
       const content = message ? message['content'] : undefined;
       const text = extractAssistantText(content);
       const toolUses = extractToolUses(content);
+      // Each assistant message carries its own `usage` (token counts including
+      // the full input context at that point) — a fallback for turns whose final
+      // `result` event omits usage, so the context meter still fills in.
+      const usage = message && isRecord(message['usage']) ? message['usage'] : undefined;
       return {
         kind: 'assistant_text',
         ...base,
         text,
         ...(toolUses.length > 0 ? { toolUses } : {}),
+        ...(usage !== undefined ? { usage } : {}),
       };
     }
     case 'user': {
@@ -321,6 +326,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     let resolvedModel: string | undefined;
     let errored = false;
     let completed = false;
+    // The most recent assistant-message usage, used if the `result` event omits
+    // its own usage (so the context meter still reports tokens).
+    let lastUsage: unknown;
     // tool_use id → its (complete) invocation, until the matching tool_result
     // arrives and the two are paired into a structured content block.
     const pendingTools = new Map<string, ClaudeToolUse>();
@@ -333,6 +341,10 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       // Register tool invocations (with their inputs) so the result can pair.
       if (event.toolUses) {
         for (const tool of event.toolUses) pendingTools.set(tool.id, tool);
+      }
+      // Track the latest assistant-message usage as a completion fallback.
+      if (event.kind === 'assistant_text' && event.usage !== undefined) {
+        lastUsage = event.usage;
       }
       // A tool_result completes a tool → emit a structured block (command/diff/
       // tool) for the Work log / Changed files sections.
@@ -379,8 +391,18 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
           });
         } else {
           completed = true;
-          const finalText = event.text && event.text.length > 0 ? event.text : full;
-          const tokens = claudeUsageTokens(event.usage);
+          // Prefer the streamed text (`full`) — it's the complete narration the
+          // user saw. `result.result` is often only the final segment of a
+          // tool-using turn, so using it would shrink the message on re-sync and
+          // drop earlier paragraphs. Fall back to `result.result` only when no
+          // partials streamed.
+          const finalText =
+            sawPartial && full.length > 0
+              ? full
+              : event.text && event.text.length > 0
+                ? event.text
+                : full;
+          const tokens = claudeUsageTokens(event.usage ?? lastUsage);
           const window = claudeContextWindow(resolvedModel ?? model);
           const usage =
             tokens !== undefined

@@ -405,6 +405,45 @@ test('ClaudeCodeAdapter reports usage with a context window on completion', asyn
   assert.equal(usage?.contextWindow, 1_000_000);
 });
 
+test('ClaudeCodeAdapter falls back to assistant usage when the result omits it', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
+  const { done } = collect(adapter);
+
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi' });
+  last().feed([
+    '{"type":"system","subtype":"init","session_id":"s","model":"claude-sonnet-4-6"}',
+    // assistant message carries usage; the result event below omits it
+    '{"type":"assistant","session_id":"s","message":{"content":[{"type":"text","text":"hi"}],"usage":{"input_tokens":12000,"output_tokens":300}}}',
+    '{"type":"result","subtype":"success","result":"hi","session_id":"s"}',
+  ]);
+
+  const events = await done;
+  const completed = events.find((e) => e.type === 'turn_completed');
+  const usage = (completed?.data as { usage?: { tokens: number } }).usage;
+  assert.equal(usage?.tokens, 12300);
+});
+
+test('ClaudeCodeAdapter keeps the full streamed text when result.result is only the final part', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
+  const { done } = collect(adapter);
+
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi' });
+  last().feed([
+    '{"type":"stream_event","session_id":"s","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"Let me check. "}}}',
+    '{"type":"stream_event","session_id":"s","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"The answer is 42."}}}',
+    // result.result is only the final segment — the streamed narration is longer
+    '{"type":"result","subtype":"success","result":"The answer is 42.","session_id":"s"}',
+  ]);
+
+  const events = await done;
+  const completed = events.find((e) => e.type === 'turn_completed');
+  // The full streamed text is kept (not shrunk to result.result), so it can't
+  // disappear on a later re-sync.
+  assert.equal((completed?.data as { text: string }).text, 'Let me check. The answer is 42.');
+});
+
 test('parseClaudeLine extracts the resolved model from the init event', () => {
   assert.equal(
     parseClaudeLine('{"type":"system","subtype":"init","session_id":"s","model":"claude-opus-4-8"}')

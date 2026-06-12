@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed
+- **Streamed answer no longer shrinks on re-sync.** On a tool-using turn,
+  `claude`'s final `result.result` is often only the last segment of the answer;
+  the adapter was storing that, so re-entering a conversation (which re-syncs
+  from `turn/list`) dropped the earlier paragraphs. The completed turn now keeps
+  the full streamed text (`full`) whenever partials were streamed, falling back
+  to `result.result` only when nothing streamed.
+- **Context usage reported even when the `result` event omits it.** The Claude
+  adapter now also reads `usage` from each `assistant` message and uses the
+  latest as a fallback, so the phone's context meter fills in instead of showing
+  0 when `result.usage` is absent.
+
 ### Added
 - **Structured tool / command / diff blocks** (second structured-content slice).
   The Claude adapter (`claude-adapter.ts` + new `claude-tools.ts`) parses the
