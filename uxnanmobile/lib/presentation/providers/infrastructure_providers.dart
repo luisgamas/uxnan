@@ -10,6 +10,7 @@ import 'package:uxnan/infrastructure/repositories/drift_git_action_log_repositor
 import 'package:uxnan/infrastructure/repositories/drift_message_repository.dart';
 import 'package:uxnan/infrastructure/repositories/drift_thread_repository.dart';
 import 'package:uxnan/infrastructure/repositories/trusted_device_repository.dart';
+import 'package:uxnan/infrastructure/speech/speech_to_text_service.dart';
 import 'package:uxnan/infrastructure/storage/local_database.dart';
 import 'package:uxnan/infrastructure/storage/notification_preferences_store.dart';
 import 'package:uxnan/infrastructure/storage/phone_identity_store.dart';
@@ -74,6 +75,14 @@ final pushNotificationServiceProvider = Provider<PushNotificationService>(
     return service;
   },
 );
+
+/// On-device speech-to-text for composer dictation. Guarded — no-ops without
+/// the native plugin / mic permission, so it never blocks the UI.
+final speechToTextServiceProvider = Provider<SpeechToTextService>((ref) {
+  final service = SpeechToTextService();
+  ref.onDispose(service.cancel);
+  return service;
+});
 
 /// Trusted-device repository (drift for metadata + secure storage for the
 /// bridge identity key).

@@ -142,10 +142,47 @@
   "conversationTitle": "Conversation",
   "conversationEmpty": "No messages yet",
   "conversationEmptyBody": "Send a message to start the conversation.",
+  "conversationThinking": "Thinking",
+  "@conversationThinking": {
+    "description": "Header of the collapsible section showing the agent's reasoning."
+  },
+  "conversationWorkLog": "Work log",
+  "@conversationWorkLog": {
+    "description": "Header of the collapsible list of commands/tools an agent turn ran."
+  },
+  "conversationChangedFiles": "Changed files",
+  "@conversationChangedFiles": {
+    "description": "Header of the collapsible list of files an agent turn modified."
+  },
+  "conversationCopyResponse": "Copy response",
+  "@conversationCopyResponse": {
+    "description": "Action that copies the agent's full text answer."
+  },
+  "conversationResponseCopied": "Response copied",
+  "@conversationResponseCopied": {
+    "description": "Snackbar confirming the agent response was copied."
+  },
+  "conversationLastEdits": "Last edits",
+  "@conversationLastEdits": {
+    "description": "Label of the diff summary strip above the composer."
+  },
+  "conversationFilesCount": "{count, plural, =1{1 file} other{{count} files}}",
+  "@conversationFilesCount": {
+    "description": "File count in the diff summary strip.",
+    "placeholders": { "count": { "type": "int" } }
+  },
   "composerHint": "Message…",
   "composerSend": "Send",
   "composerAttach": "Attach",
   "composerVoice": "Voice input",
+  "composerVoiceStop": "Stop dictation",
+  "@composerVoiceStop": {
+    "description": "Tooltip on the mic button while voice dictation is active."
+  },
+  "composerVoiceUnavailable": "Voice input isn't available on this device.",
+  "@composerVoiceUnavailable": {
+    "description": "Snackbar shown when speech recognition can't be initialized (no permission / unsupported)."
+  },
   "composerOptionsShow": "Show options",
   "composerOptionsHide": "Hide options",
 
@@ -162,6 +199,10 @@
   "workspaceBrowseEmpty": "No sub-folders here",
   "workspaceBrowseFailed": "Couldn't browse folders",
   "workspaceBrowseGitRepo": "Git repository",
+  "workspaceBrowseUp": "Up one folder",
+  "@workspaceBrowseUp": {
+    "description": "Tooltip on the button that ascends to the parent folder in the workspace browser."
+  },
   "newThreadAgent": "Agent",
   "newThreadModel": "Model (optional)",
   "newThreadModelHint": "Default model",
@@ -293,5 +334,17 @@
   "settingsTurnErrorSubtitle": "Notify me when an agent run fails.",
   "@settingsTurnErrorSubtitle": {
     "description": "Subtitle of the turn-error notification toggle."
+  },
+  "settingsConversationSection": "Conversation",
+  "@settingsConversationSection": {
+    "description": "Section header for conversation-view preferences."
+  },
+  "settingsShowThinkingTitle": "Show agent thinking",
+  "@settingsShowThinkingTitle": {
+    "description": "Title of the toggle that shows the agent's reasoning section."
+  },
+  "settingsShowThinkingSubtitle": "Display the agent's reasoning in a collapsible section.",
+  "@settingsShowThinkingSubtitle": {
+    "description": "Subtitle of the show-thinking toggle."
   }
 }

@@ -47,6 +47,7 @@ dependencies:
   riverpod: ^3.0.0 # core Riverpod
   rxdart: ^0.28.0 # reactive stream operators
   shared_preferences: ^2.3.0 # non-sensitive preferences
+  speech_to_text: ^7.0.0 # on-device speech-to-text (composer dictation)
   uuid: ^4.4.0 # UUID generation
   web_socket_channel: ^3.0.0 # WebSocket client (LAN + relay)
 

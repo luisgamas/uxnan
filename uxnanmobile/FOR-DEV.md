@@ -19,8 +19,12 @@ gracefully until the other agent wires the handler. Suggested order:
 3. ☑ **Settings screen + notification preferences** (`notifications/update`) —
    DONE this round; see *Push notifications → Notification preferences UI*.
 4. ☑ **Remove device** (clear a stale paired PC) — DONE; see *Threads list*.
-5. ☐ **Voice → text in the composer** — pure device feature, but verification
-   needs a real mic (defer while remote).
+5. ☑ **Voice → text in the composer** — DONE and **verified on-device**
+   (2026-06-11): `speech_to_text` wired to the composer mic (guarded
+   `SpeechToTextService`, `speechToTextServiceProvider`, live partial→final
+   dictation into the field, recording state, graceful "unavailable" snackbar).
+   Android `RECORD_AUDIO` added. ☐ iOS Info.plist usage strings remain FOR-HUMAN
+   (`FOR-HUMAN.md` §3).
 
 Everything else below needs the bridge/relay (history pagination, per-file diff,
 extended git actions, LAN discovery, manual-code pairing, APNs) and is best done

@@ -106,10 +106,19 @@
   "conversationTitle": "Conversación",
   "conversationEmpty": "Aún no hay mensajes",
   "conversationEmptyBody": "Envía un mensaje para iniciar la conversación.",
+  "conversationThinking": "Razonamiento",
+  "conversationWorkLog": "Registro de actividad",
+  "conversationChangedFiles": "Archivos modificados",
+  "conversationCopyResponse": "Copiar respuesta",
+  "conversationResponseCopied": "Respuesta copiada",
+  "conversationLastEdits": "Últimos cambios",
+  "conversationFilesCount": "{count, plural, =1{1 archivo} other{{count} archivos}}",
   "composerHint": "Mensaje…",
   "composerSend": "Enviar",
   "composerAttach": "Adjuntar",
   "composerVoice": "Entrada de voz",
+  "composerVoiceStop": "Detener dictado",
+  "composerVoiceUnavailable": "La entrada de voz no está disponible en este dispositivo.",
   "composerOptionsShow": "Mostrar opciones",
   "composerOptionsHide": "Ocultar opciones",
 
@@ -126,6 +135,7 @@
   "workspaceBrowseEmpty": "No hay subcarpetas aquí",
   "workspaceBrowseFailed": "No se pudieron explorar las carpetas",
   "workspaceBrowseGitRepo": "Repositorio git",
+  "workspaceBrowseUp": "Subir un nivel",
   "newThreadAgent": "Agente",
   "newThreadModel": "Modelo (opcional)",
   "newThreadModelHint": "Modelo predeterminado",
@@ -201,5 +211,8 @@
   "settingsTurnCompletedTitle": "Respuestas",
   "settingsTurnCompletedSubtitle": "Notificarme cuando un agente termina de responder.",
   "settingsTurnErrorTitle": "Errores",
-  "settingsTurnErrorSubtitle": "Notificarme cuando falla la ejecución de un agente."
+  "settingsTurnErrorSubtitle": "Notificarme cuando falla la ejecución de un agente.",
+  "settingsConversationSection": "Conversación",
+  "settingsShowThinkingTitle": "Mostrar el razonamiento del agente",
+  "settingsShowThinkingSubtitle": "Muestra el razonamiento del agente en una sección colapsable."
 }

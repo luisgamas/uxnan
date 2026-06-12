@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/core/extensions/string_ext.dart';
+import 'package:uxnan/infrastructure/speech/speech_to_text_service.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
+import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
 import 'package:uxnan/presentation/screens/conversation/session_environment.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
@@ -9,9 +12,10 @@ import 'package:uxnan/presentation/theme/typography.dart';
 /// The message composer: a Material 3 bottom bar **anchored to the screen
 /// edge** (not a floating card) — a `surfaceContainer` surface with a top
 /// hairline that reads as chrome, holding an expandable text field and a
-/// toolbar (attach, model selector, context usage, voice, send). Attach and
-/// voice are placeholders (FOR-DEV).
-class ComposerBar extends StatefulWidget {
+/// toolbar (attach, model selector, context usage, voice, send). The mic
+/// dictates into the field via on-device speech-to-text; attach is still a
+/// placeholder (FOR-DEV).
+class ComposerBar extends ConsumerStatefulWidget {
   /// Creates a [ComposerBar].
   const ComposerBar({
     required this.onSend,
@@ -58,12 +62,19 @@ class ComposerBar extends StatefulWidget {
   final VoidCallback? onToggleOptions;
 
   @override
-  State<ComposerBar> createState() => _ComposerBarState();
+  ConsumerState<ComposerBar> createState() => _ComposerBarState();
 }
 
-class _ComposerBarState extends State<ComposerBar> {
+class _ComposerBarState extends ConsumerState<ComposerBar> {
   final TextEditingController _controller = TextEditingController();
   bool _hasText = false;
+
+  /// Whether a voice-dictation session is currently active.
+  bool _listening = false;
+
+  /// The composer text captured when dictation started; recognized words are
+  /// appended to it so dictation never clobbers what the user already typed.
+  String _dictationBase = '';
 
   @override
   void initState() {
@@ -73,6 +84,8 @@ class _ComposerBarState extends State<ComposerBar> {
 
   @override
   void dispose() {
+    // Best-effort: stop any active dictation when the composer goes away.
+    if (_listening) ref.read(speechToTextServiceProvider).cancel();
     _controller
       ..removeListener(_onChanged)
       ..dispose();
@@ -89,6 +102,46 @@ class _ComposerBarState extends State<ComposerBar> {
     if (text.isEmpty || !widget.enabled) return;
     widget.onSend(text);
     _controller.clear();
+  }
+
+  /// Starts or stops voice dictation. Recognized words stream into the field
+  /// live; tapping again (or a final result) stops the session.
+  Future<void> _toggleDictation() async {
+    final l10n = AppLocalizations.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final service = ref.read(speechToTextServiceProvider);
+
+    if (_listening) {
+      await service.stop();
+      if (mounted) setState(() => _listening = false);
+      return;
+    }
+
+    final available = await service.initialize();
+    if (!available) {
+      messenger
+        ..clearSnackBars()
+        ..showSnackBar(SnackBar(content: Text(l10n.composerVoiceUnavailable)));
+      return;
+    }
+
+    _dictationBase = _controller.text;
+    await service.start(onResult: _onSpeechResult);
+    if (mounted) setState(() => _listening = true);
+  }
+
+  void _onSpeechResult(SpeechResult result) {
+    final base = _dictationBase;
+    final joiner = base.isEmpty || base.endsWith(' ') ? '' : ' ';
+    final text = '$base$joiner${result.text}';
+    _controller
+      ..text = text
+      ..selection = TextSelection.collapsed(offset: text.length);
+    // The session ends on a final result; reflect that in the mic state.
+    if (result.isFinal) {
+      _dictationBase = text;
+      if (mounted) setState(() => _listening = false);
+    }
   }
 
   @override
@@ -180,11 +233,19 @@ class _ComposerBarState extends State<ComposerBar> {
                       ),
                     const SizedBox(width: UxnanSpacing.xs),
                   ],
-                  // FOR-DEV: voice input is a placeholder (no STT yet).
+                  // Voice dictation: tap to start, tap again to stop. Recording
+                  // shows a filled mic on an error-toned chip.
                   _RoundIconButton(
-                    icon: Icons.mic_none_rounded,
-                    tooltip: l10n.composerVoice,
-                    onPressed: null,
+                    icon: _listening
+                        ? Icons.mic_rounded
+                        : Icons.mic_none_rounded,
+                    tooltip: _listening
+                        ? l10n.composerVoiceStop
+                        : l10n.composerVoice,
+                    selected: _listening,
+                    selectedForeground: colors.onErrorContainer,
+                    selectedBackground: colors.errorContainer,
+                    onPressed: widget.enabled ? _toggleDictation : null,
                   ),
                   const SizedBox(width: UxnanSpacing.xs),
                   IconButton.filled(
@@ -208,33 +269,42 @@ class _RoundIconButton extends StatelessWidget {
     required this.tooltip,
     required this.onPressed,
     this.selected = false,
+    this.selectedForeground,
+    this.selectedBackground,
   });
 
   final IconData icon;
   final String tooltip;
   final VoidCallback? onPressed;
 
-  /// When true, the button reads as "on" (primary tint over a soft container) —
-  /// used for the options-strip toggle.
+  /// When true, the button reads as "on" (a soft container tint) — used for the
+  /// options-strip toggle and the active voice-dictation state.
   final bool selected;
+
+  /// Foreground/background tints when [selected]; default to the secondary
+  /// container pair (the mic overrides them with error tones while recording).
+  final Color? selectedForeground;
+  final Color? selectedBackground;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final foreground = selectedForeground ?? colors.onSecondaryContainer;
+    final background = selectedBackground ?? colors.secondaryContainer;
     return IconButton(
       tooltip: tooltip,
       visualDensity: VisualDensity.compact,
       isSelected: selected,
       style: selected
           ? IconButton.styleFrom(
-              backgroundColor: colors.secondaryContainer,
-              foregroundColor: colors.onSecondaryContainer,
+              backgroundColor: background,
+              foregroundColor: foreground,
             )
           : null,
       icon: Icon(
         icon,
         size: 20,
-        color: selected ? colors.onSecondaryContainer : colors.onSurfaceVariant,
+        color: selected ? foreground : colors.onSurfaceVariant,
       ),
       onPressed: onPressed,
     );

@@ -102,6 +102,21 @@ disabled — by design.
 
 ---
 
+## ☐ 3. iOS voice-dictation permissions (Info.plist)
+
+The composer mic uses `speech_to_text` for on-device dictation. **Android is
+done** (the `RECORD_AUDIO` permission is in `AndroidManifest.xml`). **iOS** needs
+two usage-description strings in `ios/Runner/Info.plist` (the file is generated
+on the first macOS build), or the mic button reports "not available":
+
+- `NSMicrophoneUsageDescription` — e.g. *"Uxnan uses the microphone to dictate
+  messages to your coding agent."*
+- `NSSpeechRecognitionUsageDescription` — e.g. *"Uxnan transcribes your speech
+  into the message composer."*
+
+Speech recognition on iOS may route audio to Apple's servers depending on the
+locale; no app/relay code changes are needed.
+
 ## Future items (added when their module lands)
 
 These are **not needed yet** — they are listed so you know what is coming:

@@ -322,6 +322,35 @@ class AppLocalizationsEn extends AppLocalizations {
       'Send a message to start the conversation.';
 
   @override
+  String get conversationThinking => 'Thinking';
+
+  @override
+  String get conversationWorkLog => 'Work log';
+
+  @override
+  String get conversationChangedFiles => 'Changed files';
+
+  @override
+  String get conversationCopyResponse => 'Copy response';
+
+  @override
+  String get conversationResponseCopied => 'Response copied';
+
+  @override
+  String get conversationLastEdits => 'Last edits';
+
+  @override
+  String conversationFilesCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count files',
+      one: '1 file',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get composerHint => 'Message…';
 
   @override
@@ -332,6 +361,13 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get composerVoice => 'Voice input';
+
+  @override
+  String get composerVoiceStop => 'Stop dictation';
+
+  @override
+  String get composerVoiceUnavailable =>
+      'Voice input isn\'t available on this device.';
 
   @override
   String get composerOptionsShow => 'Show options';
@@ -377,6 +413,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get workspaceBrowseGitRepo => 'Git repository';
+
+  @override
+  String get workspaceBrowseUp => 'Up one folder';
 
   @override
   String get newThreadAgent => 'Agent';
@@ -602,4 +641,14 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsTurnErrorSubtitle => 'Notify me when an agent run fails.';
+
+  @override
+  String get settingsConversationSection => 'Conversation';
+
+  @override
+  String get settingsShowThinkingTitle => 'Show agent thinking';
+
+  @override
+  String get settingsShowThinkingSubtitle =>
+      'Display the agent\'s reasoning in a collapsible section.';
 }

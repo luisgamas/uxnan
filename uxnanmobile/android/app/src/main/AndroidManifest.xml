@@ -2,6 +2,8 @@
     <!-- QR pairing scanner (mobile_scanner + permission_handler). -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <!-- Composer voice dictation (speech_to_text). -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <application
         android:label="Uxnan"
         android:name="${applicationName}"

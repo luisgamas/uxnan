@@ -323,6 +323,35 @@ class AppLocalizationsEs extends AppLocalizations {
       'Envía un mensaje para iniciar la conversación.';
 
   @override
+  String get conversationThinking => 'Razonamiento';
+
+  @override
+  String get conversationWorkLog => 'Registro de actividad';
+
+  @override
+  String get conversationChangedFiles => 'Archivos modificados';
+
+  @override
+  String get conversationCopyResponse => 'Copiar respuesta';
+
+  @override
+  String get conversationResponseCopied => 'Respuesta copiada';
+
+  @override
+  String get conversationLastEdits => 'Últimos cambios';
+
+  @override
+  String conversationFilesCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count archivos',
+      one: '1 archivo',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get composerHint => 'Mensaje…';
 
   @override
@@ -333,6 +362,13 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get composerVoice => 'Entrada de voz';
+
+  @override
+  String get composerVoiceStop => 'Detener dictado';
+
+  @override
+  String get composerVoiceUnavailable =>
+      'La entrada de voz no está disponible en este dispositivo.';
 
   @override
   String get composerOptionsShow => 'Mostrar opciones';
@@ -378,6 +414,9 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get workspaceBrowseGitRepo => 'Repositorio git';
+
+  @override
+  String get workspaceBrowseUp => 'Subir un nivel';
 
   @override
   String get newThreadAgent => 'Agente';
@@ -604,4 +643,14 @@ class AppLocalizationsEs extends AppLocalizations {
   @override
   String get settingsTurnErrorSubtitle =>
       'Notificarme cuando falla la ejecución de un agente.';
+
+  @override
+  String get settingsConversationSection => 'Conversación';
+
+  @override
+  String get settingsShowThinkingTitle => 'Mostrar el razonamiento del agente';
+
+  @override
+  String get settingsShowThinkingSubtitle =>
+      'Muestra el razonamiento del agente en una sección colapsable.';
 }

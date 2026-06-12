@@ -680,6 +680,48 @@ abstract class AppLocalizations {
   /// **'Send a message to start the conversation.'**
   String get conversationEmptyBody;
 
+  /// Header of the collapsible section showing the agent's reasoning.
+  ///
+  /// In en, this message translates to:
+  /// **'Thinking'**
+  String get conversationThinking;
+
+  /// Header of the collapsible list of commands/tools an agent turn ran.
+  ///
+  /// In en, this message translates to:
+  /// **'Work log'**
+  String get conversationWorkLog;
+
+  /// Header of the collapsible list of files an agent turn modified.
+  ///
+  /// In en, this message translates to:
+  /// **'Changed files'**
+  String get conversationChangedFiles;
+
+  /// Action that copies the agent's full text answer.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy response'**
+  String get conversationCopyResponse;
+
+  /// Snackbar confirming the agent response was copied.
+  ///
+  /// In en, this message translates to:
+  /// **'Response copied'**
+  String get conversationResponseCopied;
+
+  /// Label of the diff summary strip above the composer.
+  ///
+  /// In en, this message translates to:
+  /// **'Last edits'**
+  String get conversationLastEdits;
+
+  /// File count in the diff summary strip.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 file} other{{count} files}}'**
+  String conversationFilesCount(int count);
+
   /// No description provided for @composerHint.
   ///
   /// In en, this message translates to:
@@ -703,6 +745,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Voice input'**
   String get composerVoice;
+
+  /// Tooltip on the mic button while voice dictation is active.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop dictation'**
+  String get composerVoiceStop;
+
+  /// Snackbar shown when speech recognition can't be initialized (no permission / unsupported).
+  ///
+  /// In en, this message translates to:
+  /// **'Voice input isn\'t available on this device.'**
+  String get composerVoiceUnavailable;
 
   /// No description provided for @composerOptionsShow.
   ///
@@ -793,6 +847,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Git repository'**
   String get workspaceBrowseGitRepo;
+
+  /// Tooltip on the button that ascends to the parent folder in the workspace browser.
+  ///
+  /// In en, this message translates to:
+  /// **'Up one folder'**
+  String get workspaceBrowseUp;
 
   /// No description provided for @newThreadAgent.
   ///
@@ -1219,6 +1279,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Notify me when an agent run fails.'**
   String get settingsTurnErrorSubtitle;
+
+  /// Section header for conversation-view preferences.
+  ///
+  /// In en, this message translates to:
+  /// **'Conversation'**
+  String get settingsConversationSection;
+
+  /// Title of the toggle that shows the agent's reasoning section.
+  ///
+  /// In en, this message translates to:
+  /// **'Show agent thinking'**
+  String get settingsShowThinkingTitle;
+
+  /// Subtitle of the show-thinking toggle.
+  ///
+  /// In en, this message translates to:
+  /// **'Display the agent\'s reasoning in a collapsible section.'**
+  String get settingsShowThinkingSubtitle;
 }
 
 class _AppLocalizationsDelegate
