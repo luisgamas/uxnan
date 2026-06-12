@@ -187,6 +187,16 @@ class MyDevicesScreen extends ConsumerWidget {
               },
             ),
           ),
+          // Pinned footer (app name + ALPHA stage pill). `SliverFillRemaining`
+          // with `hasScrollBody: false` gives the child the remaining viewport
+          // space when the list is short (the inner `Spacer` then pushes the
+          // content to the bottom of the screen), and the child's natural size
+          // when the list overflows — so the footer always sits right after
+          // the last card and never leaves a screen-sized white gap to scroll.
+          const SliverFillRemaining(
+            hasScrollBody: false,
+            child: _BrandingFooter(),
+          ),
         ],
       ),
     );
@@ -576,4 +586,76 @@ String _relativeTime(DateTime time) {
   return isSameDay
       ? DateFormat.Hm().format(time)
       : DateFormat.MMMd().format(time);
+}
+
+/// Footer pinned to the bottom of the devices screen: the localized app
+/// name (with the "Mobile" / "Móvil" suffix) and a neutral "ALPHA"
+/// release-stage pill.
+///
+/// Layout: lives inside a `SliverFillRemaining(hasScrollBody: false)`, so it
+/// fills the remaining viewport when the device list is short (the inner
+/// `Spacer` then pushes the content to the bottom of the screen) and shrinks
+/// to its natural height — right after the last card — when the list
+/// overflows. The footer is purely informational, never tappable.
+class _BrandingFooter extends StatelessWidget {
+  const _BrandingFooter();
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          UxnanSpacing.lg,
+          0,
+          UxnanSpacing.lg,
+          UxnanSpacing.lg,
+        ),
+        child: Column(
+          children: [
+            // Expands to fill the remaining viewport when the list is short
+            // (so the content below pins to the bottom of the screen) and
+            // collapses to 0 when the list overflows (so the footer takes
+            // only its natural height right after the last card).
+            const Spacer(),
+            Text(
+              l10n.appTitleMobile,
+              style: textTheme.titleSmall?.copyWith(color: colors.onSurface),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: UxnanSpacing.xs),
+            // Release-stage indicator. A neutral, non-interactive label pill
+            // modeled on the project's existing `_RiskBadge` / `_TokenChip`
+            // pattern: a `Container` with an M3 surface-container background
+            // and `onSurfaceVariant` text. Chips imply interactivity and
+            // Flutter's `Badge` widget is for notification counts — neither
+            // fits a non-actionable status label. Colors come from the
+            // surface token family so it survives light/dark theme changes
+            // without standing out.
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: UxnanSpacing.sm,
+                vertical: 2,
+              ),
+              decoration: BoxDecoration(
+                color: colors.surfaceContainerHigh,
+                borderRadius: const BorderRadius.all(UxnanRadius.full),
+              ),
+              child: Text(
+                l10n.appVersionStage,
+                style: textTheme.bodySmall?.copyWith(
+                  color: colors.onSurfaceVariant,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

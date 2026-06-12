@@ -669,4 +669,10 @@ class AppLocalizationsEs extends AppLocalizations {
   @override
   String get settingsScrollOnSendSubtitle =>
       'Salta a tu mensaje al enviarlo, aunque hayas subido el scroll.';
+
+  @override
+  String get appTitleMobile => 'Uxnan Móvil';
+
+  @override
+  String get appVersionStage => 'ALPHA';
 }

@@ -1327,6 +1327,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Jump to your message when you send, even if you\'ve scrolled up.'**
   String get settingsScrollOnSendSubtitle;
+
+  /// App name with the 'Mobile' suffix, shown in the devices-screen footer. Localized — 'Uxnan Móvil' in Spanish.
+  ///
+  /// In en, this message translates to:
+  /// **'Uxnan Mobile'**
+  String get appTitleMobile;
+
+  /// Short release-stage label (e.g. ALPHA / BETA / STABLE) shown in the devices-screen footer to communicate the maturity of the build.
+  ///
+  /// In en, this message translates to:
+  /// **'ALPHA'**
+  String get appVersionStage;
 }
 
 class _AppLocalizationsDelegate

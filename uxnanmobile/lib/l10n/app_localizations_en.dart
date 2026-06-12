@@ -667,4 +667,10 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get settingsScrollOnSendSubtitle =>
       'Jump to your message when you send, even if you\'ve scrolled up.';
+
+  @override
+  String get appTitleMobile => 'Uxnan Mobile';
+
+  @override
+  String get appVersionStage => 'ALPHA';
 }

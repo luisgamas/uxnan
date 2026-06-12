@@ -366,5 +366,13 @@
   "settingsScrollOnSendSubtitle": "Jump to your message when you send, even if you've scrolled up.",
   "@settingsScrollOnSendSubtitle": {
     "description": "Subtitle of the scroll-on-send toggle."
+  },
+  "appTitleMobile": "Uxnan Mobile",
+  "@appTitleMobile": {
+    "description": "App name with the 'Mobile' suffix, shown in the devices-screen footer. Localized — 'Uxnan Móvil' in Spanish."
+  },
+  "appVersionStage": "ALPHA",
+  "@appVersionStage": {
+    "description": "Short release-stage label (e.g. ALPHA / BETA / STABLE) shown in the devices-screen footer to communicate the maturity of the build."
   }
 }

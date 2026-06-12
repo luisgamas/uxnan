@@ -219,5 +219,7 @@
   "settingsShowThinkingTitle": "Mostrar el razonamiento del agente",
   "settingsShowThinkingSubtitle": "Muestra el razonamiento del agente en una sección colapsable.",
   "settingsScrollOnSendTitle": "Ir al final al enviar",
-  "settingsScrollOnSendSubtitle": "Salta a tu mensaje al enviarlo, aunque hayas subido el scroll."
+  "settingsScrollOnSendSubtitle": "Salta a tu mensaje al enviarlo, aunque hayas subido el scroll.",
+  "appTitleMobile": "Uxnan Móvil",
+  "appVersionStage": "ALPHA"
 }

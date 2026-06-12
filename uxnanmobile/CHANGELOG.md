@@ -7,6 +7,16 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Branding footer on the devices list.** The home screen now shows a small
+  footer at the bottom: the localized app name ("Uxnan Mobile" / "Uxnan
+  Móvil") and an "ALPHA" release-stage pill. The footer uses
+  `SliverFillRemaining(hasScrollBody: false)` so it pins to the bottom of
+  the screen with few paired PCs, and shrinks to its natural size right
+  after the last card when the list is long — it never leaves a
+  screen-sized white gap when you scroll. The pill is a neutral,
+  non-interactive label (modeled on the existing `_RiskBadge` /
+  `_TokenChip` pattern) so the alpha status is always visible without
+  standing out across theme changes.
 - **"Scroll to latest on send" setting** (Settings → Conversation, on by
   default). When you send a message the conversation jumps to your message even
   if you'd scrolled up; turn it off to keep your manual scroll position on send.
