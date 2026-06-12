@@ -327,8 +327,13 @@ browser and multi-PC connection correctness are now DONE — see below.)
     agent's `images` capability** (hidden when unsupported). ☐ Still a disabled
     placeholder when shown: file/image picker → upload as `ImageContent` /
     attachment (FOR-DEV).
-  - ☐ **Voice** (`ComposerBar` mic button) → speech-to-text into the composer.
-    Currently a disabled placeholder (FOR-DEV).
+  - ☑ **Voice** (`ComposerBar` mic button) → DONE: on-device speech-to-text
+    dictates into the composer (`speech_to_text`, guarded `SpeechToTextService`),
+    live partial→final with a recording state; verified on-device. See
+    *Recommended next steps → Voice → text*.
+  - ☑ **Stop the turn** (`ComposerBar`) → DONE: while a turn streams, Send
+    becomes a Stop button that cancels it (`turn/cancel` via
+    `ThreadManager.cancelTurn`) without closing the thread.
   - ☑ Removed `SessionEnvironment.sample()`, `demo_seed.dart` and the home
     preview entry from the default UX.
 

@@ -369,8 +369,21 @@ The OpenCode adapter is the template for any "one-shot per-turn CLI" agent:
       credentials; multi-provider, so no single public provider name).
       **FOR-DEV follow-ups:** map the resolved model's context window for a `%`
       context ring (today pi reports raw `totalTokens`, shown as a count like
-      Codex); surface pi's `thinking`/tool-call events as structured content if a
-      use case appears.
+      Codex).
+- [x] **Structured content (thinking + commands/tools/diffs) for ALL agents** —
+      DONE & verified live. Adapters emit `thinking` and `block` events that the
+      phone folds into a collapsible "Thinking" section, the Work log and Changed
+      files. Shared `content-blocks.ts` builders + per-agent mappers
+      (`claude-tools.ts`, `codex-tools.ts`, `opencode-tools.ts`, `pi-tools.ts`)
+      translate each CLI's events: Claude `tool_use`+`tool_result` and
+      `thinking_delta`; Codex `reasoning`/`command_execution`/`file_change`/
+      `mcp_tool_call`; OpenCode `reasoning`/`tool_use` parts; pi `thinking_delta`
+      + paired `tool_execution_start`/`_end`. Contracts: `stream/thinking/delta`,
+      `stream/content/block`, `AgentStreamEvent 'thinking'|'block'`,
+      `Message.thinking?`/`blocks?` (persisted, survive `turn/list`). Verified by
+      running real turns (codex-cli 0.139, opencode 1.17.4, pi 0.79.1) and
+      inspecting the JSON. Remaining: Codex `file_change` carries the path only
+      (no hunk/counts); richer per-file diff via a `git/diff` viewer.
 - [ ] **Gemini CLI** — capture its non-interactive JSON stream first. New scaffold.
 - [ ] **JSONL history fallback** (`session-jsonl-history`) — read agent session
       JSONL/SQLite from disk for `turn/list` when the runtime has no fresh data

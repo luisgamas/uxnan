@@ -120,23 +120,23 @@ All communication between the mobile app and the PC goes through a real E2EE cha
 
 ![Phase](https://img.shields.io/badge/PHASE-ALPHA_(MVP_in_progress)-orange?style=for-the-badge)
 
-The mobile MVP and its PC-side stack are implemented and run end-to-end with a
-real agent; the desktop app has not been started.
+The mobile MVP and its PC-side stack are implemented and run end-to-end with
+real agents; the desktop app is under construction on its own branch.
 
 | Component | Status |
 |---|---|
-| `uxnanmobile/` | **MVP wired.** QR pairing + trusted reconnect, E2EE transport with auto-reconnect (heartbeat), streaming conversation, real model picker, Git (status/commit/push), per-PC thread scoping, FCM push registration (gated). |
-| `bridge/` | **Implemented.** E2EE transport (relay + LAN), **OpenCode, Claude Code and Codex wired as real agents** (each spawns its official local CLI over stdio — no provider API/SDK/keys), per-thread agent/model/project selection (`agent/list`, `agent/models`, `project/list`), Git + workspace + checkpoints, conversation engine, push (gated), resilient relay reconnection. |
+| `uxnanmobile/` | **MVP wired.** QR pairing + trusted reconnect, E2EE transport with auto-reconnect (heartbeat), streaming conversation with **structured agent turns** (collapsible work log, changed files, thinking — with a settings toggle), real model picker + per-model run-options, real context-usage meter, **voice→text dictation**, **stop-the-turn** mid-run, copy actions (response + your own message), Git (status/commit/push), per-PC thread scoping, **settings + notification preferences**, FCM push registration (gated), tablet-centered layout. |
+| `bridge/` | **Implemented.** E2EE transport (relay + LAN), **Claude Code, Codex, OpenCode and pi wired as real agents** (each spawns its official local CLI over stdio — no provider API/SDK/keys), **structured content streamed for every agent** (thinking + commands/tools/diffs via `stream/thinking/delta` + `stream/content/block`, verified live), per-thread agent/model/project selection (`agent/list`, `agent/models`, `project/list`), Git + workspace + checkpoints, conversation engine, push (gated), resilient relay reconnection. |
 | `relay/` | **Implemented.** E2EE envelope relay by `sessionId`, per-IP rate limiting, peer-close on disconnect, push endpoints (gated on Firebase/APNs creds). |
 | `shared/` | **Implemented.** JSON-RPC + E2EE contracts, validators. |
-| `uxnandesktop/` | **Not started** — architecture spec only. |
+| `uxnandesktop/` | **Under construction** (Tauri 2 ADE) on its own branch/worktree — `main` carries the architecture spec; the app is being built separately. |
 
 Push notifications are code-complete and **Android is live** against a Firebase
 project; iOS delivery is pending an APNs key (macOS + Apple Developer). To
 activate them on your own Firebase account, test delivery, and decide what's safe
 to commit, see [`relay/docs/push-notifications.md`](relay/docs/push-notifications.md)
 (asset checklist in each component's `FOR-HUMAN.md`). The next agent
-(Gemini) follows the OpenCode/Claude Code/Codex recipe in `bridge/FOR-DEV.md`.
+(Gemini) follows the Claude Code/Codex/OpenCode/pi recipe in `bridge/FOR-DEV.md`.
 Per-component progress lives in each `CHANGELOG.md`; pending work in each
 `FOR-DEV.md`. Per-component docs (install, config, agents, testing, deploy) live in
 [`bridge/docs/`](bridge/docs/) and [`relay/docs/`](relay/docs/).
