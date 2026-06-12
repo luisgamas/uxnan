@@ -40,6 +40,11 @@
   let fit: FitAddon | undefined;
   let unlisteners: UnlistenFn[] = [];
   let resizeObserver: ResizeObserver | undefined;
+  let fitTimer: ReturnType<typeof setTimeout> | undefined;
+  // Last size sent to the PTY — we only resize on a real change, so a redundant
+  // resize doesn't fire SIGWINCH and make a full-screen agent TUI repaint/jump.
+  let lastCols = 0;
+  let lastRows = 0;
 
   // --- Copy / paste --------------------------------------------------------
   function copySelection() {
@@ -57,9 +62,13 @@
     if (!term || !fit || el.offsetParent === null) return;
     try {
       fit.fit();
-      invoke("pty_resize", { id, cols: term.cols, rows: term.rows }).catch(
-        () => {},
-      );
+      if (term.cols !== lastCols || term.rows !== lastRows) {
+        lastCols = term.cols;
+        lastRows = term.rows;
+        invoke("pty_resize", { id, cols: term.cols, rows: term.rows }).catch(
+          () => {},
+        );
+      }
     } catch {
       // Container not measurable yet; a later resize will retry.
     }
@@ -85,23 +94,32 @@
       // WebGL unavailable — xterm falls back to the DOM renderer.
     }
 
-    // Keyboard copy/paste (no Shift, to avoid the webview DevTools shortcut):
+    // Custom key handling (everything else — Ctrl+←/→ word nav, Home/End, … —
+    // falls through to xterm's defaults and on to the PTY):
+    //  - Shift+Enter / Alt+Enter insert a newline (xterm otherwise collapses
+    //    them to a plain Enter, so agents can't get a multi-line prompt).
     //  - Ctrl+C copies when there's a selection, else passes through as SIGINT.
     //  - Ctrl+V pastes once (preventDefault stops a duplicate native paste).
     term.attachCustomKeyEventHandler((e) => {
-      if (e.type !== "keydown" || !e.ctrlKey || e.altKey || e.shiftKey)
-        return true;
-      const key = e.key.toLowerCase();
-      if (key === "c" && term?.hasSelection()) {
-        copySelection();
-        term.clearSelection();
+      if (e.type !== "keydown") return true;
+      if (e.key === "Enter" && (e.shiftKey || e.altKey) && !e.ctrlKey) {
+        invoke("pty_write", { id, data: "\n" }).catch(() => {});
         e.preventDefault();
         return false;
       }
-      if (key === "v") {
-        e.preventDefault();
-        void pasteClipboard();
-        return false;
+      if (e.ctrlKey && !e.altKey && !e.shiftKey) {
+        const key = e.key.toLowerCase();
+        if (key === "c" && term?.hasSelection()) {
+          copySelection();
+          term.clearSelection();
+          e.preventDefault();
+          return false;
+        }
+        if (key === "v") {
+          e.preventDefault();
+          void pasteClipboard();
+          return false;
+        }
       }
       return true;
     });
@@ -144,7 +162,12 @@
       invoke("pty_write", { id, data }).catch(() => {});
     });
 
-    resizeObserver = new ResizeObserver(() => fitToPane());
+    // Debounce refits: coalesce a burst of layout changes (divider drag, window
+    // resize) into one resize so the PTY isn't spammed with SIGWINCH.
+    resizeObserver = new ResizeObserver(() => {
+      clearTimeout(fitTimer);
+      fitTimer = setTimeout(fitToPane, 100);
+    });
     resizeObserver.observe(el);
     term.focus();
 
@@ -177,6 +200,7 @@
     terminals.unregisterController(id);
     unlisteners.forEach((fn) => fn());
     resizeObserver?.disconnect();
+    clearTimeout(fitTimer);
     term?.dispose();
   });
 </script>
