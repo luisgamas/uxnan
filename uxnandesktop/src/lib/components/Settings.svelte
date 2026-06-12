@@ -163,6 +163,41 @@
     return a?.name.trim() || a?.command || i18n.t("settings.defaultAgentNone");
   });
 
+  // --- Terminal shells: detect which template commands are installed ---------
+  const ALL_TEMPLATES = TERMINAL_TEMPLATES.flatMap((g) => g.templates);
+  let shellsInstalled = $state<Set<string> | null>(null);
+  async function detectShells() {
+    try {
+      const cmds = [...new Set(ALL_TEMPLATES.map((t) => t.command))];
+      shellsInstalled = new Set(await detectAgents(cmds));
+    } catch {
+      shellsInstalled = new Set();
+    }
+  }
+  $effect(() => {
+    if (
+      app.settingsOpen &&
+      app.settingsSection === "terminal" &&
+      shellsInstalled === null
+    ) {
+      void detectShells();
+    }
+  });
+  const isShellInstalled = (t: TerminalTemplate) =>
+    shellsInstalled?.has(t.command) ?? false;
+  const shellConfigured = (t: TerminalTemplate) =>
+    app.terminalProfiles.some(
+      (p) => p.command === t.command && p.args.join(" ") === t.args.join(" "),
+    );
+  function addDetectedShells() {
+    for (const t of ALL_TEMPLATES) {
+      if (isShellInstalled(t) && !shellConfigured(t)) addFromTemplate(t);
+    }
+  }
+  const addableShellCount = $derived(
+    ALL_TEMPLATES.filter((t) => isShellInstalled(t) && !shellConfigured(t)).length,
+  );
+
   const navItems = [
     { id: "general", key: "settings.general", icon: SlidersIcon },
     { id: "language", key: "settings.language", icon: LanguagesIcon },
@@ -373,42 +408,55 @@
               <p class={text.meta}>{i18n.t("settings.defaultProfileDesc")}</p>
             </div>
 
-            <div class="flex items-center justify-between">
+            <div class="flex items-center justify-between gap-1.5">
               <span class={cn("font-medium", text.body)}>{i18n.t("settings.profiles")}</span>
-              <DropdownMenu.Root>
-                <DropdownMenu.Trigger>
-                  {#snippet child({ props })}
-                    <Button variant="outline" size="sm" {...props}>
-                      <PlusIcon data-icon="inline-start" />
-                      {i18n.t("settings.addProfile")}
-                      <ChevronDownIcon data-icon="inline-end" />
-                    </Button>
-                  {/snippet}
-                </DropdownMenu.Trigger>
-                <DropdownMenu.Content align="end" class="min-w-48">
-                  {#each TERMINAL_TEMPLATES as group (group.os)}
-                    <DropdownMenu.Group>
-                      <DropdownMenu.GroupHeading class={text.menuLabel}>
-                        {group.os}
-                      </DropdownMenu.GroupHeading>
-                      {#each group.templates as t (t.name)}
-                        <DropdownMenu.Item
-                          class={text.menu}
-                          onclick={() => addFromTemplate(t)}
-                        >
-                          <TerminalIcon class={icon.button} />
-                          {t.name}
-                        </DropdownMenu.Item>
-                      {/each}
-                    </DropdownMenu.Group>
-                  {/each}
-                  <DropdownMenu.Separator />
-                  <DropdownMenu.Item class={text.menu} onclick={addBlankProfile}>
-                    <PlusIcon class={icon.button} />
-                    {i18n.t("settings.blankProfile")}
-                  </DropdownMenu.Item>
-                </DropdownMenu.Content>
-              </DropdownMenu.Root>
+              <div class="flex items-center gap-1.5">
+                {#if addableShellCount > 0}
+                  <Button variant="outline" size="sm" onclick={addDetectedShells}>
+                    <PlusIcon data-icon="inline-start" />
+                    {i18n.t("settings.addDetectedShells")}
+                  </Button>
+                {/if}
+                <DropdownMenu.Root>
+                  <DropdownMenu.Trigger>
+                    {#snippet child({ props })}
+                      <Button variant="outline" size="sm" {...props}>
+                        <PlusIcon data-icon="inline-start" />
+                        {i18n.t("settings.addProfile")}
+                        <ChevronDownIcon data-icon="inline-end" />
+                      </Button>
+                    {/snippet}
+                  </DropdownMenu.Trigger>
+                  <DropdownMenu.Content align="end" class="min-w-52">
+                    {#each TERMINAL_TEMPLATES as group (group.os)}
+                      <DropdownMenu.Group>
+                        <DropdownMenu.GroupHeading class={text.menuLabel}>
+                          {group.os}
+                        </DropdownMenu.GroupHeading>
+                        {#each group.templates as t (t.name)}
+                          {@const notFound = shellsInstalled !== null && !isShellInstalled(t)}
+                          <DropdownMenu.Item
+                            class={text.menu}
+                            disabled={notFound}
+                            onclick={() => addFromTemplate(t)}
+                          >
+                            <TerminalIcon class={icon.button} />
+                            {t.name}
+                            {#if notFound}
+                              <span class={cn("ml-auto", text.meta)}>{i18n.t("settings.agentNotFound")}</span>
+                            {/if}
+                          </DropdownMenu.Item>
+                        {/each}
+                      </DropdownMenu.Group>
+                    {/each}
+                    <DropdownMenu.Separator />
+                    <DropdownMenu.Item class={text.menu} onclick={addBlankProfile}>
+                      <PlusIcon class={icon.button} />
+                      {i18n.t("settings.blankProfile")}
+                    </DropdownMenu.Item>
+                  </DropdownMenu.Content>
+                </DropdownMenu.Root>
+              </div>
             </div>
 
             <div class="flex flex-col gap-2">

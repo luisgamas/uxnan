@@ -163,6 +163,7 @@ export const es: Record<MessageKey, string> = {
     "Se usa para nuevas terminales salvo que elijas otro desde el menú “+”.",
   "settings.profiles": "Perfiles",
   "settings.addProfile": "Agregar perfil",
+  "settings.addDetectedShells": "Agregar shells detectados",
   "settings.blankProfile": "Perfil en blanco",
   "settings.noProfiles":
     "Sin perfiles. Agrega uno para elegir cómo se lanzan las terminales.",

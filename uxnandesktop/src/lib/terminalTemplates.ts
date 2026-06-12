@@ -16,10 +16,21 @@ export interface TerminalTemplateGroup {
 export const TERMINAL_TEMPLATES: TerminalTemplateGroup[] = [
   {
     os: "Windows",
+    // PowerShell launches with -ExecutionPolicy Bypass (process-scoped) so npm
+    // agent shims (.ps1) run under the default Restricted policy.
     templates: [
-      { name: "PowerShell", command: "powershell.exe", args: ["-NoLogo"] },
-      { name: "PowerShell 7", command: "pwsh.exe", args: ["-NoLogo"] },
+      {
+        name: "Windows PowerShell",
+        command: "powershell.exe",
+        args: ["-NoLogo", "-ExecutionPolicy", "Bypass"],
+      },
+      {
+        name: "PowerShell 7",
+        command: "pwsh.exe",
+        args: ["-NoLogo", "-ExecutionPolicy", "Bypass"],
+      },
       { name: "Command Prompt", command: "cmd.exe", args: [] },
+      { name: "Git Bash", command: "bash.exe", args: ["--login", "-i"] },
       { name: "WSL", command: "wsl.exe", args: [] },
       { name: "WSL: distro", command: "wsl.exe", args: ["-d", "Ubuntu"] },
     ],

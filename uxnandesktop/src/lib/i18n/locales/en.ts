@@ -166,6 +166,7 @@ export const en = {
     "Used for new terminals unless you pick another from the “+” menu.",
   "settings.profiles": "Profiles",
   "settings.addProfile": "Add profile",
+  "settings.addDetectedShells": "Add detected shells",
   "settings.blankProfile": "Blank profile",
   "settings.noProfiles":
     "No profiles. Add one to choose how terminals are launched.",
