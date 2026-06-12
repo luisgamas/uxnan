@@ -39,18 +39,20 @@
   </DropdownMenu.Trigger>
   <DropdownMenu.Content align="end" class="min-w-44">
     {#if agents.length > 0}
-      <DropdownMenu.GroupHeading class={text.menuLabel}>
-        {i18n.t("agent.launch")}
-      </DropdownMenu.GroupHeading>
-      {#each agents as agent (agent.id)}
-        <DropdownMenu.Item
-          class={text.menu}
-          onclick={() => projects.launchAgentAt(path, agent)}
-        >
-          <BotIcon class={icon.button} />
-          {agent.name.trim() || agent.command}
-        </DropdownMenu.Item>
-      {/each}
+      <DropdownMenu.Group>
+        <DropdownMenu.GroupHeading class={text.menuLabel}>
+          {i18n.t("agent.launch")}
+        </DropdownMenu.GroupHeading>
+        {#each agents as agent (agent.id)}
+          <DropdownMenu.Item
+            class={text.menu}
+            onclick={() => projects.launchAgentAt(path, agent)}
+          >
+            <BotIcon class={icon.button} />
+            {agent.name.trim() || agent.command}
+          </DropdownMenu.Item>
+        {/each}
+      </DropdownMenu.Group>
       <DropdownMenu.Separator />
     {:else}
       <div class={cn("px-2 py-1.5", text.meta)}>{i18n.t("agent.none")}</div>
