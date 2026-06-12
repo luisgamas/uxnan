@@ -359,7 +359,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                                 options: runOptions,
                               ),
                             if (showRunOptions && showApproval)
-                              const SizedBox(height: UxnanSpacing.sm),
+                              const SizedBox(height: UxnanSpacing.xs),
                             if (showApproval)
                               _ApprovalBar(
                                 mode: _approvalMode,

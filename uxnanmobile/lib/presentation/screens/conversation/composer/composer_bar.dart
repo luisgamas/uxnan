@@ -193,6 +193,7 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
                   ),
                   const SizedBox(height: UxnanSpacing.sm),
                   Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       // FOR-DEV: attach is a placeholder (no file/image picker
                       // yet); shown only when the agent advertises `images`.
