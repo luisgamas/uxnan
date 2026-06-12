@@ -37,7 +37,7 @@ models live in:
 | 4 | Agent monitoring (hooks, notifications) | ☐ not started |
 | 5 | Polish & UX (hunk staging, side-by-side, virtual scroll) | ☐ not started |
 | 6 | Bridge integration (mobile pairing) | ☐ not started |
-| **S** | Settings, design system & i18n (cross-cutting) | ◑ **IN PROGRESS** — Settings (theme + terminal profiles w/ OS templates), **design tokens**, and **full i18n (EN/ES + Language picker)** done; **agents registry + launch** pending (the ADE differentiator) |
+| **S** | Settings, design system & i18n (cross-cutting) | ◑ **IN PROGRESS** — Settings (theme + terminal profiles w/ OS templates), **design tokens**, **full i18n (EN/ES + Language picker)**, and the **agents registry + manual launch** (the ADE differentiator) done; agent **auto-launch on worktree create** + Phase-4 **status monitoring** pending |
 
 Estimate (spec §2): 11–17 weeks for Phases 0–5 solo; +2–3 wk for Phase 6.
 
@@ -45,15 +45,18 @@ Estimate (spec §2): 11–17 weeks for Phases 0–5 solo; +2–3 wk for Phase 6.
 
 **Phases 0, 1 and 2 are complete** (terminal core + splits + per-worktree
 terminal workspaces; full git-worktree management with the redesigned, i18n'd
-panel). The cross-cutting track has Settings, design tokens and full i18n done.
+panel). The cross-cutting track has Settings, design tokens, full i18n, and the
+**agents registry + manual launch** done — you can register CLI agents in
+Settings → Agents and launch one into any worktree (it runs in that worktree's
+terminal workspace).
 
-**Nothing blocks the next phase.** The two open fronts are independent — pick
-either:
-- **Agents track** (in Settings) — define agents + launch them in worktrees. The
-  ADE's core differentiator; also unblocks Phase 4 (agent monitoring).
-- **Phase 3 — Git status & diffs** — the right-panel review experience
-  (status polling, diff viewer, stage/commit). The other Tier-1 pillar; will pull
-  in `git2`.
+**Next up — Phase 3 (Git status & diffs):** the right-panel review experience
+(status polling, diff viewer, stage/commit). The remaining Tier-1 pillar; will
+pull in `git2`. This is the recommended next phase.
+
+**Agent follow-ups (smaller, after the registry):** auto-launch the worktree's
+agent on create (Tier-2 **T2.2**), and the whole of **Phase 4** (status
+monitoring via hooks/OSC, native notifications, orchestration).
 
 Smaller follow-ups that are NOT blockers (tracked below): backend debounced
 persistence + rotating backups, `git2` migration, WSL paths, tab reorder/MRU,
@@ -87,14 +90,23 @@ user configuration. Built incrementally alongside the phases.
       profile editor, the title bar). **From here on, every new string must be
       added via `i18n.t` (a key in every locale) — non-negotiable.**
 
-**Pending — agents (new, in Settings):**
-- [ ] **Agents registry in Settings** — define agents (name, command, args,
-      env), pick a default agent. Persist in `AppSettings` (mirror the bridge's
-      agent concept). **FOR-DEV.**
-- [ ] **Agent launch** — auto-launch the worktree's agent on create (inject the
-      command into a new PTY, spec `02b §5.1`), a manual **"Launch agent"** action,
-      and a **per-worktree agent** selection. Closes the Tier-2 **T2.2**
-      auto-launch item; **depends on the agents registry**. **FOR-DEV.**
+**Done — agents (in Settings):**
+- [x] **Agents registry in Settings** — register agents (name, command, args) in
+      **Settings → Agents**, from built-in templates (Claude Code, Codex, Gemini,
+      Aider, opencode) or blank. Persisted in `AppSettings.agentProfiles` (Rust
+      `AgentProfile` + `types.ts`, `#[serde(default)]`). `Settings.svelte` +
+      `AgentProfileEditor.svelte` + `agentTemplates.ts`.
+- [x] **Manual agent launch** — a Bot menu (`LaunchAgentMenu.svelte`) on every
+      project header and worktree row launches the chosen agent into that
+      worktree's terminal workspace (`app.launchAgent` → `terminals.create` with
+      the agent's command/args), or deep-links to Settings → Agents when none are
+      configured. Settings panes are deep-linkable via `app.openSettings(section)`.
+
+**Pending — agents:**
+- [ ] **Auto-launch on worktree create** — inject the (per-worktree) agent's
+      command into a new PTY when a worktree is created (spec `02b §5.1`); needs a
+      per-worktree agent selection. Closes Tier-2 **T2.2**. **FOR-DEV.**
+- [ ] **Env vars per agent** + a **default agent**, if a launch flow needs them.
 
 **Done (cross-cutting):**
 - [x] **In-app directory picker** (`DirectoryPicker.svelte` + `browse_dirs`) —
@@ -276,8 +288,10 @@ earlier "superficial UX" warning is resolved.
       context (the left panel is the single selector).
 
 ### Deferred (Settings **agents track**, not Phase 2)
-- **Agent auto-launch on worktree create** + a manual "Launch agent" — depends on
-  the agents registry. **FOR-DEV.**
+- ✅ **Manual "Launch agent"** — DONE in the agents track (`LaunchAgentMenu` on
+  project/worktree rows; registry in Settings → Agents).
+- **Agent auto-launch on worktree create** — still pending (needs a per-worktree
+  agent selection). **FOR-DEV.**
 
 ---
 

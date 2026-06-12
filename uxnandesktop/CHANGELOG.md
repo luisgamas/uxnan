@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — agents track (registry + launch)
+- **Agents registry** in **Settings → Agents**: register CLI coding agents
+  (name + command + args) from built-in templates (Claude Code, Codex, Gemini,
+  Aider, opencode) or a blank entry. Persisted in `AppSettings.agentProfiles`
+  (Rust `AgentProfile` + `types.ts`), round-tripped through `update_settings`
+  with a `#[serde(default)]` so older state still loads.
+- **Launch an agent into a worktree**: a Bot menu on every project header and
+  worktree row (`LaunchAgentMenu`) lists the configured agents and runs the
+  chosen one in a terminal inside that worktree's checkout (its workspace), or
+  deep-links to **Settings → Agents** when none are configured yet.
+- Settings panes are now deep-linkable (`app.openSettings(section)`).
+- Fully internationalized (EN/ES) and built on the design tokens.
+- Out of scope here (Phase 4): agent **status** monitoring, hooks server,
+  notifications, and auto-launch on worktree create.
+
 ### Changed — full i18n coverage + icon-only panel toggles
 - **i18n now covers the whole UI**: the right "Changes" panel, the status bar
   (backend state + repository count), the terminal-profile editor, the Settings
