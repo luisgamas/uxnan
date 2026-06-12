@@ -178,7 +178,7 @@
         {:else}
           <div class="flex flex-col gap-4">
             <div class="flex flex-col gap-1.5">
-              <span class={cn("font-medium", text.body)}>Default profile</span>
+              <span class={cn("font-medium", text.body)}>{i18n.t("settings.defaultProfile")}</span>
               <Select.Root
                 type="single"
                 value={app.settings.defaultProfileId ?? undefined}
@@ -195,19 +195,17 @@
                   {/each}
                 </Select.Content>
               </Select.Root>
-              <p class={text.meta}>
-                Used for new terminals unless you pick another from the "+" menu.
-              </p>
+              <p class={text.meta}>{i18n.t("settings.defaultProfileDesc")}</p>
             </div>
 
             <div class="flex items-center justify-between">
-              <span class={cn("font-medium", text.body)}>Profiles</span>
+              <span class={cn("font-medium", text.body)}>{i18n.t("settings.profiles")}</span>
               <DropdownMenu.Root>
                 <DropdownMenu.Trigger>
                   {#snippet child({ props })}
                     <Button variant="outline" size="sm" {...props}>
                       <PlusIcon data-icon="inline-start" />
-                      Add profile
+                      {i18n.t("settings.addProfile")}
                       <ChevronDownIcon data-icon="inline-end" />
                     </Button>
                   {/snippet}
@@ -232,7 +230,7 @@
                   <DropdownMenu.Separator />
                   <DropdownMenu.Item class={text.menu} onclick={addBlankProfile}>
                     <PlusIcon class={icon.button} />
-                    Blank profile
+                    {i18n.t("settings.blankProfile")}
                   </DropdownMenu.Item>
                 </DropdownMenu.Content>
               </DropdownMenu.Root>
@@ -247,7 +245,7 @@
                 />
               {:else}
                 <p class={cn("text-muted-foreground", text.body)}>
-                  No profiles. Add one to choose how terminals are launched.
+                  {i18n.t("settings.noProfiles")}
                 </p>
               {/each}
             </div>

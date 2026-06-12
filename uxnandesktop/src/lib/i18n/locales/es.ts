@@ -10,6 +10,7 @@ export const es: Record<MessageKey, string> = {
   "common.create": "Crear",
   "common.new": "Nuevo",
   "common.more": "Más",
+  "common.close": "Cerrar",
   "common.copyPath": "Copiar ruta",
   "common.removing": "Eliminando…",
   "common.adding": "Agregando…",
@@ -115,8 +116,39 @@ export const es: Record<MessageKey, string> = {
 
   // Title bar
   "titlebar.toggleLeft": "Mostrar/ocultar panel izquierdo",
+  "titlebar.alphaTooltip": "Alpha — en desarrollo",
   "titlebar.settings": "Configuración",
   "titlebar.minimize": "Minimizar",
   "titlebar.maximize": "Maximizar",
   "titlebar.close": "Cerrar",
+
+  // Right panel (changes / review)
+  "rightPanel.changes": "Cambios",
+  "rightPanel.placeholder": "Aquí aparecerán el estado de git, los diffs y el staging.",
+
+  // Status bar
+  "status.connected": "Backend conectado",
+  "status.connecting": "Conectando…",
+  "status.unreachable": "Backend inalcanzable",
+  "status.reposOne": "{n} repositorio",
+  "status.reposOther": "{n} repositorios",
+
+  // Terminal tab state
+  "terminal.exited": "finalizada",
+
+  // Settings — terminal section
+  "settings.defaultProfile": "Perfil predeterminado",
+  "settings.defaultProfileDesc":
+    "Se usa para nuevas terminales salvo que elijas otro desde el menú “+”.",
+  "settings.profiles": "Perfiles",
+  "settings.addProfile": "Agregar perfil",
+  "settings.blankProfile": "Perfil en blanco",
+  "settings.noProfiles":
+    "Sin perfiles. Agrega uno para elegir cómo se lanzan las terminales.",
+
+  // Terminal profile editor
+  "profileEditor.namePlaceholder": "Nombre del perfil (p. ej. WSL: Ubuntu)",
+  "profileEditor.removeProfile": "Eliminar perfil",
+  "profileEditor.commandPlaceholder": "comando (p. ej. wsl.exe)",
+  "profileEditor.argsPlaceholder": "argumentos (separados por espacios)",
 };

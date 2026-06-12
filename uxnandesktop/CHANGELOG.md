@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — full i18n coverage + icon-only panel toggles
+- **i18n now covers the whole UI**: the right "Changes" panel, the status bar
+  (backend state + repository count), the terminal-profile editor, the Settings
+  terminal section, the "exited" tab badge, the "Alpha" tooltip, and the shadcn
+  dialog close labels are translated. From here on every new string goes through
+  `i18n.t`.
+- **Panel toggles use Lucide icons** (`PanelLeft` / `PanelRight`) instead of the
+  hardcoded `☰` / `⇆` glyphs, matching the other toolbar buttons.
+
 ### Added — internationalization (i18n)
 - **Multilingual UI** (English default + Spanish): a dependency-free i18n layer
   (`src/lib/i18n/`) with one dictionary file per locale (`en.ts` is the

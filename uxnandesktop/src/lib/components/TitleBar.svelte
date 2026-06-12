@@ -4,6 +4,7 @@
   import { i18n } from "$lib/i18n";
   import { icon } from "$lib/design";
   import SettingsIcon from "@lucide/svelte/icons/settings";
+  import PanelLeftIcon from "@lucide/svelte/icons/panel-left";
 
   // Window controls degrade gracefully in a plain browser (no Tauri runtime).
   function windowAction(fn: (w: ReturnType<typeof getCurrentWindow>) => void) {
@@ -27,12 +28,12 @@
   class="flex h-10 shrink-0 select-none items-center gap-2 border-b border-border bg-card px-2 text-sm"
 >
   <button
-    class="rounded px-2 py-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+    class="flex size-7 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-accent-foreground"
     title={i18n.t("titlebar.toggleLeft")}
     aria-label={i18n.t("titlebar.toggleLeft")}
     onclick={toggleLeft}
   >
-    ☰
+    <PanelLeftIcon class={icon.button} />
   </button>
 
   <span data-tauri-drag-region class="font-semibold tracking-tight"
@@ -41,7 +42,7 @@
   <span data-tauri-drag-region class="text-xs text-muted-foreground">ADE</span>
   <span
     class="rounded border border-border bg-muted px-1.5 py-px text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
-    title="Alpha — work in progress"
+    title={i18n.t("titlebar.alphaTooltip")}
   >
     Alpha
   </span>

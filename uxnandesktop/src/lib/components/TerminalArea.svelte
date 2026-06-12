@@ -23,6 +23,7 @@
   import TerminalIcon from "@lucide/svelte/icons/terminal";
   import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
   import LayersIcon from "@lucide/svelte/icons/layers";
+  import PanelRightIcon from "@lucide/svelte/icons/panel-right";
 
   /** Default profile's shell/args, for region-level + and splits. A blank
    *  command falls back to the backend's platform default shell. */
@@ -270,15 +271,12 @@
 
     <div class="flex-1"></div>
     <button
-      class={cn(
-        "rounded px-2 py-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-        text.body,
-      )}
+      class="flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-accent-foreground"
       title={i18n.t("terminal.toggleRight")}
       aria-label={i18n.t("terminal.toggleRight")}
       onclick={toggleRight}
     >
-      ⇆
+      <PanelRightIcon class={icon.button} />
     </button>
   </div>
 
@@ -364,7 +362,7 @@
                         {#if t.exited}
                           <span
                             class="absolute left-1 top-1 z-10 rounded bg-card/80 px-1 text-[10px] text-muted-foreground"
-                            >exited</span
+                            >{i18n.t("terminal.exited")}</span
                           >
                         {/if}
                         <Terminal

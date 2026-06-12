@@ -13,6 +13,7 @@ export const en = {
   "common.create": "Create",
   "common.new": "New",
   "common.more": "More",
+  "common.close": "Close",
   "common.copyPath": "Copy path",
   "common.removing": "Removing…",
   "common.adding": "Adding…",
@@ -118,10 +119,41 @@ export const en = {
 
   // Title bar
   "titlebar.toggleLeft": "Toggle left sidebar",
+  "titlebar.alphaTooltip": "Alpha — work in progress",
   "titlebar.settings": "Settings",
   "titlebar.minimize": "Minimize",
   "titlebar.maximize": "Maximize",
   "titlebar.close": "Close",
+
+  // Right panel (changes / review)
+  "rightPanel.changes": "Changes",
+  "rightPanel.placeholder": "Git status, diffs and staging will appear here.",
+
+  // Status bar
+  "status.connected": "Backend connected",
+  "status.connecting": "Connecting…",
+  "status.unreachable": "Backend unreachable",
+  "status.reposOne": "{n} repository",
+  "status.reposOther": "{n} repositories",
+
+  // Terminal tab state
+  "terminal.exited": "exited",
+
+  // Settings — terminal section
+  "settings.defaultProfile": "Default profile",
+  "settings.defaultProfileDesc":
+    "Used for new terminals unless you pick another from the “+” menu.",
+  "settings.profiles": "Profiles",
+  "settings.addProfile": "Add profile",
+  "settings.blankProfile": "Blank profile",
+  "settings.noProfiles":
+    "No profiles. Add one to choose how terminals are launched.",
+
+  // Terminal profile editor
+  "profileEditor.namePlaceholder": "Profile name (e.g. WSL: Ubuntu)",
+  "profileEditor.removeProfile": "Remove profile",
+  "profileEditor.commandPlaceholder": "command (e.g. wsl.exe)",
+  "profileEditor.argsPlaceholder": "arguments (space-separated)",
 } as const;
 
 /** Union of every message key (drives `t()` and the locale type). */

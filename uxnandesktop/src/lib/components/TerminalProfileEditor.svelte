@@ -2,6 +2,8 @@
   import { untrack } from "svelte";
   import { Input } from "$lib/components/ui/input";
   import { Button } from "$lib/components/ui/button";
+  import { i18n } from "$lib/i18n";
+  import { icon } from "$lib/design";
   import type { TerminalProfile } from "$lib/types";
   import Trash2Icon from "@lucide/svelte/icons/trash-2";
 
@@ -29,29 +31,29 @@
   <div class="flex items-center gap-2">
     <Input
       class="h-8 text-xs"
-      placeholder="Profile name (e.g. WSL: Ubuntu)"
+      placeholder={i18n.t("profileEditor.namePlaceholder")}
       bind:value={profile.name}
       oninput={onchange}
     />
     <Button
       variant="ghost"
       size="icon-sm"
-      title="Remove profile"
+      title={i18n.t("profileEditor.removeProfile")}
       onclick={onremove}
     >
-      <Trash2Icon class="size-3.5" />
+      <Trash2Icon class={icon.button} />
     </Button>
   </div>
   <div class="flex flex-col gap-1.5 sm:flex-row">
     <Input
       class="h-8 flex-1 font-mono text-xs"
-      placeholder="command (e.g. wsl.exe)"
+      placeholder={i18n.t("profileEditor.commandPlaceholder")}
       bind:value={profile.command}
       oninput={onchange}
     />
     <Input
       class="h-8 flex-1 font-mono text-xs"
-      placeholder="arguments (space-separated)"
+      placeholder={i18n.t("profileEditor.argsPlaceholder")}
       bind:value={argsText}
       oninput={commitArgs}
     />

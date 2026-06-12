@@ -1,5 +1,6 @@
 <script lang="ts">
   import { app } from "$lib/state/app.svelte";
+  import { i18n } from "$lib/i18n";
   import TerminalArea from "$lib/components/TerminalArea.svelte";
   import TitleBar from "$lib/components/TitleBar.svelte";
   import LeftSidebar from "$lib/components/LeftSidebar.svelte";
@@ -54,10 +55,10 @@
 
   const backendLabel = $derived(
     app.backend === "ready"
-      ? "Backend connected"
+      ? i18n.t("status.connected")
       : app.backend === "connecting"
-        ? "Connecting…"
-        : "Backend unreachable",
+        ? i18n.t("status.connecting")
+        : i18n.t("status.unreachable"),
   );
 
   const backendDot = $derived(
@@ -133,10 +134,10 @@
           <h2
             class="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
           >
-            Changes
+            {i18n.t("rightPanel.changes")}
           </h2>
           <p class="text-xs text-muted-foreground">
-            Git status, diffs and staging will appear here.
+            {i18n.t("rightPanel.placeholder")}
           </p>
         </section>
       </aside>
@@ -155,6 +156,6 @@
       <span class="text-destructive">· {app.errorMessage}</span>
     {/if}
     <div class="flex-1"></div>
-    <span>{app.repos.length} repositories</span>
+    <span>{i18n.plural(app.repos.length, "status.reposOne", "status.reposOther")}</span>
   </footer>
 </div>
