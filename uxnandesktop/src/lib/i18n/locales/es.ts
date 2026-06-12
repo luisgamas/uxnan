@@ -24,7 +24,7 @@ export const es: Record<MessageKey, string> = {
   "sidebar.refresh": "Actualizar worktrees y estado",
   "sidebar.sort": "Ordenar",
   "sidebar.sortBy": "Ordenar por",
-  "sidebar.sortManual": "Orden de agregado",
+  "sidebar.sortManual": "Predeterminado",
   "sidebar.sortNameAsc": "Nombre (A–Z)",
   "sidebar.sortNameDesc": "Nombre (Z–A)",
   "sidebar.noMatch": "Ningún proyecto coincide con tu búsqueda.",
@@ -155,17 +155,24 @@ export const es: Record<MessageKey, string> = {
   // Settings — agents section
   "settings.agents": "Agentes",
   "settings.agentsDesc":
-    "Agentes de CLI que puedes lanzar en cualquier worktree — cada uno corre en una terminal dentro del checkout de ese worktree.",
-  "settings.addAgent": "Agregar agente",
-  "settings.blankAgent": "Agente en blanco",
+    "Agentes de CLI que puedes lanzar en cualquier worktree — cada uno corre en la terminal que elijas, dentro del checkout de ese worktree.",
+  "settings.agentsAvailable": "Agentes disponibles",
+  "settings.addAllInstalled": "Agregar los instalados",
+  "settings.agentAdded": "agregado",
+  "settings.agentNotFound": "no encontrado",
+  "settings.detecting": "Verificando qué agentes están instalados…",
+  "settings.yourAgents": "Tus agentes",
+  "settings.addCustomAgent": "Agregar agente personalizado",
   "settings.noAgents":
-    "Aún no hay agentes. Agrega uno para lanzarlo en cualquier worktree.",
+    "Aún no hay agentes. Agrega uno arriba para lanzarlo en cualquier worktree.",
 
   // Agent profile editor
   "agentEditor.namePlaceholder": "Nombre del agente (p. ej. Claude Code)",
   "agentEditor.removeAgent": "Eliminar agente",
   "agentEditor.commandPlaceholder": "comando (p. ej. claude)",
   "agentEditor.argsPlaceholder": "argumentos (separados por espacios)",
+  "agentEditor.launchIn": "Lanzar en",
+  "agentEditor.defaultTerminal": "Terminal predeterminada",
 
   // Launch agent (sidebar)
   "agent.launch": "Lanzar agente",

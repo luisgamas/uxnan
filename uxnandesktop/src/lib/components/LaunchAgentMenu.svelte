@@ -7,9 +7,11 @@
   import { Button } from "$lib/components/ui/button";
   import { app } from "$lib/state/app.svelte";
   import { projects } from "$lib/state/projects.svelte";
+  import { agentLogoKey } from "$lib/agentCatalog";
   import { cn } from "$lib/utils";
   import { icon, iconButton, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
+  import AgentLogo from "./AgentLogo.svelte";
   import BotIcon from "@lucide/svelte/icons/bot";
   import SettingsIcon from "@lucide/svelte/icons/settings";
 
@@ -48,7 +50,7 @@
             class={text.menu}
             onclick={() => projects.launchAgentAt(path, agent)}
           >
-            <BotIcon class={icon.button} />
+            <AgentLogo logo={agentLogoKey(agent.icon, agent.command)} />
             {agent.name.trim() || agent.command}
           </DropdownMenu.Item>
         {/each}

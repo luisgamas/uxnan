@@ -27,7 +27,7 @@ export const en = {
   "sidebar.refresh": "Refresh worktrees & status",
   "sidebar.sort": "Sort",
   "sidebar.sortBy": "Sort by",
-  "sidebar.sortManual": "Added order",
+  "sidebar.sortManual": "Default",
   "sidebar.sortNameAsc": "Name (A–Z)",
   "sidebar.sortNameDesc": "Name (Z–A)",
   "sidebar.noMatch": "No projects match your search.",
@@ -158,16 +158,23 @@ export const en = {
   // Settings — agents section
   "settings.agents": "Agents",
   "settings.agentsDesc":
-    "CLI coding agents you can launch into any worktree — each runs in a terminal inside that worktree's checkout.",
-  "settings.addAgent": "Add agent",
-  "settings.blankAgent": "Blank agent",
-  "settings.noAgents": "No agents yet. Add one to launch it into any worktree.",
+    "CLI coding agents you can launch into any worktree — each runs inside its chosen terminal in that worktree's checkout.",
+  "settings.agentsAvailable": "Available agents",
+  "settings.addAllInstalled": "Add all installed",
+  "settings.agentAdded": "added",
+  "settings.agentNotFound": "not found",
+  "settings.detecting": "Checking which agents are installed…",
+  "settings.yourAgents": "Your agents",
+  "settings.addCustomAgent": "Add custom agent",
+  "settings.noAgents": "No agents yet. Add one above to launch it into any worktree.",
 
   // Agent profile editor
   "agentEditor.namePlaceholder": "Agent name (e.g. Claude Code)",
   "agentEditor.removeAgent": "Remove agent",
   "agentEditor.commandPlaceholder": "command (e.g. claude)",
   "agentEditor.argsPlaceholder": "arguments (space-separated)",
+  "agentEditor.launchIn": "Launch in",
+  "agentEditor.defaultTerminal": "Default terminal",
 
   // Launch agent (sidebar)
   "agent.launch": "Launch agent",

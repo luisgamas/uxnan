@@ -11,11 +11,13 @@
     TERMINAL_TEMPLATES,
     type TerminalTemplate,
   } from "$lib/terminalTemplates";
-  import { AGENT_TEMPLATES, type AgentTemplate } from "$lib/agentTemplates";
+  import { AGENT_CATALOG, type CatalogAgent } from "$lib/agentCatalog";
+  import { detectAgents } from "$lib/api";
   import TerminalProfileEditor from "./TerminalProfileEditor.svelte";
   import AgentProfileEditor from "./AgentProfileEditor.svelte";
+  import AgentLogo from "./AgentLogo.svelte";
   import { cn } from "$lib/utils";
-  import { icon, text } from "$lib/design";
+  import { icon, iconButton, text } from "$lib/design";
   import SlidersIcon from "@lucide/svelte/icons/sliders-horizontal";
   import TerminalIcon from "@lucide/svelte/icons/terminal";
   import BotIcon from "@lucide/svelte/icons/bot";
@@ -93,21 +95,51 @@
   }
 
   // --- Agents ---------------------------------------------------------------
-  function addBlankAgent() {
+  // Which catalog commands are installed (null = not checked yet).
+  let installed = $state<Set<string> | null>(null);
+  async function detectInstalled() {
+    try {
+      const found = await detectAgents(AGENT_CATALOG.map((c) => c.command));
+      installed = new Set(found);
+    } catch {
+      installed = new Set(); // backend unreachable (e.g. web preview)
+    }
+  }
+  // Check installation the first time the Agents pane is opened.
+  $effect(() => {
+    if (app.settingsOpen && app.settingsSection === "agents" && installed === null) {
+      void detectInstalled();
+    }
+  });
+
+  const isInstalled = (c: CatalogAgent) => installed?.has(c.command) ?? false;
+  const isConfigured = (c: CatalogAgent) =>
+    app.agentProfiles.some((a) => a.command === c.command);
+
+  function addCatalogAgent(c: CatalogAgent) {
+    app.settings.agentProfiles.push({
+      id: crypto.randomUUID(),
+      name: c.name,
+      command: c.command,
+      args: [],
+      terminalProfileId: null,
+      icon: c.logo,
+    });
+    persistNow();
+  }
+  function addAllInstalled() {
+    for (const c of AGENT_CATALOG) {
+      if (isInstalled(c) && !isConfigured(c)) addCatalogAgent(c);
+    }
+  }
+  function addCustomAgent() {
     app.settings.agentProfiles.push({
       id: crypto.randomUUID(),
       name: "",
       command: "",
       args: [],
-    });
-    persistNow();
-  }
-  function addAgentTemplate(t: AgentTemplate) {
-    app.settings.agentProfiles.push({
-      id: crypto.randomUUID(),
-      name: t.name,
-      command: t.command,
-      args: [...t.args],
+      terminalProfileId: null,
+      icon: null,
     });
     persistNow();
   }
@@ -117,6 +149,10 @@
     );
     persistNow();
   }
+  // Installed catalog agents not yet configured (for the "Add all" button).
+  const addableCount = $derived(
+    AGENT_CATALOG.filter((c) => isInstalled(c) && !isConfigured(c)).length,
+  );
 
   const navItems = [
     { id: "general", key: "settings.general", icon: SlidersIcon },
@@ -204,38 +240,68 @@
           </div>
         {:else if app.settingsSection === "agents"}
           <div class="flex flex-col gap-4">
-            <div class="flex items-center justify-between">
+            <div class="flex flex-col gap-1">
               <span class={cn("font-medium", text.body)}>{i18n.t("settings.agents")}</span>
-              <DropdownMenu.Root>
-                <DropdownMenu.Trigger>
-                  {#snippet child({ props })}
-                    <Button variant="outline" size="sm" {...props}>
-                      <PlusIcon data-icon="inline-start" />
-                      {i18n.t("settings.addAgent")}
-                      <ChevronDownIcon data-icon="inline-end" />
-                    </Button>
-                  {/snippet}
-                </DropdownMenu.Trigger>
-                <DropdownMenu.Content align="end" class="min-w-48">
-                  {#each AGENT_TEMPLATES as t (t.name)}
-                    <DropdownMenu.Item
-                      class={text.menu}
-                      onclick={() => addAgentTemplate(t)}
-                    >
-                      <BotIcon class={icon.button} />
-                      {t.name}
-                    </DropdownMenu.Item>
-                  {/each}
-                  <DropdownMenu.Separator />
-                  <DropdownMenu.Item class={text.menu} onclick={addBlankAgent}>
-                    <PlusIcon class={icon.button} />
-                    {i18n.t("settings.blankAgent")}
-                  </DropdownMenu.Item>
-                </DropdownMenu.Content>
-              </DropdownMenu.Root>
+              <p class={text.meta}>{i18n.t("settings.agentsDesc")}</p>
             </div>
-            <p class={text.meta}>{i18n.t("settings.agentsDesc")}</p>
 
+            <!-- Catalog: every known agent; only the installed ones are addable. -->
+            <div class="flex flex-col gap-1.5">
+              <div class="flex items-center justify-between">
+                <span class={text.section}>{i18n.t("settings.agentsAvailable")}</span>
+                {#if addableCount > 0}
+                  <Button variant="outline" size="sm" onclick={addAllInstalled}>
+                    <PlusIcon data-icon="inline-start" />
+                    {i18n.t("settings.addAllInstalled")}
+                  </Button>
+                {/if}
+              </div>
+              {#if installed === null}
+                <p class={text.meta}>{i18n.t("settings.detecting")}</p>
+              {/if}
+              <div class="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                {#each AGENT_CATALOG as c (c.id)}
+                  {@const inst = isInstalled(c)}
+                  {@const conf = isConfigured(c)}
+                  <div
+                    class={cn(
+                      "flex items-center gap-2 rounded-md border border-border px-2 py-1.5",
+                      !inst && "opacity-55",
+                    )}
+                  >
+                    <AgentLogo logo={c.logo} class="size-4" />
+                    <div class="min-w-0 flex-1">
+                      <div class={cn("truncate", text.body)}>{c.name}</div>
+                      <div class={cn("truncate font-mono", text.meta)}>{c.command}</div>
+                    </div>
+                    {#if conf}
+                      <span class={cn("shrink-0", text.meta)}>{i18n.t("settings.agentAdded")}</span>
+                    {:else if inst}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        class={iconButton.action}
+                        title={i18n.t("common.add")}
+                        onclick={() => addCatalogAgent(c)}
+                      >
+                        <PlusIcon class={icon.button} />
+                      </Button>
+                    {:else}
+                      <span class={cn("shrink-0", text.meta)}>{i18n.t("settings.agentNotFound")}</span>
+                    {/if}
+                  </div>
+                {/each}
+              </div>
+            </div>
+
+            <!-- Configured agents -->
+            <div class="flex items-center justify-between">
+              <span class={text.section}>{i18n.t("settings.yourAgents")}</span>
+              <Button variant="outline" size="sm" onclick={addCustomAgent}>
+                <PlusIcon data-icon="inline-start" />
+                {i18n.t("settings.addCustomAgent")}
+              </Button>
+            </div>
             <div class="flex flex-col gap-2">
               {#each app.agentProfiles as agent (agent.id)}
                 <AgentProfileEditor
