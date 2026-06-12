@@ -261,6 +261,18 @@ killed on close and on exit.
 - **Backend hidden-tab ring buffer** — memory optimization (see `[~]` above).
 - ✅ **Per-worktree terminal association** — DONE in Phase 2 (per-worktree
   terminal workspaces; layout persisted per workspace).
+- **Modern keyboard protocol** (CSI-u / "fixterms" / kitty) — for full key
+  fidelity with agent TUIs. Done so far: `Ctrl+←/→` word-nav (xterm default),
+  and **Shift/Alt+Enter → newline** (best-effort `\n`; agents using readline may
+  still treat it as submit). Not yet: a distinct, agent-detectable Shift+Enter
+  and richer modifier combos (e.g. `Ctrl+Shift+←/→` selection) — these need the
+  CSI-u protocol negotiated with the agent. Fits the terminal engine; doesn't
+  change direction. **FOR-DEV.**
+- **Alt-screen scrolling** — agent TUIs (full-screen, `?1049h`) disable scrollback
+  by design (standard, like `vim`/`htop`); the redundant-resize SIGWINCH that made
+  them repaint/jump is fixed (`fitToPane` only resizes on a real size change +
+  debounced). Capturing alt-screen output to a scrollable log is a possible future
+  nicety. **FOR-DEV.**
 
 ### Notes / gotchas
 - ConPTY (Windows) queries cursor position (`ESC[6n`) at startup and waits for a

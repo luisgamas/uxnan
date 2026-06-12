@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — terminal: fewer resize jumps + multi-line key
+- **No redundant PTY resizes.** `fitToPane` resizes the PTY only when cols/rows
+  actually change, and the `ResizeObserver` is debounced — so a spurious SIGWINCH
+  no longer makes a full-screen agent TUI repaint and the viewport jump (e.g.
+  while dragging a split divider). Scrolling *inside* a live full-screen agent is
+  still disabled by the agent's alternate screen buffer (standard, like vim/htop).
+- **Shift+Enter / Alt+Enter insert a newline** (xterm otherwise collapses them to
+  a plain Enter) for multi-line agent prompts. `Ctrl+←/→` word-nav already passes
+  through to the shell/agent.
+
 ### Added — terminal shell detection + working default profiles
 - **Seeded profiles** on a fresh install are now the platform's guaranteed shells
   (Windows: **Windows PowerShell** with `-ExecutionPolicy Bypass` + **Command
