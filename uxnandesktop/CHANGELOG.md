@@ -5,6 +5,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — worktrees, status sync & error banners
+- **Robust worktree removal.** The worktree's terminals/agents are now killed
+  *before* removal — on Windows a shell whose CWD was inside the worktree held
+  the folder open and blocked deletion, leaving half-removed worktrees ("not a
+  working tree" / "not a git repository", empty leftover folders, and a sibling
+  vanishing when prune then swept it up). Backend removal is best-effort now:
+  graceful → forced → prune → delete any leftover directory (with retry), and it
+  tolerates an already-broken worktree instead of erroring.
+- **Canonical worktree paths** (forward slashes, matching `git worktree list`).
+  A freshly-created worktree's per-worktree terminal-workspace key now lines up
+  with its sidebar row — fixing the auto-launched **default agent** opening in an
+  invisible workspace (it looked like it didn't launch).
+- **Live project-card status.** The git review panel pushes the worktree's
+  dirty/ahead/behind to the project card, so the badge clears right after a
+  commit — no manual "Refresh worktrees & status".
+- **Dismissible error banners** (left sidebar + right panel) with an ×, so a git
+  error no longer sticks until the next refresh.
+
 ### Added — auto-launch a default agent on worktree create
 - **Default agent** setting (Settings → Agents → "Default agent", `None` by
   default): when set, creating a worktree auto-launches that agent in the new
