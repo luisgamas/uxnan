@@ -15,8 +15,12 @@ mod pty;
 mod state;
 mod which;
 
-use tauri::Manager;
+use std::sync::atomic::Ordering;
+use std::time::Duration;
 
+use tauri::{Emitter, Manager, WindowEvent};
+
+use crate::commands::GitStatusEvent;
 use crate::model::AppData;
 use crate::persistence::PersistenceManager;
 use crate::state::AppState;
@@ -39,7 +43,51 @@ pub fn run() {
             // Seed terminal profiles when missing (state persisted before they
             // existed, or a fresh install where load() returned defaults anyway).
             data.settings.ensure_terminal_profiles();
-            app.manage(AppState::new(persistence, data));
+            let state = AppState::new(persistence, data);
+            let git_watch = state.git_watch.clone();
+            let focused = state.focused.clone();
+            app.manage(state);
+
+            // Pause the git watcher while the window is unfocused.
+            if let Some(window) = app.get_webview_window("main") {
+                let focused_for_event = focused.clone();
+                window.on_window_event(move |event| {
+                    if let WindowEvent::Focused(is_focused) = event {
+                        focused_for_event.store(*is_focused, Ordering::Relaxed);
+                    }
+                });
+            }
+
+            // Background git watcher: poll the watched worktree every 3 s (paused
+            // when unfocused) and emit `git:status-changed` only when it changes.
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let mut interval = tokio::time::interval(Duration::from_secs(3));
+                interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+                let mut last: Option<String> = None;
+                loop {
+                    interval.tick().await;
+                    if !focused.load(Ordering::Relaxed) {
+                        continue;
+                    }
+                    let Some(path) = git_watch.read().await.clone() else {
+                        continue;
+                    };
+                    let files = crate::git::status_files(&path).await.unwrap_or_default();
+                    let status = crate::git::worktree_status(&path).await.unwrap_or_default();
+                    let payload = GitStatusEvent {
+                        path,
+                        files,
+                        ahead: status.ahead,
+                        behind: status.behind,
+                    };
+                    let snapshot = serde_json::to_string(&payload).ok();
+                    if snapshot != last {
+                        last = snapshot;
+                        let _ = handle.emit("git:status-changed", &payload);
+                    }
+                }
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -69,6 +117,9 @@ pub fn run() {
             commands::git_unstage_all,
             commands::git_discard,
             commands::git_commit,
+            commands::git_set_watch,
+            commands::git_push,
+            commands::git_pull,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

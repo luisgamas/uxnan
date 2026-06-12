@@ -418,6 +418,17 @@ pub async fn commit(worktree_path: &str, message: &str) -> Result<(), AppError> 
         .map(|_| ())
 }
 
+/// Push the current branch (`git push`). Never retried (not idempotent).
+pub async fn push(worktree_path: &str) -> Result<(), AppError> {
+    git(worktree_path, &["push"]).await.map(|_| ())
+}
+
+/// Pull with fast-forward only (`git pull --ff-only`), so a pull never starts a
+/// surprise merge; the user resolves diverged history explicitly.
+pub async fn pull(worktree_path: &str) -> Result<(), AppError> {
+    git(worktree_path, &["pull", "--ff-only"]).await.map(|_| ())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

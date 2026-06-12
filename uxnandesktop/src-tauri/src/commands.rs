@@ -375,3 +375,37 @@ pub async fn git_commit(path: String, message: String) -> Result<(), CommandErro
         .await
         .map_err(CommandError::from)
 }
+
+/// Payload of the `git:status-changed` event emitted by the background watcher
+/// for the worktree the right panel is reviewing.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitStatusEvent {
+    pub path: String,
+    pub files: Vec<git::FileChange>,
+    pub ahead: u32,
+    pub behind: u32,
+}
+
+/// Set (or clear with `None`) the worktree the background watcher polls. The
+/// frontend calls this when the active worktree changes.
+#[tauri::command]
+pub async fn git_set_watch(
+    state: State<'_, AppState>,
+    path: Option<String>,
+) -> Result<(), CommandError> {
+    *state.git_watch.write().await = path;
+    Ok(())
+}
+
+/// Push the current branch (`git push`). Not retried.
+#[tauri::command]
+pub async fn git_push(path: String) -> Result<(), CommandError> {
+    git::push(&path).await.map_err(CommandError::from)
+}
+
+/// Pull fast-forward-only (`git pull --ff-only`).
+#[tauri::command]
+pub async fn git_pull(path: String) -> Result<(), CommandError> {
+    git::pull(&path).await.map_err(CommandError::from)
+}
