@@ -29,6 +29,12 @@ export function ping(): Promise<string> {
   return invoke<string>("ping");
 }
 
+/** Return the subset of `commands` installed on the machine (PATH + PATHEXT),
+ *  so the agent catalog can enable only the agents actually present. */
+export function detectAgents(commands: string[]): Promise<string[]> {
+  return invoke<string[]>("agents_detect", { commands });
+}
+
 /** Persist the per-workspace terminal layout (restored on next startup). */
 export function setTerminalLayout(
   layout: SavedTerminalLayout | null,

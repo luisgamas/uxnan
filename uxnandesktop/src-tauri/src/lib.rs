@@ -13,6 +13,7 @@ mod model;
 mod persistence;
 mod pty;
 mod state;
+mod which;
 
 use tauri::Manager;
 
@@ -59,6 +60,7 @@ pub fn run() {
             commands::worktree_status,
             commands::browse_dirs,
             commands::set_terminal_layout,
+            commands::agents_detect,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

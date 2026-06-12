@@ -112,6 +112,17 @@ pub async fn pty_write(
     state.pty.write(&id, &data).map_err(CommandError::from)
 }
 
+/// Return the subset of `commands` that resolve to an installed executable
+/// (PATH + PATHEXT). Used by the Settings agent catalog to enable only the
+/// agents actually present on the machine.
+#[tauri::command]
+pub async fn agents_detect(commands: Vec<String>) -> Result<Vec<String>, CommandError> {
+    Ok(commands
+        .into_iter()
+        .filter(|c| crate::which::is_command_available(c))
+        .collect())
+}
+
 /// Resize a PTY when its pane changes size.
 #[tauri::command]
 pub async fn pty_resize(
