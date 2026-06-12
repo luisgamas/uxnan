@@ -119,6 +119,38 @@ test('OpenCodeAdapter streams text parts as deltas and completes', async () => {
   assert.equal(last().args.includes('--session'), false);
 });
 
+test('OpenCodeAdapter emits thinking from reasoning parts and blocks from tools', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new OpenCodeAdapter({ binaryPath: 'opencode', spawnFn });
+  const { done } = collect(adapter);
+
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi' });
+  last().feed([
+    '{"type":"reasoning","sessionID":"s","part":{"id":"r1","type":"reasoning","text":"Let me "}}',
+    '{"type":"reasoning","sessionID":"s","part":{"id":"r1","type":"reasoning","text":"Let me think."}}',
+    '{"type":"tool_use","sessionID":"s","part":{"id":"t1","type":"tool","tool":"bash","state":{"status":"running","input":{"command":"ls"}}}}',
+    '{"type":"tool_use","sessionID":"s","part":{"id":"t1","type":"tool","tool":"bash","state":{"status":"completed","input":{"command":"ls"},"output":"a.txt"}}}',
+    '{"type":"text","sessionID":"s","part":{"id":"p1","type":"text","text":"done"}}',
+  ]);
+
+  const events = await done;
+  const thinking = events
+    .filter((e) => e.type === 'thinking')
+    .map((e) => (e.data as { text: string }).text);
+  assert.deepEqual(thinking, ['Let me ', 'think.']);
+  // The tool block is emitted once, at the terminal status.
+  const blocks = events
+    .filter((e) => e.type === 'block')
+    .map((e) => (e.data as { content: Record<string, unknown> }).content);
+  assert.equal(blocks.length, 1);
+  assert.deepEqual(blocks[0], {
+    type: 'command_execution',
+    command: 'ls',
+    status: 'completed',
+    output: 'a.txt',
+  });
+});
+
 test('OpenCodeAdapter reuses the captured session id on the next turn', async () => {
   const { spawnFn, last } = fakeSpawner();
   const adapter = new OpenCodeAdapter({ binaryPath: 'opencode', spawnFn });

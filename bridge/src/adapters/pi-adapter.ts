@@ -34,6 +34,7 @@ import type {
   SendTurnOptions,
 } from '@uxnan/shared';
 import { BaseAgentAdapter } from './base-adapter.js';
+import { piResultText, piToolBlock, type PiToolUse } from './pi-tools.js';
 import { effortValues, reasoningOption, reasoningValue } from './run-options.js';
 import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
 
@@ -85,10 +86,13 @@ interface ActiveRun {
 
 /** A normalized pi event extracted from one `--mode json` line. */
 export interface PiEvent {
-  kind: 'session' | 'delta' | 'final' | 'end' | 'other';
+  kind: 'session' | 'delta' | 'thinking' | 'tool_start' | 'tool_end' | 'final' | 'end' | 'other';
   /** Only set for `session`: the session id (for `--session-id` continuity). */
   sessionId?: string;
-  /** `delta`: the streamed text chunk. `final`: the assistant message's full text. */
+  /**
+   * `delta`: the streamed text chunk. `thinking`: a reasoning chunk. `final`:
+   * the assistant message's full text.
+   */
   text?: string;
   /** Only set for `final`: context-occupying token count, if reported. */
   tokens?: number;
@@ -96,6 +100,14 @@ export interface PiEvent {
   isError?: boolean;
   /** Only set for `final`: the error message, when present. */
   errorText?: string;
+  /** `tool_start`/`tool_end`: the tool call's id (for pairing args ↔ result). */
+  toolCallId?: string;
+  /** Only set for `tool_start`: the tool name + its arguments. */
+  tool?: PiToolUse;
+  /** Only set for `tool_end`: the tool's output text. */
+  toolOutput?: string;
+  /** Only set for `tool_end`: whether the tool failed. */
+  toolIsError?: boolean;
 }
 
 /**
@@ -132,7 +144,12 @@ export function parsePiLine(line: string): PiEvent | null {
       if (event && event['type'] === 'text_delta' && typeof event['delta'] === 'string') {
         return { kind: 'delta', text: event['delta'] };
       }
-      // thinking_*, text_start/end and other updates carry no answer text.
+      // Reasoning streams as `thinking_delta` updates (verified: pi emits
+      // `thinking_*` assistant events for the model's reasoning).
+      if (event && event['type'] === 'thinking_delta' && typeof event['delta'] === 'string') {
+        return { kind: 'thinking', text: event['delta'] };
+      }
+      // text_start/end and other updates carry no answer text.
       return { kind: 'other' };
     }
     case 'message_end': {
@@ -149,6 +166,21 @@ export function parsePiLine(line: string): PiEvent | null {
         ...(tokens !== undefined ? { tokens } : {}),
         isError,
         ...(errorMessage !== undefined ? { errorText: errorMessage } : {}),
+      };
+    }
+    case 'tool_execution_start': {
+      const id = typeof parsed['toolCallId'] === 'string' ? parsed['toolCallId'] : '';
+      const name = typeof parsed['toolName'] === 'string' ? parsed['toolName'] : '';
+      const args = isRecord(parsed['args']) ? parsed['args'] : {};
+      return { kind: 'tool_start', toolCallId: id, tool: { id, name, input: args } };
+    }
+    case 'tool_execution_end': {
+      const id = typeof parsed['toolCallId'] === 'string' ? parsed['toolCallId'] : '';
+      return {
+        kind: 'tool_end',
+        toolCallId: id,
+        toolOutput: piResultText(parsed['result']),
+        toolIsError: parsed['isError'] === true,
       };
     }
     case 'agent_end':
@@ -270,6 +302,8 @@ export class PiAdapter extends BaseAgentAdapter {
     let tokens: number | undefined;
     let errored = false;
     let errorMsg: string | undefined;
+    // toolCallId → its invocation (args), until the matching execution_end pairs.
+    const pendingTools = new Map<string, PiToolUse>();
     // Non-JSON output (e.g. a startup "No API key found" error) — surfaced if the
     // turn produces no content.
     const plainLines: string[] = [];
@@ -320,6 +354,21 @@ export class PiAdapter extends BaseAgentAdapter {
       } else if (event.kind === 'delta' && event.text) {
         full += event.text;
         this.emit({ type: 'delta', threadId, turnId, data: { text: event.text } });
+      } else if (event.kind === 'thinking' && event.text) {
+        this.emit({ type: 'thinking', threadId, turnId, data: { text: event.text } });
+      } else if (event.kind === 'tool_start' && event.tool) {
+        pendingTools.set(event.toolCallId ?? '', event.tool);
+      } else if (event.kind === 'tool_end') {
+        const tool = pendingTools.get(event.toolCallId ?? '');
+        if (tool) {
+          pendingTools.delete(event.toolCallId ?? '');
+          this.emit({
+            type: 'block',
+            threadId,
+            turnId,
+            data: { content: piToolBlock(tool, event.toolOutput ?? '', event.toolIsError === true) },
+          });
+        }
       } else if (event.kind === 'final') {
         if (event.text) finalText = event.text;
         if (event.tokens !== undefined) tokens = event.tokens;

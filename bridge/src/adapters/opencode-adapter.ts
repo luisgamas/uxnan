@@ -28,6 +28,7 @@ import type {
   SendTurnOptions,
 } from '@uxnan/shared';
 import { BaseAgentAdapter } from './base-adapter.js';
+import { opencodeToolBlock } from './opencode-tools.js';
 import { reasoningValue } from './run-options.js';
 import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
 
@@ -58,10 +59,18 @@ interface ActiveRun {
 
 /** A normalized OpenCode event extracted from one `--format json` line. */
 export interface OpenCodeEvent {
-  kind: 'text' | 'reasoning' | 'error' | 'finish' | 'other';
+  kind: 'text' | 'reasoning' | 'tool' | 'error' | 'finish' | 'other';
   sessionId?: string;
   partId?: string;
   text?: string;
+  /** `tool`: the tool name (`bash`/`edit`/`write`/…). */
+  toolName?: string;
+  /** `tool`: lifecycle status (`pending`/`running`/`completed`/`error`). */
+  toolStatus?: string;
+  /** `tool`: the tool's arguments. */
+  toolInput?: Record<string, unknown>;
+  /** `tool`: the tool's output, when finished. */
+  toolOutput?: string;
 }
 
 /** Parse one `opencode run --format json` line, or null if it isn't JSON. */
@@ -83,6 +92,17 @@ export function parseOpenCodeLine(line: string): OpenCodeEvent | null {
       return { kind: 'text', ...base, text: stringOr(part?.['text'], '') };
     case 'reasoning':
       return { kind: 'reasoning', ...base, text: stringOr(part?.['text'], '') };
+    case 'tool_use': {
+      const state = part && isRecord(part['state']) ? part['state'] : undefined;
+      return {
+        kind: 'tool',
+        ...base,
+        toolName: stringOr(part?.['tool'], ''),
+        toolStatus: stringOr(state?.['status'], ''),
+        toolInput: state && isRecord(state['input']) ? state['input'] : {},
+        toolOutput: stringOr(state?.['output'], ''),
+      };
+    }
     case 'step_finish':
       return { kind: 'finish', ...base };
     case 'error':
@@ -163,6 +183,8 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     this.emit({ type: 'turn_started', threadId, turnId });
 
     const partTexts = new Map<string, string>();
+    const reasoningTexts = new Map<string, string>();
+    const emittedTools = new Set<string>();
     let full = '';
     let errored = false;
 
@@ -176,6 +198,34 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
         if (delta) {
           full += delta;
           this.emit({ type: 'delta', threadId, turnId, data: { text: delta } });
+        }
+      } else if (event.kind === 'reasoning' && event.text) {
+        // Reasoning streams as a (re-sent) part text; emit only the new suffix
+        // as a thinking delta.
+        const delta = this.#deltaFor(reasoningTexts, event.partId, event.text);
+        if (delta) {
+          this.emit({ type: 'thinking', threadId, turnId, data: { text: delta } });
+        }
+      } else if (event.kind === 'tool') {
+        // Emit the structured block once, when the tool reaches a terminal state.
+        const id = event.partId ?? '';
+        const status = event.toolStatus;
+        if ((status === 'completed' || status === 'error') && !emittedTools.has(id)) {
+          emittedTools.add(id);
+          this.emit({
+            type: 'block',
+            threadId,
+            turnId,
+            data: {
+              content: opencodeToolBlock(
+                event.toolName ?? '',
+                id,
+                event.toolInput ?? {},
+                event.toolOutput ?? '',
+                status === 'error',
+              ),
+            },
+          });
         }
       } else if (event.kind === 'error') {
         errored = true;

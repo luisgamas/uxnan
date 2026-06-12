@@ -71,11 +71,21 @@ test('parseCodexLine maps the documented event shapes', () => {
   );
   assert.equal(parseCodexLine('{"type":"turn.completed","usage":{}}')?.kind, 'completed');
   assert.equal(parseCodexLine('{"type":"turn.failed","error":{"message":"boom"}}')?.text, 'boom');
-  // non-agent_message items (reasoning, command execution, …) are inert
-  assert.equal(
-    parseCodexLine('{"type":"item.completed","item":{"type":"reasoning","text":"x"}}')?.kind,
-    'other',
+  // reasoning items become thinking; command_execution items become blocks
+  assert.deepEqual(
+    parseCodexLine('{"type":"item.completed","item":{"type":"reasoning","text":"x"}}'),
+    { kind: 'thinking', text: 'x' },
   );
+  const cmd = parseCodexLine(
+    '{"type":"item.completed","item":{"type":"command_execution","command":"ls","aggregated_output":"a","exit_code":0,"status":"completed"}}',
+  );
+  assert.equal(cmd?.kind, 'block');
+  assert.deepEqual(cmd?.blocks?.[0], {
+    type: 'command_execution',
+    command: 'ls',
+    status: 'completed',
+    output: 'a',
+  });
 });
 
 test('CodexAdapter streams agent messages as deltas and completes', async () => {
@@ -107,6 +117,34 @@ test('CodexAdapter streams agent messages as deltas and completes', async () => 
   assert.equal(args.includes('resume'), false);
   // prompt is the final argv element, never shell-interpolated
   assert.equal(args[args.length - 1], 'hi');
+});
+
+test('CodexAdapter emits thinking and structured blocks from items', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new CodexAdapter({ binaryPath: 'codex', spawnFn });
+  const { done } = collect(adapter);
+
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi' });
+  last().feed([
+    '{"type":"item.completed","item":{"type":"reasoning","text":"thinking it through"}}',
+    '{"type":"item.completed","item":{"type":"command_execution","command":"type a.txt","aggregated_output":"hello","exit_code":0,"status":"completed"}}',
+    '{"type":"item.completed","item":{"type":"file_change","changes":[{"path":"a.dart","kind":"update"}]}}',
+    '{"type":"item.completed","item":{"type":"agent_message","text":"done"}}',
+    '{"type":"turn.completed","usage":{}}',
+  ]);
+
+  const events = await done;
+  const thinking = events
+    .filter((e) => e.type === 'thinking')
+    .map((e) => (e.data as { text: string }).text);
+  assert.deepEqual(thinking, ['thinking it through']);
+  const blocks = events
+    .filter((e) => e.type === 'block')
+    .map((e) => (e.data as { content: Record<string, unknown> }).content);
+  assert.equal(blocks.length, 2);
+  assert.equal(blocks[0]?.['type'], 'command_execution');
+  assert.equal(blocks[1]?.['type'], 'diff');
+  assert.equal(blocks[1]?.['filename'], 'a.dart');
 });
 
 test('CodexAdapter maps reasoning effort to -c model_reasoning_effort', async () => {

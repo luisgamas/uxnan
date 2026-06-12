@@ -41,6 +41,7 @@ import type {
   SendTurnOptions,
 } from '@uxnan/shared';
 import { BaseAgentAdapter } from './base-adapter.js';
+import { codexItemBlocks, codexReasoningText } from './codex-tools.js';
 import { effortValues, reasoningOption, reasoningValue, withOptions } from './run-options.js';
 import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
 
@@ -97,11 +98,13 @@ interface ActiveRun {
 
 /** A normalized Codex event extracted from one `exec --json` line. */
 export interface CodexEvent {
-  kind: 'thread' | 'message' | 'completed' | 'error' | 'other';
+  kind: 'thread' | 'message' | 'thinking' | 'block' | 'completed' | 'error' | 'other';
   threadId?: string;
   text?: string;
   /** Only set for `completed`: context-occupying token count, if reported. */
   tokens?: number;
+  /** Only set for `block`: the structured content block(s) for this item. */
+  blocks?: Record<string, unknown>[];
 }
 
 /**
@@ -134,10 +137,16 @@ export function parseCodexLine(line: string): CodexEvent | null {
     }
     case 'item.completed': {
       const item = isRecord(parsed['item']) ? parsed['item'] : undefined;
-      if (item && item['type'] === 'agent_message' && typeof item['text'] === 'string') {
+      if (!item) return { kind: 'other' };
+      if (item['type'] === 'agent_message' && typeof item['text'] === 'string') {
         return { kind: 'message', text: item['text'] };
       }
-      return { kind: 'other' };
+      if (item['type'] === 'reasoning') {
+        const text = codexReasoningText(item);
+        return text.length > 0 ? { kind: 'thinking', text } : { kind: 'other' };
+      }
+      const blocks = codexItemBlocks(item);
+      return blocks.length > 0 ? { kind: 'block', blocks } : { kind: 'other' };
     }
     case 'turn.completed':
       return { kind: 'completed', tokens: codexUsageTokens(parsed['usage']) };
@@ -244,6 +253,12 @@ export class CodexAdapter extends BaseAgentAdapter {
         // Codex emits complete `agent_message` items (no token deltas): each is a chunk.
         full += event.text;
         this.emit({ type: 'delta', threadId, turnId, data: { text: event.text } });
+      } else if (event.kind === 'thinking' && event.text) {
+        this.emit({ type: 'thinking', threadId, turnId, data: { text: event.text } });
+      } else if (event.kind === 'block' && event.blocks) {
+        for (const content of event.blocks) {
+          this.emit({ type: 'block', threadId, turnId, data: { content } });
+        }
       } else if (event.kind === 'error') {
         errored = true;
         this.emit({

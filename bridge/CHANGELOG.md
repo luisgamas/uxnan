@@ -5,6 +5,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added
+- **Thinking + structured commands/tools/diffs for Codex, pi and OpenCode**
+  (extends the Claude Code slices to every agent). A shared `content-blocks.ts`
+  defines the `command_execution` / `diff` / generic `tool` block builders, and
+  per-agent mappers (`codex-tools.ts`, `opencode-tools.ts`, `pi-tools.ts`)
+  translate each CLI's events:
+  - **Codex** (`exec --json` items): `reasoning` → thinking; `command_execution`
+    → command block; `file_change` → per-file diff blocks; `mcp_tool_call` →
+    tool block.
+  - **OpenCode** (`run --format json` parts): `reasoning` → thinking (suffix
+    deltas); `tool` parts (emitted at their terminal state) → command/diff/tool.
+  - **pi** (`-p --mode json`): `thinking_delta` → thinking; tools paired from
+    top-level `tool_execution_start` (args) + `tool_execution_end` (result) by
+    `toolCallId` → command/diff/tool.
+
+  > **Verified live** against codex-cli 0.139, opencode 1.17.4 and pi 0.79.1 by
+  > running real turns and inspecting the JSON. This corrected the initial
+  > guesses: OpenCode's event is `tool_use` (not `tool`); Codex `mcp_tool_call`
+  > `result` is `{content:[{text}]}` (not a string); pi reports tools via paired
+  > `tool_execution_*` events (not `tool_use` blocks in the message content).
+  > Codex `file_change` carries the path only (no hunk/counts); pi/OpenCode
+  > `reasoning` wiring is in place but those probe models didn't emit it.
+
 ### Fixed
 - **Streamed answer no longer shrinks on re-sync.** On a tool-using turn,
   `claude`'s final `result.result` is often only the last segment of the answer;

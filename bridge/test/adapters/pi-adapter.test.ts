@@ -88,11 +88,10 @@ test('parsePiLine maps the documented event shapes', () => {
     parsePiLine('{"type":"message_update","assistantMessageEvent":{"type":"text_delta","delta":"hi"}}'),
     { kind: 'delta', text: 'hi' },
   );
-  // thinking deltas are not answer text
-  assert.equal(
-    parsePiLine('{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","delta":"hmm"}}')
-      ?.kind,
-    'other',
+  // thinking deltas become thinking events (not answer text)
+  assert.deepEqual(
+    parsePiLine('{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","delta":"hmm"}}'),
+    { kind: 'thinking', text: 'hmm' },
   );
   const final = parsePiLine(assistantEnd('hello', { tokens: 42 }));
   assert.equal(final?.kind, 'final');
@@ -103,6 +102,38 @@ test('parsePiLine maps the documented event shapes', () => {
   assert.equal(errored?.isError, true);
   assert.equal(errored?.errorText, 'boom');
   assert.equal(parsePiLine(AGENT_END)?.kind, 'end');
+});
+
+test('PiAdapter emits thinking deltas and pairs tool_execution start/end into a block', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new PiAdapter({ binaryPath: 'pi', spawnFn });
+  const { done } = collect(adapter);
+
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi' });
+  last().feed([
+    '{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","delta":"Let me "}}',
+    '{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","delta":"think."}}',
+    '{"type":"tool_execution_start","toolCallId":"bash_1","toolName":"bash","args":{"command":"ls"}}',
+    '{"type":"tool_execution_end","toolCallId":"bash_1","toolName":"bash","result":{"content":[{"type":"text","text":"a.txt\\nb.txt"}]},"isError":false}',
+    assistantEnd('done', { tokens: 20 }),
+    AGENT_END,
+  ]);
+
+  const events = await done;
+  const thinking = events
+    .filter((e) => e.type === 'thinking')
+    .map((e) => (e.data as { text: string }).text);
+  assert.deepEqual(thinking, ['Let me ', 'think.']);
+  const blocks = events
+    .filter((e) => e.type === 'block')
+    .map((e) => (e.data as { content: Record<string, unknown> }).content);
+  assert.equal(blocks.length, 1);
+  assert.deepEqual(blocks[0], {
+    type: 'command_execution',
+    command: 'ls',
+    status: 'completed',
+    output: 'a.txt\nb.txt',
+  });
 });
 
 test('parsePiUsageTokens prefers totalTokens, falls back to input+output', () => {
