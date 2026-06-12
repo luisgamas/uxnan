@@ -127,7 +127,25 @@ export const en = {
 
   // Right panel (changes / review)
   "rightPanel.changes": "Changes",
-  "rightPanel.placeholder": "Git status, diffs and staging will appear here.",
+  "rightPanel.selectWorktree": "Select a project or worktree to see its changes.",
+  "rightPanel.refresh": "Refresh changes",
+  "rightPanel.staged": "Staged",
+  "rightPanel.noChanges": "No changes.",
+  "rightPanel.stageAll": "Stage all",
+  "rightPanel.unstageAll": "Unstage all",
+  "rightPanel.stage": "Stage",
+  "rightPanel.unstage": "Unstage",
+  "rightPanel.discard": "Discard changes",
+  "rightPanel.discardTitle": "Discard changes?",
+  "rightPanel.discardDesc":
+    "Discard local changes to “{file}”? This cannot be undone.",
+  "rightPanel.untracked": "Untracked",
+  "rightPanel.commitPlaceholder": "Commit message",
+  "rightPanel.commit": "Commit",
+  "rightPanel.committing": "Committing…",
+  "rightPanel.diffEmpty": "Nothing to show for this file.",
+  "rightPanel.diffStaged": "Staged",
+  "rightPanel.diffUnstaged": "Working tree",
 
   // Status bar
   "status.connected": "Backend connected",

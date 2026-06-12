@@ -96,6 +96,17 @@ export interface DirListing {
   entries: DirEntry[];
 }
 
+/** One changed file in a worktree (mirror of Rust `FileChange`). `index` and
+ *  `worktree` are the two `git status` XY codes (" " clean, M/A/D/R/C/U, "?"
+ *  untracked). */
+export interface FileChange {
+  path: string;
+  /** Index (staged) status code — the `X`. */
+  index: string;
+  /** Working-tree (unstaged) status code — the `Y`. */
+  worktree: string;
+}
+
 /** A worktree's working-tree status summary (mirror of Rust `WorktreeStatus`). */
 export interface WorktreeStatus {
   /** Changed entries (modified/added/deleted/untracked). */

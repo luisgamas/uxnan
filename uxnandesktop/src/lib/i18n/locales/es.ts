@@ -124,7 +124,25 @@ export const es: Record<MessageKey, string> = {
 
   // Right panel (changes / review)
   "rightPanel.changes": "Cambios",
-  "rightPanel.placeholder": "Aquí aparecerán el estado de git, los diffs y el staging.",
+  "rightPanel.selectWorktree": "Selecciona un proyecto o worktree para ver sus cambios.",
+  "rightPanel.refresh": "Actualizar cambios",
+  "rightPanel.staged": "Preparados",
+  "rightPanel.noChanges": "Sin cambios.",
+  "rightPanel.stageAll": "Preparar todo",
+  "rightPanel.unstageAll": "Quitar todo",
+  "rightPanel.stage": "Preparar",
+  "rightPanel.unstage": "Quitar",
+  "rightPanel.discard": "Descartar cambios",
+  "rightPanel.discardTitle": "¿Descartar cambios?",
+  "rightPanel.discardDesc":
+    "¿Descartar los cambios locales de “{file}”? Esto no se puede deshacer.",
+  "rightPanel.untracked": "Sin seguimiento",
+  "rightPanel.commitPlaceholder": "Mensaje del commit",
+  "rightPanel.commit": "Confirmar",
+  "rightPanel.committing": "Confirmando…",
+  "rightPanel.diffEmpty": "No hay nada que mostrar para este archivo.",
+  "rightPanel.diffStaged": "Preparado",
+  "rightPanel.diffUnstaged": "Árbol de trabajo",
 
   // Status bar
   "status.connected": "Backend conectado",

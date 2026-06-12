@@ -4,6 +4,7 @@
   import TerminalArea from "$lib/components/TerminalArea.svelte";
   import TitleBar from "$lib/components/TitleBar.svelte";
   import LeftSidebar from "$lib/components/LeftSidebar.svelte";
+  import RightPanel from "$lib/components/RightPanel.svelte";
   import Settings from "$lib/components/Settings.svelte";
 
   // Resize bounds for each sidebar (px).
@@ -127,19 +128,10 @@
       ></div>
 
       <aside
-        class="flex shrink-0 flex-col overflow-y-auto bg-sidebar text-sidebar-foreground"
+        class="flex shrink-0 flex-col overflow-hidden bg-sidebar text-sidebar-foreground"
         style="width: {app.settings.rightSidebarWidth}px"
       >
-        <section class="border-b border-sidebar-border p-3">
-          <h2
-            class="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
-          >
-            {i18n.t("rightPanel.changes")}
-          </h2>
-          <p class="text-xs text-muted-foreground">
-            {i18n.t("rightPanel.placeholder")}
-          </p>
-        </section>
+        <RightPanel />
       </aside>
     {/if}
   </div>

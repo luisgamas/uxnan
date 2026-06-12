@@ -8,6 +8,7 @@ import type {
   AppSettings,
   BranchList,
   DirListing,
+  FileChange,
   RepoData,
   SavedTerminalLayout,
   WorktreeEntry,
@@ -103,4 +104,54 @@ export function worktreeList(repoId: string): Promise<WorktreeEntry[]> {
 /** Summarize a worktree's working-tree status (dirty count + ahead/behind). */
 export function worktreeStatus(path: string): Promise<WorktreeStatus> {
   return invoke<WorktreeStatus>("worktree_status", { path });
+}
+
+// --- Git status, diffs & staging (right-panel review) ----------------------
+
+/** List a worktree's changed files (staged + unstaged + untracked). */
+export function gitStatus(path: string): Promise<FileChange[]> {
+  return invoke<FileChange[]>("git_status", { path });
+}
+
+/** Unified diff for one file (`staged` = index-vs-HEAD, else worktree-vs-index). */
+export function gitDiff(
+  path: string,
+  file: string,
+  staged: boolean,
+): Promise<string> {
+  return invoke<string>("git_diff", { path, file, staged });
+}
+
+/** Stage one file. */
+export function gitStage(path: string, file: string): Promise<void> {
+  return invoke("git_stage", { path, file });
+}
+
+/** Unstage one file. */
+export function gitUnstage(path: string, file: string): Promise<void> {
+  return invoke("git_unstage", { path, file });
+}
+
+/** Stage every change. */
+export function gitStageAll(path: string): Promise<void> {
+  return invoke("git_stage_all", { path });
+}
+
+/** Unstage everything. */
+export function gitUnstageAll(path: string): Promise<void> {
+  return invoke("git_unstage_all", { path });
+}
+
+/** Discard a file's local changes (tracked → restore HEAD; untracked → delete). */
+export function gitDiscard(
+  path: string,
+  file: string,
+  untracked: boolean,
+): Promise<void> {
+  return invoke("git_discard", { path, file, untracked });
+}
+
+/** Commit the staged changes with `message`. */
+export function gitCommit(path: string, message: string): Promise<void> {
+  return invoke("git_commit", { path, message });
 }
