@@ -405,10 +405,17 @@ earlier "superficial UX" warning is resolved.
       Opt-out via **Settings → Agents → Idle notifications**
       (`AppSettings.agentNotifications`). Permission primed on agent launch.
 - [x] **Per-agent sidebar rows** (`AgentSpace`): each project + worktree shows a
-      collapsible list of its **agent terminals** (tagged via `tab.agentName` /
-      `tab.agentIcon`) — logo + name + working spinner, click jumps to the
-      terminal; collapsed shows count + aggregate spinner. Plain terminals get no
-      row. Replaced the generic activity-dot/terminal-count on card headers.
+      collapsible list of its **agent terminals** (`tab.agentName` /
+      `tab.agentIcon`) — logo + name + working spinner (or a green "detected" dot
+      when idle), click jumps to the terminal; collapsed shows count + aggregate
+      spinner. Plain terminals get no row. Replaced the generic
+      activity-dot/terminal-count on card headers.
+- [x] **Process detection (Layer 3)** — a 2 s backend scan (`procscan` +
+      `sysinfo`) walks each terminal's process tree and emits `agent:detected`
+      with the agent command running in it (matched by exe name or command-line
+      token, so node-shim CLIs resolve), driving the sidebar row + tab name for
+      **any** terminal, including agents the user runs by hand; clears when the
+      agent exits. Commands to look for are synced via `set_agent_commands`.
 
 > **NOTE — precise states are a contemplated future improvement (not yet
 > implemented).** Activity inference is intentionally coarse: it can't tell
@@ -420,9 +427,9 @@ earlier "superficial UX" warning is resolved.
 **Deferred (precise monitoring / orchestration):**
 - [ ] Local HTTP hook server (`axum`) + normalized states + persistent cache
       (`AppData.agent_cache`, TTL 7 d / 30 min stale) + `agent:status-changed`.
-- [ ] Layer 2/3 fallbacks: terminal-title (OSC) parsing; foreground-process
-      detection per PTY — would also catch agents run **manually** in a terminal
-      (activity inference only tracks tabs launched via the agent flow). **FOR-DEV.**
+- [x] **Foreground-process detection** (Layer 3) — done (see above); catches
+      agents run manually too. Terminal-title (OSC) parsing (Layer 2) is still
+      open as an extra signal. **FOR-DEV.**
 - [ ] "Unread / done" badge on completed worktrees (cleared on focus); dock/
       taskbar badge; multi-agent orchestration (task graph, routing) per `02d`.
 - [ ] **Custom agent logos** — catalog agents render their brand SVG in the

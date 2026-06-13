@@ -5,6 +5,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — agents: detect in any terminal + close-on-exit
+- **Process detection (any terminal).** A background scan (every 2 s, `procscan`
+  + `sysinfo`) walks each terminal's process tree and reports the agent running
+  in it — matching the catalog + your configured agents by exe name or
+  command-line token (incl. `cmd-cli` package folders like `gemini-cli`), so it
+  covers real exes (`claude.exe`) *and* node-shim CLIs (`codex`/`gemini`/…). A
+  terminal that starts an agent — even one you typed by hand — gets its agent
+  sidebar row + tab name; when the agent exits, the row disappears and the tab
+  reverts to the shell name. The tab title follows the current agent
+  (`agentName ?? base title`), so re-running a different agent renames it. The
+  frontend syncs the commands to look for via `set_agent_commands`.
+- **Accurate terminal close.** Shell exit is now detected by waiting on the
+  shell process (`try_wait`) instead of the PTY's read-EOF, which on Windows
+  ConPTY was unreliable — it could fire during a full-screen agent's teardown
+  (closing the tab when the shell was still alive) or *not* fire when the shell
+  exited (leaving an unwritable pane). Now running `exit` closes the tab
+  completely, while an agent quitting just drops you back to the shell. Added a
+  close shortcut: **Cmd+W** (mac) / **Ctrl+Shift+W** (plain Ctrl+W stays the
+  shell's delete-word).
+
 ### Changed — sidebar: per-agent rows + collapsible agent spaces
 - **Cards declutter into agent rows.** The generic activity dot and the
   open-terminal count are gone from project/worktree card headers (only the git
