@@ -32,6 +32,14 @@ export interface GroupTab {
   /** One-shot command typed into the shell once it starts (agent launch).
    *  Transient — never serialized, so a restored layout doesn't re-run it. */
   runCommand?: string;
+  /** Agent launched in this tab (set by `launchAgent`); drives idle monitoring
+   *  + notifications and the per-agent sidebar rows. Transient. */
+  agentName?: string;
+  /** Logo key for the agent (catalog id), for the sidebar row. Transient. */
+  agentIcon?: string | null;
+  /** Activity inference: `true` while the tab is producing output (set by the
+   *  agent monitor). Transient. */
+  working?: boolean;
   exited: boolean;
 }
 
@@ -64,6 +72,10 @@ export interface NewTabOptions {
   args?: string[];
   /** One-shot command to type into the shell once it starts (agent launch). */
   runCommand?: string;
+  /** Agent launched in this tab (enables idle monitoring + notifications). */
+  agentName?: string;
+  /** Logo key for the agent (catalog id), for the sidebar row. */
+  agentIcon?: string | null;
   groupId?: string;
   /** Workspace to open in (switches the active workspace first). */
   workspace?: string;
@@ -78,6 +90,8 @@ function newTab(opts?: Omit<NewTabOptions, "groupId" | "workspace">): GroupTab {
     shell: opts?.shell,
     args: opts?.args,
     runCommand: opts?.runCommand,
+    agentName: opts?.agentName,
+    agentIcon: opts?.agentIcon,
     exited: false,
   };
 }
@@ -398,19 +412,55 @@ class TerminalStore {
     return tab.id;
   }
 
-  /** Mark a pane's process as exited (searches every workspace, since a
-   *  background workspace's tab can exit while hidden). */
-  markExited(ptyId: string): void {
+  // --- Agent activity monitoring (read by the agent monitor + the sidebar) ---
+
+  /** Find a tab by id across all workspaces (for the activity monitor). */
+  findTab(tabId: string): GroupTab | undefined {
     for (const key of Object.keys(this.workspaces)) {
       const tree = this.workspaces[key];
       if (!tree) continue;
-      const group = groupOfTab(tree, ptyId);
-      const tab = group?.tabs.find((t) => t.id === ptyId);
-      if (tab) {
-        tab.exited = true;
-        return;
-      }
+      const group = groupOfTab(tree, tabId);
+      const tab = group?.tabs.find((t) => t.id === tabId);
+      if (tab) return tab;
     }
+    return undefined;
+  }
+
+  /** Every open tab paired with its workspace key (for the activity monitor). */
+  *tabsWithWorkspace(): Generator<{ tab: GroupTab; workspace: string }> {
+    for (const key of Object.keys(this.workspaces)) {
+      const tree = this.workspaces[key];
+      if (!tree) continue;
+      for (const tab of allTabs(tree)) yield { tab, workspace: key };
+    }
+  }
+
+  /** Whether any terminal in a workspace is currently producing output. */
+  workspaceWorking(key: string): boolean {
+    const tree = this.workspaces[key];
+    if (!tree) return false;
+    for (const tab of allTabs(tree)) if (tab.working) return true;
+    return false;
+  }
+
+  /** The agent terminals open in a workspace (tabs launched as an agent), in
+   *  tab order — these get their own clickable rows in the sidebar. */
+  agentTabs(key: string): GroupTab[] {
+    const tree = this.workspaces[key];
+    if (!tree) return [];
+    const out: GroupTab[] = [];
+    for (const tab of allTabs(tree)) if (tab.agentName) out.push(tab);
+    return out;
+  }
+
+  /** Reveal a specific terminal: show its workspace and make it the active tab
+   *  of its region (so clicking a sidebar agent row jumps to its terminal). */
+  revealTab(key: string, tabId: string): void {
+    this.setWorkspace(key);
+    const tree = this.root;
+    if (!tree) return;
+    const group = groupOfTab(tree, tabId);
+    if (group) this.setActiveTab(group.id, tabId);
   }
 
   /** Close one tab in the active workspace: kill its PTY; if it was the region's
@@ -429,6 +479,47 @@ class TerminalStore {
       this.collapseGroup(groupId);
     } else if (group.activeTabId === tabId) {
       group.activeTabId = group.tabs[group.tabs.length - 1].id;
+    }
+  }
+
+  /** Close a tab in whichever workspace holds it (even a hidden one): kill its
+   *  PTY and remove it, collapsing an emptied region/workspace. Called when a
+   *  terminal's process exits (e.g. the user ran `exit`) so the pane doesn't
+   *  linger open-but-unwritable — it closes completely. */
+  async closeTabAnywhere(tabId: string): Promise<void> {
+    for (const key of Object.keys(this.workspaces)) {
+      const tree = this.workspaces[key];
+      if (!tree) continue;
+      const group = groupOfTab(tree, tabId);
+      if (!group) continue;
+      try {
+        await invoke("pty_close", { id: tabId });
+      } catch {
+        // Already gone — idempotent.
+      }
+      if (group.tabs.length > 1) {
+        group.tabs = group.tabs.filter((t) => t.id !== tabId);
+        if (group.activeTabId === tabId) {
+          group.activeTabId = group.tabs[group.tabs.length - 1].id;
+        }
+      } else {
+        // Last tab in the region → drop the region from its workspace.
+        const newTree = removeGroup(tree, group.id);
+        this.workspaces = { ...this.workspaces, [key]: newTree };
+        if (newTree) {
+          const ag = this.activeGroups[key];
+          if (!ag || !findGroup(newTree, ag)) {
+            this.activeGroups = {
+              ...this.activeGroups,
+              [key]: firstGroup(newTree).id,
+            };
+          }
+        } else {
+          const { [key]: _drop, ...rest } = this.activeGroups;
+          this.activeGroups = rest;
+        }
+      }
+      return;
     }
   }
 

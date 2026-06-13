@@ -13,6 +13,8 @@ import {
   type TerminalProfile,
 } from "$lib/types";
 import { terminals } from "$lib/state/terminals.svelte";
+import { agentLogoKey } from "$lib/agentCatalog";
+import { primeNotifications } from "$lib/notify";
 
 /** Connection state of the Rust backend, surfaced in the status bar. */
 export type BackendStatus = "connecting" | "ready" | "error";
@@ -149,15 +151,21 @@ class AppStore {
   ): void {
     const command = agent.command.trim();
     if (!command) return;
+    // Ask for notification permission now (focused, user-initiated) so an
+    // agent-idle alert later isn't lost waiting on the OS prompt.
+    primeNotifications();
     const shellProfile = this.profile(agent.terminalProfileId ?? undefined);
     const shell = shellProfile?.command?.trim() || undefined;
     const runCommand = [command, ...agent.args.map(quoteArg)].join(" ");
+    const name = agent.name.trim() || command;
     terminals.create({
       cwd: opts.cwd,
-      title: opts.title ?? (agent.name.trim() || command),
+      title: opts.title ?? name,
       shell,
       args: shell ? shellProfile?.args : undefined,
       runCommand,
+      agentName: name,
+      agentIcon: agentLogoKey(agent.icon, agent.command),
       workspace: opts.workspace,
     });
   }

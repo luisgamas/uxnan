@@ -8,6 +8,7 @@
   import "@xterm/xterm/css/xterm.css";
   import { clipboardRead, clipboardWrite } from "$lib/clipboard";
   import { terminals } from "$lib/state/terminals.svelte";
+  import { agentMonitor } from "$lib/state/agentMonitor.svelte";
   import { app } from "$lib/state/app.svelte";
 
   // xterm colors follow the app theme (light/dark).
@@ -128,6 +129,7 @@
     unlisteners.push(
       await listen<number[]>(`pty:output:${id}`, (e) => {
         term?.write(new Uint8Array(e.payload));
+        agentMonitor.noteOutput(id);
       }),
     );
     unlisteners.push(

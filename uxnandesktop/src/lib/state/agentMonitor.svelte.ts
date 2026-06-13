@@ -1,0 +1,94 @@
+// Agent activity monitoring (Phase 4 — activity inference).
+//
+// We don't ask agents to report state; we infer it from terminal output. A tab
+// producing output is "working"; once it goes quiet it's idle (likely waiting
+// for you). When an *agent* tab settles idle while the app is in the background,
+// we fire one native notification. This is universal (any CLI, no setup) but
+// coarse — precise states would need agent cooperation (see FOR-DEV: hooks).
+//
+// State lives on the terminal tabs (`tab.working`, set here); `lastOutputAt` and
+// the notified set are kept here, non-reactive, and self-pruned so closed tabs
+// don't leak.
+
+import { terminals } from "./terminals.svelte";
+import { app } from "./app.svelte";
+import { i18n } from "$lib/i18n";
+import { notify } from "$lib/notify";
+
+/** Idle after this long with no output → the "working" dot turns off. */
+const VISUAL_IDLE_MS = 3_000;
+/** Idle this long → an agent tab is considered "settled" and may notify. */
+const NOTIFY_IDLE_MS = 12_000;
+
+const baseName = (p: string) =>
+  p ? (p.replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? p) : "";
+
+class AgentMonitor {
+  /** When each tab last produced output (epoch ms). */
+  private lastOutputAt = new Map<string, number>();
+  /** Agent tabs already notified for the current idle period (re-armed on output). */
+  private notified = new Set<string>();
+  private timer: ReturnType<typeof setInterval> | undefined;
+
+  private start(): void {
+    if (this.timer || typeof setInterval === "undefined") return;
+    this.timer = setInterval(() => this.tick(), 1_000);
+  }
+
+  /** Record output on a tab: it's "working" now. Cheap (reactive only on edge). */
+  noteOutput(tabId: string): void {
+    this.lastOutputAt.set(tabId, Date.now());
+    this.notified.delete(tabId);
+    const tab = terminals.findTab(tabId);
+    if (tab && !tab.exited && !tab.working) tab.working = true;
+    this.start();
+  }
+
+  private tick(): void {
+    const now = Date.now();
+    const focused = typeof document !== "undefined" ? document.hasFocus() : true;
+    const live = new Set<string>();
+    for (const { tab, workspace } of terminals.tabsWithWorkspace()) {
+      live.add(tab.id);
+      if (tab.exited) {
+        if (tab.working) tab.working = false;
+        continue;
+      }
+      const seen = this.lastOutputAt.get(tab.id);
+      if (seen === undefined) continue;
+      const idle = now - seen;
+      if (tab.working && idle >= VISUAL_IDLE_MS) tab.working = false;
+      // One notification when an agent settles idle while you're NOT looking at
+      // its terminal — i.e. the window is unfocused, or a different workspace /
+      // tab is showing. (Opt-out via settings.)
+      const viewing =
+        focused &&
+        terminals.activeWorkspace === workspace &&
+        terminals.activePtyId() === tab.id;
+      if (
+        tab.agentName &&
+        idle >= NOTIFY_IDLE_MS &&
+        !viewing &&
+        app.settings.agentNotifications !== false &&
+        !this.notified.has(tab.id)
+      ) {
+        this.notified.add(tab.id);
+        const where = baseName(workspace) || i18n.t("terminal.general");
+        void notify(
+          i18n.t("notify.agentIdleTitle", { agent: tab.agentName }),
+          i18n.t("notify.agentIdleBody", { agent: tab.agentName, worktree: where }),
+        );
+      }
+    }
+    // Prune tracking for tabs that have closed.
+    for (const id of this.lastOutputAt.keys()) {
+      if (!live.has(id)) {
+        this.lastOutputAt.delete(id);
+        this.notified.delete(id);
+      }
+    }
+  }
+}
+
+/** Singleton agent activity monitor. */
+export const agentMonitor = new AgentMonitor();

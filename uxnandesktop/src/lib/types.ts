@@ -45,6 +45,8 @@ export interface AppSettings {
   agentProfiles: AgentProfile[];
   /** Agent auto-launched when a worktree is created; null = off (default). */
   defaultAgentId?: string | null;
+  /** Notify when an agent goes idle while you're in another space. Default on. */
+  agentNotifications?: boolean;
   /** UI language: "system" (follow the device) or a locale code ("en", "es"). */
   language: string;
 }
@@ -183,5 +185,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   defaultProfileId: null,
   agentProfiles: [],
   defaultAgentId: null,
+  agentNotifications: true,
   language: "system",
 };

@@ -15,6 +15,8 @@ export const en = {
   "common.more": "More",
   "common.close": "Close",
   "common.dismiss": "Dismiss",
+  "common.on": "On",
+  "common.off": "Off",
   "common.copyPath": "Copy path",
   "common.removing": "Removing…",
   "common.adding": "Adding…",
@@ -149,6 +151,16 @@ export const en = {
   "rightPanel.diffUnstaged": "Working tree",
   "rightPanel.push": "Push",
   "rightPanel.pull": "Pull",
+
+  // Agent monitoring (activity)
+  "monitor.working": "Working",
+  "monitor.detected": "Agent detected",
+  "agents.spaceLabel": "Agents",
+  "settings.agentNotifications": "Idle notifications",
+  "settings.agentNotificationsDesc":
+    "Notify when an agent goes idle while you're looking at another space.",
+  "notify.agentIdleTitle": "{agent} is idle",
+  "notify.agentIdleBody": "In {worktree} — it may be waiting for you.",
 
   // Status bar
   "status.connected": "Backend connected",

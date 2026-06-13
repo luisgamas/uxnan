@@ -320,6 +320,11 @@
                         role="group"
                         oncontextmenu={(e) => tabMenu(e, g.group.id, t.id)}
                       >
+                        {#if t.working && !t.exited}
+                          <span
+                            class="size-1.5 shrink-0 animate-pulse rounded-full bg-emerald-500"
+                          ></span>
+                        {/if}
                         <button
                           class="max-w-[120px] truncate {t.exited ? 'line-through' : ''}"
                           onclick={() => terminals.setActiveTab(g.group.id, t.id)}
@@ -372,7 +377,7 @@
                           args={t.args}
                           runCommand={t.runCommand}
                           focused={activeRegion && g.group.activeTabId === t.id}
-                          onexit={() => terminals.markExited(t.id)}
+                          onexit={() => void terminals.closeTabAnywhere(t.id)}
                         />
                       </div>
                     {/each}

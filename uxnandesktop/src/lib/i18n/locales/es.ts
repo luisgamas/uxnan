@@ -12,6 +12,8 @@ export const es: Record<MessageKey, string> = {
   "common.more": "Más",
   "common.close": "Cerrar",
   "common.dismiss": "Descartar",
+  "common.on": "Activadas",
+  "common.off": "Desactivadas",
   "common.copyPath": "Copiar ruta",
   "common.removing": "Eliminando…",
   "common.adding": "Agregando…",
@@ -146,6 +148,16 @@ export const es: Record<MessageKey, string> = {
   "rightPanel.diffUnstaged": "Árbol de trabajo",
   "rightPanel.push": "Push",
   "rightPanel.pull": "Pull",
+
+  // Agent monitoring (activity)
+  "monitor.working": "Trabajando",
+  "monitor.detected": "Agente detectado",
+  "agents.spaceLabel": "Agentes",
+  "settings.agentNotifications": "Notificaciones de inactividad",
+  "settings.agentNotificationsDesc":
+    "Notificar cuando un agente queda inactivo y estás viendo otro espacio.",
+  "notify.agentIdleTitle": "{agent} está inactivo",
+  "notify.agentIdleBody": "En {worktree} — puede estar esperándote.",
 
   // Status bar
   "status.connected": "Backend conectado",

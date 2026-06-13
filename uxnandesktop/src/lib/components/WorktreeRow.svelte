@@ -3,12 +3,12 @@
   import * as Dialog from "$lib/components/ui/dialog";
   import { Button } from "$lib/components/ui/button";
   import { projects, type WorktreeRow } from "$lib/state/projects.svelte";
-  import { terminals } from "$lib/state/terminals.svelte";
   import { clipboardWrite } from "$lib/clipboard";
   import { cn } from "$lib/utils";
   import { icon, iconButton, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
   import LaunchAgentMenu from "./LaunchAgentMenu.svelte";
+  import AgentSpace from "./AgentSpace.svelte";
   import GitBranchIcon from "@lucide/svelte/icons/git-branch";
   import TerminalIcon from "@lucide/svelte/icons/terminal";
   import MoreVerticalIcon from "@lucide/svelte/icons/ellipsis-vertical";
@@ -20,7 +20,6 @@
   const active = $derived(projects.activeWorktreePath === row.path);
   const label = $derived(row.branch ?? i18n.t("worktree.detached"));
   const status = $derived(projects.status(row.path));
-  const termCount = $derived(terminals.terminalCount(row.path));
 
   let removeOpen = $state(false);
   let forceNeeded = $state(false);
@@ -44,6 +43,7 @@
   }
 </script>
 
+<div class="flex flex-col">
 <div
   class={cn(
     "group flex items-center gap-1.5 rounded-md py-1 pl-1 pr-1 hover:bg-accent/40",
@@ -81,17 +81,6 @@
     {/if}
     {#if status && status.behind > 0}
       <span class={cn("shrink-0 text-muted-foreground", text.indicator)} title={i18n.t("worktree.behindTooltip")}>↓{status.behind}</span>
-    {/if}
-    {#if termCount > 0}
-      <span
-        class={cn(
-          "inline-flex shrink-0 items-center gap-0.5 text-emerald-600 dark:text-emerald-400",
-          text.indicator,
-        )}
-        title={i18n.t("worktree.runningTooltip", { n: termCount })}
-      >
-        <TerminalIcon class={icon.decorative} />{termCount}
-      </span>
     {/if}
   </div>
 
@@ -139,6 +128,10 @@
       </DropdownMenu.Item>
     </DropdownMenu.Content>
   </DropdownMenu.Root>
+</div>
+  <div class="pl-5">
+    <AgentSpace path={row.path} />
+  </div>
 </div>
 
 <Dialog.Root bind:open={removeOpen}>

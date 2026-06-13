@@ -3,7 +3,6 @@
   import { Button } from "$lib/components/ui/button";
   import { Badge } from "$lib/components/ui/badge";
   import { projects } from "$lib/state/projects.svelte";
-  import { terminals } from "$lib/state/terminals.svelte";
   import { clipboardWrite } from "$lib/clipboard";
   import { cn } from "$lib/utils";
   import { icon, iconButton, text } from "$lib/design";
@@ -11,6 +10,7 @@
   import NewWorktreeDialog from "./NewWorktreeDialog.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import WorktreeRow from "./WorktreeRow.svelte";
+  import AgentSpace from "./AgentSpace.svelte";
   import LaunchAgentMenu from "./LaunchAgentMenu.svelte";
   import type { RepoData } from "$lib/types";
   import FolderGitIcon from "@lucide/svelte/icons/folder-git-2";
@@ -31,7 +31,6 @@
   const mainPath = $derived(projects.mainWorktree(repo.id)?.path ?? repo.path);
   const activeProject = $derived(projects.activeWorktreePath === mainPath);
   const mainStatus = $derived(projects.status(mainPath));
-  const mainTermCount = $derived(terminals.terminalCount(mainPath));
   const children = $derived(projects.visibleChildWorktrees(repo.id));
   const childRows = $derived(
     children.map((w) => ({ ...w, repoId: repo.id, repoName: repo.name })),
@@ -77,17 +76,6 @@
               title={i18n.t("project.dirtyTooltip", { n: mainStatus.dirty })}
             >
               <span class="size-1.5 rounded-full bg-amber-500"></span>{mainStatus.dirty}
-            </span>
-          {/if}
-          {#if mainTermCount > 0}
-            <span
-              class={cn(
-                "inline-flex shrink-0 items-center gap-0.5 text-emerald-600 dark:text-emerald-400",
-                text.indicator,
-              )}
-              title={i18n.t("project.runningTooltip", { n: mainTermCount })}
-            >
-              <TerminalIcon class={icon.decorative} />{mainTermCount}
             </span>
           {/if}
         </div>
@@ -142,6 +130,11 @@
         </DropdownMenu.Content>
       </DropdownMenu.Root>
     </div>
+  </div>
+
+  <!-- The project's own (main worktree) agent terminals -->
+  <div class="px-1.5 pl-6">
+    <AgentSpace path={mainPath} />
   </div>
 
   <!-- Worktrees (non-main) as nested sub-rows -->
