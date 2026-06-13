@@ -198,6 +198,10 @@ pub struct AppSettings {
     /// (the default), so creating a worktree never spawns an agent unasked.
     #[serde(default)]
     pub default_agent_id: Option<String>,
+    /// Whether to fire native notifications when an agent goes idle while you're
+    /// looking at another space. Default on.
+    #[serde(default = "default_true")]
+    pub agent_notifications: bool,
     /// UI language: "system" (follow the device) or a locale code (e.g. "en", "es").
     #[serde(default = "default_language")]
     pub language: String,
@@ -217,6 +221,7 @@ impl Default for AppSettings {
             default_profile_id,
             agent_profiles: Vec::new(),
             default_agent_id: None,
+            agent_notifications: true,
             language: default_language(),
         }
     }
@@ -225,6 +230,11 @@ impl Default for AppSettings {
 /// Default UI language: follow the device.
 fn default_language() -> String {
     "system".to_string()
+}
+
+/// Serde default for boolean settings that should default to `true`.
+fn default_true() -> bool {
+    true
 }
 
 impl AppSettings {
