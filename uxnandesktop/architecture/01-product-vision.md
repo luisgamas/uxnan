@@ -6,7 +6,7 @@
 > **Plataformas objetivo:** Windows, macOS, Linux  
 > **Stack:** Rust + Tauri 2 + Svelte 5 + shadcn-svelte + Tailwind CSS
 
-> Este documento forma parte de la documentación técnica de Uxnan Desktop. Ver también: [02a — Arquitectura del Sistema](02a-system-architecture.md) | [02b — Terminales y PTY](02b-terminals-and-pty.md) | [02c — Git y Worktrees](02c-git-and-worktrees.md) | [02d — Orquestación y Monitoreo](02d-orchestration-and-monitoring.md) | [02e — Guía de Implementación](02e-implementation-guide.md)
+> Este documento forma parte de la documentación técnica de Uxnan Desktop. Ver también: [00 — Índice](00-index.md) | [02a — Arquitectura del Sistema](02a-system-architecture.md) | [02b — Motor de Terminales y PTY](02b-terminal-engine.md) | [02c — Git, Worktrees y Diffs](02c-git-worktrees.md) | [02d — Monitoreo y Orquestación de Agentes](02d-agent-monitoring.md) | [02e — Integración del Bridge](02e-bridge-integration.md) | [03 — Guía de Implementación](03-implementation-guide.md) | [04 — Referencia Técnica](04-technical-reference.md)
 
 ---
 
@@ -60,7 +60,7 @@ El ADE **no integra SDKs ni librerías de agentes**. En su lugar, trata a cada a
 
 - **Simplicidad:** No hay que implementar protocolos de comunicación complejos con cada agente. El contrato es simplísimo: stdin, stdout y un proceso PTY.
 
-> **Referencia:** Los detalles de implementación del principio terminal-céntrico, incluyendo el flujo bidireccional xterm.js <-> PTY <-> Backend Rust, se describen en [02b — Terminales y PTY](02b-terminals-and-pty.md).
+> **Referencia:** Los detalles de implementación del principio terminal-céntrico, incluyendo el flujo bidireccional xterm.js <-> PTY <-> Backend Rust, se describen en [02b — Terminales y PTY](02b-terminal-engine.md).
 
 ---
 
@@ -136,7 +136,7 @@ Ejemplo de layout complejo:
 
 Cada pane es un proceso PTY independiente. Los terminales ocultos (en tabs no activos) siguen corriendo en background. Cuando el usuario vuelve a un tab, ve el output acumulado.
 
-> **Referencia:** La arquitectura completa del motor de terminales, incluyendo el ciclo de vida de PTYs, buffers async con Tokio, y la alternativa Zellij/tmux, se describe en [02b — Terminales y PTY](02b-terminals-and-pty.md).
+> **Referencia:** La arquitectura completa del motor de terminales, incluyendo el ciclo de vida de PTYs, buffers async con Tokio, y la alternativa Zellij/tmux, se describe en [02b — Terminales y PTY](02b-terminal-engine.md).
 
 ### Sidebar Derecha: Diffs y Review
 
@@ -150,7 +150,7 @@ Los componentes principales son:
 - **Comentarios en diffs:** Anotaciones a nivel de línea para dejar notas al agente.
 - **Compositor de commits:** Editor de mensaje con generación AI opcional del mensaje de commit.
 
-> **Referencia:** La implementación del visor de diffs, operaciones de staging parcial y polling de git status se detallan en [02c — Git y Worktrees](02c-git-and-worktrees.md).
+> **Referencia:** La implementación del visor de diffs, operaciones de staging parcial y polling de git status se detallan en [02c — Git y Worktrees](02c-git-worktrees.md).
 
 ---
 
@@ -395,7 +395,7 @@ Los estados posibles de un agente son:
 
 Si un agente no reporta estado en 30 minutos, se marca como "stale" (opacidad reducida en la UI). Los estados stale se eliminan del cache tras 7 días sin actividad.
 
-> **Referencia:** La implementación detallada del sistema de hooks, caché persistente, broadcast de eventos, y orquestación multi-agente se describe en [02d — Orquestación y Monitoreo](02d-orchestration-and-monitoring.md).
+> **Referencia:** La implementación detallada del sistema de hooks, caché persistente, broadcast de eventos, y orquestación multi-agente se describe en [02d — Orquestación y Monitoreo](02d-agent-monitoring.md).
 
 ---
 
@@ -459,4 +459,4 @@ Uxnan Desktop corre en **Windows, macOS y Linux** con el mismo codebase. Gracias
 | Cross-platform | Windows, macOS, Linux con instalador de 5-15 MB |
 | Ligero | 30-100 MB RAM vs 200-500 MB de alternativas Electron |
 
-> **Referencia:** Para la arquitectura detallada de cada pilar, consultar: [02a — Arquitectura del Sistema](02a-system-architecture.md) (estructura de módulos, comunicación backend-frontend, persistencia), [02b — Terminales y PTY](02b-terminals-and-pty.md) (motor de terminales, xterm.js, PTY lifecycle), [02c — Git y Worktrees](02c-git-and-worktrees.md) (worktree lifecycle, capa de ejecución git, polling, staging), [02d — Orquestación y Monitoreo](02d-orchestration-and-monitoring.md) (hooks, notificaciones, multi-agente), [02e — Guía de Implementación](02e-implementation-guide.md) (fases, MVP, estimaciones).
+> **Referencia:** Para la arquitectura detallada de cada pilar, consultar: [02a — Arquitectura del Sistema](02a-system-architecture.md) (estructura de módulos, comunicación backend-frontend, persistencia), [02b — Motor de Terminales y PTY](02b-terminal-engine.md) (motor de terminales, xterm.js, PTY lifecycle), [02c — Git, Worktrees y Diffs](02c-git-worktrees.md) (worktree lifecycle, capa de ejecución git, polling, staging), [02d — Monitoreo y Orquestación de Agentes](02d-agent-monitoring.md) (hooks, notificaciones, multi-agente), [04 — Referencia Técnica](04-technical-reference.md) (fases, MVP, estimaciones).
