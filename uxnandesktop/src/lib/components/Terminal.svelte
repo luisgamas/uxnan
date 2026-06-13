@@ -103,6 +103,13 @@
     //  - Ctrl+V pastes once (preventDefault stops a duplicate native paste).
     term.attachCustomKeyEventHandler((e) => {
       if (e.type !== "keydown") return true;
+      // Close this terminal: Cmd+W (mac) or Ctrl+Shift+W. Plain Ctrl+W is left
+      // for the shell's delete-word-backward.
+      if (e.key.toLowerCase() === "w" && (e.metaKey || (e.ctrlKey && e.shiftKey))) {
+        void terminals.closeTabAnywhere(id);
+        e.preventDefault();
+        return false;
+      }
       if (e.key === "Enter" && (e.shiftKey || e.altKey) && !e.ctrlKey) {
         invoke("pty_write", { id, data: "\n" }).catch(() => {});
         e.preventDefault();

@@ -4,7 +4,13 @@
 // of the backend's persisted document. Backend remains authoritative for repos,
 // worktrees and settings on disk; here we hold the live copy the UI binds to.
 
-import { getAppState, ping, updateSettings } from "$lib/api";
+import {
+  getAppState,
+  ping,
+  setAgentCommands,
+  updateSettings,
+} from "$lib/api";
+import { AGENT_CATALOG, agentLogoKey } from "$lib/agentCatalog";
 import {
   DEFAULT_SETTINGS,
   type AgentProfile,
@@ -13,7 +19,6 @@ import {
   type TerminalProfile,
 } from "$lib/types";
 import { terminals } from "$lib/state/terminals.svelte";
-import { agentLogoKey } from "$lib/agentCatalog";
 import { primeNotifications } from "$lib/notify";
 
 /** Connection state of the Rust backend, surfaced in the status bar. */
@@ -60,6 +65,7 @@ class AppStore {
       this.backend = "ready";
       this.errorMessage = null;
       terminals.restore(data.terminalLayout ?? null);
+      this.syncAgentCommands();
     } catch (err) {
       this.backend = "error";
       this.errorMessage = err instanceof Error ? err.message : String(err);
@@ -140,6 +146,33 @@ class AppStore {
     return this.launchableAgents.find((a) => a.id === id);
   }
 
+  /** Resolve a detected agent command to a display name + logo (a configured
+   *  agent wins over the catalog; an unknown command shows the command itself). */
+  resolveAgent(command: string): { name: string; icon: string | null } {
+    const c = command.trim().toLowerCase();
+    const prof = this.agentProfiles.find((a) => a.command.trim().toLowerCase() === c);
+    if (prof)
+      return {
+        name: prof.name.trim() || prof.command,
+        icon: agentLogoKey(prof.icon, prof.command),
+      };
+    const cat = AGENT_CATALOG.find((a) => a.command.toLowerCase() === c);
+    if (cat) return { name: cat.name, icon: cat.logo };
+    return { name: command, icon: agentLogoKey(null, command) };
+  }
+
+  /** Tell the backend which commands count as agents for process detection
+   *  (the catalog + the user's configured agents). */
+  syncAgentCommands(): void {
+    const commands = new Set<string>();
+    for (const c of AGENT_CATALOG) commands.add(c.command);
+    for (const a of this.agentProfiles) {
+      const cmd = a.command.trim();
+      if (cmd) commands.add(cmd);
+    }
+    void setAgentCommands([...commands]).catch(() => {});
+  }
+
   /** Launch an agent: open a terminal on its chosen shell (its terminal profile,
    *  or the default one) in `workspace` (a worktree path, or "" for Global) and
    *  type the agent command into it. Running inside an interactive shell — rather
@@ -158,9 +191,14 @@ class AppStore {
     const shell = shellProfile?.command?.trim() || undefined;
     const runCommand = [command, ...agent.args.map(quoteArg)].join(" ");
     const name = agent.name.trim() || command;
+    // Base tab title = the worktree folder, so the name reverts from the agent
+    // back to the shell once the agent exits (the display is agentName ?? title).
+    const baseTitle = opts.cwd
+      ? (opts.cwd.replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? undefined)
+      : undefined;
     terminals.create({
       cwd: opts.cwd,
-      title: opts.title ?? name,
+      title: opts.title ?? baseTitle,
       shell,
       args: shell ? shellProfile?.args : undefined,
       runCommand,

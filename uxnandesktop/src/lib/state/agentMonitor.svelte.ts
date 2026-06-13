@@ -10,10 +10,17 @@
 // the notified set are kept here, non-reactive, and self-pruned so closed tabs
 // don't leak.
 
+import { listen } from "@tauri-apps/api/event";
 import { terminals } from "./terminals.svelte";
 import { app } from "./app.svelte";
 import { i18n } from "$lib/i18n";
 import { notify } from "$lib/notify";
+
+/** Payload of the backend `agent:detected` event. */
+interface AgentDetected {
+  ptyId: string;
+  command: string | null;
+}
 
 /** Idle after this long with no output → the "working" dot turns off. */
 const VISUAL_IDLE_MS = 3_000;
@@ -29,10 +36,35 @@ class AgentMonitor {
   /** Agent tabs already notified for the current idle period (re-armed on output). */
   private notified = new Set<string>();
   private timer: ReturnType<typeof setInterval> | undefined;
+  private detecting = false;
 
   private start(): void {
     if (this.timer || typeof setInterval === "undefined") return;
     this.timer = setInterval(() => this.tick(), 1_000);
+  }
+
+  /** Subscribe to the backend's `agent:detected` events (once): tag a tab with
+   *  the agent currently running in it (or clear it when none) so its sidebar
+   *  row + tab name follow whatever agent the user starts/stops there. */
+  async startDetection(): Promise<void> {
+    if (this.detecting) return;
+    this.detecting = true;
+    try {
+      await listen<AgentDetected>("agent:detected", (e) => {
+        const tab = terminals.findTab(e.payload.ptyId);
+        if (!tab) return;
+        if (e.payload.command) {
+          const a = app.resolveAgent(e.payload.command);
+          tab.agentName = a.name;
+          tab.agentIcon = a.icon;
+        } else {
+          tab.agentName = undefined;
+          tab.agentIcon = undefined;
+        }
+      });
+    } catch {
+      this.detecting = false; // no Tauri event bus (web preview)
+    }
   }
 
   /** Record output on a tab: it's "working" now. Cheap (reactive only on edge). */

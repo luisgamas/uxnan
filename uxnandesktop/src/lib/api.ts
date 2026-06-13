@@ -36,6 +36,11 @@ export function detectAgents(commands: string[]): Promise<string[]> {
   return invoke<string[]>("agents_detect", { commands });
 }
 
+/** Set the agent commands the backend process-detection poll looks for. */
+export function setAgentCommands(commands: string[]): Promise<void> {
+  return invoke("set_agent_commands", { commands });
+}
+
 /** Persist the per-workspace terminal layout (restored on next startup). */
 export function setTerminalLayout(
   layout: SavedTerminalLayout | null,

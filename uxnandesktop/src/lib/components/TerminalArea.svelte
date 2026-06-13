@@ -328,9 +328,9 @@
                         <button
                           class="max-w-[120px] truncate {t.exited ? 'line-through' : ''}"
                           onclick={() => terminals.setActiveTab(g.group.id, t.id)}
-                          title={t.title}
+                          title={t.agentName ?? t.title}
                         >
-                          {t.title}
+                          {t.agentName ?? t.title}
                         </button>
                         <button
                           class="rounded px-0.5 text-muted-foreground opacity-60 hover:bg-destructive/20 hover:text-foreground hover:opacity-100"
