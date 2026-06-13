@@ -295,6 +295,85 @@
   "gitStatusDeleted": "Deleted",
   "gitStatusRenamed": "Renamed",
   "gitStatusUntracked": "Untracked",
+  "gitSelectAll": "Select all",
+  "gitDeselectAll": "Deselect all",
+  "gitSelectedCount": "{count} of {total} selected",
+  "@gitSelectedCount": {
+    "placeholders": {
+      "count": { "type": "int" },
+      "total": { "type": "int" }
+    }
+  },
+  "gitExpandAll": "Expand all",
+  "gitCollapseAll": "Collapse all",
+  "gitDiffEmpty": "No textual changes to show.",
+  "gitDiffError": "Couldn't load this file's diff.",
+  "gitCommitMessageLabel": "Commit title",
+  "gitCommitDescriptionLabel": "Description (optional)",
+  "gitCommitDescriptionHint": "Add more detail about these changes…",
+  "gitCommitTitleRequired": "Enter a commit title",
+  "gitCommitScopeAll": "Committing all changes",
+  "gitCommitScopeSelected": "Committing {count} selected file(s)",
+  "@gitCommitScopeSelected": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "gitCoAuthorAdd": "Add Co-author",
+  "gitCoAuthorLabel": "Co-author",
+  "gitCoAuthorHint": "Name <email>",
+  "gitCoAuthorInvalid": "Use the format: Name <email>",
+  "gitDiscard": "Discard",
+  "gitDiscardSelected": "Discard selected",
+  "gitDiscardAll": "Discard all",
+  "gitDiscardConfirmTitle": "Discard changes?",
+  "gitDiscardConfirmBody": "{count} file(s) will be reverted to the last commit, and any new files will be deleted. This can't be undone.",
+  "@gitDiscardConfirmBody": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "gitDiscardSuccess": "Changes discarded",
+  "gitCreatePr": "Create PR",
+  "gitPrDialogTitle": "Open pull request",
+  "gitPrTitleLabel": "Title",
+  "gitPrBodyLabel": "Description (optional)",
+  "gitPrBaseLabel": "Target branch (base)",
+  "gitPrHeadLabel": "Source branch (head)",
+  "gitPrPushNote": "The source branch is pushed to the remote before the PR is opened.",
+  "gitPrTitleRequired": "Enter a PR title",
+  "gitPrCreate": "Create",
+  "gitPrSuccess": "Pull request opened",
+  "gitPrViewAction": "View",
+  "gitCancel": "Cancel",
+  "gitSelectFilesFirst": "Select at least one file",
+  "gitNothingToCommit": "No changes to commit",
+  "gitRefresh": "Refresh",
+  "gitUndoCommit": "Undo last commit",
+  "gitUndoCommitConfirmTitle": "Undo last commit?",
+  "gitUndoCommitConfirmBody": "The last commit is undone but its changes are kept, so you can adjust and commit again before pushing.",
+  "gitUndoCommitSuccess": "Last commit undone",
+  "gitPushConfirmTitle": "Push commits?",
+  "gitPushConfirmBody": "This publishes your commits to the remote and can't be undone.",
+  "gitPrConfirmTitle": "Open pull request?",
+  "gitPrConfirmBody": "A pull request can't be deleted from the repository, but you can close it later from the GitHub app or website.",
+  "gitPrFailed": "Couldn't open the pull request",
+  "gitSwitchBranch": "Switch branch",
+  "gitSwitchBranchTitle": "Switch branch",
+  "gitSwitchBranchCurrent": "On {branch}",
+  "@gitSwitchBranchCurrent": {
+    "placeholders": { "branch": { "type": "String" } }
+  },
+  "gitSwitchCarryTitle": "Move your changes?",
+  "gitSwitchCarryBody": "You have uncommitted changes. Carry them to {target}, or leave them on {current}? Left changes are saved and restored when you switch back.",
+  "@gitSwitchCarryBody": {
+    "placeholders": {
+      "target": { "type": "String" },
+      "current": { "type": "String" }
+    }
+  },
+  "gitSwitchCarry": "Carry changes",
+  "gitSwitchLeave": "Leave on current",
+  "gitSwitchSuccess": "Switched to {branch}",
+  "@gitSwitchSuccess": {
+    "placeholders": { "branch": { "type": "String" } }
+  },
 
   "pushChannelName": "Agent activity",
   "@pushChannelName": {
@@ -367,6 +446,11 @@
   "@settingsScrollOnSendSubtitle": {
     "description": "Subtitle of the scroll-on-send toggle."
   },
+  "settingsGitSection": "Source control",
+  "settingsConfirmPushTitle": "Confirm before push",
+  "settingsConfirmPushSubtitle": "Ask before pushing — a push can't be undone.",
+  "settingsConfirmPrTitle": "Confirm before pull request",
+  "settingsConfirmPrSubtitle": "Ask before opening a pull request.",
   "appTitleMobile": "Uxnan Mobile",
   "@appTitleMobile": {
     "description": "App name with the 'Mobile' suffix, shown in the devices-screen footer. Localized — 'Uxnan Móvil' in Spanish."

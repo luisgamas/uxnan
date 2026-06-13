@@ -13,6 +13,8 @@ class ConversationPreferencesStore {
 
   static const String _showThinkingKey = 'uxnan.conversation.showThinking';
   static const String _scrollOnSendKey = 'uxnan.conversation.scrollOnSend';
+  static const String _confirmPushKey = 'uxnan.git.confirmPush';
+  static const String _confirmPrKey = 'uxnan.git.confirmPr';
 
   /// Whether the agent-thinking section is shown, or `null` if never set (so
   /// the caller keeps the default).
@@ -40,5 +42,32 @@ class ConversationPreferencesStore {
   Future<void> writeScrollOnSend({required bool value}) async {
     final prefs = await _prefs;
     await prefs.setBool(_scrollOnSendKey, value);
+  }
+
+  /// Whether a confirmation is required before pushing, or `null` if never set.
+  Future<bool?> readConfirmPush() async {
+    final prefs = await _prefs;
+    if (!prefs.containsKey(_confirmPushKey)) return null;
+    return prefs.getBool(_confirmPushKey);
+  }
+
+  /// Persists the confirm-before-push preference.
+  Future<void> writeConfirmPush({required bool value}) async {
+    final prefs = await _prefs;
+    await prefs.setBool(_confirmPushKey, value);
+  }
+
+  /// Whether a confirmation is required before opening a PR, or `null` when
+  /// never set.
+  Future<bool?> readConfirmPr() async {
+    final prefs = await _prefs;
+    if (!prefs.containsKey(_confirmPrKey)) return null;
+    return prefs.getBool(_confirmPrKey);
+  }
+
+  /// Persists the confirm-before-PR preference.
+  Future<void> writeConfirmPr({required bool value}) async {
+    final prefs = await _prefs;
+    await prefs.setBool(_confirmPrKey, value);
   }
 }

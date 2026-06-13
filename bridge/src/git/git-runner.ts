@@ -33,9 +33,31 @@ export function runGit(
   args: string[],
   options: { timeoutMs?: number; env?: NodeJS.ProcessEnv } = {},
 ): Promise<RunGitResult> {
+  return runFile('git', cwd, args, options);
+}
+
+/**
+ * Runs the GitHub CLI (`gh`) the same safe way as git (no shell). Used for PR
+ * creation; surfaces a {@link GitCommandError} when `gh` is missing or fails
+ * (e.g. not authenticated), so the caller can show an actionable message.
+ */
+export function runGh(
+  cwd: string,
+  args: string[],
+  options: { timeoutMs?: number; env?: NodeJS.ProcessEnv } = {},
+): Promise<RunGitResult> {
+  return runFile('gh', cwd, args, options);
+}
+
+function runFile(
+  file: string,
+  cwd: string,
+  args: string[],
+  options: { timeoutMs?: number; env?: NodeJS.ProcessEnv } = {},
+): Promise<RunGitResult> {
   return new Promise((resolve, reject) => {
     execFile(
-      'git',
+      file,
       args,
       {
         cwd,
@@ -49,7 +71,9 @@ export function runGit(
           const rawCode = (error as NodeJS.ErrnoException).code;
           const code = typeof rawCode === 'number' ? rawCode : null;
           const detail = sanitizePaths(stderr || stdout || error.message, cwd);
-          reject(new GitCommandError(`git ${args[0] ?? ''} failed`, detail, code));
+          reject(
+            new GitCommandError(`${file} ${args[0] ?? ''} failed`, detail, code),
+          );
           return;
         }
         resolve({ stdout, stderr });

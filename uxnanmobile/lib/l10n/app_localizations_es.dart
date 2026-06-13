@@ -610,6 +610,188 @@ class AppLocalizationsEs extends AppLocalizations {
   String get gitStatusUntracked => 'Sin seguimiento';
 
   @override
+  String get gitSelectAll => 'Seleccionar todo';
+
+  @override
+  String get gitDeselectAll => 'Deseleccionar todo';
+
+  @override
+  String gitSelectedCount(int count, int total) {
+    return '$count de $total seleccionados';
+  }
+
+  @override
+  String get gitExpandAll => 'Expandir todo';
+
+  @override
+  String get gitCollapseAll => 'Contraer todo';
+
+  @override
+  String get gitDiffEmpty => 'Sin cambios de texto para mostrar.';
+
+  @override
+  String get gitDiffError => 'No se pudo cargar el diff de este archivo.';
+
+  @override
+  String get gitCommitMessageLabel => 'Título del commit';
+
+  @override
+  String get gitCommitDescriptionLabel => 'Descripción (opcional)';
+
+  @override
+  String get gitCommitDescriptionHint =>
+      'Agrega más detalle sobre estos cambios…';
+
+  @override
+  String get gitCommitTitleRequired => 'Escribe un título de commit';
+
+  @override
+  String get gitCommitScopeAll => 'Confirmando todos los cambios';
+
+  @override
+  String gitCommitScopeSelected(int count) {
+    return 'Confirmando $count archivo(s) seleccionado(s)';
+  }
+
+  @override
+  String get gitCoAuthorAdd => 'Agregar Co-autor';
+
+  @override
+  String get gitCoAuthorLabel => 'Co-autor';
+
+  @override
+  String get gitCoAuthorHint => 'Nombre <correo>';
+
+  @override
+  String get gitCoAuthorInvalid => 'Usa el formato: Nombre <correo>';
+
+  @override
+  String get gitDiscard => 'Descartar';
+
+  @override
+  String get gitDiscardSelected => 'Descartar seleccionados';
+
+  @override
+  String get gitDiscardAll => 'Descartar todo';
+
+  @override
+  String get gitDiscardConfirmTitle => '¿Descartar cambios?';
+
+  @override
+  String gitDiscardConfirmBody(int count) {
+    return '$count archivo(s) volverán al último commit y los archivos nuevos se eliminarán. Esto no se puede deshacer.';
+  }
+
+  @override
+  String get gitDiscardSuccess => 'Cambios descartados';
+
+  @override
+  String get gitCreatePr => 'Crear PR';
+
+  @override
+  String get gitPrDialogTitle => 'Abrir pull request';
+
+  @override
+  String get gitPrTitleLabel => 'Título';
+
+  @override
+  String get gitPrBodyLabel => 'Descripción (opcional)';
+
+  @override
+  String get gitPrBaseLabel => 'Rama destino (base)';
+
+  @override
+  String get gitPrHeadLabel => 'Rama origen (head)';
+
+  @override
+  String get gitPrPushNote =>
+      'La rama origen se sube al remoto antes de abrir el PR.';
+
+  @override
+  String get gitPrTitleRequired => 'Escribe un título de PR';
+
+  @override
+  String get gitPrCreate => 'Crear';
+
+  @override
+  String get gitPrSuccess => 'Pull request abierto';
+
+  @override
+  String get gitPrViewAction => 'Ver';
+
+  @override
+  String get gitCancel => 'Cancelar';
+
+  @override
+  String get gitSelectFilesFirst => 'Selecciona al menos un archivo';
+
+  @override
+  String get gitNothingToCommit => 'No hay cambios para confirmar';
+
+  @override
+  String get gitRefresh => 'Actualizar';
+
+  @override
+  String get gitUndoCommit => 'Deshacer último commit';
+
+  @override
+  String get gitUndoCommitConfirmTitle => '¿Deshacer último commit?';
+
+  @override
+  String get gitUndoCommitConfirmBody =>
+      'Se deshace el último commit pero se conservan sus cambios, para que puedas ajustar y volver a confirmar antes de subir.';
+
+  @override
+  String get gitUndoCommitSuccess => 'Último commit deshecho';
+
+  @override
+  String get gitPushConfirmTitle => '¿Subir commits?';
+
+  @override
+  String get gitPushConfirmBody =>
+      'Esto publica tus commits en el remoto y no se puede deshacer.';
+
+  @override
+  String get gitPrConfirmTitle => '¿Abrir pull request?';
+
+  @override
+  String get gitPrConfirmBody =>
+      'Un pull request no se puede eliminar del repositorio, pero puedes cerrarlo después desde la app o el sitio de GitHub.';
+
+  @override
+  String get gitPrFailed => 'No se pudo abrir el pull request';
+
+  @override
+  String get gitSwitchBranch => 'Cambiar de rama';
+
+  @override
+  String get gitSwitchBranchTitle => 'Cambiar de rama';
+
+  @override
+  String gitSwitchBranchCurrent(String branch) {
+    return 'En $branch';
+  }
+
+  @override
+  String get gitSwitchCarryTitle => '¿Mover tus cambios?';
+
+  @override
+  String gitSwitchCarryBody(String target, String current) {
+    return 'Tienes cambios sin confirmar. ¿Llevarlos a $target o dejarlos en $current? Los cambios que dejes se guardan y se restauran al volver.';
+  }
+
+  @override
+  String get gitSwitchCarry => 'Llevar cambios';
+
+  @override
+  String get gitSwitchLeave => 'Dejar en la actual';
+
+  @override
+  String gitSwitchSuccess(String branch) {
+    return 'Cambiado a $branch';
+  }
+
+  @override
   String get pushChannelName => 'Actividad del agente';
 
   @override
@@ -669,6 +851,23 @@ class AppLocalizationsEs extends AppLocalizations {
   @override
   String get settingsScrollOnSendSubtitle =>
       'Salta a tu mensaje al enviarlo, aunque hayas subido el scroll.';
+
+  @override
+  String get settingsGitSection => 'Control de versiones';
+
+  @override
+  String get settingsConfirmPushTitle => 'Confirmar antes de subir (push)';
+
+  @override
+  String get settingsConfirmPushSubtitle =>
+      'Preguntar antes de hacer push — un push no se puede deshacer.';
+
+  @override
+  String get settingsConfirmPrTitle => 'Confirmar antes de pull request';
+
+  @override
+  String get settingsConfirmPrSubtitle =>
+      'Preguntar antes de abrir un pull request.';
 
   @override
   String get appTitleMobile => 'Uxnan Móvil';

@@ -473,6 +473,64 @@ class ScrollToBottomOnSend extends Notifier<bool> {
 final scrollToBottomOnSendProvider =
     NotifierProvider<ScrollToBottomOnSend, bool>(ScrollToBottomOnSend.new);
 
+/// Whether a confirmation is shown before pushing. Persisted; defaults to on
+/// (a push can't be undone, so it's guarded by default).
+class ConfirmBeforePush extends Notifier<bool> {
+  @override
+  bool build() {
+    unawaited(_hydrate());
+    return true;
+  }
+
+  Future<void> _hydrate() async {
+    final stored =
+        await ref.read(conversationPreferencesStoreProvider).readConfirmPush();
+    if (stored != null && stored != state) state = stored;
+  }
+
+  /// Persists and applies the confirm-before-push preference.
+  Future<void> set({required bool value}) async {
+    if (value == state) return;
+    state = value;
+    await ref
+        .read(conversationPreferencesStoreProvider)
+        .writeConfirmPush(value: value);
+  }
+}
+
+/// Whether a confirmation is shown before pushing (persisted toggle).
+final confirmBeforePushProvider =
+    NotifierProvider<ConfirmBeforePush, bool>(ConfirmBeforePush.new);
+
+/// Whether a confirmation is shown before opening a pull request. Persisted;
+/// defaults to on.
+class ConfirmBeforePr extends Notifier<bool> {
+  @override
+  bool build() {
+    unawaited(_hydrate());
+    return true;
+  }
+
+  Future<void> _hydrate() async {
+    final stored =
+        await ref.read(conversationPreferencesStoreProvider).readConfirmPr();
+    if (stored != null && stored != state) state = stored;
+  }
+
+  /// Persists and applies the confirm-before-PR preference.
+  Future<void> set({required bool value}) async {
+    if (value == state) return;
+    state = value;
+    await ref
+        .read(conversationPreferencesStoreProvider)
+        .writeConfirmPr(value: value);
+  }
+}
+
+/// Whether a confirmation is shown before opening a PR (persisted toggle).
+final confirmBeforePrProvider =
+    NotifierProvider<ConfirmBeforePr, bool>(ConfirmBeforePr.new);
+
 /// Registers the FCM push token with the bridge once the session connects and
 /// raises local notifications for turn-completed / turn-error events.
 ///

@@ -1226,6 +1226,336 @@ abstract class AppLocalizations {
   /// **'Untracked'**
   String get gitStatusUntracked;
 
+  /// No description provided for @gitSelectAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Select all'**
+  String get gitSelectAll;
+
+  /// No description provided for @gitDeselectAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Deselect all'**
+  String get gitDeselectAll;
+
+  /// No description provided for @gitSelectedCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} of {total} selected'**
+  String gitSelectedCount(int count, int total);
+
+  /// No description provided for @gitExpandAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Expand all'**
+  String get gitExpandAll;
+
+  /// No description provided for @gitCollapseAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Collapse all'**
+  String get gitCollapseAll;
+
+  /// No description provided for @gitDiffEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No textual changes to show.'**
+  String get gitDiffEmpty;
+
+  /// No description provided for @gitDiffError.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load this file\'s diff.'**
+  String get gitDiffError;
+
+  /// No description provided for @gitCommitMessageLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Commit title'**
+  String get gitCommitMessageLabel;
+
+  /// No description provided for @gitCommitDescriptionLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Description (optional)'**
+  String get gitCommitDescriptionLabel;
+
+  /// No description provided for @gitCommitDescriptionHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Add more detail about these changes…'**
+  String get gitCommitDescriptionHint;
+
+  /// No description provided for @gitCommitTitleRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a commit title'**
+  String get gitCommitTitleRequired;
+
+  /// No description provided for @gitCommitScopeAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Committing all changes'**
+  String get gitCommitScopeAll;
+
+  /// No description provided for @gitCommitScopeSelected.
+  ///
+  /// In en, this message translates to:
+  /// **'Committing {count} selected file(s)'**
+  String gitCommitScopeSelected(int count);
+
+  /// No description provided for @gitCoAuthorAdd.
+  ///
+  /// In en, this message translates to:
+  /// **'Add Co-author'**
+  String get gitCoAuthorAdd;
+
+  /// No description provided for @gitCoAuthorLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Co-author'**
+  String get gitCoAuthorLabel;
+
+  /// No description provided for @gitCoAuthorHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Name <email>'**
+  String get gitCoAuthorHint;
+
+  /// No description provided for @gitCoAuthorInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Use the format: Name <email>'**
+  String get gitCoAuthorInvalid;
+
+  /// No description provided for @gitDiscard.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard'**
+  String get gitDiscard;
+
+  /// No description provided for @gitDiscardSelected.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard selected'**
+  String get gitDiscardSelected;
+
+  /// No description provided for @gitDiscardAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard all'**
+  String get gitDiscardAll;
+
+  /// No description provided for @gitDiscardConfirmTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard changes?'**
+  String get gitDiscardConfirmTitle;
+
+  /// No description provided for @gitDiscardConfirmBody.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} file(s) will be reverted to the last commit, and any new files will be deleted. This can\'t be undone.'**
+  String gitDiscardConfirmBody(int count);
+
+  /// No description provided for @gitDiscardSuccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Changes discarded'**
+  String get gitDiscardSuccess;
+
+  /// No description provided for @gitCreatePr.
+  ///
+  /// In en, this message translates to:
+  /// **'Create PR'**
+  String get gitCreatePr;
+
+  /// No description provided for @gitPrDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Open pull request'**
+  String get gitPrDialogTitle;
+
+  /// No description provided for @gitPrTitleLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Title'**
+  String get gitPrTitleLabel;
+
+  /// No description provided for @gitPrBodyLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Description (optional)'**
+  String get gitPrBodyLabel;
+
+  /// No description provided for @gitPrBaseLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Target branch (base)'**
+  String get gitPrBaseLabel;
+
+  /// No description provided for @gitPrHeadLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Source branch (head)'**
+  String get gitPrHeadLabel;
+
+  /// No description provided for @gitPrPushNote.
+  ///
+  /// In en, this message translates to:
+  /// **'The source branch is pushed to the remote before the PR is opened.'**
+  String get gitPrPushNote;
+
+  /// No description provided for @gitPrTitleRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a PR title'**
+  String get gitPrTitleRequired;
+
+  /// No description provided for @gitPrCreate.
+  ///
+  /// In en, this message translates to:
+  /// **'Create'**
+  String get gitPrCreate;
+
+  /// No description provided for @gitPrSuccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Pull request opened'**
+  String get gitPrSuccess;
+
+  /// No description provided for @gitPrViewAction.
+  ///
+  /// In en, this message translates to:
+  /// **'View'**
+  String get gitPrViewAction;
+
+  /// No description provided for @gitCancel.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get gitCancel;
+
+  /// No description provided for @gitSelectFilesFirst.
+  ///
+  /// In en, this message translates to:
+  /// **'Select at least one file'**
+  String get gitSelectFilesFirst;
+
+  /// No description provided for @gitNothingToCommit.
+  ///
+  /// In en, this message translates to:
+  /// **'No changes to commit'**
+  String get gitNothingToCommit;
+
+  /// No description provided for @gitRefresh.
+  ///
+  /// In en, this message translates to:
+  /// **'Refresh'**
+  String get gitRefresh;
+
+  /// No description provided for @gitUndoCommit.
+  ///
+  /// In en, this message translates to:
+  /// **'Undo last commit'**
+  String get gitUndoCommit;
+
+  /// No description provided for @gitUndoCommitConfirmTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Undo last commit?'**
+  String get gitUndoCommitConfirmTitle;
+
+  /// No description provided for @gitUndoCommitConfirmBody.
+  ///
+  /// In en, this message translates to:
+  /// **'The last commit is undone but its changes are kept, so you can adjust and commit again before pushing.'**
+  String get gitUndoCommitConfirmBody;
+
+  /// No description provided for @gitUndoCommitSuccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Last commit undone'**
+  String get gitUndoCommitSuccess;
+
+  /// No description provided for @gitPushConfirmTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Push commits?'**
+  String get gitPushConfirmTitle;
+
+  /// No description provided for @gitPushConfirmBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This publishes your commits to the remote and can\'t be undone.'**
+  String get gitPushConfirmBody;
+
+  /// No description provided for @gitPrConfirmTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Open pull request?'**
+  String get gitPrConfirmTitle;
+
+  /// No description provided for @gitPrConfirmBody.
+  ///
+  /// In en, this message translates to:
+  /// **'A pull request can\'t be deleted from the repository, but you can close it later from the GitHub app or website.'**
+  String get gitPrConfirmBody;
+
+  /// No description provided for @gitPrFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t open the pull request'**
+  String get gitPrFailed;
+
+  /// No description provided for @gitSwitchBranch.
+  ///
+  /// In en, this message translates to:
+  /// **'Switch branch'**
+  String get gitSwitchBranch;
+
+  /// No description provided for @gitSwitchBranchTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Switch branch'**
+  String get gitSwitchBranchTitle;
+
+  /// No description provided for @gitSwitchBranchCurrent.
+  ///
+  /// In en, this message translates to:
+  /// **'On {branch}'**
+  String gitSwitchBranchCurrent(String branch);
+
+  /// No description provided for @gitSwitchCarryTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Move your changes?'**
+  String get gitSwitchCarryTitle;
+
+  /// No description provided for @gitSwitchCarryBody.
+  ///
+  /// In en, this message translates to:
+  /// **'You have uncommitted changes. Carry them to {target}, or leave them on {current}? Left changes are saved and restored when you switch back.'**
+  String gitSwitchCarryBody(String target, String current);
+
+  /// No description provided for @gitSwitchCarry.
+  ///
+  /// In en, this message translates to:
+  /// **'Carry changes'**
+  String get gitSwitchCarry;
+
+  /// No description provided for @gitSwitchLeave.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave on current'**
+  String get gitSwitchLeave;
+
+  /// No description provided for @gitSwitchSuccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Switched to {branch}'**
+  String gitSwitchSuccess(String branch);
+
   /// Name of the Android notification channel for agent activity.
   ///
   /// In en, this message translates to:
@@ -1327,6 +1657,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Jump to your message when you send, even if you\'ve scrolled up.'**
   String get settingsScrollOnSendSubtitle;
+
+  /// No description provided for @settingsGitSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Source control'**
+  String get settingsGitSection;
+
+  /// No description provided for @settingsConfirmPushTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm before push'**
+  String get settingsConfirmPushTitle;
+
+  /// No description provided for @settingsConfirmPushSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Ask before pushing — a push can\'t be undone.'**
+  String get settingsConfirmPushSubtitle;
+
+  /// No description provided for @settingsConfirmPrTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm before pull request'**
+  String get settingsConfirmPrTitle;
+
+  /// No description provided for @settingsConfirmPrSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Ask before opening a pull request.'**
+  String get settingsConfirmPrSubtitle;
 
   /// App name with the 'Mobile' suffix, shown in the devices-screen footer. Localized — 'Uxnan Móvil' in Spanish.
   ///

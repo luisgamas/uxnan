@@ -7,9 +7,11 @@
  */
 import type { Thread, ThreadList, Turn, TurnList } from '../models/thread.js';
 import type {
+  GitBranchList,
   GitBranchResult,
   GitCommitResult,
   GitDiff,
+  GitPrResult,
   GitPullResult,
   GitPushResult,
   GitRepoStatus,
@@ -87,6 +89,37 @@ export interface TurnSendResult {
 export interface GitCommitParams {
   cwd: string;
   message: string;
+  /**
+   * Repository-relative paths to stage before committing. When omitted or
+   * empty the whole working tree is staged (`git add -A`), preserving the
+   * previous behaviour. Any co-author trailer is already part of `message`.
+   */
+  paths?: string[];
+}
+
+export interface GitPathsParams {
+  cwd: string;
+  /** Repository-relative paths to act on. */
+  paths: string[];
+}
+
+export interface GitDiffParams {
+  cwd: string;
+  /** When set, returns the diff for this single file (handles untracked). */
+  path?: string;
+}
+
+export interface GitPrParams {
+  cwd: string;
+  title: string;
+  body?: string;
+  /** Base branch for the PR (defaults to the host's default branch). */
+  base?: string;
+  /**
+   * Head branch the PR is opened from (defaults to the current branch). The
+   * bridge pushes it to the remote before opening the PR.
+   */
+  head?: string;
 }
 export interface GitPushParams {
   cwd: string;
@@ -101,6 +134,17 @@ export interface GitPullParams {
 export interface GitCheckoutParams {
   cwd: string;
   branch: string;
+}
+
+export interface GitSwitchBranchParams {
+  cwd: string;
+  /** The branch to switch to. */
+  target: string;
+  /**
+   * When true the working-tree changes follow you to the target; when false
+   * they stay on the current branch (stashed, restored on return).
+   */
+  carryChanges: boolean;
 }
 export interface GitBranchParams {
   cwd: string;
@@ -187,13 +231,20 @@ export interface JsonRpcMethodRegistry {
 
   // Git
   'git/status': { params: { cwd: string }; result: GitRepoStatus };
-  'git/diff': { params: { cwd: string }; result: GitDiff };
+  'git/diff': { params: GitDiffParams; result: GitDiff };
   'git/commit': { params: GitCommitParams; result: GitCommitResult };
   'git/push': { params: GitPushParams; result: GitPushResult };
   'git/pull': { params: GitPullParams; result: GitPullResult };
   'git/checkout': { params: GitCheckoutParams; result: void };
   'git/createBranch': { params: GitBranchParams; result: GitBranchResult };
   'git/createWorktree': { params: GitWorktreeParams; result: GitWorktreeResult };
+  'git/stage': { params: GitPathsParams; result: void };
+  'git/unstage': { params: GitPathsParams; result: void };
+  'git/discard': { params: GitPathsParams; result: void };
+  'git/createPr': { params: GitPrParams; result: GitPrResult };
+  'git/undoCommit': { params: { cwd: string }; result: void };
+  'git/branches': { params: { cwd: string }; result: GitBranchList };
+  'git/switchBranch': { params: GitSwitchBranchParams; result: void };
 
   // Workspace
   'workspace/readFile': { params: { cwd: string; path: string }; result: FileContent };

@@ -389,8 +389,14 @@ The OpenCode adapter is the template for any "one-shot per-turn CLI" agent:
       `stream/content/block`, `AgentStreamEvent 'thinking'|'block'`,
       `Message.thinking?`/`blocks?` (persisted, survive `turn/list`). Verified by
       running real turns (codex-cli 0.139, opencode 1.17.4, pi 0.79.1) and
-      inspecting the JSON. Remaining: Codex `file_change` carries the path only
-      (no hunk/counts); richer per-file diff via a `git/diff` viewer.
+      inspecting the JSON. Codex `file_change` now renders a real per-line diff
+      (the adapter runs `git diff HEAD -- <path>`). Richer per-file diff via a
+      dedicated `git/diff` viewer is DONE (maintainer-validated): `git/diff`
+      takes an optional `path` (with untracked-file synthesis) and the phone
+      renders it in `GitDiffView` — test-backed in
+      `bridge/test/git/git-service.test.ts`. The git handler also gained
+      `stage`/`unstage`/`discard`/`createPr`/`undoCommit`/`branches`/
+      `switchBranch` for the mobile source-control screen.
 - [ ] **Gemini CLI** — capture its non-interactive JSON stream first. New scaffold.
 - [ ] **JSONL history fallback** (`session-jsonl-history`) — read agent session
       JSONL/SQLite from disk for `turn/list` when the runtime has no fresh data

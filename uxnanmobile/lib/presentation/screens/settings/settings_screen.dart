@@ -73,6 +73,19 @@ class SettingsScreen extends ConsumerWidget {
                       .read(scrollToBottomOnSendProvider.notifier)
                       .set(value: value),
                 ),
+                const SizedBox(height: UxnanSpacing.xl),
+                _SectionHeader(label: l10n.settingsGitSection),
+                const SizedBox(height: UxnanSpacing.sm),
+                _GitCard(
+                  confirmPush: ref.watch(confirmBeforePushProvider),
+                  onConfirmPushChanged: (value) => ref
+                      .read(confirmBeforePushProvider.notifier)
+                      .set(value: value),
+                  confirmPr: ref.watch(confirmBeforePrProvider),
+                  onConfirmPrChanged: (value) => ref
+                      .read(confirmBeforePrProvider.notifier)
+                      .set(value: value),
+                ),
               ],
             ),
           ),
@@ -120,6 +133,51 @@ class _ConversationCard extends StatelessWidget {
             subtitle: Text(l10n.settingsScrollOnSendSubtitle),
             value: scrollOnSend,
             onChanged: onScrollOnSendChanged,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GitCard extends StatelessWidget {
+  const _GitCard({
+    required this.confirmPush,
+    required this.onConfirmPushChanged,
+    required this.confirmPr,
+    required this.onConfirmPrChanged,
+  });
+
+  final bool confirmPush;
+  final ValueChanged<bool> onConfirmPushChanged;
+  final bool confirmPr;
+  final ValueChanged<bool> onConfirmPrChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
+
+    return Material(
+      color: colors.surfaceContainerHighest,
+      borderRadius: const BorderRadius.all(UxnanRadius.lg),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          SwitchListTile(
+            secondary: const Icon(Icons.arrow_upward_rounded),
+            title: Text(l10n.settingsConfirmPushTitle),
+            subtitle: Text(l10n.settingsConfirmPushSubtitle),
+            value: confirmPush,
+            onChanged: onConfirmPushChanged,
+          ),
+          Divider(height: 1, color: colors.outlineVariant),
+          SwitchListTile(
+            secondary: const Icon(Icons.merge_rounded),
+            title: Text(l10n.settingsConfirmPrTitle),
+            subtitle: Text(l10n.settingsConfirmPrSubtitle),
+            value: confirmPr,
+            onChanged: onConfirmPrChanged,
           ),
         ],
       ),

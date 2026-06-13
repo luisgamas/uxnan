@@ -13,7 +13,7 @@ import 'package:uxnan/domain/value_objects/turn_timeline_snapshot.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_bar.dart';
-import 'package:uxnan/presentation/screens/conversation/git/git_actions_sheet.dart';
+import 'package:uxnan/presentation/screens/conversation/git/git_screen.dart';
 import 'package:uxnan/presentation/screens/conversation/messages/message_bubble.dart';
 import 'package:uxnan/presentation/screens/conversation/session_environment.dart';
 import 'package:uxnan/presentation/screens/conversation/support/approval_mode_sheet.dart';
@@ -121,7 +121,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   /// the thread's workspace. Reached from both the branch chip and the
   /// commit/push action in the app bar.
   void _openGit(String? cwd) =>
-      GitActionsSheet.show(context, cwd: cwd, threadId: widget.threadId);
+      GitScreen.push(context, cwd: cwd, threadId: widget.threadId);
 
   /// Opens the access/approval-mode picker (a small single-select bottom sheet).
   Future<void> _editApprovalMode() async {

@@ -100,6 +100,84 @@ class GitActionManager {
     );
   }
 
+  /// Fetches the unified diff for a single [path] within [cwd]. Returns an
+  /// empty diff when the bridge has nothing to show.
+  Future<GitFileDiff> fileDiff(String cwd, String path) async {
+    final response = await _sendRequest('git/diff', {'cwd': cwd, 'path': path});
+    final result = response.result;
+    if (result is! Map) return const GitFileDiff();
+    return GitFileDiff.fromJson(result.cast<String, dynamic>());
+  }
+
+  /// Discards working-tree changes for [params]'s paths and refreshes status.
+  /// Destructive — the UI must confirm before calling this.
+  Future<void> discard(GitDiscardParams params) {
+    return _run(
+      kind: GitActionKind.discard,
+      method: 'git/discard',
+      rpcParams: params.toRpcParams(),
+      threadId: params.threadId,
+      cwd: params.cwd,
+      parseResult: (_) {},
+    );
+  }
+
+  /// Opens a pull request for [params] and refreshes status.
+  Future<GitPrResult?> createPr(GitPrParams params) {
+    return _run(
+      kind: GitActionKind.createPr,
+      method: 'git/createPr',
+      rpcParams: params.toRpcParams(),
+      threadId: params.threadId,
+      cwd: params.cwd,
+      parseResult: GitPrResult.fromJson,
+    );
+  }
+
+  /// Undoes the last commit in [cwd] (soft reset) and refreshes status. The
+  /// committed changes are kept so the user can re-adjust before pushing.
+  Future<void> undoCommit(String cwd, {String? threadId}) {
+    return _run(
+      kind: GitActionKind.undoCommit,
+      method: 'git/undoCommit',
+      rpcParams: {'cwd': cwd},
+      threadId: threadId,
+      cwd: cwd,
+      parseResult: (_) {},
+    );
+  }
+
+  /// Switches [cwd] to [target]. When [carryChanges] is false the current
+  /// branch's working changes are stashed (per-branch) and restored on return;
+  /// when true they follow you to the target. Refreshes status afterwards.
+  Future<void> switchBranch(
+    String cwd,
+    String target, {
+    required bool carryChanges,
+    String? threadId,
+  }) {
+    return _run(
+      kind: GitActionKind.checkout,
+      method: 'git/switchBranch',
+      rpcParams: {
+        'cwd': cwd,
+        'target': target,
+        'carryChanges': carryChanges,
+      },
+      threadId: threadId,
+      cwd: cwd,
+      parseResult: (_) {},
+    );
+  }
+
+  /// Fetches the repository's current/local/remote branches.
+  Future<GitBranchList> branches(String cwd) async {
+    final response = await _sendRequest('git/branches', {'cwd': cwd});
+    final result = response.result;
+    if (result is! Map) return const GitBranchList();
+    return GitBranchList.fromJson(result.cast<String, dynamic>());
+  }
+
   /// Releases resources.
   Future<void> dispose() async {
     await _eventsSub.cancel();

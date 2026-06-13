@@ -347,34 +347,42 @@ browser and multi-PC connection correctness are now DONE — see below.)
   action to the `git_action_log` table. Providers: `gitActionManagerProvider`,
   `gitRepoStateProvider`, `gitActiveActionProvider`,
   `gitActionLogRepositoryProvider`. Covered by unit tests.
-- ☐ **Verify the `git/status` JSON shape against a real bridge** — the parser
-  (`GitRepoState.fromJson`) is tolerant but assumes a shape (`branch`,
-  `upstream`, `isDirty`, `ahead`, `behind`, `diffTotals`, `changedFiles`);
-  confirm field names/types once the bridge git handler is reachable. Same for
-  the `git/commit` (`sha`, `message`) and `git/push` (`branch`, `remote`)
-  results and the `stream/git/progress` (`phase`, `status`) params.
+- ☑ **Verify the `git/status` JSON shape against a real bridge** — DONE
+  (maintainer-validated on device): the bridge sends `files` (with per-file
+  `additions`/`deletions`) plus `diffTotals`, and `GitRepoState.fromJson` reads
+  `files ?? changedFiles` and derives totals when absent (bridge side test-backed
+  in `git-service.test.ts`). `git/commit`, `git/push` and `stream/git/progress`
+  shapes confirmed against the live bridge.
 - ☑ **Resolve the active `cwd`** — DONE: `ConversationScreen` reads the active
   thread's `cwd` (via `threadByIdProvider`) and drives
-  `GitActionManager.refreshStatus(cwd)` + `GitActionsSheet`. `worktreePath`
-  fallback can be added when worktree-backed threads land.
-- ☐ **Extended git actions** — `pull`, `checkout`, `createBranch`,
-  `createWorktree` (+ managed), `revert`, `stackedPublish` (commit+push+PR) per
-  spec 02a §5.2.4 / §5.5; only `status`/`commit`/`push` are wired in the MVP.
-- ☑ **Git UI (visual layer)** — DONE: `GitActionsSheet` (branch state, changed
-  files, commit/push actions, live push progress, recent activity) + `CommitSheet`
-  (message entry), opened from the conversation status sheet's git rows. Push
-  progress reads `gitActiveActionProvider`; history reads
-  `gitActionHistoryProvider`. Reviewable via `GitRepoState.sample()` (FOR-DEV
-  preview) — in preview mode push runs a local phase animation and commit is a
-  visual-only flow.
-- ☑ **Wire the git UI to a live session** — DONE: dropped the `previewState` /
-  `_simulatePush` FOR-DEV paths; `GitActionsSheet` reads `gitRepoStateProvider`
-  and runs real commit/push against the active thread's `cwd`. `GitRepoState.
-  sample()` is no longer used by the UI (retained only as a widget-test fixture;
-  remove if the test is reworked).
-- ☐ **Per-file diff viewer** — `conversation/git/diff_viewer.dart` (spec 02a
-  §5.6) needs the `git/diff` RPC (not in the MVP manager); the changed-files
-  list currently shows only per-file +/- counts from `git/status`.
+  `GitActionManager.refreshStatus(cwd)` + the full-screen `GitScreen`.
+  `worktreePath` fallback can be added when worktree-backed threads land.
+- ☑ **Extended git actions (mobile-wired set)** — DONE (maintainer-validated):
+  `GitActionManager` wires `discard` (`git/discard`), `createPr` (`git/createPr`,
+  smart PR with head/base branch selection + auto-push of the head + precondition
+  validation), `undoCommit` (`git/undoCommit`, soft reset) and `switchBranch`
+  (`git/switchBranch`, per-branch auto-stash so each branch stays independent),
+  plus the `branches` (`git/branches`) read. Still ☐ pending: `pull`, `checkout`,
+  `createBranch`, `createWorktree` (+ managed), `revert`, `stackedPublish`
+  (one-shot commit+push+PR) per spec 02a §5.2.4 / §5.5.
+- ☑ **Git UI (visual layer)** — DONE (maintainer-validated): replaced the old
+  `GitActionsSheet` + `CommitSheet` bottom sheets with a full-screen **`GitScreen`**
+  (M3): collapsible per-file diff cards (collapsed by default, lazy-loaded
+  `git/diff`), selection checkboxes (include-in-commit) + select-all, discard
+  selected/all (confirmed), branch switcher (carry/leave changes), a borderless
+  commit composer (title + description + Co-author, conversation-composer style,
+  rises with the keyboard, inline commit + push-mode buttons), undo-commit, and a
+  full-screen smart-PR dialog. Push/PR confirmations are user-toggleable in
+  Settings (default on). `git_diff_view.dart` renders the per-file unified diff.
+- ☑ **Wire the git UI to a live session** — DONE: `GitScreen` reads
+  `gitRepoStateProvider` and runs real commit/push/discard/PR/switch against the
+  active thread's `cwd`. `GitRepoState.sample()` is retained only as a widget-test
+  fixture (`git_screen_test.dart`).
+- ☑ **Per-file diff viewer** — DONE (maintainer-validated) via
+  `conversation/git/git_diff_view.dart` (`GitDiffView`) →
+  `GitActionManager.fileDiff` → the `git/diff` RPC (with a `path`, incl.
+  untracked-file synthesis on the bridge). The changed-files list also shows
+  per-file +/- counts from `git/status`.
 
 ## Push notifications
 

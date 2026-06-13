@@ -4,48 +4,238 @@
  *
  * Source: architecture/02a-system-architecture.md §5.8.6.
  */
+import { readFile, rm } from 'node:fs/promises';
+import { join } from 'node:path';
 import type {
+  GitBranchList,
   GitBranchResult,
   GitChangedFile,
   GitCommitResult,
   GitDiff,
+  GitDiffTotals,
   GitFileStatus,
+  GitPrResult,
   GitPullResult,
   GitPushResult,
   GitRepoStatus,
   GitWorktreeResult,
 } from '@uxnan/shared';
-import { runGit } from './git-runner.js';
+import { GitCommandError, runGh, runGit } from './git-runner.js';
 
 export class GitService {
   async status(cwd: string): Promise<GitRepoStatus> {
-    const [branch, aheadBehind, files] = await Promise.all([
+    const [branch, upstream, aheadBehind, files] = await Promise.all([
       this.#currentBranch(cwd),
+      this.#upstream(cwd),
       this.#aheadBehind(cwd),
       this.#changedFiles(cwd),
     ]);
-    return { branch, isDirty: files.length > 0, ...aheadBehind, files };
+    const diffTotals = files.reduce<GitDiffTotals>(
+      (totals, file) => ({
+        additions: totals.additions + (file.additions ?? 0),
+        deletions: totals.deletions + (file.deletions ?? 0),
+        changedFileCount: totals.changedFileCount + 1,
+      }),
+      { additions: 0, deletions: 0, changedFileCount: 0 },
+    );
+    return {
+      branch,
+      isDirty: files.length > 0,
+      ...aheadBehind,
+      files,
+      diffTotals,
+      ...(upstream ? { upstream } : {}),
+    };
   }
 
-  async diff(cwd: string): Promise<GitDiff> {
+  /**
+   * Returns the working-tree diff. With `path`, returns just that file's diff —
+   * for an untracked file (no diff vs HEAD) it synthesises an all-additions
+   * unified diff from the file contents so the phone can render it.
+   */
+  async diff(cwd: string, path?: string): Promise<GitDiff> {
     const ref = (await this.#hasHead(cwd)) ? ['HEAD'] : [];
-    const { stdout: diff } = await runGit(cwd, ['diff', ...ref]);
-    const { stdout: numstat } = await runGit(cwd, ['diff', '--numstat', ...ref]);
-    let additions = 0;
-    let deletions = 0;
-    for (const line of numstat.split('\n')) {
-      const [add, del] = line.trim().split('\t');
-      if (add && add !== '-') additions += Number(add) || 0;
-      if (del && del !== '-') deletions += Number(del) || 0;
+    const pathArgs = path ? ['--', path] : [];
+    const { stdout: diff } = await runGit(cwd, ['diff', ...ref, ...pathArgs]);
+    const { stdout: numstat } = await runGit(cwd, [
+      'diff',
+      '--numstat',
+      ...ref,
+      ...pathArgs,
+    ]);
+    let { additions, deletions } = this.#sumNumstat(numstat);
+    let text = diff;
+    if (path && diff.trim() === '' && (await this.#isUntracked(cwd, path))) {
+      const synth = await this.#untrackedDiff(cwd, path);
+      text = synth.diff;
+      additions = synth.additions;
+      deletions = 0;
     }
-    return { diff, additions, deletions };
+    return { diff: text, additions, deletions };
   }
 
-  async commit(cwd: string, message: string): Promise<GitCommitResult> {
-    await runGit(cwd, ['add', '-A']);
+  async commit(
+    cwd: string,
+    message: string,
+    paths?: string[],
+  ): Promise<GitCommitResult> {
+    if (paths && paths.length > 0) {
+      await runGit(cwd, ['add', '--', ...paths]);
+    } else {
+      await runGit(cwd, ['add', '-A']);
+    }
     await runGit(cwd, ['commit', '-m', message]);
     const { stdout } = await runGit(cwd, ['rev-parse', 'HEAD']);
     return { sha: stdout.trim(), message };
+  }
+
+  /**
+   * Undoes the most recent commit, keeping its changes in the working tree
+   * (`git reset --soft HEAD~1`) so the user can re-stage/re-commit before
+   * pushing. Non-destructive: no file content is lost.
+   */
+  async undoCommit(cwd: string): Promise<void> {
+    await runGit(cwd, ['reset', '--soft', 'HEAD~1']);
+  }
+
+  /** Lists the current branch plus all local and remote branches. */
+  async branches(cwd: string): Promise<GitBranchList> {
+    const [current, localOut, remoteOut] = await Promise.all([
+      this.#currentBranch(cwd),
+      runGit(cwd, ['branch', '--format=%(refname:short)']),
+      runGit(cwd, ['branch', '-r', '--format=%(refname:short)']),
+    ]);
+    const local = localOut.stdout
+      .split('\n')
+      .map((b) => b.trim())
+      .filter(Boolean);
+    const remote = remoteOut.stdout
+      .split('\n')
+      .map((b) => b.trim())
+      .filter((b) => b && !b.endsWith('/HEAD') && !b.includes('->'));
+    return { current, local, remote };
+  }
+
+  /** Stages the given paths (`git add`). */
+  async stage(cwd: string, paths: string[]): Promise<void> {
+    if (paths.length === 0) return;
+    await runGit(cwd, ['add', '--', ...paths]);
+  }
+
+  /** Unstages the given paths, keeping working-tree changes (`git restore --staged`). */
+  async unstage(cwd: string, paths: string[]): Promise<void> {
+    if (paths.length === 0) return;
+    await runGit(cwd, ['restore', '--staged', '--', ...paths]);
+  }
+
+  /**
+   * Discards working-tree changes for the given paths. Tracked files are
+   * restored from HEAD (index + worktree); untracked files are deleted. This is
+   * destructive and irreversible — callers must confirm first.
+   */
+  async discard(cwd: string, paths: string[]): Promise<void> {
+    if (paths.length === 0) return;
+    const untracked = new Set(
+      (await this.#changedFiles(cwd))
+        .filter((f) => f.status === 'untracked')
+        .map((f) => f.path),
+    );
+    const tracked = paths.filter((p) => !untracked.has(p));
+    const toDelete = paths.filter((p) => untracked.has(p));
+    if (tracked.length > 0) {
+      await runGit(cwd, [
+        'restore',
+        '--staged',
+        '--worktree',
+        '--',
+        ...tracked,
+      ]);
+    }
+    for (const path of toDelete) {
+      await rm(join(cwd, path), { force: true, recursive: true });
+    }
+  }
+
+  /**
+   * Opens a pull request via the GitHub CLI (`gh pr create`). Requires `gh` to
+   * be installed and authenticated; failures surface as {@link GitCommandError}
+   * with an actionable message. Returns the PR URL.
+   */
+  async createPr(
+    cwd: string,
+    title: string,
+    body?: string,
+    base?: string,
+    head?: string,
+  ): Promise<GitPrResult> {
+    // Make sure the head branch (defaults to the current one) is on the remote
+    // first — a local-only branch can't be the head of a PR otherwise. This is
+    // also how "commit on a local branch then PR" publishes that branch.
+    const branch = head ?? (await this.#currentBranch(cwd));
+    if (base && base === branch) {
+      throw new GitCommandError(
+        'gh pr create failed',
+        `head and base are the same branch (${branch})`,
+        null,
+      );
+    }
+    await runGit(cwd, ['push', '-u', 'origin', branch]);
+    // Pre-flight: a PR needs at least one commit on the head not in the base.
+    // Without this gh can appear to "succeed" with nothing to deliver.
+    const baseRef = await this.#baseRef(cwd, base);
+    if (baseRef) {
+      const { stdout } = await runGit(cwd, [
+        'rev-list',
+        '--count',
+        `${baseRef}..${branch}`,
+      ]);
+      if ((Number(stdout.trim()) || 0) === 0) {
+        throw new GitCommandError(
+          'gh pr create failed',
+          `no commits to compare between ${baseRef} and ${branch} — ` +
+            'commit and push something first',
+          null,
+        );
+      }
+    }
+    const args = [
+      'pr',
+      'create',
+      '--title',
+      title,
+      '--body',
+      body ?? '',
+      '--head',
+      branch,
+    ];
+    if (base) args.push('--base', base);
+    const { stdout } = await runGh(cwd, args);
+    const url = stdout.trim().split('\n').pop()?.trim() ?? '';
+    const match = url.match(/\/pull\/(\d+)/);
+    // Only report success when gh actually returned a PR URL.
+    if (!match || !/^https?:\/\//.test(url)) {
+      throw new GitCommandError(
+        'gh pr create failed',
+        url || 'the GitHub CLI did not return a pull-request URL',
+        null,
+      );
+    }
+    return { url, number: Number(match[1]) };
+  }
+
+  /** The base ref to diff a PR against — `origin/<base>` or the remote HEAD. */
+  async #baseRef(cwd: string, base?: string): Promise<string | undefined> {
+    if (base) return `origin/${base}`;
+    try {
+      const { stdout } = await runGit(cwd, [
+        'symbolic-ref',
+        'refs/remotes/origin/HEAD',
+      ]);
+      const ref = stdout.trim().replace(/^refs\/remotes\//, '');
+      return ref || undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   async push(cwd: string, remote: string, branch: string): Promise<GitPushResult> {
@@ -61,6 +251,58 @@ export class GitService {
 
   async checkout(cwd: string, branch: string): Promise<void> {
     await runGit(cwd, ['checkout', branch]);
+  }
+
+  /**
+   * Switches to {@link target}, keeping each branch's work independent.
+   *
+   * - `carryChanges: true` → the working-tree changes follow you to the target
+   *   (`git checkout` moves them; a conflict surfaces as an error).
+   * - `carryChanges: false` → the current branch's changes are stashed under a
+   *   branch-tagged label so they stay put and are NOT lost. On switching back
+   *   that branch's stash is automatically restored.
+   *
+   * Either way, any changes previously *left* on the target branch are restored
+   * after checkout.
+   */
+  async switchBranch(
+    cwd: string,
+    target: string,
+    carryChanges: boolean,
+  ): Promise<void> {
+    const current = await this.#currentBranch(cwd);
+    if (target === current) return;
+    if (!carryChanges) {
+      const { stdout } = await runGit(cwd, ['status', '--porcelain']);
+      if (stdout.trim()) {
+        await runGit(cwd, [
+          'stash',
+          'push',
+          '--include-untracked',
+          '-m',
+          autoStashLabel(current),
+        ]);
+      }
+    }
+    await runGit(cwd, ['checkout', target]);
+    await this.#restoreAutoStash(cwd, target);
+  }
+
+  /** Pops the auto-stash that belongs to {@link branch}, if one exists. */
+  async #restoreAutoStash(cwd: string, branch: string): Promise<void> {
+    const { stdout } = await runGit(cwd, [
+      'stash',
+      'list',
+      '--format=%gd %gs',
+    ]);
+    const label = autoStashLabel(branch);
+    for (const line of stdout.split('\n')) {
+      const ref = line.trim().split(/\s+/)[0];
+      if (ref && line.includes(label)) {
+        await runGit(cwd, ['stash', 'pop', ref]);
+        return;
+      }
+    }
   }
 
   async createBranch(cwd: string, name: string): Promise<GitBranchResult> {
@@ -106,7 +348,10 @@ export class GitService {
   }
 
   async #changedFiles(cwd: string): Promise<GitChangedFile[]> {
-    const { stdout } = await runGit(cwd, ['status', '--porcelain']);
+    const [{ stdout }, counts] = await Promise.all([
+      runGit(cwd, ['status', '--porcelain']),
+      this.#perFileCounts(cwd),
+    ]);
     const files: GitChangedFile[] = [];
     for (const line of stdout.split('\n')) {
       if (line.length < 4) continue;
@@ -114,9 +359,90 @@ export class GitService {
       let path = line.slice(3);
       const arrow = path.indexOf(' -> ');
       if (arrow !== -1) path = path.slice(arrow + 4);
-      files.push({ path, status: mapStatus(xy) });
+      const count = counts.get(path);
+      files.push({
+        path,
+        status: mapStatus(xy),
+        additions: count?.additions ?? 0,
+        deletions: count?.deletions ?? 0,
+      });
     }
     return files;
+  }
+
+  /** Per-file +/- counts via `git diff --numstat` (tracked changes only). */
+  async #perFileCounts(
+    cwd: string,
+  ): Promise<Map<string, { additions: number; deletions: number }>> {
+    const ref = (await this.#hasHead(cwd)) ? ['HEAD'] : [];
+    const { stdout } = await runGit(cwd, ['diff', '--numstat', ...ref]);
+    const counts = new Map<string, { additions: number; deletions: number }>();
+    for (const line of stdout.split('\n')) {
+      const [add, del, path] = line.trim().split('\t');
+      if (!path) continue;
+      counts.set(path, {
+        additions: add === '-' ? 0 : Number(add) || 0,
+        deletions: del === '-' ? 0 : Number(del) || 0,
+      });
+    }
+    return counts;
+  }
+
+  #sumNumstat(numstat: string): { additions: number; deletions: number } {
+    let additions = 0;
+    let deletions = 0;
+    for (const line of numstat.split('\n')) {
+      const [add, del] = line.trim().split('\t');
+      if (add && add !== '-') additions += Number(add) || 0;
+      if (del && del !== '-') deletions += Number(del) || 0;
+    }
+    return { additions, deletions };
+  }
+
+  async #upstream(cwd: string): Promise<string | undefined> {
+    try {
+      const { stdout } = await runGit(cwd, [
+        'rev-parse',
+        '--abbrev-ref',
+        '--symbolic-full-name',
+        '@{upstream}',
+      ]);
+      const ref = stdout.trim();
+      return ref || undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  async #isUntracked(cwd: string, path: string): Promise<boolean> {
+    const { stdout } = await runGit(cwd, [
+      'status',
+      '--porcelain',
+      '--',
+      path,
+    ]);
+    return stdout.startsWith('??');
+  }
+
+  /** Builds an all-additions unified diff for an untracked file's contents. */
+  async #untrackedDiff(
+    cwd: string,
+    path: string,
+  ): Promise<{ diff: string; additions: number }> {
+    let content: string;
+    try {
+      content = await readFile(join(cwd, path), 'utf8');
+    } catch {
+      return { diff: '', additions: 0 };
+    }
+    const lines = content.split('\n');
+    if (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
+    const header =
+      `diff --git a/${path} b/${path}\n` +
+      `new file mode 100644\n--- /dev/null\n+++ b/${path}\n` +
+      `@@ -0,0 +1,${lines.length} @@\n`;
+    const body = lines.map((l) => `+${l}`).join('\n');
+    return { diff: header + body, additions: lines.length };
   }
 
   async #hasHead(cwd: string): Promise<boolean> {
@@ -136,6 +462,11 @@ export class GitService {
       return false;
     }
   }
+}
+
+/** Label used to tag a branch's auto-stash so it can be restored on return. */
+function autoStashLabel(branch: string): string {
+  return `uxnan-auto:${branch}`;
 }
 
 function mapStatus(xy: string): GitFileStatus {

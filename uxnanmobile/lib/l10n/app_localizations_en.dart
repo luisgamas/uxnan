@@ -609,6 +609,187 @@ class AppLocalizationsEn extends AppLocalizations {
   String get gitStatusUntracked => 'Untracked';
 
   @override
+  String get gitSelectAll => 'Select all';
+
+  @override
+  String get gitDeselectAll => 'Deselect all';
+
+  @override
+  String gitSelectedCount(int count, int total) {
+    return '$count of $total selected';
+  }
+
+  @override
+  String get gitExpandAll => 'Expand all';
+
+  @override
+  String get gitCollapseAll => 'Collapse all';
+
+  @override
+  String get gitDiffEmpty => 'No textual changes to show.';
+
+  @override
+  String get gitDiffError => 'Couldn\'t load this file\'s diff.';
+
+  @override
+  String get gitCommitMessageLabel => 'Commit title';
+
+  @override
+  String get gitCommitDescriptionLabel => 'Description (optional)';
+
+  @override
+  String get gitCommitDescriptionHint => 'Add more detail about these changes…';
+
+  @override
+  String get gitCommitTitleRequired => 'Enter a commit title';
+
+  @override
+  String get gitCommitScopeAll => 'Committing all changes';
+
+  @override
+  String gitCommitScopeSelected(int count) {
+    return 'Committing $count selected file(s)';
+  }
+
+  @override
+  String get gitCoAuthorAdd => 'Add Co-author';
+
+  @override
+  String get gitCoAuthorLabel => 'Co-author';
+
+  @override
+  String get gitCoAuthorHint => 'Name <email>';
+
+  @override
+  String get gitCoAuthorInvalid => 'Use the format: Name <email>';
+
+  @override
+  String get gitDiscard => 'Discard';
+
+  @override
+  String get gitDiscardSelected => 'Discard selected';
+
+  @override
+  String get gitDiscardAll => 'Discard all';
+
+  @override
+  String get gitDiscardConfirmTitle => 'Discard changes?';
+
+  @override
+  String gitDiscardConfirmBody(int count) {
+    return '$count file(s) will be reverted to the last commit, and any new files will be deleted. This can\'t be undone.';
+  }
+
+  @override
+  String get gitDiscardSuccess => 'Changes discarded';
+
+  @override
+  String get gitCreatePr => 'Create PR';
+
+  @override
+  String get gitPrDialogTitle => 'Open pull request';
+
+  @override
+  String get gitPrTitleLabel => 'Title';
+
+  @override
+  String get gitPrBodyLabel => 'Description (optional)';
+
+  @override
+  String get gitPrBaseLabel => 'Target branch (base)';
+
+  @override
+  String get gitPrHeadLabel => 'Source branch (head)';
+
+  @override
+  String get gitPrPushNote =>
+      'The source branch is pushed to the remote before the PR is opened.';
+
+  @override
+  String get gitPrTitleRequired => 'Enter a PR title';
+
+  @override
+  String get gitPrCreate => 'Create';
+
+  @override
+  String get gitPrSuccess => 'Pull request opened';
+
+  @override
+  String get gitPrViewAction => 'View';
+
+  @override
+  String get gitCancel => 'Cancel';
+
+  @override
+  String get gitSelectFilesFirst => 'Select at least one file';
+
+  @override
+  String get gitNothingToCommit => 'No changes to commit';
+
+  @override
+  String get gitRefresh => 'Refresh';
+
+  @override
+  String get gitUndoCommit => 'Undo last commit';
+
+  @override
+  String get gitUndoCommitConfirmTitle => 'Undo last commit?';
+
+  @override
+  String get gitUndoCommitConfirmBody =>
+      'The last commit is undone but its changes are kept, so you can adjust and commit again before pushing.';
+
+  @override
+  String get gitUndoCommitSuccess => 'Last commit undone';
+
+  @override
+  String get gitPushConfirmTitle => 'Push commits?';
+
+  @override
+  String get gitPushConfirmBody =>
+      'This publishes your commits to the remote and can\'t be undone.';
+
+  @override
+  String get gitPrConfirmTitle => 'Open pull request?';
+
+  @override
+  String get gitPrConfirmBody =>
+      'A pull request can\'t be deleted from the repository, but you can close it later from the GitHub app or website.';
+
+  @override
+  String get gitPrFailed => 'Couldn\'t open the pull request';
+
+  @override
+  String get gitSwitchBranch => 'Switch branch';
+
+  @override
+  String get gitSwitchBranchTitle => 'Switch branch';
+
+  @override
+  String gitSwitchBranchCurrent(String branch) {
+    return 'On $branch';
+  }
+
+  @override
+  String get gitSwitchCarryTitle => 'Move your changes?';
+
+  @override
+  String gitSwitchCarryBody(String target, String current) {
+    return 'You have uncommitted changes. Carry them to $target, or leave them on $current? Left changes are saved and restored when you switch back.';
+  }
+
+  @override
+  String get gitSwitchCarry => 'Carry changes';
+
+  @override
+  String get gitSwitchLeave => 'Leave on current';
+
+  @override
+  String gitSwitchSuccess(String branch) {
+    return 'Switched to $branch';
+  }
+
+  @override
   String get pushChannelName => 'Agent activity';
 
   @override
@@ -667,6 +848,22 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get settingsScrollOnSendSubtitle =>
       'Jump to your message when you send, even if you\'ve scrolled up.';
+
+  @override
+  String get settingsGitSection => 'Source control';
+
+  @override
+  String get settingsConfirmPushTitle => 'Confirm before push';
+
+  @override
+  String get settingsConfirmPushSubtitle =>
+      'Ask before pushing — a push can\'t be undone.';
+
+  @override
+  String get settingsConfirmPrTitle => 'Confirm before pull request';
+
+  @override
+  String get settingsConfirmPrSubtitle => 'Ask before opening a pull request.';
 
   @override
   String get appTitleMobile => 'Uxnan Mobile';

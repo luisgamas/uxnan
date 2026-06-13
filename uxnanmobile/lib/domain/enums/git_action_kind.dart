@@ -21,6 +21,15 @@ enum GitActionKind {
   /// Revert changes made by the assistant.
   revert,
 
+  /// Discard working-tree changes for selected files (destructive).
+  discard,
+
+  /// Open a pull request for the current branch.
+  createPr,
+
+  /// Undo the last commit before pushing (soft reset).
+  undoCommit,
+
   /// Commit, push and open a draft pull request in one stacked operation.
   stackedPublish,
 }

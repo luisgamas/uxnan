@@ -20,9 +20,18 @@ class GitRepoState extends Equatable {
   });
 
   /// Reconstructs a [GitRepoState] from a `git/status` JSON result.
+  ///
+  /// The bridge sends the file list under `files`; an older shape used
+  /// `changedFiles`. Both are accepted. When `diffTotals` is absent it is
+  /// derived from the per-file counts.
   factory GitRepoState.fromJson(Map<String, dynamic> json) {
-    final files = json['changedFiles'];
+    final rawFiles = json['files'] ?? json['changedFiles'];
     final totals = json['diffTotals'];
+    final changedFiles = [
+      if (rawFiles is List)
+        for (final f in rawFiles)
+          if (f is Map) GitChangedFile.fromJson(f.cast<String, dynamic>()),
+    ];
     return GitRepoState(
       branch: json['branch'] as String? ?? '',
       upstream: json['upstream'] as String?,
@@ -31,12 +40,22 @@ class GitRepoState extends Equatable {
       behind: json['behind'] is num ? (json['behind'] as num).toInt() : 0,
       diffTotals: totals is Map
           ? GitDiffTotals.fromJson(totals.cast<String, dynamic>())
-          : const GitDiffTotals(),
-      changedFiles: [
-        if (files is List)
-          for (final f in files)
-            if (f is Map) GitChangedFile.fromJson(f.cast<String, dynamic>()),
-      ],
+          : _totalsFrom(changedFiles),
+      changedFiles: changedFiles,
+    );
+  }
+
+  static GitDiffTotals _totalsFrom(List<GitChangedFile> files) {
+    var additions = 0;
+    var deletions = 0;
+    for (final f in files) {
+      additions += f.additions;
+      deletions += f.deletions;
+    }
+    return GitDiffTotals(
+      additions: additions,
+      deletions: deletions,
+      changedFileCount: files.length,
     );
   }
 

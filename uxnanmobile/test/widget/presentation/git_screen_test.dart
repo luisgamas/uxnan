@@ -7,8 +7,7 @@ import 'package:uxnan/domain/value_objects/git/git_changed_file.dart';
 import 'package:uxnan/domain/value_objects/git/git_diff_totals.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
-import 'package:uxnan/presentation/screens/conversation/git/commit_sheet.dart';
-import 'package:uxnan/presentation/screens/conversation/git/git_actions_sheet.dart';
+import 'package:uxnan/presentation/screens/conversation/git/git_screen.dart';
 
 /// A fixture repo state for these widget tests (kept out of production code).
 GitRepoState _sampleState() => const GitRepoState(
@@ -49,45 +48,50 @@ Widget _wrap(Widget child, {GitRepoState? state}) => ProviderScope(
       child: MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
-        home: Scaffold(body: child),
+        home: child,
       ),
     );
 
 void main() {
-  testWidgets('GitActionsSheet renders branch, files and actions from state',
+  testWidgets('GitScreen lists changed files with branch and commit composer',
       (tester) async {
-    await tester.pumpWidget(
-      _wrap(const GitActionsSheet(), state: _sampleState()),
-    );
+    await tester.pumpWidget(_wrap(const GitScreen(), state: _sampleState()));
     await tester.pump();
 
     expect(find.text('feature/login'), findsOneWidget);
     expect(find.text('login_screen.dart'), findsOneWidget);
-    expect(find.text('Commit'), findsOneWidget);
-    expect(find.text('Push'), findsOneWidget);
+    // Every file selected by default → "3 of 3 selected".
+    expect(find.text('3 of 3 selected'), findsOneWidget);
+    // The commit composer is present (borderless title field + commit button).
+    expect(find.text('Commit title'), findsOneWidget);
+    expect(find.byTooltip('Commit'), findsOneWidget);
   });
 
-  testWidgets('GitActionsSheet shows the empty state with no repo', (
+  testWidgets('GitScreen unchecks a file, lowering the selected count', (
     tester,
   ) async {
-    await tester.pumpWidget(_wrap(const GitActionsSheet()));
+    await tester.pumpWidget(_wrap(const GitScreen(), state: _sampleState()));
     await tester.pump();
 
-    expect(find.text('No git repository'), findsOneWidget);
+    // The first per-file checkbox (after the select-all one) toggles selection.
+    final checkboxes = find.byType(Checkbox);
+    await tester.tap(checkboxes.at(1));
+    await tester.pump();
+
+    expect(find.text('2 of 3 selected'), findsOneWidget);
   });
 
-  testWidgets('CommitSheet enables the action once a message is typed', (
+  testWidgets('GitScreen shows the clean state when there are no changes', (
     tester,
   ) async {
-    await tester.pumpWidget(_wrap(const CommitSheet()));
+    await tester.pumpWidget(
+      _wrap(
+        const GitScreen(),
+        state: const GitRepoState(branch: 'main'),
+      ),
+    );
     await tester.pump();
 
-    final commitButton = find.widgetWithText(FilledButton, 'Commit');
-    expect(tester.widget<FilledButton>(commitButton).onPressed, isNull);
-
-    await tester.enterText(find.byType(TextField), 'feat: add login');
-    await tester.pump();
-
-    expect(tester.widget<FilledButton>(commitButton).onPressed, isNotNull);
+    expect(find.text('No changes to commit'), findsOneWidget);
   });
 }

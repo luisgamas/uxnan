@@ -24,9 +24,16 @@ export function registerGitHandlers(router: HandlerRouter): void {
 
   const handlers: Record<string, RpcHandler> = {
     'git/status': (p) => gitOp(() => git.status(requireString(p, 'cwd'))),
-    'git/diff': (p) => gitOp(() => git.diff(requireString(p, 'cwd'))),
+    'git/diff': (p) =>
+      gitOp(() => git.diff(requireString(p, 'cwd'), optionalSafe(p, 'path'))),
     'git/commit': (p) =>
-      gitOp(() => git.commit(requireString(p, 'cwd'), requireString(p, 'message'))),
+      gitOp(() =>
+        git.commit(
+          requireString(p, 'cwd'),
+          requireString(p, 'message'),
+          optionalPaths(p, 'paths'),
+        ),
+      ),
     'git/push': (p) =>
       gitOp(() =>
         git.push(requireString(p, 'cwd'), requireSafe(p, 'remote'), requireSafe(p, 'branch')),
@@ -47,6 +54,32 @@ export function registerGitHandlers(router: HandlerRouter): void {
           requireSafe(p, 'path'),
         ),
       ),
+    'git/stage': (p) =>
+      gitOp(() => git.stage(requireString(p, 'cwd'), requirePaths(p, 'paths'))),
+    'git/unstage': (p) =>
+      gitOp(() => git.unstage(requireString(p, 'cwd'), requirePaths(p, 'paths'))),
+    'git/discard': (p) =>
+      gitOp(() => git.discard(requireString(p, 'cwd'), requirePaths(p, 'paths'))),
+    'git/createPr': (p) =>
+      gitOp(() =>
+        git.createPr(
+          requireString(p, 'cwd'),
+          requireString(p, 'title'),
+          optionalString(p, 'body'),
+          optionalSafe(p, 'base'),
+          optionalSafe(p, 'head'),
+        ),
+      ),
+    'git/undoCommit': (p) => gitOp(() => git.undoCommit(requireString(p, 'cwd'))),
+    'git/branches': (p) => gitOp(() => git.branches(requireString(p, 'cwd'))),
+    'git/switchBranch': (p) =>
+      gitOp(() =>
+        git.switchBranch(
+          requireString(p, 'cwd'),
+          requireSafe(p, 'target'),
+          requireBool(p, 'carryChanges'),
+        ),
+      ),
   };
 
   for (const [method, handler] of Object.entries(handlers)) {
@@ -59,4 +92,35 @@ function optionalSafe(params: unknown, key: string): string | undefined {
   if (value === undefined) return undefined;
   if (value.startsWith('-')) throw RpcError.invalidParams(`invalid '${key}'`);
   return value;
+}
+
+/**
+ * Reads a `string[]` of repository-relative paths, rejecting non-arrays,
+ * non-strings, empty values, and leading-dash entries (option-injection guard).
+ */
+function requirePaths(params: unknown, key: string): string[] {
+  const raw = (params as Record<string, unknown> | null)?.[key];
+  if (!Array.isArray(raw) || raw.length === 0) {
+    throw RpcError.invalidParams(`'${key}' must be a non-empty array`);
+  }
+  return raw.map((entry) => {
+    if (typeof entry !== 'string' || entry === '' || entry.startsWith('-')) {
+      throw RpcError.invalidParams(`invalid path in '${key}'`);
+    }
+    return entry;
+  });
+}
+
+function optionalPaths(params: unknown, key: string): string[] | undefined {
+  const raw = (params as Record<string, unknown> | null)?.[key];
+  if (raw === undefined || raw === null) return undefined;
+  return requirePaths(params, key);
+}
+
+function requireBool(params: unknown, key: string): boolean {
+  const raw = (params as Record<string, unknown> | null)?.[key];
+  if (typeof raw !== 'boolean') {
+    throw RpcError.invalidParams(`'${key}' must be a boolean`);
+  }
+  return raw;
 }

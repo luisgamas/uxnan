@@ -29,6 +29,13 @@ export const METHOD_NAMES = [
   'git/checkout',
   'git/createBranch',
   'git/createWorktree',
+  'git/stage',
+  'git/unstage',
+  'git/discard',
+  'git/createPr',
+  'git/undoCommit',
+  'git/branches',
+  'git/switchBranch',
   // Workspace
   'workspace/readFile',
   'workspace/readImage',
