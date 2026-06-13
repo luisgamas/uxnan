@@ -5,6 +5,33 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — sidebar: per-agent rows + collapsible agent spaces
+- **Cards declutter into agent rows.** The generic activity dot and the
+  open-terminal count are gone from project/worktree card headers (only the git
+  diff badge stays). Each project and worktree now shows a **collapsible list of
+  its agent terminals** (`AgentSpace`): one clickable row per *agent* terminal
+  (plain terminals get no row), with the agent's logo, a spinner while it's
+  working, and click-to-jump to that terminal. Collapsed, it shows a count + a
+  working spinner.
+- **Space-aware notifications.** An agent-idle notification now fires when you're
+  not looking at that terminal (a different workspace/tab is showing, or the
+  window is unfocused) — not just on window blur. New **Settings → Agents → Idle
+  notifications** toggle (`AppSettings.agentNotifications`, default on).
+- Agent terminals are tagged at launch (`tab.agentName` + `tab.agentIcon`) so the
+  rows and monitoring know which terminals are agents.
+
+### Added — Phase 4 (increment 1): agent activity monitoring
+- **Activity inference** (universal, no agent setup): a terminal producing output
+  is "working", quiet for 3 s is idle, exited is done. A pulsing dot shows on the
+  worktree row/card and the terminal tab while it's working (`agentMonitor` +
+  `tab.working`).
+- **Native notification** (`tauri-plugin-notification`) when an *agent* terminal
+  settles idle (≥ 12 s) while the app is **unfocused** — i.e. an agent likely
+  finished/paused while you were away. One per idle period, re-armed on new
+  output; permission is requested lazily on first use.
+- Precise per-state monitoring (working/blocked/waiting/done) is deferred to a
+  hook-based approach — see FOR-DEV.
+
 ### Fixed — terminal: fewer resize jumps + multi-line key
 - **No redundant PTY resizes.** `fitToPane` resizes the PTY only when cols/rows
   actually change, and the `ResizeObserver` is debounced — so a spurious SIGWINCH

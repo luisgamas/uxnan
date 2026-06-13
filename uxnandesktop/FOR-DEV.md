@@ -34,7 +34,7 @@ models live in:
 | **1** | Terminal core (PTY, tabs, splits) | ✅ **DONE** — terminals, region splits, copy/paste, file-drop, layout persistence, kill-on-exit (reorder/MRU = Tier 2; per-worktree assoc = Phase 2) |
 | **2** | Git & worktrees | ✅ **DONE** — single-panel UI (search + collapsible Projects/Worktrees, cards, new-worktree dialog with base-branch picker), worktree create / list / safe remove, status/dirty + ahead/behind badges, in-app directory picker, **per-worktree terminal workspaces** (select a worktree → its terminals show, others keep running hidden). Agent auto-launch is the Settings **agents track** (S) |
 | **3** | Git status & diffs | ✅ **DONE** — right-panel review (status/diff/stage/discard/commit), live status watcher (3 s, focus-paused), push/pull, CodeMirror 6 diff viewer; `git2` migration + side-by-side/hunk staging → Phase 5 |
-| 4 | Agent monitoring (hooks, notifications) | ☐ not started |
+| **4** | Agent monitoring | ◑ **IN PROGRESS** — activity inference (working/idle dots on worktrees + tabs) + native notification when an agent settles idle while unfocused; precise hook-based states deferred |
 | 5 | Polish & UX (hunk staging, side-by-side, virtual scroll) | ☐ not started |
 | 6 | Bridge integration (mobile pairing) | ☐ not started |
 | **S** | Settings, design system & i18n (cross-cutting) | ◑ **IN PROGRESS** — Settings (theme + terminal profiles w/ OS templates), **design tokens**, **full i18n (EN/ES + Language picker)**, and the **agents registry + manual launch** (the ADE differentiator) done; agent **auto-launch on worktree create** + Phase-4 **status monitoring** pending |
@@ -389,22 +389,47 @@ earlier "superficial UX" warning is resolved.
 
 ---
 
-## Phase 4 — Agent monitoring ☐
+## Phase 4 — Agent monitoring ◑ (activity inference done)
 
 **Goal:** know what each agent is doing in each worktree.
 
-### Backend (Rust)
-- [ ] Local HTTP hook server (`axum`, async on Tokio) accepting POST status
-      reports; normalize `working/waiting/blocked/done`.
-- [ ] Persistent last-state cache (the existing `AppData.agent_cache`, TTL 7 d,
-      30 min → stale); emit `agent:status-changed`.
-- [ ] `tauri-plugin-notification` on `done`; `notification:agent-completed`.
-- [ ] Fallbacks: terminal-title (OSC) parsing addon; foreground-process
-      detection per PTY (Phase 2 of monitoring, spec §5/02d).
+**Done (increment 1 — activity inference, universal):**
+- [x] **Infer status from terminal output** (no agent cooperation): a tab
+      producing output is "working"; quiet for 3 s → idle; exited → done.
+      `agentMonitor` (frontend) drives `tab.working`; the worktree row/card and
+      the tab bar show a pulsing dot — universal (any terminal, even a manual CLI).
+- [x] **Native notification** (`tauri-plugin-notification`) when an *agent* tab
+      (one launched via the agent flow, so it's tagged) settles idle (≥ 12 s)
+      while you're **not looking at its terminal** (different workspace/tab, or
+      the window is unfocused) — one per idle period, re-armed on new output.
+      Opt-out via **Settings → Agents → Idle notifications**
+      (`AppSettings.agentNotifications`). Permission primed on agent launch.
+- [x] **Per-agent sidebar rows** (`AgentSpace`): each project + worktree shows a
+      collapsible list of its **agent terminals** (tagged via `tab.agentName` /
+      `tab.agentIcon`) — logo + name + working spinner, click jumps to the
+      terminal; collapsed shows count + aggregate spinner. Plain terminals get no
+      row. Replaced the generic activity-dot/terminal-count on card headers.
 
-### Frontend (Svelte)
-- [ ] Status dots on worktree cards + terminal tab bars; "unread" badge on
-      completed worktrees; clear on focus.
+> **NOTE — precise states are a contemplated future improvement (not yet
+> implemented).** Activity inference is intentionally coarse: it can't tell
+> `working` vs `blocked` vs `waiting` apart, only "active" vs "idle / likely
+> done". For precise per-state monitoring we'd **migrate to the HTTP hook server**
+> (Layer 1, `02d`): agents that support hooks POST `working/blocked/waiting/done`
+> to a localhost endpoint. That needs per-agent setup, so it's deferred. **FOR-DEV.**
+
+**Deferred (precise monitoring / orchestration):**
+- [ ] Local HTTP hook server (`axum`) + normalized states + persistent cache
+      (`AppData.agent_cache`, TTL 7 d / 30 min stale) + `agent:status-changed`.
+- [ ] Layer 2/3 fallbacks: terminal-title (OSC) parsing; foreground-process
+      detection per PTY — would also catch agents run **manually** in a terminal
+      (activity inference only tracks tabs launched via the agent flow). **FOR-DEV.**
+- [ ] "Unread / done" badge on completed worktrees (cleared on focus); dock/
+      taskbar badge; multi-agent orchestration (task graph, routing) per `02d`.
+- [ ] **Custom agent logos** — catalog agents render their brand SVG in the
+      sidebar rows; a *custom* agent (no catalog match) falls back to the generic
+      Bot. Let users upload/point to their own logo per agent
+      (`AgentProfile.icon` could hold a path/data-URL) so it shows in the rows.
+      **FOR-DEV.**
 
 ---
 
