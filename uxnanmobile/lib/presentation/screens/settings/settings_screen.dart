@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/domain/value_objects/notification_preferences.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
+import 'package:uxnan/presentation/screens/settings/personalization_screen.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 
 /// App settings. Today it hosts the notification-channel preferences (which
@@ -39,6 +40,12 @@ class SettingsScreen extends ConsumerWidget {
             ),
             sliver: SliverList.list(
               children: [
+                _SectionHeader(label: l10n.settingsAppearanceSection),
+                const SizedBox(height: UxnanSpacing.sm),
+                _PersonalizationTile(
+                  onTap: () => PersonalizationScreen.push(context),
+                ),
+                const SizedBox(height: UxnanSpacing.xl),
                 _SectionHeader(label: l10n.settingsNotificationsSection),
                 const SizedBox(height: UxnanSpacing.sm),
                 _PreferencesCard(
@@ -135,6 +142,29 @@ class _ConversationCard extends StatelessWidget {
             onChanged: onScrollOnSendChanged,
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _PersonalizationTile extends StatelessWidget {
+  const _PersonalizationTile({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
+    return Material(
+      color: colors.surfaceContainerHighest,
+      borderRadius: const BorderRadius.all(UxnanRadius.lg),
+      clipBehavior: Clip.antiAlias,
+      child: ListTile(
+        leading: const Icon(Icons.palette_outlined),
+        title: Text(l10n.settingsPersonalizationTitle),
+        subtitle: Text(l10n.settingsPersonalizationSubtitle),
+        trailing: const Icon(Icons.chevron_right_rounded),
+        onTap: onTap,
       ),
     );
   }

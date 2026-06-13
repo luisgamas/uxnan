@@ -1688,6 +1688,84 @@ abstract class AppLocalizations {
   /// **'Ask before opening a pull request.'**
   String get settingsConfirmPrSubtitle;
 
+  /// No description provided for @settingsAppearanceSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Appearance'**
+  String get settingsAppearanceSection;
+
+  /// No description provided for @settingsPersonalizationTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Personalization'**
+  String get settingsPersonalizationTitle;
+
+  /// No description provided for @settingsPersonalizationSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Theme, accent color and language'**
+  String get settingsPersonalizationSubtitle;
+
+  /// No description provided for @personalizationTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Personalization'**
+  String get personalizationTitle;
+
+  /// No description provided for @personalizationThemeSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Theme'**
+  String get personalizationThemeSection;
+
+  /// No description provided for @themeSystem.
+  ///
+  /// In en, this message translates to:
+  /// **'System'**
+  String get themeSystem;
+
+  /// No description provided for @themeLight.
+  ///
+  /// In en, this message translates to:
+  /// **'Light'**
+  String get themeLight;
+
+  /// No description provided for @themeDark.
+  ///
+  /// In en, this message translates to:
+  /// **'Dark'**
+  String get themeDark;
+
+  /// No description provided for @personalizationAccentSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Accent color'**
+  String get personalizationAccentSection;
+
+  /// No description provided for @personalizationAccentComingSoon.
+  ///
+  /// In en, this message translates to:
+  /// **'Coming soon'**
+  String get personalizationAccentComingSoon;
+
+  /// No description provided for @personalizationAccentComingSoonBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Custom accent colors are in design — they\'ll arrive once they stay coherent across the whole app.'**
+  String get personalizationAccentComingSoonBody;
+
+  /// No description provided for @personalizationLanguageSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Language'**
+  String get personalizationLanguageSection;
+
+  /// No description provided for @languageSystemDefault.
+  ///
+  /// In en, this message translates to:
+  /// **'System default'**
+  String get languageSystemDefault;
+
   /// App name with the 'Mobile' suffix, shown in the devices-screen footer. Localized — 'Uxnan Móvil' in Spanish.
   ///
   /// In en, this message translates to:

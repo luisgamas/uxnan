@@ -866,6 +866,47 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsConfirmPrSubtitle => 'Ask before opening a pull request.';
 
   @override
+  String get settingsAppearanceSection => 'Appearance';
+
+  @override
+  String get settingsPersonalizationTitle => 'Personalization';
+
+  @override
+  String get settingsPersonalizationSubtitle =>
+      'Theme, accent color and language';
+
+  @override
+  String get personalizationTitle => 'Personalization';
+
+  @override
+  String get personalizationThemeSection => 'Theme';
+
+  @override
+  String get themeSystem => 'System';
+
+  @override
+  String get themeLight => 'Light';
+
+  @override
+  String get themeDark => 'Dark';
+
+  @override
+  String get personalizationAccentSection => 'Accent color';
+
+  @override
+  String get personalizationAccentComingSoon => 'Coming soon';
+
+  @override
+  String get personalizationAccentComingSoonBody =>
+      'Custom accent colors are in design — they\'ll arrive once they stay coherent across the whole app.';
+
+  @override
+  String get personalizationLanguageSection => 'Language';
+
+  @override
+  String get languageSystemDefault => 'System default';
+
+  @override
   String get appTitleMobile => 'Uxnan Mobile';
 
   @override

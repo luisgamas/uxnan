@@ -337,6 +337,27 @@ browser and multi-PC connection correctness are now DONE — see below.)
   - ☑ Removed `SessionEnvironment.sample()`, `demo_seed.dart` and the home
     preview entry from the default UX.
 
+## Personalization / appearance
+
+- ☑ **Theme mode + language** — DONE: dedicated `PersonalizationScreen`
+  (`Settings → Appearance`) with a System/Light/Dark `SegmentedButton`
+  (`themeModeSettingProvider`, wired to `MaterialApp.themeMode`) and a language
+  list built dynamically from `AppLocalizations.supportedLocales` + a
+  "System default" option (`localeSettingProvider` → `MaterialApp.locale`; null
+  follows the device). Persisted via `AppearancePreferencesStore`. A newly added
+  locale shows up automatically. Covered by `personalization_screen_test.dart`.
+- ☐ **Custom accent colors (brand-independent theming)** — currently a
+  *"Coming soon"* placeholder. A first cut (override just the `primary` role via
+  a seed) was removed because it broke visual coherence: surfaces, secondary,
+  containers and other roles stayed brand-tuned and clashed with the chosen
+  accent. The correct implementation is a **larger theming change** — make the
+  whole `ColorScheme` derive from the accent (e.g. `ColorScheme.fromSeed` with a
+  curated set of surface/secondary overrides, or a full token remap) so every
+  role stays harmonious across light/dark for any accent. Re-introduce the
+  accent picker (swatch palette + persistence; a `uxnan.appearance.accentId`
+  key in `AppearancePreferencesStore`) once that lands. `buildUxnanTheme` will
+  take the accent seed again at that point.
+
 ## Git
 
 - ☑ **Git logic layer** — DONE: `GitActionManager` (status/commit/push with

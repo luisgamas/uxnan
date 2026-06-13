@@ -11,6 +11,7 @@ import 'package:uxnan/infrastructure/repositories/drift_message_repository.dart'
 import 'package:uxnan/infrastructure/repositories/drift_thread_repository.dart';
 import 'package:uxnan/infrastructure/repositories/trusted_device_repository.dart';
 import 'package:uxnan/infrastructure/speech/speech_to_text_service.dart';
+import 'package:uxnan/infrastructure/storage/appearance_preferences_store.dart';
 import 'package:uxnan/infrastructure/storage/conversation_preferences_store.dart';
 import 'package:uxnan/infrastructure/storage/local_database.dart';
 import 'package:uxnan/infrastructure/storage/notification_preferences_store.dart';
@@ -70,6 +71,12 @@ final notificationPreferencesStoreProvider =
 final conversationPreferencesStoreProvider =
     Provider<ConversationPreferencesStore>(
   (ref) => ConversationPreferencesStore(),
+);
+
+/// Persists appearance + language preferences (non-sensitive, on-device).
+final appearancePreferencesStoreProvider =
+    Provider<AppearancePreferencesStore>(
+  (ref) => AppearancePreferencesStore(),
 );
 
 /// Firebase Cloud Messaging + local notifications, fully guarded so the app

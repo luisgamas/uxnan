@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/application/coordinators/session_coordinator.dart';
 import 'package:uxnan/application/managers/git_action_manager.dart';
@@ -530,6 +531,71 @@ class ConfirmBeforePr extends Notifier<bool> {
 /// Whether a confirmation is shown before opening a PR (persisted toggle).
 final confirmBeforePrProvider =
     NotifierProvider<ConfirmBeforePr, bool>(ConfirmBeforePr.new);
+
+/// The app's theme mode (system/light/dark). Persisted; defaults to system.
+class ThemeModeSetting extends Notifier<ThemeMode> {
+  @override
+  ThemeMode build() {
+    unawaited(_hydrate());
+    return ThemeMode.system;
+  }
+
+  Future<void> _hydrate() async {
+    final stored =
+        await ref.read(appearancePreferencesStoreProvider).readThemeMode();
+    final mode = _parse(stored);
+    if (mode != state) state = mode;
+  }
+
+  /// Persists and applies the theme mode.
+  Future<void> set(ThemeMode mode) async {
+    if (mode == state) return;
+    state = mode;
+    await ref
+        .read(appearancePreferencesStoreProvider)
+        .writeThemeMode(mode.name);
+  }
+
+  static ThemeMode _parse(String? name) => switch (name) {
+        'light' => ThemeMode.light,
+        'dark' => ThemeMode.dark,
+        _ => ThemeMode.system,
+      };
+}
+
+/// The app's theme mode (persisted).
+final themeModeSettingProvider =
+    NotifierProvider<ThemeModeSetting, ThemeMode>(ThemeModeSetting.new);
+
+/// The manual locale override, or null to follow the device language.
+/// Persisted; defaults to null (system).
+class LocaleSetting extends Notifier<Locale?> {
+  @override
+  Locale? build() {
+    unawaited(_hydrate());
+    return null;
+  }
+
+  Future<void> _hydrate() async {
+    final tag =
+        await ref.read(appearancePreferencesStoreProvider).readLocaleTag();
+    final locale = tag == null ? null : Locale(tag);
+    if (locale?.languageCode != state?.languageCode) state = locale;
+  }
+
+  /// Persists and applies the locale override (null = system default).
+  Future<void> set(Locale? locale) async {
+    if (locale?.languageCode == state?.languageCode) return;
+    state = locale;
+    await ref
+        .read(appearancePreferencesStoreProvider)
+        .writeLocaleTag(locale?.languageCode);
+  }
+}
+
+/// The manual locale override, or null for the device language (persisted).
+final localeSettingProvider =
+    NotifierProvider<LocaleSetting, Locale?>(LocaleSetting.new);
 
 /// Registers the FCM push token with the bridge once the session connects and
 /// raises local notifications for turn-completed / turn-error events.

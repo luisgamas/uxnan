@@ -141,6 +141,42 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
       ..showSnackBar(SnackBar(content: Text(l10n.threadIdCopied)));
   }
 
+  /// Prompts for a new title and renames the active thread — the same flow as
+  /// the thread list's long-press, surfaced here in the app-bar menu.
+  Future<void> _renameThread() async {
+    final l10n = AppLocalizations.of(context);
+    final current = ref.read(threadByIdProvider(widget.threadId))?.title ?? '';
+    final controller = TextEditingController(text: current);
+    final newTitle = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(l10n.threadRenameTitle),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textInputAction: TextInputAction.done,
+          decoration: InputDecoration(labelText: l10n.threadRenameHint),
+          onSubmitted: (value) => Navigator.pop(dialogContext, value),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(l10n.actionCancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, controller.text),
+            child: Text(l10n.actionSave),
+          ),
+        ],
+      ),
+    );
+    final trimmed = newTitle?.trim() ?? '';
+    if (trimmed.isEmpty || trimmed == current || !mounted) return;
+    await ref
+        .read(threadManagerProvider)
+        .renameThread(widget.threadId, trimmed);
+  }
+
   /// Opens the model picker and applies the choice to the thread's agent.
   Future<void> _pickModel(Thread thread) async {
     final selected = await ModelPickerSheet.show(
@@ -299,7 +335,10 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                         icon: const Icon(Icons.commit_rounded),
                         onPressed: cwd != null ? () => _openGit(cwd) : null,
                       ),
-                      _ConversationMenu(onCopyId: _copyThreadId),
+                      _ConversationMenu(
+                        onCopyId: _copyThreadId,
+                        onRename: _renameThread,
+                      ),
                       const SizedBox(width: UxnanSpacing.xs),
                     ],
                   ),
@@ -613,9 +652,10 @@ class _StatusIndicator extends StatelessWidget {
 
 /// App-bar overflow for low-frequency, thread-level actions (copy id).
 class _ConversationMenu extends StatelessWidget {
-  const _ConversationMenu({required this.onCopyId});
+  const _ConversationMenu({required this.onCopyId, required this.onRename});
 
   final VoidCallback onCopyId;
+  final VoidCallback onRename;
 
   @override
   Widget build(BuildContext context) {
@@ -623,6 +663,16 @@ class _ConversationMenu extends StatelessWidget {
     return PopupMenuButton<void>(
       icon: const Icon(Icons.more_vert_rounded),
       itemBuilder: (context) => [
+        PopupMenuItem<void>(
+          onTap: onRename,
+          child: Row(
+            children: [
+              const Icon(Icons.edit_outlined, size: 18),
+              const SizedBox(width: UxnanSpacing.sm),
+              Text(l10n.threadActionRename),
+            ],
+          ),
+        ),
         PopupMenuItem<void>(
           onTap: onCopyId,
           child: Row(
