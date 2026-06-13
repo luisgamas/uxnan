@@ -31,6 +31,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             // Resolve the OS-specific app data directory and load (or default)
             // the persisted state, then publish it as managed state.
