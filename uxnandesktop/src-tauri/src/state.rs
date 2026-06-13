@@ -27,6 +27,9 @@ pub struct AppState {
     pub git_watch: Arc<RwLock<Option<String>>>,
     /// Whether the app window is focused; the watcher pauses polling when not.
     pub focused: Arc<AtomicBool>,
+    /// Agent commands to look for in the process-detection poll (the catalog +
+    /// the user's configured agents, set by the frontend).
+    pub agent_commands: Arc<RwLock<Vec<String>>>,
 }
 
 impl AppState {
@@ -37,6 +40,7 @@ impl AppState {
             pty: PtyManager::default(),
             git_watch: Arc::new(RwLock::new(None)),
             focused: Arc::new(AtomicBool::new(true)),
+            agent_commands: Arc::new(RwLock::new(Vec::new())),
         }
     }
 }

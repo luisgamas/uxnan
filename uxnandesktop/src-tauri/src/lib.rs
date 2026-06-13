@@ -11,6 +11,7 @@ mod error;
 mod git;
 mod model;
 mod persistence;
+mod procscan;
 mod pty;
 mod state;
 mod which;
@@ -20,7 +21,7 @@ use std::time::Duration;
 
 use tauri::{Emitter, Manager, WindowEvent};
 
-use crate::commands::GitStatusEvent;
+use crate::commands::{AgentDetectedEvent, GitStatusEvent};
 use crate::model::AppData;
 use crate::persistence::PersistenceManager;
 use crate::state::AppState;
@@ -89,6 +90,49 @@ pub fn run() {
                     }
                 }
             });
+
+            // Background agent watcher: every 2 s scan each terminal's process
+            // tree for a known agent command and emit `agent:detected` on change,
+            // so a terminal that runs (or stops running) any agent updates its
+            // sidebar row + tab name — even one the user typed by hand.
+            let agent_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let mut interval = tokio::time::interval(Duration::from_secs(2));
+                interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+                let mut sys = sysinfo::System::new();
+                let mut last: std::collections::HashMap<String, Option<String>> =
+                    std::collections::HashMap::new();
+                loop {
+                    interval.tick().await;
+                    let state = agent_handle.state::<AppState>();
+                    let pids = state.pty.live_pids();
+                    if pids.is_empty() {
+                        last.clear();
+                        continue;
+                    }
+                    let commands = state.agent_commands.read().await.clone();
+                    // Refresh WITH command lines — the default refresh only gives
+                    // the exe name (`node`), so node-shim agents (codex/gemini/…)
+                    // would never match without their `…/agent.js` argument.
+                    sys.refresh_processes_specifics(
+                        sysinfo::ProcessesToUpdate::All,
+                        true,
+                        sysinfo::ProcessRefreshKind::nothing()
+                            .with_cmd(sysinfo::UpdateKind::Always),
+                    );
+                    let mut live = std::collections::HashSet::new();
+                    for (pty_id, pid) in pids {
+                        live.insert(pty_id.clone());
+                        let command = crate::procscan::detect_agent(&sys, pid, &commands);
+                        if last.get(&pty_id) != Some(&command) {
+                            last.insert(pty_id.clone(), command.clone());
+                            let _ = agent_handle
+                                .emit("agent:detected", AgentDetectedEvent { pty_id, command });
+                        }
+                    }
+                    last.retain(|id, _| live.contains(id));
+                }
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -121,6 +165,7 @@ pub fn run() {
             commands::git_set_watch,
             commands::git_push,
             commands::git_pull,
+            commands::set_agent_commands,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

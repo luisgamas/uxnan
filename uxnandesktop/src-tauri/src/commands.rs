@@ -409,3 +409,24 @@ pub async fn git_push(path: String) -> Result<(), CommandError> {
 pub async fn git_pull(path: String) -> Result<(), CommandError> {
     git::pull(&path).await.map_err(CommandError::from)
 }
+
+/// Payload of the `agent:detected` event: which agent command (if any) the
+/// background process scan found running in a terminal.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentDetectedEvent {
+    pub pty_id: String,
+    pub command: Option<String>,
+}
+
+/// Set the agent commands the process-detection poll looks for (the catalog +
+/// the user's configured agents). The frontend calls this on startup and when
+/// the configured agents change.
+#[tauri::command]
+pub async fn set_agent_commands(
+    state: State<'_, AppState>,
+    commands: Vec<String>,
+) -> Result<(), CommandError> {
+    *state.agent_commands.write().await = commands;
+    Ok(())
+}

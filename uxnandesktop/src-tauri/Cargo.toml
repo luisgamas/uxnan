@@ -30,6 +30,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "fs", "p
 thiserror = "2"
 uuid = { version = "1", features = ["v4"] }
 portable-pty = "0.9"
+sysinfo = "0.33"
 
 [dev-dependencies]
 tempfile = "3"

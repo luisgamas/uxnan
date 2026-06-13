@@ -14,11 +14,16 @@
 
 use std::collections::HashMap;
 use std::io::{Read, Write};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
 
 use crate::error::AppError;
+
+/// Shared child handle: the reader/waiter threads, `close`/`close_all` and the
+/// pid scan all need it, so it lives behind an `Arc<Mutex<…>>`.
+type SharedChild = Arc<Mutex<Box<dyn portable_pty::Child + Send + Sync>>>;
 
 /// Parameters to spawn a new PTY. `id` is chosen by the frontend so it can
 /// subscribe to the output event before any bytes are produced.
@@ -37,7 +42,7 @@ pub struct PtySpec {
 struct PtySession {
     master: Box<dyn MasterPty + Send>,
     writer: Box<dyn Write + Send>,
-    child: Box<dyn portable_pty::Child + Send + Sync>,
+    child: SharedChild,
 }
 
 /// Owns all live PTY sessions for the app, keyed by frontend-chosen id.
@@ -100,9 +105,13 @@ impl PtyManager {
             .master
             .take_writer()
             .map_err(|e| AppError::Pty(e.to_string()))?;
+        let child: SharedChild = Arc::new(Mutex::new(child));
 
         // Blocking reads run on a dedicated OS thread (portable-pty's reader is
-        // not async). It ends when the PTY closes (read returns 0 or errors).
+        // not async). It just streams output and ends when the PTY closes — it no
+        // longer signals exit, because on Windows ConPTY read-EOF is unreliable
+        // (it can fire during a full-screen agent's teardown, or *not* fire when
+        // the shell exits). Exit is detected by waiting on the child instead.
         std::thread::spawn(move || {
             let mut buf = [0u8; 4096];
             loop {
@@ -111,6 +120,21 @@ impl PtyManager {
                     Ok(n) => on_output(&buf[..n]),
                     Err(_) => break,
                 }
+            }
+        });
+
+        // Authoritative exit signal: poll the *shell* process. This fires only
+        // when the shell itself exits (the user ran `exit`/Ctrl-D), not when an
+        // agent running inside it quits.
+        let child_for_wait = child.clone();
+        std::thread::spawn(move || {
+            loop {
+                let status = child_for_wait.lock().unwrap().try_wait();
+                match status {
+                    Ok(Some(_)) | Err(_) => break,
+                    Ok(None) => {}
+                }
+                std::thread::sleep(Duration::from_millis(250));
             }
             on_exit();
         });
@@ -158,8 +182,8 @@ impl PtyManager {
     /// Kill the child and drop the session. Idempotent — closing an unknown id
     /// is a no-op (it may already have exited on its own).
     pub fn close(&self, id: &str) -> Result<(), AppError> {
-        if let Some(mut session) = self.sessions.lock().unwrap().remove(id) {
-            let _ = session.child.kill();
+        if let Some(session) = self.sessions.lock().unwrap().remove(id) {
+            let _ = session.child.lock().unwrap().kill();
         }
         Ok(())
     }
@@ -167,9 +191,26 @@ impl PtyManager {
     /// Kill every live session. Called on app exit so no shell/agent is leaked.
     pub fn close_all(&self) {
         let mut sessions = self.sessions.lock().unwrap();
-        for (_id, mut session) in sessions.drain() {
-            let _ = session.child.kill();
+        for (_id, session) in sessions.drain() {
+            let _ = session.child.lock().unwrap().kill();
         }
+    }
+
+    /// Live sessions paired with their shell's process id, for the agent
+    /// process-detection poll. Sessions whose pid is unknown are skipped.
+    pub fn live_pids(&self) -> Vec<(String, u32)> {
+        self.sessions
+            .lock()
+            .unwrap()
+            .iter()
+            .filter_map(|(id, s)| {
+                s.child
+                    .lock()
+                    .unwrap()
+                    .process_id()
+                    .map(|pid| (id.clone(), pid))
+            })
+            .collect()
     }
 
     /// Number of live sessions (used by tests).
