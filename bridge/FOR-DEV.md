@@ -162,26 +162,45 @@ hosting** (the phone connects directly to the bridge on the same network).
           the Firebase/APNs creds (FOR-HUMAN) + a real device; confirm a turn-end
           push arrives while backgrounded, and still arrives after restarting the
           bridge (without reopening the app).
-- [ ] **Direct FCM from the bridge — the PRIMARY push path (relay optional).**
-      DIRECTION (decided 2026-06-12): background push should be sent **by the
-      bridge itself**, so it works on **any** transport — direct LAN, **Tailscale**,
-      or relay — not only when a hosted relay is in the loop. The relay is now
+- [x] **Direct FCM from the bridge — the PRIMARY push path (relay optional).**
+      DIRECTION (decided 2026-06-12): background push is sent **by the bridge
+      itself**, so it works on **any** transport — direct LAN, **Tailscale**, or
+      relay — not only when a hosted relay is in the loop. The relay is now
       **optional and self-hosted** (for those who want hosted off-LAN access); the
-      bridge must keep working — securely, E2EE end-to-end — **with or without it**.
-      - **Build:** add an FCM `PushSender` in the bridge (lazy `firebase-admin`,
-        FCM HTTP v1) that reads a local `UXNAN_FCM_SERVICE_ACCOUNT` and delivers
-        directly; use it whenever the credential is present, regardless of
-        `relayEnabled`. Keep the existing `POST /push/notify`→relay path as a
-        **fallback** for setups that prefer to keep creds on a hosted relay.
-      - **Guarding:** with no `UXNAN_FCM_SERVICE_ACCOUNT` and no relay, push is a
-        silent no-op (foreground local notifications still work, relay-free).
-      - **Security:** push payloads stay minimal/non-secret (title + thread id);
-        no plaintext conversation content leaves the device. The bridge owning the
-        FCM service account is the same trust model as the relay owning it today —
-        a local, gitignored credential the user provides (see `FOR-HUMAN.md`).
+      bridge keeps working — securely, E2EE end-to-end — **with or without it**.
+      **DONE:**
+      - **Build:** `src/push/push-sender.ts` adds `createBridgePushSender` — a lazy
+        `firebase-admin` FCM HTTP v1 `PushSender` (named app `uxnan-bridge`,
+        `android.priority=high` / `apns-priority:10`). It reads
+        `UXNAN_FCM_SERVICE_ACCOUNT`, **falling back to the documented
+        `~/.uxnan/firebase-service-account.json`** so it's plug-and-play (drop the
+        JSON in place, no env var needed). `PushService` now keeps the **real device
+        token + platform** per registration and, on turn-end, delivers **direct via
+        FCM first**, regardless of `relayEnabled`; the `POST /push/notify`→relay path
+        is the **fallback** (used when there's no local credential, or `relayEnabled`).
+        Wired in `bridge.ts`; `register` only hits the relay when it's enabled or
+        there is no direct sender (fixes the old always-forward, which broke push on
+        the relay-off default).
+      - **Guarding:** with no service account and no relay, push is a silent no-op
+        (foreground local notifications still work, relay-free). `firebase-admin` is
+        an `optionalDependency` — a missing module degrades to relay/noop, never a
+        build/start failure.
+      - **Security:** payloads carry title + short turn summary (already truncated,
+        same as the relay path) + thread/turn ids — no further conversation content.
+        The bridge owning the FCM service account is the same trust model as the
+        relay owning it: a local, gitignored credential the user provides (`FOR-HUMAN.md`).
       - **Mobile:** no change — the phone registers an FCM token via
         `notifications/register` and the bridge delivers; works whichever side
         holds the credential.
+      - **Validated:** `bridge/test/push/push-service.test.ts` covers the direct
+        path (relay untouched on the default, FCM delivery, restart persistence,
+        relay-enabled coexistence). A live init smoke against the real `uxnan-app`
+        service account authenticated to FCM (bogus token → `messaging/invalid-argument`,
+        i.e. creds OK). **Remaining:** a real device to confirm an actual token
+        delivers while backgrounded.
+      - **Follow-up (optional):** the payload `body` still carries the truncated turn
+        summary for a useful notification; if a stricter "title + thread id only"
+        policy is wanted, drop `body` in `buildNotification` for the direct path.
 - [ ] **Desktop** — `src/handlers/desktop-handler.ts` (embedded mode IPC).
 - [x] **bridge/removeTrustedDevice** — `src/handlers/bridge-control-handler.ts`.
       Revokes trust (`ctx.trustStore.remove`) and drops any live session/sink

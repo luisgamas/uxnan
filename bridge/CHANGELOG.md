@@ -5,6 +5,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added
+- **Direct FCM push from the bridge (PRIMARY path; relay optional)** — background
+  push is now delivered by the bridge itself over any transport (direct LAN,
+  Tailscale, or relay), not only via a hosted relay. New `src/push/push-sender.ts`
+  (`createBridgePushSender`) lazily loads `firebase-admin` (FCM HTTP v1) and reads
+  the Firebase service account from `UXNAN_FCM_SERVICE_ACCOUNT`, defaulting to
+  `~/.uxnan/firebase-service-account.json` (plug-and-play, no env var needed).
+  `PushService` keeps the real device token and delivers direct-first, falling
+  back to the relay `POST /push/notify` only when there's no local credential (or
+  `relayEnabled`). `firebase-admin` is an `optionalDependency`: absent creds/module
+  degrade to a silent no-op (foreground local notifications still work). Live FCM
+  init validated against the real `uxnan-app` service account.
+
+### Fixed
+- **Push worked only with the relay enabled** — `register` previously always
+  forwarded the token to the relay (and stored only the relay secret), so on the
+  relay-off default nothing was stored and background push never fired. It now
+  stores the device token locally for the direct path and contacts the relay only
+  when that path is actually used.
+
 ### Fixed (agent wiring, validated live)
 - **pi file edits now show as diffs** — pi's `edit` tool is
   `{ path, edits: [{ oldText, newText }] }` (verified live), not

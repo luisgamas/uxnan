@@ -8,18 +8,20 @@ must always build and run without them.
 _The bridge's own identity needs no secrets_ — its Ed25519 key is generated and
 stored in the OS keychain at runtime (no key files to provide).
 
-### ◑ Push credentials — Firebase service account (for the bridge to send push)
+### ✅ Push credentials — Firebase service account (for the bridge to send push)
 
-DIRECTION (2026-06-12): background push is moving to be sent **by the bridge**
-directly (so it works on any transport — direct LAN, Tailscale, or relay — not
-only via a hosted relay; the relay is now optional/self-hosted). Once the
-bridge-side FCM sender lands (`FOR-DEV.md` → Direct FCM from the bridge), the
-**Firebase service account** moves here:
+The bridge-side FCM sender has **landed** (`FOR-DEV.md` → Direct FCM from the
+bridge): background push is now sent **by the bridge** directly, on any transport
+(direct LAN, Tailscale, or relay — the relay is optional/self-hosted). All that's
+needed is the **Firebase service account**:
 
 - A Firebase service-account JSON from the **same** Firebase project the mobile
   app uses (`uxnan-app`), placed at `~/.uxnan/firebase-service-account.json`
-  (gitignored — **never committed**).
-- Env var `UXNAN_FCM_SERVICE_ACCOUNT` → that path (Windows *User* scope).
+  (gitignored — **never committed**). **This is the default path the bridge reads —
+  no env var required.**
+- Optional: set `UXNAN_FCM_SERVICE_ACCOUNT` to override that path (Windows *User*
+  scope). The bridge loads the credential at startup and enables direct FCM
+  automatically when it's present.
 
 Without it (and without a relay holding it), background push is a silent no-op —
 foreground local notifications still work, relay-free. The credential is local

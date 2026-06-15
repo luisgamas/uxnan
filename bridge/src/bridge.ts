@@ -41,6 +41,7 @@ import { resolvePiBinary } from './adapters/resolve-pi.js';
 import { ProjectRegistry } from './projects/project-registry.js';
 import { BrowseService } from './workspace/browse-service.js';
 import { PushService } from './push/push-service.js';
+import { createBridgePushSender } from './push/push-sender.js';
 
 export interface StartBridgeOptions {
   /** Override the daemon state directory (defaults to `~/.uxnan`). */
@@ -106,7 +107,17 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   const browse = new BrowseService(
     config.browseRoots.length > 0 ? config.browseRoots : config.workspaceRoots,
   );
-  const pushService = new PushService({ relayUrl: config.relayUrl, config, logger, state });
+  // Direct FCM is the PRIMARY push path: when a Firebase service account is present
+  // the bridge delivers straight to FCM on any transport (LAN/Tailscale/relay). With
+  // no credential this is null and the bridge uses the relay fallback (FOR-DEV).
+  const pushSender = await createBridgePushSender(logger);
+  const pushService = new PushService({
+    relayUrl: config.relayUrl,
+    config,
+    logger,
+    state,
+    ...(pushSender ? { pushSender } : {}),
+  });
   // Restore persisted push registrations so background push survives a restart.
   await pushService.load();
   const agentManager = new AgentManager({

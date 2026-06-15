@@ -23,6 +23,12 @@ export {
   type PushServiceOptions,
   type TurnEndInfo as PushTurnEndInfo,
 } from './push/push-service.js';
+export {
+  createBridgePushSender,
+  defaultServiceAccountPath,
+  type PushSender,
+  type PushPayload,
+} from './push/push-sender.js';
 export { SecureDeviceState, type PublicIdentity } from './secure-device-state.js';
 export { InMemorySecretStore, type SecretStore } from './secret-store.js';
 export {
