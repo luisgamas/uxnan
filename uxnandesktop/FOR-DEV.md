@@ -478,8 +478,11 @@ earlier "superficial UX" warning is resolved.
       sequential `v→v+1` steps and rejects future versions. Debounced async
       writer still a follow-up (frontend already debounces layout). Closes the
       Phase 0 follow-up.
-- [ ] System-suspension prevention while an agent is `working` (per-OS; opt-in;
-      2 h auto-release).
+- [x] **System-suspension prevention** while an agent is `working` — opt-in
+      (`AppSettings.preventSleep`), 2 h auto-release safety cap (`power.rs`,
+      `set_prevent_sleep`, driven by `anyAgentWorking()`). **Windows done;
+      macOS/Linux are a no-op** (FOR-DEV in `power.rs`). Settings toggle ships
+      with the Phase 5 UI batch.
 - [ ] Stronghold/keyring for any secret (never plaintext JSON).
 - [ ] Side-by-side diffs (two synced CodeMirror views); TanStack Virtual for
       sidebar + diff lists; quick worktree search; TabGroup-level splits.

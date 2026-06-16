@@ -4,7 +4,9 @@
   import { app } from "$lib/state/app.svelte";
   import { agentMonitor } from "$lib/state/agentMonitor.svelte";
   import { agentStatus } from "$lib/state/agentStatus.svelte";
+  import { anyAgentWorking } from "$lib/state/agentDisplay";
   import { unread } from "$lib/state/unread.svelte";
+  import { setPreventSleep } from "$lib/api";
 
   let { children } = $props();
 
@@ -31,6 +33,13 @@
   $effect(() => {
     const dark = app.prefersDark();
     document.documentElement.classList.toggle("dark", dark);
+  });
+
+  // Opt-in keep-awake: while enabled and an agent is working, ask the OS not to
+  // sleep (the backend auto-releases after 2 h). Re-runs when either changes.
+  $effect(() => {
+    const active = app.settings.preventSleep === true && anyAgentWorking();
+    void setPreventSleep(active).catch(() => {});
   });
 </script>
 

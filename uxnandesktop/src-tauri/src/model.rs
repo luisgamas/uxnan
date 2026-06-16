@@ -202,6 +202,10 @@ pub struct AppSettings {
     /// looking at another space. Default on.
     #[serde(default = "default_true")]
     pub agent_notifications: bool,
+    /// Keep the system awake while an agent is actively working (opt-in; the
+    /// backend auto-releases after 2 h as a safety cap). Default off.
+    #[serde(default)]
+    pub prevent_sleep: bool,
     /// UI language: "system" (follow the device) or a locale code (e.g. "en", "es").
     #[serde(default = "default_language")]
     pub language: String,
@@ -222,6 +226,7 @@ impl Default for AppSettings {
             agent_profiles: Vec::new(),
             default_agent_id: None,
             agent_notifications: true,
+            prevent_sleep: false,
             language: default_language(),
         }
     }

@@ -460,3 +460,15 @@ pub async fn agent_states(
 ) -> Result<Vec<AgentStateEntry>, CommandError> {
     Ok(state.data.read().await.agent_cache.clone())
 }
+
+/// Request (or release) keeping the system awake. The frontend calls this with
+/// `active = settings.preventSleep && (an agent is working)`; the backend
+/// auto-releases after 2 h regardless (see `power.rs`).
+#[tauri::command]
+pub async fn set_prevent_sleep(
+    state: State<'_, AppState>,
+    active: bool,
+) -> Result<(), CommandError> {
+    state.power.set(active);
+    Ok(())
+}

@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — Phase 5: keep system awake while an agent works (opt-in)
+- **Prevent sleep** (`power.rs`, `AppSettings.preventSleep`, default off): while
+  enabled and an agent is working, the ADE asks the OS not to sleep, and releases
+  it when no agent is working. A long-lived worker thread owns the request
+  (Windows `SetThreadExecutionState` is thread-affine) and **auto-releases after
+  2 h** as a safety cap. Windows implemented; macOS/Linux are a no-op for now
+  (FOR-DEV). Command `set_prevent_sleep`; the frontend drives it from
+  `preventSleep && anyAgentWorking()`. The Settings toggle ships with the UI batch.
+
 ### Added — Phase 5: rotating backups + schema-migration hardening
 - **5 rotating backups** (`persistence.rs`): before each atomic write, the live
   `state.json` is rotated into a numbered ring (`state.bak.1` … `state.bak.5`,

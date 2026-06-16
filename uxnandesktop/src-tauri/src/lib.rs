@@ -12,6 +12,7 @@ mod git;
 mod hooks;
 mod model;
 mod persistence;
+mod power;
 mod procscan;
 mod pty;
 mod state;
@@ -185,6 +186,7 @@ pub fn run() {
             commands::set_agent_commands,
             commands::get_hook_info,
             commands::agent_states,
+            commands::set_prevent_sleep,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

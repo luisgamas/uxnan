@@ -14,6 +14,7 @@ use serde::Serialize;
 
 use crate::model::AppData;
 use crate::persistence::PersistenceManager;
+use crate::power::SleepBlocker;
 use crate::pty::PtyManager;
 
 /// Coordinates for the local agent hook server (spec `02d` §1.1). Published once
@@ -49,6 +50,8 @@ pub struct AppState {
     /// until then (e.g. if the port couldn't be bound — terminals still work,
     /// just without precise hook reporting).
     pub hook: Arc<RwLock<Option<HookServerInfo>>>,
+    /// Keep-awake controller: blocks system sleep while an agent works (opt-in).
+    pub power: SleepBlocker,
 }
 
 impl AppState {
@@ -61,6 +64,7 @@ impl AppState {
             focused: Arc::new(AtomicBool::new(true)),
             agent_commands: Arc::new(RwLock::new(Vec::new())),
             hook: Arc::new(RwLock::new(None)),
+            power: SleepBlocker::new(),
         }
     }
 }

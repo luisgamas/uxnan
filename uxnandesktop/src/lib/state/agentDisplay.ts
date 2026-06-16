@@ -9,7 +9,7 @@
 // that don't report; activity is the universal last resort. Returns null when
 // there's nothing to show (a plain terminal with no agent and no activity).
 
-import type { GroupTab } from "./terminals.svelte";
+import { terminals, type GroupTab } from "./terminals.svelte";
 import { agentStatus } from "./agentStatus.svelte";
 import { agentMonitor } from "./agentMonitor.svelte";
 import type { AgentStatus } from "$lib/types";
@@ -46,4 +46,13 @@ export function resolveAgentDisplay(tab: GroupTab): AgentDisplay | null {
   if (tab.working) return { status: "working", source: "activity", stale: false };
   if (tab.agentName) return { status: "idle", source: "activity", stale: false };
   return null;
+}
+
+/** Whether any open terminal currently resolves to a "working" agent — drives
+ *  the opt-in keep-awake. Reactive: reads the monitoring stores. */
+export function anyAgentWorking(): boolean {
+  for (const { tab } of terminals.tabsWithWorkspace()) {
+    if (resolveAgentDisplay(tab)?.status === "working") return true;
+  }
+  return false;
 }

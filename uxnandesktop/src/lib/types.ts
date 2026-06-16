@@ -47,6 +47,8 @@ export interface AppSettings {
   defaultAgentId?: string | null;
   /** Notify when an agent goes idle while you're in another space. Default on. */
   agentNotifications?: boolean;
+  /** Keep the system awake while an agent is working (opt-in). Default off. */
+  preventSleep?: boolean;
   /** UI language: "system" (follow the device) or a locale code ("en", "es"). */
   language: string;
 }
@@ -204,5 +206,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   agentProfiles: [],
   defaultAgentId: null,
   agentNotifications: true,
+  preventSleep: false,
   language: "system",
 };

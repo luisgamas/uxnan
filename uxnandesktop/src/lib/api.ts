@@ -53,6 +53,11 @@ export function agentStates(): Promise<AgentStateEntry[]> {
   return invoke<AgentStateEntry[]>("agent_states");
 }
 
+/** Request (or release) keeping the system awake while an agent works. */
+export function setPreventSleep(active: boolean): Promise<void> {
+  return invoke("set_prevent_sleep", { active });
+}
+
 /** Persist the per-workspace terminal layout (restored on next startup). */
 export function setTerminalLayout(
   layout: SavedTerminalLayout | null,
