@@ -5,11 +5,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — Phase 5: full-size diff panel + side-by-side + hunk staging (UI)
+- **Diff opens full-size in the center panel** (`DiffPanel`), overlaying the
+  terminals (which stay mounted underneath — no PTY/xterm torn down). Replaces
+  the cramped, fixed-size modal. Header shows the file + Staged/Working badge +
+  close; closing returns to the terminals.
+- **Right-panel file list**: rows are no longer click-anywhere — only the
+  buttons act. Each file has an **eye** button to open its diff, a **revert**
+  (↺) button to discard (clearer than a trash can), and stage/unstage (+/−). The
+  changed file's **name is colored** by status (modified/added/deleted/renamed)
+  and the open file's row is highlighted.
+- **Unified + side-by-side toggle** (`DiffView`): unified is one column;
+  side-by-side is two synced CodeMirror views (old left / new right). Both stay
+  mounted; CodeMirror is remeasured on reveal/resize so neither renders blank.
+- **Per-hunk staging**: a bar above the diff lists each hunk (`#1, #2…`,
+  click to scroll to it) with stage / unstage / discard actions, built on the
+  `git_apply` backend below. Kept outside the CodeMirror render so it can't
+  blank the editor.
+
 ### Added — Phase 5: hunk-level staging (backend)
 - **`git_apply` command** (`git::apply_patch`): applies a unified-diff patch fed
   on stdin, with `cached` (index) and `reverse` flags — the backend half of
-  hunk-level staging (stage / unstage / discard a single hunk). The DiffView UI
-  that builds per-hunk sub-patches and exposes the buttons ships with the UI batch.
+  hunk-level staging (stage / unstage / discard a single hunk).
 
 ### Added — Phase 5: keep system awake while an agent works (opt-in)
 - **Prevent sleep** (`power.rs`, `AppSettings.preventSleep`, default off): while

@@ -472,7 +472,10 @@ earlier "superficial UX" warning is resolved.
 
 ## Phase 5 — Polish & UX ☐
 
-- [ ] Hunk-level (partial) staging (`git2::Diff::foreach` + index manipulation).
+- [x] **Hunk-level (partial) staging** — done via `git apply --cached`/`--reverse`
+      on a single-hunk sub-patch built in the frontend (`git_apply` /
+      `git::apply_patch`, `diff.ts`, `DiffView` hunk bar). (Untracked-file partial
+      stage is a known edge case — whole-file stage works.)
 - [x] **Rotating backups + schema-migration hardening** (`persistence.rs`): 5
       numbered backups rotated before each atomic write; `migrate` applies
       sequential `v→v+1` steps and rejects future versions. Debounced async
@@ -483,10 +486,16 @@ earlier "superficial UX" warning is resolved.
       `set_prevent_sleep`, driven by `anyAgentWorking()`). **Windows done;
       macOS/Linux are a no-op** (FOR-DEV in `power.rs`). Settings toggle ships
       with the Phase 5 UI batch.
-- [ ] Stronghold/keyring for any secret (never plaintext JSON).
-- [ ] Side-by-side diffs (two synced CodeMirror views); TanStack Virtual for
-      sidebar + diff lists; quick worktree search; TabGroup-level splits.
-- [ ] E2E tests (Playwright/WebdriverIO) for the main flows.
+- [x] **Side-by-side diffs** — two synced CodeMirror views (old left / new right)
+      with a unified/side toggle in the full-size center `DiffPanel` (`DiffView`,
+      `toSideRows`).
+- [ ] **TanStack Virtual** for sidebar + diff lists; **quick worktree search**;
+      **TabGroup-level splits**; **Settings toggle for prevent-sleep** — Phase 5
+      UI batch part B (pending).
+- [ ] Stronghold/keyring for any secret (never plaintext JSON) — **deferred to
+      Phase 6** (no secrets are persisted yet; the hook token is ephemeral).
+- [ ] E2E tests (Playwright/WebdriverIO) for the main flows — **deferred** (heavy
+      harness: tauri-driver + packaged app); do after the rest of Phase 5.
 
 ---
 

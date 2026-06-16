@@ -1,7 +1,9 @@
 <script lang="ts">
   import { app } from "$lib/state/app.svelte";
+  import { git } from "$lib/state/git.svelte";
   import { i18n } from "$lib/i18n";
   import TerminalArea from "$lib/components/TerminalArea.svelte";
+  import DiffPanel from "$lib/components/DiffPanel.svelte";
   import TitleBar from "$lib/components/TitleBar.svelte";
   import LeftSidebar from "$lib/components/LeftSidebar.svelte";
   import RightPanel from "$lib/components/RightPanel.svelte";
@@ -111,9 +113,16 @@
       ></div>
     {/if}
 
-    <!-- Center area: multiplexed terminals (xterm.js + PTY) -->
-    <main class="flex min-w-0 flex-1 flex-col overflow-hidden">
+    <!-- Center area: multiplexed terminals (xterm.js + PTY). When a diff is open
+         it overlays the terminals full-size — they stay mounted underneath, so
+         no PTY/xterm is torn down while reviewing. -->
+    <main class="relative flex min-w-0 flex-1 flex-col overflow-hidden">
       <TerminalArea />
+      {#if git.selected}
+        <div class="absolute inset-0 z-20">
+          <DiffPanel />
+        </div>
+      {/if}
     </main>
 
     {#if app.settings.rightSidebarOpen}
