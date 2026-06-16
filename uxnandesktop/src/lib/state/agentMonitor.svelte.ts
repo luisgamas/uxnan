@@ -16,6 +16,8 @@ import { app } from "./app.svelte";
 import { i18n } from "$lib/i18n";
 import { notify } from "$lib/notify";
 import { statusFromTitle } from "$lib/agentTitle";
+import { unread } from "./unread.svelte";
+import { agentStatus } from "./agentStatus.svelte";
 import type { AgentStatus } from "$lib/types";
 
 /** Payload of the backend `agent:detected` event. */
@@ -117,19 +119,26 @@ class AgentMonitor {
         focused &&
         terminals.activeWorkspace === workspace &&
         terminals.activePtyId() === tab.id;
+      // When the hook server is driving this tab, it owns "done"/notifications;
+      // skip the coarse inference so we don't double-fire or misfire.
+      const hookDriven = agentStatus.get(tab.id) !== undefined;
       if (
         tab.agentName &&
+        !hookDriven &&
         idle >= NOTIFY_IDLE_MS &&
         !viewing &&
-        app.settings.agentNotifications !== false &&
         !this.notified.has(tab.id)
       ) {
         this.notified.add(tab.id);
-        const where = baseName(workspace) || i18n.t("terminal.general");
-        void notify(
-          i18n.t("notify.agentIdleTitle", { agent: tab.agentName }),
-          i18n.t("notify.agentIdleBody", { agent: tab.agentName, worktree: where }),
-        );
+        // Flag the worktree as having an unreviewed result (red badge + count).
+        unread.mark(workspace);
+        if (app.settings.agentNotifications !== false) {
+          const where = baseName(workspace) || i18n.t("terminal.general");
+          void notify(
+            i18n.t("notify.agentIdleTitle", { agent: tab.agentName }),
+            i18n.t("notify.agentIdleBody", { agent: tab.agentName, worktree: where }),
+          );
+        }
       }
     }
     // Prune tracking for tabs that have closed.

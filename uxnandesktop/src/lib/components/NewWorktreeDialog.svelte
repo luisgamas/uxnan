@@ -4,10 +4,13 @@
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import { projects } from "$lib/state/projects.svelte";
+  import { app } from "$lib/state/app.svelte";
   import { cn } from "$lib/utils";
   import { icon, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
   import type { RepoData } from "$lib/types";
+  import AgentLogo from "./AgentLogo.svelte";
+  import { agentLogoKey } from "$lib/agentCatalog";
   import GitBranchIcon from "@lucide/svelte/icons/git-branch";
 
   let {
@@ -20,6 +23,14 @@
   let branches = $state<string[]>([]);
   let loading = $state(false);
   let busy = $state(false);
+
+  // Agent to launch into the new worktree. "" = none; defaults to the global
+  // default agent when the dialog opens. Only shown when agents are configured.
+  const NONE = "__none__";
+  let agentId = $state<string>(NONE);
+  const launchable = $derived(app.launchableAgents);
+  const selectedAgent = $derived(launchable.find((a) => a.id === agentId));
+  const agentLabel = $derived(selectedAgent?.name.trim() || i18n.t("newWorktree.agentNone"));
 
   // The sibling folder the backend will create: `<repo>--<safe-branch>`
   // (mirrors `git::worktree_path_for`). Shown so the user knows where it lands.
@@ -48,6 +59,9 @@
     if (!open) return;
     loading = true;
     branch = "";
+    // Preselect the global default agent (if it's launchable), else none.
+    const def = app.defaultAgent();
+    agentId = def ? def.id : NONE;
     projects.error = null;
     projects
       .branchInfo(repo.id)
@@ -68,6 +82,7 @@
       repo.id,
       branch.trim(),
       base || undefined,
+      agentId === NONE ? null : agentId,
     );
     busy = false;
     if (ok) open = false;
@@ -107,6 +122,40 @@
         </Select.Root>
         <p class={text.meta}>{i18n.t("newWorktree.baseDesc")}</p>
       </div>
+
+      {#if launchable.length > 0}
+        <div class="flex flex-col gap-1.5">
+          <span class={cn("font-medium", text.body)}>{i18n.t("newWorktree.agent")}</span>
+          <Select.Root type="single" bind:value={agentId}>
+            <Select.Trigger class="w-full">
+              <span class="flex items-center gap-2">
+                {#if selectedAgent}
+                  <AgentLogo
+                    logo={agentLogoKey(selectedAgent.icon, selectedAgent.command)}
+                    class="size-4"
+                  />
+                {/if}
+                {agentLabel}
+              </span>
+            </Select.Trigger>
+            <Select.Content>
+              <Select.Item value={NONE} label={i18n.t("newWorktree.agentNone")}>
+                {i18n.t("newWorktree.agentNone")}
+              </Select.Item>
+              {#each launchable as a (a.id)}
+                {@const name = a.name.trim() || a.command}
+                <Select.Item value={a.id} label={name}>
+                  <span class="flex items-center gap-2">
+                    <AgentLogo logo={agentLogoKey(a.icon, a.command)} class="size-4" />
+                    {name}
+                  </span>
+                </Select.Item>
+              {/each}
+            </Select.Content>
+          </Select.Root>
+          <p class={text.meta}>{i18n.t("newWorktree.agentDesc")}</p>
+        </div>
+      {/if}
 
       {#if previewPath}
         <div class="flex items-start gap-2 rounded-md bg-muted/50 px-3 py-2">

@@ -3,6 +3,7 @@
   import * as Dialog from "$lib/components/ui/dialog";
   import { Button } from "$lib/components/ui/button";
   import { projects, type WorktreeRow } from "$lib/state/projects.svelte";
+  import { unread } from "$lib/state/unread.svelte";
   import { clipboardWrite } from "$lib/clipboard";
   import { cn } from "$lib/utils";
   import { icon, iconButton, text } from "$lib/design";
@@ -20,6 +21,7 @@
   const active = $derived(projects.activeWorktreePath === row.path);
   const label = $derived(row.branch ?? i18n.t("worktree.detached"));
   const status = $derived(projects.status(row.path));
+  const hasUnread = $derived(unread.has(row.path));
 
   let removeOpen = $state(false);
   let forceNeeded = $state(false);
@@ -65,6 +67,12 @@
   <GitBranchIcon class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
   <div class="flex min-w-0 flex-1 items-center gap-1.5">
     <span class={cn("truncate", text.body)}>{label}</span>
+    {#if hasUnread}
+      <span
+        class="size-1.5 shrink-0 rounded-full bg-red-500"
+        title={i18n.t("monitor.unread")}
+      ></span>
+    {/if}
     {#if status && status.dirty > 0}
       <span
         class={cn(

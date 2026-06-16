@@ -23,6 +23,7 @@ import type {
 } from "$lib/types";
 import { app } from "$lib/state/app.svelte";
 import { terminals } from "$lib/state/terminals.svelte";
+import { unread } from "$lib/state/unread.svelte";
 
 const msg = (e: unknown) =>
   e && typeof e === "object" && "message" in e
@@ -183,11 +184,15 @@ class ProjectsStore {
     }
   }
 
-  /** Create a worktree, then refresh its repo's list and reveal the section. */
+  /** Create a worktree, then refresh its repo's list and reveal the section.
+   *  `agentId` overrides which agent to launch into it: a specific agent id, or
+   *  `null` for none. Omit it (`undefined`) to fall back to the global default
+   *  agent (the legacy behavior). */
   async createWorktree(
     repoId: string,
     branch: string,
     base?: string,
+    agentId?: string | null,
   ): Promise<boolean> {
     this.error = null;
     try {
@@ -195,8 +200,14 @@ class ProjectsStore {
       await this.loadWorktrees(repoId);
       // Select the new worktree as the active context.
       this.setActiveWorktree(created.path);
-      // Auto-launch the default agent into it, if one is configured (opt-in).
-      const agent = app.defaultAgent();
+      // Launch the chosen agent into it (per-worktree override, else the global
+      // default, else none). Opt-in: `null` explicitly launches nothing.
+      const agent =
+        agentId === undefined
+          ? app.defaultAgent()
+          : agentId
+            ? app.launchableAgents.find((a) => a.id === agentId)
+            : undefined;
       if (agent) app.launchAgent(agent, { cwd: created.path, workspace: created.path });
       return true;
     } catch (e) {
@@ -226,10 +237,12 @@ class ProjectsStore {
     }
   }
 
-  /** Select a worktree: highlight it and show its terminal workspace. */
+  /** Select a worktree: highlight it and show its terminal workspace. Opening it
+   *  clears its "unread agent result" badge. */
   setActiveWorktree(path: string): void {
     this.activeWorktreePath = path;
     terminals.setWorkspace(path);
+    unread.clear(path);
   }
 
   /** Open a terminal in `path`'s workspace (and switch to it). */

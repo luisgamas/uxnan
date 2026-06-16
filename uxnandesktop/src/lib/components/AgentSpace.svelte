@@ -6,17 +6,20 @@
   // when there's at least one agent terminal (plain terminals get no row).
   import { projects } from "$lib/state/projects.svelte";
   import { terminals } from "$lib/state/terminals.svelte";
+  import { resolveAgentDisplay } from "$lib/state/agentDisplay";
   import { cn } from "$lib/utils";
   import { icon, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
   import AgentLogo from "./AgentLogo.svelte";
+  import AgentStatusDot from "./AgentStatusDot.svelte";
   import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
-  import LoaderIcon from "@lucide/svelte/icons/loader-circle";
 
   let { path }: { path: string } = $props();
 
   const tabs = $derived(terminals.agentTabs(path));
-  const anyWorking = $derived(tabs.some((t) => t.working));
+  const anyWorking = $derived(
+    tabs.some((t) => resolveAgentDisplay(t)?.status === "working"),
+  );
   // The terminal currently shown in the center (to highlight its row).
   const revealedId = $derived(
     terminals.activeWorkspace === path ? terminals.activePtyId() : null,
@@ -43,29 +46,25 @@
       <span class={text.section}>{i18n.t("agents.spaceLabel")}</span>
       <span class={cn("text-muted-foreground/60", text.indicator)}>{tabs.length}</span>
       {#if !expanded && anyWorking}
-        <LoaderIcon class={cn(icon.decorative, "animate-spin text-emerald-500")} />
+        <AgentStatusDot status="working" />
       {/if}
     </button>
 
     {#if expanded}
       <div class="flex flex-col">
         {#each tabs as t (t.id)}
+          {@const d = resolveAgentDisplay(t)}
           <button
             class={cn(
               "flex items-center gap-1.5 rounded-md py-1 pl-1 pr-1 text-left hover:bg-accent/40",
               revealedId === t.id && "bg-accent/60",
             )}
-            title={t.agentName}
+            title={d ? `${t.agentName} · ${i18n.t(`monitor.${d.status}`)}` : t.agentName}
             onclick={() => reveal(t.id)}
           >
             <span class="flex size-3 shrink-0 items-center justify-center">
-              {#if t.working}
-                <LoaderIcon class="size-3 animate-spin text-emerald-500" />
-              {:else if !t.exited}
-                <span
-                  class="size-1.5 rounded-full bg-emerald-500"
-                  title={i18n.t("monitor.detected")}
-                ></span>
+              {#if d}
+                <AgentStatusDot status={d.status} stale={d.stale} />
               {/if}
             </span>
             <AgentLogo logo={t.agentIcon} class="size-4 shrink-0" />

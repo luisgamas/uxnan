@@ -11,6 +11,8 @@
 
 import { listen } from "@tauri-apps/api/event";
 import { agentStates } from "$lib/api";
+import { terminals } from "./terminals.svelte";
+import { unread } from "./unread.svelte";
 import type { AgentStatus, AgentStatusEvent } from "$lib/types";
 
 /** A report grows stale (shown dimmed) after this long with no update (spec §1.5). */
@@ -57,11 +59,29 @@ class AgentStatusStore {
     }
     try {
       await listen<AgentStatusEvent>("agent:status-changed", (e) => {
-        this.byId = { ...this.byId, [e.payload.agentId]: toLive(e.payload) };
+        const p = e.payload;
+        this.byId = { ...this.byId, [p.agentId]: toLive(p) };
+        // A finished agent marks its worktree "unread" unless you're looking at
+        // it (focused, on that terminal) — then there's nothing to flag.
+        if (p.status === "done") {
+          const ws = terminals.workspaceOfTab(p.agentId);
+          if (ws !== undefined && !this.viewing(ws, p.agentId)) unread.mark(ws);
+        }
       });
     } catch {
       this.started = false; // no Tauri event bus
     }
+  }
+
+  /** Whether the user is currently looking at a given terminal (window focused,
+   *  that workspace shown, that tab active) — so a result there needs no badge. */
+  private viewing(workspace: string, tabId: string): boolean {
+    const focused = typeof document !== "undefined" ? document.hasFocus() : true;
+    return (
+      focused &&
+      terminals.activeWorkspace === workspace &&
+      terminals.activePtyId() === tabId
+    );
   }
 
   /** Precise state for a tab id, if the hook reported one. */

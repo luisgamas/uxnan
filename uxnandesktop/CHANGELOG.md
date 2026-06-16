@@ -37,8 +37,35 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   ignored. Needs no hook setup; complements Layer 1 for agents that don't report.
 - **Unified status resolver** (`agentDisplay.ts`, `resolveAgentDisplay`): merges
   the layers with a clear priority — hook (precise) › title › output-activity —
-  so the sidebar/tab indicators have one effective state to render (consumed by
-  the upcoming indicator increment).
+  so the sidebar/tab indicators have one effective state to render.
+
+### Added — Phase 4: precise status dots + unread/done badges
+- **Colored status dots** (`AgentStatusDot.svelte`) on each agent sidebar row,
+  driven by `resolveAgentDisplay`: working = green (pulsing), blocked = amber,
+  waiting = orange (pulsing), done = blue, idle = gray; a stale report
+  (no update >30 min) is dimmed, with the state + "stale" in the tooltip.
+  Replaces the single green working spinner with the four precise states.
+- **Unread / done badge** (`unread` store, spec §2): when an agent finishes
+  (`done`, or settles idle while you're not looking at it), its worktree is
+  flagged — a red dot on the worktree row and on the project header (so a
+  collapsed project still surfaces a child worktree's result). The flag clears
+  when you open that worktree or refocus the window; the dock/taskbar shows the
+  count via `setBadgeCount` (best-effort per OS). The hook server owns this when
+  it's driving a tab, so the coarse inference doesn't double-fire.
+
+### Added — Phase 4: custom agent logos
+- **Custom logo per agent** (Settings → Agents): the logo is now a button —
+  pick any image and it's stored inline as a 64×64 PNG `data:` URL on
+  `AgentProfile.icon` (`logo.ts`), so it persists with no filesystem path to
+  resolve; a small ✕ resets to the catalog logo. Custom logos render everywhere
+  catalog logos do (`agentLogoSrc` now passes `data:`/`http`/absolute through).
+
+### Changed — agents: per-worktree agent override
+- **Choose the agent when creating a worktree** (New worktree dialog): a "Launch
+  agent" picker (None + your configured agents, with logos) preselects the global
+  default and overrides what launches into that worktree
+  (`projects.createWorktree` gains an `agentId`: a specific id, `null` for none,
+  or omit for the global default).
 
 ### Changed — agents: detect in any terminal + close-on-exit
 - **Process detection (any terminal).** A background scan (every 2 s, `procscan`

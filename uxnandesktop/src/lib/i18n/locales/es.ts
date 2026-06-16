@@ -74,6 +74,9 @@ export const es: Record<MessageKey, string> = {
     "La rama nueva parte de aquí. Por defecto, la rama principal del repo.",
   "newWorktree.create": "Crear worktree",
   "newWorktree.preview": "Carpeta del worktree",
+  "newWorktree.agent": "Lanzar agente",
+  "newWorktree.agentNone": "Ninguno",
+  "newWorktree.agentDesc": "Se lanza en el worktree nuevo en cuanto se crea.",
 
   // Terminal area
   "terminal.newDefault": "Nueva terminal (perfil predeterminado)",
@@ -151,7 +154,13 @@ export const es: Record<MessageKey, string> = {
 
   // Agent monitoring (activity)
   "monitor.working": "Trabajando",
+  "monitor.blocked": "Bloqueado",
+  "monitor.waiting": "Esperando tu respuesta",
+  "monitor.done": "Listo",
+  "monitor.idle": "Inactivo",
+  "monitor.stale": "Sin actualizar hace rato",
   "monitor.detected": "Agente detectado",
+  "monitor.unread": "El agente terminó — sin revisar",
   "agents.spaceLabel": "Agentes",
   "settings.agentNotifications": "Notificaciones de inactividad",
   "settings.agentNotificationsDesc":
@@ -211,6 +220,9 @@ export const es: Record<MessageKey, string> = {
   "agentEditor.argsPlaceholder": "argumentos (separados por espacios)",
   "agentEditor.launchIn": "Lanzar en",
   "agentEditor.defaultTerminal": "Terminal predeterminada",
+  "agentEditor.logo": "Logo",
+  "agentEditor.chooseLogo": "Elegir una imagen de logo personalizada",
+  "agentEditor.resetLogo": "Restablecer el logo predeterminado",
 
   // Launch agent (sidebar)
   "agent.launch": "Lanzar agente",

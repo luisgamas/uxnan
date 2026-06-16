@@ -34,16 +34,16 @@ models live in:
 | **1** | Terminal core (PTY, tabs, splits) | ✅ **DONE** — terminals, region splits, copy/paste, file-drop, layout persistence, kill-on-exit (reorder/MRU = Tier 2; per-worktree assoc = Phase 2) |
 | **2** | Git & worktrees | ✅ **DONE** — single-panel UI (search + collapsible Projects/Worktrees, cards, new-worktree dialog with base-branch picker), worktree create / list / safe remove, status/dirty + ahead/behind badges, in-app directory picker, **per-worktree terminal workspaces** (select a worktree → its terminals show, others keep running hidden). Agent auto-launch is the Settings **agents track** (S) |
 | **3** | Git status & diffs | ✅ **DONE** — right-panel review (status/diff/stage/discard/commit), live status watcher (3 s, focus-paused), push/pull, CodeMirror 6 diff viewer; `git2` migration + side-by-side/hunk staging → Phase 5 |
-| **4** | Agent monitoring | ◑ **IN PROGRESS** — activity inference (working/idle dots on worktrees + tabs) + native notification when an agent settles idle while unfocused; precise hook-based states deferred |
+| **4** | Agent monitoring | ✅ **DONE** — activity inference + **Layer 1 HTTP hook server** (precise working/blocked/waiting/done, persistent cache) + Layer 2 terminal-title inference + colored status dots + unread/done badges + custom agent logos + per-worktree agent override. Ready-made per-agent hook configs + orchestration = follow-ups |
 | 5 | Polish & UX (hunk staging, side-by-side, virtual scroll) | ☐ not started |
 | 6 | Bridge integration (mobile pairing) | ☐ not started |
 | **S** | Settings, design system & i18n (cross-cutting) | ◑ **IN PROGRESS** — Settings (theme + terminal profiles w/ OS templates), **design tokens**, **full i18n (EN/ES + Language picker)**, and the **agents registry + manual launch** (the ADE differentiator) done; agent **auto-launch on worktree create** + Phase-4 **status monitoring** pending |
 
 Estimate (spec §2): 11–17 weeks for Phases 0–5 solo; +2–3 wk for Phase 6.
 
-### Where we are (2026-06-12)
+### Where we are (2026-06-15)
 
-**Phases 0–3 are complete**, plus the cross-cutting track:
+**Phases 0–4 are complete**, plus the cross-cutting track:
 - **0** infra · **1** terminals (splits, copy/paste, file-drop, persisted layout)
   · **2** git worktrees (hierarchical Projects tree, create/list/safe-remove,
   status badges, in-app picker, per-worktree terminal workspaces).
@@ -55,18 +55,22 @@ Estimate (spec §2): 11–17 weeks for Phases 0–5 solo; +2–3 wk for Phase 6.
   **run-inside-chosen-shell** launch, and **auto-launch a default agent on
   worktree create**.
 
-**Next up — Phase 4 (Agent monitoring):** the remaining Tier-1 pillar and the
-ADE's differentiator — know what each agent is doing per worktree
-(`working`/`waiting`/`blocked`/`done`) + native notifications. Recommended as an
-increment-based build: (1) process/terminal-title inference → status badges,
-(2) native notifications on `done`, (3) the local HTTP hook server.
+- **4** agent monitoring — activity inference + native notifications, **Layer 1
+  HTTP hook server** (precise `working`/`blocked`/`waiting`/`done`, persistent
+  cache), **Layer 2** terminal-title inference, colored status dots, unread/done
+  badges, custom agent logos, and per-worktree agent override.
 
-**Then:** Phase 5 (polish — side-by-side diff, hunk/line staging, virtual
-scroll) and Phase 6 (bridge integration / mobile pairing).
+**Next up — Phase 5 (Polish & UX):** side-by-side diff, hunk/line staging,
+virtual scroll, rotating backups + schema-migration hardening. Then Phase 6
+(bridge integration / mobile pairing).
+
+**Phase 4 follow-ups (not blocking):** ready-made per-agent hook configs (Claude
+Code + generic wrapper) so precise states work out-of-the-box, multi-agent
+orchestration (`02d` §3), and a precise status dot in the terminal tab strip.
 
 Smaller non-blockers (tracked below): backend debounced persistence + rotating
-backups, `git2` migration, WSL paths, tab reorder/MRU, per-worktree agent
-override, branded icons (`FOR-HUMAN.md`).
+backups, `git2` migration, WSL paths, tab reorder/MRU, branded icons
+(`FOR-HUMAN.md`).
 
 **In-app toast/notification system** (`svelte-sonner`) — replace the inline,
 dismissible error banners (left sidebar `projects.error`, right panel
@@ -139,9 +143,14 @@ user configuration. Built incrementally alongside the phases.
       in the new worktree after creating + selecting it. Opt-in. Closes Tier-2
       **T2.2** (spec `02b §5.1`).
 
+**Done — agents (cont.):**
+- [x] **Per-worktree agent override** at creation — the new-worktree dialog's
+      "Launch agent" picker (None + configured agents) overrides the global
+      default; `projects.createWorktree` takes an `agentId` (Phase 4).
+- [x] **Custom agent logos** — pick any image per agent (Settings → Agents),
+      stored inline as a `data:` URL on `AgentProfile.icon` (`logo.ts`).
+
 **Pending — agents:**
-- [ ] **Per-worktree agent override** at/before creation (today it's the global
-      default agent). **FOR-DEV.**
 - [ ] **Env vars per agent**, if a launch flow needs them.
 - [ ] **Arg quoting** in the injected command is best-effort (quote-if-spaces);
       revisit if an agent needs shell-specific escaping. **FOR-DEV.**
@@ -389,9 +398,9 @@ earlier "superficial UX" warning is resolved.
 
 ---
 
-## Phase 4 — Agent monitoring ◑ (activity inference done)
+## Phase 4 — Agent monitoring ✅
 
-**Goal:** know what each agent is doing in each worktree.
+**Goal (met):** know what each agent is doing in each worktree.
 
 **Done (increment 1 — activity inference, universal):**
 - [x] **Infer status from terminal output** (no agent cooperation): a tab
@@ -417,12 +426,12 @@ earlier "superficial UX" warning is resolved.
       **any** terminal, including agents the user runs by hand; clears when the
       agent exits. Commands to look for are synced via `set_agent_commands`.
 
-> **NOTE — precise states are a contemplated future improvement (not yet
-> implemented).** Activity inference is intentionally coarse: it can't tell
-> `working` vs `blocked` vs `waiting` apart, only "active" vs "idle / likely
-> done". For precise per-state monitoring we'd **migrate to the HTTP hook server**
-> (Layer 1, `02d`): agents that support hooks POST `working/blocked/waiting/done`
-> to a localhost endpoint. That needs per-agent setup, so it's deferred. **FOR-DEV.**
+> **NOTE — precise states now implemented (increment 2–3).** The coarse activity
+> inference (active vs idle) is complemented by the **HTTP hook server** (Layer 1,
+> `02d`): agents that support hooks POST `working/blocked/waiting/done` to a
+> localhost endpoint and the UI shows the exact state. Wiring a *specific* agent
+> to call it is still per-agent setup — see `docs/agent-hooks.md` and the
+> ready-made-config follow-up below.
 
 **Done (increment 2 — Layer 1 hook server):**
 - [x] **Local HTTP hook server (`axum`)** + normalized states + persistent cache
@@ -433,25 +442,32 @@ earlier "superficial UX" warning is resolved.
       `get_hook_info`/`agent_states`; frontend `agentStatus` store hydrates +
       stays live. Contract: [`docs/agent-hooks.md`](docs/agent-hooks.md).
 
-**Deferred (precise monitoring / orchestration):**
-- [ ] **Consume precise states in the UI** — color the sidebar/tab dots by the
-      hook state (working green / blocked yellow / waiting orange / done blue),
-      dim stale (>30 min) reports; prefer hook state over inference. **FOR-DEV.**
+**Done (increment 3 — precise states in the UI + badges + logos + override):**
+- [x] **Consume precise states in the UI** — colored dots (`AgentStatusDot`,
+      `resolveAgentDisplay`) on agent rows: working green / blocked amber /
+      waiting orange / done blue / idle gray, stale (>30 min) dimmed; hook state
+      preferred over title over activity.
+- [x] **"Unread / done" badge** on worktrees + project headers (`unread` store):
+      flagged when an agent finishes/settles idle while unobserved, cleared on
+      open or window focus; dock/taskbar count via `setBadgeCount`.
+- [x] **Custom agent logos** — pick any image (Settings → Agents), stored inline
+      as a 64×64 PNG `data:` URL on `AgentProfile.icon` (`logo.ts`); ✕ resets to
+      the catalog logo; rendered everywhere (`agentLogoSrc` passes data URLs).
+- [x] **Per-worktree agent override** — "Launch agent" picker in the new-worktree
+      dialog overrides the global default (`projects.createWorktree` `agentId`).
+- [x] **Foreground-process detection** (Layer 3) — catches agents run manually.
+- [x] **Terminal-title (OSC) parsing (Layer 2)** — `onTitleChange` →
+      `agentMonitor.noteTitle` → `statusFromTitle` (`agentTitle.ts`); merged with
+      Layers 1/3 by `resolveAgentDisplay` (`agentDisplay.ts`).
+
+**Deferred (follow-ups / orchestration):**
 - [ ] **Ready-made per-agent hook configs** — ship a Claude Code `hooks` config
       (and a generic wrapper script) that POST to `UXNAN_HOOK_URL`, so precise
       states work out-of-the-box instead of manual setup. **FOR-DEV / FOR-HUMAN.**
-- [x] **Foreground-process detection** (Layer 3) — done (see above); catches
-      agents run manually too.
-- [x] **Terminal-title (OSC) parsing (Layer 2)** — done: `onTitleChange` →
-      `agentMonitor.noteTitle` → `statusFromTitle` (`agentTitle.ts`); merged with
-      Layers 1/3 by `resolveAgentDisplay` (`agentDisplay.ts`).
-- [ ] "Unread / done" badge on completed worktrees (cleared on focus); dock/
-      taskbar badge; multi-agent orchestration (task graph, routing) per `02d`.
-- [ ] **Custom agent logos** — catalog agents render their brand SVG in the
-      sidebar rows; a *custom* agent (no catalog match) falls back to the generic
-      Bot. Let users upload/point to their own logo per agent
-      (`AgentProfile.icon` could hold a path/data-URL) so it shows in the rows.
-      **FOR-DEV.**
+- [ ] **Multi-agent orchestration** (task graph, @type routing, fan-out,
+      backpressure, sidebar lineage) per `02d` §3. **FOR-DEV.**
+- [ ] **Tab-bar status indicator** — the terminal tab strip still shows the coarse
+      working dot; could adopt the precise `AgentStatusDot` too. **FOR-DEV.**
 
 ---
 

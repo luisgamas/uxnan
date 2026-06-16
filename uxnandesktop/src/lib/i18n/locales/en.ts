@@ -77,6 +77,9 @@ export const en = {
     "The new branch starts from here. Defaults to the repo's main branch.",
   "newWorktree.create": "Create worktree",
   "newWorktree.preview": "Worktree folder",
+  "newWorktree.agent": "Launch agent",
+  "newWorktree.agentNone": "None",
+  "newWorktree.agentDesc": "Launched in the new worktree once it's created.",
 
   // Terminal area
   "terminal.newDefault": "New terminal (default profile)",
@@ -154,7 +157,13 @@ export const en = {
 
   // Agent monitoring (activity)
   "monitor.working": "Working",
+  "monitor.blocked": "Blocked",
+  "monitor.waiting": "Waiting for input",
+  "monitor.done": "Done",
+  "monitor.idle": "Idle",
+  "monitor.stale": "No update in a while",
   "monitor.detected": "Agent detected",
+  "monitor.unread": "Agent finished — not yet reviewed",
   "agents.spaceLabel": "Agents",
   "settings.agentNotifications": "Idle notifications",
   "settings.agentNotificationsDesc":
@@ -213,6 +222,9 @@ export const en = {
   "agentEditor.argsPlaceholder": "arguments (space-separated)",
   "agentEditor.launchIn": "Launch in",
   "agentEditor.defaultTerminal": "Default terminal",
+  "agentEditor.logo": "Logo",
+  "agentEditor.chooseLogo": "Choose a custom logo image",
+  "agentEditor.resetLogo": "Reset to the default logo",
 
   // Launch agent (sidebar)
   "agent.launch": "Launch agent",

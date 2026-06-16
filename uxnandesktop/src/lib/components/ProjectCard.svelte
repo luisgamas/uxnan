@@ -3,6 +3,7 @@
   import { Button } from "$lib/components/ui/button";
   import { Badge } from "$lib/components/ui/badge";
   import { projects } from "$lib/state/projects.svelte";
+  import { unread } from "$lib/state/unread.svelte";
   import { clipboardWrite } from "$lib/clipboard";
   import { cn } from "$lib/utils";
   import { icon, iconButton, text } from "$lib/design";
@@ -34,6 +35,12 @@
   const children = $derived(projects.visibleChildWorktrees(repo.id));
   const childRows = $derived(
     children.map((w) => ({ ...w, repoId: repo.id, repoName: repo.name })),
+  );
+  // Unread if the project's own context, or any of its worktrees, has a result
+  // the user hasn't reviewed (so a collapsed project still surfaces it).
+  const hasUnread = $derived(
+    unread.has(mainPath) ||
+      projects.childWorktrees(repo.id).some((w) => unread.has(w.path)),
   );
   // Auto-expand while searching so matching worktrees are visible.
   const isExpanded = $derived(expanded || projects.query.trim().length > 0);
@@ -67,6 +74,12 @@
       <div class="min-w-0 flex-1">
         <div class="flex items-center gap-1.5">
           <span class={cn("truncate", text.title)} title={repo.name}>{repo.name}</span>
+          {#if hasUnread}
+            <span
+              class="size-1.5 shrink-0 rounded-full bg-red-500"
+              title={i18n.t("monitor.unread")}
+            ></span>
+          {/if}
           {#if mainStatus && mainStatus.dirty > 0}
             <span
               class={cn(
