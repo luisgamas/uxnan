@@ -22,6 +22,7 @@ import {
   type IAgentAdapter,
   type TurnAttachment,
 } from '@uxnan/shared';
+import { rm } from 'node:fs/promises';
 import type { ThreadStore } from '../conversation/thread-store.js';
 import type { Logger } from '../logger.js';
 import { materializeAttachments } from './attachments.js';
@@ -71,6 +72,8 @@ export class AgentManager {
   readonly #agentByThread = new Map<string, AgentId>();
   /** threadId → in-flight turn id, so an approval reply can name the turn it answers. */
   readonly #activeTurnByThread = new Map<string, string>();
+  /** turnId → temp attachment dir to remove once the turn ends (best-effort). */
+  readonly #attachmentDirByTurn = new Map<string, string>();
   readonly #options: AgentManagerOptions;
 
   constructor(options: AgentManagerOptions) {
@@ -168,10 +171,14 @@ export class AgentManager {
     let agentText = userText;
     if (attachments.length > 0) {
       try {
-        const materialized = await materializeAttachments(attachments, started.turnId);
+        const materialized = await materializeAttachments(attachments, started.turnId, {
+          ...(options.cwd !== undefined ? { cwd: options.cwd } : {}),
+        });
         if (materialized.note) {
-          agentText = userText.length > 0 ? `${userText}\n\n${materialized.note}` : materialized.note;
+          agentText =
+            userText.length > 0 ? `${userText}\n\n${materialized.note}` : materialized.note;
         }
+        if (materialized.dir) this.#attachmentDirByTurn.set(started.turnId, materialized.dir);
       } catch (err) {
         this.#options.logger.warn(`attachment materialization failed: ${String(err)}`);
       }
@@ -313,6 +320,7 @@ export class AgentManager {
           );
           this.#assistantByTurn.delete(turnId);
           this.#activeTurnByThread.delete(threadId);
+          void this.#cleanupAttachments(turnId);
           await this.#persistAgentSession(threadId, now);
           this.#options.onTurnEnd?.({ threadId, turnId, status: 'completed', text });
           break;
@@ -329,6 +337,7 @@ export class AgentManager {
           );
           this.#assistantByTurn.delete(turnId);
           this.#activeTurnByThread.delete(threadId);
+          void this.#cleanupAttachments(turnId);
           await this.#persistAgentSession(threadId, now);
           this.#options.onTurnEnd?.({ threadId, turnId, status: 'error', text: message });
           break;
@@ -340,12 +349,29 @@ export class AgentManager {
           );
           this.#assistantByTurn.delete(turnId);
           this.#activeTurnByThread.delete(threadId);
+          void this.#cleanupAttachments(turnId);
           break;
       }
     } catch (err) {
       this.#options.logger.warn(
         `agent event handling failed: ${err instanceof Error ? err.message : String(err)}`,
       );
+    }
+  }
+
+  /**
+   * Remove a turn's temp attachment directory once the turn ends. Best-effort:
+   * the agent has already read the files by completion, and a failure to delete
+   * (e.g. the dir vanished) is non-fatal.
+   */
+  async #cleanupAttachments(turnId: string): Promise<void> {
+    const dir = this.#attachmentDirByTurn.get(turnId);
+    if (!dir) return;
+    this.#attachmentDirByTurn.delete(turnId);
+    try {
+      await rm(dir, { recursive: true, force: true });
+    } catch {
+      /* best-effort */
     }
   }
 

@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { rm } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { mkdir, rm } from 'node:fs/promises';
 import { StreamNotification } from '@uxnan/shared';
 import {
   AgentManager,
@@ -72,8 +73,13 @@ test('sendTurn delivers an image-only turn: placeholder user text + attachment p
   });
   manager.register(new EchoAgentAdapter());
 
+  // Run in a real working dir so the attachment is written INSIDE it (the fix
+  // for sandboxed agents that reject files outside cwd).
+  const cwd = join(tmpdir(), `uxnan-am-cwd-${randomUUID()}`);
+  await mkdir(cwd, { recursive: true });
   const thread = await store.startThread({ projectId: 'p' }, 1);
   const { turnId } = await manager.sendTurn(thread.id, '', {
+    cwd,
     attachments: [{ type: 'image', mimeType: 'image/png', base64Data: PNG_1x1 }],
   });
 
@@ -82,11 +88,15 @@ test('sendTurn delivers an image-only turn: placeholder user text + attachment p
 
   // The persisted user message is a faithful placeholder — no temp path leaks.
   assert.equal(turn.messages.find((m) => m.role === 'user')?.content, '[1 image attachment]');
-  // The echo agent echoes the prompt it received, proving the attachment note
-  // (with the materialized temp file path) was injected into the agent prompt.
+  // The echo agent echoes the prompt it received: the note references a
+  // cwd-relative path (inside the workspace), not an absolute temp path.
   const assistant = String(turn.messages.find((m) => m.role === 'assistant')?.content ?? '');
   assert.match(assistant, /Attached image/);
-  assert.match(assistant, /\.png/);
+  assert.ok(assistant.includes('.uxnan-attachments/'));
+  assert.ok(!assistant.includes(cwd));
+  // The temp dir is cleaned up once the turn ends (best-effort, async).
+  await waitFor(async () => !existsSync(join(cwd, '.uxnan-attachments', turnId)));
+  await rm(cwd, { recursive: true, force: true });
   await rm(baseDir, { recursive: true, force: true });
 });
 
@@ -116,7 +126,10 @@ test('respondApproval drives the echo demo approval to completion', async () => 
 
   await waitFor(async () => (await store.getTurn(turnId)).status === 'completed');
   const turn = await store.getTurn(turnId);
-  assert.match(String(turn.messages.find((m) => m.role === 'assistant')?.content ?? ''), /Approved/);
+  assert.match(
+    String(turn.messages.find((m) => m.role === 'assistant')?.content ?? ''),
+    /Approved/,
+  );
   await rm(baseDir, { recursive: true, force: true });
 });
 
