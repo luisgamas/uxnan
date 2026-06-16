@@ -35,15 +35,25 @@ models live in:
 | **2** | Git & worktrees | ✅ **DONE** — single-panel UI (search + collapsible Projects/Worktrees, cards, new-worktree dialog with base-branch picker), worktree create / list / safe remove, status/dirty + ahead/behind badges, in-app directory picker, **per-worktree terminal workspaces** (select a worktree → its terminals show, others keep running hidden). Agent auto-launch is the Settings **agents track** (S) |
 | **3** | Git status & diffs | ✅ **DONE** — right-panel review (status/diff/stage/discard/commit), live status watcher (3 s, focus-paused), push/pull, CodeMirror 6 diff viewer; `git2` migration + side-by-side/hunk staging → Phase 5 |
 | **4** | Agent monitoring | ✅ **DONE** — activity inference + **Layer 1 HTTP hook server** (precise working/blocked/waiting/done, persistent cache) + Layer 2 terminal-title inference + colored status dots + unread/done badges + custom agent logos + per-worktree agent override. Ready-made per-agent hook configs + orchestration = follow-ups |
-| 5 | Polish & UX (hunk staging, side-by-side, virtual scroll) | ☐ not started |
-| 6 | Bridge integration (mobile pairing) | ☐ not started |
-| **S** | Settings, design system & i18n (cross-cutting) | ◑ **IN PROGRESS** — Settings (theme + terminal profiles w/ OS templates), **design tokens**, **full i18n (EN/ES + Language picker)**, and the **agents registry + manual launch** (the ADE differentiator) done; agent **auto-launch on worktree create** + Phase-4 **status monitoring** pending |
+| **5** | Polish & UX | ✅ **DONE** — hunk-level staging, full-size center diff panel + side-by-side, rotating backups + sequential migrations, opt-in keep-awake (Windows), worktree palette (Ctrl/Cmd+P), TabGroup split buttons, virtualized lists. Follow-ups (non-blocking): keep-awake macOS/Linux, async-debounce persistence, sidebar-tree virtualization, E2E tests; secrets → Phase 6 |
+| **6** | Bridge integration (mobile pairing) | ☐ **NOT STARTED** — embed the Node bridge as a Tauri sidecar + QR pairing. Optional for standalone use; required to act as the mobile bridge |
+| **S** | Settings, design system & i18n (cross-cutting) | ✅ **DONE** — Settings (theme + terminal profiles w/ OS templates), **design tokens**, **full i18n (EN/ES + Language picker)**, **agents registry + manual launch**, **auto-launch on worktree create**, and Phase-4 **status monitoring**. (Custom / import-export themes = optional follow-up) |
 
 Estimate (spec §2): 11–17 weeks for Phases 0–5 solo; +2–3 wk for Phase 6.
 
-### Where we are (2026-06-15)
+> **MVP status (2026-06-16): Phases 0–5 + cross-cutting (S) are complete.** The
+> desktop ADE is **functional for an ALPHA release as a standalone app** (manage
+> repos/worktrees, multiplexed terminals, launch + monitor agents, full git
+> review with hunk staging & diffs, settings/i18n/theming). The only remaining
+> roadmap phase is **6 (embedded bridge / mobile pairing)**, which is *optional
+> for standalone use*. Pre-release gaps before distributing builds: branded icons
+> + signing/updater keys (`FOR-HUMAN.md`) and a CI/CD pipeline (see
+> "CI/CD — release builds" below).
 
-**Phases 0–4 are complete**, plus the cross-cutting track:
+### Where we are (2026-06-16)
+
+**Phases 0–5 + the cross-cutting track (S) are complete** — the ADE is
+alpha-functional as a standalone app:
 - **0** infra · **1** terminals (splits, copy/paste, file-drop, persisted layout)
   · **2** git worktrees (hierarchical Projects tree, create/list/safe-remove,
   status badges, in-app picker, per-worktree terminal workspaces).
@@ -60,9 +70,14 @@ Estimate (spec §2): 11–17 weeks for Phases 0–5 solo; +2–3 wk for Phase 6.
   cache), **Layer 2** terminal-title inference, colored status dots, unread/done
   badges, custom agent logos, and per-worktree agent override.
 
-**Next up — Phase 5 (Polish & UX):** side-by-side diff, hunk/line staging,
-virtual scroll, rotating backups + schema-migration hardening. Then Phase 6
-(bridge integration / mobile pairing).
+- **5** polish — hunk-level staging, full-size center diff panel + side-by-side,
+  rotating backups + sequential migrations, opt-in keep-awake (Windows), worktree
+  palette (Ctrl/Cmd+P), TabGroup split buttons, virtualized lists.
+
+**Next up — Phase 6 (bridge integration / mobile pairing):** the only remaining
+roadmap phase, and *optional for standalone use* — embed the Node bridge as a
+Tauri sidecar + QR pairing. Before distributing builds: a CI/CD pipeline (see
+"CI/CD — release builds") + branded icons/signing (`FOR-HUMAN.md`).
 
 **Phase 4 follow-ups (not blocking):** ready-made per-agent hook configs (Claude
 Code + generic wrapper) so precise states work out-of-the-box, multi-agent
@@ -532,6 +547,48 @@ reference; this phase embeds it.
 - [ ] Settings → Mobile connection: QR pairing dialog, connected-phone
       indicator, trusted-device management (reuses bridge
       `bridge/removeTrustedDevice`, already implemented).
+
+---
+
+## CI/CD — release builds (GitHub Actions) — TODO (alpha-ready)
+
+> **FOR-DEV.** Phases 0–5 are complete and the ADE is alpha-functional as a
+> standalone app, so the next infra step is a pipeline that **verifies, then
+> builds** for every target OS. Two workflows:
+
+**1. `ci.yml` — verify on every push / PR** (gate; no packaging):
+- Matrix: `windows-latest`, `macos-latest`, `ubuntu-latest`.
+- Steps: checkout → setup Node (20+) + Rust (stable, with `rustfmt`/`clippy`) →
+  cache cargo + node → Linux only: install Tauri system deps
+  (`libwebkit2gtk-4.1-dev`, `libgtk-3-dev`, `librsvg2-dev`, `libayatana-appindicator3-dev`,
+  `patchelf`, `build-essential`).
+- **Verification gates (must all pass before any build):**
+  - `npm ci`
+  - `npm run check` (svelte-check, 0 errors)
+  - `npm run build` (SPA → `build/`, needed by `generate_context!`)
+  - `cargo fmt --manifest-path src-tauri/Cargo.toml -- --check`
+  - `cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings`
+  - `cargo test --manifest-path src-tauri/Cargo.toml`
+  - (when E2E lands) the WebdriverIO/tauri-driver suite.
+
+**2. `release.yml` — build installers on a version tag** (`v*`):
+- Same matrix; reuse the verify gates (or `needs: ci`), then build with
+  **`tauri-apps/tauri-action`** (runs `npm run build` + `cargo build --release`
+  + bundles). Targets: Windows `.msi`/NSIS, macOS `.dmg`/`.app` (ideally a
+  universal `aarch64`+`x86_64` build), Linux `.deb`/`.AppImage`.
+- Upload artifacts / attach to a GitHub Release (draft).
+
+**Blocking before a *signed/distributable* release (FOR-HUMAN):**
+- Branded app icons + bundle identity (replace default Tauri icons).
+- Code-signing: Windows Authenticode cert, macOS Developer ID + notarization
+  (Apple ID / team id / app-specific password as repo secrets).
+- Tauri updater public key (if auto-update is enabled) + signing key as a secret.
+- These are in `FOR-HUMAN.md`; the build itself runs unsigned without them
+  (degraded: OS "unknown publisher" warnings), so CI can produce artifacts now.
+
+**Notes:** the machine's home `pnpm-workspace.yaml` hijacks `pnpm install` here —
+CI uses `npm ci`. `cargo test` needs the SPA built first (the Tauri
+`generate_context!` reads `frontendDist = ../build`).
 
 ---
 
