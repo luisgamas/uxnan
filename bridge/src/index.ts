@@ -39,6 +39,14 @@ export {
   PairingCodeService,
   type PairingCodeServiceOptions,
 } from './pairing/pairing-code-service.js';
+export {
+  MdnsAdvertiser,
+  parseQuestions,
+  buildMessage,
+  encodeName,
+  type MdnsAdvertiserOptions,
+  type UdpSocketLike,
+} from './transport/mdns-advertiser.js';
 export { SecureDeviceState, type PublicIdentity } from './secure-device-state.js';
 export { InMemorySecretStore, type SecretStore } from './secret-store.js';
 export {

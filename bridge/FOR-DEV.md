@@ -64,16 +64,25 @@ hosting** (the phone connects directly to the bridge on the same network).
       validates the code (constant-time, per-IP rate-limited) and returns the full
       `PairingPayload` (identical to the QR), after which the phone runs the normal
       E2EE handshake. The code is the **consent gate** (same trust posture as the QR
-      — whoever sees the screen can pair; no new secret). **Phase 2 (next):** mDNS/
-      Bonjour advertisement so the phone DISCOVERS the bridge on the LAN (no typing
-      the host); needs a discovery library decision (pure-JS `bonjour-service` vs a
-      hand-rolled responder) — tracked as the next slice.
-      **Mobile linkage (uxnanmobile):** the deferred `ManualCodeScreen` must call
-      `GET http://<bridge-host>:<lanPort>/pair/resolve?code=<code>` **on the bridge**
-      (NOT the relay — its `FOR-DEV.md` currently points at the relay
-      `/trusted-session/resolve`; update it) to synthesize the `PairingPayload`, then
-      reuse the existing QR pairing path. Until Phase 2 (mDNS) lands, the phone needs
-      the bridge host (typed, or from a future mDNS browse).
+      — whoever sees the screen can pair; no new secret).
+      **Phase 2 DONE:** `src/transport/mdns-advertiser.ts` advertises the bridge on
+      the LAN via mDNS/DNS-SD (`_uxnan._tcp.local`) so the phone DISCOVERS it without
+      typing the host. **Implemented dependency-free** (hand-rolled over `node:dgram`)
+      rather than pulling `bonjour-service`/`multicast-dns` — keeps the packaged
+      bridge (`npm i -g` / single binary) free of a third-party mDNS stack and avoids
+      a native build. Records: PTR + SRV + TXT (`v`,`port`,`addr`,`id`=deviceId) + A,
+      announced on start, goodbye (TTL 0) on stop, answers browse + DNS-SD meta
+      queries. Best-effort: a failed bind (5353 busy) degrades silently. Toggle via
+      `config.mdnsEnabled` (default true; effective only when `lanEnabled`). Verified
+      by unit tests (fake socket) + a real on-machine multicast smoke (a DNS-SD
+      querier received the full record set).
+      **Mobile linkage (uxnanmobile):** the deferred `ManualCodeScreen` should
+      (1) **browse `_uxnan._tcp` via mDNS** (Android `NsdManager` / iOS `NWBrowser`,
+      e.g. the `nsd`/`multicast_dns` Flutter plugin) to list bridges + read the TXT
+      `addr`/`port`, then (2) call
+      `GET http://<addr>:<port>/pair/resolve?code=<code>` **on the bridge** (NOT the
+      relay) to synthesize the `PairingPayload`, then reuse the existing QR pairing
+      path. Typing the host stays a manual fallback when mDNS is unavailable.
 
 ## Identity & security
 - [x] **OS-keychain SecretStore** (Phase 3) — `src/keyring-secret-store.ts` via

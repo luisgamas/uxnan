@@ -26,7 +26,8 @@ import { FileTrustStore, type TrustStore } from './transport/trust-store.js';
 import { handleSecureConnection } from './transport/session-handler.js';
 import { connectRelayAsMac, type RelayConnection } from './transport/relay-client.js';
 import { startLanServer, type LanServerHandle } from './transport/lan-server.js';
-import { localHostPorts } from './transport/local-hosts.js';
+import { localHostPorts, localIPv4s } from './transport/local-hosts.js';
+import { MdnsAdvertiser } from './transport/mdns-advertiser.js';
 import { SessionRegistry } from './transport/session-registry.js';
 import { ThreadStore } from './conversation/thread-store.js';
 import { AgentManager } from './agents/agent-manager.js';
@@ -267,6 +268,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
 
   const relayConnections: RelayConnection[] = [];
   let lanHandle: LanServerHandle | undefined;
+  let mdns: MdnsAdvertiser | undefined;
   let stopping = false;
   const RELAY_RECONNECT_DELAY_MS = 2000;
   const delay = (ms: number): Promise<void> =>
@@ -382,6 +384,20 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
         },
       });
       logger.info(`LAN server listening on port ${lanHandle.port}`);
+      // Advertise on the LAN via mDNS so the phone can discover the bridge for
+      // manual-code pairing (best-effort; degrades silently if it can't bind).
+      if (config.mdnsEnabled && !mdns) {
+        const name = hostname();
+        mdns = new MdnsAdvertiser({
+          instanceName: name,
+          hostName: name.replace(/[^A-Za-z0-9-]/g, '-'),
+          port: lanHandle.port,
+          addresses: localIPv4s(),
+          txt: { id: deviceState.identity.macDeviceId },
+          logger,
+        });
+        mdns.start();
+      }
       return { port: lanHandle.port };
     },
     notify: (deviceId, method, params) =>
@@ -395,6 +411,10 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       }
       relayConnections.length = 0;
       relayState.connected = false;
+      if (mdns) {
+        mdns.stop();
+        mdns = undefined;
+      }
       if (lanHandle) {
         await lanHandle.close();
         lanHandle = undefined;
