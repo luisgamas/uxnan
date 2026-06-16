@@ -15,6 +15,8 @@ import { terminals } from "./terminals.svelte";
 import { app } from "./app.svelte";
 import { i18n } from "$lib/i18n";
 import { notify } from "$lib/notify";
+import { statusFromTitle } from "$lib/agentTitle";
+import type { AgentStatus } from "$lib/types";
 
 /** Payload of the backend `agent:detected` event. */
 interface AgentDetected {
@@ -35,6 +37,9 @@ class AgentMonitor {
   private lastOutputAt = new Map<string, number>();
   /** Agent tabs already notified for the current idle period (re-armed on output). */
   private notified = new Set<string>();
+  /** State inferred from each tab's terminal title (OSC), Layer 2. Reactive so
+   *  the sidebar/tab indicators update when a title changes. */
+  private titleState = $state<Record<string, AgentStatus>>({});
   private timer: ReturnType<typeof setInterval> | undefined;
   private detecting = false;
 
@@ -65,6 +70,21 @@ class AgentMonitor {
     } catch {
       this.detecting = false; // no Tauri event bus (web preview)
     }
+  }
+
+  /** Record the agent state inferred from a tab's terminal title (Layer 2). A
+   *  title that maps to a state is stored; an unrecognized one is ignored (the
+   *  previous inference stands). Read via [`titleStatus`]. */
+  noteTitle(tabId: string, title: string): void {
+    const status = statusFromTitle(title);
+    if (status && this.titleState[tabId] !== status) {
+      this.titleState = { ...this.titleState, [tabId]: status };
+    }
+  }
+
+  /** The state last inferred from a tab's terminal title, if any. */
+  titleStatus(tabId: string): AgentStatus | undefined {
+    return this.titleState[tabId];
   }
 
   /** Record output on a tab: it's "working" now. Cheap (reactive only on edge). */
@@ -117,6 +137,12 @@ class AgentMonitor {
       if (!live.has(id)) {
         this.lastOutputAt.delete(id);
         this.notified.delete(id);
+      }
+    }
+    for (const id of Object.keys(this.titleState)) {
+      if (!live.has(id)) {
+        const { [id]: _drop, ...rest } = this.titleState;
+        this.titleState = rest;
       }
     }
   }

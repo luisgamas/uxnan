@@ -28,6 +28,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   [`docs/agent-hooks.md`](docs/agent-hooks.md). Consuming the precise state in
   the sidebar/tab indicators lands in a follow-up increment.
 
+### Added — Phase 4 (Layer 2): terminal-title state inference
+- **OSC title → state (fallback).** Agents that update the terminal title
+  (OSC 0/2, surfaced by xterm's `onTitleChange`) get their state inferred from
+  it — "thinking…/running…" → working, "waiting/approval/review" → waiting,
+  "error/failed" → blocked, "done/finished/✓" → done (`agentTitle.ts`,
+  `agentMonitor.noteTitle`). Unknown titles (a plain cwd or `user@host`) are
+  ignored. Needs no hook setup; complements Layer 1 for agents that don't report.
+- **Unified status resolver** (`agentDisplay.ts`, `resolveAgentDisplay`): merges
+  the layers with a clear priority — hook (precise) › title › output-activity —
+  so the sidebar/tab indicators have one effective state to render (consumed by
+  the upcoming indicator increment).
+
 ### Changed — agents: detect in any terminal + close-on-exit
 - **Process detection (any terminal).** A background scan (every 2 s, `procscan`
   + `sysinfo`) walks each terminal's process tree and reports the agent running

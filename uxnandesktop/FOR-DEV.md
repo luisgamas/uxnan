@@ -441,8 +441,10 @@ earlier "superficial UX" warning is resolved.
       (and a generic wrapper script) that POST to `UXNAN_HOOK_URL`, so precise
       states work out-of-the-box instead of manual setup. **FOR-DEV / FOR-HUMAN.**
 - [x] **Foreground-process detection** (Layer 3) — done (see above); catches
-      agents run manually too. Terminal-title (OSC) parsing (Layer 2) is still
-      open as an extra signal. **FOR-DEV.**
+      agents run manually too.
+- [x] **Terminal-title (OSC) parsing (Layer 2)** — done: `onTitleChange` →
+      `agentMonitor.noteTitle` → `statusFromTitle` (`agentTitle.ts`); merged with
+      Layers 1/3 by `resolveAgentDisplay` (`agentDisplay.ts`).
 - [ ] "Unread / done" badge on completed worktrees (cleared on focus); dock/
       taskbar badge; multi-agent orchestration (task graph, routing) per `02d`.
 - [ ] **Custom agent logos** — catalog agents render their brand SVG in the
