@@ -6,6 +6,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 
 ### Added
+- **Manual-code pairing — Phase 1 (bridge-side)** — pair without scanning a QR by
+  trading a short code shown on the PC for the pairing payload. New
+  `src/pairing/pairing-code-service.ts` issues a rotating, expiring (10 min), 8-char
+  Crockford-base32 pairing code (shown by the `qr` CLI; `Bridge.currentPairingCode()`).
+  The LAN server is now an `http.Server` with the WebSocket transport attached, and
+  serves `GET /pair/resolve?code=<code>` — constant-time validated + per-IP
+  rate-limited — returning the full `PairingPayload` (the same data the QR carries),
+  after which the phone runs the normal E2EE handshake. The code is a consent gate,
+  not a new secret (same trust posture as the QR). This reframes the relay's
+  off-LAN `/trusted-session/resolve` as a bridge-first feature. (Phase 2, next: mDNS
+  discovery so the phone finds the bridge without typing the host.)
 - **Gemini CLI agent adapter** — `@google/gemini-cli` wired as a real agent
   (`src/adapters/gemini-adapter.ts`), driven via `gemini -p --output-format
   stream-json --approval-mode <mode> --skip-trust` (validated live, gemini-cli

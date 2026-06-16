@@ -54,6 +54,26 @@ hosting** (the phone connects directly to the bridge on the same network).
       envelopes with a greater `seq`. **Blocked:** the mobile `clientHello` does
       not send `resumeState` yet — coordinate with the mobile side first.
 - [ ] **Key rotation / keyEpoch advance** — blocked on a mobile trigger.
+- [◑] **Manual-code pairing (bridge-side; relay's `/trusted-session/resolve` reframed
+      for the bridge-first model).** The phone can pair WITHOUT scanning a QR by
+      trading a short code shown on the PC for the pairing payload.
+      **Phase 1 DONE:** `src/pairing/pairing-code-service.ts` issues a short,
+      rotating, expiring (10 min) **pairing code** (8-char Crockford base32, shown by
+      the `qr` CLI alongside the QR; `Bridge.currentPairingCode()`); the LAN server
+      (now an `http.Server` + WS) exposes `GET /pair/resolve?code=<code>` which
+      validates the code (constant-time, per-IP rate-limited) and returns the full
+      `PairingPayload` (identical to the QR), after which the phone runs the normal
+      E2EE handshake. The code is the **consent gate** (same trust posture as the QR
+      — whoever sees the screen can pair; no new secret). **Phase 2 (next):** mDNS/
+      Bonjour advertisement so the phone DISCOVERS the bridge on the LAN (no typing
+      the host); needs a discovery library decision (pure-JS `bonjour-service` vs a
+      hand-rolled responder) — tracked as the next slice.
+      **Mobile linkage (uxnanmobile):** the deferred `ManualCodeScreen` must call
+      `GET http://<bridge-host>:<lanPort>/pair/resolve?code=<code>` **on the bridge**
+      (NOT the relay — its `FOR-DEV.md` currently points at the relay
+      `/trusted-session/resolve`; update it) to synthesize the `PairingPayload`, then
+      reuse the existing QR pairing path. Until Phase 2 (mDNS) lands, the phone needs
+      the bridge host (typed, or from a future mDNS browse).
 
 ## Identity & security
 - [x] **OS-keychain SecretStore** (Phase 3) — `src/keyring-secret-store.ts` via

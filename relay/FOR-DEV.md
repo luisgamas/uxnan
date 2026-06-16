@@ -28,16 +28,25 @@ bridge must keep working (securely, E2EE) **with or without** the relay. See
       `UXNAN_FCM_SERVICE_ACCOUNT`). Unit-tested with a fake sender. Real delivery
       needs the user's Firebase project (`relay/FOR-HUMAN.md`).
 
-## Deferred — routing/hardening (needs protocol/mobile coordination)
-- [ ] **Pairing-code resolution** — `GET /trusted-session/resolve` to map a short
-      pairing code → session (architecture §5.10.1). Needs the mobile manual-code
-      pairing flow to be defined first.
-- [ ] **Multi-session `mac` registration** — today one `mac` socket per
-      `sessionId`. Support a bridge advertising several sessions / reconnect
-      identity via `x-mac-device-id` + `x-pairing-code` headers (§5.10.1).
-- [ ] **Auth on forwarding** — the relay currently forwards any `mac`/`iphone`
-      that present a matching `sessionId`. Add the documented header checks
-      (`x-notification-secret`, identity-key pinning) before forwarding.
+## Deferred — routing/hardening (reclassified for the bridge-first model)
+> DIRECTION (2026-06): with the relay now **optional/self-hosted** and push moved
+> to the bridge, these items are reclassified. They matter ONLY for a hosted/shared
+> relay; the primary LAN/Tailscale-direct path does not need them.
+- [→bridge] **Pairing-code resolution** — `GET /trusted-session/resolve` was the
+      OFF-LAN equivalent of manual-code pairing. The bridge-first version is built on
+      the **bridge** (`bridge/src/pairing/pairing-code-service.ts` +
+      `GET /pair/resolve?code=` on the LAN server — see `bridge/FOR-DEV.md` →
+      *Manual-code pairing*). Keep this relay endpoint ONLY if you want hosted
+      off-LAN pairing-by-code through a relay; otherwise it's superseded.
+- [ ] **Multi-session `mac` registration** (relay-only) — one `mac` socket per
+      `sessionId` today; multi-session via `x-mac-device-id` + `x-pairing-code`
+      headers (§5.10.1). Needed ONLY if a hosted relay serves several bridges/sessions.
+      Deferred unless you run a shared relay.
+- [ ] **Auth on forwarding** (relay-only hardening) — add `x-notification-secret`
+      checks + identity-key pinning before forwarding. The frames are already E2EE
+      end-to-end (the handshake pins bridge↔phone identities), so a malicious
+      forwarder can only DoS/inject garbage the endpoints reject. Worth doing for a
+      **public** relay; unnecessary for a single-user self-hosted one.
 
 ## Phase 6 — Push notifications (IMPLEMENTED — gated on creds)
 Endpoints (architecture §5.10.1–§5.10.4), in `src/push.ts` + `src/relay-server.ts`:
@@ -54,13 +63,22 @@ Endpoints (architecture §5.10.1–§5.10.4), in `src/push.ts` + `src/relay-serv
       handlers + turn-completed hook (`bridge/src/push/push-service.ts`).
 
 ### Remaining follow-ups
-- [ ] **Dedupe store persistence** — dedupe is in-memory; persist to
-      `push-dedupe-keys.json` with TTL (7 days) + max keys to survive restarts (§5.10.4).
-- [ ] **Token persistence** — the per-session token registry is in-memory; persist
-      so registrations survive a relay restart.
-- [ ] **APNs-direct path** (no Firebase for iOS) — optional, see `relay/FOR-HUMAN.md`.
-- [ ] **Real-device validation** — needs the user's Firebase project + a device
-      (see `relay/FOR-HUMAN.md`).
+> DIRECTION (2026-06): push now ships **from the bridge** (direct FCM, registrations
+> persisted in `~/.uxnan/push-state.json`). The relay push path is a FALLBACK for
+> setups that keep the Firebase credential on a hosted relay, so the two
+> persistence items below matter ONLY for that variant.
+- [ ] **Dedupe store persistence** (relay-only fallback) — dedupe is in-memory;
+      persist to `push-dedupe-keys.json` with TTL (7 days) + max keys (§5.10.4). The
+      bridge-direct path fires once per turn and needs no dedupe.
+- [ ] **Token persistence** (relay-only fallback) — the per-session token registry
+      is in-memory; persist so registrations survive a relay restart. The bridge
+      already persists its own registrations.
+- [~] **APNs-direct path** (no Firebase for iOS) — **superseded.** The decision is
+      FCM-for-both (iOS via FCM once the APNs key is uploaded to Firebase), so a
+      separate APNs path is redundant. Close unless that decision changes.
+- [ ] **Real-device validation** — STILL REQUIRED (not relay-specific): it validates
+      the **bridge-direct** FCM stack. Android needs no paid account; iOS needs the
+      APNs `.p8` key in Firebase (`FOR-HUMAN.md`).
 
 ## How to test the relay
 - Unit/integration (current): `npm run test -w uxnan-relay` — starts the server on

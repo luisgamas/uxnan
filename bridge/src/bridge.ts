@@ -19,6 +19,7 @@ import { createDefaultSecretStore } from './keyring-secret-store.js';
 import { SessionState } from './session-state.js';
 import { buildBridgeStatus } from './bridge-status.js';
 import { generatePairingPayload } from './qr.js';
+import { PairingCodeService } from './pairing/pairing-code-service.js';
 import { createFileLogger, type LogLevel } from './logger.js';
 import { BRIDGE_VERSION } from './version.js';
 import { FileTrustStore, type TrustStore } from './transport/trust-store.js';
@@ -62,6 +63,8 @@ export interface Bridge {
   readonly trustStore: TrustStore;
   status(): BridgeStatus;
   generatePairingQr(): PairingPayload;
+  /** The current manual-pairing code to show on the PC (rotates on expiry). */
+  currentPairingCode(): string;
   /** Connect to the relay as `mac` and serve a phone for the given session. */
   connectRelay(sessionId: string): Promise<void>;
   /** Start the direct-LAN WebSocket server; resolves with the bound port. */
@@ -105,6 +108,19 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   const threadStore = new ThreadStore(state);
   // Reads agent on-disk session logs when the store has no turns (§5.8.8).
   const sessionHistory = new SessionHistoryReader();
+  // Single source of the pairing payload — shared by the QR and the manual-code
+  // resolve endpoint, so both hand out identical pairing data.
+  const buildPairingPayload = (): PairingPayload =>
+    generatePairingPayload({
+      ...(config.relayEnabled ? { relayUrl: config.relayUrl } : {}),
+      ...(config.lanEnabled ? { hosts: localHostPorts(config.lanPort) } : {}),
+      macDeviceId: deviceState.identity.macDeviceId,
+      macIdentityPublicKey: deviceState.identity.macIdentityPublicKey,
+      displayName: hostname(),
+      now: now(),
+      sessionId: pairingSessionId,
+    });
+  const pairingCodeService = new PairingCodeService({ buildPayload: buildPairingPayload, now });
   const projects = new ProjectRegistry(config.workspaceRoots, process.cwd(), config.projectAgents);
   // Browse roots fall back to the project roots, then the bridge's launch
   // directory (`process.cwd()`) — so an unconfigured install browses from
@@ -274,16 +290,8 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
         startedAt,
         now: now(),
       }),
-    generatePairingQr: () =>
-      generatePairingPayload({
-        ...(config.relayEnabled ? { relayUrl: config.relayUrl } : {}),
-        ...(config.lanEnabled ? { hosts: localHostPorts(config.lanPort) } : {}),
-        macDeviceId: deviceState.identity.macDeviceId,
-        macIdentityPublicKey: deviceState.identity.macIdentityPublicKey,
-        displayName: hostname(),
-        now: now(),
-        sessionId: pairingSessionId,
-      }),
+    generatePairingQr: () => buildPairingPayload(),
+    currentPairingCode: () => pairingCodeService.currentCode(),
     connectRelay: async (sessionId: string) => {
       const dial = (): Promise<RelayConnection> =>
         connectRelayAsMac({
@@ -362,6 +370,15 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
             trustStore,
             displayName: hostname(),
           });
+        },
+        // Manual-code pairing: trade a code shown on the PC for the pairing payload.
+        onPairResolve: (code, ip) => {
+          if (pairingCodeService.rateLimited(ip)) {
+            return { status: 429, json: { error: 'rate_limited' } };
+          }
+          const payload = pairingCodeService.resolve(code);
+          if (!payload) return { status: 403, json: { error: 'invalid_or_expired_code' } };
+          return { status: 200, json: payload };
         },
       });
       logger.info(`LAN server listening on port ${lanHandle.port}`);

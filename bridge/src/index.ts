@@ -35,6 +35,10 @@ export {
   type HistorySource,
   type SessionHistoryOptions,
 } from './conversation/session-history.js';
+export {
+  PairingCodeService,
+  type PairingCodeServiceOptions,
+} from './pairing/pairing-code-service.js';
 export { SecureDeviceState, type PublicIdentity } from './secure-device-state.js';
 export { InMemorySecretStore, type SecretStore } from './secret-store.js';
 export {
