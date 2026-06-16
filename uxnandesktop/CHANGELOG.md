@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — Phase 5: rotating backups + schema-migration hardening
+- **5 rotating backups** (`persistence.rs`): before each atomic write, the live
+  `state.json` is rotated into a numbered ring (`state.bak.1` … `state.bak.5`,
+  oldest dropped), so a bad write or migration can be recovered. Rotation is
+  best-effort — a backup error never blocks the save. Closes a Phase 0 follow-up.
+- **Sequential schema migrations**: `migrate` now applies one `v → v+1` step at a
+  time up to `SCHEMA_VERSION` (each future bump is an independent, testable
+  transform) and rejects a future version. A missing `version` is still treated
+  as current. (Debounced async writes remain a follow-up; the frontend already
+  debounces the high-frequency layout writes.)
+
 ### Added — Phase 4 (Layer 1): local agent hook server + precise states
 - **HTTP hook server (`axum`).** The backend binds a small server to an
   ephemeral `127.0.0.1` port at startup (`hooks.rs`). An agent's hook `POST`s a

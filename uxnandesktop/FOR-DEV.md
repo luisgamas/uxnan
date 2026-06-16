@@ -197,13 +197,12 @@ Phase 0 follow-ups:
 - [x] **shadcn-svelte components** — the component library (button, input, dialog,
       dropdown-menu, select, card, badge, separator, tooltip, collapsible) is
       installed under `src/lib/components/ui/` and used across the app.
-- [ ] **Debounced async persistence** — current `save` is synchronous
-      write-rename on the command thread. Add the 250 ms Tokio debounce +
-      5 rotating backups described in spec §7 (`persistence.rs`). Defer until
-      layout writes get frequent (Phase 1 tabs/splits). **FOR-DEV** (marker in
-      `persistence.rs`).
-- [ ] **Migration arms** — `persistence::migrate` only knows v1; add real
-      `v1→v2…` arms when the schema first changes. **FOR-DEV** marker in place.
+- [x] **Rotating backups** — 5 numbered backups rotated before each atomic write
+      (`persistence.rs`, Phase 5). The **250 ms Tokio debounce** for `save` is
+      still a follow-up; deferred since the frontend already debounces the
+      high-frequency layout writes. **FOR-DEV.**
+- [x] **Migration arms** — `persistence::migrate` now applies sequential
+      `v→v+1` steps via `migrate_step` (add an arm per future schema bump).
 - [ ] **Branded icons + bundle identity** — replace the default Tauri icons.
       See `FOR-HUMAN.md`.
 
@@ -474,7 +473,11 @@ earlier "superficial UX" warning is resolved.
 ## Phase 5 — Polish & UX ☐
 
 - [ ] Hunk-level (partial) staging (`git2::Diff::foreach` + index manipulation).
-- [ ] Rotating backups + schema migrations hardening (closes Phase 0 follow-up).
+- [x] **Rotating backups + schema-migration hardening** (`persistence.rs`): 5
+      numbered backups rotated before each atomic write; `migrate` applies
+      sequential `v→v+1` steps and rejects future versions. Debounced async
+      writer still a follow-up (frontend already debounces layout). Closes the
+      Phase 0 follow-up.
 - [ ] System-suspension prevention while an agent is `working` (per-OS; opt-in;
       2 h auto-release).
 - [ ] Stronghold/keyring for any secret (never plaintext JSON).
