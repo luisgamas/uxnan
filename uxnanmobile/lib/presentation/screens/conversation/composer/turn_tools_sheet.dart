@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/domain/entities/agent_model.dart';
 import 'package:uxnan/domain/enums/approval_mode.dart';
+import 'package:uxnan/infrastructure/media/attachment_picker_service.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/screens/conversation/support/approval_mode_sheet.dart';
@@ -25,6 +26,7 @@ class TurnToolsSheet {
     required bool showApproval,
     required ApprovalMode approvalMode,
     required ValueChanged<ApprovalMode> onApprovalChanged,
+    required ValueChanged<AttachmentSource> onAttach,
   }) {
     return showModalBottomSheet<void>(
       context: context,
@@ -37,6 +39,7 @@ class TurnToolsSheet {
         showApproval: showApproval,
         approvalMode: approvalMode,
         onApprovalChanged: onApprovalChanged,
+        onAttach: onAttach,
       ),
     );
   }
@@ -50,6 +53,7 @@ class _TurnToolsBody extends ConsumerStatefulWidget {
     required this.showApproval,
     required this.approvalMode,
     required this.onApprovalChanged,
+    required this.onAttach,
   });
 
   final String threadId;
@@ -58,6 +62,7 @@ class _TurnToolsBody extends ConsumerStatefulWidget {
   final bool showApproval;
   final ApprovalMode approvalMode;
   final ValueChanged<ApprovalMode> onApprovalChanged;
+  final ValueChanged<AttachmentSource> onAttach;
 
   @override
   ConsumerState<_TurnToolsBody> createState() => _TurnToolsBodyState();
@@ -99,17 +104,34 @@ class _TurnToolsBodyState extends ConsumerState<_TurnToolsBody> {
                 child: Text(l10n.composerTools, style: textTheme.titleSmall),
               ),
 
-              // Attach (FOR-DEV: no file/image picker yet — see composer_bar).
-              if (widget.showAttach)
+              // Attach an image (gallery / camera). The agent must advertise the
+              // `images` capability for this to show.
+              if (widget.showAttach) ...[
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: Icon(
-                    Icons.attach_file_rounded,
+                    Icons.photo_library_outlined,
                     color: colors.onSurfaceVariant,
                   ),
-                  title: Text(l10n.composerAttach),
-                  enabled: false,
+                  title: Text(l10n.composerAttachGallery),
+                  onTap: () {
+                    Navigator.pop(context);
+                    widget.onAttach(AttachmentSource.gallery);
+                  },
                 ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    Icons.photo_camera_outlined,
+                    color: colors.onSurfaceVariant,
+                  ),
+                  title: Text(l10n.composerAttachCamera),
+                  onTap: () {
+                    Navigator.pop(context);
+                    widget.onAttach(AttachmentSource.camera);
+                  },
+                ),
+              ],
 
               // Run-option knobs (reasoning effort, …) from the bridge.
               if (hasRunOptions) ...[

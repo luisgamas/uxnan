@@ -349,10 +349,28 @@ browser and multi-PC connection correctness are now DONE — see below.)
     section) → real values from `git/status` via `gitRepoStateProvider`; the
     commit/push rows call `GitActionManager.commit` / `.push` against the active
     thread's `cwd`.
-  - ◑ **Attach** (`ComposerBar` add button) → the button is now **gated by the
-    agent's `images` capability** (hidden when unsupported). ☐ Still a disabled
-    placeholder when shown: file/image picker → upload as `ImageContent` /
-    attachment (FOR-DEV).
+  - ◑ **Attach** (`ComposerBar` "+" → turn-tools sheet) → APP SIDE DONE,
+    bridge-blocked for delivery. Gated by the agent's `images` capability. The
+    Attach tile offers **Photo library / Take a photo**
+    (`AttachmentPickerService` + `image_picker`, downscaled to 2048 px / q85,
+    inline base64 `ImageContent`); pending images show as a removable thumbnail
+    strip above the composer (`_AttachmentStrip`) and the composer sends with an
+    empty text field (image-only message allowed). `sendUserMessage` echoes them
+    locally (rendered inline via `_ImageBlock`) and rides them on `turn/send`.
+    - **CONTRACT the bridge must implement** (dormant until then): add
+      `attachments?: ImageContent[]` to `TurnSendParams`
+      (`shared/src/jsonrpc/methods.ts`); have `turn/send`'s handler read them and
+      `AgentManager.sendTurn` forward the images to the agent CLI (and allow an
+      empty `text` when `attachments` is non-empty). The app already sends
+      `attachments: [{type:'image', mimeType, base64Data}]`.
+    - ☐ **Camera permission caveat (Android):** `mobile_scanner` already declares
+      `CAMERA`, so `image_picker`'s camera capture may need a runtime grant on
+      some devices — the service fails safe (returns null) if denied. Verify
+      on-device; wire `permission_handler` for camera if it doesn't prompt.
+    - ☐ **iOS:** `NSPhotoLibraryUsageDescription` (+ camera) Info.plist strings —
+      FOR-HUMAN §4.
+    - ☐ **Arbitrary (non-image) file attach** — no bridge contract/model exists
+      (only `ImageContent` + `workspace/readImage`); deferred until one does.
   - ☑ **Voice** (`ComposerBar` mic button) → DONE: on-device speech-to-text
     dictates into the composer (`speech_to_text`, guarded `SpeechToTextService`),
     live partial→final with a recording state; verified on-device. See

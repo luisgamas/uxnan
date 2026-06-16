@@ -7,6 +7,15 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Image attachments in the composer (app side).** The "+" turn-tools sheet's
+  Attach action (shown for `images`-capable agents) now picks an image from the
+  **photo library** or **camera** (`image_picker`, downscaled to 2048 px / q85).
+  Pending images appear as a removable thumbnail strip above the composer, an
+  image-only message (empty text) can be sent, and sent/received images render
+  inline. The image rides on `turn/send` as `attachments` and is echoed locally.
+  **Dormant for delivery until the bridge accepts attachments** (no
+  `TurnSendParams.attachments` / `AgentManager.sendTurn` forwarding yet) — the
+  contract is documented in `FOR-DEV.md`.
 - **Interactive approval prompts (app side).** The in-timeline approval card is
   now interactive: **Approve**, **Reject**, and **Always allow this session**,
   with a spring morph into a settled status row, an in-flight spinner, and

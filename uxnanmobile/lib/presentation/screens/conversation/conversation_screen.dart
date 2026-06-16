@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,8 +11,10 @@ import 'package:uxnan/domain/enums/message_role.dart';
 import 'package:uxnan/domain/enums/thread_activity.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
 import 'package:uxnan/domain/value_objects/turn_timeline_snapshot.dart';
+import 'package:uxnan/infrastructure/media/attachment_picker_service.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
+import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_bar.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/turn_tools_sheet.dart';
 import 'package:uxnan/presentation/screens/conversation/git/git_screen.dart';
@@ -50,6 +54,10 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   // setting is on: forces the next timeline update to jump to the bottom if the
   // user had scrolled up. Cleared once that scroll happens.
   bool _forceScrollOnSend = false;
+
+  /// Images the user attached for the next turn (shown as removable thumbnails
+  /// above the composer); cleared on send.
+  final List<ImageContent> _attachments = [];
 
   // Captured in initState: using `ref` inside dispose() is unreliable in
   // Riverpod (the clear could be dropped, leaving this thread marked as
@@ -137,7 +145,29 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
       showApproval: showApproval,
       approvalMode: _approvalMode,
       onApprovalChanged: (mode) => setState(() => _approvalMode = mode),
+      onAttach: _pickAttachment,
     );
+  }
+
+  /// Picks an image from [source] and appends it to the pending attachments.
+  Future<void> _pickAttachment(AttachmentSource source) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final l10n = AppLocalizations.of(context);
+    final image =
+        await ref.read(attachmentPickerServiceProvider).pickImage(source);
+    if (!mounted || image == null) return;
+    if (image.base64Data == null) {
+      messenger
+        ..clearSnackBars()
+        ..showSnackBar(SnackBar(content: Text(l10n.composerAttachFailed)));
+      return;
+    }
+    setState(() => _attachments.add(image));
+  }
+
+  void _removeAttachment(int index) {
+    if (index < 0 || index >= _attachments.length) return;
+    setState(() => _attachments.removeAt(index));
   }
 
   /// Copies the full thread id so the same conversation can be resumed from the
@@ -390,8 +420,16 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                     tokenLabel: environment.contextTokensLabel,
                   ),
                 ),
+              if (_attachments.isNotEmpty)
+                _Centered(
+                  child: _AttachmentStrip(
+                    attachments: _attachments,
+                    onRemove: _removeAttachment,
+                  ),
+                ),
               ComposerBar(
                 enabled: connectedHere,
+                hasAttachments: _attachments.isNotEmpty,
                 // While the agent is producing a turn, Send becomes Stop —
                 // cancels the turn (without closing the thread).
                 running: running,
@@ -412,9 +450,16 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                   }
                   final options =
                       ref.read(threadRunOptionsProvider(widget.threadId));
-                  ref
-                      .read(threadManagerProvider)
-                      .sendUserMessage(widget.threadId, text, options: options);
+                  final attachments = List<ImageContent>.of(_attachments);
+                  ref.read(threadManagerProvider).sendUserMessage(
+                        widget.threadId,
+                        text,
+                        options: options,
+                        attachments: attachments,
+                      );
+                  if (_attachments.isNotEmpty) {
+                    setState(_attachments.clear);
+                  }
                 },
               ),
             ],
@@ -618,6 +663,83 @@ class _Centered extends StatelessWidget {
           maxWidth: UxnanSpacing.maxContentWidth,
         ),
         child: child,
+      ),
+    );
+  }
+}
+
+/// A horizontal strip of pending attachment thumbnails shown just above the
+/// composer; each has a remove (✕) overlay. Sits on the same gutter as the
+/// composer pill.
+class _AttachmentStrip extends StatelessWidget {
+  const _AttachmentStrip({required this.attachments, required this.onRemove});
+
+  final List<ImageContent> attachments;
+  final ValueChanged<int> onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        UxnanSpacing.lg,
+        UxnanSpacing.xs,
+        UxnanSpacing.lg,
+        0,
+      ),
+      child: SizedBox(
+        height: 72,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          itemCount: attachments.length,
+          separatorBuilder: (_, __) => const SizedBox(width: UxnanSpacing.sm),
+          itemBuilder: (context, index) {
+            final data = attachments[index].base64Data;
+            return Stack(
+              children: [
+                ClipRRect(
+                  borderRadius: const BorderRadius.all(UxnanRadius.md),
+                  child: Container(
+                    width: 72,
+                    height: 72,
+                    color: colors.surfaceContainerHighest,
+                    child: data == null
+                        ? Icon(
+                            Icons.image_outlined,
+                            color: colors.onSurfaceVariant,
+                          )
+                        : Image.memory(
+                            base64Decode(data),
+                            width: 72,
+                            height: 72,
+                            fit: BoxFit.cover,
+                            gaplessPlayback: true,
+                          ),
+                  ),
+                ),
+                Positioned(
+                  top: 2,
+                  right: 2,
+                  child: GestureDetector(
+                    onTap: () => onRemove(index),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: colors.scrim.withValues(alpha: 0.6),
+                        shape: BoxShape.circle,
+                      ),
+                      padding: const EdgeInsets.all(2),
+                      child: const Icon(
+                        Icons.close_rounded,
+                        size: 16,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
       ),
     );
   }

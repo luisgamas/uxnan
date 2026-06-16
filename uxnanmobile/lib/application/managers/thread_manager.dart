@@ -484,17 +484,26 @@ class ThreadManager {
   }
 
   /// Saves a user [text] message locally and sends it to the active turn.
+  /// [attachments] are inline images (base64) picked in the composer; they are
+  /// echoed in the local message and ride on `turn/send`.
   Future<void> sendUserMessage(
     String threadId,
     String text, {
     Map<String, Object>? options,
+    List<ImageContent>? attachments,
   }) async {
+    final images = attachments ?? const <ImageContent>[];
+    final contents = <MessageContent>[
+      if (text.isNotEmpty) TextContent(text),
+      ...images,
+    ];
+    if (contents.isEmpty) return;
     final message = Message(
       id: _uuid.v4(),
       threadId: threadId,
       turnId: '',
       role: MessageRole.user,
-      contents: [TextContent(text)],
+      contents: contents,
       deliveryState: MessageDeliveryState.sending,
       orderIndex: _nextOrderIndex(),
       createdAt: DateTime.now(),
@@ -506,11 +515,18 @@ class ThreadManager {
     // was created. `options` carries the chosen per-model run-option knobs.
     // Surface failures: if the bridge rejects the turn (e.g. `thread not
     // found`), mark the user's message FAILED instead of swallowing it.
+    //
+    // FOR-DEV: `attachments` is sent ahead of the bridge — `TurnSendParams` has
+    // no attachments field yet and `AgentManager.sendTurn` doesn't forward
+    // images, so the agent does not receive them until the bridge wires it (the
+    // local echo already shows the image). See `FOR-DEV.md` for the contract.
     try {
       final res = await _sendRequest('turn/send', {
         'threadId': threadId,
         'text': text,
         if (options != null && options.isNotEmpty) 'options': options,
+        if (images.isNotEmpty)
+          'attachments': [for (final image in images) image.toJson()],
       });
       if (res.error != null) {
         await _messageRepository.saveMessage(

@@ -367,6 +367,15 @@ class AppLocalizationsEs extends AppLocalizations {
   String get composerAttach => 'Adjuntar';
 
   @override
+  String get composerAttachGallery => 'Galería de fotos';
+
+  @override
+  String get composerAttachCamera => 'Tomar una foto';
+
+  @override
+  String get composerAttachFailed => 'No se pudo adjuntar esa imagen';
+
+  @override
   String get composerStop => 'Detener';
 
   @override

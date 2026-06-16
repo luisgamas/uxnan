@@ -752,6 +752,24 @@ abstract class AppLocalizations {
   /// **'Attach'**
   String get composerAttach;
 
+  /// No description provided for @composerAttachGallery.
+  ///
+  /// In en, this message translates to:
+  /// **'Photo library'**
+  String get composerAttachGallery;
+
+  /// No description provided for @composerAttachCamera.
+  ///
+  /// In en, this message translates to:
+  /// **'Take a photo'**
+  String get composerAttachCamera;
+
+  /// No description provided for @composerAttachFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t attach that image'**
+  String get composerAttachFailed;
+
   /// Tooltip on the button that cancels the in-flight agent turn (replaces Send while running).
   ///
   /// In en, this message translates to:

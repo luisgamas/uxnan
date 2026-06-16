@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -56,8 +57,7 @@ class MessageContentView extends StatelessWidget {
       final CommandExecutionContent c => _CommandCard(content: c),
       final SystemContent c => _SystemBanner(content: c),
       final DiffContent c => _DiffBlock(content: c),
-      final ImageContent _ =>
-        const _Placeholder(icon: Icons.image_outlined, label: 'Image'),
+      final ImageContent c => _ImageBlock(content: c),
       final ToolUseContent c =>
         _Placeholder(icon: Icons.build_outlined, label: 'Tool · ${c.toolName}'),
       final MermaidContent _ =>
@@ -281,6 +281,39 @@ class _ApprovalResolved extends StatelessWidget {
           style: textTheme.labelLarge?.copyWith(color: color),
         ),
       ],
+    );
+  }
+}
+
+/// Renders an [ImageContent]: an inline-base64 image as a bounded thumbnail, or
+/// a path/placeholder when only a workspace path is known (no bytes inline).
+class _ImageBlock extends StatelessWidget {
+  const _ImageBlock({required this.content});
+  final ImageContent content;
+
+  @override
+  Widget build(BuildContext context) {
+    final data = content.base64Data;
+    if (data == null) {
+      return _Placeholder(
+        icon: Icons.image_outlined,
+        label: content.path ?? 'Image',
+      );
+    }
+    return ClipRRect(
+      borderRadius: const BorderRadius.all(UxnanRadius.md),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxHeight: 280, maxWidth: 280),
+        child: Image.memory(
+          base64Decode(data),
+          fit: BoxFit.contain,
+          gaplessPlayback: true,
+          errorBuilder: (context, _, __) => _Placeholder(
+            icon: Icons.broken_image_outlined,
+            label: content.mimeType,
+          ),
+        ),
+      ),
     );
   }
 }

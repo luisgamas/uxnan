@@ -18,6 +18,7 @@ class ComposerBar extends ConsumerStatefulWidget {
     required this.onSend,
     this.enabled = true,
     this.running = false,
+    this.hasAttachments = false,
     this.onStop,
     this.onPlus,
     super.key,
@@ -28,6 +29,10 @@ class ComposerBar extends ConsumerStatefulWidget {
 
   /// Whether sending is currently allowed (e.g. connected).
   final bool enabled;
+
+  /// Whether the composer has pending attachments — lets the user send with an
+  /// empty text field (image-only message) and shows Send instead of the mic.
+  final bool hasAttachments;
 
   /// Whether the agent is currently producing a turn — Send becomes Stop.
   final bool running;
@@ -77,7 +82,8 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
 
   void _send() {
     final text = _controller.text.trim();
-    if (text.isEmpty || !widget.enabled) return;
+    if (!widget.enabled) return;
+    if (text.isEmpty && !widget.hasAttachments) return;
     widget.onSend(text);
     _controller.clear();
   }
@@ -127,7 +133,8 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final l10n = AppLocalizations.of(context);
-    final canSend = _hasText && widget.enabled;
+    final showSend = _hasText || widget.hasAttachments;
+    final canSend = showSend && widget.enabled;
 
     return SafeArea(
       top: false,
@@ -201,7 +208,7 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
                     ),
                     const SizedBox(width: UxnanSpacing.xs),
                     _TrailingAction(
-                      hasText: _hasText,
+                      hasText: showSend,
                       enabled: widget.enabled,
                       running: widget.running,
                       listening: _listening,

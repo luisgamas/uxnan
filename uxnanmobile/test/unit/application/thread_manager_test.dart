@@ -424,6 +424,51 @@ void main() {
     expect(turnSendParams?.containsKey('options'), isFalse);
   });
 
+  test('sendUserMessage forwards attachments and echoes them locally',
+      () async {
+    await manager.selectThread('th1');
+    await _settle();
+
+    await manager.sendUserMessage(
+      'th1',
+      'look',
+      attachments: const [
+        ImageContent(mimeType: 'image/png', base64Data: 'AAAA'),
+      ],
+    );
+    await _settle();
+
+    expect(turnSendParams?['attachments'], [
+      {'type': 'image', 'mimeType': 'image/png', 'base64Data': 'AAAA'},
+    ]);
+    final persisted = await messageRepo.getMessages('th1');
+    final user = persisted.firstWhereOrNull((m) => m.role == MessageRole.user);
+    expect(user, isNotNull);
+    expect(user!.contents.whereType<ImageContent>().length, 1);
+    expect(user.contents.whereType<TextContent>().single.text, 'look');
+  });
+
+  test('sendUserMessage allows an image-only message (empty text)', () async {
+    await manager.selectThread('th1');
+    await _settle();
+
+    await manager.sendUserMessage(
+      'th1',
+      '',
+      attachments: const [
+        ImageContent(mimeType: 'image/jpeg', base64Data: 'BBBB'),
+      ],
+    );
+    await _settle();
+
+    expect(sentMethods, contains('turn/send'));
+    final persisted = await messageRepo.getMessages('th1');
+    final user = persisted.firstWhereOrNull((m) => m.role == MessageRole.user);
+    expect(user, isNotNull);
+    expect(user!.contents.whereType<TextContent>().isEmpty, isTrue);
+    expect(user.contents.whereType<ImageContent>().length, 1);
+  });
+
   test('respondApproval sends turn/send with the approvalResponse', () async {
     final ok = await manager.respondApproval(
       threadId: 'th1',
