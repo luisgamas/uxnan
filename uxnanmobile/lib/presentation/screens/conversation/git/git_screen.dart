@@ -1589,93 +1589,111 @@ class _PrDialogState extends State<_PrDialog> {
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     return Dialog.fullscreen(
-      child: Scaffold(
-        appBar: AppBar(
-          leading: IconButton(
-            icon: const Icon(Icons.close_rounded),
-            onPressed: () => Navigator.of(context).pop(),
-          ),
-          title: Text(l10n.gitPrDialogTitle),
-          actions: [
-            TextButton(
+      child: NeScaffold(
+        title: l10n.gitPrDialogTitle,
+        // Full-screen dialog: a close (✕) Icon Surface + the affirmative
+        // action, content centred at 560 dp scrolling under the top veil —
+        // same chrome as the new-conversation dialog.
+        leading: IconSurface(
+          icon: Icons.close_rounded,
+          tooltip: l10n.gitCancel,
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: UxnanSpacing.sm),
+            child: TextButton(
               onPressed: _submit,
               child: Text(l10n.gitPrCreate),
             ),
-            const SizedBox(width: UxnanSpacing.sm),
-          ],
-        ),
-        body: SafeArea(
-          child: ListView(
-            padding: const EdgeInsets.all(UxnanSpacing.lg),
-            children: [
-              TextField(
-                controller: _title,
-                autofocus: true,
-                textCapitalization: TextCapitalization.sentences,
-                decoration: InputDecoration(
-                  labelText: l10n.gitPrTitleLabel,
-                  errorText: _error,
-                  border: const OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: UxnanSpacing.lg),
-              _BranchField(
-                label: l10n.gitPrHeadLabel,
-                icon: Icons.upload_rounded,
-                value: _head,
-                options: _headOptions,
-                onChanged: (v) => setState(() => _head = v),
-              ),
-              const SizedBox(height: UxnanSpacing.sm),
-              Center(
-                child: Icon(
-                  Icons.arrow_downward_rounded,
-                  size: 18,
-                  color: colors.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: UxnanSpacing.sm),
-              _BranchField(
-                label: l10n.gitPrBaseLabel,
-                icon: Icons.flag_outlined,
-                value: _base,
-                options: _baseOptions,
-                onChanged: (v) => setState(() => _base = v),
-              ),
-              const SizedBox(height: UxnanSpacing.md),
-              Row(
-                children: [
-                  Icon(
-                    Icons.info_outline_rounded,
-                    size: 16,
-                    color: colors.onSurfaceVariant,
-                  ),
-                  const SizedBox(width: UxnanSpacing.sm),
-                  Expanded(
-                    child: Text(
-                      l10n.gitPrPushNote,
-                      style: textTheme.bodySmall?.copyWith(
-                        color: colors.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: UxnanSpacing.lg),
-              TextField(
-                controller: _body,
-                minLines: 4,
-                maxLines: 10,
-                textCapitalization: TextCapitalization.sentences,
-                decoration: InputDecoration(
-                  labelText: l10n.gitPrBodyLabel,
-                  alignLabelWithHint: true,
-                  border: const OutlineInputBorder(),
-                ),
-              ),
-            ],
           ),
-        ),
+        ],
+        slivers: [
+          SliverToBoxAdapter(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 560),
+                child: Padding(
+                  padding: const EdgeInsets.all(UxnanSpacing.lg),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      TextField(
+                        controller: _title,
+                        autofocus: true,
+                        textCapitalization: TextCapitalization.sentences,
+                        decoration: InputDecoration(
+                          labelText: l10n.gitPrTitleLabel,
+                          errorText: _error,
+                          border: const OutlineInputBorder(
+                            borderRadius: BorderRadius.all(UxnanRadius.lg),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: UxnanSpacing.lg),
+                      _BranchField(
+                        label: l10n.gitPrHeadLabel,
+                        icon: Icons.upload_rounded,
+                        value: _head,
+                        options: _headOptions,
+                        onChanged: (v) => setState(() => _head = v),
+                      ),
+                      const SizedBox(height: UxnanSpacing.sm),
+                      Center(
+                        child: Icon(
+                          Icons.arrow_downward_rounded,
+                          size: 18,
+                          color: colors.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: UxnanSpacing.sm),
+                      _BranchField(
+                        label: l10n.gitPrBaseLabel,
+                        icon: Icons.flag_outlined,
+                        value: _base,
+                        options: _baseOptions,
+                        onChanged: (v) => setState(() => _base = v),
+                      ),
+                      const SizedBox(height: UxnanSpacing.md),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.info_outline_rounded,
+                            size: 16,
+                            color: colors.onSurfaceVariant,
+                          ),
+                          const SizedBox(width: UxnanSpacing.sm),
+                          Expanded(
+                            child: Text(
+                              l10n.gitPrPushNote,
+                              style: textTheme.bodySmall?.copyWith(
+                                color: colors.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: UxnanSpacing.lg),
+                      TextField(
+                        controller: _body,
+                        minLines: 4,
+                        maxLines: 10,
+                        textCapitalization: TextCapitalization.sentences,
+                        decoration: InputDecoration(
+                          labelText: l10n.gitPrBodyLabel,
+                          alignLabelWithHint: true,
+                          border: const OutlineInputBorder(
+                            borderRadius: BorderRadius.all(UxnanRadius.lg),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
