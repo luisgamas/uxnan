@@ -20,6 +20,8 @@
  * phone must still complete the identity-keyed E2EE handshake. See bridge/FOR-DEV.md.
  */
 import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 import type { PairingPayload } from '@uxnan/shared';
 
 /** Crockford base32 alphabet (no I, L, O, U — unambiguous when read aloud/typed). */
@@ -41,6 +43,20 @@ export interface PairingCodeServiceOptions {
   /** Per-IP resolve-attempt window + cap (anti-brute-force). */
   rateWindowMs?: number;
   rateMax?: number;
+  /**
+   * Absolute path to persist the current code+expiry (e.g.
+   * `~/.uxnan/pairing-code.json`). When set, the code is shared ACROSS processes
+   * so the running daemon that serves `/pair/resolve` and a separate `qr`/`code`
+   * command (or an autostarted, console-less daemon) hand out the SAME code.
+   * Omit for an in-memory-only instance (tests).
+   */
+  statePath?: string;
+}
+
+/** On-disk shape of the shared pairing code. */
+interface PersistedCode {
+  code: string;
+  expiresAt: number;
 }
 
 interface RateEntry {
@@ -56,6 +72,7 @@ export class PairingCodeService {
   readonly #rateWindowMs: number;
   readonly #rateMax: number;
   readonly #rate = new Map<string, RateEntry>();
+  readonly #statePath: string | undefined;
 
   #code: string | undefined;
   #expiresAt = 0;
@@ -67,6 +84,7 @@ export class PairingCodeService {
     this.#generateCode = options.generateCode ?? defaultGenerateCode;
     this.#rateWindowMs = options.rateWindowMs ?? DEFAULT_RATE_WINDOW_MS;
     this.#rateMax = options.rateMax ?? DEFAULT_RATE_MAX;
+    this.#statePath = options.statePath;
   }
 
   /**
@@ -76,9 +94,11 @@ export class PairingCodeService {
    */
   currentCode(): string {
     const now = this.#now();
+    this.#syncFromDisk(now);
     if (!this.#code || now >= this.#expiresAt) {
       this.#code = this.#generateCode();
       this.#expiresAt = now + this.#ttlMs;
+      this.#persist();
     }
     return group(this.#code);
   }
@@ -87,6 +107,7 @@ export class PairingCodeService {
   rotate(): string {
     this.#code = this.#generateCode();
     this.#expiresAt = this.#now() + this.#ttlMs;
+    this.#persist();
     return group(this.#code);
   }
 
@@ -97,9 +118,57 @@ export class PairingCodeService {
    */
   resolve(code: string): PairingPayload | undefined {
     const now = this.#now();
+    // Re-read the shared code so a daemon serving `/pair/resolve` validates
+    // against the code another process (the `qr`/`code` command) may have issued.
+    this.#syncFromDisk(now);
     if (!this.#code || now >= this.#expiresAt) return undefined;
     if (!constantTimeEqual(normalize(code), this.#code)) return undefined;
     return this.#buildPayload();
+  }
+
+  /** Adopt the persisted (shared) code when present and still valid. */
+  #syncFromDisk(now: number): void {
+    const persisted = this.#load();
+    if (persisted && now < persisted.expiresAt) {
+      this.#code = persisted.code;
+      this.#expiresAt = persisted.expiresAt;
+    }
+  }
+
+  /** Read the shared code from disk, or `undefined` (no path / missing / corrupt). */
+  #load(): PersistedCode | undefined {
+    if (!this.#statePath) return undefined;
+    try {
+      const parsed: unknown = JSON.parse(readFileSync(this.#statePath, 'utf-8'));
+      if (
+        parsed &&
+        typeof parsed === 'object' &&
+        typeof (parsed as PersistedCode).code === 'string' &&
+        typeof (parsed as PersistedCode).expiresAt === 'number'
+      ) {
+        return {
+          code: (parsed as PersistedCode).code,
+          expiresAt: (parsed as PersistedCode).expiresAt,
+        };
+      }
+    } catch {
+      /* missing or corrupt → in-memory only */
+    }
+    return undefined;
+  }
+
+  /** Persist the current code so other processes hand out the same one. Best-effort. */
+  #persist(): void {
+    if (!this.#statePath || !this.#code) return;
+    try {
+      mkdirSync(dirname(this.#statePath), { recursive: true });
+      writeFileSync(
+        this.#statePath,
+        JSON.stringify({ code: this.#code, expiresAt: this.#expiresAt }),
+      );
+    } catch {
+      /* best-effort: persistence failure falls back to in-memory */
+    }
   }
 
   /**

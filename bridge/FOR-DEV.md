@@ -39,9 +39,11 @@ versa). **Closed this round** (each app half was already wired; the bridge half
 landed now):
 - ☑ **Image attachments** — `turn/send { attachments }` + temp-file delivery
   (see *Turn image attachments*). On-device verify pending.
-- ☑ **Interactive approval intake** — `turn/send { approvalResponse }` routing +
-  the `approval` content block; Echo demo validatable now, Claude opt-in real
-  path (see *Interactive approval intake*).
+- ◑ **Interactive approval intake** — generic `turn/send { approvalResponse }`
+  routing + the `approval` content block DONE; **Echo demo works now**. Real-agent
+  approvals deferred: validated that headless `claude -p` can't do interactive
+  approvals (needs a `PreToolUse` hook round-trip); Codex needs app-server. See
+  *Interactive approval intake* + roadmap item 7.
 - ☑ **Manual-code pairing (mobile half)** — `ManualCodeScreen` →
   `GET /pair/resolve?code=` (see *Manual-code pairing* → Mobile linkage).
 
@@ -61,8 +63,10 @@ landed now):
    server-side (today it's a local-only phone setting).
 6. **Remote history back-paging** — `turn/list` cursor is forward-only/offset; a
    newest-first scroll-up needs a reverse cursor or a total-count.
-7. **Codex real approvals** — move turn execution onto the app-server protocol
-   (approval elicitations); `codex exec` can't prompt (see *Interactive approval*).
+7. **Real-agent approvals** — Claude via a `PreToolUse` hook (`--settings`) that
+   round-trips to a local bridge HTTP endpoint (headless `claude -p` has no
+   control-request channel — validated); Codex via the app-server turn protocol
+   (`codex exec` can't prompt). See *Interactive approval intake*.
 8. **Transport (optional):** seq-based catch-up on reconnect + key rotation —
    both await the mobile `clientHello.resumeState` trigger.
 
@@ -185,39 +189,49 @@ hosting** (the phone connects directly to the bridge on the same network).
           turn (so an approval survives a `turn/list` re-sync). Emitting the
           dedicated `stream/approval/requested` notification too is an optional
           future alignment if a non-persisted signal is ever wanted.
-        - ☑ **Echo demo** (validatable now): text `approval-demo` emits a sample
-          approval and pauses until the phone replies — for end-to-end UI
-          validation without a real agent.
-        - ◑ **Claude Code (opt-in):** `agents['claude-code'].interactiveApprovals:
-          true` runs turns via `--input-format stream-json`, surfaces
-          `control_request can_use_tool` as an approval block and writes the
-          decision back as a `control_response` (`src/adapters/claude-approvals.ts`,
-          pure + unit-tested; default off, one-shot path untouched). **FOR-DEV:
-          validate the stream-json input + control field names against a live
-          `claude` CLI** (documented-but-unverified here); also map
-          `approveSession` to a real session-scoped `updatedPermissions` instead
-          of a plain allow.
-        - ☐ **Codex:** `codex exec` is non-interactive and emits no approval
-          requests, so real Codex approvals need turn execution moved onto the
-          **app-server** protocol (the bridge already speaks it for
-          `model/list`) where `applyPatchApproval`/`execCommandApproval`
-          elicitations exist. Larger refactor — deferred. Until then Codex turns
-          run under their sandbox posture (`-s workspace-write`, etc.).
+        - ☑ **Echo demo (works now):** text `approval-demo` emits a sample
+          approval and pauses until the phone replies — start an `echo` thread,
+          send `approval-demo`, and the mobile card round-trips end-to-end.
+        - ☐ **Claude Code — NOT via the stream-json control protocol (validated
+          against `claude` 2.1.177).** A live probe proved that headless `claude
+          -p` does NOT emit `control_request can_use_tool`: a tool needing
+          permission is **denied** with an error `tool_result` ("requested
+          permissions … but you haven't granted it yet") and the turn ends. The
+          `--permission-prompt-tool` flag that the SDK used is **gone** from
+          2.1.177's `--help`. (The earlier control-protocol adapter code was
+          removed — it targeted a channel this CLI doesn't expose in `-p`.) The
+          **real path** is a **`PreToolUse` hook** injected via `claude -p
+          --settings '<json>'` (hooks DO apply in print mode): the hook command
+          reads the tool payload on stdin, POSTs it to a **local bridge HTTP
+          endpoint** (reuse the LAN `http.Server`, token-guarded, URL+token+threadId
+          injected via env per turn), the bridge emits the `approval` block and
+          **holds** the response until the phone answers (`respondApproval`
+          resolving a pending registry), then the hook prints
+          `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":
+          "allow"|"deny"}}`. Fully testable bridge↔hook↔CLI locally; the phone
+          uses the existing `turn/send { approvalResponse }`. Scoped, not built.
+        - ☐ **Codex:** `codex exec` is non-interactive (no approval prompts), so
+          real Codex approvals need turn execution moved onto the **app-server**
+          protocol (the bridge already speaks it for `model/list`) where
+          `applyPatchApproval`/`execCommandApproval` elicitations exist. Larger
+          refactor — deferred.
         - ☐ **OpenCode / pi / Gemini:** add `respondApproval` + an interactive
           invocation per CLI when their headless modes expose a permission
           channel (verify per CLI).
 - [x] **Turn image attachments** — `turn/send` accepts `attachments:
       TurnAttachment[]` and an **image-only** message (empty/omitted `text`).
-      `src/agents/attachments.ts` materializes each inline image to a temp file
-      (`<tmp>/uxnan-attachments/<turnId>/`) and `AgentManager.sendTurn` appends a
-      path reference to the prompt, so any file/vision-capable CLI can open it —
-      **no per-adapter image handling**. Tolerant parser; best-effort write (a
-      failure degrades to a text turn). Mobile half was already wired; this closes
-      the seam. **Follow-ups (FOR-DEV):** (1) native per-CLI image input (a
-      dedicated flag / MCP image part) where an agent supports it richer than a
-      file path — the `attachments` are already threaded to `adapter.sendTurn`
-      via `SendTurnOptions.attachments` for an adapter that wants to consume them
-      natively; (2) temp-file GC/retention (today they linger in the OS temp dir);
+      `src/agents/attachments.ts` materializes each inline image **inside the
+      thread cwd** (`<cwd>/.uxnan-attachments/<turnId>/`) and `AgentManager.sendTurn`
+      appends a **cwd-relative** reference, so any file/vision-capable CLI can open
+      it **within its sandbox** — **no per-adapter image handling**. (Writing to
+      the OS temp dir was rejected by sandboxed agents — Gemini/Codex/Claude
+      confine reads to the workspace; this was the "file outside safe limits" bug.)
+      The dir is removed when the turn ends. Tolerant parser; best-effort write.
+      **Follow-ups (FOR-DEV):** (1) native per-CLI image input (a dedicated flag /
+      MCP image part) where richer than a file path — `attachments` are already
+      threaded to `adapter.sendTurn` via `SendTurnOptions.attachments`; (2) add
+      `.uxnan-attachments/` to a recommended `.gitignore` (it's cleaned per turn,
+      but a crash mid-turn could leave one);
       (3) on-device verification that an agent reads the delivered image.
 - [x] **Plug-and-play directory browsing (bridge side)** — `workspace/browseDirs`
       (`src/workspace/browse-service.ts` + `workspace-handler.ts`) lets the phone

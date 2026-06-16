@@ -1,5 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { PairingPayload } from '@uxnan/shared';
 import { PairingCodeService } from '../../src/index.js';
 
@@ -67,4 +70,25 @@ test('the default code generator yields an 8-char unambiguous code', () => {
   const code = real.currentCode().replace('-', '');
   assert.equal(code.length, 8);
   assert.match(code, /^[0-9A-HJKMNP-TV-Z]+$/); // Crockford base32 (no I, L, O, U)
+});
+
+test('two instances sharing a statePath agree on the code (cross-process)', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'uxnan-paircode-'));
+  const statePath = join(dir, 'pairing-code.json');
+  try {
+    // The `qr`/`code` command issues + persists the code.
+    const issuer = new PairingCodeService({ buildPayload: () => PAYLOAD, statePath });
+    const code = issuer.currentCode();
+
+    // The running daemon (a separate instance) serves `/pair/resolve` and must
+    // accept the SAME code, and report it as its current code.
+    const daemon = new PairingCodeService({ buildPayload: () => PAYLOAD, statePath });
+    assert.equal(daemon.resolve(code), PAYLOAD);
+    assert.equal(daemon.currentCode(), code);
+
+    // A wrong code still fails.
+    assert.equal(daemon.resolve('9999-9999'), undefined);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

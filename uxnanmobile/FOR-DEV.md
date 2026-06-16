@@ -226,14 +226,15 @@ browser and multi-PC connection correctness are now DONE — see below.)
       2. **Accepts** `turn/send { approvalResponse }` (no new turn) and routes the
          decision via `AgentManager.respondApproval` → the agent adapter.
       3. **Routing:** the **Echo** dev-agent emits a sample approval for the text
-         `approval-demo` (validatable end-to-end now); **Claude Code** has an
-         opt-in real path (`agents['claude-code'].interactiveApprovals`, default
-         off) over `--input-format stream-json`. **Codex** real approvals are
-         deferred (need the app-server turn protocol — see `bridge/FOR-DEV.md`).
-    - ☐ **On-device verification:** point the phone at a bridge, start an `echo`
-      thread, send `approval-demo`, and confirm the card → Approve/Reject →
-      settled status round-trips. Then validate Claude's opt-in path on a real
-      machine (it's documented-but-unverified at the protocol level).
+         `approval-demo` — **works end-to-end now**. **Real agents are deferred**:
+         a live probe confirmed headless `claude -p` can't do interactive
+         approvals (it denies un-permitted tools, no control channel); the real
+         path is a `PreToolUse` hook round-trip, and Codex needs its app-server
+         protocol (both scoped in `bridge/FOR-DEV.md`).
+    - ☑ **On-device path that works today:** point the phone at a bridge, start an
+      **`echo`** thread, send `approval-demo`, and the card → Approve/Reject →
+      settled status round-trips. (Real-agent approvals await the bridge hook
+      work — no mobile change needed when it lands; the app is already generic.)
   - ☑ **Verify wire shapes (plan/subagent)** — DONE: confirmed `plan` and
     `subagent` content blocks are **informational** status updates, NOT approval
     gates — only `approval` blocks gate actions. Field names for plan steps /

@@ -121,7 +121,13 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       now: now(),
       sessionId: pairingSessionId,
     });
-  const pairingCodeService = new PairingCodeService({ buildPayload: buildPairingPayload, now });
+  const pairingCodeService = new PairingCodeService({
+    buildPayload: buildPairingPayload,
+    now,
+    // Persist the code so the running daemon (which serves `/pair/resolve`) and a
+    // separate `qr` command — or an autostarted, console-less daemon — agree on it.
+    statePath: state.pathFor(DAEMON_FILES.pairingCode),
+  });
   const projects = new ProjectRegistry(config.workspaceRoots, process.cwd(), config.projectAgents);
   // Browse roots fall back to the project roots, then the bridge's launch
   // directory (`process.cwd()`) — so an unconfigured install browses from
@@ -180,9 +186,6 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       binaryPath: claude.binaryPath,
       prependArgs: claude.prependArgs,
       permissionMode: claudeSettings.permissionMode ?? 'acceptEdits',
-      ...(claudeSettings.interactiveApprovals !== undefined
-        ? { interactiveApprovals: claudeSettings.interactiveApprovals }
-        : {}),
       ...(claudeSettings.model !== undefined ? { defaultModel: claudeSettings.model } : {}),
       ...(claudePinnedModels.length > 0 ? { pinnedModels: claudePinnedModels } : {}),
     }),

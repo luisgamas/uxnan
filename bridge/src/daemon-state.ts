@@ -16,6 +16,7 @@ export const DAEMON_FILES = {
   config: 'daemon-config.json',
   status: 'bridge-status.json',
   pairing: 'pairing-session.json',
+  pairingCode: 'pairing-code.json',
   trustedPhones: 'trusted-phones.json',
   managedWorktrees: 'managed-worktrees.json',
   pushState: 'push-state.json',

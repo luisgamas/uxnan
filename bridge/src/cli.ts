@@ -34,6 +34,7 @@ Commands:
   start            Start the bridge daemon (skeleton: no live transport yet)
   status           Print the current bridge status
   qr               Print the pairing QR code in the terminal
+  code             Print the current manual-pairing code (matches the daemon)
   stop             Stop the running daemon
   install-service    Start the bridge automatically at logon (as the current user)
   uninstall-service  Remove the autostart entry
@@ -49,6 +50,15 @@ async function cmdQr(): Promise<void> {
   process.stdout.write(`Or enter this pairing code on the phone: ${bridge.currentPairingCode()}\n`);
   process.stdout.write(`Expires at: ${new Date(payload.expiresAt).toISOString()}\n`);
   process.stdout.write(`Payload: ${encodePairingQr(payload)}\n`);
+  await bridge.stop();
+}
+
+async function cmdCode(): Promise<void> {
+  // Prints the current manual-pairing code. Shares the code with a running
+  // daemon via `~/.uxnan/pairing-code.json`, so this matches what the daemon
+  // serving `/pair/resolve` accepts — handy when the daemon runs hidden (autostart).
+  const bridge = await startBridge();
+  process.stdout.write(`${bridge.currentPairingCode()}\n`);
   await bridge.stop();
 }
 
@@ -85,6 +95,10 @@ async function cmdStart(): Promise<void> {
   const payload = bridge.generatePairingQr();
   const qr = await renderPairingQr(payload);
   process.stdout.write(`${qr}\nScan with the Uxnan mobile app.\n`);
+  // Manual-code pairing: this RUNNING daemon serves `GET /pair/resolve`, so its
+  // own in-memory code is the one the phone must enter (the `qr` command runs a
+  // separate, short-lived process with a different code).
+  process.stdout.write(`Or enter this pairing code on the phone: ${bridge.currentPairingCode()}\n`);
   if (payload.hosts && payload.hosts.length > 0) {
     process.stdout.write(`Direct addresses (LAN/Tailscale): ${payload.hosts.join(', ')}\n`);
   }
@@ -162,6 +176,9 @@ async function main(): Promise<number> {
   switch (command) {
     case 'qr':
       await cmdQr();
+      return 0;
+    case 'code':
+      await cmdCode();
       return 0;
     case 'status':
       await cmdStatus();

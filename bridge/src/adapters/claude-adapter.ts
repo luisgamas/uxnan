@@ -27,7 +27,6 @@ import type {
   AgentId,
   AgentModel,
   AgentModelOption,
-  ApprovalDecision,
   SendTurnOptions,
 } from '@uxnan/shared';
 import { BaseAgentAdapter } from './base-adapter.js';
@@ -38,13 +37,8 @@ import {
   type ClaudeToolResult,
   type ClaudeToolUse,
 } from './claude-tools.js';
-import {
-  buildClaudeControlResponse,
-  claudeRequestToBlock,
-  parseClaudeControlRequest,
-} from './claude-approvals.js';
 import { effortValues, reasoningOption, reasoningValue, withOptions } from './run-options.js';
-import { defaultSpawn, interactiveSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
+import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
 
 const CLAUDE_CAPABILITIES: AgentCapabilities = {
   planMode: true,
@@ -120,32 +114,13 @@ export interface ClaudeCodeAdapterOptions {
   pinnedModels?: ClaudeModelSpec[];
   /** Headless permission posture (default `acceptEdits`). */
   permissionMode?: ClaudePermissionMode;
-  /**
-   * Opt-in interactive-approval mode (default false). When true, turns run via
-   * `--input-format stream-json` so the CLI can ask permission per tool
-   * (`control_request can_use_tool`) and the bridge routes the user's decision
-   * back as a `control_response`. Leaves the stable one-shot path untouched when
-   * off. Enable per `agents['claude-code'].interactiveApprovals`.
-   */
-  interactiveApprovals?: boolean;
   /** Injected spawn function for the one-shot path (tests). */
   spawnFn?: SpawnFn;
-  /** Injected spawn function for the interactive (stdin-open) path (tests). */
-  interactiveSpawnFn?: SpawnFn;
 }
 
 interface ActiveRun {
   child: SpawnedProcess;
   threadId: string;
-}
-
-/** A permission request awaiting the user's decision (interactive mode). */
-interface PendingApproval {
-  threadId: string;
-  turnId: string;
-  child: SpawnedProcess;
-  requestId: string;
-  input: Record<string, unknown>;
 }
 
 /** A normalized Claude Code event extracted from one stream-json line. */
@@ -270,15 +245,11 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   readonly #defaultModel: string | undefined;
   readonly #pinnedModels: ClaudeModelSpec[];
   readonly #permissionMode: ClaudePermissionMode;
-  readonly #interactiveApprovals: boolean;
   readonly #spawn: SpawnFn;
-  readonly #interactiveSpawn: SpawnFn;
   /** threadId → Claude session id, for `--resume` continuity. */
   readonly #sessionByThread = new Map<string, string>();
   /** turnId → in-flight run, for cancellation. */
   readonly #active = new Map<string, ActiveRun>();
-  /** approvalId → the permission request awaiting a decision (interactive mode). */
-  readonly #pendingApprovals = new Map<string, PendingApproval>();
   #defaultCwd = process.cwd();
 
   /** Native Claude session id for a thread (on-disk history-fallback locator). */
@@ -293,9 +264,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     this.#defaultModel = options.defaultModel;
     this.#pinnedModels = options.pinnedModels ?? [];
     this.#permissionMode = options.permissionMode ?? 'acceptEdits';
-    this.#interactiveApprovals = options.interactiveApprovals ?? false;
     this.#spawn = options.spawnFn ?? defaultSpawn;
-    this.#interactiveSpawn = options.interactiveSpawnFn ?? interactiveSpawn;
   }
 
   get defaultModel(): string | undefined {
@@ -316,7 +285,6 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   }
 
   sendTurn(options: SendTurnOptions): Promise<void> {
-    if (this.#interactiveApprovals) return this.#sendTurnInteractive(options);
     const { threadId, turnId, text } = options;
     const cwd = options.cwd ?? this.#defaultCwd;
     const model = options.service ?? this.#defaultModel;
@@ -481,219 +449,11 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     return Promise.resolve();
   }
 
-  /**
-   * Interactive-approval turn: run `claude --input-format stream-json
-   * --output-format stream-json` with stdin kept open. The prompt is fed as a
-   * stream-json user message; a `control_request can_use_tool` is surfaced as an
-   * `approval` content block and the turn pauses (the CLI blocks) until
-   * {@link respondApproval} writes the `control_response`. No `--permission-mode`
-   * flag is passed so tools actually prompt.
-   *
-   * FOR-DEV: the stream-json input/control field names follow Claude Code's
-   * documented protocol but are NOT validated against a live CLI here — verify
-   * before enabling `interactiveApprovals` in production (see claude-approvals.ts).
-   */
-  #sendTurnInteractive(options: SendTurnOptions): Promise<void> {
-    const { threadId, turnId, text } = options;
-    const cwd = options.cwd ?? this.#defaultCwd;
-    const model = options.service ?? this.#defaultModel;
-    const sessionId = this.#sessionByThread.get(threadId);
-
-    const args = [
-      '--input-format',
-      'stream-json',
-      '--output-format',
-      'stream-json',
-      '--verbose',
-      '--include-partial-messages',
-    ];
-    if (model) args.push('--model', model);
-    const effort = reasoningValue(options);
-    if (effort) args.push('--effort', effort);
-    if (sessionId) args.push('--resume', sessionId);
-
-    let child: SpawnedProcess;
-    try {
-      child = this.#interactiveSpawn(this.#binaryPath, [...this.#prependArgs, ...args], cwd);
-    } catch (err) {
-      this.emit({
-        type: 'turn_error',
-        threadId,
-        turnId,
-        data: { text: `failed to launch claude: ${errorMessage(err)}` },
-      });
-      return Promise.resolve();
-    }
-
-    this.#active.set(turnId, { child, threadId });
-    this.emit({ type: 'turn_started', threadId, turnId });
-
-    // Feed the prompt as a stream-json user message (stdin stays open for the
-    // control-response replies the approval flow writes later).
-    try {
-      child.stdin?.write(
-        `${JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'text', text }] } })}\n`,
-      );
-    } catch {
-      /* pipe closed */
-    }
-
-    let full = '';
-    let sawPartial = false;
-    let sawModel = false;
-    let resolvedModel: string | undefined;
-    let errored = false;
-    let completed = false;
-    let lastUsage: unknown;
-    const pendingTools = new Map<string, ClaudeToolUse>();
-
-    const reader = createInterface({ input: child.stdout });
-    reader.on('line', (line) => {
-      // A permission control request pauses the turn for the user's decision.
-      let parsedJson: unknown;
-      try {
-        parsedJson = JSON.parse(line.trim());
-      } catch {
-        parsedJson = undefined;
-      }
-      const control = parseClaudeControlRequest(parsedJson);
-      if (control) {
-        const approvalId = `appr-${turnId}-${control.requestId}`;
-        this.#pendingApprovals.set(approvalId, {
-          threadId,
-          turnId,
-          child,
-          requestId: control.requestId,
-          input: control.input,
-        });
-        this.emit({
-          type: 'block',
-          threadId,
-          turnId,
-          data: { content: claudeRequestToBlock(control, approvalId) },
-        });
-        return;
-      }
-
-      const event = parseClaudeLine(line);
-      if (!event) return;
-      if (event.sessionId) this.#sessionByThread.set(threadId, event.sessionId);
-      if (event.toolUses) {
-        for (const tool of event.toolUses) pendingTools.set(tool.id, tool);
-      }
-      if (event.kind === 'assistant_text' && event.usage !== undefined) lastUsage = event.usage;
-      if (event.kind === 'tool_result' && event.toolResults) {
-        for (const result of event.toolResults) {
-          const tool = pendingTools.get(result.toolUseId);
-          if (!tool) continue;
-          pendingTools.delete(result.toolUseId);
-          this.emit({ type: 'block', threadId, turnId, data: { content: toolUseToBlock(tool, result) } });
-        }
-      }
-      if (event.kind === 'init' && event.model && !sawModel) {
-        sawModel = true;
-        resolvedModel = event.model;
-        this.emit({ type: 'model_resolved', threadId, turnId, data: { text: event.model } });
-      } else if (event.kind === 'delta' && event.text) {
-        sawPartial = true;
-        full += event.text;
-        this.emit({ type: 'delta', threadId, turnId, data: { text: event.text } });
-      } else if (event.kind === 'thinking' && event.text) {
-        this.emit({ type: 'thinking', threadId, turnId, data: { text: event.text } });
-      } else if (event.kind === 'assistant_text' && event.text && !sawPartial) {
-        full += event.text;
-        this.emit({ type: 'delta', threadId, turnId, data: { text: event.text } });
-      } else if (event.kind === 'result') {
-        if (event.isError) {
-          errored = true;
-          this.emit({
-            type: 'turn_error',
-            threadId,
-            turnId,
-            data: { text: event.text && event.text.length > 0 ? event.text : 'claude error' },
-          });
-        } else {
-          completed = true;
-          const finalText =
-            sawPartial && full.length > 0
-              ? full
-              : event.text && event.text.length > 0
-                ? event.text
-                : full;
-          const tokens = claudeUsageTokens(event.usage ?? lastUsage);
-          const window = claudeContextWindow(resolvedModel ?? model);
-          const usage =
-            tokens !== undefined
-              ? { tokens, ...(window !== undefined ? { contextWindow: window } : {}) }
-              : undefined;
-          this.emit({
-            type: 'turn_completed',
-            threadId,
-            turnId,
-            data: { text: finalText, ...(usage !== undefined ? { usage } : {}) },
-          });
-        }
-      }
-    });
-
-    child.on('error', (err) => {
-      reader.close();
-      this.#active.delete(turnId);
-      if (!errored && !completed) {
-        errored = true;
-        this.emit({
-          type: 'turn_error',
-          threadId,
-          turnId,
-          data: { text: `claude process error: ${err.message}` },
-        });
-      }
-    });
-
-    child.on('close', () => {
-      reader.close();
-      this.#active.delete(turnId);
-      this.#clearPendingForTurn(turnId);
-      if (!completed && !errored) {
-        this.emit({ type: 'turn_completed', threadId, turnId, data: { text: full } });
-      }
-    });
-
-    return Promise.resolve();
-  }
-
-  /**
-   * Deliver the user's decision for a pending permission request by writing the
-   * `control_response` to the running CLI's stdin. No-op when there is no
-   * matching pending approval (the contract allows it).
-   */
-  respondApproval(_threadId: string, approvalId: string, decision: ApprovalDecision): Promise<void> {
-    const pending = this.#pendingApprovals.get(approvalId);
-    if (!pending) return Promise.resolve();
-    this.#pendingApprovals.delete(approvalId);
-    try {
-      pending.child.stdin?.write(
-        `${buildClaudeControlResponse(pending.requestId, decision, pending.input)}\n`,
-      );
-    } catch {
-      /* pipe closed — the turn likely already ended */
-    }
-    return Promise.resolve();
-  }
-
-  /** Drop any pending approvals tied to a finished turn. */
-  #clearPendingForTurn(turnId: string): void {
-    for (const [approvalId, pending] of this.#pendingApprovals) {
-      if (pending.turnId === turnId) this.#pendingApprovals.delete(approvalId);
-    }
-  }
-
   cancelTurn(threadId: string, turnId: string): Promise<void> {
     const run = this.#active.get(turnId);
     if (run) {
       run.child.kill();
       this.#active.delete(turnId);
-      this.#clearPendingForTurn(turnId);
       this.emit({ type: 'turn_aborted', threadId, turnId });
     }
     return Promise.resolve();

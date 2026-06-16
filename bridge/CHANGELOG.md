@@ -11,32 +11,40 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   decision to the agent via `AgentManager.respondApproval` →
   `IAgentAdapter.respondApproval`. Agents request approval by emitting an
   `approval` content block (`approvalBlock()` in `content-blocks.ts`).
-  - **Echo dev-agent demo (validatable now):** a turn whose text is
+  - **Echo dev-agent demo (works now, no real agent):** a turn whose text is
     `approval-demo` emits a sample high-risk approval and PAUSES until the phone
-    replies, then completes with the decision — lets the mobile approval UI be
-    validated end-to-end against a live bridge without a real agent.
-  - **Claude Code real routing (opt-in):** with
-    `agents['claude-code'].interactiveApprovals: true`, turns run via
-    `--input-format stream-json` so the CLI asks permission per tool
-    (`control_request can_use_tool`); the bridge surfaces it as an approval
-    block and writes the user's decision back as a `control_response`
-    (`src/adapters/claude-approvals.ts`, pure + unit-tested). **Default off** —
-    the stable one-shot path is unchanged. FOR-DEV: the stream-json control
-    field names follow Claude's documented protocol but need live validation.
-  - **Codex:** real approvals need the app-server turn protocol (the current
-    `codex exec` is non-interactive); deferred — see `FOR-DEV.md`.
+    replies, then completes with the decision — start an **`echo`** thread and
+    send `approval-demo` to validate the mobile approval card end-to-end.
+  - **Real agents (Claude/Codex/…): deferred.** Validated against the live CLI
+    (`claude` 2.1.177): headless `claude -p` does **not** expose interactive
+    approvals — a tool needing permission is denied with an error `tool_result`,
+    there is no `control_request`/`control_response` channel in `-p` mode (that
+    SDK flag was removed). The real path is a **`PreToolUse` hook** (via
+    `--settings`) that round-trips the decision to the bridge; Codex needs its
+    app-server turn protocol. Both are scoped in `FOR-DEV.md`. (The earlier
+    control-protocol attempt was removed — it didn't match the real CLI.)
 - **Turn image attachments delivered to the agent** — `turn/send` now accepts
   `attachments: TurnAttachment[]` (inline base64 images the phone picks in the
   composer) and allows an **image-only** message (empty/omitted `text`). The new
-  `src/agents/attachments.ts` materializes each image to a temp file
-  (`<tmp>/uxnan-attachments/<turnId>/`) and `AgentManager.sendTurn` appends a
-  reference to the prompt, so **every** file/vision-capable agent CLI (Claude,
-  Codex, OpenCode, pi, Gemini) can open it — no per-adapter image handling. The
-  persisted user message stays faithful (original text, or a
-  `[N image attachment(s)]` placeholder). Tolerant parser drops malformed
-  attachments. Unblocks the mobile "Attach" composer (its half was already wired).
+  `src/agents/attachments.ts` materializes each image **inside the thread's
+  working directory** (`<cwd>/.uxnan-attachments/<turnId>/`) and
+  `AgentManager.sendTurn` appends a **cwd-relative** reference to the prompt, so
+  **every** file/vision-capable agent CLI (Claude, Codex, OpenCode, pi, Gemini)
+  can open it within its sandbox — no per-adapter image handling. Writing under
+  the cwd (not the OS temp dir) is required: sandboxed agents (Gemini, Codex
+  `workspace-write`, Claude `acceptEdits`) reject a path outside the workspace.
+  The dir is removed when the turn ends. The persisted user message stays
+  faithful (original text, or a `[N image attachment(s)]` placeholder). Tolerant
+  parser drops malformed attachments. Unblocks the mobile "Attach" composer.
   Covered by `test/agents/attachments.test.ts`, `agent-manager.test.ts`,
   `handlers/thread-handlers.test.ts`.
+- **Manual-pairing code is shared + always visible** — the code now persists to
+  `~/.uxnan/pairing-code.json`, so the **running daemon** (which serves
+  `/pair/resolve`) and a separate `qr`/`code` command — or an autostarted,
+  console-less daemon — hand out the **same** code (previously the code was
+  per-process and the one printed by `qr` never matched the daemon's). `start`
+  now **prints the pairing code** under the QR, and a new `uxnan-bridge code`
+  command prints just the current code. Covered by `pairing-code-service.test.ts`.
 - **Manual-code pairing (bridge-side)** — pair without scanning a QR by trading a
   short code shown on the PC for the pairing payload; reframes the relay's off-LAN
   `/trusted-session/resolve` as a bridge-first feature.
