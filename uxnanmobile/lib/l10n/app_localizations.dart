@@ -986,6 +986,12 @@ abstract class AppLocalizations {
   /// **'Images'**
   String get newThreadCapImages;
 
+  /// No description provided for @newThreadCapabilities.
+  ///
+  /// In en, this message translates to:
+  /// **'Capabilities'**
+  String get newThreadCapabilities;
+
   /// No description provided for @environmentTitle.
   ///
   /// In en, this message translates to:

@@ -14,6 +14,8 @@ import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/agent_logo_chip.dart';
 import 'package:uxnan/presentation/widgets/agent_visuals.dart';
+import 'package:uxnan/presentation/widgets/icon_surface.dart';
+import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 
 /// Full-screen Material 3 dialog to start a new conversation: pick the working
 /// directory (defaults to the bridge's root; "Browse…" to descend), an agent
@@ -120,7 +122,6 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final textTheme = Theme.of(context).textTheme;
 
     final projects = ref.watch(projectsProvider);
     final agentsAsync = ref.watch(agentsProvider);
@@ -136,106 +137,105 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
         agent != null ? ref.watch(agentModelsProvider(agent.agentId)) : null;
     final canStart = activeProject != null && agent != null && !_starting;
 
-    return Scaffold(
-      // M3 full-screen dialog: keep the app bar text minimal (a long headline
-      // here truncates). The headline lives in the content area below; the
-      // affirmative action is a compact text button, not a wide filled one.
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.close_rounded),
-          tooltip: l10n.actionCancel,
-          onPressed: () => Navigator.of(context).maybePop(),
-        ),
-        actions: [
-          if (_starting)
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: UxnanSpacing.lg),
-              child: Center(
-                child: SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              ),
-            )
-          else
-            Padding(
-              padding: const EdgeInsets.only(right: UxnanSpacing.sm),
-              child: TextButton(
-                onPressed:
-                    canStart ? () => _start(activeProject, workingCwd) : null,
-                child: Text(l10n.newThreadStart),
-              ),
-            ),
-        ],
+    return NeScaffold(
+      title: l10n.newThreadTitle,
+      // Full-screen dialog: a close (✕) instead of a back arrow; the
+      // affirmative action is a compact text button.
+      leading: IconSurface(
+        icon: Icons.close_rounded,
+        tooltip: l10n.actionCancel,
+        onPressed: () => Navigator.of(context).maybePop(),
       ),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 560),
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(
-              UxnanSpacing.lg,
-              UxnanSpacing.sm,
-              UxnanSpacing.lg,
-              UxnanSpacing.xl,
+      actions: [
+        if (_starting)
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: UxnanSpacing.md),
+            child: Center(
+              child: SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
             ),
-            children: [
-              // Headline in the content area (not the app bar) per M3 guidance.
-              Padding(
-                padding: const EdgeInsets.only(bottom: UxnanSpacing.md),
-                child: Text(
-                  l10n.newThreadTitle,
-                  style: textTheme.headlineSmall,
+          )
+        else
+          Padding(
+            padding: const EdgeInsets.only(right: UxnanSpacing.sm),
+            child: TextButton(
+              onPressed:
+                  canStart ? () => _start(activeProject, workingCwd) : null,
+              child: Text(l10n.newThreadStart),
+            ),
+          ),
+      ],
+      slivers: [
+        SliverToBoxAdapter(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 560),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  UxnanSpacing.lg,
+                  UxnanSpacing.sm,
+                  UxnanSpacing.lg,
+                  UxnanSpacing.xl,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _SectionHeader(label: l10n.newThreadWorkingDir),
+                    if (projects.isLoading && workingCwd == null)
+                      const _Loading()
+                    else if (workingCwd == null)
+                      _Error(message: l10n.newThreadLoadFailed)
+                    else
+                      _WorkingDirCard(
+                        name: _basename(workingCwd),
+                        path: workingCwd,
+                        onBrowse: _browseFolder,
+                      ),
+                    const SizedBox(height: UxnanSpacing.lg),
+                    _SectionHeader(label: l10n.newThreadAgent),
+                    agentsAsync.when(
+                      loading: () => const _Loading(),
+                      error: (_, __) =>
+                          _Error(message: l10n.newThreadLoadFailed),
+                      data: (items) {
+                        // Hide the built-in Echo dev agent — not a real agent.
+                        final visible =
+                            items.where((a) => a.agentId != 'echo').toList();
+                        if (visible.isEmpty) {
+                          return _Empty(message: l10n.newThreadNoAgents);
+                        }
+                        return Column(
+                          children: [
+                            for (final a in visible)
+                              _AgentCard(
+                                agent: a,
+                                selected: a.agentId == _agent?.agentId,
+                                onTap:
+                                    a.available ? () => _selectAgent(a) : null,
+                              ),
+                          ],
+                        );
+                      },
+                    ),
+                    const SizedBox(height: UxnanSpacing.lg),
+                    _SectionHeader(label: l10n.newThreadModel),
+                    _ModelField(
+                      controller: _model,
+                      enabled: agent != null,
+                      models: models,
+                      agentId: agent?.agentId,
+                      onChanged: (_) => setState(() => _modelTouched = true),
+                    ),
+                  ],
                 ),
               ),
-              _SectionHeader(label: l10n.newThreadWorkingDir),
-              if (projects.isLoading && workingCwd == null)
-                const _Loading()
-              else if (workingCwd == null)
-                _Error(message: l10n.newThreadLoadFailed)
-              else
-                _WorkingDirCard(
-                  name: _basename(workingCwd),
-                  path: workingCwd,
-                  onBrowse: _browseFolder,
-                ),
-              const SizedBox(height: UxnanSpacing.lg),
-              _SectionHeader(label: l10n.newThreadAgent),
-              agentsAsync.when(
-                loading: () => const _Loading(),
-                error: (_, __) => _Error(message: l10n.newThreadLoadFailed),
-                data: (items) {
-                  // Hide the built-in Echo dev agent — it's not a real agent.
-                  final visible =
-                      items.where((a) => a.agentId != 'echo').toList();
-                  if (visible.isEmpty) {
-                    return _Empty(message: l10n.newThreadNoAgents);
-                  }
-                  return Column(
-                    children: [
-                      for (final a in visible)
-                        _AgentCard(
-                          agent: a,
-                          selected: a.agentId == _agent?.agentId,
-                          onTap: a.available ? () => _selectAgent(a) : null,
-                        ),
-                    ],
-                  );
-                },
-              ),
-              const SizedBox(height: UxnanSpacing.lg),
-              _SectionHeader(label: l10n.newThreadModel),
-              _ModelField(
-                controller: _model,
-                enabled: agent != null,
-                models: models,
-                agentId: agent?.agentId,
-                onChanged: (_) => setState(() => _modelTouched = true),
-              ),
-            ],
+            ),
           ),
         ),
-      ),
+      ],
     );
   }
 }
@@ -315,12 +315,15 @@ class _WorkingDirCard extends StatelessWidget {
   }
 }
 
-/// An agent option: logo, name, availability, and capability chips, with a
-/// selected state. Unavailable agents are dimmed and not selectable. An agent
-/// that is installed but **not signed in** on the PC gets a soft error tint and
-/// a "Check sign-in" button that re-queries `auth/status` (so the user can sign
-/// in on the PC and re-verify without leaving the dialog).
-class _AgentCard extends ConsumerWidget {
+/// An agent option: a **collapsible** card. The header always shows the logo,
+/// name and the right-side widgets (the "Check sign-in" verify button for an
+/// installed-but-not-signed-in agent, the selected check, and an expand
+/// chevron); expanding reveals the agent's capability chips (streaming, plan
+/// mode, approvals, forking, images). Tapping the card selects the agent;
+/// unavailable agents are dimmed and not selectable. A not-signed-in agent gets
+/// a soft error tint and re-queries `auth/status` so the user can sign in on
+/// the PC and re-verify without leaving the dialog.
+class _AgentCard extends ConsumerStatefulWidget {
   const _AgentCard({
     required this.agent,
     required this.selected,
@@ -332,7 +335,16 @@ class _AgentCard extends ConsumerWidget {
   final VoidCallback? onTap;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_AgentCard> createState() => _AgentCardState();
+}
+
+class _AgentCardState extends ConsumerState<_AgentCard> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final agent = widget.agent;
+    final selected = widget.selected;
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final l10n = AppLocalizations.of(context);
@@ -344,6 +356,7 @@ class _AgentCard extends ConsumerWidget {
     // Keep the previous value while a re-check is in flight (Riverpod retains
     // it across an invalidate), so we swap the button for a spinner.
     final checking = requiresLogin && auth.isLoading;
+    final hasCaps = agent.available && caps.isNotEmpty;
 
     // Soft but noticeable error tint for an installed, not-signed-in agent.
     final notSignedInTint = Color.alphaBlend(
@@ -375,7 +388,7 @@ class _AgentCard extends ConsumerWidget {
           ),
           child: InkWell(
             borderRadius: const BorderRadius.all(UxnanRadius.lg),
-            onTap: onTap,
+            onTap: widget.onTap,
             child: Padding(
               padding: const EdgeInsets.all(UxnanSpacing.md),
               child: Column(
@@ -406,27 +419,58 @@ class _AgentCard extends ConsumerWidget {
                             onPressed: () => ref
                                 .invalidate(authStatusProvider(agent.agentId)),
                           ),
-                        if (requiresLogin && selected)
-                          const SizedBox(width: UxnanSpacing.xs),
                         if (selected)
-                          Icon(
-                            Icons.check_circle_rounded,
-                            color: colors.primary,
+                          Padding(
+                            padding: const EdgeInsets.only(
+                              left: UxnanSpacing.xs,
+                            ),
+                            child: Icon(
+                              Icons.check_circle_rounded,
+                              color: colors.primary,
+                            ),
+                          ),
+                        // Expand chevron reveals the capability chips. Its own
+                        // tap toggles details without selecting the agent.
+                        if (hasCaps)
+                          IconButton(
+                            visualDensity: VisualDensity.compact,
+                            tooltip: l10n.newThreadCapabilities,
+                            icon: Icon(
+                              _expanded
+                                  ? Icons.expand_less_rounded
+                                  : Icons.expand_more_rounded,
+                              color: colors.onSurfaceVariant,
+                            ),
+                            onPressed: () =>
+                                setState(() => _expanded = !_expanded),
                           ),
                       ],
                     ],
                   ),
-                  if (caps.isNotEmpty) ...[
-                    const SizedBox(height: UxnanSpacing.md),
-                    Wrap(
-                      spacing: UxnanSpacing.xs,
-                      runSpacing: UxnanSpacing.xs,
-                      children: [
-                        for (final cap in caps)
-                          _CapabilityChip(icon: cap.$1, label: cap.$2),
-                      ],
+                  if (hasCaps)
+                    AnimatedSize(
+                      duration: const Duration(milliseconds: 180),
+                      curve: Curves.easeOutCubic,
+                      alignment: Alignment.topLeft,
+                      child: _expanded
+                          ? Padding(
+                              padding: const EdgeInsets.only(
+                                top: UxnanSpacing.md,
+                              ),
+                              child: Wrap(
+                                spacing: UxnanSpacing.xs,
+                                runSpacing: UxnanSpacing.xs,
+                                children: [
+                                  for (final cap in caps)
+                                    _CapabilityChip(
+                                      icon: cap.$1,
+                                      label: cap.$2,
+                                    ),
+                                ],
+                              ),
+                            )
+                          : const SizedBox(width: double.infinity),
                     ),
-                  ],
                 ],
               ),
             ),

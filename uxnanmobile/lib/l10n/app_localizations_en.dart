@@ -484,6 +484,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get newThreadCapImages => 'Images';
 
   @override
+  String get newThreadCapabilities => 'Capabilities';
+
+  @override
   String get environmentTitle => 'Environment';
 
   @override
