@@ -6,6 +6,7 @@
 import type { AgentCapabilities, AgentId, AgentModel } from './agent-capabilities.js';
 import type { AgentConfig } from './agent-config.js';
 import type { TurnAttachment } from '../models/workspace.js';
+import type { ApprovalDecision } from '../models/approval.js';
 
 /** A single streamed event produced by a running agent turn. */
 export interface AgentStreamEvent {
@@ -66,6 +67,14 @@ export interface IAgentAdapter {
 
   /** Cancel an in-flight turn. */
   cancelTurn(threadId: string, turnId: string): Promise<void>;
+
+  /**
+   * Reply to a pending approval the agent emitted (as an `approval` content
+   * block) for {@link threadId}. Optional: adapters that never request approval
+   * (or that run non-interactively) don't implement it. Implementations should
+   * be a no-op when there is no pending approval for `approvalId`.
+   */
+  respondApproval?(threadId: string, approvalId: string, decision: ApprovalDecision): Promise<void>;
 
   /** Subscribe to streaming events. Returns an unsubscribe function. */
   onEvent(listener: (event: AgentStreamEvent) => void): () => void;

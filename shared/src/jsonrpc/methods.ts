@@ -29,6 +29,7 @@ import type {
   WorkspaceListing,
 } from '../models/workspace.js';
 import type { AuthStatus, Project } from '../models/project.js';
+import type { ApprovalResponse } from '../models/approval.js';
 import type { BridgeStatus, ConnectedPhone, TrustedDevice } from '../models/session.js';
 import type { PairingPayload } from '../e2ee/pairing-payload.js';
 import type { AgentDescriptor, AgentId, AgentModel } from '../agents/agent-capabilities.js';
@@ -84,6 +85,12 @@ export interface TurnSendParams {
    * CLI can open it. An image-only message (empty `text`) is allowed.
    */
   attachments?: TurnAttachment[];
+  /**
+   * Reply to a pending approval the agent requested (no new turn is created).
+   * The bridge routes the decision to the agent adapter. When present, `text`
+   * is not required.
+   */
+  approvalResponse?: ApprovalResponse;
 }
 export interface ThreadSetModelParams {
   threadId: string;

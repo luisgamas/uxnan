@@ -6,6 +6,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 
 ### Added
+- **Interactive approval contracts** (`models/approval.ts`, `jsonrpc/methods.ts`,
+  `agents/agent-adapter.ts`): `ApprovalDecision`
+  (`approve | reject | approveSession`), `ApprovalResponse`
+  (`{ approvalId, decision }`) and `ApprovalRequestBlock` (the `approval`
+  content-block payload the phone renders). `TurnSendParams.approvalResponse?`
+  lets the phone answer a pending approval on `turn/send` (no new turn), and
+  `IAgentAdapter.respondApproval?(threadId, approvalId, decision)` routes the
+  decision to the agent adapter. The request side reuses the existing
+  `stream/content/block` channel (an `approval` block) — no new notification.
 - **Turn image attachments** (`models/workspace.ts`, `jsonrpc/methods.ts`,
   `agents/agent-adapter.ts`): a new tolerant `TurnAttachment`
   (`{ type?, mimeType, base64Data?, path?, width?, height? }`) plus

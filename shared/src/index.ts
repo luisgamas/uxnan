@@ -31,6 +31,7 @@ export * from './models/git.js';
 export * from './models/workspace.js';
 export * from './models/project.js';
 export * from './models/session.js';
+export * from './models/approval.js';
 
 // Validators
 export * from './validators/validate.js';
