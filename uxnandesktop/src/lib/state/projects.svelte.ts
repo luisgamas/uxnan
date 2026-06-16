@@ -23,6 +23,7 @@ import type {
 } from "$lib/types";
 import { app } from "$lib/state/app.svelte";
 import { terminals } from "$lib/state/terminals.svelte";
+import { unread } from "$lib/state/unread.svelte";
 
 const msg = (e: unknown) =>
   e && typeof e === "object" && "message" in e
@@ -50,6 +51,8 @@ class ProjectsStore {
   activeWorktreePath = $state<string | null>(null);
   /** Last error from a project/worktree action, surfaced in the panel. */
   error = $state<string | null>(null);
+  /** Whether the quick worktree-switch palette is open. */
+  paletteOpen = $state(false);
 
   /** Projects visible for the search query: those whose name/path matches OR
    *  that have a matching worktree. */
@@ -70,6 +73,35 @@ class ProjectsStore {
   /** A repo's worktrees (empty until loaded). */
   worktreesOf(repoId: string): WorktreeEntry[] {
     return this.worktreesByRepo[repoId] ?? [];
+  }
+
+  /** Every known worktree flattened with its repo, for the quick-switch palette. */
+  allWorktrees(): {
+    repoId: string;
+    repoName: string;
+    branch: string;
+    path: string;
+    isMain: boolean;
+  }[] {
+    const out: {
+      repoId: string;
+      repoName: string;
+      branch: string;
+      path: string;
+      isMain: boolean;
+    }[] = [];
+    for (const r of app.repos) {
+      for (const w of this.worktreesOf(r.id)) {
+        out.push({
+          repoId: r.id,
+          repoName: r.name,
+          branch: w.branch ?? "",
+          path: w.path,
+          isMain: w.isMain,
+        });
+      }
+    }
+    return out;
   }
 
   /** A repo's primary (main) worktree — the project's own context. */
@@ -183,11 +215,15 @@ class ProjectsStore {
     }
   }
 
-  /** Create a worktree, then refresh its repo's list and reveal the section. */
+  /** Create a worktree, then refresh its repo's list and reveal the section.
+   *  `agentId` overrides which agent to launch into it: a specific agent id, or
+   *  `null` for none. Omit it (`undefined`) to fall back to the global default
+   *  agent (the legacy behavior). */
   async createWorktree(
     repoId: string,
     branch: string,
     base?: string,
+    agentId?: string | null,
   ): Promise<boolean> {
     this.error = null;
     try {
@@ -195,8 +231,14 @@ class ProjectsStore {
       await this.loadWorktrees(repoId);
       // Select the new worktree as the active context.
       this.setActiveWorktree(created.path);
-      // Auto-launch the default agent into it, if one is configured (opt-in).
-      const agent = app.defaultAgent();
+      // Launch the chosen agent into it (per-worktree override, else the global
+      // default, else none). Opt-in: `null` explicitly launches nothing.
+      const agent =
+        agentId === undefined
+          ? app.defaultAgent()
+          : agentId
+            ? app.launchableAgents.find((a) => a.id === agentId)
+            : undefined;
       if (agent) app.launchAgent(agent, { cwd: created.path, workspace: created.path });
       return true;
     } catch (e) {
@@ -226,10 +268,12 @@ class ProjectsStore {
     }
   }
 
-  /** Select a worktree: highlight it and show its terminal workspace. */
+  /** Select a worktree: highlight it and show its terminal workspace. Opening it
+   *  clears its "unread agent result" badge. */
   setActiveWorktree(path: string): void {
     this.activeWorktreePath = path;
     terminals.setWorkspace(path);
+    unread.clear(path);
   }
 
   /** Open a terminal in `path`'s workspace (and switch to it). */

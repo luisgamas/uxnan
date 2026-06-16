@@ -11,8 +11,8 @@ use uuid::Uuid;
 
 use crate::error::{AppError, CommandError};
 use crate::git::{self, WorktreeEntry};
-use crate::model::{AppData, AppSettings, RepoData};
-use crate::state::AppState;
+use crate::model::{AgentStateEntry, AppData, AppSettings, RepoData};
+use crate::state::{AppState, HookServerInfo};
 
 /// Return the full persisted application state. The frontend calls this once at
 /// boot to hydrate its reactive store; it also doubles as the Phase 0
@@ -85,6 +85,14 @@ pub async fn pty_create(
         let _ = exit_app.emit(&format!("pty:exit:{exit_id}"), ());
     };
 
+    // Inject the hook-server coordinates + this terminal's agent id, so an agent
+    // run inside the shell can report precise state back to the local server.
+    let mut env: Vec<(String, String)> = vec![("UXNAN_AGENT_ID".to_string(), id.clone())];
+    if let Some(hook) = state.hook.read().await.clone() {
+        env.push(("UXNAN_HOOK_URL".to_string(), hook.url));
+        env.push(("UXNAN_HOOK_TOKEN".to_string(), hook.token));
+    }
+
     state
         .pty
         .create(
@@ -93,6 +101,7 @@ pub async fn pty_create(
                 cwd,
                 shell,
                 args: args.unwrap_or_default(),
+                env,
                 cols,
                 rows,
             },
@@ -362,6 +371,20 @@ pub async fn git_discard(path: String, file: String, untracked: bool) -> Result<
         .map_err(CommandError::from)
 }
 
+/// Apply a unified-diff patch (a single hunk, from the frontend) to stage,
+/// unstage, or discard it. `cached` targets the index; `reverse` reverses it.
+#[tauri::command]
+pub async fn git_apply(
+    path: String,
+    patch: String,
+    cached: bool,
+    reverse: bool,
+) -> Result<(), CommandError> {
+    git::apply_patch(&path, &patch, cached, reverse)
+        .await
+        .map_err(CommandError::from)
+}
+
 /// Commit the staged changes with `message`.
 #[tauri::command]
 pub async fn git_commit(path: String, message: String) -> Result<(), CommandError> {
@@ -428,5 +451,38 @@ pub async fn set_agent_commands(
     commands: Vec<String>,
 ) -> Result<(), CommandError> {
     *state.agent_commands.write().await = commands;
+    Ok(())
+}
+
+// --- Agent hooks (Phase 4, Layer 1) ----------------------------------------
+
+/// Coordinates of the local agent hook server, for the Settings docs panel so a
+/// user can wire their agent to report state. `None` until the server is up (or
+/// if its port couldn't be bound).
+#[tauri::command]
+pub async fn get_hook_info(
+    state: State<'_, AppState>,
+) -> Result<Option<HookServerInfo>, CommandError> {
+    Ok(state.hook.read().await.clone())
+}
+
+/// The cached last-known agent states (hook reports). The frontend fetches this
+/// at boot to hydrate the sidebar, then keeps it live via `agent:status-changed`.
+#[tauri::command]
+pub async fn agent_states(
+    state: State<'_, AppState>,
+) -> Result<Vec<AgentStateEntry>, CommandError> {
+    Ok(state.data.read().await.agent_cache.clone())
+}
+
+/// Request (or release) keeping the system awake. The frontend calls this with
+/// `active = settings.preventSleep && (an agent is working)`; the backend
+/// auto-releases after 2 h regardless (see `power.rs`).
+#[tauri::command]
+pub async fn set_prevent_sleep(
+    state: State<'_, AppState>,
+    active: bool,
+) -> Result<(), CommandError> {
+    state.power.set(active);
     Ok(())
 }

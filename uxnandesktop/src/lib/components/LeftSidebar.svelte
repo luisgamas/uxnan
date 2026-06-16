@@ -10,6 +10,7 @@
   import { cn } from "$lib/utils";
   import { i18n } from "$lib/i18n";
   import SearchIcon from "@lucide/svelte/icons/search";
+  import ZapIcon from "@lucide/svelte/icons/zap";
   import FolderPlusIcon from "@lucide/svelte/icons/folder-plus";
   import ArrowUpDownIcon from "@lucide/svelte/icons/arrow-up-down";
   import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
@@ -77,6 +78,15 @@
       {i18n.t("sidebar.projects")}
       <span class="text-muted-foreground/60">({projects.filteredRepos.length})</span>
     </span>
+    <Button
+      variant="ghost"
+      size="icon"
+      class="size-6"
+      title={i18n.t("sidebar.quickSwitch")}
+      onclick={() => (projects.paletteOpen = true)}
+    >
+      <ZapIcon class={icon.button} />
+    </Button>
     <Button
       variant="ghost"
       size="icon"

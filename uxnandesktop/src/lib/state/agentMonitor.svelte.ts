@@ -15,6 +15,10 @@ import { terminals } from "./terminals.svelte";
 import { app } from "./app.svelte";
 import { i18n } from "$lib/i18n";
 import { notify } from "$lib/notify";
+import { statusFromTitle } from "$lib/agentTitle";
+import { unread } from "./unread.svelte";
+import { agentStatus } from "./agentStatus.svelte";
+import type { AgentStatus } from "$lib/types";
 
 /** Payload of the backend `agent:detected` event. */
 interface AgentDetected {
@@ -35,6 +39,9 @@ class AgentMonitor {
   private lastOutputAt = new Map<string, number>();
   /** Agent tabs already notified for the current idle period (re-armed on output). */
   private notified = new Set<string>();
+  /** State inferred from each tab's terminal title (OSC), Layer 2. Reactive so
+   *  the sidebar/tab indicators update when a title changes. */
+  private titleState = $state<Record<string, AgentStatus>>({});
   private timer: ReturnType<typeof setInterval> | undefined;
   private detecting = false;
 
@@ -67,6 +74,21 @@ class AgentMonitor {
     }
   }
 
+  /** Record the agent state inferred from a tab's terminal title (Layer 2). A
+   *  title that maps to a state is stored; an unrecognized one is ignored (the
+   *  previous inference stands). Read via [`titleStatus`]. */
+  noteTitle(tabId: string, title: string): void {
+    const status = statusFromTitle(title);
+    if (status && this.titleState[tabId] !== status) {
+      this.titleState = { ...this.titleState, [tabId]: status };
+    }
+  }
+
+  /** The state last inferred from a tab's terminal title, if any. */
+  titleStatus(tabId: string): AgentStatus | undefined {
+    return this.titleState[tabId];
+  }
+
   /** Record output on a tab: it's "working" now. Cheap (reactive only on edge). */
   noteOutput(tabId: string): void {
     this.lastOutputAt.set(tabId, Date.now());
@@ -97,19 +119,26 @@ class AgentMonitor {
         focused &&
         terminals.activeWorkspace === workspace &&
         terminals.activePtyId() === tab.id;
+      // When the hook server is driving this tab, it owns "done"/notifications;
+      // skip the coarse inference so we don't double-fire or misfire.
+      const hookDriven = agentStatus.get(tab.id) !== undefined;
       if (
         tab.agentName &&
+        !hookDriven &&
         idle >= NOTIFY_IDLE_MS &&
         !viewing &&
-        app.settings.agentNotifications !== false &&
         !this.notified.has(tab.id)
       ) {
         this.notified.add(tab.id);
-        const where = baseName(workspace) || i18n.t("terminal.general");
-        void notify(
-          i18n.t("notify.agentIdleTitle", { agent: tab.agentName }),
-          i18n.t("notify.agentIdleBody", { agent: tab.agentName, worktree: where }),
-        );
+        // Flag the worktree as having an unreviewed result (red badge + count).
+        unread.mark(workspace);
+        if (app.settings.agentNotifications !== false) {
+          const where = baseName(workspace) || i18n.t("terminal.general");
+          void notify(
+            i18n.t("notify.agentIdleTitle", { agent: tab.agentName }),
+            i18n.t("notify.agentIdleBody", { agent: tab.agentName, worktree: where }),
+          );
+        }
       }
     }
     // Prune tracking for tabs that have closed.
@@ -117,6 +146,12 @@ class AgentMonitor {
       if (!live.has(id)) {
         this.lastOutputAt.delete(id);
         this.notified.delete(id);
+      }
+    }
+    for (const id of Object.keys(this.titleState)) {
+      if (!live.has(id)) {
+        const { [id]: _drop, ...rest } = this.titleState;
+        this.titleState = rest;
       }
     }
   }

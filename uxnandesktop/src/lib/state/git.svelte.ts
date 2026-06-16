@@ -7,6 +7,7 @@
 
 import { listen } from "@tauri-apps/api/event";
 import {
+  gitApply,
   gitCommit,
   gitDiff,
   gitDiscard,
@@ -184,6 +185,32 @@ class GitStore {
   }
   discard(file: string, untracked: boolean): Promise<void> {
     return this.op((p) => gitDiscard(p, file, untracked));
+  }
+
+  /** Apply a single hunk (its sub-patch from the diff viewer) to the index or
+   *  working tree, then refresh status + reload the open diff (closing the
+   *  viewer if nothing is left). `stage`/`unstage` target the index; `discard`
+   *  reverts the hunk in the working tree (destructive — confirmed in the UI). */
+  async applyHunk(patch: string, action: "stage" | "unstage" | "discard"): Promise<void> {
+    const path = this.path;
+    const sel = this.selected;
+    if (!path || !sel) return;
+    this.busy = true;
+    this.error = null;
+    try {
+      const cached = action !== "discard";
+      const reverse = action !== "stage";
+      await gitApply(path, patch, cached, reverse);
+      await this.refresh();
+      // Reload the diff in place; if the hunk was the last change, close it.
+      this.selected = sel;
+      await this.openDiff(sel.file, sel.staged);
+      if (this.diff.trim().length === 0) this.closeDiff();
+    } catch (e) {
+      this.error = msg(e);
+    } finally {
+      this.busy = false;
+    }
   }
 
   /** Commit the staged changes; clears the message and refreshes on success. */

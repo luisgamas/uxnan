@@ -1,0 +1,77 @@
+<script lang="ts" generics="T">
+  // Thin virtualized list on @tanstack/svelte-virtual: renders only the visible
+  // rows of a (potentially long) flat list, in its own scroll container. Rows
+  // are fixed-height (`estimateSize`). Pass an `activeIndex` to keep a
+  // keyboard-highlighted row scrolled into view.
+  import { createVirtualizer } from "@tanstack/svelte-virtual";
+  import { get } from "svelte/store";
+  import type { Snippet } from "svelte";
+  import { cn } from "$lib/utils";
+
+  let {
+    items,
+    estimateSize = 28,
+    overscan = 12,
+    activeIndex,
+    class: className,
+    row,
+  }: {
+    items: T[];
+    estimateSize?: number;
+    overscan?: number;
+    activeIndex?: number;
+    class?: string;
+    row: Snippet<[T, number]>;
+  } = $props();
+
+  let scrollEl = $state<HTMLDivElement>();
+
+  // Seeded neutral; the $effect below sets the real count/overscan immediately
+  // (and on every change), so this initial value isn't a reactive read.
+  const virtualizer = createVirtualizer<HTMLDivElement, HTMLDivElement>({
+    count: 0,
+    getScrollElement: () => scrollEl ?? null,
+    estimateSize: () => estimateSize,
+    overscan: 12,
+  });
+
+  // Keep the virtualizer's options in sync with reactive inputs. IMPORTANT: read
+  // the store with `get()` (not `$virtualizer`) so this effect does NOT subscribe
+  // to the store — otherwise `measure()` emits, re-runs the effect, emits again…
+  // an infinite loop that freezes the UI. Deps are the explicit reads below.
+  $effect(() => {
+    const count = items.length;
+    const size = estimateSize;
+    const over = overscan;
+    const el = scrollEl ?? null;
+    const v = get(virtualizer);
+    v.setOptions({
+      count,
+      getScrollElement: () => el,
+      estimateSize: () => size,
+      overscan: over,
+    });
+    v.measure();
+  });
+
+  // Scroll a keyboard-selected row into view (also non-subscribing).
+  $effect(() => {
+    const idx = activeIndex;
+    if (idx !== undefined && idx >= 0) get(virtualizer).scrollToIndex(idx);
+  });
+
+  const rows = $derived($virtualizer.getVirtualItems());
+  const totalSize = $derived($virtualizer.getTotalSize());
+</script>
+
+<div bind:this={scrollEl} class={cn("uxnan-scroll overflow-y-auto", className)}>
+  <div style="position:relative; width:100%; height:{totalSize}px;">
+    {#each rows as vrow (vrow.key)}
+      <div
+        style="position:absolute; top:0; left:0; width:100%; height:{vrow.size}px; transform:translateY({vrow.start}px);"
+      >
+        {@render row(items[vrow.index], vrow.index)}
+      </div>
+    {/each}
+  </div>
+</div>

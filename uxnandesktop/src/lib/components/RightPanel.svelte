@@ -3,19 +3,19 @@
   // per-file stage / unstage / discard, a commit composer, push/pull, and a
   // diff viewer. Status updates live via the backend `git:status-changed` event.
   import { onMount } from "svelte";
-  import * as Dialog from "$lib/components/ui/dialog";
   import { Button } from "$lib/components/ui/button";
   import { projects } from "$lib/state/projects.svelte";
   import { git, type FileEntry } from "$lib/state/git.svelte";
   import { cn } from "$lib/utils";
   import { icon, iconButton, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
-  import DiffView from "./DiffView.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
+  import VirtualList from "./VirtualList.svelte";
   import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
   import PlusIcon from "@lucide/svelte/icons/plus";
   import MinusIcon from "@lucide/svelte/icons/minus";
-  import Trash2Icon from "@lucide/svelte/icons/trash-2";
+  import EyeIcon from "@lucide/svelte/icons/eye";
+  import Undo2Icon from "@lucide/svelte/icons/undo-2";
   import GitCommitIcon from "@lucide/svelte/icons/git-commit-horizontal";
   import ArrowUpIcon from "@lucide/svelte/icons/arrow-up";
   import ArrowDownIcon from "@lucide/svelte/icons/arrow-down";
@@ -37,6 +37,26 @@
   const canCommit = $derived(
     git.staged.length > 0 && git.message.trim().length > 0 && !git.committing,
   );
+
+  // Flatten the staged + changes sections into one list (section headers + file
+  // rows) so a single virtualized scroll can handle a huge changeset (e.g. an
+  // agent that touched hundreds of files) without lag.
+  type Row =
+    | { kind: "header"; area: Area; count: number }
+    | { kind: "file"; area: Area; file: FileEntry };
+
+  const rows = $derived.by<Row[]>(() => {
+    const out: Row[] = [];
+    if (git.staged.length > 0) {
+      out.push({ kind: "header", area: "staged", count: git.staged.length });
+      for (const f of git.staged) out.push({ kind: "file", area: "staged", file: f });
+    }
+    if (git.changed.length > 0) {
+      out.push({ kind: "header", area: "changes", count: git.changed.length });
+      for (const f of git.changed) out.push({ kind: "file", area: "changes", file: f });
+    }
+    return out;
+  });
 
   // Discard confirmation target.
   let discardOpen = $state(false);
@@ -72,24 +92,33 @@
 
 {#snippet fileRow(f: FileEntry, area: Area)}
   {@const b = badge(f, area)}
+  {@const isOpen =
+    git.selected?.file === f.path && git.selected?.staged === (area === "staged")}
   <div
-    class="group flex items-center gap-1.5 rounded-md py-1 pl-1.5 pr-1 hover:bg-accent/40"
-    role="button"
-    tabindex="0"
+    class={cn(
+      "group flex h-8 items-center gap-1.5 rounded-md pl-1.5 pr-1",
+      isOpen ? "bg-accent/70" : "hover:bg-accent/40",
+    )}
     title={f.path}
-    onclick={() => git.openDiff(f.path, area === "staged")}
-    onkeydown={(e) =>
-      (e.key === "Enter" || e.key === " ") && git.openDiff(f.path, area === "staged")}
   >
     <span class={cn("w-3 shrink-0 text-center font-mono font-semibold", text.indicator, b.cls)}>
       {b.letter}
     </span>
-    <span class={cn("min-w-0 flex-1 truncate", text.body)}>
+    <span class={cn("min-w-0 flex-1 truncate font-medium", text.body, b.cls)}>
       {fileName(f.path)}
       {#if fileDir(f.path)}
-        <span class={cn("ml-1", text.meta)}>{fileDir(f.path)}</span>
+        <span class={cn("ml-1 font-normal", text.meta)}>{fileDir(f.path)}</span>
       {/if}
     </span>
+    <Button
+      variant="ghost"
+      size="icon"
+      class={cn(iconButton.action, isOpen ? "text-foreground" : "opacity-70 group-hover:opacity-100")}
+      title={i18n.t("rightPanel.viewDiff")}
+      onclick={() => void git.openDiff(f.path, area === "staged")}
+    >
+      <EyeIcon class={icon.button} />
+    </Button>
     <div class="flex shrink-0 items-center opacity-0 group-hover:opacity-100">
       <Button
         variant="ghost"
@@ -97,12 +126,9 @@
         class={iconButton.action}
         disabled={git.busy}
         title={i18n.t("rightPanel.discard")}
-        onclick={(e) => {
-          e.stopPropagation();
-          askDiscard(f);
-        }}
+        onclick={() => askDiscard(f)}
       >
-        <Trash2Icon class={icon.button} />
+        <Undo2Icon class={icon.button} />
       </Button>
       {#if area === "staged"}
         <Button
@@ -111,10 +137,7 @@
           class={iconButton.action}
           disabled={git.busy}
           title={i18n.t("rightPanel.unstage")}
-          onclick={(e) => {
-            e.stopPropagation();
-            void git.unstage(f.path);
-          }}
+          onclick={() => void git.unstage(f.path)}
         >
           <MinusIcon class={icon.button} />
         </Button>
@@ -125,15 +148,30 @@
           class={iconButton.action}
           disabled={git.busy}
           title={i18n.t("rightPanel.stage")}
-          onclick={(e) => {
-            e.stopPropagation();
-            void git.stage(f.path);
-          }}
+          onclick={() => void git.stage(f.path)}
         >
           <PlusIcon class={icon.button} />
         </Button>
       {/if}
     </div>
+  </div>
+{/snippet}
+
+{#snippet sectionHeader(area: Area, count: number)}
+  <div class="flex h-8 items-center justify-between pl-1.5 pr-0.5">
+    <span class={text.section}>
+      {area === "staged" ? i18n.t("rightPanel.staged") : i18n.t("rightPanel.changes")}
+      <span class="text-muted-foreground/60">({count})</span>
+    </span>
+    <Button
+      variant="ghost"
+      size="sm"
+      class={cn("h-6", text.body)}
+      disabled={git.busy}
+      onclick={() => void (area === "staged" ? git.unstageAll() : git.stageAll())}
+    >
+      {area === "staged" ? i18n.t("rightPanel.unstageAll") : i18n.t("rightPanel.stageAll")}
+    </Button>
   </div>
 {/snippet}
 
@@ -176,59 +214,21 @@
       </div>
     {/if}
 
-    <div class="uxnan-scroll min-h-0 flex-1 overflow-y-auto p-2">
-      {#if git.staged.length === 0 && git.changed.length === 0}
-        <p class={cn("px-1 py-2", text.meta)}>
-          {git.loading ? i18n.t("common.loading") : i18n.t("rightPanel.noChanges")}
-        </p>
-      {/if}
-
-      {#if git.staged.length > 0}
-        <div class="mb-1 flex items-center justify-between pl-1.5 pr-0.5">
-          <span class={text.section}>
-            {i18n.t("rightPanel.staged")}
-            <span class="text-muted-foreground/60">({git.staged.length})</span>
-          </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            class={cn("h-6", text.body)}
-            disabled={git.busy}
-            onclick={() => void git.unstageAll()}
-          >
-            {i18n.t("rightPanel.unstageAll")}
-          </Button>
-        </div>
-        <div class="mb-3 flex flex-col">
-          {#each git.staged as f (f.path)}
-            {@render fileRow(f, "staged")}
-          {/each}
-        </div>
-      {/if}
-
-      {#if git.changed.length > 0}
-        <div class="mb-1 flex items-center justify-between pl-1.5 pr-0.5">
-          <span class={text.section}>
-            {i18n.t("rightPanel.changes")}
-            <span class="text-muted-foreground/60">({git.changed.length})</span>
-          </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            class={cn("h-6", text.body)}
-            disabled={git.busy}
-            onclick={() => void git.stageAll()}
-          >
-            {i18n.t("rightPanel.stageAll")}
-          </Button>
-        </div>
-        <div class="flex flex-col">
-          {#each git.changed as f (f.path)}
-            {@render fileRow(f, "changes")}
-          {/each}
-        </div>
-      {/if}
-    </div>
+    {#if rows.length === 0}
+      <p class={cn("p-3", text.meta)}>
+        {git.loading ? i18n.t("common.loading") : i18n.t("rightPanel.noChanges")}
+      </p>
+    {:else}
+      <VirtualList items={rows} estimateSize={32} class="min-h-0 flex-1 px-2">
+        {#snippet row(r)}
+          {#if r.kind === "header"}
+            {@render sectionHeader(r.area, r.count)}
+          {:else}
+            {@render fileRow(r.file, r.area)}
+          {/if}
+        {/snippet}
+      </VirtualList>
+    {/if}
 
     <!-- Commit composer + sync -->
     <div class="shrink-0 border-t border-sidebar-border p-2">
@@ -279,34 +279,6 @@
     </div>
   {/if}
 </div>
-
-<!-- Diff viewer -->
-<Dialog.Root
-  open={git.selected !== null}
-  onOpenChange={(o) => {
-    if (!o) git.closeDiff();
-  }}
->
-  <Dialog.Content class="flex max-h-[80vh] flex-col gap-2 sm:max-w-3xl">
-    <Dialog.Header>
-      <Dialog.Title class="truncate font-mono text-sm">
-        {git.selected?.file ?? ""}
-      </Dialog.Title>
-      <Dialog.Description>
-        {git.selected?.staged ? i18n.t("rightPanel.diffStaged") : i18n.t("rightPanel.diffUnstaged")}
-      </Dialog.Description>
-    </Dialog.Header>
-    {#if git.diffLoading}
-      <p class={cn("p-4", text.meta)}>{i18n.t("common.loading")}</p>
-    {:else if git.diff.trim().length === 0}
-      <p class={cn("p-4", text.meta)}>{i18n.t("rightPanel.diffEmpty")}</p>
-    {:else}
-      <div class="min-h-0 flex-1 overflow-hidden">
-        <DiffView diff={git.diff} />
-      </div>
-    {/if}
-  </Dialog.Content>
-</Dialog.Root>
 
 <ConfirmDialog
   bind:open={discardOpen}

@@ -4,11 +4,13 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  AgentStateEntry,
   AppData,
   AppSettings,
   BranchList,
   DirListing,
   FileChange,
+  HookServerInfo,
   RepoData,
   SavedTerminalLayout,
   WorktreeEntry,
@@ -39,6 +41,21 @@ export function detectAgents(commands: string[]): Promise<string[]> {
 /** Set the agent commands the backend process-detection poll looks for. */
 export function setAgentCommands(commands: string[]): Promise<void> {
   return invoke("set_agent_commands", { commands });
+}
+
+/** Coordinates of the local agent hook server (null until it's listening). */
+export function getHookInfo(): Promise<HookServerInfo | null> {
+  return invoke<HookServerInfo | null>("get_hook_info");
+}
+
+/** The cached last-known agent states (hook reports), to hydrate the sidebar. */
+export function agentStates(): Promise<AgentStateEntry[]> {
+  return invoke<AgentStateEntry[]>("agent_states");
+}
+
+/** Request (or release) keeping the system awake while an agent works. */
+export function setPreventSleep(active: boolean): Promise<void> {
+  return invoke("set_prevent_sleep", { active });
 }
 
 /** Persist the per-workspace terminal layout (restored on next startup). */
@@ -154,6 +171,17 @@ export function gitDiscard(
   untracked: boolean,
 ): Promise<void> {
   return invoke("git_discard", { path, file, untracked });
+}
+
+/** Apply a single-hunk unified-diff patch to stage/unstage/discard it. `cached`
+ *  targets the index; `reverse` reverses the patch (unstage / discard). */
+export function gitApply(
+  path: string,
+  patch: string,
+  cached: boolean,
+  reverse: boolean,
+): Promise<void> {
+  return invoke("git_apply", { path, patch, cached, reverse });
 }
 
 /** Commit the staged changes with `message`. */

@@ -10,9 +10,25 @@ use std::sync::Arc;
 
 use tokio::sync::RwLock;
 
+use serde::Serialize;
+
 use crate::model::AppData;
 use crate::persistence::PersistenceManager;
+use crate::power::SleepBlocker;
 use crate::pty::PtyManager;
+
+/// Coordinates for the local agent hook server (spec `02d` §1.1). Published once
+/// the server is listening, then injected into every terminal as environment so
+/// an agent's hook knows where (and with what token) to POST its state.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HookServerInfo {
+    /// Full POST endpoint, e.g. `http://127.0.0.1:51234/hook`.
+    pub url: String,
+    /// Shared secret required in the `X-Uxnan-Token` header (rejects stray local
+    /// processes). Generated fresh each launch.
+    pub token: String,
+}
 
 /// Process-wide state shared across all Tauri commands.
 pub struct AppState {
@@ -30,6 +46,12 @@ pub struct AppState {
     /// Agent commands to look for in the process-detection poll (the catalog +
     /// the user's configured agents, set by the frontend).
     pub agent_commands: Arc<RwLock<Vec<String>>>,
+    /// Hook server coordinates, set once the local server is listening. `None`
+    /// until then (e.g. if the port couldn't be bound — terminals still work,
+    /// just without precise hook reporting).
+    pub hook: Arc<RwLock<Option<HookServerInfo>>>,
+    /// Keep-awake controller: blocks system sleep while an agent works (opt-in).
+    pub power: SleepBlocker,
 }
 
 impl AppState {
@@ -41,6 +63,8 @@ impl AppState {
             git_watch: Arc::new(RwLock::new(None)),
             focused: Arc::new(AtomicBool::new(true)),
             agent_commands: Arc::new(RwLock::new(Vec::new())),
+            hook: Arc::new(RwLock::new(None)),
+            power: SleepBlocker::new(),
         }
     }
 }

@@ -202,6 +202,10 @@ pub struct AppSettings {
     /// looking at another space. Default on.
     #[serde(default = "default_true")]
     pub agent_notifications: bool,
+    /// Keep the system awake while an agent is actively working (opt-in; the
+    /// backend auto-releases after 2 h as a safety cap). Default off.
+    #[serde(default)]
+    pub prevent_sleep: bool,
     /// UI language: "system" (follow the device) or a locale code (e.g. "en", "es").
     #[serde(default = "default_language")]
     pub language: String,
@@ -222,6 +226,7 @@ impl Default for AppSettings {
             agent_profiles: Vec::new(),
             default_agent_id: None,
             agent_notifications: true,
+            prevent_sleep: false,
             language: default_language(),
         }
     }
@@ -265,12 +270,45 @@ pub enum Theme {
     System,
 }
 
-/// Last-known state reported by an agent in a worktree.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// How long a cached agent state survives without an update before it is pruned
+/// from disk (spec `02d` §1.5): 7 days. (The 30-minute "stale" threshold is a
+/// UI-only concern, applied in the frontend `agentStatus` store.)
+pub const AGENT_CACHE_TTL_SECS: i64 = 7 * 24 * 60 * 60;
+
+/// A single agent state report — the mutable fields of an [`AgentStateEntry`],
+/// as received from the hook server before it is stamped and cached.
+#[derive(Debug, Clone)]
+pub struct AgentReport {
+    pub agent_id: String,
+    pub status: AgentStatus,
+    pub agent_type: Option<String>,
+    pub prompt: Option<String>,
+    pub tool: Option<String>,
+    pub interrupted: bool,
+}
+
+/// Last-known state reported by an agent via the local hook server (spec `02d`
+/// §1.1). Keyed by `agent_id` — the value the ADE injects as `UXNAN_AGENT_ID`
+/// into each terminal (the PTY id), echoed back by the agent's hook so the
+/// frontend can map a report to the terminal/worktree that produced it.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentStateEntry {
-    pub worktree_id: String,
+    /// Agent instance id (the `UXNAN_AGENT_ID` we injected = the PTY id).
+    pub agent_id: String,
     pub status: AgentStatus,
+    /// Agent kind reported by the hook (`claude`, `codex`, …), if any.
+    #[serde(default)]
+    pub agent_type: Option<String>,
+    /// User prompt the agent is processing, if reported.
+    #[serde(default)]
+    pub prompt: Option<String>,
+    /// Tool in use (`file_edit`, `bash`, `web_search`, …), if reported.
+    #[serde(default)]
+    pub tool: Option<String>,
+    /// Whether the agent reported being interrupted.
+    #[serde(default)]
+    pub interrupted: bool,
     pub first_seen: i64,
     pub last_update: i64,
 }
@@ -283,6 +321,49 @@ pub enum AgentStatus {
     Blocked,
     Waiting,
     Done,
+}
+
+impl AppData {
+    /// Insert or update the cached state for an agent from a [`AgentReport`],
+    /// stamping `now` (epoch seconds) as the last update. An existing entry keeps
+    /// its `first_seen`. Returns the resulting entry (cloned).
+    pub fn upsert_agent_state(&mut self, report: AgentReport, now: i64) -> AgentStateEntry {
+        if let Some(entry) = self
+            .agent_cache
+            .iter_mut()
+            .find(|e| e.agent_id == report.agent_id)
+        {
+            entry.status = report.status;
+            entry.agent_type = report.agent_type;
+            entry.prompt = report.prompt;
+            entry.tool = report.tool;
+            entry.interrupted = report.interrupted;
+            entry.last_update = now;
+            entry.clone()
+        } else {
+            let entry = AgentStateEntry {
+                agent_id: report.agent_id,
+                status: report.status,
+                agent_type: report.agent_type,
+                prompt: report.prompt,
+                tool: report.tool,
+                interrupted: report.interrupted,
+                first_seen: now,
+                last_update: now,
+            };
+            self.agent_cache.push(entry.clone());
+            entry
+        }
+    }
+
+    /// Drop cached agent states not updated within [`AGENT_CACHE_TTL_SECS`].
+    /// Returns the number of entries removed.
+    pub fn prune_agent_cache(&mut self, now: i64) -> usize {
+        let before = self.agent_cache.len();
+        self.agent_cache
+            .retain(|e| now - e.last_update < AGENT_CACHE_TTL_SECS);
+        before - self.agent_cache.len()
+    }
 }
 
 #[cfg(test)]
@@ -399,6 +480,72 @@ mod tests {
                 .expect("seed includes Windows PowerShell");
             assert!(ps.args.iter().any(|a| a == "Bypass"));
         }
+    }
+
+    fn report(agent_id: &str, status: AgentStatus) -> AgentReport {
+        AgentReport {
+            agent_id: agent_id.into(),
+            status,
+            agent_type: None,
+            prompt: None,
+            tool: None,
+            interrupted: false,
+        }
+    }
+
+    #[test]
+    fn upsert_agent_state_inserts_then_updates_in_place() {
+        let mut data = AppData::default();
+        let first = data.upsert_agent_state(
+            AgentReport {
+                prompt: Some("do a thing".into()),
+                tool: Some("bash".into()),
+                agent_type: Some("claude".into()),
+                ..report("pty1", AgentStatus::Working)
+            },
+            100,
+        );
+        assert_eq!(data.agent_cache.len(), 1);
+        assert_eq!(first.first_seen, 100);
+        // Same agent_id updates the existing entry (no duplicate), keeps first_seen.
+        let second = data.upsert_agent_state(report("pty1", AgentStatus::Done), 250);
+        assert_eq!(data.agent_cache.len(), 1);
+        assert_eq!(second.status, AgentStatus::Done);
+        assert_eq!(second.first_seen, 100);
+        assert_eq!(second.last_update, 250);
+    }
+
+    #[test]
+    fn prune_agent_cache_drops_only_expired_entries() {
+        let mut data = AppData::default();
+        data.upsert_agent_state(report("fresh", AgentStatus::Waiting), 0);
+        let now = AGENT_CACHE_TTL_SECS + 10;
+        // `fresh` is now older than the TTL; a just-updated one survives.
+        data.upsert_agent_state(report("recent", AgentStatus::Working), now);
+        let removed = data.prune_agent_cache(now);
+        assert_eq!(removed, 1);
+        assert_eq!(data.agent_cache.len(), 1);
+        assert_eq!(data.agent_cache[0].agent_id, "recent");
+    }
+
+    #[test]
+    fn agent_state_entry_round_trips_camel_case() {
+        let entry = AgentStateEntry {
+            agent_id: "pty1".into(),
+            status: AgentStatus::Blocked,
+            agent_type: Some("codex".into()),
+            prompt: Some("p".into()),
+            tool: Some("web_search".into()),
+            interrupted: true,
+            first_seen: 1,
+            last_update: 2,
+        };
+        let json = serde_json::to_string(&entry).unwrap();
+        assert!(json.contains("agentId"));
+        assert!(json.contains("agentType"));
+        assert!(json.contains("lastUpdate"));
+        let back: AgentStateEntry = serde_json::from_str(&json).unwrap();
+        assert_eq!(entry, back);
     }
 
     #[test]

@@ -1,11 +1,17 @@
 <script lang="ts">
   import { app } from "$lib/state/app.svelte";
+  import { git } from "$lib/state/git.svelte";
+  import { projects } from "$lib/state/projects.svelte";
   import { i18n } from "$lib/i18n";
+  import { isUntestedPlatform, osLabel } from "$lib/platform";
+  import TriangleAlertIcon from "@lucide/svelte/icons/triangle-alert";
   import TerminalArea from "$lib/components/TerminalArea.svelte";
+  import DiffPanel from "$lib/components/DiffPanel.svelte";
   import TitleBar from "$lib/components/TitleBar.svelte";
   import LeftSidebar from "$lib/components/LeftSidebar.svelte";
   import RightPanel from "$lib/components/RightPanel.svelte";
   import Settings from "$lib/components/Settings.svelte";
+  import WorktreeSearch from "$lib/components/WorktreeSearch.svelte";
 
   // Resize bounds for each sidebar (px).
   const LEFT_MIN = 200;
@@ -79,9 +85,17 @@
     if (t?.closest("input, textarea")) return;
     e.preventDefault();
   }
+
+  // Ctrl/Cmd+P opens the quick worktree switcher.
+  function onKeyDown(e: KeyboardEvent) {
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "p") {
+      e.preventDefault();
+      projects.paletteOpen = true;
+    }
+  }
 </script>
 
-<svelte:window oncontextmenu={onContextMenu} />
+<svelte:window oncontextmenu={onContextMenu} onkeydown={onKeyDown} />
 
 <div class="flex h-screen w-screen flex-col bg-background text-foreground">
   <!-- Custom title bar (OS chrome disabled) -->
@@ -89,6 +103,9 @@
 
   <!-- Settings dialog (controlled by app.settingsOpen) -->
   <Settings />
+
+  <!-- Quick worktree switcher (Ctrl/Cmd+P) -->
+  <WorktreeSearch />
 
   <!-- Three-panel body -->
   <div class="flex min-h-0 flex-1">
@@ -111,9 +128,16 @@
       ></div>
     {/if}
 
-    <!-- Center area: multiplexed terminals (xterm.js + PTY) -->
-    <main class="flex min-w-0 flex-1 flex-col overflow-hidden">
+    <!-- Center area: multiplexed terminals (xterm.js + PTY). When a diff is open
+         it overlays the terminals full-size — they stay mounted underneath, so
+         no PTY/xterm is torn down while reviewing. -->
+    <main class="relative flex min-w-0 flex-1 flex-col overflow-hidden">
       <TerminalArea />
+      {#if git.selected}
+        <div class="absolute inset-0 z-20">
+          <DiffPanel />
+        </div>
+      {/if}
     </main>
 
     {#if app.settings.rightSidebarOpen}
@@ -148,6 +172,15 @@
       <span class="text-destructive">· {app.errorMessage}</span>
     {/if}
     <div class="flex-1"></div>
+    {#if isUntestedPlatform}
+      <span
+        class="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400"
+        title={i18n.t("status.untestedTooltip", { os: osLabel() })}
+      >
+        <TriangleAlertIcon class="size-3.5" />
+        {i18n.t("status.untested", { os: osLabel() })}
+      </span>
+    {/if}
     <span>{i18n.plural(app.repos.length, "status.reposOne", "status.reposOther")}</span>
   </footer>
 </div>

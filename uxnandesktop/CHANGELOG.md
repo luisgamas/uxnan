@@ -5,6 +5,136 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — keep-awake on macOS/Linux + untested-platform notice
+- **Keep-awake now covers all three platforms** (`power.rs`): Windows
+  (`SetThreadExecutionState`), macOS (`caffeinate -i`), Linux (`systemd-inhibit`),
+  each held by the keep-awake worker and released on exit. **macOS/Linux are
+  implemented but UNTESTED** (developed on Windows).
+- **Untested-platform notice**: when running on macOS/Linux, the status bar shows
+  an amber "Untested on <os>" badge (`platform.ts`), and the prevent-sleep setting
+  notes the same. The app is only validated on Windows so far (alpha).
+
+### Added — Phase 5 (UI batch B): palette, split buttons, virtual lists, sleep toggle
+- **Quick worktree switcher** (`WorktreeSearch`): a command-palette opened with
+  **Ctrl/Cmd+P** or the sidebar ⚡ button — type to filter every worktree across
+  projects (branch / path / project), ↑/↓ to move, Enter to jump (activates it).
+- **TabGroup split buttons**: each terminal region's tab bar now has visible
+  split-right (columns) and split-down (rows) buttons, not just the right-click
+  menu.
+- **Virtualized lists** (`VirtualList`, `@tanstack/svelte-virtual`): the worktree
+  palette and the right-panel changed-files list render only visible rows, so a
+  huge changeset (e.g. an agent that touched hundreds of files) stays smooth.
+  The right panel is now a single virtualized scroll (Staged + Changes sections
+  with headers). The diff is already virtualized via CodeMirror; the hierarchical
+  project tree is intentionally left non-virtualized (FOR-DEV).
+- **Prevent-sleep toggle** (Settings → Agents): exposes `AppSettings.preventSleep`
+  (the keep-awake feature added earlier); default off.
+
+### Added — Phase 5: full-size diff panel + side-by-side + hunk staging (UI)
+- **Diff opens full-size in the center panel** (`DiffPanel`), overlaying the
+  terminals (which stay mounted underneath — no PTY/xterm torn down). Replaces
+  the cramped, fixed-size modal. Header shows the file + Staged/Working badge +
+  close; closing returns to the terminals.
+- **Right-panel file list**: rows are no longer click-anywhere — only the
+  buttons act. Each file has an **eye** button to open its diff, a **revert**
+  (↺) button to discard (clearer than a trash can), and stage/unstage (+/−). The
+  changed file's **name is colored** by status (modified/added/deleted/renamed)
+  and the open file's row is highlighted.
+- **Unified + side-by-side toggle** (`DiffView`): unified is one column;
+  side-by-side is two synced CodeMirror views (old left / new right). Both stay
+  mounted; CodeMirror is remeasured on reveal/resize so neither renders blank.
+- **Per-hunk staging**: a bar above the diff lists each hunk (`#1, #2…`,
+  click to scroll to it) with stage / unstage / discard actions, built on the
+  `git_apply` backend below. Kept outside the CodeMirror render so it can't
+  blank the editor.
+
+### Added — Phase 5: hunk-level staging (backend)
+- **`git_apply` command** (`git::apply_patch`): applies a unified-diff patch fed
+  on stdin, with `cached` (index) and `reverse` flags — the backend half of
+  hunk-level staging (stage / unstage / discard a single hunk).
+
+### Added — Phase 5: keep system awake while an agent works (opt-in)
+- **Prevent sleep** (`power.rs`, `AppSettings.preventSleep`, default off): while
+  enabled and an agent is working, the ADE asks the OS not to sleep, and releases
+  it when no agent is working. A long-lived worker thread owns the request
+  (Windows `SetThreadExecutionState` is thread-affine) and **auto-releases after
+  2 h** as a safety cap. Windows implemented; macOS/Linux are a no-op for now
+  (FOR-DEV). Command `set_prevent_sleep`; the frontend drives it from
+  `preventSleep && anyAgentWorking()`. The Settings toggle ships with the UI batch.
+
+### Added — Phase 5: rotating backups + schema-migration hardening
+- **5 rotating backups** (`persistence.rs`): before each atomic write, the live
+  `state.json` is rotated into a numbered ring (`state.bak.1` … `state.bak.5`,
+  oldest dropped), so a bad write or migration can be recovered. Rotation is
+  best-effort — a backup error never blocks the save. Closes a Phase 0 follow-up.
+- **Sequential schema migrations**: `migrate` now applies one `v → v+1` step at a
+  time up to `SCHEMA_VERSION` (each future bump is an independent, testable
+  transform) and rejects a future version. A missing `version` is still treated
+  as current. (Debounced async writes remain a follow-up; the frontend already
+  debounces the high-frequency layout writes.)
+
+### Added — Phase 4 (Layer 1): local agent hook server + precise states
+- **HTTP hook server (`axum`).** The backend binds a small server to an
+  ephemeral `127.0.0.1` port at startup (`hooks.rs`). An agent's hook `POST`s a
+  JSON state report to `/hook` — `{ agentId, status, agentType?, prompt?, tool?,
+  interrupted? }`, `status ∈ working|blocked|waiting|done` — and the ADE
+  normalizes it, caches it, and broadcasts `agent:status-changed` to the
+  frontend. Unlike the coarse output-activity inference, this distinguishes the
+  four precise states. Requests must present the per-launch token in the
+  `X-Uxnan-Token` header (rejects stray local processes).
+- **Env injection.** Every terminal is spawned with `UXNAN_HOOK_URL`,
+  `UXNAN_HOOK_TOKEN` and `UXNAN_AGENT_ID` (the PTY id), inherited by any agent
+  run inside it, so a hook knows where to report and which terminal it is
+  (`PtySpec.env`, applied in `pty_create`).
+- **Persistent cache (TTL 7 d / stale 30 min, spec §1.5).** Reports upsert into
+  `AppData.agent_cache` (now keyed by `agentId`, carrying status/type/prompt/
+  tool/interrupted + first-seen/last-update), persisted atomically and
+  TTL-pruned on load (`prune_agent_cache`). New commands `get_hook_info` and
+  `agent_states`; the frontend hydrates from the cache and stays live via the
+  event (`agentStatus` store; `isStale` after 30 min).
+- Wiring a specific agent to call the hook is per-agent configuration — see
+  [`docs/agent-hooks.md`](docs/agent-hooks.md). Consuming the precise state in
+  the sidebar/tab indicators lands in a follow-up increment.
+
+### Added — Phase 4 (Layer 2): terminal-title state inference
+- **OSC title → state (fallback).** Agents that update the terminal title
+  (OSC 0/2, surfaced by xterm's `onTitleChange`) get their state inferred from
+  it — "thinking…/running…" → working, "waiting/approval/review" → waiting,
+  "error/failed" → blocked, "done/finished/✓" → done (`agentTitle.ts`,
+  `agentMonitor.noteTitle`). Unknown titles (a plain cwd or `user@host`) are
+  ignored. Needs no hook setup; complements Layer 1 for agents that don't report.
+- **Unified status resolver** (`agentDisplay.ts`, `resolveAgentDisplay`): merges
+  the layers with a clear priority — hook (precise) › title › output-activity —
+  so the sidebar/tab indicators have one effective state to render.
+
+### Added — Phase 4: precise status dots + unread/done badges
+- **Colored status dots** (`AgentStatusDot.svelte`) on each agent sidebar row,
+  driven by `resolveAgentDisplay`: working = green (pulsing), blocked = amber,
+  waiting = orange (pulsing), done = blue, idle = gray; a stale report
+  (no update >30 min) is dimmed, with the state + "stale" in the tooltip.
+  Replaces the single green working spinner with the four precise states.
+- **Unread / done badge** (`unread` store, spec §2): when an agent finishes
+  (`done`, or settles idle while you're not looking at it), its worktree is
+  flagged — a red dot on the worktree row and on the project header (so a
+  collapsed project still surfaces a child worktree's result). The flag clears
+  when you open that worktree or refocus the window; the dock/taskbar shows the
+  count via `setBadgeCount` (best-effort per OS). The hook server owns this when
+  it's driving a tab, so the coarse inference doesn't double-fire.
+
+### Added — Phase 4: custom agent logos
+- **Custom logo per agent** (Settings → Agents): the logo is now a button —
+  pick any image and it's stored inline as a 64×64 PNG `data:` URL on
+  `AgentProfile.icon` (`logo.ts`), so it persists with no filesystem path to
+  resolve; a small ✕ resets to the catalog logo. Custom logos render everywhere
+  catalog logos do (`agentLogoSrc` now passes `data:`/`http`/absolute through).
+
+### Changed — agents: per-worktree agent override
+- **Choose the agent when creating a worktree** (New worktree dialog): a "Launch
+  agent" picker (None + your configured agents, with logos) preselects the global
+  default and overrides what launches into that worktree
+  (`projects.createWorktree` gains an `agentId`: a specific id, `null` for none,
+  or omit for the global default).
+
 ### Changed — agents: detect in any terminal + close-on-exit
 - **Process detection (any terminal).** A background scan (every 2 s, `procscan`
   + `sysinfo`) walks each terminal's process tree and reports the agent running

@@ -24,6 +24,8 @@
   import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
   import LayersIcon from "@lucide/svelte/icons/layers";
   import PanelRightIcon from "@lucide/svelte/icons/panel-right";
+  import Columns2Icon from "@lucide/svelte/icons/columns-2";
+  import Rows2Icon from "@lucide/svelte/icons/rows-2";
 
   /** Default profile's shell/args, for region-level + and splits. A blank
    *  command falls back to the backend's platform default shell. */
@@ -350,6 +352,23 @@
                         terminals.create({ groupId: g.group.id, ...defaultShellArgs() })}
                     >
                       +
+                    </button>
+                    <div class="flex-1"></div>
+                    <button
+                      class="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                      title={i18n.t("terminal.splitRight")}
+                      aria-label={i18n.t("terminal.splitRight")}
+                      onclick={() => terminals.split(g.group.id, "row", defaultShellArgs())}
+                    >
+                      <Columns2Icon class={icon.button} />
+                    </button>
+                    <button
+                      class="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                      title={i18n.t("terminal.splitDown")}
+                      aria-label={i18n.t("terminal.splitDown")}
+                      onclick={() => terminals.split(g.group.id, "col", defaultShellArgs())}
+                    >
+                      <Rows2Icon class={icon.button} />
                     </button>
                   </div>
 

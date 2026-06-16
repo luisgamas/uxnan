@@ -426,6 +426,15 @@ class TerminalStore {
     return undefined;
   }
 
+  /** The workspace key (worktree path, or "") that holds a given tab, if any. */
+  workspaceOfTab(tabId: string): string | undefined {
+    for (const key of Object.keys(this.workspaces)) {
+      const tree = this.workspaces[key];
+      if (tree && groupOfTab(tree, tabId)) return key;
+    }
+    return undefined;
+  }
+
   /** Every open tab paired with its workspace key (for the activity monitor). */
   *tabsWithWorkspace(): Generator<{ tab: GroupTab; workspace: string }> {
     for (const key of Object.keys(this.workspaces)) {

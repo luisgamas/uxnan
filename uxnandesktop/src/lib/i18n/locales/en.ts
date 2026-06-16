@@ -77,6 +77,9 @@ export const en = {
     "The new branch starts from here. Defaults to the repo's main branch.",
   "newWorktree.create": "Create worktree",
   "newWorktree.preview": "Worktree folder",
+  "newWorktree.agent": "Launch agent",
+  "newWorktree.agentNone": "None",
+  "newWorktree.agentDesc": "Launched in the new worktree once it's created.",
 
   // Terminal area
   "terminal.newDefault": "New terminal (default profile)",
@@ -149,16 +152,40 @@ export const en = {
   "rightPanel.diffEmpty": "Nothing to show for this file.",
   "rightPanel.diffStaged": "Staged",
   "rightPanel.diffUnstaged": "Working tree",
+  "diff.unified": "Unified",
+  "diff.sideBySide": "Side by side",
+  "diff.close": "Close diff",
+  "rightPanel.viewDiff": "View diff",
+  "palette.placeholder": "Jump to a worktree…",
+  "palette.empty": "No worktrees match.",
+  "sidebar.quickSwitch": "Quick switch worktree (Ctrl+P)",
+  "diff.stageHunk": "Stage hunk",
+  "diff.unstageHunk": "Unstage hunk",
+  "diff.discardHunk": "Discard hunk",
+  "diff.discardHunkTitle": "Discard this hunk?",
+  "diff.discardHunkDesc": "The selected hunk's changes will be reverted in the working tree. This can't be undone.",
   "rightPanel.push": "Push",
   "rightPanel.pull": "Pull",
 
   // Agent monitoring (activity)
   "monitor.working": "Working",
+  "monitor.blocked": "Blocked",
+  "monitor.waiting": "Waiting for input",
+  "monitor.done": "Done",
+  "monitor.idle": "Idle",
+  "monitor.stale": "No update in a while",
   "monitor.detected": "Agent detected",
+  "monitor.unread": "Agent finished — not yet reviewed",
   "agents.spaceLabel": "Agents",
   "settings.agentNotifications": "Idle notifications",
   "settings.agentNotificationsDesc":
     "Notify when an agent goes idle while you're looking at another space.",
+  "settings.preventSleep": "Prevent sleep while working",
+  "settings.preventSleepDesc":
+    "Keep the system awake while an agent is working (auto-releases after 2 h). macOS/Linux support is implemented but untested.",
+  "status.untested": "Untested on {os}",
+  "status.untestedTooltip":
+    "Uxnan is developed and validated on Windows. {os} support is implemented but not yet tested on real hardware (alpha).",
   "notify.agentIdleTitle": "{agent} is idle",
   "notify.agentIdleBody": "In {worktree} — it may be waiting for you.",
 
@@ -213,6 +240,9 @@ export const en = {
   "agentEditor.argsPlaceholder": "arguments (space-separated)",
   "agentEditor.launchIn": "Launch in",
   "agentEditor.defaultTerminal": "Default terminal",
+  "agentEditor.logo": "Logo",
+  "agentEditor.chooseLogo": "Choose a custom logo image",
+  "agentEditor.resetLogo": "Reset to the default logo",
 
   // Launch agent (sidebar)
   "agent.launch": "Launch agent",

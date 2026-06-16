@@ -31,9 +31,13 @@ export const AGENT_CATALOG: CatalogAgent[] = [
   { id: "qwen", name: "Qwen Code", command: "qwen", logo: "qwen" },
 ];
 
-/** URL for an agent logo key, or null when there's no logo (custom agent). */
+/** Resolve a logo value to an `<img src>`, or null when there's none. A catalog
+ *  key (e.g. `claudecode`) maps to its bundled SVG; a user's custom logo is
+ *  stored inline as a `data:` URL and used as-is (also tolerates `http(s)`/`/`). */
 export function agentLogoSrc(logo?: string | null): string | null {
-  return logo ? `/agents/${logo}.svg` : null;
+  if (!logo) return null;
+  if (/^(data:|https?:|\/)/.test(logo)) return logo;
+  return `/agents/${logo}.svg`;
 }
 
 /** Best logo key for an agent: its stored `icon`, else matched from the catalog

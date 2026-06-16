@@ -74,6 +74,9 @@ export const es: Record<MessageKey, string> = {
     "La rama nueva parte de aquí. Por defecto, la rama principal del repo.",
   "newWorktree.create": "Crear worktree",
   "newWorktree.preview": "Carpeta del worktree",
+  "newWorktree.agent": "Lanzar agente",
+  "newWorktree.agentNone": "Ninguno",
+  "newWorktree.agentDesc": "Se lanza en el worktree nuevo en cuanto se crea.",
 
   // Terminal area
   "terminal.newDefault": "Nueva terminal (perfil predeterminado)",
@@ -146,13 +149,37 @@ export const es: Record<MessageKey, string> = {
   "rightPanel.diffEmpty": "No hay nada que mostrar para este archivo.",
   "rightPanel.diffStaged": "Preparado",
   "rightPanel.diffUnstaged": "Árbol de trabajo",
+  "diff.unified": "Unificado",
+  "diff.sideBySide": "Lado a lado",
+  "diff.close": "Cerrar diff",
+  "rightPanel.viewDiff": "Ver diff",
+  "palette.placeholder": "Saltar a un worktree…",
+  "palette.empty": "Ningún worktree coincide.",
+  "sidebar.quickSwitch": "Cambio rápido de worktree (Ctrl+P)",
+  "diff.stageHunk": "Preparar bloque",
+  "diff.unstageHunk": "Quitar bloque",
+  "diff.discardHunk": "Descartar bloque",
+  "diff.discardHunkTitle": "¿Descartar este bloque?",
+  "diff.discardHunkDesc": "Los cambios del bloque seleccionado se revertirán en el árbol de trabajo. No se puede deshacer.",
   "rightPanel.push": "Push",
   "rightPanel.pull": "Pull",
 
   // Agent monitoring (activity)
   "monitor.working": "Trabajando",
+  "monitor.blocked": "Bloqueado",
+  "monitor.waiting": "Esperando tu respuesta",
+  "monitor.done": "Listo",
+  "monitor.idle": "Inactivo",
+  "monitor.stale": "Sin actualizar hace rato",
   "monitor.detected": "Agente detectado",
+  "monitor.unread": "El agente terminó — sin revisar",
   "agents.spaceLabel": "Agentes",
+  "settings.preventSleep": "Evitar suspensión al trabajar",
+  "settings.preventSleepDesc":
+    "Mantén el sistema despierto mientras un agente trabaja (se libera solo a las 2 h). El soporte de macOS/Linux está implementado pero sin probar.",
+  "status.untested": "Sin probar en {os}",
+  "status.untestedTooltip":
+    "Uxnan se desarrolla y valida en Windows. El soporte de {os} está implementado pero aún no se ha probado en hardware real (alpha).",
   "settings.agentNotifications": "Notificaciones de inactividad",
   "settings.agentNotificationsDesc":
     "Notificar cuando un agente queda inactivo y estás viendo otro espacio.",
@@ -211,6 +238,9 @@ export const es: Record<MessageKey, string> = {
   "agentEditor.argsPlaceholder": "argumentos (separados por espacios)",
   "agentEditor.launchIn": "Lanzar en",
   "agentEditor.defaultTerminal": "Terminal predeterminada",
+  "agentEditor.logo": "Logo",
+  "agentEditor.chooseLogo": "Elegir una imagen de logo personalizada",
+  "agentEditor.resetLogo": "Restablecer el logo predeterminado",
 
   // Launch agent (sidebar)
   "agent.launch": "Lanzar agente",

@@ -34,16 +34,26 @@ models live in:
 | **1** | Terminal core (PTY, tabs, splits) | ✅ **DONE** — terminals, region splits, copy/paste, file-drop, layout persistence, kill-on-exit (reorder/MRU = Tier 2; per-worktree assoc = Phase 2) |
 | **2** | Git & worktrees | ✅ **DONE** — single-panel UI (search + collapsible Projects/Worktrees, cards, new-worktree dialog with base-branch picker), worktree create / list / safe remove, status/dirty + ahead/behind badges, in-app directory picker, **per-worktree terminal workspaces** (select a worktree → its terminals show, others keep running hidden). Agent auto-launch is the Settings **agents track** (S) |
 | **3** | Git status & diffs | ✅ **DONE** — right-panel review (status/diff/stage/discard/commit), live status watcher (3 s, focus-paused), push/pull, CodeMirror 6 diff viewer; `git2` migration + side-by-side/hunk staging → Phase 5 |
-| **4** | Agent monitoring | ◑ **IN PROGRESS** — activity inference (working/idle dots on worktrees + tabs) + native notification when an agent settles idle while unfocused; precise hook-based states deferred |
-| 5 | Polish & UX (hunk staging, side-by-side, virtual scroll) | ☐ not started |
-| 6 | Bridge integration (mobile pairing) | ☐ not started |
-| **S** | Settings, design system & i18n (cross-cutting) | ◑ **IN PROGRESS** — Settings (theme + terminal profiles w/ OS templates), **design tokens**, **full i18n (EN/ES + Language picker)**, and the **agents registry + manual launch** (the ADE differentiator) done; agent **auto-launch on worktree create** + Phase-4 **status monitoring** pending |
+| **4** | Agent monitoring | ✅ **DONE** — activity inference + **Layer 1 HTTP hook server** (precise working/blocked/waiting/done, persistent cache) + Layer 2 terminal-title inference + colored status dots + unread/done badges + custom agent logos + per-worktree agent override. Ready-made per-agent hook configs + orchestration = follow-ups |
+| **5** | Polish & UX | ✅ **DONE** — hunk-level staging, full-size center diff panel + side-by-side, rotating backups + sequential migrations, opt-in keep-awake (Windows), worktree palette (Ctrl/Cmd+P), TabGroup split buttons, virtualized lists. Follow-ups (non-blocking): keep-awake macOS/Linux, async-debounce persistence, sidebar-tree virtualization, E2E tests; secrets → Phase 6 |
+| **6** | Bridge integration (mobile pairing) | ☐ **NOT STARTED** — embed the Node bridge as a Tauri sidecar + QR pairing. Optional for standalone use; required to act as the mobile bridge |
+| **S** | Settings, design system & i18n (cross-cutting) | ✅ **DONE** — Settings (theme + terminal profiles w/ OS templates), **design tokens**, **full i18n (EN/ES + Language picker)**, **agents registry + manual launch**, **auto-launch on worktree create**, and Phase-4 **status monitoring**. (Custom / import-export themes = optional follow-up) |
 
 Estimate (spec §2): 11–17 weeks for Phases 0–5 solo; +2–3 wk for Phase 6.
 
-### Where we are (2026-06-12)
+> **MVP status (2026-06-16): Phases 0–5 + cross-cutting (S) are complete.** The
+> desktop ADE is **functional for an ALPHA release as a standalone app** (manage
+> repos/worktrees, multiplexed terminals, launch + monitor agents, full git
+> review with hunk staging & diffs, settings/i18n/theming). The only remaining
+> roadmap phase is **6 (embedded bridge / mobile pairing)**, which is *optional
+> for standalone use*. Pre-release gaps before distributing builds: branded icons
+> + signing/updater keys (`FOR-HUMAN.md`) and a CI/CD pipeline (see
+> "CI/CD — release builds" below).
 
-**Phases 0–3 are complete**, plus the cross-cutting track:
+### Where we are (2026-06-16)
+
+**Phases 0–5 + the cross-cutting track (S) are complete** — the ADE is
+alpha-functional as a standalone app:
 - **0** infra · **1** terminals (splits, copy/paste, file-drop, persisted layout)
   · **2** git worktrees (hierarchical Projects tree, create/list/safe-remove,
   status badges, in-app picker, per-worktree terminal workspaces).
@@ -55,18 +65,27 @@ Estimate (spec §2): 11–17 weeks for Phases 0–5 solo; +2–3 wk for Phase 6.
   **run-inside-chosen-shell** launch, and **auto-launch a default agent on
   worktree create**.
 
-**Next up — Phase 4 (Agent monitoring):** the remaining Tier-1 pillar and the
-ADE's differentiator — know what each agent is doing per worktree
-(`working`/`waiting`/`blocked`/`done`) + native notifications. Recommended as an
-increment-based build: (1) process/terminal-title inference → status badges,
-(2) native notifications on `done`, (3) the local HTTP hook server.
+- **4** agent monitoring — activity inference + native notifications, **Layer 1
+  HTTP hook server** (precise `working`/`blocked`/`waiting`/`done`, persistent
+  cache), **Layer 2** terminal-title inference, colored status dots, unread/done
+  badges, custom agent logos, and per-worktree agent override.
 
-**Then:** Phase 5 (polish — side-by-side diff, hunk/line staging, virtual
-scroll) and Phase 6 (bridge integration / mobile pairing).
+- **5** polish — hunk-level staging, full-size center diff panel + side-by-side,
+  rotating backups + sequential migrations, opt-in keep-awake (Windows), worktree
+  palette (Ctrl/Cmd+P), TabGroup split buttons, virtualized lists.
+
+**Next up — Phase 6 (bridge integration / mobile pairing):** the only remaining
+roadmap phase, and *optional for standalone use* — embed the Node bridge as a
+Tauri sidecar + QR pairing. Before distributing builds: a CI/CD pipeline (see
+"CI/CD — release builds") + branded icons/signing (`FOR-HUMAN.md`).
+
+**Phase 4 follow-ups (not blocking):** ready-made per-agent hook configs (Claude
+Code + generic wrapper) so precise states work out-of-the-box, multi-agent
+orchestration (`02d` §3), and a precise status dot in the terminal tab strip.
 
 Smaller non-blockers (tracked below): backend debounced persistence + rotating
-backups, `git2` migration, WSL paths, tab reorder/MRU, per-worktree agent
-override, branded icons (`FOR-HUMAN.md`).
+backups, `git2` migration, WSL paths, tab reorder/MRU, branded icons
+(`FOR-HUMAN.md`).
 
 **In-app toast/notification system** (`svelte-sonner`) — replace the inline,
 dismissible error banners (left sidebar `projects.error`, right panel
@@ -139,9 +158,14 @@ user configuration. Built incrementally alongside the phases.
       in the new worktree after creating + selecting it. Opt-in. Closes Tier-2
       **T2.2** (spec `02b §5.1`).
 
+**Done — agents (cont.):**
+- [x] **Per-worktree agent override** at creation — the new-worktree dialog's
+      "Launch agent" picker (None + configured agents) overrides the global
+      default; `projects.createWorktree` takes an `agentId` (Phase 4).
+- [x] **Custom agent logos** — pick any image per agent (Settings → Agents),
+      stored inline as a `data:` URL on `AgentProfile.icon` (`logo.ts`).
+
 **Pending — agents:**
-- [ ] **Per-worktree agent override** at/before creation (today it's the global
-      default agent). **FOR-DEV.**
 - [ ] **Env vars per agent**, if a launch flow needs them.
 - [ ] **Arg quoting** in the injected command is best-effort (quote-if-spaces);
       revisit if an agent needs shell-specific escaping. **FOR-DEV.**
@@ -188,13 +212,12 @@ Phase 0 follow-ups:
 - [x] **shadcn-svelte components** — the component library (button, input, dialog,
       dropdown-menu, select, card, badge, separator, tooltip, collapsible) is
       installed under `src/lib/components/ui/` and used across the app.
-- [ ] **Debounced async persistence** — current `save` is synchronous
-      write-rename on the command thread. Add the 250 ms Tokio debounce +
-      5 rotating backups described in spec §7 (`persistence.rs`). Defer until
-      layout writes get frequent (Phase 1 tabs/splits). **FOR-DEV** (marker in
-      `persistence.rs`).
-- [ ] **Migration arms** — `persistence::migrate` only knows v1; add real
-      `v1→v2…` arms when the schema first changes. **FOR-DEV** marker in place.
+- [x] **Rotating backups** — 5 numbered backups rotated before each atomic write
+      (`persistence.rs`, Phase 5). The **250 ms Tokio debounce** for `save` is
+      still a follow-up; deferred since the frontend already debounces the
+      high-frequency layout writes. **FOR-DEV.**
+- [x] **Migration arms** — `persistence::migrate` now applies sequential
+      `v→v+1` steps via `migrate_step` (add an arm per future schema bump).
 - [ ] **Branded icons + bundle identity** — replace the default Tauri icons.
       See `FOR-HUMAN.md`.
 
@@ -389,9 +412,9 @@ earlier "superficial UX" warning is resolved.
 
 ---
 
-## Phase 4 — Agent monitoring ◑ (activity inference done)
+## Phase 4 — Agent monitoring ✅
 
-**Goal:** know what each agent is doing in each worktree.
+**Goal (met):** know what each agent is doing in each worktree.
 
 **Done (increment 1 — activity inference, universal):**
 - [x] **Infer status from terminal output** (no agent cooperation): a tab
@@ -417,39 +440,92 @@ earlier "superficial UX" warning is resolved.
       **any** terminal, including agents the user runs by hand; clears when the
       agent exits. Commands to look for are synced via `set_agent_commands`.
 
-> **NOTE — precise states are a contemplated future improvement (not yet
-> implemented).** Activity inference is intentionally coarse: it can't tell
-> `working` vs `blocked` vs `waiting` apart, only "active" vs "idle / likely
-> done". For precise per-state monitoring we'd **migrate to the HTTP hook server**
-> (Layer 1, `02d`): agents that support hooks POST `working/blocked/waiting/done`
-> to a localhost endpoint. That needs per-agent setup, so it's deferred. **FOR-DEV.**
+> **NOTE — precise states now implemented (increment 2–3).** The coarse activity
+> inference (active vs idle) is complemented by the **HTTP hook server** (Layer 1,
+> `02d`): agents that support hooks POST `working/blocked/waiting/done` to a
+> localhost endpoint and the UI shows the exact state. Wiring a *specific* agent
+> to call it is still per-agent setup — see `docs/agent-hooks.md` and the
+> ready-made-config follow-up below.
 
-**Deferred (precise monitoring / orchestration):**
-- [ ] Local HTTP hook server (`axum`) + normalized states + persistent cache
-      (`AppData.agent_cache`, TTL 7 d / 30 min stale) + `agent:status-changed`.
-- [x] **Foreground-process detection** (Layer 3) — done (see above); catches
-      agents run manually too. Terminal-title (OSC) parsing (Layer 2) is still
-      open as an extra signal. **FOR-DEV.**
-- [ ] "Unread / done" badge on completed worktrees (cleared on focus); dock/
-      taskbar badge; multi-agent orchestration (task graph, routing) per `02d`.
-- [ ] **Custom agent logos** — catalog agents render their brand SVG in the
-      sidebar rows; a *custom* agent (no catalog match) falls back to the generic
-      Bot. Let users upload/point to their own logo per agent
-      (`AgentProfile.icon` could hold a path/data-URL) so it shows in the rows.
-      **FOR-DEV.**
+**Done (increment 2 — Layer 1 hook server):**
+- [x] **Local HTTP hook server (`axum`)** + normalized states + persistent cache
+      (`AppData.agent_cache`, keyed by `agentId`, TTL 7 d / 30 min stale) +
+      `agent:status-changed`. Binds an ephemeral `127.0.0.1` port (`hooks.rs`),
+      injects `UXNAN_HOOK_URL`/`UXNAN_HOOK_TOKEN`/`UXNAN_AGENT_ID` into every
+      terminal (`PtySpec.env`), token-guarded (`X-Uxnan-Token`). Commands
+      `get_hook_info`/`agent_states`; frontend `agentStatus` store hydrates +
+      stays live. Contract: [`docs/agent-hooks.md`](docs/agent-hooks.md).
+
+**Done (increment 3 — precise states in the UI + badges + logos + override):**
+- [x] **Consume precise states in the UI** — colored dots (`AgentStatusDot`,
+      `resolveAgentDisplay`) on agent rows: working green / blocked amber /
+      waiting orange / done blue / idle gray, stale (>30 min) dimmed; hook state
+      preferred over title over activity.
+- [x] **"Unread / done" badge** on worktrees + project headers (`unread` store):
+      flagged when an agent finishes/settles idle while unobserved, cleared on
+      open or window focus; dock/taskbar count via `setBadgeCount`.
+- [x] **Custom agent logos** — pick any image (Settings → Agents), stored inline
+      as a 64×64 PNG `data:` URL on `AgentProfile.icon` (`logo.ts`); ✕ resets to
+      the catalog logo; rendered everywhere (`agentLogoSrc` passes data URLs).
+- [x] **Per-worktree agent override** — "Launch agent" picker in the new-worktree
+      dialog overrides the global default (`projects.createWorktree` `agentId`).
+- [x] **Foreground-process detection** (Layer 3) — catches agents run manually.
+- [x] **Terminal-title (OSC) parsing (Layer 2)** — `onTitleChange` →
+      `agentMonitor.noteTitle` → `statusFromTitle` (`agentTitle.ts`); merged with
+      Layers 1/3 by `resolveAgentDisplay` (`agentDisplay.ts`).
+
+**Deferred (follow-ups / orchestration):**
+- [ ] **Ready-made per-agent hook configs** — ship a Claude Code `hooks` config
+      (and a generic wrapper script) that POST to `UXNAN_HOOK_URL`, so precise
+      states work out-of-the-box instead of manual setup. **FOR-DEV / FOR-HUMAN.**
+- [ ] **Multi-agent orchestration** (task graph, @type routing, fan-out,
+      backpressure, sidebar lineage) per `02d` §3. **FOR-DEV.**
+- [ ] **Tab-bar status indicator** — the terminal tab strip still shows the coarse
+      working dot; could adopt the precise `AgentStatusDot` too. **FOR-DEV.**
 
 ---
 
 ## Phase 5 — Polish & UX ☐
 
-- [ ] Hunk-level (partial) staging (`git2::Diff::foreach` + index manipulation).
-- [ ] Rotating backups + schema migrations hardening (closes Phase 0 follow-up).
-- [ ] System-suspension prevention while an agent is `working` (per-OS; opt-in;
-      2 h auto-release).
-- [ ] Stronghold/keyring for any secret (never plaintext JSON).
-- [ ] Side-by-side diffs (two synced CodeMirror views); TanStack Virtual for
-      sidebar + diff lists; quick worktree search; TabGroup-level splits.
-- [ ] E2E tests (Playwright/WebdriverIO) for the main flows.
+- [x] **Hunk-level (partial) staging** — done via `git apply --cached`/`--reverse`
+      on a single-hunk sub-patch built in the frontend (`git_apply` /
+      `git::apply_patch`, `diff.ts`, `DiffView` hunk bar). (Untracked-file partial
+      stage is a known edge case — whole-file stage works.)
+- [x] **Rotating backups + schema-migration hardening** (`persistence.rs`): 5
+      numbered backups rotated before each atomic write; `migrate` applies
+      sequential `v→v+1` steps and rejects future versions. Debounced async
+      writer still a follow-up (frontend already debounces layout). Closes the
+      Phase 0 follow-up.
+- [x] **System-suspension prevention** while an agent is `working` — opt-in
+      (`AppSettings.preventSleep`), 2 h auto-release safety cap (`power.rs`,
+      `set_prevent_sleep`, driven by `anyAgentWorking()`). **All three platforms:**
+      Windows (`SetThreadExecutionState`), macOS (`caffeinate -i`), Linux
+      (`systemd-inhibit`). **macOS/Linux implemented but UNTESTED** (developed on
+      Windows). Released on exit; Settings toggle in Settings → Agents.
+- [x] **Side-by-side diffs** — two synced CodeMirror views (old left / new right)
+      with a unified/side toggle in the full-size center `DiffPanel` (`DiffView`,
+      `toSideRows`).
+- [x] **Quick worktree search** — command palette (`WorktreeSearch`, Ctrl/Cmd+P
+      or sidebar ⚡): filter all worktrees, ↑/↓ + Enter to jump.
+- [x] **TabGroup-level splits** — visible split-right/down buttons on each
+      region's tab bar (`TerminalArea`).
+- [x] **TanStack Virtual** — `VirtualList` (`@tanstack/svelte-virtual`) on the
+      worktree palette + the right-panel changed-files list (single virtualized
+      scroll). Diff already virtual via CodeMirror.
+- [x] **Settings toggle for prevent-sleep** — Settings → Agents
+      (`AppSettings.preventSleep`).
+- [x] **Keep-awake on macOS/Linux** — implemented (macOS `caffeinate -i`, Linux
+      `systemd-inhibit`, both as a child held for the duration; `power.rs`).
+      **Done WITHOUT real validation — UNTESTED on macOS/Linux** (no hardware to
+      verify; CI will at least confirm it compiles per-OS). A status-bar notice
+      flags the untested platform in the UI.
+- [ ] **TanStack Virtual** for the project tree (sidebar) — done for the worktree
+      palette + the right-panel changed-files list; the hierarchical tree is left
+      (variable-height/expand-collapse, low payoff). **FOR-DEV.**
+- [ ] Stronghold/keyring for any secret (never plaintext JSON) — **deferred to
+      Phase 6** (no secrets are persisted yet; the hook token is ephemeral).
+- [ ] E2E tests (Playwright/WebdriverIO) for the main flows — **deferred** (heavy
+      harness: tauri-driver + packaged app); do after the rest of Phase 5.
 
 ---
 
@@ -472,6 +548,48 @@ reference; this phase embeds it.
 - [ ] Settings → Mobile connection: QR pairing dialog, connected-phone
       indicator, trusted-device management (reuses bridge
       `bridge/removeTrustedDevice`, already implemented).
+
+---
+
+## CI/CD — release builds (GitHub Actions) — TODO (alpha-ready)
+
+> **FOR-DEV.** Phases 0–5 are complete and the ADE is alpha-functional as a
+> standalone app, so the next infra step is a pipeline that **verifies, then
+> builds** for every target OS. Two workflows:
+
+**1. `ci.yml` — verify on every push / PR** (gate; no packaging):
+- Matrix: `windows-latest`, `macos-latest`, `ubuntu-latest`.
+- Steps: checkout → setup Node (20+) + Rust (stable, with `rustfmt`/`clippy`) →
+  cache cargo + node → Linux only: install Tauri system deps
+  (`libwebkit2gtk-4.1-dev`, `libgtk-3-dev`, `librsvg2-dev`, `libayatana-appindicator3-dev`,
+  `patchelf`, `build-essential`).
+- **Verification gates (must all pass before any build):**
+  - `npm ci`
+  - `npm run check` (svelte-check, 0 errors)
+  - `npm run build` (SPA → `build/`, needed by `generate_context!`)
+  - `cargo fmt --manifest-path src-tauri/Cargo.toml -- --check`
+  - `cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings`
+  - `cargo test --manifest-path src-tauri/Cargo.toml`
+  - (when E2E lands) the WebdriverIO/tauri-driver suite.
+
+**2. `release.yml` — build installers on a version tag** (`v*`):
+- Same matrix; reuse the verify gates (or `needs: ci`), then build with
+  **`tauri-apps/tauri-action`** (runs `npm run build` + `cargo build --release`
+  + bundles). Targets: Windows `.msi`/NSIS, macOS `.dmg`/`.app` (ideally a
+  universal `aarch64`+`x86_64` build), Linux `.deb`/`.AppImage`.
+- Upload artifacts / attach to a GitHub Release (draft).
+
+**Blocking before a *signed/distributable* release (FOR-HUMAN):**
+- Branded app icons + bundle identity (replace default Tauri icons).
+- Code-signing: Windows Authenticode cert, macOS Developer ID + notarization
+  (Apple ID / team id / app-specific password as repo secrets).
+- Tauri updater public key (if auto-update is enabled) + signing key as a secret.
+- These are in `FOR-HUMAN.md`; the build itself runs unsigned without them
+  (degraded: OS "unknown publisher" warnings), so CI can produce artifacts now.
+
+**Notes:** the machine's home `pnpm-workspace.yaml` hijacks `pnpm install` here —
+CI uses `npm ci`. `cargo test` needs the SPA built first (the Tauri
+`generate_context!` reads `frontendDist = ../build`).
 
 ---
 

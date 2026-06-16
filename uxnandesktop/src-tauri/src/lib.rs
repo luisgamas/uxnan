@@ -9,8 +9,10 @@ mod browse;
 mod commands;
 mod error;
 mod git;
+mod hooks;
 mod model;
 mod persistence;
+mod power;
 mod procscan;
 mod pty;
 mod state;
@@ -45,10 +47,26 @@ pub fn run() {
             // Seed terminal profiles when missing (state persisted before they
             // existed, or a fresh install where load() returned defaults anyway).
             data.settings.ensure_terminal_profiles();
+            // Drop agent cache entries past their 7-day TTL (spec 02d §1.5).
+            data.prune_agent_cache(crate::hooks::now_secs());
             let state = AppState::new(persistence, data);
             let git_watch = state.git_watch.clone();
             let focused = state.focused.clone();
+            let hook_slot = state.hook.clone();
             app.manage(state);
+
+            // Start the local agent hook server (Layer 1). On success, publish its
+            // url + token so `pty_create` can inject them into every terminal.
+            let hook_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let token = uuid::Uuid::new_v4().to_string();
+                match crate::hooks::start(hook_handle, token).await {
+                    Ok(info) => *hook_slot.write().await = Some(info),
+                    Err(err) => {
+                        eprintln!("[uxnan-desktop] agent hook server failed to start: {err}");
+                    }
+                }
+            });
 
             // Pause the git watcher while the window is unfocused.
             if let Some(window) = app.get_webview_window("main") {
@@ -161,11 +179,15 @@ pub fn run() {
             commands::git_stage_all,
             commands::git_unstage_all,
             commands::git_discard,
+            commands::git_apply,
             commands::git_commit,
             commands::git_set_watch,
             commands::git_push,
             commands::git_pull,
             commands::set_agent_commands,
+            commands::get_hook_info,
+            commands::agent_states,
+            commands::set_prevent_sleep,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
@@ -175,6 +197,9 @@ pub fn run() {
             if let tauri::RunEvent::ExitRequested { .. } = event {
                 if let Some(state) = app_handle.try_state::<AppState>() {
                     state.pty.close_all();
+                    // Release any keep-awake helper (kills caffeinate /
+                    // systemd-inhibit on macOS/Linux) so none is left running.
+                    state.power.set(false);
                 }
             }
         });

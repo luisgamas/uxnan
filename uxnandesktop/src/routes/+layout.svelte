@@ -3,6 +3,10 @@
   import { onMount } from "svelte";
   import { app } from "$lib/state/app.svelte";
   import { agentMonitor } from "$lib/state/agentMonitor.svelte";
+  import { agentStatus } from "$lib/state/agentStatus.svelte";
+  import { anyAgentWorking } from "$lib/state/agentDisplay";
+  import { unread } from "$lib/state/unread.svelte";
+  import { setPreventSleep } from "$lib/api";
 
   let { children } = $props();
 
@@ -11,6 +15,12 @@
     app.init();
     // Listen for agents detected (or stopped) in any terminal.
     void agentMonitor.startDetection();
+    // Hydrate + subscribe to precise hook-reported agent states.
+    void agentStatus.start();
+    // Coming back to the window clears the "unread agent result" badges.
+    const onFocus = () => unread.clearAll();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
   });
 
   // Re-sync the agent commands to detect whenever the configured agents change.
@@ -23,6 +33,13 @@
   $effect(() => {
     const dark = app.prefersDark();
     document.documentElement.classList.toggle("dark", dark);
+  });
+
+  // Opt-in keep-awake: while enabled and an agent is working, ask the OS not to
+  // sleep (the backend auto-releases after 2 h). Re-runs when either changes.
+  $effect(() => {
+    const active = app.settings.preventSleep === true && anyAgentWorking();
+    void setPreventSleep(active).catch(() => {});
   });
 </script>
 

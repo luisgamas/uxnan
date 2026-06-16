@@ -95,6 +95,10 @@
       // WebGL unavailable — xterm falls back to the DOM renderer.
     }
 
+    // Layer 2 monitoring: agents that update the terminal title (OSC 0/2) report
+    // their state in it ("thinking…", "waiting for input", "done"); map it.
+    term.onTitleChange((title) => agentMonitor.noteTitle(id, title));
+
     // Custom key handling (everything else — Ctrl+←/→ word nav, Home/End, … —
     // falls through to xterm's defaults and on to the PTY):
     //  - Shift+Enter / Alt+Enter insert a newline (xterm otherwise collapses
