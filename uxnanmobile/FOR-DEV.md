@@ -249,13 +249,26 @@ browser and multi-PC connection correctness are now DONE — see below.)
   `thread/start` required a *registered* project, failing for a browsed,
   synthesized one — fixed in `bridge/`; the phone also no longer fabricates a
   phantom local thread when `thread/start` errors.)
-- ◑ **Remote history pagination** — `ThreadManager.selectThread` now **re-syncs**
-  a thread from the bridge (`turn/list`) on open, persisting any assistant answer
-  not stored locally (keyed by `stream-<turnId>`, so it never duplicates) — this
-  recovers in-flight turns after an app restart. ☐ Still open: true paged
-  back-history (`loadMoreHistory` with a cursor → `prependHistory`) and
-  `resumeThread`/`forkThread`. The `turn/list` JSON shape is assumed (tolerant
-  parser); verify against the real bridge.
+- ◑ **Remote history pagination + resume/fork** — `ThreadManager.selectThread`
+  re-syncs a thread from the bridge (`turn/list`) on open, persisting any
+  assistant answer not stored locally (keyed by `stream-<turnId>`, so it never
+  duplicates) — recovers in-flight turns after an app restart.
+  - ☑ **Windowed history (DONE).** The timeline renders only the most-recent
+    page (`_renderLimit`, 40); a **"Show earlier messages"** header
+    (`conversationLoadEarlier`) grows the window by a page via
+    `ThreadManager.loadMoreHistory()`. Bounds widget build for long threads.
+  - ☑ **Resume / fork (DONE, bridge-supported).** `resumeThread` (`thread/resume`,
+    called best-effort on open; skips archived so viewing doesn't un-archive)
+    and `forkThread` (`thread/fork` → persists the returned thread with the
+    source's `deviceId`, opens it). Fork is a **"Fork conversation"** item in the
+    conversation overflow menu.
+  - ☐ **Incremental remote paging (follow-up).** `loadMoreHistory` paginates the
+    *local* store (already complete after resync). True remote back-paging using
+    `turn/list`'s `nextCursor` to avoid re-pulling the whole thread on open needs
+    a bridge change: its cursor is **forward-only / offset** (oldest→newest), so
+    a newest-first scroll-up needs a reverse cursor or a total-count from the
+    bridge. The `turn/list` JSON shape is assumed (tolerant parser); verify
+    against the real bridge.
 - ☑ **Conversation UI (visual layer)** — DONE: `ConversationScreen`
   (`SliverAppBar.large`, floating + snap, auto-scroll), message renderers
   (`MessageBubble` + `MessageContentView`: markdown, code, command card, diff,

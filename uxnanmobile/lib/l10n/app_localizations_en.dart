@@ -268,6 +268,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get threadActionCopyId => 'Copy thread ID';
 
   @override
+  String get threadActionFork => 'Fork conversation';
+
+  @override
+  String get threadForkFailed => 'Couldn\'t fork this conversation';
+
+  @override
+  String get conversationLoadEarlier => 'Show earlier messages';
+
+  @override
   String get threadActionArchive => 'Archive';
 
   @override

@@ -7,6 +7,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **History windowing + conversation fork/resume.** The conversation timeline
+  now renders only the most-recent page and offers a **"Show earlier messages"**
+  header to load older history on demand (`ThreadManager.loadMoreHistory`),
+  bounding widget build for long threads. A **"Fork conversation"** overflow
+  action deep-copies the thread on the bridge (`thread/fork`) and opens the new
+  one; opening a conversation now best-effort **resumes** it on the bridge
+  (`thread/resume`, skipping archived threads). Incremental *remote* back-paging
+  is a documented follow-up (the bridge's `turn/list` cursor is forward-only).
 - **Image attachments in the composer (app side).** The "+" turn-tools sheet's
   Attach action (shown for `images`-capable agents) now picks an image from the
   **photo library** or **camera** (`image_picker`, downscaled to 2048 px / q85).

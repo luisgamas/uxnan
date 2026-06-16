@@ -578,6 +578,24 @@ abstract class AppLocalizations {
   /// **'Copy thread ID'**
   String get threadActionCopyId;
 
+  /// No description provided for @threadActionFork.
+  ///
+  /// In en, this message translates to:
+  /// **'Fork conversation'**
+  String get threadActionFork;
+
+  /// No description provided for @threadForkFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t fork this conversation'**
+  String get threadForkFailed;
+
+  /// No description provided for @conversationLoadEarlier.
+  ///
+  /// In en, this message translates to:
+  /// **'Show earlier messages'**
+  String get conversationLoadEarlier;
+
   /// No description provided for @threadActionArchive.
   ///
   /// In en, this message translates to:

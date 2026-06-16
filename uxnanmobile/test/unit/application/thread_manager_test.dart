@@ -98,6 +98,13 @@ void main() {
               'model': params?['model'],
               'status': 'active',
             },
+          'thread/fork' => {
+              'id': 'th-fork',
+              'title': 'Thread 1 (fork)',
+              'agentId': 'codex',
+              'status': 'active',
+              'model': 'gpt-5',
+            },
           _ => <String, dynamic>{},
         };
         return RpcMessage.response(id: '1', result: result);
@@ -467,6 +474,53 @@ void main() {
     expect(user, isNotNull);
     expect(user!.contents.whereType<TextContent>().isEmpty, isTrue);
     expect(user.contents.whereType<ImageContent>().length, 1);
+  });
+
+  test('forkThread sends thread/fork and persists the returned thread',
+      () async {
+    await manager.loadThreads();
+    await _settle();
+
+    final forked = await manager.forkThread('th1');
+
+    expect(forked, isNotNull);
+    expect(forked!.id, 'th-fork');
+    expect(sentMethods, contains('thread/fork'));
+    final stored = await threadRepo.getThread('th-fork');
+    expect(stored, isNotNull);
+    expect(stored!.title, 'Thread 1 (fork)');
+  });
+
+  test('resumeThread sends thread/resume', () async {
+    await manager.loadThreads();
+    await _settle();
+
+    await manager.resumeThread('th1');
+
+    expect(sentMethods, contains('thread/resume'));
+  });
+
+  test('selectThread windows history and loadMoreHistory grows it', () async {
+    final messages = [
+      for (var i = 0; i < 45; i++)
+        _msg('m$i', order: i, role: MessageRole.assistant, text: 'reply $i'),
+    ];
+    await messageRepo.saveMessages(messages);
+
+    await manager.selectThread('th1');
+    await _settle();
+
+    // The initial window renders only the most-recent page (40).
+    expect(manager.timeline.messages.length, 40);
+    expect(manager.timeline.hasMore, isTrue);
+    expect(manager.timeline.messages.first.id, 'm5');
+
+    manager.loadMoreHistory();
+    await _settle();
+
+    expect(manager.timeline.messages.length, 45);
+    expect(manager.timeline.hasMore, isFalse);
+    expect(manager.timeline.messages.first.id, 'm0');
   });
 
   test('respondApproval sends turn/send with the approvalResponse', () async {

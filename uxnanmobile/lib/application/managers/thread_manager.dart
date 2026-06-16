@@ -87,6 +87,16 @@ class ThreadManager {
   /// composed with any [_LiveTurn] overlay to build the active timeline.
   List<Message> _activePersisted = const [];
 
+  /// One page of timeline history.
+  static const int _historyPageSize = 40;
+
+  /// How many of the most-recent persisted messages the active timeline
+  /// renders. The local store holds the whole thread (kept complete by the
+  /// `turn/list` resync); this bounds the rendered window so a long history
+  /// doesn't build thousands of widgets at once, and grows by a page when the
+  /// user scrolls to the top ([loadMoreHistory]).
+  int _renderLimit = _historyPageSize;
+
   /// Token usage of each thread's most recent turn (context occupied, and the
   /// model's window when known), reported via `turn/completed`. In memory only.
   final BehaviorSubject<Map<String, ({int tokens, int? contextWindow})>>
@@ -290,6 +300,56 @@ class ThreadManager {
     }
   }
 
+  /// Resumes [threadId] on the bridge (`thread/resume`) so its agent session can
+  /// continue a conversation that had gone idle; flips the local status back to
+  /// active. Best-effort — degrades gracefully against an older bridge.
+  Future<void> resumeThread(String threadId) async {
+    final thread = await _threadRepository.getThread(threadId);
+    // Don't reactivate a thread the user archived on purpose (merely opening it
+    // to read should not un-archive it).
+    if (thread?.status == ThreadStatus.archived) return;
+    if (thread != null && thread.status != ThreadStatus.active) {
+      await _threadRepository.saveThread(
+        thread.copyWith(status: ThreadStatus.active),
+      );
+    }
+    try {
+      await _sendRequest('thread/resume', {'threadId': threadId});
+    } on Object catch (error, stackTrace) {
+      AppLogger.warn('thread/resume failed (kept local)', error, stackTrace);
+    }
+  }
+
+  /// Forks [threadId] on the bridge (`thread/fork`): the bridge deep-copies the
+  /// thread and its turns into a new thread, which is persisted locally
+  /// (inheriting the source's `deviceId`) and returned so the caller can open
+  /// it. Returns null when the bridge rejects it (e.g. no fork support).
+  Future<Thread?> forkThread(String threadId, {String? newBranch}) async {
+    final RpcMessage response;
+    try {
+      response = await _sendRequest('thread/fork', {
+        'threadId': threadId,
+        if (newBranch != null && newBranch.isNotEmpty) 'newBranch': newBranch,
+      });
+    } on Object catch (error, stackTrace) {
+      AppLogger.warn('thread/fork failed', error, stackTrace);
+      return null;
+    }
+    if (response.error != null) {
+      AppLogger.warn('thread/fork rejected: ${response.error!.message}');
+      return null;
+    }
+    final result = response.result;
+    if (result is! Map) return null;
+    final source = await _threadRepository.getThread(threadId);
+    final forked = _parseThread(result.cast<String, dynamic>());
+    final tagged = source?.deviceId != null
+        ? forked.copyWith(deviceId: source!.deviceId)
+        : forked;
+    await _threadRepository.saveThread(tagged);
+    return tagged;
+  }
+
   /// Loads the models the bridge reports for [agentId] (`agent/models`).
   ///
   /// Tolerates both the structured contract (objects with displayName/version/
@@ -366,6 +426,7 @@ class ThreadManager {
     _activeThreadId = threadId;
     markRead(threadId); // opening the conversation clears its unread flag
     _activePersisted = const [];
+    _renderLimit = _historyPageSize; // reset the window for the new thread
     _timeline.add(const TurnTimelineSnapshot());
     await _messagesSub?.cancel();
     _messagesSub =
@@ -377,6 +438,23 @@ class ThreadManager {
     // completed while the app was away (and was never persisted locally) shows
     // up. Reconciled by the deterministic assistant id, so it never duplicates.
     unawaited(_resyncThread(threadId));
+  }
+
+  /// Grows the rendered timeline window by one page of older messages and
+  /// rebuilds the snapshot. No-op when the whole local history is already
+  /// shown. The local store is the source (kept complete by the resync), so
+  /// this never hits the network.
+  ///
+  /// FOR-DEV: this paginates the *local* store. Incremental *remote* paging
+  /// (using `turn/list`'s `nextCursor` to avoid re-pulling the whole thread on
+  /// open) is a follow-up — the bridge's cursor is forward-only/offset
+  /// (oldest→newest), which doesn't fit a newest-first scroll-up without a
+  /// reverse cursor or total-count on the bridge.
+  void loadMoreHistory() {
+    if (_activeThreadId == null) return;
+    if (_renderLimit >= _activePersisted.length) return;
+    _renderLimit += _historyPageSize;
+    _rebuildActiveTimeline();
   }
 
   /// Pulls the bridge's turns for [threadId] (`turn/list`) and persists any
@@ -710,7 +788,13 @@ class ThreadManager {
   void _rebuildActiveTimeline() {
     final threadId = _activeThreadId;
     if (threadId == null) return;
-    var snapshot = const TurnTimelineSnapshot().reconcile(_activePersisted);
+    // Render only the most-recent window; older history loads on scroll-to-top.
+    final all = _activePersisted;
+    final hasMore = all.length > _renderLimit;
+    final windowed = hasMore ? all.sublist(all.length - _renderLimit) : all;
+    var snapshot = const TurnTimelineSnapshot().reconcile(windowed).copyWith(
+          hasMore: hasMore,
+        );
     final live = _live[threadId];
     if (live != null) {
       final streaming = Message(

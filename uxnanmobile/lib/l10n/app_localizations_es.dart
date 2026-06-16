@@ -269,6 +269,15 @@ class AppLocalizationsEs extends AppLocalizations {
   String get threadActionCopyId => 'Copiar ID del hilo';
 
   @override
+  String get threadActionFork => 'Bifurcar conversación';
+
+  @override
+  String get threadForkFailed => 'No se pudo bifurcar esta conversación';
+
+  @override
+  String get conversationLoadEarlier => 'Mostrar mensajes anteriores';
+
+  @override
   String get threadActionArchive => 'Archivar';
 
   @override

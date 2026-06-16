@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:uxnan/domain/entities/agent_model.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/enums/agent_id.dart';
@@ -15,6 +17,7 @@ import 'package:uxnan/infrastructure/media/attachment_picker_service.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
+import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_bar.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/turn_tools_sheet.dart';
 import 'package:uxnan/presentation/screens/conversation/git/git_screen.dart';
@@ -71,6 +74,9 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     _foreground = ref.read(foregroundThreadProvider.notifier);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(threadManagerProvider).selectThread(widget.threadId);
+      // Opening a conversation resumes it on the bridge (reactivates its agent
+      // session); best-effort and skips archived threads.
+      unawaited(ref.read(threadManagerProvider).resumeThread(widget.threadId));
       // Mark this conversation as the foreground one so its turn-end
       // notifications are suppressed while it's on screen.
       _foreground?.enter(widget.threadId);
@@ -218,6 +224,25 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
         .renameThread(widget.threadId, trimmed);
   }
 
+  /// Forks the conversation (`thread/fork`): the bridge deep-copies the thread
+  /// and its turns into a new one, which is opened. Surfaces a snackbar if the
+  /// bridge can't fork.
+  Future<void> _forkThread() async {
+    final l10n = AppLocalizations.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = GoRouter.of(context);
+    final forked =
+        await ref.read(threadManagerProvider).forkThread(widget.threadId);
+    if (!mounted) return;
+    if (forked == null) {
+      messenger
+        ..clearSnackBars()
+        ..showSnackBar(SnackBar(content: Text(l10n.threadForkFailed)));
+      return;
+    }
+    unawaited(navigator.push(AppRoutes.conversation(forked.id)));
+  }
+
   /// Opens the model picker and applies the choice to the thread's agent.
   Future<void> _pickModel(Thread thread) async {
     final selected = await ModelPickerSheet.show(
@@ -352,6 +377,30 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                           // Spacer so the first content sits below the
                           // transparent top bar (it overlays the scroll).
                           SliverToBoxAdapter(child: SizedBox(height: topInset)),
+                          // "Load earlier" header when the rendered window does
+                          // not yet cover the whole local history.
+                          if (snapshot != null &&
+                              snapshot.messages.isNotEmpty &&
+                              snapshot.hasMore)
+                            SliverToBoxAdapter(
+                              child: Center(
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: UxnanSpacing.sm,
+                                  ),
+                                  child: TextButton.icon(
+                                    onPressed: () => ref
+                                        .read(threadManagerProvider)
+                                        .loadMoreHistory(),
+                                    icon: const Icon(
+                                      Icons.history_rounded,
+                                      size: 18,
+                                    ),
+                                    label: Text(l10n.conversationLoadEarlier),
+                                  ),
+                                ),
+                              ),
+                            ),
                           if (snapshot == null)
                             const SliverFillRemaining(
                               child: Center(child: CircularProgressIndicator()),
@@ -491,6 +540,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                 _ConversationMenu(
                   onCopyId: _copyThreadId,
                   onRename: _renameThread,
+                  onFork: _forkThread,
                 ),
               ],
             ),
@@ -897,10 +947,15 @@ class _EmptyState extends StatelessWidget {
 /// Styled as an Icon Surface (circular neutral surface) to match the git action
 /// beside it; the connection state lives on the earlier screens, not here.
 class _ConversationMenu extends StatelessWidget {
-  const _ConversationMenu({required this.onCopyId, required this.onRename});
+  const _ConversationMenu({
+    required this.onCopyId,
+    required this.onRename,
+    required this.onFork,
+  });
 
   final VoidCallback onCopyId;
   final VoidCallback onRename;
+  final VoidCallback onFork;
 
   @override
   Widget build(BuildContext context) {
@@ -947,6 +1002,16 @@ class _ConversationMenu extends StatelessWidget {
               const Icon(Icons.content_copy_outlined, size: 18),
               const SizedBox(width: UxnanSpacing.sm),
               Text(l10n.threadActionCopyId),
+            ],
+          ),
+        ),
+        PopupMenuItem<void>(
+          onTap: onFork,
+          child: Row(
+            children: [
+              const Icon(Icons.call_split_rounded, size: 18),
+              const SizedBox(width: UxnanSpacing.sm),
+              Text(l10n.threadActionFork),
             ],
           ),
         ),
