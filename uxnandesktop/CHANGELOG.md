@@ -5,6 +5,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — Phase 4 (Layer 1): local agent hook server + precise states
+- **HTTP hook server (`axum`).** The backend binds a small server to an
+  ephemeral `127.0.0.1` port at startup (`hooks.rs`). An agent's hook `POST`s a
+  JSON state report to `/hook` — `{ agentId, status, agentType?, prompt?, tool?,
+  interrupted? }`, `status ∈ working|blocked|waiting|done` — and the ADE
+  normalizes it, caches it, and broadcasts `agent:status-changed` to the
+  frontend. Unlike the coarse output-activity inference, this distinguishes the
+  four precise states. Requests must present the per-launch token in the
+  `X-Uxnan-Token` header (rejects stray local processes).
+- **Env injection.** Every terminal is spawned with `UXNAN_HOOK_URL`,
+  `UXNAN_HOOK_TOKEN` and `UXNAN_AGENT_ID` (the PTY id), inherited by any agent
+  run inside it, so a hook knows where to report and which terminal it is
+  (`PtySpec.env`, applied in `pty_create`).
+- **Persistent cache (TTL 7 d / stale 30 min, spec §1.5).** Reports upsert into
+  `AppData.agent_cache` (now keyed by `agentId`, carrying status/type/prompt/
+  tool/interrupted + first-seen/last-update), persisted atomically and
+  TTL-pruned on load (`prune_agent_cache`). New commands `get_hook_info` and
+  `agent_states`; the frontend hydrates from the cache and stays live via the
+  event (`agentStatus` store; `isStale` after 30 min).
+- Wiring a specific agent to call the hook is per-agent configuration — see
+  [`docs/agent-hooks.md`](docs/agent-hooks.md). Consuming the precise state in
+  the sidebar/tab indicators lands in a follow-up increment.
+
 ### Changed — agents: detect in any terminal + close-on-exit
 - **Process detection (any terminal).** A background scan (every 2 s, `procscan`
   + `sysinfo`) walks each terminal's process tree and reports the agent running

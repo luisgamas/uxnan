@@ -4,11 +4,13 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  AgentStateEntry,
   AppData,
   AppSettings,
   BranchList,
   DirListing,
   FileChange,
+  HookServerInfo,
   RepoData,
   SavedTerminalLayout,
   WorktreeEntry,
@@ -39,6 +41,16 @@ export function detectAgents(commands: string[]): Promise<string[]> {
 /** Set the agent commands the backend process-detection poll looks for. */
 export function setAgentCommands(commands: string[]): Promise<void> {
   return invoke("set_agent_commands", { commands });
+}
+
+/** Coordinates of the local agent hook server (null until it's listening). */
+export function getHookInfo(): Promise<HookServerInfo | null> {
+  return invoke<HookServerInfo | null>("get_hook_info");
+}
+
+/** The cached last-known agent states (hook reports), to hydrate the sidebar. */
+export function agentStates(): Promise<AgentStateEntry[]> {
+  return invoke<AgentStateEntry[]>("agent_states");
 }
 
 /** Persist the per-workspace terminal layout (restored on next startup). */

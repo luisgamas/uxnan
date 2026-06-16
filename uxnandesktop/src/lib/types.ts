@@ -129,11 +129,29 @@ export interface WorktreeStatus {
   behind: number;
 }
 
+/** A cached agent state reported via the hook server (mirror of Rust
+ *  `AgentStateEntry`). Keyed by `agentId` — the `UXNAN_AGENT_ID` (PTY id) the
+ *  ADE injected and the agent's hook echoed back. */
 export interface AgentStateEntry {
-  worktreeId: string;
+  agentId: string;
   status: AgentStatus;
+  agentType?: string | null;
+  prompt?: string | null;
+  tool?: string | null;
+  interrupted: boolean;
   firstSeen: number;
   lastUpdate: number;
+}
+
+/** Payload of the `agent:status-changed` event (mirror of Rust
+ *  `hooks::AgentStatusEvent`). Same shape as a cached `AgentStateEntry`. */
+export type AgentStatusEvent = AgentStateEntry;
+
+/** Coordinates of the local agent hook server (mirror of Rust `HookServerInfo`).
+ *  Shown in Settings so a user can wire their agent to report state. */
+export interface HookServerInfo {
+  url: string;
+  token: string;
 }
 
 /** Persisted terminal layout (structure only — fresh shells spawn on restore).

@@ -424,9 +424,22 @@ earlier "superficial UX" warning is resolved.
 > (Layer 1, `02d`): agents that support hooks POST `working/blocked/waiting/done`
 > to a localhost endpoint. That needs per-agent setup, so it's deferred. **FOR-DEV.**
 
+**Done (increment 2 — Layer 1 hook server):**
+- [x] **Local HTTP hook server (`axum`)** + normalized states + persistent cache
+      (`AppData.agent_cache`, keyed by `agentId`, TTL 7 d / 30 min stale) +
+      `agent:status-changed`. Binds an ephemeral `127.0.0.1` port (`hooks.rs`),
+      injects `UXNAN_HOOK_URL`/`UXNAN_HOOK_TOKEN`/`UXNAN_AGENT_ID` into every
+      terminal (`PtySpec.env`), token-guarded (`X-Uxnan-Token`). Commands
+      `get_hook_info`/`agent_states`; frontend `agentStatus` store hydrates +
+      stays live. Contract: [`docs/agent-hooks.md`](docs/agent-hooks.md).
+
 **Deferred (precise monitoring / orchestration):**
-- [ ] Local HTTP hook server (`axum`) + normalized states + persistent cache
-      (`AppData.agent_cache`, TTL 7 d / 30 min stale) + `agent:status-changed`.
+- [ ] **Consume precise states in the UI** — color the sidebar/tab dots by the
+      hook state (working green / blocked yellow / waiting orange / done blue),
+      dim stale (>30 min) reports; prefer hook state over inference. **FOR-DEV.**
+- [ ] **Ready-made per-agent hook configs** — ship a Claude Code `hooks` config
+      (and a generic wrapper script) that POST to `UXNAN_HOOK_URL`, so precise
+      states work out-of-the-box instead of manual setup. **FOR-DEV / FOR-HUMAN.**
 - [x] **Foreground-process detection** (Layer 3) — done (see above); catches
       agents run manually too. Terminal-title (OSC) parsing (Layer 2) is still
       open as an extra signal. **FOR-DEV.**

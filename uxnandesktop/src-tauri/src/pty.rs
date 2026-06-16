@@ -33,6 +33,10 @@ pub struct PtySpec {
     pub shell: Option<String>,
     /// Arguments for the shell/command (e.g. `["-d", "Ubuntu"]` for `wsl.exe`).
     pub args: Vec<String>,
+    /// Extra environment variables to set on the spawned shell (inherited by any
+    /// agent run inside it) — e.g. `UXNAN_HOOK_URL` / `UXNAN_AGENT_ID` so an
+    /// agent's hook can report state to the local server.
+    pub env: Vec<(String, String)>,
     pub cols: u16,
     pub rows: u16,
 }
@@ -86,6 +90,9 @@ impl PtyManager {
         let mut cmd = CommandBuilder::new(spec.shell.unwrap_or_else(default_shell));
         for arg in &spec.args {
             cmd.arg(arg);
+        }
+        for (key, value) in &spec.env {
+            cmd.env(key, value);
         }
         cmd.cwd(spec.cwd.unwrap_or_else(default_cwd));
 
@@ -274,6 +281,7 @@ mod tests {
                 cwd: None,
                 shell,
                 args: Vec::new(),
+                env: Vec::new(),
                 cols: 80,
                 rows: 24,
             },
@@ -336,6 +344,7 @@ mod tests {
             cwd: None,
             shell: shell.clone(),
             args: Vec::new(),
+            env: Vec::new(),
             cols: 80,
             rows: 24,
         };

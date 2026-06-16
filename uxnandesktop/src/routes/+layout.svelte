@@ -3,6 +3,7 @@
   import { onMount } from "svelte";
   import { app } from "$lib/state/app.svelte";
   import { agentMonitor } from "$lib/state/agentMonitor.svelte";
+  import { agentStatus } from "$lib/state/agentStatus.svelte";
 
   let { children } = $props();
 
@@ -11,6 +12,8 @@
     app.init();
     // Listen for agents detected (or stopped) in any terminal.
     void agentMonitor.startDetection();
+    // Hydrate + subscribe to precise hook-reported agent states.
+    void agentStatus.start();
   });
 
   // Re-sync the agent commands to detect whenever the configured agents change.
