@@ -252,6 +252,11 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   readonly #active = new Map<string, ActiveRun>();
   #defaultCwd = process.cwd();
 
+  /** Native Claude session id for a thread (on-disk history-fallback locator). */
+  nativeSessionId(threadId: string): string | undefined {
+    return this.#sessionByThread.get(threadId);
+  }
+
   constructor(options: ClaudeCodeAdapterOptions = {}) {
     super();
     this.#binaryPath = options.binaryPath ?? 'claude';

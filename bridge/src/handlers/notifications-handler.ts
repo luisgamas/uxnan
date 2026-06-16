@@ -8,30 +8,53 @@
  */
 import type { NotificationPreferences, PushPlatform } from '@uxnan/shared';
 import type { BridgeContext } from '../bridge-context.js';
-import type { HandlerRouter } from '../handler-router.js';
+import type { HandlerRouter, RequestSession } from '../handler-router.js';
 import { asObject, optionalBoolean, requireString } from './params.js';
 
 export function registerNotificationHandlers(router: HandlerRouter): void {
-  router.register('notifications/register', async (p, ctx: BridgeContext) => {
+  router.register('notifications/register', async (p, ctx: BridgeContext, session) => {
     if (!ctx.pushService) return { registered: false };
+    const sessionId = sessionIdFor(ctx, session);
+    if (!sessionId) {
+      ctx.logger.warn('push register without a known session — ignored');
+      return { registered: false };
+    }
     const pushToken = requireString(p, 'pushToken');
     const platform = requirePlatform(p);
     const preferences = readPreferences(p);
-    return preferences
-      ? ctx.pushService.register(pushToken, platform, preferences)
-      : ctx.pushService.register(pushToken, platform);
+    return ctx.pushService.register({
+      sessionId,
+      ...(session?.deviceId !== undefined ? { deviceId: session.deviceId } : {}),
+      pushToken,
+      platform,
+      ...(preferences ? { preferences } : {}),
+    });
   });
 
-  router.register('notifications/update', (p, ctx: BridgeContext) => {
+  router.register('notifications/update', (p, ctx: BridgeContext, session) => {
     const preferences = readPreferences(p);
-    if (ctx.pushService && preferences) ctx.pushService.updatePreferences(preferences);
+    const sessionId = sessionIdFor(ctx, session);
+    if (ctx.pushService && preferences && sessionId) {
+      ctx.pushService.updatePreferences(sessionId, preferences);
+    }
     return null;
   });
 
-  router.register('notifications/unregister', (_p, ctx: BridgeContext) => {
-    ctx.pushService?.unregister();
+  router.register('notifications/unregister', (_p, ctx: BridgeContext, session) => {
+    const sessionId = sessionIdFor(ctx, session);
+    if (sessionId) ctx.pushService?.unregister(sessionId);
     return null;
   });
+}
+
+/**
+ * Resolve which phone session a `notifications/*` call targets: the request's own
+ * session (set by the secure transport when several phones are concurrent), falling
+ * back to the most-recently established session for single-phone setups / paths
+ * that don't carry per-request identity.
+ */
+function sessionIdFor(ctx: BridgeContext, session?: RequestSession): string | undefined {
+  return session?.sessionId ?? ctx.pushService?.activeSessionId;
 }
 
 function requirePlatform(params: unknown): PushPlatform {

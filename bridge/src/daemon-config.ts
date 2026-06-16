@@ -67,6 +67,13 @@ export interface DaemonConfig {
   relayEnabled: boolean;
   lanEnabled: boolean;
   lanPort: number;
+  /**
+   * Advertise the bridge on the LAN via mDNS/Bonjour (`_uxnan._tcp`) so the phone
+   * can discover it for manual-code pairing without typing the host. **Default
+   * `true`**; only effective when {@link lanEnabled}. Best-effort — a failed bind
+   * (port 5353 busy) degrades silently.
+   */
+  mdnsEnabled: boolean;
   pushEnabled: boolean;
   pushOnAgentDone: boolean;
   pushOnAgentError: boolean;
@@ -115,6 +122,7 @@ export const DEFAULT_DAEMON_CONFIG: DaemonConfig = {
   relayEnabled: false,
   lanEnabled: true,
   lanPort: DEFAULT_LAN_PORT,
+  mdnsEnabled: true,
   pushEnabled: true,
   pushOnAgentDone: true,
   pushOnAgentError: true,

@@ -21,8 +21,32 @@ export { ProjectRegistry, projectIdFor } from './projects/project-registry.js';
 export {
   PushService,
   type PushServiceOptions,
+  type RegisterPushParams,
   type TurnEndInfo as PushTurnEndInfo,
 } from './push/push-service.js';
+export {
+  createBridgePushSender,
+  defaultServiceAccountPath,
+  type PushSender,
+  type PushPayload,
+} from './push/push-sender.js';
+export {
+  SessionHistoryReader,
+  type HistorySource,
+  type SessionHistoryOptions,
+} from './conversation/session-history.js';
+export {
+  PairingCodeService,
+  type PairingCodeServiceOptions,
+} from './pairing/pairing-code-service.js';
+export {
+  MdnsAdvertiser,
+  parseQuestions,
+  buildMessage,
+  encodeName,
+  type MdnsAdvertiserOptions,
+  type UdpSocketLike,
+} from './transport/mdns-advertiser.js';
 export { SecureDeviceState, type PublicIdentity } from './secure-device-state.js';
 export { InMemorySecretStore, type SecretStore } from './secret-store.js';
 export {
@@ -81,6 +105,14 @@ export {
   type PiPermissionMode,
 } from './adapters/pi-adapter.js';
 export { resolvePiBinary, type ResolvedPi } from './adapters/resolve-pi.js';
+export {
+  GeminiAdapter,
+  parseGeminiLine,
+  type GeminiAdapterOptions,
+  type GeminiEvent,
+  type GeminiPermissionMode,
+} from './adapters/gemini-adapter.js';
+export { resolveGeminiBinary, type ResolvedGemini } from './adapters/resolve-gemini.js';
 export {
   OpenCodeAdapter,
   parseOpenCodeLine,

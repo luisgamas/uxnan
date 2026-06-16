@@ -86,7 +86,13 @@ export async function handleSecureConnection(options: SecureConnectionOptions): 
       }
 
       const request = tryParse(plaintext);
-      const response = await router.dispatchRaw(request);
+      // Tag the request with this connection's session identity so per-phone
+      // handlers (notifications/*) target the right session when several phones
+      // are connected concurrently.
+      const response = await router.dispatchRaw(request, {
+        sessionId: result.sessionId,
+        deviceId: result.phoneDeviceId,
+      });
       send(result.channel.encrypt(Buffer.from(JSON.stringify(response), 'utf-8')));
     }
   } catch (err) {

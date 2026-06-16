@@ -62,6 +62,8 @@ export class AgentManager {
   readonly #meta = new Map<AgentId, AgentMeta>();
   readonly #started = new Set<AgentId>();
   readonly #assistantByTurn = new Map<string, string>();
+  /** threadId → agent driving it, so we can read its native session id on completion. */
+  readonly #agentByThread = new Map<string, AgentId>();
   readonly #options: AgentManagerOptions;
 
   constructor(options: AgentManagerOptions) {
@@ -136,6 +138,7 @@ export class AgentManager {
 
     const started = await this.#options.store.startTurn(threadId, userText, this.#options.now());
     this.#assistantByTurn.set(started.turnId, started.assistantMessageId);
+    this.#agentByThread.set(threadId, agentId);
 
     if (!this.#started.has(agentId)) {
       await adapter.start({ agentId, ...(options.cwd !== undefined ? { cwd: options.cwd } : {}) });
@@ -247,6 +250,7 @@ export class AgentManager {
             }),
           );
           this.#assistantByTurn.delete(turnId);
+          await this.#persistAgentSession(threadId, now);
           this.#options.onTurnEnd?.({ threadId, turnId, status: 'completed', text });
           break;
         }
@@ -261,6 +265,7 @@ export class AgentManager {
             }),
           );
           this.#assistantByTurn.delete(turnId);
+          await this.#persistAgentSession(threadId, now);
           this.#options.onTurnEnd?.({ threadId, turnId, status: 'error', text: message });
           break;
         }
@@ -275,6 +280,29 @@ export class AgentManager {
     } catch (err) {
       this.#options.logger.warn(
         `agent event handling failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  /**
+   * Persist the agent's native session id for a thread so the on-disk history
+   * fallback can locate its session log after a restart. Best-effort + idempotent.
+   */
+  async #persistAgentSession(threadId: string, now: number): Promise<void> {
+    const agentId = this.#agentByThread.get(threadId);
+    if (!agentId) return;
+    // `nativeSessionId` is an optional adapter capability (not in the shared
+    // interface), so read it through a structural type rather than a hard dep.
+    const adapter = this.#adapters.get(agentId) as
+      | { nativeSessionId?(threadId: string): string | undefined }
+      | undefined;
+    const sessionId = adapter?.nativeSessionId?.(threadId);
+    if (!sessionId) return;
+    try {
+      await this.#options.store.setAgentSession(threadId, sessionId, now);
+    } catch (err) {
+      this.#options.logger.warn(
+        `persist agent session failed: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   }

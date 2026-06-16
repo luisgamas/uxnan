@@ -19,13 +19,15 @@ import { createDefaultSecretStore } from './keyring-secret-store.js';
 import { SessionState } from './session-state.js';
 import { buildBridgeStatus } from './bridge-status.js';
 import { generatePairingPayload } from './qr.js';
+import { PairingCodeService } from './pairing/pairing-code-service.js';
 import { createFileLogger, type LogLevel } from './logger.js';
 import { BRIDGE_VERSION } from './version.js';
 import { FileTrustStore, type TrustStore } from './transport/trust-store.js';
 import { handleSecureConnection } from './transport/session-handler.js';
 import { connectRelayAsMac, type RelayConnection } from './transport/relay-client.js';
 import { startLanServer, type LanServerHandle } from './transport/lan-server.js';
-import { localHostPorts } from './transport/local-hosts.js';
+import { localHostPorts, localIPv4s } from './transport/local-hosts.js';
+import { MdnsAdvertiser } from './transport/mdns-advertiser.js';
 import { SessionRegistry } from './transport/session-registry.js';
 import { ThreadStore } from './conversation/thread-store.js';
 import { AgentManager } from './agents/agent-manager.js';
@@ -38,9 +40,13 @@ import { CodexAdapter } from './adapters/codex-adapter.js';
 import { resolveCodexBinary } from './adapters/resolve-codex.js';
 import { PiAdapter } from './adapters/pi-adapter.js';
 import { resolvePiBinary } from './adapters/resolve-pi.js';
+import { GeminiAdapter } from './adapters/gemini-adapter.js';
+import { resolveGeminiBinary } from './adapters/resolve-gemini.js';
 import { ProjectRegistry } from './projects/project-registry.js';
 import { BrowseService } from './workspace/browse-service.js';
 import { PushService } from './push/push-service.js';
+import { createBridgePushSender } from './push/push-sender.js';
+import { SessionHistoryReader } from './conversation/session-history.js';
 
 export interface StartBridgeOptions {
   /** Override the daemon state directory (defaults to `~/.uxnan`). */
@@ -58,6 +64,8 @@ export interface Bridge {
   readonly trustStore: TrustStore;
   status(): BridgeStatus;
   generatePairingQr(): PairingPayload;
+  /** The current manual-pairing code to show on the PC (rotates on expiry). */
+  currentPairingCode(): string;
   /** Connect to the relay as `mac` and serve a phone for the given session. */
   connectRelay(sessionId: string): Promise<void>;
   /** Start the direct-LAN WebSocket server; resolves with the bound port. */
@@ -99,6 +107,21 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   const sessionRegistry = new SessionRegistry();
   const trustStore = new FileTrustStore(state);
   const threadStore = new ThreadStore(state);
+  // Reads agent on-disk session logs when the store has no turns (§5.8.8).
+  const sessionHistory = new SessionHistoryReader();
+  // Single source of the pairing payload — shared by the QR and the manual-code
+  // resolve endpoint, so both hand out identical pairing data.
+  const buildPairingPayload = (): PairingPayload =>
+    generatePairingPayload({
+      ...(config.relayEnabled ? { relayUrl: config.relayUrl } : {}),
+      ...(config.lanEnabled ? { hosts: localHostPorts(config.lanPort) } : {}),
+      macDeviceId: deviceState.identity.macDeviceId,
+      macIdentityPublicKey: deviceState.identity.macIdentityPublicKey,
+      displayName: hostname(),
+      now: now(),
+      sessionId: pairingSessionId,
+    });
+  const pairingCodeService = new PairingCodeService({ buildPayload: buildPairingPayload, now });
   const projects = new ProjectRegistry(config.workspaceRoots, process.cwd(), config.projectAgents);
   // Browse roots fall back to the project roots, then the bridge's launch
   // directory (`process.cwd()`) — so an unconfigured install browses from
@@ -106,7 +129,17 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   const browse = new BrowseService(
     config.browseRoots.length > 0 ? config.browseRoots : config.workspaceRoots,
   );
-  const pushService = new PushService({ relayUrl: config.relayUrl, config, logger, state });
+  // Direct FCM is the PRIMARY push path: when a Firebase service account is present
+  // the bridge delivers straight to FCM on any transport (LAN/Tailscale/relay). With
+  // no credential this is null and the bridge uses the relay fallback (FOR-DEV).
+  const pushSender = await createBridgePushSender(logger);
+  const pushService = new PushService({
+    relayUrl: config.relayUrl,
+    config,
+    logger,
+    state,
+    ...(pushSender ? { pushSender } : {}),
+  });
   // Restore persisted push registrations so background push survives a restart.
   await pushService.load();
   const agentManager = new AgentManager({
@@ -188,6 +221,22 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       ...(piSettings.model !== undefined ? { defaultModel: piSettings.model } : {}),
     },
   );
+  // Gemini: real agent driven via `gemini -p --output-format stream-json` (see FOR-DEV.md).
+  const geminiSettings = config.agents['gemini-cli'] ?? {};
+  const gemini = resolveGeminiBinary(geminiSettings.binaryPath);
+  agentManager.register(
+    new GeminiAdapter({
+      binaryPath: gemini.binaryPath,
+      prependArgs: gemini.prependArgs,
+      permissionMode: geminiSettings.permissionMode ?? 'acceptEdits',
+      ...(geminiSettings.model !== undefined ? { defaultModel: geminiSettings.model } : {}),
+    }),
+    {
+      displayName: 'Gemini',
+      available: gemini.available,
+      ...(geminiSettings.model !== undefined ? { defaultModel: geminiSettings.model } : {}),
+    },
+  );
   const startedAt = now();
 
   // Live relay-connection state, mutated by the relay serve loop below and read
@@ -204,6 +253,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
     sessionRegistry,
     trustStore,
     threadStore,
+    sessionHistory,
     agentManager,
     projects,
     browse,
@@ -218,6 +268,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
 
   const relayConnections: RelayConnection[] = [];
   let lanHandle: LanServerHandle | undefined;
+  let mdns: MdnsAdvertiser | undefined;
   let stopping = false;
   const RELAY_RECONNECT_DELAY_MS = 2000;
   const delay = (ms: number): Promise<void> =>
@@ -241,16 +292,8 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
         startedAt,
         now: now(),
       }),
-    generatePairingQr: () =>
-      generatePairingPayload({
-        ...(config.relayEnabled ? { relayUrl: config.relayUrl } : {}),
-        ...(config.lanEnabled ? { hosts: localHostPorts(config.lanPort) } : {}),
-        macDeviceId: deviceState.identity.macDeviceId,
-        macIdentityPublicKey: deviceState.identity.macIdentityPublicKey,
-        displayName: hostname(),
-        now: now(),
-        sessionId: pairingSessionId,
-      }),
+    generatePairingQr: () => buildPairingPayload(),
+    currentPairingCode: () => pairingCodeService.currentCode(),
     connectRelay: async (sessionId: string) => {
       const dial = (): Promise<RelayConnection> =>
         connectRelayAsMac({
@@ -330,8 +373,31 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
             displayName: hostname(),
           });
         },
+        // Manual-code pairing: trade a code shown on the PC for the pairing payload.
+        onPairResolve: (code, ip) => {
+          if (pairingCodeService.rateLimited(ip)) {
+            return { status: 429, json: { error: 'rate_limited' } };
+          }
+          const payload = pairingCodeService.resolve(code);
+          if (!payload) return { status: 403, json: { error: 'invalid_or_expired_code' } };
+          return { status: 200, json: payload };
+        },
       });
       logger.info(`LAN server listening on port ${lanHandle.port}`);
+      // Advertise on the LAN via mDNS so the phone can discover the bridge for
+      // manual-code pairing (best-effort; degrades silently if it can't bind).
+      if (config.mdnsEnabled && !mdns) {
+        const name = hostname();
+        mdns = new MdnsAdvertiser({
+          instanceName: name,
+          hostName: name.replace(/[^A-Za-z0-9-]/g, '-'),
+          port: lanHandle.port,
+          addresses: localIPv4s(),
+          txt: { id: deviceState.identity.macDeviceId },
+          logger,
+        });
+        mdns.start();
+      }
       return { port: lanHandle.port };
     },
     notify: (deviceId, method, params) =>
@@ -345,6 +411,10 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       }
       relayConnections.length = 0;
       relayState.connected = false;
+      if (mdns) {
+        mdns.stop();
+        mdns = undefined;
+      }
       if (lanHandle) {
         await lanHandle.close();
         lanHandle = undefined;

@@ -137,6 +137,33 @@ test('rename/archive/unarchive/delete reject unknown ids', async () => {
   await rm(baseDir, { recursive: true, force: true });
 });
 
+test('agent session id: persisted, idempotent, surfaced via getHistorySource', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread(
+    { projectId: 'p', agentId: 'claude-code', cwd: 'C:/x' },
+    1,
+  );
+
+  // Unset initially.
+  let src = await store.getHistorySource(thread.id);
+  assert.equal(src.agentId, 'claude-code');
+  assert.equal(src.cwd, 'C:/x');
+  assert.equal(src.agentSessionId, undefined);
+
+  await store.setAgentSession(thread.id, 'sess-abc', 2);
+  src = await store.getHistorySource(thread.id);
+  assert.equal(src.agentSessionId, 'sess-abc');
+
+  // Idempotent: setting the same id is a no-op (does not bump updatedAt).
+  const before = (await store.getThread(thread.id)).updatedAt;
+  await store.setAgentSession(thread.id, 'sess-abc', 999);
+  assert.equal((await store.getThread(thread.id)).updatedAt, before);
+
+  // Unknown thread is a silent no-op (no throw).
+  await store.setAgentSession('nope', 'x', 3);
+  await rm(baseDir, { recursive: true, force: true });
+});
+
 test('fork copies a thread; unknown ids reject', async () => {
   const { store, baseDir } = newStore();
   const thread = await store.startThread({ projectId: 'p', title: 'Orig' }, 1);

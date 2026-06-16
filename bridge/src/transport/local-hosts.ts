@@ -13,17 +13,20 @@ import { networkInterfaces, type NetworkInterfaceInfo } from 'node:os';
 
 export type InterfaceMap = NodeJS.Dict<NetworkInterfaceInfo[]>;
 
-/** Build `host:port` strings from the non-internal IPv4 addresses in `ifaces`. */
-export function localHostPorts(port: number, ifaces: InterfaceMap = networkInterfaces()): string[] {
-  const hosts = new Set<string>();
+/** The non-internal IPv4 addresses (no port) — e.g. for mDNS A records. */
+export function localIPv4s(ifaces: InterfaceMap = networkInterfaces()): string[] {
+  const addrs = new Set<string>();
   for (const infos of Object.values(ifaces)) {
     for (const info of infos ?? []) {
       // Node 18+ may report `family` as the string 'IPv4' or the number 4.
       const isIPv4 = info.family === 'IPv4' || (info.family as unknown) === 4;
-      if (isIPv4 && !info.internal && info.address) {
-        hosts.add(`${info.address}:${port}`);
-      }
+      if (isIPv4 && !info.internal && info.address) addrs.add(info.address);
     }
   }
-  return [...hosts].sort();
+  return [...addrs].sort();
+}
+
+/** Build `host:port` strings from the non-internal IPv4 addresses in `ifaces`. */
+export function localHostPorts(port: number, ifaces: InterfaceMap = networkInterfaces()): string[] {
+  return localIPv4s(ifaces).map((address) => `${address}:${port}`);
 }

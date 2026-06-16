@@ -8,18 +8,20 @@ must always build and run without them.
 _The bridge's own identity needs no secrets_ — its Ed25519 key is generated and
 stored in the OS keychain at runtime (no key files to provide).
 
-### ◑ Push credentials — Firebase service account (for the bridge to send push)
+### ✅ Push credentials — Firebase service account (for the bridge to send push)
 
-DIRECTION (2026-06-12): background push is moving to be sent **by the bridge**
-directly (so it works on any transport — direct LAN, Tailscale, or relay — not
-only via a hosted relay; the relay is now optional/self-hosted). Once the
-bridge-side FCM sender lands (`FOR-DEV.md` → Direct FCM from the bridge), the
-**Firebase service account** moves here:
+The bridge-side FCM sender has **landed** (`FOR-DEV.md` → Direct FCM from the
+bridge): background push is now sent **by the bridge** directly, on any transport
+(direct LAN, Tailscale, or relay — the relay is optional/self-hosted). All that's
+needed is the **Firebase service account**:
 
 - A Firebase service-account JSON from the **same** Firebase project the mobile
   app uses (`uxnan-app`), placed at `~/.uxnan/firebase-service-account.json`
-  (gitignored — **never committed**).
-- Env var `UXNAN_FCM_SERVICE_ACCOUNT` → that path (Windows *User* scope).
+  (gitignored — **never committed**). **This is the default path the bridge reads —
+  no env var required.**
+- Optional: set `UXNAN_FCM_SERVICE_ACCOUNT` to override that path (Windows *User*
+  scope). The bridge loads the credential at startup and enables direct FCM
+  automatically when it's present.
 
 Without it (and without a relay holding it), background push is a silent no-op —
 foreground local notifications still work, relay-free. The credential is local
@@ -45,6 +47,7 @@ whatever that CLI is already authenticated with.
 | OpenCode | `opencode` | vendor installer / npm | per OpenCode | default agent; native `opencode.exe` resolved on Windows |
 | Claude Code | `claude` | native installer (`~/.local/bin/claude`) or npm `@anthropic-ai/claude-code` | `claude` (Anthropic account / subscription) | runs `claude -p`; default permission posture `acceptEdits` (configurable) |
 | Codex | `codex` | npm `@openai/codex` (or native) | `codex login` (your OpenAI/ChatGPT account) | runs `codex exec`; default sandbox `workspace-write` (configurable). Codex's `app-server`/`exec-server` are **not** needed |
+| Gemini | `gemini` | npm `@google/gemini-cli` | `gemini` (Google account OAuth, free tier) or `GEMINI_API_KEY` | runs `gemini -p --output-format stream-json`; default approval `auto_edit` (configurable). Free tier covers flash/flash-lite |
 
 A missing or logged-out CLI does not break the bridge: that agent simply shows as
 `available: false` in `agent/list`, and the others keep working. Optional per-agent

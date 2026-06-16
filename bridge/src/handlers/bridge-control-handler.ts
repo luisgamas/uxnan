@@ -56,6 +56,9 @@ export function registerBridgeControlHandlers(router: HandlerRouter): void {
     await ctx.trustStore.remove(deviceId);
     ctx.sessions.remove(deviceId);
     ctx.sessionRegistry.unregister(deviceId);
+    // Prune any push registration owned by this device so a revoked phone stops
+    // receiving background push (it otherwise lingered until re-register/overwrite).
+    ctx.pushService?.unregisterDevice(deviceId);
     return null;
   });
 }

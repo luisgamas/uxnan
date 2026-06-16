@@ -195,6 +195,11 @@ export class CodexAdapter extends BaseAgentAdapter {
   readonly #active = new Map<string, ActiveRun>();
   #defaultCwd = process.cwd();
 
+  /** Native Codex thread id for a thread (on-disk history-fallback locator). */
+  nativeSessionId(threadId: string): string | undefined {
+    return this.#sessionByThread.get(threadId);
+  }
+
   constructor(options: CodexAdapterOptions = {}) {
     super();
     this.#binaryPath = options.binaryPath ?? 'codex';
@@ -464,10 +469,9 @@ export class CodexAdapter extends BaseAgentAdapter {
       const path = join(homedir(), '.codex', 'config.toml');
       if (!existsSync(path)) return [];
       // No effort metadata in config.toml — attach the generic effort knob.
-      return withOptions(
-        parseCodexConfigModels(readFileSync(path, 'utf-8')),
-        [CODEX_FALLBACK_REASONING],
-      );
+      return withOptions(parseCodexConfigModels(readFileSync(path, 'utf-8')), [
+        CODEX_FALLBACK_REASONING,
+      ]);
     } catch {
       return [];
     }
@@ -547,9 +551,7 @@ export function parseCodexReasoning(raw: unknown, defaultEffort: unknown): Agent
   }
   if (levels.length === 0) return [];
   const def =
-    typeof defaultEffort === 'string' && levels.includes(defaultEffort)
-      ? defaultEffort
-      : undefined;
+    typeof defaultEffort === 'string' && levels.includes(defaultEffort) ? defaultEffort : undefined;
   return [reasoningOption(effortValues(levels), def)];
 }
 

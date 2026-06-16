@@ -1,0 +1,70 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import type { PairingPayload } from '@uxnan/shared';
+import { PairingCodeService } from '../../src/index.js';
+
+const PAYLOAD = {
+  v: 1,
+  sessionId: 's',
+  macDeviceId: 'd',
+  macIdentityPublicKey: 'k',
+  expiresAt: 0,
+  displayName: 'PC',
+} as unknown as PairingPayload;
+
+function svc(opts: { codes?: string[]; ttlMs?: number; rateMax?: number } = {}) {
+  let clock = 1000;
+  let i = 0;
+  const codes = opts.codes ?? ['0123ABCD'];
+  const service = new PairingCodeService({
+    buildPayload: () => PAYLOAD,
+    now: () => clock,
+    ...(opts.ttlMs !== undefined ? { ttlMs: opts.ttlMs } : {}),
+    ...(opts.rateMax !== undefined ? { rateMax: opts.rateMax } : {}),
+    generateCode: () => codes[i++ % codes.length]!,
+  });
+  return { service, advance: (ms: number) => (clock += ms) };
+}
+
+test('issues a grouped code and resolves it (case/grouping/look-alike tolerant)', () => {
+  const { service } = svc({ codes: ['0123ABCD'] });
+  assert.equal(service.currentCode(), '0123-ABCD');
+  // exact, lowercased+ungrouped, and a look-alike (O→0) all resolve
+  assert.equal(service.resolve('0123-ABCD'), PAYLOAD);
+  assert.equal(service.resolve('0123abcd'), PAYLOAD);
+  assert.equal(service.resolve('O123 ABCD'), PAYLOAD);
+  assert.equal(service.resolve('9999-9999'), undefined);
+});
+
+test('a code stops resolving after it expires; currentCode rotates', () => {
+  const { service, advance } = svc({ codes: ['0123ABCD', 'ZZZZZZZZ'], ttlMs: 1000 });
+  assert.equal(service.currentCode(), '0123-ABCD');
+  advance(1500); // past TTL
+  assert.equal(service.resolve('0123-ABCD'), undefined);
+  assert.equal(service.currentCode(), 'ZZZZ-ZZZZ'); // a fresh code issued
+});
+
+test('rotate forces a new code immediately', () => {
+  const { service } = svc({ codes: ['0123ABCD', 'WXYZ7890'] });
+  assert.equal(service.currentCode(), '0123-ABCD');
+  assert.equal(service.rotate(), 'WXYZ-7890');
+  assert.equal(service.resolve('0123-ABCD'), undefined);
+  assert.equal(service.resolve('WXYZ-7890'), PAYLOAD);
+});
+
+test('rate limiting trips after the per-IP cap', () => {
+  const { service } = svc({ rateMax: 3 });
+  assert.equal(service.rateLimited('1.2.3.4'), false); // 1
+  assert.equal(service.rateLimited('1.2.3.4'), false); // 2
+  assert.equal(service.rateLimited('1.2.3.4'), false); // 3
+  assert.equal(service.rateLimited('1.2.3.4'), true); // 4 > cap
+  // a different IP is independent
+  assert.equal(service.rateLimited('5.6.7.8'), false);
+});
+
+test('the default code generator yields an 8-char unambiguous code', () => {
+  const real = new PairingCodeService({ buildPayload: () => PAYLOAD });
+  const code = real.currentCode().replace('-', '');
+  assert.equal(code.length, 8);
+  assert.match(code, /^[0-9A-HJKMNP-TV-Z]+$/); // Crockford base32 (no I, L, O, U)
+});

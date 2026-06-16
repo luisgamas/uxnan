@@ -5,7 +5,7 @@
  *
  * Source: architecture/02a-system-architecture.md §5.8.8.
  */
-import type { AgentId } from '@uxnan/shared';
+import type { AgentId, Turn, TurnList } from '@uxnan/shared';
 import type { BridgeContext } from '../bridge-context.js';
 import type { HandlerRouter } from '../handler-router.js';
 import type { SendTurnOptions } from '../agents/agent-manager.js';
@@ -78,13 +78,20 @@ export function registerThreadHandlers(router: HandlerRouter): void {
     return null;
   });
 
-  router.register('turn/list', (p, ctx: BridgeContext) =>
-    ctx.threadStore.listTurns(
-      requireString(p, 'threadId'),
-      optionalString(p, 'cursor'),
-      optionalNumber(p, 'limit'),
-    ),
-  );
+  router.register('turn/list', async (p, ctx: BridgeContext) => {
+    const threadId = requireString(p, 'threadId');
+    const cursor = optionalString(p, 'cursor');
+    const limit = optionalNumber(p, 'limit');
+    const stored = await ctx.threadStore.listTurns(threadId, cursor, limit);
+    // Fallback (§5.8.8): when the store has nothing for this thread, read the
+    // agent's own on-disk session log so the phone can still show history (e.g.
+    // after the bridge missed the turns, or threads.json was lost).
+    if (stored.turns.length > 0 || stored.nextCursor) return stored;
+    const source = await ctx.threadStore.getHistorySource(threadId);
+    const turns = await ctx.sessionHistory.readTurns(source, threadId);
+    if (!turns || turns.length === 0) return stored;
+    return paginateTurns(turns, cursor, limit);
+  });
   router.register('turn/read', (p, ctx: BridgeContext) =>
     ctx.threadStore.getTurn(requireString(p, 'turnId')),
   );
@@ -107,6 +114,22 @@ export function registerThreadHandlers(router: HandlerRouter): void {
     await ctx.agentManager.cancelTurn(requireString(p, 'threadId'), requireString(p, 'turnId'));
     return null;
   });
+}
+
+/**
+ * Page a full turn list (from the on-disk history fallback) the same way the
+ * store does: numeric cursor offset + limit, with a `nextCursor` when more remain.
+ */
+function paginateTurns(
+  turns: Turn[],
+  cursor: string | undefined,
+  limit: number | undefined,
+): TurnList {
+  const start = cursor ? Number.parseInt(cursor, 10) || 0 : 0;
+  const size = limit && limit > 0 ? limit : 20;
+  const result: TurnList = { turns: turns.slice(start, start + size) };
+  if (start + size < turns.length) result.nextCursor = String(start + size);
+  return result;
 }
 
 function optionalEffort(params: unknown): { effort?: string } {

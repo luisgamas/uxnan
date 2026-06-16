@@ -39,6 +39,7 @@
     "uxnan-relay": "*"
   },
   "optionalDependencies": {
-    "@napi-rs/keyring": "^1.3.0"
+    "@napi-rs/keyring": "^1.3.0",
+    "firebase-admin": "^13.0.0"
   }
 }

@@ -46,6 +46,7 @@ async function cmdQr(): Promise<void> {
   const qr = await renderPairingQr(payload);
   process.stdout.write(`${qr}\n`);
   process.stdout.write('Scan with the Uxnan mobile app.\n');
+  process.stdout.write(`Or enter this pairing code on the phone: ${bridge.currentPairingCode()}\n`);
   process.stdout.write(`Expires at: ${new Date(payload.expiresAt).toISOString()}\n`);
   process.stdout.write(`Payload: ${encodePairingQr(payload)}\n`);
   await bridge.stop();

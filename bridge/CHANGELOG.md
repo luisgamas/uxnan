@@ -5,6 +5,76 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added
+- **Manual-code pairing (bridge-side)** — pair without scanning a QR by trading a
+  short code shown on the PC for the pairing payload; reframes the relay's off-LAN
+  `/trusted-session/resolve` as a bridge-first feature.
+  - **Phase 1 — code + resolve:** `src/pairing/pairing-code-service.ts` issues a
+    rotating, expiring (10 min), 8-char Crockford-base32 pairing code (shown by the
+    `qr` CLI; `Bridge.currentPairingCode()`). The LAN server is now an `http.Server`
+    with the WebSocket transport attached, and serves `GET /pair/resolve?code=<code>`
+    — constant-time validated + per-IP rate-limited — returning the full
+    `PairingPayload` (the same data the QR carries). The code is a consent gate, not
+    a new secret.
+  - **Phase 2 — mDNS discovery:** `src/transport/mdns-advertiser.ts` advertises the
+    bridge on the LAN via DNS-SD (`_uxnan._tcp.local`, PTR/SRV/TXT/A) so the phone
+    discovers it without typing the host. Hand-rolled over `node:dgram`
+    (dependency-free — no third-party mDNS stack / native build). Toggle via
+    `config.mdnsEnabled` (default true, LAN-only). Best-effort: a failed bind
+    degrades silently. Verified with unit tests + a real multicast smoke.
+- **Gemini CLI agent adapter** — `@google/gemini-cli` wired as a real agent
+  (`src/adapters/gemini-adapter.ts`), driven via `gemini -p --output-format
+  stream-json --approval-mode <mode> --skip-trust` (validated live, gemini-cli
+  0.45.2). Parses the NDJSON stream for streamed text, paired `tool_use`/`tool_result`
+  → structured diff/command/tool blocks (`gemini-tools.ts`, internal `update_topic`
+  filtered), and `result.stats` → per-turn token usage (1M context window). Session
+  continuity via a generated `--session-id <uuid>` then `--resume <uuid>`; the
+  concrete model an alias resolves to (from `stats.models`) is surfaced as
+  `model_resolved`. Curated model list (`gemini-2.5-pro`/`flash`/`flash-lite`).
+  Approval posture configurable (`default`→`plan`, `acceptEdits`→`auto_edit`,
+  `bypassPermissions`→`yolo`). Binary resolved via `resolve-gemini.ts`. Exposed
+  through the existing `agent/list`/`agent/models` contract — no mobile change.
+- **Per-phone push targeting + prune-on-untrust** — the secure transport now tags
+  each request with its session identity (`RequestSession { sessionId, deviceId }`),
+  threaded through `router.dispatch` to the handlers, so `notifications/register|
+  update|unregister` act on the **requesting** phone instead of a single shared
+  "active" session — several concurrent phones each manage their own registration
+  (falls back to the active session for single-phone setups). `bridge/removeTrustedDevice`
+  now also prunes that device's push registration (`PushService.unregisterDevice`),
+  so a revoked phone stops receiving background push immediately instead of lingering.
+- **On-disk session history fallback for `turn/list` (§5.8.8)** — when the store
+  has no turns for a thread, the bridge now reads the agent's own session log from
+  disk so the phone can still show history (e.g. the bridge missed the turns, or
+  `threads.json` was lost). New `src/conversation/session-history.ts`
+  (`SessionHistoryReader`) parses each agent's real on-disk format — Claude Code
+  (`~/.claude/projects/<cwd>/<sessionId>.jsonl`), Codex
+  (`~/.codex/sessions/.../rollout-*-<sessionId>.jsonl`), OpenCode (JSON
+  message/part store under `~/.local/share/opencode/storage`, no SQLite dep) and
+  pi (`~/.pi/agent/sessions/<cwd>/*_<sessionId>.jsonl`) — with a 60s path cache.
+  To locate the file the agent's native session id is now persisted per thread:
+  adapters expose `nativeSessionId(threadId)`, `AgentManager` records it via
+  `ThreadStore.setAgentSession` on turn end, and the `turn/list` handler reads it
+  through `getHistorySource`. Read-only and tolerant; returns nothing for
+  unknown/unsupported agents. `turn/list` is unchanged on the wire.
+- **Direct FCM push from the bridge (PRIMARY path; relay optional)** — background
+  push is now delivered by the bridge itself over any transport (direct LAN,
+  Tailscale, or relay), not only via a hosted relay. New `src/push/push-sender.ts`
+  (`createBridgePushSender`) lazily loads `firebase-admin` (FCM HTTP v1) and reads
+  the Firebase service account from `UXNAN_FCM_SERVICE_ACCOUNT`, defaulting to
+  `~/.uxnan/firebase-service-account.json` (plug-and-play, no env var needed).
+  `PushService` keeps the real device token and delivers direct-first, falling
+  back to the relay `POST /push/notify` only when there's no local credential (or
+  `relayEnabled`). `firebase-admin` is an `optionalDependency`: absent creds/module
+  degrade to a silent no-op (foreground local notifications still work). Live FCM
+  init validated against the real `uxnan-app` service account.
+
+### Fixed
+- **Push worked only with the relay enabled** — `register` previously always
+  forwarded the token to the relay (and stored only the relay secret), so on the
+  relay-off default nothing was stored and background push never fired. It now
+  stores the device token locally for the direct path and contacts the relay only
+  when that path is actually used.
+
 ### Fixed (agent wiring, validated live)
 - **pi file edits now show as diffs** — pi's `edit` tool is
   `{ path, edits: [{ oldText, newText }] }` (verified live), not

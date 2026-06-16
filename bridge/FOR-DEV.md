@@ -9,6 +9,30 @@ only a human can provide.)
 > Each deferred item below says what to build; that doc says how to test it.
 > Install/config/agents/deploy docs are alongside it in [`docs/`](docs/).
 
+## MVP status — ALPHA-FUNCTIONAL (LAN/Tailscale-direct path)
+> Snapshot 2026-06. The bridge is **functional for an alpha release** on its primary
+> path: it builds clean and the full test suite is green (bridge 245, shared 29,
+> relay 9). Nothing below blocks LAN/Tailscale-direct use.
+>
+> **DONE:** E2EE transport (LAN `http+ws` + optional relay); **5 real agents**
+> (OpenCode, Claude Code, Codex, pi, **Gemini**) with per-thread/project agent+model,
+> structured model discovery, per-turn token usage, thinking + structured
+> commands/tools/diffs; git + workspace + checkpoints (true restore + pruning);
+> thread lifecycle; on-disk `turn/list` **history fallback**; sanitized `auth/status`;
+> **push** (direct FCM, persisted, per-phone target + prune-on-untrust); **pairing**
+> (QR + **manual code** + **mDNS discovery**); autostart/`install-service` per OS;
+> file logging.
+>
+> **PENDING that matters for a public release (not LAN alpha):**
+> - **Packaging/publish prep** — pin `@uxnan/shared` deps, verify a packed install,
+>   `version.ts` stamp (see *Packaging*). Required before `npm publish`.
+> - **Real-device push validation** + iOS APNs key (FOR-HUMAN; needs a device).
+>
+> **PENDING optional / blocked-on-mobile (do not block alpha):** seq catch-up on
+> reconnect + key rotation (await a mobile trigger); desktop embedded IPC (desktop
+> Phase 6); per-model run-options *phase 4* (fast-mode/context — little to wire);
+> Gemini in the history reader; Aider adapter; log size-rotation.
+
 ## Plug-and-play "install and use" — remaining sequence
 The goal is: install on the PC, log into the agents you want, point the phone at a
 folder, and go. Tracked items, in order:
@@ -54,6 +78,35 @@ hosting** (the phone connects directly to the bridge on the same network).
       envelopes with a greater `seq`. **Blocked:** the mobile `clientHello` does
       not send `resumeState` yet — coordinate with the mobile side first.
 - [ ] **Key rotation / keyEpoch advance** — blocked on a mobile trigger.
+- [◑] **Manual-code pairing (bridge-side; relay's `/trusted-session/resolve` reframed
+      for the bridge-first model).** The phone can pair WITHOUT scanning a QR by
+      trading a short code shown on the PC for the pairing payload.
+      **Phase 1 DONE:** `src/pairing/pairing-code-service.ts` issues a short,
+      rotating, expiring (10 min) **pairing code** (8-char Crockford base32, shown by
+      the `qr` CLI alongside the QR; `Bridge.currentPairingCode()`); the LAN server
+      (now an `http.Server` + WS) exposes `GET /pair/resolve?code=<code>` which
+      validates the code (constant-time, per-IP rate-limited) and returns the full
+      `PairingPayload` (identical to the QR), after which the phone runs the normal
+      E2EE handshake. The code is the **consent gate** (same trust posture as the QR
+      — whoever sees the screen can pair; no new secret).
+      **Phase 2 DONE:** `src/transport/mdns-advertiser.ts` advertises the bridge on
+      the LAN via mDNS/DNS-SD (`_uxnan._tcp.local`) so the phone DISCOVERS it without
+      typing the host. **Implemented dependency-free** (hand-rolled over `node:dgram`)
+      rather than pulling `bonjour-service`/`multicast-dns` — keeps the packaged
+      bridge (`npm i -g` / single binary) free of a third-party mDNS stack and avoids
+      a native build. Records: PTR + SRV + TXT (`v`,`port`,`addr`,`id`=deviceId) + A,
+      announced on start, goodbye (TTL 0) on stop, answers browse + DNS-SD meta
+      queries. Best-effort: a failed bind (5353 busy) degrades silently. Toggle via
+      `config.mdnsEnabled` (default true; effective only when `lanEnabled`). Verified
+      by unit tests (fake socket) + a real on-machine multicast smoke (a DNS-SD
+      querier received the full record set).
+      **Mobile linkage (uxnanmobile):** the deferred `ManualCodeScreen` should
+      (1) **browse `_uxnan._tcp` via mDNS** (Android `NsdManager` / iOS `NWBrowser`,
+      e.g. the `nsd`/`multicast_dns` Flutter plugin) to list bridges + read the TXT
+      `addr`/`port`, then (2) call
+      `GET http://<addr>:<port>/pair/resolve?code=<code>` **on the bridge** (NOT the
+      relay) to synthesize the `PairingPayload`, then reuse the existing QR pairing
+      path. Typing the host stays a manual fallback when mDNS is unavailable.
 
 ## Identity & security
 - [x] **OS-keychain SecretStore** (Phase 3) — `src/keyring-secret-store.ts` via
@@ -149,50 +202,81 @@ hosting** (the phone connects directly to the bridge on the same network).
       the phone re-registering (the relay keeps its own sessionId→token map; the
       bridge only needs `sessionId` + `notificationSecret` to call `/push/notify`).
       A turn-end pushes to **every** registered phone, so multiple paired devices
-      each get background push. Remaining follow-ups:
-        - `register`/`updatePreferences`/`unregister` act on the *active* session
-          (exact with `maxConcurrentSessions: 1`); to target a specific phone when
-          several sessions are concurrent, thread per-request session identity
-          through the router to the handler. **FOR-DEV.**
-        - prune registrations for devices removed via `bridge/removeTrustedDevice`
-          (today they linger until `unregister`/overwrite) — wire trust-removal to
-          drop the matching push registration.
-        - **Mobile linkage:** no uxnanmobile change needed — the phone already
-          calls `notifications/register` on connect. To VALIDATE end-to-end needs
-          the Firebase/APNs creds (FOR-HUMAN) + a real device; confirm a turn-end
-          push arrives while backgrounded, and still arrives after restarting the
-          bridge (without reopening the app).
-- [ ] **Direct FCM from the bridge — the PRIMARY push path (relay optional).**
-      DIRECTION (decided 2026-06-12): background push should be sent **by the
-      bridge itself**, so it works on **any** transport — direct LAN, **Tailscale**,
-      or relay — not only when a hosted relay is in the loop. The relay is now
+      each get background push. Follow-ups **DONE**:
+        - ☑ **Per-request session target** — the secure transport now tags each
+          request with its `RequestSession` (`{ sessionId, deviceId }`), threaded
+          `session-handler → router.dispatch → handler`. `notifications/register|
+          update|unregister` act on **that** session (falling back to the active
+          session for single-phone setups), so when several phones are concurrent
+          each manages its own registration. `PushService.register` takes an
+          explicit `{ sessionId, deviceId? }` instead of reading a single "active"
+          session.
+        - ☑ **Prune on untrust** — `bridge/removeTrustedDevice` now calls
+          `PushService.unregisterDevice(deviceId)`, dropping every registration
+          owned by that device (the registration records its `deviceId`), so a
+          revoked phone stops receiving background push immediately instead of
+          lingering until it re-registers or is overwritten.
+        - **Mobile linkage (no uxnanmobile change needed):** the phone already
+          calls `notifications/register` on connect (per-session target works as-is)
+          and its **"Remove device" action is already DONE** (uxnanmobile
+          `FOR-DEV.md` → *Threads list → Remove device* sends `bridge/removeTrustedDevice`
+          with its own id), so prune-on-untrust is wired end-to-end — no deferred
+          mobile work. **VERIFY (device):** (1) per-session — with
+          `maxConcurrentSessions > 1`, two paired phones each get their own
+          background push; `unregister` on one leaves the other receiving. (2) prune
+          — "Remove device" on a phone → that phone stops receiving background push
+          immediately. Both need the Firebase creds (FOR-HUMAN) + a real device.
+- [x] **Direct FCM from the bridge — the PRIMARY push path (relay optional).**
+      DIRECTION (decided 2026-06-12): background push is sent **by the bridge
+      itself**, so it works on **any** transport — direct LAN, **Tailscale**, or
+      relay — not only when a hosted relay is in the loop. The relay is now
       **optional and self-hosted** (for those who want hosted off-LAN access); the
-      bridge must keep working — securely, E2EE end-to-end — **with or without it**.
-      - **Build:** add an FCM `PushSender` in the bridge (lazy `firebase-admin`,
-        FCM HTTP v1) that reads a local `UXNAN_FCM_SERVICE_ACCOUNT` and delivers
-        directly; use it whenever the credential is present, regardless of
-        `relayEnabled`. Keep the existing `POST /push/notify`→relay path as a
-        **fallback** for setups that prefer to keep creds on a hosted relay.
-      - **Guarding:** with no `UXNAN_FCM_SERVICE_ACCOUNT` and no relay, push is a
-        silent no-op (foreground local notifications still work, relay-free).
-      - **Security:** push payloads stay minimal/non-secret (title + thread id);
-        no plaintext conversation content leaves the device. The bridge owning the
-        FCM service account is the same trust model as the relay owning it today —
-        a local, gitignored credential the user provides (see `FOR-HUMAN.md`).
+      bridge keeps working — securely, E2EE end-to-end — **with or without it**.
+      **DONE:**
+      - **Build:** `src/push/push-sender.ts` adds `createBridgePushSender` — a lazy
+        `firebase-admin` FCM HTTP v1 `PushSender` (named app `uxnan-bridge`,
+        `android.priority=high` / `apns-priority:10`). It reads
+        `UXNAN_FCM_SERVICE_ACCOUNT`, **falling back to the documented
+        `~/.uxnan/firebase-service-account.json`** so it's plug-and-play (drop the
+        JSON in place, no env var needed). `PushService` now keeps the **real device
+        token + platform** per registration and, on turn-end, delivers **direct via
+        FCM first**, regardless of `relayEnabled`; the `POST /push/notify`→relay path
+        is the **fallback** (used when there's no local credential, or `relayEnabled`).
+        Wired in `bridge.ts`; `register` only hits the relay when it's enabled or
+        there is no direct sender (fixes the old always-forward, which broke push on
+        the relay-off default).
+      - **Guarding:** with no service account and no relay, push is a silent no-op
+        (foreground local notifications still work, relay-free). `firebase-admin` is
+        an `optionalDependency` — a missing module degrades to relay/noop, never a
+        build/start failure.
+      - **Security:** payloads carry title + short turn summary (already truncated,
+        same as the relay path) + thread/turn ids — no further conversation content.
+        The bridge owning the FCM service account is the same trust model as the
+        relay owning it: a local, gitignored credential the user provides (`FOR-HUMAN.md`).
       - **Mobile:** no change — the phone registers an FCM token via
         `notifications/register` and the bridge delivers; works whichever side
         holds the credential.
+      - **Validated:** `bridge/test/push/push-service.test.ts` covers the direct
+        path (relay untouched on the default, FCM delivery, restart persistence,
+        relay-enabled coexistence). A live init smoke against the real `uxnan-app`
+        service account authenticated to FCM (bogus token → `messaging/invalid-argument`,
+        i.e. creds OK). **Remaining:** a real device to confirm an actual token
+        delivers while backgrounded.
+      - **Follow-up (optional):** the payload `body` still carries the truncated turn
+        summary for a useful notification; if a stricter "title + thread id only"
+        policy is wanted, drop `body` in `buildNotification` for the direct path.
 - [ ] **Desktop** — `src/handlers/desktop-handler.ts` (embedded mode IPC).
 - [x] **bridge/removeTrustedDevice** — `src/handlers/bridge-control-handler.ts`.
       Revokes trust (`ctx.trustStore.remove`) and drops any live session/sink
       (`sessions.remove` + `sessionRegistry.unregister`) so a removed device is
       both untrusted and disconnected now. Idempotent (removing an absent device
       is not an error). `bridge/trustedDevices` now reads through `ctx.trustStore`
-      too. **Mobile linkage:** the uxnanmobile "Remove device" card action is
-      still DEFERRED (its `FOR-DEV.md` → *Threads list → Remove device*); the
-      bridge side is now ready, so when that UI lands it just calls this method
-      (`{ deviceId }`) after deleting the local `TrustedDevice` + threads. No
-      further bridge work needed.
+      too. It also now prunes the device's push registration
+      (`pushService.unregisterDevice` — see *Notifications → Prune on untrust*).
+      **Mobile linkage:** the uxnanmobile "Remove device" card action is **DONE**
+      (its `FOR-DEV.md` → *Threads list → Remove device* already calls this method
+      with `{ deviceId }` after deleting the local `TrustedDevice` + threads), so
+      this is wired end-to-end. No further bridge work needed.
 - [x] **bridge/status `relayConnected`** — reflects the real relay connection.
       `BridgeContext.relayConnected()` reads the live relay-serve state (the
       `relayState.connected` holder in `src/bridge.ts`, true while a relay
@@ -229,8 +313,10 @@ hosting** (the phone connects directly to the bridge on the same network).
       forwards it. Lets the phone show a context-usage indicator.
 - [x] **Change a thread's model mid-conversation** — `thread/setModel`
       (`ThreadStore.setModel` + `thread-context-handler.ts`).
-- [ ] **Per-model run options (reasoning effort / context / fast mode) — advertise
-      + apply, data-driven.** IMPORTANT (not urgent): this is the next big seam to
+- [◑] **Per-model run options (reasoning effort / context / fast mode) — advertise
+      + apply, data-driven.** Phases 1–3 DONE (effort wired + per-model option schema
+      + mobile renderer); only phase 4 (fast-mode/context variants) remains, with
+      little to wire today. IMPORTANT (not urgent): this is the next big seam to
       link with mobile. The phone should let the user pick a model's *run knobs*
       (reasoning/thinking level, and where it applies a context-window variant or a
       "fast mode"), but these differ **per agent AND per model**, and some are only
@@ -397,10 +483,65 @@ The OpenCode adapter is the template for any "one-shot per-turn CLI" agent:
       `bridge/test/git/git-service.test.ts`. The git handler also gained
       `stage`/`unstage`/`discard`/`createPr`/`undoCommit`/`branches`/
       `switchBranch` for the mobile source-control screen.
-- [ ] **Gemini CLI** — capture its non-interactive JSON stream first. New scaffold.
-- [ ] **JSONL history fallback** (`session-jsonl-history`) — read agent session
-      JSONL/SQLite from disk for `turn/list` when the runtime has no fresh data
-      (§5.8.8). Needs each agent's real on-disk format.
+- [x] **Gemini CLI** — `src/adapters/gemini-adapter.ts`. WIRED via
+      `gemini -p <prompt> --output-format stream-json --approval-mode <mode> --skip-trust`
+      (validated live against gemini-cli 0.45.2 with flash-lite). Parses the NDJSON
+      stream (`init` → captures `session_id` + requested model; `message`
+      `role:assistant` `delta:true` → streamed text; `tool_use`+`tool_result` paired
+      by `tool_id` → structured blocks; `result` → completion with
+      `stats.total_tokens` usage). **Session continuity:** first turn opens a session
+      under a generated UUID (`--session-id <uuid>`); later turns `--resume <uuid>`
+      (verified: a fact set on turn 1 is recalled on turn 2). The native session id
+      is tracked per thread (`nativeSessionId`). **Model discovery:** the CLI has no
+      enumerate command, so `listModels()` returns a curated set
+      (`gemini-2.5-pro`/`flash`(default)/`flash-lite`); the CONCRETE model an alias
+      resolves to (e.g. `gemini-3.1-flash-lite`) is read from `stats.models` and
+      emitted as `model_resolved`. **Usage:** `stats.total_tokens` + a 1M context
+      window → the context meter. **Diffs/tools:** `gemini-tools.ts` maps
+      `write_file`→write-diff, `replace`→edit-diff, `run_shell_command`→command
+      block, others→generic tool block; the internal `update_topic` tool is filtered.
+      Sandbox posture via `agents['gemini-cli'].permissionMode` (default `acceptEdits`
+      → `--approval-mode auto_edit`; `default` → `plan` read-only; `bypassPermissions`
+      → `yolo`). Binary resolved by `resolve-gemini.ts` (`node <@google/gemini-cli/
+      bundle/gemini.js>`). **Mobile linkage:** none — Gemini is exposed through the
+      generic `agent/list`/`agent/models` contract the phone already renders (model
+      picker, context meter, Work log/diffs); the phone needs no change to show it.
+      To VERIFY on device: pick Gemini for a thread, confirm streaming + the context
+      meter + a write/edit diff render. **Follow-ups (FOR-DEV):** (1) no reasoning
+      knob is advertised — the CLI exposes no `--thinking`/effort flag; revisit if one
+      appears (Gemini 2.5 has thinking budgets but no headless flag in 0.45.2). (2)
+      add Gemini to the `session-jsonl-history` reader (its on-disk session format) —
+      the adapter already persists the native session id, so the locator is ready.
+- [x] **JSONL history fallback** (`session-jsonl-history`) — `turn/list` now falls
+      back to each agent's own on-disk session log when the `ThreadStore` has no
+      turns (bridge missed them / `threads.json` lost / session driven from a
+      terminal). `src/conversation/session-history.ts` (`SessionHistoryReader`)
+      reads the **real** per-agent formats (verified live on this machine, no
+      SQLite dep):
+        - **Claude Code** — `~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl`;
+          lines `{type:'user'|'assistant', message:{role, content:[{type:'text'|
+          'thinking'|…}]}}` (locates by scanning project dirs for the UUID file —
+          no need to reproduce Claude's lossy cwd-encoding).
+        - **Codex** — `~/.codex/sessions/<Y>/<M>/<D>/rollout-<ts>-<sessionId>.jsonl`;
+          `response_item` payloads `{type:'message', role, content:[{type:'input_text'|
+          'output_text', text}]}` (developer/system priming skipped).
+        - **OpenCode** — JSON store (not one file): `…/storage/message/<sessionId>/
+          <msgId>.json` + `…/storage/part/<msgId>/<partId>.json` (`{type:'text',text}`),
+          ordered by `time.created`. No `better-sqlite3` dependency.
+        - **pi** — `~/.pi/agent/sessions/<encoded-cwd>/<ts>_<sessionId>.jsonl`;
+          lines `{type:'message', message:{role, content:[{type:'text',text}]}}`.
+      Locating the file needs the agent's **native** session id, so it is now
+      persisted per thread: adapters expose `nativeSessionId(threadId)`,
+      `AgentManager` writes it via `ThreadStore.setAgentSession` on turn end, and
+      the `turn/list` handler reads `getHistorySource` → `SessionHistoryReader`
+      (path cache, 60s TTL; paginated like the store). Best-effort + read-only:
+      tolerant of malformed lines, returns `null` (keeps the empty store result)
+      for unknown/unsupported agents or a missing log. Tested with per-format
+      fixtures **and** smoked against real on-disk logs for all four agents.
+      **Mobile linkage:** none — `turn/list` is unchanged on the wire; the phone
+      just sees history it previously couldn't. **Follow-ups:** Gemini/Aider when
+      those adapters land; richer block/tool reconstruction (today the fallback
+      carries text + thinking, not the live path's structured blocks).
 - [ ] Later: Aider.
 
 ## Daemon lifecycle & ops
@@ -436,11 +577,46 @@ The OpenCode adapter is the template for any "one-shot per-turn CLI" agent:
 - [ ] Ensure the `scripts/*.sh` keep their executable bit when published
       (npm preserves mode; verify on a packed tarball).
 
-## Relay hardening
+## CI/CD & release (planned — FOR-DEV; decided 2026-06)
+> Clarification (the recurring "build per platform vs npm packaging?" question):
+> the bridge/relay/shared are **pure Node.js/TypeScript** packages — NOT
+> per-platform compiled binaries. The only native bits (`@napi-rs/keyring`,
+> `firebase-admin`) are `optionalDependencies` with JS fallbacks. So `tsc` output is
+> identical on every OS and the **distribution artifact is the npm package**, not an
+> OS-specific binary. "Build for each platform" in the compiled-binary sense does
+> NOT apply here (that's the Tauri desktop / Flutter mobile world).
+>
+> **Recommended GitHub Actions (do these, in order):**
+> 1. **CI — on push / PR.** Matrix `os: [ubuntu, macos, windows] × node: [20, 22]`:
+>    `npm ci` → `npm run build` (tsc across workspaces) → `npm run typecheck` →
+>    `prettier --check` → `npm test` per package. The **OS matrix is the point** —
+>    the bridge has per-OS code (`service-installer`, path handling, mDNS, keyring),
+>    so green-on-all-three is the real gate. This is the "verify tests + no errors
+>    before build" step you want; a release must not run if this fails.
+> 2. **Release — on tag `v*`.** Re-run the gate (1), then `npm publish` in dependency
+>    order: `@uxnan/shared` first, then `uxnan-bridge` + `uxnan-relay` (pin their
+>    `"@uxnan/shared": "*"` → the published `^0.x` first — see *Packaging*). Use an
+>    `NPM_TOKEN` secret; enable npm provenance.
+> 3. **Optional, later — standalone single binary.** ONLY if a no-Node install is
+>    wanted: Node SEA (`--experimental-sea-config`) or an equivalent bundler emits
+>    per-OS executables (win/mac/linux) as GitHub Release assets. This is the only
+>    part that needs a real per-platform build matrix; it is polish, not required for
+>    alpha.
+>
+> **Verdict:** the professional baseline for this Node monorepo is **(1) CI matrix +
+> (2) npm release**, not per-OS binaries. Add (3) only if you decide to ship to users
+> without Node installed. Workflows are NOT created yet — this annotation prepares
+> the ground; implement `.github/workflows/{ci,release}.yml` when ready.
+
+## Relay hardening (relay-only; see `relay/FOR-DEV.md` for the authoritative list)
 - [x] **Per-IP rate limiting** (Phase 3) — `relay/src/relay-server.ts`.
-- [ ] **Pairing-code resolution** (`/trusted-session/resolve`) and **multi-session
-      `mac` registration** — need protocol/mobile coordination (§5.10.1).
-- [ ] **Push endpoints** (`/push/*`, APNs/FCM) — Phase 6.
+- [x] **Push endpoints** (`/push/*`, FCM) — DONE (Phase 6). Push is now bridge-direct
+      by default; the relay endpoints are the optional hosted fallback.
+- [→bridge] **Pairing-code resolution** — manual-code pairing is now a **bridge**
+      feature (`src/pairing/` + `/pair/resolve` + mDNS); the relay
+      `/trusted-session/resolve` is superseded except for hosted off-LAN pairing.
+- [ ] **Multi-session `mac` registration** — relay-only; deferred unless you host a
+      shared relay (`relay/FOR-DEV.md`).
 
 ## Contracts verified
 - [x] **Pairing QR encoding** — `@uxnan/shared` now emits Base64 JSON matching the
