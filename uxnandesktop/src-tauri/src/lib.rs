@@ -197,6 +197,9 @@ pub fn run() {
             if let tauri::RunEvent::ExitRequested { .. } = event {
                 if let Some(state) = app_handle.try_state::<AppState>() {
                     state.pty.close_all();
+                    // Release any keep-awake helper (kills caffeinate /
+                    // systemd-inhibit on macOS/Linux) so none is left running.
+                    state.power.set(false);
                 }
             }
         });

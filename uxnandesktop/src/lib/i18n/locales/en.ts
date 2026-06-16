@@ -182,7 +182,10 @@ export const en = {
     "Notify when an agent goes idle while you're looking at another space.",
   "settings.preventSleep": "Prevent sleep while working",
   "settings.preventSleepDesc":
-    "Keep the system awake while an agent is working (auto-releases after 2 h). Windows only for now.",
+    "Keep the system awake while an agent is working (auto-releases after 2 h). macOS/Linux support is implemented but untested.",
+  "status.untested": "Untested on {os}",
+  "status.untestedTooltip":
+    "Uxnan is developed and validated on Windows. {os} support is implemented but not yet tested on real hardware (alpha).",
   "notify.agentIdleTitle": "{agent} is idle",
   "notify.agentIdleBody": "In {worktree} — it may be waiting for you.",
 

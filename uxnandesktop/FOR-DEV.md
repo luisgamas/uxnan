@@ -498,9 +498,10 @@ earlier "superficial UX" warning is resolved.
       Phase 0 follow-up.
 - [x] **System-suspension prevention** while an agent is `working` — opt-in
       (`AppSettings.preventSleep`), 2 h auto-release safety cap (`power.rs`,
-      `set_prevent_sleep`, driven by `anyAgentWorking()`). **Windows done;
-      macOS/Linux are a no-op** (FOR-DEV in `power.rs`). Settings toggle ships
-      with the Phase 5 UI batch.
+      `set_prevent_sleep`, driven by `anyAgentWorking()`). **All three platforms:**
+      Windows (`SetThreadExecutionState`), macOS (`caffeinate -i`), Linux
+      (`systemd-inhibit`). **macOS/Linux implemented but UNTESTED** (developed on
+      Windows). Released on exit; Settings toggle in Settings → Agents.
 - [x] **Side-by-side diffs** — two synced CodeMirror views (old left / new right)
       with a unified/side toggle in the full-size center `DiffPanel` (`DiffView`,
       `toSideRows`).
@@ -513,11 +514,11 @@ earlier "superficial UX" warning is resolved.
       scroll). Diff already virtual via CodeMirror.
 - [x] **Settings toggle for prevent-sleep** — Settings → Agents
       (`AppSettings.preventSleep`).
-- [ ] **Keep-awake on macOS/Linux** — `power.rs::apply` is a no-op off Windows;
-      implement macOS via `IOPMAssertionCreateWithName`
-      (`kIOPMAssertionTypePreventUserIdleSystemSleep`) and Linux via the
-      `org.freedesktop.login1` `Inhibit` D-Bus call (or `systemd-inhibit`).
-      Marker in `power.rs`. **FOR-DEV.**
+- [x] **Keep-awake on macOS/Linux** — implemented (macOS `caffeinate -i`, Linux
+      `systemd-inhibit`, both as a child held for the duration; `power.rs`).
+      **Done WITHOUT real validation — UNTESTED on macOS/Linux** (no hardware to
+      verify; CI will at least confirm it compiles per-OS). A status-bar notice
+      flags the untested platform in the UI.
 - [ ] **TanStack Virtual** for the project tree (sidebar) — done for the worktree
       palette + the right-panel changed-files list; the hierarchical tree is left
       (variable-height/expand-collapse, low payoff). **FOR-DEV.**

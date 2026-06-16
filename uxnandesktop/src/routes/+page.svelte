@@ -3,6 +3,8 @@
   import { git } from "$lib/state/git.svelte";
   import { projects } from "$lib/state/projects.svelte";
   import { i18n } from "$lib/i18n";
+  import { isUntestedPlatform, osLabel } from "$lib/platform";
+  import TriangleAlertIcon from "@lucide/svelte/icons/triangle-alert";
   import TerminalArea from "$lib/components/TerminalArea.svelte";
   import DiffPanel from "$lib/components/DiffPanel.svelte";
   import TitleBar from "$lib/components/TitleBar.svelte";
@@ -170,6 +172,15 @@
       <span class="text-destructive">· {app.errorMessage}</span>
     {/if}
     <div class="flex-1"></div>
+    {#if isUntestedPlatform}
+      <span
+        class="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400"
+        title={i18n.t("status.untestedTooltip", { os: osLabel() })}
+      >
+        <TriangleAlertIcon class="size-3.5" />
+        {i18n.t("status.untested", { os: osLabel() })}
+      </span>
+    {/if}
     <span>{i18n.plural(app.repos.length, "status.reposOne", "status.reposOther")}</span>
   </footer>
 </div>

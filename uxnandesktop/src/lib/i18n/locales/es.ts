@@ -176,7 +176,10 @@ export const es: Record<MessageKey, string> = {
   "agents.spaceLabel": "Agentes",
   "settings.preventSleep": "Evitar suspensión al trabajar",
   "settings.preventSleepDesc":
-    "Mantén el sistema despierto mientras un agente trabaja (se libera solo a las 2 h). Por ahora solo Windows.",
+    "Mantén el sistema despierto mientras un agente trabaja (se libera solo a las 2 h). El soporte de macOS/Linux está implementado pero sin probar.",
+  "status.untested": "Sin probar en {os}",
+  "status.untestedTooltip":
+    "Uxnan se desarrolla y valida en Windows. El soporte de {os} está implementado pero aún no se ha probado en hardware real (alpha).",
   "settings.agentNotifications": "Notificaciones de inactividad",
   "settings.agentNotificationsDesc":
     "Notificar cuando un agente queda inactivo y estás viendo otro espacio.",

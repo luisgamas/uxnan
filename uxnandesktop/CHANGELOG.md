@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — keep-awake on macOS/Linux + untested-platform notice
+- **Keep-awake now covers all three platforms** (`power.rs`): Windows
+  (`SetThreadExecutionState`), macOS (`caffeinate -i`), Linux (`systemd-inhibit`),
+  each held by the keep-awake worker and released on exit. **macOS/Linux are
+  implemented but UNTESTED** (developed on Windows).
+- **Untested-platform notice**: when running on macOS/Linux, the status bar shows
+  an amber "Untested on <os>" badge (`platform.ts`), and the prevent-sleep setting
+  notes the same. The app is only validated on Windows so far (alpha).
+
 ### Added — Phase 5 (UI batch B): palette, split buttons, virtual lists, sleep toggle
 - **Quick worktree switcher** (`WorktreeSearch`): a command-palette opened with
   **Ctrl/Cmd+P** or the sidebar ⚡ button — type to filter every worktree across
