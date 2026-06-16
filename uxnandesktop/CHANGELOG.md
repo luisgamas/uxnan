@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — Phase 5: hunk-level staging (backend)
+- **`git_apply` command** (`git::apply_patch`): applies a unified-diff patch fed
+  on stdin, with `cached` (index) and `reverse` flags — the backend half of
+  hunk-level staging (stage / unstage / discard a single hunk). The DiffView UI
+  that builds per-hunk sub-patches and exposes the buttons ships with the UI batch.
+
 ### Added — Phase 5: keep system awake while an agent works (opt-in)
 - **Prevent sleep** (`power.rs`, `AppSettings.preventSleep`, default off): while
   enabled and an agent is working, the ADE asks the OS not to sleep, and releases

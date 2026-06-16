@@ -446,6 +446,59 @@ pub async fn discard_file(
     }
 }
 
+/// Apply a unified-diff `patch` to the worktree, feeding it on stdin (so odd
+/// paths/content are safe). `cached` targets the index (stage); `reverse`
+/// reverses the patch. Powers hunk-level staging — the frontend sends a
+/// single-hunk sub-patch built from the file's diff:
+/// - stage hunk: `cached = true,  reverse = false`
+/// - unstage hunk: `cached = true,  reverse = true`  (from the staged diff)
+/// - discard hunk: `cached = false, reverse = true`  (destructive; confirmed)
+pub async fn apply_patch(
+    worktree_path: &str,
+    patch: &str,
+    cached: bool,
+    reverse: bool,
+) -> Result<(), AppError> {
+    use std::process::Stdio;
+    use tokio::io::AsyncWriteExt;
+
+    let mut args: Vec<&str> = vec!["-C", worktree_path, "apply", "--whitespace=nowarn"];
+    if cached {
+        args.push("--cached");
+    }
+    if reverse {
+        args.push("--reverse");
+    }
+    let mut child = Command::new("git")
+        .args(&args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| AppError::Git(e.to_string()))?;
+    // Write the patch, then drop stdin so git sees EOF.
+    {
+        let mut stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| AppError::Git("failed to open git stdin".to_string()))?;
+        stdin
+            .write_all(patch.as_bytes())
+            .await
+            .map_err(|e| AppError::Git(e.to_string()))?;
+    }
+    let output = child
+        .wait_with_output()
+        .await
+        .map_err(|e| AppError::Git(e.to_string()))?;
+    if !output.status.success() {
+        return Err(AppError::Git(
+            String::from_utf8_lossy(&output.stderr).trim().to_string(),
+        ));
+    }
+    Ok(())
+}
+
 /// Commit the staged changes with `message` (`git commit -m`). Fails (surfaced to
 /// the user) when nothing is staged.
 pub async fn commit(worktree_path: &str, message: &str) -> Result<(), AppError> {

@@ -173,6 +173,17 @@ export function gitDiscard(
   return invoke("git_discard", { path, file, untracked });
 }
 
+/** Apply a single-hunk unified-diff patch to stage/unstage/discard it. `cached`
+ *  targets the index; `reverse` reverses the patch (unstage / discard). */
+export function gitApply(
+  path: string,
+  patch: string,
+  cached: boolean,
+  reverse: boolean,
+): Promise<void> {
+  return invoke("git_apply", { path, patch, cached, reverse });
+}
+
 /** Commit the staged changes with `message`. */
 export function gitCommit(path: string, message: string): Promise<void> {
   return invoke("git_commit", { path, message });

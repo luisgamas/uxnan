@@ -371,6 +371,20 @@ pub async fn git_discard(path: String, file: String, untracked: bool) -> Result<
         .map_err(CommandError::from)
 }
 
+/// Apply a unified-diff patch (a single hunk, from the frontend) to stage,
+/// unstage, or discard it. `cached` targets the index; `reverse` reverses it.
+#[tauri::command]
+pub async fn git_apply(
+    path: String,
+    patch: String,
+    cached: bool,
+    reverse: bool,
+) -> Result<(), CommandError> {
+    git::apply_patch(&path, &patch, cached, reverse)
+        .await
+        .map_err(CommandError::from)
+}
+
 /// Commit the staged changes with `message`.
 #[tauri::command]
 pub async fn git_commit(path: String, message: String) -> Result<(), CommandError> {

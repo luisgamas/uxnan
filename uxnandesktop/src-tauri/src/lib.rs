@@ -179,6 +179,7 @@ pub fn run() {
             commands::git_stage_all,
             commands::git_unstage_all,
             commands::git_discard,
+            commands::git_apply,
             commands::git_commit,
             commands::git_set_watch,
             commands::git_push,
