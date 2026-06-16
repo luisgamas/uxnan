@@ -536,3 +536,79 @@ browser and multi-PC connection correctness are now DONE — see below.)
 ## Tooling
 
 - ☐ Adopt `freezed`/`json_serializable` if/when entity boilerplate warrants it.
+
+## Alpha release readiness & CI/CD (prep)
+
+> Status snapshot taken 2026-06-16. The mobile app is **functional for an alpha
+> release on Android**: every core flow is wired and **maintainer-validated
+> on-device** (pairing/E2EE, devices list, threads, new conversation, live
+> streaming conversation, git screen, model picker, context meter, run-option
+> knobs, auth-status surfaces, push on Android, personalization, voice). Quality
+> gates are green: `flutter analyze lib test` → no issues, `flutter test` →
+> 265 passing, `dart format` clean. **iOS is NOT alpha-ready** — it has never
+> been built (the Podfile is generated on the first macOS build) and is blocked
+> on FOR-HUMAN assets (APNs key, Info.plist usage strings, signing). So: ship
+> Android alpha now; iOS follows once the human assets + a first macOS build
+> land.
+
+### What still blocks a *complete* MVP (not an Android alpha)
+
+Nothing below blocks an Android alpha build; these are the remaining feature/
+polish gaps, ordered by importance:
+
+- **App-side, buildable now (no bridge needed):**
+  - ☐ **Attach (file/image picker)** — gated by the `images` capability; today a
+    disabled placeholder. Medium importance: the only composer input still
+    missing (text + voice already work).
+  - ☐ **Custom accent colors** — placeholder; needs a full `ColorScheme`-from-seed
+    remap to stay coherent. Low importance (cosmetic).
+  - ☐ **Persist sort/density + project-level thread scoping** — small UX
+    follow-ups. Low importance.
+  - ☐ **Work-log auto-expand while streaming; tap Last-edits strip to jump.** Low.
+- **App-side seam, needs a live bridge to finish/verify:**
+  - ☐ **Remote history pagination** (`loadMoreHistory` cursor + `resumeThread`/
+    `forkThread`). Medium importance for long-lived threads; re-sync already
+    recovers in-flight turns.
+  - ☐ **Automated integration test against a real bridge** (today: simulated
+    in-memory bridge). Medium importance for regression safety.
+- **Bridge-blocked (documented contracts above; not the app's fault):**
+  interactive approval intake, `git/revert`, safe branch/worktree deletion,
+  vanished-cwd detection, agent session-id surfacing, approval-mode persistence
+  RPC. Important for feature-completeness but each waits on the bridge agent.
+- **FOR-HUMAN assets (gate iOS + live push):** iOS APNs key (paid Apple
+  account), iOS Info.plist permission strings (camera, local network, mic),
+  Firebase config (`google-services.json` / `GoogleService-Info.plist`), Android
+  signing keystore, iOS signing cert/provisioning. See `FOR-HUMAN.md`.
+
+### CI/CD prep — GitHub Actions (to author when we green-light it)
+
+Target platforms are **Android + iOS only** (`pubspec.yaml`: `android/`,
+`ios/`). Proposed pipeline — NOT YET CREATED; author `.github/workflows/` when
+the maintainer approves:
+
+1. **`verify` job (ubuntu-latest) — runs on every push/PR; the build gate:**
+   - `flutter pub get`
+   - `flutter gen-l10n` then fail if `lib/l10n` drifted (generated l10n is
+     committed — `git diff --exit-code lib/l10n`).
+   - `dart format --output=none --set-exit-if-changed lib test`
+   - `flutter analyze lib test` (must report no issues)
+   - `flutter test` (must be all-green; consider `--coverage`)
+   - Pin the Flutter version (`subosito/flutter-action`) to the toolchain we
+     develop on; cache pub + Gradle.
+2. **`build-android` job (ubuntu-latest) — needs: `verify`:**
+   - `flutter build apk --release` and `flutter build appbundle --release`.
+   - Signing keystore + `key.properties` from repo **secrets** (base64-decoded at
+     runtime); until those exist, build unsigned/debug artifacts.
+   - Upload the APK/AAB as workflow artifacts (do NOT auto-publish to Play in
+     alpha — produce downloadable builds only).
+3. **`build-ios` job (macos-latest) — needs: `verify`; can start unsigned:**
+   - `flutter build ios --release --no-codesign` (works without signing assets,
+     so iOS at least *compiles* in CI before the human assets land). Real `.ipa`
+     export waits on the signing cert/provisioning + APNs (FOR-HUMAN).
+4. **Triggers:** PR + push to the dev branch for `verify`; tag push
+   (`v*`) or manual `workflow_dispatch` for the build jobs. Gate every build job
+   on `verify` so a failing test/analyze/format **blocks the build**.
+5. **Secrets/assets the workflow will need (FOR-HUMAN):** `ANDROID_KEYSTORE_B64`
+   + `ANDROID_KEY_PROPERTIES`, Firebase config files, iOS signing
+   cert/provisioning profile + APNs key. List them in `FOR-HUMAN.md` when we
+   wire the workflow.
