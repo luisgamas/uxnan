@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 
 ### Added
+- **Per-phone push targeting + prune-on-untrust** — the secure transport now tags
+  each request with its session identity (`RequestSession { sessionId, deviceId }`),
+  threaded through `router.dispatch` to the handlers, so `notifications/register|
+  update|unregister` act on the **requesting** phone instead of a single shared
+  "active" session — several concurrent phones each manage their own registration
+  (falls back to the active session for single-phone setups). `bridge/removeTrustedDevice`
+  now also prunes that device's push registration (`PushService.unregisterDevice`),
+  so a revoked phone stops receiving background push immediately instead of lingering.
 - **On-disk session history fallback for `turn/list` (§5.8.8)** — when the store
   has no turns for a thread, the bridge now reads the agent's own session log from
   disk so the phone can still show history (e.g. the bridge missed the turns, or

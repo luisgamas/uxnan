@@ -149,19 +149,30 @@ hosting** (the phone connects directly to the bridge on the same network).
       the phone re-registering (the relay keeps its own sessionId→token map; the
       bridge only needs `sessionId` + `notificationSecret` to call `/push/notify`).
       A turn-end pushes to **every** registered phone, so multiple paired devices
-      each get background push. Remaining follow-ups:
-        - `register`/`updatePreferences`/`unregister` act on the *active* session
-          (exact with `maxConcurrentSessions: 1`); to target a specific phone when
-          several sessions are concurrent, thread per-request session identity
-          through the router to the handler. **FOR-DEV.**
-        - prune registrations for devices removed via `bridge/removeTrustedDevice`
-          (today they linger until `unregister`/overwrite) — wire trust-removal to
-          drop the matching push registration.
-        - **Mobile linkage:** no uxnanmobile change needed — the phone already
-          calls `notifications/register` on connect. To VALIDATE end-to-end needs
-          the Firebase/APNs creds (FOR-HUMAN) + a real device; confirm a turn-end
-          push arrives while backgrounded, and still arrives after restarting the
-          bridge (without reopening the app).
+      each get background push. Follow-ups **DONE**:
+        - ☑ **Per-request session target** — the secure transport now tags each
+          request with its `RequestSession` (`{ sessionId, deviceId }`), threaded
+          `session-handler → router.dispatch → handler`. `notifications/register|
+          update|unregister` act on **that** session (falling back to the active
+          session for single-phone setups), so when several phones are concurrent
+          each manages its own registration. `PushService.register` takes an
+          explicit `{ sessionId, deviceId? }` instead of reading a single "active"
+          session.
+        - ☑ **Prune on untrust** — `bridge/removeTrustedDevice` now calls
+          `PushService.unregisterDevice(deviceId)`, dropping every registration
+          owned by that device (the registration records its `deviceId`), so a
+          revoked phone stops receiving background push immediately instead of
+          lingering until it re-registers or is overwritten.
+        - **Mobile linkage (no uxnanmobile change needed):** the phone already
+          calls `notifications/register` on connect (per-session target works as-is)
+          and its **"Remove device" action is already DONE** (uxnanmobile
+          `FOR-DEV.md` → *Threads list → Remove device* sends `bridge/removeTrustedDevice`
+          with its own id), so prune-on-untrust is wired end-to-end — no deferred
+          mobile work. **VERIFY (device):** (1) per-session — with
+          `maxConcurrentSessions > 1`, two paired phones each get their own
+          background push; `unregister` on one leaves the other receiving. (2) prune
+          — "Remove device" on a phone → that phone stops receiving background push
+          immediately. Both need the Firebase creds (FOR-HUMAN) + a real device.
 - [x] **Direct FCM from the bridge — the PRIMARY push path (relay optional).**
       DIRECTION (decided 2026-06-12): background push is sent **by the bridge
       itself**, so it works on **any** transport — direct LAN, **Tailscale**, or
@@ -207,11 +218,12 @@ hosting** (the phone connects directly to the bridge on the same network).
       (`sessions.remove` + `sessionRegistry.unregister`) so a removed device is
       both untrusted and disconnected now. Idempotent (removing an absent device
       is not an error). `bridge/trustedDevices` now reads through `ctx.trustStore`
-      too. **Mobile linkage:** the uxnanmobile "Remove device" card action is
-      still DEFERRED (its `FOR-DEV.md` → *Threads list → Remove device*); the
-      bridge side is now ready, so when that UI lands it just calls this method
-      (`{ deviceId }`) after deleting the local `TrustedDevice` + threads. No
-      further bridge work needed.
+      too. It also now prunes the device's push registration
+      (`pushService.unregisterDevice` — see *Notifications → Prune on untrust*).
+      **Mobile linkage:** the uxnanmobile "Remove device" card action is **DONE**
+      (its `FOR-DEV.md` → *Threads list → Remove device* already calls this method
+      with `{ deviceId }` after deleting the local `TrustedDevice` + threads), so
+      this is wired end-to-end. No further bridge work needed.
 - [x] **bridge/status `relayConnected`** — reflects the real relay connection.
       `BridgeContext.relayConnected()` reads the live relay-serve state (the
       `relayState.connected` holder in `src/bridge.ts`, true while a relay

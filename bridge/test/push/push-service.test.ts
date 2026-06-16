@@ -74,29 +74,35 @@ function service(calls: Call[], opts: ServiceOpts = {}) {
   });
 }
 
+/** Register a token for an explicit session (+ optional device id). */
+function reg(
+  svc: PushService,
+  sessionId: string,
+  pushToken: string,
+  platform: 'android' | 'ios',
+  deviceId?: string,
+) {
+  return svc.register({
+    sessionId,
+    pushToken,
+    platform,
+    ...(deviceId !== undefined ? { deviceId } : {}),
+  });
+}
+
 test('register forwards the token to the relay over http(s)', async () => {
   const calls: Call[] = [];
   const svc = service(calls);
-  svc.setActiveSession('ses_1');
-  const res = await svc.register('tok', 'android');
+  const res = await reg(svc, 'ses_1', 'tok', 'android');
   assert.equal(res.registered, true);
   assert.equal(calls[0]?.url, 'https://relay.example/push/register');
   assert.deepEqual(calls[0]?.body, { sessionId: 'ses_1', pushToken: 'tok', platform: 'android' });
 });
 
-test('register without an active session is a no-op', async () => {
-  const calls: Call[] = [];
-  const svc = service(calls);
-  const res = await svc.register('tok', 'ios');
-  assert.equal(res.registered, false);
-  assert.equal(calls.length, 0);
-});
-
 test('onTurnEnd pushes a completed notification once registered', async () => {
   const calls: Call[] = [];
   const svc = service(calls);
-  svc.setActiveSession('ses_1');
-  await svc.register('tok', 'android');
+  await reg(svc, 'ses_1', 'tok', 'android');
 
   svc.onTurnEnd({ threadId: 'th', turnId: 'tn', status: 'completed', text: 'all done' });
   // onTurnEnd is fire-and-forget; let the microtask flush.
@@ -113,7 +119,6 @@ test('onTurnEnd pushes a completed notification once registered', async () => {
 test('onTurnEnd does nothing without a registration', async () => {
   const calls: Call[] = [];
   const svc = service(calls);
-  svc.setActiveSession('ses_1');
   svc.onTurnEnd({ threadId: 'th', turnId: 'tn', status: 'completed', text: 'x' });
   await new Promise((r) => setTimeout(r, 10));
   assert.equal(calls.length, 0);
@@ -122,10 +127,8 @@ test('onTurnEnd does nothing without a registration', async () => {
 test('onTurnEnd pushes to every registered session (multi-device)', async () => {
   const calls: Call[] = [];
   const svc = service(calls);
-  svc.setActiveSession('ses_1');
-  await svc.register('tok-1', 'android');
-  svc.setActiveSession('ses_2');
-  await svc.register('tok-2', 'ios');
+  await reg(svc, 'ses_1', 'tok-1', 'android');
+  await reg(svc, 'ses_2', 'tok-2', 'ios');
 
   svc.onTurnEnd({ threadId: 'th', turnId: 'tn', status: 'completed', text: 'done' });
   await new Promise((r) => setTimeout(r, 10));
@@ -136,16 +139,13 @@ test('onTurnEnd pushes to every registered session (multi-device)', async () => 
   assert.deepEqual(notified.sort(), ['ses_1', 'ses_2']);
 });
 
-test('unregister removes only the active session', async () => {
+test('unregister(sessionId) removes only that session', async () => {
   const calls: Call[] = [];
   const svc = service(calls);
-  svc.setActiveSession('ses_1');
-  await svc.register('tok-1', 'android');
-  svc.setActiveSession('ses_2');
-  await svc.register('tok-2', 'ios');
+  await reg(svc, 'ses_1', 'tok-1', 'android');
+  await reg(svc, 'ses_2', 'tok-2', 'ios');
 
-  // The active session is ses_2; unregister it, ses_1 must still be notified.
-  svc.unregister();
+  svc.unregister('ses_2');
   svc.onTurnEnd({ threadId: 'th', turnId: 'tn', status: 'completed', text: 'done' });
   await new Promise((r) => setTimeout(r, 10));
 
@@ -155,14 +155,32 @@ test('unregister removes only the active session', async () => {
   assert.deepEqual(notified, ['ses_1']);
 });
 
+test('unregisterDevice prunes every registration owned by a removed device', async () => {
+  const calls: Call[] = [];
+  const svc = service(calls);
+  // Two sessions for the same phone (device-a) + one for another phone (device-b).
+  await reg(svc, 'ses_1', 'tok-1', 'android', 'device-a');
+  await reg(svc, 'ses_2', 'tok-2', 'android', 'device-a');
+  await reg(svc, 'ses_3', 'tok-3', 'ios', 'device-b');
+
+  const removed = svc.unregisterDevice('device-a');
+  assert.equal(removed, 2);
+
+  svc.onTurnEnd({ threadId: 'th', turnId: 'tn', status: 'completed', text: 'done' });
+  await new Promise((r) => setTimeout(r, 10));
+  const notified = calls
+    .filter((c) => c.url.endsWith('/push/notify'))
+    .map((c) => c.body['sessionId']);
+  assert.deepEqual(notified, ['ses_3'], 'only the other device still receives push');
+});
+
 test('registrations persist across a restart via push-state.json', async () => {
   const baseDir = join(tmpdir(), `uxnan-push-${randomUUID()}`);
   const state = new DaemonState(baseDir);
   try {
     const calls1: Call[] = [];
     const svc1 = service(calls1, { state });
-    svc1.setActiveSession('ses_1');
-    await svc1.register('tok-1', 'android');
+    await reg(svc1, 'ses_1', 'tok-1', 'android');
 
     // A fresh service (simulating a bridge restart) loads the persisted state and
     // can push WITHOUT the phone re-registering.
@@ -191,8 +209,7 @@ test('direct sender: register does NOT touch the relay (relay off, default)', as
   const calls: Call[] = [];
   const sent: SentPush[] = [];
   const svc = service(calls, { sender: fakeSender(sent) });
-  svc.setActiveSession('ses_1');
-  const res = await svc.register('fcm-tok', 'android');
+  const res = await reg(svc, 'ses_1', 'fcm-tok', 'android');
   assert.equal(res.registered, true);
   // No /push/register — direct FCM is the path, relay is disabled by default.
   assert.equal(calls.length, 0);
@@ -203,8 +220,7 @@ test('direct sender: onTurnEnd delivers via FCM, not the relay', async () => {
   const calls: Call[] = [];
   const sent: SentPush[] = [];
   const svc = service(calls, { sender: fakeSender(sent) });
-  svc.setActiveSession('ses_1');
-  await svc.register('fcm-tok', 'android');
+  await reg(svc, 'ses_1', 'fcm-tok', 'android');
 
   svc.onTurnEnd({ threadId: 'th', turnId: 'tn', status: 'completed', text: 'all done' });
   await new Promise((r) => setTimeout(r, 10));
@@ -223,8 +239,7 @@ test('direct sender: registration survives a restart and pushes via FCM after re
   const state = new DaemonState(baseDir);
   try {
     const svc1 = service([], { state, sender: fakeSender([]) });
-    svc1.setActiveSession('ses_1');
-    await svc1.register('fcm-tok', 'ios');
+    await reg(svc1, 'ses_1', 'fcm-tok', 'ios');
 
     const sent: SentPush[] = [];
     const svc2 = service([], { state, sender: fakeSender(sent) });
@@ -244,8 +259,7 @@ test('direct sender + relay enabled: registers with relay too, but notifies via 
   const calls: Call[] = [];
   const sent: SentPush[] = [];
   const svc = service(calls, { sender: fakeSender(sent), relayEnabled: true });
-  svc.setActiveSession('ses_1');
-  await svc.register('fcm-tok', 'android');
+  await reg(svc, 'ses_1', 'fcm-tok', 'android');
   // Relay registration still happens (fallback secret kept) when relay is enabled.
   assert.ok(
     calls.some((c) => c.url.endsWith('/push/register')),

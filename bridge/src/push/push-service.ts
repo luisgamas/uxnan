@@ -60,6 +60,8 @@ type FetchFn = (
 
 interface Registration {
   sessionId: string;
+  /** Trusted-device id that owns this registration (for prune-on-untrust). */
+  deviceId?: string;
   /** FCM/APNs device token — used by the direct bridge→FCM path. */
   pushToken?: string;
   /** Device platform, for the direct path's per-platform delivery config. */
@@ -67,6 +69,17 @@ interface Registration {
   /** Relay notify secret — present only when the relay-fallback path is used. */
   notificationSecret?: string;
   preferences: NotificationPreferences;
+}
+
+/** Parameters for {@link PushService.register} — identifies the requesting phone. */
+export interface RegisterPushParams {
+  /** Relay session id of the phone making the request (its registration key). */
+  sessionId: string;
+  /** Trusted-device id of that phone, when known (enables prune-on-untrust). */
+  deviceId?: string;
+  pushToken: string;
+  platform: PushPlatform;
+  preferences?: NotificationPreferences;
 }
 
 /** Shape persisted to `~/.uxnan/push-state.json`. */
@@ -154,23 +167,18 @@ export class PushService {
   }
 
   /**
-   * Handle `notifications/register`. Always stores the real device token locally
-   * (the direct FCM path needs it); additionally registers with the relay when the
-   * relay is enabled OR there is no direct sender, keeping the returned secret for
-   * the fallback path. `registered` is true when at least one delivery path exists.
+   * Handle `notifications/register` for a SPECIFIC phone session. Always stores the
+   * real device token locally (the direct FCM path needs it); additionally registers
+   * with the relay when the relay is enabled OR there is no direct sender, keeping
+   * the returned secret for the fallback path. Keyed by `sessionId`, so several
+   * concurrent phones each get their own registration. `registered` is true when at
+   * least one delivery path exists.
    */
-  async register(
-    pushToken: string,
-    platform: PushPlatform,
-    preferences?: NotificationPreferences,
-  ): Promise<RegisterNotificationsResult> {
-    const sessionId = this.#activeSessionId;
-    if (!sessionId) {
-      this.#logger.warn('push register without an active session — ignored');
-      return { registered: false };
-    }
+  async register(params: RegisterPushParams): Promise<RegisterNotificationsResult> {
+    const { sessionId, deviceId, pushToken, platform, preferences } = params;
     const reg: Registration = {
       sessionId,
+      ...(deviceId !== undefined ? { deviceId } : {}),
       pushToken,
       platform,
       preferences: preferences ?? DEFAULT_PREFERENCES,
@@ -219,16 +227,38 @@ export class PushService {
     }
   }
 
-  updatePreferences(preferences: NotificationPreferences): void {
-    const reg = this.#activeSessionId ? this.#registrations.get(this.#activeSessionId) : undefined;
+  /** Update a specific session's notification preferences. */
+  updatePreferences(sessionId: string, preferences: NotificationPreferences): void {
+    const reg = this.#registrations.get(sessionId);
     if (!reg) return;
     reg.preferences = preferences;
     void this.#persist();
   }
 
-  unregister(): void {
-    if (!this.#activeSessionId) return;
-    if (this.#registrations.delete(this.#activeSessionId)) void this.#persist();
+  /** Drop a specific session's registration (its phone asked to stop pushes). */
+  unregister(sessionId: string): void {
+    if (this.#registrations.delete(sessionId)) void this.#persist();
+  }
+
+  /**
+   * Drop every registration owned by a trusted device — called when the device is
+   * removed via `bridge/removeTrustedDevice`, so a revoked phone stops receiving
+   * background push instead of lingering until it re-registers or is overwritten.
+   * Returns the number of registrations removed.
+   */
+  unregisterDevice(deviceId: string): number {
+    let removed = 0;
+    for (const [sessionId, reg] of this.#registrations) {
+      if (reg.deviceId === deviceId) {
+        this.#registrations.delete(sessionId);
+        removed += 1;
+      }
+    }
+    if (removed > 0) {
+      void this.#persist();
+      this.#logger.info(`pruned ${removed} push registration(s) for removed device`);
+    }
+    return removed;
   }
 
   /** Fire-and-forget: push a turn-ended notification if enabled and registered. */

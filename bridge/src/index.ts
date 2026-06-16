@@ -21,6 +21,7 @@ export { ProjectRegistry, projectIdFor } from './projects/project-registry.js';
 export {
   PushService,
   type PushServiceOptions,
+  type RegisterPushParams,
   type TurnEndInfo as PushTurnEndInfo,
 } from './push/push-service.js';
 export {
