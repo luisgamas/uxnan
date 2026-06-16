@@ -383,9 +383,52 @@ browser and multi-PC connection correctness are now DONE — see below.)
   smart PR with head/base branch selection + auto-push of the head + precondition
   validation), `undoCommit` (`git/undoCommit`, soft reset) and `switchBranch`
   (`git/switchBranch`, per-branch auto-stash so each branch stays independent),
-  plus the `branches` (`git/branches`) read. Still ☐ pending: `pull`, `checkout`,
-  `createBranch`, `createWorktree` (+ managed), `revert`, `stackedPublish`
-  (one-shot commit+push+PR) per spec 02a §5.2.4 / §5.5.
+  plus the `branches` (`git/branches`) read.
+- ☑ **Extended git actions (branch & remote set)** — DONE: `GitActionManager`
+  now also wires `pull` (`git/pull`), `checkout` (`git/checkout`), `createBranch`
+  (`git/createBranch`) and `createWorktree` (`git/createWorktree`). Surfaced in
+  `GitScreen` where each action belongs (no separate "branch & remote" sheet):
+  - **Pull** is a badged app-bar action that only appears when `state.behind > 0`
+    (the badge shows the incoming-commit count).
+  - **Switch branch** / **New branch** live in the three-dots overflow menu; new
+    branch does `createBranch` + `checkout`.
+  - The commit composer **morphs to a push affordance** once the tree is clean
+    and the branch is ahead: the commit button becomes Push (badged with the
+    ahead count) and the extra-options toggle becomes Undo-last-commit. Push and
+    undo-commit are therefore no longer overflow-menu items.
+  - **Worktree creation moved to the new-conversation dialog** (`NewConversationScreen`):
+    an optional "Run in a worktree" toggle creates the worktree from the chosen
+    working dir and points the new thread's `cwd` at the resulting checkout — so
+    it no longer duplicates work inside the per-thread git screen.
+  - FOR-DEV: **`git/revert` is NOT implemented bridge-side** — needs a bridge
+    handler (`GitService.revert` + `git/revert` in `git-handler.ts` + the shared
+    method/registry) before the phone can wire a Revert action. Deferred until
+    the bridge adds it.
+  - FOR-DEV: **No safe branch/worktree deletion bridge-side.** `git-handler.ts`
+    exposes status/diff/commit/push/pull/checkout/createBranch/createWorktree/
+    stage/unstage/discard/createPr/undoCommit/branches/switchBranch — but there
+    is **no `git/deleteBranch` and no `git/removeWorktree`**. Removing the
+    worktree/branch that a conversation was created in (see the new-conversation
+    worktree flow) therefore can't be done from the app yet. Needs bridge
+    handlers that fail safe: refuse to delete a branch that isn't merged / a
+    worktree with uncommitted or unpushed work unless the caller forces it
+    (`git worktree remove [--force]`, `git branch -d` vs `-D`). Until then the
+    app must not offer a delete action.
+  - FOR-DEV: **Detect a vanished cwd / worktree and disable its threads.** When a
+    worktree or working folder is removed outside the app (manually, or once
+    bridge deletion lands), any thread whose `cwd` no longer exists must be
+    surfaced as **unavailable** and its composer disabled — sending into a dead
+    cwd would error on every action. Plan: have the bridge report cwd existence
+    (e.g. a `cwdExists`/`stale` flag on thread/project resolution, or a
+    `workspace/exists` probe) and let the phone mark those threads disabled with
+    a clear "folder no longer exists" state instead of failing per-message. Not
+    implemented on either side yet.
+  - FOR-DEV: **managed worktrees** — the bridge's `git/createWorktree` requires an
+    explicit `path` (no auto-path). The phone derives a sibling path from `cwd`
+    (`_worktreePath` in `NewConversationScreen`) so the user only types a branch
+    name; the optional "Let the bridge pick the location" switch forwards
+    `GitWorktreeParams.managed` for when the bridge gains auto-path support — at
+    which point the derived path can be dropped.
 - ☑ **Git UI (visual layer)** — DONE (maintainer-validated): replaced the old
   `GitActionsSheet` + `CommitSheet` bottom sheets with a full-screen **`GitScreen`**
   (M3): collapsible per-file diff cards (collapsed by default, lazy-loaded

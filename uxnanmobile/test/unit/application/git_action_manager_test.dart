@@ -178,4 +178,54 @@ void main() {
     expect(log.single.succeeded, isFalse);
     expect(log.single.errorMessage, contains('network down'));
   });
+
+  test('pull sends git/pull and refreshes status', () async {
+    final result = await manager.pull(
+      const GitPullParams(cwd: '/repo', threadId: 'th1'),
+    );
+
+    expect(result, isNotNull);
+    expect(sentMethods, containsAllInOrder(['git/pull', 'git/status']));
+    final log = await logRepo.getForThread('th1');
+    expect(log.single.kind, GitActionKind.pull);
+  });
+
+  test('checkout sends git/checkout and refreshes status', () async {
+    await manager.checkout(
+      const GitCheckoutParams(cwd: '/repo', branch: 'dev', threadId: 'th1'),
+    );
+
+    expect(sentMethods, containsAllInOrder(['git/checkout', 'git/status']));
+    final log = await logRepo.getForThread('th1');
+    expect(log.single.kind, GitActionKind.checkout);
+  });
+
+  test('createBranch sends git/createBranch and refreshes status', () async {
+    await manager.createBranch(
+      const GitBranchParams(cwd: '/repo', name: 'feat/x', threadId: 'th1'),
+    );
+
+    expect(sentMethods, containsAllInOrder(['git/createBranch', 'git/status']));
+    final log = await logRepo.getForThread('th1');
+    expect(log.single.kind, GitActionKind.createBranch);
+  });
+
+  test('createWorktree sends git/createWorktree and refreshes status',
+      () async {
+    await manager.createWorktree(
+      const GitWorktreeParams(
+        cwd: '/repo',
+        branch: 'feat/x',
+        path: '/repo-feat-x',
+        threadId: 'th1',
+      ),
+    );
+
+    expect(
+      sentMethods,
+      containsAllInOrder(['git/createWorktree', 'git/status']),
+    );
+    final log = await logRepo.getForThread('th1');
+    expect(log.single.kind, GitActionKind.createWorktree);
+  });
 }

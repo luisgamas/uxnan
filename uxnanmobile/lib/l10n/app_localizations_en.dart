@@ -487,6 +487,22 @@ class AppLocalizationsEn extends AppLocalizations {
   String get newThreadCapabilities => 'Capabilities';
 
   @override
+  String get newThreadWorktree => 'Run in a worktree';
+
+  @override
+  String get newThreadWorktreeDesc =>
+      'Create an isolated branch checkout so this conversation can\'t touch your current working tree.';
+
+  @override
+  String get newThreadWorktreeBranchHint => 'Branch name';
+
+  @override
+  String get newThreadWorktreeManaged => 'Let the bridge pick the location';
+
+  @override
+  String get newThreadWorktreeFailed => 'Couldn\'t create the worktree';
+
+  @override
   String get environmentTitle => 'Environment';
 
   @override
@@ -767,6 +783,27 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get gitSwitchBranch => 'Switch branch';
+
+  @override
+  String get gitPull => 'Pull';
+
+  @override
+  String get gitPullSuccess => 'Pulled from the remote';
+
+  @override
+  String get gitNewBranch => 'New branch';
+
+  @override
+  String get gitNewBranchHint => 'Branch name';
+
+  @override
+  String get gitNewBranchSuccess => 'Branch created and checked out';
+
+  @override
+  String get gitNewWorktree => 'New worktree';
+
+  @override
+  String get gitNewWorktreeSuccess => 'Worktree created';
 
   @override
   String get gitSwitchBranchTitle => 'Switch branch';

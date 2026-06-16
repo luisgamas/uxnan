@@ -5,6 +5,7 @@ import 'package:uxnan/domain/entities/agent_descriptor.dart';
 import 'package:uxnan/domain/entities/agent_model.dart';
 import 'package:uxnan/domain/entities/project.dart';
 import 'package:uxnan/domain/enums/agent_id.dart';
+import 'package:uxnan/domain/value_objects/git/git_action_io.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/screens/conversation/support/model_picker_sheet.dart';
@@ -43,10 +44,21 @@ class NewConversationScreen extends ConsumerStatefulWidget {
 
 class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
   final TextEditingController _model = TextEditingController();
+  final TextEditingController _worktreeBranch = TextEditingController();
   Project? _project;
   AgentDescriptor? _agent;
   bool _modelTouched = false;
   bool _starting = false;
+
+  /// Whether to spin up an isolated worktree for this conversation; when on, a
+  /// `git/createWorktree` runs before the thread starts and the thread's working
+  /// directory points at the new checkout.
+  bool _useWorktree = false;
+
+  /// Forwarded as `managed` so the bridge can later own the worktree location;
+  /// today the phone still derives an explicit sibling path (see
+  /// [_worktreePath]).
+  bool _worktreeManaged = false;
 
   /// Absolute working dir chosen via the folder browser (overrides the default
   /// project root); null = use the default root.
@@ -55,7 +67,21 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
   @override
   void dispose() {
     _model.dispose();
+    _worktreeBranch.dispose();
     super.dispose();
+  }
+
+  /// Derives a sibling worktree path from the repo [cwd] and [branch]. The
+  /// bridge requires an explicit path (no managed worktrees yet); this keeps it
+  /// next to the repo as `<repo>-<branch>` with unsafe chars folded to `-`.
+  static String _worktreePath(String cwd, String branch) {
+    final sep = cwd.contains(r'\') ? r'\' : '/';
+    final trimmed = cwd.replaceAll(RegExp(r'[\\/]+$'), '');
+    final idx = trimmed.lastIndexOf(RegExp(r'[\\/]'));
+    final parent = idx < 0 ? '' : trimmed.substring(0, idx);
+    final repo = idx < 0 ? trimmed : trimmed.substring(idx + 1);
+    final slug = branch.replaceAll(RegExp('[^A-Za-z0-9._-]+'), '-');
+    return parent.isEmpty ? '$repo-$slug' : '$parent$sep$repo-$slug';
   }
 
   void _selectAgent(AgentDescriptor agent) {
@@ -89,8 +115,26 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
   Future<void> _start(Project project, String? cwd) async {
     final agent = _agent;
     if (agent == null) return;
+    final l10n = AppLocalizations.of(context);
+    final messenger = ScaffoldMessenger.of(context);
     setState(() => _starting = true);
     try {
+      var workingCwd = cwd ?? project.cwd;
+      final branch = _worktreeBranch.text.trim();
+      // Optionally run the conversation in a fresh worktree, then point it at
+      // the created checkout so the agent never touches the base working tree.
+      if (_useWorktree && branch.isNotEmpty) {
+        final result = await ref.read(gitActionManagerProvider).createWorktree(
+              GitWorktreeParams(
+                cwd: workingCwd,
+                branch: branch,
+                path: _worktreePath(workingCwd, branch),
+                managed: _worktreeManaged,
+              ),
+            );
+        if (result == null) throw StateError('worktree');
+        if (result.path.isNotEmpty) workingCwd = result.path;
+      }
       final coordinator = ref.read(sessionCoordinatorProvider);
       // Tag with the PC we actually hold a live channel to.
       final deviceId = coordinator.connectedDevice?.macDeviceId;
@@ -98,17 +142,23 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
             projectId: project.id,
             agentId: agent.agentId,
             model: _model.text.trim(),
-            cwd: cwd ?? project.cwd,
+            cwd: workingCwd,
             deviceId: deviceId,
           );
       if (mounted) Navigator.of(context).pop(thread.id);
     } on Object {
       if (!mounted) return;
       setState(() => _starting = false);
-      ScaffoldMessenger.of(context)
+      messenger
         ..clearSnackBars()
         ..showSnackBar(
-          SnackBar(content: Text(AppLocalizations.of(context).newThreadFailed)),
+          SnackBar(
+            content: Text(
+              _useWorktree && _worktreeBranch.text.trim().isNotEmpty
+                  ? l10n.newThreadWorktreeFailed
+                  : l10n.newThreadFailed,
+            ),
+          ),
         );
     }
   }
@@ -194,6 +244,17 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
                         path: workingCwd,
                         onBrowse: _browseFolder,
                       ),
+                    if (workingCwd != null) ...[
+                      const SizedBox(height: UxnanSpacing.sm),
+                      _WorktreeCard(
+                        enabled: _useWorktree,
+                        managed: _worktreeManaged,
+                        branch: _worktreeBranch,
+                        onToggle: (v) => setState(() => _useWorktree = v),
+                        onToggleManaged: (v) =>
+                            setState(() => _worktreeManaged = v),
+                      ),
+                    ],
                     const SizedBox(height: UxnanSpacing.lg),
                     _SectionHeader(label: l10n.newThreadAgent),
                     agentsAsync.when(
@@ -309,6 +370,117 @@ class _WorkingDirCard extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Optional worktree toggle: when on, this conversation runs in a fresh
+/// `git worktree` (an isolated branch checkout) instead of the chosen working
+/// directory. Expands to reveal the branch name and a "managed by the bridge"
+/// switch (forwarded for future bridge support; the path is still derived on
+/// the phone today). Mirrors the collapsible agent card's surface and motion.
+class _WorktreeCard extends StatelessWidget {
+  const _WorktreeCard({
+    required this.enabled,
+    required this.managed,
+    required this.branch,
+    required this.onToggle,
+    required this.onToggleManaged,
+  });
+
+  final bool enabled;
+  final bool managed;
+  final TextEditingController branch;
+  final ValueChanged<bool> onToggle;
+  final ValueChanged<bool> onToggleManaged;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final l10n = AppLocalizations.of(context);
+    return Material(
+      color: colors.surfaceContainerHighest,
+      borderRadius: const BorderRadius.all(UxnanRadius.lg),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          UxnanSpacing.md,
+          UxnanSpacing.xs,
+          UxnanSpacing.sm,
+          UxnanSpacing.xs,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.account_tree_outlined,
+                  size: 20,
+                  color: colors.onSurfaceVariant,
+                ),
+                const SizedBox(width: UxnanSpacing.md),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(l10n.newThreadWorktree, style: textTheme.titleSmall),
+                      const SizedBox(height: 2),
+                      Text(
+                        l10n.newThreadWorktreeDesc,
+                        style: textTheme.bodySmall?.copyWith(
+                          color: colors.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: UxnanSpacing.sm),
+                Switch(value: enabled, onChanged: onToggle),
+              ],
+            ),
+            AnimatedSize(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOutCubic,
+              alignment: Alignment.topLeft,
+              child: enabled
+                  ? Padding(
+                      padding: const EdgeInsets.only(
+                        top: UxnanSpacing.sm,
+                        bottom: UxnanSpacing.xs,
+                        right: UxnanSpacing.xs,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          TextField(
+                            controller: branch,
+                            decoration: InputDecoration(
+                              isDense: true,
+                              labelText: l10n.newThreadWorktreeBranchHint,
+                              border: const OutlineInputBorder(
+                                borderRadius: BorderRadius.all(UxnanRadius.md),
+                              ),
+                            ),
+                          ),
+                          SwitchListTile(
+                            contentPadding: EdgeInsets.zero,
+                            visualDensity: VisualDensity.compact,
+                            title: Text(
+                              l10n.newThreadWorktreeManaged,
+                              style: textTheme.bodyMedium,
+                            ),
+                            value: managed,
+                            onChanged: onToggleManaged,
+                          ),
+                        ],
+                      ),
+                    )
+                  : const SizedBox(width: double.infinity),
+            ),
+          ],
         ),
       ),
     );

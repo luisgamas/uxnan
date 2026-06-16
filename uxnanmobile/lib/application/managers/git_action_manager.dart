@@ -170,6 +170,54 @@ class GitActionManager {
     );
   }
 
+  /// Pulls commits from the remote for [params] and refreshes status.
+  Future<GitPullResult?> pull(GitPullParams params) {
+    return _run(
+      kind: GitActionKind.pull,
+      method: 'git/pull',
+      rpcParams: params.toRpcParams(),
+      threadId: params.threadId,
+      cwd: params.cwd,
+      parseResult: GitPullResult.fromJson,
+    );
+  }
+
+  /// Checks out an existing branch in [params]'s workspace; refreshes status.
+  Future<void> checkout(GitCheckoutParams params) {
+    return _run(
+      kind: GitActionKind.checkout,
+      method: 'git/checkout',
+      rpcParams: params.toRpcParams(),
+      threadId: params.threadId,
+      cwd: params.cwd,
+      parseResult: (_) {},
+    );
+  }
+
+  /// Creates a new branch in [params]'s workspace and refreshes status.
+  Future<GitBranchResult?> createBranch(GitBranchParams params) {
+    return _run(
+      kind: GitActionKind.createBranch,
+      method: 'git/createBranch',
+      rpcParams: params.toRpcParams(),
+      threadId: params.threadId,
+      cwd: params.cwd,
+      parseResult: GitBranchResult.fromJson,
+    );
+  }
+
+  /// Creates a new worktree (branch + checkout directory) for [params].
+  Future<GitWorktreeResult?> createWorktree(GitWorktreeParams params) {
+    return _run(
+      kind: GitActionKind.createWorktree,
+      method: 'git/createWorktree',
+      rpcParams: params.toRpcParams(),
+      threadId: params.threadId,
+      cwd: params.cwd,
+      parseResult: GitWorktreeResult.fromJson,
+    );
+  }
+
   /// Fetches the repository's current/local/remote branches.
   Future<GitBranchList> branches(String cwd) async {
     final response = await _sendRequest('git/branches', {'cwd': cwd});

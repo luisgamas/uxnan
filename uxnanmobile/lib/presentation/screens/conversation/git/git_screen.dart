@@ -443,6 +443,82 @@ class _GitScreenState extends ConsumerState<GitScreen> {
       );
   }
 
+  /// Pulls from the remote for the active workspace.
+  Future<void> _pull(GitRepoState state) async {
+    final cwd = widget.cwd;
+    final l10n = AppLocalizations.of(context);
+    if (cwd == null) return;
+    await _guard(
+      () => ref.read(gitActionManagerProvider).pull(
+            GitPullParams(cwd: cwd, threadId: widget.threadId),
+          ),
+      l10n.gitPullSuccess,
+      cwd,
+    );
+  }
+
+  /// Creates a new branch and checks out to it (create & switch).
+  Future<void> _newBranch(GitRepoState state) async {
+    final cwd = widget.cwd;
+    final l10n = AppLocalizations.of(context);
+    if (cwd == null) return;
+    final name = await _promptText(
+      title: l10n.gitNewBranch,
+      hint: l10n.gitNewBranchHint,
+      action: l10n.gitNewBranch,
+    );
+    final branch = name?.trim() ?? '';
+    if (branch.isEmpty || !mounted) return;
+    await _guard(
+      () async {
+        final manager = ref.read(gitActionManagerProvider);
+        await manager.createBranch(
+          GitBranchParams(cwd: cwd, name: branch, threadId: widget.threadId),
+        );
+        await manager.checkout(
+          GitCheckoutParams(
+            cwd: cwd,
+            branch: branch,
+            threadId: widget.threadId,
+          ),
+        );
+      },
+      l10n.gitNewBranchSuccess,
+      cwd,
+    );
+  }
+
+  /// A single-field text prompt (branch name).
+  Future<String?> _promptText({
+    required String title,
+    required String hint,
+    required String action,
+  }) {
+    final controller = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: InputDecoration(labelText: hint),
+          onSubmitted: (value) => Navigator.pop(dialogContext, value),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(AppLocalizations.of(dialogContext).gitCancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, controller.text),
+            child: Text(action),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _guard(
     Future<void> Function() action,
     String success,
@@ -503,12 +579,7 @@ class _GitScreenState extends ConsumerState<GitScreen> {
                             )
                           else ...[
                             SliverToBoxAdapter(
-                              child: _BranchSummary(
-                                state: state,
-                                onSwitchBranch: _busy || widget.cwd == null
-                                    ? null
-                                    : () => _switchBranch(state),
-                              ),
+                              child: _BranchSummary(state: state),
                             ),
                             if (files.isEmpty)
                               const SliverToBoxAdapter(child: _CleanState())
@@ -603,6 +674,7 @@ class _GitScreenState extends ConsumerState<GitScreen> {
                       setState(() => _showDetails = !_showDetails),
                   onCommit: () => _commit(state),
                   onPush: () => _push(state),
+                  onUndoCommit: () => _undoCommit(state),
                 ),
             ],
           ),
@@ -625,6 +697,17 @@ class _GitScreenState extends ConsumerState<GitScreen> {
                 ).textTheme.titleLarge?.copyWith(fontSize: 20),
               ),
               actions: [
+                // Pull only surfaces when the remote is ahead, badged with the
+                // number of commits to pull.
+                if (state != null && state.behind > 0)
+                  Badge.count(
+                    count: state.behind,
+                    child: IconSurface(
+                      icon: Icons.download_rounded,
+                      tooltip: '${l10n.gitPull} (${state.behind})',
+                      onPressed: _busy ? null : () => _pull(state),
+                    ),
+                  ),
                 IconSurface(
                   icon: Icons.refresh_rounded,
                   tooltip: l10n.gitRefresh,
@@ -651,8 +734,8 @@ class _GitScreenState extends ConsumerState<GitScreen> {
                   _OverflowMenu(
                     state: state,
                     busy: _busy,
-                    onPush: () => _push(state),
-                    onUndoCommit: () => _undoCommit(state),
+                    onSwitchBranch: () => _switchBranch(state),
+                    onNewBranch: () => _newBranch(state),
                     onCreatePr: () => _createPr(state),
                     onDiscardAll: () => _discard(state, all: true),
                   ),
@@ -684,21 +767,24 @@ class _GitScreenState extends ConsumerState<GitScreen> {
   }
 }
 
-/// App-bar overflow with the non-selection actions: push and PR.
+/// App-bar overflow with the low-frequency branch/PR actions: switch branch,
+/// new branch, create PR and the destructive discard-all. Push and undo-commit
+/// live on the commit composer (its buttons morph by state); pull is a badged
+/// app-bar action.
 class _OverflowMenu extends StatelessWidget {
   const _OverflowMenu({
     required this.state,
     required this.busy,
-    required this.onPush,
-    required this.onUndoCommit,
+    required this.onSwitchBranch,
+    required this.onNewBranch,
     required this.onCreatePr,
     required this.onDiscardAll,
   });
 
   final GitRepoState state;
   final bool busy;
-  final VoidCallback onPush;
-  final VoidCallback onUndoCommit;
+  final VoidCallback onSwitchBranch;
+  final VoidCallback onNewBranch;
   final VoidCallback onCreatePr;
   final VoidCallback onDiscardAll;
 
@@ -731,22 +817,21 @@ class _OverflowMenu extends StatelessWidget {
       ),
       itemBuilder: (_) => [
         PopupMenuItem(
-          enabled: !busy && state.hasUnpushedCommits,
-          onTap: onPush,
+          enabled: !busy,
+          onTap: onSwitchBranch,
           child: _MenuRow(
-            icon: Icons.arrow_upward_rounded,
-            label: l10n.gitPushButton,
+            icon: Icons.swap_horiz_rounded,
+            label: l10n.gitSwitchBranch,
           ),
         ),
-        if (state.hasUnpushedCommits)
-          PopupMenuItem(
-            enabled: !busy,
-            onTap: onUndoCommit,
-            child: _MenuRow(
-              icon: Icons.undo_rounded,
-              label: l10n.gitUndoCommit,
-            ),
+        PopupMenuItem(
+          enabled: !busy,
+          onTap: onNewBranch,
+          child: _MenuRow(
+            icon: Icons.add_rounded,
+            label: l10n.gitNewBranch,
           ),
+        ),
         PopupMenuItem(
           enabled: !busy,
           onTap: onCreatePr,
@@ -788,12 +873,11 @@ class _MenuRow extends StatelessWidget {
   }
 }
 
-/// Branch, upstream, ahead/behind and aggregate diff counters, with a control
-/// to switch branches.
+/// Branch, upstream, ahead/behind and aggregate diff counters (info only —
+/// branch actions live in the app-bar overflow).
 class _BranchSummary extends StatelessWidget {
-  const _BranchSummary({required this.state, this.onSwitchBranch});
+  const _BranchSummary({required this.state});
   final GitRepoState state;
-  final VoidCallback? onSwitchBranch;
 
   @override
   Widget build(BuildContext context) {
@@ -842,13 +926,6 @@ class _BranchSummary extends StatelessWidget {
                       value: state.behind,
                     ),
                   ],
-                  const SizedBox(width: UxnanSpacing.xs),
-                  IconButton(
-                    tooltip: l10n.gitSwitchBranch,
-                    visualDensity: VisualDensity.compact,
-                    onPressed: onSwitchBranch,
-                    icon: const Icon(Icons.swap_horiz_rounded, size: 20),
-                  ),
                 ],
               ),
               if (state.upstream != null) ...[
@@ -1124,6 +1201,7 @@ class _CommitBar extends StatelessWidget {
     required this.onToggleDetails,
     required this.onCommit,
     required this.onPush,
+    required this.onUndoCommit,
   });
 
   final GitRepoState state;
@@ -1135,6 +1213,7 @@ class _CommitBar extends StatelessWidget {
   final VoidCallback onToggleDetails;
   final VoidCallback onCommit;
   final VoidCallback onPush;
+  final VoidCallback onUndoCommit;
 
   @override
   Widget build(BuildContext context) {
@@ -1142,6 +1221,9 @@ class _CommitBar extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     final canCommit = state.isDirty && !busy;
     final hasPush = state.hasUnpushedCommits;
+    // Push mode: the tree is clean but commits await push — the two buttons
+    // morph from commit/details to push/undo-last-commit.
+    final pushMode = !state.isDirty && hasPush;
     final textTheme = Theme.of(context).textTheme;
 
     // Floating composer matching the conversation pill: a fully-rounded
@@ -1192,10 +1274,32 @@ class _CommitBar extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(width: UxnanSpacing.xs),
-                      if (hasPush)
-                        IconButton.filledTonal(
-                          tooltip: '${l10n.gitPushButton} (${state.ahead})',
+                      // Secondary: the details toggle while committing; the
+                      // undo-last-commit once committed (push mode).
+                      if (pushMode)
+                        IconButton(
+                          tooltip: l10n.gitUndoCommit,
                           visualDensity: VisualDensity.compact,
+                          onPressed: busy ? null : onUndoCommit,
+                          icon: const Icon(Icons.undo_rounded),
+                        )
+                      else
+                        IconButton(
+                          tooltip: l10n.gitCommitDescriptionLabel,
+                          isSelected: showDetails,
+                          visualDensity: VisualDensity.compact,
+                          onPressed: canCommit ? onToggleDetails : null,
+                          icon: Icon(
+                            showDetails
+                                ? Icons.expand_more_rounded
+                                : Icons.notes_rounded,
+                          ),
+                        ),
+                      const SizedBox(width: UxnanSpacing.xs),
+                      // Primary: commit while dirty; push once committed.
+                      if (pushMode)
+                        IconButton.filled(
+                          tooltip: '${l10n.gitPushButton} (${state.ahead})',
                           onPressed: busy ? null : onPush,
                           icon: busy
                               ? const SizedBox(
@@ -1211,32 +1315,21 @@ class _CommitBar extends StatelessWidget {
                                     Icons.arrow_upward_rounded,
                                   ),
                                 ),
+                        )
+                      else
+                        IconButton.filled(
+                          tooltip: l10n.gitCommitButton,
+                          onPressed: canCommit ? onCommit : null,
+                          icon: busy
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.check_rounded),
                         ),
-                      IconButton(
-                        tooltip: l10n.gitCommitDescriptionLabel,
-                        isSelected: showDetails,
-                        visualDensity: VisualDensity.compact,
-                        onPressed: canCommit ? onToggleDetails : null,
-                        icon: Icon(
-                          showDetails
-                              ? Icons.expand_more_rounded
-                              : Icons.notes_rounded,
-                        ),
-                      ),
-                      const SizedBox(width: UxnanSpacing.xs),
-                      IconButton.filled(
-                        tooltip: l10n.gitCommitButton,
-                        onPressed: canCommit ? onCommit : null,
-                        icon: busy && !hasPush
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Icon(Icons.check_rounded),
-                      ),
                     ],
                   ),
                   // Optional fields slide in below (morphing pill → rectangle).
@@ -1244,7 +1337,7 @@ class _CommitBar extends StatelessWidget {
                     duration: const Duration(milliseconds: 220),
                     curve: Curves.easeOutCubic,
                     alignment: Alignment.topCenter,
-                    child: showDetails
+                    child: showDetails && !pushMode
                         ? Column(
                             children: [
                               const SizedBox(height: UxnanSpacing.xs),

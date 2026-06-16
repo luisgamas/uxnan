@@ -262,3 +262,179 @@ class GitPushResult extends Equatable {
   @override
   List<Object?> get props => [branch, remote];
 }
+
+/// Parameters for a `git/pull` request.
+class GitPullParams extends Equatable {
+  /// Creates a [GitPullParams].
+  const GitPullParams({
+    required this.cwd,
+    this.remote,
+    this.branch,
+    this.threadId,
+  });
+
+  /// Working directory the pull runs in.
+  final String cwd;
+
+  /// Remote to pull from (defaults to the branch's upstream when null).
+  final String? remote;
+
+  /// Branch to pull (defaults to the current branch when null).
+  final String? branch;
+
+  /// Owning thread, used to record the action in the local log.
+  final String? threadId;
+
+  /// The JSON-RPC params for the bridge (`threadId` is local-only).
+  Map<String, dynamic> toRpcParams() => {
+        'cwd': cwd,
+        if (remote != null) 'remote': remote,
+        if (branch != null) 'branch': branch,
+      };
+
+  @override
+  List<Object?> get props => [cwd, remote, branch, threadId];
+}
+
+/// Result of a successful `git/pull`.
+class GitPullResult extends Equatable {
+  /// Creates a [GitPullResult].
+  const GitPullResult({this.success = false});
+
+  /// Reconstructs a [GitPullResult] from its JSON form.
+  factory GitPullResult.fromJson(Map<String, dynamic> json) =>
+      GitPullResult(success: json['success'] == true);
+
+  /// Whether the pull completed successfully.
+  final bool success;
+
+  @override
+  List<Object?> get props => [success];
+}
+
+/// Parameters for a `git/checkout` request (switch to an existing branch).
+class GitCheckoutParams extends Equatable {
+  /// Creates a [GitCheckoutParams].
+  const GitCheckoutParams({
+    required this.cwd,
+    required this.branch,
+    this.threadId,
+  });
+
+  /// Working directory the checkout runs in.
+  final String cwd;
+
+  /// The branch to check out.
+  final String branch;
+
+  /// Owning thread, used to record the action in the local log.
+  final String? threadId;
+
+  /// The JSON-RPC params for the bridge (`threadId` is local-only).
+  Map<String, dynamic> toRpcParams() => {'cwd': cwd, 'branch': branch};
+
+  @override
+  List<Object?> get props => [cwd, branch, threadId];
+}
+
+/// Parameters for a `git/createBranch` request.
+class GitBranchParams extends Equatable {
+  /// Creates a [GitBranchParams].
+  const GitBranchParams({
+    required this.cwd,
+    required this.name,
+    this.threadId,
+  });
+
+  /// Working directory the branch is created in.
+  final String cwd;
+
+  /// New branch name.
+  final String name;
+
+  /// Owning thread, used to record the action in the local log.
+  final String? threadId;
+
+  /// The JSON-RPC params for the bridge (`threadId` is local-only).
+  Map<String, dynamic> toRpcParams() => {'cwd': cwd, 'name': name};
+
+  @override
+  List<Object?> get props => [cwd, name, threadId];
+}
+
+/// Result of a successful `git/createBranch`.
+class GitBranchResult extends Equatable {
+  /// Creates a [GitBranchResult].
+  const GitBranchResult({this.branch = ''});
+
+  /// Reconstructs a [GitBranchResult] from its JSON form.
+  factory GitBranchResult.fromJson(Map<String, dynamic> json) =>
+      GitBranchResult(branch: json['branch'] as String? ?? '');
+
+  /// The created branch's name.
+  final String branch;
+
+  @override
+  List<Object?> get props => [branch];
+}
+
+/// Parameters for a `git/createWorktree` request.
+///
+/// FOR-DEV: the bridge requires an explicit [path] and does not yet implement
+/// managed worktrees (auto-path) — so [path] is derived on the phone from the
+/// repo `cwd` + branch. When the bridge gains managed-worktree support (pick
+/// the path itself), drop the derived path and rely on [managed].
+class GitWorktreeParams extends Equatable {
+  /// Creates a [GitWorktreeParams].
+  const GitWorktreeParams({
+    required this.cwd,
+    required this.branch,
+    required this.path,
+    this.managed = true,
+    this.threadId,
+  });
+
+  /// Working directory the worktree is created from.
+  final String cwd;
+
+  /// Branch to create/check out in the worktree.
+  final String branch;
+
+  /// Absolute path of the new worktree.
+  final String path;
+
+  /// Whether the worktree is uxnan-managed (forwarded for future bridge use).
+  final bool managed;
+
+  /// Owning thread, used to record the action in the local log.
+  final String? threadId;
+
+  /// The JSON-RPC params for the bridge (`threadId` is local-only).
+  Map<String, dynamic> toRpcParams() =>
+      {'cwd': cwd, 'branch': branch, 'path': path, 'managed': managed};
+
+  @override
+  List<Object?> get props => [cwd, branch, path, managed, threadId];
+}
+
+/// Result of a successful `git/createWorktree`.
+class GitWorktreeResult extends Equatable {
+  /// Creates a [GitWorktreeResult].
+  const GitWorktreeResult({this.path = '', this.branch = ''});
+
+  /// Reconstructs a [GitWorktreeResult] from its JSON form.
+  factory GitWorktreeResult.fromJson(Map<String, dynamic> json) =>
+      GitWorktreeResult(
+        path: json['path'] as String? ?? '',
+        branch: json['branch'] as String? ?? '',
+      );
+
+  /// Absolute path of the created worktree.
+  final String path;
+
+  /// Branch checked out in the worktree.
+  final String branch;
+
+  @override
+  List<Object?> get props => [path, branch];
+}

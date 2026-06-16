@@ -488,6 +488,22 @@ class AppLocalizationsEs extends AppLocalizations {
   String get newThreadCapabilities => 'Capacidades';
 
   @override
+  String get newThreadWorktree => 'Usar un worktree';
+
+  @override
+  String get newThreadWorktreeDesc =>
+      'Crea un checkout aislado en una rama para que esta conversación no toque tu árbol de trabajo actual.';
+
+  @override
+  String get newThreadWorktreeBranchHint => 'Nombre de la rama';
+
+  @override
+  String get newThreadWorktreeManaged => 'Que el bridge elija la ubicación';
+
+  @override
+  String get newThreadWorktreeFailed => 'No se pudo crear el worktree';
+
+  @override
   String get environmentTitle => 'Entorno';
 
   @override
@@ -769,6 +785,27 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get gitSwitchBranch => 'Cambiar de rama';
+
+  @override
+  String get gitPull => 'Traer (pull)';
+
+  @override
+  String get gitPullSuccess => 'Traído del remoto';
+
+  @override
+  String get gitNewBranch => 'Nueva rama';
+
+  @override
+  String get gitNewBranchHint => 'Nombre de la rama';
+
+  @override
+  String get gitNewBranchSuccess => 'Rama creada y activada';
+
+  @override
+  String get gitNewWorktree => 'Nuevo worktree';
+
+  @override
+  String get gitNewWorktreeSuccess => 'Worktree creado';
 
   @override
   String get gitSwitchBranchTitle => 'Cambiar de rama';

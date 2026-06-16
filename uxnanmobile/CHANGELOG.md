@@ -7,6 +7,27 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Extended git actions (branch & remote).** `GitActionManager` gains `pull`
+  (`git/pull`), `checkout` (`git/checkout`), `createBranch` (`git/createBranch`)
+  and `createWorktree` (`git/createWorktree`), surfaced in the git screen where
+  each belongs rather than in a catch-all sheet:
+  - **Pull** is a badged app-bar action that appears only when the branch is
+    behind its remote (the badge counts the incoming commits).
+  - **Switch branch** and **New branch** (create + checkout) live in the
+    three-dots overflow menu.
+  - The commit composer **morphs into a push control** once the working tree is
+    clean and the branch is ahead — the commit button becomes a badged Push and
+    the extra-options toggle becomes Undo-last-commit — so push and undo are no
+    longer buried in the overflow menu.
+  - **Worktree creation moved to the new-conversation dialog**: an optional "Run
+    in a worktree" toggle creates an isolated branch checkout from the chosen
+    working dir and starts the conversation in it. The phone derives a sibling
+    path (the bridge needs an explicit path — no managed/auto-path yet); a "Let
+    the bridge pick the location" switch forwards `managed` for the future.
+  - Not wired yet, all blocked on missing bridge support (tracked in
+    `FOR-DEV.md`): revert (`git/revert`), safe branch/worktree **deletion**
+    (`git/deleteBranch` / `git/removeWorktree`), and detecting a vanished
+    cwd/worktree to disable the threads that lived in it.
 - **Branding footer on the devices list.** The home screen now shows a small
   footer at the bottom: the localized app name ("Uxnan Mobile" / "Uxnan
   Móvil") and an "ALPHA" release-stage pill. The footer uses

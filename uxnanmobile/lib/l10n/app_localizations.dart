@@ -992,6 +992,36 @@ abstract class AppLocalizations {
   /// **'Capabilities'**
   String get newThreadCapabilities;
 
+  /// No description provided for @newThreadWorktree.
+  ///
+  /// In en, this message translates to:
+  /// **'Run in a worktree'**
+  String get newThreadWorktree;
+
+  /// No description provided for @newThreadWorktreeDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Create an isolated branch checkout so this conversation can\'t touch your current working tree.'**
+  String get newThreadWorktreeDesc;
+
+  /// No description provided for @newThreadWorktreeBranchHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Branch name'**
+  String get newThreadWorktreeBranchHint;
+
+  /// No description provided for @newThreadWorktreeManaged.
+  ///
+  /// In en, this message translates to:
+  /// **'Let the bridge pick the location'**
+  String get newThreadWorktreeManaged;
+
+  /// No description provided for @newThreadWorktreeFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t create the worktree'**
+  String get newThreadWorktreeFailed;
+
   /// No description provided for @environmentTitle.
   ///
   /// In en, this message translates to:
@@ -1525,6 +1555,48 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Switch branch'**
   String get gitSwitchBranch;
+
+  /// No description provided for @gitPull.
+  ///
+  /// In en, this message translates to:
+  /// **'Pull'**
+  String get gitPull;
+
+  /// No description provided for @gitPullSuccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Pulled from the remote'**
+  String get gitPullSuccess;
+
+  /// No description provided for @gitNewBranch.
+  ///
+  /// In en, this message translates to:
+  /// **'New branch'**
+  String get gitNewBranch;
+
+  /// No description provided for @gitNewBranchHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Branch name'**
+  String get gitNewBranchHint;
+
+  /// No description provided for @gitNewBranchSuccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Branch created and checked out'**
+  String get gitNewBranchSuccess;
+
+  /// No description provided for @gitNewWorktree.
+  ///
+  /// In en, this message translates to:
+  /// **'New worktree'**
+  String get gitNewWorktree;
+
+  /// No description provided for @gitNewWorktreeSuccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Worktree created'**
+  String get gitNewWorktreeSuccess;
 
   /// No description provided for @gitSwitchBranchTitle.
   ///
