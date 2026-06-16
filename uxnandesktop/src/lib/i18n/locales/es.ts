@@ -153,6 +153,9 @@ export const es: Record<MessageKey, string> = {
   "diff.sideBySide": "Lado a lado",
   "diff.close": "Cerrar diff",
   "rightPanel.viewDiff": "Ver diff",
+  "palette.placeholder": "Saltar a un worktree…",
+  "palette.empty": "Ningún worktree coincide.",
+  "sidebar.quickSwitch": "Cambio rápido de worktree (Ctrl+P)",
   "diff.stageHunk": "Preparar bloque",
   "diff.unstageHunk": "Quitar bloque",
   "diff.discardHunk": "Descartar bloque",
@@ -171,6 +174,9 @@ export const es: Record<MessageKey, string> = {
   "monitor.detected": "Agente detectado",
   "monitor.unread": "El agente terminó — sin revisar",
   "agents.spaceLabel": "Agentes",
+  "settings.preventSleep": "Evitar suspensión al trabajar",
+  "settings.preventSleepDesc":
+    "Mantén el sistema despierto mientras un agente trabaja (se libera solo a las 2 h). Por ahora solo Windows.",
   "settings.agentNotifications": "Notificaciones de inactividad",
   "settings.agentNotificationsDesc":
     "Notificar cuando un agente queda inactivo y estás viendo otro espacio.",

@@ -51,6 +51,8 @@ class ProjectsStore {
   activeWorktreePath = $state<string | null>(null);
   /** Last error from a project/worktree action, surfaced in the panel. */
   error = $state<string | null>(null);
+  /** Whether the quick worktree-switch palette is open. */
+  paletteOpen = $state(false);
 
   /** Projects visible for the search query: those whose name/path matches OR
    *  that have a matching worktree. */
@@ -71,6 +73,35 @@ class ProjectsStore {
   /** A repo's worktrees (empty until loaded). */
   worktreesOf(repoId: string): WorktreeEntry[] {
     return this.worktreesByRepo[repoId] ?? [];
+  }
+
+  /** Every known worktree flattened with its repo, for the quick-switch palette. */
+  allWorktrees(): {
+    repoId: string;
+    repoName: string;
+    branch: string;
+    path: string;
+    isMain: boolean;
+  }[] {
+    const out: {
+      repoId: string;
+      repoName: string;
+      branch: string;
+      path: string;
+      isMain: boolean;
+    }[] = [];
+    for (const r of app.repos) {
+      for (const w of this.worktreesOf(r.id)) {
+        out.push({
+          repoId: r.id,
+          repoName: r.name,
+          branch: w.branch ?? "",
+          path: w.path,
+          isMain: w.isMain,
+        });
+      }
+    }
+    return out;
   }
 
   /** A repo's primary (main) worktree — the project's own context. */

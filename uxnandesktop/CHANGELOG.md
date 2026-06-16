@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — Phase 5 (UI batch B): palette, split buttons, virtual lists, sleep toggle
+- **Quick worktree switcher** (`WorktreeSearch`): a command-palette opened with
+  **Ctrl/Cmd+P** or the sidebar ⚡ button — type to filter every worktree across
+  projects (branch / path / project), ↑/↓ to move, Enter to jump (activates it).
+- **TabGroup split buttons**: each terminal region's tab bar now has visible
+  split-right (columns) and split-down (rows) buttons, not just the right-click
+  menu.
+- **Virtualized lists** (`VirtualList`, `@tanstack/svelte-virtual`): the worktree
+  palette and the right-panel changed-files list render only visible rows, so a
+  huge changeset (e.g. an agent that touched hundreds of files) stays smooth.
+  The right panel is now a single virtualized scroll (Staged + Changes sections
+  with headers). The diff is already virtualized via CodeMirror; the hierarchical
+  project tree is intentionally left non-virtualized (FOR-DEV).
+- **Prevent-sleep toggle** (Settings → Agents): exposes `AppSettings.preventSleep`
+  (the keep-awake feature added earlier); default off.
+
 ### Added — Phase 5: full-size diff panel + side-by-side + hunk staging (UI)
 - **Diff opens full-size in the center panel** (`DiffPanel`), overlaying the
   terminals (which stay mounted underneath — no PTY/xterm torn down). Replaces

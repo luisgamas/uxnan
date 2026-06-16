@@ -489,9 +489,23 @@ earlier "superficial UX" warning is resolved.
 - [x] **Side-by-side diffs** — two synced CodeMirror views (old left / new right)
       with a unified/side toggle in the full-size center `DiffPanel` (`DiffView`,
       `toSideRows`).
-- [ ] **TanStack Virtual** for sidebar + diff lists; **quick worktree search**;
-      **TabGroup-level splits**; **Settings toggle for prevent-sleep** — Phase 5
-      UI batch part B (pending).
+- [x] **Quick worktree search** — command palette (`WorktreeSearch`, Ctrl/Cmd+P
+      or sidebar ⚡): filter all worktrees, ↑/↓ + Enter to jump.
+- [x] **TabGroup-level splits** — visible split-right/down buttons on each
+      region's tab bar (`TerminalArea`).
+- [x] **TanStack Virtual** — `VirtualList` (`@tanstack/svelte-virtual`) on the
+      worktree palette + the right-panel changed-files list (single virtualized
+      scroll). Diff already virtual via CodeMirror.
+- [x] **Settings toggle for prevent-sleep** — Settings → Agents
+      (`AppSettings.preventSleep`).
+- [ ] **Keep-awake on macOS/Linux** — `power.rs::apply` is a no-op off Windows;
+      implement macOS via `IOPMAssertionCreateWithName`
+      (`kIOPMAssertionTypePreventUserIdleSystemSleep`) and Linux via the
+      `org.freedesktop.login1` `Inhibit` D-Bus call (or `systemd-inhibit`).
+      Marker in `power.rs`. **FOR-DEV.**
+- [ ] **TanStack Virtual** for the project tree (sidebar) — done for the worktree
+      palette + the right-panel changed-files list; the hierarchical tree is left
+      (variable-height/expand-collapse, low payoff). **FOR-DEV.**
 - [ ] Stronghold/keyring for any secret (never plaintext JSON) — **deferred to
       Phase 6** (no secrets are persisted yet; the hook token is ephemeral).
 - [ ] E2E tests (Playwright/WebdriverIO) for the main flows — **deferred** (heavy

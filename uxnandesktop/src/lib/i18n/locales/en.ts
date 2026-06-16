@@ -156,6 +156,9 @@ export const en = {
   "diff.sideBySide": "Side by side",
   "diff.close": "Close diff",
   "rightPanel.viewDiff": "View diff",
+  "palette.placeholder": "Jump to a worktree…",
+  "palette.empty": "No worktrees match.",
+  "sidebar.quickSwitch": "Quick switch worktree (Ctrl+P)",
   "diff.stageHunk": "Stage hunk",
   "diff.unstageHunk": "Unstage hunk",
   "diff.discardHunk": "Discard hunk",
@@ -177,6 +180,9 @@ export const en = {
   "settings.agentNotifications": "Idle notifications",
   "settings.agentNotificationsDesc":
     "Notify when an agent goes idle while you're looking at another space.",
+  "settings.preventSleep": "Prevent sleep while working",
+  "settings.preventSleepDesc":
+    "Keep the system awake while an agent is working (auto-releases after 2 h). Windows only for now.",
   "notify.agentIdleTitle": "{agent} is idle",
   "notify.agentIdleBody": "In {worktree} — it may be waiting for you.",
 

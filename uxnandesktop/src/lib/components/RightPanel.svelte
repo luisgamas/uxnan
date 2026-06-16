@@ -10,6 +10,7 @@
   import { icon, iconButton, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
   import ConfirmDialog from "./ConfirmDialog.svelte";
+  import VirtualList from "./VirtualList.svelte";
   import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
   import PlusIcon from "@lucide/svelte/icons/plus";
   import MinusIcon from "@lucide/svelte/icons/minus";
@@ -36,6 +37,26 @@
   const canCommit = $derived(
     git.staged.length > 0 && git.message.trim().length > 0 && !git.committing,
   );
+
+  // Flatten the staged + changes sections into one list (section headers + file
+  // rows) so a single virtualized scroll can handle a huge changeset (e.g. an
+  // agent that touched hundreds of files) without lag.
+  type Row =
+    | { kind: "header"; area: Area; count: number }
+    | { kind: "file"; area: Area; file: FileEntry };
+
+  const rows = $derived.by<Row[]>(() => {
+    const out: Row[] = [];
+    if (git.staged.length > 0) {
+      out.push({ kind: "header", area: "staged", count: git.staged.length });
+      for (const f of git.staged) out.push({ kind: "file", area: "staged", file: f });
+    }
+    if (git.changed.length > 0) {
+      out.push({ kind: "header", area: "changes", count: git.changed.length });
+      for (const f of git.changed) out.push({ kind: "file", area: "changes", file: f });
+    }
+    return out;
+  });
 
   // Discard confirmation target.
   let discardOpen = $state(false);
@@ -75,7 +96,7 @@
     git.selected?.file === f.path && git.selected?.staged === (area === "staged")}
   <div
     class={cn(
-      "group flex items-center gap-1.5 rounded-md py-1 pl-1.5 pr-1",
+      "group flex h-8 items-center gap-1.5 rounded-md pl-1.5 pr-1",
       isOpen ? "bg-accent/70" : "hover:bg-accent/40",
     )}
     title={f.path}
@@ -136,6 +157,24 @@
   </div>
 {/snippet}
 
+{#snippet sectionHeader(area: Area, count: number)}
+  <div class="flex h-8 items-center justify-between pl-1.5 pr-0.5">
+    <span class={text.section}>
+      {area === "staged" ? i18n.t("rightPanel.staged") : i18n.t("rightPanel.changes")}
+      <span class="text-muted-foreground/60">({count})</span>
+    </span>
+    <Button
+      variant="ghost"
+      size="sm"
+      class={cn("h-6", text.body)}
+      disabled={git.busy}
+      onclick={() => void (area === "staged" ? git.unstageAll() : git.stageAll())}
+    >
+      {area === "staged" ? i18n.t("rightPanel.unstageAll") : i18n.t("rightPanel.stageAll")}
+    </Button>
+  </div>
+{/snippet}
+
 <div class="flex h-full min-h-0 flex-col">
   <!-- Header: active worktree + refresh -->
   <header class="flex h-9 shrink-0 items-center gap-1.5 border-b border-sidebar-border px-2">
@@ -175,59 +214,21 @@
       </div>
     {/if}
 
-    <div class="uxnan-scroll min-h-0 flex-1 overflow-y-auto p-2">
-      {#if git.staged.length === 0 && git.changed.length === 0}
-        <p class={cn("px-1 py-2", text.meta)}>
-          {git.loading ? i18n.t("common.loading") : i18n.t("rightPanel.noChanges")}
-        </p>
-      {/if}
-
-      {#if git.staged.length > 0}
-        <div class="mb-1 flex items-center justify-between pl-1.5 pr-0.5">
-          <span class={text.section}>
-            {i18n.t("rightPanel.staged")}
-            <span class="text-muted-foreground/60">({git.staged.length})</span>
-          </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            class={cn("h-6", text.body)}
-            disabled={git.busy}
-            onclick={() => void git.unstageAll()}
-          >
-            {i18n.t("rightPanel.unstageAll")}
-          </Button>
-        </div>
-        <div class="mb-3 flex flex-col">
-          {#each git.staged as f (f.path)}
-            {@render fileRow(f, "staged")}
-          {/each}
-        </div>
-      {/if}
-
-      {#if git.changed.length > 0}
-        <div class="mb-1 flex items-center justify-between pl-1.5 pr-0.5">
-          <span class={text.section}>
-            {i18n.t("rightPanel.changes")}
-            <span class="text-muted-foreground/60">({git.changed.length})</span>
-          </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            class={cn("h-6", text.body)}
-            disabled={git.busy}
-            onclick={() => void git.stageAll()}
-          >
-            {i18n.t("rightPanel.stageAll")}
-          </Button>
-        </div>
-        <div class="flex flex-col">
-          {#each git.changed as f (f.path)}
-            {@render fileRow(f, "changes")}
-          {/each}
-        </div>
-      {/if}
-    </div>
+    {#if rows.length === 0}
+      <p class={cn("p-3", text.meta)}>
+        {git.loading ? i18n.t("common.loading") : i18n.t("rightPanel.noChanges")}
+      </p>
+    {:else}
+      <VirtualList items={rows} estimateSize={32} class="min-h-0 flex-1 px-2">
+        {#snippet row(r)}
+          {#if r.kind === "header"}
+            {@render sectionHeader(r.area, r.count)}
+          {:else}
+            {@render fileRow(r.file, r.area)}
+          {/if}
+        {/snippet}
+      </VirtualList>
+    {/if}
 
     <!-- Commit composer + sync -->
     <div class="shrink-0 border-t border-sidebar-border p-2">

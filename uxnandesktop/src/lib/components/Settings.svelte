@@ -336,6 +336,28 @@
               <p class={text.meta}>{i18n.t("settings.agentNotificationsDesc")}</p>
             </div>
 
+            <!-- Keep the system awake while an agent is working (opt-in). -->
+            <div class="flex flex-col gap-1.5">
+              <span class={cn("font-medium", text.body)}>{i18n.t("settings.preventSleep")}</span>
+              <Select.Root
+                type="single"
+                value={app.settings.preventSleep === true ? "on" : "off"}
+                onValueChange={(v) => {
+                  app.settings.preventSleep = v === "on";
+                  persistNow();
+                }}
+              >
+                <Select.Trigger class="w-56">
+                  {app.settings.preventSleep === true ? i18n.t("common.on") : i18n.t("common.off")}
+                </Select.Trigger>
+                <Select.Content>
+                  <Select.Item value="on" label={i18n.t("common.on")}>{i18n.t("common.on")}</Select.Item>
+                  <Select.Item value="off" label={i18n.t("common.off")}>{i18n.t("common.off")}</Select.Item>
+                </Select.Content>
+              </Select.Root>
+              <p class={text.meta}>{i18n.t("settings.preventSleepDesc")}</p>
+            </div>
+
             <!-- Catalog: every known agent; only the installed ones are addable. -->
             <div class="flex flex-col gap-1.5">
               <div class="flex items-center justify-between">
