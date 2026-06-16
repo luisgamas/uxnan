@@ -19,12 +19,23 @@ only this checklist and the inline `FOR-HUMAN:` markers describing what's needed
         source recommended); paths are already referenced in
         `src-tauri/tauri.conf.json → bundle.icon`. None beyond that.
 
+## Needed for distributable / signed release builds
+
+> The CI/CD pipeline (see `FOR-DEV.md → "CI/CD — release builds"`) can produce
+> **unsigned** artifacts without these (degraded: OS "unknown publisher"
+> warnings). They're required for a clean, signed, auto-updating release. Supply
+> each as a **GitHub Actions repository secret** consumed by `release.yml`.
+
+- [ ] **Code-signing identities** (release) — Windows code-signing cert
+      (SignTool / `WINDOWS_CERTIFICATE` + password), Apple Developer ID +
+      notarization (`APPLE_CERTIFICATE`, `APPLE_ID`, team id, app-specific
+      password), optional GPG for Linux packages (spec §5.1).
+- [ ] **Auto-updater key + endpoint** (release) — `TAURI_SIGNING_PRIVATE_KEY`
+      (+ password) as a secret; `pubkey` and `endpoints` for
+      `tauri-plugin-updater` in `tauri.conf.json` (spec §5.2). Only if
+      auto-update is enabled.
+
 ## Deferred until later phases (no action needed yet)
 
-- [ ] **Auto-updater public key + endpoint** (Phase 5/release) — `pubkey` and
-      `endpoints` for `tauri-plugin-updater` in `tauri.conf.json` (spec §5.2).
-- [ ] **Code-signing identities** (release) — Windows code-signing cert
-      (SignTool), Apple Developer ID + notarization (macOS), optional GPG for
-      Linux packages (spec §5.1).
 - [ ] **Relay URL / self-hosted relay** (Phase 6) — for off-LAN mobile
       connectivity through the embedded bridge. LAN/Tailscale-direct needs none.
