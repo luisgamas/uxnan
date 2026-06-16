@@ -19,9 +19,11 @@ import {
   type AgentModel,
   type AgentStreamEvent,
   type IAgentAdapter,
+  type TurnAttachment,
 } from '@uxnan/shared';
 import type { ThreadStore } from '../conversation/thread-store.js';
 import type { Logger } from '../logger.js';
+import { materializeAttachments } from './attachments.js';
 
 /** Display metadata + availability for a registered adapter, surfaced by `agent/list`. */
 export interface AgentMeta {
@@ -54,6 +56,8 @@ export interface SendTurnOptions {
   effort?: string;
   /** Chosen per-model run-option values keyed by `AgentModelOption.key`. */
   options?: Record<string, string | boolean>;
+  /** Inline image attachments delivered to the agent for this turn. */
+  attachments?: TurnAttachment[];
   cwd?: string;
 }
 
@@ -136,7 +140,16 @@ export class AgentManager {
       );
     }
 
-    const started = await this.#options.store.startTurn(threadId, userText, this.#options.now());
+    const attachments = options.attachments ?? [];
+    // Persist a faithful user message (no temp paths): the original text, or a
+    // short placeholder for an image-only turn so history isn't a blank bubble.
+    const persistText =
+      userText.length > 0
+        ? userText
+        : attachments.length > 0
+          ? `[${attachments.length} image attachment${attachments.length > 1 ? 's' : ''}]`
+          : userText;
+    const started = await this.#options.store.startTurn(threadId, persistText, this.#options.now());
     this.#assistantByTurn.set(started.turnId, started.assistantMessageId);
     this.#agentByThread.set(threadId, agentId);
 
@@ -145,13 +158,29 @@ export class AgentManager {
       this.#started.add(agentId);
     }
 
+    // Materialize image attachments to temp files and reference them in the
+    // prompt so any file/vision-capable agent CLI can open them. Best-effort:
+    // a failure to write degrades to a text-only turn, never aborts it.
+    let agentText = userText;
+    if (attachments.length > 0) {
+      try {
+        const materialized = await materializeAttachments(attachments, started.turnId);
+        if (materialized.note) {
+          agentText = userText.length > 0 ? `${userText}\n\n${materialized.note}` : materialized.note;
+        }
+      } catch (err) {
+        this.#options.logger.warn(`attachment materialization failed: ${String(err)}`);
+      }
+    }
+
     await adapter.sendTurn({
       threadId,
       turnId: started.turnId,
-      text: userText,
+      text: agentText,
       ...(options.service !== undefined ? { service: options.service } : {}),
       ...(options.effort !== undefined ? { effort: options.effort } : {}),
       ...(options.options !== undefined ? { options: options.options } : {}),
+      ...(attachments.length > 0 ? { attachments } : {}),
       ...(options.cwd !== undefined ? { cwd: options.cwd } : {}),
     });
     return { turnId: started.turnId };

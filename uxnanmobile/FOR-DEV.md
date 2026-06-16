@@ -362,20 +362,29 @@ browser and multi-PC connection correctness are now DONE — see below.)
     section) → real values from `git/status` via `gitRepoStateProvider`; the
     commit/push rows call `GitActionManager.commit` / `.push` against the active
     thread's `cwd`.
-  - ◑ **Attach** (`ComposerBar` "+" → turn-tools sheet) → APP SIDE DONE,
-    bridge-blocked for delivery. Gated by the agent's `images` capability. The
-    Attach tile offers **Photo library / Take a photo**
-    (`AttachmentPickerService` + `image_picker`, downscaled to 2048 px / q85,
-    inline base64 `ImageContent`); pending images show as a removable thumbnail
-    strip above the composer (`_AttachmentStrip`) and the composer sends with an
-    empty text field (image-only message allowed). `sendUserMessage` echoes them
-    locally (rendered inline via `_ImageBlock`) and rides them on `turn/send`.
-    - **CONTRACT the bridge must implement** (dormant until then): add
-      `attachments?: ImageContent[]` to `TurnSendParams`
-      (`shared/src/jsonrpc/methods.ts`); have `turn/send`'s handler read them and
-      `AgentManager.sendTurn` forward the images to the agent CLI (and allow an
-      empty `text` when `attachments` is non-empty). The app already sends
-      `attachments: [{type:'image', mimeType, base64Data}]`.
+  - ☑ **Attach** (`ComposerBar` "+" → turn-tools sheet) → DONE end-to-end
+    (bridge wired 2026-06-16; on-device verification pending). Gated by the
+    agent's `images` capability. The Attach tile offers **Photo library / Take a
+    photo** (`AttachmentPickerService` + `image_picker`, downscaled to 2048 px /
+    q85, inline base64 `ImageContent`); pending images show as a removable
+    thumbnail strip above the composer (`_AttachmentStrip`) and the composer
+    sends with an empty text field (image-only message allowed). `sendUserMessage`
+    echoes them locally (rendered inline via `_ImageBlock`) and rides them on
+    `turn/send`.
+    - **CONTRACT — DONE bridge-side.** `shared` added `TurnAttachment` +
+      `TurnSendParams.attachments?` and made `text` optional; the bridge
+      `turn/send` handler reads `attachments`, allows an empty `text`, and
+      `AgentManager.sendTurn` **materializes each image to a temp file and
+      references it in the prompt** (`bridge/src/agents/attachments.ts`) so every
+      file/vision-capable agent CLI can open it (no per-CLI image flag needed).
+      The app already sends `attachments: [{type:'image', mimeType, base64Data}]`,
+      so no further mobile change is required.
+    - ☐ **On-device verification:** pick a photo, send an image-only message, and
+      confirm the agent actually reads/acts on the image against a live bridge.
+    - ☐ **Native CLI image flags (bridge follow-up, optional):** some agents may
+      accept images more richly via a dedicated flag/MCP than a file-path
+      reference; the temp-file path is the CLI-agnostic MVP. Tracked in
+      `bridge/FOR-DEV.md`.
     - ☐ **Camera permission caveat (Android):** `mobile_scanner` already declares
       `CAMERA`, so `image_picker`'s camera capture may need a runtime grant on
       some devices — the service fails safe (returns null) if denied. Verify

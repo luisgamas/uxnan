@@ -5,7 +5,8 @@
  *
  * Source: architecture/02a-system-architecture.md §5.8.8.
  */
-import type { AgentId, Turn, TurnList } from '@uxnan/shared';
+import { RpcError } from '@uxnan/shared';
+import type { AgentId, Turn, TurnAttachment, TurnList } from '@uxnan/shared';
 import type { BridgeContext } from '../bridge-context.js';
 import type { HandlerRouter } from '../handler-router.js';
 import type { SendTurnOptions } from '../agents/agent-manager.js';
@@ -97,7 +98,14 @@ export function registerThreadHandlers(router: HandlerRouter): void {
   );
   router.register('turn/send', async (p, ctx: BridgeContext) => {
     const threadId = requireString(p, 'threadId');
-    const text = requireString(p, 'text');
+    // `text` is OPTIONAL: an image-only message (empty text + attachments) is
+    // valid, so we no longer hard-require a non-empty string. Reject only when
+    // there is neither text nor an attachment to act on.
+    const text = optionalString(p, 'text') ?? '';
+    const attachments = optionalAttachments(p);
+    if (text.length === 0 && attachments.length === 0) {
+      throw RpcError.invalidParams('turn/send requires non-empty text or attachments');
+    }
     const runtime = await ctx.threadStore.getThreadRuntime(threadId);
     // A turn runs with the thread's agent/model/cwd; explicit params override.
     const service = optionalString(p, 'service') ?? runtime.model;
@@ -106,6 +114,7 @@ export function registerThreadHandlers(router: HandlerRouter): void {
       ...(service !== undefined ? { service } : {}),
       ...optionalEffort(p),
       ...optionalRunOptions(p),
+      ...(attachments.length > 0 ? { attachments } : {}),
       ...(runtime.cwd !== undefined ? { cwd: runtime.cwd } : {}),
     };
     return ctx.agentManager.sendTurn(threadId, text, options);
@@ -135,6 +144,34 @@ function paginateTurns(
 function optionalEffort(params: unknown): { effort?: string } {
   const value = optionalString(params, 'effort');
   return value === undefined ? {} : { effort: value };
+}
+
+/**
+ * Extracts the inline `attachments` from `turn/send` params, keeping only
+ * well-formed image entries (a `mimeType` plus at least one of
+ * `base64Data`/`path`). Tolerant — malformed entries are dropped, never thrown,
+ * so an older/garbled client degrades to a text turn instead of an error.
+ */
+function optionalAttachments(params: unknown): TurnAttachment[] {
+  if (!params || typeof params !== 'object') return [];
+  const raw = (params as Record<string, unknown>)['attachments'];
+  if (!Array.isArray(raw)) return [];
+  const out: TurnAttachment[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const obj = item as Record<string, unknown>;
+    const mimeType = typeof obj['mimeType'] === 'string' ? obj['mimeType'] : 'application/octet-stream';
+    const base64Data = typeof obj['base64Data'] === 'string' ? obj['base64Data'] : undefined;
+    const path = typeof obj['path'] === 'string' ? obj['path'] : undefined;
+    if (base64Data === undefined && path === undefined) continue;
+    const att: TurnAttachment = { type: 'image', mimeType };
+    if (base64Data !== undefined) att.base64Data = base64Data;
+    if (path !== undefined) att.path = path;
+    if (typeof obj['width'] === 'number') att.width = obj['width'];
+    if (typeof obj['height'] === 'number') att.height = obj['height'];
+    out.push(att);
+  }
+  return out;
 }
 
 /**

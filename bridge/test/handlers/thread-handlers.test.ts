@@ -65,6 +65,66 @@ test('thread/start then turn/send routes through the echo agent end-to-end', asy
   await rm(baseDir, { recursive: true, force: true });
 });
 
+// A real 1x1 transparent PNG (base64, no data: prefix) — what the phone sends.
+const PNG_1x1 =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
+test('turn/send accepts an image-only message (empty text + attachments)', async () => {
+  const { bridge, baseDir } = await boot();
+
+  const projectsRes = await bridge.router.dispatch(makeRequest('0', 'project/list', {}));
+  assert.ok('result' in projectsRes);
+  const projectId = (projectsRes.result as Project[])[0]!.id;
+
+  const startRes = await bridge.router.dispatch(
+    makeRequest('1', 'thread/start', { projectId, title: 'Chat', agentId: 'echo' }),
+  );
+  assert.ok('result' in startRes);
+  const threadId = (startRes.result as { id: string }).id;
+
+  // No `text` field at all — only an inline image.
+  const sendRes = await bridge.router.dispatch(
+    makeRequest('2', 'turn/send', {
+      threadId,
+      attachments: [{ type: 'image', mimeType: 'image/png', base64Data: PNG_1x1 }],
+    }),
+  );
+  assert.ok('result' in sendRes);
+  const turnId = (sendRes.result as { turnId: string }).turnId;
+
+  await waitFor(
+    async () => (await bridge.context.threadStore.getTurn(turnId)).status === 'completed',
+  );
+  const turn = await bridge.context.threadStore.getTurn(turnId);
+  assert.equal(turn.messages.find((m) => m.role === 'user')?.content, '[1 image attachment]');
+  assert.match(
+    String(turn.messages.find((m) => m.role === 'assistant')?.content ?? ''),
+    /Attached image/,
+  );
+
+  await bridge.stop();
+  await rm(baseDir, { recursive: true, force: true });
+});
+
+test('turn/send rejects a message with neither text nor attachments', async () => {
+  const { bridge, baseDir } = await boot();
+
+  const projectsRes = await bridge.router.dispatch(makeRequest('0', 'project/list', {}));
+  assert.ok('result' in projectsRes);
+  const projectId = (projectsRes.result as Project[])[0]!.id;
+  const startRes = await bridge.router.dispatch(
+    makeRequest('1', 'thread/start', { projectId, agentId: 'echo' }),
+  );
+  assert.ok('result' in startRes);
+  const threadId = (startRes.result as { id: string }).id;
+
+  const res = await bridge.router.dispatch(makeRequest('2', 'turn/send', { threadId }));
+  assert.ok('error' in res && res.error.code === -32602);
+
+  await bridge.stop();
+  await rm(baseDir, { recursive: true, force: true });
+});
+
 test('agent/list reports the registered agents (echo + opencode + claude-code + codex)', async () => {
   const { bridge, baseDir } = await boot();
   const res = await bridge.router.dispatch(makeRequest('1', 'agent/list', {}));

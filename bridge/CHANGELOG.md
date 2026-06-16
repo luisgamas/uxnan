@@ -6,6 +6,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 
 ### Added
+- **Turn image attachments delivered to the agent** — `turn/send` now accepts
+  `attachments: TurnAttachment[]` (inline base64 images the phone picks in the
+  composer) and allows an **image-only** message (empty/omitted `text`). The new
+  `src/agents/attachments.ts` materializes each image to a temp file
+  (`<tmp>/uxnan-attachments/<turnId>/`) and `AgentManager.sendTurn` appends a
+  reference to the prompt, so **every** file/vision-capable agent CLI (Claude,
+  Codex, OpenCode, pi, Gemini) can open it — no per-adapter image handling. The
+  persisted user message stays faithful (original text, or a
+  `[N image attachment(s)]` placeholder). Tolerant parser drops malformed
+  attachments. Unblocks the mobile "Attach" composer (its half was already wired).
+  Covered by `test/agents/attachments.test.ts`, `agent-manager.test.ts`,
+  `handlers/thread-handlers.test.ts`.
 - **Manual-code pairing (bridge-side)** — pair without scanning a QR by trading a
   short code shown on the PC for the pairing payload; reframes the relay's off-LAN
   `/trusted-session/resolve` as a bridge-first feature.

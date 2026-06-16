@@ -136,6 +136,19 @@ hosting** (the phone connects directly to the bridge on the same network).
           supporting checkpoints on an unborn branch if a use case appears.
 - [x] **Thread/turn** (Phase 5) — `src/handlers/thread-context-handler.ts` +
       `src/conversation/thread-store.ts` + `src/agents/agent-manager.ts`.
+- [x] **Turn image attachments** — `turn/send` accepts `attachments:
+      TurnAttachment[]` and an **image-only** message (empty/omitted `text`).
+      `src/agents/attachments.ts` materializes each inline image to a temp file
+      (`<tmp>/uxnan-attachments/<turnId>/`) and `AgentManager.sendTurn` appends a
+      path reference to the prompt, so any file/vision-capable CLI can open it —
+      **no per-adapter image handling**. Tolerant parser; best-effort write (a
+      failure degrades to a text turn). Mobile half was already wired; this closes
+      the seam. **Follow-ups (FOR-DEV):** (1) native per-CLI image input (a
+      dedicated flag / MCP image part) where an agent supports it richer than a
+      file path — the `attachments` are already threaded to `adapter.sendTurn`
+      via `SendTurnOptions.attachments` for an adapter that wants to consume them
+      natively; (2) temp-file GC/retention (today they linger in the OS temp dir);
+      (3) on-device verification that an agent reads the delivered image.
 - [x] **Plug-and-play directory browsing (bridge side)** — `workspace/browseDirs`
       (`src/workspace/browse-service.ts` + `workspace-handler.ts`) lets the phone
       browse sub-directories under a configured base root (`config.browseRoots`,
