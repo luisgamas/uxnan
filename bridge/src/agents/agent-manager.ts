@@ -18,6 +18,7 @@ import {
   type AgentId,
   type AgentModel,
   type AgentStreamEvent,
+  type ApprovalDecision,
   type IAgentAdapter,
   type TurnAttachment,
 } from '@uxnan/shared';
@@ -68,6 +69,8 @@ export class AgentManager {
   readonly #assistantByTurn = new Map<string, string>();
   /** threadId → agent driving it, so we can read its native session id on completion. */
   readonly #agentByThread = new Map<string, AgentId>();
+  /** threadId → in-flight turn id, so an approval reply can name the turn it answers. */
+  readonly #activeTurnByThread = new Map<string, string>();
   readonly #options: AgentManagerOptions;
 
   constructor(options: AgentManagerOptions) {
@@ -152,6 +155,7 @@ export class AgentManager {
     const started = await this.#options.store.startTurn(threadId, persistText, this.#options.now());
     this.#assistantByTurn.set(started.turnId, started.assistantMessageId);
     this.#agentByThread.set(threadId, agentId);
+    this.#activeTurnByThread.set(threadId, started.turnId);
 
     if (!this.#started.has(agentId)) {
       await adapter.start({ agentId, ...(options.cwd !== undefined ? { cwd: options.cwd } : {}) });
@@ -184,6 +188,35 @@ export class AgentManager {
       ...(options.cwd !== undefined ? { cwd: options.cwd } : {}),
     });
     return { turnId: started.turnId };
+  }
+
+  /**
+   * Route a user's approval decision to the agent driving `threadId`. No new
+   * turn is created — the decision unblocks the in-flight turn that emitted the
+   * approval. Returns the in-flight turn id (or `''` if none is tracked) so the
+   * `turn/send` reply still carries a `turnId`.
+   */
+  async respondApproval(
+    threadId: string,
+    approvalId: string,
+    decision: ApprovalDecision,
+  ): Promise<{ turnId: string }> {
+    const agentId = this.#agentByThread.get(threadId);
+    const adapter = agentId ? this.#adapters.get(agentId) : undefined;
+    if (!adapter) {
+      throw new RpcError(
+        JsonRpcErrorCode.AgentNotRunning,
+        `no active agent for thread '${threadId}'`,
+      );
+    }
+    if (!adapter.respondApproval) {
+      throw new RpcError(
+        JsonRpcErrorCode.InvalidParams,
+        `agent '${agentId}' does not support approvals`,
+      );
+    }
+    await adapter.respondApproval(threadId, approvalId, decision);
+    return { turnId: this.#activeTurnByThread.get(threadId) ?? '' };
   }
 
   async cancelTurn(threadId: string, turnId: string, agentId?: AgentId): Promise<void> {
@@ -279,6 +312,7 @@ export class AgentManager {
             }),
           );
           this.#assistantByTurn.delete(turnId);
+          this.#activeTurnByThread.delete(threadId);
           await this.#persistAgentSession(threadId, now);
           this.#options.onTurnEnd?.({ threadId, turnId, status: 'completed', text });
           break;
@@ -294,6 +328,7 @@ export class AgentManager {
             }),
           );
           this.#assistantByTurn.delete(turnId);
+          this.#activeTurnByThread.delete(threadId);
           await this.#persistAgentSession(threadId, now);
           this.#options.onTurnEnd?.({ threadId, turnId, status: 'error', text: message });
           break;
@@ -304,6 +339,7 @@ export class AgentManager {
             makeNotification(StreamNotification.TurnAborted, { threadId, turnId }),
           );
           this.#assistantByTurn.delete(turnId);
+          this.#activeTurnByThread.delete(threadId);
           break;
       }
     } catch (err) {

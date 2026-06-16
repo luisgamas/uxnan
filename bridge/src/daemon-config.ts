@@ -52,6 +52,13 @@ export interface AgentSettings {
    * Defaults to `acceptEdits` when omitted. Ignored by agents that don't gate tools.
    */
   permissionMode?: AgentPermissionMode;
+  /**
+   * Opt-in interactive approvals (Claude Code only): run turns via
+   * `--input-format stream-json` so the CLI asks permission per tool and the
+   * phone answers via `turn/send { approvalResponse }`. Default false (the
+   * stable one-shot path). See `bridge/FOR-DEV.md` → interactive approval.
+   */
+  interactiveApprovals?: boolean;
 }
 
 export interface DaemonConfig {

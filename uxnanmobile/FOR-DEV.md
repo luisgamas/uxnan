@@ -194,32 +194,32 @@ browser and multi-PC connection correctness are now DONE — see below.)
     `SubagentActionKind`); tolerant codec (nested or flat) with graceful enum
     fallback. Renderers: approval card, plan checklist, subagent card
     (`message_content_view.dart`). Covered by round-trip + render tests.
-  - ◑ **Interactive approval** — APP SIDE DONE, bridge-blocked. The approval
-    card is now interactive (`message_content_view.dart`): Approve / Reject /
-    "always allow this session", a spring `AnimatedSize` morph into a settled
-    status row, an in-flight spinner, and re-enable on failure.
+  - ☑ **Interactive approval** — APP SIDE DONE; **bridge wired 2026-06-16** (no
+    mobile change needed). The approval card is interactive
+    (`message_content_view.dart`): Approve / Reject / "always allow this
+    session", a spring `AnimatedSize` morph into a settled status row, an
+    in-flight spinner, and re-enable on failure.
     `ThreadManager.respondApproval({threadId, approvalId, decision})` sends the
     response; `ApprovalResponses` (`approval_providers.dart`) holds the local
     sending/resolved/failed state per `approvalId`; decisions are the
     `ApprovalDecision` enum (`approve` / `reject` / `approveSession`).
-    - **CONTRACT the bridge must implement** (dormant until then):
-      1. **Emit** approval requests — either `stream/approval/requested` or an
-         `approval` content block on `stream/content/block` carrying
-         `{ approvalId, action, risk, detail? }` (the app already decodes both
-         the nested `{request:{...}}` and flat forms).
-      2. **Accept** `turn/send { threadId, approvalResponse: { approvalId,
-         decision } }` where `decision ∈ "approve" | "reject" | "approveSession"`.
-         Make `text` OPTIONAL when `approvalResponse` is present (today the
-         bridge rejects `turn/send` without `text`). Add `approvalResponse?` to
-         `TurnSendParams` in `shared/src/jsonrpc/methods.ts`.
-      3. **Route** the decision to the agent adapter by `approvalId`; today the
-         Claude adapter runs headless (`approvals:true` advertised but tools
-         needing approval are auto-denied) and Echo has `approvals:false`, so
-         nothing emits requests. `approveSession` should apply a session-scoped
-         allow.
-    - **Testability:** there is no way to trigger an approval on-device until
-      the bridge emits one (consider having the Echo dev-agent emit a sample
-      approval request behind a flag to validate the UI end-to-end).
+    - **CONTRACT — DONE bridge-side.** `shared` added `ApprovalDecision` /
+      `ApprovalResponse` / `ApprovalRequestBlock` + `TurnSendParams.approvalResponse?`
+      (and `text` is now optional). The bridge:
+      1. **Emits** approval requests as an `approval` content block on
+         `stream/content/block` (`{ approvalId, action, risk, detail? }`) — the
+         form the app already decodes (nested or flat).
+      2. **Accepts** `turn/send { approvalResponse }` (no new turn) and routes the
+         decision via `AgentManager.respondApproval` → the agent adapter.
+      3. **Routing:** the **Echo** dev-agent emits a sample approval for the text
+         `approval-demo` (validatable end-to-end now); **Claude Code** has an
+         opt-in real path (`agents['claude-code'].interactiveApprovals`, default
+         off) over `--input-format stream-json`. **Codex** real approvals are
+         deferred (need the app-server turn protocol — see `bridge/FOR-DEV.md`).
+    - ☐ **On-device verification:** point the phone at a bridge, start an `echo`
+      thread, send `approval-demo`, and confirm the card → Approve/Reject →
+      settled status round-trips. Then validate Claude's opt-in path on a real
+      machine (it's documented-but-unverified at the protocol level).
   - ☑ **Verify wire shapes (plan/subagent)** — DONE: confirmed `plan` and
     `subagent` content blocks are **informational** status updates, NOT approval
     gates — only `approval` blocks gate actions. Field names for plan steps /

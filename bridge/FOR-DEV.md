@@ -136,6 +136,33 @@ hosting** (the phone connects directly to the bridge on the same network).
           supporting checkpoints on an unborn branch if a use case appears.
 - [x] **Thread/turn** (Phase 5) — `src/handlers/thread-context-handler.ts` +
       `src/conversation/thread-store.ts` + `src/agents/agent-manager.ts`.
+- [◑] **Interactive approval intake** — generic plumbing DONE; real per-agent
+      routing partial. `turn/send` accepts a control-only `approvalResponse:
+      { approvalId, decision }` (no new turn) and routes it via
+      `AgentManager.respondApproval` → `IAgentAdapter.respondApproval`. Agents
+      request approval by emitting an `approval` content block
+      (`approvalBlock()`), which the phone already renders interactively.
+        - ☑ **Echo demo** (validatable now): text `approval-demo` emits a sample
+          approval and pauses until the phone replies — for end-to-end UI
+          validation without a real agent.
+        - ◑ **Claude Code (opt-in):** `agents['claude-code'].interactiveApprovals:
+          true` runs turns via `--input-format stream-json`, surfaces
+          `control_request can_use_tool` as an approval block and writes the
+          decision back as a `control_response` (`src/adapters/claude-approvals.ts`,
+          pure + unit-tested; default off, one-shot path untouched). **FOR-DEV:
+          validate the stream-json input + control field names against a live
+          `claude` CLI** (documented-but-unverified here); also map
+          `approveSession` to a real session-scoped `updatedPermissions` instead
+          of a plain allow.
+        - ☐ **Codex:** `codex exec` is non-interactive and emits no approval
+          requests, so real Codex approvals need turn execution moved onto the
+          **app-server** protocol (the bridge already speaks it for
+          `model/list`) where `applyPatchApproval`/`execCommandApproval`
+          elicitations exist. Larger refactor — deferred. Until then Codex turns
+          run under their sandbox posture (`-s workspace-write`, etc.).
+        - ☐ **OpenCode / pi / Gemini:** add `respondApproval` + an interactive
+          invocation per CLI when their headless modes expose a permission
+          channel (verify per CLI).
 - [x] **Turn image attachments** — `turn/send` accepts `attachments:
       TurnAttachment[]` and an **image-only** message (empty/omitted `text`).
       `src/agents/attachments.ts` materializes each inline image to a temp file

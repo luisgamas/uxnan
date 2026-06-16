@@ -90,6 +90,51 @@ test('sendTurn delivers an image-only turn: placeholder user text + attachment p
   await rm(baseDir, { recursive: true, force: true });
 });
 
+test('respondApproval drives the echo demo approval to completion', async () => {
+  const baseDir = join(tmpdir(), `uxnan-am-appr-${randomUUID()}`);
+  const store = new ThreadStore(new DaemonState(baseDir));
+  const notifications: { method: string }[] = [];
+  const manager = new AgentManager({
+    store,
+    notify: (message) => notifications.push(message as { method: string }),
+    now: () => 1000,
+    logger: createLogger('test', 'error'),
+    defaultAgent: 'echo',
+  });
+  manager.register(new EchoAgentAdapter());
+
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  const { turnId } = await manager.sendTurn(thread.id, 'approval-demo');
+
+  // The demo emits an approval content block and PAUSES (no completion yet).
+  await waitFor(() => notifications.some((n) => n.method === StreamNotification.ContentBlock));
+  assert.notEqual((await store.getTurn(turnId)).status, 'completed');
+
+  // Routing the decision unblocks the turn; the reply names the in-flight turn.
+  const res = await manager.respondApproval(thread.id, `appr-${turnId}`, 'approve');
+  assert.equal(res.turnId, turnId);
+
+  await waitFor(async () => (await store.getTurn(turnId)).status === 'completed');
+  const turn = await store.getTurn(turnId);
+  assert.match(String(turn.messages.find((m) => m.role === 'assistant')?.content ?? ''), /Approved/);
+  await rm(baseDir, { recursive: true, force: true });
+});
+
+test('respondApproval rejects when the thread has no agent', async () => {
+  const baseDir = join(tmpdir(), `uxnan-am-appr2-${randomUUID()}`);
+  const store = new ThreadStore(new DaemonState(baseDir));
+  const manager = new AgentManager({
+    store,
+    notify: () => {},
+    now: () => 1,
+    logger: createLogger('test', 'error'),
+    defaultAgent: 'echo',
+  });
+  manager.register(new EchoAgentAdapter());
+  await assert.rejects(manager.respondApproval('no-such-thread', 'appr-x', 'approve'));
+  await rm(baseDir, { recursive: true, force: true });
+});
+
 test('sendTurn for an unregistered agent rejects with AgentNotRunning', async () => {
   const baseDir = join(tmpdir(), `uxnan-am2-${randomUUID()}`);
   const store = new ThreadStore(new DaemonState(baseDir));

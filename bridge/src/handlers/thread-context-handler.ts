@@ -6,7 +6,14 @@
  * Source: architecture/02a-system-architecture.md §5.8.8.
  */
 import { RpcError } from '@uxnan/shared';
-import type { AgentId, Turn, TurnAttachment, TurnList } from '@uxnan/shared';
+import type {
+  AgentId,
+  ApprovalDecision,
+  ApprovalResponse,
+  Turn,
+  TurnAttachment,
+  TurnList,
+} from '@uxnan/shared';
 import type { BridgeContext } from '../bridge-context.js';
 import type { HandlerRouter } from '../handler-router.js';
 import type { SendTurnOptions } from '../agents/agent-manager.js';
@@ -98,6 +105,12 @@ export function registerThreadHandlers(router: HandlerRouter): void {
   );
   router.register('turn/send', async (p, ctx: BridgeContext) => {
     const threadId = requireString(p, 'threadId');
+    // A `turn/send` may instead be a control-only reply to a pending approval:
+    // no new turn is created — the decision is routed to the agent adapter.
+    const approval = optionalApprovalResponse(p);
+    if (approval) {
+      return ctx.agentManager.respondApproval(threadId, approval.approvalId, approval.decision);
+    }
     // `text` is OPTIONAL: an image-only message (empty text + attachments) is
     // valid, so we no longer hard-require a non-empty string. Reject only when
     // there is neither text nor an attachment to act on.
@@ -144,6 +157,35 @@ function paginateTurns(
 function optionalEffort(params: unknown): { effort?: string } {
   const value = optionalString(params, 'effort');
   return value === undefined ? {} : { effort: value };
+}
+
+const APPROVAL_DECISIONS = new Set<ApprovalDecision>(['approve', 'reject', 'approveSession']);
+
+/**
+ * Extracts the `approvalResponse` from `turn/send` params, or `undefined` when
+ * absent. Validates the shape (`approvalId` non-empty + a known `decision`) and
+ * throws `invalidParams` on a malformed one — an approval reply is control data,
+ * so a garbled one should surface rather than silently start a turn.
+ */
+function optionalApprovalResponse(params: unknown): ApprovalResponse | undefined {
+  if (!params || typeof params !== 'object') return undefined;
+  const raw = (params as Record<string, unknown>)['approvalResponse'];
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw !== 'object') {
+    throw RpcError.invalidParams('approvalResponse must be an object');
+  }
+  const obj = raw as Record<string, unknown>;
+  const approvalId = obj['approvalId'];
+  const decision = obj['decision'];
+  if (typeof approvalId !== 'string' || approvalId.length === 0) {
+    throw RpcError.invalidParams('approvalResponse.approvalId must be a non-empty string');
+  }
+  if (typeof decision !== 'string' || !APPROVAL_DECISIONS.has(decision as ApprovalDecision)) {
+    throw RpcError.invalidParams(
+      'approvalResponse.decision must be approve | reject | approveSession',
+    );
+  }
+  return { approvalId, decision: decision as ApprovalDecision };
 }
 
 /**

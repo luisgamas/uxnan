@@ -8,6 +8,7 @@
  * shape is defined in exactly one place and stays in lock-step with the Dart
  * `MessageContent` types.
  */
+import type { ApprovalRequestBlock, ApprovalRisk } from '@uxnan/shared';
 
 /** Cap tool/command output carried on the wire so a big read doesn't bloat it. */
 const MAX_OUTPUT = 4000;
@@ -122,6 +123,26 @@ export function unifiedDiffBlock(filename: string, diffText: string): Record<str
     diff: body.join('\n').replace(/^\n+|\n+$/g, ''),
     additions: added,
     deletions: removed,
+  };
+}
+
+/**
+ * An `approval` content block: the agent is asking the user to authorize an
+ * action. The phone renders it as an interactive card and replies via
+ * `turn/send { approvalResponse }`. `approvalId` is the bridge handle the
+ * adapter uses to deliver the decision back to the agent.
+ */
+export function approvalBlock(
+  approvalId: string,
+  action: string,
+  opts: { risk?: ApprovalRisk; detail?: string } = {},
+): ApprovalRequestBlock {
+  return {
+    type: 'approval',
+    approvalId,
+    action,
+    ...(opts.risk !== undefined ? { risk: opts.risk } : {}),
+    ...(opts.detail !== undefined && opts.detail.length > 0 ? { detail: opts.detail } : {}),
   };
 }
 

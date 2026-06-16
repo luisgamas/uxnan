@@ -6,6 +6,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 
 ### Added
+- **Interactive approval intake** — `turn/send` now accepts a control-only
+  `approvalResponse: { approvalId, decision }` (no new turn) and routes the
+  decision to the agent via `AgentManager.respondApproval` →
+  `IAgentAdapter.respondApproval`. Agents request approval by emitting an
+  `approval` content block (`approvalBlock()` in `content-blocks.ts`).
+  - **Echo dev-agent demo (validatable now):** a turn whose text is
+    `approval-demo` emits a sample high-risk approval and PAUSES until the phone
+    replies, then completes with the decision — lets the mobile approval UI be
+    validated end-to-end against a live bridge without a real agent.
+  - **Claude Code real routing (opt-in):** with
+    `agents['claude-code'].interactiveApprovals: true`, turns run via
+    `--input-format stream-json` so the CLI asks permission per tool
+    (`control_request can_use_tool`); the bridge surfaces it as an approval
+    block and writes the user's decision back as a `control_response`
+    (`src/adapters/claude-approvals.ts`, pure + unit-tested). **Default off** —
+    the stable one-shot path is unchanged. FOR-DEV: the stream-json control
+    field names follow Claude's documented protocol but need live validation.
+  - **Codex:** real approvals need the app-server turn protocol (the current
+    `codex exec` is non-interactive); deferred — see `FOR-DEV.md`.
 - **Turn image attachments delivered to the agent** — `turn/send` now accepts
   `attachments: TurnAttachment[]` (inline base64 images the phone picks in the
   composer) and allows an **image-only** message (empty/omitted `text`). The new

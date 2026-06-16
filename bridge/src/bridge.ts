@@ -180,6 +180,9 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       binaryPath: claude.binaryPath,
       prependArgs: claude.prependArgs,
       permissionMode: claudeSettings.permissionMode ?? 'acceptEdits',
+      ...(claudeSettings.interactiveApprovals !== undefined
+        ? { interactiveApprovals: claudeSettings.interactiveApprovals }
+        : {}),
       ...(claudeSettings.model !== undefined ? { defaultModel: claudeSettings.model } : {}),
       ...(claudePinnedModels.length > 0 ? { pinnedModels: claudePinnedModels } : {}),
     }),

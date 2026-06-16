@@ -125,6 +125,68 @@ test('turn/send rejects a message with neither text nor attachments', async () =
   await rm(baseDir, { recursive: true, force: true });
 });
 
+test('turn/send with approvalResponse drives the echo demo approval over the router', async () => {
+  const { bridge, baseDir } = await boot();
+
+  const projectsRes = await bridge.router.dispatch(makeRequest('0', 'project/list', {}));
+  assert.ok('result' in projectsRes);
+  const projectId = (projectsRes.result as Project[])[0]!.id;
+  const startRes = await bridge.router.dispatch(
+    makeRequest('1', 'thread/start', { projectId, agentId: 'echo' }),
+  );
+  assert.ok('result' in startRes);
+  const threadId = (startRes.result as { id: string }).id;
+
+  // The demo trigger emits an approval block and pauses the turn.
+  const sendRes = await bridge.router.dispatch(
+    makeRequest('2', 'turn/send', { threadId, text: 'approval-demo' }),
+  );
+  assert.ok('result' in sendRes);
+  const turnId = (sendRes.result as { turnId: string }).turnId;
+
+  // Reply with the decision (control-only turn/send → no new turn).
+  const approveRes = await bridge.router.dispatch(
+    makeRequest('3', 'turn/send', {
+      threadId,
+      approvalResponse: { approvalId: `appr-${turnId}`, decision: 'approve' },
+    }),
+  );
+  assert.ok('result' in approveRes);
+  assert.equal((approveRes.result as { turnId: string }).turnId, turnId);
+
+  await waitFor(
+    async () => (await bridge.context.threadStore.getTurn(turnId)).status === 'completed',
+  );
+  const turn = await bridge.context.threadStore.getTurn(turnId);
+  assert.match(String(turn.messages.find((m) => m.role === 'assistant')?.content ?? ''), /Approved/);
+
+  await bridge.stop();
+  await rm(baseDir, { recursive: true, force: true });
+});
+
+test('turn/send rejects an approvalResponse with an unknown decision', async () => {
+  const { bridge, baseDir } = await boot();
+  const projectsRes = await bridge.router.dispatch(makeRequest('0', 'project/list', {}));
+  assert.ok('result' in projectsRes);
+  const projectId = (projectsRes.result as Project[])[0]!.id;
+  const startRes = await bridge.router.dispatch(
+    makeRequest('1', 'thread/start', { projectId, agentId: 'echo' }),
+  );
+  assert.ok('result' in startRes);
+  const threadId = (startRes.result as { id: string }).id;
+
+  const res = await bridge.router.dispatch(
+    makeRequest('2', 'turn/send', {
+      threadId,
+      approvalResponse: { approvalId: 'a', decision: 'bogus' },
+    }),
+  );
+  assert.ok('error' in res && res.error.code === -32602);
+
+  await bridge.stop();
+  await rm(baseDir, { recursive: true, force: true });
+});
+
 test('agent/list reports the registered agents (echo + opencode + claude-code + codex)', async () => {
   const { bridge, baseDir } = await boot();
   const res = await bridge.router.dispatch(makeRequest('1', 'agent/list', {}));
