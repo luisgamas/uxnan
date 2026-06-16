@@ -197,6 +197,10 @@
   },
   "composerOptionsShow": "Show options",
   "composerOptionsHide": "Hide options",
+  "composerTools": "Turn options",
+  "@composerTools": {
+    "description": "Title of the composer '+' turn-tools sheet (attach + run options + approval) and tooltip of the '+' button."
+  },
 
   "newThreadAction": "New conversation",
   "newThreadTitle": "New conversation",

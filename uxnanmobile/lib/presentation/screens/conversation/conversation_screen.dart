@@ -5,7 +5,6 @@ import 'package:uxnan/domain/entities/agent_model.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/enums/agent_id.dart';
 import 'package:uxnan/domain/enums/approval_mode.dart';
-import 'package:uxnan/domain/enums/connection_phase.dart';
 import 'package:uxnan/domain/enums/message_role.dart';
 import 'package:uxnan/domain/enums/thread_activity.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
@@ -13,17 +12,22 @@ import 'package:uxnan/domain/value_objects/turn_timeline_snapshot.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_bar.dart';
+import 'package:uxnan/presentation/screens/conversation/composer/turn_tools_sheet.dart';
 import 'package:uxnan/presentation/screens/conversation/git/git_screen.dart';
 import 'package:uxnan/presentation/screens/conversation/messages/message_bubble.dart';
 import 'package:uxnan/presentation/screens/conversation/session_environment.dart';
-import 'package:uxnan/presentation/screens/conversation/support/approval_mode_sheet.dart';
 import 'package:uxnan/presentation/screens/conversation/support/model_picker_sheet.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/agent_visuals.dart';
+import 'package:uxnan/presentation/widgets/icon_surface.dart';
+import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 
-/// The active conversation: a thread title with connection status, the
-/// streaming timeline, and the composer (spec 02a §5.6.1).
+/// The active conversation: a Neural Expressive layout — a transparent top bar
+/// (back · model-picker pill · context · git · status · menu) over the
+/// streaming timeline, with a floating composer pill and a unified "+" turn-
+/// tools sheet (spec 02a §5.6.1).
 class ConversationScreen extends ConsumerStatefulWidget {
   /// Creates a [ConversationScreen] for [threadId].
   const ConversationScreen({required this.threadId, super.key});
@@ -40,9 +44,6 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   // FOR-DEV: there is no bridge RPC for the approval/access mode yet, so it is
   // a local per-thread setting (no sampled default — see SessionEnvironment).
   ApprovalMode _approvalMode = ApprovalMode.approveForMe;
-  // Whether the run-option + approval strip above the composer is expanded.
-  // Toggled from the composer's options button.
-  bool _optionsVisible = true;
   final ScrollController _scroll = ScrollController();
   String? _gitCwd;
   // Set when the user sends a message and the "scroll to latest on send"
@@ -117,16 +118,26 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     );
   }
 
-  /// Opens the git actions sheet (branch state, changed files, commit/push) for
-  /// the thread's workspace. Reached from both the branch chip and the
-  /// commit/push action in the app bar.
+  /// Opens the git actions screen (branch state, changed files, commit/push)
+  /// for the thread's workspace.
   void _openGit(String? cwd) =>
       GitScreen.push(context, cwd: cwd, threadId: widget.threadId);
 
-  /// Opens the access/approval-mode picker (a small single-select bottom sheet).
-  Future<void> _editApprovalMode() async {
-    final mode = await ApprovalModeSheet.show(context, _approvalMode);
-    if (mode != null && mounted) setState(() => _approvalMode = mode);
+  /// Opens the unified turn-tools sheet (attach + run-option knobs + approval).
+  void _openTurnTools(
+    List<AgentModelOption> runOptions, {
+    required bool showAttach,
+    required bool showApproval,
+  }) {
+    TurnToolsSheet.show(
+      context,
+      threadId: widget.threadId,
+      showAttach: showAttach,
+      runOptions: runOptions,
+      showApproval: showApproval,
+      approvalMode: _approvalMode,
+      onApprovalChanged: (mode) => setState(() => _approvalMode = mode),
+    );
   }
 
   /// Copies the full thread id so the same conversation can be resumed from the
@@ -225,16 +236,17 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
     final timelineAsync = ref.watch(activeTimelineProvider);
-    final phase = ref.watch(connectionPhaseProvider).value ??
-        ConnectionPhase.disconnected;
     final thread = ref.watch(threadByIdProvider(widget.threadId));
     // This thread lives on a specific PC; live actions (send, git) only work
     // when we actually hold that PC's channel — never a different connected PC.
     final connectedId = ref.watch(connectedDeviceProvider).value?.macDeviceId;
     final connectedHere = connectedId != null &&
         (thread?.deviceId == null || thread!.deviceId == connectedId);
-    final effectivePhase = connectedHere ? phase : ConnectionPhase.disconnected;
+    final caps = thread != null
+        ? ref.watch(agentCapabilitiesProvider(thread.agentId))
+        : null;
     // The active agent's sign-in status on the PC (only meaningful while we
     // hold this thread's channel). `.value` is null while offline or on an
     // older bridge, so a missing status simply shows no banner.
@@ -248,33 +260,30 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     final gitBranch = ref.watch(gitRepoStateProvider).value?.branch;
     final resolvedModel = ref.watch(resolvedModelProvider(widget.threadId));
     final usage = ref.watch(contextUsageForProvider(widget.threadId));
-    // Live activity of this thread's turn (running/error), so the header shows
-    // "Responding…" while we wait for the agent — even before the first delta.
+    // Live activity of this thread's turn (running/error), so the bar shows the
+    // wavy "responding" line while we wait for the agent.
     final activity = ref.watch(threadActivityForProvider(widget.threadId));
     final environment = _buildEnvironment(
       thread,
       gitBranch,
       usage,
-      showContext: thread != null &&
-          ref
-              .watch(agentCapabilitiesProvider(thread.agentId))
-              .reportsContextUsage,
+      showContext: caps?.reportsContextUsage ?? false,
     );
     final cwd = thread?.cwd;
     final snapshot = timelineAsync.value;
     // Aggregated edits of the most recent assistant turn that changed files,
     // for the green/red strip just above the composer.
     final lastEdits = _lastTurnEdits(snapshot);
-    // Center the content within a max width on wide screens (tablets).
     final contentInset = _horizontalInset(MediaQuery.sizeOf(context).width);
+    final running = connectedHere && activity == ThreadActivity.running;
 
-    // What the collapsible options strip above the composer holds: the
-    // data-driven run-option knobs and/or the approval-mode control. The
-    // composer's toggle is shown only when there is at least one of them.
+    // The unified "+" turn-tools sheet holds: attach (images-capable agents),
+    // the data-driven run-option knobs, and the approval mode (tool-gating
+    // agents). The "+" is shown only when there's at least one of them.
+    final showAttach = caps?.images ?? false;
     final showRunOptions = connectedHere && runOptions.isNotEmpty;
-    final showApproval = thread != null &&
-        ref.watch(agentCapabilitiesProvider(thread.agentId)).approvals;
-    final hasOptions = showRunOptions || showApproval;
+    final showApproval = caps?.approvals ?? false;
+    final hasTurnTools = showAttach || showRunOptions || showApproval;
 
     // Resolve git state for the real workspace once the thread's cwd is known.
     if (connectedHere) _refreshGitFor(cwd);
@@ -289,164 +298,157 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
       }
     });
 
+    final topInset = NeTopBar.preferredHeight(context);
+
     return Scaffold(
-      body: Column(
+      body: Stack(
         children: [
-          Expanded(
-            // Tapping the message area dismisses the keyboard (unfocus the
-            // composer); dragging still scrolls.
-            child: GestureDetector(
-              behavior: HitTestBehavior.translucent,
-              onTap: () => FocusScope.of(context).unfocus(),
-              child: CustomScrollView(
-                controller: _scroll,
-                physics: const BouncingScrollPhysics(
-                  parent: AlwaysScrollableScrollPhysics(),
+          Column(
+            children: [
+              Expanded(
+                child: Stack(
+                  children: [
+                    // Tapping the message area dismisses the keyboard (unfocus
+                    // the composer); dragging still scrolls.
+                    GestureDetector(
+                      behavior: HitTestBehavior.translucent,
+                      onTap: () => FocusScope.of(context).unfocus(),
+                      child: CustomScrollView(
+                        controller: _scroll,
+                        physics: const BouncingScrollPhysics(
+                          parent: AlwaysScrollableScrollPhysics(),
+                        ),
+                        slivers: [
+                          // Spacer so the first content sits below the
+                          // transparent top bar (it overlays the scroll).
+                          SliverToBoxAdapter(child: SizedBox(height: topInset)),
+                          if (snapshot == null)
+                            const SliverFillRemaining(
+                              child: Center(child: CircularProgressIndicator()),
+                            )
+                          else if (snapshot.messages.isEmpty)
+                            const SliverFillRemaining(
+                              hasScrollBody: false,
+                              child: _EmptyState(),
+                            )
+                          else
+                            SliverPadding(
+                              padding: EdgeInsets.fromLTRB(
+                                contentInset,
+                                UxnanSpacing.sm,
+                                contentInset,
+                                UxnanSpacing.lg,
+                              ),
+                              sliver: SliverList.builder(
+                                itemCount: snapshot.messages.length,
+                                itemBuilder: (context, index) => MessageBubble(
+                                  message: snapshot.messages[index],
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    // Bottom scroll veil mirroring the top bar's: the last
+                    // messages fade into the surface just above the composer.
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      child: IgnorePointer(
+                        child: Container(
+                          height: UxnanSpacing.xl,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                colors.surface.withValues(alpha: 0),
+                                colors.surface,
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                slivers: [
-                  // Quick-return large app bar: NOT pinned, so it scrolls
-                  // fully away with the content for a clean reading surface;
-                  // `floating` (without `snap`) brings it back proportionally
-                  // as the user scrolls up, instead of snapping the tall
-                  // header open.
-                  SliverAppBar.large(
-                    floating: true,
-                    // Single-line title (the thread title only) so this bar's
-                    // title sits at the same level and size as the other
-                    // .large bars (devices, threads, archived). The live
-                    // connection / "Responding…" state moved to a compact
-                    // indicator in the actions (no extra height).
-                    title: Text(
-                      thread?.title ?? l10n.conversationTitle,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    actions: [
-                      _StatusIndicator(
-                        phase: effectivePhase,
-                        running: activity == ThreadActivity.running,
-                      ),
-                      // One git affordance (was a redundant branch chip + an
-                      // upload button): an IconButton — the M3-correct app-bar
-                      // action — opens the git sheet; branch in its tooltip.
-                      IconButton(
-                        tooltip: gitBranch != null
-                            ? '${l10n.environmentGit} · $gitBranch'
-                            : l10n.environmentCommitOrPush,
-                        icon: const Icon(Icons.commit_rounded),
-                        onPressed: cwd != null ? () => _openGit(cwd) : null,
-                      ),
-                      _ConversationMenu(
-                        onCopyId: _copyThreadId,
-                        onRename: _renameThread,
-                      ),
-                      const SizedBox(width: UxnanSpacing.xs),
-                    ],
+              ),
+              // Sign-in warning: the agent isn't logged in on this PC, so
+              // turns won't run until the user signs into its CLI there. Kept
+              // above the composer (not in the scrolling list) so it stays
+              // visible.
+              if (requiresLogin && thread != null)
+                _Centered(child: _LoginRequiredBanner(agentId: thread.agentId)),
+              if (lastEdits != null || environment.showContext)
+                _Centered(
+                  child: _ComposerInfoBar(
+                    edits: lastEdits,
+                    showContext: environment.showContext,
+                    hasContext: environment.hasContext,
+                    percent: environment.contextPercent,
+                    tokenLabel: environment.contextTokensLabel,
                   ),
-                  if (snapshot == null)
-                    const SliverFillRemaining(
-                      child: Center(child: CircularProgressIndicator()),
-                    )
-                  else if (snapshot.messages.isEmpty)
-                    const SliverFillRemaining(
-                      hasScrollBody: false,
-                      child: _EmptyState(),
-                    )
-                  else
-                    SliverPadding(
-                      padding: EdgeInsets.fromLTRB(
-                        contentInset,
-                        UxnanSpacing.lg,
-                        contentInset,
-                        UxnanSpacing.lg,
-                      ),
-                      sliver: SliverList.builder(
-                        itemCount: snapshot.messages.length,
-                        itemBuilder: (context, index) =>
-                            MessageBubble(message: snapshot.messages[index]),
-                      ),
-                    ),
-                ],
+                ),
+              ComposerBar(
+                enabled: connectedHere,
+                // While the agent is producing a turn, Send becomes Stop —
+                // cancels the turn (without closing the thread).
+                running: running,
+                onStop: () =>
+                    ref.read(threadManagerProvider).cancelTurn(widget.threadId),
+                onPlus: hasTurnTools
+                    ? () => _openTurnTools(
+                          runOptions,
+                          showAttach: showAttach,
+                          showApproval: showApproval,
+                        )
+                    : null,
+                onSend: (text) {
+                  // Honor the scroll-to-latest-on-send setting: arm a forced
+                  // scroll so the user sees their message even if scrolled up.
+                  if (ref.read(scrollToBottomOnSendProvider)) {
+                    _forceScrollOnSend = true;
+                  }
+                  final options =
+                      ref.read(threadRunOptionsProvider(widget.threadId));
+                  ref
+                      .read(threadManagerProvider)
+                      .sendUserMessage(widget.threadId, text, options: options);
+                },
               ),
-            ),
+            ],
           ),
-          // Sign-in warning: the agent on this PC is not logged in, so turns
-          // won't run until the user signs into its CLI on the PC. Kept above
-          // the composer (not in the scrolling list) so it stays visible, and
-          // outside the collapsible strip (it's not dismissible).
-          if (requiresLogin && thread != null)
-            _Centered(child: _LoginRequiredBanner(agentId: thread.agentId)),
-          // Collapsible options strip: the per-model run-option knobs
-          // (reasoning effort, …) the bridge advertises plus the approval mode
-          // (for agents that gate tools). One container with consistent
-          // vertical rhythm so spacing reads the same whether one or both
-          // controls show; AnimatedSize animates the show/hide driven by the
-          // composer toggle.
-          if (hasOptions)
-            _Centered(
-              child: AnimatedSize(
-                duration: const Duration(milliseconds: 180),
-                curve: Curves.easeOutCubic,
-                alignment: Alignment.bottomCenter,
-                child: _optionsVisible
-                    ? Padding(
-                        padding: const EdgeInsets.fromLTRB(
-                          UxnanSpacing.lg,
-                          UxnanSpacing.sm,
-                          UxnanSpacing.lg,
-                          UxnanSpacing.sm,
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (showRunOptions)
-                              _RunOptionsBar(
-                                threadId: widget.threadId,
-                                options: runOptions,
-                              ),
-                            if (showRunOptions && showApproval)
-                              const SizedBox(height: UxnanSpacing.xs),
-                            if (showApproval)
-                              _ApprovalBar(
-                                mode: _approvalMode,
-                                onTap: _editApprovalMode,
-                              ),
-                          ],
-                        ),
-                      )
-                    : const SizedBox(width: double.infinity),
+          // Transparent NE top bar overlaid above the scrolling content.
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: NeTopBar(
+              leading: IconSurface(
+                icon: Icons.arrow_back_rounded,
+                tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+                onPressed: () => Navigator.of(context).maybePop(),
               ),
+              title: _ModelPill(
+                model: environment.modelName,
+                resolvedModel: resolvedModel,
+                onTap: thread != null ? () => _pickModel(thread) : null,
+              ),
+              actions: [
+                IconSurface(
+                  icon: Icons.commit_rounded,
+                  tooltip: gitBranch != null
+                      ? '${l10n.environmentGit} · $gitBranch'
+                      : l10n.environmentCommitOrPush,
+                  onPressed: cwd != null ? () => _openGit(cwd) : null,
+                ),
+                _ConversationMenu(
+                  onCopyId: _copyThreadId,
+                  onRename: _renameThread,
+                ),
+              ],
             ),
-          if (lastEdits != null)
-            _Centered(child: _TurnDiffStrip(edits: lastEdits)),
-          ComposerBar(
-            environment: environment,
-            resolvedModel: resolvedModel,
-            enabled: connectedHere,
-            showAttach: thread != null &&
-                ref.watch(agentCapabilitiesProvider(thread.agentId)).images,
-            showOptionsToggle: hasOptions,
-            optionsVisible: _optionsVisible,
-            onToggleOptions: () =>
-                setState(() => _optionsVisible = !_optionsVisible),
-            // While the agent is producing a turn, Send becomes Stop — cancels
-            // the turn (without closing the thread) so the user can rewrite.
-            running: connectedHere && activity == ThreadActivity.running,
-            onStop: () =>
-                ref.read(threadManagerProvider).cancelTurn(widget.threadId),
-            onModelTap: thread != null ? () => _pickModel(thread) : null,
-            onSend: (text) {
-              // Honor the scroll-to-latest-on-send setting: arm a forced scroll
-              // so the user sees their message even if they'd scrolled up.
-              if (ref.read(scrollToBottomOnSendProvider)) {
-                _forceScrollOnSend = true;
-              }
-              final options =
-                  ref.read(threadRunOptionsProvider(widget.threadId));
-              ref
-                  .read(threadManagerProvider)
-                  .sendUserMessage(widget.threadId, text, options: options);
-            },
           ),
         ],
       ),
@@ -454,9 +456,156 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   }
 }
 
+/// Model-picker pill in the top bar (Neural Expressive §4.2): a stadium-shaped
+/// `surfaceContainerHigh` chip with the active model name + chevron; tapping
+/// opens the model picker. The tooltip surfaces the resolved version.
+class _ModelPill extends StatelessWidget {
+  const _ModelPill({required this.model, this.resolvedModel, this.onTap});
+
+  final String model;
+  final String? resolvedModel;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Tooltip(
+        message: resolvedModel ?? model,
+        child: Material(
+          color: colors.surfaceContainerHigh,
+          shape: const StadiumBorder(),
+          child: InkWell(
+            customBorder: const StadiumBorder(),
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: UxnanSpacing.md,
+                vertical: UxnanSpacing.sm,
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.auto_awesome_outlined,
+                    size: 16,
+                    color: colors.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: UxnanSpacing.xs),
+                  Flexible(
+                    child: Text(
+                      model,
+                      overflow: TextOverflow.ellipsis,
+                      style: textTheme.titleSmall,
+                    ),
+                  ),
+                  Icon(
+                    Icons.arrow_drop_down_rounded,
+                    size: 18,
+                    color: colors.onSurfaceVariant,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Context-usage ring shown in the top bar for usage-reporting agents: a
+/// percent ring when the model window is known (Claude), shown at 0 until the
+/// first turn reports.
+class _ContextBadge extends StatelessWidget {
+  const _ContextBadge({required this.percent});
+  final int percent;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final color = percent >= 90
+        ? UxnanColors.error
+        : percent >= 70
+            ? UxnanColors.warning
+            : UxnanColors.success;
+    return Tooltip(
+      message: 'Context $percent%',
+      child: Container(
+        width: 34,
+        height: 34,
+        decoration: BoxDecoration(
+          color: colors.surfaceContainerHigh,
+          shape: BoxShape.circle,
+        ),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(
+                value: percent / 100,
+                strokeWidth: 2.5,
+                backgroundColor: color.withValues(alpha: 0.2),
+                valueColor: AlwaysStoppedAnimation<Color>(color),
+              ),
+            ),
+            Text('$percent', style: UxnanTypography.codeSmall),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Raw token-count chip, shown in the top bar when the context window is
+/// unknown (Codex) so usage is still visible without a percentage.
+class _TokenChip extends StatelessWidget {
+  const _TokenChip({required this.label});
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Tooltip(
+      message: 'Context: $label tokens',
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: UxnanSpacing.sm,
+          vertical: 4,
+        ),
+        decoration: BoxDecoration(
+          color: colors.surfaceContainerHigh,
+          borderRadius: const BorderRadius.all(UxnanRadius.full),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.donut_large_outlined,
+              size: 13,
+              color: colors.onSurfaceVariant,
+            ),
+            const SizedBox(width: UxnanSpacing.xs),
+            Text(
+              label,
+              style: UxnanTypography.codeSmall.copyWith(
+                color: colors.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// Centers its [child] within [UxnanSpacing.maxContentWidth] so the above-
-/// composer chrome (banner, options, diff strip) lines up with the centered
-/// message column on wide screens.
+/// composer chrome (banner, diff strip) lines up with the centered message
+/// column on wide screens.
 class _Centered extends StatelessWidget {
   const _Centered({required this.child});
   final Widget child;
@@ -496,21 +645,28 @@ _TurnEdits? _lastTurnEdits(TurnTimelineSnapshot? snapshot) {
   return null;
 }
 
-/// A compact green/red summary of the latest agent turn's edits, shown just
-/// above the composer (`+a −d · N files`).
-class _TurnDiffStrip extends StatelessWidget {
-  const _TurnDiffStrip({required this.edits});
+/// A compact, right-aligned info row just above the composer: the latest turn's
+/// numeric diff (`+a −d`) on the left and the context-usage indicator on the
+/// right, both on the same neutral surface as the top-bar Icon Surfaces. Purely
+/// informative — the Git screen carries the detail.
+class _ComposerInfoBar extends StatelessWidget {
+  const _ComposerInfoBar({
+    required this.showContext,
+    required this.hasContext,
+    required this.percent,
+    this.edits,
+    this.tokenLabel,
+  });
 
-  final _TurnEdits edits;
+  final _TurnEdits? edits;
+  final bool showContext;
+  final bool hasContext;
+  final int percent;
+  final String? tokenLabel;
 
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    final colors = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-    final muted =
-        textTheme.labelSmall?.copyWith(color: colors.onSurfaceVariant);
-
+    final edits = this.edits;
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         UxnanSpacing.lg,
@@ -519,28 +675,58 @@ class _TurnDiffStrip extends StatelessWidget {
         0,
       ),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
         children: [
-          Icon(
-            Icons.difference_outlined,
-            size: 14,
-            color: colors.onSurfaceVariant,
+          if (edits != null)
+            _DiffNumericPill(
+              additions: edits.additions,
+              deletions: edits.deletions,
+            ),
+          if (edits != null && showContext)
+            const SizedBox(width: UxnanSpacing.xs),
+          if (showContext)
+            hasContext
+                ? _ContextBadge(percent: percent)
+                : _TokenChip(label: tokenLabel ?? '0'),
+        ],
+      ),
+    );
+  }
+}
+
+/// A numeric-only `+a −d` pill (no label/icon) on the neutral Icon-Surface tone.
+class _DiffNumericPill extends StatelessWidget {
+  const _DiffNumericPill({required this.additions, required this.deletions});
+  final int additions;
+  final int deletions;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: UxnanSpacing.sm,
+        vertical: 4,
+      ),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerHigh,
+        borderRadius: const BorderRadius.all(UxnanRadius.full),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '+$additions',
+            style:
+                UxnanTypography.codeSmall.copyWith(color: UxnanColors.gitAdded),
           ),
           const SizedBox(width: UxnanSpacing.xs),
-          Text(l10n.conversationLastEdits, style: muted),
-          const SizedBox(width: UxnanSpacing.sm),
           Text(
-            '+${edits.additions}',
-            style: textTheme.labelSmall?.copyWith(color: UxnanColors.gitAdded),
-          ),
-          const SizedBox(width: UxnanSpacing.xs),
-          Text(
-            '−${edits.deletions}',
-            style: textTheme.labelSmall?.copyWith(
+            '−$deletions',
+            style: UxnanTypography.codeSmall.copyWith(
               color: UxnanColors.gitDeleted,
             ),
           ),
-          const Spacer(),
-          Text(l10n.conversationFilesCount(edits.files), style: muted),
         ],
       ),
     );
@@ -585,72 +771,9 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-/// Compact live-status indicator in the app-bar actions: a small spinner while
-/// the agent is producing a turn ("Responding…"), otherwise a colour-coded
-/// connection dot. Kept out of the title so this bar's title aligns with the
-/// other `.large` bars; the textual state rides in the tooltip.
-class _StatusIndicator extends StatelessWidget {
-  const _StatusIndicator({required this.phase, required this.running});
-
-  final ConnectionPhase phase;
-  final bool running;
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    final colors = Theme.of(context).colorScheme;
-
-    if (running) {
-      return Tooltip(
-        message: l10n.threadResponding,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: UxnanSpacing.sm),
-          child: SizedBox(
-            width: 14,
-            height: 14,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              color: colors.primary,
-            ),
-          ),
-        ),
-      );
-    }
-
-    final (label, color) = switch (phase) {
-      ConnectionPhase.connected => (
-          l10n.connectionConnected,
-          UxnanColors.connected,
-        ),
-      ConnectionPhase.connecting ||
-      ConnectionPhase.handshaking ||
-      ConnectionPhase.syncing =>
-        (l10n.connectionConnecting, UxnanColors.connecting),
-      ConnectionPhase.reconnecting => (
-          l10n.connectionReconnecting,
-          UxnanColors.connecting,
-        ),
-      ConnectionPhase.disconnected || ConnectionPhase.error => (
-          l10n.connectionDisconnected,
-          UxnanColors.disconnected
-        ),
-    };
-
-    return Tooltip(
-      message: label,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: UxnanSpacing.sm),
-        child: Container(
-          width: 8,
-          height: 8,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-        ),
-      ),
-    );
-  }
-}
-
-/// App-bar overflow for low-frequency, thread-level actions (copy id).
+/// App-bar overflow for low-frequency, thread-level actions (rename, copy id).
+/// Styled as an Icon Surface (circular neutral surface) to match the git action
+/// beside it; the connection state lives on the earlier screens, not here.
 class _ConversationMenu extends StatelessWidget {
   const _ConversationMenu({required this.onCopyId, required this.onRename});
 
@@ -660,8 +783,30 @@ class _ConversationMenu extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
     return PopupMenuButton<void>(
-      icon: const Icon(Icons.more_vert_rounded),
+      tooltip: l10n.threadsMore,
+      constraints: const BoxConstraints(minWidth: 220),
+      position: PopupMenuPosition.under,
+      child: SizedBox(
+        width: 48,
+        height: 48,
+        child: Center(
+          child: Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: colors.surfaceContainerHigh,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.more_vert_rounded,
+              size: 20,
+              color: colors.onSurfaceVariant,
+            ),
+          ),
+        ),
+      ),
       itemBuilder: (context) => [
         PopupMenuItem<void>(
           onTap: onRename,
@@ -728,8 +873,6 @@ class _LoginRequiredBanner extends ConsumerWidget {
             UxnanSpacing.sm,
             UxnanSpacing.sm,
           ),
-          // Icon on the left (vertically centered — Row's default); the right
-          // section stacks title → body → action, all left-aligned.
           child: Row(
             children: [
               if (loginInProgress)
@@ -762,8 +905,6 @@ class _LoginRequiredBanner extends ConsumerWidget {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
-                    // Body line then the manual re-check button, stacked under
-                    // the title. Hidden while a PC-side login is running.
                     if (!loginInProgress) ...[
                       const SizedBox(height: 2),
                       Text(
@@ -780,7 +921,6 @@ class _LoginRequiredBanner extends ConsumerWidget {
                         style: TextButton.styleFrom(
                           foregroundColor: colors.onErrorContainer,
                           visualDensity: VisualDensity.compact,
-                          // Flush-left label, aligned with the title/body above.
                           padding: const EdgeInsets.fromLTRB(
                             UxnanSpacing.sm,
                             UxnanSpacing.xs,
@@ -807,168 +947,6 @@ class _LoginRequiredBanner extends ConsumerWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-/// A data-driven row of run-option "knobs" the bridge advertises for the active
-/// model (reasoning effort, etc.). Generic: enum knobs render as a value menu,
-/// toggles as a filter chip; unknown kinds are ignored (forward-compatible), so
-/// new knobs need no app change. Choices persist per thread and ride on
-/// `turn/send`.
-class _RunOptionsBar extends ConsumerWidget {
-  const _RunOptionsBar({required this.threadId, required this.options});
-
-  final String threadId;
-  final List<AgentModelOption> options;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final selections = ref.watch(threadRunOptionsProvider(threadId));
-    final notifier = ref.read(runOptionSelectionsProvider.notifier);
-    final visible =
-        options.where((o) => o.kind == 'enum' || o.kind == 'toggle').toList();
-    if (visible.isEmpty) return const SizedBox.shrink();
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Wrap(
-        spacing: UxnanSpacing.xs,
-        runSpacing: UxnanSpacing.xs,
-        children: [
-          for (final option in visible)
-            if (option.kind == 'toggle')
-              FilterChip(
-                label: Text(option.label),
-                selected: selections[option.key] == true,
-                visualDensity: VisualDensity.compact,
-                onSelected: (value) =>
-                    notifier.set(threadId, option.key, value),
-              )
-            else
-              _EnumOptionChip(
-                threadId: threadId,
-                option: option,
-                selected: selections[option.key],
-              ),
-        ],
-      ),
-    );
-  }
-}
-
-/// An enum run-option knob: a chip showing `label: value` that opens a menu of
-/// the advertised values plus an "Auto" entry (clears the choice → default).
-class _EnumOptionChip extends ConsumerWidget {
-  const _EnumOptionChip({
-    required this.threadId,
-    required this.option,
-    required this.selected,
-  });
-
-  final String threadId;
-  final AgentModelOption option;
-  final Object? selected;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final l10n = AppLocalizations.of(context);
-    final colors = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-    final notifier = ref.read(runOptionSelectionsProvider.notifier);
-
-    var currentLabel = l10n.runOptionAuto;
-    for (final value in option.values) {
-      if (value.value == selected) {
-        currentLabel = value.label;
-        break;
-      }
-    }
-
-    return PopupMenuButton<String?>(
-      tooltip: option.label,
-      onSelected: (value) => value == null
-          ? notifier.clear(threadId, option.key)
-          : notifier.set(threadId, option.key, value),
-      itemBuilder: (context) => [
-        PopupMenuItem<String?>(child: Text(l10n.runOptionAuto)),
-        for (final value in option.values)
-          PopupMenuItem<String?>(value: value.value, child: Text(value.label)),
-      ],
-      child: Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: UxnanSpacing.sm,
-          vertical: 6,
-        ),
-        decoration: BoxDecoration(
-          color: colors.surfaceContainerHigh,
-          borderRadius: const BorderRadius.all(UxnanRadius.full),
-          border: Border.all(color: colors.outlineVariant),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.tune_rounded, size: 14, color: colors.onSurfaceVariant),
-            const SizedBox(width: UxnanSpacing.xs),
-            Text(
-              '${option.label}: $currentLabel',
-              style: textTheme.labelMedium,
-            ),
-            Icon(
-              Icons.arrow_drop_down_rounded,
-              size: 16,
-              color: colors.onSurfaceVariant,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Access/approval-mode control above the composer: an M3 [ActionChip] that
-/// shows the current mode and turns **alert-coloured on full access**; tapping
-/// opens the mode picker.
-class _ApprovalBar extends StatelessWidget {
-  const _ApprovalBar({required this.mode, required this.onTap});
-
-  final ApprovalMode mode;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    final l10n = AppLocalizations.of(context);
-    final isFull = mode == ApprovalMode.fullAccess;
-    final (label, icon) = switch (mode) {
-      ApprovalMode.requestApproval => (
-          l10n.approvalRequestTitle,
-          Icons.shield_outlined,
-        ),
-      ApprovalMode.approveForMe => (
-          l10n.approvalAutoTitle,
-          Icons.verified_user_outlined,
-        ),
-      ApprovalMode.fullAccess => (
-          l10n.approvalFullTitle,
-          Icons.lock_open_rounded,
-        ),
-    };
-
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: ActionChip(
-        avatar: Icon(
-          icon,
-          size: 18,
-          color: isFull ? colors.onErrorContainer : colors.onSurfaceVariant,
-        ),
-        label: Text(label),
-        labelStyle: isFull ? TextStyle(color: colors.onErrorContainer) : null,
-        backgroundColor: isFull ? colors.errorContainer : null,
-        side: isFull ? BorderSide(color: colors.error) : null,
-        visualDensity: VisualDensity.compact,
-        onPressed: onTap,
       ),
     );
   }

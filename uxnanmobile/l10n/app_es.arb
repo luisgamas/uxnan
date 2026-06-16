@@ -124,6 +124,7 @@
   "composerVoiceUnavailable": "La entrada de voz no está disponible en este dispositivo.",
   "composerOptionsShow": "Mostrar opciones",
   "composerOptionsHide": "Ocultar opciones",
+  "composerTools": "Opciones del turno",
 
   "newThreadAction": "Nueva conversación",
   "newThreadTitle": "Nueva conversación",

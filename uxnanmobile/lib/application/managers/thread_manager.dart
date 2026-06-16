@@ -581,7 +581,7 @@ class ThreadManager {
       case MessageDeltaEvent(:final turnId, :final delta):
         final live = _live[threadId];
         if (live != null && live.turnId == turnId) {
-          live.text += delta;
+          live.appendText(delta);
           if (threadId == _activeThreadId) _rebuildActiveTimeline();
         }
       case ThinkingDeltaEvent(:final turnId, :final delta):
@@ -593,7 +593,7 @@ class ThreadManager {
       case ContentBlockEvent(:final turnId, :final content):
         final live = _live[threadId];
         if (live != null && live.turnId == turnId) {
-          live.blocks.add(content);
+          live.segments.add(content);
           if (threadId == _activeThreadId) _rebuildActiveTimeline();
         }
       case TurnCompletedEvent(
@@ -636,10 +636,9 @@ class ThreadManager {
       threadId: threadId,
       turnId: turnId,
       role: MessageRole.assistant,
-      contents: _assistantContents(
-        live.text,
+      contents: _assistantContentsOrdered(
         live.thinking,
-        live.blocks,
+        live.segments,
         streaming: false,
       ),
       deliveryState:
@@ -669,10 +668,9 @@ class ThreadManager {
         threadId: threadId,
         turnId: live.turnId,
         role: MessageRole.assistant,
-        contents: _assistantContents(
-          live.text,
+        contents: _assistantContentsOrdered(
           live.thinking,
-          live.blocks,
+          live.segments,
           streaming: true,
         ),
         deliveryState: MessageDeliveryState.delivered,
@@ -730,9 +728,16 @@ class ThreadManager {
   }
 
   /// Builds an assistant message's content blocks from its answer [text],
-  /// optional [thinking] and any structured [blocks] (commands/diffs/tools), in
-  /// render order. AssistantTurnView re-groups blocks into the Work log /
+  /// optional [thinking] and any structured [blocks] (commands/diffs/tools).
+  /// Used for the **history** path (`turn/list`), which carries the full text
+  /// and the blocks separately with no interleave position — so blocks sit
+  /// before the text. AssistantTurnView re-groups blocks into the Work log /
   /// Changed files sections regardless of their position here.
+  // FOR-DEV: a turn loaded purely from history (never streamed live on this
+  // device) can't interleave the work log with the response because the wire
+  // `blocks` array carries no per-block text offset. Live/persisted turns do
+  // interleave (see `_assistantContentsOrdered`); aligning history would need
+  // the bridge to emit blocks and text in one ordered stream.
   static List<MessageContent> _assistantContents(
     String text,
     String thinking,
@@ -745,6 +750,43 @@ class ThreadManager {
       ...blocks,
       TextContent(text, isStreaming: streaming),
     ];
+  }
+
+  /// Builds an assistant message's contents from the live turn's ordered
+  /// [segments] (text runs + blocks as they streamed), keeping the work log
+  /// **interleaved** with the response. The last text run carries the
+  /// [streaming] flag (so `Message.isStreaming` stays true); when streaming
+  /// with no text yet, an empty streaming run is appended to keep the activity
+  /// cue alive. The text runs concatenate to the same full answer the history
+  /// reports, so a later `turn/list` re-sync reconciles without clobbering the
+  /// interleaved order.
+  static List<MessageContent> _assistantContentsOrdered(
+    String thinking,
+    List<MessageContent> segments, {
+    required bool streaming,
+  }) {
+    var lastText = -1;
+    for (var i = 0; i < segments.length; i++) {
+      if (segments[i] is TextContent) lastText = i;
+    }
+    final out = <MessageContent>[
+      if (thinking.isNotEmpty)
+        ThinkingContent(thinking, isStreaming: streaming),
+    ];
+    for (var i = 0; i < segments.length; i++) {
+      final seg = segments[i];
+      if (seg is TextContent) {
+        out.add(
+          TextContent(seg.text, isStreaming: streaming && i == lastText),
+        );
+      } else {
+        out.add(seg);
+      }
+    }
+    if (streaming && lastText == -1) {
+      out.add(const TextContent('', isStreaming: true));
+    }
+    return out;
   }
 
   int _nextOrderIndex() {
@@ -807,7 +849,22 @@ class _LiveTurn {
 
   final String turnId;
   final DateTime startedAt;
-  String text = '';
   String thinking = '';
-  final List<MessageContent> blocks = [];
+
+  /// Text runs and structured blocks (commands/diffs/tools) in the exact order
+  /// they streamed in, so the rendered turn **interleaves** the work log with
+  /// the response instead of grouping all activity above the text.
+  final List<MessageContent> segments = [];
+
+  /// Appends a text delta, extending the current trailing text run or starting
+  /// a new one (a run is broken whenever a block lands between text).
+  void appendText(String delta) {
+    if (delta.isEmpty) return;
+    final last = segments.isNotEmpty ? segments.last : null;
+    if (last is TextContent) {
+      segments[segments.length - 1] = TextContent(last.text + delta);
+    } else {
+      segments.add(TextContent(delta));
+    }
+  }
 }

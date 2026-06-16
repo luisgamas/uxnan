@@ -19,6 +19,7 @@ import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
+import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 
 /// Renders a single [MessageContent] block. The enclosing bubble provides the
 /// background; this widget renders the block's body.
@@ -749,15 +750,19 @@ class AssistantTurnView extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Neural Expressive activity cue: a morphing polygon at the very
+          // start of the response while the agent is still producing it.
+          if (message.isStreaming) ...[
+            // Not `const`: PolygonLoader's assert reads `shapes.length`, which
+            // isn't a valid constant expression.
+            PolygonLoader(size: 20),
+            const SizedBox(height: UxnanSpacing.sm),
+          ],
           if (showThinking && thinking.isNotEmpty) ...[
             _ThinkingSection(text: thinking.toString()),
             const SizedBox(height: UxnanSpacing.sm),
           ],
           ...segments,
-          if (message.isStreaming) ...[
-            const SizedBox(height: UxnanSpacing.sm),
-            const _StreamingDots(),
-          ],
           if (diffs.isNotEmpty) ...[
             const SizedBox(height: UxnanSpacing.sm),
             _ChangedFilesSection(diffs: diffs),
@@ -830,10 +835,10 @@ class _ThinkingSectionState extends State<_ThinkingSection> {
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     return DecoratedBox(
+      // Borderless, light outline — same container as the new Work log.
       decoration: BoxDecoration(
-        color: colors.surfaceContainerHighest,
         borderRadius: const BorderRadius.all(UxnanRadius.lg),
-        border: Border.all(color: colors.outline),
+        border: Border.all(color: colors.outlineVariant),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -847,11 +852,16 @@ class _ThinkingSectionState extends State<_ThinkingSection> {
                 children: [
                   Icon(
                     Icons.psychology_outlined,
-                    size: 16,
+                    size: 14,
                     color: colors.onSurfaceVariant,
                   ),
                   const SizedBox(width: UxnanSpacing.sm),
-                  Text(l10n.conversationThinking, style: textTheme.labelMedium),
+                  Text(
+                    l10n.conversationThinking,
+                    style: textTheme.labelSmall?.copyWith(
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
                   const Spacer(),
                   Icon(
                     _expanded
@@ -886,7 +896,11 @@ class _ThinkingSectionState extends State<_ThinkingSection> {
   }
 }
 
-/// A collapsible "Work log (N)" of the commands and tools an agent turn ran.
+/// A "Work log" of the commands/tools an agent turn ran, in a **light,
+/// borderless** container (no fill, just a hairline outline). The first few
+/// entries are always visible — so the activity reads inline, in order, under
+/// the message that triggered it — and a "+N" toggle reveals the rest when
+/// there are more.
 class _WorkLogSection extends StatefulWidget {
   const _WorkLogSection({required this.items});
 
@@ -900,37 +914,64 @@ class _WorkLogSection extends StatefulWidget {
 class _WorkLogSectionState extends State<_WorkLogSection> {
   bool _expanded = false;
 
+  /// How many entries show before the "+N" toggle appears.
+  static const int _preview = 3;
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
+    final items = widget.items;
+    final shown = _expanded ? items : items.take(_preview).toList();
+    final extra = items.length - shown.length;
+
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: colors.surfaceContainerHighest,
         borderRadius: const BorderRadius.all(UxnanRadius.lg),
-        border: Border.all(color: colors.outline),
+        border: Border.all(color: colors.outlineVariant),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Tappable header — always expandable, so even a single command can
+          // be opened to reveal its full text and output.
           InkWell(
             borderRadius: const BorderRadius.all(UxnanRadius.lg),
             onTap: () => setState(() => _expanded = !_expanded),
             child: Padding(
-              padding: const EdgeInsets.all(UxnanSpacing.md),
+              padding: const EdgeInsets.fromLTRB(
+                UxnanSpacing.md,
+                UxnanSpacing.md,
+                UxnanSpacing.md,
+                UxnanSpacing.sm,
+              ),
               child: Row(
                 children: [
                   Icon(
                     Icons.terminal_rounded,
-                    size: 16,
+                    size: 14,
                     color: colors.onSurfaceVariant,
                   ),
                   const SizedBox(width: UxnanSpacing.sm),
-                  Text(l10n.conversationWorkLog, style: textTheme.labelMedium),
+                  Text(
+                    l10n.conversationWorkLog,
+                    style: textTheme.labelSmall?.copyWith(
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
                   const SizedBox(width: UxnanSpacing.xs),
-                  _CountBadge(count: widget.items.length),
+                  _CountBadge(count: items.length),
                   const Spacer(),
+                  if (!_expanded && extra > 0) ...[
+                    Text(
+                      '+$extra',
+                      style: textTheme.labelSmall?.copyWith(
+                        color: colors.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(width: UxnanSpacing.xs),
+                  ],
                   Icon(
                     _expanded
                         ? Icons.expand_less_rounded
@@ -942,34 +983,38 @@ class _WorkLogSectionState extends State<_WorkLogSection> {
               ),
             ),
           ),
-          if (_expanded)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                UxnanSpacing.md,
-                0,
-                UxnanSpacing.md,
-                UxnanSpacing.sm,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  for (final item in widget.items) ...[
-                    const SizedBox(height: UxnanSpacing.sm),
-                    _WorkLogRow(item: item),
-                  ],
-                ],
-              ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              UxnanSpacing.md,
+              0,
+              UxnanSpacing.md,
+              UxnanSpacing.md,
             ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (var i = 0; i < shown.length; i++) ...[
+                  if (i > 0) const SizedBox(height: UxnanSpacing.sm),
+                  // Collapsed shows just the command (truncated); expanded
+                  // shows the full command and its output.
+                  _WorkLogRow(item: shown[i], compact: !_expanded),
+                ],
+              ],
+            ),
+          ),
         ],
       ),
     );
   }
 }
 
-/// One compact work-log entry: a command (with its output) or a tool call.
+/// One work-log entry: a command or a tool call. When [compact] (the collapsed
+/// preview) it shows just the command on a single truncated line; expanded it
+/// shows the full command and its output.
 class _WorkLogRow extends StatelessWidget {
-  const _WorkLogRow({required this.item});
+  const _WorkLogRow({required this.item, this.compact = false});
   final MessageContent item;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -987,6 +1032,7 @@ class _WorkLogRow extends StatelessWidget {
             ),
           CommandStatus.error => (Icons.error_outline, UxnanColors.error),
         };
+        final hasOutput = command.output != null && command.output!.isNotEmpty;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1002,13 +1048,14 @@ class _WorkLogRow extends StatelessWidget {
                   child: Text(
                     '\$ ${command.command}',
                     style: UxnanTypography.codeSmall,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+                    maxLines: compact ? 1 : null,
+                    overflow:
+                        compact ? TextOverflow.ellipsis : TextOverflow.clip,
                   ),
                 ),
               ],
             ),
-            if (command.output != null && command.output!.isNotEmpty)
+            if (!compact && hasOutput)
               Padding(
                 padding: const EdgeInsets.only(
                   left: UxnanSpacing.lg,
@@ -1019,8 +1066,6 @@ class _WorkLogRow extends StatelessWidget {
                   style: UxnanTypography.codeSmall.copyWith(
                     color: colors.onSurfaceVariant,
                   ),
-                  maxLines: 8,
-                  overflow: TextOverflow.ellipsis,
                 ),
               ),
           ],
@@ -1219,55 +1264,6 @@ class _CountBadge extends StatelessWidget {
         style: UxnanTypography.codeSmall.copyWith(
           color: colors.onSurfaceVariant,
         ),
-      ),
-    );
-  }
-}
-
-/// Three animated dots shown while an assistant turn is still streaming.
-class _StreamingDots extends StatefulWidget {
-  const _StreamingDots();
-
-  @override
-  State<_StreamingDots> createState() => _StreamingDotsState();
-}
-
-class _StreamingDotsState extends State<_StreamingDots>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 1100),
-  )..repeat();
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final color = Theme.of(context).colorScheme.onSurfaceVariant;
-    return SizedBox(
-      height: 8,
-      width: 34,
-      child: AnimatedBuilder(
-        animation: _controller,
-        builder: (context, _) {
-          return Row(
-            children: List<Widget>.generate(3, (i) {
-              final t = (_controller.value + i / 3) % 1.0;
-              final opacity = 0.3 + 0.7 * (t < 0.5 ? t * 2 : (1 - t) * 2);
-              return Padding(
-                padding: const EdgeInsets.only(right: 5),
-                child: Opacity(
-                  opacity: opacity,
-                  child: CircleAvatar(radius: 3, backgroundColor: color),
-                ),
-              );
-            }),
-          );
-        },
       ),
     );
   }

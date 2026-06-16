@@ -788,6 +788,12 @@ abstract class AppLocalizations {
   /// **'Hide options'**
   String get composerOptionsHide;
 
+  /// Title of the composer '+' turn-tools sheet (attach + run options + approval) and tooltip of the '+' button.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn options'**
+  String get composerTools;
+
   /// No description provided for @newThreadAction.
   ///
   /// In en, this message translates to:

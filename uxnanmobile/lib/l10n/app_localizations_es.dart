@@ -386,6 +386,9 @@ class AppLocalizationsEs extends AppLocalizations {
   String get composerOptionsHide => 'Ocultar opciones';
 
   @override
+  String get composerTools => 'Opciones del turno';
+
+  @override
   String get newThreadAction => 'Nueva conversación';
 
   @override

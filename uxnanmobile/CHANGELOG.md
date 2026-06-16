@@ -22,7 +22,60 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   if you'd scrolled up; turn it off to keep your manual scroll position on send.
   (Auto-scroll still follows the stream while you're near the bottom.)
 
+### Changed
+- **Neural Expressive UI redesign — pilot: the conversation screen.** Reworked
+  the conversation surface to the Material 3 Expressive / Neural Expressive
+  design language (see `docs/neural-expressive-design.md`), cutting the visual
+  noise the old layout accumulated **while preserving every function**:
+  - The large two-line app bar is gone. A lean **56 dp transparent top bar with
+    a scroll veil** carries only the **model-picker pill**, the git action and
+    the overflow menu — each on the neutral circular **Icon Surface** tone (the
+    overflow menu now matches the git action; the connection dot was dropped, as
+    earlier screens already show online state).
+  - **Context usage and the turn's numeric diff moved out of the chrome** to a
+    compact, right-aligned info row just above the composer: `+a −d` (numbers
+    only — the Git screen has the detail) next to the context indicator, both on
+    the same neutral surface as the Icon Surfaces.
+  - The composer is now a **fully-rounded floating pill** (matching the model
+    pill and Icon Surfaces) with only the essentials: a "+", the text field, and
+    a mic that swaps to Send (and to Stop while a turn runs). Its controls share
+    one vertical baseline; it stays editable while offline (draft now, send when
+    reconnected) — only *sending* is gated.
+  - The "+" opens a unified **turn-tools sheet** (attach + run-option knobs +
+    approval mode), replacing the always-on options strip above the composer.
+  - Agent activity now reads as a **morphing polygon loader** at the *start of
+    each streaming response* (not a bar across the top).
+  - **Floating menus are rounded and roomier** (16 dp corners, min width) — the
+    overflow menu and the run-option knob menus, plus 28 dp bottom-sheet corners.
+  - The **work log** and the **reasoning ("Thinking")** section share one light
+    **borderless** container (hairline outline, no fill). The work log shows its
+    first few **commands inline (one truncated line each)**, in order, under the
+    message that triggered them; its **header is always tappable** (even a single
+    command expands to its full text + output), with a "+N" hint when collapsed.
+    Thinking stays collapsed by default, gated to the Settings → Conversation
+    toggle.
+  - A matching **bottom scroll veil** sits above the composer (mirroring the top
+    bar): the last messages fade into the surface as they reach it.
+  - New shared building blocks for the rollout: spring-motion tokens
+    (`theme/motion.dart`), `IconSurface`, `NeTopBar`, `PolygonLoader`, and the
+    pill composer + turn-tools sheet.
+
+  This is a UI proposal pending on-device review (per the propose → review →
+  adjust → approve workflow). The remaining screens (devices, threads + the
+  navigation drawer, git, settings) follow in later increments. The context
+  meter moved out of the composer, so its two composer-level widget tests were
+  retired; all other conversation tests still pass.
+
 ### Fixed
+- **Streaming turns now truly interleave the work log with the response.** The
+  live turn buffer preserves the order text and command/diff blocks arrive in,
+  instead of accumulating all text in one string and all blocks in another and
+  rendering every command above the answer. The activity now sits under the
+  message that triggered it, in execution order. Persisted turns keep that order
+  across a `turn/list` re-sync (the split text runs reconcile to the same full
+  answer); a turn loaded purely from history can't interleave yet — the wire
+  `blocks` array carries no per-block text offset (tracked as `FOR-DEV` in
+  `thread_manager`).
 - **Agent responses no longer collapse into one block.** An assistant turn now
   renders its work logs and responses **in chronological order** (a work log
   sits just above the response it precedes) instead of stacking every work log

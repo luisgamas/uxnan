@@ -61,7 +61,16 @@ ThemeData buildUxnanTheme({Brightness brightness = Brightness.dark}) {
     bottomSheetTheme: BottomSheetThemeData(
       backgroundColor: colorScheme.surfaceContainerHigh,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+    ),
+    // Neural Expressive floating menus: rounded, on the same neutral surface as
+    // the Icon Surfaces, never the narrow squared-off default.
+    popupMenuTheme: PopupMenuThemeData(
+      color: colorScheme.surfaceContainerHigh,
+      elevation: 3,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
       ),
     ),
     textTheme: _buildTextTheme(colorScheme),

@@ -385,6 +385,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get composerOptionsHide => 'Hide options';
 
   @override
+  String get composerTools => 'Turn options';
+
+  @override
   String get newThreadAction => 'New conversation';
 
   @override

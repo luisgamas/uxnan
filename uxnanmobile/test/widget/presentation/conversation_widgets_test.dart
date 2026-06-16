@@ -18,12 +18,6 @@ import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_bar.dart';
 import 'package:uxnan/presentation/screens/conversation/messages/message_bubble.dart';
 import 'package:uxnan/presentation/screens/conversation/messages/message_content_view.dart';
-import 'package:uxnan/presentation/screens/conversation/session_environment.dart';
-
-const _environment = SessionEnvironment(
-  modelName: 'Claude Opus 4.8',
-  gitBranch: 'main',
-);
 
 Widget _wrap(Widget child) => ProviderScope(
       child: MaterialApp(
@@ -146,20 +140,16 @@ void main() {
     await tester.pumpWidget(_wrap(MessageBubble(message: message)));
     await tester.pump();
 
-    // Collapsed sections + totals + the copy action are visible.
+    // Header, totals and the copy action are visible.
     expect(find.text('Work log'), findsOneWidget);
     expect(find.text('Changed files'), findsOneWidget);
     expect(find.text('+10'), findsOneWidget);
     expect(find.text('−2'), findsOneWidget);
     expect(find.text('Copy response'), findsOneWidget);
-    // Collapsed: the command and filename aren't shown yet.
-    expect(find.textContaining('flutter test'), findsNothing);
-    expect(find.text('lib/a.dart'), findsNothing);
-
-    // Expanding the work log reveals the command.
-    await tester.tap(find.text('Work log'));
-    await tester.pumpAndSettle();
+    // The work log shows its commands inline (≤ preview), so the single command
+    // is already visible; the changed-files section is still collapsed.
     expect(find.textContaining('flutter test'), findsOneWidget);
+    expect(find.text('lib/a.dart'), findsNothing);
 
     // Expanding changed files reveals the file row.
     await tester.tap(find.text('Changed files'));
@@ -290,14 +280,13 @@ void main() {
     await tester.pumpWidget(
       _wrap(
         ComposerBar(
-          environment: _environment,
           onSend: (_) {},
           running: true,
           onStop: () => stops++,
         ),
       ),
     );
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     expect(find.byIcon(Icons.stop_rounded), findsOneWidget);
     expect(find.byIcon(Icons.arrow_upward_rounded), findsNothing);
@@ -313,14 +302,13 @@ void main() {
     await tester.pumpWidget(
       _wrap(
         ComposerBar(
-          environment: _environment,
           onSend: (text) => sent = text,
         ),
       ),
     );
 
     await tester.enterText(find.byType(TextField), '  hola  ');
-    await tester.pump();
+    await tester.pumpAndSettle();
     await tester.tap(find.byIcon(Icons.arrow_upward_rounded));
     await tester.pump();
 
@@ -328,45 +316,11 @@ void main() {
     expect(find.text('  hola  '), findsNothing);
   });
 
-  testWidgets('ComposerBar shows a 0 context meter for usage-reporting agents',
-      (tester) async {
-    await tester.pumpWidget(
-      _wrap(
-        ComposerBar(
-          environment: const SessionEnvironment(
-            modelName: 'Opus',
-            showContext: true,
-          ),
-          onSend: (_) {},
-        ),
-      ),
-    );
-
-    // No usage yet → the meter is present at a 0 baseline.
-    expect(find.text('0'), findsOneWidget);
-  });
-
-  testWidgets('ComposerBar hides the context meter when usage is unreported',
-      (tester) async {
-    await tester.pumpWidget(
-      _wrap(
-        ComposerBar(
-          // showContext defaults to false (e.g. OpenCode).
-          environment: const SessionEnvironment(modelName: 'Opus'),
-          onSend: (_) {},
-        ),
-      ),
-    );
-
-    expect(find.text('0'), findsNothing);
-  });
-
   testWidgets('ComposerBar does not send when disabled', (tester) async {
     var sentCount = 0;
     await tester.pumpWidget(
       _wrap(
         ComposerBar(
-          environment: _environment,
           enabled: false,
           onSend: (_) => sentCount++,
         ),
@@ -374,7 +328,7 @@ void main() {
     );
 
     await tester.enterText(find.byType(TextField), 'hi');
-    await tester.pump();
+    await tester.pumpAndSettle();
     await tester.tap(find.byIcon(Icons.arrow_upward_rounded));
     await tester.pump();
 
@@ -391,28 +345,32 @@ void main() {
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
-            body: ComposerBar(environment: _environment, onSend: (_) {}),
+            body: ComposerBar(onSend: (_) {}),
           ),
         ),
       ),
     );
+    await tester.pumpAndSettle();
 
     // Tap the mic → dictation starts (icon flips to the filled, recording mic).
     await tester.tap(find.byIcon(Icons.mic_none_rounded));
-    await tester.pump();
+    await tester.pumpAndSettle();
     expect(speech.listening, isTrue);
     expect(find.byIcon(Icons.mic_rounded), findsOneWidget);
 
     // A partial result streams into the field…
     speech.emit('hola');
-    await tester.pump();
+    await tester.pumpAndSettle();
     expect(find.text('hola'), findsOneWidget);
 
-    // …and the final result stops the session (mic returns to idle).
+    // …and the final result stops the session. With text now in the field the
+    // pill swaps the trailing action from mic to Send (NE spec §6.5: the right
+    // button is mic when empty, send when there's text).
     speech.emit('hola mundo', isFinal: true);
-    await tester.pump();
+    await tester.pumpAndSettle();
     expect(find.text('hola mundo'), findsOneWidget);
-    expect(find.byIcon(Icons.mic_none_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.arrow_upward_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.mic_none_rounded), findsNothing);
   });
 
   testWidgets('ComposerBar warns when voice input is unavailable',
@@ -425,11 +383,12 @@ void main() {
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
-            body: ComposerBar(environment: _environment, onSend: (_) {}),
+            body: ComposerBar(onSend: (_) {}),
           ),
         ),
       ),
     );
+    await tester.pumpAndSettle();
 
     await tester.tap(find.byIcon(Icons.mic_none_rounded));
     await tester.pump();
