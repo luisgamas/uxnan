@@ -3,6 +3,25 @@
 Deferred developer work for the relay. (Human-only assets — Firebase/APNs creds —
 are in `relay/FOR-HUMAN.md`.)
 
+## MVP status — ALPHA-FUNCTIONAL (optional component)
+> Snapshot 2026-06. The relay builds clean and its tests are green (9/9). It is
+> **optional and self-hosted**: the product's primary path is LAN/Tailscale-direct
+> to the bridge, and push is now bridge-direct. The relay is alpha-functional for
+> anyone who wants hosted off-LAN access.
+>
+> **DONE:** E2EE envelope relay (one `mac`+`iphone` per `sessionId`), `GET /health`,
+> per-IP rate limiting, reconnection support, push endpoints (`/push/register|notify`,
+> FCM, gated on creds).
+>
+> **PENDING — all relay-only / optional** (none block the bridge-first product):
+> multi-session `mac`, auth-on-forwarding, dedupe + token persistence (only for a
+> hosted/public relay); APNs-direct is superseded (FCM-for-both). Real-device push
+> validation is shared with the bridge (not relay-specific).
+>
+> **CI/CD:** same pipeline as the bridge — see `bridge/FOR-DEV.md` → *CI/CD & release*.
+> The relay is a pure Node package; it ships via `npm publish` and is exercised by
+> the same OS×Node CI matrix (build → typecheck → prettier → test) before release.
+
 ## Done
 - [x] WebSocket relay that pairs one `mac` + one `iphone` per `sessionId` and
       forwards opaque E2EE frames (Phase 2).

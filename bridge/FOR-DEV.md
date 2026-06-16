@@ -9,6 +9,30 @@ only a human can provide.)
 > Each deferred item below says what to build; that doc says how to test it.
 > Install/config/agents/deploy docs are alongside it in [`docs/`](docs/).
 
+## MVP status — ALPHA-FUNCTIONAL (LAN/Tailscale-direct path)
+> Snapshot 2026-06. The bridge is **functional for an alpha release** on its primary
+> path: it builds clean and the full test suite is green (bridge 245, shared 29,
+> relay 9). Nothing below blocks LAN/Tailscale-direct use.
+>
+> **DONE:** E2EE transport (LAN `http+ws` + optional relay); **5 real agents**
+> (OpenCode, Claude Code, Codex, pi, **Gemini**) with per-thread/project agent+model,
+> structured model discovery, per-turn token usage, thinking + structured
+> commands/tools/diffs; git + workspace + checkpoints (true restore + pruning);
+> thread lifecycle; on-disk `turn/list` **history fallback**; sanitized `auth/status`;
+> **push** (direct FCM, persisted, per-phone target + prune-on-untrust); **pairing**
+> (QR + **manual code** + **mDNS discovery**); autostart/`install-service` per OS;
+> file logging.
+>
+> **PENDING that matters for a public release (not LAN alpha):**
+> - **Packaging/publish prep** — pin `@uxnan/shared` deps, verify a packed install,
+>   `version.ts` stamp (see *Packaging*). Required before `npm publish`.
+> - **Real-device push validation** + iOS APNs key (FOR-HUMAN; needs a device).
+>
+> **PENDING optional / blocked-on-mobile (do not block alpha):** seq catch-up on
+> reconnect + key rotation (await a mobile trigger); desktop embedded IPC (desktop
+> Phase 6); per-model run-options *phase 4* (fast-mode/context — little to wire);
+> Gemini in the history reader; Aider adapter; log size-rotation.
+
 ## Plug-and-play "install and use" — remaining sequence
 The goal is: install on the PC, log into the agents you want, point the phone at a
 folder, and go. Tracked items, in order:
@@ -289,8 +313,10 @@ hosting** (the phone connects directly to the bridge on the same network).
       forwards it. Lets the phone show a context-usage indicator.
 - [x] **Change a thread's model mid-conversation** — `thread/setModel`
       (`ThreadStore.setModel` + `thread-context-handler.ts`).
-- [ ] **Per-model run options (reasoning effort / context / fast mode) — advertise
-      + apply, data-driven.** IMPORTANT (not urgent): this is the next big seam to
+- [◑] **Per-model run options (reasoning effort / context / fast mode) — advertise
+      + apply, data-driven.** Phases 1–3 DONE (effort wired + per-model option schema
+      + mobile renderer); only phase 4 (fast-mode/context variants) remains, with
+      little to wire today. IMPORTANT (not urgent): this is the next big seam to
       link with mobile. The phone should let the user pick a model's *run knobs*
       (reasoning/thinking level, and where it applies a context-window variant or a
       "fast mode"), but these differ **per agent AND per model**, and some are only
@@ -551,11 +577,46 @@ The OpenCode adapter is the template for any "one-shot per-turn CLI" agent:
 - [ ] Ensure the `scripts/*.sh` keep their executable bit when published
       (npm preserves mode; verify on a packed tarball).
 
-## Relay hardening
+## CI/CD & release (planned — FOR-DEV; decided 2026-06)
+> Clarification (the recurring "build per platform vs npm packaging?" question):
+> the bridge/relay/shared are **pure Node.js/TypeScript** packages — NOT
+> per-platform compiled binaries. The only native bits (`@napi-rs/keyring`,
+> `firebase-admin`) are `optionalDependencies` with JS fallbacks. So `tsc` output is
+> identical on every OS and the **distribution artifact is the npm package**, not an
+> OS-specific binary. "Build for each platform" in the compiled-binary sense does
+> NOT apply here (that's the Tauri desktop / Flutter mobile world).
+>
+> **Recommended GitHub Actions (do these, in order):**
+> 1. **CI — on push / PR.** Matrix `os: [ubuntu, macos, windows] × node: [20, 22]`:
+>    `npm ci` → `npm run build` (tsc across workspaces) → `npm run typecheck` →
+>    `prettier --check` → `npm test` per package. The **OS matrix is the point** —
+>    the bridge has per-OS code (`service-installer`, path handling, mDNS, keyring),
+>    so green-on-all-three is the real gate. This is the "verify tests + no errors
+>    before build" step you want; a release must not run if this fails.
+> 2. **Release — on tag `v*`.** Re-run the gate (1), then `npm publish` in dependency
+>    order: `@uxnan/shared` first, then `uxnan-bridge` + `uxnan-relay` (pin their
+>    `"@uxnan/shared": "*"` → the published `^0.x` first — see *Packaging*). Use an
+>    `NPM_TOKEN` secret; enable npm provenance.
+> 3. **Optional, later — standalone single binary.** ONLY if a no-Node install is
+>    wanted: Node SEA (`--experimental-sea-config`) or an equivalent bundler emits
+>    per-OS executables (win/mac/linux) as GitHub Release assets. This is the only
+>    part that needs a real per-platform build matrix; it is polish, not required for
+>    alpha.
+>
+> **Verdict:** the professional baseline for this Node monorepo is **(1) CI matrix +
+> (2) npm release**, not per-OS binaries. Add (3) only if you decide to ship to users
+> without Node installed. Workflows are NOT created yet — this annotation prepares
+> the ground; implement `.github/workflows/{ci,release}.yml` when ready.
+
+## Relay hardening (relay-only; see `relay/FOR-DEV.md` for the authoritative list)
 - [x] **Per-IP rate limiting** (Phase 3) — `relay/src/relay-server.ts`.
-- [ ] **Pairing-code resolution** (`/trusted-session/resolve`) and **multi-session
-      `mac` registration** — need protocol/mobile coordination (§5.10.1).
-- [ ] **Push endpoints** (`/push/*`, APNs/FCM) — Phase 6.
+- [x] **Push endpoints** (`/push/*`, FCM) — DONE (Phase 6). Push is now bridge-direct
+      by default; the relay endpoints are the optional hosted fallback.
+- [→bridge] **Pairing-code resolution** — manual-code pairing is now a **bridge**
+      feature (`src/pairing/` + `/pair/resolve` + mDNS); the relay
+      `/trusted-session/resolve` is superseded except for hosted off-LAN pairing.
+- [ ] **Multi-session `mac` registration** — relay-only; deferred unless you host a
+      shared relay (`relay/FOR-DEV.md`).
 
 ## Contracts verified
 - [x] **Pairing QR encoding** — `@uxnan/shared` now emits Base64 JSON matching the
