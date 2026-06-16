@@ -56,6 +56,12 @@ interface StoredThread {
   agentId?: string;
   model?: string;
   cwd?: string;
+  /**
+   * The agent CLI's NATIVE session id (Claude `session_id`, Codex `thread_id`,
+   * OpenCode `sessionID`, pi session id). Persisted so the on-disk session log can
+   * be located for the `turn/list` history fallback after a bridge restart.
+   */
+  agentSessionId?: string;
 }
 
 const DEFAULT_TURN_LIMIT = 20;
@@ -148,6 +154,31 @@ export class ThreadStore {
     if (thread.model !== undefined) runtime.model = thread.model;
     if (thread.cwd !== undefined) runtime.cwd = thread.cwd;
     return runtime;
+  }
+
+  /** Where to find a thread's on-disk session log (turn/list history fallback). */
+  async getHistorySource(
+    threadId: string,
+  ): Promise<{ agentId?: string; agentSessionId?: string; cwd?: string }> {
+    const thread = await this.#requireThread(await this.#read(), threadId);
+    const source: { agentId?: string; agentSessionId?: string; cwd?: string } = {};
+    if (thread.agentId !== undefined) source.agentId = thread.agentId;
+    if (thread.agentSessionId !== undefined) source.agentSessionId = thread.agentSessionId;
+    if (thread.cwd !== undefined) source.cwd = thread.cwd;
+    return source;
+  }
+
+  /**
+   * Record the agent's native session id for a thread (idempotent). Called once
+   * the adapter reports it, so the on-disk history fallback can find the log.
+   */
+  setAgentSession(threadId: string, agentSessionId: string, now: number): Promise<void> {
+    return this.#mutate(async (threads) => {
+      const thread = threads.find((t) => t.id === threadId);
+      if (!thread || thread.agentSessionId === agentSessionId) return;
+      thread.agentSessionId = agentSessionId;
+      thread.updatedAt = now;
+    });
   }
 
   resumeThread(threadId: string, now: number): Promise<void> {
@@ -403,9 +434,7 @@ function toMessage(message: StoredMessage): Message {
     turnId: message.turnId,
     role: message.role,
     content: message.text,
-    ...(message.thinking && message.thinking.length > 0
-      ? { thinking: message.thinking }
-      : {}),
+    ...(message.thinking && message.thinking.length > 0 ? { thinking: message.thinking } : {}),
     ...(message.blocks && message.blocks.length > 0 ? { blocks: message.blocks } : {}),
     ...(message.usage ? { usage: message.usage } : {}),
     createdAt: message.createdAt,

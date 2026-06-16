@@ -117,7 +117,8 @@ export interface PiEvent {
  */
 export function parsePiUsageTokens(usage: unknown): number | undefined {
   if (!isRecord(usage)) return undefined;
-  const num = (key: string): number => (typeof usage[key] === 'number' ? (usage[key] as number) : 0);
+  const num = (key: string): number =>
+    typeof usage[key] === 'number' ? (usage[key] as number) : 0;
   const total = num('totalTokens') > 0 ? num('totalTokens') : num('input') + num('output');
   return total > 0 ? total : undefined;
 }
@@ -236,6 +237,11 @@ export class PiAdapter extends BaseAgentAdapter {
   /** turnId → in-flight run, for cancellation. */
   readonly #active = new Map<string, ActiveRun>();
   #defaultCwd = process.cwd();
+
+  /** Native pi session id for a thread (on-disk history-fallback locator). */
+  nativeSessionId(threadId: string): string | undefined {
+    return this.#sessionByThread.get(threadId);
+  }
 
   constructor(options: PiAdapterOptions = {}) {
     super();
@@ -366,7 +372,9 @@ export class PiAdapter extends BaseAgentAdapter {
             type: 'block',
             threadId,
             turnId,
-            data: { content: piToolBlock(tool, event.toolOutput ?? '', event.toolIsError === true) },
+            data: {
+              content: piToolBlock(tool, event.toolOutput ?? '', event.toolIsError === true),
+            },
           });
         }
       } else if (event.kind === 'final') {
@@ -441,7 +449,11 @@ export class PiAdapter extends BaseAgentAdapter {
       };
 
       try {
-        child = this.#spawn(this.#binaryPath, [...this.#prependArgs, '--list-models'], this.#defaultCwd);
+        child = this.#spawn(
+          this.#binaryPath,
+          [...this.#prependArgs, '--list-models'],
+          this.#defaultCwd,
+        );
       } catch {
         resolve([]);
         return;

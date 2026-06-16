@@ -29,6 +29,11 @@ export {
   type PushSender,
   type PushPayload,
 } from './push/push-sender.js';
+export {
+  SessionHistoryReader,
+  type HistorySource,
+  type SessionHistoryOptions,
+} from './conversation/session-history.js';
 export { SecureDeviceState, type PublicIdentity } from './secure-device-state.js';
 export { InMemorySecretStore, type SecretStore } from './secret-store.js';
 export {

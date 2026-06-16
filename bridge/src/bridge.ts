@@ -42,6 +42,7 @@ import { ProjectRegistry } from './projects/project-registry.js';
 import { BrowseService } from './workspace/browse-service.js';
 import { PushService } from './push/push-service.js';
 import { createBridgePushSender } from './push/push-sender.js';
+import { SessionHistoryReader } from './conversation/session-history.js';
 
 export interface StartBridgeOptions {
   /** Override the daemon state directory (defaults to `~/.uxnan`). */
@@ -100,6 +101,8 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   const sessionRegistry = new SessionRegistry();
   const trustStore = new FileTrustStore(state);
   const threadStore = new ThreadStore(state);
+  // Reads agent on-disk session logs when the store has no turns (§5.8.8).
+  const sessionHistory = new SessionHistoryReader();
   const projects = new ProjectRegistry(config.workspaceRoots, process.cwd(), config.projectAgents);
   // Browse roots fall back to the project roots, then the bridge's launch
   // directory (`process.cwd()`) — so an unconfigured install browses from
@@ -215,6 +218,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
     sessionRegistry,
     trustStore,
     threadStore,
+    sessionHistory,
     agentManager,
     projects,
     browse,

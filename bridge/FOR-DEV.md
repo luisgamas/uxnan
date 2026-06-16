@@ -417,9 +417,36 @@ The OpenCode adapter is the template for any "one-shot per-turn CLI" agent:
       `stage`/`unstage`/`discard`/`createPr`/`undoCommit`/`branches`/
       `switchBranch` for the mobile source-control screen.
 - [ ] **Gemini CLI** — capture its non-interactive JSON stream first. New scaffold.
-- [ ] **JSONL history fallback** (`session-jsonl-history`) — read agent session
-      JSONL/SQLite from disk for `turn/list` when the runtime has no fresh data
-      (§5.8.8). Needs each agent's real on-disk format.
+- [x] **JSONL history fallback** (`session-jsonl-history`) — `turn/list` now falls
+      back to each agent's own on-disk session log when the `ThreadStore` has no
+      turns (bridge missed them / `threads.json` lost / session driven from a
+      terminal). `src/conversation/session-history.ts` (`SessionHistoryReader`)
+      reads the **real** per-agent formats (verified live on this machine, no
+      SQLite dep):
+        - **Claude Code** — `~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl`;
+          lines `{type:'user'|'assistant', message:{role, content:[{type:'text'|
+          'thinking'|…}]}}` (locates by scanning project dirs for the UUID file —
+          no need to reproduce Claude's lossy cwd-encoding).
+        - **Codex** — `~/.codex/sessions/<Y>/<M>/<D>/rollout-<ts>-<sessionId>.jsonl`;
+          `response_item` payloads `{type:'message', role, content:[{type:'input_text'|
+          'output_text', text}]}` (developer/system priming skipped).
+        - **OpenCode** — JSON store (not one file): `…/storage/message/<sessionId>/
+          <msgId>.json` + `…/storage/part/<msgId>/<partId>.json` (`{type:'text',text}`),
+          ordered by `time.created`. No `better-sqlite3` dependency.
+        - **pi** — `~/.pi/agent/sessions/<encoded-cwd>/<ts>_<sessionId>.jsonl`;
+          lines `{type:'message', message:{role, content:[{type:'text',text}]}}`.
+      Locating the file needs the agent's **native** session id, so it is now
+      persisted per thread: adapters expose `nativeSessionId(threadId)`,
+      `AgentManager` writes it via `ThreadStore.setAgentSession` on turn end, and
+      the `turn/list` handler reads `getHistorySource` → `SessionHistoryReader`
+      (path cache, 60s TTL; paginated like the store). Best-effort + read-only:
+      tolerant of malformed lines, returns `null` (keeps the empty store result)
+      for unknown/unsupported agents or a missing log. Tested with per-format
+      fixtures **and** smoked against real on-disk logs for all four agents.
+      **Mobile linkage:** none — `turn/list` is unchanged on the wire; the phone
+      just sees history it previously couldn't. **Follow-ups:** Gemini/Aider when
+      those adapters land; richer block/tool reconstruction (today the fallback
+      carries text + thinking, not the live path's structured blocks).
 - [ ] Later: Aider.
 
 ## Daemon lifecycle & ops

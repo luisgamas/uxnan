@@ -6,6 +6,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 
 ### Added
+- **On-disk session history fallback for `turn/list` (§5.8.8)** — when the store
+  has no turns for a thread, the bridge now reads the agent's own session log from
+  disk so the phone can still show history (e.g. the bridge missed the turns, or
+  `threads.json` was lost). New `src/conversation/session-history.ts`
+  (`SessionHistoryReader`) parses each agent's real on-disk format — Claude Code
+  (`~/.claude/projects/<cwd>/<sessionId>.jsonl`), Codex
+  (`~/.codex/sessions/.../rollout-*-<sessionId>.jsonl`), OpenCode (JSON
+  message/part store under `~/.local/share/opencode/storage`, no SQLite dep) and
+  pi (`~/.pi/agent/sessions/<cwd>/*_<sessionId>.jsonl`) — with a 60s path cache.
+  To locate the file the agent's native session id is now persisted per thread:
+  adapters expose `nativeSessionId(threadId)`, `AgentManager` records it via
+  `ThreadStore.setAgentSession` on turn end, and the `turn/list` handler reads it
+  through `getHistorySource`. Read-only and tolerant; returns nothing for
+  unknown/unsupported agents. `turn/list` is unchanged on the wire.
 - **Direct FCM push from the bridge (PRIMARY path; relay optional)** — background
   push is now delivered by the bridge itself over any transport (direct LAN,
   Tailscale, or relay), not only via a hosted relay. New `src/push/push-sender.ts`
