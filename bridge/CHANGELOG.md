@@ -6,6 +6,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 
 ### Added
+- **Gemini CLI agent adapter** — `@google/gemini-cli` wired as a real agent
+  (`src/adapters/gemini-adapter.ts`), driven via `gemini -p --output-format
+  stream-json --approval-mode <mode> --skip-trust` (validated live, gemini-cli
+  0.45.2). Parses the NDJSON stream for streamed text, paired `tool_use`/`tool_result`
+  → structured diff/command/tool blocks (`gemini-tools.ts`, internal `update_topic`
+  filtered), and `result.stats` → per-turn token usage (1M context window). Session
+  continuity via a generated `--session-id <uuid>` then `--resume <uuid>`; the
+  concrete model an alias resolves to (from `stats.models`) is surfaced as
+  `model_resolved`. Curated model list (`gemini-2.5-pro`/`flash`/`flash-lite`).
+  Approval posture configurable (`default`→`plan`, `acceptEdits`→`auto_edit`,
+  `bypassPermissions`→`yolo`). Binary resolved via `resolve-gemini.ts`. Exposed
+  through the existing `agent/list`/`agent/models` contract — no mobile change.
 - **Per-phone push targeting + prune-on-untrust** — the secure transport now tags
   each request with its session identity (`RequestSession { sessionId, deviceId }`),
   threaded through `router.dispatch` to the handlers, so `notifications/register|

@@ -94,6 +94,14 @@ export {
 } from './adapters/pi-adapter.js';
 export { resolvePiBinary, type ResolvedPi } from './adapters/resolve-pi.js';
 export {
+  GeminiAdapter,
+  parseGeminiLine,
+  type GeminiAdapterOptions,
+  type GeminiEvent,
+  type GeminiPermissionMode,
+} from './adapters/gemini-adapter.js';
+export { resolveGeminiBinary, type ResolvedGemini } from './adapters/resolve-gemini.js';
+export {
   OpenCodeAdapter,
   parseOpenCodeLine,
   parseModelList,

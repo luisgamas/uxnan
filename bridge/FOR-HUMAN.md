@@ -47,6 +47,7 @@ whatever that CLI is already authenticated with.
 | OpenCode | `opencode` | vendor installer / npm | per OpenCode | default agent; native `opencode.exe` resolved on Windows |
 | Claude Code | `claude` | native installer (`~/.local/bin/claude`) or npm `@anthropic-ai/claude-code` | `claude` (Anthropic account / subscription) | runs `claude -p`; default permission posture `acceptEdits` (configurable) |
 | Codex | `codex` | npm `@openai/codex` (or native) | `codex login` (your OpenAI/ChatGPT account) | runs `codex exec`; default sandbox `workspace-write` (configurable). Codex's `app-server`/`exec-server` are **not** needed |
+| Gemini | `gemini` | npm `@google/gemini-cli` | `gemini` (Google account OAuth, free tier) or `GEMINI_API_KEY` | runs `gemini -p --output-format stream-json`; default approval `auto_edit` (configurable). Free tier covers flash/flash-lite |
 
 A missing or logged-out CLI does not break the bridge: that agent simply shows as
 `available: false` in `agent/list`, and the others keep working. Optional per-agent

@@ -428,7 +428,35 @@ The OpenCode adapter is the template for any "one-shot per-turn CLI" agent:
       `bridge/test/git/git-service.test.ts`. The git handler also gained
       `stage`/`unstage`/`discard`/`createPr`/`undoCommit`/`branches`/
       `switchBranch` for the mobile source-control screen.
-- [ ] **Gemini CLI** — capture its non-interactive JSON stream first. New scaffold.
+- [x] **Gemini CLI** — `src/adapters/gemini-adapter.ts`. WIRED via
+      `gemini -p <prompt> --output-format stream-json --approval-mode <mode> --skip-trust`
+      (validated live against gemini-cli 0.45.2 with flash-lite). Parses the NDJSON
+      stream (`init` → captures `session_id` + requested model; `message`
+      `role:assistant` `delta:true` → streamed text; `tool_use`+`tool_result` paired
+      by `tool_id` → structured blocks; `result` → completion with
+      `stats.total_tokens` usage). **Session continuity:** first turn opens a session
+      under a generated UUID (`--session-id <uuid>`); later turns `--resume <uuid>`
+      (verified: a fact set on turn 1 is recalled on turn 2). The native session id
+      is tracked per thread (`nativeSessionId`). **Model discovery:** the CLI has no
+      enumerate command, so `listModels()` returns a curated set
+      (`gemini-2.5-pro`/`flash`(default)/`flash-lite`); the CONCRETE model an alias
+      resolves to (e.g. `gemini-3.1-flash-lite`) is read from `stats.models` and
+      emitted as `model_resolved`. **Usage:** `stats.total_tokens` + a 1M context
+      window → the context meter. **Diffs/tools:** `gemini-tools.ts` maps
+      `write_file`→write-diff, `replace`→edit-diff, `run_shell_command`→command
+      block, others→generic tool block; the internal `update_topic` tool is filtered.
+      Sandbox posture via `agents['gemini-cli'].permissionMode` (default `acceptEdits`
+      → `--approval-mode auto_edit`; `default` → `plan` read-only; `bypassPermissions`
+      → `yolo`). Binary resolved by `resolve-gemini.ts` (`node <@google/gemini-cli/
+      bundle/gemini.js>`). **Mobile linkage:** none — Gemini is exposed through the
+      generic `agent/list`/`agent/models` contract the phone already renders (model
+      picker, context meter, Work log/diffs); the phone needs no change to show it.
+      To VERIFY on device: pick Gemini for a thread, confirm streaming + the context
+      meter + a write/edit diff render. **Follow-ups (FOR-DEV):** (1) no reasoning
+      knob is advertised — the CLI exposes no `--thinking`/effort flag; revisit if one
+      appears (Gemini 2.5 has thinking budgets but no headless flag in 0.45.2). (2)
+      add Gemini to the `session-jsonl-history` reader (its on-disk session format) —
+      the adapter already persists the native session id, so the locator is ready.
 - [x] **JSONL history fallback** (`session-jsonl-history`) — `turn/list` now falls
       back to each agent's own on-disk session log when the `ThreadStore` has no
       turns (bridge missed them / `threads.json` lost / session driven from a

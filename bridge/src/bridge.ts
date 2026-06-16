@@ -38,6 +38,8 @@ import { CodexAdapter } from './adapters/codex-adapter.js';
 import { resolveCodexBinary } from './adapters/resolve-codex.js';
 import { PiAdapter } from './adapters/pi-adapter.js';
 import { resolvePiBinary } from './adapters/resolve-pi.js';
+import { GeminiAdapter } from './adapters/gemini-adapter.js';
+import { resolveGeminiBinary } from './adapters/resolve-gemini.js';
 import { ProjectRegistry } from './projects/project-registry.js';
 import { BrowseService } from './workspace/browse-service.js';
 import { PushService } from './push/push-service.js';
@@ -200,6 +202,22 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       displayName: 'pi',
       available: pi.available,
       ...(piSettings.model !== undefined ? { defaultModel: piSettings.model } : {}),
+    },
+  );
+  // Gemini: real agent driven via `gemini -p --output-format stream-json` (see FOR-DEV.md).
+  const geminiSettings = config.agents['gemini-cli'] ?? {};
+  const gemini = resolveGeminiBinary(geminiSettings.binaryPath);
+  agentManager.register(
+    new GeminiAdapter({
+      binaryPath: gemini.binaryPath,
+      prependArgs: gemini.prependArgs,
+      permissionMode: geminiSettings.permissionMode ?? 'acceptEdits',
+      ...(geminiSettings.model !== undefined ? { defaultModel: geminiSettings.model } : {}),
+    }),
+    {
+      displayName: 'Gemini',
+      available: gemini.available,
+      ...(geminiSettings.model !== undefined ? { defaultModel: geminiSettings.model } : {}),
     },
   );
   const startedAt = now();
