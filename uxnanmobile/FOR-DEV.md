@@ -11,9 +11,11 @@ Deferred implementation work (code the team/agent will do later). Distinct from
 These can be built and unit/widget-tested locally; bridge calls degrade
 gracefully until the other agent wires the handler. Suggested order:
 
-1. ☑ **Advanced content `approval`/`plan`/`subagent`** (decode + read-only
-   render) — DONE this round. Remaining: interactive approval (needs a bridge
-   RPC) and verifying wire shapes against a real Codex/Claude turn.
+1. ☑ **Advanced content `approval`/`plan`/`subagent`** (decode + render) —
+   DONE; interactive approval is now wired on the app side (Approve / Reject /
+   allow-session via `turn/send { approvalResponse }`) but **dormant until the
+   bridge emits/accepts approvals** — see *Conversation / timeline → Interactive
+   approval* for the bridge contract. Plan/subagent confirmed informational.
 2. ☑ **Archive thread** (+ an "Archived" screen) — DONE this round; see
    *Threads list → Archive / unarchive*.
 3. ☑ **Settings screen + notification preferences** (`notifications/update`) —
@@ -192,12 +194,36 @@ browser and multi-PC connection correctness are now DONE — see below.)
     `SubagentActionKind`); tolerant codec (nested or flat) with graceful enum
     fallback. Renderers: approval card, plan checklist, subagent card
     (`message_content_view.dart`). Covered by round-trip + render tests.
-  - ☐ **Interactive approval** — the Approve/Reject buttons are disabled; wiring
-    a response needs a bridge RPC (`turn/send { approvalResponse: { approvalId,
-    approved } }`, spec 01 §283). Add an `approvalRespond` seam on `ThreadManager`
-    when the bridge exposes it; then enable the buttons.
-  - ☐ **Verify wire shapes** against a real Codex/Claude turn (field names for
-    plan steps / subagent actions are assumed; the parser is tolerant).
+  - ◑ **Interactive approval** — APP SIDE DONE, bridge-blocked. The approval
+    card is now interactive (`message_content_view.dart`): Approve / Reject /
+    "always allow this session", a spring `AnimatedSize` morph into a settled
+    status row, an in-flight spinner, and re-enable on failure.
+    `ThreadManager.respondApproval({threadId, approvalId, decision})` sends the
+    response; `ApprovalResponses` (`approval_providers.dart`) holds the local
+    sending/resolved/failed state per `approvalId`; decisions are the
+    `ApprovalDecision` enum (`approve` / `reject` / `approveSession`).
+    - **CONTRACT the bridge must implement** (dormant until then):
+      1. **Emit** approval requests — either `stream/approval/requested` or an
+         `approval` content block on `stream/content/block` carrying
+         `{ approvalId, action, risk, detail? }` (the app already decodes both
+         the nested `{request:{...}}` and flat forms).
+      2. **Accept** `turn/send { threadId, approvalResponse: { approvalId,
+         decision } }` where `decision ∈ "approve" | "reject" | "approveSession"`.
+         Make `text` OPTIONAL when `approvalResponse` is present (today the
+         bridge rejects `turn/send` without `text`). Add `approvalResponse?` to
+         `TurnSendParams` in `shared/src/jsonrpc/methods.ts`.
+      3. **Route** the decision to the agent adapter by `approvalId`; today the
+         Claude adapter runs headless (`approvals:true` advertised but tools
+         needing approval are auto-denied) and Echo has `approvals:false`, so
+         nothing emits requests. `approveSession` should apply a session-scoped
+         allow.
+    - **Testability:** there is no way to trigger an approval on-device until
+      the bridge emits one (consider having the Echo dev-agent emit a sample
+      approval request behind a flag to validate the UI end-to-end).
+  - ☑ **Verify wire shapes (plan/subagent)** — DONE: confirmed `plan` and
+    `subagent` content blocks are **informational** status updates, NOT approval
+    gates — only `approval` blocks gate actions. Field names for plan steps /
+    subagent actions remain assumed; the parser is tolerant.
 - ☑ **Application managers** — DONE: `ThreadManager` (timeline build + streaming
   reducer application, `loadThreads`, `sendUserMessage`) and
   `IncomingMessageProcessor`.

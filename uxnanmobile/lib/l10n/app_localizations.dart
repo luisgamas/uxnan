@@ -1118,6 +1118,84 @@ abstract class AppLocalizations {
   /// **'Unrestricted access to the internet and any file.'**
   String get approvalFullBody;
 
+  /// No description provided for @approvalNeedsApproval.
+  ///
+  /// In en, this message translates to:
+  /// **'Needs approval'**
+  String get approvalNeedsApproval;
+
+  /// No description provided for @approvalActionFallback.
+  ///
+  /// In en, this message translates to:
+  /// **'Action awaiting approval'**
+  String get approvalActionFallback;
+
+  /// No description provided for @approvalApprove.
+  ///
+  /// In en, this message translates to:
+  /// **'Approve'**
+  String get approvalApprove;
+
+  /// No description provided for @approvalReject.
+  ///
+  /// In en, this message translates to:
+  /// **'Reject'**
+  String get approvalReject;
+
+  /// No description provided for @approvalAllowSession.
+  ///
+  /// In en, this message translates to:
+  /// **'Always allow this session'**
+  String get approvalAllowSession;
+
+  /// No description provided for @approvalApproved.
+  ///
+  /// In en, this message translates to:
+  /// **'Approved'**
+  String get approvalApproved;
+
+  /// No description provided for @approvalRejected.
+  ///
+  /// In en, this message translates to:
+  /// **'Rejected'**
+  String get approvalRejected;
+
+  /// No description provided for @approvalAllowedSession.
+  ///
+  /// In en, this message translates to:
+  /// **'Allowed for this session'**
+  String get approvalAllowedSession;
+
+  /// No description provided for @approvalFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t send your response — try again'**
+  String get approvalFailed;
+
+  /// No description provided for @approvalRiskLow.
+  ///
+  /// In en, this message translates to:
+  /// **'Low risk'**
+  String get approvalRiskLow;
+
+  /// No description provided for @approvalRiskMedium.
+  ///
+  /// In en, this message translates to:
+  /// **'Medium risk'**
+  String get approvalRiskMedium;
+
+  /// No description provided for @approvalRiskHigh.
+  ///
+  /// In en, this message translates to:
+  /// **'High risk'**
+  String get approvalRiskHigh;
+
+  /// No description provided for @approvalRiskUnknown.
+  ///
+  /// In en, this message translates to:
+  /// **'Risk unknown'**
+  String get approvalRiskUnknown;
+
   /// Run-option value meaning 'leave the agent's default' (no explicit choice).
   ///
   /// In en, this message translates to:

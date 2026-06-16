@@ -11,6 +11,7 @@ import 'package:uxnan/domain/entities/auth_status.dart';
 import 'package:uxnan/domain/entities/message.dart';
 import 'package:uxnan/domain/entities/project.dart';
 import 'package:uxnan/domain/entities/thread.dart';
+import 'package:uxnan/domain/enums/approval_decision.dart';
 import 'package:uxnan/domain/enums/message_delivery_state.dart';
 import 'package:uxnan/domain/enums/message_role.dart';
 import 'package:uxnan/domain/enums/thread_activity.dart';
@@ -522,6 +523,39 @@ class ThreadManager {
         message.copyWith(deliveryState: MessageDeliveryState.failed),
       );
       AppLogger.warn('turn/send failed', error, stackTrace);
+    }
+  }
+
+  /// Responds to a pending approval ([approvalId]) on [threadId] with
+  /// [decision], via `turn/send { approvalResponse }`. Returns true when the
+  /// bridge accepts it. No local message is created — the response is control
+  /// data, not chat.
+  ///
+  /// FOR-DEV: the bridge does NOT yet emit approval requests nor accept
+  /// `approvalResponse` (the Claude adapter runs headless, Echo has
+  /// `approvals:false`). Wired ahead of the bridge against the documented
+  /// contract — see `FOR-DEV.md`; dormant until the bridge counterpart lands.
+  Future<bool> respondApproval({
+    required String threadId,
+    required String approvalId,
+    required ApprovalDecision decision,
+  }) async {
+    try {
+      final res = await _sendRequest('turn/send', {
+        'threadId': threadId,
+        'approvalResponse': {
+          'approvalId': approvalId,
+          'decision': decision.wireName,
+        },
+      });
+      if (res.error != null) {
+        AppLogger.warn('approval response rejected: ${res.error!.message}');
+        return false;
+      }
+      return true;
+    } on Object catch (error, stackTrace) {
+      AppLogger.warn('approval response failed', error, stackTrace);
+      return false;
     }
   }
 

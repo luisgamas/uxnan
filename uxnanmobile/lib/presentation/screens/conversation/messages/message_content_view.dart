@@ -8,6 +8,7 @@ import 'package:flutter_highlight/themes/atom-one-light.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/domain/entities/message.dart';
+import 'package:uxnan/domain/enums/approval_decision.dart';
 import 'package:uxnan/domain/enums/approval_risk.dart';
 import 'package:uxnan/domain/enums/command_status.dart';
 import 'package:uxnan/domain/enums/plan_step_status.dart';
@@ -16,6 +17,7 @@ import 'package:uxnan/domain/enums/system_content_kind.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
+import 'package:uxnan/presentation/providers/approval_providers.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
@@ -28,6 +30,7 @@ class MessageContentView extends StatelessWidget {
   const MessageContentView({
     required this.content,
     this.selectableText = true,
+    this.threadId,
     super.key,
   });
 
@@ -37,6 +40,10 @@ class MessageContentView extends StatelessWidget {
   /// Whether text/markdown is selectable. Disabled for the user's own bubble so
   /// a tap on it toggles its copy affordance instead of placing a text cursor.
   final bool selectableText;
+
+  /// Owning thread, needed to respond to an [ApprovalContent]; null elsewhere
+  /// (e.g. the user's own bubble) leaves the approval card read-only.
+  final String? threadId;
 
   @override
   Widget build(BuildContext context) {
@@ -55,7 +62,7 @@ class MessageContentView extends StatelessWidget {
         _Placeholder(icon: Icons.build_outlined, label: 'Tool · ${c.toolName}'),
       final MermaidContent _ =>
         const _Placeholder(icon: Icons.account_tree_outlined, label: 'Diagram'),
-      final ApprovalContent c => _ApprovalCard(content: c),
+      final ApprovalContent c => _ApprovalCard(content: c, threadId: threadId),
       final PlanContent c => _PlanCard(content: c),
       final SubagentContent c => _SubagentCard(content: c),
       final UnknownContent c =>
@@ -64,26 +71,51 @@ class MessageContentView extends StatelessWidget {
   }
 }
 
-/// Renders an [ApprovalContent]: the requested action, its risk, and (disabled)
-/// Approve/Reject controls. FOR-DEV: sending the response needs a bridge
-/// approval-response RPC (`turn/send { approvalResponse }`); until then this is
-/// a read-only card so the request is visible.
-class _ApprovalCard extends StatelessWidget {
-  const _ApprovalCard({required this.content});
+/// Renders an [ApprovalContent]: the requested action, its risk, and the
+/// interactive Approve / Reject / "always allow this session" controls. The
+/// card morphs (spring `AnimatedSize`) from the actions into a settled status
+/// row once the user responds, shows an inline spinner while the response is in
+/// flight, and re-enables on failure. Read-only when [threadId] is null or the
+/// request has no id.
+///
+/// FOR-DEV: dormant until the bridge emits approval requests and accepts
+/// `turn/send { approvalResponse }` (see `FOR-DEV.md`); the wiring is complete
+/// on the app side against the documented contract.
+class _ApprovalCard extends ConsumerWidget {
+  const _ApprovalCard({required this.content, this.threadId});
   final ApprovalContent content;
+  final String? threadId;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
+    final l10n = AppLocalizations.of(context);
     final request = content.request;
+    final riskColor = _riskColor(request.risk);
+
+    final canRespond = threadId != null && request.approvalId.isNotEmpty;
+    final response = canRespond
+        ? ref.watch(
+            approvalResponsesProvider.select((m) => m[request.approvalId]),
+          )
+        : null;
+    final phase = response?.phase ?? ApprovalResponsePhase.idle;
+    final resolved = phase == ApprovalResponsePhase.resolved;
+    final sending = phase == ApprovalResponsePhase.sending;
+
+    void respond(ApprovalDecision decision) {
+      if (!canRespond || sending || resolved) return;
+      ref
+          .read(approvalResponsesProvider.notifier)
+          .respond(threadId!, request.approvalId, decision);
+    }
 
     return DecoratedBox(
       decoration: BoxDecoration(
         color: colors.surfaceContainerHighest,
         borderRadius: const BorderRadius.all(UxnanRadius.lg),
-        border:
-            Border.all(color: _riskColor(request.risk).withValues(alpha: 0.6)),
+        border: Border.all(color: colors.outlineVariant),
       ),
       child: Padding(
         padding: const EdgeInsets.all(UxnanSpacing.md),
@@ -92,13 +124,9 @@ class _ApprovalCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                Icon(
-                  Icons.shield_outlined,
-                  size: 16,
-                  color: _riskColor(request.risk),
-                ),
+                Icon(Icons.shield_outlined, size: 16, color: riskColor),
                 const SizedBox(width: UxnanSpacing.sm),
-                Text('Needs approval', style: textTheme.labelMedium),
+                Text(l10n.approvalNeedsApproval, style: textTheme.labelMedium),
                 const Spacer(),
                 _RiskBadge(risk: request.risk),
               ],
@@ -106,7 +134,7 @@ class _ApprovalCard extends StatelessWidget {
             const SizedBox(height: UxnanSpacing.sm),
             Text(
               request.action.isEmpty
-                  ? 'Action awaiting approval'
+                  ? l10n.approvalActionFallback
                   : request.action,
               style: textTheme.bodyMedium,
             ),
@@ -115,33 +143,144 @@ class _ApprovalCard extends StatelessWidget {
               Text(request.detail!, style: UxnanTypography.codeSmall),
             ],
             const SizedBox(height: UxnanSpacing.md),
-            // FOR-DEV: respond via the bridge approval RPC when it exists.
-            const Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: null,
-                    child: Text('Reject'),
-                  ),
-                ),
-                SizedBox(width: UxnanSpacing.sm),
-                Expanded(
-                  child: FilledButton(
-                    onPressed: null,
-                    child: Text('Approve'),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: UxnanSpacing.xs),
-            Text(
-              'Respond from the desktop/CLI for now.',
-              style:
-                  textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant),
+            AnimatedSize(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOutCubic,
+              alignment: Alignment.topLeft,
+              child: resolved
+                  ? _ApprovalResolved(decision: response!.decision!)
+                  : _ApprovalActions(
+                      sending: sending,
+                      failed: phase == ApprovalResponsePhase.failed,
+                      enabled: canRespond,
+                      pending: response?.decision,
+                      onRespond: respond,
+                    ),
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+/// The action row of an [_ApprovalCard]: Reject + Approve, with a subtle
+/// "always allow this session" affordance beneath, plus an inline failure note.
+class _ApprovalActions extends StatelessWidget {
+  const _ApprovalActions({
+    required this.sending,
+    required this.failed,
+    required this.enabled,
+    required this.pending,
+    required this.onRespond,
+  });
+
+  final bool sending;
+  final bool failed;
+  final bool enabled;
+  final ApprovalDecision? pending;
+  final ValueChanged<ApprovalDecision> onRespond;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final l10n = AppLocalizations.of(context);
+    final acting = enabled && !sending;
+
+    Widget label(ApprovalDecision decision, String text) {
+      if (sending && pending == decision) {
+        return const SizedBox(
+          width: 16,
+          height: 16,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        );
+      }
+      return Text(text);
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (failed) ...[
+          Row(
+            children: [
+              Icon(Icons.error_outline_rounded, size: 14, color: colors.error),
+              const SizedBox(width: UxnanSpacing.xs),
+              Expanded(
+                child: Text(
+                  l10n.approvalFailed,
+                  style: textTheme.bodySmall?.copyWith(color: colors.error),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: UxnanSpacing.sm),
+        ],
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed:
+                    acting ? () => onRespond(ApprovalDecision.reject) : null,
+                child: label(ApprovalDecision.reject, l10n.approvalReject),
+              ),
+            ),
+            const SizedBox(width: UxnanSpacing.sm),
+            Expanded(
+              child: FilledButton(
+                onPressed:
+                    acting ? () => onRespond(ApprovalDecision.approve) : null,
+                child: label(ApprovalDecision.approve, l10n.approvalApprove),
+              ),
+            ),
+          ],
+        ),
+        Align(
+          child: TextButton(
+            onPressed: acting
+                ? () => onRespond(ApprovalDecision.approveSession)
+                : null,
+            child: label(
+              ApprovalDecision.approveSession,
+              l10n.approvalAllowSession,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// The settled status row shown once an approval has been answered.
+class _ApprovalResolved extends StatelessWidget {
+  const _ApprovalResolved({required this.decision});
+  final ApprovalDecision decision;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final l10n = AppLocalizations.of(context);
+    final approved = decision != ApprovalDecision.reject;
+    final color = approved ? UxnanColors.success : UxnanColors.error;
+    final label = switch (decision) {
+      ApprovalDecision.approve => l10n.approvalApproved,
+      ApprovalDecision.reject => l10n.approvalRejected,
+      ApprovalDecision.approveSession => l10n.approvalAllowedSession,
+    };
+    return Row(
+      children: [
+        Icon(
+          approved ? Icons.check_circle_rounded : Icons.cancel_rounded,
+          size: 18,
+          color: color,
+        ),
+        const SizedBox(width: UxnanSpacing.sm),
+        Text(
+          label,
+          style: textTheme.labelLarge?.copyWith(color: color),
+        ),
+      ],
     );
   }
 }
@@ -153,11 +292,12 @@ class _RiskBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = _riskColor(risk);
+    final l10n = AppLocalizations.of(context);
     final label = switch (risk) {
-      ApprovalRisk.low => 'Low risk',
-      ApprovalRisk.medium => 'Medium risk',
-      ApprovalRisk.high => 'High risk',
-      ApprovalRisk.unknown => 'Risk unknown',
+      ApprovalRisk.low => l10n.approvalRiskLow,
+      ApprovalRisk.medium => l10n.approvalRiskMedium,
+      ApprovalRisk.high => l10n.approvalRiskHigh,
+      ApprovalRisk.unknown => l10n.approvalRiskUnknown,
     };
     return Container(
       padding: const EdgeInsets.symmetric(
@@ -739,7 +879,9 @@ class AssistantTurnView extends ConsumerWidget {
           flushCommands();
           flushText();
           gap();
-          segments.add(MessageContentView(content: content));
+          segments.add(
+            MessageContentView(content: content, threadId: message.threadId),
+          );
       }
     }
     flushCommands();

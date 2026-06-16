@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uxnan/application/managers/thread_manager.dart';
 import 'package:uxnan/application/processors/domain_event.dart';
 import 'package:uxnan/domain/entities/message.dart';
+import 'package:uxnan/domain/enums/approval_decision.dart';
 import 'package:uxnan/domain/enums/command_status.dart';
 import 'package:uxnan/domain/enums/message_delivery_state.dart';
 import 'package:uxnan/domain/enums/message_role.dart';
@@ -421,5 +422,22 @@ void main() {
     await _settle();
 
     expect(turnSendParams?.containsKey('options'), isFalse);
+  });
+
+  test('respondApproval sends turn/send with the approvalResponse', () async {
+    final ok = await manager.respondApproval(
+      threadId: 'th1',
+      approvalId: 'ap1',
+      decision: ApprovalDecision.approveSession,
+    );
+
+    expect(ok, isTrue);
+    expect(sentMethods, contains('turn/send'));
+    expect(turnSendParams?['approvalResponse'], {
+      'approvalId': 'ap1',
+      'decision': 'approveSession',
+    });
+    // It is control data, not chat: no text is sent.
+    expect(turnSendParams?.containsKey('text'), isFalse);
   });
 }

@@ -7,6 +7,17 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Interactive approval prompts (app side).** The in-timeline approval card is
+  now interactive: **Approve**, **Reject**, and **Always allow this session**,
+  with a spring morph into a settled status row, an in-flight spinner, and
+  re-enable on failure. `ThreadManager.respondApproval` sends the decision via
+  `turn/send { approvalResponse: { approvalId, decision } }`; an in-memory
+  `ApprovalResponses` provider tracks the per-request sending/resolved/failed
+  state. **Dormant until the bridge supports approvals** — the Claude adapter
+  runs headless and Echo doesn't emit requests, so this can't fire on-device
+  yet; the exact bridge contract (emit + accept + route) is documented in
+  `FOR-DEV.md`. Plan/subagent blocks were verified to be informational, not
+  approval gates.
 - **Extended git actions (branch & remote).** `GitActionManager` gains `pull`
   (`git/pull`), `checkout` (`git/checkout`), `createBranch` (`git/createBranch`)
   and `createWorktree` (`git/createWorktree`), surfaced in the git screen where

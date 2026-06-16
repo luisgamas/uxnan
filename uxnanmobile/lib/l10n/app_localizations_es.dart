@@ -555,6 +555,45 @@ class AppLocalizationsEs extends AppLocalizations {
       'Acceso sin restricciones a internet y a cualquier archivo.';
 
   @override
+  String get approvalNeedsApproval => 'Requiere aprobación';
+
+  @override
+  String get approvalActionFallback => 'Acción en espera de aprobación';
+
+  @override
+  String get approvalApprove => 'Aprobar';
+
+  @override
+  String get approvalReject => 'Rechazar';
+
+  @override
+  String get approvalAllowSession => 'Permitir siempre esta sesión';
+
+  @override
+  String get approvalApproved => 'Aprobado';
+
+  @override
+  String get approvalRejected => 'Rechazado';
+
+  @override
+  String get approvalAllowedSession => 'Permitido en esta sesión';
+
+  @override
+  String get approvalFailed => 'No se pudo enviar tu respuesta; reintenta';
+
+  @override
+  String get approvalRiskLow => 'Riesgo bajo';
+
+  @override
+  String get approvalRiskMedium => 'Riesgo medio';
+
+  @override
+  String get approvalRiskHigh => 'Riesgo alto';
+
+  @override
+  String get approvalRiskUnknown => 'Riesgo desconocido';
+
+  @override
   String get runOptionAuto => 'Automático';
 
   @override
