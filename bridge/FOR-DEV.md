@@ -11,7 +11,7 @@ only a human can provide.)
 
 ## MVP status — ALPHA-FUNCTIONAL (LAN/Tailscale-direct path)
 > Snapshot 2026-06. The bridge is **functional for an alpha release** on its primary
-> path: it builds clean and the full test suite is green (bridge 245, shared 29,
+> path: it builds clean and the full test suite is green (bridge 263, shared 29,
 > relay 9). Nothing below blocks LAN/Tailscale-direct use.
 >
 > **DONE:** E2EE transport (LAN `http+ws` + optional relay); **5 real agents**
@@ -32,6 +32,39 @@ only a human can provide.)
 > reconnect + key rotation (await a mobile trigger); desktop embedded IPC (desktop
 > Phase 6); per-model run-options *phase 4* (fast-mode/context — little to wire);
 > Gemini in the history reader; Aider adapter; log size-rotation.
+
+## Mobile ↔ bridge integration — status & roadmap (2026-06-16)
+Single view of the cross-component seams (phone needs bridge/relay and vice
+versa). **Closed this round** (each app half was already wired; the bridge half
+landed now):
+- ☑ **Image attachments** — `turn/send { attachments }` + temp-file delivery
+  (see *Turn image attachments*). On-device verify pending.
+- ☑ **Interactive approval intake** — `turn/send { approvalResponse }` routing +
+  the `approval` content block; Echo demo validatable now, Claude opt-in real
+  path (see *Interactive approval intake*).
+- ☑ **Manual-code pairing (mobile half)** — `ManualCodeScreen` →
+  `GET /pair/resolve?code=` (see *Manual-code pairing* → Mobile linkage).
+
+**Remaining cross-component work (not built — the next dev's roadmap):**
+1. **`git/revert`** — no bridge handler; phone has the action wired and waiting
+   (`uxnanmobile/FOR-DEV.md` → Git). Add `GitService.revert` + `git/revert` +
+   the shared method/registry.
+2. **Safe branch/worktree deletion** — no `git/deleteBranch` / `git/removeWorktree`;
+   must fail safe (refuse unmerged branch / dirty worktree unless forced). The
+   phone must not offer delete until these land (see `uxnanmobile/FOR-DEV.md`).
+3. **Vanished-cwd detection** — report `cwdExists`/`stale` on thread/project
+   resolution (or a `workspace/exists` probe) so the phone disables threads whose
+   folder/worktree was removed, instead of failing per-message.
+4. **Agent session-id surfacing** — expose the agent's native `sessionID` via
+   `thread/read` so the phone can show "resume from the CLI" beyond the thread id.
+5. **Approval-mode persistence RPC** — read/persist the per-thread access mode
+   server-side (today it's a local-only phone setting).
+6. **Remote history back-paging** — `turn/list` cursor is forward-only/offset; a
+   newest-first scroll-up needs a reverse cursor or a total-count.
+7. **Codex real approvals** — move turn execution onto the app-server protocol
+   (approval elicitations); `codex exec` can't prompt (see *Interactive approval*).
+8. **Transport (optional):** seq-based catch-up on reconnect + key rotation —
+   both await the mobile `clientHello.resumeState` trigger.
 
 ## Plug-and-play "install and use" — remaining sequence
 The goal is: install on the PC, log into the agents you want, point the phone at a
@@ -144,6 +177,14 @@ hosting** (the phone connects directly to the bridge on the same network).
       `AgentManager.respondApproval` → `IAgentAdapter.respondApproval`. Agents
       request approval by emitting an `approval` content block
       (`approvalBlock()`), which the phone already renders interactively.
+        - **Spec note (flagged, not silently changed):** `architecture/02b` lists
+          a dedicated `stream/approval/requested` notification. We satisfy the
+          request side via the **`approval` content block on
+          `stream/content/block`** instead, because that is the form the phone
+          actually renders into its interactive card AND it persists with the
+          turn (so an approval survives a `turn/list` re-sync). Emitting the
+          dedicated `stream/approval/requested` notification too is an optional
+          future alignment if a non-persisted signal is ever wanted.
         - ☑ **Echo demo** (validatable now): text `approval-demo` emits a sample
           approval and pauses until the phone replies — for end-to-end UI
           validation without a real agent.
