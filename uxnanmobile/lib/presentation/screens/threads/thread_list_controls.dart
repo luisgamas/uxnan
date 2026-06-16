@@ -213,7 +213,9 @@ class ThreadSortMenu extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     return PopupMenuButton<ThreadSort>(
       tooltip: l10n.threadsSortBy,
-      initialValue: sort,
+      // No `initialValue`: it would tint the active item's background with
+      // square corners (overflowing the rounded menu). The active ordering is
+      // already shown by the CheckedPopupMenuItem's check, like the more menu.
       onSelected: onChanged,
       position: PopupMenuPosition.under,
       child: const _MenuSurface(icon: Icons.sort_rounded),
