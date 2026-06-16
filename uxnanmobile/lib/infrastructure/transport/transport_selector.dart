@@ -62,15 +62,13 @@ class DirectTransportSelector implements TransportSelector {
     }
     final transport = _createTransport();
     try {
-      await transport
-          .connect(
-            device.relayUrl,
-            headers: {
-              'x-role': 'iphone',
-              'x-session-id': device.sessionId,
-            },
-          )
-          .timeout(_relayTimeout);
+      await transport.connect(
+        device.relayUrl,
+        headers: {
+          'x-role': 'iphone',
+          'x-session-id': device.sessionId,
+        },
+      ).timeout(_relayTimeout);
       return transport;
     } on Object catch (error) {
       await transport.disconnect().catchError((_) {});

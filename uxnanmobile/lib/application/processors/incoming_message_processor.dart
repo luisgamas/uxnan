@@ -33,7 +33,8 @@ class IncomingMessageProcessor {
           threadId: threadId,
           delta: params['delta'] is String ? params['delta'] as String : '',
         ),
-      'stream/content/block' => _contentBlock(turnId, threadId, params['content']),
+      'stream/content/block' =>
+        _contentBlock(turnId, threadId, params['content']),
       'stream/turn/completed' => TurnCompletedEvent(
           turnId: turnId,
           threadId: threadId,

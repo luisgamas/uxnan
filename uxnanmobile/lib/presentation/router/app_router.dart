@@ -37,8 +37,7 @@ class AppRoutes {
   static const String deviceArchivedPattern = '/device/:deviceId/archived';
 
   /// Builds the archived-threads route for the PC with [deviceId].
-  static String deviceArchived(String deviceId) =>
-      '/device/$deviceId/archived';
+  static String deviceArchived(String deviceId) => '/device/$deviceId/archived';
 
   /// Conversation screen path pattern (`:threadId`).
   static const String conversationPattern = '/conversation/:threadId';

@@ -136,8 +136,7 @@ void main() {
         () => _FakeTransport((_) async {}),
       );
 
-      final transport =
-          await selector.select(_device()) as _FakeTransport;
+      final transport = await selector.select(_device()) as _FakeTransport;
       expect(transport.connectedUrl, 'wss://relay.test');
     });
 

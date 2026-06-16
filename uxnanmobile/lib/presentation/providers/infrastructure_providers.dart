@@ -74,8 +74,7 @@ final conversationPreferencesStoreProvider =
 );
 
 /// Persists appearance + language preferences (non-sensitive, on-device).
-final appearancePreferencesStoreProvider =
-    Provider<AppearancePreferencesStore>(
+final appearancePreferencesStoreProvider = Provider<AppearancePreferencesStore>(
   (ref) => AppearancePreferencesStore(),
 );
 
