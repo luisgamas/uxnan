@@ -49,8 +49,7 @@ class UxnanDatabase extends _$UxnanDatabase {
           if (from < 3) {
             await m.addColumn(threadsTable, threadsTable.deviceId);
             const demoThreadIds = ['demo-thread', 'demo-thread-2'];
-            await (delete(threadsTable)
-                  ..where((t) => t.id.isIn(demoThreadIds)))
+            await (delete(threadsTable)..where((t) => t.id.isIn(demoThreadIds)))
                 .go();
             await (delete(trustedDevicesTable)
                   ..where((d) => d.macDeviceId.equals('demo-mac')))

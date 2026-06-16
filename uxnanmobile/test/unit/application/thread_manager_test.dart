@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uxnan/application/managers/thread_manager.dart';
 import 'package:uxnan/application/processors/domain_event.dart';
 import 'package:uxnan/domain/entities/message.dart';
+import 'package:uxnan/domain/enums/approval_decision.dart';
 import 'package:uxnan/domain/enums/command_status.dart';
 import 'package:uxnan/domain/enums/message_delivery_state.dart';
 import 'package:uxnan/domain/enums/message_role.dart';
@@ -96,6 +97,13 @@ void main() {
               'cwd': params?['cwd'],
               'model': params?['model'],
               'status': 'active',
+            },
+          'thread/fork' => {
+              'id': 'th-fork',
+              'title': 'Thread 1 (fork)',
+              'agentId': 'codex',
+              'status': 'active',
+              'model': 'gpt-5',
             },
           _ => <String, dynamic>{},
         };
@@ -421,5 +429,114 @@ void main() {
     await _settle();
 
     expect(turnSendParams?.containsKey('options'), isFalse);
+  });
+
+  test('sendUserMessage forwards attachments and echoes them locally',
+      () async {
+    await manager.selectThread('th1');
+    await _settle();
+
+    await manager.sendUserMessage(
+      'th1',
+      'look',
+      attachments: const [
+        ImageContent(mimeType: 'image/png', base64Data: 'AAAA'),
+      ],
+    );
+    await _settle();
+
+    expect(turnSendParams?['attachments'], [
+      {'type': 'image', 'mimeType': 'image/png', 'base64Data': 'AAAA'},
+    ]);
+    final persisted = await messageRepo.getMessages('th1');
+    final user = persisted.firstWhereOrNull((m) => m.role == MessageRole.user);
+    expect(user, isNotNull);
+    expect(user!.contents.whereType<ImageContent>().length, 1);
+    expect(user.contents.whereType<TextContent>().single.text, 'look');
+  });
+
+  test('sendUserMessage allows an image-only message (empty text)', () async {
+    await manager.selectThread('th1');
+    await _settle();
+
+    await manager.sendUserMessage(
+      'th1',
+      '',
+      attachments: const [
+        ImageContent(mimeType: 'image/jpeg', base64Data: 'BBBB'),
+      ],
+    );
+    await _settle();
+
+    expect(sentMethods, contains('turn/send'));
+    final persisted = await messageRepo.getMessages('th1');
+    final user = persisted.firstWhereOrNull((m) => m.role == MessageRole.user);
+    expect(user, isNotNull);
+    expect(user!.contents.whereType<TextContent>().isEmpty, isTrue);
+    expect(user.contents.whereType<ImageContent>().length, 1);
+  });
+
+  test('forkThread sends thread/fork and persists the returned thread',
+      () async {
+    await manager.loadThreads();
+    await _settle();
+
+    final forked = await manager.forkThread('th1');
+
+    expect(forked, isNotNull);
+    expect(forked!.id, 'th-fork');
+    expect(sentMethods, contains('thread/fork'));
+    final stored = await threadRepo.getThread('th-fork');
+    expect(stored, isNotNull);
+    expect(stored!.title, 'Thread 1 (fork)');
+  });
+
+  test('resumeThread sends thread/resume', () async {
+    await manager.loadThreads();
+    await _settle();
+
+    await manager.resumeThread('th1');
+
+    expect(sentMethods, contains('thread/resume'));
+  });
+
+  test('selectThread windows history and loadMoreHistory grows it', () async {
+    final messages = [
+      for (var i = 0; i < 45; i++)
+        _msg('m$i', order: i, role: MessageRole.assistant, text: 'reply $i'),
+    ];
+    await messageRepo.saveMessages(messages);
+
+    await manager.selectThread('th1');
+    await _settle();
+
+    // The initial window renders only the most-recent page (40).
+    expect(manager.timeline.messages.length, 40);
+    expect(manager.timeline.hasMore, isTrue);
+    expect(manager.timeline.messages.first.id, 'm5');
+
+    manager.loadMoreHistory();
+    await _settle();
+
+    expect(manager.timeline.messages.length, 45);
+    expect(manager.timeline.hasMore, isFalse);
+    expect(manager.timeline.messages.first.id, 'm0');
+  });
+
+  test('respondApproval sends turn/send with the approvalResponse', () async {
+    final ok = await manager.respondApproval(
+      threadId: 'th1',
+      approvalId: 'ap1',
+      decision: ApprovalDecision.approveSession,
+    );
+
+    expect(ok, isTrue);
+    expect(sentMethods, contains('turn/send'));
+    expect(turnSendParams?['approvalResponse'], {
+      'approvalId': 'ap1',
+      'decision': 'approveSession',
+    });
+    // It is control data, not chat: no text is sent.
+    expect(turnSendParams?.containsKey('text'), isFalse);
   });
 }

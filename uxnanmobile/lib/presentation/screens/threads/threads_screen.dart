@@ -14,9 +14,9 @@ import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/screens/threads/new_conversation_screen.dart';
 import 'package:uxnan/presentation/screens/threads/thread_list_controls.dart';
 import 'package:uxnan/presentation/screens/threads/thread_tile.dart';
-import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/agent_visuals.dart';
+import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 
 /// The threads of a connected PC (spec 02a §5.4.2). Lists the active bridge's
 /// threads with per-agent filter chips, and opens a thread's conversation.
@@ -139,7 +139,26 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
 
     final l10n = AppLocalizations.of(context);
 
-    return Scaffold(
+    return NeScaffold(
+      title: _title(devices),
+      onRefresh: _refresh,
+      actions: [
+        // Search all of this PC's threads (ignores the agent filter).
+        ThreadSearchAnchor(
+          threads: threads,
+          onSelect: (id) => context.push(AppRoutes.conversation(id)),
+        ),
+        ThreadSortMenu(
+          sort: _sort,
+          onChanged: (value) => setState(() => _sort = value),
+        ),
+        ThreadMoreMenu(
+          compact: _compact,
+          onCompactChanged: (value) => setState(() => _compact = value),
+          onArchived: () =>
+              context.push(AppRoutes.deviceArchived(widget.deviceId)),
+        ),
+      ],
       floatingActionButton: FloatingActionButton.extended(
         // New conversations only make sense against the live PC.
         onPressed: connectedHere ? _newConversation : null,
@@ -149,81 +168,46 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
             ? null
             : Theme.of(context).colorScheme.surfaceContainerHighest,
       ),
-      body: RefreshIndicator(
-        onRefresh: _refresh,
-        child: CustomScrollView(
-          physics: const BouncingScrollPhysics(
-            parent: AlwaysScrollableScrollPhysics(),
-          ),
-          slivers: [
-            SliverAppBar.large(
-              floating: true,
-              snap: true,
-              title: Text(_title(devices), overflow: TextOverflow.ellipsis),
-              actions: [
-                // Search all of this PC's threads (ignores the agent filter).
-                ThreadSearchAnchor(
-                  threads: threads,
-                  onSelect: (id) => context.push(AppRoutes.conversation(id)),
-                ),
-                ThreadSortMenu(
-                  sort: _sort,
-                  onChanged: (value) => setState(() => _sort = value),
-                ),
-                ThreadMoreMenu(
-                  compact: _compact,
-                  onCompactChanged: (value) => setState(() => _compact = value),
-                  onArchived: () => context.push(
-                    AppRoutes.deviceArchived(widget.deviceId),
-                  ),
-                ),
-                _ConnectionDot(
-                  connected: connectedHere,
-                  connecting: connectingHere,
-                ),
-                const SizedBox(width: UxnanSpacing.lg),
-              ],
-              bottom: agents.length > 1
-                  ? _AgentFilterBar(
-                      agents: agents,
-                      selected: _agentFilter,
-                      onSelected: (agent) =>
-                          setState(() => _agentFilter = agent),
-                    )
-                  : null,
+      slivers: [
+        // Per-agent filter chips (only when more than one agent is present).
+        if (agents.length > 1)
+          SliverToBoxAdapter(
+            child: _AgentFilterBar(
+              agents: agents,
+              selected: _agentFilter,
+              onSelected: (agent) => setState(() => _agentFilter = agent),
             ),
-            if (!connectedHere)
-              SliverToBoxAdapter(
-                child: _OfflineBanner(
-                  connecting: connectingHere,
-                  onConnect: _connectHere,
-                ),
+          ),
+        if (!connectedHere)
+          SliverToBoxAdapter(
+            child: _OfflineBanner(
+              connecting: connectingHere,
+              onConnect: _connectHere,
+            ),
+          ),
+        if (visible.isEmpty)
+          const SliverFillRemaining(
+            hasScrollBody: false,
+            child: _EmptyThreads(),
+          )
+        else
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(
+              UxnanSpacing.lg,
+              UxnanSpacing.sm,
+              UxnanSpacing.lg,
+              UxnanSpacing.lg,
+            ),
+            sliver: SliverList.separated(
+              itemCount: visible.length,
+              separatorBuilder: (_, __) => SizedBox(
+                height: _compact ? UxnanSpacing.sm : UxnanSpacing.md,
               ),
-            if (visible.isEmpty)
-              const SliverFillRemaining(
-                hasScrollBody: false,
-                child: _EmptyThreads(),
-              )
-            else
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(
-                  UxnanSpacing.lg,
-                  UxnanSpacing.sm,
-                  UxnanSpacing.lg,
-                  UxnanSpacing.lg,
-                ),
-                sliver: SliverList.separated(
-                  itemCount: visible.length,
-                  separatorBuilder: (_, __) => SizedBox(
-                    height: _compact ? UxnanSpacing.sm : UxnanSpacing.md,
-                  ),
-                  itemBuilder: (context, index) =>
-                      ThreadTile(thread: visible[index], compact: _compact),
-                ),
-              ),
-          ],
-        ),
-      ),
+              itemBuilder: (context, index) =>
+                  ThreadTile(thread: visible[index], compact: _compact),
+            ),
+          ),
+      ],
     );
   }
 
@@ -288,28 +272,6 @@ class _AgentFilterBar extends StatelessWidget implements PreferredSizeWidget {
             ),
         ],
       ),
-    );
-  }
-}
-
-/// Truthful online dot for THIS PC: green only when we hold its live channel,
-/// amber while its own connection attempt is in flight, else grey.
-class _ConnectionDot extends StatelessWidget {
-  const _ConnectionDot({required this.connected, required this.connecting});
-  final bool connected;
-  final bool connecting;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = connected
-        ? UxnanColors.connected
-        : connecting
-            ? UxnanColors.connecting
-            : UxnanColors.disconnected;
-    return Container(
-      width: 8,
-      height: 8,
-      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
     );
   }
 }

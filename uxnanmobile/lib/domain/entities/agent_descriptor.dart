@@ -78,9 +78,8 @@ class AgentDescriptor extends Equatable {
     final caps = json['capabilities'];
     return AgentDescriptor(
       agentId: json['agentId'] as String? ?? '',
-      displayName: json['displayName'] as String? ??
-          json['agentId'] as String? ??
-          '',
+      displayName:
+          json['displayName'] as String? ?? json['agentId'] as String? ?? '',
       available: json['available'] == true,
       capabilities: caps is Map
           ? AgentCapabilities.fromJson(caps.cast<String, dynamic>())

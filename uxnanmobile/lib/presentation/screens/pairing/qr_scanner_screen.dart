@@ -13,6 +13,9 @@ import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/screens/pairing/update_prompt_dialog.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/widgets/expressive_progress.dart';
+import 'package:uxnan/presentation/widgets/icon_surface.dart';
+import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 
 /// Camera state for the scanner screen.
 enum _CameraAccess {
@@ -131,25 +134,49 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final textTheme = Theme.of(context).textTheme;
+    final body = switch (_access) {
+      _CameraAccess.checking => Center(child: PolygonLoader(size: 36)),
+      _CameraAccess.granted => _ScannerView(
+          controller: _controller!,
+          onDetect: _onDetect,
+          connecting: _connecting,
+        ),
+      _CameraAccess.denied => _PermissionRequest(
+          onAllow: () => _resolvePermission(request: true),
+          permanentlyDenied: false,
+        ),
+      _CameraAccess.permanentlyDenied => const _PermissionRequest(
+          onAllow: openAppSettings,
+          permanentlyDenied: true,
+        ),
+    };
+    // Transparent NE top bar overlaid above the camera (or the permission /
+    // checking states), matching the rest of the app's chrome.
     return Scaffold(
-      appBar: AppBar(title: Text(l10n.qrScannerTitle)),
-      body: switch (_access) {
-        _CameraAccess.checking =>
-          const Center(child: CircularProgressIndicator()),
-        _CameraAccess.granted => _ScannerView(
-            controller: _controller!,
-            onDetect: _onDetect,
-            connecting: _connecting,
+      body: Stack(
+        children: [
+          Positioned.fill(child: body),
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: NeTopBar(
+              leading: IconSurface(
+                icon: Icons.arrow_back_rounded,
+                tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+                onPressed: () => Navigator.of(context).maybePop(),
+              ),
+              title: Text(
+                l10n.qrScannerTitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: textTheme.titleLarge?.copyWith(fontSize: 20),
+              ),
+            ),
           ),
-        _CameraAccess.denied => _PermissionRequest(
-            onAllow: () => _resolvePermission(request: true),
-            permanentlyDenied: false,
-          ),
-        _CameraAccess.permanentlyDenied => const _PermissionRequest(
-            onAllow: openAppSettings,
-            permanentlyDenied: true,
-          ),
-      },
+        ],
+      ),
     );
   }
 }
@@ -193,7 +220,7 @@ class _ScannerView extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const CircularProgressIndicator(),
+                  PolygonLoader(size: 48, color: Colors.white),
                   const SizedBox(height: UxnanSpacing.lg),
                   Text(
                     l10n.pairingConnecting,

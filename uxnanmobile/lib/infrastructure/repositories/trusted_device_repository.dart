@@ -103,9 +103,6 @@ class TrustedDeviceRepository implements ITrustedDeviceRepository {
 
   static List<String> _decodeHosts(String? raw) {
     if (raw == null || raw.isEmpty) return const [];
-    return raw
-        .split('\n')
-        .where((h) => h.isNotEmpty)
-        .toList(growable: false);
+    return raw.split('\n').where((h) => h.isNotEmpty).toList(growable: false);
   }
 }

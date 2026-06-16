@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -8,6 +9,7 @@ import 'package:flutter_highlight/themes/atom-one-light.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/domain/entities/message.dart';
+import 'package:uxnan/domain/enums/approval_decision.dart';
 import 'package:uxnan/domain/enums/approval_risk.dart';
 import 'package:uxnan/domain/enums/command_status.dart';
 import 'package:uxnan/domain/enums/plan_step_status.dart';
@@ -16,9 +18,11 @@ import 'package:uxnan/domain/enums/system_content_kind.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
+import 'package:uxnan/presentation/providers/approval_providers.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
+import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 
 /// Renders a single [MessageContent] block. The enclosing bubble provides the
 /// background; this widget renders the block's body.
@@ -27,6 +31,7 @@ class MessageContentView extends StatelessWidget {
   const MessageContentView({
     required this.content,
     this.selectableText = true,
+    this.threadId,
     super.key,
   });
 
@@ -36,6 +41,10 @@ class MessageContentView extends StatelessWidget {
   /// Whether text/markdown is selectable. Disabled for the user's own bubble so
   /// a tap on it toggles its copy affordance instead of placing a text cursor.
   final bool selectableText;
+
+  /// Owning thread, needed to respond to an [ApprovalContent]; null elsewhere
+  /// (e.g. the user's own bubble) leaves the approval card read-only.
+  final String? threadId;
 
   @override
   Widget build(BuildContext context) {
@@ -48,13 +57,12 @@ class MessageContentView extends StatelessWidget {
       final CommandExecutionContent c => _CommandCard(content: c),
       final SystemContent c => _SystemBanner(content: c),
       final DiffContent c => _DiffBlock(content: c),
-      final ImageContent _ =>
-        const _Placeholder(icon: Icons.image_outlined, label: 'Image'),
+      final ImageContent c => _ImageBlock(content: c),
       final ToolUseContent c =>
         _Placeholder(icon: Icons.build_outlined, label: 'Tool · ${c.toolName}'),
       final MermaidContent _ =>
         const _Placeholder(icon: Icons.account_tree_outlined, label: 'Diagram'),
-      final ApprovalContent c => _ApprovalCard(content: c),
+      final ApprovalContent c => _ApprovalCard(content: c, threadId: threadId),
       final PlanContent c => _PlanCard(content: c),
       final SubagentContent c => _SubagentCard(content: c),
       final UnknownContent c =>
@@ -63,26 +71,51 @@ class MessageContentView extends StatelessWidget {
   }
 }
 
-/// Renders an [ApprovalContent]: the requested action, its risk, and (disabled)
-/// Approve/Reject controls. FOR-DEV: sending the response needs a bridge
-/// approval-response RPC (`turn/send { approvalResponse }`); until then this is
-/// a read-only card so the request is visible.
-class _ApprovalCard extends StatelessWidget {
-  const _ApprovalCard({required this.content});
+/// Renders an [ApprovalContent]: the requested action, its risk, and the
+/// interactive Approve / Reject / "always allow this session" controls. The
+/// card morphs (spring `AnimatedSize`) from the actions into a settled status
+/// row once the user responds, shows an inline spinner while the response is in
+/// flight, and re-enables on failure. Read-only when [threadId] is null or the
+/// request has no id.
+///
+/// FOR-DEV: dormant until the bridge emits approval requests and accepts
+/// `turn/send { approvalResponse }` (see `FOR-DEV.md`); the wiring is complete
+/// on the app side against the documented contract.
+class _ApprovalCard extends ConsumerWidget {
+  const _ApprovalCard({required this.content, this.threadId});
   final ApprovalContent content;
+  final String? threadId;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
+    final l10n = AppLocalizations.of(context);
     final request = content.request;
+    final riskColor = _riskColor(request.risk);
+
+    final canRespond = threadId != null && request.approvalId.isNotEmpty;
+    final response = canRespond
+        ? ref.watch(
+            approvalResponsesProvider.select((m) => m[request.approvalId]),
+          )
+        : null;
+    final phase = response?.phase ?? ApprovalResponsePhase.idle;
+    final resolved = phase == ApprovalResponsePhase.resolved;
+    final sending = phase == ApprovalResponsePhase.sending;
+
+    void respond(ApprovalDecision decision) {
+      if (!canRespond || sending || resolved) return;
+      ref
+          .read(approvalResponsesProvider.notifier)
+          .respond(threadId!, request.approvalId, decision);
+    }
 
     return DecoratedBox(
       decoration: BoxDecoration(
         color: colors.surfaceContainerHighest,
         borderRadius: const BorderRadius.all(UxnanRadius.lg),
-        border:
-            Border.all(color: _riskColor(request.risk).withValues(alpha: 0.6)),
+        border: Border.all(color: colors.outlineVariant),
       ),
       child: Padding(
         padding: const EdgeInsets.all(UxnanSpacing.md),
@@ -91,13 +124,9 @@ class _ApprovalCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                Icon(
-                  Icons.shield_outlined,
-                  size: 16,
-                  color: _riskColor(request.risk),
-                ),
+                Icon(Icons.shield_outlined, size: 16, color: riskColor),
                 const SizedBox(width: UxnanSpacing.sm),
-                Text('Needs approval', style: textTheme.labelMedium),
+                Text(l10n.approvalNeedsApproval, style: textTheme.labelMedium),
                 const Spacer(),
                 _RiskBadge(risk: request.risk),
               ],
@@ -105,7 +134,7 @@ class _ApprovalCard extends StatelessWidget {
             const SizedBox(height: UxnanSpacing.sm),
             Text(
               request.action.isEmpty
-                  ? 'Action awaiting approval'
+                  ? l10n.approvalActionFallback
                   : request.action,
               style: textTheme.bodyMedium,
             ),
@@ -114,31 +143,175 @@ class _ApprovalCard extends StatelessWidget {
               Text(request.detail!, style: UxnanTypography.codeSmall),
             ],
             const SizedBox(height: UxnanSpacing.md),
-            // FOR-DEV: respond via the bridge approval RPC when it exists.
-            const Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: null,
-                    child: Text('Reject'),
-                  ),
-                ),
-                SizedBox(width: UxnanSpacing.sm),
-                Expanded(
-                  child: FilledButton(
-                    onPressed: null,
-                    child: Text('Approve'),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: UxnanSpacing.xs),
-            Text(
-              'Respond from the desktop/CLI for now.',
-              style:
-                  textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant),
+            AnimatedSize(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOutCubic,
+              alignment: Alignment.topLeft,
+              child: resolved
+                  ? _ApprovalResolved(decision: response!.decision!)
+                  : _ApprovalActions(
+                      sending: sending,
+                      failed: phase == ApprovalResponsePhase.failed,
+                      enabled: canRespond,
+                      pending: response?.decision,
+                      onRespond: respond,
+                    ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The action row of an [_ApprovalCard]: Reject + Approve, with a subtle
+/// "always allow this session" affordance beneath, plus an inline failure note.
+class _ApprovalActions extends StatelessWidget {
+  const _ApprovalActions({
+    required this.sending,
+    required this.failed,
+    required this.enabled,
+    required this.pending,
+    required this.onRespond,
+  });
+
+  final bool sending;
+  final bool failed;
+  final bool enabled;
+  final ApprovalDecision? pending;
+  final ValueChanged<ApprovalDecision> onRespond;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final l10n = AppLocalizations.of(context);
+    final acting = enabled && !sending;
+
+    Widget label(ApprovalDecision decision, String text) {
+      if (sending && pending == decision) {
+        return const SizedBox(
+          width: 16,
+          height: 16,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        );
+      }
+      return Text(text);
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (failed) ...[
+          Row(
+            children: [
+              Icon(Icons.error_outline_rounded, size: 14, color: colors.error),
+              const SizedBox(width: UxnanSpacing.xs),
+              Expanded(
+                child: Text(
+                  l10n.approvalFailed,
+                  style: textTheme.bodySmall?.copyWith(color: colors.error),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: UxnanSpacing.sm),
+        ],
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed:
+                    acting ? () => onRespond(ApprovalDecision.reject) : null,
+                child: label(ApprovalDecision.reject, l10n.approvalReject),
+              ),
+            ),
+            const SizedBox(width: UxnanSpacing.sm),
+            Expanded(
+              child: FilledButton(
+                onPressed:
+                    acting ? () => onRespond(ApprovalDecision.approve) : null,
+                child: label(ApprovalDecision.approve, l10n.approvalApprove),
+              ),
+            ),
+          ],
+        ),
+        Align(
+          child: TextButton(
+            onPressed: acting
+                ? () => onRespond(ApprovalDecision.approveSession)
+                : null,
+            child: label(
+              ApprovalDecision.approveSession,
+              l10n.approvalAllowSession,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// The settled status row shown once an approval has been answered.
+class _ApprovalResolved extends StatelessWidget {
+  const _ApprovalResolved({required this.decision});
+  final ApprovalDecision decision;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final l10n = AppLocalizations.of(context);
+    final approved = decision != ApprovalDecision.reject;
+    final color = approved ? UxnanColors.success : UxnanColors.error;
+    final label = switch (decision) {
+      ApprovalDecision.approve => l10n.approvalApproved,
+      ApprovalDecision.reject => l10n.approvalRejected,
+      ApprovalDecision.approveSession => l10n.approvalAllowedSession,
+    };
+    return Row(
+      children: [
+        Icon(
+          approved ? Icons.check_circle_rounded : Icons.cancel_rounded,
+          size: 18,
+          color: color,
+        ),
+        const SizedBox(width: UxnanSpacing.sm),
+        Text(
+          label,
+          style: textTheme.labelLarge?.copyWith(color: color),
+        ),
+      ],
+    );
+  }
+}
+
+/// Renders an [ImageContent]: an inline-base64 image as a bounded thumbnail, or
+/// a path/placeholder when only a workspace path is known (no bytes inline).
+class _ImageBlock extends StatelessWidget {
+  const _ImageBlock({required this.content});
+  final ImageContent content;
+
+  @override
+  Widget build(BuildContext context) {
+    final data = content.base64Data;
+    if (data == null) {
+      return _Placeholder(
+        icon: Icons.image_outlined,
+        label: content.path ?? 'Image',
+      );
+    }
+    return ClipRRect(
+      borderRadius: const BorderRadius.all(UxnanRadius.md),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxHeight: 280, maxWidth: 280),
+        child: Image.memory(
+          base64Decode(data),
+          fit: BoxFit.contain,
+          gaplessPlayback: true,
+          errorBuilder: (context, _, __) => _Placeholder(
+            icon: Icons.broken_image_outlined,
+            label: content.mimeType,
+          ),
         ),
       ),
     );
@@ -152,11 +325,12 @@ class _RiskBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = _riskColor(risk);
+    final l10n = AppLocalizations.of(context);
     final label = switch (risk) {
-      ApprovalRisk.low => 'Low risk',
-      ApprovalRisk.medium => 'Medium risk',
-      ApprovalRisk.high => 'High risk',
-      ApprovalRisk.unknown => 'Risk unknown',
+      ApprovalRisk.low => l10n.approvalRiskLow,
+      ApprovalRisk.medium => l10n.approvalRiskMedium,
+      ApprovalRisk.high => l10n.approvalRiskHigh,
+      ApprovalRisk.unknown => l10n.approvalRiskUnknown,
     };
     return Container(
       padding: const EdgeInsets.symmetric(
@@ -738,7 +912,9 @@ class AssistantTurnView extends ConsumerWidget {
           flushCommands();
           flushText();
           gap();
-          segments.add(MessageContentView(content: content));
+          segments.add(
+            MessageContentView(content: content, threadId: message.threadId),
+          );
       }
     }
     flushCommands();
@@ -749,15 +925,19 @@ class AssistantTurnView extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Neural Expressive activity cue: a morphing polygon at the very
+          // start of the response while the agent is still producing it.
+          if (message.isStreaming) ...[
+            // Not `const`: PolygonLoader's assert reads `shapes.length`, which
+            // isn't a valid constant expression.
+            PolygonLoader(size: 20),
+            const SizedBox(height: UxnanSpacing.sm),
+          ],
           if (showThinking && thinking.isNotEmpty) ...[
             _ThinkingSection(text: thinking.toString()),
             const SizedBox(height: UxnanSpacing.sm),
           ],
           ...segments,
-          if (message.isStreaming) ...[
-            const SizedBox(height: UxnanSpacing.sm),
-            const _StreamingDots(),
-          ],
           if (diffs.isNotEmpty) ...[
             const SizedBox(height: UxnanSpacing.sm),
             _ChangedFilesSection(diffs: diffs),
@@ -830,10 +1010,10 @@ class _ThinkingSectionState extends State<_ThinkingSection> {
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     return DecoratedBox(
+      // Borderless, light outline — same container as the new Work log.
       decoration: BoxDecoration(
-        color: colors.surfaceContainerHighest,
         borderRadius: const BorderRadius.all(UxnanRadius.lg),
-        border: Border.all(color: colors.outline),
+        border: Border.all(color: colors.outlineVariant),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -847,11 +1027,16 @@ class _ThinkingSectionState extends State<_ThinkingSection> {
                 children: [
                   Icon(
                     Icons.psychology_outlined,
-                    size: 16,
+                    size: 14,
                     color: colors.onSurfaceVariant,
                   ),
                   const SizedBox(width: UxnanSpacing.sm),
-                  Text(l10n.conversationThinking, style: textTheme.labelMedium),
+                  Text(
+                    l10n.conversationThinking,
+                    style: textTheme.labelSmall?.copyWith(
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
                   const Spacer(),
                   Icon(
                     _expanded
@@ -886,7 +1071,11 @@ class _ThinkingSectionState extends State<_ThinkingSection> {
   }
 }
 
-/// A collapsible "Work log (N)" of the commands and tools an agent turn ran.
+/// A "Work log" of the commands/tools an agent turn ran, in a **light,
+/// borderless** container (no fill, just a hairline outline). The first few
+/// entries are always visible — so the activity reads inline, in order, under
+/// the message that triggered it — and a "+N" toggle reveals the rest when
+/// there are more.
 class _WorkLogSection extends StatefulWidget {
   const _WorkLogSection({required this.items});
 
@@ -900,37 +1089,64 @@ class _WorkLogSection extends StatefulWidget {
 class _WorkLogSectionState extends State<_WorkLogSection> {
   bool _expanded = false;
 
+  /// How many entries show before the "+N" toggle appears.
+  static const int _preview = 3;
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
+    final items = widget.items;
+    final shown = _expanded ? items : items.take(_preview).toList();
+    final extra = items.length - shown.length;
+
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: colors.surfaceContainerHighest,
         borderRadius: const BorderRadius.all(UxnanRadius.lg),
-        border: Border.all(color: colors.outline),
+        border: Border.all(color: colors.outlineVariant),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Tappable header — always expandable, so even a single command can
+          // be opened to reveal its full text and output.
           InkWell(
             borderRadius: const BorderRadius.all(UxnanRadius.lg),
             onTap: () => setState(() => _expanded = !_expanded),
             child: Padding(
-              padding: const EdgeInsets.all(UxnanSpacing.md),
+              padding: const EdgeInsets.fromLTRB(
+                UxnanSpacing.md,
+                UxnanSpacing.md,
+                UxnanSpacing.md,
+                UxnanSpacing.sm,
+              ),
               child: Row(
                 children: [
                   Icon(
                     Icons.terminal_rounded,
-                    size: 16,
+                    size: 14,
                     color: colors.onSurfaceVariant,
                   ),
                   const SizedBox(width: UxnanSpacing.sm),
-                  Text(l10n.conversationWorkLog, style: textTheme.labelMedium),
+                  Text(
+                    l10n.conversationWorkLog,
+                    style: textTheme.labelSmall?.copyWith(
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
                   const SizedBox(width: UxnanSpacing.xs),
-                  _CountBadge(count: widget.items.length),
+                  _CountBadge(count: items.length),
                   const Spacer(),
+                  if (!_expanded && extra > 0) ...[
+                    Text(
+                      '+$extra',
+                      style: textTheme.labelSmall?.copyWith(
+                        color: colors.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(width: UxnanSpacing.xs),
+                  ],
                   Icon(
                     _expanded
                         ? Icons.expand_less_rounded
@@ -942,34 +1158,38 @@ class _WorkLogSectionState extends State<_WorkLogSection> {
               ),
             ),
           ),
-          if (_expanded)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                UxnanSpacing.md,
-                0,
-                UxnanSpacing.md,
-                UxnanSpacing.sm,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  for (final item in widget.items) ...[
-                    const SizedBox(height: UxnanSpacing.sm),
-                    _WorkLogRow(item: item),
-                  ],
-                ],
-              ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              UxnanSpacing.md,
+              0,
+              UxnanSpacing.md,
+              UxnanSpacing.md,
             ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (var i = 0; i < shown.length; i++) ...[
+                  if (i > 0) const SizedBox(height: UxnanSpacing.sm),
+                  // Collapsed shows just the command (truncated); expanded
+                  // shows the full command and its output.
+                  _WorkLogRow(item: shown[i], compact: !_expanded),
+                ],
+              ],
+            ),
+          ),
         ],
       ),
     );
   }
 }
 
-/// One compact work-log entry: a command (with its output) or a tool call.
+/// One work-log entry: a command or a tool call. When [compact] (the collapsed
+/// preview) it shows just the command on a single truncated line; expanded it
+/// shows the full command and its output.
 class _WorkLogRow extends StatelessWidget {
-  const _WorkLogRow({required this.item});
+  const _WorkLogRow({required this.item, this.compact = false});
   final MessageContent item;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -987,6 +1207,7 @@ class _WorkLogRow extends StatelessWidget {
             ),
           CommandStatus.error => (Icons.error_outline, UxnanColors.error),
         };
+        final hasOutput = command.output != null && command.output!.isNotEmpty;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1002,13 +1223,14 @@ class _WorkLogRow extends StatelessWidget {
                   child: Text(
                     '\$ ${command.command}',
                     style: UxnanTypography.codeSmall,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+                    maxLines: compact ? 1 : null,
+                    overflow:
+                        compact ? TextOverflow.ellipsis : TextOverflow.clip,
                   ),
                 ),
               ],
             ),
-            if (command.output != null && command.output!.isNotEmpty)
+            if (!compact && hasOutput)
               Padding(
                 padding: const EdgeInsets.only(
                   left: UxnanSpacing.lg,
@@ -1019,8 +1241,6 @@ class _WorkLogRow extends StatelessWidget {
                   style: UxnanTypography.codeSmall.copyWith(
                     color: colors.onSurfaceVariant,
                   ),
-                  maxLines: 8,
-                  overflow: TextOverflow.ellipsis,
                 ),
               ),
           ],
@@ -1219,55 +1439,6 @@ class _CountBadge extends StatelessWidget {
         style: UxnanTypography.codeSmall.copyWith(
           color: colors.onSurfaceVariant,
         ),
-      ),
-    );
-  }
-}
-
-/// Three animated dots shown while an assistant turn is still streaming.
-class _StreamingDots extends StatefulWidget {
-  const _StreamingDots();
-
-  @override
-  State<_StreamingDots> createState() => _StreamingDotsState();
-}
-
-class _StreamingDotsState extends State<_StreamingDots>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 1100),
-  )..repeat();
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final color = Theme.of(context).colorScheme.onSurfaceVariant;
-    return SizedBox(
-      height: 8,
-      width: 34,
-      child: AnimatedBuilder(
-        animation: _controller,
-        builder: (context, _) {
-          return Row(
-            children: List<Widget>.generate(3, (i) {
-              final t = (_controller.value + i / 3) % 1.0;
-              final opacity = 0.3 + 0.7 * (t < 0.5 ? t * 2 : (1 - t) * 2);
-              return Padding(
-                padding: const EdgeInsets.only(right: 5),
-                child: Opacity(
-                  opacity: opacity,
-                  child: CircleAvatar(radius: 3, backgroundColor: color),
-                ),
-              );
-            }),
-          );
-        },
       ),
     );
   }

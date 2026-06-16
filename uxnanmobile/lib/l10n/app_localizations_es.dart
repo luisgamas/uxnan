@@ -269,6 +269,15 @@ class AppLocalizationsEs extends AppLocalizations {
   String get threadActionCopyId => 'Copiar ID del hilo';
 
   @override
+  String get threadActionFork => 'Bifurcar conversación';
+
+  @override
+  String get threadForkFailed => 'No se pudo bifurcar esta conversación';
+
+  @override
+  String get conversationLoadEarlier => 'Mostrar mensajes anteriores';
+
+  @override
   String get threadActionArchive => 'Archivar';
 
   @override
@@ -367,6 +376,15 @@ class AppLocalizationsEs extends AppLocalizations {
   String get composerAttach => 'Adjuntar';
 
   @override
+  String get composerAttachGallery => 'Galería de fotos';
+
+  @override
+  String get composerAttachCamera => 'Tomar una foto';
+
+  @override
+  String get composerAttachFailed => 'No se pudo adjuntar esa imagen';
+
+  @override
   String get composerStop => 'Detener';
 
   @override
@@ -384,6 +402,9 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get composerOptionsHide => 'Ocultar opciones';
+
+  @override
+  String get composerTools => 'Opciones del turno';
 
   @override
   String get newThreadAction => 'Nueva conversación';
@@ -482,6 +503,25 @@ class AppLocalizationsEs extends AppLocalizations {
   String get newThreadCapImages => 'Imágenes';
 
   @override
+  String get newThreadCapabilities => 'Capacidades';
+
+  @override
+  String get newThreadWorktree => 'Usar un worktree';
+
+  @override
+  String get newThreadWorktreeDesc =>
+      'Crea un checkout aislado en una rama para que esta conversación no toque tu árbol de trabajo actual.';
+
+  @override
+  String get newThreadWorktreeBranchHint => 'Nombre de la rama';
+
+  @override
+  String get newThreadWorktreeManaged => 'Que el bridge elija la ubicación';
+
+  @override
+  String get newThreadWorktreeFailed => 'No se pudo crear el worktree';
+
+  @override
   String get environmentTitle => 'Entorno';
 
   @override
@@ -531,6 +571,45 @@ class AppLocalizationsEs extends AppLocalizations {
   @override
   String get approvalFullBody =>
       'Acceso sin restricciones a internet y a cualquier archivo.';
+
+  @override
+  String get approvalNeedsApproval => 'Requiere aprobación';
+
+  @override
+  String get approvalActionFallback => 'Acción en espera de aprobación';
+
+  @override
+  String get approvalApprove => 'Aprobar';
+
+  @override
+  String get approvalReject => 'Rechazar';
+
+  @override
+  String get approvalAllowSession => 'Permitir siempre esta sesión';
+
+  @override
+  String get approvalApproved => 'Aprobado';
+
+  @override
+  String get approvalRejected => 'Rechazado';
+
+  @override
+  String get approvalAllowedSession => 'Permitido en esta sesión';
+
+  @override
+  String get approvalFailed => 'No se pudo enviar tu respuesta; reintenta';
+
+  @override
+  String get approvalRiskLow => 'Riesgo bajo';
+
+  @override
+  String get approvalRiskMedium => 'Riesgo medio';
+
+  @override
+  String get approvalRiskHigh => 'Riesgo alto';
+
+  @override
+  String get approvalRiskUnknown => 'Riesgo desconocido';
 
   @override
   String get runOptionAuto => 'Automático';
@@ -763,6 +842,27 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get gitSwitchBranch => 'Cambiar de rama';
+
+  @override
+  String get gitPull => 'Traer (pull)';
+
+  @override
+  String get gitPullSuccess => 'Traído del remoto';
+
+  @override
+  String get gitNewBranch => 'Nueva rama';
+
+  @override
+  String get gitNewBranchHint => 'Nombre de la rama';
+
+  @override
+  String get gitNewBranchSuccess => 'Rama creada y activada';
+
+  @override
+  String get gitNewWorktree => 'Nuevo worktree';
+
+  @override
+  String get gitNewWorktreeSuccess => 'Worktree creado';
 
   @override
   String get gitSwitchBranchTitle => 'Cambiar de rama';

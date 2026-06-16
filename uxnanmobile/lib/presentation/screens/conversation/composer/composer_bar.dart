@@ -4,71 +4,45 @@ import 'package:uxnan/core/extensions/string_ext.dart';
 import 'package:uxnan/infrastructure/speech/speech_to_text_service.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
-import 'package:uxnan/presentation/screens/conversation/session_environment.dart';
-import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
-import 'package:uxnan/presentation/theme/typography.dart';
 
-/// The message composer: a Material 3 bottom bar **anchored to the screen
-/// edge** (not a floating card) — a `surfaceContainer` surface with a top
-/// hairline that reads as chrome, holding an expandable text field and a
-/// toolbar (attach, model selector, context usage, voice, send). The mic
-/// dictates into the field via on-device speech-to-text; attach is still a
-/// placeholder (FOR-DEV).
+/// The message composer — a Neural Expressive **floating pill** (guide §4.3):
+/// a `surfaceContainerHighest` rounded surface holding just the essentials —
+/// a "+" that opens the turn-tools sheet (attach + run options + approval), an
+/// expandable text field, and a trailing mic/send/stop. The model picker and
+/// context meter moved up to the app bar; the run-option/approval controls moved
+/// into the "+" sheet, so the composer stays uncluttered.
 class ComposerBar extends ConsumerStatefulWidget {
   /// Creates a [ComposerBar].
   const ComposerBar({
     required this.onSend,
-    required this.environment,
-    this.resolvedModel,
-    this.onModelTap,
     this.enabled = true,
-    this.showAttach = true,
-    this.showOptionsToggle = false,
-    this.optionsVisible = true,
-    this.onToggleOptions,
     this.running = false,
+    this.hasAttachments = false,
     this.onStop,
+    this.onPlus,
     super.key,
   });
 
   /// Called with the trimmed message when the user sends.
   final ValueChanged<String> onSend;
 
-  /// The session environment (model, context) shown in the toolbar.
-  final SessionEnvironment environment;
-
-  /// Concrete model the alias resolved to (e.g. `claude-opus-4-8`), shown as
-  /// the model chip's tooltip when known.
-  final String? resolvedModel;
-
-  /// Opens the model picker for the active thread, if available.
-  final VoidCallback? onModelTap;
-
   /// Whether sending is currently allowed (e.g. connected).
   final bool enabled;
 
-  /// Whether to show the attach button. Hidden for agents that don't advertise
-  /// the `images` capability (the picker itself is still FOR-DEV).
-  final bool showAttach;
+  /// Whether the composer has pending attachments — lets the user send with an
+  /// empty text field (image-only message) and shows Send instead of the mic.
+  final bool hasAttachments;
 
-  /// Whether to show the toggle that collapses/expands the run-option and
-  /// approval-mode strip above the composer. Hidden when there's nothing to
-  /// toggle (the agent advertises no run options and no approvals).
-  final bool showOptionsToggle;
-
-  /// Whether the options strip is currently expanded (drives the toggle icon).
-  final bool optionsVisible;
-
-  /// Toggles the options strip. Required when [showOptionsToggle] is true.
-  final VoidCallback? onToggleOptions;
-
-  /// Whether the agent is currently producing a turn — the Send button becomes
-  /// a Stop button that calls [onStop] (cancels the turn without closing it).
+  /// Whether the agent is currently producing a turn — Send becomes Stop.
   final bool running;
 
   /// Cancels the in-flight turn. Required when [running] is true.
   final VoidCallback? onStop;
+
+  /// Opens the unified turn-tools sheet (attach + run options + approval). When
+  /// null the "+" is hidden (the agent advertises no tools).
+  final VoidCallback? onPlus;
 
   @override
   ConsumerState<ComposerBar> createState() => _ComposerBarState();
@@ -108,7 +82,8 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
 
   void _send() {
     final text = _controller.text.trim();
-    if (text.isEmpty || !widget.enabled) return;
+    if (!widget.enabled) return;
+    if (text.isEmpty && !widget.hasAttachments) return;
     widget.onSend(text);
     _controller.clear();
   }
@@ -158,133 +133,91 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final l10n = AppLocalizations.of(context);
-    final canSend = _hasText && widget.enabled;
+    final showSend = _hasText || widget.hasAttachments;
+    final canSend = showSend && widget.enabled;
 
-    // M3 bottom-anchored input bar: a `surfaceContainer` tone (the BottomAppBar
-    // default) with a top hairline, no rounded card / no shadow — it reads as
-    // chrome that's part of the screen, letting the conversation breathe.
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors.surfaceContainer,
-        border: Border(top: BorderSide(color: colors.outlineVariant)),
-      ),
-      child: SafeArea(
-        top: false,
-        // The surface spans full width (chrome); its content centers within the
-        // max content width so it lines up with the messages on wide screens.
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(
-              maxWidth: UxnanSpacing.maxContentWidth,
+    return SafeArea(
+      top: false,
+      child: Center(
+        child: ConstrainedBox(
+          constraints:
+              const BoxConstraints(maxWidth: UxnanSpacing.maxContentWidth),
+          child: Padding(
+            // Floating pill: gutter all around, lifted off the screen edge.
+            padding: const EdgeInsets.fromLTRB(
+              UxnanSpacing.lg,
+              UxnanSpacing.sm,
+              UxnanSpacing.lg,
+              UxnanSpacing.md,
             ),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(
-                UxnanSpacing.lg,
-                UxnanSpacing.lg,
-                UxnanSpacing.sm,
-                UxnanSpacing.sm,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: colors.surfaceContainerHighest,
+                // Fully rounded (pill) to match the other NE surfaces (model
+                // pill, icon surfaces); grows into a capsule when multi-line.
+                borderRadius: const BorderRadius.all(UxnanRadius.full),
               ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    controller: _controller,
-                    enabled: widget.enabled,
-                    minLines: 1,
-                    maxLines: 6,
-                    style: textTheme.bodyMedium,
-                    decoration: InputDecoration(
-                      isCollapsed: true,
-                      border: InputBorder.none,
-                      hintText: l10n.composerHint,
-                      hintStyle: TextStyle(color: colors.onSurfaceVariant),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: UxnanSpacing.xs,
+                  vertical: UxnanSpacing.xs,
+                ),
+                child: Row(
+                  // crossAxisAlignment defaults to center, so the "+", the text
+                  // field and the mic/send button share one baseline (they have
+                  // different intrinsic heights); the field grows upward when
+                  // multi-line.
+                  children: [
+                    // "+" opens the unified turn-tools sheet; hidden when the
+                    // agent advertises no attach/run-options/approval tools.
+                    if (widget.onPlus != null)
+                      IconButton(
+                        tooltip: l10n.composerTools,
+                        visualDensity: VisualDensity.compact,
+                        icon: Icon(
+                          Icons.add_rounded,
+                          size: 22,
+                          color: colors.onSurfaceVariant,
+                        ),
+                        onPressed: widget.onPlus,
+                      )
+                    else
+                      const SizedBox(width: UxnanSpacing.sm),
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          vertical: UxnanSpacing.sm,
+                        ),
+                        child: TextField(
+                          controller: _controller,
+                          // Always editable so a message can be drafted while
+                          // offline; only *sending* is gated by [enabled].
+                          minLines: 1,
+                          maxLines: 6,
+                          style: textTheme.bodyMedium,
+                          textInputAction: TextInputAction.newline,
+                          decoration: InputDecoration(
+                            isCollapsed: true,
+                            border: InputBorder.none,
+                            hintText: l10n.composerHint,
+                            hintStyle:
+                                TextStyle(color: colors.onSurfaceVariant),
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: UxnanSpacing.sm),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      // FOR-DEV: attach is a placeholder (no file/image picker
-                      // yet); shown only when the agent advertises `images`.
-                      if (widget.showAttach) ...[
-                        _RoundIconButton(
-                          icon: Icons.add_rounded,
-                          tooltip: l10n.composerAttach,
-                          onPressed: null,
-                        ),
-                        const SizedBox(width: UxnanSpacing.xs),
-                      ],
-                      // Collapse/expand the run-option + approval strip above the
-                      // composer, shown only when there's something to toggle.
-                      if (widget.showOptionsToggle) ...[
-                        _RoundIconButton(
-                          icon: widget.optionsVisible
-                              ? Icons.tune_rounded
-                              : Icons.tune_outlined,
-                          tooltip: widget.optionsVisible
-                              ? l10n.composerOptionsHide
-                              : l10n.composerOptionsShow,
-                          selected: widget.optionsVisible,
-                          onPressed: widget.onToggleOptions,
-                        ),
-                        const SizedBox(width: UxnanSpacing.xs),
-                      ],
-                      Flexible(
-                        child: _ModelChip(
-                          model: widget.environment.modelName,
-                          resolvedModel: widget.resolvedModel,
-                          onTap: widget.onModelTap,
-                        ),
-                      ),
-                      const Spacer(),
-                      // Context usage (usage-reporting agents): a percent ring
-                      // when the window is known (Claude), else a raw token
-                      // count (Codex). Shown at 0 until the first turn reports.
-                      if (widget.environment.showContext) ...[
-                        if (widget.environment.hasContext)
-                          _ContextBadge(
-                            percent: widget.environment.contextPercent,
-                          )
-                        else
-                          _TokenChip(
-                            label: widget.environment.contextTokensLabel ?? '0',
-                          ),
-                        const SizedBox(width: UxnanSpacing.xs),
-                      ],
-                      // Voice dictation: tap to start/stop. Recording shows a
-                      // filled mic on an error-toned chip.
-                      _RoundIconButton(
-                        icon: _listening
-                            ? Icons.mic_rounded
-                            : Icons.mic_none_rounded,
-                        tooltip: _listening
-                            ? l10n.composerVoiceStop
-                            : l10n.composerVoice,
-                        selected: _listening,
-                        selectedForeground: colors.onErrorContainer,
-                        selectedBackground: colors.errorContainer,
-                        onPressed: widget.enabled ? _toggleDictation : null,
-                      ),
-                      const SizedBox(width: UxnanSpacing.xs),
-                      if (widget.running)
-                        IconButton.filled(
-                          tooltip: l10n.composerStop,
-                          onPressed: widget.onStop,
-                          style: IconButton.styleFrom(
-                            backgroundColor: colors.error,
-                            foregroundColor: colors.onError,
-                          ),
-                          icon: const Icon(Icons.stop_rounded),
-                        )
-                      else
-                        IconButton.filled(
-                          tooltip: l10n.composerSend,
-                          onPressed: canSend ? _send : null,
-                          icon: const Icon(Icons.arrow_upward_rounded),
-                        ),
-                    ],
-                  ),
-                ],
+                    const SizedBox(width: UxnanSpacing.xs),
+                    _TrailingAction(
+                      hasText: showSend,
+                      enabled: widget.enabled,
+                      running: widget.running,
+                      listening: _listening,
+                      onSend: canSend ? _send : null,
+                      onStop: widget.onStop,
+                      onVoice: widget.enabled ? _toggleDictation : null,
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -294,156 +227,75 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
   }
 }
 
-class _RoundIconButton extends StatelessWidget {
-  const _RoundIconButton({
-    required this.icon,
-    required this.tooltip,
-    required this.onPressed,
-    this.selected = false,
-    this.selectedForeground,
-    this.selectedBackground,
+/// The pill's trailing button: Stop while running, Send when there's text,
+/// otherwise the mic (which toggles voice dictation).
+class _TrailingAction extends StatelessWidget {
+  const _TrailingAction({
+    required this.hasText,
+    required this.enabled,
+    required this.running,
+    required this.listening,
+    required this.onSend,
+    required this.onStop,
+    required this.onVoice,
   });
 
-  final IconData icon;
-  final String tooltip;
-  final VoidCallback? onPressed;
-
-  /// When true, the button reads as "on" (a soft container tint) — used for the
-  /// options-strip toggle and the active voice-dictation state.
-  final bool selected;
-
-  /// Foreground/background tints when [selected]; default to the secondary
-  /// container pair (the mic overrides them with error tones while recording).
-  final Color? selectedForeground;
-  final Color? selectedBackground;
+  final bool hasText;
+  final bool enabled;
+  final bool running;
+  final bool listening;
+  final VoidCallback? onSend;
+  final VoidCallback? onStop;
+  final VoidCallback? onVoice;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final foreground = selectedForeground ?? colors.onSecondaryContainer;
-    final background = selectedBackground ?? colors.secondaryContainer;
-    return IconButton(
-      tooltip: tooltip,
-      visualDensity: VisualDensity.compact,
-      isSelected: selected,
-      style: selected
-          ? IconButton.styleFrom(
-              backgroundColor: background,
-              foregroundColor: foreground,
-            )
-          : null,
-      icon: Icon(
-        icon,
-        size: 20,
-        color: selected ? foreground : colors.onSurfaceVariant,
-      ),
-      onPressed: onPressed,
-    );
-  }
-}
+    final l10n = AppLocalizations.of(context);
 
-/// Model selector: an M3 [ActionChip] (the only model selector — the old status
-/// sheet's model row was removed). Its tooltip surfaces the resolved version.
-class _ModelChip extends StatelessWidget {
-  const _ModelChip({required this.model, this.resolvedModel, this.onTap});
-  final String model;
-  final String? resolvedModel;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return Tooltip(
-      message: resolvedModel ?? model,
-      child: ActionChip(
-        avatar: Icon(
-          Icons.auto_awesome_outlined,
-          size: 16,
-          color: colors.onSurfaceVariant,
+    final Widget child;
+    if (running) {
+      child = IconButton.filled(
+        key: const ValueKey('stop'),
+        tooltip: l10n.composerStop,
+        onPressed: onStop,
+        style: IconButton.styleFrom(
+          backgroundColor: colors.error,
+          foregroundColor: colors.onError,
         ),
-        label: Text(model, overflow: TextOverflow.ellipsis),
-        visualDensity: VisualDensity.compact,
-        onPressed: onTap,
-      ),
-    );
-  }
-}
-
-class _ContextBadge extends StatelessWidget {
-  const _ContextBadge({required this.percent});
-  final int percent;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = percent >= 90
-        ? UxnanColors.error
-        : percent >= 70
-            ? UxnanColors.warning
-            : UxnanColors.success;
-    return Tooltip(
-      message: 'Context $percent%',
-      child: SizedBox(
-        width: 30,
-        height: 30,
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            SizedBox(
-              width: 26,
-              height: 26,
-              child: CircularProgressIndicator(
-                value: percent / 100,
-                strokeWidth: 2.5,
-                backgroundColor: color.withValues(alpha: 0.2),
-                valueColor: AlwaysStoppedAnimation<Color>(color),
-              ),
-            ),
-            Text('$percent', style: UxnanTypography.codeSmall),
-          ],
+        icon: const Icon(Icons.stop_rounded),
+      );
+    } else if (hasText) {
+      child = IconButton.filled(
+        key: const ValueKey('send'),
+        tooltip: l10n.composerSend,
+        onPressed: onSend,
+        icon: const Icon(Icons.arrow_upward_rounded),
+      );
+    } else {
+      child = IconButton(
+        key: const ValueKey('mic'),
+        tooltip: listening ? l10n.composerVoiceStop : l10n.composerVoice,
+        isSelected: listening,
+        style: listening
+            ? IconButton.styleFrom(
+                backgroundColor: colors.errorContainer,
+                foregroundColor: colors.onErrorContainer,
+              )
+            : null,
+        icon: Icon(
+          listening ? Icons.mic_rounded : Icons.mic_none_rounded,
+          color: listening ? colors.onErrorContainer : colors.onSurfaceVariant,
         ),
-      ),
-    );
-  }
-}
+        onPressed: onVoice,
+      );
+    }
 
-/// Raw token-count chip, shown when the context window is unknown (Codex) so
-/// usage is still visible without a percentage.
-class _TokenChip extends StatelessWidget {
-  const _TokenChip({required this.label});
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return Tooltip(
-      message: 'Context: $label tokens',
-      child: Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: UxnanSpacing.sm,
-          vertical: 4,
-        ),
-        decoration: BoxDecoration(
-          color: colors.surfaceContainerHighest,
-          borderRadius: const BorderRadius.all(UxnanRadius.full),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.donut_large_outlined,
-              size: 13,
-              color: colors.onSurfaceVariant,
-            ),
-            const SizedBox(width: UxnanSpacing.xs),
-            Text(
-              label,
-              style: UxnanTypography.codeSmall.copyWith(
-                color: colors.onSurfaceVariant,
-              ),
-            ),
-          ],
-        ),
-      ),
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 180),
+      transitionBuilder: (child, animation) =>
+          ScaleTransition(scale: animation, child: child),
+      child: child,
     );
   }
 }

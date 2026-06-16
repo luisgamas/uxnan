@@ -268,6 +268,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get threadActionCopyId => 'Copy thread ID';
 
   @override
+  String get threadActionFork => 'Fork conversation';
+
+  @override
+  String get threadForkFailed => 'Couldn\'t fork this conversation';
+
+  @override
+  String get conversationLoadEarlier => 'Show earlier messages';
+
+  @override
   String get threadActionArchive => 'Archive';
 
   @override
@@ -366,6 +375,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get composerAttach => 'Attach';
 
   @override
+  String get composerAttachGallery => 'Photo library';
+
+  @override
+  String get composerAttachCamera => 'Take a photo';
+
+  @override
+  String get composerAttachFailed => 'Couldn\'t attach that image';
+
+  @override
   String get composerStop => 'Stop';
 
   @override
@@ -383,6 +401,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get composerOptionsHide => 'Hide options';
+
+  @override
+  String get composerTools => 'Turn options';
 
   @override
   String get newThreadAction => 'New conversation';
@@ -481,6 +502,25 @@ class AppLocalizationsEn extends AppLocalizations {
   String get newThreadCapImages => 'Images';
 
   @override
+  String get newThreadCapabilities => 'Capabilities';
+
+  @override
+  String get newThreadWorktree => 'Run in a worktree';
+
+  @override
+  String get newThreadWorktreeDesc =>
+      'Create an isolated branch checkout so this conversation can\'t touch your current working tree.';
+
+  @override
+  String get newThreadWorktreeBranchHint => 'Branch name';
+
+  @override
+  String get newThreadWorktreeManaged => 'Let the bridge pick the location';
+
+  @override
+  String get newThreadWorktreeFailed => 'Couldn\'t create the worktree';
+
+  @override
   String get environmentTitle => 'Environment';
 
   @override
@@ -530,6 +570,45 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get approvalFullBody =>
       'Unrestricted access to the internet and any file.';
+
+  @override
+  String get approvalNeedsApproval => 'Needs approval';
+
+  @override
+  String get approvalActionFallback => 'Action awaiting approval';
+
+  @override
+  String get approvalApprove => 'Approve';
+
+  @override
+  String get approvalReject => 'Reject';
+
+  @override
+  String get approvalAllowSession => 'Always allow this session';
+
+  @override
+  String get approvalApproved => 'Approved';
+
+  @override
+  String get approvalRejected => 'Rejected';
+
+  @override
+  String get approvalAllowedSession => 'Allowed for this session';
+
+  @override
+  String get approvalFailed => 'Couldn\'t send your response — try again';
+
+  @override
+  String get approvalRiskLow => 'Low risk';
+
+  @override
+  String get approvalRiskMedium => 'Medium risk';
+
+  @override
+  String get approvalRiskHigh => 'High risk';
+
+  @override
+  String get approvalRiskUnknown => 'Risk unknown';
 
   @override
   String get runOptionAuto => 'Auto';
@@ -761,6 +840,27 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get gitSwitchBranch => 'Switch branch';
+
+  @override
+  String get gitPull => 'Pull';
+
+  @override
+  String get gitPullSuccess => 'Pulled from the remote';
+
+  @override
+  String get gitNewBranch => 'New branch';
+
+  @override
+  String get gitNewBranchHint => 'Branch name';
+
+  @override
+  String get gitNewBranchSuccess => 'Branch created and checked out';
+
+  @override
+  String get gitNewWorktree => 'New worktree';
+
+  @override
+  String get gitNewWorktreeSuccess => 'Worktree created';
 
   @override
   String get gitSwitchBranchTitle => 'Switch branch';

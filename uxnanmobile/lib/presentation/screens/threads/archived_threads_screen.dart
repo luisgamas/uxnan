@@ -9,6 +9,7 @@ import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/screens/threads/thread_list_controls.dart';
 import 'package:uxnan/presentation/screens/threads/thread_tile.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 
 /// The archived threads of a paired PC. Archived threads are hidden from the
 /// main threads list but never deleted; from here the user can reopen them,
@@ -41,56 +42,46 @@ class _ArchivedThreadsScreenState extends ConsumerState<ArchivedThreadsScreen> {
         .toList();
     final visible = sortThreads(archived, _sort);
 
-    return Scaffold(
-      body: CustomScrollView(
-        physics: const BouncingScrollPhysics(
-          parent: AlwaysScrollableScrollPhysics(),
+    return NeScaffold(
+      title: l10n.archivedTitle,
+      actions: [
+        ThreadSearchAnchor(
+          threads: archived,
+          onSelect: (id) => context.push(AppRoutes.conversation(id)),
         ),
-        slivers: [
-          SliverAppBar.large(
-            floating: true,
-            snap: true,
-            title: Text(l10n.archivedTitle, overflow: TextOverflow.ellipsis),
-            actions: [
-              ThreadSearchAnchor(
-                threads: archived,
-                onSelect: (id) => context.push(AppRoutes.conversation(id)),
-              ),
-              ThreadSortMenu(
-                sort: _sort,
-                onChanged: (value) => setState(() => _sort = value),
-              ),
-              ThreadMoreMenu(
-                compact: _compact,
-                onCompactChanged: (value) => setState(() => _compact = value),
-              ),
-              const SizedBox(width: UxnanSpacing.sm),
-            ],
-          ),
-          if (visible.isEmpty)
-            const SliverFillRemaining(
-              hasScrollBody: false,
-              child: _EmptyArchived(),
-            )
-          else
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(
-                UxnanSpacing.lg,
-                UxnanSpacing.sm,
-                UxnanSpacing.lg,
-                UxnanSpacing.lg,
-              ),
-              sliver: SliverList.separated(
-                itemCount: visible.length,
-                separatorBuilder: (_, __) => SizedBox(
-                  height: _compact ? UxnanSpacing.sm : UxnanSpacing.md,
-                ),
-                itemBuilder: (context, index) =>
-                    ThreadTile(thread: visible[index], compact: _compact),
-              ),
+        ThreadSortMenu(
+          sort: _sort,
+          onChanged: (value) => setState(() => _sort = value),
+        ),
+        ThreadMoreMenu(
+          compact: _compact,
+          onCompactChanged: (value) => setState(() => _compact = value),
+        ),
+      ],
+      slivers: [
+        if (visible.isEmpty)
+          const SliverFillRemaining(
+            hasScrollBody: false,
+            child: _EmptyArchived(),
+          )
+        else
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(
+              UxnanSpacing.lg,
+              UxnanSpacing.sm,
+              UxnanSpacing.lg,
+              UxnanSpacing.lg,
             ),
-        ],
-      ),
+            sliver: SliverList.separated(
+              itemCount: visible.length,
+              separatorBuilder: (_, __) => SizedBox(
+                height: _compact ? UxnanSpacing.sm : UxnanSpacing.md,
+              ),
+              itemBuilder: (context, index) =>
+                  ThreadTile(thread: visible[index], compact: _compact),
+            ),
+          ),
+      ],
     );
   }
 }

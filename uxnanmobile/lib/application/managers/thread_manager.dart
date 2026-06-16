@@ -11,6 +11,7 @@ import 'package:uxnan/domain/entities/auth_status.dart';
 import 'package:uxnan/domain/entities/message.dart';
 import 'package:uxnan/domain/entities/project.dart';
 import 'package:uxnan/domain/entities/thread.dart';
+import 'package:uxnan/domain/enums/approval_decision.dart';
 import 'package:uxnan/domain/enums/message_delivery_state.dart';
 import 'package:uxnan/domain/enums/message_role.dart';
 import 'package:uxnan/domain/enums/thread_activity.dart';
@@ -85,6 +86,16 @@ class ThreadManager {
   /// Latest persisted messages for the active thread (from the local repo),
   /// composed with any [_LiveTurn] overlay to build the active timeline.
   List<Message> _activePersisted = const [];
+
+  /// One page of timeline history.
+  static const int _historyPageSize = 40;
+
+  /// How many of the most-recent persisted messages the active timeline
+  /// renders. The local store holds the whole thread (kept complete by the
+  /// `turn/list` resync); this bounds the rendered window so a long history
+  /// doesn't build thousands of widgets at once, and grows by a page when the
+  /// user scrolls to the top ([loadMoreHistory]).
+  int _renderLimit = _historyPageSize;
 
   /// Token usage of each thread's most recent turn (context occupied, and the
   /// model's window when known), reported via `turn/completed`. In memory only.
@@ -289,6 +300,56 @@ class ThreadManager {
     }
   }
 
+  /// Resumes [threadId] on the bridge (`thread/resume`) so its agent session can
+  /// continue a conversation that had gone idle; flips the local status back to
+  /// active. Best-effort — degrades gracefully against an older bridge.
+  Future<void> resumeThread(String threadId) async {
+    final thread = await _threadRepository.getThread(threadId);
+    // Don't reactivate a thread the user archived on purpose (merely opening it
+    // to read should not un-archive it).
+    if (thread?.status == ThreadStatus.archived) return;
+    if (thread != null && thread.status != ThreadStatus.active) {
+      await _threadRepository.saveThread(
+        thread.copyWith(status: ThreadStatus.active),
+      );
+    }
+    try {
+      await _sendRequest('thread/resume', {'threadId': threadId});
+    } on Object catch (error, stackTrace) {
+      AppLogger.warn('thread/resume failed (kept local)', error, stackTrace);
+    }
+  }
+
+  /// Forks [threadId] on the bridge (`thread/fork`): the bridge deep-copies the
+  /// thread and its turns into a new thread, which is persisted locally
+  /// (inheriting the source's `deviceId`) and returned so the caller can open
+  /// it. Returns null when the bridge rejects it (e.g. no fork support).
+  Future<Thread?> forkThread(String threadId, {String? newBranch}) async {
+    final RpcMessage response;
+    try {
+      response = await _sendRequest('thread/fork', {
+        'threadId': threadId,
+        if (newBranch != null && newBranch.isNotEmpty) 'newBranch': newBranch,
+      });
+    } on Object catch (error, stackTrace) {
+      AppLogger.warn('thread/fork failed', error, stackTrace);
+      return null;
+    }
+    if (response.error != null) {
+      AppLogger.warn('thread/fork rejected: ${response.error!.message}');
+      return null;
+    }
+    final result = response.result;
+    if (result is! Map) return null;
+    final source = await _threadRepository.getThread(threadId);
+    final forked = _parseThread(result.cast<String, dynamic>());
+    final tagged = source?.deviceId != null
+        ? forked.copyWith(deviceId: source!.deviceId)
+        : forked;
+    await _threadRepository.saveThread(tagged);
+    return tagged;
+  }
+
   /// Loads the models the bridge reports for [agentId] (`agent/models`).
   ///
   /// Tolerates both the structured contract (objects with displayName/version/
@@ -365,6 +426,7 @@ class ThreadManager {
     _activeThreadId = threadId;
     markRead(threadId); // opening the conversation clears its unread flag
     _activePersisted = const [];
+    _renderLimit = _historyPageSize; // reset the window for the new thread
     _timeline.add(const TurnTimelineSnapshot());
     await _messagesSub?.cancel();
     _messagesSub =
@@ -376,6 +438,23 @@ class ThreadManager {
     // completed while the app was away (and was never persisted locally) shows
     // up. Reconciled by the deterministic assistant id, so it never duplicates.
     unawaited(_resyncThread(threadId));
+  }
+
+  /// Grows the rendered timeline window by one page of older messages and
+  /// rebuilds the snapshot. No-op when the whole local history is already
+  /// shown. The local store is the source (kept complete by the resync), so
+  /// this never hits the network.
+  ///
+  /// FOR-DEV: this paginates the *local* store. Incremental *remote* paging
+  /// (using `turn/list`'s `nextCursor` to avoid re-pulling the whole thread on
+  /// open) is a follow-up — the bridge's cursor is forward-only/offset
+  /// (oldest→newest), which doesn't fit a newest-first scroll-up without a
+  /// reverse cursor or total-count on the bridge.
+  void loadMoreHistory() {
+    if (_activeThreadId == null) return;
+    if (_renderLimit >= _activePersisted.length) return;
+    _renderLimit += _historyPageSize;
+    _rebuildActiveTimeline();
   }
 
   /// Pulls the bridge's turns for [threadId] (`turn/list`) and persists any
@@ -483,17 +562,26 @@ class ThreadManager {
   }
 
   /// Saves a user [text] message locally and sends it to the active turn.
+  /// [attachments] are inline images (base64) picked in the composer; they are
+  /// echoed in the local message and ride on `turn/send`.
   Future<void> sendUserMessage(
     String threadId,
     String text, {
     Map<String, Object>? options,
+    List<ImageContent>? attachments,
   }) async {
+    final images = attachments ?? const <ImageContent>[];
+    final contents = <MessageContent>[
+      if (text.isNotEmpty) TextContent(text),
+      ...images,
+    ];
+    if (contents.isEmpty) return;
     final message = Message(
       id: _uuid.v4(),
       threadId: threadId,
       turnId: '',
       role: MessageRole.user,
-      contents: [TextContent(text)],
+      contents: contents,
       deliveryState: MessageDeliveryState.sending,
       orderIndex: _nextOrderIndex(),
       createdAt: DateTime.now(),
@@ -505,11 +593,18 @@ class ThreadManager {
     // was created. `options` carries the chosen per-model run-option knobs.
     // Surface failures: if the bridge rejects the turn (e.g. `thread not
     // found`), mark the user's message FAILED instead of swallowing it.
+    //
+    // FOR-DEV: `attachments` is sent ahead of the bridge — `TurnSendParams` has
+    // no attachments field yet and `AgentManager.sendTurn` doesn't forward
+    // images, so the agent does not receive them until the bridge wires it (the
+    // local echo already shows the image). See `FOR-DEV.md` for the contract.
     try {
       final res = await _sendRequest('turn/send', {
         'threadId': threadId,
         'text': text,
         if (options != null && options.isNotEmpty) 'options': options,
+        if (images.isNotEmpty)
+          'attachments': [for (final image in images) image.toJson()],
       });
       if (res.error != null) {
         await _messageRepository.saveMessage(
@@ -522,6 +617,39 @@ class ThreadManager {
         message.copyWith(deliveryState: MessageDeliveryState.failed),
       );
       AppLogger.warn('turn/send failed', error, stackTrace);
+    }
+  }
+
+  /// Responds to a pending approval ([approvalId]) on [threadId] with
+  /// [decision], via `turn/send { approvalResponse }`. Returns true when the
+  /// bridge accepts it. No local message is created — the response is control
+  /// data, not chat.
+  ///
+  /// FOR-DEV: the bridge does NOT yet emit approval requests nor accept
+  /// `approvalResponse` (the Claude adapter runs headless, Echo has
+  /// `approvals:false`). Wired ahead of the bridge against the documented
+  /// contract — see `FOR-DEV.md`; dormant until the bridge counterpart lands.
+  Future<bool> respondApproval({
+    required String threadId,
+    required String approvalId,
+    required ApprovalDecision decision,
+  }) async {
+    try {
+      final res = await _sendRequest('turn/send', {
+        'threadId': threadId,
+        'approvalResponse': {
+          'approvalId': approvalId,
+          'decision': decision.wireName,
+        },
+      });
+      if (res.error != null) {
+        AppLogger.warn('approval response rejected: ${res.error!.message}');
+        return false;
+      }
+      return true;
+    } on Object catch (error, stackTrace) {
+      AppLogger.warn('approval response failed', error, stackTrace);
+      return false;
     }
   }
 
@@ -581,7 +709,7 @@ class ThreadManager {
       case MessageDeltaEvent(:final turnId, :final delta):
         final live = _live[threadId];
         if (live != null && live.turnId == turnId) {
-          live.text += delta;
+          live.appendText(delta);
           if (threadId == _activeThreadId) _rebuildActiveTimeline();
         }
       case ThinkingDeltaEvent(:final turnId, :final delta):
@@ -593,7 +721,7 @@ class ThreadManager {
       case ContentBlockEvent(:final turnId, :final content):
         final live = _live[threadId];
         if (live != null && live.turnId == turnId) {
-          live.blocks.add(content);
+          live.segments.add(content);
           if (threadId == _activeThreadId) _rebuildActiveTimeline();
         }
       case TurnCompletedEvent(
@@ -636,10 +764,9 @@ class ThreadManager {
       threadId: threadId,
       turnId: turnId,
       role: MessageRole.assistant,
-      contents: _assistantContents(
-        live.text,
+      contents: _assistantContentsOrdered(
         live.thinking,
-        live.blocks,
+        live.segments,
         streaming: false,
       ),
       deliveryState:
@@ -661,7 +788,13 @@ class ThreadManager {
   void _rebuildActiveTimeline() {
     final threadId = _activeThreadId;
     if (threadId == null) return;
-    var snapshot = const TurnTimelineSnapshot().reconcile(_activePersisted);
+    // Render only the most-recent window; older history loads on scroll-to-top.
+    final all = _activePersisted;
+    final hasMore = all.length > _renderLimit;
+    final windowed = hasMore ? all.sublist(all.length - _renderLimit) : all;
+    var snapshot = const TurnTimelineSnapshot().reconcile(windowed).copyWith(
+          hasMore: hasMore,
+        );
     final live = _live[threadId];
     if (live != null) {
       final streaming = Message(
@@ -669,10 +802,9 @@ class ThreadManager {
         threadId: threadId,
         turnId: live.turnId,
         role: MessageRole.assistant,
-        contents: _assistantContents(
-          live.text,
+        contents: _assistantContentsOrdered(
           live.thinking,
-          live.blocks,
+          live.segments,
           streaming: true,
         ),
         deliveryState: MessageDeliveryState.delivered,
@@ -730,9 +862,16 @@ class ThreadManager {
   }
 
   /// Builds an assistant message's content blocks from its answer [text],
-  /// optional [thinking] and any structured [blocks] (commands/diffs/tools), in
-  /// render order. AssistantTurnView re-groups blocks into the Work log /
+  /// optional [thinking] and any structured [blocks] (commands/diffs/tools).
+  /// Used for the **history** path (`turn/list`), which carries the full text
+  /// and the blocks separately with no interleave position — so blocks sit
+  /// before the text. AssistantTurnView re-groups blocks into the Work log /
   /// Changed files sections regardless of their position here.
+  // FOR-DEV: a turn loaded purely from history (never streamed live on this
+  // device) can't interleave the work log with the response because the wire
+  // `blocks` array carries no per-block text offset. Live/persisted turns do
+  // interleave (see `_assistantContentsOrdered`); aligning history would need
+  // the bridge to emit blocks and text in one ordered stream.
   static List<MessageContent> _assistantContents(
     String text,
     String thinking,
@@ -745,6 +884,43 @@ class ThreadManager {
       ...blocks,
       TextContent(text, isStreaming: streaming),
     ];
+  }
+
+  /// Builds an assistant message's contents from the live turn's ordered
+  /// [segments] (text runs + blocks as they streamed), keeping the work log
+  /// **interleaved** with the response. The last text run carries the
+  /// [streaming] flag (so `Message.isStreaming` stays true); when streaming
+  /// with no text yet, an empty streaming run is appended to keep the activity
+  /// cue alive. The text runs concatenate to the same full answer the history
+  /// reports, so a later `turn/list` re-sync reconciles without clobbering the
+  /// interleaved order.
+  static List<MessageContent> _assistantContentsOrdered(
+    String thinking,
+    List<MessageContent> segments, {
+    required bool streaming,
+  }) {
+    var lastText = -1;
+    for (var i = 0; i < segments.length; i++) {
+      if (segments[i] is TextContent) lastText = i;
+    }
+    final out = <MessageContent>[
+      if (thinking.isNotEmpty)
+        ThinkingContent(thinking, isStreaming: streaming),
+    ];
+    for (var i = 0; i < segments.length; i++) {
+      final seg = segments[i];
+      if (seg is TextContent) {
+        out.add(
+          TextContent(seg.text, isStreaming: streaming && i == lastText),
+        );
+      } else {
+        out.add(seg);
+      }
+    }
+    if (streaming && lastText == -1) {
+      out.add(const TextContent('', isStreaming: true));
+    }
+    return out;
   }
 
   int _nextOrderIndex() {
@@ -807,7 +983,22 @@ class _LiveTurn {
 
   final String turnId;
   final DateTime startedAt;
-  String text = '';
   String thinking = '';
-  final List<MessageContent> blocks = [];
+
+  /// Text runs and structured blocks (commands/diffs/tools) in the exact order
+  /// they streamed in, so the rendered turn **interleaves** the work log with
+  /// the response instead of grouping all activity above the text.
+  final List<MessageContent> segments = [];
+
+  /// Appends a text delta, extending the current trailing text run or starting
+  /// a new one (a run is broken whenever a block lands between text).
+  void appendText(String delta) {
+    if (delta.isEmpty) return;
+    final last = segments.isNotEmpty ? segments.last : null;
+    if (last is TextContent) {
+      segments[segments.length - 1] = TextContent(last.text + delta);
+    } else {
+      segments.add(TextContent(delta));
+    }
+  }
 }

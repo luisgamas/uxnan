@@ -4,6 +4,7 @@ import 'package:uxnan/domain/repositories/i_git_action_log_repository.dart';
 import 'package:uxnan/domain/repositories/i_message_repository.dart';
 import 'package:uxnan/domain/repositories/i_thread_repository.dart';
 import 'package:uxnan/domain/repositories/i_trusted_device_repository.dart';
+import 'package:uxnan/infrastructure/media/attachment_picker_service.dart';
 import 'package:uxnan/infrastructure/notifications/push_notification_service.dart';
 import 'package:uxnan/infrastructure/repositories/drift_composer_draft_repository.dart';
 import 'package:uxnan/infrastructure/repositories/drift_git_action_log_repository.dart';
@@ -74,8 +75,7 @@ final conversationPreferencesStoreProvider =
 );
 
 /// Persists appearance + language preferences (non-sensitive, on-device).
-final appearancePreferencesStoreProvider =
-    Provider<AppearancePreferencesStore>(
+final appearancePreferencesStoreProvider = Provider<AppearancePreferencesStore>(
   (ref) => AppearancePreferencesStore(),
 );
 
@@ -97,6 +97,12 @@ final speechToTextServiceProvider = Provider<SpeechToTextService>((ref) {
   ref.onDispose(service.cancel);
   return service;
 });
+
+/// Image picker for composer attachments (gallery / camera). Guarded — a
+/// cancel or denied permission yields null, never throws.
+final attachmentPickerServiceProvider = Provider<AttachmentPickerService>(
+  (ref) => AttachmentPickerService(),
+);
 
 /// Trusted-device repository (drift for metadata + secure storage for the
 /// bridge identity key).

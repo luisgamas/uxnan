@@ -38,6 +38,7 @@ dependencies:
   flutter_secure_storage: ^9.2.0 # Keychain / Keystore
   flutter_svg: ^2.0.10 # SVG rendering (agent logos)
   go_router: ^14.0.0 # declarative navigation
+  image_picker: ^1.1.2 # composer attach: pick image from gallery/camera
   intl: any # i18n + date formatting (pinned by flutter_localizations)
   logger: ^2.4.0 # structured logging
   mobile_scanner: ^5.1.0 # QR scanner (CameraX/MLKit, AVFoundation)

@@ -11,6 +11,8 @@ import 'package:uxnan/presentation/screens/conversation/git/git_diff_view.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
+import 'package:uxnan/presentation/widgets/icon_surface.dart';
+import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 
 /// Full-screen Material 3 source-control surface for a thread's workspace.
 ///
@@ -441,6 +443,82 @@ class _GitScreenState extends ConsumerState<GitScreen> {
       );
   }
 
+  /// Pulls from the remote for the active workspace.
+  Future<void> _pull(GitRepoState state) async {
+    final cwd = widget.cwd;
+    final l10n = AppLocalizations.of(context);
+    if (cwd == null) return;
+    await _guard(
+      () => ref.read(gitActionManagerProvider).pull(
+            GitPullParams(cwd: cwd, threadId: widget.threadId),
+          ),
+      l10n.gitPullSuccess,
+      cwd,
+    );
+  }
+
+  /// Creates a new branch and checks out to it (create & switch).
+  Future<void> _newBranch(GitRepoState state) async {
+    final cwd = widget.cwd;
+    final l10n = AppLocalizations.of(context);
+    if (cwd == null) return;
+    final name = await _promptText(
+      title: l10n.gitNewBranch,
+      hint: l10n.gitNewBranchHint,
+      action: l10n.gitNewBranch,
+    );
+    final branch = name?.trim() ?? '';
+    if (branch.isEmpty || !mounted) return;
+    await _guard(
+      () async {
+        final manager = ref.read(gitActionManagerProvider);
+        await manager.createBranch(
+          GitBranchParams(cwd: cwd, name: branch, threadId: widget.threadId),
+        );
+        await manager.checkout(
+          GitCheckoutParams(
+            cwd: cwd,
+            branch: branch,
+            threadId: widget.threadId,
+          ),
+        );
+      },
+      l10n.gitNewBranchSuccess,
+      cwd,
+    );
+  }
+
+  /// A single-field text prompt (branch name).
+  Future<String?> _promptText({
+    required String title,
+    required String hint,
+    required String action,
+  }) {
+    final controller = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: InputDecoration(labelText: hint),
+          onSubmitted: (value) => Navigator.pop(dialogContext, value),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(AppLocalizations.of(dialogContext).gitCancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, controller.text),
+            child: Text(action),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _guard(
     Future<void> Function() action,
     String success,
@@ -474,139 +552,196 @@ class _GitScreenState extends ConsumerState<GitScreen> {
     final allExpanded =
         files.isNotEmpty && files.every((f) => _expanded.contains(f.path));
 
+    final colors = Theme.of(context).colorScheme;
+    final topInset = NeTopBar.preferredHeight(context);
     return Scaffold(
-      // The composer lives at the bottom of the body Column (not a
-      // bottomNavigationBar) so it rises above the keyboard, like the
-      // conversation composer.
-      body: Column(
+      body: Stack(
         children: [
-          Expanded(
-            child: GestureDetector(
-              behavior: HitTestBehavior.translucent,
-              onTap: () => FocusScope.of(context).unfocus(),
-              child: CustomScrollView(
-                slivers: [
-                  SliverAppBar.large(
-                    title: Text(l10n.gitActionsTitle),
-                    actions: [
-                      IconButton(
-                        tooltip: l10n.gitRefresh,
-                        onPressed: _busy || widget.cwd == null
-                            ? null
-                            : () => _refresh(widget.cwd!),
-                        icon: const Icon(Icons.refresh_rounded),
-                      ),
-                      if (files.isNotEmpty)
-                        IconButton(
-                          tooltip: allExpanded
-                              ? l10n.gitCollapseAll
-                              : l10n.gitExpandAll,
-                          onPressed: () => setState(() {
-                            if (allExpanded) {
-                              _expanded.clear();
-                            } else {
-                              _expanded.addAll(files.map((f) => f.path));
-                            }
-                          }),
-                          icon: Icon(
-                            allExpanded
-                                ? Icons.unfold_less_rounded
-                                : Icons.unfold_more_rounded,
+          Column(
+            children: [
+              Expanded(
+                child: Stack(
+                  children: [
+                    GestureDetector(
+                      behavior: HitTestBehavior.translucent,
+                      onTap: () => FocusScope.of(context).unfocus(),
+                      child: CustomScrollView(
+                        slivers: [
+                          // Spacer so first content clears the overlaid bar.
+                          SliverToBoxAdapter(
+                            child: SizedBox(height: topInset),
                           ),
-                        ),
-                      if (state != null)
-                        _OverflowMenu(
-                          state: state,
-                          busy: _busy,
-                          onPush: () => _push(state),
-                          onUndoCommit: () => _undoCommit(state),
-                          onCreatePr: () => _createPr(state),
-                          onDiscardAll: () => _discard(state, all: true),
-                        ),
-                    ],
-                  ),
-                  if (state == null)
-                    SliverFillRemaining(
-                      hasScrollBody: false,
-                      child: _NoRepository(connecting: widget.cwd != null),
-                    )
-                  else ...[
-                    SliverToBoxAdapter(
-                      child: _BranchSummary(
-                        state: state,
-                        onSwitchBranch: _busy || widget.cwd == null
-                            ? null
-                            : () => _switchBranch(state),
+                          if (state == null)
+                            SliverFillRemaining(
+                              hasScrollBody: false,
+                              child:
+                                  _NoRepository(connecting: widget.cwd != null),
+                            )
+                          else ...[
+                            SliverToBoxAdapter(
+                              child: _BranchSummary(state: state),
+                            ),
+                            if (files.isEmpty)
+                              const SliverToBoxAdapter(child: _CleanState())
+                            else ...[
+                              SliverToBoxAdapter(
+                                child: _SelectionBar(
+                                  total: files.length,
+                                  selected: _selectedPaths(files).length,
+                                  onSelectAll: () =>
+                                      setState(_deselected.clear),
+                                  onDeselectAll: () => setState(
+                                    () => _deselected
+                                        .addAll(files.map((f) => f.path)),
+                                  ),
+                                  onDiscardSelected: _busy
+                                      ? null
+                                      : () => _discard(state, all: false),
+                                ),
+                              ),
+                              SliverList.builder(
+                                itemCount: files.length,
+                                itemBuilder: (context, index) {
+                                  final file = files[index];
+                                  return _FileCard(
+                                    file: file,
+                                    selected: _isSelected(file.path),
+                                    expanded: _isExpanded(file.path),
+                                    onSelectedChanged: (value) => setState(() {
+                                      if (value) {
+                                        _deselected.remove(file.path);
+                                      } else {
+                                        _deselected.add(file.path);
+                                      }
+                                    }),
+                                    onExpandedChanged: (value) => setState(() {
+                                      if (value) {
+                                        _expanded.add(file.path);
+                                      } else {
+                                        _expanded.remove(file.path);
+                                      }
+                                    }),
+                                    onDiscard: _busy
+                                        ? null
+                                        : () => _discardOne(state, file.path),
+                                    diff: widget.cwd == null ||
+                                            !_isExpanded(file.path)
+                                        ? null
+                                        : _diffFor(widget.cwd!, file.path),
+                                  );
+                                },
+                              ),
+                              const SliverToBoxAdapter(
+                                child: SizedBox(height: UxnanSpacing.lg),
+                              ),
+                            ],
+                          ],
+                        ],
                       ),
                     ),
-                    if (files.isEmpty)
-                      const SliverToBoxAdapter(child: _CleanState())
-                    else ...[
-                      SliverToBoxAdapter(
-                        child: _SelectionBar(
-                          total: files.length,
-                          selected: _selectedPaths(files).length,
-                          onSelectAll: () => setState(_deselected.clear),
-                          onDeselectAll: () => setState(
-                            () => _deselected.addAll(files.map((f) => f.path)),
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      child: IgnorePointer(
+                        child: Container(
+                          height: UxnanSpacing.xl,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                colors.surface.withValues(alpha: 0),
+                                colors.surface,
+                              ],
+                            ),
                           ),
-                          onDiscardSelected:
-                              _busy ? null : () => _discard(state, all: false),
                         ),
                       ),
-                      SliverList.builder(
-                        itemCount: files.length,
-                        itemBuilder: (context, index) {
-                          final file = files[index];
-                          return _FileCard(
-                            file: file,
-                            selected: _isSelected(file.path),
-                            expanded: _isExpanded(file.path),
-                            onSelectedChanged: (value) => setState(() {
-                              if (value) {
-                                _deselected.remove(file.path);
-                              } else {
-                                _deselected.add(file.path);
-                              }
-                            }),
-                            onExpandedChanged: (value) => setState(() {
-                              if (value) {
-                                _expanded.add(file.path);
-                              } else {
-                                _expanded.remove(file.path);
-                              }
-                            }),
-                            onDiscard: _busy
-                                ? null
-                                : () => _discardOne(state, file.path),
-                            diff: widget.cwd == null || !_isExpanded(file.path)
-                                ? null
-                                : _diffFor(widget.cwd!, file.path),
-                          );
-                        },
-                      ),
-                      const SliverToBoxAdapter(
-                        child: SizedBox(height: UxnanSpacing.lg),
-                      ),
-                    ],
+                    ),
                   ],
-                ],
+                ),
               ),
+              if (state != null)
+                _CommitBar(
+                  state: state,
+                  title: _title,
+                  description: _description,
+                  coAuthor: _coAuthor,
+                  showDetails: _showDetails,
+                  busy: _busy,
+                  onToggleDetails: () =>
+                      setState(() => _showDetails = !_showDetails),
+                  onCommit: () => _commit(state),
+                  onPush: () => _push(state),
+                  onUndoCommit: () => _undoCommit(state),
+                ),
+            ],
+          ),
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: NeTopBar(
+              leading: IconSurface(
+                icon: Icons.arrow_back_rounded,
+                tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+                onPressed: () => Navigator.of(context).maybePop(),
+              ),
+              title: Text(
+                l10n.gitActionsTitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontSize: 20),
+              ),
+              actions: [
+                // Pull only surfaces when the remote is ahead, badged with the
+                // number of commits to pull.
+                if (state != null && state.behind > 0)
+                  Badge.count(
+                    count: state.behind,
+                    child: IconSurface(
+                      icon: Icons.download_rounded,
+                      tooltip: '${l10n.gitPull} (${state.behind})',
+                      onPressed: _busy ? null : () => _pull(state),
+                    ),
+                  ),
+                IconSurface(
+                  icon: Icons.refresh_rounded,
+                  tooltip: l10n.gitRefresh,
+                  onPressed: _busy || widget.cwd == null
+                      ? null
+                      : () => _refresh(widget.cwd!),
+                ),
+                if (files.isNotEmpty)
+                  IconSurface(
+                    icon: allExpanded
+                        ? Icons.unfold_less_rounded
+                        : Icons.unfold_more_rounded,
+                    tooltip:
+                        allExpanded ? l10n.gitCollapseAll : l10n.gitExpandAll,
+                    onPressed: () => setState(() {
+                      if (allExpanded) {
+                        _expanded.clear();
+                      } else {
+                        _expanded.addAll(files.map((f) => f.path));
+                      }
+                    }),
+                  ),
+                if (state != null)
+                  _OverflowMenu(
+                    state: state,
+                    busy: _busy,
+                    onSwitchBranch: () => _switchBranch(state),
+                    onNewBranch: () => _newBranch(state),
+                    onCreatePr: () => _createPr(state),
+                    onDiscardAll: () => _discard(state, all: true),
+                  ),
+              ],
             ),
           ),
-          if (state != null)
-            _CommitBar(
-              state: state,
-              title: _title,
-              description: _description,
-              coAuthor: _coAuthor,
-              showDetails: _showDetails,
-              busy: _busy,
-              onToggleDetails: () =>
-                  setState(() => _showDetails = !_showDetails),
-              onCommit: () => _commit(state),
-              onPush: () => _push(state),
-            ),
         ],
       ),
     );
@@ -632,21 +767,24 @@ class _GitScreenState extends ConsumerState<GitScreen> {
   }
 }
 
-/// App-bar overflow with the non-selection actions: push and PR.
+/// App-bar overflow with the low-frequency branch/PR actions: switch branch,
+/// new branch, create PR and the destructive discard-all. Push and undo-commit
+/// live on the commit composer (its buttons morph by state); pull is a badged
+/// app-bar action.
 class _OverflowMenu extends StatelessWidget {
   const _OverflowMenu({
     required this.state,
     required this.busy,
-    required this.onPush,
-    required this.onUndoCommit,
+    required this.onSwitchBranch,
+    required this.onNewBranch,
     required this.onCreatePr,
     required this.onDiscardAll,
   });
 
   final GitRepoState state;
   final bool busy;
-  final VoidCallback onPush;
-  final VoidCallback onUndoCommit;
+  final VoidCallback onSwitchBranch;
+  final VoidCallback onNewBranch;
   final VoidCallback onCreatePr;
   final VoidCallback onDiscardAll;
 
@@ -655,25 +793,45 @@ class _OverflowMenu extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     final colors = Theme.of(context).colorScheme;
     return PopupMenuButton<void>(
-      icon: const Icon(Icons.more_vert_rounded),
-      itemBuilder: (_) => [
-        PopupMenuItem(
-          enabled: !busy && state.hasUnpushedCommits,
-          onTap: onPush,
-          child: _MenuRow(
-            icon: Icons.arrow_upward_rounded,
-            label: l10n.gitPushButton,
-          ),
-        ),
-        if (state.hasUnpushedCommits)
-          PopupMenuItem(
-            enabled: !busy,
-            onTap: onUndoCommit,
-            child: _MenuRow(
-              icon: Icons.undo_rounded,
-              label: l10n.gitUndoCommit,
+      tooltip: l10n.threadsMore,
+      position: PopupMenuPosition.under,
+      constraints: const BoxConstraints(minWidth: 220),
+      child: SizedBox(
+        width: 48,
+        height: 48,
+        child: Center(
+          child: Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: colors.surfaceContainerHigh,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.more_vert_rounded,
+              size: 20,
+              color: colors.onSurfaceVariant,
             ),
           ),
+        ),
+      ),
+      itemBuilder: (_) => [
+        PopupMenuItem(
+          enabled: !busy,
+          onTap: onSwitchBranch,
+          child: _MenuRow(
+            icon: Icons.swap_horiz_rounded,
+            label: l10n.gitSwitchBranch,
+          ),
+        ),
+        PopupMenuItem(
+          enabled: !busy,
+          onTap: onNewBranch,
+          child: _MenuRow(
+            icon: Icons.add_rounded,
+            label: l10n.gitNewBranch,
+          ),
+        ),
         PopupMenuItem(
           enabled: !busy,
           onTap: onCreatePr,
@@ -715,12 +873,11 @@ class _MenuRow extends StatelessWidget {
   }
 }
 
-/// Branch, upstream, ahead/behind and aggregate diff counters, with a control
-/// to switch branches.
+/// Branch, upstream, ahead/behind and aggregate diff counters (info only —
+/// branch actions live in the app-bar overflow).
 class _BranchSummary extends StatelessWidget {
-  const _BranchSummary({required this.state, this.onSwitchBranch});
+  const _BranchSummary({required this.state});
   final GitRepoState state;
-  final VoidCallback? onSwitchBranch;
 
   @override
   Widget build(BuildContext context) {
@@ -769,13 +926,6 @@ class _BranchSummary extends StatelessWidget {
                       value: state.behind,
                     ),
                   ],
-                  const SizedBox(width: UxnanSpacing.xs),
-                  IconButton(
-                    tooltip: l10n.gitSwitchBranch,
-                    visualDensity: VisualDensity.compact,
-                    onPressed: onSwitchBranch,
-                    icon: const Icon(Icons.swap_horiz_rounded, size: 20),
-                  ),
                 ],
               ),
               if (state.upstream != null) ...[
@@ -1051,6 +1201,7 @@ class _CommitBar extends StatelessWidget {
     required this.onToggleDetails,
     required this.onCommit,
     required this.onPush,
+    required this.onUndoCommit,
   });
 
   final GitRepoState state;
@@ -1062,51 +1213,134 @@ class _CommitBar extends StatelessWidget {
   final VoidCallback onToggleDetails;
   final VoidCallback onCommit;
   final VoidCallback onPush;
+  final VoidCallback onUndoCommit;
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final colors = Theme.of(context).colorScheme;
     final canCommit = state.isDirty && !busy;
-    // Same chrome as the conversation composer: a bottom-anchored
-    // `surfaceContainer` surface with a top hairline (no card / no shadow), its
-    // content centered within the max content width. The fields are borderless
-    // (placeholder-only), like the message composer.
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors.surfaceContainer,
-        border: Border(top: BorderSide(color: colors.outlineVariant)),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(
-              maxWidth: UxnanSpacing.maxContentWidth,
+    final hasPush = state.hasUnpushedCommits;
+    // Push mode: the tree is clean but commits await push — the two buttons
+    // morph from commit/details to push/undo-last-commit.
+    final pushMode = !state.isDirty && hasPush;
+    final textTheme = Theme.of(context).textTheme;
+
+    // Floating composer matching the conversation pill: a fully-rounded
+    // (stadium) pill when collapsed — the title field and the inline actions on
+    // one aligned row — that morphs smoothly to a rounded rectangle when the
+    // optional description / co-author fields are revealed.
+    return SafeArea(
+      top: false,
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(
+            maxWidth: UxnanSpacing.maxContentWidth,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              UxnanSpacing.lg,
+              UxnanSpacing.sm,
+              UxnanSpacing.lg,
+              UxnanSpacing.md,
             ),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(
-                UxnanSpacing.lg,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              decoration: BoxDecoration(
+                color: colors.surfaceContainerHighest,
+                // Stadium when collapsed, rounded rectangle when expanded.
+                borderRadius: BorderRadius.circular(showDetails ? 24 : 100),
+              ),
+              padding: EdgeInsets.fromLTRB(
+                UxnanSpacing.md,
+                showDetails ? UxnanSpacing.sm : UxnanSpacing.xs,
                 UxnanSpacing.sm,
-                UxnanSpacing.sm,
-                UxnanSpacing.sm,
+                showDetails ? UxnanSpacing.sm : UxnanSpacing.xs,
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _BorderlessField(
-                    controller: title,
-                    enabled: canCommit,
-                    hint: l10n.gitCommitMessageLabel,
-                    style: Theme.of(context).textTheme.titleSmall,
-                    textInputAction: TextInputAction.next,
+                  // The aligned top row — the whole pill when collapsed.
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _BorderlessField(
+                          controller: title,
+                          enabled: canCommit,
+                          hint: l10n.gitCommitMessageLabel,
+                          style: textTheme.titleSmall,
+                          textInputAction: TextInputAction.next,
+                        ),
+                      ),
+                      const SizedBox(width: UxnanSpacing.xs),
+                      // Secondary: the details toggle while committing; the
+                      // undo-last-commit once committed (push mode).
+                      if (pushMode)
+                        IconButton(
+                          tooltip: l10n.gitUndoCommit,
+                          visualDensity: VisualDensity.compact,
+                          onPressed: busy ? null : onUndoCommit,
+                          icon: const Icon(Icons.undo_rounded),
+                        )
+                      else
+                        IconButton(
+                          tooltip: l10n.gitCommitDescriptionLabel,
+                          isSelected: showDetails,
+                          visualDensity: VisualDensity.compact,
+                          onPressed: canCommit ? onToggleDetails : null,
+                          icon: Icon(
+                            showDetails
+                                ? Icons.expand_more_rounded
+                                : Icons.notes_rounded,
+                          ),
+                        ),
+                      const SizedBox(width: UxnanSpacing.xs),
+                      // Primary: commit while dirty; push once committed.
+                      if (pushMode)
+                        IconButton.filled(
+                          tooltip: '${l10n.gitPushButton} (${state.ahead})',
+                          onPressed: busy ? null : onPush,
+                          icon: busy
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : Badge.count(
+                                  count: state.ahead,
+                                  child: const Icon(
+                                    Icons.arrow_upward_rounded,
+                                  ),
+                                ),
+                        )
+                      else
+                        IconButton.filled(
+                          tooltip: l10n.gitCommitButton,
+                          onPressed: canCommit ? onCommit : null,
+                          icon: busy
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.check_rounded),
+                        ),
+                    ],
                   ),
+                  // Optional fields slide in below (morphing pill → rectangle).
                   AnimatedSize(
-                    duration: const Duration(milliseconds: 180),
+                    duration: const Duration(milliseconds: 220),
+                    curve: Curves.easeOutCubic,
                     alignment: Alignment.topCenter,
-                    child: showDetails
+                    child: showDetails && !pushMode
                         ? Column(
                             children: [
+                              const SizedBox(height: UxnanSpacing.xs),
                               Divider(height: 1, color: colors.outlineVariant),
                               _BorderlessField(
                                 controller: description,
@@ -1123,63 +1357,7 @@ class _CommitBar extends StatelessWidget {
                               ),
                             ],
                           )
-                        : const SizedBox.shrink(),
-                  ),
-                  Row(
-                    children: [
-                      // When there are commits to push, the push action takes
-                      // the row as an extended button; the commit controls are
-                      // disabled until there's something new to commit.
-                      if (state.hasUnpushedCommits)
-                        Expanded(
-                          child: Align(
-                            alignment: Alignment.centerLeft,
-                            child: FilledButton.icon(
-                              onPressed: busy ? null : onPush,
-                              icon: busy
-                                  ? const SizedBox(
-                                      width: 16,
-                                      height: 16,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                      ),
-                                    )
-                                  : const Icon(
-                                      Icons.arrow_upward_rounded,
-                                      size: 18,
-                                    ),
-                              label: Text(
-                                '${l10n.gitPushButton} (${state.ahead})',
-                              ),
-                            ),
-                          ),
-                        )
-                      else
-                        const Spacer(),
-                      IconButton(
-                        tooltip: l10n.gitCommitDescriptionLabel,
-                        isSelected: showDetails,
-                        onPressed: canCommit ? onToggleDetails : null,
-                        icon: Icon(
-                          showDetails
-                              ? Icons.expand_more_rounded
-                              : Icons.notes_rounded,
-                        ),
-                      ),
-                      const SizedBox(width: UxnanSpacing.xs),
-                      IconButton.filled(
-                        tooltip: l10n.gitCommitButton,
-                        onPressed: canCommit ? onCommit : null,
-                        icon: busy && !state.hasUnpushedCommits
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child:
-                                    CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Icon(Icons.check_rounded),
-                      ),
-                    ],
+                        : const SizedBox(width: double.infinity),
                   ),
                 ],
               ),
@@ -1504,93 +1682,111 @@ class _PrDialogState extends State<_PrDialog> {
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     return Dialog.fullscreen(
-      child: Scaffold(
-        appBar: AppBar(
-          leading: IconButton(
-            icon: const Icon(Icons.close_rounded),
-            onPressed: () => Navigator.of(context).pop(),
-          ),
-          title: Text(l10n.gitPrDialogTitle),
-          actions: [
-            TextButton(
+      child: NeScaffold(
+        title: l10n.gitPrDialogTitle,
+        // Full-screen dialog: a close (✕) Icon Surface + the affirmative
+        // action, content centred at 560 dp scrolling under the top veil —
+        // same chrome as the new-conversation dialog.
+        leading: IconSurface(
+          icon: Icons.close_rounded,
+          tooltip: l10n.gitCancel,
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: UxnanSpacing.sm),
+            child: TextButton(
               onPressed: _submit,
               child: Text(l10n.gitPrCreate),
             ),
-            const SizedBox(width: UxnanSpacing.sm),
-          ],
-        ),
-        body: SafeArea(
-          child: ListView(
-            padding: const EdgeInsets.all(UxnanSpacing.lg),
-            children: [
-              TextField(
-                controller: _title,
-                autofocus: true,
-                textCapitalization: TextCapitalization.sentences,
-                decoration: InputDecoration(
-                  labelText: l10n.gitPrTitleLabel,
-                  errorText: _error,
-                  border: const OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: UxnanSpacing.lg),
-              _BranchField(
-                label: l10n.gitPrHeadLabel,
-                icon: Icons.upload_rounded,
-                value: _head,
-                options: _headOptions,
-                onChanged: (v) => setState(() => _head = v),
-              ),
-              const SizedBox(height: UxnanSpacing.sm),
-              Center(
-                child: Icon(
-                  Icons.arrow_downward_rounded,
-                  size: 18,
-                  color: colors.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: UxnanSpacing.sm),
-              _BranchField(
-                label: l10n.gitPrBaseLabel,
-                icon: Icons.flag_outlined,
-                value: _base,
-                options: _baseOptions,
-                onChanged: (v) => setState(() => _base = v),
-              ),
-              const SizedBox(height: UxnanSpacing.md),
-              Row(
-                children: [
-                  Icon(
-                    Icons.info_outline_rounded,
-                    size: 16,
-                    color: colors.onSurfaceVariant,
-                  ),
-                  const SizedBox(width: UxnanSpacing.sm),
-                  Expanded(
-                    child: Text(
-                      l10n.gitPrPushNote,
-                      style: textTheme.bodySmall?.copyWith(
-                        color: colors.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: UxnanSpacing.lg),
-              TextField(
-                controller: _body,
-                minLines: 4,
-                maxLines: 10,
-                textCapitalization: TextCapitalization.sentences,
-                decoration: InputDecoration(
-                  labelText: l10n.gitPrBodyLabel,
-                  alignLabelWithHint: true,
-                  border: const OutlineInputBorder(),
-                ),
-              ),
-            ],
           ),
-        ),
+        ],
+        slivers: [
+          SliverToBoxAdapter(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 560),
+                child: Padding(
+                  padding: const EdgeInsets.all(UxnanSpacing.lg),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      TextField(
+                        controller: _title,
+                        autofocus: true,
+                        textCapitalization: TextCapitalization.sentences,
+                        decoration: InputDecoration(
+                          labelText: l10n.gitPrTitleLabel,
+                          errorText: _error,
+                          border: const OutlineInputBorder(
+                            borderRadius: BorderRadius.all(UxnanRadius.lg),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: UxnanSpacing.lg),
+                      _BranchField(
+                        label: l10n.gitPrHeadLabel,
+                        icon: Icons.upload_rounded,
+                        value: _head,
+                        options: _headOptions,
+                        onChanged: (v) => setState(() => _head = v),
+                      ),
+                      const SizedBox(height: UxnanSpacing.sm),
+                      Center(
+                        child: Icon(
+                          Icons.arrow_downward_rounded,
+                          size: 18,
+                          color: colors.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: UxnanSpacing.sm),
+                      _BranchField(
+                        label: l10n.gitPrBaseLabel,
+                        icon: Icons.flag_outlined,
+                        value: _base,
+                        options: _baseOptions,
+                        onChanged: (v) => setState(() => _base = v),
+                      ),
+                      const SizedBox(height: UxnanSpacing.md),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.info_outline_rounded,
+                            size: 16,
+                            color: colors.onSurfaceVariant,
+                          ),
+                          const SizedBox(width: UxnanSpacing.sm),
+                          Expanded(
+                            child: Text(
+                              l10n.gitPrPushNote,
+                              style: textTheme.bodySmall?.copyWith(
+                                color: colors.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: UxnanSpacing.lg),
+                      TextField(
+                        controller: _body,
+                        minLines: 4,
+                        maxLines: 10,
+                        textCapitalization: TextCapitalization.sentences,
+                        decoration: InputDecoration(
+                          labelText: l10n.gitPrBodyLabel,
+                          alignLabelWithHint: true,
+                          border: const OutlineInputBorder(
+                            borderRadius: BorderRadius.all(UxnanRadius.lg),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

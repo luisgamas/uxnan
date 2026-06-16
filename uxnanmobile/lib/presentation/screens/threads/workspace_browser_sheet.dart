@@ -6,6 +6,7 @@ import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
+import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 
 /// Bottom sheet that browses the bridge's configured roots
 /// (`workspace/browseDirs`): pick a root, descend into sub-folders (with
@@ -134,14 +135,10 @@ class _WorkspaceBrowserSheetState extends ConsumerState<WorkspaceBrowserSheet> {
                         .clamp(160.0, MediaQuery.sizeOf(context).height),
               ),
               child: _loading
-                  ? const Center(
+                  ? Center(
                       child: Padding(
-                        padding: EdgeInsets.all(UxnanSpacing.lg),
-                        child: SizedBox(
-                          width: 22,
-                          height: 22,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
+                        padding: const EdgeInsets.all(UxnanSpacing.xl),
+                        child: PolygonLoader(size: 28),
                       ),
                     )
                   : _failed || current == null

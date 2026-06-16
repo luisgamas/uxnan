@@ -117,6 +117,47 @@ on the first macOS build), or the mic button reports "not available":
 Speech recognition on iOS may route audio to Apple's servers depending on the
 locale; no app/relay code changes are needed.
 
+---
+
+## ☐ 4. iOS Info.plist — camera & local network
+
+Other iOS usage strings the app needs once `ios/Runner/Info.plist` exists
+(generated on the first macOS build). Android equivalents are already wired:
+
+- `NSCameraUsageDescription` — the QR pairing scanner (`mobile_scanner`). Also
+  add the `PERMISSION_CAMERA=1` macro to the Podfile `post_install` (see
+  `FOR-DEV.md` → Pairing module) or `Permission.camera` is compiled out on iOS.
+- `NSLocalNetworkUsageDescription` — a direct LAN socket to the bridge prompts
+  for local-network access on iOS (Tailscale/relay are unaffected). Without it,
+  direct-LAN connections fail on iPhone (see `FOR-DEV.md` → Connection /
+  transport).
+- `NSPhotoLibraryUsageDescription` — only once the **Attach** picker is enabled
+  for image attachments (added with that feature).
+
+---
+
+## ☐ 5. CI/CD secrets (GitHub Actions)
+
+When we author `.github/workflows/` (the pipeline is specced in `FOR-DEV.md` →
+*Alpha release readiness & CI/CD*), these repository **secrets** must be added
+under Settings → Secrets and variables → Actions. None are needed for the
+`verify` job (format/analyze/test) or for an unsigned iOS compile — only for
+signed/store builds:
+
+- **Android signed build:** `ANDROID_KEYSTORE_B64` (base64 of the `.jks`),
+  `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD` (the
+  workflow decodes the keystore and writes `android/key.properties` at runtime).
+- **Firebase (if building with push live in CI):** `GOOGLE_SERVICES_JSON`
+  (Android) / `GOOGLE_SERVICE_INFO_PLIST` (iOS), base64-encoded — both are
+  gitignored and machine-local today.
+- **iOS signed build / `.ipa` export:** Apple signing certificate (`.p12` +
+  password), provisioning profile, and the APNs key from §2 — all gated on a
+  paid Apple Developer account.
+
+The keystore/`.jks`, `.p12`, provisioning profile and `.p8` are themselves
+human-provided assets (see §2 and Future items); this section only tracks how
+they surface to CI as secrets.
+
 ## Future items (added when their module lands)
 
 These are **not needed yet** — they are listed so you know what is coming:

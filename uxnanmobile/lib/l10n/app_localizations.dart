@@ -578,6 +578,24 @@ abstract class AppLocalizations {
   /// **'Copy thread ID'**
   String get threadActionCopyId;
 
+  /// No description provided for @threadActionFork.
+  ///
+  /// In en, this message translates to:
+  /// **'Fork conversation'**
+  String get threadActionFork;
+
+  /// No description provided for @threadForkFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t fork this conversation'**
+  String get threadForkFailed;
+
+  /// No description provided for @conversationLoadEarlier.
+  ///
+  /// In en, this message translates to:
+  /// **'Show earlier messages'**
+  String get conversationLoadEarlier;
+
   /// No description provided for @threadActionArchive.
   ///
   /// In en, this message translates to:
@@ -752,6 +770,24 @@ abstract class AppLocalizations {
   /// **'Attach'**
   String get composerAttach;
 
+  /// No description provided for @composerAttachGallery.
+  ///
+  /// In en, this message translates to:
+  /// **'Photo library'**
+  String get composerAttachGallery;
+
+  /// No description provided for @composerAttachCamera.
+  ///
+  /// In en, this message translates to:
+  /// **'Take a photo'**
+  String get composerAttachCamera;
+
+  /// No description provided for @composerAttachFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t attach that image'**
+  String get composerAttachFailed;
+
   /// Tooltip on the button that cancels the in-flight agent turn (replaces Send while running).
   ///
   /// In en, this message translates to:
@@ -787,6 +823,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Hide options'**
   String get composerOptionsHide;
+
+  /// Title of the composer '+' turn-tools sheet (attach + run options + approval) and tooltip of the '+' button.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn options'**
+  String get composerTools;
 
   /// No description provided for @newThreadAction.
   ///
@@ -980,6 +1022,42 @@ abstract class AppLocalizations {
   /// **'Images'**
   String get newThreadCapImages;
 
+  /// No description provided for @newThreadCapabilities.
+  ///
+  /// In en, this message translates to:
+  /// **'Capabilities'**
+  String get newThreadCapabilities;
+
+  /// No description provided for @newThreadWorktree.
+  ///
+  /// In en, this message translates to:
+  /// **'Run in a worktree'**
+  String get newThreadWorktree;
+
+  /// No description provided for @newThreadWorktreeDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Create an isolated branch checkout so this conversation can\'t touch your current working tree.'**
+  String get newThreadWorktreeDesc;
+
+  /// No description provided for @newThreadWorktreeBranchHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Branch name'**
+  String get newThreadWorktreeBranchHint;
+
+  /// No description provided for @newThreadWorktreeManaged.
+  ///
+  /// In en, this message translates to:
+  /// **'Let the bridge pick the location'**
+  String get newThreadWorktreeManaged;
+
+  /// No description provided for @newThreadWorktreeFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t create the worktree'**
+  String get newThreadWorktreeFailed;
+
   /// No description provided for @environmentTitle.
   ///
   /// In en, this message translates to:
@@ -1075,6 +1153,84 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Unrestricted access to the internet and any file.'**
   String get approvalFullBody;
+
+  /// No description provided for @approvalNeedsApproval.
+  ///
+  /// In en, this message translates to:
+  /// **'Needs approval'**
+  String get approvalNeedsApproval;
+
+  /// No description provided for @approvalActionFallback.
+  ///
+  /// In en, this message translates to:
+  /// **'Action awaiting approval'**
+  String get approvalActionFallback;
+
+  /// No description provided for @approvalApprove.
+  ///
+  /// In en, this message translates to:
+  /// **'Approve'**
+  String get approvalApprove;
+
+  /// No description provided for @approvalReject.
+  ///
+  /// In en, this message translates to:
+  /// **'Reject'**
+  String get approvalReject;
+
+  /// No description provided for @approvalAllowSession.
+  ///
+  /// In en, this message translates to:
+  /// **'Always allow this session'**
+  String get approvalAllowSession;
+
+  /// No description provided for @approvalApproved.
+  ///
+  /// In en, this message translates to:
+  /// **'Approved'**
+  String get approvalApproved;
+
+  /// No description provided for @approvalRejected.
+  ///
+  /// In en, this message translates to:
+  /// **'Rejected'**
+  String get approvalRejected;
+
+  /// No description provided for @approvalAllowedSession.
+  ///
+  /// In en, this message translates to:
+  /// **'Allowed for this session'**
+  String get approvalAllowedSession;
+
+  /// No description provided for @approvalFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t send your response — try again'**
+  String get approvalFailed;
+
+  /// No description provided for @approvalRiskLow.
+  ///
+  /// In en, this message translates to:
+  /// **'Low risk'**
+  String get approvalRiskLow;
+
+  /// No description provided for @approvalRiskMedium.
+  ///
+  /// In en, this message translates to:
+  /// **'Medium risk'**
+  String get approvalRiskMedium;
+
+  /// No description provided for @approvalRiskHigh.
+  ///
+  /// In en, this message translates to:
+  /// **'High risk'**
+  String get approvalRiskHigh;
+
+  /// No description provided for @approvalRiskUnknown.
+  ///
+  /// In en, this message translates to:
+  /// **'Risk unknown'**
+  String get approvalRiskUnknown;
 
   /// Run-option value meaning 'leave the agent's default' (no explicit choice).
   ///
@@ -1513,6 +1669,48 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Switch branch'**
   String get gitSwitchBranch;
+
+  /// No description provided for @gitPull.
+  ///
+  /// In en, this message translates to:
+  /// **'Pull'**
+  String get gitPull;
+
+  /// No description provided for @gitPullSuccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Pulled from the remote'**
+  String get gitPullSuccess;
+
+  /// No description provided for @gitNewBranch.
+  ///
+  /// In en, this message translates to:
+  /// **'New branch'**
+  String get gitNewBranch;
+
+  /// No description provided for @gitNewBranchHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Branch name'**
+  String get gitNewBranchHint;
+
+  /// No description provided for @gitNewBranchSuccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Branch created and checked out'**
+  String get gitNewBranchSuccess;
+
+  /// No description provided for @gitNewWorktree.
+  ///
+  /// In en, this message translates to:
+  /// **'New worktree'**
+  String get gitNewWorktree;
+
+  /// No description provided for @gitNewWorktreeSuccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Worktree created'**
+  String get gitNewWorktreeSuccess;
 
   /// No description provided for @gitSwitchBranchTitle.
   ///

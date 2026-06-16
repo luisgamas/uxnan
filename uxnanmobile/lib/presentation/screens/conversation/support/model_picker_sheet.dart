@@ -5,6 +5,7 @@ import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
+import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 
 /// Bottom sheet that lists the models the bridge reports for an agent
 /// (`agent/models`), with a search filter, and resolves with the picked model
@@ -81,11 +82,11 @@ class _ModelPickerSheetState extends ConsumerState<ModelPickerSheet> {
                 filled: true,
                 fillColor: colors.surfaceContainerHighest,
                 border: OutlineInputBorder(
-                  borderRadius: const BorderRadius.all(UxnanRadius.lg),
+                  borderRadius: const BorderRadius.all(UxnanRadius.full),
                   borderSide: BorderSide(color: colors.outline),
                 ),
                 enabledBorder: OutlineInputBorder(
-                  borderRadius: const BorderRadius.all(UxnanRadius.lg),
+                  borderRadius: const BorderRadius.all(UxnanRadius.full),
                   borderSide: BorderSide(color: colors.outline),
                 ),
               ),
@@ -100,14 +101,10 @@ class _ModelPickerSheetState extends ConsumerState<ModelPickerSheet> {
                         .clamp(140.0, MediaQuery.sizeOf(context).height),
               ),
               child: modelsAsync.when(
-                loading: () => const Padding(
-                  padding: EdgeInsets.all(UxnanSpacing.lg),
-                  child: Center(
-                    child: SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
+                loading: () => Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(UxnanSpacing.xl),
+                    child: PolygonLoader(size: 28),
                   ),
                 ),
                 error: (_, __) => Padding(

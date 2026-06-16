@@ -151,13 +151,13 @@ class _BottomControls extends StatelessWidget {
         : FilledButton(onPressed: onNext, child: Text(l10n.onboardingNext));
 
     if (isFirst) {
-      return SizedBox(width: double.infinity, height: 52, child: primary);
+      return SizedBox(width: double.infinity, height: 56, child: primary);
     }
     return Row(
       children: [
         Expanded(
           child: SizedBox(
-            height: 52,
+            height: 56,
             child: OutlinedButton(
               onPressed: onBack,
               child: Text(l10n.onboardingBack),
@@ -165,7 +165,7 @@ class _BottomControls extends StatelessWidget {
           ),
         ),
         const SizedBox(width: UxnanSpacing.md),
-        Expanded(child: SizedBox(height: 52, child: primary)),
+        Expanded(child: SizedBox(height: 56, child: primary)),
       ],
     );
   }

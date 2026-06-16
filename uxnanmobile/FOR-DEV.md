@@ -11,9 +11,11 @@ Deferred implementation work (code the team/agent will do later). Distinct from
 These can be built and unit/widget-tested locally; bridge calls degrade
 gracefully until the other agent wires the handler. Suggested order:
 
-1. ☑ **Advanced content `approval`/`plan`/`subagent`** (decode + read-only
-   render) — DONE this round. Remaining: interactive approval (needs a bridge
-   RPC) and verifying wire shapes against a real Codex/Claude turn.
+1. ☑ **Advanced content `approval`/`plan`/`subagent`** (decode + render) —
+   DONE; interactive approval is now wired on the app side (Approve / Reject /
+   allow-session via `turn/send { approvalResponse }`) but **dormant until the
+   bridge emits/accepts approvals** — see *Conversation / timeline → Interactive
+   approval* for the bridge contract. Plan/subagent confirmed informational.
 2. ☑ **Archive thread** (+ an "Archived" screen) — DONE this round; see
    *Threads list → Archive / unarchive*.
 3. ☑ **Settings screen + notification preferences** (`notifications/update`) —
@@ -192,12 +194,36 @@ browser and multi-PC connection correctness are now DONE — see below.)
     `SubagentActionKind`); tolerant codec (nested or flat) with graceful enum
     fallback. Renderers: approval card, plan checklist, subagent card
     (`message_content_view.dart`). Covered by round-trip + render tests.
-  - ☐ **Interactive approval** — the Approve/Reject buttons are disabled; wiring
-    a response needs a bridge RPC (`turn/send { approvalResponse: { approvalId,
-    approved } }`, spec 01 §283). Add an `approvalRespond` seam on `ThreadManager`
-    when the bridge exposes it; then enable the buttons.
-  - ☐ **Verify wire shapes** against a real Codex/Claude turn (field names for
-    plan steps / subagent actions are assumed; the parser is tolerant).
+  - ◑ **Interactive approval** — APP SIDE DONE, bridge-blocked. The approval
+    card is now interactive (`message_content_view.dart`): Approve / Reject /
+    "always allow this session", a spring `AnimatedSize` morph into a settled
+    status row, an in-flight spinner, and re-enable on failure.
+    `ThreadManager.respondApproval({threadId, approvalId, decision})` sends the
+    response; `ApprovalResponses` (`approval_providers.dart`) holds the local
+    sending/resolved/failed state per `approvalId`; decisions are the
+    `ApprovalDecision` enum (`approve` / `reject` / `approveSession`).
+    - **CONTRACT the bridge must implement** (dormant until then):
+      1. **Emit** approval requests — either `stream/approval/requested` or an
+         `approval` content block on `stream/content/block` carrying
+         `{ approvalId, action, risk, detail? }` (the app already decodes both
+         the nested `{request:{...}}` and flat forms).
+      2. **Accept** `turn/send { threadId, approvalResponse: { approvalId,
+         decision } }` where `decision ∈ "approve" | "reject" | "approveSession"`.
+         Make `text` OPTIONAL when `approvalResponse` is present (today the
+         bridge rejects `turn/send` without `text`). Add `approvalResponse?` to
+         `TurnSendParams` in `shared/src/jsonrpc/methods.ts`.
+      3. **Route** the decision to the agent adapter by `approvalId`; today the
+         Claude adapter runs headless (`approvals:true` advertised but tools
+         needing approval are auto-denied) and Echo has `approvals:false`, so
+         nothing emits requests. `approveSession` should apply a session-scoped
+         allow.
+    - **Testability:** there is no way to trigger an approval on-device until
+      the bridge emits one (consider having the Echo dev-agent emit a sample
+      approval request behind a flag to validate the UI end-to-end).
+  - ☑ **Verify wire shapes (plan/subagent)** — DONE: confirmed `plan` and
+    `subagent` content blocks are **informational** status updates, NOT approval
+    gates — only `approval` blocks gate actions. Field names for plan steps /
+    subagent actions remain assumed; the parser is tolerant.
 - ☑ **Application managers** — DONE: `ThreadManager` (timeline build + streaming
   reducer application, `loadThreads`, `sendUserMessage`) and
   `IncomingMessageProcessor`.
@@ -223,13 +249,26 @@ browser and multi-PC connection correctness are now DONE — see below.)
   `thread/start` required a *registered* project, failing for a browsed,
   synthesized one — fixed in `bridge/`; the phone also no longer fabricates a
   phantom local thread when `thread/start` errors.)
-- ◑ **Remote history pagination** — `ThreadManager.selectThread` now **re-syncs**
-  a thread from the bridge (`turn/list`) on open, persisting any assistant answer
-  not stored locally (keyed by `stream-<turnId>`, so it never duplicates) — this
-  recovers in-flight turns after an app restart. ☐ Still open: true paged
-  back-history (`loadMoreHistory` with a cursor → `prependHistory`) and
-  `resumeThread`/`forkThread`. The `turn/list` JSON shape is assumed (tolerant
-  parser); verify against the real bridge.
+- ◑ **Remote history pagination + resume/fork** — `ThreadManager.selectThread`
+  re-syncs a thread from the bridge (`turn/list`) on open, persisting any
+  assistant answer not stored locally (keyed by `stream-<turnId>`, so it never
+  duplicates) — recovers in-flight turns after an app restart.
+  - ☑ **Windowed history (DONE).** The timeline renders only the most-recent
+    page (`_renderLimit`, 40); a **"Show earlier messages"** header
+    (`conversationLoadEarlier`) grows the window by a page via
+    `ThreadManager.loadMoreHistory()`. Bounds widget build for long threads.
+  - ☑ **Resume / fork (DONE, bridge-supported).** `resumeThread` (`thread/resume`,
+    called best-effort on open; skips archived so viewing doesn't un-archive)
+    and `forkThread` (`thread/fork` → persists the returned thread with the
+    source's `deviceId`, opens it). Fork is a **"Fork conversation"** item in the
+    conversation overflow menu.
+  - ☐ **Incremental remote paging (follow-up).** `loadMoreHistory` paginates the
+    *local* store (already complete after resync). True remote back-paging using
+    `turn/list`'s `nextCursor` to avoid re-pulling the whole thread on open needs
+    a bridge change: its cursor is **forward-only / offset** (oldest→newest), so
+    a newest-first scroll-up needs a reverse cursor or a total-count from the
+    bridge. The `turn/list` JSON shape is assumed (tolerant parser); verify
+    against the real bridge.
 - ☑ **Conversation UI (visual layer)** — DONE: `ConversationScreen`
   (`SliverAppBar.large`, floating + snap, auto-scroll), message renderers
   (`MessageBubble` + `MessageContentView`: markdown, code, command card, diff,
@@ -323,10 +362,28 @@ browser and multi-PC connection correctness are now DONE — see below.)
     section) → real values from `git/status` via `gitRepoStateProvider`; the
     commit/push rows call `GitActionManager.commit` / `.push` against the active
     thread's `cwd`.
-  - ◑ **Attach** (`ComposerBar` add button) → the button is now **gated by the
-    agent's `images` capability** (hidden when unsupported). ☐ Still a disabled
-    placeholder when shown: file/image picker → upload as `ImageContent` /
-    attachment (FOR-DEV).
+  - ◑ **Attach** (`ComposerBar` "+" → turn-tools sheet) → APP SIDE DONE,
+    bridge-blocked for delivery. Gated by the agent's `images` capability. The
+    Attach tile offers **Photo library / Take a photo**
+    (`AttachmentPickerService` + `image_picker`, downscaled to 2048 px / q85,
+    inline base64 `ImageContent`); pending images show as a removable thumbnail
+    strip above the composer (`_AttachmentStrip`) and the composer sends with an
+    empty text field (image-only message allowed). `sendUserMessage` echoes them
+    locally (rendered inline via `_ImageBlock`) and rides them on `turn/send`.
+    - **CONTRACT the bridge must implement** (dormant until then): add
+      `attachments?: ImageContent[]` to `TurnSendParams`
+      (`shared/src/jsonrpc/methods.ts`); have `turn/send`'s handler read them and
+      `AgentManager.sendTurn` forward the images to the agent CLI (and allow an
+      empty `text` when `attachments` is non-empty). The app already sends
+      `attachments: [{type:'image', mimeType, base64Data}]`.
+    - ☐ **Camera permission caveat (Android):** `mobile_scanner` already declares
+      `CAMERA`, so `image_picker`'s camera capture may need a runtime grant on
+      some devices — the service fails safe (returns null) if denied. Verify
+      on-device; wire `permission_handler` for camera if it doesn't prompt.
+    - ☐ **iOS:** `NSPhotoLibraryUsageDescription` (+ camera) Info.plist strings —
+      FOR-HUMAN §4.
+    - ☐ **Arbitrary (non-image) file attach** — no bridge contract/model exists
+      (only `ImageContent` + `workspace/readImage`); deferred until one does.
   - ☑ **Voice** (`ComposerBar` mic button) → DONE: on-device speech-to-text
     dictates into the composer (`speech_to_text`, guarded `SpeechToTextService`),
     live partial→final with a recording state; verified on-device. See
@@ -383,9 +440,52 @@ browser and multi-PC connection correctness are now DONE — see below.)
   smart PR with head/base branch selection + auto-push of the head + precondition
   validation), `undoCommit` (`git/undoCommit`, soft reset) and `switchBranch`
   (`git/switchBranch`, per-branch auto-stash so each branch stays independent),
-  plus the `branches` (`git/branches`) read. Still ☐ pending: `pull`, `checkout`,
-  `createBranch`, `createWorktree` (+ managed), `revert`, `stackedPublish`
-  (one-shot commit+push+PR) per spec 02a §5.2.4 / §5.5.
+  plus the `branches` (`git/branches`) read.
+- ☑ **Extended git actions (branch & remote set)** — DONE: `GitActionManager`
+  now also wires `pull` (`git/pull`), `checkout` (`git/checkout`), `createBranch`
+  (`git/createBranch`) and `createWorktree` (`git/createWorktree`). Surfaced in
+  `GitScreen` where each action belongs (no separate "branch & remote" sheet):
+  - **Pull** is a badged app-bar action that only appears when `state.behind > 0`
+    (the badge shows the incoming-commit count).
+  - **Switch branch** / **New branch** live in the three-dots overflow menu; new
+    branch does `createBranch` + `checkout`.
+  - The commit composer **morphs to a push affordance** once the tree is clean
+    and the branch is ahead: the commit button becomes Push (badged with the
+    ahead count) and the extra-options toggle becomes Undo-last-commit. Push and
+    undo-commit are therefore no longer overflow-menu items.
+  - **Worktree creation moved to the new-conversation dialog** (`NewConversationScreen`):
+    an optional "Run in a worktree" toggle creates the worktree from the chosen
+    working dir and points the new thread's `cwd` at the resulting checkout — so
+    it no longer duplicates work inside the per-thread git screen.
+  - FOR-DEV: **`git/revert` is NOT implemented bridge-side** — needs a bridge
+    handler (`GitService.revert` + `git/revert` in `git-handler.ts` + the shared
+    method/registry) before the phone can wire a Revert action. Deferred until
+    the bridge adds it.
+  - FOR-DEV: **No safe branch/worktree deletion bridge-side.** `git-handler.ts`
+    exposes status/diff/commit/push/pull/checkout/createBranch/createWorktree/
+    stage/unstage/discard/createPr/undoCommit/branches/switchBranch — but there
+    is **no `git/deleteBranch` and no `git/removeWorktree`**. Removing the
+    worktree/branch that a conversation was created in (see the new-conversation
+    worktree flow) therefore can't be done from the app yet. Needs bridge
+    handlers that fail safe: refuse to delete a branch that isn't merged / a
+    worktree with uncommitted or unpushed work unless the caller forces it
+    (`git worktree remove [--force]`, `git branch -d` vs `-D`). Until then the
+    app must not offer a delete action.
+  - FOR-DEV: **Detect a vanished cwd / worktree and disable its threads.** When a
+    worktree or working folder is removed outside the app (manually, or once
+    bridge deletion lands), any thread whose `cwd` no longer exists must be
+    surfaced as **unavailable** and its composer disabled — sending into a dead
+    cwd would error on every action. Plan: have the bridge report cwd existence
+    (e.g. a `cwdExists`/`stale` flag on thread/project resolution, or a
+    `workspace/exists` probe) and let the phone mark those threads disabled with
+    a clear "folder no longer exists" state instead of failing per-message. Not
+    implemented on either side yet.
+  - FOR-DEV: **managed worktrees** — the bridge's `git/createWorktree` requires an
+    explicit `path` (no auto-path). The phone derives a sibling path from `cwd`
+    (`_worktreePath` in `NewConversationScreen`) so the user only types a branch
+    name; the optional "Let the bridge pick the location" switch forwards
+    `GitWorktreeParams.managed` for when the bridge gains auto-path support — at
+    which point the derived path can be dropped.
 - ☑ **Git UI (visual layer)** — DONE (maintainer-validated): replaced the old
   `GitActionsSheet` + `CommitSheet` bottom sheets with a full-screen **`GitScreen`**
   (M3): collapsible per-file diff cards (collapsed by default, lazy-loaded
@@ -467,3 +567,79 @@ browser and multi-PC connection correctness are now DONE — see below.)
 ## Tooling
 
 - ☐ Adopt `freezed`/`json_serializable` if/when entity boilerplate warrants it.
+
+## Alpha release readiness & CI/CD (prep)
+
+> Status snapshot taken 2026-06-16. The mobile app is **functional for an alpha
+> release on Android**: every core flow is wired and **maintainer-validated
+> on-device** (pairing/E2EE, devices list, threads, new conversation, live
+> streaming conversation, git screen, model picker, context meter, run-option
+> knobs, auth-status surfaces, push on Android, personalization, voice). Quality
+> gates are green: `flutter analyze lib test` → no issues, `flutter test` →
+> 265 passing, `dart format` clean. **iOS is NOT alpha-ready** — it has never
+> been built (the Podfile is generated on the first macOS build) and is blocked
+> on FOR-HUMAN assets (APNs key, Info.plist usage strings, signing). So: ship
+> Android alpha now; iOS follows once the human assets + a first macOS build
+> land.
+
+### What still blocks a *complete* MVP (not an Android alpha)
+
+Nothing below blocks an Android alpha build; these are the remaining feature/
+polish gaps, ordered by importance:
+
+- **App-side, buildable now (no bridge needed):**
+  - ☐ **Attach (file/image picker)** — gated by the `images` capability; today a
+    disabled placeholder. Medium importance: the only composer input still
+    missing (text + voice already work).
+  - ☐ **Custom accent colors** — placeholder; needs a full `ColorScheme`-from-seed
+    remap to stay coherent. Low importance (cosmetic).
+  - ☐ **Persist sort/density + project-level thread scoping** — small UX
+    follow-ups. Low importance.
+  - ☐ **Work-log auto-expand while streaming; tap Last-edits strip to jump.** Low.
+- **App-side seam, needs a live bridge to finish/verify:**
+  - ☐ **Remote history pagination** (`loadMoreHistory` cursor + `resumeThread`/
+    `forkThread`). Medium importance for long-lived threads; re-sync already
+    recovers in-flight turns.
+  - ☐ **Automated integration test against a real bridge** (today: simulated
+    in-memory bridge). Medium importance for regression safety.
+- **Bridge-blocked (documented contracts above; not the app's fault):**
+  interactive approval intake, `git/revert`, safe branch/worktree deletion,
+  vanished-cwd detection, agent session-id surfacing, approval-mode persistence
+  RPC. Important for feature-completeness but each waits on the bridge agent.
+- **FOR-HUMAN assets (gate iOS + live push):** iOS APNs key (paid Apple
+  account), iOS Info.plist permission strings (camera, local network, mic),
+  Firebase config (`google-services.json` / `GoogleService-Info.plist`), Android
+  signing keystore, iOS signing cert/provisioning. See `FOR-HUMAN.md`.
+
+### CI/CD prep — GitHub Actions (to author when we green-light it)
+
+Target platforms are **Android + iOS only** (`pubspec.yaml`: `android/`,
+`ios/`). Proposed pipeline — NOT YET CREATED; author `.github/workflows/` when
+the maintainer approves:
+
+1. **`verify` job (ubuntu-latest) — runs on every push/PR; the build gate:**
+   - `flutter pub get`
+   - `flutter gen-l10n` then fail if `lib/l10n` drifted (generated l10n is
+     committed — `git diff --exit-code lib/l10n`).
+   - `dart format --output=none --set-exit-if-changed lib test`
+   - `flutter analyze lib test` (must report no issues)
+   - `flutter test` (must be all-green; consider `--coverage`)
+   - Pin the Flutter version (`subosito/flutter-action`) to the toolchain we
+     develop on; cache pub + Gradle.
+2. **`build-android` job (ubuntu-latest) — needs: `verify`:**
+   - `flutter build apk --release` and `flutter build appbundle --release`.
+   - Signing keystore + `key.properties` from repo **secrets** (base64-decoded at
+     runtime); until those exist, build unsigned/debug artifacts.
+   - Upload the APK/AAB as workflow artifacts (do NOT auto-publish to Play in
+     alpha — produce downloadable builds only).
+3. **`build-ios` job (macos-latest) — needs: `verify`; can start unsigned:**
+   - `flutter build ios --release --no-codesign` (works without signing assets,
+     so iOS at least *compiles* in CI before the human assets land). Real `.ipa`
+     export waits on the signing cert/provisioning + APNs (FOR-HUMAN).
+4. **Triggers:** PR + push to the dev branch for `verify`; tag push
+   (`v*`) or manual `workflow_dispatch` for the build jobs. Gate every build job
+   on `verify` so a failing test/analyze/format **blocks the build**.
+5. **Secrets/assets the workflow will need (FOR-HUMAN):** `ANDROID_KEYSTORE_B64`
+   + `ANDROID_KEY_PROPERTIES`, Firebase config files, iOS signing
+   cert/provisioning profile + APNs key. List them in `FOR-HUMAN.md` when we
+   wire the workflow.
