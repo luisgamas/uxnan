@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 
 /// Appearance & language settings: theme mode (system/light/dark), accent
 /// color, and the app language. The language list is derived from
@@ -25,50 +26,41 @@ class PersonalizationScreen extends ConsumerWidget {
     final themeMode = ref.watch(themeModeSettingProvider);
     final localeTag = ref.watch(localeSettingProvider)?.languageCode;
 
-    return Scaffold(
-      body: CustomScrollView(
-        physics: const BouncingScrollPhysics(
-          parent: AlwaysScrollableScrollPhysics(),
+    return NeScaffold(
+      title: l10n.personalizationTitle,
+      slivers: [
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(
+            UxnanSpacing.lg,
+            UxnanSpacing.sm,
+            UxnanSpacing.lg,
+            UxnanSpacing.xl,
+          ),
+          sliver: SliverList.list(
+            children: [
+              _Header(label: l10n.personalizationThemeSection),
+              const SizedBox(height: UxnanSpacing.sm),
+              _ThemeModeSelector(
+                mode: themeMode,
+                onChanged: (mode) =>
+                    ref.read(themeModeSettingProvider.notifier).set(mode),
+              ),
+              const SizedBox(height: UxnanSpacing.xl),
+              _Header(label: l10n.personalizationAccentSection),
+              const SizedBox(height: UxnanSpacing.sm),
+              const _AccentComingSoon(),
+              const SizedBox(height: UxnanSpacing.xl),
+              _Header(label: l10n.personalizationLanguageSection),
+              const SizedBox(height: UxnanSpacing.sm),
+              _LanguageSelector(
+                selectedTag: localeTag,
+                onChanged: (locale) =>
+                    ref.read(localeSettingProvider.notifier).set(locale),
+              ),
+            ],
+          ),
         ),
-        slivers: [
-          SliverAppBar.large(
-            floating: true,
-            snap: true,
-            title: Text(l10n.personalizationTitle),
-          ),
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(
-              UxnanSpacing.lg,
-              UxnanSpacing.sm,
-              UxnanSpacing.lg,
-              UxnanSpacing.xl,
-            ),
-            sliver: SliverList.list(
-              children: [
-                _Header(label: l10n.personalizationThemeSection),
-                const SizedBox(height: UxnanSpacing.sm),
-                _ThemeModeSelector(
-                  mode: themeMode,
-                  onChanged: (mode) =>
-                      ref.read(themeModeSettingProvider.notifier).set(mode),
-                ),
-                const SizedBox(height: UxnanSpacing.xl),
-                _Header(label: l10n.personalizationAccentSection),
-                const SizedBox(height: UxnanSpacing.sm),
-                const _AccentComingSoon(),
-                const SizedBox(height: UxnanSpacing.xl),
-                _Header(label: l10n.personalizationLanguageSection),
-                const SizedBox(height: UxnanSpacing.sm),
-                _LanguageSelector(
-                  selectedTag: localeTag,
-                  onChanged: (locale) =>
-                      ref.read(localeSettingProvider.notifier).set(locale),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+      ],
     );
   }
 }

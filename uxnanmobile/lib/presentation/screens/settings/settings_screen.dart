@@ -5,6 +5,7 @@ import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/screens/settings/personalization_screen.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 
 /// App settings. Today it hosts the notification-channel preferences (which
 /// turn-end events raise a push / local notification); the toggles persist
@@ -20,84 +21,75 @@ class SettingsScreen extends ConsumerWidget {
     final prefs = ref.watch(notificationPreferencesProvider);
     final controller = ref.read(notificationPreferencesProvider.notifier);
 
-    return Scaffold(
-      body: CustomScrollView(
-        physics: const BouncingScrollPhysics(
-          parent: AlwaysScrollableScrollPhysics(),
+    return NeScaffold(
+      title: l10n.settingsTitle,
+      slivers: [
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(
+            UxnanSpacing.lg,
+            UxnanSpacing.sm,
+            UxnanSpacing.lg,
+            UxnanSpacing.lg,
+          ),
+          sliver: SliverList.list(
+            children: [
+              _SectionHeader(label: l10n.settingsAppearanceSection),
+              const SizedBox(height: UxnanSpacing.sm),
+              _PersonalizationTile(
+                onTap: () => PersonalizationScreen.push(context),
+              ),
+              const SizedBox(height: UxnanSpacing.xl),
+              _SectionHeader(label: l10n.settingsNotificationsSection),
+              const SizedBox(height: UxnanSpacing.sm),
+              _PreferencesCard(
+                preferences: prefs,
+                onTurnCompletedChanged: (value) =>
+                    controller.save(prefs.copyWith(turnCompleted: value)),
+                onTurnErrorChanged: (value) =>
+                    controller.save(prefs.copyWith(turnError: value)),
+              ),
+              const SizedBox(height: UxnanSpacing.sm),
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: UxnanSpacing.xs,
+                ),
+                child: Text(
+                  l10n.settingsNotificationsHint,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                ),
+              ),
+              const SizedBox(height: UxnanSpacing.xl),
+              _SectionHeader(label: l10n.settingsConversationSection),
+              const SizedBox(height: UxnanSpacing.sm),
+              _ConversationCard(
+                showThinking: ref.watch(showAgentThinkingProvider),
+                onShowThinkingChanged: (value) => ref
+                    .read(showAgentThinkingProvider.notifier)
+                    .set(value: value),
+                scrollOnSend: ref.watch(scrollToBottomOnSendProvider),
+                onScrollOnSendChanged: (value) => ref
+                    .read(scrollToBottomOnSendProvider.notifier)
+                    .set(value: value),
+              ),
+              const SizedBox(height: UxnanSpacing.xl),
+              _SectionHeader(label: l10n.settingsGitSection),
+              const SizedBox(height: UxnanSpacing.sm),
+              _GitCard(
+                confirmPush: ref.watch(confirmBeforePushProvider),
+                onConfirmPushChanged: (value) => ref
+                    .read(confirmBeforePushProvider.notifier)
+                    .set(value: value),
+                confirmPr: ref.watch(confirmBeforePrProvider),
+                onConfirmPrChanged: (value) => ref
+                    .read(confirmBeforePrProvider.notifier)
+                    .set(value: value),
+              ),
+            ],
+          ),
         ),
-        slivers: [
-          SliverAppBar.large(
-            floating: true,
-            snap: true,
-            title: Text(l10n.settingsTitle),
-          ),
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(
-              UxnanSpacing.lg,
-              UxnanSpacing.sm,
-              UxnanSpacing.lg,
-              UxnanSpacing.lg,
-            ),
-            sliver: SliverList.list(
-              children: [
-                _SectionHeader(label: l10n.settingsAppearanceSection),
-                const SizedBox(height: UxnanSpacing.sm),
-                _PersonalizationTile(
-                  onTap: () => PersonalizationScreen.push(context),
-                ),
-                const SizedBox(height: UxnanSpacing.xl),
-                _SectionHeader(label: l10n.settingsNotificationsSection),
-                const SizedBox(height: UxnanSpacing.sm),
-                _PreferencesCard(
-                  preferences: prefs,
-                  onTurnCompletedChanged: (value) =>
-                      controller.save(prefs.copyWith(turnCompleted: value)),
-                  onTurnErrorChanged: (value) =>
-                      controller.save(prefs.copyWith(turnError: value)),
-                ),
-                const SizedBox(height: UxnanSpacing.sm),
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: UxnanSpacing.xs,
-                  ),
-                  child: Text(
-                    l10n.settingsNotificationsHint,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                  ),
-                ),
-                const SizedBox(height: UxnanSpacing.xl),
-                _SectionHeader(label: l10n.settingsConversationSection),
-                const SizedBox(height: UxnanSpacing.sm),
-                _ConversationCard(
-                  showThinking: ref.watch(showAgentThinkingProvider),
-                  onShowThinkingChanged: (value) => ref
-                      .read(showAgentThinkingProvider.notifier)
-                      .set(value: value),
-                  scrollOnSend: ref.watch(scrollToBottomOnSendProvider),
-                  onScrollOnSendChanged: (value) => ref
-                      .read(scrollToBottomOnSendProvider.notifier)
-                      .set(value: value),
-                ),
-                const SizedBox(height: UxnanSpacing.xl),
-                _SectionHeader(label: l10n.settingsGitSection),
-                const SizedBox(height: UxnanSpacing.sm),
-                _GitCard(
-                  confirmPush: ref.watch(confirmBeforePushProvider),
-                  onConfirmPushChanged: (value) => ref
-                      .read(confirmBeforePushProvider.notifier)
-                      .set(value: value),
-                  confirmPr: ref.watch(confirmBeforePrProvider),
-                  onConfirmPrChanged: (value) => ref
-                      .read(confirmBeforePrProvider.notifier)
-                      .set(value: value),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+      ],
     );
   }
 }

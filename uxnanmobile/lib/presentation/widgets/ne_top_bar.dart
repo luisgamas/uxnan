@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/widgets/icon_surface.dart';
 
 /// Neural Expressive top bar (guide §4.1–4.2): a 56 dp **transparent** chrome
 /// layer with a vertical *scroll veil* (surface → transparent) so content
@@ -65,6 +66,101 @@ class NeTopBar extends StatelessWidget {
             const SizedBox(width: UxnanSpacing.xs),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// A [Scaffold] whose [slivers] scroll **under** an overlaid [NeTopBar], with a
+/// top spacer so the first content clears the bar. The standard chrome for
+/// list/detail screens, matching the conversation's transparent-bar treatment.
+/// A back [IconSurface] is added automatically on pushed routes.
+class NeScaffold extends StatelessWidget {
+  /// Creates a [NeScaffold].
+  const NeScaffold({
+    required this.slivers,
+    this.title,
+    this.leading,
+    this.actions = const [],
+    this.floatingActionButton,
+    this.scrollController,
+    this.onRefresh,
+    this.automaticBackButton = true,
+    super.key,
+  });
+
+  /// Content slivers (a top spacer is prepended).
+  final List<Widget> slivers;
+
+  /// Optional bar title.
+  final String? title;
+
+  /// Leading widget; defaults to a back [IconSurface] on pushed routes.
+  final Widget? leading;
+
+  /// Trailing bar actions.
+  final List<Widget> actions;
+
+  /// Optional FAB.
+  final Widget? floatingActionButton;
+
+  /// Optional scroll controller for the content.
+  final ScrollController? scrollController;
+
+  /// When set, wraps the content in a [RefreshIndicator].
+  final Future<void> Function()? onRefresh;
+
+  /// Whether to auto-add a back button when the route can pop.
+  final bool automaticBackButton;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final canPop = ModalRoute.of(context)?.canPop ?? false;
+    final lead = leading ??
+        (automaticBackButton && canPop
+            ? IconSurface(
+                icon: Icons.arrow_back_rounded,
+                tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+                onPressed: () => Navigator.of(context).maybePop(),
+              )
+            : null);
+
+    Widget scroll = CustomScrollView(
+      controller: scrollController,
+      physics: const BouncingScrollPhysics(
+        parent: AlwaysScrollableScrollPhysics(),
+      ),
+      slivers: [
+        SliverToBoxAdapter(
+          child: SizedBox(height: NeTopBar.preferredHeight(context)),
+        ),
+        ...slivers,
+      ],
+    );
+    final onRefresh = this.onRefresh;
+    if (onRefresh != null) {
+      scroll = RefreshIndicator(onRefresh: onRefresh, child: scroll);
+    }
+
+    return Scaffold(
+      floatingActionButton: floatingActionButton,
+      body: Stack(
+        children: [
+          scroll,
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: NeTopBar(
+              leading: lead,
+              title: title == null
+                  ? null
+                  : Text(title!, style: textTheme.titleLarge),
+              actions: actions,
+            ),
+          ),
+        ],
       ),
     );
   }

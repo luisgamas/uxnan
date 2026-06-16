@@ -10,6 +10,8 @@ import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
+import 'package:uxnan/presentation/widgets/icon_surface.dart';
+import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 
 /// The app's home: the list of paired PCs (trusted bridges). The app keeps one
 /// active connection at a time; tapping a PC opens its threads and "Connect"
@@ -133,72 +135,62 @@ class MyDevicesScreen extends ConsumerWidget {
       return const Scaffold(body: _PairEmptyState());
     }
 
-    return Scaffold(
-      body: CustomScrollView(
-        physics: const BouncingScrollPhysics(
-          parent: AlwaysScrollableScrollPhysics(),
+    return NeScaffold(
+      title: l10n.devicesTitle,
+      actions: [
+        IconSurface(
+          icon: Icons.add_link_rounded,
+          tooltip: l10n.actionPairDevice,
+          // A PC is already paired (onboarding done): go straight to the QR
+          // scanner. First-pair onboarding is the empty state below.
+          onPressed: () => context.push(AppRoutes.pairing),
         ),
-        slivers: [
-          SliverAppBar.large(
-            floating: true,
-            snap: true,
-            title: Text(l10n.devicesTitle),
-            actions: [
-              IconButton(
-                tooltip: l10n.actionPairDevice,
-                icon: const Icon(Icons.add_link_rounded),
-                // A PC is already paired (onboarding done): go straight to the
-                // QR scanner. First-pair onboarding is the empty state below.
-                onPressed: () => context.push(AppRoutes.pairing),
-              ),
-              IconButton(
-                tooltip: l10n.settingsTitle,
-                icon: const Icon(Icons.settings_outlined),
-                onPressed: () => context.push(AppRoutes.settings),
-              ),
-              const SizedBox(width: UxnanSpacing.sm),
-            ],
+        IconSurface(
+          icon: Icons.settings_outlined,
+          tooltip: l10n.settingsTitle,
+          onPressed: () => context.push(AppRoutes.settings),
+        ),
+      ],
+      slivers: [
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(
+            UxnanSpacing.lg,
+            UxnanSpacing.sm,
+            UxnanSpacing.lg,
+            UxnanSpacing.lg,
           ),
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(
-              UxnanSpacing.lg,
-              UxnanSpacing.sm,
-              UxnanSpacing.lg,
-              UxnanSpacing.lg,
-            ),
-            sliver: SliverList.separated(
-              itemCount: devices.length,
-              separatorBuilder: (_, __) =>
-                  const SizedBox(height: UxnanSpacing.md),
-              itemBuilder: (context, index) {
-                final device = devices[index];
-                return _DeviceCard(
-                  device: device,
-                  isConnected: device.macDeviceId == connectedId,
-                  isConnecting: device.macDeviceId == connectingId,
-                  relayConnected:
-                      device.macDeviceId == connectedId ? relayConnected : null,
-                  onOpen: () => _open(context, device),
-                  onConnect: () => _connect(ref, context, device),
-                  onRename: () => _rename(ref, context, device),
-                  onVerify: () => _verify(ref, context, device),
-                  onRemove: () => _remove(ref, context, device),
-                );
-              },
-            ),
+          sliver: SliverList.separated(
+            itemCount: devices.length,
+            separatorBuilder: (_, __) =>
+                const SizedBox(height: UxnanSpacing.md),
+            itemBuilder: (context, index) {
+              final device = devices[index];
+              return _DeviceCard(
+                device: device,
+                isConnected: device.macDeviceId == connectedId,
+                isConnecting: device.macDeviceId == connectingId,
+                relayConnected:
+                    device.macDeviceId == connectedId ? relayConnected : null,
+                onOpen: () => _open(context, device),
+                onConnect: () => _connect(ref, context, device),
+                onRename: () => _rename(ref, context, device),
+                onVerify: () => _verify(ref, context, device),
+                onRemove: () => _remove(ref, context, device),
+              );
+            },
           ),
-          // Pinned footer (app name + ALPHA stage pill). `SliverFillRemaining`
-          // with `hasScrollBody: false` gives the child the remaining viewport
-          // space when the list is short (the inner `Spacer` then pushes the
-          // content to the bottom of the screen), and the child's natural size
-          // when the list overflows — so the footer always sits right after
-          // the last card and never leaves a screen-sized white gap to scroll.
-          const SliverFillRemaining(
-            hasScrollBody: false,
-            child: _BrandingFooter(),
-          ),
-        ],
-      ),
+        ),
+        // Pinned footer (app name + ALPHA stage pill). `SliverFillRemaining`
+        // with `hasScrollBody: false` gives the child the remaining viewport
+        // space when the list is short (the inner `Spacer` then pushes the
+        // content to the bottom of the screen), and the child's natural size
+        // when the list overflows — so the footer always sits right after
+        // the last card and never leaves a screen-sized white gap to scroll.
+        const SliverFillRemaining(
+          hasScrollBody: false,
+          child: _BrandingFooter(),
+        ),
+      ],
     );
   }
 }
