@@ -7,6 +7,17 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Manual-code pairing (`ManualCodeScreen`).** Pair without scanning a QR by
+  typing the bridge **host** + the short **pairing code** shown on the PC. A new
+  `ManualPairingService` (`infrastructure/pairing/`, dio) calls the bridge's
+  `GET /pair/resolve?code=` directly, decodes the returned `PairingPayload`, and
+  hands it to the normal `SessionCoordinator.processPairingPayload` handshake.
+  Tolerant host parsing (`host` or `host:port`, default port 19850, scheme/path
+  stripped) and classified errors (bad/expired code, rate-limited, unreachable,
+  malformed). Reachable from the onboarding pair page ("Enter a code instead",
+  route `/pairing/manual`). Covered by `manual_pairing_service_test.dart`.
+  **UI pending the maintainer's on-device review** (AGENTS.md "UI changes").
+  mDNS auto-discovery is a follow-up (`FOR-DEV.md`).
 - **History windowing + conversation fork/resume.** The conversation timeline
   now renders only the most-recent page and offers a **"Show earlier messages"**
   header to load older history on demand (`ThreadManager.loadMoreHistory`),

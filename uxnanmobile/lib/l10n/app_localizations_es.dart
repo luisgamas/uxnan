@@ -1015,4 +1015,56 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get appVersionStage => 'ALPHA';
+
+  @override
+  String get actionEnterCode => 'Ingresar un código';
+
+  @override
+  String get manualCodeTitle => 'Emparejar con código';
+
+  @override
+  String get manualCodeIntro =>
+      'En tu PC, el bridge muestra un host y un código corto de emparejamiento. Ingrésalos aquí para emparejar sin escanear un QR.';
+
+  @override
+  String get manualCodeHostLabel => 'Host del bridge';
+
+  @override
+  String get manualCodeHostHint => '192.168.1.100:19850';
+
+  @override
+  String get manualCodeCodeLabel => 'Código de emparejamiento';
+
+  @override
+  String get manualCodeCodeHint => 'ej. 7Q4K2F9P';
+
+  @override
+  String get manualCodeConnect => 'Emparejar';
+
+  @override
+  String get manualCodeConnecting => 'Resolviendo código…';
+
+  @override
+  String get manualCodeErrorInvalidInput =>
+      'Ingresa el host del bridge y el código de emparejamiento.';
+
+  @override
+  String get manualCodeErrorNetwork =>
+      'No se pudo contactar al bridge. Revisa el host y que el bridge esté corriendo en la misma red.';
+
+  @override
+  String get manualCodeErrorInvalidCode =>
+      'El código es incorrecto o expiró. Genera uno nuevo en tu PC.';
+
+  @override
+  String get manualCodeErrorRateLimited =>
+      'Demasiados intentos. Espera un momento e inténtalo de nuevo.';
+
+  @override
+  String get manualCodeErrorServer =>
+      'El bridge no pudo completar el emparejamiento. Inténtalo de nuevo.';
+
+  @override
+  String get manualCodeErrorPayload =>
+      'El bridge envió una respuesta de emparejamiento inválida.';
 }

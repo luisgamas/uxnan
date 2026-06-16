@@ -339,5 +339,20 @@
   "personalizationLanguageSection": "Idioma",
   "languageSystemDefault": "Predeterminado del sistema",
   "appTitleMobile": "Uxnan Móvil",
-  "appVersionStage": "ALPHA"
+  "appVersionStage": "ALPHA",
+  "actionEnterCode": "Ingresar un código",
+  "manualCodeTitle": "Emparejar con código",
+  "manualCodeIntro": "En tu PC, el bridge muestra un host y un código corto de emparejamiento. Ingrésalos aquí para emparejar sin escanear un QR.",
+  "manualCodeHostLabel": "Host del bridge",
+  "manualCodeHostHint": "192.168.1.100:19850",
+  "manualCodeCodeLabel": "Código de emparejamiento",
+  "manualCodeCodeHint": "ej. 7Q4K2F9P",
+  "manualCodeConnect": "Emparejar",
+  "manualCodeConnecting": "Resolviendo código…",
+  "manualCodeErrorInvalidInput": "Ingresa el host del bridge y el código de emparejamiento.",
+  "manualCodeErrorNetwork": "No se pudo contactar al bridge. Revisa el host y que el bridge esté corriendo en la misma red.",
+  "manualCodeErrorInvalidCode": "El código es incorrecto o expiró. Genera uno nuevo en tu PC.",
+  "manualCodeErrorRateLimited": "Demasiados intentos. Espera un momento e inténtalo de nuevo.",
+  "manualCodeErrorServer": "El bridge no pudo completar el emparejamiento. Inténtalo de nuevo.",
+  "manualCodeErrorPayload": "El bridge envió una respuesta de emparejamiento inválida."
 }

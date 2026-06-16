@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/domain/repositories/i_composer_draft_repository.dart';
 import 'package:uxnan/domain/repositories/i_git_action_log_repository.dart';
@@ -6,6 +7,7 @@ import 'package:uxnan/domain/repositories/i_thread_repository.dart';
 import 'package:uxnan/domain/repositories/i_trusted_device_repository.dart';
 import 'package:uxnan/infrastructure/media/attachment_picker_service.dart';
 import 'package:uxnan/infrastructure/notifications/push_notification_service.dart';
+import 'package:uxnan/infrastructure/pairing/manual_pairing_service.dart';
 import 'package:uxnan/infrastructure/repositories/drift_composer_draft_repository.dart';
 import 'package:uxnan/infrastructure/repositories/drift_git_action_log_repository.dart';
 import 'package:uxnan/infrastructure/repositories/drift_message_repository.dart';
@@ -102,6 +104,21 @@ final speechToTextServiceProvider = Provider<SpeechToTextService>((ref) {
 /// cancel or denied permission yields null, never throws.
 final attachmentPickerServiceProvider = Provider<AttachmentPickerService>(
   (ref) => AttachmentPickerService(),
+);
+
+/// Manual-code pairing service (resolves a typed host + code against the
+/// bridge's `GET /pair/resolve` endpoint). Short timeouts so an unreachable
+/// host fails fast instead of hanging the screen.
+final manualPairingServiceProvider = Provider<ManualPairingService>(
+  (ref) => ManualPairingService(
+    Dio(
+      BaseOptions(
+        connectTimeout: const Duration(seconds: 5),
+        receiveTimeout: const Duration(seconds: 5),
+        sendTimeout: const Duration(seconds: 5),
+      ),
+    ),
+  ),
 );
 
 /// Trusted-device repository (drift for metadata + secure storage for the

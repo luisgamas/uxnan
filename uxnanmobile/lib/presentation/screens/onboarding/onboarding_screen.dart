@@ -42,6 +42,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   void _scanQr() => context.push(AppRoutes.pairing);
 
+  void _enterCode() => context.push(AppRoutes.manualPairing);
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -92,6 +94,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                             onBack: () => _animateTo(_index - 1),
                             onNext: () => _animateTo(_index + 1),
                             onScan: _scanQr,
+                          ),
+                          AnimatedOpacity(
+                            opacity: _isLast ? 1 : 0,
+                            duration: const Duration(milliseconds: 200),
+                            child: TextButton(
+                              onPressed: _isLast ? _enterCode : null,
+                              child: Text(l10n.actionEnterCode),
+                            ),
                           ),
                         ],
                       ),

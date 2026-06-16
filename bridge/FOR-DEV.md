@@ -100,13 +100,15 @@ hosting** (the phone connects directly to the bridge on the same network).
       `config.mdnsEnabled` (default true; effective only when `lanEnabled`). Verified
       by unit tests (fake socket) + a real on-machine multicast smoke (a DNS-SD
       querier received the full record set).
-      **Mobile linkage (uxnanmobile):** the deferred `ManualCodeScreen` should
-      (1) **browse `_uxnan._tcp` via mDNS** (Android `NsdManager` / iOS `NWBrowser`,
-      e.g. the `nsd`/`multicast_dns` Flutter plugin) to list bridges + read the TXT
-      `addr`/`port`, then (2) call
-      `GET http://<addr>:<port>/pair/resolve?code=<code>` **on the bridge** (NOT the
-      relay) to synthesize the `PairingPayload`, then reuse the existing QR pairing
-      path. Typing the host stays a manual fallback when mDNS is unavailable.
+      **Mobile linkage (uxnanmobile): manual-host half DONE (2026-06-16).**
+      `ManualCodeScreen` + `ManualPairingService` call
+      `GET http://<host>:<port>/pair/resolve?code=<code>` **on the bridge** (NOT
+      the relay) to synthesize the `PairingPayload`, then reuse the existing
+      pairing handshake — the user types the host the `qr` CLI prints. ☐ Still
+      open on the phone: **browse `_uxnan._tcp` via mDNS** (Android `NsdManager`
+      / iOS `NWBrowser`, e.g. the `nsd`/`multicast_dns` Flutter plugin) to list
+      bridges + read the TXT `addr`/`port` so the host needn't be typed — the
+      bridge already advertises it. Typing the host stays the fallback.
 
 ## Identity & security
 - [x] **OS-keychain SecretStore** (Phase 3) — `src/keyring-secret-store.ts` via

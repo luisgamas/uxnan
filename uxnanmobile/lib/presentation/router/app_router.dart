@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:uxnan/presentation/screens/conversation/conversation_screen.dart';
 import 'package:uxnan/presentation/screens/devices/my_devices_screen.dart';
 import 'package:uxnan/presentation/screens/onboarding/onboarding_screen.dart';
+import 'package:uxnan/presentation/screens/pairing/manual_code_screen.dart';
 import 'package:uxnan/presentation/screens/pairing/qr_scanner_screen.dart';
 import 'package:uxnan/presentation/screens/settings/settings_screen.dart';
 import 'package:uxnan/presentation/screens/threads/archived_threads_screen.dart';
@@ -23,6 +24,9 @@ class AppRoutes {
 
   /// QR pairing flow.
   static const String pairing = '/pairing';
+
+  /// Manual-code pairing flow (type a host + short code instead of scanning).
+  static const String manualPairing = '/pairing/manual';
 
   /// App settings (notification preferences, …).
   static const String settings = '/settings';
@@ -81,6 +85,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.pairing,
         builder: (context, state) => const QrScannerScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.manualPairing,
+        builder: (context, state) => const ManualCodeScreen(),
       ),
       GoRoute(
         path: AppRoutes.settings,

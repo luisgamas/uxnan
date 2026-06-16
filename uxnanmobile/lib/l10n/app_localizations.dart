@@ -1975,6 +1975,96 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'ALPHA'**
   String get appVersionStage;
+
+  /// No description provided for @actionEnterCode.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a code instead'**
+  String get actionEnterCode;
+
+  /// No description provided for @manualCodeTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Pair with a code'**
+  String get manualCodeTitle;
+
+  /// No description provided for @manualCodeIntro.
+  ///
+  /// In en, this message translates to:
+  /// **'On your PC, the bridge shows a host and a short pairing code. Enter them here to pair without scanning a QR.'**
+  String get manualCodeIntro;
+
+  /// No description provided for @manualCodeHostLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Bridge host'**
+  String get manualCodeHostLabel;
+
+  /// No description provided for @manualCodeHostHint.
+  ///
+  /// In en, this message translates to:
+  /// **'192.168.1.100:19850'**
+  String get manualCodeHostHint;
+
+  /// No description provided for @manualCodeCodeLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Pairing code'**
+  String get manualCodeCodeLabel;
+
+  /// No description provided for @manualCodeCodeHint.
+  ///
+  /// In en, this message translates to:
+  /// **'e.g. 7Q4K2F9P'**
+  String get manualCodeCodeHint;
+
+  /// No description provided for @manualCodeConnect.
+  ///
+  /// In en, this message translates to:
+  /// **'Pair'**
+  String get manualCodeConnect;
+
+  /// No description provided for @manualCodeConnecting.
+  ///
+  /// In en, this message translates to:
+  /// **'Resolving code…'**
+  String get manualCodeConnecting;
+
+  /// No description provided for @manualCodeErrorInvalidInput.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter the bridge host and the pairing code.'**
+  String get manualCodeErrorInvalidInput;
+
+  /// No description provided for @manualCodeErrorNetwork.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t reach the bridge. Check the host and that the bridge is running on the same network.'**
+  String get manualCodeErrorNetwork;
+
+  /// No description provided for @manualCodeErrorInvalidCode.
+  ///
+  /// In en, this message translates to:
+  /// **'That code is wrong or has expired. Generate a new one on your PC.'**
+  String get manualCodeErrorInvalidCode;
+
+  /// No description provided for @manualCodeErrorRateLimited.
+  ///
+  /// In en, this message translates to:
+  /// **'Too many attempts. Wait a moment and try again.'**
+  String get manualCodeErrorRateLimited;
+
+  /// No description provided for @manualCodeErrorServer.
+  ///
+  /// In en, this message translates to:
+  /// **'The bridge couldn\'t complete pairing. Try again.'**
+  String get manualCodeErrorServer;
+
+  /// No description provided for @manualCodeErrorPayload.
+  ///
+  /// In en, this message translates to:
+  /// **'The bridge sent an invalid pairing response.'**
+  String get manualCodeErrorPayload;
 }
 
 class _AppLocalizationsDelegate

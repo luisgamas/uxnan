@@ -507,5 +507,20 @@
   "appVersionStage": "ALPHA",
   "@appVersionStage": {
     "description": "Short release-stage label (e.g. ALPHA / BETA / STABLE) shown in the devices-screen footer to communicate the maturity of the build."
-  }
+  },
+  "actionEnterCode": "Enter a code instead",
+  "manualCodeTitle": "Pair with a code",
+  "manualCodeIntro": "On your PC, the bridge shows a host and a short pairing code. Enter them here to pair without scanning a QR.",
+  "manualCodeHostLabel": "Bridge host",
+  "manualCodeHostHint": "192.168.1.100:19850",
+  "manualCodeCodeLabel": "Pairing code",
+  "manualCodeCodeHint": "e.g. 7Q4K2F9P",
+  "manualCodeConnect": "Pair",
+  "manualCodeConnecting": "Resolving code…",
+  "manualCodeErrorInvalidInput": "Enter the bridge host and the pairing code.",
+  "manualCodeErrorNetwork": "Couldn't reach the bridge. Check the host and that the bridge is running on the same network.",
+  "manualCodeErrorInvalidCode": "That code is wrong or has expired. Generate a new one on your PC.",
+  "manualCodeErrorRateLimited": "Too many attempts. Wait a moment and try again.",
+  "manualCodeErrorServer": "The bridge couldn't complete pairing. Try again.",
+  "manualCodeErrorPayload": "The bridge sent an invalid pairing response."
 }

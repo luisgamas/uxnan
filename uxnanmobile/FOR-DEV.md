@@ -37,9 +37,23 @@ browser and multi-PC connection correctness are now DONE — see below.)
 
 ## Pairing module
 
-- ☐ **Manual-code pairing** — `ManualCodeScreen` + relay `GET /trusted-session/resolve?code=`
-  (dio) to synthesize a `PairingPayload` (spec §5.5.3). Deferred: QR is the MVP
-  method and the relay is not implemented yet.
+- ☑ **Manual-code pairing** — DONE (2026-06-16): `ManualCodeScreen`
+  (`/pairing/manual`, reachable from the onboarding pair page) + a
+  `ManualPairingService` (`infrastructure/pairing/`, dio) that calls the
+  **bridge's** `GET /pair/resolve?code=` (the bridge-first endpoint — NOT the
+  relay `/trusted-session/resolve`) to synthesize a `PairingPayload`, then runs
+  the existing `SessionCoordinator.processPairingPayload`. Tolerant host parsing
+  (`host`/`host:port`, default 19850) + classified errors. Pure helpers
+  unit-tested. ☐ Still open:
+  - ☐ **On-device verification** against a live bridge (type the host + code the
+    `qr` CLI prints, confirm the handshake completes).
+  - ☐ **mDNS browse** (`_uxnan._tcp` via `nsd`/`multicast_dns`) to auto-list
+    bridges so the user needn't type the host — the bridge already advertises
+    it (`bridge/src/transport/mdns-advertiser.ts`). Manual host stays the
+    fallback.
+  - ☐ **UI visual review** — the screen is a minimal M3 form; restyle to the
+    Neural Expressive language after the maintainer reviews it on-device
+    (AGENTS.md "UI changes").
 - ☑ **Pairing/onboarding UI** — DONE: `OnboardingScreen` (Welcome/Features/
   Install/Pair), `QrScannerScreen` (`mobile_scanner` + permission gating),
   `UpdatePromptDialog`, routes and home CTA. Still open below.

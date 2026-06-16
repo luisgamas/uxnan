@@ -1011,4 +1011,56 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get appVersionStage => 'ALPHA';
+
+  @override
+  String get actionEnterCode => 'Enter a code instead';
+
+  @override
+  String get manualCodeTitle => 'Pair with a code';
+
+  @override
+  String get manualCodeIntro =>
+      'On your PC, the bridge shows a host and a short pairing code. Enter them here to pair without scanning a QR.';
+
+  @override
+  String get manualCodeHostLabel => 'Bridge host';
+
+  @override
+  String get manualCodeHostHint => '192.168.1.100:19850';
+
+  @override
+  String get manualCodeCodeLabel => 'Pairing code';
+
+  @override
+  String get manualCodeCodeHint => 'e.g. 7Q4K2F9P';
+
+  @override
+  String get manualCodeConnect => 'Pair';
+
+  @override
+  String get manualCodeConnecting => 'Resolving code…';
+
+  @override
+  String get manualCodeErrorInvalidInput =>
+      'Enter the bridge host and the pairing code.';
+
+  @override
+  String get manualCodeErrorNetwork =>
+      'Couldn\'t reach the bridge. Check the host and that the bridge is running on the same network.';
+
+  @override
+  String get manualCodeErrorInvalidCode =>
+      'That code is wrong or has expired. Generate a new one on your PC.';
+
+  @override
+  String get manualCodeErrorRateLimited =>
+      'Too many attempts. Wait a moment and try again.';
+
+  @override
+  String get manualCodeErrorServer =>
+      'The bridge couldn\'t complete pairing. Try again.';
+
+  @override
+  String get manualCodeErrorPayload =>
+      'The bridge sent an invalid pairing response.';
 }
