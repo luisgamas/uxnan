@@ -154,9 +154,16 @@ class NeScaffold extends StatelessWidget {
             right: 0,
             child: NeTopBar(
               leading: lead,
+              // Compact single-line title (slightly smaller than titleLarge),
+              // truncated with an ellipsis when it doesn't fit.
               title: title == null
                   ? null
-                  : Text(title!, style: textTheme.titleLarge),
+                  : Text(
+                      title!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: textTheme.titleLarge?.copyWith(fontSize: 20),
+                    ),
               actions: actions,
             ),
           ),

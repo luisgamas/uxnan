@@ -5,6 +5,7 @@ import 'package:uxnan/domain/enums/agent_id.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/agent_visuals.dart';
+import 'package:uxnan/presentation/widgets/icon_surface.dart';
 
 /// Shared ordering, search and density controls for the active and archived
 /// thread lists, so both screens behave identically.
@@ -124,9 +125,9 @@ class ThreadSearchAnchor extends StatelessWidget {
     return SearchAnchor(
       isFullScreen: true,
       viewHintText: l10n.threadsSearchHint,
-      builder: (context, controller) => IconButton(
+      builder: (context, controller) => IconSurface(
+        icon: Icons.search_rounded,
         tooltip: l10n.threadsSearch,
-        icon: const Icon(Icons.search_rounded),
         onPressed: controller.openView,
       ),
       suggestionsBuilder: (context, controller) {
@@ -212,9 +213,10 @@ class ThreadSortMenu extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     return PopupMenuButton<ThreadSort>(
       tooltip: l10n.threadsSortBy,
-      icon: const Icon(Icons.sort_rounded),
       initialValue: sort,
       onSelected: onChanged,
+      position: PopupMenuPosition.under,
+      child: const _MenuSurface(icon: Icons.sort_rounded),
       itemBuilder: (context) => [
         CheckedPopupMenuItem(
           value: ThreadSort.created,
@@ -266,7 +268,8 @@ class ThreadMoreMenu extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     return PopupMenuButton<_MoreAction>(
       tooltip: l10n.threadsMore,
-      icon: const Icon(Icons.more_vert_rounded),
+      position: PopupMenuPosition.under,
+      child: const _MenuSurface(icon: Icons.more_vert_rounded),
       onSelected: (action) {
         switch (action) {
           case _MoreAction.compact:
@@ -293,6 +296,34 @@ class ThreadMoreMenu extends StatelessWidget {
             ),
           ),
       ],
+    );
+  }
+}
+
+/// A neutral circular surface (40 dp visual / 48 dp touch) used as the tappable
+/// child of the sort/more popup menus, so they read as Icon Surfaces in the bar
+/// — matching the standalone [IconSurface] actions elsewhere.
+class _MenuSurface extends StatelessWidget {
+  const _MenuSurface({required this.icon});
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return SizedBox(
+      width: 48,
+      height: 48,
+      child: Center(
+        child: Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: colors.surfaceContainerHigh,
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, size: 20, color: colors.onSurfaceVariant),
+        ),
+      ),
     );
   }
 }
