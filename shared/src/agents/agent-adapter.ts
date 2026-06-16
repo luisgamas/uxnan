@@ -5,6 +5,7 @@
  */
 import type { AgentCapabilities, AgentId, AgentModel } from './agent-capabilities.js';
 import type { AgentConfig } from './agent-config.js';
+import type { TurnAttachment } from '../models/workspace.js';
 
 /** A single streamed event produced by a running agent turn. */
 export interface AgentStreamEvent {
@@ -40,6 +41,12 @@ export interface SendTurnOptions {
    * legacy `effort` is used as a fallback for the `reasoning` knob.
    */
   options?: Record<string, string | boolean>;
+  /**
+   * Inline image attachments for this turn. The {@link AgentManager}
+   * materializes these to temp files and appends a reference to {@link text}
+   * before the adapter runs, so adapters need no per-CLI image handling.
+   */
+  attachments?: TurnAttachment[];
   /** Working directory the agent should run in for this turn. */
   cwd?: string;
 }

@@ -16,6 +16,27 @@ export interface ImageContent {
   mimeType: string;
 }
 
+/**
+ * An image (or other media) attached to a user turn (`turn/send { attachments }`).
+ * Tolerant by design — the phone sends inline base64 with the original
+ * `mimeType`; `path`/`width`/`height` are best-effort metadata. At least one of
+ * `base64Data`/`path` must be present for the bridge to deliver it to the agent.
+ */
+export interface TurnAttachment {
+  /** Wire discriminator (always `image` today). */
+  type?: 'image';
+  /** MIME type, e.g. `image/png`. */
+  mimeType: string;
+  /** Inline base64 payload (no `data:` URI prefix). */
+  base64Data?: string;
+  /** Original/workspace path the image came from, if any. */
+  path?: string;
+  /** Pixel width, if known. */
+  width?: number;
+  /** Pixel height, if known. */
+  height?: number;
+}
+
 export type WorkspaceEntryType = 'file' | 'dir';
 
 export interface WorkspaceEntry {

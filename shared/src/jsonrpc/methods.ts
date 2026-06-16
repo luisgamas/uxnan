@@ -25,6 +25,7 @@ import type {
   FileContent,
   ImageContent,
   PatchChange,
+  TurnAttachment,
   WorkspaceListing,
 } from '../models/workspace.js';
 import type { AuthStatus, Project } from '../models/project.js';
@@ -59,7 +60,12 @@ export interface TurnListParams {
 }
 export interface TurnSendParams {
   threadId: string;
-  text: string;
+  /**
+   * User prompt text. Optional when `attachments` (an image-only message) is
+   * present; otherwise required and non-empty. The bridge rejects a turn with
+   * neither text nor attachments.
+   */
+  text?: string;
   service?: string;
   /**
    * Legacy flat reasoning-effort field. Still honored; new clients should send
@@ -72,6 +78,12 @@ export interface TurnSendParams {
    * each into the agent CLI's real flag; unknown keys are ignored.
    */
   options?: Record<string, string | boolean>;
+  /**
+   * Inline image attachments for this turn. The bridge materializes each to a
+   * temp file and references it in the prompt so any file/vision-capable agent
+   * CLI can open it. An image-only message (empty `text`) is allowed.
+   */
+  attachments?: TurnAttachment[];
 }
 export interface ThreadSetModelParams {
   threadId: string;

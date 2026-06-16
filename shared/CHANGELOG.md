@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 
 ### Added
+- **Turn image attachments** (`models/workspace.ts`, `jsonrpc/methods.ts`,
+  `agents/agent-adapter.ts`): a new tolerant `TurnAttachment`
+  (`{ type?, mimeType, base64Data?, path?, width?, height? }`) plus
+  `TurnSendParams.attachments?` and `SendTurnOptions.attachments?` so the phone
+  can ride inline images on `turn/send`. `TurnSendParams.text` is now **optional**
+  (an image-only message is valid); the bridge rejects only a turn with neither
+  text nor attachments. Unblocks the mobile "Attach" composer end-to-end.
 - **`AgentCapabilities.reportsContextUsage`** (`agents/agent-capabilities.ts`):
   optional per-agent flag for whether the agent reports per-turn token/context
   usage (`usage` on `turn/completed`), so the phone can show a context meter at
