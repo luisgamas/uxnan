@@ -10,15 +10,45 @@ CodeMirror 6.
 
 > Part of the [Uxnan](../) monorepo. The full specification is the source of
 > truth — start at [`architecture/00-index.md`](architecture/00-index.md).
-> The engineering roadmap and deferred work live in [`FOR-DEV.md`](FOR-DEV.md).
+> The engineering roadmap and deferred work live in [`FOR-DEV.md`](FOR-DEV.md);
+> human-provided assets in [`FOR-HUMAN.md`](FOR-HUMAN.md).
 
 ## Status
 
-**Phase 0 (base infrastructure) — done.** The app boots a native window with the
-resizable three-panel shell, a reactive Svelte store, atomic Serde persistence,
-and a validated Tauri command round-trip. Terminals, git/worktrees, diffs,
-agent monitoring, and bridge integration are the subsequent phases (see
-`FOR-DEV.md`).
+**ALPHA-FUNCTIONAL (standalone).** **Phases 0–5 + the cross-cutting track (S)
+are complete.** The ADE is ready for alpha release as a standalone app
+(manage repos / worktrees, multiplexed terminals, launch + monitor agents, full
+git review with hunk staging & diffs, settings / i18n / theming). The only
+remaining roadmap phase is **Phase 6 (bridge integration / mobile pairing)**,
+which is *optional for standalone use* — required only if you want the ADE to
+also act as the mobile bridge (otherwise, install `uxnan-bridge` standalone).
+
+Highlights of what ships today:
+- Three-panel resizable shell with atomic JSON persistence (5 rotating
+  backups + sequential schema migrations).
+- PTY terminals (`portable-pty 0.9`, xterm WebGL + DOM fallback) with tabs
+  + nested splits that never remount on split.
+- Git worktrees with per-worktree terminal workspaces, hierarchical
+  Projects tree, in-app directory picker, worktree palette
+  (Ctrl/Cmd+P).
+- Full git review (status / diff / stage / commit / push / pull with a
+  3 s focus-paused Tokio watcher, CodeMirror 6 diff viewer, hunk-level
+  staging, side-by-side toggle).
+- **Agent monitoring** (Phase 4) — three layers: Layer 1 local HTTP hook
+  server (`axum` with precise `working/blocked/waiting/done` and persistent
+  cache) + Layer 2 terminal-title (OSC) + Layer 3 process-tree detection.
+  Colored status dots, unread/done badges, custom agent logos, per-worktree
+  agent override.
+- Cross-cutting (S): Settings (theme + terminal profiles w/ OS templates),
+  design tokens, full **i18n (EN/ES)** + Language picker, agents
+  registry + install detection + manual + auto-launch.
+- Virtualized lists (`@tanstack/svelte-virtual`), opt-in keep-awake
+  (Windows).
+
+Pre-release gaps before distributing builds: branded icons + signing/
+updater keys (`FOR-HUMAN.md`) and a CI/CD pipeline (see `FOR-DEV.md` →
+*CI/CD — release builds*). Per-component `*_MVP.md` snapshots (kept local
+in the working tree, see `.git/info/exclude`) summarize the state.
 
 ## Docs
 
@@ -32,31 +62,42 @@ Detailed docs live in [`docs/`](./docs/):
 [agent hooks (precise states)](./docs/agent-hooks.md).
 
 The full product/engineering specification is in
-[`architecture/`](architecture/00-index.md); the phased roadmap and deferred
-work are in [`FOR-DEV.md`](FOR-DEV.md); human-provided assets in
-[`FOR-HUMAN.md`](FOR-HUMAN.md).
+[`architecture/`](architecture/00-index.md).
 
 ## Layout
 
 ```
 uxnandesktop/
-├── architecture/          # Spec (source of truth)
+├── architecture/          # Spec (source of truth) — Phase 0-5+S status; Phase 6 pending
+├── docs/                  # Task-focused docs (install, build, test, i18n, hooks, ...)
 ├── src/                   # SvelteKit frontend (SPA)
 │   ├── app.css            # Tailwind v4 + shadcn-svelte tokens
 │   ├── lib/
 │   │   ├── api.ts         # typed wrappers over Tauri commands
 │   │   ├── types.ts       # TS mirror of the Rust model
-│   │   ├── utils.ts       # cn() helper
-│   │   └── state/app.svelte.ts   # global reactive store (runes)
+│   │   ├── state/         # reactive Svelte 5 stores (runes)
+│   │   ├── i18n/          # EN/ES translations
+│   │   ├── components/    # shadcn-svelte primitives + app components
+│   │   └── ...            # diff.ts, clipboard.ts, agentCatalog.ts, etc.
 │   └── routes/            # +layout.svelte, +page.svelte (three-panel shell)
 ├── src-tauri/             # Rust backend
 │   └── src/
 │       ├── lib.rs         # Tauri builder, state wiring, command registration
+│       ├── main.rs        # entrypoint
 │       ├── model.rs       # AppData / RepoData / WorktreeData / settings
-│       ├── persistence.rs # atomic JSON (write-rename) + migrations
+│       ├── persistence.rs # atomic JSON (write-rename) + 5 rotating backups + migrations
 │       ├── state.rs       # AppState (RwLock<AppData> + PersistenceManager)
-│       ├── commands.rs    # get_app_state / update_settings / ping
-│       └── error.rs       # AppError / CommandError
+│       ├── commands.rs    # Tauri commands (git, pty, worktree, browse, agent, ...)
+│       ├── pty.rs         # portable-pty manager
+│       ├── git.rs         # git CLI wrapper
+│       ├── hooks.rs       # axum HTTP hook server (Layer 1 agent monitoring)
+│       ├── procscan.rs    # process-tree detection (Layer 3)
+│       ├── power.rs       # keep-awake (Win/macOS/Linux)
+│       ├── browse.rs      # in-app directory picker
+│       ├── which.rs       # agent/shell install detection
+│       ├── service-installer.rs # install-service / uninstall-service per OS
+│       ├── error.rs       # AppError / CommandError
+│       └── ...
 ├── components.json        # shadcn-svelte config
 └── package.json
 ```
@@ -71,17 +112,20 @@ makes `pnpm install` no-op here).
 cd uxnandesktop
 npm install            # frontend deps
 npm run check          # svelte-check (type check)
-npm run build          # build the SPA → build/
+npm run build          # build the SPA → build/  (required by `cargo build`'s generate_context!)
 npm run tauri dev      # run the desktop app (compiles Rust on first run)
 ```
 
 Backend (from `src-tauri/`):
 
 ```bash
-cargo test             # unit tests
+cargo test             # unit tests (8 passing)
 cargo clippy --all-targets
 cargo fmt
 ```
+
+For a frontend-only browser flow (no Tauri shell): see
+[`docs/development.md`](./docs/development.md).
 
 ## Conventions
 
