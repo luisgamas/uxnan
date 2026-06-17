@@ -17,8 +17,9 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   devices list) still shows it. Covered by `foreground_push_suppression_test.dart`.
 
 ### Changed
-- **Devices app-bar pairing entry is a floating menu** (`MenuAnchor`) offering
-  **Scan QR** or **Enter manual code**, instead of a single scan button.
+- **Devices app-bar pairing entry is a floating menu** offering **Scan QR** or
+  **Enter manual code**, instead of a single scan button. Uses the same
+  `PopupMenuButton` + Icon-Surface style as the threads sort/more menus.
 
 ### Added
 - **Manual-code pairing (`ManualCodeScreen`).** Pair without scanning a QR by
