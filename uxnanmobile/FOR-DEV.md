@@ -524,6 +524,40 @@ browser and multi-PC connection correctness are now DONE — see below.)
   untracked-file synthesis on the bridge). The changed-files list also shows
   per-file +/- counts from `git/status`.
 
+- ☑ **Workspace file browser (`workspace/list` + `workspace/readFile` +**
+  **`workspace/readImage` + `git/diff`)** — DONE: a new
+  `FileBrowserScreen` reachable from a `folder_open` `IconSurface` in the
+  conversation top bar (next to the git action). Lists every file and folder
+  in the active thread's `cwd` (incl. hidden dotfiles, with a toggle),
+  colored by git status (`added`/`modified`/`deleted`/`renamed`/`untracked`
+  each get a distinct color; tracked files stay neutral — matching the rest of
+  the app's git chrome). Lazy tree: directories fetch their children on
+  first expand via `workspace/list { cwd: <dir> }`. A new **`FileViewerScreen`**
+  pushed from a file tile decides the rendering by extension:
+  - **Images** → `workspace/readImage` → `Image.memory` inside an
+    `InteractiveViewer` (pinch-zoom / pan).
+  - **Markdown** (`.md`/`.markdown`) → a **preview** (`flutter_markdown` with
+    M3 chrome — code blocks, blockquotes, …) **or the raw source** (toggle in
+    the top bar; preserves indent / escape sequences).
+  - **Code / text** → `flutter_highlight` with the `atom-one-{dark,light}`
+    themes (matches the message-content renderer); per-extension language
+    detection (Dart/TypeScript/JavaScript/Python/Swift/Kotlin/Java/Go/Rust/
+    C/C++/CSS/SCSS/HTML/JSON/YAML/TOML/XML/Bash/SQL/Markdown).
+  - **Git diff overlay** — for files that report a `git status`, the viewer
+    fetches `git/diff { path }` and renders the unified diff with the same
+    +/- coloring as `GitDiffView`; a top-bar toggle switches back to the raw
+    content. The footer status pill paints the file's git state.
+  - **Binary placeholder** for base64 payloads.
+  - **Copy file** action (clipboard).
+  New `FileBrowserManager` (`application/managers/`) + per-cwd stream
+  provider; entity layer in `domain/entities/file_browser.dart`. Lazy walk is
+  pure RPC — no native file APIs; the bridge's `path-guard` keeps reads
+  confined to the workspace root (spec 02a §5.8.9). i18n strings added in EN
+  + ES. Covered by `file_browser_manager_test.dart` (loadRoot + git-status
+  paint, lazy expand, readFile/readImage/fileDiff, soft-fail on non-git
+  cwds). Sits next to `GitScreen` in the conversation top bar — together
+  they cover both the "what changed" and the "show me the file" questions.
+
 ## Push notifications
 
 - ☑ **FCM token registration + local notifications** — DONE (gated):

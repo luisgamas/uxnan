@@ -1608,6 +1608,22 @@ async function handleApplyCheckpoint({ checkpointId }) { ... }
 async function handleApplyPatchChanges({ changes }) { ... }
 ```
 
+Las RPCs `workspace/list`, `workspace/readFile` y `workspace/readImage`
+son consumidas hoy por:
+
+- **Folder browser en la app** (`NewConversationSheet` /
+  `workspace_browser.dart`) — el selector de root + breadcrumb.
+- **Visor de archivos del workspace** (`FileBrowserScreen` +
+  `FileViewerScreen` en `presentation/screens/conversation/files/`,
+  manageado por `FileBrowserManager`) — el árbol perezoso y el
+  viewer por extensión (image / markdown preview vs source /
+  code-highlighted + diff overlay / binary placeholder), accesado
+  desde un `IconSurface` `folder_open_rounded` en la app-bar de
+  `ConversationScreen` al lado del botón de `GitScreen`. Las
+  rutas se validan en el bridge por `path-guard`
+  (§5.8.9/infra) que confina los reads al root del workspace y
+  excluye archivos sensibles.
+
 #### 5.8.8 Fallback JSONL (session-jsonl-history)
 
 Cuando el runtime del agente no tiene datos frescos de `thread/turns/list`, el bridge lee directamente de los archivos JSONL de sesion en disco:

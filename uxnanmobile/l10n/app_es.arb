@@ -371,5 +371,28 @@
   "gitDeleteBranchForceTitle": "Rama no fusionada",
   "gitDeleteBranchForceBody": "\"{branch}\" no está completamente fusionada. ¿Forzar la eliminación y perder sus commits no fusionados?",
   "gitForceDelete": "Forzar eliminación",
-  "conversationCwdMissing": "La carpeta de esta conversación ya no existe. Reconéctate o elimínala."
+  "conversationCwdMissing": "La carpeta de esta conversación ya no existe. Reconéctate o elimínala.",
+
+  "fileBrowserTitle": "Archivos",
+  "fileBrowserShowExtensions": "Mostrar extensiones de archivo",
+  "fileBrowserShowHidden": "Mostrar archivos ocultos",
+  "fileBrowserCopyPath": "Copiar ruta del workspace",
+  "fileBrowserPathCopied": "Ruta del workspace copiada",
+  "fileBrowserEmpty": "Esta carpeta está vacía",
+  "fileBrowserEmptyTitle": "Nada por aquí",
+  "fileBrowserLoadFailed": "No se pudo cargar el workspace",
+  "fileBrowserOpenTooltip": "Explorar archivos",
+
+  "fileViewerViewSource": "Ver código fuente",
+  "fileViewerViewPreview": "Ver vista previa",
+  "fileViewerShowDiff": "Mostrar diff",
+  "fileViewerHideDiff": "Ocultar diff",
+  "fileViewerCopy": "Copiar archivo",
+  "fileViewerCopied": "Archivo copiado",
+  "fileViewerCopyFailed": "No se pudo copiar este archivo",
+  "fileViewerBinaryTitle": "Archivo binario",
+  "fileViewerBinaryBody": "Los archivos binarios no se pueden previsualizar en el teléfono. Descárgalo a tu PC para inspeccionarlo.",
+  "fileViewerLoadFailed": "No se pudo abrir este archivo",
+  "fileViewerModePreview": "Vista previa",
+  "fileViewerModeSource": "Fuente"
 }

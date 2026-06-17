@@ -1122,4 +1122,68 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get conversationCwdMissing =>
       'This conversation\'s folder no longer exists. Reconnect or remove it.';
+
+  @override
+  String get fileBrowserTitle => 'Files';
+
+  @override
+  String get fileBrowserShowExtensions => 'Show file extensions';
+
+  @override
+  String get fileBrowserShowHidden => 'Show hidden files';
+
+  @override
+  String get fileBrowserCopyPath => 'Copy workspace path';
+
+  @override
+  String get fileBrowserPathCopied => 'Workspace path copied';
+
+  @override
+  String get fileBrowserEmpty => 'This folder is empty';
+
+  @override
+  String get fileBrowserEmptyTitle => 'Nothing here';
+
+  @override
+  String get fileBrowserLoadFailed => 'Couldn\'t load the workspace';
+
+  @override
+  String get fileBrowserOpenTooltip => 'Browse files';
+
+  @override
+  String get fileViewerViewSource => 'View source';
+
+  @override
+  String get fileViewerViewPreview => 'View preview';
+
+  @override
+  String get fileViewerShowDiff => 'Show diff';
+
+  @override
+  String get fileViewerHideDiff => 'Hide diff';
+
+  @override
+  String get fileViewerCopy => 'Copy file';
+
+  @override
+  String get fileViewerCopied => 'File copied';
+
+  @override
+  String get fileViewerCopyFailed => 'Couldn\'t copy this file';
+
+  @override
+  String get fileViewerBinaryTitle => 'Binary file';
+
+  @override
+  String get fileViewerBinaryBody =>
+      'Binary files can\'t be previewed on the phone. Pull the file to your PC to inspect it.';
+
+  @override
+  String get fileViewerLoadFailed => 'Couldn\'t open this file';
+
+  @override
+  String get fileViewerModePreview => 'Preview';
+
+  @override
+  String get fileViewerModeSource => 'Source';
 }

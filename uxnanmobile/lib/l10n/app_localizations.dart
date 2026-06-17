@@ -2167,6 +2167,132 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'This conversation\'s folder no longer exists. Reconnect or remove it.'**
   String get conversationCwdMissing;
+
+  /// Title of the workspace file browser and its top-bar tooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Files'**
+  String get fileBrowserTitle;
+
+  /// Settings-menu toggle that controls whether file extensions are visible in the file browser list.
+  ///
+  /// In en, this message translates to:
+  /// **'Show file extensions'**
+  String get fileBrowserShowExtensions;
+
+  /// Settings-menu toggle that controls whether dotfiles (names starting with '.') are visible in the file browser list.
+  ///
+  /// In en, this message translates to:
+  /// **'Show hidden files'**
+  String get fileBrowserShowHidden;
+
+  /// Tooltip on the button in the file browser's status bar that copies the workspace root path.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy workspace path'**
+  String get fileBrowserCopyPath;
+
+  /// Snackbar shown when the workspace path is copied to the clipboard.
+  ///
+  /// In en, this message translates to:
+  /// **'Workspace path copied'**
+  String get fileBrowserPathCopied;
+
+  /// Body of the empty-state shown when a workspace directory contains no entries.
+  ///
+  /// In en, this message translates to:
+  /// **'This folder is empty'**
+  String get fileBrowserEmpty;
+
+  /// Title of the empty-state shown when a workspace directory contains no entries.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing here'**
+  String get fileBrowserEmptyTitle;
+
+  /// Title of the error state shown when the file browser fails to load a directory.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load the workspace'**
+  String get fileBrowserLoadFailed;
+
+  /// Tooltip on the conversation top-bar action that opens the workspace file browser.
+  ///
+  /// In en, this message translates to:
+  /// **'Browse files'**
+  String get fileBrowserOpenTooltip;
+
+  /// Tooltip on the action that switches the file viewer from the markdown preview to the raw source.
+  ///
+  /// In en, this message translates to:
+  /// **'View source'**
+  String get fileViewerViewSource;
+
+  /// Tooltip on the action that switches the file viewer from the raw source to the markdown preview.
+  ///
+  /// In en, this message translates to:
+  /// **'View preview'**
+  String get fileViewerViewPreview;
+
+  /// Tooltip on the action that enables the git diff overlay in the file viewer.
+  ///
+  /// In en, this message translates to:
+  /// **'Show diff'**
+  String get fileViewerShowDiff;
+
+  /// Tooltip on the action that disables the git diff overlay in the file viewer.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide diff'**
+  String get fileViewerHideDiff;
+
+  /// Tooltip on the action that copies the file's content to the clipboard.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy file'**
+  String get fileViewerCopy;
+
+  /// Snackbar shown when the file content is copied to the clipboard.
+  ///
+  /// In en, this message translates to:
+  /// **'File copied'**
+  String get fileViewerCopied;
+
+  /// Snackbar shown when the file content cannot be copied (e.g. a binary read returned no payload).
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t copy this file'**
+  String get fileViewerCopyFailed;
+
+  /// Title of the binary-file placeholder shown in the file viewer when the content is base64-encoded.
+  ///
+  /// In en, this message translates to:
+  /// **'Binary file'**
+  String get fileViewerBinaryTitle;
+
+  /// Body of the binary-file placeholder explaining that the file can't be previewed on the phone.
+  ///
+  /// In en, this message translates to:
+  /// **'Binary files can\'t be previewed on the phone. Pull the file to your PC to inspect it.'**
+  String get fileViewerBinaryBody;
+
+  /// Title of the error state shown when the file viewer fails to load a file.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t open this file'**
+  String get fileViewerLoadFailed;
+
+  /// Mode pill label shown in the file viewer's footer when a markdown file is rendered as a styled preview.
+  ///
+  /// In en, this message translates to:
+  /// **'Preview'**
+  String get fileViewerModePreview;
+
+  /// Mode pill label shown in the file viewer's footer when a markdown file is rendered as raw text.
+  ///
+  /// In en, this message translates to:
+  /// **'Source'**
+  String get fileViewerModeSource;
 }
 
 class _AppLocalizationsDelegate

@@ -545,5 +545,91 @@
     "placeholders": { "branch": { "type": "String" } }
   },
   "gitForceDelete": "Force delete",
-  "conversationCwdMissing": "This conversation's folder no longer exists. Reconnect or remove it."
+  "conversationCwdMissing": "This conversation's folder no longer exists. Reconnect or remove it.",
+
+  "fileBrowserTitle": "Files",
+  "@fileBrowserTitle": {
+    "description": "Title of the workspace file browser and its top-bar tooltip."
+  },
+  "fileBrowserShowExtensions": "Show file extensions",
+  "@fileBrowserShowExtensions": {
+    "description": "Settings-menu toggle that controls whether file extensions are visible in the file browser list."
+  },
+  "fileBrowserShowHidden": "Show hidden files",
+  "@fileBrowserShowHidden": {
+    "description": "Settings-menu toggle that controls whether dotfiles (names starting with '.') are visible in the file browser list."
+  },
+  "fileBrowserCopyPath": "Copy workspace path",
+  "@fileBrowserCopyPath": {
+    "description": "Tooltip on the button in the file browser's status bar that copies the workspace root path."
+  },
+  "fileBrowserPathCopied": "Workspace path copied",
+  "@fileBrowserPathCopied": {
+    "description": "Snackbar shown when the workspace path is copied to the clipboard."
+  },
+  "fileBrowserEmpty": "This folder is empty",
+  "@fileBrowserEmpty": {
+    "description": "Body of the empty-state shown when a workspace directory contains no entries."
+  },
+  "fileBrowserEmptyTitle": "Nothing here",
+  "@fileBrowserEmptyTitle": {
+    "description": "Title of the empty-state shown when a workspace directory contains no entries."
+  },
+  "fileBrowserLoadFailed": "Couldn't load the workspace",
+  "@fileBrowserLoadFailed": {
+    "description": "Title of the error state shown when the file browser fails to load a directory."
+  },
+  "fileBrowserOpenTooltip": "Browse files",
+  "@fileBrowserOpenTooltip": {
+    "description": "Tooltip on the conversation top-bar action that opens the workspace file browser."
+  },
+
+  "fileViewerViewSource": "View source",
+  "@fileViewerViewSource": {
+    "description": "Tooltip on the action that switches the file viewer from the markdown preview to the raw source."
+  },
+  "fileViewerViewPreview": "View preview",
+  "@fileViewerViewPreview": {
+    "description": "Tooltip on the action that switches the file viewer from the raw source to the markdown preview."
+  },
+  "fileViewerShowDiff": "Show diff",
+  "@fileViewerShowDiff": {
+    "description": "Tooltip on the action that enables the git diff overlay in the file viewer."
+  },
+  "fileViewerHideDiff": "Hide diff",
+  "@fileViewerHideDiff": {
+    "description": "Tooltip on the action that disables the git diff overlay in the file viewer."
+  },
+  "fileViewerCopy": "Copy file",
+  "@fileViewerCopy": {
+    "description": "Tooltip on the action that copies the file's content to the clipboard."
+  },
+  "fileViewerCopied": "File copied",
+  "@fileViewerCopied": {
+    "description": "Snackbar shown when the file content is copied to the clipboard."
+  },
+  "fileViewerCopyFailed": "Couldn't copy this file",
+  "@fileViewerCopyFailed": {
+    "description": "Snackbar shown when the file content cannot be copied (e.g. a binary read returned no payload)."
+  },
+  "fileViewerBinaryTitle": "Binary file",
+  "@fileViewerBinaryTitle": {
+    "description": "Title of the binary-file placeholder shown in the file viewer when the content is base64-encoded."
+  },
+  "fileViewerBinaryBody": "Binary files can't be previewed on the phone. Pull the file to your PC to inspect it.",
+  "@fileViewerBinaryBody": {
+    "description": "Body of the binary-file placeholder explaining that the file can't be previewed on the phone."
+  },
+  "fileViewerLoadFailed": "Couldn't open this file",
+  "@fileViewerLoadFailed": {
+    "description": "Title of the error state shown when the file viewer fails to load a file."
+  },
+  "fileViewerModePreview": "Preview",
+  "@fileViewerModePreview": {
+    "description": "Mode pill label shown in the file viewer's footer when a markdown file is rendered as a styled preview."
+  },
+  "fileViewerModeSource": "Source",
+  "@fileViewerModeSource": {
+    "description": "Mode pill label shown in the file viewer's footer when a markdown file is rendered as raw text."
+  }
 }

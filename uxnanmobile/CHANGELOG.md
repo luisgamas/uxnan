@@ -6,6 +6,46 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Workspace file browser (HECHO).** A full-screen file tree for the active
+  thread's `cwd`, reachable from a new `folder_open` `IconSurface` in the
+  conversation top bar (next to the existing git action). Lists every file and
+  folder, including hidden dotfiles, with the git-aware color treatment the
+  user asked for: tracked-but-unchanged files are neutral; `added`,
+  `modified`, `deleted`, `renamed` and `untracked` each get a distinct color
+  (matching the `GitScreen` + `GitDiffView` chrome). Tapping a directory
+  toggles its expansion (lazy `workspace/list` walks); tapping a file opens
+  the new **file viewer**. New `FileBrowserManager`
+  (`application/managers/`) + per-cwd stream provider; entity layer in
+  `domain/entities/file_browser.dart`. i18n strings added in EN + ES.
+
+- **File viewer (HECHO).** A second screen, pushed from the browser, that
+  decides the rendering by extension:
+  - **Images** (`.png`/`.jpg`/`.jpeg`/`.gif`/`.webp`/`.bmp`): inline
+    `Image.memory` from `workspace/readImage`'s base64, wrapped in an
+    `InteractiveViewer` for pinch-zoom and pan.
+  - **Markdown** (`.md`/`.markdown`): a **preview** (rich
+    `flutter_markdown` rendering with M3 chrome — code blocks, blockquotes,
+    …) **or the raw source** (preserving indent / escape sequences), toggled
+    by a top-bar action; the choice is a per-session toggle. The footer pill
+    surfaces the current mode.
+  - **Code / text**: syntax highlighting via `flutter_highlight` with the
+    `atom-one-{dark,light}` themes (matching the message-content renderer);
+    per-extension language detection (Dart/TypeScript/JavaScript/Python/Swift/
+    Kotlin/Java/Go/Rust/C/C++/CSS/SCSS/HTML/JSON/YAML/TOML/XML/Bash/SQL/Markdown).
+  - **Git diff overlay**: for files that report a `git status`, the viewer
+    fetches `git/diff { path }` and renders the unified diff with the same
+    +/- coloring as `GitDiffView` in the conversation; a top-bar toggle
+    switches back to the raw file content. The footer status pill paints the
+    file's git state (added/modified/deleted/renamed/untracked).
+  - **Binary placeholder**: a graceful "binary file" message when the
+    bridge returned base64 instead of UTF-8.
+  - **Copy file** action: copies the current content (or base64) to the
+    clipboard, with a snackbar.
+  The viewer's chrome mirrors the browser (transparent `NeTopBar` +
+    scroll-veil body) and reuses the `IconSurface` / `IconSurfaceMenu`
+    components for a consistent Neural Expressive feel.
+
 ### Docs
 - **Synced the spec (`architecture/00-index.md`,
   `architecture/02a-system-architecture.md`,

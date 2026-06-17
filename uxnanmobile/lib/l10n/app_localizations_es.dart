@@ -1126,4 +1126,68 @@ class AppLocalizationsEs extends AppLocalizations {
   @override
   String get conversationCwdMissing =>
       'La carpeta de esta conversación ya no existe. Reconéctate o elimínala.';
+
+  @override
+  String get fileBrowserTitle => 'Archivos';
+
+  @override
+  String get fileBrowserShowExtensions => 'Mostrar extensiones de archivo';
+
+  @override
+  String get fileBrowserShowHidden => 'Mostrar archivos ocultos';
+
+  @override
+  String get fileBrowserCopyPath => 'Copiar ruta del workspace';
+
+  @override
+  String get fileBrowserPathCopied => 'Ruta del workspace copiada';
+
+  @override
+  String get fileBrowserEmpty => 'Esta carpeta está vacía';
+
+  @override
+  String get fileBrowserEmptyTitle => 'Nada por aquí';
+
+  @override
+  String get fileBrowserLoadFailed => 'No se pudo cargar el workspace';
+
+  @override
+  String get fileBrowserOpenTooltip => 'Explorar archivos';
+
+  @override
+  String get fileViewerViewSource => 'Ver código fuente';
+
+  @override
+  String get fileViewerViewPreview => 'Ver vista previa';
+
+  @override
+  String get fileViewerShowDiff => 'Mostrar diff';
+
+  @override
+  String get fileViewerHideDiff => 'Ocultar diff';
+
+  @override
+  String get fileViewerCopy => 'Copiar archivo';
+
+  @override
+  String get fileViewerCopied => 'Archivo copiado';
+
+  @override
+  String get fileViewerCopyFailed => 'No se pudo copiar este archivo';
+
+  @override
+  String get fileViewerBinaryTitle => 'Archivo binario';
+
+  @override
+  String get fileViewerBinaryBody =>
+      'Los archivos binarios no se pueden previsualizar en el teléfono. Descárgalo a tu PC para inspeccionarlo.';
+
+  @override
+  String get fileViewerLoadFailed => 'No se pudo abrir este archivo';
+
+  @override
+  String get fileViewerModePreview => 'Vista previa';
+
+  @override
+  String get fileViewerModeSource => 'Fuente';
 }

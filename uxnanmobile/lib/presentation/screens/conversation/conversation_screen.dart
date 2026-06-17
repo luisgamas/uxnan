@@ -20,6 +20,7 @@ import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_bar.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/turn_tools_sheet.dart';
+import 'package:uxnan/presentation/screens/conversation/files/file_browser_screen.dart';
 import 'package:uxnan/presentation/screens/conversation/git/git_screen.dart';
 import 'package:uxnan/presentation/screens/conversation/messages/message_bubble.dart';
 import 'package:uxnan/presentation/screens/conversation/session_environment.dart';
@@ -169,6 +170,19 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
       _checkedCwd = null;
       _checkCwd(cwd);
     }
+  }
+
+  /// Opens the workspace file browser for the thread's `cwd`. Surfaces the
+  /// full file tree (with git-status color treatment) alongside the focused
+  /// git diff + commit surface in `GitScreen` — together they cover both the
+  /// "what changed" and the "show me the file" questions.
+  Future<void> _openFileBrowser(String? cwd) async {
+    if (cwd == null) return;
+    await FileBrowserScreen.push(
+      context,
+      cwd: cwd,
+      threadId: widget.threadId,
+    );
   }
 
   /// Opens the unified turn-tools sheet (attach + run-option knobs + approval).
@@ -569,6 +583,11 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                 onTap: thread != null ? () => _pickModel(thread) : null,
               ),
               actions: [
+                IconSurface(
+                  icon: Icons.folder_open_rounded,
+                  tooltip: l10n.fileBrowserOpenTooltip,
+                  onPressed: connectedHere ? () => _openFileBrowser(cwd) : null,
+                ),
                 IconSurface(
                   icon: Icons.commit_rounded,
                   tooltip: gitBranch != null
