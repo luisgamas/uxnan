@@ -53,6 +53,11 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   ApprovalMode _approvalMode = ApprovalMode.approveForMe;
   final ScrollController _scroll = ScrollController();
   String? _gitCwd;
+  // Vanished-cwd detection: the thread's folder/worktree can be removed outside
+  // the app. We probe `workspace/exists` once per cwd; a confirmed-gone cwd
+  // disables the composer (sending into a dead cwd errors on every action).
+  String? _checkedCwd;
+  bool _cwdMissing = false;
   // Set when the user sends a message and the "scroll to latest on send"
   // setting is on: forces the next timeline update to jump to the bottom if the
   // user had scrolled up. Cleared once that scroll happens.
@@ -104,6 +109,19 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     });
   }
 
+  /// Probes whether [cwd] still exists (once per cwd) and disables the composer
+  /// if it vanished. Fail-open in the manager, so a transient error never
+  /// disables; only a confirmed-gone cwd does.
+  void _checkCwd(String? cwd) {
+    if (cwd == null || cwd.isEmpty || cwd == _checkedCwd) return;
+    _checkedCwd = cwd;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final exists = await ref.read(threadManagerProvider).workspaceExists(cwd);
+      if (mounted && _checkedCwd == cwd) setState(() => _cwdMissing = !exists);
+    });
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -134,8 +152,15 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
 
   /// Opens the git actions screen (branch state, changed files, commit/push)
   /// for the thread's workspace.
-  void _openGit(String? cwd) =>
-      GitScreen.push(context, cwd: cwd, threadId: widget.threadId);
+  Future<void> _openGit(String? cwd) async {
+    await GitScreen.push(context, cwd: cwd, threadId: widget.threadId);
+    // The worktree may have been removed from the git screen → re-probe so the
+    // composer disables right away if this thread's cwd just vanished.
+    if (mounted && cwd != null) {
+      _checkedCwd = null;
+      _checkCwd(cwd);
+    }
+  }
 
   /// Opens the unified turn-tools sheet (attach + run-option knobs + approval).
   void _openTurnTools(
@@ -340,8 +365,12 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     final showApproval = caps?.approvals ?? false;
     final hasTurnTools = showAttach || showRunOptions || showApproval;
 
-    // Resolve git state for the real workspace once the thread's cwd is known.
-    if (connectedHere) _refreshGitFor(cwd);
+    // Resolve git state for the real workspace once the thread's cwd is known,
+    // and probe whether that cwd still exists (folders/worktrees can vanish).
+    if (connectedHere) {
+      _refreshGitFor(cwd);
+      _checkCwd(cwd);
+    }
 
     // Auto-scroll to the bottom on new content while the user is near it; a
     // just-sent message (with the setting on) forces the jump even from a
@@ -457,6 +486,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
               // turns won't run until the user signs into its CLI there. Kept
               // above the composer (not in the scrolling list) so it stays
               // visible.
+              if (_cwdMissing) const _Centered(child: _CwdMissingBanner()),
               if (requiresLogin && thread != null)
                 _Centered(child: _LoginRequiredBanner(agentId: thread.agentId)),
               if (lastEdits != null || environment.showContext)
@@ -477,7 +507,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                   ),
                 ),
               ComposerBar(
-                enabled: connectedHere,
+                enabled: connectedHere && !_cwdMissing,
                 hasAttachments: _attachments.isNotEmpty,
                 // While the agent is producing a turn, Send becomes Stop —
                 // cancels the turn (without closing the thread).
@@ -1025,6 +1055,53 @@ class _ConversationMenu extends StatelessWidget {
 /// `auth/login` is a stub), so this surfaces the state and offers a **Check
 /// sign-in** action that re-queries `auth/status` — mirroring the
 /// new-conversation card — alongside the on-resume auto-refresh.
+/// Shown above the composer when the thread's working folder/worktree no longer
+/// exists on the PC (removed outside the app, or via "Remove worktree"). The
+/// composer is disabled — sending into a dead cwd would error on every action.
+class _CwdMissingBanner extends StatelessWidget {
+  const _CwdMissingBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final l10n = AppLocalizations.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        UxnanSpacing.lg,
+        UxnanSpacing.xs,
+        UxnanSpacing.lg,
+        0,
+      ),
+      child: Material(
+        color: colors.errorContainer,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(UxnanSpacing.sm),
+          child: Row(
+            children: [
+              Icon(
+                Icons.folder_off_outlined,
+                size: 20,
+                color: colors.onErrorContainer,
+              ),
+              const SizedBox(width: UxnanSpacing.sm),
+              Expanded(
+                child: Text(
+                  l10n.conversationCwdMissing,
+                  style: textTheme.bodySmall?.copyWith(
+                    color: colors.onErrorContainer,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _LoginRequiredBanner extends ConsumerWidget {
   const _LoginRequiredBanner({required this.agentId});
 

@@ -232,6 +232,84 @@ class _GitScreenState extends ConsumerState<GitScreen> {
     );
   }
 
+  /// Removes the worktree backing this thread (decommissions its workspace).
+  /// Tries a safe removal first; on a dirty worktree the bridge refuses, so we
+  /// offer an explicit forced removal. On success the screen closes (the cwd is
+  /// gone) and the conversation's composer disables (vanished-cwd detection).
+  Future<void> _removeWorktree(String worktreePath) async {
+    final cwd = widget.cwd;
+    final l10n = AppLocalizations.of(context);
+    if (cwd == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        icon: const Icon(Icons.folder_delete_outlined),
+        title: Text(l10n.gitRemoveWorktreeConfirmTitle),
+        content: Text(l10n.gitRemoveWorktreeConfirmBody),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(l10n.gitCancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(l10n.gitRemoveWorktree),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    final manager = ref.read(gitActionManagerProvider);
+    try {
+      await manager.removeWorktree(
+        cwd,
+        worktreePath,
+        threadId: widget.threadId,
+      );
+      if (mounted) Navigator.of(context).pop();
+      return;
+    } on Object {
+      if (!mounted) return;
+      // The worktree has uncommitted/untracked changes → offer a forced removal.
+      final force = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          icon: const Icon(Icons.warning_amber_rounded),
+          title: Text(l10n.gitRemoveWorktreeForceTitle),
+          content: Text(l10n.gitRemoveWorktreeForceBody),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: Text(l10n.gitCancel),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error,
+              ),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: Text(l10n.gitForceRemove),
+            ),
+          ],
+        ),
+      );
+      if (force != true || !mounted) return;
+      try {
+        await manager.removeWorktree(
+          cwd,
+          worktreePath,
+          force: true,
+          threadId: widget.threadId,
+        );
+        if (mounted) Navigator.of(context).pop();
+      } on Object catch (error) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context)
+          ..clearSnackBars()
+          ..showSnackBar(SnackBar(content: Text('$error')));
+      }
+    }
+  }
+
   Future<void> _push(GitRepoState state) async {
     final cwd = widget.cwd;
     final l10n = AppLocalizations.of(context);
@@ -299,7 +377,11 @@ class _GitScreenState extends ConsumerState<GitScreen> {
     final target = await showModalBottomSheet<String>(
       context: context,
       showDragHandle: true,
-      builder: (_) => _BranchPicker(branches: branches, current: state.branch),
+      builder: (_) => _BranchPicker(
+        branches: branches,
+        current: state.branch,
+        onDeleteBranch: (branch) => _deleteBranch(cwd, branch),
+      ),
     );
     if (target == null || target == state.branch || !mounted) return;
     // With uncommitted changes, ask whether to carry them along or leave them
@@ -320,6 +402,78 @@ class _GitScreenState extends ConsumerState<GitScreen> {
       l10n.gitSwitchSuccess(target),
       cwd,
     );
+  }
+
+  /// Deletes a local [branch] (invoked from the branch picker). Tries a safe
+  /// delete first; if git refuses (the branch isn't fully merged) the user is
+  /// offered an explicit forced delete. Returns true when the branch was
+  /// deleted, so the picker can drop it from the list.
+  Future<bool> _deleteBranch(String cwd, String branch) async {
+    final l10n = AppLocalizations.of(context);
+    final manager = ref.read(gitActionManagerProvider);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        icon: const Icon(Icons.delete_outline_rounded),
+        title: Text(l10n.gitDeleteBranchConfirmTitle),
+        content: Text(l10n.gitDeleteBranchConfirmBody(branch)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(l10n.gitCancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(l10n.gitDeleteBranch),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return false;
+    try {
+      await manager.deleteBranch(cwd, branch, threadId: widget.threadId);
+      return true;
+    } on Object {
+      if (!mounted) return false;
+      // git refused — the branch isn't fully merged. Offer a forced delete.
+      final force = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          icon: const Icon(Icons.warning_amber_rounded),
+          title: Text(l10n.gitDeleteBranchForceTitle),
+          content: Text(l10n.gitDeleteBranchForceBody(branch)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: Text(l10n.gitCancel),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error,
+              ),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: Text(l10n.gitForceDelete),
+            ),
+          ],
+        ),
+      );
+      if (force != true || !mounted) return false;
+      try {
+        await manager.deleteBranch(
+          cwd,
+          branch,
+          force: true,
+          threadId: widget.threadId,
+        );
+        return true;
+      } on Object catch (error) {
+        if (!mounted) return false;
+        ScaffoldMessenger.of(context)
+          ..clearSnackBars()
+          ..showSnackBar(SnackBar(content: Text('$error')));
+        return false;
+      }
+    }
   }
 
   /// Returns true to carry changes, false to leave them, null to cancel.
@@ -585,6 +739,11 @@ class _GitScreenState extends ConsumerState<GitScreen> {
     final files = state?.changedFiles ?? const <GitChangedFile>[];
     final allExpanded =
         files.isNotEmpty && files.every((f) => _expanded.contains(f.path));
+    // Worktree-backed threads can decommission their worktree from here.
+    final threadId = widget.threadId;
+    final worktreePath = threadId == null
+        ? null
+        : ref.watch(threadByIdProvider(threadId))?.worktreePath;
 
     final colors = Theme.of(context).colorScheme;
     final topInset = NeTopBar.preferredHeight(context);
@@ -773,6 +932,9 @@ class _GitScreenState extends ConsumerState<GitScreen> {
                     onRevert: () => _revert(state),
                     onCreatePr: () => _createPr(state),
                     onDiscardAll: () => _discard(state, all: true),
+                    onRemoveWorktree: worktreePath == null
+                        ? null
+                        : () => _removeWorktree(worktreePath),
                   ),
               ],
             ),
@@ -815,6 +977,7 @@ class _OverflowMenu extends StatelessWidget {
     required this.onCreatePr,
     required this.onRevert,
     required this.onDiscardAll,
+    this.onRemoveWorktree,
   });
 
   final GitRepoState state;
@@ -824,6 +987,10 @@ class _OverflowMenu extends StatelessWidget {
   final VoidCallback onCreatePr;
   final VoidCallback onRevert;
   final VoidCallback onDiscardAll;
+
+  /// Removes the worktree backing this thread; null when the thread isn't
+  /// worktree-backed (so the item is hidden).
+  final VoidCallback? onRemoveWorktree;
 
   @override
   Widget build(BuildContext context) {
@@ -885,6 +1052,16 @@ class _OverflowMenu extends StatelessWidget {
             label: l10n.gitRevertLast,
           ),
         ),
+        if (onRemoveWorktree != null)
+          PopupMenuItem(
+            enabled: !busy,
+            onTap: onRemoveWorktree,
+            child: _MenuRow(
+              icon: Icons.folder_delete_outlined,
+              label: l10n.gitRemoveWorktree,
+              color: colors.error,
+            ),
+          ),
         if (state.isDirty)
           PopupMenuItem(
             enabled: !busy,
@@ -1572,22 +1749,55 @@ String _bareBranch(String ref) {
 
 /// A bottom-sheet list of branches to switch to (local + bare remotes), with
 /// the current branch shown at the top, disabled.
-class _BranchPicker extends StatelessWidget {
-  const _BranchPicker({required this.branches, required this.current});
+class _BranchPicker extends StatefulWidget {
+  const _BranchPicker({
+    required this.branches,
+    required this.current,
+    required this.onDeleteBranch,
+  });
 
   final GitBranchList branches;
   final String current;
+
+  /// Deletes the given branch; returns true when removed (the row then
+  /// disappears). The parent owns the confirm + forced-delete flow.
+  final Future<bool> Function(String branch) onDeleteBranch;
+
+  @override
+  State<_BranchPicker> createState() => _BranchPickerState();
+}
+
+class _BranchPickerState extends State<_BranchPicker> {
+  late final List<String> _others = _initialOthers();
+
+  /// The branch currently being deleted (shows a spinner on its row).
+  String? _deleting;
+
+  List<String> _initialOthers() {
+    final options = <String>{
+      ...widget.branches.local,
+      ...widget.branches.remote.map(_bareBranch),
+    }..remove(widget.current);
+    return options.toList()..sort();
+  }
+
+  bool _isLocal(String branch) => widget.branches.local.contains(branch);
+
+  Future<void> _delete(String branch) async {
+    setState(() => _deleting = branch);
+    final removed = await widget.onDeleteBranch(branch);
+    if (!mounted) return;
+    setState(() {
+      _deleting = null;
+      if (removed) _others.remove(branch);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-    final options = <String>{
-      ...branches.local,
-      ...branches.remote.map(_bareBranch),
-    }..remove(current);
-    final others = options.toList()..sort();
     return SafeArea(
       child: ListView(
         shrinkWrap: true,
@@ -1607,20 +1817,38 @@ class _BranchPicker extends StatelessWidget {
           ),
           ListTile(
             leading: Icon(Icons.check_rounded, color: colors.primary),
-            title: Text(current),
-            subtitle: Text(l10n.gitSwitchBranchCurrent(current)),
+            title: Text(widget.current),
+            subtitle: Text(l10n.gitSwitchBranchCurrent(widget.current)),
             enabled: false,
           ),
-          if (others.isNotEmpty)
+          if (_others.isNotEmpty)
             Divider(height: 1, color: colors.outlineVariant),
-          for (final branch in others)
+          for (final branch in _others)
             ListTile(
               leading: Icon(
                 Icons.account_tree_outlined,
                 color: colors.onSurfaceVariant,
               ),
               title: Text(branch, overflow: TextOverflow.ellipsis),
-              onTap: () => Navigator.of(context).pop(branch),
+              onTap: _deleting == null
+                  ? () => Navigator.of(context).pop(branch)
+                  : null,
+              // Only local branches are deletable (remotes need push --delete).
+              trailing: !_isLocal(branch)
+                  ? null
+                  : _deleting == branch
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : IconButton(
+                          icon: const Icon(Icons.delete_outline_rounded),
+                          color: colors.error,
+                          tooltip: l10n.gitDeleteBranch,
+                          onPressed:
+                              _deleting != null ? null : () => _delete(branch),
+                        ),
             ),
         ],
       ),

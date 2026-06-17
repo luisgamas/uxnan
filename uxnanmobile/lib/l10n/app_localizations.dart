@@ -2089,6 +2089,84 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Last commit reverted'**
   String get gitRevertSuccess;
+
+  /// No description provided for @gitRemoveWorktree.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove worktree'**
+  String get gitRemoveWorktree;
+
+  /// No description provided for @gitRemoveWorktreeConfirmTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove this worktree?'**
+  String get gitRemoveWorktreeConfirmTitle;
+
+  /// No description provided for @gitRemoveWorktreeConfirmBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Deletes the worktree folder backing this conversation (the branch is kept). The conversation\'s workspace will no longer exist.'**
+  String get gitRemoveWorktreeConfirmBody;
+
+  /// No description provided for @gitRemoveWorktreeForceTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Worktree has changes'**
+  String get gitRemoveWorktreeForceTitle;
+
+  /// No description provided for @gitRemoveWorktreeForceBody.
+  ///
+  /// In en, this message translates to:
+  /// **'The worktree has uncommitted or untracked changes. Force-remove and lose them?'**
+  String get gitRemoveWorktreeForceBody;
+
+  /// No description provided for @gitForceRemove.
+  ///
+  /// In en, this message translates to:
+  /// **'Force remove'**
+  String get gitForceRemove;
+
+  /// No description provided for @gitDeleteBranch.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete branch'**
+  String get gitDeleteBranch;
+
+  /// No description provided for @gitDeleteBranchConfirmTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete branch?'**
+  String get gitDeleteBranchConfirmTitle;
+
+  /// No description provided for @gitDeleteBranchConfirmBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete the local branch \"{branch}\"?'**
+  String gitDeleteBranchConfirmBody(String branch);
+
+  /// No description provided for @gitDeleteBranchForceTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Branch not merged'**
+  String get gitDeleteBranchForceTitle;
+
+  /// No description provided for @gitDeleteBranchForceBody.
+  ///
+  /// In en, this message translates to:
+  /// **'\"{branch}\" isn\'t fully merged. Force-delete and lose its unmerged commits?'**
+  String gitDeleteBranchForceBody(String branch);
+
+  /// No description provided for @gitForceDelete.
+  ///
+  /// In en, this message translates to:
+  /// **'Force delete'**
+  String get gitForceDelete;
+
+  /// No description provided for @conversationCwdMissing.
+  ///
+  /// In en, this message translates to:
+  /// **'This conversation\'s folder no longer exists. Reconnect or remove it.'**
+  String get conversationCwdMissing;
 }
 
 class _AppLocalizationsDelegate

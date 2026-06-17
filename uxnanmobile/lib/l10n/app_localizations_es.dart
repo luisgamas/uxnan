@@ -1080,4 +1080,50 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get gitRevertSuccess => 'Último commit revertido';
+
+  @override
+  String get gitRemoveWorktree => 'Eliminar worktree';
+
+  @override
+  String get gitRemoveWorktreeConfirmTitle => '¿Eliminar este worktree?';
+
+  @override
+  String get gitRemoveWorktreeConfirmBody =>
+      'Borra la carpeta worktree que respalda esta conversación (la rama se conserva). El espacio de trabajo de la conversación dejará de existir.';
+
+  @override
+  String get gitRemoveWorktreeForceTitle => 'El worktree tiene cambios';
+
+  @override
+  String get gitRemoveWorktreeForceBody =>
+      'El worktree tiene cambios sin confirmar o sin seguimiento. ¿Forzar la eliminación y perderlos?';
+
+  @override
+  String get gitForceRemove => 'Forzar eliminación';
+
+  @override
+  String get gitDeleteBranch => 'Eliminar rama';
+
+  @override
+  String get gitDeleteBranchConfirmTitle => '¿Eliminar rama?';
+
+  @override
+  String gitDeleteBranchConfirmBody(String branch) {
+    return '¿Eliminar la rama local \"$branch\"?';
+  }
+
+  @override
+  String get gitDeleteBranchForceTitle => 'Rama no fusionada';
+
+  @override
+  String gitDeleteBranchForceBody(String branch) {
+    return '\"$branch\" no está completamente fusionada. ¿Forzar la eliminación y perder sus commits no fusionados?';
+  }
+
+  @override
+  String get gitForceDelete => 'Forzar eliminación';
+
+  @override
+  String get conversationCwdMissing =>
+      'La carpeta de esta conversación ya no existe. Reconéctate o elimínala.';
 }

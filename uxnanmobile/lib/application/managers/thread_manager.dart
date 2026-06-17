@@ -320,6 +320,25 @@ class ThreadManager {
     }
   }
 
+  /// Whether [cwd] still exists on the bridge (`workspace/exists`). A thread's
+  /// folder or worktree can be removed outside the app, leaving its `cwd` dead.
+  /// Fail-open: returns true on a transient error or an older bridge, so the
+  /// composer is only disabled on a confirmed-vanished cwd.
+  Future<bool> workspaceExists(String cwd) async {
+    try {
+      final res = await _sendRequest('workspace/exists', {'cwd': cwd});
+      if (res.error != null) return true;
+      final result = res.result;
+      if (result is Map && result['exists'] is bool) {
+        return result['exists'] as bool;
+      }
+      return true;
+    } on Object catch (error, stackTrace) {
+      AppLogger.warn('workspace/exists failed', error, stackTrace);
+      return true;
+    }
+  }
+
   /// Forks [threadId] on the bridge (`thread/fork`): the bridge deep-copies the
   /// thread and its turns into a new thread, which is persisted locally
   /// (inheriting the source's `deviceId`) and returned so the caller can open

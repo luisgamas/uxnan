@@ -526,5 +526,24 @@
   "gitRevertLast": "Revert last commit",
   "gitRevertConfirmTitle": "Revert the last commit?",
   "gitRevertConfirmBody": "Creates a new commit that undoes the last one. History is kept (unlike Undo commit). You can push it like any commit.",
-  "gitRevertSuccess": "Last commit reverted"
+  "gitRevertSuccess": "Last commit reverted",
+  "gitRemoveWorktree": "Remove worktree",
+  "gitRemoveWorktreeConfirmTitle": "Remove this worktree?",
+  "gitRemoveWorktreeConfirmBody": "Deletes the worktree folder backing this conversation (the branch is kept). The conversation's workspace will no longer exist.",
+  "gitRemoveWorktreeForceTitle": "Worktree has changes",
+  "gitRemoveWorktreeForceBody": "The worktree has uncommitted or untracked changes. Force-remove and lose them?",
+  "gitForceRemove": "Force remove",
+  "gitDeleteBranch": "Delete branch",
+  "gitDeleteBranchConfirmTitle": "Delete branch?",
+  "gitDeleteBranchConfirmBody": "Delete the local branch \"{branch}\"?",
+  "@gitDeleteBranchConfirmBody": {
+    "placeholders": { "branch": { "type": "String" } }
+  },
+  "gitDeleteBranchForceTitle": "Branch not merged",
+  "gitDeleteBranchForceBody": "\"{branch}\" isn't fully merged. Force-delete and lose its unmerged commits?",
+  "@gitDeleteBranchForceBody": {
+    "placeholders": { "branch": { "type": "String" } }
+  },
+  "gitForceDelete": "Force delete",
+  "conversationCwdMissing": "This conversation's folder no longer exists. Reconnect or remove it."
 }

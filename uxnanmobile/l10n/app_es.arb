@@ -358,5 +358,18 @@
   "gitRevertLast": "Revertir último commit",
   "gitRevertConfirmTitle": "¿Revertir el último commit?",
   "gitRevertConfirmBody": "Crea un nuevo commit que deshace el último. Conserva el historial (a diferencia de Deshacer commit). Puedes empujarlo como cualquier commit.",
-  "gitRevertSuccess": "Último commit revertido"
+  "gitRevertSuccess": "Último commit revertido",
+  "gitRemoveWorktree": "Eliminar worktree",
+  "gitRemoveWorktreeConfirmTitle": "¿Eliminar este worktree?",
+  "gitRemoveWorktreeConfirmBody": "Borra la carpeta worktree que respalda esta conversación (la rama se conserva). El espacio de trabajo de la conversación dejará de existir.",
+  "gitRemoveWorktreeForceTitle": "El worktree tiene cambios",
+  "gitRemoveWorktreeForceBody": "El worktree tiene cambios sin confirmar o sin seguimiento. ¿Forzar la eliminación y perderlos?",
+  "gitForceRemove": "Forzar eliminación",
+  "gitDeleteBranch": "Eliminar rama",
+  "gitDeleteBranchConfirmTitle": "¿Eliminar rama?",
+  "gitDeleteBranchConfirmBody": "¿Eliminar la rama local \"{branch}\"?",
+  "gitDeleteBranchForceTitle": "Rama no fusionada",
+  "gitDeleteBranchForceBody": "\"{branch}\" no está completamente fusionada. ¿Forzar la eliminación y perder sus commits no fusionados?",
+  "gitForceDelete": "Forzar eliminación",
+  "conversationCwdMissing": "La carpeta de esta conversación ya no existe. Reconéctate o elimínala."
 }

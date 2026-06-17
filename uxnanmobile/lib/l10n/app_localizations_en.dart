@@ -1076,4 +1076,50 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get gitRevertSuccess => 'Last commit reverted';
+
+  @override
+  String get gitRemoveWorktree => 'Remove worktree';
+
+  @override
+  String get gitRemoveWorktreeConfirmTitle => 'Remove this worktree?';
+
+  @override
+  String get gitRemoveWorktreeConfirmBody =>
+      'Deletes the worktree folder backing this conversation (the branch is kept). The conversation\'s workspace will no longer exist.';
+
+  @override
+  String get gitRemoveWorktreeForceTitle => 'Worktree has changes';
+
+  @override
+  String get gitRemoveWorktreeForceBody =>
+      'The worktree has uncommitted or untracked changes. Force-remove and lose them?';
+
+  @override
+  String get gitForceRemove => 'Force remove';
+
+  @override
+  String get gitDeleteBranch => 'Delete branch';
+
+  @override
+  String get gitDeleteBranchConfirmTitle => 'Delete branch?';
+
+  @override
+  String gitDeleteBranchConfirmBody(String branch) {
+    return 'Delete the local branch \"$branch\"?';
+  }
+
+  @override
+  String get gitDeleteBranchForceTitle => 'Branch not merged';
+
+  @override
+  String gitDeleteBranchForceBody(String branch) {
+    return '\"$branch\" isn\'t fully merged. Force-delete and lose its unmerged commits?';
+  }
+
+  @override
+  String get gitForceDelete => 'Force delete';
+
+  @override
+  String get conversationCwdMissing =>
+      'This conversation\'s folder no longer exists. Reconnect or remove it.';
 }
