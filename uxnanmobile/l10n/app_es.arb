@@ -354,5 +354,9 @@
   "manualCodeErrorInvalidCode": "El código es incorrecto o expiró. Genera uno nuevo en tu PC.",
   "manualCodeErrorRateLimited": "Demasiados intentos. Espera un momento e inténtalo de nuevo.",
   "manualCodeErrorServer": "El bridge no pudo completar el emparejamiento. Inténtalo de nuevo.",
-  "manualCodeErrorPayload": "El bridge envió una respuesta de emparejamiento inválida."
+  "manualCodeErrorPayload": "El bridge envió una respuesta de emparejamiento inválida.",
+  "gitRevertLast": "Revertir último commit",
+  "gitRevertConfirmTitle": "¿Revertir el último commit?",
+  "gitRevertConfirmBody": "Crea un nuevo commit que deshace el último. Conserva el historial (a diferencia de Deshacer commit). Puedes empujarlo como cualquier commit.",
+  "gitRevertSuccess": "Último commit revertido"
 }

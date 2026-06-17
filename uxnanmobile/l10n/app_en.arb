@@ -522,5 +522,9 @@
   "manualCodeErrorInvalidCode": "That code is wrong or has expired. Generate a new one on your PC.",
   "manualCodeErrorRateLimited": "Too many attempts. Wait a moment and try again.",
   "manualCodeErrorServer": "The bridge couldn't complete pairing. Try again.",
-  "manualCodeErrorPayload": "The bridge sent an invalid pairing response."
+  "manualCodeErrorPayload": "The bridge sent an invalid pairing response.",
+  "gitRevertLast": "Revert last commit",
+  "gitRevertConfirmTitle": "Revert the last commit?",
+  "gitRevertConfirmBody": "Creates a new commit that undoes the last one. History is kept (unlike Undo commit). You can push it like any commit.",
+  "gitRevertSuccess": "Last commit reverted"
 }

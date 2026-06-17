@@ -6,6 +6,15 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Git revert + branch/worktree deletion wiring.** `GitActionManager` gains
+  `revert` (`git/revert`), `deleteBranch` (`git/deleteBranch`, `force`) and
+  `removeWorktree` (`git/removeWorktree`, `force`) now that the bridge implements
+  them. The git screen's overflow menu adds **"Revert last commit"** (creates a
+  revert commit, preserving history — distinct from Undo commit). Branch-delete /
+  worktree-management UI + cwd-vanished composer disable (`workspace/exists`) are
+  follow-ups (see `FOR-DEV.md`).
+
 ### Fixed
 - **Foreground push no longer fires for the conversation on screen.** The
   bridge-direct FCM push raised a foreground notification even while the user

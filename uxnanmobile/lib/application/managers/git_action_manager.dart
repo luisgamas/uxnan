@@ -218,6 +218,58 @@ class GitActionManager {
     );
   }
 
+  /// Reverts [commit] (e.g. `HEAD`) in [cwd] — creates a new commit that undoes
+  /// it, preserving history (unlike [undoCommit]'s soft reset). Refreshes
+  /// status afterwards.
+  Future<void> revert(String cwd, String commit, {String? threadId}) {
+    return _run(
+      kind: GitActionKind.revert,
+      method: 'git/revert',
+      rpcParams: {'cwd': cwd, 'commit': commit},
+      threadId: threadId,
+      cwd: cwd,
+      parseResult: (_) {},
+    );
+  }
+
+  /// Deletes a local [branch] in [cwd]. With [force] false git refuses a branch
+  /// that isn't fully merged (surfaced as an error — retry with [force] true
+  /// after the user confirms). Refreshes status.
+  Future<void> deleteBranch(
+    String cwd,
+    String branch, {
+    bool force = false,
+    String? threadId,
+  }) {
+    return _run(
+      kind: GitActionKind.deleteBranch,
+      method: 'git/deleteBranch',
+      rpcParams: {'cwd': cwd, 'branch': branch, 'force': force},
+      threadId: threadId,
+      cwd: cwd,
+      parseResult: (_) {},
+    );
+  }
+
+  /// Removes the worktree at [path] (relative to [cwd]'s repo). With [force]
+  /// false git refuses a worktree with uncommitted changes (surfaced — retry
+  /// with [force] true after the user confirms). Refreshes status.
+  Future<void> removeWorktree(
+    String cwd,
+    String path, {
+    bool force = false,
+    String? threadId,
+  }) {
+    return _run(
+      kind: GitActionKind.removeWorktree,
+      method: 'git/removeWorktree',
+      rpcParams: {'cwd': cwd, 'path': path, 'force': force},
+      threadId: threadId,
+      cwd: cwd,
+      parseResult: (_) {},
+    );
+  }
+
   /// Fetches the repository's current/local/remote branches.
   Future<GitBranchList> branches(String cwd) async {
     final response = await _sendRequest('git/branches', {'cwd': cwd});

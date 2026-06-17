@@ -1067,4 +1067,17 @@ class AppLocalizationsEs extends AppLocalizations {
   @override
   String get manualCodeErrorPayload =>
       'El bridge envió una respuesta de emparejamiento inválida.';
+
+  @override
+  String get gitRevertLast => 'Revertir último commit';
+
+  @override
+  String get gitRevertConfirmTitle => '¿Revertir el último commit?';
+
+  @override
+  String get gitRevertConfirmBody =>
+      'Crea un nuevo commit que deshace el último. Conserva el historial (a diferencia de Deshacer commit). Puedes empujarlo como cualquier commit.';
+
+  @override
+  String get gitRevertSuccess => 'Último commit revertido';
 }

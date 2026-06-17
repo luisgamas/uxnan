@@ -2065,6 +2065,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'The bridge sent an invalid pairing response.'**
   String get manualCodeErrorPayload;
+
+  /// No description provided for @gitRevertLast.
+  ///
+  /// In en, this message translates to:
+  /// **'Revert last commit'**
+  String get gitRevertLast;
+
+  /// No description provided for @gitRevertConfirmTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Revert the last commit?'**
+  String get gitRevertConfirmTitle;
+
+  /// No description provided for @gitRevertConfirmBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Creates a new commit that undoes the last one. History is kept (unlike Undo commit). You can push it like any commit.'**
+  String get gitRevertConfirmBody;
+
+  /// No description provided for @gitRevertSuccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Last commit reverted'**
+  String get gitRevertSuccess;
 }
 
 class _AppLocalizationsDelegate

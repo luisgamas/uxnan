@@ -481,29 +481,24 @@ browser and multi-PC connection correctness are now DONE — see below.)
     an optional "Run in a worktree" toggle creates the worktree from the chosen
     working dir and points the new thread's `cwd` at the resulting checkout — so
     it no longer duplicates work inside the per-thread git screen.
-  - FOR-DEV: **`git/revert` is NOT implemented bridge-side** — needs a bridge
-    handler (`GitService.revert` + `git/revert` in `git-handler.ts` + the shared
-    method/registry) before the phone can wire a Revert action. Deferred until
-    the bridge adds it.
-  - FOR-DEV: **No safe branch/worktree deletion bridge-side.** `git-handler.ts`
-    exposes status/diff/commit/push/pull/checkout/createBranch/createWorktree/
-    stage/unstage/discard/createPr/undoCommit/branches/switchBranch — but there
-    is **no `git/deleteBranch` and no `git/removeWorktree`**. Removing the
-    worktree/branch that a conversation was created in (see the new-conversation
-    worktree flow) therefore can't be done from the app yet. Needs bridge
-    handlers that fail safe: refuse to delete a branch that isn't merged / a
-    worktree with uncommitted or unpushed work unless the caller forces it
-    (`git worktree remove [--force]`, `git branch -d` vs `-D`). Until then the
-    app must not offer a delete action.
-  - FOR-DEV: **Detect a vanished cwd / worktree and disable its threads.** When a
-    worktree or working folder is removed outside the app (manually, or once
-    bridge deletion lands), any thread whose `cwd` no longer exists must be
-    surfaced as **unavailable** and its composer disabled — sending into a dead
-    cwd would error on every action. Plan: have the bridge report cwd existence
-    (e.g. a `cwdExists`/`stale` flag on thread/project resolution, or a
-    `workspace/exists` probe) and let the phone mark those threads disabled with
-    a clear "folder no longer exists" state instead of failing per-message. Not
-    implemented on either side yet.
+  - ☑ **`git/revert` — DONE both sides.** Bridge `GitService.revert` +
+    `git/revert`; phone `GitActionManager.revert` + a **"Revert last commit"**
+    item in the git-screen overflow (reverts `HEAD`, preserving history —
+    distinct from Undo commit's soft reset).
+  - ◑ **Safe branch/worktree deletion — bridge DONE, phone partial.** Bridge
+    `git/deleteBranch` (refuses unmerged unless `force`) + `git/removeWorktree`
+    (refuses dirty unless `force`) landed; `GitActionManager.deleteBranch` /
+    `removeWorktree` are wired (callable). ☐ **Phone UI pending:** a delete
+    affordance in the branch picker that, on the unmerged-error, offers a
+    forced retry behind a confirm; and a worktree-management entry to remove the
+    worktree a conversation was created in. UX pending review.
+  - ◑ **Vanished-cwd detection — bridge DONE, phone wiring pending.** Bridge
+    `workspace/exists` (`{ exists, isGitRepo? }`) is ready. ☐ **Phone:** probe a
+    thread's `cwd` on open and, when gone, mark the thread **unavailable** +
+    disable its composer with a "folder no longer exists" state (the
+    conversation composer's connection-gating is the integration point). Add a
+    `workspace/exists` call (e.g. on `WorkspaceBrowser` or the session
+    coordinator) and gate `ConversationScreen`'s send on it.
   - FOR-DEV: **managed worktrees** — the bridge's `git/createWorktree` requires an
     explicit `path` (no auto-path). The phone derives a sibling path from `cwd`
     (`_worktreePath` in `NewConversationScreen`) so the user only types a branch

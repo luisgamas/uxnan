@@ -198,6 +198,40 @@ class _GitScreenState extends ConsumerState<GitScreen> {
     );
   }
 
+  /// Reverts the last commit (creates a new commit that undoes `HEAD`),
+  /// preserving history — distinct from the soft-reset [_undoCommit].
+  Future<void> _revert(GitRepoState state) async {
+    final cwd = widget.cwd;
+    final l10n = AppLocalizations.of(context);
+    if (cwd == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        icon: const Icon(Icons.history_rounded),
+        title: Text(l10n.gitRevertConfirmTitle),
+        content: Text(l10n.gitRevertConfirmBody),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(l10n.gitCancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(l10n.gitRevertLast),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await _guard(
+      () => ref
+          .read(gitActionManagerProvider)
+          .revert(cwd, 'HEAD', threadId: widget.threadId),
+      l10n.gitRevertSuccess,
+      cwd,
+    );
+  }
+
   Future<void> _push(GitRepoState state) async {
     final cwd = widget.cwd;
     final l10n = AppLocalizations.of(context);
@@ -736,6 +770,7 @@ class _GitScreenState extends ConsumerState<GitScreen> {
                     busy: _busy,
                     onSwitchBranch: () => _switchBranch(state),
                     onNewBranch: () => _newBranch(state),
+                    onRevert: () => _revert(state),
                     onCreatePr: () => _createPr(state),
                     onDiscardAll: () => _discard(state, all: true),
                   ),
@@ -778,6 +813,7 @@ class _OverflowMenu extends StatelessWidget {
     required this.onSwitchBranch,
     required this.onNewBranch,
     required this.onCreatePr,
+    required this.onRevert,
     required this.onDiscardAll,
   });
 
@@ -786,6 +822,7 @@ class _OverflowMenu extends StatelessWidget {
   final VoidCallback onSwitchBranch;
   final VoidCallback onNewBranch;
   final VoidCallback onCreatePr;
+  final VoidCallback onRevert;
   final VoidCallback onDiscardAll;
 
   @override
@@ -838,6 +875,14 @@ class _OverflowMenu extends StatelessWidget {
           child: _MenuRow(
             icon: Icons.merge_rounded,
             label: l10n.gitCreatePr,
+          ),
+        ),
+        PopupMenuItem(
+          enabled: !busy,
+          onTap: onRevert,
+          child: _MenuRow(
+            icon: Icons.history_rounded,
+            label: l10n.gitRevertLast,
           ),
         ),
         if (state.isDirty)

@@ -1063,4 +1063,17 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get manualCodeErrorPayload =>
       'The bridge sent an invalid pairing response.';
+
+  @override
+  String get gitRevertLast => 'Revert last commit';
+
+  @override
+  String get gitRevertConfirmTitle => 'Revert the last commit?';
+
+  @override
+  String get gitRevertConfirmBody =>
+      'Creates a new commit that undoes the last one. History is kept (unlike Undo commit). You can push it like any commit.';
+
+  @override
+  String get gitRevertSuccess => 'Last commit reverted';
 }

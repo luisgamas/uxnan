@@ -30,6 +30,12 @@ enum GitActionKind {
   /// Undo the last commit before pushing (soft reset).
   undoCommit,
 
+  /// Delete a local branch (refused unless merged, or forced).
+  deleteBranch,
+
+  /// Remove a git worktree (refused if dirty, or forced).
+  removeWorktree,
+
   /// Commit, push and open a draft pull request in one stacked operation.
   stackedPublish,
 }
