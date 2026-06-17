@@ -46,16 +46,19 @@ landed now):
 - ☑ **Manual-code pairing (mobile half)** — `ManualCodeScreen` →
   `GET /pair/resolve?code=` (see *Manual-code pairing* → Mobile linkage).
 
-**Remaining cross-component work (not built — the next dev's roadmap):**
-1. **`git/revert`** — no bridge handler; phone has the action wired and waiting
-   (`uxnanmobile/FOR-DEV.md` → Git). Add `GitService.revert` + `git/revert` +
-   the shared method/registry.
-2. **Safe branch/worktree deletion** — no `git/deleteBranch` / `git/removeWorktree`;
-   must fail safe (refuse unmerged branch / dirty worktree unless forced). The
-   phone must not offer delete until these land (see `uxnanmobile/FOR-DEV.md`).
-3. **Vanished-cwd detection** — report `cwdExists`/`stale` on thread/project
-   resolution (or a `workspace/exists` probe) so the phone disables threads whose
-   folder/worktree was removed, instead of failing per-message.
+**Remaining cross-component work (the next dev's roadmap):**
+1. ☑ **`git/revert`** — DONE: `GitService.revert` + `git/revert` handler +
+   shared contract; phone wires `GitActionManager.revert` + a "Revert last
+   commit" action in the git screen.
+2. ☑ **Safe branch/worktree deletion** — DONE bridge-side: `git/deleteBranch`
+   (refuses unmerged unless `force`) + `git/removeWorktree` (refuses dirty unless
+   `force`). Phone `GitActionManager.deleteBranch`/`removeWorktree` wired. ☐ Phone
+   UI: a delete affordance in the branch picker (force-on-unmerged-error) + a
+   worktree-management entry — UX pending review.
+3. ☑ **Vanished-cwd detection (bridge)** — DONE: `workspace/exists`
+   (`{ exists, isGitRepo? }`). ☐ Phone wiring: probe a thread's `cwd` on open and
+   disable the composer + show "folder no longer exists" when gone (the
+   conversation composer's connection-gating is the integration point).
 4. **Agent session-id surfacing** — expose the agent's native `sessionID` via
    `thread/read` so the phone can show "resume from the CLI" beyond the thread id.
 5. **Approval-mode persistence RPC** — read/persist the per-thread access mode

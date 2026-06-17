@@ -6,6 +6,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 
 ### Added
+- **Git revert + safe branch/worktree deletion + `workspace/exists`** —
+  `git/revert` (creates a revert commit, preserving history),
+  `git/deleteBranch` (`git branch -d`, refuses an unmerged branch unless
+  `force` → `-D`), `git/removeWorktree` (`git worktree remove`, refuses a dirty
+  worktree unless `force` → `--force`, then prunes) in `git-service.ts` +
+  `git-handler.ts`; and `workspace/exists` (`workspace-handler.ts`) probing
+  whether a thread's `cwd` still exists (folders/worktrees removed outside the
+  app). Deletion safety is git's own default; `force` is the explicit override.
+  Covered by `git-service.test.ts` + `git-workspace-handlers.test.ts`.
 - **Interactive approval intake** — `turn/send` now accepts a control-only
   `approvalResponse: { approvalId, decision }` (no new turn) and routes the
   decision to the agent via `AgentManager.respondApproval` →

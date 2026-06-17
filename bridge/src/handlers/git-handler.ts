@@ -80,6 +80,16 @@ export function registerGitHandlers(router: HandlerRouter): void {
           requireBool(p, 'carryChanges'),
         ),
       ),
+    'git/revert': (p) =>
+      gitOp(() => git.revert(requireString(p, 'cwd'), requireSafe(p, 'commit'))),
+    'git/deleteBranch': (p) =>
+      gitOp(() =>
+        git.deleteBranch(requireString(p, 'cwd'), requireSafe(p, 'branch'), requireBool(p, 'force')),
+      ),
+    'git/removeWorktree': (p) =>
+      gitOp(() =>
+        git.removeWorktree(requireString(p, 'cwd'), requireSafe(p, 'path'), requireBool(p, 'force')),
+      ),
   };
 
   for (const [method, handler] of Object.entries(handlers)) {

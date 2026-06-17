@@ -319,6 +319,36 @@ export class GitService {
     return { path, branch };
   }
 
+  /**
+   * Revert [commit] (e.g. `HEAD`, a sha) — creates a NEW commit that undoes it,
+   * preserving history (unlike `undoCommit`'s soft reset). `--no-edit` keeps the
+   * default revert message; fails (and surfaces) on a conflict.
+   */
+  async revert(cwd: string, commit: string): Promise<void> {
+    await runGit(cwd, ['revert', '--no-edit', commit]);
+  }
+
+  /**
+   * Delete a local branch. With `force: false` this is `git branch -d`, which
+   * **refuses** a branch not fully merged (the safe default — the error is
+   * surfaced to the phone); `force: true` is `-D` (delete regardless).
+   */
+  async deleteBranch(cwd: string, branch: string, force: boolean): Promise<void> {
+    await runGit(cwd, ['branch', force ? '-D' : '-d', branch]);
+  }
+
+  /**
+   * Remove a worktree. With `force: false`, `git worktree remove` **refuses** a
+   * worktree with uncommitted/untracked changes (safe default — surfaced);
+   * `force: true` adds `--force`. Also prunes stale admin entries afterward.
+   */
+  async removeWorktree(cwd: string, path: string, force: boolean): Promise<void> {
+    const args = force ? ['worktree', 'remove', '--force', path] : ['worktree', 'remove', path];
+    await runGit(cwd, args);
+    // Best-effort: drop any now-stale worktree admin files.
+    await runGit(cwd, ['worktree', 'prune']).catch(() => undefined);
+  }
+
   async #currentBranch(cwd: string): Promise<string> {
     // `branch --show-current` works on an unborn branch (no commits yet) and
     // returns '' on a detached HEAD.

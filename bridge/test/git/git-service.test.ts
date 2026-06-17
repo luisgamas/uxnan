@@ -256,3 +256,56 @@ test('a git failure surfaces as GitCommandError', async () => {
   await assert.rejects(git.status(dir), GitCommandError);
   await rmrf(dir);
 });
+
+test('revert creates a new commit that undoes the target', async () => {
+  const dir = await newRepo();
+  await writeFile(join(dir, 'a.txt'), 'one\n');
+  await git.commit(dir, 'one');
+  await writeFile(join(dir, 'a.txt'), 'one\ntwo\n');
+  await git.commit(dir, 'two');
+
+  await git.revert(dir, 'HEAD');
+  // The file is back to its pre-"two" content, history preserved (3 commits).
+  assert.equal(await readFile(join(dir, 'a.txt'), 'utf-8'), 'one\n');
+  const { stdout } = await runGit(dir, ['rev-list', '--count', 'HEAD']);
+  assert.equal(stdout.trim(), '3');
+  await rmrf(dir);
+});
+
+test('deleteBranch refuses an unmerged branch unless forced', async () => {
+  const dir = await newRepo();
+  await writeFile(join(dir, 'a.txt'), 'x');
+  await git.commit(dir, 'init');
+  await git.createBranch(dir, 'feature');
+  await git.checkout(dir, 'feature');
+  await writeFile(join(dir, 'b.txt'), 'y');
+  await git.commit(dir, 'feature work');
+  await git.checkout(dir, 'main');
+
+  // Safe delete refuses (the branch has unmerged commits).
+  await assert.rejects(git.deleteBranch(dir, 'feature', false), GitCommandError);
+  // Forced delete succeeds.
+  await git.deleteBranch(dir, 'feature', true);
+  const branches = await git.branches(dir);
+  assert.equal(branches.local.includes('feature'), false);
+  await rmrf(dir);
+});
+
+test('removeWorktree removes a clean worktree and refuses a dirty one unless forced', async () => {
+  const dir = await newRepo();
+  await writeFile(join(dir, 'a.txt'), 'x');
+  await git.commit(dir, 'init');
+
+  const wt1 = join(tmpdir(), `uxnan-wt-${randomUUID()}`);
+  await git.createWorktree(dir, 'wt-clean', wt1);
+  await git.removeWorktree(dir, wt1, false); // clean → succeeds
+
+  const wt2 = join(tmpdir(), `uxnan-wt-${randomUUID()}`);
+  await git.createWorktree(dir, 'wt-dirty', wt2);
+  await writeFile(join(wt2, 'untracked.txt'), 'dirty');
+  await assert.rejects(git.removeWorktree(dir, wt2, false), GitCommandError);
+  await git.removeWorktree(dir, wt2, true); // forced → succeeds
+  await rmrf(dir);
+  await rmrf(wt1);
+  await rmrf(wt2);
+});

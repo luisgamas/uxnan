@@ -68,3 +68,48 @@ test('invalid params map to -32602 InvalidParams', async () => {
   await bridge.stop();
   await rmrf(baseDir);
 });
+
+test('git/revert is routed and undoes the last commit', async () => {
+  const { bridge, baseDir } = await boot();
+  const repo = join(tmpdir(), `uxnan-revert-${randomUUID()}`);
+  await mkdir(repo, { recursive: true });
+  await runGit(repo, ['init', '-b', 'main']);
+  await runGit(repo, ['config', 'user.email', 't@u.dev']);
+  await runGit(repo, ['config', 'user.name', 'T']);
+  await writeFile(join(repo, 'a.txt'), 'one\n');
+  await runGit(repo, ['add', '-A']);
+  await runGit(repo, ['commit', '-m', 'one']);
+  await writeFile(join(repo, 'a.txt'), 'one\ntwo\n');
+  await runGit(repo, ['add', '-A']);
+  await runGit(repo, ['commit', '-m', 'two']);
+
+  const res = await bridge.router.dispatch(makeRequest('5', 'git/revert', { cwd: repo, commit: 'HEAD' }));
+  assert.ok('result' in res);
+  const { stdout } = await runGit(repo, ['rev-list', '--count', 'HEAD']);
+  assert.equal(stdout.trim(), '3');
+
+  await bridge.stop();
+  await rmrf(baseDir);
+  await rmrf(repo);
+});
+
+test('workspace/exists reports a present repo and a vanished dir', async () => {
+  const { bridge, baseDir } = await boot();
+  const repo = join(tmpdir(), `uxnan-exists-${randomUUID()}`);
+  await mkdir(repo, { recursive: true });
+  await runGit(repo, ['init', '-b', 'main']);
+
+  const present = await bridge.router.dispatch(makeRequest('6', 'workspace/exists', { cwd: repo }));
+  assert.ok('result' in present);
+  assert.deepEqual(present.result, { exists: true, isGitRepo: true });
+
+  const gone = await bridge.router.dispatch(
+    makeRequest('7', 'workspace/exists', { cwd: join(tmpdir(), `uxnan-gone-${randomUUID()}`) }),
+  );
+  assert.ok('result' in gone);
+  assert.deepEqual(gone.result, { exists: false });
+
+  await bridge.stop();
+  await rmrf(baseDir);
+  await rmrf(repo);
+});

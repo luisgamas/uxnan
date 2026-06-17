@@ -7,7 +7,14 @@
  *
  * Source: architecture/02a-system-architecture.md §5.8.7 / §5.8.9.
  */
-import { JsonRpcErrorCode, RpcError, type PatchChange } from '@uxnan/shared';
+import {
+  JsonRpcErrorCode,
+  RpcError,
+  type PatchChange,
+  type WorkspaceExistsResult,
+} from '@uxnan/shared';
+import { access, stat } from 'node:fs/promises';
+import { join } from 'node:path';
 import type { BridgeContext } from '../bridge-context.js';
 import type { HandlerRouter } from '../handler-router.js';
 import { WorkspaceService } from '../workspace/workspace-service.js';
@@ -50,6 +57,9 @@ export function registerWorkspaceHandlers(router: HandlerRouter): void {
   router.register('workspace/applyPatch', (p) =>
     ws.applyPatch(requireString(p, 'cwd'), parseChanges(p)),
   );
+  // Probe whether a thread's cwd still exists (folders/worktrees can be removed
+  // outside the app), so the phone can mark the thread unavailable. Never throws.
+  router.register('workspace/exists', (p) => workspaceExists(requireString(p, 'cwd')));
 
   router.register('workspace/checkpoint', (p, ctx: BridgeContext) => {
     const cwd = requireString(p, 'cwd');
@@ -66,6 +76,24 @@ export function registerWorkspaceHandlers(router: HandlerRouter): void {
   router.register('workspace/applyCheckpoint', (p, ctx: BridgeContext) =>
     checkpointOp(() => checkpoints(ctx).apply(requireString(p, 'id'))),
   );
+}
+
+/** Whether [cwd] is an existing directory, and (if so) whether it's a git repo/worktree. */
+async function workspaceExists(cwd: string): Promise<WorkspaceExistsResult> {
+  try {
+    const info = await stat(cwd);
+    if (!info.isDirectory()) return { exists: false };
+  } catch {
+    return { exists: false };
+  }
+  // A regular repo has a `.git` directory; a worktree has a `.git` FILE — both
+  // are accessible, so this is true for either.
+  try {
+    await access(join(cwd, '.git'));
+    return { exists: true, isGitRepo: true };
+  } catch {
+    return { exists: true, isGitRepo: false };
+  }
 }
 
 function optionalField(params: unknown, key: 'label'): { label?: string } {
