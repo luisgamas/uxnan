@@ -5,6 +5,52 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Docs
+- **Synced the spec (`architecture/02a-system-architecture.md` and
+  `architecture/02b-contracts-and-requirements.md`) with the code.** This
+  is a docs-only change in the bridge; no runtime behavior changed. Per
+  `AGENTS.md` → *Spec drift control (non-negotiable)*, every `DONE` in
+  this monorepo's `FOR-DEV.md` is now reflected in the spec. The spec was
+  behind the code (relay was already optional, push was already
+  bridge-direct, manual-code pairing was already bridge-first, Aider was
+  the only remaining agent, the per-agent `auth/status` was already
+  sanitized, etc.). The spec now matches.
+  - `architecture/02a-system-architecture.md`: section 2 (topologies, with
+    LAN/Tailscale-direct as primary and relay demoted to self-hosted
+    fallback); section 3 (`IAgentAdapter` updated with `respondApproval`,
+    `listModels` returning `AgentModel[]`, `nativeSessionId`,
+    `SendTurnOptions`, `gitRevert`/`gitDeleteBranch`/`gitRemoveWorktree`,
+    `browseDirs`, `exists`, and the 5 wired agents listed); section 5.5.3
+    (manual-code pairing reframed as bridge-first);
+    section 5.5.4 (`PairingPayload` v2 with optional `relay` + `hosts` +
+    Base64 UTF-8 JSON encoding); section 5.10 (relay demoted to
+    self-hosted; push split into bridge-direct primary + relay fallback).
+  - `architecture/02b-contracts-and-requirements.md`: the canonical 59
+    JSON-RPC methods (organized by domain: threads/turns 15, git 18,
+    workspace 9, projects 2, agents 2, auth 3, notifications 3, bridge
+    control 7) + 8 streaming notifications (`stream/turn/started`,
+    `stream/message/delta`, `stream/thinking/delta`,
+    `stream/content/block`, `stream/turn/completed`, `stream/turn/error`,
+    `stream/turn/aborted`, `stream/model/resolved`) + cross-cutting
+    shapes (`PairingPayload` v2, `TurnSendParams`, `TurnAttachment`,
+    `ApprovalResponse`, `AgentModel`, `AgentCapabilities`, `TurnUsage`,
+    `ApprovalRequestBlock`). Obsolete methods removed from the spec
+    (with a note for each: `initialize`/`initialized`, `bridge/version`,
+    `getAuthStatus`, `account/*`, `project/add`/`remove`,
+    `git/branch/create`, `git/worktree/managed/create`,
+    `git/stacked/publish`, `thread/turns/list`, `thread/turn/start`,
+    `desktop/*`, etc.) — see the spec for the full list with
+    replacements.
+  - `architecture/00-index.md` (mobile side): implementation status
+    table updated to the current state (Neural Expressive, manual-code
+    pairing bridge-first, voice, image attachments, per-model run-option
+    knobs, context-usage indicator, per-agent `auth/status`, interactive
+    approval, full Git, etc.).
+- **Updated this monorepo's `README.md`** to reflect the ALPHA state
+  (status section, the 5 wired agents, the new push architecture, the
+  manual-code pairing + mDNS, the new bridge-control methods, the
+  test count).
+
 ### Changed
 - **Gemini model list is the full `VALID_GEMINI_MODELS` set, plus `auto`.**
   The Gemini CLI has no headless enumerate command (only Codex via

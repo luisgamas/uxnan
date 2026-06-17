@@ -6,6 +6,45 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Docs
+- **Synced the spec (`architecture/00-index.md`,
+  `architecture/02a-system-architecture.md`,
+  `architecture/02b-contracts-and-requirements.md`) with the code.** This
+  is a docs-only change in the mobile app; no runtime behavior changed.
+  Per `AGENTS.md` → *Spec drift control (non-negotiable)*, every `DONE` in
+  this monorepo's `FOR-DEV.md` is now reflected in the spec. The spec was
+  behind the code (Neural Expressive, manual-code pairing bridge-first,
+  voice, image attachments, per-model run-option knobs, context-usage
+  indicator, per-agent `auth/status`, interactive approval, full Git,
+  etc.). The spec now matches.
+  - `architecture/00-index.md`: status table updated to the live
+    Android-alpha-ready state (Neural Expressive added, the full repo
+    set, manual-code pairing bridge-first, voice, stop-the-turn, attach,
+    per-model run-option knobs, context-usage indicator, per-agent
+    `auth/status`, interactive approval, per-PC threads with
+    connection-targeted live actions, thread lifecycle actions, Remove
+    device, full Git with per-file diff, push with deep-link +
+    preferences + persistence). `architecture.old/` removed from the
+    monorepo tree (archived in git tag `pre-architecture-old-archive`);
+    relay marked as optional / self-hosted.
+  - `architecture/02a-system-architecture.md`: section 2 (topologies
+    re-ranked: LAN-direct and Tailscale-direct as primary/recommended;
+    relay demoted to self-hosted fallback); section 3 (`IAgentAdapter`
+    updated with the methods and capabilities that the app actually
+    consumes today); section 5.5.3 (manual-code pairing reframed as
+    bridge-first); section 5.5.4 (`PairingPayload` v2 with optional
+    `relay` + `hosts`); section 5.10 (push split into bridge-direct
+    primary + relay fallback).
+  - `architecture/02b-contracts-and-requirements.md`: the canonical 59
+    JSON-RPC methods + 8 streaming notifications the app consumes (or
+    may consume) today + cross-cutting shapes (`PairingPayload` v2,
+    `TurnSendParams`, `TurnAttachment`, `ApprovalResponse`, `AgentModel`,
+    `AgentCapabilities`, `TurnUsage`).
+- **Updated this monorepo's `README.md`** to reflect the Android
+  alpha-ready state (status section, the full MVP, the iOS pending
+  FOR-HUMAN list, the test count, the new i18n + Neural Expressive
+  stack entries).
+
 ### Fixed
 - **App-bar menu buttons ripple as circles, not squares.** The sort / more /
   pairing / conversation / git overflow menus wrapped a round surface in a
