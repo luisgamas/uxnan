@@ -303,8 +303,10 @@ test('removeWorktree removes a clean worktree and refuses a dirty one unless for
   const wt2 = join(tmpdir(), `uxnan-wt-${randomUUID()}`);
   await git.createWorktree(dir, 'wt-dirty', wt2);
   await writeFile(join(wt2, 'untracked.txt'), 'dirty');
-  await assert.rejects(git.removeWorktree(dir, wt2, false), GitCommandError);
-  await git.removeWorktree(dir, wt2, true); // forced → succeeds
+  // Standing INSIDE the worktree (cwd === the one being removed) still works:
+  // the service resolves the main worktree to run the removal from.
+  await assert.rejects(git.removeWorktree(wt2, wt2, false), GitCommandError);
+  await git.removeWorktree(wt2, wt2, true); // forced → succeeds
   await rmrf(dir);
   await rmrf(wt1);
   await rmrf(wt2);

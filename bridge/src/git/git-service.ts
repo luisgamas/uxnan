@@ -341,12 +341,32 @@ export class GitService {
    * Remove a worktree. With `force: false`, `git worktree remove` **refuses** a
    * worktree with uncommitted/untracked changes (safe default — surfaced);
    * `force: true` adds `--force`. Also prunes stale admin entries afterward.
+   *
+   * `git` refuses to remove the worktree you are *standing in*, so we run the
+   * removal from the repo's MAIN worktree (resolved via `worktree list`),
+   * letting the phone remove the very worktree backing the active thread.
    */
   async removeWorktree(cwd: string, path: string, force: boolean): Promise<void> {
+    const runFrom = await this.#mainWorktree(cwd);
     const args = force ? ['worktree', 'remove', '--force', path] : ['worktree', 'remove', path];
-    await runGit(cwd, args);
+    await runGit(runFrom, args);
     // Best-effort: drop any now-stale worktree admin files.
-    await runGit(cwd, ['worktree', 'prune']).catch(() => undefined);
+    await runGit(runFrom, ['worktree', 'prune']).catch(() => undefined);
+  }
+
+  /** The repo's primary worktree path (the first `worktree list` entry), or [cwd]. */
+  async #mainWorktree(cwd: string): Promise<string> {
+    try {
+      const { stdout } = await runGit(cwd, ['worktree', 'list', '--porcelain']);
+      const first = stdout.split('\n').find((line) => line.startsWith('worktree '));
+      if (first) {
+        const main = first.slice('worktree '.length).trim();
+        if (main) return main;
+      }
+    } catch {
+      // not a git repo / detached — fall back to the given cwd
+    }
+    return cwd;
   }
 
   async #currentBranch(cwd: string): Promise<string> {
