@@ -254,7 +254,7 @@ Todos los commits siguen el formato [Conventional Commits](https://www.conventio
 | `infra` | Capa de infraestructura: repositorios concretos, transporte, storage, crypto |
 | `ui` | Capa de presentacion: pantallas, widgets, providers, theme, router |
 | `bridge` | Bridge daemon (Node.js): adapters, handlers, estado |
-| `relay` | Relay server (Node.js) |
+| `relay` | Relay server (Node.js, opcional / self-hosted; solo como fallback off-LAN) |
 | `transport` | Transporte seguro: WebSocket, SecureTransport, handshake |
 | `crypto` | Criptografia: key generation, envelope crypto, handshake crypto |
 | `git` | Integracion Git: handler, modelos, UI de Git |
@@ -843,11 +843,17 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
 El proyecto usa `--dart-define` para inyectar configuracion en tiempo de compilacion. No se usan archivos `.env` ni paquetes de configuracion adicionales.
 
+> **Direccion (2026-06):** el producto es **bridge-first**. La direccion del
+> bridge y (opcionalmente) la URL del relay **vienen del `PairingPayload`
+> del QR** — no se inyectan en tiempo de compilacion. Esto permite que un
+> mismo APK funcione contra cualquier bridge (LAN / Tailscale / relay)
+> sin recompilar. `RELAY_URL` se elimino de la lista de variables de
+> compilacion.
+
 #### Variables de compilacion
 
 | Variable | Dev | Staging | Prod |
 |---|---|---|---|
-| `RELAY_URL` | `wss://relay-dev.uxnan.io` | `wss://relay-staging.uxnan.io` | `wss://relay.uxnan.io` |
 | `ENV` | `dev` | `staging` | `prod` |
 | `ENABLE_LOGGING` | `true` | `true` | `false` |
 
@@ -855,23 +861,19 @@ El proyecto usa `--dart-define` para inyectar configuracion en tiempo de compila
 
 ```bash
 # Desarrollo
-flutter run --dart-define=RELAY_URL=wss://relay-dev.uxnan.io \
-            --dart-define=ENV=dev \
+flutter run --dart-define=ENV=dev \
             --dart-define=ENABLE_LOGGING=true
 
 # Staging
-flutter run --dart-define=RELAY_URL=wss://relay-staging.uxnan.io \
-            --dart-define=ENV=staging \
+flutter run --dart-define=ENV=staging \
             --dart-define=ENABLE_LOGGING=true
 
 # Produccion
 flutter build apk --release \
-            --dart-define=RELAY_URL=wss://relay.uxnan.io \
             --dart-define=ENV=prod \
             --dart-define=ENABLE_LOGGING=false
 
 flutter build ios --release \
-            --dart-define=RELAY_URL=wss://relay.uxnan.io \
             --dart-define=ENV=prod \
             --dart-define=ENABLE_LOGGING=false
 ```
@@ -882,13 +884,6 @@ flutter build ios --release \
 // lib/core/constants/app_constants.dart
 
 class AppConstants {
-  /// URL del relay, inyectada en tiempo de compilacion.
-  /// Default: relay de produccion.
-  static const relayUrl = String.fromEnvironment(
-    'RELAY_URL',
-    defaultValue: 'wss://relay.uxnan.io',
-  );
-
   /// Entorno actual: dev, staging o prod.
   static const env = String.fromEnvironment(
     'ENV',
@@ -997,25 +992,29 @@ El bridge no usa variables de entorno propias obligatorias. Las credenciales de 
 
 El bridge lee estas variables del entorno del proceso. La app movil **nunca** las conoce.
 
-#### Variables del relay
+#### Variables del relay (opcional, self-hosted)
 
-El relay server tiene su propio conjunto de variables de entorno, documentadas en la especificacion tecnica del relay:
+> **Direccion (2026-06):** el relay es **opcional y self-hosted**. La
+> ruta primaria del producto es LAN-direct / Tailscale-direct. Si
+> despliegas tu propio relay off-LAN, estas son sus variables de entorno
+> (documentadas tambien en `relay/docs/`):
 
 | Variable | Descripcion | Ejemplo |
 |---|---|---|
-| `PORT` | Puerto HTTP/WS del relay | `8080` |
-| `APNS_KEY_ID` | Key ID del certificado APNs | `XXXXXXXXXX` |
-| `APNS_TEAM_ID` | Team ID de Apple Developer | `XXXXXXXXXX` |
-| `APNS_PRIVATE_KEY_PATH` | Ruta a la clave privada APNs (.p8) | `/secrets/apns-auth-key.p8` |
-| `APNS_ENVIRONMENT` | Entorno APNs | `production` o `sandbox` |
-| `APNS_TOPIC` | Bundle ID de la app iOS | `com.uxnan.mobile` |
-| `FCM_PROJECT_ID` | ID del proyecto Firebase | `uxnan-mobile` |
-| `FCM_SERVICE_ACCOUNT_PATH` | Ruta al service account de Firebase | `/secrets/firebase-sa.json` |
-| `TRUST_PROXY` | Si el relay esta detras de un reverse proxy | `true` |
-| `SESSION_FILE_PATH` | Ruta para persistencia de sesiones | `/data/relay-sessions.json` |
-| `PUSH_STATE_FILE_PATH` | Ruta para estado de push | `/data/push-state.json` |
-| `MAX_SESSIONS` | Maximo de sesiones simultaneas | `10000` |
-| `SESSION_TTL_MS` | TTL de sesiones inactivas | `86400000` (24h) |
+| `PORT` | Puerto HTTP/WS del relay | `8787` |
+| `UXNAN_FCM_SERVICE_ACCOUNT` | Ruta al service account de Firebase (opcional; si esta, activa el sender FCM del relay). **Equivalente para el bridge:** `~/.uxnan/firebase-service-account.json` | `/secrets/firebase-sa.json` |
+| `RELAY_LOG` | Nivel de log (`debug` / `info` / `warn` / `error`) | `info` |
+
+> **APNs** ya no se usa directamente desde el relay: la ruta recomendada
+> es **FCM-for-both** (iOS via FCM gateway). Por eso las variables APNs
+> (`APNS_KEY_ID` / `APNS_TEAM_ID` / `APNS_PRIVATE_KEY_PATH` /
+> `APNS_ENVIRONMENT` / `APNS_TOPIC`) **se eliminaron** del relay. Si
+> el Firebase project no tiene un APNs `.p8` key uploaded, el relay
+> solo entrega a Android.
+>
+> **Multi-sesion / auth-on-forwarding / dedupe-persistence** del relay
+> siguen siendo **opcionales** (solo importan para un relay publico/
+> compartido; ver `relay/FOR-DEV.md`).
 
 ### 3.6 Secuencia de DI wiring en el primer arranque
 
@@ -1322,17 +1321,17 @@ enum AgentId {
 | **keyEpoch** | Contador de renegociaciones de clave; incrementa si se derivan nuevas claves |
 | **local-first** | Arquitectura donde el estado primario vive en el dispositivo del usuario, no en un servidor central |
 | **MCP** | Model Context Protocol — protocolo estandar para conectar agentes LLM con herramientas externas |
-| **notificationSecret** | Secreto compartido entre bridge y relay para autorizar el envio de push notifications |
+| **notificationSecret** | Secreto compartido para autorizar `POST /push/notify` al relay (fallback de push) |
 | **outbound buffer** | Buffer circular del bridge (max 500 msgs / 10 MB) para reenvio al reconectar |
-| **pairing** | Proceso de vincular criptograficamente el telefono con un bridge especifico en una PC |
-| **PairingPayload** | Estructura JSON transportada en el QR code con los datos necesarios para el pairing |
+| **pairing** | Proceso de vincular criptograficamente el telefono con un bridge especifico en una PC (QR o codigo manual) |
+| **PairingPayload** | Estructura v2 transportada en el QR (Base64(utf8(JSON))) o devuelta por `GET /pair/resolve?code=`. Campos: `v:2`, `relay?` (opcional), `hosts?: string[]` (LAN + Tailscale), `sessionId`, `macDeviceId`, `macIdentityPublicKey`, `expiresAt`, `displayName` |
 | **phoneDeviceId** | UUID unico generado al instalar la app en un telefono concreto |
 | **PhoneIdentity** | Par de claves Ed25519 que identifican permanentemente al telefono |
 | **plan mode** | Modo de operacion de algunos agentes donde proponen un plan antes de ejecutar cambios |
 | **QR bootstrap** | Modo de handshake inicial que requiere escanear el QR del bridge |
 | **ReAct** | Reason and Act — paradigma de agentes que alterna entre razonamiento y accion |
-| **relay** | Servidor intermediario que retransmite envelopes E2EE entre el movil y el bridge |
-| **Riverpod** | Framework de gestion de estado reactivo para Flutter basado en providers |
+| **relay** | (Opcional, self-hosted) Servidor WebSocket stateless que reenvia envelopes E2EE opacos como fallback off-LAN. La ruta primaria del producto es LAN-direct / Tailscale-direct y no usa relay. |
+| **Riverpod** | Framework de gestion de estado reactivo para Flutter basado en providers (3.x manual en este proyecto) |
 | **rollout** | Proceso de entrega de eventos del runtime del agente al bridge |
 | **seq** | Numero de secuencia monotonico por lado (bridge/iphone) para prevenir replay attacks |
 | **sessionId** | UUID que identifica una sesion de conexion bridge-relay-movil |
