@@ -6,6 +6,20 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- **Foreground push no longer fires for the conversation on screen.** The
+  bridge-direct FCM push raised a foreground notification even while the user
+  was viewing that conversation (the per-thread suppression only covered the
+  local domain-event path). `PushNotificationService` now suppresses a
+  foreground FCM whose `threadId` is the active conversation and — while
+  connected — defers to the live WS/domain-event path so a push never
+  duplicates the notification it already raises; a disconnected foreground (the
+  devices list) still shows it. Covered by `foreground_push_suppression_test.dart`.
+
+### Changed
+- **Devices app-bar pairing entry is a floating menu** (`MenuAnchor`) offering
+  **Scan QR** or **Enter manual code**, instead of a single scan button.
+
 ### Added
 - **Manual-code pairing (`ManualCodeScreen`).** Pair without scanning a QR by
   typing the bridge **host** + the short **pairing code** shown on the PC. A new
