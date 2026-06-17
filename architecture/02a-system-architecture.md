@@ -1,10 +1,19 @@
 # Uxnan — Arquitectura del Sistema y Modulos
 
-> **Version:** 1.0.0
-> **Fecha:** 2026-06-04
-> **Estado:** Definicion inicial — documento de arquitectura tecnica
+> **Version:** 1.2.0
+> **Fecha:** 2026-06-17
+> **Estado:** Definicion inicial — documento de arquitectura tecnica, sincronizado con codigo ALPHA
 > **Plataformas objetivo:** Android (principal), iOS (principal)
 > **Stack:** Flutter / Dart, Clean Architecture, Riverpod
+
+> **Regla de mantenimiento (ver `AGENTS.md` → *Spec drift control (non-negotiable)*):**
+> este documento es la **fuente de verdad** de la arquitectura del sistema.
+> Cualquier item marcado `DONE` / `DONE & validated end-to-end` en los
+> `FOR-DEV.md` de `uxnanmobile/`, `bridge/`, `relay/`, `shared/` o
+> `uxnandesktop/` debe reflejarse aquí en el **mismo conjunto de cambios**,
+> no solo en el `CHANGELOG.md`. Si un item contradice esta spec, abrir un
+> `FOR-DRIFT` en el `FOR-DEV.md` correspondiente. La spec NO debe quedar
+> atrás del código en un release.
 
 > Este documento forma parte de la documentacion tecnica de Uxnan. Ver tambien: [01-product-vision.md](01-product-vision.md) | [02b-contracts-and-requirements.md](02b-contracts-and-requirements.md) | [02c-implementation-guide.md](02c-implementation-guide.md) | [03-technical-reference.md](03-technical-reference.md)
 
@@ -45,31 +54,68 @@
 
 ## 2. Topologias de conexion
 
-**Topologia 1 — Red local (LAN):**
+> **Dirección (2026-06-12):** el producto es **bridge-first**. Las topologías
+> primaria y recomendada son LAN-direct y Tailscale-direct (cero hosting,
+> cero credenciales). El relay sigue siendo totalmente compatible y es el
+> fallback off-LAN que el usuario puede self-hostear. Ver `bridge/FOR-DEV.md`
+> → *Direct LAN/Tailscale addressing* y `relay/FOR-DEV.md` → *Direction*.
+
+**Topologia 1 — LAN directa (PRIMARIA):**
 ```
 [Movil] ──WebSocket LAN──→ [Bridge directo]
 ```
-Cuando el movil y la PC estan en la misma red, la app puede conectarse directamente al bridge sin pasar por el relay. La conexion sigue siendo E2EE.
+Cuando el movil y la PC estan en la misma red, la app se conecta directamente
+al bridge. El bridge expone su `host:port` LAN en el `PairingPayload`
+(`hosts: string[]`); el `TransportSelector` del movil prueba cada host directo
+con un timeout corto antes de cualquier fallback. La conexion sigue siendo
+E2EE extremo a extremo.
 
-**Topologia 2 — Relay remoto (WAN):**
+**Topologia 2 — Tailscale / mesh VPN directa (RECOMENDADA para remoto):**
 ```
-[Movil] ──WS E2EE──→ [Relay] ──WS E2EE──→ [Bridge]
+[Movil] ──WSS 100.x──→ [Bridge directo]
 ```
-Cuando el movil esta fuera de la red local. El relay retransmite envelopes cifrados opacos. No ve el contenido.
+Cuando el movil y la PC estan en la misma red Tailscale (o cualquier mesh
+VPN). El bridge detecta su direccion Tailscale (`100.x`) y la anuncia en
+`hosts`. Cero hosting, cero relay, E2EE intacto. Es la opción recomendada
+para acceder desde fuera de la LAN sin desplegar un relay.
 
-**Topologia 3 — Self-hosted relay:**
-El usuario puede desplegar su propio relay en un VPS o servidor domestico, eliminando dependencia del relay oficial.
+**Topologia 3 — Relay remoto / self-hosted (FALLBACK off-LAN):**
+```
+[Movil] ──WS E2EE──→ [Relay self-hosted] ──WS E2EE──→ [Bridge]
+```
+Cuando el movil esta fuera de la LAN y no hay Tailscale. El relay
+retransmite envelopes cifrados opacos; nunca ve el contenido. El relay es
+**opcional y self-hosted**: el usuario lo despliega en un VPS o servidor
+domestico. El bridge lo anuncia en el QR solo si `relayEnabled = true`
+(por defecto `false`).
+
+**Notas:**
+- `mac` y `iphone` son **roles del protocolo**, no plataformas. `mac` corre
+  en Windows/macOS/Linux (donde corre el bridge); `iphone` corre en
+  Android/iOS (la app movil).
+- El QR codifica `PairingPayload` como **Base64 del UTF-8 del JSON**
+  (v2 del pairing), no como JSON plano. `PairingValidator` requiere al
+  menos un transporte (`relay` o `hosts`); emite `missing_transport` si
+  ambos faltan.
 
 ---
 
 ## 3. Agent Adapter — interfaz contractual
+
+> **Cambios desde la v1 (2026-06):** la interfaz gano `listModels()` con
+> `AgentModel[]` estructurado (en lugar de `string[]`), `respondApproval()`
+> para aprobaciones interactivas, `nativeSessionId()` para que el bridge
+> localice la sesion on-disk del agente, y `attachments` en `sendTurn()`.
+> `AgentCapabilities` ahora incluye `reportsContextUsage` y `images`.
+> Ver `shared/src/agents/agent-adapter.ts` para la fuente de verdad
+> TypeScript; esta seccion documenta el contrato, no la sintaxis.
 
 Todos los adaptadores deben implementar la interfaz `IAgentAdapter` en el Bridge:
 
 ```typescript
 interface IAgentAdapter {
   // Identidad
-  readonly agentId: string;          // "codex" | "opencode" | "claude-code" | "gemini-cli" | "pi-agent" | custom
+  readonly agentId: string;          // "codex" | "opencode" | "claude-code" | "gemini-cli" | "pi-agent" | "aider" | custom
   readonly displayName: string;
   readonly version: string;
   readonly capabilities: AgentCapabilities;
@@ -89,17 +135,36 @@ interface IAgentAdapter {
 
   // Turns / conversacion
   startTurn(threadId: string, params: TurnParams): Promise<Turn>;
-  sendTurn(threadId: string, content: TurnContent): Promise<TurnResult>;
+  sendTurn(
+    threadId: string,
+    content: TurnContent,
+    options?: SendTurnOptions  // { cwd?, model?, options?: Record<string, string|boolean>, attachments?: TurnAttachment[], approvalResponse?: ApprovalResponse }
+  ): Promise<TurnResult>;
+
+  // Aprobaciones interactivas (opt-in por agente)
+  // El agente emite un `approval` content block en el stream;
+  // el bridge lo entrega a la app y, cuando el usuario responde,
+  // invoca respondApproval(approvalId, decision) para desbloquear el hook.
+  respondApproval?(threadId: string, approvalId: string, decision: ApprovalDecision): Promise<void>;
+
+  // Modelo discovery (retorna AgentModel[] estructurado, no string[])
+  listModels?(): Promise<AgentModel[]>;   // id, displayName, description?, version?, isDefault?, options?: AgentModelOption[]
+
+  // Identidad de la sesion nativa del agente (para fallback on-disk en turn/list)
+  nativeSessionId?(threadId: string): string | null;
 
   // Git
   gitStatus(cwd: string): Promise<GitRepoStatus>;
-  gitDiff(cwd: string): Promise<GitDiff>;
+  gitDiff(cwd: string, path?: string): Promise<GitDiff>;
   gitCommit(params: GitCommitParams): Promise<GitCommitResult>;
   gitPush(params: GitPushParams): Promise<GitPushResult>;
   gitPull(params: GitPullParams): Promise<GitPullResult>;
   gitCheckout(params: GitCheckoutParams): Promise<void>;
   gitCreateBranch(params: GitBranchParams): Promise<GitBranchResult>;
   gitCreateWorktree(params: GitWorktreeParams): Promise<GitWorktreeResult>;
+  gitRevert?(cwd: string): Promise<GitRevertResult>;
+  gitDeleteBranch?(cwd: string, branch: string, force?: boolean): Promise<void>;
+  gitRemoveWorktree?(cwd: string, worktreePath: string, force?: boolean): Promise<void>;
 
   // Workspace
   readFile(path: string): Promise<FileContent>;
@@ -109,18 +174,21 @@ interface IAgentAdapter {
   diffCheckpoint(checkpointId: string): Promise<CheckpointDiff>;
   applyCheckpoint(checkpointId: string): Promise<void>;
   applyPatchChanges(changes: PatchChange[]): Promise<ApplyResult>;
+  // Confinado a un root configurado; emite -32004 si hay escape
+  browseDirs?(rootId?: string, path?: string): Promise<BrowseResult>;
+  exists?(cwd: string): Promise<{ exists: boolean; isGitRepo?: boolean }>;
 
   // Auth (si aplica al agente)
-  getAuthStatus(): Promise<AuthStatus>;
+  getAuthStatus(agentId: string): Promise<AuthStatus>;   // sanitizado: NUNCA tokens
   startLogin(provider: string): Promise<LoginSession>;
   cancelLogin(sessionId: string): Promise<void>;
   logout(): Promise<void>;
 
   // Proyectos
-  listProjects(): Promise<Project[]>;
+  listProjects(): Promise<Project[]>;                   // cada Project puede llevar agentId/model pins
   resolveProject(cwd: string): Promise<Project>;
 
-  // Notificaciones
+  // Notificaciones (gestiona el bridge, no el adaptador)
   registerPushToken(token: string, secret: string): Promise<void>;
   notifyCompletion(threadId: string, turnId: string): Promise<void>;
 }
@@ -134,8 +202,20 @@ interface AgentCapabilities {
   supportsPlanMode: boolean;
   supportsMultipleProjects: boolean;
   supportsThreadFork: boolean;
+  // Nuevas (2026-06):
+  images: boolean;                  // acepta TurnAttachment[] (image) en sendTurn
+  approvals: boolean;               // emite `approval` content blocks (opt-in por agente)
+  reportsContextUsage: boolean;     // emite `usage` en turn/completed
   sessionsFormat: "jsonrpc" | "jsonl" | "sqlite" | "custom";
 }
+
+// Agentes actualmente implementados (ver bridge/CHANGELOG.md):
+//   ✅ opencode  (default; per-turn `opencode run --format json`; --session para continuidad)
+//   ✅ claude-code (`claude -p --output-format stream-json`; --resume)
+//   ✅ codex     (`codex exec --json`; exec resume <thread_id>)
+//   ✅ pi-agent  (`pi -p --mode json`; --session-id)
+//   ✅ gemini-cli (`gemini -p --output-format stream-json`; --session-id + --resume)
+//   ⏳ aider     (FOR-DEV → recipe "Adding the next agent")
 ```
 
 ---
@@ -1055,28 +1135,46 @@ QrScannerScreen
 
 #### 5.5.3 Flujo de pairing por codigo manual
 
+> **Cambio (2026-06):** el código manual es ahora una función **bridge-first**
+> (no relay). El bridge emite un código corto rotativo y expone
+> `GET /pair/resolve?code=<code>` en su servidor LAN; el relay
+> `/trusted-session/resolve` queda como fallback opcional para hosted relay.
+> El bridge también anuncia mDNS `_uxnan._tcp.local` para descubrimiento
+> automático en LAN (el telefono puede autocompletar el host).
+
 ```
 ManualCodeScreen
-├── Campo de texto para codigo corto (6-8 caracteres)
-├── POST al relay: GET /trusted-session/resolve?code=<code>
-├── Recibe sessionId + macDeviceId + macIdentityPublicKey
-├── Construye PairingPayload sintetico
-└── Continua igual que QR bootstrap
+├── Campo de texto para el codigo (8 chars Crockford base32, 10 min TTL)
+│   y campo para host:port (autocompletable via mDNS si está disponible)
+├── GET http://<bridge-host>:<port>/pair/resolve?code=<code>
+│   ├── Validación constant-time + rate-limit por IP
+│   └── Respuesta: PairingPayload completo (identico al del QR)
+└── Continua igual que QR bootstrap (proceso de handshake E2EE)
 ```
+
+Flujo equivalente en CLI: el bridge, al arrancar, muestra en la terminal
+tanto el QR como el código de pairing (visible via `uxnan-bridge start` y
+`uxnan-bridge code`).
 
 #### 5.5.4 Estructuras de pairing
 
-```dart
+> **Cambio (2026-06):** `relay` ahora es **opcional**; el payload incluye
+> `hosts: string[]` con las direcciones directas del bridge (LAN + Tailscale).
+> La codificación del QR es **Base64 del UTF-8 del JSON** (v2 del pairing).
+
+```typescript
 // PAIRING_QR_VERSION = 2
-// Payload transportado en el QR como JSON codificado en Base64
-class PairingPayload {
-  final int v;                          // version del formato QR
-  final String relay;                   // URL del relay: wss://...
-  final String sessionId;               // UUID de sesion
-  final String macDeviceId;             // ID del bridge en la PC
-  final String macIdentityPublicKey;    // Ed25519 publica del bridge (hex)
-  final int expiresAt;                  // Unix timestamp ms, TTL 5 min
-  final String displayName;            // nombre visible de la Mac
+// Payload transportado en el QR como Base64(utf8(JSON))
+interface PairingPayload {
+  v: 2;                              // version del formato QR
+  // Al menos uno de los dos es obligatorio:
+  relay?: string;                    // URL del relay: wss://...  (opcional)
+  hosts?: string[];                  // Direcciones directas del bridge: ["192.168.1.42:19850", "100.x.y.z:19850"]
+  sessionId: string;                 // UUID de sesion
+  macDeviceId: string;               // ID del bridge en la PC
+  macIdentityPublicKey: string;      // Ed25519 publica del bridge (hex)
+  expiresAt: number;                 // Unix timestamp ms, TTL 5 min
+  displayName: string;               // nombre visible de la Mac
 }
 
 // Persistido en SecureStore + base de datos local
@@ -1084,7 +1182,8 @@ class TrustedDevice {
   final String macDeviceId;
   final String displayName;
   final Uint8List macIdentityPublicKey;  // Ed25519, 32 bytes
-  final String relayUrl;
+  final String relayUrl;                  // puede ser null (solo-direct)
+  final List<String> hosts;               // puede coexistir o reemplazar al relay
   final String sessionId;
   final Uint8List phoneIdentityPrivateKey; // Ed25519 propia del telefono, 32 bytes
   final Uint8List phoneIdentityPublicKey;
@@ -1734,17 +1833,31 @@ class RequestCorrelator {
 
 ### 5.10 Relay y notificaciones push
 
-El relay es un servidor Node.js independiente del bridge. Su unico rol es retransmitir envelopes E2EE opacos y gestionar push notifications.
+> **Cambio de dirección (2026-06-12):** el relay es ahora **opcional y
+> self-hosted**. La ruta primaria del producto es LAN-direct / Tailscale-direct
+> (ver §2). Las notificaciones push se entregan **directamente desde el bridge**
+> sobre cualquier transporte (LAN, Tailscale, o relay) — no requieren relay.
+> El relay conserva los endpoints `/push/*` como fallback opcional para setups
+> con relay hospedado. Ver `relay/FOR-DEV.md` y `bridge/FOR-DEV.md` →
+> *Direct FCM from the bridge*.
+
+El relay, cuando se despliega, es un servidor Node.js independiente del
+bridge. Su unico rol es retransmitir envelopes E2EE opacos y (opcionalmente)
+gestionar push notifications.
 
 #### 5.10.1 Arquitectura del relay
 
 ```
-Relay Server
+Relay Server (opcional / self-hosted)
 ├── HTTP Server (Express o http nativo)
 │   ├── GET  /health                        → health check
-│   ├── POST /push/register                 → registra token push de un device
-│   ├── POST /push/notify                   → envia notificacion de completado
-│   └── GET  /trusted-session/resolve       → resolucion de pairing por codigo corto
+│   ├── POST /push/register                 → registra token push (fallback)
+│   ├── POST /push/notify                   → envia notificacion (fallback)
+│   └── (Superseded en la ruta primaria) GET /trusted-session/resolve
+│                                         → la version bridge-first vive
+│                                           en el bridge; el relay conserva
+│                                           este endpoint solo para setups
+│                                           con relay hospedado.
 ├── WebSocket Server (noServer mode)
 │   ├── Upgrade HTTP → WS con rate limiting por IP
 │   │   ├── Rate limits: HTTP 120/min, push 30/min, upgrade 60/min
@@ -1755,21 +1868,41 @@ Relay Server
 │       │            x-mac-identity-public-key, x-machine-name, x-pairing-code
 │       └── Rol "iphone" (app movil)
 │           Headers: x-role, x-session-id
-├── Push Service
+├── Push Service (fallback; ruta primaria es bridge-direct)
 │   ├── Registro de device token por sesion
 │   ├── Envio via APNs (iOS) o FCM (Android)
 │   ├── Deduplicacion por dedupeKey + TTL
-│   └── Persistencia de estado en archivo
+│   └── Persistencia de estado en archivo (diferido; in-memory por ahora)
 └── APNs Client (iOS) / FCM Client (Android)
     ├── iOS: HTTP/2 + JWT firmado con teamId/keyId/privateKey
+    │        (Superseded: FCM-for-both es la ruta recomendada)
     └── Android: Firebase Admin SDK + service account
 ```
 
-#### 5.10.2 Flujo de push notification
+#### 5.10.2 Flujo de push notification (RUTA PRIMARIA: bridge-direct)
 
 ```
 1. Agente completa un turno en la PC
-2. Bridge detecta el evento de completado (rollout-live-mirror)
+2. Bridge detecta el evento de completado (AgentManager.onTurnEnd)
+3. Bridge consulta el PushService para resolver el device token FCM real
+   del telefono (persistido en ~/.uxnan/push-state.json, por sessionId)
+4. Bridge → Firebase (FCM HTTP v1) DIRECTO usando el service account local
+   Body: { notification: { title, body }, data: { threadId, turnId, ... },
+           android: { priority: 'high' }, apns: { headers: { 'apns-priority': '10' } } }
+5. App movil recibe push → navega al thread correspondiente
+6. Foreground suppression: la UI suprime la notificacion si la conversacion
+   esta en pantalla (`foregroundThreadProvider`)
+
+Nota: este flujo no requiere relay. El service account FCM vive en
+`~/.uxnan/firebase-service-account.json` (FOR-HUMAN) en la PC; el bridge
+lazy-loads `firebase-admin`. `UXNAN_FCM_SERVICE_ACCOUNT` puede override el path.
+```
+
+#### 5.10.3 Flujo de push notification (FALLBACK: via relay, opcional)
+
+```
+1. Agente completa un turno en la PC
+2. Bridge detecta el evento de completado
 3. Bridge verifica push-notification-tracker: notificar?
 4. Bridge verifica push-notification-completion-dedupe: ya enviado?
 5. Bridge → Relay: POST /push/notify
@@ -1782,7 +1915,11 @@ Relay Server
 9. App movil recibe push → navega al thread correspondiente
 ```
 
-#### 5.10.3 Push en Android y iOS
+Este path se usa solo cuando (a) el bridge no tiene credencial FCM local, o
+(b) `relayEnabled` es true. La deduplicacion por `(sessionId, turnId)` evita
+doble entrega si ambos paths estan activos.
+
+#### 5.10.4 Push en Android y iOS (plataformas)
 
 ```dart
 // lib/infrastructure/platform/push_notification_adapter.dart
@@ -1812,11 +1949,14 @@ class PushNotificationAdapter {
 }
 ```
 
-#### 5.10.4 Deduplicacion de notificaciones
+#### 5.10.5 Deduplicacion de notificaciones (solo en el path via relay)
 
 ```javascript
 // relay/push-notification-completion-dedupe.js
-// Evita duplicados de notificacion cuando el relay reconecta o reemite eventos
+// Evita duplicados cuando el relay reconecta o reemite eventos.
+// NOTA: en la ruta primaria (bridge-direct) la deduplicacion ocurre a nivel
+// del bridge (un solo push por turn-end), por lo que este codigo solo aplica
+// al fallback via relay.
 
 const MAX_DEDUPE_KEYS = 10_000;
 const DEDUPE_TTL_MS = 7 * 24 * 60 * 60 * 1000;  // 7 dias
@@ -1825,8 +1965,7 @@ function isDuplicate(sessionId, turnId) {
   const key = `${sessionId}:${turnId}`;
   if (deliveredDedupeKeys.has(key)) return true;
   deliveredDedupeKeys.add(key);
-  // Persiste en archivo para sobrevivir reinicios
-  persistDedupeState();
+  // Persiste en archivo para sobrevivir reinicios (TODO/FOR-DEV; hoy in-memory)
   return false;
 }
 ```

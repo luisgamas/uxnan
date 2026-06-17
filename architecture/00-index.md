@@ -1,11 +1,20 @@
 # Uxnan — Documentación Técnica (Especificación Móvil)
 
-> **Versión:** 1.1.0  
-> **Fecha:** 2026-06-05  
-> **Estado:** Definición inicial — borrador técnico completo  
-> **Plataformas objetivo:** Android (principal), iOS (principal)  
-> **Stack:** Flutter / Dart, Clean Architecture, Riverpod 3.x (manual)  
+> **Versión:** 1.2.0
+> **Fecha:** 2026-06-17
+> **Estado:** Definición inicial — borrador técnico completo, sincronizado con código ALPHA
+> **Plataformas objetivo:** Android (principal), iOS (principal)
+> **Stack:** Flutter / Dart, Clean Architecture, Riverpod 3.x (manual)
 > **Monorepo:** Este directorio (`architecture/`) contiene la especificación PRD+SRS de la app móvil Flutter.
+
+> **Regla de mantenimiento (ver `AGENTS.md` → *Spec drift control (non-negotiable)*):**
+> esta carpeta es la **fuente de verdad** para la arquitectura del sistema.
+> Cualquier item marcado `DONE` / `DONE & validated end-to-end` en
+> `uxnanmobile/FOR-DEV.md`, `bridge/FOR-DEV.md`, `relay/FOR-DEV.md` o
+> `uxnandesktop/FOR-DEV.md` debe reflejarse aquí **en el mismo conjunto de
+> cambios**, no solo en el `CHANGELOG.md`. Si un item contradice esta spec,
+> abrir un `FOR-DRIFT` en el `FOR-DEV.md` correspondiente. La spec NO debe
+> quedar atrás del código en un release.
 
 ---
 
@@ -23,7 +32,7 @@
 
 ## Estado de implementación
 
-> Esta sección registra el avance de implementación frente a la especificación; se actualiza con cada incremento. La rama de trabajo de la app móvil es `uxnanmobile`. El detalle por incremento vive en `uxnanmobile/CHANGELOG.md`.
+> Esta sección registra el avance de implementación frente a la especificación; se actualiza con cada incremento. La rama de trabajo de la app móvil es `uxnanmobile`. El detalle por incremento vive en `uxnanmobile/CHANGELOG.md`. Snapshot vivo de "dónde estamos vs. dónde queríamos estar" en `uxnanmobile/FOR-DEV.md` (sección *Recommended next steps* + *What still blocks a complete MVP*).
 
 **uxnanmobile (Flutter) — rama `uxnanmobile`:**
 
@@ -34,26 +43,40 @@
 | Capa `core/` (constantes de protocolo, errores tipados, extensiones, logger/debouncer) | ✅ Hecho | — |
 | Enums de dominio | ✅ Hecho | 02a §5.1.2 |
 | Sistema visual M3 (tokens + tema adaptativo claro/oscuro) | ✅ Hecho | 02c §3.1 |
+| **Lenguaje de diseño "Neural Expressive" (M3 Expressive)** | ✅ Hecho | `uxnanmobile/docs/neural-expressive-design.md`; Icon Surfaces, top bar transparente + scroll veil, pill input flotante, card lists con esquinas dinámicas, spring-motion tokens |
 | Arranque (`main`/`app`/router), i18n (en/es) | ✅ Hecho | — |
 | Persistencia drift (esquema completo de 7 tablas + `UxnanDatabase`) | ✅ Hecho | 02c §10 |
-| Repositorios drift: `Thread`, `ComposerDraft` (+ providers DI) | ✅ Hecho | `Message`/`Turn`/`Project`/`TrustedDevice` diferidos a su módulo |
+| Repositorios drift: `Thread`, `ComposerDraft`, `Message`, `Turn`, `Project`, `TrustedDevice`, `git_action_log` (+ providers DI) | ✅ Hecho | — |
 | Gestión de estado | Riverpod **3.x** manual | Decisión 2026-06-05 (ver abajo); API `Notifier`/`NotifierProvider` |
 | Primitivas crypto E2EE (key gen, handshake Ed25519/X25519/HKDF, envelope AES-256-GCM, fingerprint) | ✅ Hecho | 02a §5.9; verificado con vectores RFC/NIST |
 | Mecánica de transporte (WebSocket, handshake `performHandshake`, `SecureChannel` seq/replay, correlador, backoff, outbound buffer) | ✅ Hecho | 02a §5.9; handshake de 2 partes probado en memoria |
-| Orquestación `SessionCoordinator` (ConnectionPhase + reconexión + providers Riverpod) + `SecureStore`/`PhoneIdentityStore` + `TransportSelector` (relay) | ✅ Hecho | 02a §5.2.1; probado con bridge simulado (connect, RPC, reconexión) |
-| `IncomingMessageProcessor` + integración WS en vivo contra bridge real | ✅ Hecho | Probado físicamente (móvil ↔ bridge ↔ relay) |
-| Descubrimiento LAN (mDNS) | ⏳ Pendiente | Hoy se usa el relay; LAN directo diferido (FOR-DEV) |
+| Orquestación `SessionCoordinator` (ConnectionPhase + reconexión + providers Riverpod) + `SecureStore`/`PhoneIdentityStore` + `TransportSelector` (relay, **direct LAN/Tailscale**) | ✅ Hecho | 02a §5.2.1; probado con bridge simulado (connect, RPC, reconexión) y validado on-device en LAN/Tailscale (post-Windows-Firewall) |
+| `IncomingMessageProcessor` + integración WS en vivo contra bridge real | ✅ Hecho | Probado físicamente (móvil ↔ bridge ↔ relay + móvil ↔ bridge directo en LAN/Tailscale) |
+| **Descubrimiento LAN / Tailscale (vía `hosts` en el QR, sin mDNS obligatorio)** | ✅ Hecho (host-first) | El bridge anuncia `hosts: string[]` en el `PairingPayload`; el móvil los prueba primero y cae al relay. mDNS queda como follow-up opcional (FOR-DEV). |
 | Reconexión robusta: heartbeat `bridge/status`, single-flight, ping WS, "Verificar conexión", sessionId estable | ✅ Hecho | 02c §11 |
-| Pairing — **lógica** (`PairingPayload`, `PairingValidator`, `TrustedDevice` repo, `processPairingPayload`) | ✅ Hecho | 02a §5.5; solo QR (código manual diferido, FOR-DEV) |
-| Pairing — **UI** (onboarding 4 páginas, `QrScannerScreen` con permiso de cámara, `UpdatePromptDialog`, rutas) | ✅ Hecho | M3; `MyDevicesScreen`/código manual diferidos (FOR-DEV) |
-| Conversación/timeline — **dominio + datos** (`MessageContent`, `Message`/`Turn`, `DriftMessageRepository`, `MessageDeduplicator`, `TurnTimelineSnapshot` + reducer) | ✅ Hecho | 02a §5.6/§6.2 |
-| Conversación — **managers** (`ThreadManager`, `IncomingMessageProcessor`, eventos de dominio + streaming) | ✅ Hecho | 02a §5.2.2/§5.2.5; toda la lógica de conversación lista |
-| Conversación — **UI** (`ConversationScreen`, renderers, composer) cableada a datos reales | ✅ Hecho | Sin samples; modelo/agente del thread, git por `cwd` real |
-| Flujo **Nueva conversación** (proyecto `project/list` + agente `agent/list` + modelo `agent/models`) + **selector de modelos** (`thread/setModel`) | ✅ Hecho | M3; skip onboarding si ya hay PC |
-| **Git** (status/commit/push contra el `cwd` del thread) | ✅ Hecho | Diff por archivo y acciones extendidas: pendientes (FOR-DEV) |
-| **Push FCM** (registro de token, notificaciones locales) | ✅ Hecho (gated) | Requiere config Firebase nativa (FOR-HUMAN) |
-| Threads **por PC** (`Thread.deviceId`) | ✅ Hecho | Data demo eliminada (migración drift v3) |
-| Archivar/eliminar/renombrar thread, exponer thread id (resumir en CLI), quitar dispositivo, adjuntar/voz, badge de contexto, código de pairing manual | ⏳ Pendiente | Ver `uxnanmobile/FOR-DEV.md` |
+| Pairing — **lógica** (`PairingPayload` v2, `PairingValidator`, `TrustedDevice` repo, `processPairingPayload`) | ✅ Hecho | 02a §5.5; **QR + código manual** (manual es bridge-first, no relay — ver §5.5.3) |
+| Pairing — **UI** (onboarding 4 páginas, `QrScannerScreen`, `UpdatePromptDialog`, `ManualCodeScreen`, `MyDevicesScreen`, rutas) | ✅ Hecho | M3; verificado on-device en Android |
+| Conversación/timeline — **dominio + datos** (`MessageContent` polimórfico, `Message`/`Turn`, `DriftMessageRepository`, `MessageDeduplicator`, `TurnTimelineSnapshot` + reducer) | ✅ Hecho | 02a §5.6/§6.2 |
+| Conversación — **managers** (`ThreadManager`, `IncomingMessageProcessor`, eventos de dominio + streaming, **per-thread in-memory buffer** que sobrevive a la navegación) | ✅ Hecho | 02a §5.2.2/§5.2.5 |
+| Conversación — **UI** (`ConversationScreen` con M3 + Neural Expressive, renderers, composer anclado abajo) cableada a datos reales | ✅ Hecho | Sin samples; modelo/agente del thread, git por `cwd` real |
+| **Indicador "Responding…" por thread** | ✅ Hecho | `ThreadActivity` + `threadActivityProvider`; spinner por thread en lista y conversación |
+| Flujo **Nueva conversación** (proyecto `project/list` + agente `agent/list` + modelo `agent/models` + **folder browser** `workspace/browseDirs`) + **selector de modelos** (`thread/setModel`, `AgentModel[]` estructurado) | ✅ Hecho | M3; skip onboarding si ya hay PC |
+| **Adjuntar imágenes** (image picker, base64 inline, thumbnail strip, image-only message) | ✅ Hecho (gated by `AgentCapabilities.images`) | Envío en `turn/send { attachments }`; `text` ahora opcional |
+| **Voz → texto** en el composer (`speech_to_text`) | ✅ Hecho | Verificado on-device (Android); iOS pending `NSMicrophoneUsageDescription`/`NSSpeechRecognitionUsageDescription` (FOR-HUMAN) |
+| **Stop the turn** mid-run | ✅ Hecho | `turn/cancel` desde el composer |
+| **Per-model run-option knobs** (data-driven, `AgentModel.options`) | ✅ Hecho | Renderizado genérico (`enum`/`toggle`); el bridge anuncia por modelo |
+| **Context-usage indicator** (porcentaje si el modelo tiene ventana; token count si no; **0 baseline** para agentes con `reportsContextUsage`) | ✅ Hecho | `usage { tokens, contextWindow? }` en `turn/completed` |
+| **Per-agent `auth/status`** (banner en conversación, red dot en lista, "Check sign-in" en nueva-conversación, auto-refresh en resume) | ✅ Hecho | Sanitizado (nunca tokens) |
+| **Interactive approval** (Approve / Reject / "allow session") | ✅ Hecho (app side) | El bridge emite un `approval` content block; el móvil responde con `turn/send { approvalResponse }`; **Echo demo + Claude Code opt-in** funcionan end-to-end |
+| **Threads por PC + connection-targeted live actions** | ✅ Hecho | `Thread.deviceId`; todas las acciones live apuntan al PC con canal real; browsing es read-only |
+| **Acciones por thread** (rename, archive/unarchive, delete, copy id) | ✅ Hecho | `thread/rename|archive|unarchive|delete`; archival en pantalla separada |
+| **Remove device** (unpair) | ✅ Hecho | Envía `bridge/removeTrustedDevice` con el id del teléfono, luego borra local |
+| **Git** (status, commit, push, pull, branches, switchBranch, createBranch, createWorktree, discard, undoCommit, createPr, revert, deleteBranch, removeWorktree, per-file `git/diff`) | ✅ Hecho | UI: full-screen `GitScreen` con staging por hunk, switch con auto-stash, smart PR, undo-commit, diff per-file unificado |
+| **Push FCM** (registro de token, notificaciones locales, deep-link, preferencias Replies/Errors, foreground suppression, persistencia entre reinicios, multi-device) | ✅ Hecho (gated) | **Push directo desde el bridge** (`uxnan-bridge` lazy-loads `firebase-admin`); el relay es fallback opcional; Android LIVE; iOS pending APNs key en Firebase (FOR-HUMAN) |
+| **Settings** (theme, language, notification preferences, personalization) | ✅ Hecho | Persistido vía `AppearancePreferencesStore` / `NotificationPreferencesStore` |
+| **Custom accent colors** (acento personalizable) | ⏳ Pendiente | Placeholder; requiere un remap completo del `ColorScheme` desde la semilla para mantener coherencia |
+| **Persistencia de sort/density + project-level thread scoping** | ⏳ Pendiente | UX follow-ups de baja prioridad |
+| **Migración iOS (build, APNs, Info.plist, signing)** | ⏳ Bloqueado por FOR-HUMAN | El primer build de iOS solo es posible en macOS; sin APNs key la entrega iOS queda diferida |
 
 > Detalle completo del avance en `uxnanmobile/CHANGELOG.md`; lo pendiente, en `uxnanmobile/FOR-DEV.md`.
 
@@ -67,24 +90,22 @@ El proyecto Uxnan está organizado como un monorepo que agrupa todos los compone
 
 ```
 uxnan/                           # Monorepo raíz
-├── architecture/                # Documentación de arquitectura del ecosistema (especificación móvil)
-├── architecture.old/            # Whitepapers originales como referencia histórica
+├── architecture/                # Documentación de arquitectura del ecosistema (especificación móvil; fuente de verdad)
 ├── uxnanmobile/                 # Proyecto Flutter (Android + iOS)
-├── bridge/                      # Node.js daemon para PC (standalone)
+├── bridge/                      # Node.js daemon para PC (standalone o embebido en desktop)
 ├── uxnandesktop/                # App de escritorio ADE (Tauri 2 + Rust + Svelte 5)
-├── relay/                       # Node.js relay server
+├── relay/                       # Node.js relay server (opcional, self-hosted)
 ├── shared/                      # Contratos compartidos (tipos, JSON-RPC schemas)
 └── README.md
 ```
 
 | Carpeta | Descripción |
 |---|---|
-| `architecture/` | Contiene la especificación completa (PRD + SRS) de la app móvil Flutter: visión del producto, arquitectura del sistema, contratos, guía de implementación y referencia técnica. Es el directorio donde se encuentra este índice. |
-| `architecture.old/` | Contiene los whitepapers originales (`architect-mobile.md` y `architect-desktop.md`) como referencia histórica. Estos documentos precedieron la reorganización actual y se conservan para trazabilidad. |
+| `architecture/` | Contiene la especificación completa (PRD + SRS) de la app móvil Flutter: visión del producto, arquitectura del sistema, contratos, guía de implementación y referencia técnica. Es la **fuente de verdad** para la arquitectura del sistema móvil y de los contratos cross-component (E2EE, JSON-RPC, bridge, relay). Sujeto a la regla de control de desfase en `AGENTS.md`. |
 | `uxnanmobile/` | Proyecto Flutter que implementa la app móvil de Uxnan para Android e iOS. Su especificación técnica vive en `architecture/`. |
 | `bridge/` | Daemon Node.js para PC que actúa como puente entre la app móvil y los recursos de la computadora (Git, sistema de archivos, terminal). Es un componente standalone que también puede integrarse dentro de la app de escritorio (`uxnandesktop/`). |
 | `uxnandesktop/` | App de escritorio ADE (Agente de Desarrollo Embarcado) construida con Tauri 2, Rust y Svelte 5. Contiene su propia documentación técnica en `uxnandesktop/architecture/`. |
-| `relay/` | Servidor relay Node.js que facilita la comunicación entre la app móvil y el bridge/desktop cuando no hay conexión directa en red local. |
+| `relay/` | Servidor relay Node.js que facilita la comunicación entre la app móvil y el bridge/desktop cuando no hay conexión directa en red local. **Opcional y self-hosted** (2026-06): la ruta primaria del producto es LAN-direct / Tailscale-direct; el relay es el fallback off-LAN hospedado por el propio usuario. |
 | `shared/` | Contratos compartidos entre todos los componentes: definiciones de tipos TypeScript, schemas JSON-RPC y cualquier otra interfaz común que necesiten consumir múltiples proyectos del monorepo. |
 
 ---
@@ -107,4 +128,4 @@ Posteriormente, el proyecto se reestructuró como monorepo para agrupar todos lo
 
 ---
 
-> **Nota:** Este índice y los documentos de `architecture/` son la fuente de verdad para la especificación de la app móvil Uxnan. Para la app de escritorio, consultar la documentación técnica en `uxnandesktop/architecture/`. Los whitepapers originales se conservan en `architecture.old/`.
+> **Nota:** Este índice y los documentos de `architecture/` son la fuente de verdad para la especificación de la app móvil Uxnan y para los contratos cross-component (E2EE §5.9, bridge §5.8, relay §5.10). Para la app de escritorio, consultar la documentación técnica en `uxnandesktop/architecture/`. El monorepo aplica la regla de control de desfase en `AGENTS.md` → *Spec drift control (non-negotiable)* para mantener esta spec sincronizada con el código.
