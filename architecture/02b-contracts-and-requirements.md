@@ -1,6 +1,17 @@
 # Uxnan — Contratos, Requisitos y Paquetes
 
-> **Version:** 0.1.0-draft | **Fecha:** 2026-06-04 | **Estado:** Draft
+> **Version:** 1.1.0 | **Fecha:** 2026-06-17 | **Estado:** Sincronizado con codigo ALPHA
+>
+> **Regla de mantenimiento (ver `AGENTS.md` → *Spec drift control (non-negotiable)*):**
+> este documento es la **fuente de verdad** de los contratos JSON-RPC,
+> requisitos no funcionales, paquetes Flutter, y los requisitos funcionales
+> por modulo. La **lista definitiva de metodos** vive en
+> `../../shared/src/jsonrpc/method-registry.ts` (`METHOD_NAMES`) y la lista
+> de notificaciones en `../../shared/src/jsonrpc/notifications.ts`
+> (`StreamNotification`). Las dos estan sincronizadas en build-time por una
+> asercion de tipos (`_assertNamesAreMethods` / `_assertMethodsAreNames`);
+> cualquier drift en TS rompe la build. Esta seccion documenta el contrato,
+> no la sintaxis.
 
 > Este documento forma parte de la documentacion tecnica de Uxnan. Ver tambien: [01-product-vision.md](01-product-vision.md) | [02a-system-architecture.md](02a-system-architecture.md) | [02c-implementation-guide.md](02c-implementation-guide.md) | [03-technical-reference.md](03-technical-reference.md)
 
@@ -12,6 +23,8 @@
    1. [Formato base](#11-formato-base)
    2. [Metodos JSON-RPC completos](#12-metodos-json-rpc-completos)
    3. [Errores JSON-RPC estandar](#13-errores-json-rpc-estandar)
+   4. [Notificaciones de streaming (bridge -> phone)](#14-notificaciones-de-streaming-bridge---phone)
+   5. [Shapes cross-cutting (seleccion)](#15-shapes-cross-cutting-seleccion)
 2. [Paquetes Flutter recomendados](#2-paquetes-flutter-recomendados)
    1. [Estado y DI](#21-estado-y-di)
    2. [Navegacion](#22-navegacion)
@@ -76,124 +89,332 @@ Toda la comunicacion entre la app movil y el bridge usa **JSON-RPC 2.0** sobre W
 
 ### 1.2 Metodos JSON-RPC completos
 
-#### Handshake y sesion
-```
-initialize              -> handshake inicial con el app-server del agente
-initialized             -> confirmacion de handshake
-bridge/status           -> snapshot de estado del bridge
-bridge/version          -> version del bridge y capacidades
-```
+> **Lista canonica:** la fuente de verdad en TypeScript es
+> `../../shared/src/jsonrpc/method-registry.ts` (`METHOD_NAMES`, 59 entradas).
+> El telefono mantiene una copia Dart sincronizada a mano
+> (`uxnanmobile/lib/domain/value_objects/...`); el bridge y el relay consumen
+> el paquete compartido directamente. Los nombres siguen la convencion
+> `domain/action` (lowercase) en singular para acciones discretas
+> (`git/commit`) y plural para lecturas (`git/branches`).
+>
+> **Total: 59 metodos request/response** + 8 notificaciones de streaming
+> (ver §1.4). El bridge tambien expone el endpoint HTTP local
+> `GET /pair/resolve?code=<code>` para manual-code pairing (ver
+> `02a` §5.5.3) — fuera del canal JSON-RPC, vive en su `http.Server`.
 
-#### Threads
+**Threads y turns (15):**
 ```
-thread/list             -> lista de threads, con filtro opcional por proyecto
-thread/read             -> datos de un thread especifico
-thread/resume           -> reanudar thread existente
-thread/turns/list       -> turnos de un thread, con paginacion por cursor
-thread/start            -> iniciar nuevo thread
-thread/turn/start       -> iniciar nuevo turno en un thread
-thread/fork             -> hacer fork de un thread
-thread/setModel         -> cambiar el modelo de un thread
-thread/rename           -> renombrar un thread (devuelve el thread actualizado)
-thread/archive          -> archivar un thread (status -> archived, reversible)
-thread/unarchive        -> restaurar un thread archivado (status -> active)
-thread/delete           -> eliminar un thread y sus turnos
-turn/send               -> enviar contenido a un turno activo
+thread/list             -> lista de threads del PC, con filtro opcional
+thread/read             -> datos completos de un thread
+thread/start            -> crear nuevo thread (agentId, model, cwd, opcional)
+thread/resume           -> reanudar thread existente (best-effort)
+thread/fork             -> fork de un thread en uno nuevo
+thread/setModel         -> cambiar el modelo de un thread mid-conversacion
+thread/rename           -> renombrar thread (devuelve el Thread actualizado)
+thread/archive          -> archivar thread (status -> archived, reversible)
+thread/unarchive        -> restaurar thread archivado (status -> active)
+thread/delete           -> eliminar thread y sus turns
+turn/list               -> turnos de un thread, paginacion por cursor
+turn/read               -> datos de un turno especifico
+turn/send               -> enviar contenido a un turno activo (texto opcional, attachments, options, approvalResponse)
 turn/cancel             -> cancelar turno en curso
 ```
 
-#### Git
+**Git (18):**
 ```
-git/status              -> estado del repositorio
-git/diff                -> diff completo del workspace
-git/commit              -> hacer commit con mensaje
-git/push                -> push a remote
+git/status              -> estado del repo (files, ahead/behind, diffTotals)
+git/diff                -> diff de un path o del workspace completo
+git/commit              -> hacer commit con mensaje (title + body + Co-authored-by)
+git/push                -> push a remote, con progreso por fase (stream/git/progress)
 git/pull                -> pull desde remote
-git/checkout            -> checkout de rama
-git/branch/create       -> crear nueva rama
-git/worktree/create     -> crear worktree
-git/worktree/managed/create   -> crear worktree administrado
-git/stacked/publish     -> flujo encadenado commit+push+[PR]
-git/revert              -> revertir cambios del asistente
+git/checkout            -> checkout de rama (con auto-stash opcional)
+git/createBranch        -> crear nueva rama
+git/createWorktree      -> crear worktree (path explicito; managed flag reservado)
+git/stage               -> stage de archivos o hunks especificos
+git/unstage             -> unstage de archivos o hunks especificos
+git/discard             -> descartar cambios de archivos o hunks especificos
+git/createPr            -> crear Pull Request (smart PR; auto-push del head)
+git/undoCommit          -> soft reset del ultimo commit
+git/branches            -> lectura: lista de ramas (locales + remotas)
+git/switchBranch        -> cambiar de rama (con auto-stash)
+git/revert              -> revertir el ultimo commit (git revert, preserva historia)
+git/deleteBranch        -> eliminar rama (refusa unmerged salvo force)
+git/removeWorktree      -> eliminar worktree (refusa dirty salvo force)
 ```
 
-#### Workspace
+**Workspace (9):**
 ```
-workspace/file/read              -> leer archivo del workspace
-workspace/image/read             -> leer imagen del workspace (base64)
-workspace/list                   -> listar archivos del cwd
-workspace/checkpoint/capture     -> capturar checkpoint del estado actual
-workspace/checkpoint/preview     -> preview de un checkpoint
-workspace/checkpoint/diff        -> diff de un checkpoint
-workspace/checkpoint/apply       -> aplicar un checkpoint
-workspace/patch/apply            -> aplicar lista de cambios de patch
-```
-
-#### Auth / cuenta
-```
-account/read            -> leer estado de cuenta del agente
-account/login/start     -> iniciar flujo de login
-account/login/cancel    -> cancelar login en progreso
-account/logout          -> cerrar sesion del agente
-getAuthStatus           -> snapshot sanitizado de autenticacion
+workspace/readFile              -> leer archivo del workspace (utf-8 o base64)
+workspace/readImage             -> leer imagen del workspace (base64)
+workspace/list                  -> listar archivos del cwd
+workspace/browseDirs            -> navegar sub-carpetas bajo un root configurado (confinado; git-repo aware)
+workspace/checkpoint            -> capturar checkpoint del estado actual
+workspace/diffCheckpoint        -> diff de un checkpoint (unified)
+workspace/applyCheckpoint       -> aplicar un checkpoint (restore verdadero: borra archivos creados despues)
+workspace/applyPatch            -> aplicar lista de cambios de patch
+workspace/exists                -> probe rapido: existe cwd? es git repo? (para detectar threads huerfanos)
 ```
 
-#### Proyectos
+**Proyectos (2):**
 ```
-project/list            -> lista de proyectos configurados
-project/resolve         -> resolver proyecto por cwd
-project/add             -> agregar proyecto a la configuracion
-project/remove          -> remover proyecto
+project/list            -> lista de proyectos configurados (Project { id, name, cwd, agentId?, model? })
+project/resolve         -> resolver proyecto por cwd (sintetiza uno si el cwd no esta en workspaceRoots)
 ```
 
-#### Notificaciones
+**Agentes (2):**
 ```
-notifications/register          -> registrar token push de la app
-notifications/update            -> actualizar preferencias de notificacion
-notifications/unregister        -> desregistrar el dispositivo
-```
-
-#### Desktop / integracion
-```
-desktop/refresh         -> refrescar la UI de escritorio del agente
-desktop/open            -> abrir URL o app en el desktop
-desktop/focus           -> traer ventana del agente al frente
+agent/list              -> agentes registrados (IAgentAdapter.agentId, displayName, capabilities, available)
+agent/models            -> modelos disponibles del agente activo (AgentModel[] estructurado: id, displayName, description?, version?, isDefault?, options?)
 ```
 
-#### Streaming (notificaciones del bridge al movil)
+**Auth (3):**
 ```
-stream/message/delta           -> delta de streaming de texto del asistente
-stream/turn/started            -> turno iniciado
-stream/turn/completed          -> turno completado
-stream/turn/error              -> turno con error
-stream/turn/aborted            -> turno cancelado
-stream/git/progress            -> progreso de accion Git
-stream/plan/updated            -> actualizacion de plan mode
-stream/subagent/updated        -> actualizacion de subagente
-stream/approval/requested      -> solicitud de aprobacion
-stream/connection/state        -> cambio de estado de conexion
-stream/workspace/updated       -> cambio en el workspace
-stream/auth/updated            -> cambio en estado de autenticacion
+auth/status             -> estado de auth **sanitizado** del agente (no expone tokens; login por existencia de auth file)
+auth/login              -> stub (login interactivo se hace en el CLI del agente en la PC, no desde el movil)
+auth/logout             -> stub (idem; logout en el CLI)
 ```
+
+**Notificaciones push (3):**
+```
+notifications/register          -> registrar FCM token + preferencias del telefono
+notifications/update            -> actualizar preferencias de notificacion (Replies/Errors)
+notifications/unregister        -> desregistrar el telefono
+```
+
+**Control del bridge (7):**
+```
+bridge/status                    -> snapshot de estado del bridge (incluye relayConnected)
+bridge/generatePairingQr         -> regenera y devuelve el PairingPayload vigente
+bridge/connectedPhones           -> lista de telefonos conectados
+bridge/disconnectPhone           -> desconectar un telefono
+bridge/trustedDevices            -> lista de dispositivos de confianza
+bridge/removeTrustedDevice       -> revocar confianza + drop session + drop push registration
+```
+
+**Metodos eliminados del draft v0.1.0 (no se llegaron a implementar):**
+- `initialize` / `initialized` (handshake estilo MCP): el handshake E2EE
+  cubre ese rol; el bridge no implementa un canal de inicializacion
+  separado.
+- `bridge/version`: el endpoint HTTP del bridge y el JSON-RPC
+  `bridge/status` exponen la misma informacion.
+- `getAuthStatus`: renombrado a `auth/status { agentId }` (per-agente).
+- `workspace/file/read` -> `workspace/readFile`.
+- `workspace/image/read` -> `workspace/readImage`.
+- `workspace/checkpoint/capture` -> `workspace/checkpoint`.
+- `workspace/checkpoint/preview` -> eliminado (unificado en
+  `diffCheckpoint`).
+- `workspace/checkpoint/diff` -> `workspace/diffCheckpoint`.
+- `workspace/checkpoint/apply` -> `workspace/applyCheckpoint`.
+- `workspace/patch/apply` -> `workspace/applyPatch`.
+- `account/read` -> `auth/status`.
+- `account/login/start` -> `auth/login` (stub; el login real es en el CLI).
+- `account/login/cancel` -> eliminado.
+- `account/logout` -> `auth/logout` (stub).
+- `project/add` / `project/remove`: el descubrimiento de proyectos
+  es **plug-and-play** via `workspace/browseDirs` + `project/resolve`;
+  ya no se pre-configuran proyectos. `workspaceRoots` / `browseRoots`
+  son la unica configuracion de proyecto (ver
+  `bridge/docs/configuration.md`).
+- `git/branch/create` -> `git/createBranch`.
+- `git/worktree/create` -> `git/createWorktree`.
+- `git/worktree/managed/create` -> eliminado (el flag `managed` queda
+  reservado en `GitWorktreeParams` para uso futuro).
+- `git/stacked/publish` -> reemplazado por `git/commit` + `git/push` +
+  `git/createPr` con auto-push condicional; el flujo "stacked" ya no
+  es un metodo dedicado.
+- `thread/turns/list` -> `turn/list`.
+- `thread/turn/start` -> unificado en `turn/send` (el adapter crea el
+  primer turno si no existe; el contrato es uniforme).
+- `desktop/refresh` / `desktop/open` / `desktop/focus`: el bridge no
+  expone endpoints de control de la app de escritorio; el desktop
+  consume el bridge, no al reves. Ver
+  `../../uxnandesktop/architecture/02e-bridge-integration.md` para el
+  sentido de la integracion.
 
 ### 1.3 Errores JSON-RPC estandar
 
-| Codigo | Significado |
-|---|---|
-| `-32700` | Parse error |
-| `-32600` | Invalid request |
-| `-32601` | Method not found |
-| `-32602` | Invalid params |
-| `-32603` | Internal error |
-| `-32000` | Bridge error generico |
-| `-32001` | Authentication required |
-| `-32002` | Agent not running |
-| `-32003` | Git operation failed |
-| `-32004` | Workspace access denied |
-| `-32005` | Bridge version incompatible |
-| `-32006` | Session expired |
-| `-32007` | Confirmation required |
-| `-32008` | Resource not found |
+> **Lista canonica:** `../../shared/src/jsonrpc/errors.ts` (`JsonRpcErrorCode`
+> + `RpcError`). El bridge mapea sus errores de aplicacion a estos codigos
+> en `RpcError`; el telefono los decodifica con la misma clase y los traduce
+> a un mensaje local. Los codigos Uxnan-especificos ocupan el rango
+> `-32000` a `-32099`.
+
+| Codigo | Significado | Cuando se emite |
+|---|---|---|
+| `-32700` | Parse error | JSON malformado en el envelope |
+| `-32600` | Invalid request | Envelope no es un JSON-RPC 2.0 valido |
+| `-32601` | Method not found | `method` no esta en `METHOD_NAMES` |
+| `-32602` | Invalid params | Parametros no cumplen el schema (Ajv) o tipos incorrectos |
+| `-32603` | Internal error | Cualquier excepcion no contemplada abajo |
+| `-32000` | Bridge error generico | Fallo del bridge no clasificable |
+| `-32001` | Authentication required | Handshake E2EE no completado o `TrustedDevice` revocado |
+| `-32002` | Agent not running | El adaptador no esta disponible (CLI no instalado o logged out) |
+| `-32003` | Git operation failed | `git` exit != 0, worktree dirty, etc. |
+| `-32004` | Workspace access denied | Path-traversal (`..` o absolute) o sensitive file |
+| `-32005` | Bridge version incompatible | `protocolVersion` o `PairingPayload.v` no soportado |
+| `-32006` | Session expired | Handshake `expiresAt` vencido, o sesion rotada |
+| `-32007` | Confirmation required | (Reservado; el flujo de approval usa `approval` content block, no este codigo) |
+| `-32008` | Resource not found | `threadId` / `turnId` / `checkpointId` desconocido |
+| `missing_transport` (en `PairingPayload`) | - | El payload no tiene ni `relay` ni `hosts` (validacion pairing) |
+
+---
+
+### 1.4 Notificaciones de streaming (bridge -> phone)
+
+> **Lista canonica:** `../../shared/src/jsonrpc/notifications.ts`
+> (`StreamNotification`, 8 entradas). Son JSON-RPC notifications (sin `id`,
+> unidireccionales). El telefono las decodifica via
+> `IncomingMessageProcessor` y las proyecta en la timeline via un reducer
+> sobre `TurnTimelineSnapshot`. Los parametros exactos viven en `shared/`.
+
+```
+stream/turn/started         -> TurnStartedParams  { threadId, turnId }
+stream/message/delta        -> MessageDeltaParams { threadId, turnId, messageId, delta }
+stream/thinking/delta       -> ThinkingDeltaParams { threadId, turnId, messageId, delta }   (NUEVO 2026-06)
+stream/content/block        -> ContentBlockParams { threadId, turnId, messageId, content }  (NUEVO 2026-06)
+stream/turn/completed       -> TurnCompletedParams { threadId, turnId, messageId, text, usage? }  (usage es TurnUsage)
+stream/turn/error           -> TurnErrorParams     { threadId, turnId, error: { code, message } }
+stream/turn/aborted         -> TurnAbortedParams   { threadId, turnId }
+stream/model/resolved       -> ModelResolvedParams { threadId, turnId, model }              (NUEVO 2026-06)
+```
+
+**Notas sobre los nuevos streams (2026-06):**
+- `stream/thinking/delta`: el agente emite "thinking" / "reasoning" como
+  un canal separado de la respuesta final; el telefono lo pliega en una
+  seccion colapsable "Thinking" arriba del turno (settings-gated,
+  default off).
+- `stream/content/block`: el `content` es un `MessageContent` polimorfico
+  serializado (`command_execution` para Bash, `diff` para Edit/Write, un
+  bloque `tool` generico para el resto). El telefono lo decodifica con
+  el mismo codec que `Message.blocks` y lo proyecta en el **Work log** /
+  **Changed files** de la respuesta. Asi los comandos/herramientas/diffs
+  del agente se renderizan en vivo y sobreviven a un `turn/list` re-sync.
+- `stream/model/resolved`: el bridge informa la version concreta a la que
+  un alias (ej. `opus` -> `claude-opus-4-8`) se resolvio para este turno,
+  para que el picker del telefono pueda mostrar una fila "Active version"
+  en la status sheet.
+
+**El bridge NO emite** (reservadas como follow-up; hoy se gestionan en
+otro lado):
+- `stream/connection/state`: la reconexion la gestiona el telefono.
+- `stream/workspace/updated`: el workspace se refresca bajo demanda con
+  `workspace/list`.
+- `stream/auth/updated`: el auth se consulta con `auth/status`.
+
+### 1.5 Shapes cross-cutting (seleccion)
+
+> Estas shapes aparecen en multiples metodos y notificaciones. La fuente
+> de verdad TS vive en `../../shared/src/models/*.ts` y
+> `../../shared/src/agents/agent-capabilities.ts`. La copia Dart vive en
+> `uxnanmobile/lib/domain/entities/...` y `value_objects/...`.
+
+**`PairingPayload` v2** (en el QR / respuesta de `GET /pair/resolve`):
+```typescript
+interface PairingPayload {
+  v: 2;                              // version del formato QR
+  relay?: string;                    // URL del relay: wss://...  (opcional)
+  hosts?: string[];                  // Direcciones directas: ["192.168.1.42:19850", "100.x.y.z:19850"]
+  sessionId: string;
+  macDeviceId: string;
+  macIdentityPublicKey: string;      // Ed25519 publica del bridge (hex)
+  expiresAt: number;                 // Unix timestamp ms, TTL 5 min
+  displayName: string;
+}
+// QR encoding: Base64(utf8(JSON)).
+// Validacion: al menos uno de `relay` o `hosts` es obligatorio (error `missing_transport`).
+```
+
+**`TurnSendParams`** (parametros de `turn/send`):
+```typescript
+interface TurnSendParams {
+  threadId: string;
+  text?: string;                              // OPCIONAL: un mensaje image-only es valido
+  attachments?: TurnAttachment[];             // imagenes inline (base64, mime, width, height)
+  options?: Record<string, string | boolean>; // per-model run-option knobs (ej. { reasoning: 'high' })
+  approvalResponse?: ApprovalResponse;        // control-only (no crea turno nuevo)
+  service?: string;                           // override per-turn del modelo
+  cwd?: string;                               // override per-turn del cwd
+}
+```
+
+**`TurnAttachment`** (adjunto inline en `turn/send`):
+```typescript
+interface TurnAttachment {
+  type?: 'image';
+  mimeType: string;                           // 'image/png' | 'image/jpeg' | ...
+  base64Data?: string;                        // una de base64Data o path
+  path?: string;                              // ruta alternativa (tolerante)
+  width?: number;
+  height?: number;
+}
+```
+
+**`ApprovalResponse`** (respuesta del usuario a un `approval` content block):
+```typescript
+type ApprovalDecision = 'approve' | 'reject' | 'approveSession';
+interface ApprovalResponse { approvalId: string; decision: ApprovalDecision; }
+```
+
+**`AgentModel`** (item de `agent/models`):
+```typescript
+interface AgentModel {
+  id: string;                                 // routing key (alias, provider/model, o id concreto)
+  displayName: string;                        // nombre legible para el picker
+  description?: string;
+  version?: string;                           // version concreta para ids no-alias
+  isDefault?: boolean;
+  options?: AgentModelOption[];               // per-model run-option knobs
+}
+type AgentModelOption =
+  | { key: string; kind: 'enum';   label: string; values: string[]; default?: string }
+  | { key: string; kind: 'toggle'; label: string; default?: boolean };
+// El telefono IGNORA kinds desconocidos (forward-compatible).
+```
+
+**`AgentCapabilities`** (de `agent/list`):
+```typescript
+interface AgentCapabilities {
+  planMode: boolean;
+  streaming: boolean;
+  approvals: boolean;            // emite `approval` content blocks (opt-in)
+  forking: boolean;
+  images: boolean;               // acepta TurnAttachment[] en sendTurn
+  reportsContextUsage: boolean;  // emite `usage` en turn/completed
+}
+```
+
+**`TurnUsage`** (en `TurnCompletedParams.usage`):
+```typescript
+interface TurnUsage {
+  tokens: number;            // tokens que la conversacion ocupa ahora
+  contextWindow?: number;     // ventana del modelo cuando se conoce (Claude tiers)
+}
+// Si `contextWindow` esta presente, el telefono muestra %; si no, token count crudo.
+```
+
+**`ApprovalRequestBlock`** (forma de un `approval` content block):
+```typescript
+interface ApprovalRequestBlock {
+  approvalId: string;
+  action: string;             // descripcion legible de la accion propuesta
+  risk?: 'low' | 'medium' | 'high';
+  detail?: string;            // detalle adicional opcional
+}
+// Viajado como `stream/content/block` (NO como notificacion dedicada), para
+// que persista con el turno y sobreviva a un `turn/list` re-sync.
+```
+
+**`MessageContent`** (tipos polimorficos soportados; ver `02a` §6.2):
+- `text` (markdown + code blocks)
+- `command_execution` (Bash; output truncado a 4 KB)
+- `diff` (Edit/Write/MultiEdit/NotebookEdit; +/- counts; unified hunks)
+- `tool` (cualquier otra herramienta; output truncado)
+- `thinking` (razonamiento del agente; colapsable, default off)
+- `image` (inline, base64)
+- `approval` (bloque interactivo: Approve / Reject / "always allow this session")
+- `plan` (checklist; solo informacional, no bloquea)
+- `subagent` (status updates; solo informacional)
+- `usage` (token usage)
 
 ---
 
