@@ -138,12 +138,27 @@ class MyDevicesScreen extends ConsumerWidget {
     return NeScaffold(
       title: l10n.devicesTitle,
       actions: [
-        IconSurface(
-          icon: Icons.add_link_rounded,
-          tooltip: l10n.actionPairDevice,
-          // A PC is already paired (onboarding done): go straight to the QR
-          // scanner. First-pair onboarding is the empty state below.
-          onPressed: () => context.push(AppRoutes.pairing),
+        // Pair another PC: a floating menu offering the QR scanner or the
+        // manual host+code flow (both reach the same pairing handshake).
+        MenuAnchor(
+          builder: (context, controller, child) => IconSurface(
+            icon: Icons.add_link_rounded,
+            tooltip: l10n.actionPairDevice,
+            onPressed: () =>
+                controller.isOpen ? controller.close() : controller.open(),
+          ),
+          menuChildren: [
+            MenuItemButton(
+              leadingIcon: const Icon(Icons.qr_code_scanner_rounded),
+              onPressed: () => context.push(AppRoutes.pairing),
+              child: Text(l10n.actionScanQr),
+            ),
+            MenuItemButton(
+              leadingIcon: const Icon(Icons.keyboard_rounded),
+              onPressed: () => context.push(AppRoutes.manualPairing),
+              child: Text(l10n.actionEnterCode),
+            ),
+          ],
         ),
         IconSurface(
           icon: Icons.settings_outlined,
