@@ -316,12 +316,70 @@ This applies always, regardless of the change's size. A typo fix requires the sa
 
 ---
 
+### 4. Spec drift control (non-negotiable)
+
+The architecture/ folders are the **source of truth** for cross-component
+concerns (E2EE protocol, JSON-RPC contracts, the bridge spec §5.8, the relay
+spec §5.10, the desktop three-panel ADE, the Flutter Clean Architecture, etc.).
+The CHANGELOG.md and FOR-DEV.md files in each monorepo record what actually
+happened. The two MUST stay in sync.
+
+**Rule (non-negotiable):** every time a `FOR-DEV.md` item is closed with a
+`DONE` / `DONE & validated end-to-end` marker (or any equivalent: "landed",
+"wired", "implemented"), the same change MUST be reflected in the relevant
+`architecture/` document in the same change set — **not only in the CHANGELOG**.
+The CHANGELOG entry is not a substitute for the spec.
+
+What "reflected" means in practice:
+- **New or changed cross-component contract** (a new JSON-RPC method, a new
+  E2EE message, a new notification, a new model field) → update the
+  applicable section of `architecture/02a-system-architecture.md` (or
+  `02b-contracts-and-requirements.md` for contract-level details), and
+  bump the matching shared model in `shared/`.
+- **Changed direction** (e.g. the relay going from required to optional;
+  push moving from relay to bridge; pairing-by-code moving from relay to
+  bridge) → rewrite the affected section of `02a-system-architecture.md` and
+  the affected spec page (e.g. `02a` §5.10, `02e-bridge-integration.md`).
+  Update the executive summary at the top of the same doc.
+- **Implementation state change** (a phase flipping from planned to done) →
+  update the matching `architecture/04-technical-reference.md` / `00-index.md`
+  status table for that component.
+- **Spec-only decision (no code change)** → also reflected in
+  `architecture/`, since the spec is the source of truth.
+
+**Workflow for the dev/agent:**
+1. Land the code change (commit, PR merge, or local-only — whichever the user
+   asked for).
+2. In the **same change set** (same commit if small, or an immediate
+   follow-up commit on the same branch), update the affected
+   `architecture/` sections + the matching component README if behavior
+   changed.
+3. In the commit body, list every spec file that was updated and the section
+   that changed (one-liner per section), so the reviewer can verify the
+   sync.
+4. If the change is too large to update the spec in the same set (rare;
+   usually only for a full subsystem rewrite), open a follow-up task in the
+   matching `FOR-DEV.md` and link the two.
+
+**Exception (acceptable drift, with a marker):** a code change that contradicts
+the spec MAY land first when the spec is clearly stale, with a `// FOR-DRIFT:`
+inline comment at the conflict site, AND a `FOR-DRIFT` entry added to the
+matching `FOR-DEV.md` describing what spec change is owed. The drift must
+be resolved in the next spec-update pass — never let a `FOR-DRIFT` entry
+survive a release.
+
+---
+
 ## Conflict resolution
 
 If the documentation says one thing but the existing code does another:
 1. Documentation takes priority (the project is in ALPHA, code adapts to the spec).
 2. If you believe the documentation is wrong, flag it explicitly before implementing.
 3. Do not silently "fix" discrepancies — communicate them.
+
+**Ongoing drift control** (spec must not lag the code): see
+*"Spec drift control (non-negotiable)"* below — every `FOR-DEV.md → DONE`
+MUST be reflected in `architecture/` in the same change set.
 
 ---
 
@@ -360,3 +418,4 @@ If the documentation says one thing but the existing code does another:
 | MVP and implementation phases | `uxnandesktop/architecture/04-technical-reference.md` |
 | Full E2EE protocol | `architecture/02a-system-architecture.md` (section 5.9) |
 | Security and cryptography | `architecture/02b-contracts-and-requirements.md` (section 5) |
+| Spec drift control (sync FOR-DEV → architecture/) | `AGENTS.md` → "Spec drift control (non-negotiable)" |
