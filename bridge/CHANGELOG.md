@@ -5,8 +5,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
-### Added
-- **Git revert + safe branch/worktree deletion + `workspace/exists`** —
+### Changed
+- **Gemini model list is the full `VALID_GEMINI_MODELS` set, plus `auto`.**
+  The Gemini CLI has no headless enumerate command (only Codex via
+  app-server and OpenCode/pi via their list commands can; Claude Code can't
+  either), so `listModels()` returns a hand-kept table sourced from the CLI's
+  own constants (`packages/core/src/config/models.ts` in
+  google-gemini/gemini-cli): the `auto` routing alias and every id in the
+  CLI's `VALID_GEMINI_MODELS` set. The concrete model a run resolves to is
+  still surfaced via `model_resolved`. Curated ids:
+  - `auto` *(default, → CLI picks the best model)*
+  - Pro: `gemini-3-pro-preview`, `gemini-3.1-pro-preview`,
+    `gemini-3.1-pro-preview-customtools`, `gemini-2.5-pro`
+  - Flash: `gemini-3-flash-preview`, `gemini-3.5-flash`, `gemini-3-flash`,
+    `gemini-2.5-flash`
+  - Flash-Lite: `gemini-3.1-flash-lite`
+  - *Experimental* (CLI's `experimentalGemma` flag): `gemma-4-31b-it`,
+    `gemma-4-26b-a4b-it`
   `git/revert` (creates a revert commit, preserving history),
   `git/deleteBranch` (`git branch -d`, refuses an unmerged branch unless
   `force` → `-D`), `git/removeWorktree` (`git worktree remove`, refuses a dirty

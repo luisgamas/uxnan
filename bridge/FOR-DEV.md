@@ -592,10 +592,21 @@ The OpenCode adapter is the template for any "one-shot per-turn CLI" agent:
       under a generated UUID (`--session-id <uuid>`); later turns `--resume <uuid>`
       (verified: a fact set on turn 1 is recalled on turn 2). The native session id
       is tracked per thread (`nativeSessionId`). **Model discovery:** the CLI has no
-      enumerate command, so `listModels()` returns a curated set
-      (`gemini-2.5-pro`/`flash`(default)/`flash-lite`); the CONCRETE model an alias
-      resolves to (e.g. `gemini-3.1-flash-lite`) is read from `stats.models` and
-      emitted as `model_resolved`. **Usage:** `stats.total_tokens` + a 1M context
+      headless enumerate command (like Claude Code — only Codex via app-server
+      and OpenCode/pi via their list commands can enumerate), so `listModels()`
+      returns a **curated set** sourced from the CLI's own constants
+      (`packages/core/src/config/models.ts` in google-gemini/gemini-cli): the
+      `auto` routing alias *(default)* plus every id in the CLI's
+      `VALID_GEMINI_MODELS` set — Pro (`gemini-3-pro-preview`,
+      `gemini-3.1-pro-preview`, `gemini-3.1-pro-preview-customtools`,
+      `gemini-2.5-pro`), Flash (`gemini-3-flash-preview`, `gemini-3.5-flash`,
+      `gemini-3-flash`, `gemini-2.5-flash`), Flash-Lite
+      (`gemini-3.1-flash-lite`), and the *Experimental* Gemma ids
+      (`gemma-4-31b-it`, `gemma-4-26b-a4b-it`, gated by the CLI's
+      `experimentalGemma` flag — prefixed with "Experimental" in their
+      `displayName`). The CONCRETE model a run resolves to is read from
+      `stats.models` and emitted as `model_resolved`. **Usage:**
+      `stats.total_tokens` + a 1M context
       window → the context meter. **Diffs/tools:** `gemini-tools.ts` maps
       `write_file`→write-diff, `replace`→edit-diff, `run_shell_command`→command
       block, others→generic tool block; the internal `update_topic` tool is filtered.

@@ -196,9 +196,23 @@ test('a failed result surfaces as turn_error', async () => {
 test('listModels returns the curated set with a default', async () => {
   const adapter = new GeminiAdapter({ binaryPath: 'gemini' });
   const models = await adapter.listModels();
-  assert.ok(models.some((m) => m.id === 'gemini-2.5-flash' && m.isDefault));
-  assert.ok(models.some((m) => m.id === 'gemini-2.5-flash-lite'));
+  // Auto-routing alias.
+  assert.ok(models.some((m) => m.id === 'auto' && m.isDefault));
+  // Every id in the CLI's `VALID_GEMINI_MODELS` set.
+  assert.ok(models.some((m) => m.id === 'gemini-3-pro-preview'));
+  assert.ok(models.some((m) => m.id === 'gemini-3.1-pro-preview'));
+  assert.ok(models.some((m) => m.id === 'gemini-3.1-pro-preview-customtools'));
+  assert.ok(models.some((m) => m.id === 'gemini-3-flash-preview'));
   assert.ok(models.some((m) => m.id === 'gemini-2.5-pro'));
+  assert.ok(models.some((m) => m.id === 'gemini-2.5-flash'));
+  assert.ok(models.some((m) => m.id === 'gemini-3.5-flash'));
+  assert.ok(models.some((m) => m.id === 'gemini-3-flash'));
+  assert.ok(models.some((m) => m.id === 'gemini-3.1-flash-lite'));
+  // Experimental Gemma ids are listed (CLI gates them by `experimentalGemma`).
+  assert.ok(models.some((m) => m.id === 'gemma-4-31b-it'));
+  assert.ok(models.some((m) => m.id === 'gemma-4-26b-a4b-it'));
+  // Exactly one default.
+  assert.equal(models.filter((m) => m.isDefault).length, 1);
 });
 
 test('gemini-tools maps tools and flags internal ones', () => {

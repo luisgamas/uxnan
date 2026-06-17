@@ -62,17 +62,85 @@ const GEMINI_CAPABILITIES: AgentCapabilities = {
 const GEMINI_CONTEXT_WINDOW = 1_048_576;
 
 /**
- * Known Gemini models. The CLI has no enumerate command, so this is a curated
- * table (like Claude Code's aliases). `gemini-2.5-flash` is the free-tier
- * workhorse default; `flash-lite` is cheapest, `pro` the most capable.
+ * Curated Gemini model set. The Gemini CLI exposes **no headless enumerate
+ * command** (like Claude Code — only Codex via app-server and OpenCode/pi via
+ * their own list commands can enumerate), so we ship a hand-kept table sourced
+ * from the CLI's own constants
+ * (`packages/core/src/config/models.ts` in google-gemini/gemini-cli). Every id
+ * in the CLI's `VALID_GEMINI_MODELS` set is listed, plus the `auto` routing
+ * alias. The concrete model a run resolves to is always surfaced via the
+ * `model_resolved` event.
  */
 const GEMINI_MODELS: AgentModel[] = [
-  { id: 'gemini-2.5-pro', displayName: 'Gemini 2.5 Pro' },
-  { id: 'gemini-2.5-flash', displayName: 'Gemini 2.5 Flash', isDefault: true },
-  { id: 'gemini-2.5-flash-lite', displayName: 'Gemini 2.5 Flash-Lite' },
+  // Auto-routing (the CLI picks the best model for each task).
+  {
+    id: 'auto',
+    displayName: 'Auto',
+    description: 'Let the CLI pick the best model for each task (recommended)',
+    isDefault: true,
+  },
+  // Pro tier.
+  {
+    id: 'gemini-3-pro-preview',
+    displayName: 'Gemini 3 Pro (Preview)',
+    description: 'Most capable, preview build',
+  },
+  {
+    id: 'gemini-3.1-pro-preview',
+    displayName: 'Gemini 3.1 Pro (Preview)',
+    description: 'Newer Pro preview build',
+  },
+  {
+    id: 'gemini-3.1-pro-preview-customtools',
+    displayName: 'Gemini 3.1 Pro (Preview, custom tools)',
+    description: '3.1 Pro preview variant for custom-tools backends',
+  },
+  {
+    id: 'gemini-2.5-pro',
+    displayName: 'Gemini 2.5 Pro',
+    description: 'Stable 2.5-generation Pro',
+  },
+  // Flash tier.
+  {
+    id: 'gemini-3-flash-preview',
+    displayName: 'Gemini 3 Flash (Preview)',
+    description: 'Pinned 3-generation Flash preview build',
+  },
+  {
+    id: 'gemini-3.5-flash',
+    displayName: 'Gemini 3.5 Flash',
+    description: '3.5-generation Flash (GA)',
+  },
+  {
+    id: 'gemini-3-flash',
+    displayName: 'Gemini 3 Flash',
+    description: 'Secondary 3.5-flash alias for backends that reject "gemini-3.5-flash"',
+  },
+  {
+    id: 'gemini-2.5-flash',
+    displayName: 'Gemini 2.5 Flash',
+    description: 'Stable 2.5-generation Flash',
+  },
+  // Flash-Lite tier.
+  {
+    id: 'gemini-3.1-flash-lite',
+    displayName: 'Gemini 3.1 Flash-Lite',
+    description: 'Cheapest 3.1-generation tier (GA)',
+  },
+  // Experimental — gated by the CLI's `experimentalGemma` flag.
+  {
+    id: 'gemma-4-31b-it',
+    displayName: 'Gemma 4 31B (IT) — Experimental',
+    description: 'Experimental — only enabled when the CLI runs with `experimentalGemma` on',
+  },
+  {
+    id: 'gemma-4-26b-a4b-it',
+    displayName: 'Gemma 4 26B (A4B, IT) — Experimental',
+    description: 'Experimental — only enabled when the CLI runs with `experimentalGemma` on',
+  },
 ];
 
-const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
+const DEFAULT_GEMINI_MODEL = 'auto';
 
 /**
  * Approval posture passed to `gemini --approval-mode`:
