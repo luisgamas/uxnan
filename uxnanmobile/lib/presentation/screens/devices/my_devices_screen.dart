@@ -140,10 +140,9 @@ class MyDevicesScreen extends ConsumerWidget {
       actions: [
         // Pair another PC: an M3 popup (matching the threads sort/more menus)
         // offering the QR scanner or the manual host+code flow.
-        PopupMenuButton<_PairAction>(
+        IconSurfaceMenu<_PairAction>(
           tooltip: l10n.actionPairDevice,
-          position: PopupMenuPosition.under,
-          child: const _MenuSurface(icon: Icons.add_link_rounded),
+          icon: Icons.add_link_rounded,
           onSelected: (action) {
             switch (action) {
               case _PairAction.scanQr:
@@ -672,31 +671,3 @@ class _BrandingFooter extends StatelessWidget {
 
 /// The pairing entry choices in the devices app-bar menu.
 enum _PairAction { scanQr, enterCode }
-
-/// A neutral circular surface (40 dp visual / 48 dp touch) used as the tappable
-/// child of the pairing popup menu, so it reads as an Icon Surface in the bar —
-/// matching the threads sort/more menus and the standalone [IconSurface] actions.
-class _MenuSurface extends StatelessWidget {
-  const _MenuSurface({required this.icon});
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return SizedBox(
-      width: 48,
-      height: 48,
-      child: Center(
-        child: Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: colors.surfaceContainerHigh,
-            shape: BoxShape.circle,
-          ),
-          child: Icon(icon, size: 20, color: colors.onSurfaceVariant),
-        ),
-      ),
-    );
-  }
-}

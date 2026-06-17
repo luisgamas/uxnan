@@ -104,3 +104,79 @@ class _IconSurfaceState extends State<IconSurface>
     );
   }
 }
+
+/// An [IconSurface] that opens an M3 popup menu. Use instead of a
+/// [PopupMenuButton] with a circular child: that wraps its child in a
+/// **rectangular** [InkWell], so the press ripple reads as a square over the
+/// round surface. This drives [showMenu] from an [IconSurface] tap instead, so
+/// the ripple is clipped to the circle (and the M3E press-scale spring plays),
+/// staying coherent with the standalone bar actions.
+class IconSurfaceMenu<T> extends StatelessWidget {
+  /// Creates an [IconSurfaceMenu].
+  const IconSurfaceMenu({
+    required this.icon,
+    required this.tooltip,
+    required this.itemBuilder,
+    this.onSelected,
+    this.enabled = true,
+    this.constraints,
+    super.key,
+  });
+
+  /// The glyph shown on the surface.
+  final IconData icon;
+
+  /// Tooltip + accessibility label.
+  final String tooltip;
+
+  /// Builds the menu entries (same contract as [PopupMenuButton.itemBuilder]).
+  final PopupMenuItemBuilder<T> itemBuilder;
+
+  /// Called with the chosen value. Optional — entries may instead carry their
+  /// own `onTap` (the `void`-typed menus do).
+  final PopupMenuItemSelected<T>? onSelected;
+
+  /// When false the surface reads as disabled and won't open.
+  final bool enabled;
+
+  /// Optional size constraints for the menu (e.g. a wider `minWidth`).
+  final BoxConstraints? constraints;
+
+  Future<void> _open(BuildContext context) async {
+    final button = context.findRenderObject()! as RenderBox;
+    final overlay =
+        Navigator.of(context).overlay!.context.findRenderObject()! as RenderBox;
+    final bottomLeft = button.localToGlobal(
+      button.size.bottomLeft(Offset.zero),
+      ancestor: overlay,
+    );
+    final bottomRight = button.localToGlobal(
+      button.size.bottomRight(Offset.zero),
+      ancestor: overlay,
+    );
+    // A zero-height anchor at the button's bottom edge → menu opens under it,
+    // matching PopupMenuPosition.under.
+    final position = RelativeRect.fromRect(
+      Rect.fromPoints(bottomLeft, bottomRight),
+      Offset.zero & overlay.size,
+    );
+    final items = itemBuilder(context);
+    if (items.isEmpty) return;
+    final selected = await showMenu<T>(
+      context: context,
+      position: position,
+      items: items,
+      constraints: constraints,
+    );
+    if (selected != null) onSelected?.call(selected);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return IconSurface(
+      icon: icon,
+      tooltip: tooltip,
+      onPressed: enabled ? () => _open(context) : null,
+    );
+  }
+}

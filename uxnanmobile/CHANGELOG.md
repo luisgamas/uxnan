@@ -7,6 +7,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- **App-bar menu buttons ripple as circles, not squares.** The sort / more /
+  pairing / conversation / git overflow menus wrapped a round surface in a
+  `PopupMenuButton`, whose internal `InkWell` is rectangular — so the press
+  ripple read as a square over the circle. New shared `IconSurfaceMenu` drives
+  `showMenu` from a real `IconSurface`, so the ripple is clipped to the circle
+  and the M3E press-scale spring plays, matching the standalone bar actions.
 - **"Remove worktree" now appears** for worktree-backed threads: the app
   persists the `worktreePath` it created (the bridge doesn't track it), which is
   what gates the action.

@@ -999,30 +999,10 @@ class _ConversationMenu extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final colors = Theme.of(context).colorScheme;
-    return PopupMenuButton<void>(
+    return IconSurfaceMenu<void>(
       tooltip: l10n.threadsMore,
+      icon: Icons.more_vert_rounded,
       constraints: const BoxConstraints(minWidth: 220),
-      position: PopupMenuPosition.under,
-      child: SizedBox(
-        width: 48,
-        height: 48,
-        child: Center(
-          child: Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: colors.surfaceContainerHigh,
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              Icons.more_vert_rounded,
-              size: 20,
-              color: colors.onSurfaceVariant,
-            ),
-          ),
-        ),
-      ),
       itemBuilder: (context) => [
         PopupMenuItem<void>(
           onTap: onRename,
