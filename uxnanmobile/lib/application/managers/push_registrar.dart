@@ -102,6 +102,10 @@ class PushRegistrar {
   bool _connected = false;
   String? _registeredToken;
 
+  /// Whether a live bridge connection is currently active (drives whether a
+  /// foreground FCM push is redundant with the live domain-event path).
+  bool get isConnected => _connected;
+
   /// The platform string sent to the bridge (`"android"` or `"ios"`).
   String get _platform => _isAndroid ? 'android' : 'ios';
 

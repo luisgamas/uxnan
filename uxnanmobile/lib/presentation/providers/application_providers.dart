@@ -610,6 +610,10 @@ final pushRegistrarProvider = Provider<PushRegistrar>((ref) {
   final pushService = ref.watch(pushNotificationServiceProvider);
   // Fire-and-forget init: must never block app startup.
   unawaited(pushService.init());
+  // Foreground FCM suppression: skip a push for the conversation on screen, and
+  // (while connected) defer to the live domain-event path so a foreground push
+  // never duplicates the notification the WS already raises.
+  pushService.foregroundThreadId = () => ref.read(foregroundThreadProvider);
   final registrar = PushRegistrar(
     pushService: pushService,
     sendRequest: coordinator.sendRequest,
@@ -635,6 +639,10 @@ final pushRegistrarProvider = Provider<PushRegistrar>((ref) {
       return null;
     },
   );
+  // The registrar tracks the live connection state; let the push service read
+  // it so a foreground FCM push defers to the live domain-event path while
+  // connected.
+  pushService.isConnected = () => registrar.isConnected;
   ref.onDispose(registrar.dispose);
   return registrar;
 });

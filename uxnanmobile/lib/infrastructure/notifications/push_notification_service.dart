@@ -65,6 +65,18 @@ class PushNotificationService {
     importance: Importance.high,
   );
 
+  /// Resolves the `threadId` of the conversation currently on screen (null when
+  /// none), so a **foreground** FCM push for that conversation is suppressed —
+  /// the user already sees the reply live. Wired by `pushRegistrarProvider`.
+  String? Function()? foregroundThreadId;
+
+  /// Reports whether a live bridge connection is active. While connected, the
+  /// live WS + domain-event path already raises foreground notifications (with
+  /// per-thread suppression), so a foreground FCM push would duplicate it and
+  /// is suppressed; FCM only surfaces in the foreground when disconnected
+  /// (e.g. the devices list). Wired by `pushRegistrarProvider`.
+  bool Function()? isConnected;
+
   /// Whether push is available (Firebase initialized and messaging reachable).
   ///
   /// `false` when Firebase native config is missing or initialization failed;
@@ -236,6 +248,14 @@ class PushNotificationService {
   }
 
   void _handleForegroundMessage(RemoteMessage message) {
+    final threadId = message.data['threadId'] as String?;
+    if (shouldSuppressForegroundPush(
+      threadId: threadId,
+      foregroundThreadId: foregroundThreadId?.call(),
+      connected: isConnected?.call() ?? false,
+    )) {
+      return;
+    }
     final notification = message.notification;
     final title = notification?.title ?? message.data['title'] as String?;
     final body = notification?.body ?? message.data['body'] as String?;
@@ -244,8 +264,25 @@ class PushNotificationService {
       showLocalNotification(
         title: title ?? '',
         body: body ?? '',
-        payload: message.data['threadId'] as String?,
+        payload: threadId,
       ),
     );
   }
+}
+
+/// Whether a **foreground** FCM push for [threadId] should be suppressed:
+///  - the conversation is the one on screen ([foregroundThreadId]) — the user
+///    already sees the reply live; or
+///  - a live bridge connection is active ([connected]) — the WS + domain-event
+///    path already raises the notification (with per-thread suppression), so a
+///    foreground push would duplicate it.
+/// A disconnected foreground (e.g. the devices list) still surfaces the push.
+bool shouldSuppressForegroundPush({
+  required String? threadId,
+  required String? foregroundThreadId,
+  required bool connected,
+}) {
+  if (threadId != null && foregroundThreadId == threadId) return true;
+  if (connected) return true;
+  return false;
 }
