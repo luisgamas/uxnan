@@ -6,6 +6,17 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- **"Remove worktree" now appears** for worktree-backed threads: the app
+  persists the `worktreePath` it created (the bridge doesn't track it), which is
+  what gates the action.
+- **Branch delete protects the primary branch** (`main`/`master`) and the
+  current branch, and only offers deletion for local branches (never remotes).
+- **Conversation auto-scroll reaches the true bottom.** It jumped to a stale
+  `maxScrollExtent` (captured before streaming/late layout finished), landing
+  just short and fighting a manual drag-down. It now jumps to the live bottom
+  and re-checks next frame to catch late layout.
+
 ### Added
 - **Git revert + branch/worktree deletion wiring.** `GitActionManager` gains
   `revert` (`git/revert`), `deleteBranch` (`git/deleteBranch`, `force`) and

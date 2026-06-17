@@ -123,6 +123,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
       final branch = _worktreeBranch.text.trim();
       // Optionally run the conversation in a fresh worktree, then point it at
       // the created checkout so the agent never touches the base working tree.
+      String? createdWorktree;
       if (_useWorktree && branch.isNotEmpty) {
         final result = await ref.read(gitActionManagerProvider).createWorktree(
               GitWorktreeParams(
@@ -133,7 +134,10 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
               ),
             );
         if (result == null) throw StateError('worktree');
-        if (result.path.isNotEmpty) workingCwd = result.path;
+        if (result.path.isNotEmpty) {
+          workingCwd = result.path;
+          createdWorktree = result.path;
+        }
       }
       final coordinator = ref.read(sessionCoordinatorProvider);
       // Tag with the PC we actually hold a live channel to.
@@ -144,6 +148,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
             model: _model.text.trim(),
             cwd: workingCwd,
             deviceId: deviceId,
+            worktreePath: createdWorktree,
           );
       if (mounted) Navigator.of(context).pop(thread.id);
     } on Object {

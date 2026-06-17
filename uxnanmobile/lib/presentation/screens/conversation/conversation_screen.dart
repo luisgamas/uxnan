@@ -143,11 +143,20 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
 
   void _scrollToBottom() {
     if (!_scroll.hasClients) return;
-    _scroll.animateTo(
-      _scroll.position.maxScrollExtent,
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOut,
-    );
+    // Jump (don't animate) to the bottom: an animation captures a target at one
+    // moment, but streaming tokens / variable-height messages / images keep
+    // growing the content, so the animation lands short and the next emission
+    // restarts it — the "stuck just above the bottom, bounces when I drag down"
+    // bug. Jumping to the live maxScrollExtent sticks to the true bottom.
+    _scroll.jumpTo(_scroll.position.maxScrollExtent);
+    // Content can finish laying out AFTER this frame (late image/height
+    // measurement), growing the extent; re-jump next frame so we reach the real
+    // bottom instead of stopping a little short.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scroll.hasClients) return;
+      final max = _scroll.position.maxScrollExtent;
+      if (max - _scroll.offset > 1) _scroll.jumpTo(max);
+    });
   }
 
   /// Opens the git actions screen (branch state, changed files, commit/push)

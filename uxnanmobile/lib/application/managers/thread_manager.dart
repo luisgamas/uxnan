@@ -406,6 +406,7 @@ class ThreadManager {
     String? model,
     String? cwd,
     String? deviceId,
+    String? worktreePath,
   }) async {
     final response = await _sendRequest('thread/start', {
       'projectId': projectId,
@@ -431,8 +432,13 @@ class ThreadManager {
     // the CLI on the PC. The user can rename it afterwards.
     final hasUserTitle = title != null && title.trim().isNotEmpty;
     final titled = hasUserTitle ? base : base.copyWith(title: base.id);
-    final thread =
+    var thread =
         deviceId != null ? titled.copyWith(deviceId: deviceId) : titled;
+    // The bridge doesn't track the worktree, so persist the path the app
+    // created it at — this surfaces the "Remove worktree" action.
+    if (worktreePath != null && worktreePath.isNotEmpty) {
+      thread = thread.copyWith(worktreePath: worktreePath);
+    }
     await _threadRepository.saveThread(thread);
     return thread;
   }

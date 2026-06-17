@@ -1783,6 +1783,15 @@ class _BranchPickerState extends State<_BranchPicker> {
 
   bool _isLocal(String branch) => widget.branches.local.contains(branch);
 
+  /// The primary branch is never offered for deletion (you almost always work
+  /// on it; deleting it is rarely intended). Covers the common default names.
+  static const _protected = {'main', 'master'};
+
+  /// Whether [branch] can be deleted: a local, non-primary branch only (remotes
+  /// need `push --delete`; the current branch is already off the list).
+  bool _canDelete(String branch) =>
+      _isLocal(branch) && !_protected.contains(branch);
+
   Future<void> _delete(String branch) async {
     setState(() => _deleting = branch);
     final removed = await widget.onDeleteBranch(branch);
@@ -1833,8 +1842,9 @@ class _BranchPickerState extends State<_BranchPicker> {
               onTap: _deleting == null
                   ? () => Navigator.of(context).pop(branch)
                   : null,
-              // Only local branches are deletable (remotes need push --delete).
-              trailing: !_isLocal(branch)
+              // Deletable: a local, non-primary branch (remotes need
+              // push --delete; main/master are protected).
+              trailing: !_canDelete(branch)
                   ? null
                   : _deleting == branch
                       ? const SizedBox(
