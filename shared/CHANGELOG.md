@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 
 ### Added
+- **Git revert + safe branch/worktree deletion + cwd probe** (`jsonrpc/methods.ts`,
+  `jsonrpc/method-registry.ts`, `models/workspace.ts`): `git/revert`
+  (`GitRevertParams`), `git/deleteBranch` (`GitDeleteBranchParams`, `force`),
+  `git/removeWorktree` (`GitRemoveWorktreeParams`, `force`) and `workspace/exists`
+  (`WorkspaceExistsParams` → `WorkspaceExistsResult { exists, isGitRepo? }`).
+  Deletion is fail-safe by default (git refuses an unmerged branch / dirty
+  worktree unless `force`); the probe lets the phone detect a thread whose `cwd`
+  vanished.
 - **Interactive approval contracts** (`models/approval.ts`, `jsonrpc/methods.ts`,
   `agents/agent-adapter.ts`): `ApprovalDecision`
   (`approve | reject | approveSession`), `ApprovalResponse`

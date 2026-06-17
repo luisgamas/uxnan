@@ -26,6 +26,7 @@ import type {
   ImageContent,
   PatchChange,
   TurnAttachment,
+  WorkspaceExistsResult,
   WorkspaceListing,
 } from '../models/workspace.js';
 import type { AuthStatus, Project } from '../models/project.js';
@@ -175,6 +176,35 @@ export interface GitWorktreeParams {
   path: string;
   managed?: boolean;
 }
+export interface GitRevertParams {
+  cwd: string;
+  /** Commit-ish to revert (e.g. `HEAD`, a sha). Creates a new revert commit. */
+  commit: string;
+}
+export interface GitDeleteBranchParams {
+  cwd: string;
+  branch: string;
+  /**
+   * When false, git refuses to delete a branch not fully merged (`-d`); true
+   * forces it (`-D`). The phone should retry with `force: true` only after an
+   * explicit user confirmation.
+   */
+  force: boolean;
+}
+export interface GitRemoveWorktreeParams {
+  cwd: string;
+  /** The worktree's path to remove. */
+  path: string;
+  /**
+   * When false, git refuses to remove a worktree with uncommitted/untracked
+   * changes; true forces it. Confirm with the user before forcing.
+   */
+  force: boolean;
+}
+export interface WorkspaceExistsParams {
+  /** Absolute directory to probe (a thread's `cwd`). */
+  cwd: string;
+}
 
 export interface BrowseDirsParams {
   /** Which configured root to browse (defaults to the first when omitted). */
@@ -264,6 +294,9 @@ export interface JsonRpcMethodRegistry {
   'git/undoCommit': { params: { cwd: string }; result: void };
   'git/branches': { params: { cwd: string }; result: GitBranchList };
   'git/switchBranch': { params: GitSwitchBranchParams; result: void };
+  'git/revert': { params: GitRevertParams; result: void };
+  'git/deleteBranch': { params: GitDeleteBranchParams; result: void };
+  'git/removeWorktree': { params: GitRemoveWorktreeParams; result: void };
 
   // Workspace
   'workspace/readFile': { params: { cwd: string; path: string }; result: FileContent };
@@ -274,6 +307,7 @@ export interface JsonRpcMethodRegistry {
   'workspace/diffCheckpoint': { params: { id: string }; result: CheckpointDiff };
   'workspace/applyCheckpoint': { params: { id: string }; result: void };
   'workspace/applyPatch': { params: PatchParams; result: ApplyResult };
+  'workspace/exists': { params: WorkspaceExistsParams; result: WorkspaceExistsResult };
 
   // Projects
   'project/list': { params: void; result: Project[] };

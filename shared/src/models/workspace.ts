@@ -37,6 +37,18 @@ export interface TurnAttachment {
   height?: number;
 }
 
+/**
+ * Result of a `workspace/exists` probe: whether a thread's `cwd` still exists
+ * on disk (folders/worktrees can be removed outside the app), so the phone can
+ * mark a thread unavailable instead of failing every action.
+ */
+export interface WorkspaceExistsResult {
+  /** Whether the directory exists. */
+  exists: boolean;
+  /** Whether it is (still) a git repository / worktree, when it exists. */
+  isGitRepo?: boolean;
+}
+
 export type WorkspaceEntryType = 'file' | 'dir';
 
 export interface WorkspaceEntry {

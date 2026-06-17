@@ -36,6 +36,9 @@ export const METHOD_NAMES = [
   'git/undoCommit',
   'git/branches',
   'git/switchBranch',
+  'git/revert',
+  'git/deleteBranch',
+  'git/removeWorktree',
   // Workspace
   'workspace/readFile',
   'workspace/readImage',
@@ -45,6 +48,7 @@ export const METHOD_NAMES = [
   'workspace/diffCheckpoint',
   'workspace/applyCheckpoint',
   'workspace/applyPatch',
+  'workspace/exists',
   // Projects
   'project/list',
   'project/resolve',
