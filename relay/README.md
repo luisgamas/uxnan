@@ -4,12 +4,24 @@ Stateless WebSocket relay that forwards **opaque E2EE envelopes** between the
 Uxnan mobile app and the bridge. It only ever sees encrypted frames — never
 plaintext, keys, code, or diffs.
 
-> **Status: Phase 6 (gated).** Forwarding by `sessionId`, `/health`, per-IP rate
-> limiting, reconnection support (peer-close + stale-socket handling) and the
-> push endpoints (`/push/register`, `/push/notify` — real delivery gated on a
-> Firebase service account) are implemented. Pairing-code resolution,
-> multi-session `mac` registration and auth-on-forwarding remain deferred (see
-> [`FOR-DEV.md`](FOR-DEV.md)).
+> **Status: ALPHA-FUNCTIONAL — OPTIONAL / self-hosted.**
+>
+> The product is **bridge-first**: the primary paths are LAN-direct and
+> Tailscale-direct (zero hosting, zero credentials). The relay is the
+> hosted off-LAN fallback for users who want to run their own.
+> **Push notifications are sent by the bridge directly** (FCM HTTP v1, lazy
+> `firebase-admin`); the relay's `/push/*` endpoints stay as a hosted
+> fallback. See `bridge/FOR-DEV.md` → *Direct FCM from the bridge*.
+>
+> **DONE:** E2EE envelope relay (one `mac`+`iphone` per `sessionId`),
+> `GET /health`, per-IP rate limiting, reconnection support (peer-close +
+> stale-socket handling), push endpoints (`/push/register|notify`, FCM, gated
+> on creds).
+>
+> **PENDING — relay-only / optional** (does not block the bridge-first
+> product): multi-session `mac`, auth-on-forwarding, dedupe + token
+> persistence (only for a hosted/public relay); APNs-direct is superseded
+> (FCM-for-both). See [`FOR-DEV.md`](FOR-DEV.md).
 
 > **`mac` / `iphone` are ROLES, not platforms.** `mac` = the PC/bridge side
 > (runs on Windows, macOS or Linux); `iphone` = the mobile app side (Android or
@@ -44,9 +56,12 @@ See `architecture/02a-system-architecture.md` §5.10.
 npm run build && npm test
 ```
 
-Requires Node ≥18. ESM-only.
+Requires Node ≥18. ESM-only. The relay consumes `@uxnan/shared` for the
+JSON-RPC envelope types; the bridge-side `relay-e2e.test.ts` exercises the
+full end-to-end (relay + bridge + a fake phone over a real WebSocket).
 
 ## Docs
 
 See [`docs/`](./docs/): [deployment & hosting](./docs/deploy.md) (LAN-only vs
-Cloudflare Tunnel / Fly.io / Workers) · [testing](./docs/testing.md).
+Cloudflare Tunnel / Fly.io / Workers) · [testing](./docs/testing.md) ·
+[push notifications](./docs/push-notifications.md).
