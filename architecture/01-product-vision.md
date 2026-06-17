@@ -30,8 +30,8 @@
 
 - **Multi-agente y multi-proveedor:** compatible con OpenAI Codex CLI, OpenCode, Claude Code, Gemini CLI, pi-agent y cualquier agente futuro que exponga una interfaz JSON-RPC o JSONL compatible.
 - **Sin lock-in de proveedor:** el modelo de abstracción del bridge normaliza las diferencias de protocolo entre agentes.
-- **Local-first y soberanía de datos:** el código, contexto y conversaciones nunca pasan por servidores de terceros. El relay solo retransmite envelopes cifrados opacos.
-- **E2EE real:** el relay nunca ve el contenido en texto claro. La clave de sesión se deriva de un handshake X25519 + HKDF firmado con Ed25519.
+- **Local-first y soberanía de datos:** el código, contexto y conversaciones nunca pasan por servidores de terceros. El producto es **bridge-first**: la ruta primaria es **LAN-direct** o **Tailscale-direct** (cero hosting, cero credenciales). El relay es **opcional y self-hosted** — cuando se usa, solo retransmite envelopes cifrados opacos. El push lo envía el **bridge** directamente (FCM HTTP v1) sobre cualquier transporte.
+- **E2EE real:** ni el relay (cuando se usa) ni el bridge ven el contenido en texto claro. La clave de sesión se deriva de un handshake X25519 + HKDF firmado con Ed25519; el QR codifica la identidad del bridge y opcionalmente sus direcciones directas (`hosts: string[]`) además de una URL de relay.
 - **Multi-proyecto:** el usuario puede tener N proyectos abiertos en la PC y navegar entre ellos desde la app.
 - **Reconexión confiable:** buffer de outbound messages con replay por sequence number; la reconexión no pierde estado conversacional.
 - **Android e iOS como ciudadanos de primera clase:** no existen features exclusivos de una plataforma sin un equivalente funcional en la otra.
@@ -87,13 +87,17 @@ Uxnan no es un agente. Es el **cliente móvil** que permite al desarrollador con
                                                            │ E2EE
                                                            ▼
 ┌──────────────────────────────────────────────────────────────────────┐
-│                      Relay Server (Node.js)                          │
-│  ┌──────────┐  ┌─────────────┐  ┌──────────┐  ┌──────────────────┐  │
-│  │ HTTP/WS  │  │ WebSocket   │  │ Push     │  │ Session          │  │
-│  │ Server   │  │ Relay       │  │ Service  │  │ Management       │  │
-│  └──────────┘  └──────┬──────┘  └──────────┘  └──────────────────┘  │
+│                      Relay Server (Node.js, OPCIONAL)                │
+│   (Self-hosted, solo para acceso off-LAN. La ruta primaria del        │
+│    producto es LAN-direct / Tailscale-direct — sin relay.)            │
+│  ┌──────────┐  ┌─────────────┐  ┌──────────────────────────┐         │
+│  │ HTTP/WS  │  │ WebSocket   │  │ Session                  │         │
+│  │ Server   │  │ Relay       │  │ Management               │         │
+│  └──────────┘  └──────┬──────┘  └──────────────────────────┘         │
+│   (push endpoints opcionales: /push/register, /push/notify — solo     │
+│    como fallback si el bridge no tiene credencial FCM local)            │
 └─────────────────────────┼────────────────────────────────────────────┘
-                          │ WebSocket (E2EE opaque)
+                          │ WebSocket (E2EE opaque) — solo si el QR del bridge anuncia `relay`
                           ▼
 ┌──────────────────────────────────────────────────────────────────────┐
 │               Uxnan Bridge Daemon (PC: Win / macOS / Linux)          │
@@ -101,6 +105,10 @@ Uxnan no es un agente. Es el **cliente móvil** que permite al desarrollador con
 │  │ Secure   │  │ Agent      │  │ Handler    │  │ Daemon         │   │
 │  │Transport │→ │ Transport  │→ │ Router     │→ │ State          │   │
 │  └──────────┘  └────────────┘  └─────┬──────┘  └────────────────┘   │
+│  ┌─────────────┐  ┌─────────────────┘                                  │
+│  │ Push Svc    │  ← bridge-direct FCM (lazy firebase-admin)            │
+│  │ (FCM HTTPv1)│  → opcional POST /push/notify al relay (fallback)     │
+│  └─────────────┘                                                       │
 │                                      │                               │
 │          ┌─────────┬─────────┬───────┼───────┬─────────┐            │
 │          ▼         ▼         ▼       ▼       ▼         ▼            │
@@ -126,26 +134,46 @@ Uxnan no es un agente. Es el **cliente móvil** que permite al desarrollador con
 | Componente | Tecnología | Rol |
 |---|---|---|
 | **App móvil Uxnan** | Flutter / Dart | Cliente móvil: UI, transporte, estado |
-| **Uxnan Bridge** | Node.js daemon | Agente de control local en la PC |
-| **Uxnan Relay** | Node.js HTTP/WS | Relay de transporte E2EE + push |
-| **Agent Adapters** | Node.js | Adaptadores por agente (Codex, OpenCode, etc.) |
+| **Uxnan Bridge** | Node.js daemon | Plano de control local en la PC; corre agentes y expone la API JSON-RPC al móvil |
+| **Uxnan Relay** | Node.js HTTP/WS | (Opcional, self-hosted) Relay de envelopes E2EE opacos como fallback off-LAN; push enviado por el bridge directamente |
+| **Agent Adapters** | Node.js | Adaptadores por agente (Codex, OpenCode, Claude Code, pi, Gemini CLI, Aider) |
 
 ### 3.3 Topologías de conexión
 
-**Topología 1 — Red local (LAN):**
+> **Dirección (2026-06):** el producto es **bridge-first**. Las topologías
+> primaria y recomendada son LAN-direct y Tailscale-direct (cero hosting,
+> cero credenciales). El relay es la topología de **fallback off-LAN** que
+> el usuario puede self-hostear. Ver `02a-system-architecture.md` §2 y
+> `02e-bridge-integration.md` para el detalle.
+
+**Topología 1 — LAN directa (PRIMARIA):**
 ```
 [Móvil] ──WebSocket LAN──→ [Bridge directo]
 ```
-Cuando el móvil y la PC están en la misma red, la app puede conectarse directamente al bridge sin pasar por el relay. La conexión sigue siendo E2EE.
+Cuando el móvil y la PC están en la misma red, la app se conecta directamente
+al bridge. El bridge expone su `host:port` LAN en el `PairingPayload`
+(`hosts: string[]`); el `TransportSelector` del móvil prueba cada host directo
+con un timeout corto antes de cualquier fallback. La conexión sigue siendo
+E2EE extremo a extremo.
 
-**Topología 2 — Relay remoto (WAN):**
+**Topología 2 — Tailscale / mesh VPN directa (RECOMENDADA para remoto):**
 ```
-[Móvil] ──WS E2EE──→ [Relay] ──WS E2EE──→ [Bridge]
+[Móvil] ──WSS 100.x──→ [Bridge directo]
 ```
-Cuando el móvil está fuera de la red local. El relay retransmite envelopes cifrados opacos. No ve el contenido.
+Cuando el móvil y la PC están en la misma red Tailscale (o cualquier mesh
+VPN). El bridge detecta su dirección Tailscale (`100.x`) y la anuncia en
+`hosts`. Cero hosting, cero relay, E2EE intacto. Es la opción recomendada
+para acceder desde fuera de la LAN sin desplegar un relay.
 
-**Topología 3 — Self-hosted relay:**
-El usuario puede desplegar su propio relay en un VPS o servidor doméstico, eliminando dependencia del relay oficial.
+**Topología 3 — Relay self-hosted (FALLBACK off-LAN):**
+```
+[Móvil] ──WS E2EE──→ [Relay self-hosted] ──WS E2EE──→ [Bridge]
+```
+Cuando el móvil está fuera de la LAN y no hay Tailscale. El relay
+retransmite envelopes cifrados opacos; nunca ve el contenido. El relay es
+**opcional y self-hosted**: el usuario lo despliega en un VPS o servidor
+doméstico. El bridge lo anuncia en el QR solo si `relayEnabled = true`
+(por defecto `false`).
 
 ---
 
@@ -193,8 +221,11 @@ interface AgentCapabilities {
 [PC]  Instala uxnan-bridge: npm install -g uxnan-bridge
 [PC]  Ejecuta: uxnan-bridge start
 [PC]  Muestra QR en terminal: uxnan-bridge qr
-  QR = PairingPayload { v:2, relay:"wss://relay.uxnan.io", sessionId, macDeviceId,
+  QR = PairingPayload { v:2, hosts:["192.168.1.42:19850", "100.x.y.z:19850"],
+                         relay?: "wss://...", sessionId, macDeviceId,
                          macIdentityPublicKey, expiresAt, displayName }
+  // `relay` es opcional; `hosts` es la ruta primaria. El QR se codifica como
+  // Base64(utf8(JSON)). Ver 02a-system-architecture.md §5.5.4.
 
 [App] Abre OnboardingScreen
 [App] Sigue pasos de instalación
@@ -312,19 +343,28 @@ Si el agente solicita aprobación:
 
 ### 5.5 Flujo de notificación push
 
+> **Dirección (2026-06-12):** el push se envía **directamente desde el
+> bridge** sobre cualquier transporte (LAN, Tailscale, o relay) usando
+> FCM HTTP v1 (lazy `firebase-admin` con un service account local). El
+> relay conserva `POST /push/notify` como **fallback** opcional para
+> setups con relay hospedado. Ver `02a-system-architecture.md` §5.10
+> y `bridge/FOR-DEV.md` → *Direct FCM from the bridge*.
+
 ```
 [PC] Agente completa un turno largo
-[Bridge] push-notification-tracker detecta turn/completed
-[Bridge] push-notification-completion-dedupe: ¿ya enviado sessionId:turnId? No
-[Bridge → Relay] POST /push/notify
-  { sessionId, notificationSecret, threadId, turnId, title: "Tarea completada", body: "..." }
-[Relay] Valida notificationSecret ✓, no duplicado ✓
-[Relay → APNs/FCM] Envía push notification
+[Bridge] AgentManager.onTurnEnd detecta turn/completed
+[Bridge] PushService.resolveSession(sessionId) -> { token, platform }
+[Bridge] createBridgePushSender (lazy firebase-admin) -> Firebase FCM HTTP v1
+  { notification: { title: "Tarea completada", body: "..." },
+    data: { threadId, turnId, ... },
+    android: { priority: "high" }, apns: { headers: { "apns-priority": "10" } } }
+   (fallback) [Bridge → Relay] POST /push/notify (solo si no hay credencial
+   FCM local o relayEnabled = true)
 
 [Móvil] Recibe push (background o foreground)
 [App] HandleIncomingPush:
-  ├── Si foreground → flutter_local_notifications muestra banner
-  └── Si background/tap → navega a ConversationScreen(threadId)
+  ├── Si foreground y la conversacion esta en pantalla -> suprime (foregroundThreadProvider)
+  └── Si background/tap -> navega a ConversationScreen(threadId)
 [App] ThreadManager.selectThread(threadId)
 [App] Si no conectado → SessionCoordinator.connect()
 [App] Carga timeline del thread
@@ -411,4 +451,4 @@ El MVP debe cumplir los siguientes módulos completos:
 - Subagentes visibles en UI
 - Tablet layout
 - Custom agent adapter (plugin system para el bridge)
-- Self-hosted relay setup wizard en la app
+- Self-hosted relay setup wizard en la app *(opcional — la ruta primaria es LAN/Tailscale-direct y no necesita relay; el wizard aplica solo a quien decida self-hostear un relay off-LAN)*
