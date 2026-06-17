@@ -1,11 +1,19 @@
 # Uxnan Desktop (ADE) — Documentacion Tecnica
 
-> **Version:** 1.0.0
-> **Fecha:** 2026-06-05
-> **Estado:** Definicion inicial
+> **Version:** 1.1.0
+> **Fecha:** 2026-06-17
+> **Estado:** Alpha-funcional (standalone); Phase 6 (bridge embebido) pendiente
 > **Plataformas objetivo:** Windows, macOS, Linux
 > **Stack:** Rust, Tauri 2, Svelte 5, shadcn-svelte, Tailwind CSS, xterm.js, CodeMirror 6
 > **Monorepo:** Este directorio (`uxnandesktop/architecture/`) contiene la documentacion tecnica del Agent Development Environment (ADE) de escritorio.
+
+> **Regla de mantenimiento (ver `AGENTS.md` → *Spec drift control (non-negotiable)*):**
+> esta carpeta es la **fuente de verdad** de la arquitectura del ADE.
+> Cualquier item marcado `DONE` / `DONE & validated end-to-end` en
+> `uxnandesktop/FOR-DEV.md` debe reflejarse aquí en el **mismo conjunto de
+> cambios**, no solo en el `CHANGELOG.md`. Si un item contradice esta spec,
+> abrir un `FOR-DRIFT` en el `FOR-DEV.md` correspondiente. La spec NO debe
+> quedar atrás del código en un release.
 
 ---
 
@@ -105,16 +113,54 @@ Esto es lo que hace posible el paralelismo real. Sin worktrees, multiples agente
 
 ---
 
+## Estado de implementacion
+
+> Esta seccion registra el avance de implementacion frente a la especificacion;
+> se actualiza con cada incremento (ver `uxnandesktop/CHANGELOG.md`). El detalle
+> de lo que falta y por que vive en `uxnandesktop/FOR-DEV.md`. Snapshot vivo de
+> "donde estamos vs. donde queriamos estar" en
+> `UXNANDESKTOP_MVP.md` (archivo local, ver `.git/info/exclude`).
+
+**uxnandesktop (Tauri 2 ADE) — rama `uxnandesktop`:**
+
+| Fase | Tema | Estado | Notas |
+|---|---|---|---|
+| **0** | Base infrastructure (3-panel shell, IPC, persistencia) | ✅ Hecho | Tauri 2 + SvelteKit SPA + persistencia atomica Serde + 5 rotating backups + sequential schema migrations |
+| **1** | Terminal core (PTY, tabs, splits) | ✅ Hecho | `portable-pty 0.9`, xterm.js + WebGL fallback, recursive `AreaNode` region layout, copy/paste, file-drop, layout persistence, kill-on-exit |
+| **2** | Git & worktrees | ✅ Hecho | Hierarchical Projects tree, create/list/safe-remove, in-app directory picker, per-worktree terminal workspaces, status badges, agents track (manual + auto-launch) |
+| **3** | Git status & diffs | ✅ Hecho | Live status watcher (3s, focus-paused), push/pull, CodeMirror 6 diff viewer (unified + side-by-side), hunk-level staging |
+| **4** | Agent monitoring | ✅ Hecho | Three layers: Layer 1 axum HTTP hook server (precise working/blocked/waiting/done, persistent cache TTL 7d) + Layer 2 terminal-title OSC inference + Layer 3 process-tree detection (`procscan` + `sysinfo`); colored status dots, unread/done badges, custom logos, per-worktree agent override |
+| **5** | Polish & UX | ✅ Hecho | Hunk staging, full-size center diff + side-by-side, 5 rotating backups, opt-in keep-awake (Windows UNTESTED macOS/Linux), worktree palette (Ctrl/Cmd+P), TabGroup split buttons, virtualized lists |
+| **S** | Settings, design system & i18n (cross-cutting) | ✅ Hecho | Settings (theme + terminal profiles w/ OS templates), design tokens, full i18n (EN/ES), agents registry + install detection + manual + auto-launch |
+| **6** | Bridge integration (mobile pairing) | ⏳ Pendiente | Tauri sidecar para el bridge + QR pairing; **opcional para standalone**; el bridge standalone es la referencia del contrato |
+| **Ops** | CI/CD & release pipeline | ⏳ Pendiente | Branded icons + signing + auto-updater keys (FOR-HUMAN) antes de distribuir builds |
+| **S/Follow-up** | Ready-made per-agent hook configs (Claude Code + generic wrapper) | ⏳ Pendiente | La infraestructura (Layer 1 hook server) ya esta; falta la config empaquetada |
+| **S/Follow-up** | Multi-agent orchestration (task graph, fan-out, sidebar lineage) | ⏳ Pendiente | Out of MVP scope |
+| **S/Follow-up** | E2E tests (Playwright / WebdriverIO + tauri-driver) | ⏳ Pendiente | `cargo test` 8 passing + `npm run check` 0/0 + `cargo clippy` + `cargo fmt` ya son verde |
+
+> Detalle completo del avance en `uxnandesktop/CHANGELOG.md`; lo pendiente, en `uxnandesktop/FOR-DEV.md`.
+
+**Como el ADE se relaciona con el resto del monorepo (ver §02e):**
+- El ADE standalone NO requiere el bridge embebido (Phase 6) para funcionar.
+- Cuando un usuario quiere conectividad movil, tiene dos opciones:
+  - **Instalar `uxnan-bridge` standalone** y conectar el movil a el.
+  - **Activar Phase 6** (bridge embebido) en el ADE — el movil se conecta al ADE directamente.
+- En ambos casos, la conexion movil ↔ bridge es E2EE (mismo protocolo) y
+  funciona LAN-direct / Tailscale-direct (cero hosting). El relay
+  (`../../relay/`) es **opcional y self-hosted** (ver
+  `../../architecture/02a-system-architecture.md` §2 y §5.10).
+
+---
+
 ## Estructura del monorepo
 
 El proyecto Uxnan esta organizado como un monorepo que agrupa todos los componentes del ecosistema:
 
 ```
 uxnan/                           # Monorepo raiz
-├── architecture/                # Especificacion tecnica de la app movil Flutter
-├── architecture.old/            # Whitepapers originales como referencia historica
+├── architecture/                # Especificacion tecnica de la app movil Flutter (fuente de verdad cross-component)
 ├── bridge/                      # Node.js daemon para PC (standalone o embebido en desktop)
-├── relay/                       # Node.js relay server
+├── relay/                       # Node.js relay server (opcional, self-hosted)
 ├── shared/                      # Contratos compartidos (tipos, JSON-RPC schemas)
 ├── uxnandesktop/                # App de escritorio ADE
 │   └── architecture/            # <-- Este directorio. Documentacion tecnica del ADE
@@ -134,11 +180,10 @@ uxnan/                           # Monorepo raiz
 
 | Componente | Relacion con el ADE desktop |
 |---|---|
-| `../../architecture/` | Contiene la especificacion tecnica completa de la app movil Flutter. El ADE desktop se complementa con la app movil: el movil permite monitorear y controlar agentes remotamente desde el telefono. Consultar ese directorio para la especificacion movil. |
+| `../../architecture/` | Contiene la especificacion tecnica completa de la app movil Flutter **y los contratos cross-component** (E2EE §5.9, bridge §5.8, relay §5.10). El ADE desktop se complementa con la app movil: el movil permite monitorear y controlar agentes remotamente desde el telefono. Consultar ese directorio para la especificacion movil y los contratos JSON-RPC. |
 | `../../shared/` | Contratos compartidos entre todos los componentes del ecosistema. Definiciones de tipos TypeScript, schemas JSON-RPC y cualquier interfaz comun que necesiten consumir multiples proyectos del monorepo. El ADE desktop y el bridge comparten estos contratos para la comunicacion entre ellos. |
-| `../../bridge/` | Daemon Node.js que actua como puente entre la app movil y los recursos de la computadora (Git, sistema de archivos, terminal). **Puede correr de dos formas**: como proceso standalone independiente, o integrado dentro de la app de escritorio ADE. Cuando el desktop esta corriendo, puede levantar el bridge internamente para que la app movil se conecte directamente al ADE sin necesidad de un proceso separado. |
-| `../../relay/` | Servidor relay Node.js que facilita la comunicacion entre la app movil y el bridge/desktop cuando no hay conexion directa en red local. El ADE puede conectarse al relay para ser accesible desde fuera de la red local. |
-| `../../architecture.old/` | Whitepapers originales. Contiene `architect-desktop.md` y `architect-mobile.md` como referencia historica. |
+| `../../bridge/` | Daemon Node.js que actua como puente entre la app movil y los recursos de la computadora (Git, sistema de archivos, terminal). **Puede correr de dos formas**: como proceso standalone independiente, o integrado dentro de la app de escritorio ADE (Phase 6). Cuando el desktop esta corriendo, puede levantar el bridge internamente para que la app movil se conecte directamente al ADE sin necesidad de un proceso separado. |
+| `../../relay/` | Servidor relay Node.js que facilita la comunicacion entre la app movil y el bridge/desktop cuando no hay conexion directa en red local. **Opcional y self-hosted** (ver `../../architecture/02a-system-architecture.md` §2 y §5.10). El ADE puede conectarse al relay para ser accesible desde fuera de la red local, pero no es la ruta primaria. |
 
 ---
 
@@ -147,7 +192,7 @@ uxnan/                           # Monorepo raiz
 El modulo bridge (`../../bridge/`) tiene una relacion especial con el ADE desktop:
 
 - **Modo standalone**: El bridge corre como un proceso Node.js independiente en la computadora del desarrollador. La app movil se conecta a el directamente para monitorear agentes, ver diffs y ejecutar comandos.
-- **Modo embebido**: El ADE desktop puede integrar el bridge internamente, levantando el servidor Node.js como un proceso hijo gestionado por Rust. Esto elimina la necesidad de que el usuario instale y ejecute el bridge por separado.
+- **Modo embebido (Phase 6 — pendiente)**: El ADE desktop puede integrar el bridge internamente, levantando el servidor Node.js como un proceso hijo gestionado por Rust. Esto elimina la necesidad de que el usuario instale y ejecute el bridge por separado. La spec detallada esta en `02e-bridge-integration.md`.
 
 En ambos modos, los contratos de comunicacion son los mismos (definidos en `../../shared/`). La conexion entre el bridge y la app movil usa encriptacion end-to-end (E2EE) y puede pasar por el relay (`../../relay/`) cuando no hay conectividad directa.
 
@@ -157,7 +202,7 @@ El documento **02e - Integracion del Bridge y Conexion Movil** detalla la arquit
 
 ## Origen
 
-Esta documentacion fue derivada del whitepaper original `architect-desktop.md` (2026-06-05), ahora ubicado en `../../architecture.old/architect-desktop.md` como referencia historica. Ese documento fue el analisis de arquitectura de alto nivel que definio:
+Esta documentacion fue derivada del whitepaper original `architect-desktop.md` (2026-06-05), archivado en git bajo el tag `pre-architecture-old-archive` y eliminado del arbol de trabajo (su contenido se conserva en el historial de git). El whitepaper original fue el analisis de arquitectura de alto nivel que definio:
 
 - La vision del ADE como entorno terminal-centrico para agentes AI paralelos.
 - El diseno de tres paneles (sidebar izquierda, area central de terminales, sidebar derecha de diffs).
@@ -172,4 +217,4 @@ El directorio `../../architecture/` sigue el mismo patron de reorganizacion para
 
 ---
 
-> **Nota:** Este indice y los documentos de `uxnandesktop/architecture/` son la fuente de verdad para la especificacion del ADE de escritorio. Para la especificacion de la app movil, consultar `../../architecture/`. Para el whitepaper original del desktop, consultar `../../architecture.old/architect-desktop.md`. Los contratos compartidos entre componentes viven en `../../shared/`.
+> **Nota:** Este indice y los documentos de `uxnandesktop/architecture/` son la fuente de verdad para la especificacion del ADE de escritorio. Para la especificacion de la app movil y los contratos cross-component, consultar `../../architecture/`. Los whitepapers originales se conservan en el historial de git (tag `pre-architecture-old-archive`). Los contratos compartidos entre componentes viven en `../../shared/`.

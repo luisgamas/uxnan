@@ -4,7 +4,14 @@
 > Cubre el checklist de funcionalidades minimas viables, las fases de implementacion,
 > convenciones de codigo y glosario de terminos tecnicos.
 > Fuente: secciones 9 y 10 de `architect-desktop.md`, con extensiones para Bridge.
-> Fecha: 2026-06-05
+> Fecha de la version inicial: 2026-06-05.
+> **Fecha de la sincronizacion ALPHA: 2026-06-17** (ver `00-index.md` → *Estado de implementacion*).
+>
+> **Regla de mantenimiento (ver `AGENTS.md` → *Spec drift control (non-negotiable)*):**
+> este documento es parte de la **fuente de verdad** de la arquitectura del ADE.
+> Cualquier item marcado `DONE` en `uxnandesktop/FOR-DEV.md` debe reflejarse
+> aquí en el mismo conjunto de cambios. La spec NO debe quedar atrás del
+> código en un release.
 
 ---
 
@@ -131,6 +138,14 @@ Estas son las funcionalidades **estrictamente necesarias** para un ADE ligero qu
 ---
 
 ## 2. Fases de Implementacion
+
+> **Estado de las fases (snapshot 2026-06-16):** Phases 0-5 + la pista cross-
+> cutting (S) estan **completas** (ver `00-index.md` → *Estado de implementacion*
+> y `uxnandesktop/CHANGELOG.md`). Phase 6 (integracion del bridge) es la
+> **unica fase restante** y es **opcional para uso standalone**. Las
+> estimaciones en semanas que aparecen debajo son las **originales de la
+> definicion inicial**; ver `uxnandesktop/FOR-DEV.md` para el detalle real
+> de lo que falta y por que.
 
 ---
 
