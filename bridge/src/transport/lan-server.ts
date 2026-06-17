@@ -18,6 +18,12 @@ export interface PairResolveResult {
   json: unknown;
 }
 
+/** Result of an agent-hook approval call: an HTTP status + JSON body. */
+export interface HookApprovalResult {
+  status: number;
+  json: unknown;
+}
+
 export interface LanServerOptions {
   port: number;
   host?: string;
@@ -28,6 +34,12 @@ export interface LanServerOptions {
    * Omitted → the route 404s.
    */
   onPairResolve?: (code: string, ip: string) => PairResolveResult;
+  /**
+   * Optional handler for `POST /agent-hook/approval` (the Claude `PreToolUse`
+   * hook round-trip). Given the parsed JSON body and the `x-uxnan-hook-token`
+   * header, resolves once the user answers on the phone. Omitted → 404.
+   */
+  onHookApproval?: (body: unknown, token: string | undefined) => Promise<HookApprovalResult>;
 }
 
 export interface LanServerHandle {
@@ -70,6 +82,29 @@ function handleHttp(req: IncomingMessage, res: ServerResponse, options: LanServe
     send(400, { error: 'bad_request' });
     return;
   }
+  // POST /agent-hook/approval — the Claude PreToolUse hook asks the user.
+  if (req.method === 'POST' && url.pathname === '/agent-hook/approval') {
+    if (!options.onHookApproval) {
+      send(404, { error: 'hooks_disabled' });
+      return;
+    }
+    const token = req.headers['x-uxnan-hook-token'];
+    readBody(req)
+      .then((raw) => {
+        let body: unknown;
+        try {
+          body = JSON.parse(raw || '{}');
+        } catch {
+          send(400, { error: 'bad_json' });
+          return;
+        }
+        void options.onHookApproval!(body, typeof token === 'string' ? token : undefined)
+          .then((result) => send(result.status, result.json))
+          .catch(() => send(500, { error: 'hook_error' }));
+      })
+      .catch(() => send(400, { error: 'read_error' }));
+    return;
+  }
   if (req.method !== 'GET' || url.pathname !== '/pair/resolve') {
     send(404, { error: 'not_found' });
     return;
@@ -86,4 +121,23 @@ function handleHttp(req: IncomingMessage, res: ServerResponse, options: LanServe
   const ip = req.socket.remoteAddress ?? 'unknown';
   const result = options.onPairResolve(code, ip);
   send(result.status, result.json);
+}
+
+/** Collect a request body (capped at 1 MiB) as a UTF-8 string. */
+function readBody(req: IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let data = '';
+    let size = 0;
+    req.on('data', (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > 1_048_576) {
+        reject(new Error('body too large'));
+        req.destroy();
+        return;
+      }
+      data += chunk.toString('utf-8');
+    });
+    req.on('end', () => resolve(data));
+    req.on('error', reject);
+  });
 }

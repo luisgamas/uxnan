@@ -133,6 +133,83 @@ test('respondApproval drives the echo demo approval to completion', async () => 
   await rm(baseDir, { recursive: true, force: true });
 });
 
+test('requestApproval emits an approval block and resolves on respondApproval (hook flow)', async () => {
+  const baseDir = join(tmpdir(), `uxnan-am-hook-${randomUUID()}`);
+  const store = new ThreadStore(new DaemonState(baseDir));
+  const blocks: { content: { type?: string; approvalId?: string; action?: string } }[] = [];
+  const manager = new AgentManager({
+    store,
+    notify: (message) => {
+      const m = message as { method: string; params?: unknown };
+      if (m.method === StreamNotification.ContentBlock) {
+        blocks.push(
+          m.params as { content: { type?: string; approvalId?: string; action?: string } },
+        );
+      }
+    },
+    now: () => 1000,
+    logger: createLogger('test', 'error'),
+    defaultAgent: 'echo',
+  });
+  manager.register(new EchoAgentAdapter());
+
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  // Open a turn that stays in-flight (the demo pauses), so requestApproval has
+  // an active turn to attach the approval to.
+  await manager.sendTurn(thread.id, 'approval-demo');
+  await waitFor(() => blocks.length > 0);
+
+  // The hook asks whether a Write may run; capture the approvalId it emitted.
+  const decisionPromise = manager.requestApproval(thread.id, {
+    toolName: 'Write',
+    input: { file_path: '/etc/hosts' },
+  });
+  await waitFor(() => blocks.some((b) => b.content.action?.includes('Write')));
+  const writeBlock = blocks.find((b) => b.content.action?.includes('Write'))!;
+  assert.equal(writeBlock.content.type, 'approval');
+  const approvalId = writeBlock.content.approvalId!;
+
+  // Approving resolves the hook to 'allow'; rejecting would resolve 'deny'.
+  await manager.respondApproval(thread.id, approvalId, 'approve');
+  assert.equal(await decisionPromise, 'allow');
+
+  await rm(baseDir, { recursive: true, force: true });
+});
+
+test('requestApproval resolves deny on rejection', async () => {
+  const baseDir = join(tmpdir(), `uxnan-am-hook2-${randomUUID()}`);
+  const store = new ThreadStore(new DaemonState(baseDir));
+  const blocks: { content: { approvalId?: string; action?: string } }[] = [];
+  const manager = new AgentManager({
+    store,
+    notify: (message) => {
+      const m = message as { method: string; params?: unknown };
+      if (m.method === StreamNotification.ContentBlock) {
+        blocks.push(m.params as { content: { approvalId?: string; action?: string } });
+      }
+    },
+    now: () => 1,
+    logger: createLogger('test', 'error'),
+    defaultAgent: 'echo',
+  });
+  manager.register(new EchoAgentAdapter());
+
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  await manager.sendTurn(thread.id, 'approval-demo');
+  await waitFor(() => blocks.length > 0);
+
+  const decisionPromise = manager.requestApproval(thread.id, {
+    toolName: 'Bash',
+    input: { command: 'rm -rf /' },
+  });
+  await waitFor(() => blocks.some((b) => b.content.action?.includes('Bash')));
+  const approvalId = blocks.find((b) => b.content.action?.includes('Bash'))!.content.approvalId!;
+  await manager.respondApproval(thread.id, approvalId, 'reject');
+  assert.equal(await decisionPromise, 'deny');
+
+  await rm(baseDir, { recursive: true, force: true });
+});
+
 test('respondApproval rejects when the thread has no agent', async () => {
   const baseDir = join(tmpdir(), `uxnan-am-appr2-${randomUUID()}`);
   const store = new ThreadStore(new DaemonState(baseDir));

@@ -52,6 +52,13 @@ export interface AgentSettings {
    * Defaults to `acceptEdits` when omitted. Ignored by agents that don't gate tools.
    */
   permissionMode?: AgentPermissionMode;
+  /**
+   * Opt-in interactive tool approvals (Claude Code only): inject a `PreToolUse`
+   * hook (via `--settings`) so every tool round-trips to the bridge and the user
+   * approves/rejects it on the phone (`turn/send { approvalResponse }`). Requires
+   * `lanEnabled` (the hook calls the bridge's local HTTP endpoint). Default false.
+   */
+  interactiveApprovals?: boolean;
 }
 
 export interface DaemonConfig {

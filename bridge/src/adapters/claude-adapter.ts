@@ -114,6 +114,18 @@ export interface ClaudeCodeAdapterOptions {
   pinnedModels?: ClaudeModelSpec[];
   /** Headless permission posture (default `acceptEdits`). */
   permissionMode?: ClaudePermissionMode;
+  /**
+   * Opt-in interactive approvals: inject a `PreToolUse` hook (via `--settings`)
+   * so every tool round-trips to the bridge for the user's approval. Requires
+   * {@link approvalHook} to be set and resolvable (the bridge's local endpoint).
+   */
+  interactiveApprovals?: boolean;
+  /**
+   * The local approval-hook endpoint + token + the path to the shipped hook
+   * script. `url()` is lazy because the LAN port is known only after the server
+   * starts; it returns `undefined` until then (the turn runs without the hook).
+   */
+  approvalHook?: { token: string; scriptPath: string; url: () => string | undefined };
   /** Injected spawn function for the one-shot path (tests). */
   spawnFn?: SpawnFn;
 }
@@ -245,6 +257,10 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   readonly #defaultModel: string | undefined;
   readonly #pinnedModels: ClaudeModelSpec[];
   readonly #permissionMode: ClaudePermissionMode;
+  readonly #interactiveApprovals: boolean;
+  readonly #approvalHook:
+    | { token: string; scriptPath: string; url: () => string | undefined }
+    | undefined;
   readonly #spawn: SpawnFn;
   /** threadId → Claude session id, for `--resume` continuity. */
   readonly #sessionByThread = new Map<string, string>();
@@ -264,6 +280,8 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     this.#defaultModel = options.defaultModel;
     this.#pinnedModels = options.pinnedModels ?? [];
     this.#permissionMode = options.permissionMode ?? 'acceptEdits';
+    this.#interactiveApprovals = options.interactiveApprovals ?? false;
+    this.#approvalHook = options.approvalHook;
     this.#spawn = options.spawnFn ?? defaultSpawn;
   }
 
@@ -290,6 +308,14 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     const model = options.service ?? this.#defaultModel;
     const sessionId = this.#sessionByThread.get(threadId);
 
+    // Interactive approvals: inject a PreToolUse hook (validated against claude
+    // 2.1.177) that round-trips each tool to the bridge for the user's decision.
+    // The hook is the gate, so we use the default permission posture (no
+    // acceptEdits / skip-permissions) to route every tool through it.
+    const hookUrl =
+      this.#interactiveApprovals && this.#approvalHook ? this.#approvalHook.url() : undefined;
+    const interactive = hookUrl !== undefined && this.#approvalHook !== undefined;
+
     const args = [
       '-p',
       '--output-format',
@@ -297,9 +323,26 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       '--verbose',
       '--include-partial-messages',
     ];
-    if (this.#permissionMode === 'acceptEdits') args.push('--permission-mode', 'acceptEdits');
-    else if (this.#permissionMode === 'bypassPermissions')
+    if (interactive) {
+      const settings = JSON.stringify({
+        hooks: {
+          PreToolUse: [
+            {
+              matcher: '*',
+              hooks: [{ type: 'command', command: `node "${this.#approvalHook!.scriptPath}"` }],
+            },
+          ],
+        },
+      });
+      // `--permission-mode default` is REQUIRED for the PreToolUse hook to run
+      // (validated against claude 2.1.177: without it, headless `-p` doesn't
+      // consult the hook and denies). The hook is then the gate.
+      args.push('--settings', settings, '--permission-mode', 'default');
+    } else if (this.#permissionMode === 'acceptEdits') {
+      args.push('--permission-mode', 'acceptEdits');
+    } else if (this.#permissionMode === 'bypassPermissions') {
       args.push('--dangerously-skip-permissions');
+    }
     if (model) args.push('--model', model);
     // Reasoning effort (low|medium|high|xhigh|max). Pass-through — the CLI
     // validates the level; `claude --effort` is a session flag (verified
@@ -309,9 +352,19 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     if (sessionId) args.push('--resume', sessionId);
     args.push(text);
 
+    const spawnExtra = interactive
+      ? {
+          env: {
+            UXNAN_HOOK_URL: hookUrl,
+            UXNAN_HOOK_TOKEN: this.#approvalHook!.token,
+            UXNAN_HOOK_THREAD_ID: threadId,
+          },
+        }
+      : undefined;
+
     let child: SpawnedProcess;
     try {
-      child = this.#spawn(this.#binaryPath, [...this.#prependArgs, ...args], cwd);
+      child = this.#spawn(this.#binaryPath, [...this.#prependArgs, ...args], cwd, spawnExtra);
     } catch (err) {
       this.emit({
         type: 'turn_error',

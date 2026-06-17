@@ -55,3 +55,53 @@ test('the pairing route 404s when no resolver is configured', async () => {
     assert.equal(res.body['error'], 'pairing_disabled');
   });
 });
+
+test('POST /agent-hook/approval validates the token and returns the decision', async () => {
+  const handle = await startLanServer({
+    port: 0,
+    host: '127.0.0.1',
+    onConnection: () => {},
+    onHookApproval: (body, token) => {
+      if (token !== 'secret') return Promise.resolve({ status: 403, json: { error: 'bad_token' } });
+      const b = body as { toolName?: string };
+      return Promise.resolve({
+        status: 200,
+        json: { decision: b.toolName === 'Bash' ? 'allow' : 'deny' },
+      });
+    },
+  });
+  try {
+    const post = (token: string, payload: unknown) =>
+      fetch(`http://127.0.0.1:${handle.port}/agent-hook/approval`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-uxnan-hook-token': token },
+        body: JSON.stringify(payload),
+      }).then(async (r) => ({
+        status: r.status,
+        body: (await r.json()) as Record<string, unknown>,
+      }));
+
+    const ok = await post('secret', { threadId: 't', toolName: 'Bash', input: {} });
+    assert.equal(ok.status, 200);
+    assert.equal(ok.body['decision'], 'allow');
+
+    const denied = await post('secret', { threadId: 't', toolName: 'Write', input: {} });
+    assert.equal(denied.body['decision'], 'deny');
+
+    const badToken = await post('wrong', { threadId: 't', toolName: 'Bash' });
+    assert.equal(badToken.status, 403);
+  } finally {
+    await handle.close();
+  }
+});
+
+test('POST /agent-hook/approval 404s when no handler is configured', async () => {
+  await withServer(undefined, async (port) => {
+    const res = await fetch(`http://127.0.0.1:${port}/agent-hook/approval`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+    });
+    assert.equal(res.status, 404);
+  });
+});

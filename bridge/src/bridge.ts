@@ -7,6 +7,7 @@
  * Source: architecture/02a-system-architecture.md §5.8.2 (bridge entrypoint).
  */
 import { hostname } from 'node:os';
+import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { makeNotification, type BridgeStatus, type PairingPayload } from '@uxnan/shared';
 import type { BridgeContext } from './bridge-context.js';
@@ -31,6 +32,7 @@ import { MdnsAdvertiser } from './transport/mdns-advertiser.js';
 import { SessionRegistry } from './transport/session-registry.js';
 import { ThreadStore } from './conversation/thread-store.js';
 import { AgentManager } from './agents/agent-manager.js';
+import { writeClaudeApprovalHook } from './hooks/claude-approval-hook.js';
 import { EchoAgentAdapter } from './adapters/echo-agent-adapter.js';
 import { OpenCodeAdapter } from './adapters/opencode-adapter.js';
 import { resolveOpenCodeBinary } from './adapters/resolve-opencode.js';
@@ -175,6 +177,19 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   // Claude Code: real agent driven via `claude -p --output-format stream-json` (see FOR-DEV.md).
   const claudeSettings = config.agents['claude-code'] ?? {};
   const claude = resolveClaudeBinary(claudeSettings.binaryPath);
+  // Interactive approvals (opt-in): the Claude adapter injects a PreToolUse hook
+  // that round-trips each tool to this bridge's local HTTP endpoint. The hook
+  // URL is lazy (the LAN port is known only after `startLan`); the token guards
+  // the endpoint and the script is written under `~/.uxnan/hooks/`.
+  const claudeInteractiveApprovals =
+    (claudeSettings.interactiveApprovals ?? false) && config.lanEnabled;
+  const hookState: { port?: number; token: string } = { token: randomUUID() };
+  const hookScriptPath = state.pathFor(join('hooks', 'claude-approval-hook.cjs'));
+  if (claudeInteractiveApprovals) {
+    void writeClaudeApprovalHook(hookScriptPath).catch((err: unknown) =>
+      logger.warn(`failed to write the Claude approval hook: ${String(err)}`),
+    );
+  }
   // Normalize the configured extra models (bare id strings or {id,...} specs)
   // into the adapter's spec shape; they appear in the picker alongside the
   // auto-updating opus/sonnet/haiku aliases. See docs/agents.md.
@@ -186,6 +201,19 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       binaryPath: claude.binaryPath,
       prependArgs: claude.prependArgs,
       permissionMode: claudeSettings.permissionMode ?? 'acceptEdits',
+      ...(claudeInteractiveApprovals
+        ? {
+            interactiveApprovals: true,
+            approvalHook: {
+              token: hookState.token,
+              scriptPath: hookScriptPath,
+              url: () =>
+                hookState.port !== undefined
+                  ? `http://127.0.0.1:${hookState.port}/agent-hook/approval`
+                  : undefined,
+            },
+          }
+        : {}),
       ...(claudeSettings.model !== undefined ? { defaultModel: claudeSettings.model } : {}),
       ...(claudePinnedModels.length > 0 ? { pinnedModels: claudePinnedModels } : {}),
     }),
@@ -388,7 +416,23 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
           if (!payload) return { status: 403, json: { error: 'invalid_or_expired_code' } };
           return { status: 200, json: payload };
         },
+        // Claude PreToolUse approval hook: ask the user (on the phone) whether a
+        // tool may run; hold the response until they answer (or it times out).
+        onHookApproval: async (body, token) => {
+          if (token !== hookState.token) return { status: 403, json: { error: 'bad_token' } };
+          const b = body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
+          const threadId = typeof b['threadId'] === 'string' ? b['threadId'] : '';
+          if (!threadId) return { status: 400, json: { error: 'missing_thread' } };
+          const toolName = typeof b['toolName'] === 'string' ? b['toolName'] : 'tool';
+          const input =
+            b['input'] && typeof b['input'] === 'object'
+              ? (b['input'] as Record<string, unknown>)
+              : {};
+          const decision = await agentManager.requestApproval(threadId, { toolName, input });
+          return { status: 200, json: { decision } };
+        },
       });
+      hookState.port = lanHandle.port;
       logger.info(`LAN server listening on port ${lanHandle.port}`);
       // Advertise on the LAN via mDNS so the phone can discover the bridge for
       // manual-code pairing (best-effort; degrades silently if it can't bind).

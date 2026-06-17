@@ -40,10 +40,9 @@ landed now):
 - ☑ **Image attachments** — `turn/send { attachments }` + temp-file delivery
   (see *Turn image attachments*). On-device verify pending.
 - ◑ **Interactive approval intake** — generic `turn/send { approvalResponse }`
-  routing + the `approval` content block DONE; **Echo demo works now**. Real-agent
-  approvals deferred: validated that headless `claude -p` can't do interactive
-  approvals (needs a `PreToolUse` hook round-trip); Codex needs app-server. See
-  *Interactive approval intake* + roadmap item 7.
+  routing + the `approval` content block DONE; **Echo demo + Claude Code (opt-in
+  PreToolUse hook) work end-to-end** (validated live). Codex real approvals still
+  need the app-server turn path. See *Interactive approval intake* + roadmap item 7.
 - ☑ **Manual-code pairing (mobile half)** — `ManualCodeScreen` →
   `GET /pair/resolve?code=` (see *Manual-code pairing* → Mobile linkage).
 
@@ -63,10 +62,10 @@ landed now):
    server-side (today it's a local-only phone setting).
 6. **Remote history back-paging** — `turn/list` cursor is forward-only/offset; a
    newest-first scroll-up needs a reverse cursor or a total-count.
-7. **Real-agent approvals** — Claude via a `PreToolUse` hook (`--settings`) that
-   round-trips to a local bridge HTTP endpoint (headless `claude -p` has no
-   control-request channel — validated); Codex via the app-server turn protocol
-   (`codex exec` can't prompt). See *Interactive approval intake*.
+7. **Real-agent approvals** — Claude DONE (opt-in `PreToolUse` hook → bridge
+   endpoint, validated live). Remaining: **Codex** via the app-server turn
+   protocol (`codex exec` can't prompt); OpenCode/pi/Gemini per their headless
+   permission channels. See *Interactive approval intake*.
 8. **Transport (optional):** seq-based catch-up on reconnect + key rotation —
    both await the mobile `clientHello.resumeState` trigger.
 
@@ -192,24 +191,24 @@ hosting** (the phone connects directly to the bridge on the same network).
         - ☑ **Echo demo (works now):** text `approval-demo` emits a sample
           approval and pauses until the phone replies — start an `echo` thread,
           send `approval-demo`, and the mobile card round-trips end-to-end.
-        - ☐ **Claude Code — NOT via the stream-json control protocol (validated
-          against `claude` 2.1.177).** A live probe proved that headless `claude
-          -p` does NOT emit `control_request can_use_tool`: a tool needing
-          permission is **denied** with an error `tool_result` ("requested
-          permissions … but you haven't granted it yet") and the turn ends. The
-          `--permission-prompt-tool` flag that the SDK used is **gone** from
-          2.1.177's `--help`. (The earlier control-protocol adapter code was
-          removed — it targeted a channel this CLI doesn't expose in `-p`.) The
-          **real path** is a **`PreToolUse` hook** injected via `claude -p
-          --settings '<json>'` (hooks DO apply in print mode): the hook command
-          reads the tool payload on stdin, POSTs it to a **local bridge HTTP
-          endpoint** (reuse the LAN `http.Server`, token-guarded, URL+token+threadId
-          injected via env per turn), the bridge emits the `approval` block and
-          **holds** the response until the phone answers (`respondApproval`
-          resolving a pending registry), then the hook prints
-          `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":
-          "allow"|"deny"}}`. Fully testable bridge↔hook↔CLI locally; the phone
-          uses the existing `turn/send { approvalResponse }`. Scoped, not built.
+        - ☑ **Claude Code (opt-in) — DONE & validated end-to-end** (`claude`
+          2.1.177). `agents['claude-code'].interactiveApprovals: true` (needs
+          `lanEnabled`) makes the adapter inject a **`PreToolUse` hook** via
+          `--settings … --permission-mode default` (the explicit `default` mode
+          is REQUIRED — without it headless `-p` denies without consulting the
+          hook). The hook (`src/hooks/claude-approval-hook.cjs`, written to
+          `~/.uxnan/hooks/`) reads the tool payload on stdin, POSTs it to
+          `POST /agent-hook/approval` on the LAN `http.Server` (token-guarded;
+          URL+token+threadId injected via per-turn env), the bridge emits the
+          `approval` block and **holds** the response until the phone answers
+          (`AgentManager.requestApproval` ↔ `respondApproval`), then the hook
+          prints the `permissionDecision`. Fail-safe → deny; 5-min timeout → deny.
+          Verified live: an allowed Write runs, a denied Write is blocked.
+          **FOR-DEV follow-ups:** map `approveSession` to a real session-scoped
+          allow (today every tool re-asks); a per-turn allow-list so repeated
+          identical tools aren't re-prompted; the hook URL needs a fixed
+          `lanPort` (a `0`/random port resolves after `startLan`, which the lazy
+          `url()` already handles, but document it).
         - ☐ **Codex:** `codex exec` is non-interactive (no approval prompts), so
           real Codex approvals need turn execution moved onto the **app-server**
           protocol (the bridge already speaks it for `model/list`) where

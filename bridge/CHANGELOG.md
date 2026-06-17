@@ -15,14 +15,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
     `approval-demo` emits a sample high-risk approval and PAUSES until the phone
     replies, then completes with the decision — start an **`echo`** thread and
     send `approval-demo` to validate the mobile approval card end-to-end.
-  - **Real agents (Claude/Codex/…): deferred.** Validated against the live CLI
-    (`claude` 2.1.177): headless `claude -p` does **not** expose interactive
-    approvals — a tool needing permission is denied with an error `tool_result`,
-    there is no `control_request`/`control_response` channel in `-p` mode (that
-    SDK flag was removed). The real path is a **`PreToolUse` hook** (via
-    `--settings`) that round-trips the decision to the bridge; Codex needs its
-    app-server turn protocol. Both are scoped in `FOR-DEV.md`. (The earlier
-    control-protocol attempt was removed — it didn't match the real CLI.)
+  - **Claude Code real approvals (opt-in) — DONE & validated end-to-end** against
+    `claude` 2.1.177. Set `agents['claude-code'].interactiveApprovals: true` (needs
+    `lanEnabled`): the adapter injects a **`PreToolUse` hook** via
+    `--settings … --permission-mode default` so every tool round-trips to the
+    bridge's local `POST /agent-hook/approval` endpoint (token-guarded). The
+    bridge emits the `approval` block to the phone and **holds** the hook's
+    response until the user answers (`turn/send { approvalResponse }`), then the
+    hook returns `allow`/`deny` to the CLI. `src/hooks/claude-approval-hook.cjs`
+    (written to `~/.uxnan/hooks/`) is the dependency-free hook; fail-safe → deny;
+    5-min timeout → deny. Verified live: an allowed Write runs, a denied Write is
+    blocked. (Earlier discovery: headless `claude -p` has **no**
+    `control_request`/`control_response` channel — the hook is the real path.)
+  - **Codex:** real approvals still need the app-server turn protocol
+    (`codex exec` is non-interactive) — deferred, see `FOR-DEV.md`.
 - **Turn image attachments delivered to the agent** — `turn/send` now accepts
   `attachments: TurnAttachment[]` (inline base64 images the phone picks in the
   composer) and allows an **image-only** message (empty/omitted `text`). The new

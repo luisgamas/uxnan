@@ -20,13 +20,25 @@ export interface SpawnedProcess {
   kill(signal?: NodeJS.Signals): unknown;
 }
 
-export type SpawnFn = (command: string, args: string[], cwd: string) => SpawnedProcess;
+/** Extra spawn options some adapters need (e.g. per-turn env for the approval hook). */
+export interface SpawnExtra {
+  /** Additional environment variables, merged over the bridge's own `process.env`. */
+  env?: Record<string, string>;
+}
 
-export const defaultSpawn: SpawnFn = (command, args, cwd) =>
+export type SpawnFn = (
+  command: string,
+  args: string[],
+  cwd: string,
+  extra?: SpawnExtra,
+) => SpawnedProcess;
+
+export const defaultSpawn: SpawnFn = (command, args, cwd, extra) =>
   spawn(command, args, {
     cwd,
     // stdin IGNORED: the agent CLIs hang waiting for stdin EOF otherwise.
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
     shell: false,
+    ...(extra?.env ? { env: { ...process.env, ...extra.env } } : {}),
   });

@@ -35,6 +35,7 @@ file is optional; create it to override. Defaults live in
 | `model` | Default model for that agent (an alias like `opus`, or an exact id). |
 | `models` | Extra explicit models to show in the picker **alongside** the ones the agent reports itself. Each entry is a bare id string or `{ id, displayName?, description? }`. For **Claude Code** this pins concrete versions (e.g. `claude-opus-4-7`) next to the auto-updating `opus`/`sonnet`/`haiku` aliases — see [agents.md](./agents.md#claude-code-models-latest-aliases--pinned-versions). Ignored by agents that enumerate their own models (OpenCode, Codex). |
 | `permissionMode` | Headless posture for agents that gate tools: `acceptEdits` (default — edits auto-apply), `default` (read-only/no-edit), `bypassPermissions` (full autonomy). Maps to each CLI's flag (Claude `--permission-mode`/`--dangerously-skip-permissions`; Codex `-s workspace-write`/`read-only`/`--dangerously-bypass-approvals-and-sandbox`). |
+| `interactiveApprovals` | **Claude Code only**, opt-in (default false; requires `lanEnabled`). When true, every tool the agent runs prompts you **on the phone** (Approve / Reject) before it executes — the bridge injects a `PreToolUse` hook that holds the tool until you answer (5-min timeout → deny). Overrides `permissionMode` for Claude (it forces `--permission-mode default` so the hook is the gate). Leave it off for unattended runs. |
 
 ### Per-project agent/model pins (`projectAgents`)
 

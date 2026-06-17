@@ -19,6 +19,7 @@ import {
   type AgentModel,
   type AgentStreamEvent,
   type ApprovalDecision,
+  type ApprovalRequestBlock,
   type IAgentAdapter,
   type TurnAttachment,
 } from '@uxnan/shared';
@@ -26,6 +27,36 @@ import { rm } from 'node:fs/promises';
 import type { ThreadStore } from '../conversation/thread-store.js';
 import type { Logger } from '../logger.js';
 import { materializeAttachments } from './attachments.js';
+import { approvalBlock } from '../adapters/content-blocks.js';
+
+/** How long a tool approval waits for the user before defaulting to deny. */
+const APPROVAL_TIMEOUT_MS = 5 * 60 * 1000;
+
+/** Build the `approval` content block for a tool the agent wants to run. */
+function approvalContent(
+  approvalId: string,
+  toolName: string,
+  input: Record<string, unknown>,
+): ApprovalRequestBlock {
+  const detail = approvalDetail(input);
+  const action = detail ? `Allow ${toolName}: ${detail}` : `Allow ${toolName}`;
+  const t = toolName.toLowerCase();
+  const risk =
+    t === 'bash' || t === 'write' || t === 'edit' || t.includes('delete') ? 'high' : 'medium';
+  return approvalBlock(approvalId, action, { risk, ...(detail ? { detail } : {}) });
+}
+
+/** Short human description of a tool's input (command / path) for the card. */
+function approvalDetail(input: Record<string, unknown>): string {
+  if (!input || typeof input !== 'object') return '';
+  for (const key of ['command', 'file_path', 'path', 'url', 'pattern']) {
+    const value = input[key];
+    if (typeof value === 'string' && value.length > 0) {
+      return value.length > 200 ? `${value.slice(0, 200)}…` : value;
+    }
+  }
+  return '';
+}
 
 /** Display metadata + availability for a registered adapter, surfaced by `agent/list`. */
 export interface AgentMeta {
@@ -74,6 +105,12 @@ export class AgentManager {
   readonly #activeTurnByThread = new Map<string, string>();
   /** turnId → temp attachment dir to remove once the turn ends (best-effort). */
   readonly #attachmentDirByTurn = new Map<string, string>();
+  /** approvalId → resolver for a pending hook approval (Claude PreToolUse round-trip). */
+  readonly #pendingHookApprovals = new Map<
+    string,
+    { resolve: (decision: 'allow' | 'deny') => void; timer: ReturnType<typeof setTimeout> }
+  >();
+  #approvalSeq = 0;
   readonly #options: AgentManagerOptions;
 
   constructor(options: AgentManagerOptions) {
@@ -198,16 +235,56 @@ export class AgentManager {
   }
 
   /**
-   * Route a user's approval decision to the agent driving `threadId`. No new
-   * turn is created — the decision unblocks the in-flight turn that emitted the
-   * approval. Returns the in-flight turn id (or `''` if none is tracked) so the
-   * `turn/send` reply still carries a `turnId`.
+   * Ask the user (via the phone) whether a tool may run, emitting an `approval`
+   * content block on the thread's in-flight turn and resolving once
+   * {@link respondApproval} arrives (or after {@link APPROVAL_TIMEOUT_MS} → deny).
+   * Backs the Claude `PreToolUse` hook round-trip. Returns the raw decision the
+   * hook maps to a permission decision.
+   */
+  async requestApproval(
+    threadId: string,
+    info: { toolName: string; input: Record<string, unknown> },
+  ): Promise<'allow' | 'deny'> {
+    const turnId = this.#activeTurnByThread.get(threadId);
+    if (!turnId) return 'deny'; // no in-flight turn to attach the approval to
+    const approvalId = `appr-${turnId}-${(this.#approvalSeq += 1)}`;
+    const messageId = this.#assistantByTurn.get(turnId) ?? '';
+    const content = approvalContent(approvalId, info.toolName, info.input);
+    try {
+      await this.#options.store.appendBlock(threadId, turnId, content, this.#options.now());
+    } catch {
+      /* best-effort persistence */
+    }
+    this.#options.notify(
+      makeNotification(StreamNotification.ContentBlock, { threadId, turnId, messageId, content }),
+    );
+    return new Promise<'allow' | 'deny'>((resolve) => {
+      const timer = setTimeout(() => {
+        this.#pendingHookApprovals.delete(approvalId);
+        resolve('deny');
+      }, APPROVAL_TIMEOUT_MS);
+      this.#pendingHookApprovals.set(approvalId, { resolve, timer });
+    });
+  }
+
+  /**
+   * Route a user's approval decision. First resolves a pending **hook** approval
+   * (the Claude `PreToolUse` round-trip); otherwise forwards to the agent
+   * adapter (e.g. the Echo demo). No new turn is created. Returns the in-flight
+   * turn id (or `''`) so the `turn/send` reply still carries a `turnId`.
    */
   async respondApproval(
     threadId: string,
     approvalId: string,
     decision: ApprovalDecision,
   ): Promise<{ turnId: string }> {
+    const pending = this.#pendingHookApprovals.get(approvalId);
+    if (pending) {
+      clearTimeout(pending.timer);
+      this.#pendingHookApprovals.delete(approvalId);
+      pending.resolve(decision === 'reject' ? 'deny' : 'allow');
+      return { turnId: this.#activeTurnByThread.get(threadId) ?? '' };
+    }
     const agentId = this.#agentByThread.get(threadId);
     const adapter = agentId ? this.#adapters.get(agentId) : undefined;
     if (!adapter) {

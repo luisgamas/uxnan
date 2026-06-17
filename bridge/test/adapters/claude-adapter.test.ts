@@ -14,15 +14,26 @@ import type { AgentStreamEvent } from '@uxnan/shared';
 // --- a fake `claude` process whose stdout we feed with stream-json lines ---
 interface FakeSpawn {
   args: string[];
+  env?: Record<string, string>;
   feed(lines: string[]): void;
 }
 
 function fakeSpawner(): {
-  spawnFn: (command: string, args: string[], cwd: string) => SpawnedProcess;
+  spawnFn: (
+    command: string,
+    args: string[],
+    cwd: string,
+    extra?: { env?: Record<string, string> },
+  ) => SpawnedProcess;
   last(): FakeSpawn;
 } {
   const spawns: FakeSpawn[] = [];
-  const spawnFn = (_command: string, args: string[]): SpawnedProcess => {
+  const spawnFn = (
+    _command: string,
+    args: string[],
+    _cwd: string,
+    extra?: { env?: Record<string, string> },
+  ): SpawnedProcess => {
     const stdout = new PassThrough();
     const emitter = new EventEmitter();
     stdout.on('end', () => emitter.emit('close', 0));
@@ -33,6 +44,7 @@ function fakeSpawner(): {
     } as SpawnedProcess;
     spawns.push({
       args,
+      ...(extra?.env ? { env: extra.env } : {}),
       feed: (lines) => {
         for (const line of lines) stdout.write(`${line}\n`);
         stdout.end();
@@ -466,4 +478,55 @@ test('ClaudeCodeAdapter emits model_resolved from the init event', async () => {
   const events = await done;
   const resolved = events.find((e) => e.type === 'model_resolved');
   assert.equal((resolved?.data as { text: string }).text, 'claude-opus-4-8');
+});
+
+test('interactive approvals inject the PreToolUse hook (--settings + --permission-mode) and env', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new ClaudeCodeAdapter({
+    binaryPath: 'claude',
+    spawnFn,
+    interactiveApprovals: true,
+    approvalHook: {
+      token: 'tok-123',
+      scriptPath: 'C:/Users/x/.uxnan/hooks/claude-approval-hook.cjs',
+      url: () => 'http://127.0.0.1:19850/agent-hook/approval',
+    },
+  });
+  const { done } = collect(adapter);
+  await adapter.sendTurn({ threadId: 'thread-1', turnId: 'u1', text: 'go' });
+  last().feed([
+    '{"type":"result","subtype":"success","is_error":false,"result":"ok","session_id":"s"}',
+  ]);
+  await done;
+
+  const args = last().args;
+  // The hook settings are injected, and default permission mode lets the hook run.
+  const settingsIdx = args.indexOf('--settings');
+  assert.ok(settingsIdx >= 0);
+  assert.match(args[settingsIdx + 1]!, /PreToolUse/);
+  assert.match(args[settingsIdx + 1]!, /claude-approval-hook\.cjs/);
+  assert.equal(args[args.indexOf('--permission-mode') + 1], 'default');
+  // The per-turn env carries the endpoint URL, token and threadId for the hook.
+  assert.equal(last().env?.UXNAN_HOOK_THREAD_ID, 'thread-1');
+  assert.equal(last().env?.UXNAN_HOOK_TOKEN, 'tok-123');
+  assert.match(last().env?.UXNAN_HOOK_URL ?? '', /agent-hook\/approval/);
+});
+
+test('interactive approvals stay off until the hook URL resolves (LAN not started)', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new ClaudeCodeAdapter({
+    binaryPath: 'claude',
+    spawnFn,
+    interactiveApprovals: true,
+    approvalHook: { token: 't', scriptPath: 'C:/h.cjs', url: () => undefined },
+  });
+  const { done } = collect(adapter);
+  await adapter.sendTurn({ threadId: 't', turnId: 'u', text: 'go' });
+  last().feed([
+    '{"type":"result","subtype":"success","is_error":false,"result":"ok","session_id":"s"}',
+  ]);
+  await done;
+  // No hook injected, falls back to the normal (acceptEdits) one-shot path.
+  assert.equal(last().args.includes('--settings'), false);
+  assert.equal(last().env, undefined);
 });
