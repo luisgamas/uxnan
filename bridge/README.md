@@ -46,7 +46,7 @@ per-domain handlers.
 > - **Interactive approval intake** (Echo demo + Claude Code opt-in
 >   `PreToolUse` hook, validated end-to-end).
 > - **Image attachments** (CLI-agnostic file-path, sandbox-safe).
-> - **On-disk `turn/list` history fallback** for Claude/Codex/OpenCode/pi
+> - **On-disk `turn/list` history fallback** for Claude/Codex/OpenCode/pi/Gemini
 >   JSONL/JSON stores.
 > - **Bridge control:** `bridge/status` (real `relayConnected`),
 >   `bridge/removeTrustedDevice` (revokes + drops session + prunes push
@@ -59,8 +59,8 @@ per-domain handlers.
 > **PENDING that matters for a public release (not LAN alpha):** Aider
 > adapter, packaging + `npm publish` (pin `@uxnan/shared`), real-device push
 > validation. **Optional / blocked-on-mobile:** seq catch-up + key rotation
-> (await a mobile trigger), desktop embedded IPC (desktop Phase 6), Gemini
-> in the history reader, log size-rotation. See
+> (await a mobile trigger), desktop embedded IPC (desktop Phase 6), Aider in
+> the history reader (no per-session log shipped), log size-rotation. See
 > [`FOR-DEV.md`](./FOR-DEV.md).
 >
 > **How the bridge talks to agents:** it spawns each agent's **official local

@@ -31,7 +31,8 @@ only a human can provide.)
 > **PENDING optional / blocked-on-mobile (do not block alpha):** seq catch-up on
 > reconnect + key rotation (await a mobile trigger); desktop embedded IPC (desktop
 > Phase 6); per-model run-options *phase 4* (fast-mode/context — little to wire);
-> Gemini in the history reader; Aider adapter; log size-rotation.
+> Aider adapter + Aider in the history reader (no per-session log shipped); log
+> size-rotation.
 
 ## Mobile ↔ bridge integration — status & roadmap (2026-06-16)
 Single view of the cross-component seams (phone needs bridge/relay and vice
@@ -619,9 +620,9 @@ The OpenCode adapter is the template for any "one-shot per-turn CLI" agent:
       To VERIFY on device: pick Gemini for a thread, confirm streaming + the context
       meter + a write/edit diff render. **Follow-ups (FOR-DEV):** (1) no reasoning
       knob is advertised — the CLI exposes no `--thinking`/effort flag; revisit if one
-      appears (Gemini 2.5 has thinking budgets but no headless flag in 0.45.2). (2)
-      add Gemini to the `session-jsonl-history` reader (its on-disk session format) —
-      the adapter already persists the native session id, so the locator is ready.
+      appears (Gemini 2.5 has thinking budgets but no headless flag in 0.45.2). (2) ✅
+      DONE & validated end-to-end — add Gemini to the `session-jsonl-history` reader
+      (its on-disk session format); covered in `JSONL history fallback` below.
 - [x] **JSONL history fallback** (`session-jsonl-history`) — `turn/list` now falls
       back to each agent's own on-disk session log when the `ThreadStore` has no
       turns (bridge missed them / `threads.json` lost / session driven from a
@@ -640,6 +641,23 @@ The OpenCode adapter is the template for any "one-shot per-turn CLI" agent:
           ordered by `time.created`. No `better-sqlite3` dependency.
         - **pi** — `~/.pi/agent/sessions/<encoded-cwd>/<ts>_<sessionId>.jsonl`;
           lines `{type:'message', message:{role, content:[{type:'text',text}]}}`.
+        - **Gemini CLI** — `~/.gemini/tmp/<projectHash>/chats/
+          session-<ts>-<shortId>.json` (verified gemini-cli 0.46.0); the 8-char
+          `<shortId>` is the FIRST 8 HEX CHARS of the full UUID session id with
+          dashes stripped. One JSON object per FILE: `{ sessionId, projectHash,
+          startTime, lastUpdated, messages:[{id, timestamp, type:'user'|'gemini'|
+          'info'|'error', content (string OR [{text}]), thoughts?}] }`. The CLI
+          may write MULTIPLE SNAPSHOTS per session id (each `--resume` / CLI
+          invocation re-snapshots the conversation); the reader collects every
+          `session-*-<shortId>.json` across every `<hash>/chats/` dir, keeps
+          only files whose top-level `sessionId` matches ours (shortId
+          collisions do happen), merges messages **deduplicated by message
+          `id`**, sorts by timestamp, maps `gemini`→assistant (joins
+          `thoughts[].description` into `thinking`), skips `info`/`error`.
+          Multi-file path cache (60s TTL). The native session id was already
+          persisted per thread by `AgentManager.setAgentSession`, so the
+          locator is ready — validated live by parsing a real on-disk
+          gemini-cli session (all turns + thinking extracted).
       Locating the file needs the agent's **native** session id, so it is now
       persisted per thread: adapters expose `nativeSessionId(threadId)`,
       `AgentManager` writes it via `ThreadStore.setAgentSession` on turn end, and
@@ -649,9 +667,10 @@ The OpenCode adapter is the template for any "one-shot per-turn CLI" agent:
       for unknown/unsupported agents or a missing log. Tested with per-format
       fixtures **and** smoked against real on-disk logs for all four agents.
       **Mobile linkage:** none — `turn/list` is unchanged on the wire; the phone
-      just sees history it previously couldn't. **Follow-ups:** Gemini/Aider when
-      those adapters land; richer block/tool reconstruction (today the fallback
-      carries text + thinking, not the live path's structured blocks).
+      just sees history it previously couldn't. **Follow-ups:** Aider when its
+      adapter lands (Gemini already done); richer block/tool reconstruction (today
+      the fallback carries text + thinking, not the live path's structured
+      blocks).
 - [ ] Later: Aider.
 
 ## Daemon lifecycle & ops

@@ -1610,15 +1610,30 @@ async function handleApplyPatchChanges({ changes }) { ... }
 
 #### 5.8.8 Fallback JSONL (session-jsonl-history)
 
-Cuando el runtime del agente no tiene datos frescos de `thread/turns/list`, el bridge lee directamente de los archivos JSONL de sesion en disco:
+Cuando el runtime del agente no tiene datos frescos de `thread/turns/list`, el bridge lee directamente de los archivos de sesion en disco de cada agente:
 
 ```javascript
 // src/session-jsonl-history.js
-// Parsea archivos JSONL de sesion por agente:
-// - Codex: ~/.codex/sessions/<sessionId>.jsonl
-// - Claude Code: ~/.claude-code/sessions/<sessionId>.jsonl
-// - pi-agent: ~/.pi/agent/sessions/<sessionId>.jsonl
-// - OpenCode: SQLite de OpenCode
+// Parsea los archivos de sesion en disco por agente (cada CLI usa su propio formato):
+// - Codex:        ~/.codex/sessions/<Y>/<M>/<D>/rollout-<ts>-<sessionId>.jsonl
+//                 (JSONL, payloads {type:'message', role, content:[{type:'input_text'|'output_text',text}]})
+// - Claude Code:  ~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl
+//                 (JSONL, lineas {type:'user'|'assistant', message:{role, content:[{type:'text'|'thinking'|...}]}})
+// - pi-agent:     ~/.pi/agent/sessions/<encoded-cwd>/<ts>_<sessionId>.jsonl
+//                 (JSONL, lineas {type:'message', message:{role, content:[{type:'text',text}]}})
+// - OpenCode:     JSON store (no SQLite) bajo
+//                 ~/.local/share/opencode/storage/{message,part}/<sessionId>/<msgId>.json
+// - Gemini CLI:   ~/.gemini/tmp/<projectHash>/chats/session-<ts>-<shortId>.json
+//                 (un JSON por snapshot: { sessionId, projectHash, startTime,
+//                   lastUpdated, messages:[{id, timestamp, type:'user'|'gemini'|
+//                   'info'|'error', content (string | [{text}]), thoughts?}] });
+//                 <shortId> = primeros 8 chars hex del UUID (sin guiones);
+//                 multiples snapshots por session id se mergean deduplicados
+//                 por message id y ordenados por timestamp.
+//
+// El agente expone nativeSessionId(threadId) en IAgentAdapter y
+// AgentManager lo persiste via ThreadStore.setAgentSession al cierre de cada
+// turn, para que el bridge pueda localizar el archivo tras un restart.
 
 async function readHistoryFromDisk(threadId, { cursor, limit }) {
   // Soporta paginacion por cursor y limit

@@ -5,6 +5,35 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added
+- **Gemini CLI on-disk session history** — the `SessionHistoryReader`
+  (`src/conversation/session-history.ts`) now parses the Gemini CLI's real
+  per-snapshot JSON log under `~/.gemini/tmp/<projectHash>/chats/
+  session-<ts>-<shortId>.json`, so `turn/list` falls back to the agent's own
+  history when the in-memory store is empty (bridge missed the turns,
+  `threads.json` was lost, or the session was driven from a terminal). The
+  adapter already persists the native session id, so the locator is now wired.
+  Per the `gemini-cli` 0.46.0 format: top-level `{ sessionId, projectHash,
+  startTime, lastUpdated, messages:[{id, timestamp, type, content, thoughts?}] }`,
+  with the 8-char short id in the filename = first 8 hex chars of the UUID
+  (dashes stripped). The reader (a) walks every `tmp/<hash>/chats/` dir looking
+  for `session-*-<shortId>.json`, (b) keeps ONLY files whose top-level
+  `sessionId` matches, (c) merges messages across snapshots deduplicating by
+  message `id`, (d) sorts by timestamp, (e) maps `user`→user and `gemini`→
+  assistant (skipping `info`/`error`), and (f) joins `thoughts[].description`
+  into the assistant message's `thinking` field. The multi-file path cache
+  (60s TTL) reuses the resolved file list. Best-effort + read-only: tolerant
+  of malformed JSON, returns `null` for unknown/unsupported agents, a
+  non-UUID session id, or a missing log. Covered by 7 new tests in
+  `test/conversation/session-history.test.ts` (basic, thoughts, multi-part
+  content, multi-snapshot merge + dedup, shortId collision, multi-project
+  scan, TTL re-scan) AND smoked end-to-end against a real on-disk gemini-cli
+  session log (verified parses of all 3 turns with user/gemini messages and
+  extracted thinking). `turn/list` is unchanged on the wire; the phone just
+  sees history it previously couldn't. Aider remains the only remaining agent
+  without an on-disk history reader (its CLI doesn't ship a per-session log —
+  follow-up in `FOR-DEV.md`).
+
 ### Docs
 - **Synced the spec (`architecture/02a-system-architecture.md` and
   `architecture/02b-contracts-and-requirements.md`) with the code.** This
