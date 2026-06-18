@@ -144,8 +144,11 @@ browser and multi-PC connection correctness are now DONE — see below.)
   name, folder); a **compact** density toggle; all kept to the M3 ≤3-actions
   app-bar guideline (Search + Sort visible, density + Archived in a `⋮` overflow
   menu). Threads with an **unread agent reply** are emphasized (tint + bold +
-  dot), cleared on open. Sort/density preference is in-memory (☐ persistence is
-  an optional follow-up).
+  dot), cleared on open. ☑ **Sort/density now persisted** (2026-06-18):
+  `ThreadListPreferencesStore` (`uxnan.threads.sort`/`uxnan.threads.compact`)
+  + `threadSortProvider`/`threadDensityCompactProvider`; both the active and
+  archived lists share the persisted choice (survives restart). Store
+  round-trip tested.
 - ◑ **Scope threads to the connected PC / project** — **PC scoping DONE +
   connection-targeting DONE**: `Thread.deviceId` tags each thread with its PC and
   the list filters by it. Crucially, **all live actions now target the PC we
@@ -155,10 +158,17 @@ browser and multi-PC connection correctness are now DONE — see below.)
   validated Connect), and the conversation composer is disabled unless connected
   to the thread's PC — so a message can never be sent over a *different*
   connected PC's channel. Browsing a PC no longer changes the connection target
-  (`setActiveDevice` removed from the browse path). ☐ Still open:
-  **project**-level scoping (drive `loadThreads(projectId:)` once the session
-  exposes the active project). The `thread/list` JSON shape is still assumed
-  (tolerant parser) — verify against the real bridge.
+  (`setActiveDevice` removed from the browse path). ◑ **Project-level scoping —
+  implemented, DISABLED in the UI (2026-06-18).** The client-side filter is
+  fully built — a `_ProjectFilterBar` on `ThreadsScreen` slicing by a project
+  key (`projectId` ?? `cwd`, labelled by the folder basename), composing with
+  the agent filter — and the bridge scopes too (`loadThreads(projectId:)`). But
+  it is **intentionally not shown**: a flat chip bar isn't the right surface
+  (maintainer call). Gated behind `_ThreadsScreenState._projectFilterEnabled`
+  (a getter returning `false`, with a `FOR-DEV:` note). ☐ **To enable:** surface
+  it from a proper **advanced filters / organization view** and flip the flag —
+  no other code/back change needed. The `thread/list` JSON shape is still
+  assumed (tolerant parser) — verify against the real bridge.
 - ◑ **Thread actions** — **new thread DONE**: a "New conversation" FAB on
   `ThreadsScreen` opens `NewConversationSheet` (pick project via `project/list`,
   agent via `agent/list`, model via `agent/models`) → `ThreadManager.startThread`
@@ -231,10 +241,11 @@ browser and multi-PC connection correctness are now DONE — see below.)
          `PreToolUse` hook round-trips each tool to the phone). Both validated
          end-to-end. **Codex** real approvals are still deferred (needs the
          app-server turn protocol — see `bridge/FOR-DEV.md`).
-    - ☑ **On-device paths that work today:** (a) any agent → start an **`echo`**
-      thread, send `approval-demo`; (b) **Claude** with `interactiveApprovals`
-      enabled → ask it to run a tool (e.g. write a file) and the card →
-      Approve/Reject gates it. No mobile change was needed; the app is generic.
+    - ☑ **On-device paths — VALIDATED (2026-06-18):** (a) any agent → start an
+      **`echo`** thread, send `approval-demo`; (b) **Claude** with
+      `interactiveApprovals` (opt-in `PreToolUse` hook) enabled → ask it to run a
+      tool (e.g. write a file) and the card → Approve/Reject gates it. Both
+      confirmed on-device. No mobile change was needed; the app is generic.
   - ☑ **Verify wire shapes (plan/subagent)** — DONE: confirmed `plan` and
     `subagent` content blocks are **informational** status updates, NOT approval
     gates — only `approval` blocks gate actions. Field names for plan steps /
@@ -277,13 +288,18 @@ browser and multi-PC connection correctness are now DONE — see below.)
     and `forkThread` (`thread/fork` → persists the returned thread with the
     source's `deviceId`, opens it). Fork is a **"Fork conversation"** item in the
     conversation overflow menu.
-  - ☐ **Incremental remote paging (follow-up).** `loadMoreHistory` paginates the
-    *local* store (already complete after resync). True remote back-paging using
-    `turn/list`'s `nextCursor` to avoid re-pulling the whole thread on open needs
-    a bridge change: its cursor is **forward-only / offset** (oldest→newest), so
-    a newest-first scroll-up needs a reverse cursor or a total-count from the
-    bridge. The `turn/list` JSON shape is assumed (tolerant parser); verify
-    against the real bridge.
+  - ☑ **Incremental remote paging — DONE both sides (2026-06-18).** The bridge
+    `turn/list` now reports `total` and accepts `fromEnd` (shared
+    `TurnList.total`, `TurnListParams.fromEnd`; `ThreadStore.listTurns` +
+    `paginateTurns`). On open, `ThreadManager._resyncThread` pulls only the
+    **newest** page (`fromEnd:true`, `_turnPageSize=20`) instead of the oldest
+    page, and `loadMoreHistory` pages **backward** remotely — widening the local
+    window first, then fetching the previous turn page by an explicit offset
+    cursor derived from `total`, persisting older assistant answers **below** the
+    current min `orderIndex`. `hasMore` reflects local-window OR remote-offset.
+    Backward-compatible: an older bridge omits `total`, disabling remote paging
+    (local windowing only). Covered by a store test (bridge) + a back-paging
+    test (mobile). ☐ On-device: verify scroll-up paging on a long real thread.
 - ☑ **Conversation UI (visual layer)** — DONE: `ConversationScreen`
   (`SliverAppBar.large`, floating + snap, auto-scroll), message renderers
   (`MessageBubble` + `MessageContentView`: markdown, code, command card, diff,
@@ -394,8 +410,9 @@ browser and multi-PC connection correctness are now DONE — see below.)
       file/vision-capable agent CLI can open it (no per-CLI image flag needed).
       The app already sends `attachments: [{type:'image', mimeType, base64Data}]`,
       so no further mobile change is required.
-    - ☐ **On-device verification:** pick a photo, send an image-only message, and
-      confirm the agent actually reads/acts on the image against a live bridge.
+    - ☑ **On-device verification — DONE (2026-06-18):** picked a photo, sent an
+      image-only message, and confirmed the agent reads/acts on the image
+      against a live bridge.
     - ☐ **Native CLI image flags (bridge follow-up, optional):** some agents may
       accept images more richly via a dedicated flag/MCP than a file-path
       reference; the temp-file path is the CLI-agnostic MVP. Tracked in
@@ -486,20 +503,23 @@ browser and multi-PC connection correctness are now DONE — see below.)
     `git/revert`; phone `GitActionManager.revert` + a **"Revert last commit"**
     item in the git-screen overflow (reverts `HEAD`, preserving history —
     distinct from Undo commit's soft reset).
-  - ◑ **Safe branch/worktree deletion — bridge DONE, phone partial.** Bridge
-    `git/deleteBranch` (refuses unmerged unless `force`) + `git/removeWorktree`
-    (refuses dirty unless `force`) landed; `GitActionManager.deleteBranch` /
-    `removeWorktree` are wired (callable). ☐ **Phone UI pending:** a delete
-    affordance in the branch picker that, on the unmerged-error, offers a
-    forced retry behind a confirm; and a worktree-management entry to remove the
-    worktree a conversation was created in. UX pending review.
-  - ◑ **Vanished-cwd detection — bridge DONE, phone wiring pending.** Bridge
-    `workspace/exists` (`{ exists, isGitRepo? }`) is ready. ☐ **Phone:** probe a
-    thread's `cwd` on open and, when gone, mark the thread **unavailable** +
-    disable its composer with a "folder no longer exists" state (the
-    conversation composer's connection-gating is the integration point). Add a
-    `workspace/exists` call (e.g. on `WorkspaceBrowser` or the session
-    coordinator) and gate `ConversationScreen`'s send on it.
+  - ☑ **Safe branch/worktree deletion — DONE both sides** (phone landed
+    2026-06-18 review pass; confirmed already wired). Bridge `git/deleteBranch`
+    (refuses unmerged unless `force`) + `git/removeWorktree` (refuses dirty
+    unless `force`); `GitActionManager.deleteBranch`/`removeWorktree`. **Phone
+    UI:** the branch picker (`_BranchPicker` in `git_screen.dart`) has a delete
+    affordance per branch (`_deleteBranch`) that, on the unmerged-error, offers
+    an explicit **forced delete** behind an error-styled confirm; the git-screen
+    overflow exposes **Remove worktree** (`_removeWorktree`, force-on-dirty) when
+    the thread runs in a worktree. ☐ On-device: verify the force path against a
+    live bridge.
+  - ☑ **Vanished-cwd detection — DONE both sides** (phone confirmed wired,
+    2026-06-18). Bridge `workspace/exists` (`{ exists, isGitRepo? }`);
+    `ThreadManager.workspaceExists` (fail-open) is probed once per cwd by
+    `ConversationScreen._checkCwd` on open, and the composer is gated
+    `enabled: connectedHere && !_cwdMissing` with a `_CwdMissingBanner`
+    ("folder no longer exists") above it. ☐ On-device: verify against a removed
+    folder/worktree on a live bridge.
   - FOR-DEV: **managed worktrees** — the bridge's `git/createWorktree` requires an
     explicit `path` (no auto-path). The phone derives a sibling path from `cwd`
     (`_worktreePath` in `NewConversationScreen`) so the user only types a branch
@@ -642,22 +662,27 @@ Nothing below blocks an Android alpha build; these are the remaining feature/
 polish gaps, ordered by importance:
 
 - **App-side, buildable now (no bridge needed):**
-  - ☐ **Attach (file/image picker)** — gated by the `images` capability; today a
-    disabled placeholder. Medium importance: the only composer input still
-    missing (text + voice already work).
-  - ☐ **Persist sort/density + project-level thread scoping** — small UX
-    follow-ups. Low importance.
+  - ☑ **Attach (image picker)** — DONE & **on-device validated (2026-06-18)**:
+    photo-library / camera capture → inline base64 `ImageContent`, image-only
+    messages ride `turn/send { attachments }`; the agent reads the image. Arbitrary
+    (non-image) file attach stays deferred (no bridge contract). See *Attach* above.
+  - ☑ **Persist sort/density** — DONE (2026-06-18). ◑ **Project-level thread
+    scoping** — implemented (chips + filter + bridge), **disabled in the UI**
+    (2026-06-18); flip `_projectFilterEnabled` from a future advanced-filters
+    view to enable.
   - ☐ **Work-log auto-expand while streaming; tap Last-edits strip to jump.** Low.
 - **App-side seam, needs a live bridge to finish/verify:**
-  - ☐ **Remote history pagination** (`loadMoreHistory` cursor + `resumeThread`/
-    `forkThread`). Medium importance for long-lived threads; re-sync already
-    recovers in-flight turns.
+  - ☑ **Remote history pagination** — DONE both sides (2026-06-18): newest-page
+    open (`fromEnd`) + remote back-paging via `total`. ☐ On-device: verify
+    scroll-up paging on a long real thread.
   - ☐ **Automated integration test against a real bridge** (today: simulated
     in-memory bridge). Medium importance for regression safety.
 - **Bridge-blocked (documented contracts above; not the app's fault):**
-  interactive approval intake, `git/revert`, safe branch/worktree deletion,
-  vanished-cwd detection, agent session-id surfacing, approval-mode persistence
-  RPC. Important for feature-completeness but each waits on the bridge agent.
+  agent session-id surfacing and an approval-mode persistence RPC. Important for
+  feature-completeness but each waits on the bridge agent. (Interactive approval
+  intake, `git/revert`, safe branch/worktree deletion, vanished-cwd detection
+  and remote history pagination are now **DONE both sides** — see the sections
+  above.)
 - **FOR-HUMAN assets (gate iOS + live push):** iOS APNs key (paid Apple
   account), iOS Info.plist permission strings (camera, local network, mic),
   Firebase config (`google-services.json` / `GoogleService-Info.plist`), Android

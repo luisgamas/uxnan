@@ -38,7 +38,7 @@ const _statusResult = <String, dynamic>{
   ],
 };
 
-const _emptyList = <String, dynamic>{'cwd': '.', 'entries': []};
+const _emptyList = <String, dynamic>{'cwd': '.', 'entries': <dynamic>[]};
 
 /// Default `sendRequest` for the manager-under-test: each call gets a
 /// pre-registered response from [responder], else returns an empty map. The

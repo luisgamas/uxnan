@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added
+- **`turn/list` newest-first pagination.** The handler now accepts
+  `fromEnd?: boolean` and the response carries `total` (full turn count).
+  `ThreadStore.listTurns` (and the on-disk-history `paginateTurns` fallback)
+  honour `fromEnd` by returning the last `limit` turns and always report
+  `total`, so the phone can open a long thread at its newest messages and page
+  backward by computing offsets instead of pulling the whole thread. Cursor
+  semantics (forward offset, oldest→newest) are unchanged and backward
+  compatible. Covered by `test/conversation/thread-store.test.ts`.
+
 ### Docs
 - **Synced the spec (`architecture/02a-system-architecture.md` and
   `architecture/02b-contracts-and-requirements.md`) with the code.** This

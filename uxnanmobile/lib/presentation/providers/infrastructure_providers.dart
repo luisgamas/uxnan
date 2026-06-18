@@ -20,6 +20,7 @@ import 'package:uxnan/infrastructure/storage/local_database.dart';
 import 'package:uxnan/infrastructure/storage/notification_preferences_store.dart';
 import 'package:uxnan/infrastructure/storage/phone_identity_store.dart';
 import 'package:uxnan/infrastructure/storage/secure_store.dart';
+import 'package:uxnan/infrastructure/storage/thread_list_preferences_store.dart';
 
 /// Infrastructure-layer providers.
 ///
@@ -79,6 +80,11 @@ final conversationPreferencesStoreProvider =
 /// Persists appearance + language preferences (non-sensitive, on-device).
 final appearancePreferencesStoreProvider = Provider<AppearancePreferencesStore>(
   (ref) => AppearancePreferencesStore(),
+);
+
+/// Persists thread-list view preferences (sort + density, on-device).
+final threadListPreferencesStoreProvider = Provider<ThreadListPreferencesStore>(
+  (ref) => ThreadListPreferencesStore(),
 );
 
 /// Firebase Cloud Messaging + local notifications, fully guarded so the app

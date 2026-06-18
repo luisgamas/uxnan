@@ -72,6 +72,35 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   0.7.7+1` automatically.
 
 ### Added
+- **Remote history pagination (newest-page open + backward paging).**
+  Opening a thread now pulls only the **newest** page of turns
+  (`turn/list { fromEnd: true, limit: 20 }`) instead of the oldest page,
+  and "Show earlier messages" pages **backward** over the bridge: it
+  widens the local window first, then fetches the previous turn page by
+  an explicit offset cursor derived from the bridge's new `total`,
+  persisting older answers below the current min `orderIndex`. `hasMore`
+  reflects local-window OR remote-offset. Backward-compatible (an older
+  bridge that omits `total` falls back to local windowing only). Requires
+  the bridge/shared `turn/list` changes below. Covered by a manager
+  back-paging test.
+- **Project filter chips on the threads list (implemented, disabled in
+  the UI).** A PC hosting several repos can be sliced by project: a
+  horizontal chip bar filtering by a project key (`projectId` when set,
+  otherwise the working `cwd`, labelled by the folder basename),
+  composing with the agent filter. The code (`_ProjectFilterBar` +
+  grouping helpers) is complete but **intentionally not shown** — a flat
+  chip bar isn't the right surface; it's gated behind
+  `_projectFilterEnabled` (`false`) until a dedicated advanced
+  filters / organization view exists. Flip the flag from that view to
+  enable; no other change needed.
+- **Sort + density thread-list preference now persists.** The list
+  ordering (created / name / folder) and the compact-density toggle were
+  in-memory `StatefulWidget` fields; they're now persisted on-device
+  (`ThreadListPreferencesStore`, keys `uxnan.threads.sort` /
+  `uxnan.threads.compact`) and exposed as `threadSortProvider` /
+  `threadDensityCompactProvider`, so the active and archived thread lists
+  share one persisted choice that survives restarts. Covered by a store
+  round-trip test.
 - **Inline file editing in the file viewer.** Text files (UTF-8, not
   images or binaries) now show an **Edit** action in the viewer's top
   bar. Editing opens a full-height monospace editor over the raw file

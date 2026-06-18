@@ -105,14 +105,26 @@ export class ThreadStore {
     return toThread(await this.#requireThread(await this.#read(), threadId));
   }
 
-  async listTurns(threadId: string, cursor?: string, limit?: number): Promise<TurnList> {
+  async listTurns(
+    threadId: string,
+    cursor?: string,
+    limit?: number,
+    fromEnd = false,
+  ): Promise<TurnList> {
     const threads = await this.#read();
     const thread = await this.#requireThread(threads, threadId);
-    const start = cursor ? Number.parseInt(cursor, 10) || 0 : 0;
+    const total = thread.turns.length;
     const size = limit && limit > 0 ? limit : DEFAULT_TURN_LIMIT;
+    // `fromEnd` returns the last page (newest turns) so the phone can open a
+    // long thread at its most recent messages and page backward from there.
+    const start = fromEnd
+      ? Math.max(0, total - size)
+      : cursor
+        ? Number.parseInt(cursor, 10) || 0
+        : 0;
     const slice = thread.turns.slice(start, start + size);
-    const result: TurnList = { turns: slice.map(toTurn) };
-    if (start + size < thread.turns.length) {
+    const result: TurnList = { turns: slice.map(toTurn), total };
+    if (start + size < total) {
       result.nextCursor = String(start + size);
     }
     return result;

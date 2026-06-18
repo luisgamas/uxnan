@@ -35,11 +35,20 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
   /// The selected agent filter; null means "all agents".
   AgentId? _agentFilter;
 
-  /// Current ordering of the list. Default: newest created first.
-  ThreadSort _sort = ThreadSort.created;
+  /// The selected project filter (a project key — `projectId` or `cwd`); null
+  /// means "all projects". In-memory, like the agent filter. Inert while the
+  /// project filter is disabled (it's never set, so it stays null).
+  String? _projectFilter;
 
-  /// Whether to render the denser, single-line tile. Default: the full tile.
-  bool _compact = false;
+  /// FOR-DEV: project-scope filtering is **fully implemented** (the
+  /// [_ProjectFilterBar] chips, the [_projectsPresent]/[_projectKeyOf] grouping
+  /// and the compose-with-agent filter) and the bridge side scopes too
+  /// (`loadThreads(projectId:)`), but it is **intentionally disabled in the
+  /// UI**: a flat chip bar isn't the right surface. Re-enable it from a proper
+  /// **advanced filters / organization view** (per the maintainer) — flip this
+  /// to `true` (ideally moving the control into that view). Code + back stay
+  /// ready; nothing else needs to change to turn it on.
+  bool get _projectFilterEnabled => false;
 
   @override
   void initState() {
@@ -110,6 +119,8 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
   @override
   Widget build(BuildContext context) {
     final allThreads = ref.watch(threadsProvider).value ?? const <Thread>[];
+    final sort = ref.watch(threadSortProvider);
+    final compact = ref.watch(threadDensityCompactProvider);
     // Scope to the selected PC and hide archived threads (those live on the
     // Archived screen). Legacy threads with no device tag are still shown (they
     // get tagged on the next connected refresh); demo data is gone.
@@ -128,14 +139,21 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
             widget.deviceId;
 
     final agents = _agentsPresent(threads);
-    final filtered = _agentFilter == null
-        ? threads
-        : threads
-            .where(
-              (t) => AgentIdParsing.fromWireId(t.agentId) == _agentFilter,
-            )
-            .toList();
-    final visible = sortThreads(filtered, _sort);
+    // Project chips are computed only when the (disabled) project filter is on.
+    final projects = _projectFilterEnabled
+        ? _projectsPresent(threads)
+        : const <_ProjectChip>[];
+    // Agent + project filters compose: a thread is visible only if it passes
+    // both (each is independent and computed from the device-scoped set). The
+    // project filter is inert while disabled (`_projectFilter` stays null).
+    final filtered = threads.where((t) {
+      final agentOk = _agentFilter == null ||
+          AgentIdParsing.fromWireId(t.agentId) == _agentFilter;
+      final projectOk =
+          _projectFilter == null || _projectKeyOf(t) == _projectFilter;
+      return agentOk && projectOk;
+    }).toList();
+    final visible = sortThreads(filtered, sort);
 
     final l10n = AppLocalizations.of(context);
 
@@ -149,12 +167,14 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
           onSelect: (id) => context.push(AppRoutes.conversation(id)),
         ),
         ThreadSortMenu(
-          sort: _sort,
-          onChanged: (value) => setState(() => _sort = value),
+          sort: sort,
+          onChanged: (value) =>
+              ref.read(threadSortProvider.notifier).set(value),
         ),
         ThreadMoreMenu(
-          compact: _compact,
-          onCompactChanged: (value) => setState(() => _compact = value),
+          compact: compact,
+          onCompactChanged: (value) =>
+              ref.read(threadDensityCompactProvider.notifier).set(value: value),
           onArchived: () =>
               context.push(AppRoutes.deviceArchived(widget.deviceId)),
         ),
@@ -176,6 +196,17 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
               agents: agents,
               selected: _agentFilter,
               onSelected: (agent) => setState(() => _agentFilter = agent),
+            ),
+          ),
+        // Per-project filter chips — DISABLED in the UI (see
+        // [_projectFilterEnabled]); the bar + filter stay implemented so they
+        // can be surfaced from a future advanced filters view.
+        if (_projectFilterEnabled && projects.length > 1)
+          SliverToBoxAdapter(
+            child: _ProjectFilterBar(
+              projects: projects,
+              selected: _projectFilter,
+              onSelected: (key) => setState(() => _projectFilter = key),
             ),
           ),
         if (!connectedHere)
@@ -201,10 +232,10 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
             sliver: SliverList.separated(
               itemCount: visible.length,
               separatorBuilder: (_, __) => SizedBox(
-                height: _compact ? UxnanSpacing.sm : UxnanSpacing.md,
+                height: compact ? UxnanSpacing.sm : UxnanSpacing.md,
               ),
               itemBuilder: (context, index) =>
-                  ThreadTile(thread: visible[index], compact: _compact),
+                  ThreadTile(thread: visible[index], compact: compact),
             ),
           ),
       ],
@@ -218,6 +249,46 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
     }
     return seen.toList();
   }
+
+  /// A thread's project identity: its `projectId` when set, else its `cwd`
+  /// (the folder is the user-facing "project"). Empty when neither is known —
+  /// such threads only appear under the "All" chip.
+  String _projectKeyOf(Thread thread) {
+    final projectId = thread.projectId;
+    if (projectId != null && projectId.isNotEmpty) return projectId;
+    return thread.cwd ?? '';
+  }
+
+  /// The distinct projects present in [threads], each as a `(key, label)`
+  /// where the label is the folder basename (falling back to the key).
+  /// Sorted alphabetically by label.
+  List<_ProjectChip> _projectsPresent(List<Thread> threads) {
+    final byKey = <String, String>{};
+    for (final thread in threads) {
+      final key = _projectKeyOf(thread);
+      if (key.isEmpty) continue;
+      final cwd = thread.cwd;
+      final label = (cwd != null && cwd.isNotEmpty)
+          ? cwd.split(RegExp(r'[\\/]')).last
+          : key;
+      byKey.putIfAbsent(key, () => label);
+    }
+    final chips = byKey.entries
+        .map((e) => _ProjectChip(key: e.key, label: e.value))
+        .toList()
+      ..sort(
+        (a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()),
+      );
+    return chips;
+  }
+}
+
+/// A distinct project present in the list: its filter [key] (`projectId` or
+/// `cwd`) and the human [label] shown on the chip (the folder basename).
+class _ProjectChip {
+  const _ProjectChip({required this.key, required this.label});
+  final String key;
+  final String label;
 }
 
 class _AgentFilterBar extends StatelessWidget implements PreferredSizeWidget {
@@ -268,6 +339,61 @@ class _AgentFilterBar extends StatelessWidget implements PreferredSizeWidget {
                 ),
                 selected: selected == agent,
                 onSelected: (_) => onSelected(agent),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Horizontal chips that scope the list to one project (working folder). Mirrors
+/// [_AgentFilterBar]; shown only when the PC hosts more than one project.
+class _ProjectFilterBar extends StatelessWidget {
+  const _ProjectFilterBar({
+    required this.projects,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final List<_ProjectChip> projects;
+  final String? selected;
+  final ValueChanged<String?> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return SizedBox(
+      height: 52,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(
+          horizontal: UxnanSpacing.lg,
+          vertical: UxnanSpacing.sm,
+        ),
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(right: UxnanSpacing.sm),
+            child: ChoiceChip(
+              label: Text(l10n.threadsFilterAll),
+              selected: selected == null,
+              onSelected: (_) => onSelected(null),
+            ),
+          ),
+          for (final project in projects)
+            Padding(
+              padding: const EdgeInsets.only(right: UxnanSpacing.sm),
+              child: ChoiceChip(
+                label: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.folder_outlined, size: 16),
+                    const SizedBox(width: UxnanSpacing.xs),
+                    Text(project.label),
+                  ],
+                ),
+                selected: selected == project.key,
+                onSelected: (_) => onSelected(project.key),
               ),
             ),
         ],

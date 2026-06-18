@@ -31,6 +31,8 @@ import 'package:uxnan/infrastructure/transport/secure_transport_layer.dart';
 import 'package:uxnan/infrastructure/transport/transport_selector.dart';
 import 'package:uxnan/infrastructure/transport/websocket_transport.dart';
 import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
+import 'package:uxnan/presentation/screens/threads/thread_list_controls.dart'
+    show ThreadSort;
 import 'package:uxnan/presentation/widgets/agent_visuals.dart';
 
 /// Application-layer providers (coordinators and their derived UI state).
@@ -532,6 +534,64 @@ class ConfirmBeforePr extends Notifier<bool> {
 /// Whether a confirmation is shown before opening a PR (persisted toggle).
 final confirmBeforePrProvider =
     NotifierProvider<ConfirmBeforePr, bool>(ConfirmBeforePr.new);
+
+/// The thread-list ordering. Persisted; defaults to newest-created first.
+/// Shared by the active and archived lists so the choice carries across both.
+class ThreadSortSetting extends Notifier<ThreadSort> {
+  @override
+  ThreadSort build() {
+    unawaited(_hydrate());
+    return ThreadSort.created;
+  }
+
+  Future<void> _hydrate() async {
+    final stored =
+        await ref.read(threadListPreferencesStoreProvider).readSort();
+    if (stored == null) return;
+    final match = ThreadSort.values.where((s) => s.name == stored);
+    if (match.isNotEmpty && match.first != state) state = match.first;
+  }
+
+  /// Persists and applies the thread-list ordering.
+  Future<void> set(ThreadSort value) async {
+    if (value == state) return;
+    state = value;
+    await ref.read(threadListPreferencesStoreProvider).writeSort(value.name);
+  }
+}
+
+/// The thread-list ordering (persisted, shared across active + archived lists).
+final threadSortProvider =
+    NotifierProvider<ThreadSortSetting, ThreadSort>(ThreadSortSetting.new);
+
+/// Whether the thread list uses the compact (single-line) density. Persisted;
+/// defaults to the full tile.
+class ThreadDensityCompact extends Notifier<bool> {
+  @override
+  bool build() {
+    unawaited(_hydrate());
+    return false;
+  }
+
+  Future<void> _hydrate() async {
+    final stored =
+        await ref.read(threadListPreferencesStoreProvider).readCompact();
+    if (stored != null && stored != state) state = stored;
+  }
+
+  /// Persists and applies the compact-density preference.
+  Future<void> set({required bool value}) async {
+    if (value == state) return;
+    state = value;
+    await ref
+        .read(threadListPreferencesStoreProvider)
+        .writeCompact(value: value);
+  }
+}
+
+/// Whether the thread list uses the compact density (persisted toggle).
+final threadDensityCompactProvider =
+    NotifierProvider<ThreadDensityCompact, bool>(ThreadDensityCompact.new);
 
 /// The app's theme mode (system/light/dark). Persisted; defaults to system.
 class ThemeModeSetting extends Notifier<ThemeMode> {

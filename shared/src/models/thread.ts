@@ -58,4 +58,10 @@ export interface ThreadList {
 export interface TurnList {
   turns: Turn[];
   nextCursor?: string;
+  /**
+   * Total number of turns available for the thread, regardless of the page
+   * returned. Lets a client page from the end (newest-first) by computing
+   * offsets without first pulling the whole thread.
+   */
+  total?: number;
 }

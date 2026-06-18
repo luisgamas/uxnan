@@ -104,9 +104,38 @@ test('listTurns paginates with a cursor', async () => {
   const page1 = await store.listTurns(thread.id, undefined, 2);
   assert.equal(page1.turns.length, 2);
   assert.equal(page1.nextCursor, '2');
+  // The total is reported on every page so a client can page from the end.
+  assert.equal(page1.total, 3);
   const page2 = await store.listTurns(thread.id, page1.nextCursor, 2);
   assert.equal(page2.turns.length, 1);
   assert.equal(page2.nextCursor, undefined);
+  assert.equal(page2.total, 3);
+  await rm(baseDir, { recursive: true, force: true });
+});
+
+test('listTurns fromEnd returns the newest page', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  for (let i = 0; i < 5; i += 1) {
+    await store.startTurn(thread.id, `q${i}`, 10 + i);
+  }
+  // fromEnd ignores the cursor and returns the last `limit` turns (newest).
+  const last = await store.listTurns(thread.id, undefined, 2, true);
+  assert.equal(last.turns.length, 2);
+  assert.equal(last.total, 5);
+  // Newest page → no forward nextCursor (already at the end).
+  assert.equal(last.nextCursor, undefined);
+  // It's the last 2 turns (q3, q4), not the first.
+  assert.deepEqual(
+    last.turns.map((t) => t.messages[0]?.content),
+    ['q3', 'q4'],
+  );
+  // The page just before it (older) is reachable via an explicit cursor.
+  const older = await store.listTurns(thread.id, '1', 2);
+  assert.deepEqual(
+    older.turns.map((t) => t.messages[0]?.content),
+    ['q1', 'q2'],
+  );
   await rm(baseDir, { recursive: true, force: true });
 });
 

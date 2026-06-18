@@ -59,6 +59,12 @@ export interface TurnListParams {
   threadId: string;
   cursor?: string;
   limit?: number;
+  /**
+   * When true, return the newest `limit` turns (the last page) regardless of
+   * `cursor`. Lets a client open a long thread at its most recent messages and
+   * page backward from there using `total`.
+   */
+  fromEnd?: boolean;
 }
 export interface TurnSendParams {
   threadId: string;

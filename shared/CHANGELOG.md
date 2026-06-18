@@ -6,6 +6,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 
 ### Added
+- **`turn/list` newest-first pagination** (`jsonrpc/methods.ts`,
+  `models/thread.ts`): `TurnListParams.fromEnd?: boolean` (return the newest
+  `limit` turns) and `TurnList.total?: number` (full turn count). Lets a client
+  open a long thread at its most recent messages and page backward by computing
+  offsets, instead of pulling the whole thread. Backward-compatible (both
+  optional; an older client/bridge ignores them).
 - **Git revert + safe branch/worktree deletion + cwd probe** (`jsonrpc/methods.ts`,
   `jsonrpc/method-registry.ts`, `models/workspace.ts`): `git/revert`
   (`GitRevertParams`), `git/deleteBranch` (`GitDeleteBranchParams`, `force`),

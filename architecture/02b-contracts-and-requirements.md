@@ -114,7 +114,7 @@ thread/rename           -> renombrar thread (devuelve el Thread actualizado)
 thread/archive          -> archivar thread (status -> archived, reversible)
 thread/unarchive        -> restaurar thread archivado (status -> active)
 thread/delete           -> eliminar thread y sus turns
-turn/list               -> turnos de un thread, paginacion por cursor
+turn/list               -> turnos de un thread; paginacion por cursor offset (oldest->newest). Params: { threadId, cursor?, limit?, fromEnd? }. Result: { turns, nextCursor?, total? }. `fromEnd:true` devuelve la pagina mas reciente (ultimos `limit` turnos); `total` permite paginar hacia atras (newest-first) calculando offsets sin traer todo el thread.
 turn/read               -> datos de un turno especifico
 turn/send               -> enviar contenido a un turno activo (texto opcional, attachments, options, approvalResponse)
 turn/cancel             -> cancelar turno en curso

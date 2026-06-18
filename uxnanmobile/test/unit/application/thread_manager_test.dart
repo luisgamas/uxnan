@@ -523,6 +523,70 @@ void main() {
     expect(manager.timeline.messages.first.id, 'm0');
   });
 
+  test('selectThread pulls the newest page and pages older remotely', () async {
+    // A 25-turn thread on the bridge (more than one 20-turn page), each turn a
+    // single assistant reply.
+    final server = [
+      for (var i = 0; i < 25; i++)
+        {
+          'id': 't$i',
+          'messages': [
+            {'role': 'assistant', 'content': 'reply $i', 'createdAt': 1000 + i},
+          ],
+        },
+    ];
+    final listCalls = <Map<String, dynamic>>[];
+    final paged = ThreadManager(
+      threadRepository: threadRepo,
+      messageRepository: messageRepo,
+      domainEvents: events.stream,
+      sendRequest: (method, [params]) async {
+        if (method != 'turn/list') {
+          return RpcMessage.response(id: '1', result: const <String, dynamic>{});
+        }
+        final p = params ?? const <String, dynamic>{};
+        listCalls.add(p);
+        final total = server.length;
+        final size = (p['limit'] as int?) ?? 20;
+        final fromEnd = p['fromEnd'] == true;
+        final start = fromEnd
+            ? (total - size < 0 ? 0 : total - size)
+            : int.parse(p['cursor'] as String? ?? '0');
+        final end = start + size > total ? total : start + size;
+        return RpcMessage.response(
+          id: '1',
+          result: <String, dynamic>{
+            'turns': server.sublist(start, end),
+            'total': total,
+            if (end < total) 'nextCursor': '$end',
+          },
+        );
+      },
+    );
+
+    await paged.selectThread('th1');
+    await _settle();
+
+    // Opened on the newest page (fromEnd), not the oldest.
+    expect(listCalls.first['fromEnd'], isTrue);
+    expect(paged.timeline.messages.length, 20);
+    expect(_text(paged.timeline.messages.first), 'reply 5');
+    expect(_text(paged.timeline.messages.last), 'reply 24');
+    // 5 older turns still live on the bridge → more history is available.
+    expect(paged.timeline.hasMore, isTrue);
+
+    await paged.loadMoreHistory();
+    await _settle();
+
+    // The older page was fetched with an explicit offset cursor ('0').
+    expect(listCalls.any((c) => c['cursor'] == '0'), isTrue);
+    expect(paged.timeline.messages.length, 25);
+    expect(_text(paged.timeline.messages.first), 'reply 0');
+    expect(paged.timeline.hasMore, isFalse);
+
+    await paged.dispose();
+  });
+
   test('respondApproval sends turn/send with the approvalResponse', () async {
     final ok = await manager.respondApproval(
       threadId: 'th1',

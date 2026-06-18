@@ -132,6 +132,8 @@ interface IAgentAdapter {
   startThread(params: StartThreadParams): Promise<Thread>;
   forkThread(threadId: string, params: ForkParams): Promise<Thread>;
   listTurns(threadId: string, params: PaginationParams): Promise<TurnList>;
+  // PaginationParams: { cursor?, limit?, fromEnd? } — `fromEnd:true` => ultima pagina (newest).
+  // TurnList: { turns, nextCursor?, total? } — `total` permite paginar hacia atras (newest-first).
 
   // Turns / conversacion
   startTurn(threadId: string, params: TurnParams): Promise<Turn>;
