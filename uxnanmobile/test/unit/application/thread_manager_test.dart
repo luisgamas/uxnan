@@ -7,6 +7,7 @@ import 'package:uxnan/application/managers/thread_manager.dart';
 import 'package:uxnan/application/processors/domain_event.dart';
 import 'package:uxnan/domain/entities/message.dart';
 import 'package:uxnan/domain/enums/approval_decision.dart';
+import 'package:uxnan/domain/enums/approval_mode.dart';
 import 'package:uxnan/domain/enums/command_status.dart';
 import 'package:uxnan/domain/enums/message_delivery_state.dart';
 import 'package:uxnan/domain/enums/message_role.dart';
@@ -585,6 +586,74 @@ void main() {
     expect(paged.timeline.hasMore, isFalse);
 
     await paged.dispose();
+  });
+
+  test('readAgentSessionId returns the session id from thread/read', () async {
+    final reader = ThreadManager(
+      threadRepository: threadRepo,
+      messageRepository: messageRepo,
+      domainEvents: events.stream,
+      sendRequest: (method, [params]) async {
+        if (method == 'thread/read') {
+          return RpcMessage.response(
+            id: '1',
+            result: <String, dynamic>{
+              'id': params?['threadId'],
+              'agentSessionId': 'sess-xyz',
+            },
+          );
+        }
+        return RpcMessage.response(id: '1', result: const <String, dynamic>{});
+      },
+    );
+
+    expect(await reader.readAgentSessionId('th1'), 'sess-xyz');
+    // Absent session id (older bridge / agent) degrades to null.
+    final none = ThreadManager(
+      threadRepository: threadRepo,
+      messageRepository: messageRepo,
+      domainEvents: events.stream,
+      sendRequest: (method, [params]) async =>
+          RpcMessage.response(id: '1', result: const <String, dynamic>{}),
+    );
+    expect(await none.readAgentSessionId('th1'), isNull);
+
+    await reader.dispose();
+    await none.dispose();
+  });
+
+  test('access mode: reads from thread/read and persists via setAccessMode',
+      () async {
+    Map<String, dynamic>? setParams;
+    final am = ThreadManager(
+      threadRepository: threadRepo,
+      messageRepository: messageRepo,
+      domainEvents: events.stream,
+      sendRequest: (method, [params]) async {
+        if (method == 'thread/read') {
+          return RpcMessage.response(
+            id: '1',
+            result: <String, dynamic>{
+              'id': params?['threadId'],
+              'accessMode': 'fullAccess',
+            },
+          );
+        }
+        if (method == 'thread/setAccessMode') {
+          setParams = params;
+          return RpcMessage.response(id: '1', result: const <String, dynamic>{});
+        }
+        return RpcMessage.response(id: '1', result: const <String, dynamic>{});
+      },
+    );
+
+    expect(await am.readAccessMode('th1'), ApprovalMode.fullAccess);
+
+    await am.setAccessMode('th1', ApprovalMode.requestApproval);
+    expect(setParams?['threadId'], 'th1');
+    expect(setParams?['mode'], 'requestApproval');
+
+    await am.dispose();
   });
 
   test('respondApproval sends turn/send with the approvalResponse', () async {

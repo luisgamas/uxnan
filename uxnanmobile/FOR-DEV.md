@@ -47,10 +47,16 @@ browser and multi-PC connection correctness are now DONE — see below.)
   unit-tested. ☐ Still open:
   - ☐ **On-device verification** against a live bridge (type the host + code the
     `qr` CLI prints, confirm the handshake completes).
-  - ☐ **mDNS browse** (`_uxnan._tcp` via `nsd`/`multicast_dns`) to auto-list
-    bridges so the user needn't type the host — the bridge already advertises
-    it (`bridge/src/transport/mdns-advertiser.ts`). Manual host stays the
-    fallback.
+  - ☑ **mDNS browse — DONE (2026-06-18).** A **Browse nearby bridges** action on
+    `ManualCodeScreen` opens `BridgeDiscoverySheet`, which streams bridges
+    advertising `_uxnan._tcp` (`BridgeDiscoveryService` over the native `nsd`
+    plugin — NsdManager / Bonjour, which handles the Android multicast lock).
+    Picking one pre-fills the host (the user still types the code); manual host
+    entry stays the fallback. TXT/addr parsing (`parseDiscoveredBridge`) is
+    unit-tested. Android `INTERNET` + `CHANGE_WIFI_MULTICAST_STATE` added; iOS
+    `NSBonjourServices` + `NSLocalNetworkUsageDescription` added (copy review is
+    `FOR-HUMAN.md` §4). ☐ On-device: verify discovery lists a real bridge on the
+    same Wi-Fi.
   - ☐ **UI visual review** — the screen is a minimal M3 form; restyle to the
     Neural Expressive language after the maintainer reviews it on-device
     (AGENTS.md "UI changes").
@@ -112,9 +118,9 @@ browser and multi-PC connection correctness are now DONE — see below.)
     direct LAN socket on iOS prompts for local-network access; add the Info.plist
     key (FOR-HUMAN once the iOS build exists) so direct LAN works on iPhone.
     Tailscale/relay are unaffected.
-  - ☐ **mDNS/Bonjour discovery** — only needed for a bridge that did NOT
-    advertise reachable `hosts` (e.g. dynamic IPs); the QR `hosts` cover the
-    common case, so this is now optional.
+  - ☑ **mDNS/Bonjour discovery — DONE (2026-06-18)** via the manual-pairing
+    **Browse nearby bridges** flow (see *Pairing module → mDNS browse*). Lets the
+    user pick a bridge without the QR `hosts`; manual host stays the fallback.
 - ◑ **Live WebSocket integration test** against a real bridge — the real-bridge
   interaction is now **manually validated on-device** (pairing, `thread/list`,
   `thread/start`, `turn/send` + streamed `stream/*` replies, `turn/list`
@@ -194,10 +200,15 @@ browser and multi-PC connection correctness are now DONE — see below.)
   - ☑ **Rename thread** — DONE (mobile): long-press menu → rename dialog →
     `ThreadManager.renameThread` (local-first + `thread/rename`, graceful
     degradation). Bridge `thread/rename` handler is the other agent's side.
-  - ◑ **Expose the thread id in the UI** — **thread id DONE**: long-press "Copy
-    thread ID" + a copyable **Thread ID** row in `SessionStatusSheet` (resume a
-    conversation from the CLI on the PC). ☐ Still: surface the agent's **session
-    id** (e.g. OpenCode `sessionID`) once the bridge exposes it via `thread/read`.
+  - ☑ **Expose the thread id + agent session id in the UI — DONE both sides
+    (2026-06-18).** The conversation overflow menu's **Session info** item opens a
+    sheet with the copyable **Thread ID** plus the agent's **native session id**
+    (Claude `session_id`, OpenCode `sessionID`, …) and a "resume from the CLI"
+    hint. The bridge now surfaces it: `toThread` includes `agentSessionId` (shared
+    `Thread.agentSessionId`), so `thread/read`/`thread/list` carry it; the phone
+    fetches it lazily via `ThreadManager.readAgentSessionId` (no drift migration —
+    transient, online-only, which is the resume context anyway). ☐ On-device:
+    confirm a real agent's session id shows and resumes from the CLI.
   - ☑ **Remove device** — DONE: a destructive "Remove device" action in the PC
     card's overflow menu (`my_devices_screen.dart`). After a confirm dialog it
     calls `SessionCoordinator.removeTrustedDevice` (sends
@@ -385,10 +396,20 @@ browser and multi-PC connection correctness are now DONE — see below.)
     knobs/agents need no app change. ☐ On-device: verify picking an effort
     changes the agent's behavior on a live bridge. (Phase 4 — fast-mode/context —
     has no validated CLI argv flag yet; the renderer is already forward-ready.)
-  - ◑ **Approval mode** (`ApprovalModeSheet`) → now an explicit local per-thread
-    setting (no sampled value); the status-sheet row is **gated by the agent's
-    `approvals` capability** (`agentCapabilitiesProvider`). ☐ Read/persist via an
-    access-mode RPC when one exists.
+  - ☑ **Approval (access) mode — persisted server-side, DONE both sides
+    (2026-06-18).** `ApprovalModeSheet` is gated by the agent's `approvals`
+    capability; the chosen mode now **persists on the bridge** via the new
+    `thread/setAccessMode { threadId, mode }` RPC (shared `AccessMode` +
+    `Thread.accessMode`; `ThreadStore.setAccessMode`, idempotent). The phone
+    seeds the picker from the bridge on open (`ThreadManager.readAccessMode` via
+    `thread/read`, the source of truth) and persists on change
+    (`ThreadManager.setAccessMode`, best-effort). ☐ **FOR-DEV (follow-up):**
+    *enforcing* the persisted mode per turn (mapping `AccessMode` → each agent's
+    permission flag — e.g. Claude `permissionMode`) is **not** wired yet: it
+    entangles with the validated interactive-approval flow (`acceptEdits` would
+    silently disable approvals), so it needs careful per-agent handling. The
+    bridge stores + returns the mode today; turning it into per-turn enforcement
+    is the next step.
   - ☑ **Git branch / remote / local** (`_EnvironmentChip`, status-sheet git
     section) → real values from `git/status` via `gitRepoStateProvider`; the
     commit/push rows call `GitActionManager.commit` / `.push` against the active
@@ -499,10 +520,11 @@ browser and multi-PC connection correctness are now DONE — see below.)
     an optional "Run in a worktree" toggle creates the worktree from the chosen
     working dir and points the new thread's `cwd` at the resulting checkout — so
     it no longer duplicates work inside the per-thread git screen.
-  - ☑ **`git/revert` — DONE both sides.** Bridge `GitService.revert` +
-    `git/revert`; phone `GitActionManager.revert` + a **"Revert last commit"**
-    item in the git-screen overflow (reverts `HEAD`, preserving history —
-    distinct from Undo commit's soft reset).
+  - ☑ **`git/revert` — DONE both sides + on-device validated (2026-06-18).**
+    Bridge `GitService.revert` + `git/revert`; phone `GitActionManager.revert` +
+    a **"Revert last commit"** item in the git-screen overflow (reverts `HEAD`,
+    preserving history — distinct from Undo commit's soft reset). Verified
+    on-device against a live bridge.
   - ☑ **Safe branch/worktree deletion — DONE both sides** (phone landed
     2026-06-18 review pass; confirmed already wired). Bridge `git/deleteBranch`
     (refuses unmerged unless `force`) + `git/removeWorktree` (refuses dirty
@@ -677,12 +699,13 @@ polish gaps, ordered by importance:
     scroll-up paging on a long real thread.
   - ☐ **Automated integration test against a real bridge** (today: simulated
     in-memory bridge). Medium importance for regression safety.
-- **Bridge-blocked (documented contracts above; not the app's fault):**
-  agent session-id surfacing and an approval-mode persistence RPC. Important for
-  feature-completeness but each waits on the bridge agent. (Interactive approval
-  intake, `git/revert`, safe branch/worktree deletion, vanished-cwd detection
-  and remote history pagination are now **DONE both sides** — see the sections
-  above.)
+- **Bridge-blocked (documented contracts above; not the app's fault):** none
+  outstanding for the items tracked here. (Interactive approval intake,
+  `git/revert`, safe branch/worktree deletion, vanished-cwd detection, remote
+  history pagination, **agent session-id surfacing** and the **access-mode
+  persistence RPC** are now **DONE both sides** — see the sections above. The
+  remaining access-mode *enforcement* per turn is an app+bridge follow-up, not a
+  missing contract.)
 - **FOR-HUMAN assets (gate iOS + live push):** iOS APNs key (paid Apple
   account), iOS Info.plist permission strings (camera, local network, mic),
   Firebase config (`google-services.json` / `GoogleService-Info.plist`), Android

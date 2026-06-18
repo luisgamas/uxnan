@@ -10,6 +10,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import type {
+  AccessMode,
   Message,
   MessageRole,
   Thread,
@@ -62,6 +63,8 @@ interface StoredThread {
    * be located for the `turn/list` history fallback after a bridge restart.
    */
   agentSessionId?: string;
+  /** Per-thread access (approval) mode; persisted so the phone's choice sticks. */
+  accessMode?: AccessMode;
 }
 
 const DEFAULT_TURN_LIMIT = 20;
@@ -215,6 +218,21 @@ export class ThreadStore {
       const thread = await this.#requireThread(threads, threadId);
       thread.title = title;
       thread.updatedAt = now;
+      return toThread(thread);
+    });
+  }
+
+  /**
+   * Persists the per-thread access (approval) [mode]. Idempotent: setting the
+   * same mode is a no-op (does not bump `updatedAt`). Returns the updated Thread.
+   */
+  setAccessMode(threadId: string, mode: AccessMode, now: number): Promise<Thread> {
+    return this.#mutate(async (threads) => {
+      const thread = await this.#requireThread(threads, threadId);
+      if (thread.accessMode !== mode) {
+        thread.accessMode = mode;
+        thread.updatedAt = now;
+      }
       return toThread(thread);
     });
   }
@@ -425,6 +443,12 @@ function toThread(thread: StoredThread): Thread {
     ...(thread.agentId !== undefined ? { agentId: thread.agentId } : {}),
     ...(thread.model !== undefined ? { model: thread.model } : {}),
     ...(thread.cwd !== undefined ? { cwd: thread.cwd } : {}),
+    // The agent's NATIVE session id (Claude `session_id`, OpenCode `sessionID`,
+    // …) so the phone can show "resume from the CLI" beyond the thread id.
+    ...(thread.agentSessionId !== undefined
+      ? { agentSessionId: thread.agentSessionId }
+      : {}),
+    ...(thread.accessMode !== undefined ? { accessMode: thread.accessMode } : {}),
   };
 }
 

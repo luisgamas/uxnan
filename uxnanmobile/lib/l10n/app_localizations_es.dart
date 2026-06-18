@@ -312,6 +312,25 @@ class AppLocalizationsEs extends AppLocalizations {
   String get threadIdLabel => 'ID del hilo';
 
   @override
+  String get threadActionSessionInfo => 'Información de sesión';
+
+  @override
+  String get sessionInfoTitle => 'Información de sesión';
+
+  @override
+  String get sessionInfoAgentSessionLabel => 'ID de sesión del agente';
+
+  @override
+  String get sessionInfoUnavailable => 'Aún no disponible';
+
+  @override
+  String get sessionInfoResumeHint =>
+      'Reanuda esta conversación desde la CLI del agente en tu PC.';
+
+  @override
+  String get sessionInfoCopied => 'Copiado al portapapeles';
+
+  @override
   String get threadDeleteTitle => '¿Eliminar hilo?';
 
   @override
@@ -1057,6 +1076,19 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get manualCodeConnecting => 'Resolviendo código…';
+
+  @override
+  String get manualCodeBrowse => 'Buscar bridges cercanos';
+
+  @override
+  String get bridgeDiscoveryTitle => 'Bridges cercanos';
+
+  @override
+  String get bridgeDiscoverySearching => 'Buscando en tu red…';
+
+  @override
+  String get bridgeDiscoveryEmpty =>
+      'Aún no se encontraron bridges. Asegúrate de que el bridge corre en la misma red Wi-Fi, o escribe el host abajo.';
 
   @override
   String get manualCodeErrorInvalidInput =>

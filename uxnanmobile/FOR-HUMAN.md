@@ -127,10 +127,12 @@ Other iOS usage strings the app needs once `ios/Runner/Info.plist` exists
 - `NSCameraUsageDescription` — the QR pairing scanner (`mobile_scanner`). Also
   add the `PERMISSION_CAMERA=1` macro to the Podfile `post_install` (see
   `FOR-DEV.md` → Pairing module) or `Permission.camera` is compiled out on iOS.
-- `NSLocalNetworkUsageDescription` — a direct LAN socket to the bridge prompts
-  for local-network access on iOS (Tailscale/relay are unaffected). Without it,
-  direct-LAN connections fail on iPhone (see `FOR-DEV.md` → Connection /
-  transport).
+- `NSLocalNetworkUsageDescription` + `NSBonjourServices` — **already added** to
+  `ios/Runner/Info.plist` for the mDNS **Browse nearby bridges** feature
+  (`_uxnan._tcp`) and the direct LAN socket (both prompt for local-network
+  access on iOS; Tailscale/relay are unaffected). **Review the user-facing
+  usage-description copy** before App Store submission. No multicast entitlement
+  is needed — `nsd` uses the system Bonjour resolver, not raw multicast.
 - `NSPhotoLibraryUsageDescription` — only once the **Attach** picker is enabled
   for image attachments (added with that feature).
 

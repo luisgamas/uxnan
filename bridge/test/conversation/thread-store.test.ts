@@ -139,6 +139,30 @@ test('listTurns fromEnd returns the newest page', async () => {
   await rm(baseDir, { recursive: true, force: true });
 });
 
+test('setAccessMode persists the mode, is idempotent, and surfaces it', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  // Unset by default.
+  assert.equal((await store.getThread(thread.id)).accessMode, undefined);
+
+  const updated = await store.setAccessMode(thread.id, 'requestApproval', 2);
+  assert.equal(updated.accessMode, 'requestApproval');
+  assert.equal(updated.updatedAt, 2);
+  // Surfaced on a fresh read (thread/read path).
+  assert.equal((await store.getThread(thread.id)).accessMode, 'requestApproval');
+
+  // Idempotent: setting the same mode does not bump updatedAt.
+  const before = (await store.getThread(thread.id)).updatedAt;
+  await store.setAccessMode(thread.id, 'requestApproval', 999);
+  assert.equal((await store.getThread(thread.id)).updatedAt, before);
+
+  // Changing it bumps updatedAt again.
+  const changed = await store.setAccessMode(thread.id, 'fullAccess', 3);
+  assert.equal(changed.accessMode, 'fullAccess');
+  assert.equal(changed.updatedAt, 3);
+  await rm(baseDir, { recursive: true, force: true });
+});
+
 test('rename/archive/unarchive update the thread; delete removes it', async () => {
   const { store, baseDir } = newStore();
   const thread = await store.startThread({ projectId: 'p', title: 'Orig' }, 1);
@@ -182,6 +206,9 @@ test('agent session id: persisted, idempotent, surfaced via getHistorySource', a
   await store.setAgentSession(thread.id, 'sess-abc', 2);
   src = await store.getHistorySource(thread.id);
   assert.equal(src.agentSessionId, 'sess-abc');
+  // It is also surfaced on the wire Thread (thread/read) so the phone can show
+  // "resume from the CLI".
+  assert.equal((await store.getThread(thread.id)).agentSessionId, 'sess-abc');
 
   // Idempotent: setting the same id is a no-op (does not bump updatedAt).
   const before = (await store.getThread(thread.id)).updatedAt;

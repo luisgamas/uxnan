@@ -7,6 +7,7 @@
  */
 import { RpcError } from '@uxnan/shared';
 import type {
+  AccessMode,
   AgentId,
   ApprovalDecision,
   ApprovalResponse,
@@ -72,6 +73,13 @@ export function registerThreadHandlers(router: HandlerRouter): void {
     ctx.threadStore.renameThread(
       requireString(p, 'threadId'),
       requireString(p, 'title'),
+      ctx.now(),
+    ),
+  );
+  router.register('thread/setAccessMode', (p, ctx: BridgeContext) =>
+    ctx.threadStore.setAccessMode(
+      requireString(p, 'threadId'),
+      parseAccessMode(requireString(p, 'mode')),
       ctx.now(),
     ),
   );
@@ -143,6 +151,14 @@ export function registerThreadHandlers(router: HandlerRouter): void {
  * Page a full turn list (from the on-disk history fallback) the same way the
  * store does: numeric cursor offset + limit, with a `nextCursor` when more remain.
  */
+const ACCESS_MODES: readonly AccessMode[] = ['requestApproval', 'approveForMe', 'fullAccess'];
+
+/** Validates a wire `mode` string against the {@link AccessMode} union. */
+function parseAccessMode(mode: string): AccessMode {
+  if ((ACCESS_MODES as readonly string[]).includes(mode)) return mode as AccessMode;
+  throw RpcError.invalidParams(`mode must be one of ${ACCESS_MODES.join(' | ')}`);
+}
+
 function paginateTurns(
   turns: Turn[],
   cursor: string | undefined,

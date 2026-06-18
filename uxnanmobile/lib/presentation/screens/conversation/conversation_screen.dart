@@ -49,8 +49,9 @@ class ConversationScreen extends ConsumerStatefulWidget {
 
 class _ConversationScreenState extends ConsumerState<ConversationScreen>
     with WidgetsBindingObserver {
-  // FOR-DEV: there is no bridge RPC for the approval/access mode yet, so it is
-  // a local per-thread setting (no sampled default — see SessionEnvironment).
+  // Per-thread access (approval) mode. Seeded from the bridge on open
+  // (`thread/read`, source of truth) and persisted on change
+  // (`thread/setAccessMode`); the default here is just the pre-load fallback.
   ApprovalMode _approvalMode = ApprovalMode.approveForMe;
   final ScrollController _scroll = ScrollController();
   String? _gitCwd;
@@ -83,6 +84,9 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
       // Opening a conversation resumes it on the bridge (reactivates its agent
       // session); best-effort and skips archived threads.
       unawaited(ref.read(threadManagerProvider).resumeThread(widget.threadId));
+      // Seed the access mode from the bridge (source of truth) so the picker
+      // reflects the persisted per-thread choice, not just this session's local.
+      unawaited(_seedAccessMode());
       // Mark this conversation as the foreground one so its turn-end
       // notifications are suppressed while it's on screen.
       _foreground?.enter(widget.threadId);
@@ -98,6 +102,17 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
       ref.read(threadManagerProvider).markRead(widget.threadId);
     } else {
       _foreground?.leave(widget.threadId);
+    }
+  }
+
+  /// Seeds [_approvalMode] from the bridge's persisted per-thread access mode
+  /// (`thread/read`). No-op when the bridge reports none (older bridge / never
+  /// set) — the local default stays.
+  Future<void> _seedAccessMode() async {
+    final mode =
+        await ref.read(threadManagerProvider).readAccessMode(widget.threadId);
+    if (mounted && mode != null && mode != _approvalMode) {
+      setState(() => _approvalMode = mode);
     }
   }
 
@@ -198,7 +213,13 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
       runOptions: runOptions,
       showApproval: showApproval,
       approvalMode: _approvalMode,
-      onApprovalChanged: (mode) => setState(() => _approvalMode = mode),
+      onApprovalChanged: (mode) {
+        setState(() => _approvalMode = mode);
+        // Persist to the bridge (source of truth); best-effort offline.
+        unawaited(
+          ref.read(threadManagerProvider).setAccessMode(widget.threadId, mode),
+        );
+      },
       onAttach: _pickAttachment,
     );
   }
@@ -224,16 +245,19 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     setState(() => _attachments.removeAt(index));
   }
 
-  /// Copies the full thread id so the same conversation can be resumed from the
-  /// CLI on the PC.
-  Future<void> _copyThreadId() async {
-    final l10n = AppLocalizations.of(context);
-    final messenger = ScaffoldMessenger.of(context);
-    await Clipboard.setData(ClipboardData(text: widget.threadId));
-    if (!mounted) return;
-    messenger
-      ..clearSnackBars()
-      ..showSnackBar(SnackBar(content: Text(l10n.threadIdCopied)));
+  /// Opens the session-info sheet: the bridge thread id plus the agent's native
+  /// session id (fetched via `thread/read`), so the same conversation can be
+  /// resumed from the agent's CLI on the PC.
+  Future<void> _showSessionInfo() async {
+    final manager = ref.read(threadManagerProvider);
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (_) => _SessionInfoSheet(
+        threadId: widget.threadId,
+        sessionIdFuture: manager.readAgentSessionId(widget.threadId),
+      ),
+    );
   }
 
   /// Prompts for a new title and renames the active thread — the same flow as
@@ -596,7 +620,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                   onPressed: cwd != null ? () => _openGit(cwd) : null,
                 ),
                 _ConversationMenu(
-                  onCopyId: _copyThreadId,
+                  onSessionInfo: _showSessionInfo,
                   onRename: _renameThread,
                   onFork: _forkThread,
                 ),
@@ -1006,12 +1030,12 @@ class _EmptyState extends StatelessWidget {
 /// beside it; the connection state lives on the earlier screens, not here.
 class _ConversationMenu extends StatelessWidget {
   const _ConversationMenu({
-    required this.onCopyId,
+    required this.onSessionInfo,
     required this.onRename,
     required this.onFork,
   });
 
-  final VoidCallback onCopyId;
+  final VoidCallback onSessionInfo;
   final VoidCallback onRename;
   final VoidCallback onFork;
 
@@ -1034,12 +1058,12 @@ class _ConversationMenu extends StatelessWidget {
           ),
         ),
         PopupMenuItem<void>(
-          onTap: onCopyId,
+          onTap: onSessionInfo,
           child: Row(
             children: [
-              const Icon(Icons.content_copy_outlined, size: 18),
+              const Icon(Icons.badge_outlined, size: 18),
               const SizedBox(width: UxnanSpacing.sm),
-              Text(l10n.threadActionCopyId),
+              Text(l10n.threadActionSessionInfo),
             ],
           ),
         ),
@@ -1052,6 +1076,156 @@ class _ConversationMenu extends StatelessWidget {
               Text(l10n.threadActionFork),
             ],
           ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Bottom sheet showing the conversation's identifiers: the bridge **thread
+/// id** (always) and the agent's **native session id** (fetched lazily via
+/// `thread/read`; may be absent on older bridges / agents that don't report
+/// one). Each id is copyable. A hint explains they let the user resume the
+/// conversation from the agent's CLI on the PC.
+class _SessionInfoSheet extends StatelessWidget {
+  const _SessionInfoSheet({
+    required this.threadId,
+    required this.sessionIdFuture,
+  });
+
+  final String threadId;
+  final Future<String?> sessionIdFuture;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          UxnanSpacing.lg,
+          0,
+          UxnanSpacing.lg,
+          UxnanSpacing.lg,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(l10n.sessionInfoTitle, style: textTheme.titleMedium),
+            const SizedBox(height: UxnanSpacing.md),
+            _IdRow(label: l10n.threadIdLabel, value: threadId),
+            const SizedBox(height: UxnanSpacing.sm),
+            FutureBuilder<String?>(
+              future: sessionIdFuture,
+              builder: (context, snapshot) {
+                final waiting =
+                    snapshot.connectionState == ConnectionState.waiting;
+                return _IdRow(
+                  label: l10n.sessionInfoAgentSessionLabel,
+                  value: snapshot.data,
+                  loading: waiting,
+                  placeholder: l10n.sessionInfoUnavailable,
+                );
+              },
+            ),
+            const SizedBox(height: UxnanSpacing.md),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  Icons.terminal_rounded,
+                  size: 16,
+                  color: colors.onSurfaceVariant,
+                ),
+                const SizedBox(width: UxnanSpacing.sm),
+                Expanded(
+                  child: Text(
+                    l10n.sessionInfoResumeHint,
+                    style: textTheme.bodySmall?.copyWith(
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A single id row in [_SessionInfoSheet]: a label, the monospace value (or a
+/// spinner / placeholder), and a copy action enabled only when a value exists.
+class _IdRow extends StatelessWidget {
+  const _IdRow({
+    required this.label,
+    required this.value,
+    this.loading = false,
+    this.placeholder,
+  });
+
+  final String label;
+  final String? value;
+  final bool loading;
+  final String? placeholder;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final hasValue = value != null && value!.isNotEmpty;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: textTheme.labelSmall?.copyWith(
+                  color: colors.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: UxnanSpacing.xs),
+              if (loading)
+                const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              else
+                Text(
+                  hasValue ? value! : (placeholder ?? '—'),
+                  style: UxnanTypography.codeSmall.copyWith(
+                    color:
+                        hasValue ? colors.onSurface : colors.onSurfaceVariant,
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(width: UxnanSpacing.sm),
+        IconSurface(
+          icon: Icons.content_copy_outlined,
+          tooltip: MaterialLocalizations.of(context).copyButtonLabel,
+          onPressed: hasValue
+              ? () async {
+                  final messenger = ScaffoldMessenger.of(context);
+                  await Clipboard.setData(ClipboardData(text: value!));
+                  messenger
+                    ..clearSnackBars()
+                    ..showSnackBar(
+                      SnackBar(content: Text(l10n.sessionInfoCopied)),
+                    );
+                }
+              : null,
         ),
       ],
     );

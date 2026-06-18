@@ -72,6 +72,31 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   0.7.7+1` automatically.
 
 ### Added
+- **mDNS "Browse nearby bridges" in manual pairing.** The manual-code
+  screen now has a **Browse nearby bridges** action that opens a sheet
+  listing bridges advertising `_uxnan._tcp` on the LAN (a new
+  `BridgeDiscoveryService` over the native `nsd` plugin — NsdManager /
+  Bonjour, which handles the Android multicast lock). Picking one
+  pre-fills the host; typing the host stays the fallback. TXT/addr
+  parsing (`parseDiscoveredBridge`, prefers the advertised `addr`/`port`,
+  falls back to the resolved IPv4 + SRV port) is unit-tested. Adds the
+  `nsd` dependency; Android `INTERNET` + `CHANGE_WIFI_MULTICAST_STATE`
+  permissions and iOS `NSBonjourServices` + `NSLocalNetworkUsageDescription`
+  (copy review tracked in `FOR-HUMAN.md`).
+- **Session info sheet ("resume from the CLI").** The conversation
+  overflow menu's **Session info** item (replacing the bare "Copy thread
+  ID") opens a sheet showing the copyable **Thread ID** and the agent's
+  **native session id** (fetched lazily via `thread/read`,
+  `ThreadManager.readAgentSessionId`; absent on older bridges/agents),
+  with a hint that they let you resume the conversation from the agent's
+  CLI on the PC.
+- **Per-thread approval mode now persists server-side.** The approval
+  (access) mode picked in the turn-tools sheet is seeded from the bridge
+  on open (`ThreadManager.readAccessMode` via `thread/read`, the source
+  of truth) and persisted on change (`ThreadManager.setAccessMode` →
+  `thread/setAccessMode`), so the per-thread choice survives a restart and
+  is shared across devices. (Enforcing the mode per turn — mapping it to
+  each agent's permission flag — is a tracked follow-up.)
 - **Remote history pagination (newest-page open + backward paging).**
   Opening a thread now pulls only the **newest** page of turns
   (`turn/list { fromEnd: true, limit: 20 }`) instead of the oldest page,

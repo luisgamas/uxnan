@@ -6,6 +6,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 
 ### Added
+- **Agent session id surfaced + per-thread access mode persisted.**
+  `toThread` now includes `agentSessionId` (the agent's native session id) so
+  `thread/read`/`thread/list` carry it for the phone's "resume from the CLI".
+  New `thread/setAccessMode { threadId, mode }` handler + `ThreadStore.setAccessMode`
+  (idempotent) persist the per-thread approval mode (`AccessMode`); `toThread`
+  returns `accessMode`. Covered by `test/conversation/thread-store.test.ts`.
 - **`turn/list` newest-first pagination.** The handler now accepts
   `fromEnd?: boolean` and the response carries `total` (full turn count).
   `ThreadStore.listTurns` (and the on-disk-history `paginateTurns` fallback)

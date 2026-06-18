@@ -1,10 +1,14 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uxnan/domain/entities/discovered_bridge.dart';
 import 'package:uxnan/domain/repositories/i_composer_draft_repository.dart';
 import 'package:uxnan/domain/repositories/i_git_action_log_repository.dart';
 import 'package:uxnan/domain/repositories/i_message_repository.dart';
 import 'package:uxnan/domain/repositories/i_thread_repository.dart';
 import 'package:uxnan/domain/repositories/i_trusted_device_repository.dart';
+import 'package:uxnan/infrastructure/discovery/bridge_discovery_service.dart';
 import 'package:uxnan/infrastructure/media/attachment_picker_service.dart';
 import 'package:uxnan/infrastructure/notifications/push_notification_service.dart';
 import 'package:uxnan/infrastructure/pairing/manual_pairing_service.dart';
@@ -111,6 +115,18 @@ final speechToTextServiceProvider = Provider<SpeechToTextService>((ref) {
 final attachmentPickerServiceProvider = Provider<AttachmentPickerService>(
   (ref) => AttachmentPickerService(),
 );
+
+/// Streams bridges discovered on the LAN via mDNS (`_uxnan._tcp`) so the pairing
+/// flow can offer them instead of a typed host. Discovery starts on first watch
+/// and stops when no longer watched (autoDispose); errors degrade to an empty
+/// list (manual host entry stays the fallback).
+final bridgeDiscoveryProvider =
+    StreamProvider.autoDispose<List<DiscoveredBridge>>((ref) {
+  final service = BridgeDiscoveryService();
+  ref.onDispose(service.dispose);
+  unawaited(service.start());
+  return service.bridges;
+});
 
 /// Manual-code pairing service (resolves a typed host + code against the
 /// bridge's `GET /pair/resolve` endpoint). Short timeouts so an unreachable

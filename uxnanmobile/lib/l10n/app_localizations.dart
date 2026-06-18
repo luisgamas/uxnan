@@ -662,6 +662,42 @@ abstract class AppLocalizations {
   /// **'Thread ID'**
   String get threadIdLabel;
 
+  /// No description provided for @threadActionSessionInfo.
+  ///
+  /// In en, this message translates to:
+  /// **'Session info'**
+  String get threadActionSessionInfo;
+
+  /// No description provided for @sessionInfoTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Session info'**
+  String get sessionInfoTitle;
+
+  /// No description provided for @sessionInfoAgentSessionLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Agent session ID'**
+  String get sessionInfoAgentSessionLabel;
+
+  /// No description provided for @sessionInfoUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Not available yet'**
+  String get sessionInfoUnavailable;
+
+  /// No description provided for @sessionInfoResumeHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Resume this conversation from the agent\'s CLI on your PC.'**
+  String get sessionInfoResumeHint;
+
+  /// No description provided for @sessionInfoCopied.
+  ///
+  /// In en, this message translates to:
+  /// **'Copied to clipboard'**
+  String get sessionInfoCopied;
+
   /// No description provided for @threadDeleteTitle.
   ///
   /// In en, this message translates to:
@@ -2059,6 +2095,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Resolving code…'**
   String get manualCodeConnecting;
+
+  /// No description provided for @manualCodeBrowse.
+  ///
+  /// In en, this message translates to:
+  /// **'Browse nearby bridges'**
+  String get manualCodeBrowse;
+
+  /// No description provided for @bridgeDiscoveryTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Nearby bridges'**
+  String get bridgeDiscoveryTitle;
+
+  /// No description provided for @bridgeDiscoverySearching.
+  ///
+  /// In en, this message translates to:
+  /// **'Searching your network…'**
+  String get bridgeDiscoverySearching;
+
+  /// No description provided for @bridgeDiscoveryEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No bridges found yet. Make sure the bridge is running on the same Wi-Fi, or type the host below.'**
+  String get bridgeDiscoveryEmpty;
 
   /// No description provided for @manualCodeErrorInvalidInput.
   ///

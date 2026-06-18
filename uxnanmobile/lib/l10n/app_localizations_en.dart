@@ -311,6 +311,25 @@ class AppLocalizationsEn extends AppLocalizations {
   String get threadIdLabel => 'Thread ID';
 
   @override
+  String get threadActionSessionInfo => 'Session info';
+
+  @override
+  String get sessionInfoTitle => 'Session info';
+
+  @override
+  String get sessionInfoAgentSessionLabel => 'Agent session ID';
+
+  @override
+  String get sessionInfoUnavailable => 'Not available yet';
+
+  @override
+  String get sessionInfoResumeHint =>
+      'Resume this conversation from the agent\'s CLI on your PC.';
+
+  @override
+  String get sessionInfoCopied => 'Copied to clipboard';
+
+  @override
   String get threadDeleteTitle => 'Delete thread?';
 
   @override
@@ -1053,6 +1072,19 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get manualCodeConnecting => 'Resolving code…';
+
+  @override
+  String get manualCodeBrowse => 'Browse nearby bridges';
+
+  @override
+  String get bridgeDiscoveryTitle => 'Nearby bridges';
+
+  @override
+  String get bridgeDiscoverySearching => 'Searching your network…';
+
+  @override
+  String get bridgeDiscoveryEmpty =>
+      'No bridges found yet. Make sure the bridge is running on the same Wi-Fi, or type the host below.';
 
   @override
   String get manualCodeErrorInvalidInput =>

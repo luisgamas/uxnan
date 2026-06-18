@@ -12,6 +12,7 @@ import 'package:uxnan/domain/entities/message.dart';
 import 'package:uxnan/domain/entities/project.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/enums/approval_decision.dart';
+import 'package:uxnan/domain/enums/approval_mode.dart';
 import 'package:uxnan/domain/enums/message_delivery_state.dart';
 import 'package:uxnan/domain/enums/message_role.dart';
 import 'package:uxnan/domain/enums/thread_activity.dart';
@@ -350,6 +351,66 @@ class ThreadManager {
     } on Object catch (error, stackTrace) {
       AppLogger.warn('workspace/exists failed', error, stackTrace);
       return true;
+    }
+  }
+
+  /// Reads the bridge record for [threadId] (`thread/read`) and returns the
+  /// agent's native session id (Claude `session_id`, OpenCode `sessionID`, …),
+  /// or `null` when unknown / unsupported / offline. Lets the conversation show
+  /// "resume from the CLI" beyond the bridge thread id. Failures degrade to
+  /// `null` rather than surfacing an error.
+  Future<String?> readAgentSessionId(String threadId) async {
+    try {
+      final res = await _sendRequest('thread/read', {'threadId': threadId});
+      if (res.error != null) return null;
+      final result = res.result;
+      if (result is Map) {
+        final id = result['agentSessionId'];
+        if (id is String && id.isNotEmpty) return id;
+      }
+      return null;
+    } on Object catch (error, stackTrace) {
+      AppLogger.warn('thread/read failed', error, stackTrace);
+      return null;
+    }
+  }
+
+  /// Reads the persisted per-thread access (approval) mode from the bridge
+  /// (`thread/read`), or `null` when unknown / unsupported / offline — so the
+  /// conversation can seed its mode from the server (the source of truth) on
+  /// open. Failures degrade to `null` (keep the local default).
+  Future<ApprovalMode?> readAccessMode(String threadId) async {
+    try {
+      final res = await _sendRequest('thread/read', {'threadId': threadId});
+      if (res.error != null) return null;
+      final result = res.result;
+      if (result is Map) {
+        final raw = result['accessMode'];
+        if (raw is String) {
+          for (final mode in ApprovalMode.values) {
+            if (mode.name == raw) return mode;
+          }
+        }
+      }
+      return null;
+    } on Object catch (error, stackTrace) {
+      AppLogger.warn('thread/read accessMode failed', error, stackTrace);
+      return null;
+    }
+  }
+
+  /// Persists the per-thread access (approval) [mode] on the bridge
+  /// (`thread/setAccessMode`) so the choice survives a restart and is shared
+  /// across devices. Best-effort: failures (offline / older bridge) are
+  /// swallowed so the local UI choice still applies this session.
+  Future<void> setAccessMode(String threadId, ApprovalMode mode) async {
+    try {
+      await _sendRequest('thread/setAccessMode', {
+        'threadId': threadId,
+        'mode': mode.name,
+      });
+    } on Object catch (error, stackTrace) {
+      AppLogger.warn('thread/setAccessMode failed', error, stackTrace);
     }
   }
 
