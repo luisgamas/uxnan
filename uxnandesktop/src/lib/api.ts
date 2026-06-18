@@ -8,8 +8,11 @@ import type {
   AppData,
   AppSettings,
   BranchList,
+  ClaudeHooksStatus,
   DirListing,
   FileChange,
+  HookInstall,
+  HookScripts,
   HookServerInfo,
   RepoData,
   SavedTerminalLayout,
@@ -56,6 +59,40 @@ export function agentStates(): Promise<AgentStateEntry[]> {
 /** Request (or release) keeping the system awake while an agent works. */
 export function setPreventSleep(active: boolean): Promise<void> {
   return invoke("set_prevent_sleep", { active });
+}
+
+/** Paths of the bundled hook scripts the ADE wrote to `<app-data>/hooks/`
+ *  (Phase 4 follow-up, ready-made per-agent hook configs). `null` if the
+ *  install-on-startup step failed — the one-click install is then unavailable
+ *  but precise hook reporting still works. */
+export function getHookInstall(): Promise<HookInstall | null> {
+  return invoke<HookInstall | null>("get_hook_install");
+}
+
+/** Current state of the Claude `settings.json` `hooks` block. The UI uses
+ *  this to render an honest "Installed" / "Not installed" / "Unavailable"
+ *  badge — we never claim installed unless the file carries our marker. */
+export function getClaudeHooksStatus(): Promise<ClaudeHooksStatus> {
+  return invoke<ClaudeHooksStatus>("get_claude_hooks_status");
+}
+
+/** Add (or replace) the ADE-managed `hooks` block in `~/.claude/settings.json`,
+ *  pointing at the installed script. Preserves every other top-level key.
+ *  Returns the new status so the UI can refresh without a second round-trip. */
+export function installClaudeHooks(): Promise<ClaudeHooksStatus> {
+  return invoke<ClaudeHooksStatus>("install_claude_hooks");
+}
+
+/** Remove the ADE-managed `hooks` block from `~/.claude/settings.json`.
+ *  Idempotent; no-op if it's not ours. */
+export function uninstallClaudeHooks(): Promise<ClaudeHooksStatus> {
+  return invoke<ClaudeHooksStatus>("uninstall_claude_hooks");
+}
+
+/** Textual content of every bundled hook script (rendered Claude JSON +
+ *  the three platform wrappers). `null` if the startup install step failed. */
+export function getHookScripts(): Promise<HookScripts | null> {
+  return invoke<HookScripts | null>("get_hook_scripts");
 }
 
 /** Persist the per-workspace terminal layout (restored on next startup). */

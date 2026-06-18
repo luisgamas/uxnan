@@ -156,6 +156,41 @@ export interface HookServerInfo {
   token: string;
 }
 
+/** Absolute paths of the bundled hook scripts the ADE wrote to
+ *  `<app-data>/hooks/` at startup, plus the resolved `~/.claude/settings.json`
+ *  path. `null` if the install-on-startup step failed. */
+export interface HookInstall {
+  dir: string;
+  claudeHookScript: string;
+  wrapperBash: string;
+  wrapperPowershell: string;
+  wrapperCmd: string;
+  claudeSettingsPath: string;
+}
+
+/** The current state of the Claude `settings.json` `hooks` block. The UI
+ *  uses this to render an honest "Installed" / "Not installed" /
+ *  "Unavailable" badge — never claim installed unless the file actually
+ *  carries our managed marker. */
+export interface ClaudeHooksStatus {
+  installed: boolean;
+  fileExists: boolean;
+  unavailable: boolean;
+  /** Human-readable detail; the path on success, the error otherwise. */
+  detail: string;
+}
+
+/** Textual content of every bundled hook script. The Claude JSON is
+ *  rendered against the installed script path so the user can copy it
+ *  as-is into `~/.claude/settings.json`. `null` if the install step on
+ *  startup failed. */
+export interface HookScripts {
+  claudeJson: string;
+  wrapperBash: string;
+  wrapperPowershell: string;
+  wrapperCmd: string;
+}
+
 /** Persisted terminal layout (structure only — fresh shells spawn on restore).
  *  Mirrors the serialized form produced by the terminals store. */
 export type SavedTermNode =

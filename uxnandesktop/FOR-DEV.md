@@ -475,9 +475,21 @@ earlier "superficial UX" warning is resolved.
       Layers 1/3 by `resolveAgentDisplay` (`agentDisplay.ts`).
 
 **Deferred (follow-ups / orchestration):**
-- [ ] **Ready-made per-agent hook configs** — ship a Claude Code `hooks` config
-      (and a generic wrapper script) that POST to `UXNAN_HOOK_URL`, so precise
-      states work out-of-the-box instead of manual setup. **FOR-DEV / FOR-HUMAN.**
+- [x] **Ready-made per-agent hook configs** — the ADE now ships a Claude Code
+      `hooks` config + a Node CJS script (no deps, cross-platform) and a
+      generic wrapper (Bash / PowerShell / cmd) that POST to `UXNAN_HOOK_URL`.
+      On every startup the ADE writes them to `<app-data>/hooks/`. **Settings
+      → Agents → Hooks** surfaces a one-click **Install** for Claude Code
+      (merges the ADE-managed `hooks` block into `~/.claude/settings.json`,
+      preserving every other key; **Uninstall** is its reverse), and the
+      generic wrapper script + its absolute path so users can wire it as
+      the launch command of any other agent (`uxnan-hook-wrapper.sh` on
+      Unix, `.ps1` on Windows PowerShell, `.cmd` as the no-PowerShell
+      fallback). Out-of-the-box precise states (`working` / `waiting` /
+      `done` / `blocked`) — no manual JSON editing. The pane also shows the
+      exact rendered JSON and a Copy button for users who prefer to paste
+      by hand. (`src-tauri/src/agent_hooks.rs`,
+      `src/lib/components/AgentHooksPanel.svelte`, `static/hooks/*`.)
 - [ ] **Multi-agent orchestration** (task graph, @type routing, fan-out,
       backpressure, sidebar lineage) per `02d` §3. **FOR-DEV.**
 - [ ] **Tab-bar status indicator** — the terminal tab strip still shows the coarse

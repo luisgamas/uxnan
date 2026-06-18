@@ -233,6 +233,32 @@ export const en = {
   "settings.defaultAgentDesc":
     "Auto-launched in a worktree right after you create it. Leave on “None” to never start an agent automatically.",
 
+  // Settings → Agents → Hooks (ready-made hook configs)
+  "hooks.title": "Hooks",
+  "hooks.desc":
+    "Out-of-the-box configs that POST precise agent states to the ADE’s local hook server, so the sidebar and tab bar show working / waiting / done without manual setup.",
+  "hooks.claudeTitle": "Claude Code",
+  "hooks.claudeDesc":
+    "Adds a `hooks` block to `~/.claude/settings.json` that runs the bundled script on every Claude event. Existing settings are preserved.",
+  "hooks.claudeStatusInstalled": "Installed at {path}",
+  "hooks.claudeStatusNotInstalled": "Not installed",
+  "hooks.claudeStatusUnavailable":
+    "~/.claude/settings.json is not writable (read it manually for the JSON to paste).",
+  "hooks.claudeStatusMissing": "Claude Code settings file not found yet — install will create it.",
+  "hooks.install": "Install",
+  "hooks.uninstall": "Uninstall",
+  "hooks.installing": "Installing…",
+  "hooks.uninstalling": "Uninstalling…",
+  "hooks.showJson": "Show JSON config",
+  "hooks.hideJson": "Hide JSON config",
+  "hooks.wrapperTitle": "Generic wrapper",
+  "hooks.wrapperDesc":
+    "Wraps any agent CLI: posts `working` before exec and `done` on exit (with `interrupted: true` if the agent crashed). Use as the agent’s launch command when the agent itself has no hook system.",
+  "hooks.wrapperUsage": "Usage: {script} <agent-type> -- <agent-cli> [args…]",
+  "hooks.copy": "Copy",
+  "hooks.copied": "Copied",
+  "hooks.installedAt": "Installed at {path}",
+
   // Agent profile editor
   "agentEditor.namePlaceholder": "Agent name (e.g. Claude Code)",
   "agentEditor.removeAgent": "Remove agent",

@@ -5,6 +5,36 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — ready-made per-agent hook configs (Phase 4 follow-up)
+- **Bundled hook scripts** (`static/hooks/`, embedded in the binary at compile
+  time and written to `<app-data>/hooks/` on every startup, idempotent):
+  - `uxnan-claude-hook.cjs` — Node CJS, no deps, cross-platform. Maps Claude
+    Code's `UserPromptSubmit` / `PreToolUse` / `PreCompact` / `Notification`
+    / `PermissionRequest` / `Stop` / `SessionEnd` events to the ADE's
+    `working` / `waiting` / `done` / `blocked` states, POSTing each to
+    `UXNAN_HOOK_URL` with `X-Uxnan-Token` + `UXNAN_AGENT_ID`.
+  - `uxnan-hook-wrapper.sh` / `.ps1` / `.cmd` — generic wrapper for any CLI
+    agent. Posts `working` before exec and `done` on exit (with
+    `interrupted: true` if the agent crashed). Bash for Unix + Git Bash +
+    WSL, PowerShell for Windows, cmd / batch as the no-PowerShell fallback.
+- **Settings → Agents → Hooks** (`AgentHooksPanel.svelte`): a one-click
+  **Install** for Claude Code that merges an ADE-managed `hooks` block into
+  `~/.claude/settings.json` (preserves every other key, marks the block with
+  `__uxnan_managed_hooks__: true` so Uninstall only touches ours), plus
+  the platform wrappers and their absolute paths so users can wire any
+  other agent as the launch command. Honest "Installed" / "Not installed" /
+  "Unavailable" badge, "Show JSON config" disclosure with copy-to-clipboard,
+  and EN/ES translations.
+- **Backend** (`src-tauri/src/agent_hooks.rs`): idempotent install of the
+  four scripts to `<app-data>/hooks/`, atomic read/modify/write of
+  `~/.claude/settings.json` (sibling-temp + rename), and the
+  `__uxnan_managed_hooks__` marker that scopes Install / Uninstall to the
+  ADE's own block (user-installed `hooks` survive). New commands:
+  `get_hook_install`, `get_claude_hooks_status`, `install_claude_hooks`,
+  `uninstall_claude_hooks`, `get_hook_scripts`. 6 new unit tests cover the
+  marker detection, the `{{HOOK_SCRIPT}}` substitution, the install
+  idempotency, and the camelCase serialization of the Tauri surface.
+
 ### Added — keep-awake on macOS/Linux + untested-platform notice
 - **Keep-awake now covers all three platforms** (`power.rs`): Windows
   (`SetThreadExecutionState`), macOS (`caffeinate -i`), Linux (`systemd-inhibit`),

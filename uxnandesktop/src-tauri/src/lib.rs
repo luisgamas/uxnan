@@ -5,6 +5,7 @@
 //! webview ⇄ PTY processes) is documented in
 //! `architecture/02a-system-architecture.md`.
 
+mod agent_hooks;
 mod browse;
 mod commands;
 mod error;
@@ -53,6 +54,7 @@ pub fn run() {
             let git_watch = state.git_watch.clone();
             let focused = state.focused.clone();
             let hook_slot = state.hook.clone();
+            let hook_install_slot = state.hook_install.clone();
             app.manage(state);
 
             // Start the local agent hook server (Layer 1). On success, publish its
@@ -67,6 +69,23 @@ pub fn run() {
                     }
                 }
             });
+
+            // Write the bundled per-agent hook scripts to <data>/hooks/ so the
+            // Settings → Agents → Hooks pane can install the ready-made configs.
+            // Best-effort: a failure here doesn't break the app (precise hook
+            // reporting still works; the one-click install is just unavailable).
+            let hooks_dir = data_dir.join("hooks");
+            match crate::agent_hooks::install_scripts_to(&hooks_dir) {
+                Ok(install) => {
+                    let slot = hook_install_slot;
+                    tauri::async_runtime::spawn(async move {
+                        *slot.write().await = Some(install);
+                    });
+                }
+                Err(err) => {
+                    eprintln!("[uxnan-desktop] hook scripts not installed at {hooks_dir:?}: {err}");
+                }
+            }
 
             // Pause the git watcher while the window is unfocused.
             if let Some(window) = app.get_webview_window("main") {
@@ -188,6 +207,11 @@ pub fn run() {
             commands::get_hook_info,
             commands::agent_states,
             commands::set_prevent_sleep,
+            commands::get_hook_install,
+            commands::get_claude_hooks_status,
+            commands::install_claude_hooks,
+            commands::uninstall_claude_hooks,
+            commands::get_hook_scripts,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

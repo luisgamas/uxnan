@@ -231,6 +231,33 @@ export const es: Record<MessageKey, string> = {
   "settings.defaultAgentDesc":
     "Se lanza automáticamente en un worktree justo después de crearlo. Déjalo en “Ninguno” para no iniciar ningún agente automáticamente.",
 
+  // Settings → Agents → Hooks (configs listas para usar)
+  "hooks.title": "Hooks",
+  "hooks.desc":
+    "Configs listas para usar que envían estados precisos del agente al servidor de hooks local del ADE, para que la sidebar y la barra de tabs muestren trabajando / esperando / listo sin configuración manual.",
+  "hooks.claudeTitle": "Claude Code",
+  "hooks.claudeDesc":
+    "Agrega un bloque `hooks` a `~/.claude/settings.json` que ejecuta el script incluido en cada evento de Claude. Conserva tu configuración existente.",
+  "hooks.claudeStatusInstalled": "Instalado en {path}",
+  "hooks.claudeStatusNotInstalled": "No instalado",
+  "hooks.claudeStatusUnavailable":
+    "~/.claude/settings.json no se puede escribir (léelo manualmente para obtener el JSON a pegar).",
+  "hooks.claudeStatusMissing":
+    "El archivo de configuración de Claude Code aún no existe — al instalarlo se creará.",
+  "hooks.install": "Instalar",
+  "hooks.uninstall": "Desinstalar",
+  "hooks.installing": "Instalando…",
+  "hooks.uninstalling": "Desinstalando…",
+  "hooks.showJson": "Mostrar JSON de configuración",
+  "hooks.hideJson": "Ocultar JSON de configuración",
+  "hooks.wrapperTitle": "Envoltorio genérico",
+  "hooks.wrapperDesc":
+    "Envuelve cualquier agente CLI: envía `working` antes del `exec` y `done` al salir (con `interrupted: true` si el agente falló). Úsalo como comando de lanzamiento cuando el agente no tenga sistema de hooks propio.",
+  "hooks.wrapperUsage": "Uso: {script} <tipo-de-agente> -- <cli-del-agente> [args…]",
+  "hooks.copy": "Copiar",
+  "hooks.copied": "Copiado",
+  "hooks.installedAt": "Instalado en {path}",
+
   // Agent profile editor
   "agentEditor.namePlaceholder": "Nombre del agente (p. ej. Claude Code)",
   "agentEditor.removeAgent": "Eliminar agente",

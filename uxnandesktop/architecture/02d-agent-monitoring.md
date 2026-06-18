@@ -26,6 +26,22 @@ El ADE levanta un **servidor HTTP en localhost** que los agentes pueden usar par
   - Flag `interrupted` indicando si el agente fue interrumpido.
 - **Cache persistente:** El ultimo estado de cada agente se guarda en disco con un **TTL de 7 dias**. Esto permite que al reiniciar el ADE, la sidebar muestre el estado correcto de cada agente sin necesidad de que estos re-reporten.
 - **Broadcast:** Cada cambio de estado se difunde al frontend via **Tauri events** para actualizacion inmediata de la UI. El evento `agent:status-changed` se emite con el nuevo estado normalizado.
+- **Configs listas para usar:** El ADE embebe en su binario cuatro scripts
+  (`src-tauri/src/agent_hooks.rs` + `static/hooks/`) y los escribe a
+  `<app-data>/hooks/` en cada arranque, de forma idempotente:
+  - `uxnan-claude-hook.cjs` — script CJS sin dependencias, invocable por la
+    `hooks` block de Claude Code. Mapea los eventos `UserPromptSubmit`,
+    `PreToolUse`, `PreCompact`, `Notification`, `PermissionRequest`, `Stop`
+    y `SessionEnd` a los estados del servidor (`working` / `waiting` /
+    `done` / `blocked`).
+  - `uxnan-hook-wrapper.{sh,ps1,cmd}` — envoltorio generico para cualquier
+    CLI: postea `working` antes del `exec` y `done` al exit (con
+    `interrupted: true` si el codigo es != 0).
+  **Settings → Agents → Hooks** expone el path absoluto de cada script y un
+  boton **Install** que mergea la `hooks` block del ADE (marcada con
+  `__uxnan_managed_hooks__`) en `~/.claude/settings.json` sin tocar el
+  resto de la configuracion. Uninstall es su reverso idempotente. Asi los
+  estados precisos funcionan out-of-the-box sin edicion manual de JSON.
 
 **Diagrama de flujo del hook HTTP:**
 

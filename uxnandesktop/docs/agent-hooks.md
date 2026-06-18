@@ -51,14 +51,60 @@ Responses: `204 No Content` on success, `401` if the token is missing/wrong,
 
 ## Wiring specific agents
 
-The exact wiring depends on the agent's hook/extension system. Examples:
+The exact wiring depends on the agent's hook/extension system. The ADE ships
+**ready-made configs** that wire the most common agents for you — no manual
+JSON needed. Open **Settings → Agents → Hooks** to install them.
 
-- **Claude Code** — configure `hooks` in its settings to run a small script on
-  `PreToolUse` / `Stop` / `Notification` events that curls the payload above
-  (mapping the event to a `status`). A ready-made config is tracked in
-  `FOR-DEV.md`.
-- **Generic / any CLI** — wrap the agent in a shell script that posts `working`
-  before launch and `done` after it exits.
+### Ready-made configs (Settings → Agents → Hooks)
+
+On every startup the ADE writes four scripts to `<app-data>/hooks/`:
+
+- `uxnan-claude-hook.cjs` — the Node CJS script Claude Code invokes on every
+  event. No deps, cross-platform, maps `UserPromptSubmit` / `PreToolUse` /
+  `PreCompact` / `Notification` / `PermissionRequest` / `Stop` / `SessionEnd`
+  to the ADE's `working` / `waiting` / `done` / `blocked` states.
+- `uxnan-hook-wrapper.sh` — Bash wrapper for any CLI agent (Unix + Git Bash +
+  WSL). Posts `working` before exec and `done` on exit.
+- `uxnan-hook-wrapper.ps1` — PowerShell wrapper (Windows).
+- `uxnan-hook-wrapper.cmd` — cmd / batch fallback (Windows, no PowerShell).
+
+**Claude Code** — open Settings → Agents → Hooks and click **Install**. The
+ADE merges the ready-made `hooks` block into `~/.claude/settings.json`,
+preserving every other key. Uninstall reverses the change (only the ADE
+block is removed; any user-installed `hooks` survive). The pane also
+discloses the exact JSON it would write, in case you prefer to paste it by
+hand.
+
+**Any other agent** — use the generic wrapper. The script is installed at
+the path the pane shows; use it as the agent's launch command:
+
+```bash
+# In Settings → Agents → Your agents → Add custom agent
+Command:  /…/hooks/uxnan-hook-wrapper.sh
+Args:     codex -- <your normal args>
+```
+
+(Windows: `…\hooks\uxnan-hook-wrapper.ps1`; on cmd-only hosts, the `.cmd`
+fallback.) The wrapper then exec's the real CLI and the ADE gets
+`working` / `done` for that terminal, the same as for Claude Code's hooks.
+
+The shell hook, the wrapper, and the Claude script are **all driven by the
+same env vars** the ADE already injects into every terminal
+(`UXNAN_HOOK_URL` / `UXNAN_HOOK_TOKEN` / `UXNAN_AGENT_ID`) — nothing to
+configure per machine.
+
+### Manual / custom agents
+
+If the ready-made configs don't fit (or you prefer to wire things by hand),
+the contract is the same:
+
+- **Claude Code** — point its `hooks` config at a small script that reads
+  the JSON Claude sends on stdin and POSTs it to `$UXNAN_HOOK_URL` (using
+  `$UXNAN_HOOK_TOKEN` in `X-Uxnan-Token` and `$UXNAN_AGENT_ID` as
+  `agentId`). The shipped `uxnan-claude-hook.cjs` is the reference.
+- **Generic / any CLI** — wrap the agent in a shell script that posts
+  `working` before launch and `done` after it exits (use the shipped
+  `uxnan-hook-wrapper.{sh,ps1,cmd}` as a starting point).
 
 > **Security.** The server only listens on `127.0.0.1` and requires the
 > per-launch token, so other machines can't reach it and stray local processes

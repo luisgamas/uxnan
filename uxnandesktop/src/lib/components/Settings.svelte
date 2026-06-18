@@ -16,6 +16,7 @@
   import TerminalProfileEditor from "./TerminalProfileEditor.svelte";
   import AgentProfileEditor from "./AgentProfileEditor.svelte";
   import AgentLogo from "./AgentLogo.svelte";
+  import AgentHooksPanel from "./AgentHooksPanel.svelte";
   import { cn } from "$lib/utils";
   import { icon, iconButton, text } from "$lib/design";
   import SlidersIcon from "@lucide/svelte/icons/sliders-horizontal";
@@ -427,6 +428,11 @@
                   {i18n.t("settings.noAgents")}
                 </p>
               {/each}
+            </div>
+
+            <!-- Ready-made hook configs: precise state reporting, out-of-the-box. -->
+            <div class="border-t border-border pt-4">
+              <AgentHooksPanel />
             </div>
           </div>
         {:else}
