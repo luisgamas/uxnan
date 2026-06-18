@@ -31,7 +31,13 @@ function quoteArg(arg: string): string {
 }
 
 /** A pane in the Settings dialog (also the deep-link target of `openSettings`). */
-export type SettingsSection = "general" | "language" | "agents" | "terminal";
+export type SettingsSection =
+  | "general"
+  | "language"
+  | "shortcuts"
+  | "agents"
+  | "hooks"
+  | "terminal";
 
 class AppStore {
   /** Registered repositories (and their worktrees). */

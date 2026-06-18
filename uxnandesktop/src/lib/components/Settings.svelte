@@ -1,5 +1,9 @@
 <script lang="ts">
-  import * as Dialog from "$lib/components/ui/dialog";
+  // Settings as a full-screen view (replaces the three-panel body while open).
+  // The title bar stays mounted at the window level so window controls always
+  // work. The status bar is hidden in settings mode to give the content more
+  // room. Close with the back button, the gear in the title bar, or Escape.
+
   import * as Select from "$lib/components/ui/select";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import { Button } from "$lib/components/ui/button";
@@ -17,14 +21,25 @@
   import AgentProfileEditor from "./AgentProfileEditor.svelte";
   import AgentLogo from "./AgentLogo.svelte";
   import AgentHooksPanel from "./AgentHooksPanel.svelte";
+  import {
+    KEY_ACTIONS,
+    eventToChord,
+    formatChord,
+    resolveBinding,
+  } from "$lib/keybindings";
   import { cn } from "$lib/utils";
   import { icon, iconButton, text } from "$lib/design";
   import SlidersIcon from "@lucide/svelte/icons/sliders-horizontal";
   import TerminalIcon from "@lucide/svelte/icons/terminal";
   import BotIcon from "@lucide/svelte/icons/bot";
   import LanguagesIcon from "@lucide/svelte/icons/languages";
+  import KeyboardIcon from "@lucide/svelte/icons/keyboard";
+  import WebhookIcon from "@lucide/svelte/icons/webhook";
   import PlusIcon from "@lucide/svelte/icons/plus";
   import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
+  import ArrowLeftIcon from "@lucide/svelte/icons/arrow-left";
+  import RotateCcwIcon from "@lucide/svelte/icons/rotate-ccw";
+  import XIcon from "@lucide/svelte/icons/x";
 
   // Persist (debounced for typing; immediate for discrete actions).
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -35,6 +50,49 @@
   function persistNow() {
     clearTimeout(saveTimer);
     void app.persistSettings();
+  }
+
+  function close() {
+    app.settingsOpen = false;
+  }
+
+  // --- Keyboard-shortcut rebinding ------------------------------------------
+  // The action id being rebound (capturing the next chord), or null.
+  let capturing = $state<string | null>(null);
+
+  function setBinding(id: string, chord: string) {
+    app.settings.keybindings = { ...(app.settings.keybindings ?? {}), [id]: chord };
+    persistNow();
+  }
+  function resetBinding(id: string) {
+    const { [id]: _drop, ...rest } = app.settings.keybindings ?? {};
+    app.settings.keybindings = rest;
+    persistNow();
+  }
+
+  // Escape closes the settings view (standard for full-screen panels). While
+  // capturing a shortcut, keystrokes are consumed here instead (Escape cancels).
+  // The global handler in `+page.svelte` bails whenever settings are open, so
+  // app shortcuts never fire over this view.
+  function onKeyDown(e: KeyboardEvent) {
+    if (capturing) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.key === "Escape") {
+        capturing = null;
+        return;
+      }
+      const chord = eventToChord(e);
+      if (chord) {
+        setBinding(capturing, chord);
+        capturing = null;
+      }
+      return;
+    }
+    if (e.key === "Escape" && app.settingsOpen) {
+      e.preventDefault();
+      close();
+    }
   }
 
   const themes: { value: Theme; key: MessageKey }[] = [
@@ -202,20 +260,43 @@
   const navItems = [
     { id: "general", key: "settings.general", icon: SlidersIcon },
     { id: "language", key: "settings.language", icon: LanguagesIcon },
+    { id: "shortcuts", key: "settings.shortcuts", icon: KeyboardIcon },
     { id: "agents", key: "settings.agents", icon: BotIcon },
+    { id: "hooks", key: "settings.hooks", icon: WebhookIcon },
     { id: "terminal", key: "settings.terminal", icon: TerminalIcon },
   ] as const;
 </script>
 
-<Dialog.Root bind:open={app.settingsOpen}>
-  <Dialog.Content class="gap-0 p-0 sm:max-w-[660px]">
-    <Dialog.Header class="border-b border-border px-4 py-3">
-      <Dialog.Title>{i18n.t("settings.title")}</Dialog.Title>
-    </Dialog.Header>
+<svelte:window onkeydown={onKeyDown} />
 
-    <div class="flex min-h-[360px]">
-      <!-- Section nav -->
-      <nav class="flex w-40 shrink-0 flex-col gap-0.5 border-r border-border p-2">
+{#if app.settingsOpen}
+  <div class="flex h-full w-full flex-col bg-background text-foreground">
+    <!-- Header (draggable on Tauri via the title bar; the buttons inside are
+         not part of the drag region). -->
+    <header
+      class="flex h-12 shrink-0 items-center gap-2 border-b border-border px-3"
+    >
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        class={iconButton.action}
+        title={i18n.t("common.close")}
+        aria-label={i18n.t("common.close")}
+        onclick={close}
+      >
+        <ArrowLeftIcon class={icon.button} />
+      </Button>
+      <h1 class="text-sm font-semibold tracking-tight">
+        {i18n.t("settings.title")}
+      </h1>
+    </header>
+
+    <div class="flex min-h-0 flex-1">
+      <!-- Section nav (left sidebar) -->
+      <nav
+        class="flex w-56 shrink-0 flex-col gap-0.5 border-r border-border p-2"
+        aria-label={i18n.t("settings.title")}
+      >
         {#each navItems as item (item.id)}
           {@const Icon = item.icon}
           <button
@@ -234,8 +315,10 @@
         {/each}
       </nav>
 
-      <!-- Section content -->
-      <div class="uxnan-scroll max-h-[60vh] min-h-0 flex-1 overflow-y-auto p-4">
+      <!-- Section content (centered column; text stays left-aligned). The extra
+           bottom padding lets the last options scroll clear of the window edge. -->
+      <div class="uxnan-scroll min-h-0 flex-1 overflow-y-auto p-6">
+        <div class="mx-auto w-full max-w-2xl pb-16">
         {#if app.settingsSection === "general"}
           <div class="flex flex-col gap-4">
             <div class="flex flex-col gap-1.5">
@@ -282,6 +365,65 @@
               </Select.Content>
             </Select.Root>
             <p class={text.meta}>{i18n.t("settings.language.desc")}</p>
+          </div>
+        {:else if app.settingsSection === "shortcuts"}
+          <div class="flex flex-col gap-4">
+            <div class="flex flex-col gap-1">
+              <span class={cn("font-medium", text.body)}>{i18n.t("settings.shortcuts")}</span>
+              <p class={text.meta}>{i18n.t("settings.shortcutsDesc")}</p>
+            </div>
+            <div class="flex flex-col divide-y divide-border rounded-md border border-border">
+              {#each KEY_ACTIONS as action (action.id)}
+                {@const chord = resolveBinding(action.id)}
+                {@const isCapturing = capturing === action.id}
+                <div class="flex items-center gap-3 px-3 py-2">
+                  <div class="min-w-0 flex-1">
+                    <div class={text.body}>{i18n.t(action.labelKey)}</div>
+                    <div class={cn("truncate", text.meta)}>{i18n.t(action.descKey)}</div>
+                  </div>
+                  <button
+                    type="button"
+                    class={cn(
+                      "inline-flex h-7 min-w-24 shrink-0 items-center justify-center rounded-md border px-2 font-mono",
+                      text.body,
+                      isCapturing
+                        ? "border-primary text-primary"
+                        : "border-border hover:bg-accent/50",
+                    )}
+                    title={i18n.t("shortcuts.rebind")}
+                    onclick={() => (capturing = isCapturing ? null : action.id)}
+                  >
+                    {#if isCapturing}
+                      {i18n.t("shortcuts.press")}
+                    {:else if chord}
+                      {formatChord(chord)}
+                    {:else}
+                      <span class="text-muted-foreground">{i18n.t("shortcuts.disabled")}</span>
+                    {/if}
+                  </button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    class={iconButton.action}
+                    disabled={chord === ""}
+                    title={i18n.t("shortcuts.disable")}
+                    onclick={() => setBinding(action.id, "")}
+                  >
+                    <XIcon class={icon.button} />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    class={iconButton.action}
+                    disabled={chord === action.default}
+                    title={i18n.t("shortcuts.reset")}
+                    onclick={() => resetBinding(action.id)}
+                  >
+                    <RotateCcwIcon class={icon.button} />
+                  </Button>
+                </div>
+              {/each}
+            </div>
           </div>
         {:else if app.settingsSection === "agents"}
           <div class="flex flex-col gap-4">
@@ -430,10 +572,14 @@
               {/each}
             </div>
 
-            <!-- Ready-made hook configs: precise state reporting, out-of-the-box. -->
-            <div class="border-t border-border pt-4">
-              <AgentHooksPanel />
+          </div>
+        {:else if app.settingsSection === "hooks"}
+          <div class="flex flex-col gap-4">
+            <div class="flex flex-col gap-1">
+              <span class={cn("font-medium", text.body)}>{i18n.t("settings.hooks")}</span>
+              <p class={text.meta}>{i18n.t("settings.hooksDesc")}</p>
             </div>
+            <AgentHooksPanel />
           </div>
         {:else}
           <div class="flex flex-col gap-4">
@@ -524,7 +670,8 @@
             </div>
           </div>
         {/if}
+        </div>
       </div>
     </div>
-  </Dialog.Content>
-</Dialog.Root>
+  </div>
+{/if}

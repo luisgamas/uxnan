@@ -2,6 +2,7 @@
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { app } from "$lib/state/app.svelte";
   import { i18n } from "$lib/i18n";
+  import { cn } from "$lib/utils";
   import { icon } from "$lib/design";
   import SettingsIcon from "@lucide/svelte/icons/settings";
   import PanelLeftIcon from "@lucide/svelte/icons/panel-left";
@@ -27,14 +28,21 @@
   data-tauri-drag-region
   class="flex h-10 shrink-0 select-none items-center gap-2 border-b border-border bg-card px-2 text-sm"
 >
-  <button
-    class="flex size-7 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-    title={i18n.t("titlebar.toggleLeft")}
-    aria-label={i18n.t("titlebar.toggleLeft")}
-    onclick={toggleLeft}
-  >
-    <PanelLeftIcon class={icon.button} />
-  </button>
+  <!-- Hide the left-sidebar toggle while the settings view is open — the
+       left side IS the settings menu, so toggling the project tree makes
+       no sense. -->
+  {#if !app.settingsOpen}
+    <button
+      class={cn(
+        "flex size-7 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+      )}
+      title={i18n.t("titlebar.toggleLeft")}
+      aria-label={i18n.t("titlebar.toggleLeft")}
+      onclick={toggleLeft}
+    >
+      <PanelLeftIcon class={icon.button} />
+    </button>
+  {/if}
 
   <span data-tauri-drag-region class="font-semibold tracking-tight"
     >Uxnan Desktop</span
@@ -50,12 +58,15 @@
   <!-- Draggable filler -->
   <div data-tauri-drag-region class="h-full flex-1"></div>
 
-  <!-- Settings -->
+  <!-- Settings (toggle) -->
   <button
-    class="flex size-7 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+    class={cn(
+      "flex size-7 items-center justify-center rounded hover:bg-accent hover:text-accent-foreground",
+      app.settingsOpen ? "bg-accent text-accent-foreground" : "text-muted-foreground",
+    )}
     title={i18n.t("titlebar.settings")}
     aria-label={i18n.t("titlebar.settings")}
-    onclick={() => (app.settingsOpen = true)}
+    onclick={() => (app.settingsOpen = !app.settingsOpen)}
   >
     <SettingsIcon class={icon.button} />
   </button>
