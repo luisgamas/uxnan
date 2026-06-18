@@ -214,6 +214,31 @@ pub struct AppSettings {
     /// binding; an empty string disables the action. Defaults are in the frontend.
     #[serde(default)]
     pub keybindings: std::collections::HashMap<String, String>,
+    /// Active theme id (built-in "system"/"light"/"dark"/… or a custom id).
+    #[serde(default = "default_theme_id")]
+    pub active_theme_id: String,
+    /// User-created themes (frontend-owned shape, persisted opaquely).
+    #[serde(default)]
+    pub custom_themes: Vec<serde_json::Value>,
+    /// Global font override (frontend-owned shape).
+    #[serde(default)]
+    pub fonts: Option<serde_json::Value>,
+    /// Saved terminal themes (frontend-owned shape, persisted opaquely).
+    #[serde(default)]
+    pub terminal_themes: Vec<serde_json::Value>,
+    /// Active terminal theme id ("inherit" = no terminal override).
+    #[serde(default = "default_terminal_theme_id")]
+    pub active_terminal_theme_id: String,
+}
+
+/// Default active theme: follow the system light/dark preference.
+fn default_theme_id() -> String {
+    "system".to_string()
+}
+
+/// Default terminal theme: inherit the app theme (no override).
+fn default_terminal_theme_id() -> String {
+    "inherit".to_string()
 }
 
 impl Default for AppSettings {
@@ -234,6 +259,11 @@ impl Default for AppSettings {
             prevent_sleep: false,
             language: default_language(),
             keybindings: std::collections::HashMap::new(),
+            active_theme_id: default_theme_id(),
+            custom_themes: Vec::new(),
+            fonts: None,
+            terminal_themes: Vec::new(),
+            active_terminal_theme_id: default_terminal_theme_id(),
         }
     }
 }
