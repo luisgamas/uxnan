@@ -6,6 +6,45 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- **File browser's git-status colours are now live across the app.**
+  Previously `FileBrowserManager` cached the per-cwd `git/status` map and
+  only refreshed it on `loadRoot` / `toggleDirectory` / `writeFile`, so a
+  commit made elsewhere on the same PC (the git screen, a CLI `git commit`,
+  a pull on the bridge) left the browser painting stale colours until the
+  user navigated away and back. The browser now listens to a new
+  `GitStatusBus` (a process-wide broadcast owned by
+  `gitStatusBusProvider`) that `GitActionManager` and `FileBrowserManager`
+  both publish to; every successful `git/status` fetch pushes a
+  `GitStatusChange` onto the bus, and every manager holding that cwd
+  repaints from the payload. No more stale `modified` colours on a tree
+  that has actually been committed. The bus is generic — any future
+  consumer can subscribe without touching the producer side.
+  - New: `lib/domain/value_objects/git/git_status_change.dart`
+    (`GitStatusChange { cwd, state }` value object).
+  - New: `lib/application/services/git_status_bus.dart`
+    (`GitStatusBus` — broadcast `Stream<GitStatusChange>`, `emit`,
+    `dispose`; safe no-op after close).
+  - `lib/application/managers/git_action_manager.dart` — emits on the
+    bus after every successful `refreshStatus(cwd)` (the single point
+    that issues the `git/status` RPC).
+  - `lib/application/managers/file_browser_manager.dart` — subscribes
+    once; repaints any managed cwd from a bus event whose `cwd` matches;
+    also publishes on the bus from its own `refreshGitStatus` (with a
+    minimal `GitRepoState` carrying only the `changedFiles`, since that
+    is the only field the colour treatment needs).
+  - `lib/presentation/providers/application_providers.dart` — new
+    `gitStatusBusProvider` (one instance per app, disposed with the
+    providers); `gitActionManagerProvider` and `fileBrowserManagerProvider`
+    are wired to it.
+  - Tests: 5 in `git_status_bus_test.dart` (broadcast, no replay, no-op
+    after dispose, payload preservation, ordering), 2 added to
+    `git_action_manager_test.dart` (`refreshStatus` emits;
+    `commit` propagates), 3 added to `file_browser_manager_test.dart`
+    (bus repaint for a managed cwd, ignored for an unknown cwd, own
+    refresh publishes the new state). **340 unit + widget tests
+    passing, all green.**
+
 ### Added
 - **Custom accent colors (Personalization → Accent color).** The
   personalization screen now offers a curated palette of **7 swatches**

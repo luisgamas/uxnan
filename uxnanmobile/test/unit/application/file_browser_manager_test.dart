@@ -2,8 +2,12 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uxnan/application/managers/file_browser_manager.dart';
+import 'package:uxnan/application/services/git_status_bus.dart';
 import 'package:uxnan/domain/entities/file_browser.dart';
+import 'package:uxnan/domain/entities/git/git_repo_state.dart';
 import 'package:uxnan/domain/enums/git_file_status.dart';
+import 'package:uxnan/domain/value_objects/git/git_changed_file.dart';
+import 'package:uxnan/domain/value_objects/git/git_status_change.dart';
 import 'package:uxnan/domain/value_objects/rpc_message.dart';
 
 /// Absolute workspace root the test fixtures use. Matches the shape the
@@ -50,6 +54,7 @@ typedef _Responder = RpcMessage Function(
 FileBrowserManager _buildManager({
   required void Function(String method, Map<String, dynamic> params) onCall,
   required _Responder responder,
+  GitStatusBus? statusBus,
 }) {
   return FileBrowserManager(
     sendRequest: (method, [params]) {
@@ -57,6 +62,7 @@ FileBrowserManager _buildManager({
       return Future.value(
           responder(method, params ?? const <String, dynamic>{}));
     },
+    statusBus: statusBus,
   );
 }
 
@@ -420,5 +426,132 @@ void main() {
     manager.invalidate(_workspaceRoot);
     expect(manager.rootFor(_workspaceRoot), isNull);
     await manager.dispose();
+  });
+
+  test('bus emission repaints the tree for a managed cwd', () async {
+    final bus = GitStatusBus();
+    final manager = _buildManager(
+      onCall: (_, __) {},
+      responder: (m, _) {
+        if (m == 'workspace/list') {
+          return RpcMessage.response(id: '1', result: _listRootResult);
+        }
+        if (m == 'git/status') {
+          // Initial fetch: tree is clean (the bug we are fixing started
+          // with a non-clean state cached from a prior session).
+          return RpcMessage.response(
+            id: '1',
+            result: const <String, dynamic>{
+              'branch': 'main',
+              'isDirty': false,
+              'files': <dynamic>[],
+            },
+          );
+        }
+        return RpcMessage.response(id: '1', result: const <String, dynamic>{});
+      },
+      statusBus: bus,
+    );
+
+    await manager.loadRoot(_workspaceRoot);
+    await _settle();
+    final readme = manager
+        .rootFor(_workspaceRoot)!
+        .children
+        .firstWhere((c) => c.basename == 'README.md');
+    final src = manager
+        .rootFor(_workspaceRoot)!
+        .children
+        .firstWhere((c) => c.basename == 'src');
+    expect(readme.gitStatus, isNull);
+    expect(src.gitStatus, isNull);
+
+    // External producer (e.g. a CLI commit on the PC) emits a fresh
+    // GitStatusChange for the same cwd. The manager must repaint without
+    // us touching the API — the modified descendant under `src/` flips
+    // the folder to the modified colour even while collapsed.
+    bus.emit(GitStatusChange(
+      cwd: _workspaceRoot,
+      state: const GitRepoState(
+        branch: 'main',
+        isDirty: true,
+        changedFiles: [
+          GitChangedFile(
+            path: 'src/main.dart',
+            status: GitFileStatus.modified,
+          ),
+        ],
+      ),
+    ));
+    await _settle();
+
+    final root = manager.rootFor(_workspaceRoot)!;
+    final srcAfter = root.children.firstWhere((c) => c.basename == 'src');
+    final readmeAfter =
+        root.children.firstWhere((c) => c.basename == 'README.md');
+    expect(srcAfter.gitStatus, GitFileStatus.modified);
+    expect(readmeAfter.gitStatus, isNull);
+
+    await manager.dispose();
+    await bus.dispose();
+  });
+
+  test('bus emission for an unknown cwd is ignored', () async {
+    final bus = GitStatusBus();
+    final manager = _buildManager(
+      onCall: (_, __) {},
+      responder: (m, _) => RpcMessage.response(
+        id: '1',
+        result: const <String, dynamic>{},
+      ),
+      statusBus: bus,
+    );
+
+    // No loadRoot — the manager does not manage this cwd.
+    bus.emit(GitStatusChange(
+      cwd: '/some/other/workspace',
+      state: const GitRepoState(
+        branch: 'main',
+        changedFiles: [
+          GitChangedFile(path: 'a.dart', status: GitFileStatus.modified),
+        ],
+      ),
+    ));
+    await _settle();
+    // No throw, no crash. Nothing to assert beyond that.
+    expect(manager.rootFor('/some/other/workspace'), isNull);
+
+    await manager.dispose();
+    await bus.dispose();
+  });
+
+  test('refreshGitStatus publishes the new state on the bus', () async {
+    final bus = GitStatusBus();
+    final received = <GitStatusChange>[];
+    final sub = bus.changes.listen(received.add);
+    final manager = _buildManager(
+      onCall: (_, __) {},
+      responder: (m, _) {
+        if (m == 'git/status') {
+          return RpcMessage.response(id: 'g', result: _statusResult);
+        }
+        return RpcMessage.response(id: '1', result: const <String, dynamic>{});
+      },
+      statusBus: bus,
+    );
+
+    await manager.loadRoot(_workspaceRoot);
+    await _settle();
+
+    // loadRoot triggers exactly one refresh, which emits exactly once.
+    expect(received, hasLength(1));
+    expect(received.single.cwd, _workspaceRoot);
+    expect(received.single.state.changedFiles, hasLength(2));
+    final paths = received.single.state.changedFiles.map((f) => f.path).toSet();
+    expect(paths, containsAll(<String>{'src/main.dart', 'README.md'}));
+
+    await manager.dispose();
+    await sub.cancel();
+    await bus.dispose();
   });
 }

@@ -600,6 +600,21 @@ browser and multi-PC connection correctness are now DONE — see below.)
   paint, lazy expand, readFile/readImage/fileDiff, soft-fail on non-git
   cwds). Sits next to `GitScreen` in the conversation top bar — together
   they cover both the "what changed" and the "show me the file" questions.
+  - ☑ **Live git-status colours across the app (DONE 2026-06-18).** The
+    file browser's per-cwd `git/status` cache used to only refresh on
+    `loadRoot` / `toggleDirectory` / `writeFile`, so a commit made
+    elsewhere (the git screen, a CLI `git commit` on the PC) left the
+    browser painting stale colours. The manager now subscribes to the
+    shared `GitStatusBus` (`gitStatusBusProvider`,
+    `application/services/git_status_bus.dart`); every successful
+    `git/status` fetch from any producer (`GitActionManager` after every
+    action, `FileBrowserManager` on its own refresh) publishes a
+    `GitStatusChange { cwd, state }` and every manager holding that cwd
+    repaints from the payload. No new RPC, no per-screen lifecycle
+    gymnastics — the bus is generic so any future consumer can subscribe.
+    Documented in `architecture/02c-implementation-guide.md` (§3.x —
+    managers) and `architecture/03-technical-reference.md` (provider
+    tree). **CHANGELOG.md → [Unreleased] → Fixed.**
 
 ## Push notifications
 

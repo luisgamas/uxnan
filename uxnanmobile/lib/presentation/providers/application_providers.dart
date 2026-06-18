@@ -8,6 +8,7 @@ import 'package:uxnan/application/managers/push_registrar.dart';
 import 'package:uxnan/application/managers/thread_manager.dart';
 import 'package:uxnan/application/managers/workspace_browser.dart';
 import 'package:uxnan/application/processors/incoming_message_processor.dart';
+import 'package:uxnan/application/services/git_status_bus.dart';
 import 'package:uxnan/core/utils/logger.dart';
 import 'package:uxnan/domain/entities/agent_descriptor.dart';
 import 'package:uxnan/domain/entities/agent_model.dart';
@@ -118,6 +119,18 @@ final trustedDevicesProvider = StreamProvider<List<TrustedDevice>>(
 final incomingMessageProcessorProvider =
     Provider<IncomingMessageProcessor>((ref) {
   return const IncomingMessageProcessor();
+});
+
+/// Process-wide broadcast bus for `git/status` updates. Producers
+/// ([GitActionManager] after every commit/push/pull/etc, [FileBrowserManager]
+/// on its own refresh) `emit` a [GitStatusChange] here; consumers
+/// (the file browser, today) repaint from the payload without re-fetching.
+///
+/// One instance per app, disposed with the providers.
+final gitStatusBusProvider = Provider<GitStatusBus>((ref) {
+  final bus = GitStatusBus();
+  ref.onDispose(bus.dispose);
+  return bus;
 });
 
 /// Coordinates threads and the active conversation timeline.
@@ -756,6 +769,7 @@ final gitActionManagerProvider = Provider<GitActionManager>((ref) {
     sendRequest: coordinator.sendRequest,
     domainEvents: processor.bind(coordinator.incomingMessages),
     actionLog: ref.watch(gitActionLogRepositoryProvider),
+    statusBus: ref.watch(gitStatusBusProvider),
   );
   ref.onDispose(manager.dispose);
   return manager;

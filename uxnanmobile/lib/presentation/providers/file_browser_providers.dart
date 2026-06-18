@@ -6,11 +6,16 @@ import 'package:uxnan/presentation/providers/application_providers.dart';
 /// state, in-memory cache per cwd).
 ///
 /// Mirrors the [gitActionManagerProvider] pattern: a single shared manager
-/// that the UI watches through per-cwd family providers.
+/// that the UI watches through per-cwd family providers. Subscribes to the
+/// shared `gitStatusBusProvider` so a `git/status` refresh from anywhere in
+/// the app (a commit through the git screen, an external CLI commit on the
+/// same PC, the file browser's own first paint) repaints the tree without a
+/// manual reload.
 final fileBrowserManagerProvider = Provider<FileBrowserManager>((ref) {
   final coordinator = ref.watch(sessionCoordinatorProvider);
   final manager = FileBrowserManager(
     sendRequest: coordinator.sendRequest,
+    statusBus: ref.watch(gitStatusBusProvider),
   );
   ref.onDispose(manager.dispose);
   return manager;

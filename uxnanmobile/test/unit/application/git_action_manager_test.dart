@@ -4,10 +4,12 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uxnan/application/managers/git_action_manager.dart';
 import 'package:uxnan/application/processors/domain_event.dart';
+import 'package:uxnan/application/services/git_status_bus.dart';
 import 'package:uxnan/domain/enums/git_action_kind.dart';
 import 'package:uxnan/domain/enums/git_action_phase_status.dart';
 import 'package:uxnan/domain/enums/git_file_status.dart';
 import 'package:uxnan/domain/value_objects/git/git_action_io.dart';
+import 'package:uxnan/domain/value_objects/git/git_status_change.dart';
 import 'package:uxnan/domain/value_objects/rpc_message.dart';
 import 'package:uxnan/infrastructure/repositories/drift_git_action_log_repository.dart';
 import 'package:uxnan/infrastructure/storage/local_database.dart';
@@ -43,6 +45,9 @@ void main() {
   late StreamController<DomainEvent> events;
   late List<String> sentMethods;
   late Completer<RpcMessage> pushCompleter;
+  late GitStatusBus bus;
+  late List<GitStatusChange> busEvents;
+  late StreamSubscription<GitStatusChange> busSub;
   late GitActionManager manager;
 
   setUp(() {
@@ -51,9 +56,13 @@ void main() {
     events = StreamController<DomainEvent>.broadcast();
     sentMethods = [];
     pushCompleter = Completer<RpcMessage>();
+    bus = GitStatusBus();
+    busEvents = <GitStatusChange>[];
+    busSub = bus.changes.listen(busEvents.add);
     manager = GitActionManager(
       domainEvents: events.stream,
       actionLog: logRepo,
+      statusBus: bus,
       sendRequest: (method, [params]) {
         sentMethods.add(method);
         return switch (method) {
@@ -75,7 +84,9 @@ void main() {
   });
 
   tearDown(() async {
+    await busSub.cancel();
     await manager.dispose();
+    await bus.dispose();
     await events.close();
     await db.close();
   });
@@ -227,5 +238,37 @@ void main() {
     );
     final log = await logRepo.getForThread('th1');
     expect(log.single.kind, GitActionKind.createWorktree);
+  });
+
+  test('refreshStatus emits a GitStatusChange on the bus', () async {
+    await manager.refreshStatus('/repo');
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+
+    expect(busEvents, hasLength(1));
+    expect(busEvents.single.cwd, '/repo');
+    expect(busEvents.single.state.branch, 'main');
+    expect(busEvents.single.state.isDirty, isTrue);
+    expect(
+      busEvents.single.state.changedFiles.single.path,
+      'lib/main.dart',
+    );
+    expect(
+      busEvents.single.state.changedFiles.single.status,
+      GitFileStatus.modified,
+    );
+  });
+
+  test('commit refreshes status which propagates through the bus', () async {
+    await manager.commit(
+      const GitCommitParams(
+        cwd: '/repo',
+        message: 'feat: x',
+        threadId: 'th1',
+      ),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+
+    expect(busEvents, hasLength(1));
+    expect(busEvents.single.cwd, '/repo');
   });
 }

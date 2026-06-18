@@ -3,8 +3,12 @@ import 'dart:convert';
 
 import 'package:rxdart/rxdart.dart';
 import 'package:uxnan/application/managers/thread_manager.dart' show RpcSend;
+import 'package:uxnan/application/services/git_status_bus.dart';
 import 'package:uxnan/domain/entities/file_browser.dart';
+import 'package:uxnan/domain/entities/git/git_repo_state.dart';
 import 'package:uxnan/domain/enums/git_file_status.dart';
+import 'package:uxnan/domain/value_objects/git/git_changed_file.dart';
+import 'package:uxnan/domain/value_objects/git/git_status_change.dart';
 import 'package:uxnan/domain/value_objects/rpc_message.dart';
 
 /// Maximum directory depth the file browser will auto-descend into. The
@@ -30,12 +34,32 @@ const int _kMaxDepth = 16;
 /// resolved against the wrong directory. The manager therefore joins the
 /// workspace's absolute root (the [cwd] passed to [loadRoot]) with the
 /// relative path of each expanded directory before sending.
+///
+/// **Git-status sync.** [statusBus] (optional, recommended) is the shared
+/// `GitStatusBus` produced by `gitStatusBusProvider`. When wired, the
+/// manager subscribes once and repaints any cwd it manages whenever a
+/// `GitStatusChange` for that cwd arrives — including from external
+/// producers (commits/pushes through the git screen, or a CLI commit done
+/// outside the app on the same PC). Without the bus the manager still
+/// works, but external changes are only visible after a manual reload.
 class FileBrowserManager {
   /// Creates a [FileBrowserManager].
-  FileBrowserManager({required RpcSend sendRequest})
-      : _sendRequest = sendRequest;
+  ///
+  /// [statusBus] (optional) is the shared [GitStatusBus]. When `null` the
+  /// manager skips the subscription — useful for tests that drive the
+  /// `git/status` RPC explicitly. In production the bus is always provided.
+  FileBrowserManager({required RpcSend sendRequest, GitStatusBus? statusBus})
+      : _sendRequest = sendRequest,
+        _statusBus = statusBus {
+    final bus = _statusBus;
+    if (bus != null) {
+      _statusSub = bus.changes.listen(_onStatusChange);
+    }
+  }
 
   final RpcSend _sendRequest;
+  final GitStatusBus? _statusBus;
+  StreamSubscription<GitStatusChange>? _statusSub;
 
   /// Per-cwd root tree. Kept as plain fields because each root is a single
   /// immutable `FileTreeNode` the UI watches; rebuilding it in place is the
@@ -121,6 +145,12 @@ class FileBrowserManager {
 
   /// Fetches `git/status` for [cwd] and patches the current root tree so each
   /// file carries the right [GitFileStatus]. Cleared/rebuilt on every call.
+  ///
+  /// Also publishes a [GitStatusChange] on the bus (when wired) so any other
+  /// consumer — and, importantly, *this* manager's own listener for the
+  /// reverse path — sees a consistent state. The payload is a minimal
+  /// [GitRepoState] carrying only the `changedFiles` (the rest is irrelevant
+  /// to the colour treatment and the only consumer today is this manager).
   Future<void> refreshGitStatus(String cwd) async {
     try {
       final response = await _sendRequest('git/status', {'cwd': cwd});
@@ -131,18 +161,25 @@ class FileBrowserManager {
       }
       final rawFiles = result['files'] ?? result['changedFiles'];
       final map = <String, GitFileStatus>{};
+      final changedFiles = <GitChangedFile>[];
       if (rawFiles is List) {
         for (final entry in rawFiles) {
           if (entry is! Map) continue;
           final path = entry['path'] as String?;
           final status = entry['status'] as String?;
           if (path == null || status == null) continue;
-          map[path] = _parseGitStatus(status);
+          final parsed = _parseGitStatus(status);
+          map[path] = parsed;
+          changedFiles.add(GitChangedFile(path: path, status: parsed));
         }
       }
       _gitStatusByCwd[cwd] = map;
       _gitFetched.add(cwd);
       _repatchTree(cwd);
+      _statusBus?.emit(GitStatusChange(
+        cwd: cwd,
+        state: GitRepoState(branch: '', changedFiles: changedFiles),
+      ));
     } on Object {
       // Best-effort: missing git status (no repo / not connected / older
       // bridge) is a soft state, not an error. We mark the cwd as "fetched"
@@ -456,6 +493,7 @@ class FileBrowserManager {
 
   /// Releases all resources (subjects, caches).
   Future<void> dispose() async {
+    await _statusSub?.cancel();
     for (final subject in _rootSubjects.values) {
       if (!subject.isClosed) await subject.close();
     }
@@ -464,6 +502,24 @@ class FileBrowserManager {
     _gitStatusByCwd.clear();
     _gitFetched.clear();
     _loadingRoots.clear();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Bus integration
+  // ---------------------------------------------------------------------------
+
+  /// Listener for [GitStatusBus.changes]. Repaints any managed cwd that
+  /// matches [GitStatusChange.cwd] from the supplied [GitRepoState]. Late
+  /// events for a cwd the manager no longer holds are ignored.
+  void _onStatusChange(GitStatusChange change) {
+    final cwd = change.cwd;
+    if (!_roots.containsKey(cwd)) return;
+    final map = <String, GitFileStatus>{
+      for (final f in change.state.changedFiles) f.path: f.status,
+    };
+    _gitStatusByCwd[cwd] = map;
+    _gitFetched.add(cwd);
+    _repatchTree(cwd);
   }
 }
 
