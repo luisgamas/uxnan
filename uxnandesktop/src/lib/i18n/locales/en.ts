@@ -228,6 +228,8 @@ export const en = {
   "monitor.stale": "No update in a while",
   "monitor.detected": "Agent detected",
   "monitor.unread": "Agent finished — not yet reviewed",
+  "monitor.installHooksHint":
+    "Install hooks for precise states — open Settings → Hooks",
   "agents.spaceLabel": "Agents",
   "settings.agentNotifications": "Idle notifications",
   "settings.agentNotificationsDesc":

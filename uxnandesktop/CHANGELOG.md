@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — precise agent states in the terminal tab bar + hooks-discovery hint
+- **Tab bar now uses the precise `AgentStatusDot`** (`TerminalArea.svelte`):
+  every terminal tab in a region shows the four-state dot (working green /
+  blocked amber / waiting orange / done blue / idle gray; stale dimmed) driven
+  by `resolveAgentDisplay`, with the same priority as the sidebar
+  (hook › title › output-activity). The coarse pulsing dot from
+  `tab.working` is gone — a plain terminal with no agent and no activity now
+  shows no dot at all.
+- **Install-hooks hint** on agent tabs that aren't being driven by the hook
+  server: a subtle `Webhook` icon button next to the status dot, only when
+  `display.source !== "hook"` and the tab is an *agent* terminal (so plain
+  shells and already-hook-driven agents don't see it). Clicking opens
+  **Settings → Hooks** so users discover the ready-made per-agent hook
+  configs and can wire them up. EN/ES (`monitor.installHooksHint`).
+
 ### Added — configurable keyboard shortcuts
 - **Settings → Keyboard shortcuts**: rebind the app's shortcuts (click a chord to
   record a new one, reset to default, or disable). Persisted in

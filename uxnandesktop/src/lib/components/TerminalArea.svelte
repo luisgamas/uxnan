@@ -15,8 +15,11 @@
     type SplitDir,
   } from "$lib/state/terminals.svelte";
   import Terminal from "./Terminal.svelte";
+  import { resolveAgentDisplay } from "$lib/state/agentDisplay";
+  import AgentStatusDot from "./AgentStatusDot.svelte";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
-  import { icon, text } from "$lib/design";
+  import { Button } from "$lib/components/ui/button";
+  import { icon, iconButton, text } from "$lib/design";
   import { cn } from "$lib/utils";
   import { i18n } from "$lib/i18n";
   import PlusIcon from "@lucide/svelte/icons/plus";
@@ -26,6 +29,7 @@
   import PanelRightIcon from "@lucide/svelte/icons/panel-right";
   import Columns2Icon from "@lucide/svelte/icons/columns-2";
   import Rows2Icon from "@lucide/svelte/icons/rows-2";
+  import WebhookIcon from "@lucide/svelte/icons/webhook";
 
   /** Default profile's shell/args, for region-level + and splits. A blank
    *  command falls back to the backend's platform default shell. */
@@ -314,6 +318,12 @@
                     class="uxnan-scroll flex h-8 shrink-0 items-center gap-1 overflow-x-auto border-b border-border bg-card px-1"
                   >
                     {#each g.group.tabs as t (t.id)}
+                      {@const display = resolveAgentDisplay(t)}
+                      {@const showHooksHint =
+                        display !== null &&
+                        display.source !== "hook" &&
+                        !!t.agentName &&
+                        !t.exited}
                       <div
                         class="flex shrink-0 items-center gap-1 rounded px-2 py-0.5 text-xs {g
                           .group.activeTabId === t.id
@@ -322,10 +332,26 @@
                         role="group"
                         oncontextmenu={(e) => tabMenu(e, g.group.id, t.id)}
                       >
-                        {#if t.working && !t.exited}
-                          <span
-                            class="size-1.5 shrink-0 animate-pulse rounded-full bg-emerald-500"
-                          ></span>
+                        {#if display}
+                          <AgentStatusDot status={display.status} stale={display.stale} />
+                        {/if}
+                        {#if showHooksHint}
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            class={cn(
+                              iconButton.action,
+                              "text-muted-foreground opacity-60 hover:opacity-100",
+                            )}
+                            title={i18n.t("monitor.installHooksHint")}
+                            aria-label={i18n.t("monitor.installHooksHint")}
+                            onclick={(e) => {
+                              e.stopPropagation();
+                              app.openSettings("hooks");
+                            }}
+                          >
+                            <WebhookIcon class={icon.button} />
+                          </Button>
                         {/if}
                         <button
                           class="max-w-[120px] truncate {t.exited ? 'line-through' : ''}"

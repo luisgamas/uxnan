@@ -80,8 +80,9 @@ Tauri sidecar + QR pairing. Before distributing builds: a CI/CD pipeline (see
 "CI/CD — release builds") + branded icons/signing (`FOR-HUMAN.md`).
 
 **Phase 4 follow-ups (not blocking):** ready-made per-agent hook configs (Claude
-Code + generic wrapper) so precise states work out-of-the-box, multi-agent
-orchestration (`02d` §3), and a precise status dot in the terminal tab strip.
+Code + generic wrapper) so precise states work out-of-the-box **+ a precise
+status dot in the terminal tab strip** (both shipped). Multi-agent
+orchestration (`02d` §3) remains.
 
 Smaller non-blockers (tracked below): backend debounced persistence + rotating
 backups, `git2` migration, WSL paths, tab reorder/MRU, branded icons
@@ -492,8 +493,14 @@ earlier "superficial UX" warning is resolved.
       `src/lib/components/AgentHooksPanel.svelte`, `static/hooks/*`.)
 - [ ] **Multi-agent orchestration** (task graph, @type routing, fan-out,
       backpressure, sidebar lineage) per `02d` §3. **FOR-DEV.**
-- [ ] **Tab-bar status indicator** — the terminal tab strip still shows the coarse
-      working dot; could adopt the precise `AgentStatusDot` too. **FOR-DEV.**
+- [x] **Tab-bar status indicator** — the terminal tab strip now uses the same
+      precise `AgentStatusDot` as the sidebar (working / blocked / waiting /
+      done / idle, stale dimmed), driven by `resolveAgentDisplay` with the
+      same hook › title › activity priority. The coarse pulsing dot from
+      `tab.working` is gone. Agent tabs whose state isn't coming from the
+      hook server get a subtle `Webhook` icon next to the dot that opens
+      **Settings → Hooks**, so users see they can wire up the ready-made
+      configs for precise states.
 
 ---
 

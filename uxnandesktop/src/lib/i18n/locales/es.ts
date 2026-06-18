@@ -225,6 +225,8 @@ export const es: Record<MessageKey, string> = {
   "monitor.stale": "Sin actualizar hace rato",
   "monitor.detected": "Agente detectado",
   "monitor.unread": "El agente terminó — sin revisar",
+  "monitor.installHooksHint":
+    "Instala los hooks para estados precisos — abre Configuración → Hooks",
   "agents.spaceLabel": "Agentes",
   "settings.preventSleep": "Evitar suspensión al trabajar",
   "settings.preventSleepDesc":
