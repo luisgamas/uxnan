@@ -32,7 +32,7 @@ export const iconButton = {
  *  primary/interactive text gets `text-foreground` / `font-medium`. */
 export const text = {
   /** Primary item title (project / worktree name). */
-  title: "text-[13px] font-medium",
+  title: "font-title text-[13px] font-medium",
   /** Body & interactive text (buttons, inputs, list items, menu items). */
   body: "text-xs",
   /** Secondary, informational text (paths, descriptions) — muted, not bold. */

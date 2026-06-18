@@ -2,6 +2,12 @@
 // Serde emits camelCase, so these fields match the Rust structs one-to-one.
 // Keep this file in sync whenever the Rust model changes.
 
+import type {
+  Theme as CustomTheme,
+  TerminalThemePreset,
+  ThemeFonts,
+} from "$lib/theme";
+
 export type Theme = "light" | "dark" | "system";
 
 export type AgentStatus = "working" | "blocked" | "waiting" | "done";
@@ -54,6 +60,16 @@ export interface AppSettings {
   /** Custom keyboard-shortcut overrides, keyed by action id → chord string
    *  (e.g. `closeCenter` → `Ctrl+W`). Missing = default binding; "" = disabled. */
   keybindings?: Record<string, string>;
+  /** Active theme id: a built-in ("system"/"light"/"dark"/…) or a custom id. */
+  activeThemeId?: string;
+  /** User-created themes (exportable / importable). */
+  customThemes?: CustomTheme[];
+  /** Global font override (applied on top of the active theme's fonts). */
+  fonts?: ThemeFonts;
+  /** Saved terminal themes (the per-terminal override layer; import/exportable). */
+  terminalThemes?: TerminalThemePreset[];
+  /** Active terminal theme id ("inherit" = no terminal override). */
+  activeTerminalThemeId?: string;
 }
 
 export interface WorktreeData {
@@ -270,4 +286,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   preventSleep: false,
   language: "system",
   keybindings: {},
+  activeThemeId: "system",
+  customThemes: [],
+  fonts: {},
+  terminalThemes: [],
+  activeTerminalThemeId: "inherit",
 };

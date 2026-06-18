@@ -5,14 +5,16 @@
   import { Terminal } from "@xterm/xterm";
   import { FitAddon } from "@xterm/addon-fit";
   import { WebglAddon } from "@xterm/addon-webgl";
+  import { LigaturesAddon } from "@xterm/addon-ligatures";
   import "@xterm/xterm/css/xterm.css";
   import { clipboardRead, clipboardWrite } from "$lib/clipboard";
   import { terminals } from "$lib/state/terminals.svelte";
   import { agentMonitor } from "$lib/state/agentMonitor.svelte";
   import { app } from "$lib/state/app.svelte";
 
-  // xterm colors follow the app theme (light/dark).
-  const palette = $derived(app.terminalPalette());
+  // Effective terminal appearance (general theme base + per-terminal overrides:
+  // font, size, line height, spacing, weight, ligatures, cursor, ANSI colors).
+  const termOpts = $derived(app.resolveTerminal());
 
   let {
     id,
@@ -76,23 +78,37 @@
   }
 
   onMount(async () => {
+    const t = app.resolveTerminal();
     term = new Terminal({
-      cursorBlink: true,
-      fontSize: 13,
+      cursorBlink: t.cursorBlink,
+      cursorStyle: t.cursorStyle,
+      fontSize: t.fontSize,
+      lineHeight: t.lineHeight,
+      letterSpacing: t.letterSpacing,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      fontWeight: t.fontWeight as never,
       // Bounded scrollback caps per-terminal memory (hidden terminals stay
       // mounted, so this is the effective limit on their retained output).
       scrollback: 5000,
-      fontFamily:
-        'ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, monospace',
-      theme: { ...palette },
+      fontFamily: t.fontFamily,
+      theme: { ...t.theme },
     });
     fit = new FitAddon();
     term.loadAddon(fit);
     term.open(el);
-    try {
-      term.loadAddon(new WebglAddon());
-    } catch {
-      // WebGL unavailable — xterm falls back to the DOM renderer.
+    // Ligatures need the DOM renderer, so they're mutually exclusive with WebGL.
+    if (t.ligatures) {
+      try {
+        term.loadAddon(new LigaturesAddon());
+      } catch {
+        // Ligatures addon unavailable — plain DOM rendering still works.
+      }
+    } else {
+      try {
+        term.loadAddon(new WebglAddon());
+      } catch {
+        // WebGL unavailable — xterm falls back to the DOM renderer.
+      }
     }
 
     // Layer 2 monitoring: agents that update the terminal title (OSC 0/2) report
@@ -204,9 +220,21 @@
     }
   });
 
-  // Re-theme the live terminal when the app theme changes.
+  // Re-apply appearance live when the theme or terminal overrides change. Font
+  // and color changes apply in place; toggling ligatures needs a new terminal
+  // (the renderer addon can't swap live), so that takes effect on next open.
   $effect(() => {
-    if (term) term.options.theme = { ...palette };
+    const t = termOpts;
+    if (!term) return;
+    term.options.theme = { ...t.theme };
+    term.options.fontSize = t.fontSize;
+    term.options.fontFamily = t.fontFamily;
+    term.options.lineHeight = t.lineHeight;
+    term.options.letterSpacing = t.letterSpacing;
+    term.options.fontWeight = t.fontWeight as never;
+    term.options.cursorStyle = t.cursorStyle;
+    term.options.cursorBlink = t.cursorBlink;
+    fitToPane();
   });
 
   onDestroy(() => {
@@ -224,5 +252,5 @@
 <div
   bind:this={el}
   class="h-full w-full p-2"
-  style:background-color={palette.background}
+  style:background-color={termOpts.theme.background}
 ></div>

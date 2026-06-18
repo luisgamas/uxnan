@@ -39,8 +39,9 @@
     return { shell: command || undefined, args: command ? p?.args : undefined };
   }
 
-  // The terminal area background follows the app theme (matches xterm's bg).
-  const paneBg = $derived(app.terminalPalette().background);
+  // The terminal area background follows the resolved terminal theme (matches
+  // xterm's background).
+  const paneBg = $derived(app.resolveTerminal().theme.background);
 
   // --- Workspaces (one terminal set per worktree + a Global space) ---------
   const baseName = (p: string) =>

@@ -40,6 +40,7 @@
     "@tauri-apps/plugin-notification": "^2.3.3",
     "@tauri-apps/plugin-opener": "^2",
     "@xterm/addon-fit": "^0.10.0",
+    "@xterm/addon-ligatures": "^0.10.0",
     "@xterm/addon-webgl": "^0.18.0",
     "@xterm/xterm": "^5.5.0",
     "bits-ui": "^2.18.1",

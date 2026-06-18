@@ -5,6 +5,35 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — custom themes + terminal appearance (personalization)
+- **Theming engine** (`src/lib/theme.ts`): a `Theme` is a single palette with a
+  declared `base` (light/dark) covering every shadcn token, the corner radius,
+  and the title/body/mono fonts. `applyTheme` writes the values as CSS variables
+  on `<html>` (instant, no rebuild) and toggles `.dark` from the base. Built-ins:
+  System, Light, Dark, Midnight, Latte.
+- **Settings → Appearance** (`ThemeSettings.svelte`), two sub-tabs (shadcn Tabs):
+  - **Interface**: theme grid (applies live), **New theme** / **Edit** open an
+    editable **draft** previewed live and **saved only on Save** (Cancel/closing
+    discards); **Duplicate**, **Delete**, **import/export** as JSON via file
+    (native dialog) or clipboard (partial imports fill from the base); and a
+    **global font override** (title/body/mono) that wins over each theme's fonts.
+  - **Terminal**: terminal themes are saved **presets** that override the app
+    theme *in the terminal only* — Inherit + presets, draft Save/Cancel,
+    import/export, and per-field **overrides** dots (with the inherited value as
+    placeholder). Covers font family/size/line-height/letter-spacing/weight,
+    **ligatures** (`@xterm/addon-ligatures`, DOM renderer), cursor style + blink,
+    and the full color set (background, text, cursor, selection + 16 ANSI).
+- **Themeable fonts**: `--ux-font-body` (UI), `--ux-font-title` (titles, via the
+  `font-title` design token) and `--ux-font-mono` (editor + diffs) routed through
+  Tailwind's font utilities. Fonts are referenced by installed family name
+  (importing font *files* is a tracked follow-up — `FOR-DEV.md`).
+- **Editors** (`ThemeEditor.svelte`, `TerminalThemeEditor.svelte`) built from
+  shadcn-svelte components (Input, Textarea, Switch, Label, Select, Tabs, Dialog).
+- **Model**: `AppSettings.activeThemeId` + `customThemes` + `fonts` +
+  `terminalThemes` + `activeTerminalThemeId` (frontend-owned shapes, persisted
+  opaquely in Rust like `terminalLayout`).
+- **Docs**: `docs/theming.md` (app + terminal theme JSON templates).
+
 ### Changed — agent-hooks docs enriched
 - **`docs/agent-hooks.md` rewritten as a guided installer.** Now opens with a
   TL;DR, a state-table ("what do I get"), the ready-made scripts and the

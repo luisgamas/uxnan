@@ -592,6 +592,30 @@ A second right-panel view alongside git review, plus an editable center editor.
       changes on disk (e.g. an agent edits it); refresh is manual via re-open.
       **FOR-DEV.**
 
+## Personalization — custom themes + terminal appearance ✅
+
+- [x] **Theming engine** (`src/lib/theme.ts`): single-palette themes (base
+      light/dark) over every shadcn token + radius + fonts; `applyTheme` writes
+      CSS vars on `<html>`. Built-ins (System/Light/Dark/Midnight/Latte).
+- [x] **Settings → Appearance** (`ThemeSettings`/`ThemeEditor`): pick / new /
+      edit (visual + JSON) / duplicate / delete; import/export via file + clipboard.
+- [x] **Themeable fonts** (`--ux-font-body|title|mono`) + **terminal appearance**
+      overrides (`TerminalAppearance`, `resolveTerminal`): font/size/line-height/
+      spacing/weight, ligatures (`@xterm/addon-ligatures`), cursor, full ANSI set.
+- [x] Model: `AppSettings.activeThemeId` / `customThemes` / `terminalTheme`
+      (frontend-owned, persisted opaquely). Docs: `docs/theming.md`.
+
+**Deferred (non-blocking) — FOR-DEV:**
+- [ ] **Import font *files*** (.ttf/.otf/.woff2) — embed via `@font-face` /
+      data URLs so a theme is portable across machines without the family being
+      installed. Today only installed font families (by name) are supported.
+      Marker in `src/lib/theme.ts` module doc. **FOR-DEV.**
+- [ ] **Live ligature toggle** — toggling ligatures currently applies on the next
+      opened terminal (the renderer addon can't swap on a live xterm). Recreate
+      the terminal in place to apply immediately. **FOR-DEV.**
+- [ ] **Drop the legacy `theme` field** — superseded by `activeThemeId`; kept for
+      now to avoid a migration. Remove in a future schema bump. **FOR-DEV.**
+
 ## Phase 6 — Bridge integration ☐
 
 **Goal:** let the desktop act as the mobile bridge (single-install).

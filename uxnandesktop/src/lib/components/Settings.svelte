@@ -10,7 +10,6 @@
   import { app } from "$lib/state/app.svelte";
   import { i18n, LOCALES } from "$lib/i18n";
   import type { MessageKey } from "$lib/i18n/locales/en";
-  import type { Theme } from "$lib/types";
   import {
     TERMINAL_TEMPLATES,
     type TerminalTemplate,
@@ -21,6 +20,7 @@
   import AgentProfileEditor from "./AgentProfileEditor.svelte";
   import AgentLogo from "./AgentLogo.svelte";
   import AgentHooksPanel from "./AgentHooksPanel.svelte";
+  import ThemeSettings from "./ThemeSettings.svelte";
   import {
     KEY_ACTIONS,
     eventToChord,
@@ -29,7 +29,7 @@
   } from "$lib/keybindings";
   import { cn } from "$lib/utils";
   import { icon, iconButton, text } from "$lib/design";
-  import SlidersIcon from "@lucide/svelte/icons/sliders-horizontal";
+  import PaletteIcon from "@lucide/svelte/icons/palette";
   import TerminalIcon from "@lucide/svelte/icons/terminal";
   import BotIcon from "@lucide/svelte/icons/bot";
   import LanguagesIcon from "@lucide/svelte/icons/languages";
@@ -94,18 +94,6 @@
       close();
     }
   }
-
-  const themes: { value: Theme; key: MessageKey }[] = [
-    { value: "system", key: "settings.theme.system" },
-    { value: "light", key: "settings.theme.light" },
-    { value: "dark", key: "settings.theme.dark" },
-  ];
-  const themeLabel = $derived(
-    i18n.t(
-      themes.find((t) => t.value === app.settings.theme)?.key ??
-        "settings.theme.system",
-    ),
-  );
 
   // Language: "system" + each available locale.
   const languageLabel = $derived.by(() => {
@@ -258,7 +246,7 @@
   );
 
   const navItems = [
-    { id: "general", key: "settings.general", icon: SlidersIcon },
+    { id: "appearance", key: "settings.appearance", icon: PaletteIcon },
     { id: "language", key: "settings.language", icon: LanguagesIcon },
     { id: "shortcuts", key: "settings.shortcuts", icon: KeyboardIcon },
     { id: "agents", key: "settings.agents", icon: BotIcon },
@@ -319,28 +307,8 @@
            bottom padding lets the last options scroll clear of the window edge. -->
       <div class="uxnan-scroll min-h-0 flex-1 overflow-y-auto p-6">
         <div class="mx-auto w-full max-w-2xl pb-16">
-        {#if app.settingsSection === "general"}
-          <div class="flex flex-col gap-4">
-            <div class="flex flex-col gap-1.5">
-              <span class={cn("font-medium", text.body)}>{i18n.t("settings.theme")}</span>
-              <Select.Root
-                type="single"
-                value={app.settings.theme}
-                onValueChange={(v) => {
-                  app.settings.theme = v as Theme;
-                  persistNow();
-                }}
-              >
-                <Select.Trigger class="w-48">{themeLabel}</Select.Trigger>
-                <Select.Content>
-                  {#each themes as t (t.value)}
-                    {@const label = i18n.t(t.key)}
-                    <Select.Item value={t.value} {label}>{label}</Select.Item>
-                  {/each}
-                </Select.Content>
-              </Select.Root>
-            </div>
-          </div>
+        {#if app.settingsSection === "appearance"}
+          <ThemeSettings />
         {:else if app.settingsSection === "language"}
           <div class="flex flex-col gap-1.5">
             <span class={cn("font-medium", text.body)}>{i18n.t("settings.language")}</span>
