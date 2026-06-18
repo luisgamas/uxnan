@@ -318,6 +318,55 @@ pub async fn browse_dirs(path: Option<String>) -> Result<crate::browse::DirListi
         .map_err(CommandError::from)
 }
 
+// --- Filesystem: file tree + editor ----------------------------------------
+//
+// Back the right-panel file-tree tab (browse the active worktree's working tree)
+// and the center file editor (read/write one text file). Paths are absolute, on
+// the user's own machine (not confined — mirrors `browse_dirs`).
+
+/// List the immediate children of a directory (sub-dirs first, then files),
+/// for the file-tree tab. Lazy: the frontend calls this per folder on expand,
+/// so a huge tree (e.g. `node_modules`) never loads until opened.
+#[tauri::command]
+pub async fn fs_list_dir(path: String) -> Result<Vec<crate::fs::FsEntry>, CommandError> {
+    crate::fs::list_dir(&path).await.map_err(CommandError::from)
+}
+
+/// Read a single text file for the editor (with binary / too-large guards).
+#[tauri::command]
+pub async fn fs_read_file(path: String) -> Result<crate::fs::FileContent, CommandError> {
+    crate::fs::read_file(&path)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Overwrite a file with the editor's content (atomic temp-write + rename).
+#[tauri::command]
+pub async fn fs_write_file(path: String, content: String) -> Result<(), CommandError> {
+    crate::fs::write_file(&path, &content)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Reveal a path in the OS file manager (Explorer / Finder / the default file
+/// manager), selecting the item. Powers the file tree's "open in file manager".
+#[tauri::command]
+pub fn reveal_path(app: AppHandle, path: String) -> Result<(), CommandError> {
+    use tauri_plugin_opener::OpenerExt;
+    app.opener()
+        .reveal_item_in_dir(std::path::PathBuf::from(path))
+        .map_err(|e| CommandError::new("REVEAL_FAILED", e.to_string()))
+}
+
+/// Working-tree-vs-`HEAD` diff for one file, powering the editor's change gutter
+/// (added lines + a peek at the removed lines). Empty for clean/untracked files.
+#[tauri::command]
+pub async fn git_diff_head(path: String, file: String) -> Result<String, CommandError> {
+    git::diff_head(&path, &file)
+        .await
+        .map_err(CommandError::from)
+}
+
 // --- Git status, diffs & staging (Phase 3) ---------------------------------
 //
 // These run git directly in the worktree `path` (the right panel's review view).
@@ -326,6 +375,12 @@ pub async fn browse_dirs(path: Option<String>) -> Result<crate::browse::DirListi
 #[tauri::command]
 pub async fn git_status(path: String) -> Result<Vec<git::FileChange>, CommandError> {
     git::status_files(&path).await.map_err(CommandError::from)
+}
+
+/// Per-file added/deleted line counts vs `HEAD` for the changed-files list.
+#[tauri::command]
+pub async fn git_numstat(path: String) -> Result<Vec<git::FileNumstat>, CommandError> {
+    git::numstat(&path).await.map_err(CommandError::from)
 }
 
 /// Unified diff for one file. `staged` selects the index-vs-HEAD diff.

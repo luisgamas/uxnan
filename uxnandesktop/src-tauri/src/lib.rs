@@ -9,6 +9,7 @@ mod agent_hooks;
 mod browse;
 mod commands;
 mod error;
+mod fs;
 mod git;
 mod hooks;
 mod model;
@@ -189,9 +190,15 @@ pub fn run() {
             commands::worktree_list,
             commands::worktree_status,
             commands::browse_dirs,
+            commands::fs_list_dir,
+            commands::fs_read_file,
+            commands::fs_write_file,
+            commands::reveal_path,
+            commands::git_diff_head,
             commands::set_terminal_layout,
             commands::agents_detect,
             commands::git_status,
+            commands::git_numstat,
             commands::git_diff,
             commands::git_stage,
             commands::git_unstage,

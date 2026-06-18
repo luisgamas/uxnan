@@ -209,6 +209,11 @@ pub struct AppSettings {
     /// UI language: "system" (follow the device) or a locale code (e.g. "en", "es").
     #[serde(default = "default_language")]
     pub language: String,
+    /// Custom keyboard-shortcut overrides, keyed by action id (e.g. `closeCenter`)
+    /// → chord string (e.g. `Ctrl+W`). Missing actions fall back to their default
+    /// binding; an empty string disables the action. Defaults are in the frontend.
+    #[serde(default)]
+    pub keybindings: std::collections::HashMap<String, String>,
 }
 
 impl Default for AppSettings {
@@ -228,6 +233,7 @@ impl Default for AppSettings {
             agent_notifications: true,
             prevent_sleep: false,
             language: default_language(),
+            keybindings: std::collections::HashMap::new(),
         }
     }
 }

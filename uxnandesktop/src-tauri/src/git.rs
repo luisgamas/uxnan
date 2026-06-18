@@ -395,6 +395,52 @@ pub async fn diff_file(worktree_path: &str, file: &str, staged: bool) -> Result<
     .await
 }
 
+/// Per-file added/deleted line counts vs `HEAD`, for the changed-files list. The
+/// `path` is worktree-relative (forward-slash, matching `status_files`). Binary
+/// files report 0/0. Untracked files have no `HEAD` baseline and are omitted (the
+/// frontend marks them as wholly new on its own).
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct FileNumstat {
+    pub path: String,
+    pub added: u32,
+    pub deleted: u32,
+}
+
+/// Added/deleted line counts per changed file (`git diff --numstat HEAD`), the
+/// staged + unstaged change of each tracked file relative to the last commit.
+pub async fn numstat(worktree_path: &str) -> Result<Vec<FileNumstat>, AppError> {
+    let out = git(worktree_path, &["diff", "--numstat", "HEAD"]).await?;
+    Ok(parse_numstat(&out))
+}
+
+/// Parse `git diff --numstat HEAD` output: `<added>\t<deleted>\t<path>` per line
+/// (`-` counts for binary files become 0).
+pub fn parse_numstat(input: &str) -> Vec<FileNumstat> {
+    let mut out = Vec::new();
+    for line in input.lines() {
+        let mut parts = line.splitn(3, '\t');
+        let (Some(a), Some(d), Some(path)) = (parts.next(), parts.next(), parts.next()) else {
+            continue;
+        };
+        out.push(FileNumstat {
+            added: a.trim().parse().unwrap_or(0),
+            deleted: d.trim().parse().unwrap_or(0),
+            path: path.to_string(),
+        });
+    }
+    out
+}
+
+/// Working-tree-vs-`HEAD` diff for one file (`git diff HEAD -- <file>`), used by
+/// the editor's change gutter: it shows every line that differs from the last
+/// commit (staged *and* unstaged together), which is what an IDE gutter marks.
+/// Returns an empty string for a clean or untracked file (untracked files have
+/// no `HEAD` baseline — the frontend treats those as wholly added on its own).
+pub async fn diff_head(worktree_path: &str, file: &str) -> Result<String, AppError> {
+    git(worktree_path, &["diff", "HEAD", "--", file]).await
+}
+
 /// Stage a file (`git add`).
 pub async fn stage_file(worktree_path: &str, file: &str) -> Result<(), AppError> {
     git(worktree_path, &["add", "--", file]).await.map(|_| ())
@@ -615,5 +661,23 @@ mod tests {
     #[test]
     fn parses_status_files_empty() {
         assert!(parse_status_files("").is_empty());
+    }
+
+    #[test]
+    fn parses_numstat_counts_and_binary() {
+        let input = "3\t1\tsrc/a.rs\n0\t5\tsrc/b.rs\n-\t-\timg.png\n";
+        let stats = parse_numstat(input);
+        assert_eq!(stats.len(), 3);
+        assert_eq!((stats[0].added, stats[0].deleted), (3, 1));
+        assert_eq!(stats[0].path, "src/a.rs");
+        assert_eq!((stats[1].added, stats[1].deleted), (0, 5));
+        // Binary "-\t-" parses to 0/0.
+        assert_eq!((stats[2].added, stats[2].deleted), (0, 0));
+        assert_eq!(stats[2].path, "img.png");
+    }
+
+    #[test]
+    fn parses_numstat_empty() {
+        assert!(parse_numstat("").is_empty());
     }
 }
