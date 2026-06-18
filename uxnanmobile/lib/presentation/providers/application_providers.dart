@@ -23,6 +23,7 @@ import 'package:uxnan/domain/enums/agent_id.dart';
 import 'package:uxnan/domain/enums/connection_phase.dart';
 import 'package:uxnan/domain/enums/thread_activity.dart';
 import 'package:uxnan/domain/services/pairing_validator.dart';
+import 'package:uxnan/domain/value_objects/accent_color.dart';
 import 'package:uxnan/domain/value_objects/git/git_action_progress.dart';
 import 'package:uxnan/domain/value_objects/notification_preferences.dart';
 import 'package:uxnan/domain/value_objects/turn_timeline_snapshot.dart';
@@ -596,6 +597,46 @@ class LocaleSetting extends Notifier<Locale?> {
 /// The manual locale override, or null for the device language (persisted).
 final localeSettingProvider =
     NotifierProvider<LocaleSetting, Locale?>(LocaleSetting.new);
+
+/// The user-picked accent color (a seed for `ColorScheme.fromSeed`).
+/// Persisted; defaults to the brand blue. The whole `ColorScheme` is
+/// derived from this seed by `buildUxnanTheme` when it is not the brand
+/// default, so every M3 role (primary, secondary, surfaces, containers,
+/// outline, …) stays harmonious in both light and dark. Mirrors the
+/// hydrate-then-persist pattern used by the other appearance notifiers.
+class AccentSetting extends Notifier<AccentColorId> {
+  @override
+  AccentColorId build() {
+    unawaited(_hydrate());
+    return AccentPalette.defaultAccent;
+  }
+
+  Future<void> _hydrate() async {
+    final stored =
+        await ref.read(appearancePreferencesStoreProvider).readAccentId();
+    final resolved = AccentPalette.fromId(stored);
+    if (resolved != state) state = resolved;
+  }
+
+  /// Persists and applies the accent. No-op when [accent] is already the
+  /// active one.
+  Future<void> set(AccentColorId accent) async {
+    if (accent == state) return;
+    state = accent;
+    await ref.read(appearancePreferencesStoreProvider).writeAccentId(accent.id);
+  }
+
+  /// Resets the accent to the brand default (clears the stored key).
+  Future<void> reset() async {
+    if (state == AccentPalette.defaultAccent) return;
+    state = AccentPalette.defaultAccent;
+    await ref.read(appearancePreferencesStoreProvider).writeAccentId(null);
+  }
+}
+
+/// The user-picked accent (persisted; drives the whole `ColorScheme`).
+final accentSettingProvider =
+    NotifierProvider<AccentSetting, AccentColorId>(AccentSetting.new);
 
 /// Registers the FCM push token with the bridge once the session connects and
 /// raises local notifications for turn-completed / turn-error events.

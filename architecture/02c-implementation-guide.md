@@ -829,6 +829,65 @@ ThemeData buildUxnanTheme({Brightness brightness = Brightness.dark}) {
 }
 ```
 
+#### Colores de acento personalizables (Personalization → Accent color)
+
+> ✅ **Implementado** (rama `uxnanmobile`): el usuario puede elegir entre
+> 7 swatches curados (blue/purple/pink/red/orange/green/teal) en
+> `PersonalizationScreen`. La eleccion persiste en `shared_preferences`
+> bajo la clave `uxnan.appearance.accentId` (solo el id; el seed se
+> resuelve desde `AccentPalette` en `lib/domain/value_objects/accent_color.dart`).
+
+El builder de tema acepta un `AccentColorId?` opcional. La regla clave es
+**dos caminos mutuamente excluyentes** — no se mezclan para evitar la
+incoherencia visual que tuvo un primer intento que solo sobreescribia
+`primary`:
+
+1. **Accent == brand blue (default):** se usa la paleta hand-tuned de
+   `UxnanColors` para todos los roles M3. La experiencia por defecto es
+   identica a antes de la personalizacion (cero regresion visual para los
+   usuarios que nunca tocan la opcion).
+2. **Accent != brand blue:** se delega a `ColorScheme.fromSeed(seedColor:
+   accent.seed, brightness: …)` para **light y dark**. Flutter genera
+   todos los roles (primary, secondary, tertiary, surface, surfaceContainer*,
+   error, outline, …) a partir del seed en el espacio HCT de Material 3, lo
+   que garantiza coherencia harmoniosa en ambos modos — es exactamente
+   la "remap completo `ColorScheme`-from-seed" que pidio `FOR-DEV.md`.
+
+El provider `accentSettingProvider` (Riverpod 3.x manual, mismo patron que
+`themeModeSettingProvider` / `localeSettingProvider`) hidrata el id desde
+el store y lo expone al root widget, que lo pasa a `buildUxnanTheme` en
+`MaterialApp.theme` y `MaterialApp.darkTheme`. Asi un solo cambio de
+accent rebuilda todo el app en light y dark.
+
+```dart
+// lib/presentation/providers/application_providers.dart
+class AccentSetting extends Notifier<AccentColorId> {
+  @override AccentColorId build() { unawaited(_hydrate()); return AccentPalette.defaultAccent; }
+  Future<void> _hydrate() async {
+    final stored = await ref.read(appearancePreferencesStoreProvider).readAccentId();
+    final resolved = AccentPalette.fromId(stored);
+    if (resolved != state) state = resolved;
+  }
+  Future<void> set(AccentColorId accent) async { /* persists via writeAccentId(accent.id) */ }
+}
+```
+
+```dart
+// lib/app.dart
+final accent = ref.watch(accentSettingProvider);
+return MaterialApp.router(
+  theme:     buildUxnanTheme(brightness: Brightness.light, accent: accent),
+  darkTheme: buildUxnanTheme(accent: accent),
+  ...
+);
+```
+
+El picker (`_AccentPicker` en `personalization_screen.dart`) es una
+lista M3 de `ListTile`s con un `_SwatchDot` (28 dp circular teñido con el
+seed) + etiqueta localizada + check en la fila seleccionada. Sin
+drawers, sin sliders: una lista simple que mantiene el idioma M3E y se
+integra con el resto de la pantalla de personalizacion.
+
 ### 3.2 Componentes de UI criticos
 
 #### ConnectionStatusIndicator

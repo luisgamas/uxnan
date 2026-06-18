@@ -998,11 +998,25 @@ class AppLocalizationsEs extends AppLocalizations {
   String get personalizationAccentSection => 'Color de acento';
 
   @override
-  String get personalizationAccentComingSoon => 'Próximamente';
+  String get accentBlue => 'Azul';
 
   @override
-  String get personalizationAccentComingSoonBody =>
-      'Los colores de acento personalizados están en diseño — llegarán cuando se mantengan coherentes en toda la app.';
+  String get accentPurple => 'Morado';
+
+  @override
+  String get accentPink => 'Rosa';
+
+  @override
+  String get accentRed => 'Rojo';
+
+  @override
+  String get accentOrange => 'Naranja';
+
+  @override
+  String get accentGreen => 'Verde';
+
+  @override
+  String get accentTeal => 'Turquesa';
 
   @override
   String get personalizationLanguageSection => 'Idioma';

@@ -6,6 +6,59 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Custom accent colors (Personalization → Accent color).** The
+  personalization screen now offers a curated palette of **7 swatches**
+  (`blue` / `purple` / `pink` / `red` / `orange` / `green` / `teal`)
+  in place of the previous *"Coming soon"* placeholder. The whole
+  `ColorScheme` is derived from the picked swatch via
+  `ColorScheme.fromSeed(seedColor: accent.seed, brightness: …)` for
+  **both** light and dark, so every M3 role (primary, secondary,
+  tertiary, surface containers, outline, …) stays coherent and
+  harmonious — exactly the *"larger theming change"* `FOR-DEV.md`
+  called for, and a direct fix for the visual incoherence a first cut
+  that only overrode `primary` had. The brand `blue` keeps the
+  hand-tuned palette (no visual regression for users that never
+  personalize); every other swatch switches to the dynamic scheme.
+  The pick is persisted in `shared_preferences` under
+  `uxnan.appearance.accentId` (only the id; the seed is resolved
+  from the immutable `AccentPalette`, so adding a swatch is
+  non-breaking for old saves and `AccentPalette.fromId` degrades
+  unknown ids to the default).
+  - `domain/value_objects/accent_color.dart` — `AccentColorId` + the
+    closed `AccentPalette` (7 swatches with M3-friendly chroma).
+  - `infrastructure/storage/appearance_preferences_store.dart` —
+    `readAccentId()` / `writeAccentId(String?)` (replaces the
+    `FOR-DEV:` reservation in the doc comment).
+  - `presentation/providers/application_providers.dart` —
+    `AccentSetting` notifier + `accentSettingProvider`
+    (Riverpod 3.x manual, same hydrate-then-persist pattern as
+    `ThemeModeSetting` / `LocaleSetting`).
+  - `presentation/theme/uxnan_theme.dart` —
+    `buildUxnanTheme({ accent: AccentColorId? })`; brand blue →
+    hand-tuned palette, anything else → dynamic from-seed scheme.
+  - `presentation/screens/settings/personalization_screen.dart` —
+    `_AccentPicker` (M3 list of swatch rows, M3E chrome), replacing
+    the `_AccentComingSoon` placeholder.
+  - `app.dart` — watches `accentSettingProvider` and passes the seed
+    to `buildUxnanTheme` for both `theme` and `darkTheme`.
+  - l10n (en + es): `accentBlue` … `accentTeal`.
+  - Tests: 8 in `accent_color_test.dart` (palette, tolerant parser,
+    equality), 7 in `appearance_preferences_accent_test.dart`
+    (store round-trip, namespacing, isolation from the other
+    appearance keys), 7 new + 2 pre-existing in
+    `uxnan_theme_test.dart` (default-palette preservation, dynamic
+    from-seed for every non-default swatch, light/dark coherence,
+    determinism), 4 in `personalization_screen_test.dart` (7
+    swatches render, default is pre-selected, tap persists, language
+    flow still works). **319 unit + widget tests passing, all green.**
+  - **Spec drift:** `architecture/02c-implementation-guide.md` §3.1
+    documents the two-path rule (brand-blue → hand-tuned;
+    non-default → from-seed for both brightnesses);
+    `architecture/00-index.md` status table flips the item to
+    ✅ Hecho. `FOR-DEV.md` marks the entry as DONE (on-device
+    visual review of the swatch picker is the remaining UX step).
+
 ### Changed
 - **`flutter_markdown` → `flutter_markdown_plus`.** The original
   `flutter_markdown 0.7.x` package is marked discontinued on pub.dev;

@@ -427,17 +427,18 @@ browser and multi-PC connection correctness are now DONE — see below.)
   "System default" option (`localeSettingProvider` → `MaterialApp.locale`; null
   follows the device). Persisted via `AppearancePreferencesStore`. A newly added
   locale shows up automatically. Covered by `personalization_screen_test.dart`.
-- ☐ **Custom accent colors (brand-independent theming)** — currently a
-  *"Coming soon"* placeholder. A first cut (override just the `primary` role via
-  a seed) was removed because it broke visual coherence: surfaces, secondary,
-  containers and other roles stayed brand-tuned and clashed with the chosen
-  accent. The correct implementation is a **larger theming change** — make the
-  whole `ColorScheme` derive from the accent (e.g. `ColorScheme.fromSeed` with a
-  curated set of surface/secondary overrides, or a full token remap) so every
-  role stays harmonious across light/dark for any accent. Re-introduce the
-  accent picker (swatch palette + persistence; a `uxnan.appearance.accentId`
-  key in `AppearancePreferencesStore`) once that lands. `buildUxnanTheme` will
-  take the accent seed again at that point.
+- ☐ **Custom accent colors (brand-independent theming)** — DONE &
+  validated: the personalization screen now offers 7 swatches (blue,
+  purple, pink, red, orange, green, teal); the brand blue keeps the
+  hand-tuned palette, every other swatch delegates to
+  `ColorScheme.fromSeed` for **both** light and dark (so every M3 role
+  stays coherent). Persisted under `uxnan.appearance.accentId` in
+  `AppearancePreferencesStore`; `buildUxnanTheme` accepts the accent
+  again (`buildUxnanTheme(accent: …)`). See `CHANGELOG.md` for the full
+  change set and `architecture/02c-implementation-guide.md` §3.1 for the
+  spec. ☐ Still open: **on-device visual review** of the swatch picker
+  (sizes, dot tone, selected state) — same on-device loop as the rest
+  of the UI.
 
 ## Git
 
@@ -644,8 +645,6 @@ polish gaps, ordered by importance:
   - ☐ **Attach (file/image picker)** — gated by the `images` capability; today a
     disabled placeholder. Medium importance: the only composer input still
     missing (text + voice already work).
-  - ☐ **Custom accent colors** — placeholder; needs a full `ColorScheme`-from-seed
-    remap to stay coherent. Low importance (cosmetic).
   - ☐ **Persist sort/density + project-level thread scoping** — small UX
     follow-ups. Low importance.
   - ☐ **Work-log auto-expand while streaming; tap Last-edits strip to jump.** Low.

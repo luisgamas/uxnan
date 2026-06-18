@@ -1940,17 +1940,47 @@ abstract class AppLocalizations {
   /// **'Accent color'**
   String get personalizationAccentSection;
 
-  /// No description provided for @personalizationAccentComingSoon.
+  /// No description provided for @accentBlue.
   ///
   /// In en, this message translates to:
-  /// **'Coming soon'**
-  String get personalizationAccentComingSoon;
+  /// **'Blue'**
+  String get accentBlue;
 
-  /// No description provided for @personalizationAccentComingSoonBody.
+  /// No description provided for @accentPurple.
   ///
   /// In en, this message translates to:
-  /// **'Custom accent colors are in design — they\'ll arrive once they stay coherent across the whole app.'**
-  String get personalizationAccentComingSoonBody;
+  /// **'Purple'**
+  String get accentPurple;
+
+  /// No description provided for @accentPink.
+  ///
+  /// In en, this message translates to:
+  /// **'Pink'**
+  String get accentPink;
+
+  /// No description provided for @accentRed.
+  ///
+  /// In en, this message translates to:
+  /// **'Red'**
+  String get accentRed;
+
+  /// No description provided for @accentOrange.
+  ///
+  /// In en, this message translates to:
+  /// **'Orange'**
+  String get accentOrange;
+
+  /// No description provided for @accentGreen.
+  ///
+  /// In en, this message translates to:
+  /// **'Green'**
+  String get accentGreen;
+
+  /// No description provided for @accentTeal.
+  ///
+  /// In en, this message translates to:
+  /// **'Teal'**
+  String get accentTeal;
 
   /// No description provided for @personalizationLanguageSection.
   ///

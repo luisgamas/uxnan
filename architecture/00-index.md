@@ -74,7 +74,7 @@
 | **Git** (status, commit, push, pull, branches, switchBranch, createBranch, createWorktree, discard, undoCommit, createPr, revert, deleteBranch, removeWorktree, per-file `git/diff`) | ✅ Hecho | UI: full-screen `GitScreen` con staging por hunk, switch con auto-stash, smart PR, undo-commit, diff per-file unificado |
 | **Push FCM** (registro de token, notificaciones locales, deep-link, preferencias Replies/Errors, foreground suppression, persistencia entre reinicios, multi-device) | ✅ Hecho (gated) | **Push directo desde el bridge** (`uxnan-bridge` lazy-loads `firebase-admin`); el relay es fallback opcional; Android LIVE; iOS pending APNs key en Firebase (FOR-HUMAN) |
 | **Settings** (theme, language, notification preferences, personalization) | ✅ Hecho | Persistido vía `AppearancePreferencesStore` / `NotificationPreferencesStore` |
-| **Custom accent colors** (acento personalizable) | ⏳ Pendiente | Placeholder; requiere un remap completo del `ColorScheme` desde la semilla para mantener coherencia |
+| **Custom accent colors** (acento personalizable) | ✅ Hecho | 7 swatches curados (blue/purple/pink/red/orange/green/teal) en `PersonalizationScreen`. La paleta hand-tuned se preserva para el brand blue (default); cualquier otro swatch delega a `ColorScheme.fromSeed` para light y dark, garantizando coherencia harmoniosa entre roles M3 (ver `02c-implementation-guide.md` §3.1). Persistido en `shared_preferences` bajo `uxnan.appearance.accentId`. |
 | **Persistencia de sort/density + project-level thread scoping** | ⏳ Pendiente | UX follow-ups de baja prioridad |
 | **Migración iOS (build, APNs, Info.plist, signing)** | ⏳ Bloqueado por FOR-HUMAN | El primer build de iOS solo es posible en macOS; sin APNs key la entrega iOS queda diferida |
 
