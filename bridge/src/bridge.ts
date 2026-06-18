@@ -223,14 +223,26 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       ...(claudeSettings.model !== undefined ? { defaultModel: claudeSettings.model } : {}),
     },
   );
-  // Codex: real agent driven via `codex exec --json` (see FOR-DEV.md).
+  // Codex: real agent driven via the `codex app-server` turn protocol
+  // (the bridge speaks JSON-RPC over the child's stdio; approvals go through
+  // the bridge's `requestApproval` flow — see `codex-approval.ts`).
   const codexSettings = config.agents['codex'] ?? {};
   const codex = resolveCodexBinary(codexSettings.binaryPath);
   agentManager.register(
     new CodexAdapter({
       binaryPath: codex.binaryPath,
       prependArgs: codex.prependArgs,
-      permissionMode: codexSettings.permissionMode ?? 'acceptEdits',
+      // The app-server has its own approval channel; default to `interactive`
+      // so every tool gating is surfaced to the phone (the previous
+      // `acceptEdits` default silently auto-approved everything via
+      // `codex exec -s workspace-write`). `acceptEdits` is still accepted
+      // for back-compat and maps to the same no-prompt behavior.
+      permissionMode: codexSettings.permissionMode ?? 'interactive',
+      // Route app-server approval elicitations to the bridge's shared
+      // approval round-trip (the same one the Claude PreToolUse hook and
+      // the Echo demo use).
+      onApprovalRequest: (threadId, info) =>
+        agentManager.requestApproval(threadId, info),
       ...(codexSettings.model !== undefined ? { defaultModel: codexSettings.model } : {}),
     }),
     {
@@ -421,15 +433,19 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
         onHookApproval: async (body, token) => {
           if (token !== hookState.token) return { status: 403, json: { error: 'bad_token' } };
           const b = body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
-          const threadId = typeof b['threadId'] === 'string' ? b['threadId'] : '';
+          const threadId = typeof b['threadId'] === 'string' ? (b['threadId'] as string) : '';
           if (!threadId) return { status: 400, json: { error: 'missing_thread' } };
-          const toolName = typeof b['toolName'] === 'string' ? b['toolName'] : 'tool';
+          const toolName = typeof b['toolName'] === 'string' ? (b['toolName'] as string) : 'tool';
           const input =
             b['input'] && typeof b['input'] === 'object'
               ? (b['input'] as Record<string, unknown>)
               : {};
+          // The hook script consumes `'allow' | 'deny'`; translate from the
+          // generic `ApprovalDecision` (the Codex app-server uses the same
+          // generic decision, so the same route serves both backends).
           const decision = await agentManager.requestApproval(threadId, { toolName, input });
-          return { status: 200, json: { decision } };
+          const hookDecision = decision === 'reject' ? 'deny' : 'allow';
+          return { status: 200, json: { decision: hookDecision } };
         },
       });
       hookState.port = lanHandle.port;

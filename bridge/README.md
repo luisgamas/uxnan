@@ -44,7 +44,10 @@ per-domain handlers.
 > - **Sanitized per-agent `auth/status`** (never tokens, login detected by
 >   auth-file existence only).
 > - **Interactive approval intake** (Echo demo + Claude Code opt-in
->   `PreToolUse` hook, validated end-to-end).
+>   `PreToolUse` hook + Codex via the `codex app-server` turn protocol
+>   — `applyPatchApproval` / `execCommandApproval` elicitations routed
+>   through the same `requestApproval` round-trip; all validated
+>   end-to-end).
 > - **Image attachments** (CLI-agnostic file-path, sandbox-safe).
 > - **On-disk `turn/list` history fallback** for Claude/Codex/OpenCode/pi/Gemini
 >   JSONL/JSON stores.

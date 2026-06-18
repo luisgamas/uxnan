@@ -6,6 +6,44 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 
 ### Added
+- **Codex real approvals via the `codex app-server` turn protocol** — the
+  bridge's Codex adapter is refactored from one-shot `codex exec --json` to
+  a **long-lived** `codex app-server` JSON-RPC process. The new path speaks
+  the full turn protocol (`initialize` → `thread/start` → `turn/start`) and
+  surfaces the approval elicitations the desktop app uses — `applyPatch
+  Approval`, `execCommandApproval`, plus the v2 `item/commandExecution/
+  requestApproval`, `item/fileChange/requestApproval`, `item/permissions/
+  requestApproval`, and `mcpServer/elicitation/request`. Every elicitation
+  is mapped to the bridge's generic `requestApproval` round-trip
+  (architecture/02a §6.2), so the phone's interactive approval card just
+  works for Codex. A user's `approveSession` decision becomes a session-
+  wide `approved_for_session`; `approve` → `approved`; `reject` → `denied`.
+  Verified end-to-end against `codex-cli` 0.139.0: handshake, turn
+  lifecycle, deltas, reasoning, blocks, usage, errors, app-server crash
+  mid-turn, `turn/interrupt` cancellation, and the approval elicitations
+  (the `item/commandExecution/requestApproval` elicitation round-trips to
+  the phone, the bridge replies with the user's decision; an unknown
+  elicitation is auto-rejected so the app-server does not hang).
+
+### Changed
+- **Codex `permissionMode` default switched from `acceptEdits` to
+  `interactive`.** The old default auto-approved every tool via
+  `-s workspace-write` (a silent footgun); the new default is the app-
+  server's `on-request` + `workspace-write`, so the phone actually gets
+  asked. `acceptEdits` is still accepted for back-compat and maps to the
+  same no-prompt behavior. New `interactive` mode is the recommended
+  production posture; `bypassPermissions` and `default` (read-only)
+  unchanged.
+- **Agent-manager `requestApproval` return type widened** from
+  `'allow' | 'deny'` to the full `ApprovalDecision`
+  (`'approve' | 'reject' | 'approveSession'`). The Claude `PreToolUse`
+  hook caller (the bridge's local HTTP server) translates the decision to
+  `'allow' | 'deny'` for the hook's wire shape; the Codex adapter uses the
+  full decision to emit the right `ReviewDecision` kind. The shared
+  pending-map is keyed by `approvalId` and a single `respondApproval` call
+  resolves both backends.
+
+### Added (earlier)
 - **Richer block/tool reconstruction in the on-disk history fallback** —
   `SessionHistoryReader` (`src/conversation/session-history.ts`) now ALSO
   reconstructs the structured MessageContent blocks (`command_execution` /

@@ -67,9 +67,16 @@ landed now):
 6. **Remote history back-paging** — `turn/list` cursor is forward-only/offset; a
    newest-first scroll-up needs a reverse cursor or a total-count.
 7. **Real-agent approvals** — Claude DONE (opt-in `PreToolUse` hook → bridge
-   endpoint, validated live). Remaining: **Codex** via the app-server turn
-   protocol (`codex exec` can't prompt); OpenCode/pi/Gemini per their headless
-   permission channels. See *Interactive approval intake*.
+   endpoint, validated live). **Codex** DONE — refactored the adapter from
+   `codex exec --json` (one-shot, non-interactive) to the long-lived
+   `codex app-server` turn protocol and routed every elicitation the
+   desktop app uses (`applyPatchApproval`, `execCommandApproval`, the v2
+   `item/commandExecution/requestApproval`, `item/fileChange/requestApproval`,
+   `item/permissions/requestApproval`, `mcpServer/elicitation/request`)
+   through the same `requestApproval` round-trip the Claude hook uses.
+   Validated end-to-end against `codex-cli` 0.139.0. OpenCode/pi/Gemini
+   remain — add per-agent when their headless modes expose a permission
+   channel. See *Interactive approval intake*.
 8. **Transport (optional):** seq-based catch-up on reconnect + key rotation —
    both await the mobile `clientHello.resumeState` trigger.
 
@@ -213,11 +220,29 @@ hosting** (the phone connects directly to the bridge on the same network).
           identical tools aren't re-prompted; the hook URL needs a fixed
           `lanPort` (a `0`/random port resolves after `startLan`, which the lazy
           `url()` already handles, but document it).
-        - ☐ **Codex:** `codex exec` is non-interactive (no approval prompts), so
-          real Codex approvals need turn execution moved onto the **app-server**
-          protocol (the bridge already speaks it for `model/list`) where
-          `applyPatchApproval`/`execCommandApproval` elicitations exist. Larger
-          refactor — deferred.
+        - ☑ **Codex (real, app-server) — DONE & validated end-to-end** (`codex`
+          0.139.0). The Codex adapter is refactored from one-shot
+          `codex exec --json` to a long-lived `codex app-server` JSON-RPC
+          process (`src/adapters/codex-app-server.ts` + `codex-adapter.ts`).
+          The bridge speaks the full turn protocol (`initialize` →
+          `thread/start` → `turn/start`) and routes every elicitation the
+          desktop app surfaces to the bridge's `requestApproval` round-trip:
+            - v2 (current): `item/commandExecution/requestApproval`,
+              `item/fileChange/requestApproval`, `item/permissions/requestApproval`,
+              `mcpServer/elicitation/request`, `item/tool/requestUserInput`.
+            - v1 (legacy): `applyPatchApproval`, `execCommandApproval`.
+          All map to the same `approval` content block on
+          `stream/content/block`; the user's decision becomes a
+          `ReviewDecision` reply (`approve` → `approved`,
+          `approveSession` → `approved_for_session`, `reject` → `denied`).
+          5-min timeout → deny. Unknown elicitations are auto-rejected
+          with a clear `RpcError` so the app-server does not block.
+          `permissionMode` is now `interactive` by default (`on-request` +
+          `workspace-write`); `acceptEdits` is preserved for back-compat
+          and maps to the previous no-prompt behavior. Verified live:
+          an allowed command runs, a denied one is blocked, an
+          `approveSession` decision is remembered for the rest of the
+          session.
         - ☐ **OpenCode / pi / Gemini:** add `respondApproval` + an interactive
           invocation per CLI when their headless modes expose a permission
           channel (verify per CLI).

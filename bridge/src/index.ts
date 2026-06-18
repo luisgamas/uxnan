@@ -87,11 +87,11 @@ export {
   CodexAdapter,
   codexUsageTokens,
   parseCodexConfigModels,
-  parseCodexLine,
   parseCodexModelList,
   parseCodexReasoning,
   type CodexAdapterOptions,
   type CodexEvent,
+  type SpawnedAppServer,
   type CodexPermissionMode,
 } from './adapters/codex-adapter.js';
 export { resolveCodexBinary, type ResolvedCodex } from './adapters/resolve-codex.js';

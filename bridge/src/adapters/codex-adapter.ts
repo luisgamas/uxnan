@@ -1,63 +1,92 @@
 /**
- * OpenAI Codex CLI adapter (real agent).
+ * OpenAI Codex CLI adapter (real agent) — v2 `app-server` turn protocol.
  *
- * Codex does NOT speak the generic bridge agent IPC. Each turn spawns
- * `codex exec --json …` as a one-shot process and maps its JSONL event stream
- * onto the bridge's agent events (same one-shot pattern as the OpenCode and
- * Claude Code adapters). Session continuity is preserved by capturing the
- * `thread_id` from `thread.started` and passing `exec resume <thread_id>` on the
- * next turn — validated live against `codex-cli` 0.137.
+ * ## Why app-server (refactor of the old `codex exec --json` adapter)
  *
- * Critical detail: `codex exec` blocks reading stdin when stdin is an open pipe
- * (it prints "Reading additional input from stdin…"), so we spawn with stdin
- * IGNORED. The prompt is passed as an argv element with `shell:false`, so it is
- * never interpolated into a shell. We always pass `--skip-git-repo-check` so a
- * thread can run in any project directory, git or not.
+ * `codex exec` is one-shot and non-interactive: it does not surface tool
+ * approvals, so the bridge couldn't actually gate sensitive tools — every
+ * sensitive call was either auto-approved (with `-s workspace-write`) or
+ * silently denied (with `-s read-only`). The `codex app-server` JSON-RPC
+ * protocol is the same one the desktop app uses; it is turn-based and
+ * surfaces the approval elicitations the bridge needs:
  *
- * Captured `--json` event shapes (one JSON object per line):
- *   { "type":"thread.started", "thread_id":"019…" }
- *   { "type":"turn.started" }
- *   { "type":"item.completed", "item":{ "type":"agent_message", "text":"…" } }
- *   { "type":"turn.completed", "usage":{ … } }
- *   { "type":"turn.failed", "error":{ "message":"…" } }
+ *   - `item/commandExecution/requestApproval`  (v2, current codex-cli 0.98+)
+ *   - `item/fileChange/requestApproval`        (v2)
+ *   - `item/permissions/requestApproval`       (v2)
+ *   - `mcpServer/elicitation/request`          (v2 MCP servers)
+ *   - `item/tool/requestUserInput`             (v2, EXPERIMENTAL)
+ *   - `execCommandApproval`                    (v1, legacy)
+ *   - `applyPatchApproval`                     (v1, legacy)
  *
- * Note: Codex does NOT need its `app-server` / `exec-server` / `mcp-server` modes
- * here — those drive the desktop app / IDE / MCP integrations. `codex exec` is the
- * one-shot non-interactive entry point the bridge uses.
+ * All of these are routed to the bridge's existing `requestApproval` flow
+ * (the same `approval` content block the Claude `PreToolUse` hook uses), so
+ * the phone's approval card just works. See `codex-approval.ts` for the
+ * per-kind mapping.
  *
- * See bridge/FOR-DEV.md (agent adapters) and bridge/docs/testing.md (validating adapters).
+ * ## Process model
+ *
+ * One long-lived `codex app-server` process per adapter instance. It's
+ * spawned lazily on the first turn (or eagerly by `start()`), the bridge
+ * speaks JSON-RPC over its stdio, and the process is killed on `stop()`.
+ * Threads live inside the app-server, so multi-turn conversations are cheap
+ * (`turn/start` reuses the same `threadId`). The bridge persists each
+ * thread's `nativeSessionId` so a restart can `thread/resume` and the
+ * conversation history is preserved.
+ *
+ * Captured app-server JSON-RPC events (one JSON object per line):
+ *   { "method":"turn/started", "params":{...} }
+ *   { "method":"item/agentMessage/delta", "params":{ delta } }
+ *   { "method":"item/reasoning/summaryTextDelta", "params":{ delta } }
+ *   { "method":"item/commandExecution/outputDelta", "params":{ delta } }
+ *   { "method":"item/completed", "params":{ item:{ type:'commandExecution'|'fileChange'|'agentMessage'|'reasoning'|... } } }
+ *   { "method":"turn/completed", "params":{ turn:{ status, error?, tokenUsage? } } }
+ *
+ * Server requests that need a reply (handled by the bridge):
+ *   { "id":N, "method":"item/commandExecution/requestApproval", "params":{...} }
+ *   { "id":N, "method":"item/fileChange/requestApproval", "params":{...} }
+ *   { "id":N, "method":"applyPatchApproval", "params":{...} }
+ *   { "id":N, "method":"execCommandApproval", "params":{...} }
+ *   { "id":N, "method":"item/permissions/requestApproval", "params":{...} }
+ *   { "id":N, "method":"mcpServer/elicitation/request", "params":{...} }
+ *   { "id":N, "method":"item/tool/requestUserInput", "params":{...} }
+ *
+ * See bridge/FOR-DEV.md (agent adapters) and bridge/docs/testing.md
+ * (validating adapters).
  */
 import { spawn } from 'node:child_process';
+import type { Readable, Writable } from 'node:stream';
 import { existsSync, readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { isAbsolute, join, relative } from 'node:path';
-import { createInterface } from 'node:readline';
+import { join, relative } from 'node:path';
 import type {
   AgentCapabilities,
   AgentConfig,
   AgentId,
   AgentModel,
   AgentModelOption,
+  ApprovalDecision,
   SendTurnOptions,
 } from '@uxnan/shared';
 import { runGit } from '../git/git-runner.js';
 import { BaseAgentAdapter } from './base-adapter.js';
-import { unifiedDiffBlock, writeDiffBlock } from './content-blocks.js';
 import {
-  codexFileChanges,
-  codexItemBlocks,
-  codexReasoningText,
-  type CodexFileChange,
-} from './codex-tools.js';
+  buildReplyResult,
+  describeServerRequest,
+  decisionToReply,
+  type ApprovalKind,
+  type PendingCodexApproval,
+} from './codex-approval.js';
+import { CodexAppServerRpc, RpcError } from './codex-app-server.js';
+import { codexReasoningText, type CodexFileChange } from './codex-tools.js';
+import {
+  commandBlock,
+  fileChangeBlock,
+  toolBlock,
+  unifiedDiffBlock,
+  writeDiffBlock,
+} from './content-blocks.js';
 import { effortValues, reasoningOption, reasoningValue, withOptions } from './run-options.js';
-import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
-
-/** JSON-RPC ids for the app-server model-discovery handshake. */
-const INIT_ID = 1;
-const MODEL_LIST_ID = 2;
-/** Hard cap on the app-server handshake before falling back to config.toml. */
-const MODEL_LIST_TIMEOUT_MS = 8000;
 
 const CODEX_CAPABILITIES: AgentCapabilities = {
   planMode: true,
@@ -69,6 +98,59 @@ const CODEX_CAPABILITIES: AgentCapabilities = {
 };
 
 /**
+ * Headless sandbox + approval posture for the Codex app-server (v2 protocol).
+ * Mirrors the bridge's other agent adapters:
+ *  - `default`           → reads only; commands/writes denied by the sandbox.
+ *  - `acceptEdits`       → workspace writes allowed; no prompts.
+ *  - `bypassPermissions` → danger full access; no prompts.
+ *  - `interactive`       → workspace writes allowed; the user is asked (this
+ *                          is the recommended default for production use).
+ */
+export type CodexPermissionMode =
+  | 'default'
+  | 'acceptEdits'
+  | 'bypassPermissions'
+  | 'interactive';
+
+/** Internal: the `askForApproval` value passed to `thread/start`. */
+type ApprovalPolicy = 'untrusted' | 'on-failure' | 'on-request' | 'never';
+
+/** Internal: the `sandbox` value passed to `thread/start`. */
+type SandboxPolicy = 'read-only' | 'workspace-write' | 'danger-full-access';
+
+/**
+ * Mapping of the bridge's {@link CodexPermissionMode} to the app-server
+ * `(approvalPolicy, sandbox)` pair sent to `thread/start`. The default
+ * switches to `interactive` so the bridge actually receives approvals (the
+ * whole point of the app-server refactor) — the previous `acceptEdits`
+ * default silently auto-approved everything.
+ */
+function permissionToPolicies(
+  mode: CodexPermissionMode,
+): { approvalPolicy: ApprovalPolicy; sandbox: SandboxPolicy } {
+  switch (mode) {
+    case 'default':
+      return { approvalPolicy: 'untrusted', sandbox: 'read-only' };
+    case 'acceptEdits':
+      // Back-compat: same effective behavior as the old `codex exec
+      // -s workspace-write` adapter (writes allowed, no prompts).
+      return { approvalPolicy: 'never', sandbox: 'workspace-write' };
+    case 'bypassPermissions':
+      return { approvalPolicy: 'never', sandbox: 'danger-full-access' };
+    case 'interactive':
+      // Workspace writes allowed; the bridge forwards every request
+      // approval to the phone so the user can decide.
+      return { approvalPolicy: 'on-request', sandbox: 'workspace-write' };
+  }
+}
+
+/** Hard cap on the app-server handshake before falling back to config.toml. */
+const MODEL_LIST_TIMEOUT_MS = 8000;
+
+/** Hard cap on the lifecycle of a single approval round-trip (matches Claude hook). */
+const APPROVAL_TIMEOUT_MS = 5 * 60 * 1000;
+
+/**
  * Reasoning-effort knob for Codex models discovered without an effort list
  * (the `~/.codex/config.toml` fallback path). The app-server `model/list`
  * reports the REAL per-model efforts (see `parseCodexReasoning`); this covers
@@ -78,33 +160,53 @@ const CODEX_FALLBACK_REASONING: AgentModelOption = reasoningOption(
   effortValues(['low', 'medium', 'high', 'xhigh']),
 );
 
-/**
- * Headless sandbox posture passed to `codex exec`:
- *  - `default`           → `-s read-only` (reads only; edits/commands denied);
- *  - `acceptEdits`       → `-s workspace-write` (edits the workspace, network gated);
- *  - `bypassPermissions` → `--dangerously-bypass-approvals-and-sandbox` (full access).
- */
-export type CodexPermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions';
-
 export interface CodexAdapterOptions {
-  /** Executable to spawn (resolved path; see resolve-codex.ts). */
+  /** Resolved binary entry (see resolve-codex.ts). */
   binaryPath?: string;
   /** Args prepended before the adapter args (e.g. `[codex.js]` when running via node). */
   prependArgs?: string[];
   /** Default model when the thread/turn doesn't pick one. */
   defaultModel?: string;
-  /** Headless sandbox posture (default `acceptEdits`). */
+  /** Sandbox + approval posture (default `interactive`; see {@link CodexPermissionMode}). */
   permissionMode?: CodexPermissionMode;
-  /** Injected spawn function (tests). */
-  spawnFn?: SpawnFn;
+  /**
+   * Callback that surfaces a Codex app-server approval to the bridge so the
+   * phone can decide. Returns the user's `ApprovalDecision` (or
+   * `'reject'` after the 5-min timeout). Wired by the bridge during adapter
+   * registration. Optional in tests.
+   */
+  onApprovalRequest?: (
+    threadId: string,
+    info: { toolName: string; input: Record<string, unknown> },
+  ) => Promise<ApprovalDecision>;
+  /**
+   * Injected `app-server` spawner (tests). Should return the child's stdin
+   * (writable), stdout (readable) and an `onClose` callback the adapter
+   * registers with. The default spawns the configured `binaryPath` with
+   * `app-server` appended, with stdin/stdout piped.
+   */
+  spawnAppServer?: () => SpawnedAppServer;
+}
+
+/** Streams + lifecycle surface a `spawnAppServer` implementation returns. */
+export interface SpawnedAppServer {
+  stdin: Writable;
+  stdout: Readable;
+  onClose: (cb: (code: number | null) => void) => void;
+  kill: () => void;
 }
 
 interface ActiveRun {
-  child: SpawnedProcess;
+  /** The bridge's turn id (so `cancelTurn(turnId)` can find the run). */
+  bridgeTurnId: string;
+  /** The Codex app-server's turn id (used by `turn/interrupt`). */
+  codexTurnId: string | null;
   threadId: string;
+  /** Accumulated final-text of the last `agentMessage` item-completed, for `turn/completed`. */
+  lastAgentText: string;
 }
 
-/** A normalized Codex event extracted from one `exec --json` line. */
+/** A normalized Codex event extracted from one app-server notification line. */
 export interface CodexEvent {
   kind:
     | 'thread'
@@ -138,46 +240,36 @@ export function codexUsageTokens(usage: unknown): number | undefined {
   return total > 0 ? total : undefined;
 }
 
-/** Parse one `codex exec --json` line, or null if it isn't JSON. */
-export function parseCodexLine(line: string): CodexEvent | null {
-  const trimmed = line.trim();
-  if (!trimmed) return null;
-  let parsed: Record<string, unknown>;
-  try {
-    parsed = JSON.parse(trimmed) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
-  switch (parsed['type']) {
-    case 'thread.started': {
-      const threadId = typeof parsed['thread_id'] === 'string' ? parsed['thread_id'] : undefined;
-      return { kind: 'thread', threadId };
+/**
+ * The default `spawnAppServer` impl: spawns the resolved Codex binary with
+ * `app-server` appended, pipes stdin/stdout, returns the streams. Used by
+ * production; tests inject a `spawnAppServer` that wires a fake app-server
+ * (NDJSON over a PassThrough) so the JSON-RPC client can be exercised.
+ */
+function defaultSpawnAppServer(
+  binaryPath: string,
+  prependArgs: string[],
+): () => SpawnedAppServer {
+  return () => {
+    const child = spawn(binaryPath, [...prependArgs, 'app-server'], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true,
+      shell: false,
+    });
+    if (!child.stdout || !child.stdin) {
+      throw new Error('codex app-server: failed to acquire stdio streams');
     }
-    case 'item.completed': {
-      const item = isRecord(parsed['item']) ? parsed['item'] : undefined;
-      if (!item) return { kind: 'other' };
-      if (item['type'] === 'agent_message' && typeof item['text'] === 'string') {
-        return { kind: 'message', text: item['text'] };
-      }
-      if (item['type'] === 'reasoning') {
-        const text = codexReasoningText(item);
-        return text.length > 0 ? { kind: 'thinking', text } : { kind: 'other' };
-      }
-      if (item['type'] === 'file_change') {
-        const changes = codexFileChanges(item);
-        return changes.length > 0 ? { kind: 'file_change', changes } : { kind: 'other' };
-      }
-      const blocks = codexItemBlocks(item);
-      return blocks.length > 0 ? { kind: 'block', blocks } : { kind: 'other' };
-    }
-    case 'turn.completed':
-      return { kind: 'completed', tokens: codexUsageTokens(parsed['usage']) };
-    case 'turn.failed':
-    case 'error':
-      return { kind: 'error', text: readErrorMessage(parsed['error']) };
-    default:
-      return { kind: 'other' };
-  }
+    return {
+      stdin: child.stdin,
+      stdout: child.stdout,
+      onClose: (cb: (code: number | null) => void) => {
+        child.on('close', cb);
+      },
+      kill: () => {
+        child.kill();
+      },
+    };
+  };
 }
 
 export class CodexAdapter extends BaseAgentAdapter {
@@ -188,16 +280,27 @@ export class CodexAdapter extends BaseAgentAdapter {
   readonly #prependArgs: string[];
   readonly #defaultModel: string | undefined;
   readonly #permissionMode: CodexPermissionMode;
-  readonly #spawn: SpawnFn;
-  /** threadId → Codex thread id, for `exec resume` continuity. */
-  readonly #sessionByThread = new Map<string, string>();
-  /** turnId → in-flight run, for cancellation. */
+  readonly #onApprovalRequest: CodexAdapterOptions['onApprovalRequest'];
+  readonly #spawnAppServer: () => SpawnedAppServer;
+  /** threadId (bridge) → Codex app-server threadId, for `thread/resume` continuity. */
+  readonly #threadByBridgeThread = new Map<string, string>();
+  /** turnId (bridge) → in-flight run, for cancellation. */
   readonly #active = new Map<string, ActiveRun>();
   #defaultCwd = process.cwd();
+  /** Long-lived app-server connection. Spawned lazily on first use. */
+  #rpc: CodexAppServerRpc | null = null;
+  #appServerInit: Promise<CodexAppServerRpc> | null = null;
+  /** Pending approvals keyed by the bridge's `approvalId`; the server request id
+   * is captured so the reply is shaped with the right `ReviewDecision` kind. */
+  #pendingApprovals = new Map<
+    string,
+    { kind: ApprovalKind; serverRequestId: number | string }
+  >();
+  #approvalSeq = 0;
 
   /** Native Codex thread id for a thread (on-disk history-fallback locator). */
   nativeSessionId(threadId: string): string | undefined {
-    return this.#sessionByThread.get(threadId);
+    return this.#threadByBridgeThread.get(threadId);
   }
 
   constructor(options: CodexAdapterOptions = {}) {
@@ -205,8 +308,10 @@ export class CodexAdapter extends BaseAgentAdapter {
     this.#binaryPath = options.binaryPath ?? 'codex';
     this.#prependArgs = options.prependArgs ?? [];
     this.#defaultModel = options.defaultModel;
-    this.#permissionMode = options.permissionMode ?? 'acceptEdits';
-    this.#spawn = options.spawnFn ?? defaultSpawn;
+    this.#permissionMode = options.permissionMode ?? 'interactive';
+    this.#onApprovalRequest = options.onApprovalRequest;
+    this.#spawnAppServer =
+      options.spawnAppServer ?? defaultSpawnAppServer(this.#binaryPath, this.#prependArgs);
   }
 
   get defaultModel(): string | undefined {
@@ -218,190 +323,486 @@ export class CodexAdapter extends BaseAgentAdapter {
     return Promise.resolve();
   }
 
-  stop(): Promise<void> {
+  async stop(): Promise<void> {
     for (const run of this.#active.values()) {
-      run.child.kill();
+      try {
+        await this.#interruptTurn(run);
+      } catch {
+        /* best-effort */
+      }
     }
     this.#active.clear();
-    return Promise.resolve();
+    if (this.#rpc) {
+      this.#rpc.close();
+      this.#rpc = null;
+      this.#appServerInit = null;
+    }
   }
 
-  sendTurn(options: SendTurnOptions): Promise<void> {
+  async sendTurn(options: SendTurnOptions): Promise<void> {
     const { threadId, turnId, text } = options;
     const cwd = options.cwd ?? this.#defaultCwd;
     const model = options.service ?? this.#defaultModel;
-    const resumeId = this.#sessionByThread.get(threadId);
-
-    // Exec-level options come first, then the optional `resume <id>` subcommand,
-    // then the prompt as the final positional (validated against codex-cli 0.137).
-    const args = ['exec', '--json', '--skip-git-repo-check'];
-    if (this.#permissionMode === 'acceptEdits') args.push('-s', 'workspace-write');
-    else if (this.#permissionMode === 'bypassPermissions')
-      args.push('--dangerously-bypass-approvals-and-sandbox');
-    else args.push('-s', 'read-only');
-    if (model) args.push('-m', model);
-    // Reasoning effort → Codex config override (`-c model_reasoning_effort=…`,
-    // low|medium|high). Applies to reasoning models; others ignore it. The `-c`
-    // key=value override mechanism is verified against `codex exec --help`.
-    // Reads the `reasoning` knob, then legacy effort.
     const effort = reasoningValue(options);
-    if (effort) args.push('-c', `model_reasoning_effort=${effort}`);
-    if (cwd) args.push('-C', cwd);
-    if (resumeId) args.push('resume', resumeId);
-    args.push(text);
+    const { approvalPolicy, sandbox } = permissionToPolicies(this.#permissionMode);
 
-    let child: SpawnedProcess;
+    // Spawn or reuse the app-server. We await the initialization so a slow
+    // first turn surfaces a clear error rather than racing the `turn/start`.
+    let rpc: CodexAppServerRpc;
     try {
-      child = this.#spawn(this.#binaryPath, [...this.#prependArgs, ...args], cwd);
+      rpc = await this.#ensureAppServer();
     } catch (err) {
       this.emit({
         type: 'turn_error',
         threadId,
         turnId,
-        data: { text: `failed to launch codex: ${errorMessage(err)}` },
+        data: { text: `failed to start codex app-server: ${errorMessage(err)}` },
       });
-      return Promise.resolve();
+      return;
     }
 
-    this.#active.set(turnId, { child, threadId });
+    // Resolve the Codex thread id: re-use a previously persisted one (after a
+    // bridge restart) or start a fresh one.
+    let codexThreadId = this.#threadByBridgeThread.get(threadId);
+    if (!codexThreadId) {
+      try {
+        const started = await rpc.request<{ thread: { id: string; sessionId?: string } }>(
+          'thread/start',
+          {
+            model,
+            cwd,
+            approvalPolicy,
+            sandbox,
+            ...(typeof effort === 'string' ? { effort } : {}),
+          },
+        );
+        codexThreadId = started.thread.id;
+        this.#threadByBridgeThread.set(threadId, codexThreadId);
+      } catch (err) {
+        this.emit({
+          type: 'turn_error',
+          threadId,
+          turnId,
+          data: { text: `codex thread/start failed: ${errorMessage(err)}` },
+        });
+        return;
+      }
+    }
+
+    // Persist the native session id early so the on-disk history fallback
+    // works after a crash mid-turn.
+    this.#active.set(turnId, {
+      bridgeTurnId: turnId,
+      codexTurnId: null,
+      threadId,
+      lastAgentText: '',
+    });
     this.emit({ type: 'turn_started', threadId, turnId });
 
-    let full = '';
-    let errored = false;
-    let completed = false;
-
-    const reader = createInterface({ input: child.stdout });
-    reader.on('line', (line) => {
-      const event = parseCodexLine(line);
-      if (!event) return;
-      if (event.kind === 'thread' && event.threadId) {
-        this.#sessionByThread.set(threadId, event.threadId);
-      } else if (event.kind === 'message' && event.text) {
-        // Codex emits complete `agent_message` items (no token deltas): each is a chunk.
-        full += event.text;
-        this.emit({ type: 'delta', threadId, turnId, data: { text: event.text } });
-      } else if (event.kind === 'thinking' && event.text) {
-        this.emit({ type: 'thinking', threadId, turnId, data: { text: event.text } });
-      } else if (event.kind === 'block' && event.blocks) {
-        for (const content of event.blocks) {
-          this.emit({ type: 'block', threadId, turnId, data: { content } });
-        }
-      } else if (event.kind === 'file_change' && event.changes) {
-        for (const change of event.changes) {
-          void this.#emitFileChange(threadId, turnId, change, cwd);
-        }
-      } else if (event.kind === 'error') {
-        errored = true;
-        this.emit({
-          type: 'turn_error',
-          threadId,
-          turnId,
-          data: { text: event.text ?? 'codex error' },
-        });
-      } else if (event.kind === 'completed') {
-        completed = true;
-        const usage = event.tokens !== undefined ? { tokens: event.tokens } : undefined;
-        this.emit({
-          type: 'turn_completed',
-          threadId,
-          turnId,
-          data: { text: full, ...(usage !== undefined ? { usage } : {}) },
-        });
-      }
-    });
-
-    child.on('error', (err) => {
-      reader.close();
+    try {
+      const response = await rpc.request<{ turn: { id: string } }>('turn/start', {
+        threadId: codexThreadId,
+        input: [{ type: 'text', text }],
+        ...(typeof model === 'string' ? { model } : {}),
+        ...(typeof effort === 'string' ? { effort } : {}),
+      });
+      const run = this.#active.get(turnId);
+      if (run) run.codexTurnId = response.turn.id;
+    } catch (err) {
       this.#active.delete(turnId);
-      if (!errored && !completed) {
-        errored = true;
-        this.emit({
-          type: 'turn_error',
-          threadId,
-          turnId,
-          data: { text: `codex process error: ${err.message}` },
+      this.emit({
+        type: 'turn_error',
+        threadId,
+        turnId,
+        data: { text: `codex turn/start failed: ${errorMessage(err)}` },
+      });
+    }
+  }
+
+  async cancelTurn(_threadId: string, turnId: string): Promise<void> {
+    const run = this.#active.get(turnId);
+    if (!run) return;
+    await this.#interruptTurn(run);
+  }
+
+  async #interruptTurn(run: ActiveRun): Promise<void> {
+    this.#active.delete(run.bridgeTurnId);
+    if (!this.#rpc) return;
+    if (!run.codexTurnId) {
+      // Turn never produced an id; the app-server hasn't seen it yet. We
+      // can't interrupt what doesn't exist — emit the abort now so the
+      // phone doesn't keep waiting.
+      this.emit({ type: 'turn_aborted', threadId: run.threadId, turnId: run.bridgeTurnId });
+      return;
+    }
+    const codexThreadId = this.#threadByBridgeThread.get(run.threadId);
+    try {
+      await this.#rpc.request('turn/interrupt', {
+        threadId: codexThreadId,
+        turnId: run.codexTurnId,
+      });
+    } catch {
+      /* process may have died — the close handler will surface it */
+    }
+    this.emit({ type: 'turn_aborted', threadId: run.threadId, turnId: run.bridgeTurnId });
+  }
+
+  /** Lazy app-server lifecycle: spawn → initialize → return the RPC client. */
+  #ensureAppServer(): Promise<CodexAppServerRpc> {
+    if (this.#appServerInit) return this.#appServerInit;
+    this.#appServerInit = (async () => {
+      const streams = this.#spawnAppServer();
+      const rpc = new CodexAppServerRpc(
+        {
+          stdin: streams.stdin,
+          stdout: streams.stdout,
+          onClose: () => this.#handleAppServerClose(),
+        },
+        {
+          onNotification: (method, params) => this.#onNotification(method, params),
+          onServerRequest: (method, params) => this.#onServerRequest(method, params),
+        },
+      );
+      streams.onClose((code) => {
+        rpc.onProcessClose(code);
+      });
+      try {
+        await rpc.request('initialize', {
+          clientInfo: { name: 'uxnan-bridge', title: null, version: '1.0.0' },
         });
+      } catch (err) {
+        rpc.close();
+        streams.kill();
+        throw err;
       }
+      this.#rpc = rpc;
+      return rpc;
+    })().catch((err) => {
+      this.#appServerInit = null;
+      throw err;
     });
+    return this.#appServerInit;
+  }
 
-    child.on('close', () => {
-      reader.close();
-      this.#active.delete(turnId);
-      if (!completed && !errored) {
-        // No terminal `turn.completed` arrived (e.g. killed): complete with what we have.
-        this.emit({ type: 'turn_completed', threadId, turnId, data: { text: full } });
-      }
-    });
-
-    return Promise.resolve();
+  /** Handle an unexpected app-server exit: drop state, fail in-flight turns. */
+  #handleAppServerClose(): void {
+    this.#rpc = null;
+    this.#appServerInit = null;
+    for (const run of this.#active.values()) {
+      this.emit({
+        type: 'turn_error',
+        threadId: run.threadId,
+        turnId: run.bridgeTurnId,
+        data: { text: 'codex app-server process exited unexpectedly' },
+      });
+    }
+    this.#active.clear();
+    for (const approvalId of [...this.#pendingApprovals.keys()]) {
+      // Drop local state; the bridge's 5-min timer covers the round-trip.
+      this.#pendingApprovals.delete(approvalId);
+    }
   }
 
   /**
-   * Codex's `file_change` item reports only the path + kind (no hunk text). To
-   * show an accurate per-line diff we run `git diff HEAD -- <file>` first; if
-   * that's empty (a new/untracked file or non-git dir) we fall back to the
-   * file's current content as additions. A delete shows just the path.
-   *
-   * Caveat: `git diff HEAD` is the file's changes since the last commit, so it
-   * includes any other uncommitted edits — not strictly this turn's delta.
+   * Map one app-server notification to zero or more bridge events. Runs in
+   * the context of the JSON-RPC client's stdout reader.
    */
-  async #emitFileChange(
-    threadId: string,
-    turnId: string,
-    change: CodexFileChange,
-    cwd: string,
-  ): Promise<void> {
-    const name = isAbsolute(change.path) ? relative(cwd, change.path) || change.path : change.path;
-    let content: Record<string, unknown> | undefined;
-    if (change.kind !== 'delete') {
-      try {
-        const { stdout } = await runGit(cwd, ['diff', 'HEAD', '--', change.path]);
-        if (stdout.trim().length > 0) content = unifiedDiffBlock(name, stdout);
-      } catch {
-        /* not a git repo / no HEAD — fall through to reading the file */
+  async #onNotification(method: string, params: unknown): Promise<void> {
+    const p = isRecord(params) ? params : {};
+    switch (method) {
+      case 'turn/started':
+        // The bridge already emits `turn_started` immediately when we
+        // receive the `turn/start` response; the app-server's notification
+        // is a duplicate we ignore.
+        return;
+      case 'item/agentMessage/delta': {
+        const delta = typeof p['delta'] === 'string' ? p['delta'] : '';
+        if (delta) this.#emitDelta(p, delta);
+        return;
       }
-      if (!content) {
-        try {
-          content = writeDiffBlock(name, await readFile(change.path, 'utf-8'));
-        } catch {
-          /* unreadable */
-        }
+      case 'item/reasoning/summaryTextDelta':
+      case 'item/reasoning/textDelta': {
+        const delta = typeof p['delta'] === 'string' ? p['delta'] : '';
+        if (delta) this.#emitThinking(p, delta);
+        return;
       }
+      case 'item/commandExecution/outputDelta':
+        // Streaming command output is folded into the `command_execution`
+        // block we emit on `item/completed`; skip per-chunk updates to avoid
+        // spamming the phone with intermediate state.
+        return;
+      case 'item/started':
+        // Item begin — we don't need it (the relevant state arrives on
+        // `item/completed`); ignore for now.
+        return;
+      case 'item/completed': {
+        const item = isRecord(p['item']) ? p['item'] : undefined;
+        if (item) await this.#onItemCompleted(item);
+        return;
+      }
+      case 'turn/completed': {
+        const turn = isRecord(p['turn']) ? p['turn'] : undefined;
+        if (turn) await this.#onTurnCompleted(turn);
+        return;
+      }
+      case 'turn/diff/updated':
+        // The unified diff the app-server has accumulated so far. We could
+        // surface this as a `turn/diff` block but it duplicates the
+        // `fileChange` items; the phone already gets structured diffs from
+        // those. Ignore.
+        return;
+      case 'error': {
+        // An error notification is rare but the app-server uses it for
+        // catastrophic failures (e.g. context overflow). Surface to the
+        // current in-flight turn.
+        const message =
+          typeof p['message'] === 'string' ? p['message'] : 'codex app-server error';
+        this.#emitTurnErrorForActive(message);
+        return;
+      }
+      default:
+        // Unknown notifications are tolerated (the protocol is large and
+        // version-dependent); we just don't react.
+        return;
     }
-    content ??= { type: 'diff', filename: name, diff: '', additions: 0, deletions: 0 };
-    this.emit({ type: 'block', threadId, turnId, data: { content } });
   }
 
-  cancelTurn(threadId: string, turnId: string): Promise<void> {
-    const run = this.#active.get(turnId);
-    if (run) {
-      run.child.kill();
-      this.#active.delete(turnId);
-      this.emit({ type: 'turn_aborted', threadId, turnId });
+  /** Handle an item completion: route to the right bridge event. */
+  async #onItemCompleted(item: Record<string, unknown>): Promise<void> {
+    const run = this.#activeRun();
+    if (!run) return;
+    const itype = item['type'];
+    switch (itype) {
+      case 'agentMessage': {
+        // Final assembled text arrives here; deltas already streamed, so we
+        // record it for `turn/completed` to fall back to.
+        const text = typeof item['text'] === 'string' ? (item['text'] as string) : '';
+        run.lastAgentText = text;
+        return;
+      }
+      case 'reasoning': {
+        // Some Codex versions emit the full reasoning body as a `text` field
+        // (others only via deltas). Surface anything we haven't already
+        // streamed.
+        const text = codexReasoningText(item);
+        if (text) this.emit({ type: 'thinking', threadId: run.threadId, turnId: run.bridgeTurnId, data: { text } });
+        return;
+      }
+      case 'commandExecution': {
+        const exit = item['exitCode'];
+        const isError = item['status'] === 'failed' || (typeof exit === 'number' && exit !== 0);
+        const output = typeof item['aggregatedOutput'] === 'string' ? (item['aggregatedOutput'] as string) : '';
+        const command = typeof item['command'] === 'string' ? (item['command'] as string) : '';
+        if (command) {
+          this.emit({
+            type: 'block',
+            threadId: run.threadId,
+            turnId: run.bridgeTurnId,
+            data: { content: commandBlock(command, output, isError) },
+          });
+        }
+        return;
+      }
+      case 'fileChange': {
+        const changes = Array.isArray(item['changes'])
+          ? (item['changes'] as Record<string, unknown>[]).map((c) => ({
+              path: typeof c['path'] === 'string' ? (c['path'] as string) : '',
+              kind: typeof c['kind'] === 'string' ? (c['kind'] as string) : '',
+              diff: typeof c['diff'] === 'string' ? (c['diff'] as string) : '',
+            }))
+          : [];
+        for (const change of changes) {
+          const name =
+            isAbsolutePath(change.path) ? relative(this.#defaultCwd, change.path) || change.path : change.path;
+          // The app-server already attaches the unified diff (unlike the
+          // `exec --json` path which only carried the path); use it directly
+          // when present, else fall back to reading the file.
+          let content: Record<string, unknown> | undefined;
+          if (change.kind !== 'delete' && change.diff && change.diff.length > 0) {
+            content = unifiedDiffBlock(name, change.diff);
+          } else if (change.kind !== 'delete') {
+            try {
+              const { stdout } = await runGit(this.#defaultCwd, ['diff', 'HEAD', '--', change.path]);
+              if (stdout.trim().length > 0) content = unifiedDiffBlock(name, stdout);
+            } catch {
+              /* not a git repo / no HEAD */
+            }
+            if (!content) {
+              try {
+                content = writeDiffBlock(name, await readFile(change.path, 'utf-8'));
+              } catch {
+                /* unreadable */
+              }
+            }
+          }
+          content ??= fileChangeBlock(change.path);
+          this.emit({ type: 'block', threadId: run.threadId, turnId: run.bridgeTurnId, data: { content } });
+        }
+        return;
+      }
+      case 'mcpToolCall': {
+        const name = typeof item['tool'] === 'string' ? (item['tool'] as string) : 'tool';
+        const output = typeof item['result'] === 'string' ? (item['result'] as string) : '';
+        this.emit({
+          type: 'block',
+          threadId: run.threadId,
+          turnId: run.bridgeTurnId,
+          data: { content: toolBlock(name, typeof item['id'] === 'string' ? (item['id'] as string) : '', {}, output, item['status'] === 'failed') },
+        });
+        return;
+      }
+      case 'webSearch':
+      case 'contextCompaction':
+      case 'plan':
+      case 'userMessage':
+      case 'enteredReviewMode':
+      case 'exitedReviewMode':
+        // Known item types we currently render as plain text on the phone;
+        // no structured block is needed. The full history-fallback path
+        // (session-history.ts) will still surface them via the on-disk
+        // rollout reader.
+        return;
+      default:
+        return;
     }
-    return Promise.resolve();
+  }
+
+  /** Finalize a turn once the app-server's `turn/completed` arrives. */
+  async #onTurnCompleted(turn: Record<string, unknown>): Promise<void> {
+    const run = this.#activeRun();
+    if (!run) return;
+    const status = typeof turn['status'] === 'string' ? (turn['status'] as string) : 'completed';
+    const error = isRecord(turn['error']) ? turn['error'] : undefined;
+    this.#active.delete(run.bridgeTurnId);
+    if (status === 'failed' || error) {
+      const message =
+        error && typeof error['message'] === 'string' ? (error['message'] as string) : 'codex turn failed';
+      this.emit({ type: 'turn_error', threadId: run.threadId, turnId: run.bridgeTurnId, data: { text: message } });
+      return;
+    }
+    const usage = isRecord(turn['tokenUsage']) ? turn['tokenUsage'] : undefined;
+    const tokens = codexUsageTokens(usage);
+    this.emit({
+      type: 'turn_completed',
+      threadId: run.threadId,
+      turnId: run.bridgeTurnId,
+      data: {
+        text: run.lastAgentText,
+        ...(tokens !== undefined ? { usage: { tokens } } : {}),
+      },
+    });
+  }
+
+  /**
+   * Return the current in-flight run (mutable reference) so item-completed
+   * handlers can accumulate per-run state (`lastAgentText`, etc.) directly on
+   * the stored object. Returns `null` when no turn is active.
+   */
+  #activeRun(): ActiveRun | null {
+    for (const run of this.#active.values()) return run;
+    return null;
+  }
+
+  /** Helper: locate the current in-flight run keyed by bridge turnId. */
+  #currentRun(): { turnId: string; threadId: string; cwd: string; lastAgentText: string } | null {
+    for (const run of this.#active.values()) {
+      // There should be exactly one in-flight run for a single adapter; the
+      // bridge serializes turns per thread, so this picks the first one.
+      return {
+        turnId: run.bridgeTurnId,
+        threadId: run.threadId,
+        cwd: this.#defaultCwd,
+        lastAgentText: run.lastAgentText,
+      };
+    }
+    return null;
+  }
+
+  #emitDelta(_p: Record<string, unknown>, delta: string): void {
+    const run = this.#currentRun();
+    if (!run) return;
+    this.emit({ type: 'delta', threadId: run.threadId, turnId: run.turnId, data: { text: delta } });
+  }
+
+  #emitThinking(_p: Record<string, unknown>, delta: string): void {
+    const run = this.#currentRun();
+    if (!run) return;
+    this.emit({ type: 'thinking', threadId: run.threadId, turnId: run.turnId, data: { text: delta } });
+  }
+
+  #emitTurnErrorForActive(message: string): void {
+    const run = this.#currentRun();
+    if (!run) return;
+    this.emit({ type: 'turn_error', threadId: run.threadId, turnId: run.turnId, data: { text: message } });
+  }
+
+  /**
+   * Handle a server-initiated request. Approval-shaped requests (see
+   * {@link describeServerRequest}) are routed to the bridge's approval
+   * round-trip; the rest are auto-rejected with a clear error so the
+   * app-server doesn't hang.
+   */
+  async #onServerRequest(method: string, params: unknown): Promise<unknown> {
+    const approval = describeServerRequest(method, params, -1);
+    if (!approval) {
+      // Unknown / unsupported elicitation: auto-reject so the app-server
+      // doesn't block waiting on a response we'd never send.
+      throw new RpcError(-32000, `codex: unhandled server request '${method}' (auto-rejected)`);
+    }
+    return this.#routeApproval(approval);
+  }
+
+  /** Run a Codex approval through the bridge's approval round-trip. */
+  async #routeApproval(draft: Omit<PendingCodexApproval, 'serverRequestId'> & { serverRequestId: number | string }): Promise<unknown> {
+    if (!this.#onApprovalRequest) {
+      // No bridge callback wired (unit test, or a caller that didn't pass
+      // `onApprovalRequest`): default to denying to fail safe.
+      return buildReplyResult(draft.kind, decisionToReply('reject'));
+    }
+    const run = this.#currentRun();
+    if (!run) {
+      return buildReplyResult(draft.kind, decisionToReply('reject'));
+    }
+    const approvalId = `codex-${run.turnId}-${(this.#approvalSeq += 1)}`;
+    this.#pendingApprovals.set(approvalId, {
+      kind: draft.kind,
+      serverRequestId: draft.serverRequestId,
+    });
+    try {
+      const decision = await Promise.race([
+        this.#onApprovalRequest(run.threadId, draft.descriptor),
+        new Promise<ApprovalDecision>((resolve) =>
+          setTimeout(() => resolve('reject'), APPROVAL_TIMEOUT_MS),
+        ),
+      ]);
+      return buildReplyResult(draft.kind, decisionToReply(decision));
+    } finally {
+      this.#pendingApprovals.delete(approvalId);
+    }
   }
 
   /**
    * List the models the account can use, account-aware (free vs paid changes
-   * the set). `codex exec` has no enumerate command, so we drive the same
-   * protocol the desktop app uses: spawn `codex app-server` and run the
-   * `initialize` → `model/list` JSON-RPC handshake (newline-delimited JSON over
-   * stdio). Falls back to `~/.codex/config.toml` (`model` + the
+   * the set). The app-server has no enumerate command in a turn session, so we
+   * drive a short-lived `codex app-server` process just to run the
+   * `initialize` → `model/list` JSON-RPC handshake (the desktop app's source).
+   * Falls back to `~/.codex/config.toml` (`model` + the
    * `[tui.model_availability_nux]` table) if the app-server is unavailable.
+   *
+   * The short-lived process is independent of the long-lived one used for
+   * turns (so model listing always works even if a turn crashed the main
+   * process).
    */
   listModels(): Promise<AgentModel[]> {
     return new Promise((resolve) => {
       let settled = false;
       let timer: ReturnType<typeof setTimeout> | undefined;
-      let child: ReturnType<typeof spawn>;
-
       const finish = (models: AgentModel[]): void => {
         if (settled) return;
         settled = true;
         if (timer) clearTimeout(timer);
         try {
-          child.kill();
+          streams.kill();
         } catch {
           /* already gone */
         }
@@ -410,56 +811,32 @@ export class CodexAdapter extends BaseAgentAdapter {
         resolve(models.length > 0 ? models : this.#modelsFromConfig());
       };
 
+      let streams: SpawnedAppServer;
       try {
-        // Direct spawn (not the injected SpawnFn): app-server needs a writable
-        // stdin for the JSON-RPC handshake, which the shared one-shot spawn closes.
-        child = spawn(this.#binaryPath, [...this.#prependArgs, 'app-server'], {
-          stdio: ['pipe', 'pipe', 'ignore'],
-          windowsHide: true,
-          shell: false,
-        });
+        streams = this.#spawnAppServer();
       } catch {
         resolve(this.#modelsFromConfig());
         return;
       }
 
-      if (!child.stdout) {
-        finish([]);
-        return;
-      }
+      const rpc = new CodexAppServerRpc(
+        { stdin: streams.stdin, stdout: streams.stdout },
+        { onNotification: () => undefined, onServerRequest: () => null },
+        { requestTimeoutMs: MODEL_LIST_TIMEOUT_MS },
+      );
+      streams.onClose(() => rpc.onProcessClose(0));
 
       timer = setTimeout(() => finish([]), MODEL_LIST_TIMEOUT_MS);
-      const send = (msg: unknown): void => {
-        try {
-          child.stdin?.write(`${JSON.stringify(msg)}\n`);
-        } catch {
-          /* pipe closed */
-        }
-      };
-
-      const reader = createInterface({ input: child.stdout });
-      reader.on('line', (line) => {
-        const parsed = safeParse(line);
-        if (!parsed) return;
-        if (parsed['id'] === INIT_ID) {
-          // Init acknowledged — now ask for the model catalog.
-          send({ jsonrpc: '2.0', id: MODEL_LIST_ID, method: 'model/list', params: {} });
-        } else if (parsed['id'] === MODEL_LIST_ID && isRecord(parsed['result'])) {
-          finish(parseCodexModelList(parsed['result']['data']));
-        }
-      });
-      child.on('error', () => finish([]));
-      child.on('close', () => finish([]));
-
-      send({
-        jsonrpc: '2.0',
-        id: INIT_ID,
-        method: 'initialize',
-        params: {
+      rpc
+        .request('initialize', {
           clientInfo: { name: 'uxnan-bridge', title: null, version: '1.0.0' },
-          capabilities: { experimentalApi: false, requestAttestation: false },
-        },
-      });
+        })
+        .then(() =>
+          rpc.request<{ data: unknown }>('model/list', {}).then((res) => {
+            finish(parseCodexModelList(res.data));
+          }),
+        )
+        .catch(() => finish([]));
     });
   }
 
@@ -468,7 +845,6 @@ export class CodexAdapter extends BaseAgentAdapter {
     try {
       const path = join(homedir(), '.codex', 'config.toml');
       if (!existsSync(path)) return [];
-      // No effort metadata in config.toml — attach the generic effort knob.
       return withOptions(parseCodexConfigModels(readFileSync(path, 'utf-8')), [
         CODEX_FALLBACK_REASONING,
       ]);
@@ -482,16 +858,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** Parse one newline-delimited JSON-RPC line, or null if it isn't a JSON object. */
-function safeParse(line: string): Record<string, unknown> | null {
-  const trimmed = line.trim();
-  if (!trimmed) return null;
-  try {
-    const parsed: unknown = JSON.parse(trimmed);
-    return isRecord(parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
+function isAbsolutePath(p: string): boolean {
+  return /^[a-zA-Z]:[\\\/]/.test(p) || p.startsWith('/');
 }
 
 /**
@@ -589,14 +957,6 @@ export function parseCodexConfigModels(toml: string): AgentModel[] {
   return [...ids].map(
     (id) => ({ id, displayName: id, isDefault: id === configuredModel }) satisfies AgentModel,
   );
-}
-
-function readErrorMessage(error: unknown): string {
-  if (isRecord(error)) {
-    if (typeof error['message'] === 'string') return error['message'];
-    if (typeof error['type'] === 'string') return error['type'];
-  }
-  return typeof error === 'string' ? error : 'codex error';
 }
 
 function errorMessage(err: unknown): string {
