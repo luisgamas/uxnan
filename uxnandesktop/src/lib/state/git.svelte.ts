@@ -11,6 +11,7 @@ import {
   gitCommit,
   gitDiff,
   gitDiscard,
+  gitNumstat,
   gitPull,
   gitPush,
   gitSetWatch,
@@ -48,6 +49,8 @@ class GitStore {
   /** Active worktree path the panel reflects (null = no worktree selected). */
   path = $state<string | null>(null);
   files = $state<FileEntry[]>([]);
+  /** Added/deleted line counts vs HEAD, keyed by worktree-relative path. */
+  numstat = $state<Record<string, { added: number; deleted: number }>>({});
   loading = $state(false);
   /** A staging/commit action is in flight (disables the action buttons). */
   busy = $state(false);
@@ -85,6 +88,7 @@ class GitStore {
         this.files = ev.files.map(classify);
         this.ahead = ev.ahead;
         this.behind = ev.behind;
+        void this.loadNumstat(ev.path);
         // Keep the project card badge live too.
         projects.setStatus(ev.path, {
           dirty: ev.files.length,
@@ -109,11 +113,13 @@ class GitStore {
     void gitSetWatch(path).catch(() => {});
     if (!path) {
       this.files = [];
+      this.numstat = {};
       return;
     }
     this.loading = true;
     try {
       this.files = (await gitStatus(path)).map(classify);
+      void this.loadNumstat(path);
       const st = await worktreeStatus(path);
       this.ahead = st.ahead;
       this.behind = st.behind;
@@ -130,6 +136,20 @@ class GitStore {
   /** Re-read the current worktree's status (no-op when none is selected). */
   refresh(): Promise<void> {
     return this.load(this.path);
+  }
+
+  /** Refresh the per-file added/deleted line counts (best-effort; only applied if
+   *  we're still showing the same worktree when it resolves). */
+  async loadNumstat(path: string): Promise<void> {
+    try {
+      const stats = await gitNumstat(path);
+      if (this.path !== path) return;
+      const map: Record<string, { added: number; deleted: number }> = {};
+      for (const s of stats) map[s.path] = { added: s.added, deleted: s.deleted };
+      this.numstat = map;
+    } catch {
+      // Non-fatal (e.g. transient git error); keep the last counts.
+    }
   }
 
   /** Open the diff viewer for a file in the given area (staged or not). A diff

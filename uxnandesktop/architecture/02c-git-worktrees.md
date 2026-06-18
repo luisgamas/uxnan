@@ -216,3 +216,72 @@ El siguiente diagrama muestra cómo se conectan los módulos de Git, diffs y wor
 - **Store Reactivo de Svelte**: Almacena el estado por worktree (archivos modificados, staged, conflictos) usando `$state` y `$derived` de Svelte 5.
 - **Visor de Diffs**: Usa CodeMirror 6 (más ligero que Monaco) con extensión de diff y carga lazy. Alternativa: Monaco si se necesita paridad con VS Code.
 - **Operaciones Git**: Stage, unstage, y discard se ejecutan en el backend Rust vía `git2` crate o invocando git CLI como subproceso.
+
+---
+
+## 6. Pestaña de Archivos y Editor
+
+El panel derecho expone **dos vistas mediante pestañas** (`RightPanel.svelte` con
+`shadcn-svelte` Tabs). De izquierda a derecha:
+
+1. **Archivos** (`FileTreePanel.svelte`): el árbol de archivos completo del
+   worktree/proyecto activo, no solo los archivos con cambios.
+2. **Cambios** (`ChangesPanel.svelte`): el visor de control de versiones descrito
+   en las secciones 3–4 (estado/diff/stage/commit/push/pull).
+
+El estado git del worktree activo se carga en el padre `RightPanel` (siempre
+montado), de modo que la pestaña Archivos colorea su árbol aunque la pestaña
+Cambios esté desmontada.
+
+### 6.1 Árbol de Archivos
+
+- **Carga perezosa por carpeta**: el backend lista un nivel de directorio bajo
+  demanda al expandir (comando `fs_list_dir`), de modo que árboles grandes
+  (`node_modules`, `target`) nunca se cargan hasta abrirse. Estado en el store
+  `fileTree.svelte.ts` (sobrevive al cambio de pestaña; se resetea al cambiar de
+  worktree). Carpetas primero, luego archivos, orden alfabético; `.git` oculto.
+- **Coloreo por cambio git**: cada archivo con un cambio rastreable se colorea
+  (untracked = verde, eliminado = rojo, modificado = ámbar) reutilizando el mismo
+  estado git del panel de cambios; las **carpetas padre** que contienen cambios
+  también se colorean (ámbar) para poder rastrear visualmente dónde hay cambios.
+- **Abrir archivo**: un clic en un archivo lo abre en el editor central.
+
+### 6.2 Editor de Archivos (panel central)
+
+`FileEditor.svelte` superpone el área central (sobre las terminales, que siguen
+montadas) igual que el `DiffPanel`. Características:
+
+- **Edición real con CodeMirror 6** + **resaltado de sintaxis** por extensión de
+  archivo (`editorLang.ts`: JS/TS/JSON/CSS/HTML/Markdown/Rust/Python/YAML/XML/
+  C++/Java/PHP/SQL/Go), números de línea e historial (undo/redo).
+- **Medianil de cambios git** (no el diff completo): las **líneas añadidas** vs
+  `HEAD` se resaltan con un color claro; un **marcador pequeño en la orilla
+  izquierda** despliega bajo demanda **solo las líneas eliminadas** (peek), sin
+  mostrar el diff completo. El medianil se deriva de `git diff HEAD -- <archivo>`
+  (comando `git_diff_head`), parseado en `diff.ts` (`parseHeadDiff`).
+- **Guardado**: botón **Guardar** o atajo **Ctrl/Cmd+S** → escribe el archivo
+  (`fs_write_file`, escritura atómica temp+rename en el backend) y refresca el
+  medianil + el estado git. Indicador de cambios sin guardar en la cabecera.
+- **Guardas**: archivos binarios o demasiado grandes (> 2 MiB) no se editan; se
+  muestra un aviso en lugar de cargar contenido (`fs_read_file` reporta los
+  flags `binary` / `tooLarge`).
+
+### 6.3 Comandos Tauri (sistema de archivos)
+
+| Comando | Descripción |
+|---|---|
+| `fs_list_dir(path)` | Lista un nivel de directorio (carpetas primero, luego archivos; `.git` oculto). |
+| `fs_read_file(path)` | Lee un archivo de texto para el editor (flags `binary` / `tooLarge`). |
+| `fs_write_file(path, content)` | Sobrescribe un archivo (atómico: temp + rename). |
+| `git_diff_head(path, file)` | Diff working-tree-vs-`HEAD` de un archivo, para el medianil del editor. |
+| `reveal_path(path)` | Revela una ruta en el explorador de archivos del SO (plugin opener). |
+| `git_numstat(path)` | Líneas añadidas/eliminadas por archivo vs `HEAD` (`+a −d` en la lista de cambios). |
+
+La barra de la pestaña Archivos ofrece además: **búsqueda/filtro** por nombre,
+**contraer/expandir todas** las carpetas, **abrir en el explorador del SO**
+(`reveal_path`) y actualizar. Los atajos de teclado de la app son configurables
+en **Configuración → Atajos de teclado** (`AppSettings.keybindings`,
+`keybindings.ts`); p. ej. `Ctrl/Cmd+W` cierra el archivo/diff del panel central.
+
+Acceso de archivos no confinado (la propia máquina del usuario, igual que
+`browse_dirs`). Implementación: `src-tauri/src/fs.rs` + `git::diff_head`.

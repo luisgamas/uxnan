@@ -51,7 +51,7 @@
   <div
     class={cn(
       "flex items-center gap-1 px-1.5 py-1.5 transition-colors hover:bg-accent/40",
-      activeProject && "bg-accent/60",
+      activeProject && "bg-primary/15 ring-1 ring-inset ring-primary/25",
     )}
   >
     <button

@@ -51,6 +51,9 @@ export interface AppSettings {
   preventSleep?: boolean;
   /** UI language: "system" (follow the device) or a locale code ("en", "es"). */
   language: string;
+  /** Custom keyboard-shortcut overrides, keyed by action id → chord string
+   *  (e.g. `closeCenter` → `Ctrl+W`). Missing = default binding; "" = disabled. */
+  keybindings?: Record<string, string>;
 }
 
 export interface WorktreeData {
@@ -102,6 +105,22 @@ export interface DirListing {
   entries: DirEntry[];
 }
 
+/** One entry in the file-tree tab's lazy directory listing (mirror of Rust
+ *  `FsEntry`). `path` is absolute, forward-slash normalized. */
+export interface FsEntry {
+  name: string;
+  path: string;
+  isDir: boolean;
+}
+
+/** A file opened in the center editor (mirror of Rust `FileContent`). `content`
+ *  is empty when `binary` or `tooLarge`, which the editor surfaces as a notice. */
+export interface FileContent {
+  content: string;
+  binary: boolean;
+  tooLarge: boolean;
+}
+
 /** One changed file in a worktree (mirror of Rust `FileChange`). `index` and
  *  `worktree` are the two `git status` XY codes (" " clean, M/A/D/R/C/U, "?"
  *  untracked). */
@@ -111,6 +130,13 @@ export interface FileChange {
   index: string;
   /** Working-tree (unstaged) status code — the `Y`. */
   worktree: string;
+}
+
+/** Per-file added/deleted line counts vs HEAD (mirror of Rust `FileNumstat`). */
+export interface FileNumstat {
+  path: string;
+  added: number;
+  deleted: number;
 }
 
 /** Payload of the `git:status-changed` event (mirror of Rust `GitStatusEvent`). */
@@ -243,4 +269,5 @@ export const DEFAULT_SETTINGS: AppSettings = {
   agentNotifications: true,
   preventSleep: false,
   language: "system",
+  keybindings: {},
 };

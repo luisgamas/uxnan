@@ -541,6 +541,50 @@ earlier "superficial UX" warning is resolved.
 
 ---
 
+## File tree tab + center file editor ✅
+
+A second right-panel view alongside git review, plus an editable center editor.
+
+**Done:**
+- [x] **Tabbed right panel** (`RightPanel.svelte`, shadcn-svelte Tabs): **Files**
+      (first) + **Changes** (the prior review UI, extracted to
+      `ChangesPanel.svelte`). Git status is loaded in the always-mounted parent so
+      the Files tab is colored even while Changes is unmounted.
+- [x] **File-tree tab** (`FileTreePanel.svelte` + `fileTree.svelte.ts`): lazy
+      per-folder listing (`fs_list_dir`), `.git` hidden, folders-first sort.
+      Changed files colored (untracked/deleted/modified) + parent folders colored
+      when they contain changes (reuses the right-panel git status). Tree state in
+      a store so it survives tab switches.
+- [x] **File editor** (`FileEditor.svelte`): editable CodeMirror 6 + syntax
+      highlighting per extension (`editorLang.ts`), line numbers, undo/redo. Git
+      change gutter — added lines (vs `HEAD`) highlighted + a left-edge marker
+      that peeks **only** the removed lines (`git_diff_head`, `parseHeadDiff`).
+      Save via button or **Ctrl/Cmd+S** (`fs_write_file`, atomic). Binary /
+      too-large guards (`fs_read_file`).
+- [x] Backend `fs.rs` (`fs_list_dir`/`fs_read_file`/`fs_write_file`) +
+      `git::diff_head`; 3 unit tests. Spec: `architecture/02c-git-worktrees.md` §6.
+- [x] **File-tree toolbar**: search/filter, collapse-all, expand-all, **reveal in
+      the OS file manager** (`reveal_path` via the opener plugin), refresh.
+- [x] **Changes tab**: row click opens the diff (eye button removed).
+- [x] **Configurable keyboard shortcuts** — `keybindings.ts` +
+      `AppSettings.keybindings` + **Settings → Keyboard shortcuts** (rebind / reset
+      / disable). `Ctrl/Cmd+W` closes the center overlay; save key flows into the
+      editor's CodeMirror keymap.
+- [x] **Settings full-screen polish** — centered section column, **Hooks** in its
+      own nav item, clearer active/selected styles in the left panel + file tree.
+
+**Deferred (non-blocking) — FOR-DEV:**
+- [ ] **Tree virtualization** (TanStack Virtual) for very large folders — the tree
+      renders a flat list; fine for typical folders, revisit if a single directory
+      has thousands of entries. **FOR-DEV.**
+- [ ] **Unsaved-edit guard** — re-opening a file (or switching files) discards
+      unsaved edits silently; add a confirm/keep-dirty prompt. **FOR-DEV.**
+- [ ] **File ops from the tree** — create / rename / delete / new folder context
+      menu. **FOR-DEV.**
+- [ ] **External-change watcher** — the editor doesn't auto-reload when the file
+      changes on disk (e.g. an agent edits it); refresh is manual via re-open.
+      **FOR-DEV.**
+
 ## Phase 6 — Bridge integration ☐
 
 **Goal:** let the desktop act as the mobile bridge (single-install).

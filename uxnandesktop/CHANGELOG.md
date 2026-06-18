@@ -5,6 +5,71 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — configurable keyboard shortcuts
+- **Settings → Keyboard shortcuts**: rebind the app's shortcuts (click a chord to
+  record a new one, reset to default, or disable). Persisted in
+  `AppSettings.keybindings` (Rust + `types.ts`). Actions: close file/diff
+  (`Ctrl/Cmd+W`), save file (`Ctrl/Cmd+S`), quick-switch worktree (`Ctrl/Cmd+P`),
+  open settings (`Ctrl/Cmd+,`), toggle left / right sidebar (`Ctrl/Cmd+B` / `J`).
+- **`keybindings.ts`**: platform-agnostic chords (`Mod` = Ctrl/⌘), an event→chord
+  matcher, and a CodeMirror-key converter (for the editor's save key). The global
+  handler in `+page.svelte` routes shortcuts (skipping terminal focus + the
+  settings view); `Ctrl/Cmd+W` only closes the center overlay when one is open.
+
+### Changed — right-panel + settings polish (review feedback)
+- **Tabs** now carry icons (file tree / git compare), sized from the design tokens.
+- **Changes tab header reworked**: dropped the "Changes · worktree" label for a
+  **changed-file count**, plus a **search/filter** and refresh. **Stage all** /
+  **Unstage all** stay in their section headers as secondary (outline) buttons.
+  Each file row now shows its **`+added −deleted`** line counts (`git_numstat` →
+  `git diff --numstat HEAD`, live with the status watcher).
+- **File-tree "expand all"** now loads + expands the tree level by level (capped
+  at 1500 folders so it can't freeze on a giant tree).
+- **File-tree tab**: dropped the redundant "Files" label (worktree name only) and
+  added a toolbar — **search/filter**, **collapse all**, **expand all**, **reveal
+  in the OS file manager** (`reveal_path` command, via the opener plugin), and
+  refresh. The active worktree (left panel) and the open file/diff now use a
+  clearer selected style (primary tint + ring).
+- **Changes tab**: removed the "view diff" eye button — **clicking a file row**
+  opens its diff (matching the file tree); the stage/unstage/discard actions stay
+  on hover.
+- **Settings (full-screen)**: section content is centered in a column (text stays
+  left-aligned), **Hooks moved to its own nav item** (fixes the agents-pane scroll
+  and declutters it), and a **Keyboard shortcuts** item was added.
+
+### Added — right-panel file tree + center file editor
+- **Tabbed right panel** (`RightPanel.svelte`, shadcn-svelte Tabs): the existing
+  version-control view is now the **Changes** tab (`ChangesPanel.svelte`,
+  extracted verbatim), and a new **Files** tab is first, left-to-right. The
+  active worktree's git status is loaded by the always-mounted parent so the
+  Files tab is colored even while the Changes tab is unmounted.
+- **File-tree tab** (`FileTreePanel.svelte` + `fileTree.svelte.ts` store): the
+  whole working tree of the selected project/worktree, **lazily expanded one
+  folder at a time** (`node_modules`/`target` never load until opened); folders
+  first then files, `.git` hidden. Files with a git-tracked change are colored
+  (untracked green / deleted red / modified amber) and the **parent folders that
+  contain changes** are colored too, reusing the right-panel git status. Tree
+  expansion survives tab switches; clicking a file opens it in the center editor.
+- **File editor** (`FileEditor.svelte`, overlays the center panel like the diff
+  viewer): editable **CodeMirror 6** with **syntax highlighting** per file
+  extension (`editorLang.ts`: JS/TS/JSON/CSS/HTML/Markdown/Rust/Python/YAML/XML/
+  C++/Java/PHP/SQL/Go), line numbers and undo/redo. A **git change gutter** shows
+  added lines (vs `HEAD`) with a light highlight and a small left-edge marker
+  that **peeks only the removed lines** on demand — never the full diff. **Save**
+  with the button or **Ctrl/Cmd+S** writes the file and refreshes the gutter +
+  git status. Binary / too-large (> 2 MiB) files show a notice instead of loading.
+- **Backend** (`src-tauri/src/fs.rs` + `git::diff_head`): new commands
+  `fs_list_dir`, `fs_read_file` (binary / too-large guards), `fs_write_file`
+  (atomic temp-write + rename), and `git_diff_head` (working-tree-vs-`HEAD` diff
+  for the editor gutter). 3 new unit tests cover the listing order / `.git`
+  hiding, the binary / too-large flags, and the atomic overwrite.
+- **i18n**: EN/ES strings for the tabs, the file tree, and the editor.
+- **Dependencies**: `@codemirror/language`, `@codemirror/commands`,
+  `@lezer/highlight`, and the per-language `@codemirror/lang-*` packages for
+  syntax highlighting; the `tabs` shadcn-svelte component.
+- **Spec**: `architecture/02c-git-worktrees.md` §6 (file-tree tab + editor + the
+  new filesystem Tauri commands).
+
 ### Added — ready-made per-agent hook configs (Phase 4 follow-up)
 - **Bundled hook scripts** (`static/hooks/`, embedded in the binary at compile
   time and written to `<app-data>/hooks/` on every startup, idempotent):

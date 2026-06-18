@@ -49,7 +49,7 @@
 <div
   class={cn(
     "group flex items-center gap-1.5 rounded-md py-1 pl-1 pr-1 hover:bg-accent/40",
-    active && "bg-accent/60",
+    active && "bg-primary/15 ring-1 ring-inset ring-primary/25",
   )}
   role="button"
   tabindex="0"
@@ -61,7 +61,7 @@
   <span
     class={cn(
       "h-4 w-0.5 shrink-0 rounded-full",
-      active ? "bg-ring" : "bg-transparent",
+      active ? "bg-primary" : "bg-transparent",
     )}
   ></span>
   <GitBranchIcon class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />

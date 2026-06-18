@@ -11,6 +11,9 @@ import type {
   ClaudeHooksStatus,
   DirListing,
   FileChange,
+  FileContent,
+  FileNumstat,
+  FsEntry,
   HookInstall,
   HookScripts,
   HookServerInfo,
@@ -165,11 +168,45 @@ export function worktreeStatus(path: string): Promise<WorktreeStatus> {
   return invoke<WorktreeStatus>("worktree_status", { path });
 }
 
+// --- Filesystem: file tree + editor ----------------------------------------
+
+/** List the immediate children of a directory (sub-dirs first, then files) for
+ *  the file-tree tab. Lazy — called per folder on expand. */
+export function fsListDir(path: string): Promise<FsEntry[]> {
+  return invoke<FsEntry[]>("fs_list_dir", { path });
+}
+
+/** Read a single text file for the editor (binary / too-large guards in flags). */
+export function fsReadFile(path: string): Promise<FileContent> {
+  return invoke<FileContent>("fs_read_file", { path });
+}
+
+/** Overwrite a file with the editor's content (atomic on the backend). */
+export function fsWriteFile(path: string, content: string): Promise<void> {
+  return invoke("fs_write_file", { path, content });
+}
+
+/** Reveal a path in the OS file manager (Explorer / Finder / etc.). */
+export function revealPath(path: string): Promise<void> {
+  return invoke("reveal_path", { path });
+}
+
+/** Working-tree-vs-HEAD diff for one file, for the editor's change gutter.
+ *  Empty for a clean or untracked file. */
+export function gitDiffHead(path: string, file: string): Promise<string> {
+  return invoke<string>("git_diff_head", { path, file });
+}
+
 // --- Git status, diffs & staging (right-panel review) ----------------------
 
 /** List a worktree's changed files (staged + unstaged + untracked). */
 export function gitStatus(path: string): Promise<FileChange[]> {
   return invoke<FileChange[]>("git_status", { path });
+}
+
+/** Per-file added/deleted line counts vs HEAD (for the changed-files list). */
+export function gitNumstat(path: string): Promise<FileNumstat[]> {
+  return invoke<FileNumstat[]>("git_numstat", { path });
 }
 
 /** Unified diff for one file (`staged` = index-vs-HEAD, else worktree-vs-index). */
