@@ -141,11 +141,15 @@ class _FileViewerScreenState extends ConsumerState<FileViewerScreen> {
                 tooltip: MaterialLocalizations.of(context).backButtonTooltip,
                 onPressed: () => Navigator.of(context).maybePop(),
               ),
+              // Same `titleLarge.copyWith(fontSize: 20)` style as
+              // `ConversationScreen` and `GitScreen` so the file viewer's
+              // chrome is indistinguishable from the rest of the app.
               title: Text(
                 name,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontSize: 20,
                       color: _statusColor(status, colors),
                     ),
               ),

@@ -86,11 +86,19 @@ class FileBrowserManager {
     subject.add(_rootFor(cwd).copyWith(loading: true));
     try {
       final listing = await _list(cwd);
+      // Apply the current git status (if any) to each entry so changed files
+      // are painted immediately. New children created by a subsequent
+      // `toggleDirectory` also receive the same treatment.
+      final status = _gitStatusByCwd[cwd] ?? const <String, GitFileStatus>{};
       final root = FileTreeNode(
         name: '.',
         path: '.',
         type: FileEntryType.dir,
-        children: _buildInitialChildren(listing.entries, parent: '.'),
+        children: _buildInitialChildren(
+          listing.entries,
+          parent: '.',
+          status: status,
+        ),
       );
       _roots[cwd] = root;
       subject.add(root);
@@ -280,13 +288,18 @@ class FileBrowserManager {
   List<FileTreeNode> _buildInitialChildren(
     List<FileEntry> entries, {
     required String parent,
+    required Map<String, GitFileStatus> status,
   }) {
-    return [for (final entry in entries) _nodeFromEntry(entry, parent: parent)];
+    return [
+      for (final entry in entries)
+        _nodeFromEntry(entry, parent: parent, status: status),
+    ];
   }
 
   FileTreeNode _nodeFromEntry(
     FileEntry entry, {
     required String parent,
+    required Map<String, GitFileStatus> status,
   }) {
     final path = parent == '.' ? entry.name : '$parent/${entry.name}';
     return FileTreeNode(
@@ -294,6 +307,9 @@ class FileBrowserManager {
       path: path,
       type: entry.type,
       size: entry.size,
+      // Files inherit their git status from the cached `git/status` map so
+      // they're coloured as soon as the listing arrives (no second rebuild).
+      gitStatus: entry.type == FileEntryType.file ? status[path] : null,
     );
   }
 
@@ -314,10 +330,16 @@ class FileBrowserManager {
         try {
           final absPath = _joinPath(workspaceRoot, node.path);
           final listing = await _list(absPath);
+          // Apply the current git status (if any) to the new children so
+          // changed files keep their colour when the user expands a deeper
+          // directory after the initial git fetch.
+          final status =
+              _gitStatusByCwd[workspaceRoot] ?? const <String, GitFileStatus>{};
           return node.copyWith(
             children: _buildInitialChildren(
               listing.entries,
               parent: node.path,
+              status: status,
             ),
             expanded: true,
           );

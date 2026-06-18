@@ -6,6 +6,52 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- **Git status now paints newly expanded subdirectories.** The file
+  browser only applied `git/status` to children that were loaded in
+  the initial root listing — when the user expanded a deeper
+  directory, its children were created with `gitStatus = null`, so
+  the new entries rendered in the neutral `onSurface` colour instead
+  of the git-status colour. `_buildInitialChildren` now takes the
+  cached git-status map and pre-paints each file the same way the
+  root does; `toggleDirectory` forwards the map when it fetches a
+  new sub-listing. Visible effect: the entire tree, not just the
+  root level, reflects `git status`.
+- **File viewer's app bar matches the conversation chrome.** The
+  file viewer's title used `titleMedium`; every other NE-styled
+  screen (`ConversationScreen`, `GitScreen`, file browser) uses
+  `titleLarge.copyWith(fontSize: 20)`. The viewer now uses the same
+  size — the back, title, and trailing action row are visually
+  indistinguishable from the rest of the app.
+- **`GitScreen` is now a true Neural Expressive surface.** The
+  screen kept using M3 widgets (`Card.outlined`, `Card.filled`,
+  `Checkbox`, `IconButton`, `IconButton.filled`, `ListTile`,
+  `InkWell`) while every other screen was rebuilt against NE — the
+  result was a card-style chrome that didn't match the file browser,
+  conversation, or new-conversation dialog. The screen now uses:
+    - `_NeSurface` (a new shared widget) in place of
+      `Card.filled` / `Card.outlined` — rounded 20 dp corners,
+      `surfaceContainerHigh` fill, optional thin outline.
+    - `_NeCheckbox` in place of M3's `Checkbox` — a 24 dp circular
+      surface on `primary` when selected, the empty-box / check /
+      dash glyph in the same M3E scale spring as the rest of the
+      bar.
+    - `IconSurface` in place of every `IconButton` (refresh,
+      expand-all, undo-commit, etc.) — same round press feedback,
+      same tooltip contract.
+    - `_PrimaryActionButton` in place of `IconButton.filled` for
+      the commit / push primary slot — keeps the round ripple that
+      `IconButton.filled` breaks, supports a busy-spinner overlay,
+      and accepts the `Badge.count` for the push-ahead count.
+    - `_BranchPickerRow` in place of `ListTile` for the
+      branch-switcher bottom sheet — a tappable row with the same
+      M3E ripple.
+    - `_ExpandableRow` for the whole file card so a tap anywhere
+      on the row (not just the chevron) toggles expansion.
+  The file's *name* in the row now picks up the git-status colour
+  (matching the file browser's tile), so the row reads at a glance
+  before reading the icon.
+
 ### Fixed
 - **File browser sends absolute paths to the bridge.** The bridge's
   `workspace/list` does `resolve(cwd)` server-side, so a relative `cwd`
