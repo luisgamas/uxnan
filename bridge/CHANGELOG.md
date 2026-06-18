@@ -6,6 +6,43 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 
 ### Added
+- **Richer block/tool reconstruction in the on-disk history fallback** —
+  `SessionHistoryReader` (`src/conversation/session-history.ts`) now ALSO
+  reconstructs the structured MessageContent blocks (`command_execution` /
+  `diff` / generic `tool`) the live adapter would have emitted, so the
+  phone's Work log and Changed files populate for history-fallback turns the
+  same way they do for live turns. Each agent's tool-call entries are
+  mapped using the same `*-tools.ts` helpers the live adapter uses, so the
+  on-the-wire block shape stays in lock-step:
+    - **Claude Code** — pairs `tool_use` (assistant) with the next
+      `tool_result` (user) by `tool_use_id`.
+    - **Codex** — handles BOTH the legacy `command_execution` /
+      `file_change` / `mcp_tool_call` format AND the newer codex-cli 0.98+
+      `function_call` + `function_call_output` / `custom_tool_call` +
+      `custom_tool_call_output` format (paired by `call_id`). Codex tool
+      events AND reasoning items precede the assistant text, so they're
+      queued and flushed onto the next assistant message. `shell_command`
+      → `command_execution`; `apply_patch` → `diff`; others → generic `tool`.
+    - **OpenCode** — reads each message's `tool` parts (already paired
+      with their result in the same part) and maps the tool name to a
+      structured block (`bash`/`edit`/`write` get typed blocks, others
+      → generic `tool`).
+    - **pi** — pairs the `toolCall` content block inside an assistant
+      message with the subsequent `role:'toolResult'` message (by
+      `toolCallId`). The `think` tags embedded in the assistant text
+      are extracted into `Message.thinking`.
+    - **Gemini CLI** — the `gemini` messages already include `toolCalls`
+      with both args and result inline; each one maps to a structured
+      block.
+  Covered by 12 new unit tests (basic pairing per agent, error exit
+  code, reasoning-from-summary, internal-tool filtering, etc.) AND
+  smoke-tested against real on-disk agent logs: parsed 44 Gemini blocks
+  from one session, 26 OpenCode blocks from another, and 4 Codex blocks
+  from a third — all from the actual `~/.gemini/tmp`, `~/.local/share/
+  opencode/storage`, and `~/.codex/sessions` directories. `turn/list`
+  is unchanged on the wire; the phone now sees structured Work log /
+  Changed files for history-fallback turns that previously rendered
+  empty.
 - **Gemini CLI on-disk session history** — the `SessionHistoryReader`
   (`src/conversation/session-history.ts`) now parses the Gemini CLI's real
   per-snapshot JSON log under `~/.gemini/tmp/<projectHash>/chats/

@@ -668,9 +668,13 @@ The OpenCode adapter is the template for any "one-shot per-turn CLI" agent:
       fixtures **and** smoked against real on-disk logs for all four agents.
       **Mobile linkage:** none — `turn/list` is unchanged on the wire; the phone
       just sees history it previously couldn't. **Follow-ups:** Aider when its
-      adapter lands (Gemini already done); richer block/tool reconstruction (today
-      the fallback carries text + thinking, not the live path's structured
-      blocks).
+      adapter lands (Gemini already done); richer block/tool reconstruction
+      (DONE & validated end-to-end — the fallback now reconstructs
+      `command_execution` / `diff` / `tool` blocks for every supported agent
+      using the same `*-tools.ts` helpers the live path uses, so history
+      turns render the same Work log / Changed files as live turns; smoke-
+      tested against real on-disk logs: 44 blocks from one Gemini session,
+      26 blocks from one OpenCode session, 4 blocks from one Codex session).
 - [ ] Later: Aider.
 
 ## Daemon lifecycle & ops

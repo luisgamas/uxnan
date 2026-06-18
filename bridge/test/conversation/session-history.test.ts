@@ -23,6 +23,11 @@ async function writeJson(file: string, obj: unknown): Promise<void> {
   await writeFile(file, JSON.stringify(obj), 'utf-8');
 }
 
+/** Treat an unknown block as a typed record for property access in asserts. */
+function block(b: unknown): Record<string, unknown> {
+  return b as Record<string, unknown>;
+}
+
 test('claude: parses user/assistant turns, keeps thinking, skips tool_result echo', async () => {
   const { home, cleanup } = await fakeHome();
   try {
@@ -598,6 +603,670 @@ test('gemini: multi-file path cache: TTL re-scan picks up new snapshot files', a
     assert.equal(after!.length, 1);
     assert.equal(after![0]!.messages.length, 2);
     assert.equal(after![0]!.messages[1]!.content, 'second');
+  } finally {
+    await cleanup();
+  }
+});
+
+// --- Structured block / tool-call reconstruction -----------------------------
+
+test('claude: pairs tool_use + tool_result into structured blocks on the assistant message', async () => {
+  const { home, cleanup } = await fakeHome();
+  try {
+    const sid = 'sess-claude-tools-1';
+    await writeLines(join(home, '.claude', 'projects', 'p', `${sid}.jsonl`), [
+      { type: 'user', message: { role: 'user', content: [{ type: 'text', text: 'list files' }] } },
+      {
+        type: 'assistant',
+        message: {
+          role: 'assistant',
+          content: [
+            { type: 'text', text: 'running ls' },
+            { type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'ls' } },
+          ],
+        },
+      },
+      {
+        type: 'user',
+        message: {
+          role: 'user',
+          content: [{ type: 'tool_result', tool_use_id: 't1', content: 'a.txt\nb.txt' }],
+        },
+      },
+      {
+        type: 'assistant',
+        message: { role: 'assistant', content: [{ type: 'text', text: 'done' }] },
+      },
+    ]);
+    const reader = new SessionHistoryReader({ homeDir: home });
+    const turns = await reader.readTurns({ agentId: 'claude-code', agentSessionId: sid }, 'th-CB');
+    assert.equal(turns!.length, 1);
+    const assistant = turns![0]!.messages.find(
+      (m) => m.role === 'assistant' && m.content === 'running ls',
+    );
+    assert.ok(assistant, 'expected the first assistant message to be present');
+    assert.equal(assistant!.blocks?.length, 1);
+    assert.equal(block(assistant!.blocks![0]).type, 'command_execution');
+    assert.equal(block(assistant!.blocks![0]).command, 'ls');
+    assert.equal(block(assistant!.blocks![0]).status, 'completed');
+    assert.equal(block(assistant!.blocks![0]).output, 'a.txt\nb.txt');
+    const secondAssistant = turns![0]!.messages.find(
+      (m) => m.role === 'assistant' && m.content === 'done',
+    );
+    assert.deepEqual(secondAssistant!.blocks ?? [], []);
+  } finally {
+    await cleanup();
+  }
+});
+
+test('claude: Edit tool becomes a diff block with +/- lines', async () => {
+  const { home, cleanup } = await fakeHome();
+  try {
+    const sid = 'sess-claude-edit';
+    await writeLines(join(home, '.claude', 'projects', 'p', `${sid}.jsonl`), [
+      { type: 'user', message: { role: 'user', content: [{ type: 'text', text: 'rename' }] } },
+      {
+        type: 'assistant',
+        message: {
+          role: 'assistant',
+          content: [
+            {
+              type: 'tool_use',
+              id: 'e1',
+              name: 'Edit',
+              input: { file_path: 'a.txt', old_string: 'foo', new_string: 'bar' },
+            },
+          ],
+        },
+      },
+      {
+        type: 'user',
+        message: {
+          role: 'user',
+          content: [{ type: 'tool_result', tool_use_id: 'e1', content: 'ok' }],
+        },
+      },
+    ]);
+    const reader = new SessionHistoryReader({ homeDir: home });
+    const turns = await reader.readTurns({ agentId: 'claude-code', agentSessionId: sid }, 'th-CE');
+    const assistant = turns![0]!.messages[1]!;
+    assert.equal(assistant.blocks?.length, 1);
+    assert.equal(block(assistant.blocks![0]).type, 'diff');
+    assert.equal(block(assistant.blocks![0]).filename, 'a.txt');
+    assert.equal(block(assistant.blocks![0]).diff, '-foo\n+bar');
+    assert.equal(block(assistant.blocks![0]).additions, 1);
+    assert.equal(block(assistant.blocks![0]).deletions, 1);
+  } finally {
+    await cleanup();
+  }
+});
+
+test('codex (legacy): command_execution becomes a command_execution block', async () => {
+  const { home, cleanup } = await fakeHome();
+  try {
+    const sid = 'sess-codex-legacy-cmd';
+    const file = join(
+      home,
+      '.codex',
+      'sessions',
+      '2026',
+      '06',
+      '01',
+      `rollout-2026-06-01T00-00-00-${sid}.jsonl`,
+    );
+    await writeLines(file, [
+      { type: 'session_meta', payload: { id: sid } },
+      {
+        type: 'response_item',
+        payload: {
+          type: 'message',
+          role: 'user',
+          content: [{ type: 'input_text', text: 'run ls' }],
+        },
+      },
+      {
+        type: 'response_item',
+        payload: {
+          type: 'command_execution',
+          command: 'ls',
+          aggregated_output: 'a\nb\nc',
+          exit_code: 0,
+          status: 'completed',
+        },
+      },
+      {
+        type: 'response_item',
+        payload: {
+          type: 'message',
+          role: 'assistant',
+          content: [{ type: 'output_text', text: 'three files' }],
+        },
+      },
+    ]);
+    const reader = new SessionHistoryReader({ homeDir: home });
+    const turns = await reader.readTurns({ agentId: 'codex', agentSessionId: sid }, 'th-CL');
+    assert.equal(turns!.length, 1);
+    const assistant = turns![0]!.messages.find((m) => m.role === 'assistant');
+    assert.equal(assistant?.blocks?.length, 1);
+    assert.equal(block(assistant!.blocks![0]).type, 'command_execution');
+    assert.equal(block(assistant!.blocks![0]).command, 'ls');
+    assert.equal(block(assistant!.blocks![0]).output, 'a\nb\nc');
+    assert.equal(block(assistant!.blocks![0]).status, 'completed');
+  } finally {
+    await cleanup();
+  }
+});
+
+test('codex (legacy): file_change becomes a file_change diff block (path + counts)', async () => {
+  const { home, cleanup } = await fakeHome();
+  try {
+    const sid = 'sess-codex-legacy-fc';
+    const file = join(
+      home,
+      '.codex',
+      'sessions',
+      '2026',
+      '06',
+      '01',
+      `rollout-2026-06-01T00-00-00-${sid}.jsonl`,
+    );
+    await writeLines(file, [
+      { type: 'session_meta', payload: { id: sid } },
+      {
+        type: 'response_item',
+        payload: {
+          type: 'message',
+          role: 'user',
+          content: [{ type: 'input_text', text: 'edit foo.txt' }],
+        },
+      },
+      {
+        type: 'response_item',
+        payload: {
+          type: 'file_change',
+          changes: [{ path: 'foo.txt', kind: 'update' }],
+        },
+      },
+      {
+        type: 'response_item',
+        payload: {
+          type: 'message',
+          role: 'assistant',
+          content: [{ type: 'output_text', text: 'edited' }],
+        },
+      },
+    ]);
+    const reader = new SessionHistoryReader({ homeDir: home });
+    const turns = await reader.readTurns({ agentId: 'codex', agentSessionId: sid }, 'th-CF');
+    const assistant = turns![0]!.messages.find((m) => m.role === 'assistant');
+    assert.equal(assistant?.blocks?.length, 1);
+    assert.equal(block(assistant!.blocks![0]).type, 'diff');
+    assert.equal(block(assistant!.blocks![0]).filename, 'foo.txt');
+  } finally {
+    await cleanup();
+  }
+});
+
+test('codex (newer 0.98+): function_call shell_command pairs with function_call_output into a command_execution block', async () => {
+  const { home, cleanup } = await fakeHome();
+  try {
+    const sid = 'sess-codex-new-shell';
+    const file = join(
+      home,
+      '.codex',
+      'sessions',
+      '2026',
+      '06',
+      '15',
+      `rollout-2026-06-15T00-00-00-${sid}.jsonl`,
+    );
+    await writeLines(file, [
+      { type: 'session_meta', payload: { id: sid } },
+      {
+        type: 'response_item',
+        payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'go' }] },
+      },
+      {
+        type: 'response_item',
+        payload: {
+          type: 'function_call',
+          name: 'shell_command',
+          arguments: '{"command":"echo hi"}',
+          call_id: 'call_1',
+        },
+      },
+      {
+        type: 'response_item',
+        payload: {
+          type: 'function_call_output',
+          call_id: 'call_1',
+          output: 'Exit code: 0\nWall time: 0.1 seconds\nOutput:\nhi',
+        },
+      },
+      {
+        type: 'response_item',
+        payload: {
+          type: 'message',
+          role: 'assistant',
+          content: [{ type: 'output_text', text: 'said hi' }],
+        },
+      },
+    ]);
+    const reader = new SessionHistoryReader({ homeDir: home });
+    const turns = await reader.readTurns({ agentId: 'codex', agentSessionId: sid }, 'th-CN');
+    const assistant = turns![0]!.messages.find((m) => m.role === 'assistant');
+    assert.equal(assistant?.blocks?.length, 1);
+    assert.equal(block(assistant!.blocks![0]).type, 'command_execution');
+    assert.equal(block(assistant!.blocks![0]).command, 'echo hi');
+    assert.equal(block(assistant!.blocks![0]).status, 'completed');
+    assert.match(block(assistant!.blocks![0]).output as string, /hi/);
+  } finally {
+    await cleanup();
+  }
+});
+
+test('codex: function_call with non-zero exit code surfaces as command_execution error', async () => {
+  const { home, cleanup } = await fakeHome();
+  try {
+    const sid = 'sess-codex-shell-err';
+    const file = join(
+      home,
+      '.codex',
+      'sessions',
+      '2026',
+      '06',
+      '15',
+      `rollout-2026-06-15T00-00-00-${sid}.jsonl`,
+    );
+    await writeLines(file, [
+      { type: 'session_meta', payload: { id: sid } },
+      {
+        type: 'response_item',
+        payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'go' }] },
+      },
+      {
+        type: 'response_item',
+        payload: {
+          type: 'function_call',
+          name: 'shell_command',
+          arguments: '{"command":"false"}',
+          call_id: 'call_1',
+        },
+      },
+      {
+        type: 'response_item',
+        payload: {
+          type: 'function_call_output',
+          call_id: 'call_1',
+          output: 'Exit code: 1\nOutput:\nboom',
+        },
+      },
+      {
+        type: 'response_item',
+        payload: {
+          type: 'message',
+          role: 'assistant',
+          content: [{ type: 'output_text', text: 'failed' }],
+        },
+      },
+    ]);
+    const reader = new SessionHistoryReader({ homeDir: home });
+    const turns = await reader.readTurns({ agentId: 'codex', agentSessionId: sid }, 'th-CE');
+    const assistant = turns![0]!.messages.find((m) => m.role === 'assistant');
+    assert.equal(assistant?.blocks?.length, 1);
+    assert.equal(block(assistant!.blocks![0]).type, 'command_execution');
+    assert.equal(block(assistant!.blocks![0]).status, 'error');
+  } finally {
+    await cleanup();
+  }
+});
+
+test('codex: reasoning items surface as assistant thinking (summary only when encrypted)', async () => {
+  const { home, cleanup } = await fakeHome();
+  try {
+    const sid = 'sess-codex-reasoning';
+    const file = join(
+      home,
+      '.codex',
+      'sessions',
+      '2026',
+      '06',
+      '15',
+      `rollout-2026-06-15T00-00-00-${sid}.jsonl`,
+    );
+    await writeLines(file, [
+      { type: 'session_meta', payload: { id: sid } },
+      {
+        type: 'response_item',
+        payload: {
+          type: 'message',
+          role: 'user',
+          content: [{ type: 'input_text', text: 'think about it' }],
+        },
+      },
+      {
+        type: 'response_item',
+        payload: {
+          type: 'reasoning',
+          summary: ['Step 1', 'Step 2'],
+          encrypted_content: 'gAAAAA...',
+        },
+      },
+      {
+        type: 'response_item',
+        payload: {
+          type: 'message',
+          role: 'assistant',
+          content: [{ type: 'output_text', text: 'the answer' }],
+        },
+      },
+    ]);
+    const reader = new SessionHistoryReader({ homeDir: home });
+    const turns = await reader.readTurns({ agentId: 'codex', agentSessionId: sid }, 'th-CR');
+    const assistant = turns![0]!.messages.find((m) => m.role === 'assistant');
+    assert.ok(assistant);
+    assert.match(assistant!.thinking ?? '', /Step 1.*Step 2/s);
+  } finally {
+    await cleanup();
+  }
+});
+
+test('opencode: tool parts in a message become structured blocks (bash + edit)', async () => {
+  const { home, cleanup } = await fakeHome();
+  try {
+    const sid = 'ses_oc_blocks_1';
+    const storage = join(home, '.local', 'share', 'opencode', 'storage');
+    await writeJson(join(storage, 'message', sid, 'msg1.json'), {
+      id: 'msg1',
+      sessionID: sid,
+      role: 'user',
+      time: { created: 100 },
+    });
+    await writeJson(join(storage, 'part', 'msg1', 'p1.json'), {
+      id: 'p1',
+      type: 'text',
+      text: 'do work',
+    });
+    await writeJson(join(storage, 'message', sid, 'msg2.json'), {
+      id: 'msg2',
+      sessionID: sid,
+      role: 'assistant',
+      time: { created: 200 },
+    });
+    await writeJson(join(storage, 'part', 'msg2', 't1.json'), {
+      id: 't1',
+      type: 'text',
+      text: 'running ls',
+    });
+    await writeJson(join(storage, 'part', 'msg2', 'tool1.json'), {
+      id: 'tool1',
+      type: 'tool',
+      callID: 'c1',
+      tool: 'bash',
+      state: {
+        status: 'completed',
+        input: { command: 'ls' },
+        output: 'a\nb',
+      },
+    });
+    await writeJson(join(storage, 'message', sid, 'msg3.json'), {
+      id: 'msg3',
+      sessionID: sid,
+      role: 'assistant',
+      time: { created: 300 },
+    });
+    await writeJson(join(storage, 'part', 'msg3', 't2.json'), {
+      id: 't2',
+      type: 'text',
+      text: 'edited',
+    });
+    await writeJson(join(storage, 'part', 'msg3', 'tool2.json'), {
+      id: 'tool2',
+      type: 'tool',
+      callID: 'c2',
+      tool: 'edit',
+      state: {
+        status: 'completed',
+        input: { filePath: 'a.txt', oldString: 'foo', newString: 'bar' },
+        output: '',
+      },
+    });
+    const reader = new SessionHistoryReader({ homeDir: home });
+    const turns = await reader.readTurns({ agentId: 'opencode', agentSessionId: sid }, 'th-OC');
+    assert.equal(turns!.length, 1);
+    const messages = turns![0]!.messages;
+    assert.equal(messages.length, 3);
+    const msg2 = messages.find((m) => m.content === 'running ls');
+    assert.equal(msg2?.blocks?.length, 1);
+    assert.equal(block(msg2!.blocks![0]).type, 'command_execution');
+    assert.equal(block(msg2!.blocks![0]).command, 'ls');
+    const msg3 = messages.find((m) => m.content === 'edited');
+    assert.equal(msg3?.blocks?.length, 1);
+    assert.equal(block(msg3!.blocks![0]).type, 'diff');
+    assert.equal(block(msg3!.blocks![0]).filename, 'a.txt');
+    assert.match(block(msg3!.blocks![0]).diff as string, /-foo.*\+bar/s);
+  } finally {
+    await cleanup();
+  }
+});
+
+test('opencode: reasoning parts become assistant thinking', async () => {
+  const { home, cleanup } = await fakeHome();
+  try {
+    const sid = 'ses_oc_thinking_1';
+    const storage = join(home, '.local', 'share', 'opencode', 'storage');
+    await writeJson(join(storage, 'message', sid, 'msg1.json'), {
+      id: 'msg1',
+      sessionID: sid,
+      role: 'user',
+      time: { created: 100 },
+    });
+    await writeJson(join(storage, 'part', 'msg1', 'p1.json'), {
+      id: 'p1',
+      type: 'text',
+      text: 'think please',
+    });
+    await writeJson(join(storage, 'message', sid, 'msg2.json'), {
+      id: 'msg2',
+      sessionID: sid,
+      role: 'assistant',
+      time: { created: 200 },
+    });
+    await writeJson(join(storage, 'part', 'msg2', 'r1.json'), {
+      id: 'r1',
+      type: 'reasoning',
+      text: 'pondering the answer',
+    });
+    await writeJson(join(storage, 'part', 'msg2', 't1.json'), {
+      id: 't1',
+      type: 'text',
+      text: 'the answer',
+    });
+    const reader = new SessionHistoryReader({ homeDir: home });
+    const turns = await reader.readTurns({ agentId: 'opencode', agentSessionId: sid }, 'th-OT');
+    const assistant = turns![0]!.messages.find((m) => m.role === 'assistant');
+    assert.equal(assistant?.thinking, 'pondering the answer');
+    assert.equal(assistant?.content, 'the answer');
+  } finally {
+    await cleanup();
+  }
+});
+
+test('pi: toolCall content block in assistant + toolResult message become a paired block', async () => {
+  const { home, cleanup } = await fakeHome();
+  try {
+    const sid = 'sess-pi-tools-1';
+    const file = join(
+      home,
+      '.pi',
+      'agent',
+      'sessions',
+      '--C--proj--',
+      `2026-06-15T00-00-00-000Z_${sid}.jsonl`,
+    );
+    await writeLines(file, [
+      { type: 'session', id: sid, cwd: 'C:/proj' },
+      {
+        type: 'message',
+        message: { role: 'user', content: [{ type: 'text', text: 'readme' }] },
+        timestamp: '2026-06-15T00:00:00.000Z',
+      },
+      {
+        type: 'message',
+        message: {
+          role: 'assistant',
+          content: [
+            { type: 'toolCall', id: 'call_1', name: 'bash', arguments: { command: 'pwd' } },
+          ],
+        },
+        timestamp: '2026-06-15T00:00:05.000Z',
+      },
+      {
+        type: 'message',
+        message: {
+          role: 'toolResult',
+          toolCallId: 'call_1',
+          toolName: 'bash',
+          content: [{ type: 'text', text: 'C:/proj' }],
+        },
+        timestamp: '2026-06-15T00:00:06.000Z',
+      },
+      {
+        type: 'message',
+        message: { role: 'assistant', content: [{ type: 'text', text: 'you are in C:/proj' }] },
+        timestamp: '2026-06-15T00:00:10.000Z',
+      },
+    ]);
+    const reader = new SessionHistoryReader({ homeDir: home });
+    const turns = await reader.readTurns({ agentId: 'pi-agent', agentSessionId: sid }, 'th-PT');
+    const firstAssistant = turns![0]!.messages.find(
+      (m) => m.role === 'assistant' && m.content === '',
+    );
+    assert.ok(firstAssistant, 'expected the tool-call assistant message to be present');
+    assert.equal(firstAssistant!.blocks?.length, 1);
+    assert.equal(block(firstAssistant!.blocks![0]).type, 'command_execution');
+    assert.equal(block(firstAssistant!.blocks![0]).command, 'pwd');
+    assert.equal(block(firstAssistant!.blocks![0]).output, 'C:/proj');
+    const secondAssistant = turns![0]!.messages.find(
+      (m) => m.role === 'assistant' && m.content === 'you are in C:/proj',
+    );
+    assert.deepEqual(secondAssistant?.blocks ?? [], []);
+  } finally {
+    await cleanup();
+  }
+});
+
+test('pi: think tags inside assistant text are extracted into Message.thinking', async () => {
+  const { home, cleanup } = await fakeHome();
+  try {
+    const sid = 'sess-pi-thinking';
+    const file = join(
+      home,
+      '.pi',
+      'agent',
+      'sessions',
+      '--C--proj--',
+      `2026-06-15T00-00-00-000Z_${sid}.jsonl`,
+    );
+    await writeLines(file, [
+      {
+        type: 'message',
+        message: {
+          role: 'assistant',
+          content: [
+            {
+              type: 'text',
+              text: '<think>I need to think about this</think>Here is the answer.',
+            },
+          ],
+        },
+        timestamp: '2026-06-15T00:00:00.000Z',
+      },
+    ]);
+    const reader = new SessionHistoryReader({ homeDir: home });
+    const turns = await reader.readTurns({ agentId: 'pi-agent', agentSessionId: sid }, 'th-PTh');
+    const assistant = turns![0]!.messages[0]!;
+    assert.equal(assistant.role, 'assistant');
+    assert.equal(assistant.thinking, 'I need to think about this');
+    assert.equal(assistant.content, 'Here is the answer.');
+  } finally {
+    await cleanup();
+  }
+});
+test('gemini: toolCalls inline become structured blocks (write_file + run_shell_command)', async () => {
+  const { home, cleanup } = await fakeHome();
+  try {
+    const sid = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+    await writeGeminiFile(
+      home,
+      'hash-TB',
+      `session-2026-02-15T10-00-${sid.replace(/-/g, '').slice(0, 8)}.json`,
+      {
+        sessionId: sid,
+        projectHash: 'hash-TB',
+        startTime: '2026-02-15T10:00:00.000Z',
+        lastUpdated: '2026-02-15T10:00:20.000Z',
+        messages: [
+          { id: 'u1', timestamp: '2026-02-15T10:00:00.000Z', type: 'user', content: 'do work' },
+          {
+            id: 'g1',
+            timestamp: '2026-02-15T10:00:05.000Z',
+            type: 'gemini',
+            content: 'on it',
+            toolCalls: [
+              {
+                id: 'wc1',
+                name: 'write_file',
+                args: { file_path: 'out.txt', content: 'hello' },
+                status: 'success',
+                result: [
+                  {
+                    functionResponse: {
+                      id: 'wc1',
+                      name: 'write_file',
+                      response: { output: 'wrote 5 bytes' },
+                    },
+                  },
+                ],
+              },
+              {
+                id: 'sc1',
+                name: 'run_shell_command',
+                args: { command: 'cat out.txt' },
+                status: 'success',
+                result: [
+                  {
+                    functionResponse: {
+                      id: 'sc1',
+                      name: 'run_shell_command',
+                      response: { output: 'hello' },
+                    },
+                  },
+                ],
+              },
+              {
+                id: 'ut1',
+                name: 'update_topic',
+                args: { title: 'x' },
+                status: 'success',
+              },
+            ],
+          },
+        ],
+      },
+    );
+    const reader = new SessionHistoryReader({ homeDir: home });
+    const turns = await reader.readTurns({ agentId: 'gemini-cli', agentSessionId: sid }, 'th-GB');
+    const assistant = turns![0]!.messages.find((m) => m.role === 'assistant');
+    assert.equal(assistant?.blocks?.length, 2);
+    const types = assistant!.blocks!.map((b) => block(b).type);
+    assert.deepEqual(types, ['diff', 'command_execution']);
+    const diffBlock = assistant!.blocks!.find((b) => block(b).type === 'diff');
+    assert.equal(block(diffBlock!).filename, 'out.txt');
+    assert.match(block(diffBlock!).diff as string, /\+hello/);
+    const cmdBlock = assistant!.blocks!.find((b) => block(b).type === 'command_execution');
+    assert.equal(block(cmdBlock!).command, 'cat out.txt');
+    assert.equal(block(cmdBlock!).output, 'hello');
   } finally {
     await cleanup();
   }
