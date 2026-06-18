@@ -403,13 +403,20 @@ browser and multi-PC connection correctness are now DONE — see below.)
     `Thread.accessMode`; `ThreadStore.setAccessMode`, idempotent). The phone
     seeds the picker from the bridge on open (`ThreadManager.readAccessMode` via
     `thread/read`, the source of truth) and persists on change
-    (`ThreadManager.setAccessMode`, best-effort). ☐ **FOR-DEV (follow-up):**
-    *enforcing* the persisted mode per turn (mapping `AccessMode` → each agent's
-    permission flag — e.g. Claude `permissionMode`) is **not** wired yet: it
-    entangles with the validated interactive-approval flow (`acceptEdits` would
-    silently disable approvals), so it needs careful per-agent handling. The
-    bridge stores + returns the mode today; turning it into per-turn enforcement
-    is the next step.
+    (`ThreadManager.setAccessMode`, best-effort). ☑ **Enforcement — DONE
+    (2026-06-18, Claude).** The bridge applies the persisted mode per turn: the
+    `turn/send` handler reads it from the thread runtime (`ThreadRuntime.accessMode`
+    → `SendTurnOptions.accessMode`) and the **Claude adapter** maps it —
+    `requestApproval` keeps the interactive `PreToolUse` hook in play,
+    `approveForMe` → `--permission-mode acceptEdits` (hook suppressed),
+    `fullAccess` → `--dangerously-skip-permissions`. **Non-breaking by design:**
+    when a thread has **no** mode set, the adapter's configured posture is used
+    unchanged (the validated interactive-approval flow is untouched), and
+    `requestApproval` without a usable hook falls back to the configured posture
+    (never denies wholesale). Covered by four adapter tests + a runtime test.
+    ☐ **Follow-up:** map `accessMode` for the other agents that gate tools
+    (Codex `--ask-for-approval`/`--full-auto`, etc.); today they accept the
+    field and ignore it (Claude is the agent with the validated approval flow).
   - ☑ **Git branch / remote / local** (`_EnvironmentChip`, status-sheet git
     section) → real values from `git/status` via `gitRepoStateProvider`; the
     commit/push rows call `GitActionManager.commit` / `.push` against the active

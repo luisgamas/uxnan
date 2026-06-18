@@ -512,6 +512,93 @@ test('interactive approvals inject the PreToolUse hook (--settings + --permissio
   assert.match(last().env?.UXNAN_HOOK_URL ?? '', /agent-hook\/approval/);
 });
 
+test('accessMode approveForMe forces acceptEdits and suppresses the hook', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new ClaudeCodeAdapter({
+    binaryPath: 'claude',
+    spawnFn,
+    // Even with interactive approvals configured, an explicit approveForMe must
+    // bypass the hook (the user chose not to be asked).
+    interactiveApprovals: true,
+    approvalHook: {
+      token: 't',
+      scriptPath: 'C:/h.cjs',
+      url: () => 'http://127.0.0.1:19850/agent-hook/approval',
+    },
+  });
+  const { done } = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi', accessMode: 'approveForMe' });
+  last().feed(['{"type":"result","subtype":"success","result":"ok","session_id":"s"}']);
+  await done;
+
+  const args = last().args;
+  assert.equal(args.includes('--settings'), false);
+  assert.equal(args.includes('--permission-mode'), true);
+  assert.equal(args[args.indexOf('--permission-mode') + 1], 'acceptEdits');
+  assert.equal(last().env, undefined);
+});
+
+test('accessMode fullAccess maps to --dangerously-skip-permissions, no hook', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new ClaudeCodeAdapter({
+    binaryPath: 'claude',
+    spawnFn,
+    interactiveApprovals: true,
+    approvalHook: {
+      token: 't',
+      scriptPath: 'C:/h.cjs',
+      url: () => 'http://127.0.0.1:19850/agent-hook/approval',
+    },
+  });
+  const { done } = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi', accessMode: 'fullAccess' });
+  last().feed(['{"type":"result","subtype":"success","result":"ok","session_id":"s"}']);
+  await done;
+
+  const args = last().args;
+  assert.equal(args.includes('--dangerously-skip-permissions'), true);
+  assert.equal(args.includes('--settings'), false);
+});
+
+test('accessMode requestApproval keeps the interactive hook in play', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new ClaudeCodeAdapter({
+    binaryPath: 'claude',
+    spawnFn,
+    interactiveApprovals: true,
+    approvalHook: {
+      token: 'tok',
+      scriptPath: 'C:/Users/x/.uxnan/hooks/claude-approval-hook.cjs',
+      url: () => 'http://127.0.0.1:19850/agent-hook/approval',
+    },
+  });
+  const { done } = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'go', accessMode: 'requestApproval' });
+  last().feed(['{"type":"result","subtype":"success","result":"ok","session_id":"s"}']);
+  await done;
+
+  const args = last().args;
+  assert.ok(args.includes('--settings'));
+  assert.equal(args[args.indexOf('--permission-mode') + 1], 'default');
+  assert.equal(last().env?.UXNAN_HOOK_THREAD_ID, 't1');
+});
+
+test('accessMode requestApproval without a hook falls back to the configured posture', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  // No interactiveApprovals/hook → requestApproval can't route; it must NOT
+  // force `--permission-mode default` (which would deny headlessly) but fall
+  // back to the adapter's configured posture (acceptEdits default).
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
+  const { done } = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'go', accessMode: 'requestApproval' });
+  last().feed(['{"type":"result","subtype":"success","result":"ok","session_id":"s"}']);
+  await done;
+
+  const args = last().args;
+  assert.equal(args.includes('--settings'), false);
+  assert.equal(args[args.indexOf('--permission-mode') + 1], 'acceptEdits');
+});
+
 test('interactive approvals stay off until the hook URL resolves (LAN not started)', async () => {
   const { spawnFn, last } = fakeSpawner();
   const adapter = new ClaudeCodeAdapter({

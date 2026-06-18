@@ -6,6 +6,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 
 ### Added
+- **Per-thread access mode is now enforced per turn (Claude).** `turn/send`
+  reads the thread's persisted `accessMode` (`ThreadRuntime.accessMode` →
+  `SendTurnOptions.accessMode`) and the Claude adapter maps it to the right CLI
+  posture: `requestApproval` keeps the interactive `PreToolUse` hook,
+  `approveForMe` → `--permission-mode acceptEdits` (hook suppressed),
+  `fullAccess` → `--dangerously-skip-permissions`. Non-breaking: a thread with
+  no mode keeps the adapter's configured posture (the validated interactive
+  approvals are untouched), and `requestApproval` without a usable hook falls
+  back to that posture instead of denying. Other agents accept the field and
+  ignore it for now. Covered by four adapter tests + a runtime test.
 - **Agent session id surfaced + per-thread access mode persisted.**
   `toThread` now includes `agentSessionId` (the agent's native session id) so
   `thread/read`/`thread/list` carry it for the phone's "resume from the CLI".

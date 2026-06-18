@@ -6,6 +6,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 
 ### Added
+- **`SendTurnOptions.accessMode`** (`agents/agent-adapter.ts`): the per-thread
+  access mode is now carried into each turn so adapters can map it to their
+  permission posture (Claude wired; others ignore it for now).
 - **Agent session id + per-thread access mode on the wire** (`models/thread.ts`,
   `jsonrpc/methods.ts`, `jsonrpc/method-registry.ts`): `Thread.agentSessionId?`
   (the agent CLI's native session id, for "resume from the CLI"), a new

@@ -160,6 +160,8 @@ test('setAccessMode persists the mode, is idempotent, and surfaces it', async ()
   const changed = await store.setAccessMode(thread.id, 'fullAccess', 3);
   assert.equal(changed.accessMode, 'fullAccess');
   assert.equal(changed.updatedAt, 3);
+  // The runtime the AgentManager reads per turn carries the mode (enforcement).
+  assert.equal((await store.getThreadRuntime(thread.id)).accessMode, 'fullAccess');
   await rm(baseDir, { recursive: true, force: true });
 });
 

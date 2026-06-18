@@ -14,6 +14,7 @@ import {
   RpcError,
   StreamNotification,
   makeNotification,
+  type AccessMode,
   type AgentDescriptor,
   type AgentId,
   type AgentModel,
@@ -92,6 +93,8 @@ export interface SendTurnOptions {
   /** Inline image attachments delivered to the agent for this turn. */
   attachments?: TurnAttachment[];
   cwd?: string;
+  /** The thread's persisted access (approval) mode, applied to this turn. */
+  accessMode?: AccessMode;
 }
 
 export class AgentManager {
@@ -230,6 +233,7 @@ export class AgentManager {
       ...(options.options !== undefined ? { options: options.options } : {}),
       ...(attachments.length > 0 ? { attachments } : {}),
       ...(options.cwd !== undefined ? { cwd: options.cwd } : {}),
+      ...(options.accessMode !== undefined ? { accessMode: options.accessMode } : {}),
     });
     return { turnId: started.turnId };
   }

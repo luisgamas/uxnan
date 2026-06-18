@@ -138,6 +138,9 @@ export function registerThreadHandlers(router: HandlerRouter): void {
       ...optionalRunOptions(p),
       ...(attachments.length > 0 ? { attachments } : {}),
       ...(runtime.cwd !== undefined ? { cwd: runtime.cwd } : {}),
+      // Apply the thread's persisted access mode to this turn (adapters map it
+      // to their permission flag; absent → the adapter's configured posture).
+      ...(runtime.accessMode !== undefined ? { accessMode: runtime.accessMode } : {}),
     };
     return ctx.agentManager.sendTurn(threadId, text, options);
   });

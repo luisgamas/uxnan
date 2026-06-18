@@ -88,6 +88,8 @@ export interface ThreadRuntime {
   agentId?: string;
   model?: string;
   cwd?: string;
+  /** Persisted per-thread access (approval) mode, applied per turn. */
+  accessMode?: AccessMode;
 }
 
 export class ThreadStore {
@@ -168,6 +170,7 @@ export class ThreadStore {
     if (thread.agentId !== undefined) runtime.agentId = thread.agentId;
     if (thread.model !== undefined) runtime.model = thread.model;
     if (thread.cwd !== undefined) runtime.cwd = thread.cwd;
+    if (thread.accessMode !== undefined) runtime.accessMode = thread.accessMode;
     return runtime;
   }
 

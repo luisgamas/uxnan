@@ -308,13 +308,27 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     const model = options.service ?? this.#defaultModel;
     const sessionId = this.#sessionByThread.get(threadId);
 
+    // The thread's persisted access mode (chosen on the phone) overrides the
+    // adapter's configured posture for THIS turn. Absent → unchanged behaviour.
+    const accessMode = options.accessMode;
     // Interactive approvals: inject a PreToolUse hook (validated against claude
     // 2.1.177) that round-trips each tool to the bridge for the user's decision.
-    // The hook is the gate, so we use the default permission posture (no
-    // acceptEdits / skip-permissions) to route every tool through it.
-    const hookUrl =
-      this.#interactiveApprovals && this.#approvalHook ? this.#approvalHook.url() : undefined;
-    const interactive = hookUrl !== undefined && this.#approvalHook !== undefined;
+    // The hook stays in play for `requestApproval` (and when no mode is set);
+    // `approveForMe`/`fullAccess` explicitly bypass it so the agent isn't asked.
+    const hookConfigured = this.#interactiveApprovals && this.#approvalHook !== undefined;
+    const allowHook =
+      (accessMode === undefined || accessMode === 'requestApproval') && hookConfigured;
+    const hookUrl = allowHook ? this.#approvalHook!.url() : undefined;
+    const interactive = hookUrl !== undefined;
+    // The non-interactive permission posture: the access mode wins when set,
+    // else the configured default. `requestApproval` without a usable hook falls
+    // back to the configured posture (so the turn isn't denied wholesale).
+    const effectiveMode: ClaudePermissionMode =
+      accessMode === 'approveForMe'
+        ? 'acceptEdits'
+        : accessMode === 'fullAccess'
+          ? 'bypassPermissions'
+          : this.#permissionMode;
 
     const args = [
       '-p',
@@ -338,9 +352,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       // (validated against claude 2.1.177: without it, headless `-p` doesn't
       // consult the hook and denies). The hook is then the gate.
       args.push('--settings', settings, '--permission-mode', 'default');
-    } else if (this.#permissionMode === 'acceptEdits') {
+    } else if (effectiveMode === 'acceptEdits') {
       args.push('--permission-mode', 'acceptEdits');
-    } else if (this.#permissionMode === 'bypassPermissions') {
+    } else if (effectiveMode === 'bypassPermissions') {
       args.push('--dangerously-skip-permissions');
     }
     if (model) args.push('--model', model);
