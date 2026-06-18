@@ -5,6 +5,27 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — agent-hooks docs enriched
+- **`docs/agent-hooks.md` rewritten as a guided installer.** Now opens with a
+  TL;DR, a state-table ("what do I get"), the ready-made scripts and the
+  env-injection contract, then step-by-step install for **Claude Code** (one
+  click) and **any other agent** via the generic wrapper, with a
+  per-platform breakdown:
+  - **Windows — PowerShell** (`uxnan-hook-wrapper.ps1`): the
+    `-Type / -Command / -Args` argument shape and the quoting caveats.
+  - **Windows — cmd / batch** (`uxnan-hook-wrapper.cmd`): when to fall back
+    from PowerShell and the `%2`–`%9` arg-list limit.
+  - **macOS / Linux — Bash** (`uxnan-hook-wrapper.sh`): exact app-data
+    paths for both platforms.
+  - **WSL** and **Git Bash on Windows**: which wrapper applies in each
+    shell context.
+  - **Verify** checklist for all platforms + a **Troubleshooting** section
+    covering stale tokens, dimmed (`stale`) reports, "401" from the
+    wrapper, and "dot never changes from `working`".
+- Adds **app-data path table** per OS (Windows / macOS / Linux) and a
+  **reference** section with the full request contract + env vars moved
+  here for one-stop lookup.
+
 ### Added — precise agent states in the terminal tab bar + hooks-discovery hint
 - **Tab bar now uses the precise `AgentStatusDot`** (`TerminalArea.svelte`):
   every terminal tab in a region shows the four-state dot (working green /
