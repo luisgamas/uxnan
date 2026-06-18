@@ -92,6 +92,7 @@
   "threadActionFork": "Bifurcar conversación",
   "threadForkFailed": "No se pudo bifurcar esta conversación",
   "conversationLoadEarlier": "Mostrar mensajes anteriores",
+  "conversationScrollToBottom": "Ir al final",
   "threadActionArchive": "Archivar",
   "threadActionUnarchive": "Desarchivar",
   "threadActionDelete": "Eliminar",

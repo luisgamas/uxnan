@@ -278,6 +278,9 @@ class AppLocalizationsEs extends AppLocalizations {
   String get conversationLoadEarlier => 'Mostrar mensajes anteriores';
 
   @override
+  String get conversationScrollToBottom => 'Ir al final';
+
+  @override
   String get threadActionArchive => 'Archivar';
 
   @override

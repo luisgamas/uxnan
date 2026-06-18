@@ -65,6 +65,10 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   // user had scrolled up. Cleared once that scroll happens.
   bool _forceScrollOnSend = false;
 
+  /// Whether the "jump to latest" button is shown — true once the user has
+  /// scrolled up far enough that the newest messages are off-screen.
+  bool _showJumpToBottom = false;
+
   /// Images the user attached for the next turn (shown as removable thumbnails
   /// above the composer); cleared on send.
   final List<ImageContent> _attachments = [];
@@ -78,6 +82,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _scroll.addListener(_onScroll);
     _foreground = ref.read(foregroundThreadProvider.notifier);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(threadManagerProvider).selectThread(widget.threadId);
@@ -148,6 +153,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     final foreground = _foreground;
     final threadId = widget.threadId;
     Future(() => foreground?.leave(threadId));
+    _scroll.removeListener(_onScroll);
     _scroll.dispose();
     super.dispose();
   }
@@ -155,6 +161,19 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   bool _isNearBottom() {
     if (!_scroll.hasClients) return true;
     return _scroll.position.maxScrollExtent - _scroll.offset < 200;
+  }
+
+  /// Shows the "jump to latest" affordance once the user has scrolled more than
+  /// roughly a screenful away from the bottom; hides it again near the bottom.
+  /// The wider hide/show gap avoids flicker as the content height changes while
+  /// a turn streams.
+  void _onScroll() {
+    if (!_scroll.hasClients) return;
+    final distance = _scroll.position.maxScrollExtent - _scroll.offset;
+    final show = distance > 320;
+    if (show != _showJumpToBottom) {
+      setState(() => _showJumpToBottom = show);
+    }
   }
 
   void _scrollToBottom() {
@@ -524,6 +543,17 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                             ),
                           ),
                         ),
+                      ),
+                    ),
+                    // Jump-to-latest button: appears (with a small spring) over
+                    // the last messages when the user has scrolled up, so the
+                    // bottom of a long/streaming conversation is one tap away.
+                    Positioned(
+                      right: UxnanSpacing.lg,
+                      bottom: UxnanSpacing.md,
+                      child: _JumpToBottomButton(
+                        visible: _showJumpToBottom,
+                        onTap: _scrollToBottom,
                       ),
                     ),
                   ],
@@ -1078,6 +1108,56 @@ class _ConversationMenu extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// A small circular "jump to latest" button shown over the timeline when the
+/// user has scrolled up. Scales in with a light spring (NE small-element
+/// motion) and is non-interactive while hidden.
+class _JumpToBottomButton extends StatelessWidget {
+  const _JumpToBottomButton({required this.visible, required this.onTap});
+
+  final bool visible;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context);
+    return IgnorePointer(
+      ignoring: !visible,
+      child: AnimatedScale(
+        scale: visible ? 1 : 0,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutBack,
+        child: AnimatedOpacity(
+          opacity: visible ? 1 : 0,
+          duration: const Duration(milliseconds: 140),
+          child: Tooltip(
+            message: l10n.conversationScrollToBottom,
+            child: Material(
+              color: colors.secondaryContainer,
+              shape: const CircleBorder(),
+              elevation: 3,
+              shadowColor: colors.shadow,
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: onTap,
+                child: SizedBox(
+                  width: 44,
+                  height: 44,
+                  child: Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    color: colors.onSecondaryContainer,
+                    size: 26,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

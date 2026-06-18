@@ -596,6 +596,12 @@ abstract class AppLocalizations {
   /// **'Show earlier messages'**
   String get conversationLoadEarlier;
 
+  /// No description provided for @conversationScrollToBottom.
+  ///
+  /// In en, this message translates to:
+  /// **'Scroll to latest'**
+  String get conversationScrollToBottom;
+
   /// No description provided for @threadActionArchive.
   ///
   /// In en, this message translates to:

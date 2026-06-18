@@ -111,6 +111,17 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   0.7.7+1` automatically.
 
 ### Added
+- **Jump-to-latest button in the conversation.** Scrolling up in a long
+  or streaming conversation now reveals a small circular button (over the
+  timeline, above the composer) that springs in (NE small-element motion)
+  and jumps back to the newest message in one tap; it hides again near the
+  bottom. Driven by a scroll listener (`_showJumpToBottom`) reusing the
+  existing `_scrollToBottom`.
+- **Agent plan / to-do lists now render (plan mode).** When an agent emits
+  its task list, it shows as a checklist in the turn (the `PlanContent`
+  decoder + `_PlanCard` already existed; the bridge now maps each agent's
+  plan/to-do tool to a `plan` content block — see the bridge changelog).
+  No mobile change beyond confirming the end-to-end render.
 - **mDNS "Browse nearby bridges" in manual pairing.** The manual-code
   screen now has a **Browse nearby bridges** action that opens a sheet
   listing bridges advertising `_uxnan._tcp` on the LAN (a new
