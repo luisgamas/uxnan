@@ -394,5 +394,13 @@
   "fileViewerBinaryBody": "Los archivos binarios no se pueden previsualizar en el teléfono. Descárgalo a tu PC para inspeccionarlo.",
   "fileViewerLoadFailed": "No se pudo abrir este archivo",
   "fileViewerModePreview": "Vista previa",
-  "fileViewerModeSource": "Fuente"
+  "fileViewerModeSource": "Fuente",
+  "fileViewerEdit": "Editar archivo",
+  "fileViewerSave": "Guardar",
+  "fileViewerSaved": "Archivo guardado",
+  "fileViewerSaveFailed": "No se pudo guardar este archivo: {error}",
+  "fileViewerDiscardTitle": "¿Descartar cambios?",
+  "fileViewerDiscardBody": "Tus cambios en este archivo no se han guardado. ¿Descartarlos?",
+  "fileViewerDiscard": "Descartar",
+  "fileViewerKeepEditing": "Seguir editando"
 }

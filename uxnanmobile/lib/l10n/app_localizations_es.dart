@@ -1190,4 +1190,31 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get fileViewerModeSource => 'Fuente';
+
+  @override
+  String get fileViewerEdit => 'Editar archivo';
+
+  @override
+  String get fileViewerSave => 'Guardar';
+
+  @override
+  String get fileViewerSaved => 'Archivo guardado';
+
+  @override
+  String fileViewerSaveFailed(String error) {
+    return 'No se pudo guardar este archivo: $error';
+  }
+
+  @override
+  String get fileViewerDiscardTitle => '¿Descartar cambios?';
+
+  @override
+  String get fileViewerDiscardBody =>
+      'Tus cambios en este archivo no se han guardado. ¿Descartarlos?';
+
+  @override
+  String get fileViewerDiscard => 'Descartar';
+
+  @override
+  String get fileViewerKeepEditing => 'Seguir editando';
 }

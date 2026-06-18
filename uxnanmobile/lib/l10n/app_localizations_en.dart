@@ -1186,4 +1186,31 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get fileViewerModeSource => 'Source';
+
+  @override
+  String get fileViewerEdit => 'Edit file';
+
+  @override
+  String get fileViewerSave => 'Save';
+
+  @override
+  String get fileViewerSaved => 'File saved';
+
+  @override
+  String fileViewerSaveFailed(String error) {
+    return 'Couldn\'t save this file: $error';
+  }
+
+  @override
+  String get fileViewerDiscardTitle => 'Discard changes?';
+
+  @override
+  String get fileViewerDiscardBody =>
+      'Your edits to this file haven\'t been saved. Discard them?';
+
+  @override
+  String get fileViewerDiscard => 'Discard';
+
+  @override
+  String get fileViewerKeepEditing => 'Keep editing';
 }

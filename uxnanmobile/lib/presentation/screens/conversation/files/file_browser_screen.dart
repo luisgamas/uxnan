@@ -77,7 +77,6 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
     // The stream-based tree is the canonical state: the manager owns the
     // mutation, the UI just renders whatever was last emitted.
     final rootAsync = ref.watch(_fileTreeStreamProvider(widget.cwd));
-    final topInset = NeTopBar.preferredHeight(context);
 
     return Scaffold(
       body: Stack(

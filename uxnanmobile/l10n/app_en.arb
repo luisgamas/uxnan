@@ -631,5 +631,42 @@
   "fileViewerModeSource": "Source",
   "@fileViewerModeSource": {
     "description": "Mode pill label shown in the file viewer's footer when a markdown file is rendered as raw text."
+  },
+  "fileViewerEdit": "Edit file",
+  "@fileViewerEdit": {
+    "description": "Tooltip on the action that switches the file viewer into the inline text editor."
+  },
+  "fileViewerSave": "Save",
+  "@fileViewerSave": {
+    "description": "Tooltip on the action that saves the edited file content back to the workspace."
+  },
+  "fileViewerSaved": "File saved",
+  "@fileViewerSaved": {
+    "description": "Snackbar shown when an edited file is written back to the workspace."
+  },
+  "fileViewerSaveFailed": "Couldn't save this file: {error}",
+  "@fileViewerSaveFailed": {
+    "description": "Snackbar shown when saving an edited file fails, with the bridge error.",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "fileViewerDiscardTitle": "Discard changes?",
+  "@fileViewerDiscardTitle": {
+    "description": "Title of the dialog confirming the user wants to discard unsaved edits."
+  },
+  "fileViewerDiscardBody": "Your edits to this file haven't been saved. Discard them?",
+  "@fileViewerDiscardBody": {
+    "description": "Body of the dialog confirming the user wants to discard unsaved edits."
+  },
+  "fileViewerDiscard": "Discard",
+  "@fileViewerDiscard": {
+    "description": "Confirm button that discards the unsaved edits and leaves the editor."
+  },
+  "fileViewerKeepEditing": "Keep editing",
+  "@fileViewerKeepEditing": {
+    "description": "Cancel button that keeps the unsaved edits and stays in the editor."
   }
 }

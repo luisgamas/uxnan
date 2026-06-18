@@ -76,10 +76,32 @@ class _FileViewerScreenState extends ConsumerState<FileViewerScreen> {
   _ViewerPayload? _payload;
   bool _loading = false;
 
+  /// Whether the inline editor is active. Editing shows a monospace text field
+  /// over the raw file content; saving writes back through the manager and
+  /// re-fetches so the diff/git colours stay in sync.
+  bool _editing = false;
+
+  /// `true` while a save (`workspace/applyPatch`) is in flight.
+  bool _saving = false;
+
+  /// Backing buffer for the inline editor. Seeded from the loaded text when
+  /// the user enters edit mode; compared against to detect unsaved edits.
+  final TextEditingController _editController = TextEditingController();
+
+  /// The text the editor opened with — used to detect a dirty buffer so we can
+  /// confirm before discarding.
+  String _editOriginal = '';
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  @override
+  void dispose() {
+    _editController.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -102,6 +124,84 @@ class _FileViewerScreenState extends ConsumerState<FileViewerScreen> {
     }
   }
 
+  /// Whether the current payload is an editable text file (UTF-8, not an
+  /// image, not binary). Drives the visibility of the edit action.
+  bool _isEditable(bool isImage) {
+    final content = _payload?.content;
+    return !isImage &&
+        _payload?.error == null &&
+        content != null &&
+        content.encoding == FileEncoding.utf8;
+  }
+
+  void _startEditing() {
+    final text = _payload?.content?.content ?? '';
+    setState(() {
+      _editOriginal = text;
+      _editController.text = text;
+      _editing = true;
+    });
+  }
+
+  Future<void> _cancelEditing() async {
+    if (_editController.text != _editOriginal) {
+      final discard = await _confirmDiscard();
+      if (discard != true) return;
+    }
+    if (!mounted) return;
+    setState(() => _editing = false);
+  }
+
+  Future<bool?> _confirmDiscard() {
+    final l10n = AppLocalizations.of(context);
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(l10n.fileViewerDiscardTitle),
+        content: Text(l10n.fileViewerDiscardBody),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(l10n.fileViewerKeepEditing),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(l10n.fileViewerDiscard),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _save() async {
+    if (_saving) return;
+    final l10n = AppLocalizations.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _saving = true);
+    try {
+      final manager = ref.read(fileBrowserManagerProvider);
+      await manager.writeFile(widget.cwd, widget.path, _editController.text);
+      // Re-fetch so the freshly-written content + its new git diff render.
+      await _load();
+      if (!mounted) return;
+      setState(() {
+        _editing = false;
+        _saving = false;
+      });
+      messenger
+        ..clearSnackBars()
+        ..showSnackBar(SnackBar(content: Text(l10n.fileViewerSaved)));
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      messenger
+        ..clearSnackBars()
+        ..showSnackBar(
+          SnackBar(content: Text(l10n.fileViewerSaveFailed('$error'))),
+        );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -115,161 +215,231 @@ class _FileViewerScreenState extends ConsumerState<FileViewerScreen> {
     final status = node?.gitStatus;
     final isImage = _isImagePath(widget.path);
     final isMarkdown = _isMarkdownPath(widget.path);
-    final showDiffOverlay = showDiff && status != null && !isImage;
+    // While editing the raw buffer is the only surface — the markdown preview
+    // and the diff overlay both step aside so the user edits plain source.
+    final showDiffOverlay = showDiff && status != null && !isImage && !_editing;
+    final editable = _isEditable(isImage);
     final topInset = NeTopBar.preferredHeight(context);
+    // Block an accidental system-back while editing with unsaved changes; the
+    // pop is routed through the same discard confirmation as the close button.
+    final dirtyEdit = _editing && _editController.text != _editOriginal;
 
-    return Scaffold(
-      body: Stack(
-        // StackFit.expand forces the bar to the full row width — the
-        // default loose fit would size the stack to its non-Positioned
-        // child (the markdown body) which reports a narrow intrinsic
-        // width and starves the NeTopBar's actions row of horizontal
-        // space, triggering a RenderFlex overflow in the bar's Row.
-        fit: StackFit.expand,
-        children: [
-          // The content fills the stack — its own internal padding clears
-          // the NeTopBar so we don't use an outer `Padding(top: topInset)`.
-          // Using a non-painting widget for the top spacer (a transparent
-          // `SizedBox`) keeps the area between the bar and the content
-          // see-through, so the gradient dissolves into the surface and the
-          // content scrolls under the bar (matches `ConversationScreen`,
-          // `FileBrowserScreen`, `GitScreen`).
-          _buildBody(
-            context,
-            showMdPreview: showMdPreview,
-            showDiffOverlay: showDiffOverlay,
-            isImage: isImage,
-            isMarkdown: isMarkdown,
-          ),
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: NeTopBar(
-              leading: IconSurface(
-                icon: Icons.arrow_back_rounded,
-                tooltip: MaterialLocalizations.of(context).backButtonTooltip,
-                onPressed: () => Navigator.of(context).maybePop(),
-              ),
-              // Same `titleLarge.copyWith(fontSize: 20)` style as
-              // `ConversationScreen` and `GitScreen` so the file viewer's
-              // chrome is indistinguishable from the rest of the app.
-              title: Text(
-                name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontSize: 20,
-                      color: _statusColor(status, colors),
-                    ),
-              ),
-              actions: [
-                if (isMarkdown)
-                  IconSurface(
-                    icon: showMdPreview
-                        ? Icons.code_rounded
-                        : Icons.visibility_outlined,
-                    tooltip: showMdPreview
-                        ? l10n.fileViewerViewSource
-                        : l10n.fileViewerViewPreview,
-                    selected: showMdPreview,
-                    onPressed: () => ref
-                        .read(showMarkdownPreviewProvider.notifier)
-                        .set(value: !showMdPreview),
-                  ),
-                if (status != null)
-                  IconSurface(
-                    icon: Icons.difference_rounded,
-                    tooltip: showDiff
-                        ? l10n.fileViewerHideDiff
-                        : l10n.fileViewerShowDiff,
-                    selected: showDiff,
-                    onPressed: () => ref
-                        .read(showFileDiffProvider.notifier)
-                        .set(value: !showDiff),
-                  ),
-                IconSurface(
-                  icon: Icons.content_copy_outlined,
-                  tooltip: l10n.fileViewerCopy,
-                  onPressed: _copyContent,
-                ),
-                IconSurface(
-                  icon: Icons.refresh_rounded,
-                  tooltip: l10n.gitRefresh,
-                  onPressed: _load,
-                ),
-              ],
+    return PopScope(
+      canPop: !dirtyEdit,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) unawaited(_cancelEditing());
+      },
+      child: Scaffold(
+        // Resize for the keyboard so the inline editor stays above it.
+        resizeToAvoidBottomInset: true,
+        body: Stack(
+          // StackFit.expand forces the bar to the full row width — the
+          // default loose fit would size the stack to its non-Positioned
+          // child (the markdown body) which reports a narrow intrinsic
+          // width and starves the NeTopBar's actions row of horizontal
+          // space, triggering a RenderFlex overflow in the bar's Row.
+          fit: StackFit.expand,
+          children: [
+            // The content fills the stack and each scrollable body pads its top
+            // by [topInset] so the content scrolls *under* the transparent
+            // NeTopBar (matching `ConversationScreen`, `FileBrowserScreen`,
+            // `GitScreen`) — the gradient dissolves into the live content
+            // instead of sitting over a blank band.
+            _buildBody(
+              context,
+              topInset: topInset,
+              showMdPreview: showMdPreview,
+              showDiffOverlay: showDiffOverlay,
+              isImage: isImage,
+              isMarkdown: isMarkdown,
             ),
-          ),
-        ],
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: NeTopBar(
+                leading: IconSurface(
+                  icon:
+                      _editing ? Icons.close_rounded : Icons.arrow_back_rounded,
+                  tooltip: _editing
+                      ? MaterialLocalizations.of(context).cancelButtonLabel
+                      : MaterialLocalizations.of(context).backButtonTooltip,
+                  onPressed: () {
+                    if (_editing) {
+                      unawaited(_cancelEditing());
+                    } else {
+                      Navigator.of(context).maybePop();
+                    }
+                  },
+                ),
+                // Same `titleLarge.copyWith(fontSize: 20)` style as
+                // `ConversationScreen` and `GitScreen` so the file viewer's
+                // chrome is indistinguishable from the rest of the app.
+                title: Text(
+                  name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontSize: 20,
+                        color: _statusColor(status, colors),
+                      ),
+                ),
+                actions: _editing
+                    ? [
+                        if (_saving)
+                          const Padding(
+                            padding: EdgeInsets.symmetric(
+                                horizontal: UxnanSpacing.md),
+                            child: SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          )
+                        else
+                          IconSurface(
+                            icon: Icons.check_rounded,
+                            tooltip: l10n.fileViewerSave,
+                            background: colors.secondaryContainer,
+                            foreground: colors.onSecondaryContainer,
+                            onPressed: _save,
+                          ),
+                      ]
+                    : [
+                        if (isMarkdown)
+                          IconSurface(
+                            icon: showMdPreview
+                                ? Icons.code_rounded
+                                : Icons.visibility_outlined,
+                            tooltip: showMdPreview
+                                ? l10n.fileViewerViewSource
+                                : l10n.fileViewerViewPreview,
+                            selected: showMdPreview,
+                            onPressed: () => ref
+                                .read(showMarkdownPreviewProvider.notifier)
+                                .set(value: !showMdPreview),
+                          ),
+                        if (status != null)
+                          IconSurface(
+                            icon: Icons.difference_rounded,
+                            tooltip: showDiff
+                                ? l10n.fileViewerHideDiff
+                                : l10n.fileViewerShowDiff,
+                            selected: showDiff,
+                            onPressed: () => ref
+                                .read(showFileDiffProvider.notifier)
+                                .set(value: !showDiff),
+                          ),
+                        if (editable)
+                          IconSurface(
+                            icon: Icons.edit_outlined,
+                            tooltip: l10n.fileViewerEdit,
+                            onPressed: _startEditing,
+                          ),
+                        IconSurface(
+                          icon: Icons.content_copy_outlined,
+                          tooltip: l10n.fileViewerCopy,
+                          onPressed: _copyContent,
+                        ),
+                        IconSurface(
+                          icon: Icons.refresh_rounded,
+                          tooltip: l10n.gitRefresh,
+                          onPressed: _load,
+                        ),
+                      ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildBody(
     BuildContext context, {
+    required double topInset,
     required bool showMdPreview,
     required bool showDiffOverlay,
     required bool isImage,
     required bool isMarkdown,
   }) {
-    final topInset = NeTopBar.preferredHeight(context);
     final payload = _payload;
 
-    // The top spacer (a transparent `SizedBox`) pushes the real content
-    // below the NeTopBar without painting a solid band where the gradient
-    // dissolves. Each leaf body owns its horizontal padding so the text
-    // doesn't kiss the screen edges.
-    Widget content;
-    if (_loading && payload == null) {
-      content = const Center(child: CircularProgressIndicator());
-    } else if (payload == null) {
-      content = const SizedBox.shrink();
-    } else if (payload.error != null) {
-      content = _ErrorState(message: payload.error!, onRetry: _load);
-    } else if (isImage && payload.image != null) {
-      content = _ImageBody(
-        base64: payload.image!.base64Data,
-        mimeType: payload.image!.mimeType,
-      );
-    } else if (isImage) {
-      content = _ErrorState(
-        message: payload.error ?? 'Image not available',
-        onRetry: _load,
-      );
-    } else {
-      final textContent = payload.content;
-      if (textContent == null) {
-        content = _ErrorState(
-          message: 'File not readable',
-          onRetry: _load,
-        );
-      } else if (textContent.encoding == FileEncoding.base64) {
-        content = _BinaryState(sizeBytes: textContent.content.length);
-      } else {
-        final text = textContent.content;
-        if (isMarkdown && showMdPreview) {
-          content = _MarkdownBody(text: text);
-        } else if (showDiffOverlay &&
-            payload.diff != null &&
-            payload.diff!.isNotEmpty) {
-          content = FileDiffViewer(diff: payload.diff!, path: widget.path);
-        } else {
-          content = _CodeBody(
-            text: text,
-            language: _languageForPath(widget.path),
-          );
-        }
-      }
+    // The inline editor wins over every read-only view while active.
+    if (_editing) {
+      return _EditorBody(controller: _editController, topInset: topInset);
     }
 
-    return Column(
-      children: [
-        SizedBox(height: topInset),
-        Expanded(child: content),
-      ],
+    // Scrollable bodies pad their own top by [topInset] so they scroll under
+    // the bar; the centered placeholder states ([_ImageBody], [_BinaryState],
+    // [_ErrorState]) are nudged below the bar with [_belowBar].
+    if (_loading && payload == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (payload == null) {
+      return const SizedBox.shrink();
+    }
+    if (payload.error != null) {
+      return _belowBar(
+        topInset,
+        _ErrorState(message: payload.error!, onRetry: _load),
+      );
+    }
+    if (isImage && payload.image != null) {
+      return _belowBar(
+        topInset,
+        _ImageBody(
+          base64: payload.image!.base64Data,
+          mimeType: payload.image!.mimeType,
+        ),
+      );
+    }
+    if (isImage) {
+      return _belowBar(
+        topInset,
+        _ErrorState(
+          message: payload.error ?? 'Image not available',
+          onRetry: _load,
+        ),
+      );
+    }
+    final textContent = payload.content;
+    if (textContent == null) {
+      return _belowBar(
+        topInset,
+        _ErrorState(message: 'File not readable', onRetry: _load),
+      );
+    }
+    if (textContent.encoding == FileEncoding.base64) {
+      return _belowBar(
+        topInset,
+        _BinaryState(sizeBytes: textContent.content.length),
+      );
+    }
+    final text = textContent.content;
+    if (isMarkdown && showMdPreview) {
+      return _MarkdownBody(text: text, topInset: topInset);
+    }
+    if (showDiffOverlay && payload.diff != null && payload.diff!.isNotEmpty) {
+      return FileDiffViewer(
+        diff: payload.diff!,
+        path: widget.path,
+        topInset: topInset,
+      );
+    }
+    return _CodeBody(
+      text: text,
+      language: _languageForPath(widget.path),
+      topInset: topInset,
     );
   }
+
+  /// Wraps a non-scrolling placeholder so it sits below the transparent bar
+  /// rather than under it.
+  static Widget _belowBar(double topInset, Widget child) => Padding(
+        padding: EdgeInsets.only(top: topInset),
+        child: child,
+      );
 
   Future<void> _copyContent() async {
     final payload = _payload;
@@ -400,8 +570,11 @@ class _ImageBody extends StatelessWidget {
 /// The horizontal padding (`UxnanSpacing.lg`) matches the rest of the app's
 /// content surfaces so the rendered text doesn't kiss the screen edges.
 class _MarkdownBody extends StatelessWidget {
-  const _MarkdownBody({required this.text});
+  const _MarkdownBody({required this.text, required this.topInset});
   final String text;
+
+  /// Top padding so the rendered markdown scrolls under the transparent bar.
+  final double topInset;
 
   @override
   Widget build(BuildContext context) {
@@ -411,9 +584,9 @@ class _MarkdownBody extends StatelessWidget {
       physics: const BouncingScrollPhysics(
         parent: AlwaysScrollableScrollPhysics(),
       ),
-      padding: const EdgeInsets.fromLTRB(
+      padding: EdgeInsets.fromLTRB(
         UxnanSpacing.lg,
-        UxnanSpacing.sm,
+        topInset + UxnanSpacing.sm,
         UxnanSpacing.lg,
         UxnanSpacing.lg,
       ),
@@ -453,9 +626,16 @@ class _MarkdownBody extends StatelessWidget {
 /// content horizontally with `UxnanSpacing.lg` (matches the rest of the
 /// app's content surfaces) so the text doesn't kiss the screen edges.
 class _CodeBody extends StatelessWidget {
-  const _CodeBody({required this.text, required this.language});
+  const _CodeBody({
+    required this.text,
+    required this.language,
+    required this.topInset,
+  });
   final String text;
   final String language;
+
+  /// Top padding so the highlighted source scrolls under the transparent bar.
+  final double topInset;
 
   @override
   Widget build(BuildContext context) {
@@ -463,9 +643,9 @@ class _CodeBody extends StatelessWidget {
     final theme = isDark ? atomOneDarkTheme : atomOneLightTheme;
     return SingleChildScrollView(
       scrollDirection: Axis.vertical,
-      padding: const EdgeInsets.fromLTRB(
+      padding: EdgeInsets.fromLTRB(
         UxnanSpacing.lg,
-        UxnanSpacing.sm,
+        topInset + UxnanSpacing.sm,
         UxnanSpacing.lg,
         UxnanSpacing.lg,
       ),
@@ -480,6 +660,42 @@ class _CodeBody extends StatelessWidget {
             horizontal: UxnanSpacing.sm,
             vertical: UxnanSpacing.xs,
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Inline editor: a full-height monospace [TextField] over the raw file
+/// content. The buffer lives in the parent's controller so saving reads the
+/// latest text. Top-padded by [topInset] so the first line clears the bar and
+/// bottom-padded so the keyboard never covers the caret.
+class _EditorBody extends StatelessWidget {
+  const _EditorBody({required this.controller, required this.topInset});
+  final TextEditingController controller;
+  final double topInset;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    return TextField(
+      controller: controller,
+      maxLines: null,
+      expands: true,
+      autofocus: true,
+      keyboardType: TextInputType.multiline,
+      textAlignVertical: TextAlignVertical.top,
+      style: UxnanTypography.codeBody.copyWith(color: colors.onSurface),
+      cursorColor: colors.primary,
+      decoration: InputDecoration(
+        border: InputBorder.none,
+        filled: false,
+        contentPadding: EdgeInsets.fromLTRB(
+          UxnanSpacing.lg,
+          topInset + UxnanSpacing.sm,
+          UxnanSpacing.lg,
+          bottomInset + UxnanSpacing.lg,
         ),
       ),
     );

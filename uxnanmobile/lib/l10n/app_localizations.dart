@@ -2293,6 +2293,54 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Source'**
   String get fileViewerModeSource;
+
+  /// Tooltip on the action that switches the file viewer into the inline text editor.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit file'**
+  String get fileViewerEdit;
+
+  /// Tooltip on the action that saves the edited file content back to the workspace.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get fileViewerSave;
+
+  /// Snackbar shown when an edited file is written back to the workspace.
+  ///
+  /// In en, this message translates to:
+  /// **'File saved'**
+  String get fileViewerSaved;
+
+  /// Snackbar shown when saving an edited file fails, with the bridge error.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t save this file: {error}'**
+  String fileViewerSaveFailed(String error);
+
+  /// Title of the dialog confirming the user wants to discard unsaved edits.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard changes?'**
+  String get fileViewerDiscardTitle;
+
+  /// Body of the dialog confirming the user wants to discard unsaved edits.
+  ///
+  /// In en, this message translates to:
+  /// **'Your edits to this file haven\'t been saved. Discard them?'**
+  String get fileViewerDiscardBody;
+
+  /// Confirm button that discards the unsaved edits and leaves the editor.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard'**
+  String get fileViewerDiscard;
+
+  /// Cancel button that keeps the unsaved edits and stays in the editor.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep editing'**
+  String get fileViewerKeepEditing;
 }
 
 class _AppLocalizationsDelegate

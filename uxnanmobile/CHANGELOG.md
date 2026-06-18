@@ -18,7 +18,37 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   matching test. The pubspec resolution dropped `flutter_markdown
   0.7.7+1` automatically.
 
+### Added
+- **Inline file editing in the file viewer.** Text files (UTF-8, not
+  images or binaries) now show an **Edit** action in the viewer's top
+  bar. Editing opens a full-height monospace editor over the raw file
+  content; saving writes the buffer back through the existing
+  `workspace/applyPatch` RPC (a single `modify` change — no new bridge
+  contract) and immediately re-fetches the file so the git diff and the
+  browser tree colours repaint with the new changes. An unsaved buffer
+  prompts a discard confirmation on close / system-back (`PopScope`).
+  New manager method `FileBrowserManager.writeFile`; new strings
+  `fileViewer{Edit,Save,Saved,SaveFailed,Discard,DiscardTitle,DiscardBody,KeepEditing}`.
+
+### Changed
+- **File-browser folders now colour by their contents' git status.**
+  A directory whose (possibly still-collapsed) descendants contain
+  changes now paints its name + folder icon: `modified` when any tracked
+  descendant changed, `untracked` when the only changes underneath are
+  untracked. Previously only files coloured, so a changed file deep in
+  the tree left every parent folder neutral until expanded. Implemented
+  as an aggregate scan over the `git/status` map in `FileBrowserManager`
+  (`_dirStatus`), applied to directory nodes on build and repatch.
+
 ### Fixed
+- **File viewer content now scrolls *under* the transparent app bar.**
+  The previous `Column([SizedBox(topInset), Expanded(body)])` layout
+  pinned the scrollable body *below* the bar, so the bar always sat over
+  a blank `surface` band and read as a solid app bar. The body now fills
+  the `Stack` and each scrollable leaf (`_CodeBody`, `_MarkdownBody`,
+  `FileDiffViewer`) pads its own top by `topInset`, so content scrolls
+  beneath the gradient veil — matching `ConversationScreen` /
+  `FileBrowserScreen` / `GitScreen`.
 - **File viewer no longer renders a solid band under the app bar.**
   The viewer's body used `Padding(top: topInset, child: _buildBody)`
   inside the `Stack`, which painted the `surface` background of the

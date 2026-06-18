@@ -101,7 +101,88 @@ void main() {
         .children
         .firstWhere((c) => c.basename == 'src');
     expect(readme.gitStatus, GitFileStatus.modified);
-    expect(src.gitStatus, isNull);
+    // `src/` aggregates the status of its changed descendant (`src/main.dart`
+    // is modified) so the folder colours even while still collapsed.
+    expect(src.gitStatus, GitFileStatus.modified);
+    await manager.dispose();
+  });
+
+  test('directories aggregate descendant git status', () async {
+    const statusResult = <String, dynamic>{
+      'branch': 'main',
+      'isDirty': true,
+      'files': [
+        // Only untracked changes under `assets/` → the folder is untracked.
+        {'path': 'assets/new.png', 'status': 'untracked'},
+        // A tracked change under `src/` → the folder is modified.
+        {'path': 'src/main.dart', 'status': 'modified'},
+      ],
+    };
+    const listRoot = <String, dynamic>{
+      'cwd': '.',
+      'entries': [
+        {'name': 'assets', 'type': 'dir'},
+        {'name': 'src', 'type': 'dir'},
+        {'name': 'docs', 'type': 'dir'},
+      ],
+    };
+    final manager = _buildManager(
+      onCall: (_, __) {},
+      responder: (m, _) {
+        if (m == 'workspace/list') {
+          return RpcMessage.response(id: '1', result: listRoot);
+        }
+        if (m == 'git/status') {
+          return RpcMessage.response(id: '2', result: statusResult);
+        }
+        return RpcMessage.response(id: '1', result: const <String, dynamic>{});
+      },
+    );
+
+    await manager.loadRoot(_workspaceRoot);
+    await _settle();
+
+    final children = manager.rootFor(_workspaceRoot)!.children;
+    final assets = children.firstWhere((c) => c.basename == 'assets');
+    final src = children.firstWhere((c) => c.basename == 'src');
+    final docs = children.firstWhere((c) => c.basename == 'docs');
+    expect(assets.gitStatus, GitFileStatus.untracked);
+    expect(src.gitStatus, GitFileStatus.modified);
+    expect(docs.gitStatus, isNull);
+    await manager.dispose();
+  });
+
+  test('writeFile applies a modify patch and refreshes git status', () async {
+    final calls = <({String method, Map<String, dynamic> params})>[];
+    final manager = _buildManager(
+      onCall: (m, p) => calls.add((method: m, params: p)),
+      responder: (m, _) {
+        if (m == 'workspace/applyPatch') {
+          return RpcMessage.response(
+            id: '1',
+            result: const <String, dynamic>{'success': true, 'applied': 1},
+          );
+        }
+        if (m == 'git/status') {
+          return RpcMessage.response(id: '2', result: _statusResult);
+        }
+        return RpcMessage.response(id: '1', result: const <String, dynamic>{});
+      },
+    );
+
+    await manager.writeFile(_workspaceRoot, 'README.md', 'hello');
+    await _settle();
+
+    final patch = calls.firstWhere((c) => c.method == 'workspace/applyPatch');
+    expect(patch.params['cwd'], _workspaceRoot);
+    final changes = patch.params['changes'] as List;
+    expect(changes, hasLength(1));
+    final change = changes.first as Map;
+    expect(change['op'], 'modify');
+    expect(change['path'], 'README.md');
+    expect(change['content'], 'hello');
+    // The write must trigger a git status refresh so the tree repaints.
+    expect(calls.any((c) => c.method == 'git/status'), isTrue);
     await manager.dispose();
   });
 

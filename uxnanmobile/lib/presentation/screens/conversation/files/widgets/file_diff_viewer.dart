@@ -15,6 +15,7 @@ class FileDiffViewer extends StatelessWidget {
   const FileDiffViewer({
     required this.diff,
     required this.path,
+    this.topInset = 0,
     super.key,
   });
 
@@ -24,15 +25,18 @@ class FileDiffViewer extends StatelessWidget {
   /// Workspace-relative file path (for the small header above the diff).
   final String path;
 
+  /// Top padding so the diff scrolls under the viewer's transparent top bar.
+  final double topInset;
+
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final lines = _renderableLines(diff);
     return SingleChildScrollView(
       scrollDirection: Axis.vertical,
-      padding: const EdgeInsets.fromLTRB(
+      padding: EdgeInsets.fromLTRB(
         UxnanSpacing.lg,
-        UxnanSpacing.sm,
+        topInset + UxnanSpacing.sm,
         UxnanSpacing.lg,
         UxnanSpacing.lg,
       ),

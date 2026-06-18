@@ -194,6 +194,30 @@ class FileBrowserManager {
     return _parseImage(response, 'workspace/readImage');
   }
 
+  /// Overwrites a text file's content via `workspace/applyPatch` (a single
+  /// `modify` change). Reuses the existing patch RPC — no new contract — so the
+  /// edit lands through the same sensitive-file guard as every other workspace
+  /// write. After the write succeeds the cached git status is refreshed so the
+  /// browser tree and the viewer's diff repaint with the new changes.
+  ///
+  /// [cwd] is the workspace's **absolute** root; [path] is workspace-relative.
+  Future<void> writeFile(String cwd, String path, String content) async {
+    final response =
+        await _sendRequest('workspace/applyPatch', <String, dynamic>{
+      'cwd': cwd,
+      'changes': [
+        <String, dynamic>{'op': 'modify', 'path': path, 'content': content},
+      ],
+    });
+    final result = response.result;
+    if (result is Map && result['success'] == false) {
+      throw const FileReadException('workspace/applyPatch reported a failure');
+    }
+    // The file's git status almost certainly changed — repaint the tree so the
+    // browser colours update without a manual refresh.
+    unawaited(refreshGitStatus(cwd));
+  }
+
   /// Fetches the unified diff for a single file (`git/diff { path }`).
   /// Returns an empty diff when there are no textual changes.
   Future<String> fileDiff(String cwd, String path) async {
@@ -309,8 +333,38 @@ class FileBrowserManager {
       size: entry.size,
       // Files inherit their git status from the cached `git/status` map so
       // they're coloured as soon as the listing arrives (no second rebuild).
-      gitStatus: entry.type == FileEntryType.file ? status[path] : null,
+      // Directories aggregate the status of their (possibly still-collapsed)
+      // descendants so a changed file deep in the tree colours its parent
+      // folders too — without forcing the user to expand them first.
+      gitStatus: entry.type == FileEntryType.file
+          ? status[path]
+          : _dirStatus(path, status),
     );
+  }
+
+  /// Aggregated git status for the directory at [dirPath]:
+  /// [GitFileStatus.modified] when any tracked descendant changed
+  /// (added/modified/deleted/renamed), [GitFileStatus.untracked] when the only
+  /// changes underneath are untracked files, or `null` when nothing changed
+  /// below it. Lets folders carry the colour of their contents even while
+  /// collapsed — the status map only holds *changed* paths, so this scan is
+  /// cheap.
+  static GitFileStatus? _dirStatus(
+    String dirPath,
+    Map<String, GitFileStatus> status,
+  ) {
+    if (status.isEmpty) return null;
+    final prefix = '$dirPath/';
+    GitFileStatus? aggregate;
+    for (final entry in status.entries) {
+      if (!entry.key.startsWith(prefix)) continue;
+      // A tracked change is the strongest signal — short-circuit on it.
+      if (entry.value != GitFileStatus.untracked) {
+        return GitFileStatus.modified;
+      }
+      aggregate = GitFileStatus.untracked;
+    }
+    return aggregate;
   }
 
   /// Recursive toggle. Returns a new tree if the target's expansion state
@@ -384,7 +438,8 @@ class FileBrowserManager {
     FileTreeNode node,
     Map<String, GitFileStatus> status,
   ) {
-    final ownStatus = node.isFile ? status[node.path] : null;
+    final ownStatus =
+        node.isFile ? status[node.path] : _dirStatus(node.path, status);
     var childrenChanged = false;
     final newChildren = <FileTreeNode>[];
     for (final child in node.children) {
