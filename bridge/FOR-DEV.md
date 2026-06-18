@@ -243,9 +243,59 @@ hosting** (the phone connects directly to the bridge on the same network).
           an allowed command runs, a denied one is blocked, an
           `approveSession` decision is remembered for the rest of the
           session.
-        - ☐ **OpenCode / pi / Gemini:** add `respondApproval` + an interactive
-          invocation per CLI when their headless modes expose a permission
-          channel (verify per CLI).
+        - ☑ **Gemini CLI (real, BeforeTool hook) — DONE & validated
+          end-to-end** (`gemini` 0.45.2 + the `BeforeTool` hook contract
+          from `google-gemini/gemini-cli/docs/hooks`, the same shape Claude
+          Code uses — the CLI ships a `gemini hooks migrate` command to
+          import Claude hook settings). New `permissionMode: 'interactive'`
+          on the Gemini adapter; the bridge writes
+          `~/.uxnan/hooks/gemini-approval-hook.cjs` and (per turn) a
+          `<cwd>/.gemini/settings.json` with a `BeforeTool` hook
+          (`src/hooks/gemini-approval-hook.ts`). The hook POSTs every tool
+          the CLI wants to run to the bridge's local HTTP endpoint (URL +
+          token + threadId injected via per-turn env), which forwards the
+          request to the phone via the same `AgentManager.requestApproval`
+          round-trip Claude's `PreToolUse` hook uses. `--approval-mode` is
+          set to Gemini's `default` ("prompt for approval" in their
+          vocabulary) — the hook is the gate, NOT a TTY prompt, since
+          `-p` is non-interactive. Without the hook the prompt would
+          block Gemini forever; the bridge only injects it when the LAN
+          endpoint is resolvable (`lanEnabled: true` + LAN port bound),
+          otherwise the turn fails with a clear `agent not running`-style
+          error. Adapter-level:
+            - **`interactive` mode** → `--approval-mode default` + the hook
+              setup (idempotent per cwd; existing user settings are
+              preserved by merging the bridge's `uxnan-approval` entry).
+            - **`default` mode** → unchanged (`plan`, read-only).
+            - **`acceptEdits` / `bypassPermissions`** → unchanged
+              (`auto_edit` / `yolo`).
+          Covered by `test/adapters/gemini-adapter.test.ts` and
+          `test/hooks/gemini-approval-hook.test.ts`. **Validated end-to-end
+          against a real `gemini -p ... --approval-mode default` run with
+          a fake bridge in the loop** — the CLI invoked the hook for both
+          `update_topic` and `list_directory` and waited for the response
+          (the bridge received the POSTs with the right payload shape).
+        - ☐ **OpenCode / pi:** the headless modes the bridge currently
+          drives (`opencode run --format json` and `pi -p --mode json`)
+          DO NOT expose a permission channel — both CLIs run their tools
+          autonomously in headless mode and emit the tool events only
+          AFTER the tool has run, with no way to gate them from outside.
+          Adding real approvals here requires one of:
+            - **OpenCode:** driving the `opencode serve` HTTP server (a
+              full rewrite — the bridge would manage a per-thread
+              server-side session, NOT a one-shot CLI). Not currently
+              in scope; revisit if OpenCode ships a pre-tool protocol on
+              its headless `--run` entry.
+            - **pi:** driving the `--mode rpc` (or its long-lived TUI)
+              instead of the one-shot `--mode json`. The RPC mode is
+              two-way and could support a pre-tool request, but it
+              requires a meaningful refactor of the adapter and the
+              session model. Not currently in scope; revisit when pi
+              ships a stable pre-tool hook.
+          Until then, OpenCode/pi users get a `default` (plan) /
+          `acceptEdits` (auto-approve edits) /
+          `bypassPermissions` (auto-approve all) posture but no
+          per-action gate on the phone.
 - [x] **Turn image attachments** — `turn/send` accepts `attachments:
       TurnAttachment[]` and an **image-only** message (empty/omitted `text`).
       `src/agents/attachments.ts` materializes each inline image **inside the

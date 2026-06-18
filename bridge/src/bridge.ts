@@ -33,6 +33,7 @@ import { SessionRegistry } from './transport/session-registry.js';
 import { ThreadStore } from './conversation/thread-store.js';
 import { AgentManager } from './agents/agent-manager.js';
 import { writeClaudeApprovalHook } from './hooks/claude-approval-hook.js';
+import { writeGeminiApprovalHook } from './hooks/gemini-approval-hook.js';
 import { EchoAgentAdapter } from './adapters/echo-agent-adapter.js';
 import { OpenCodeAdapter } from './adapters/opencode-adapter.js';
 import { resolveOpenCodeBinary } from './adapters/resolve-opencode.js';
@@ -184,9 +185,10 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   const claudeInteractiveApprovals =
     (claudeSettings.interactiveApprovals ?? false) && config.lanEnabled;
   const hookState: { port?: number; token: string } = { token: randomUUID() };
-  const hookScriptPath = state.pathFor(join('hooks', 'claude-approval-hook.cjs'));
+  const claudeHookScriptPath = state.pathFor(join('hooks', 'claude-approval-hook.cjs'));
+  const geminiHookScriptPath = state.pathFor(join('hooks', 'gemini-approval-hook.cjs'));
   if (claudeInteractiveApprovals) {
-    void writeClaudeApprovalHook(hookScriptPath).catch((err: unknown) =>
+    void writeClaudeApprovalHook(claudeHookScriptPath).catch((err: unknown) =>
       logger.warn(`failed to write the Claude approval hook: ${String(err)}`),
     );
   }
@@ -206,7 +208,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
             interactiveApprovals: true,
             approvalHook: {
               token: hookState.token,
-              scriptPath: hookScriptPath,
+              scriptPath: claudeHookScriptPath,
               url: () =>
                 hookState.port !== undefined
                   ? `http://127.0.0.1:${hookState.port}/agent-hook/approval`
@@ -270,11 +272,36 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   // Gemini: real agent driven via `gemini -p --output-format stream-json` (see FOR-DEV.md).
   const geminiSettings = config.agents['gemini-cli'] ?? {};
   const gemini = resolveGeminiBinary(geminiSettings.binaryPath);
+  // Interactive approvals for Gemini: opt-in (`agents['gemini-cli'].
+  // interactiveApprovals: true`) and only when the LAN server is enabled (the
+  // hook POSTs to the bridge's local HTTP endpoint). The adapter writes a
+  // `<cwd>/.gemini/settings.json` with a `BeforeTool` hook — Gemini uses the
+  // same hook contract as Claude Code (the CLI ships `gemini hooks migrate`
+  // for that).
+  const geminiInteractiveApprovals =
+    (geminiSettings.interactiveApprovals ?? false) && config.lanEnabled;
+  if (geminiInteractiveApprovals) {
+    void writeGeminiApprovalHook(geminiHookScriptPath).catch((err: unknown) =>
+      logger.warn(`failed to write the Gemini approval hook: ${String(err)}`),
+    );
+  }
   agentManager.register(
     new GeminiAdapter({
       binaryPath: gemini.binaryPath,
       prependArgs: gemini.prependArgs,
       permissionMode: geminiSettings.permissionMode ?? 'acceptEdits',
+      ...(geminiInteractiveApprovals
+        ? {
+            approvalHook: {
+              token: hookState.token,
+              scriptPath: geminiHookScriptPath,
+              url: () =>
+                hookState.port !== undefined
+                  ? `http://127.0.0.1:${hookState.port}/agent-hook/approval`
+                  : undefined,
+            },
+          }
+        : {}),
       ...(geminiSettings.model !== undefined ? { defaultModel: geminiSettings.model } : {}),
     }),
     {

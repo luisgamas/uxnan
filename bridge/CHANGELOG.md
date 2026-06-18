@@ -24,6 +24,59 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   (the `item/commandExecution/requestApproval` elicitation round-trips to
   the phone, the bridge replies with the user's decision; an unknown
   elicitation is auto-rejected so the app-server does not hang).
+- **Gemini CLI real approvals via the `BeforeTool` hook** — the bridge's
+  Gemini adapter now opts into interactive approvals the same way Claude
+  Code does, with the same `requestApproval` round-trip the phone already
+  speaks (`turn/send { approvalResponse }`). Setting
+  `agents['gemini-cli'].interactiveApprovals: true` (gated on `lanEnabled`)
+  makes the bridge write `~/.uxnan/hooks/gemini-approval-hook.cjs` (a
+  dependency-free Node script that POSTs each `BeforeTool` event to the
+  bridge's local HTTP endpoint) AND, per turn, a `<cwd>/.gemini/
+  settings.json` with a `BeforeTool` hook pointing at it. `--approval-mode`
+  is set to Gemini's `default` ("prompt for approval" in their
+  vocabulary); the hook is the gate, NOT a TTY prompt (since `-p` is
+  non-interactive). Without the hook the prompt would block the CLI
+  forever; the adapter only injects the hook when the LAN endpoint is
+  resolvable, otherwise the turn fails with a clear "agent not running"-
+  style error. New `permissionMode: 'interactive'` value on
+  `GeminiAdapterOptions` (the other modes — `default`/`plan`,
+  `acceptEdits`/`auto_edit`, `bypassPermissions`/`yolo` — are unchanged).
+  Existing user settings (other hooks, theme, …) are preserved: the
+  bridge MERGES its `uxnan-approval` entry under
+  `hooks.BeforeTool[*]`. Gemini uses the same hook contract as Claude
+  Code (the CLI ships a `gemini hooks migrate` command that imports
+  Claude hook settings). Covered by `test/adapters/gemini-adapter.test.ts`
+  (mode mapping, env injection, `<cwd>/.gemini/settings.json` write) and
+  `test/hooks/gemini-approval-hook.test.ts` (allow/deny/no-URL/
+  unreachable paths). **Validated end-to-end against a real
+  `gemini -p ... --approval-mode default` run with a fake bridge in the
+  loop** — the CLI invoked the hook for both `update_topic` and
+  `list_directory` and waited for the response (the bridge received the
+  POSTs with the right payload shape). See `bridge/FOR-DEV.md` for the
+  per-adapter status; **OpenCode / pi remain documented as gaps** —
+  their headless modes don't expose a pre-tool protocol the bridge can
+  intercept, so no per-action gate is possible without driving their
+  server/RPC entry points (a much bigger refactor; tracked separately).
+
+### Changed
+- **Codex real approvals via the `codex app-server` turn protocol** — the
+  bridge's Codex adapter is refactored from one-shot `codex exec --json` to
+  a **long-lived** `codex app-server` JSON-RPC process. The new path speaks
+  the full turn protocol (`initialize` → `thread/start` → `turn/start`) and
+  surfaces the approval elicitations the desktop app uses — `applyPatch
+  Approval`, `execCommandApproval`, plus the v2 `item/commandExecution/
+  requestApproval`, `item/fileChange/requestApproval`, `item/permissions/
+  requestApproval`, and `mcpServer/elicitation/request`. Every elicitation
+  is mapped to the bridge's generic `requestApproval` round-trip
+  (architecture/02a §6.2), so the phone's interactive approval card just
+  works for Codex. A user's `approveSession` decision becomes a session-
+  wide `approved_for_session`; `approve` → `approved`; `reject` → `denied`.
+  Verified end-to-end against `codex-cli` 0.139.0: handshake, turn
+  lifecycle, deltas, reasoning, blocks, usage, errors, app-server crash
+  mid-turn, `turn/interrupt` cancellation, and the approval elicitations
+  (the `item/commandExecution/requestApproval` elicitation round-trips to
+  the phone, the bridge replies with the user's decision; an unknown
+  elicitation is auto-rejected so the app-server does not hang).
 
 ### Changed
 - **Codex `permissionMode` default switched from `acceptEdits` to

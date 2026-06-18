@@ -67,7 +67,7 @@
 | **Per-model run-option knobs** (data-driven, `AgentModel.options`) | ✅ Hecho | Renderizado genérico (`enum`/`toggle`); el bridge anuncia por modelo |
 | **Context-usage indicator** (porcentaje si el modelo tiene ventana; token count si no; **0 baseline** para agentes con `reportsContextUsage`) | ✅ Hecho | `usage { tokens, contextWindow? }` en `turn/completed` |
 | **Per-agent `auth/status`** (banner en conversación, red dot en lista, "Check sign-in" en nueva-conversación, auto-refresh en resume) | ✅ Hecho | Sanitizado (nunca tokens) |
-| **Interactive approval** (Approve / Reject / "allow session") | ✅ Hecho (app side) | El bridge emite un `approval` content block; el móvil responde con `turn/send { approvalResponse }`; **Echo demo + Claude Code opt-in** funcionan end-to-end |
+| **Interactive approval** (Approve / Reject / "allow session", persistido) | ✅ Hecho (app + bridge) | El bridge emite un `approval` content block; el móvil responde con `turn/send { approvalResponse }`. La decisión se persiste en SharedPreferences y la card queda en estado "Decision recorded" tras scroll/restart. **Echo demo + Claude Code (`PreToolUse` hook) + Codex (`codex app-server` elicitations) + Gemini (`BeforeTool` hook) funcionan end-to-end**; OpenCode/pi documentados como gap (sus modos headless no exponen protocolo pre-tool). |
 | **Threads por PC + connection-targeted live actions** | ✅ Hecho | `Thread.deviceId`; todas las acciones live apuntan al PC con canal real; browsing es read-only |
 | **Acciones por thread** (rename, archive/unarchive, delete, copy id) | ✅ Hecho | `thread/rename|archive|unarchive|delete`; archival en pantalla separada |
 | **Remove device** (unpair) | ✅ Hecho | Envía `bridge/removeTrustedDevice` con el id del teléfono, luego borra local |

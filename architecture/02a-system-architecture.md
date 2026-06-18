@@ -211,10 +211,10 @@ interface AgentCapabilities {
 
 // Agentes actualmente implementados (ver bridge/CHANGELOG.md):
 //   ✅ opencode  (default; per-turn `opencode run --format json`; --session para continuidad)
-//   ✅ claude-code (`claude -p --output-format stream-json`; --resume)
-//   ✅ codex     (`codex app-server`; long-lived JSON-RPC over stdio; `thread/start`/`turn/start` + `applyPatchApproval`/`execCommandApproval` elicitations)
-//   ✅ pi-agent  (`pi -p --mode json`; --session-id)
-//   ✅ gemini-cli (`gemini -p --output-format stream-json`; --session-id + --resume)
+//   ✅ claude-code (`claude -p --output-format stream-json`; --resume; **PreToolUse hook** real approvals)
+//   ✅ codex     (`codex app-server`; long-lived JSON-RPC over stdio; `thread/start`/`turn/start` + every elicitation)
+//   ✅ pi-agent  (`pi -p --mode json`; --session-id; **no headless pre-tool protocol — see FOR-DEV**)
+//   ✅ gemini-cli (`gemini -p --output-format stream-json`; --session-id + --resume; **BeforeTool hook** real approvals)
 //   ⏳ aider     (FOR-DEV → recipe "Adding the next agent")
 ```
 

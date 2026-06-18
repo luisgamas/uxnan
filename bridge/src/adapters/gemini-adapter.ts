@@ -32,11 +32,24 @@
  *   - No reasoning/thinking flag is exposed by the CLI, so no reasoning knob is
  *     advertised (FOR-DEV: revisit if a `--thinking`-style flag appears).
  *   - `update_topic` is a Gemini-internal bookkeeping tool and is filtered out.
+ *   - **Interactive approvals** (opt-in, see `interactiveApprovals` below): the
+ *     adapter writes a `<cwd>/.gemini/settings.json` with a `BeforeTool` hook
+ *     (gemini-cli uses the same hook contract as Claude Code; the CLI ships a
+ *     `gemini hooks migrate` command that imports Claude hook settings). The
+ *     hook round-trips every tool to the bridge's local HTTP endpoint, which
+ *     forwards the decision to the phone (`turn/send { approvalResponse }`).
+ *     `--approval-mode` is set to Gemini's `default` (which means "prompt for
+ *     approval" in Gemini's vocabulary — the hook is the gate, NOT a TTY
+ *     prompt, since `-p` is non-interactive). Without the hook the prompt would
+ *     block Gemini forever; the bridge only injects it when the endpoint is
+ *     resolvable. See `gemini-approval-hook.ts` for the script.
  *
  * See bridge/FOR-DEV.md (agent adapters) and bridge/docs/testing.md.
  */
 import { randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import type {
   AgentCapabilities,
   AgentConfig,
@@ -146,14 +159,30 @@ const DEFAULT_GEMINI_MODEL = 'auto';
  * Approval posture passed to `gemini --approval-mode`:
  *  - `default`           → `plan` (read-only; no edits/commands — safe headless);
  *  - `acceptEdits`       → `auto_edit` (auto-approve edit tools);
- *  - `bypassPermissions` → `yolo` (auto-approve all tools).
+ *  - `bypassPermissions` → `yolo` (auto-approve all tools);
+ *  - `interactive`       → Gemini's `default` ("prompt for approval"); the bridge
+ *                          injects a `BeforeTool` hook so every tool round-trips
+ *                          to the phone (requires `agents['gemini-cli'].
+ *                          interactiveApprovals: true` + the bridge's LAN server).
  */
-export type GeminiPermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions';
+export type GeminiPermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'interactive';
 
 function approvalModeFor(mode: GeminiPermissionMode): string {
   if (mode === 'acceptEdits') return 'auto_edit';
   if (mode === 'bypassPermissions') return 'yolo';
+  if (mode === 'interactive') return 'default';
   return 'plan';
+}
+
+/** True when this adapter should inject the BeforeTool hook (i.e. the bridge
+ * has a resolvable approval endpoint AND the user opted in). */
+function needsApprovalHook(
+  mode: GeminiPermissionMode,
+  hook: { token: string; scriptPath: string; url: () => string | undefined } | undefined,
+): boolean {
+  if (mode !== 'interactive') return false;
+  if (!hook) return false;
+  return hook.url() !== undefined;
 }
 
 export interface GeminiAdapterOptions {
@@ -165,6 +194,15 @@ export interface GeminiAdapterOptions {
   defaultModel?: string;
   /** Approval posture (default `acceptEdits`). */
   permissionMode?: GeminiPermissionMode;
+  /**
+   * The local approval-hook endpoint + token + script path used when
+   * `permissionMode === 'interactive'`. The adapter writes a
+   * `<cwd>/.gemini/settings.json` whose `BeforeTool` hook POSTs to this
+   * endpoint; the bridge forwards each call to the phone and HOLDS the
+   * response until the user answers (or the 5-min timeout fires → deny).
+   * `url()` is lazy because the LAN port is known only after `startLan`.
+   */
+  approvalHook?: { token: string; scriptPath: string; url: () => string | undefined };
   /** Injected spawn function (tests). */
   spawnFn?: SpawnFn;
 }
@@ -273,12 +311,17 @@ export class GeminiAdapter extends BaseAgentAdapter {
   readonly #prependArgs: string[];
   readonly #defaultModel: string;
   readonly #permissionMode: GeminiPermissionMode;
+  readonly #approvalHook:
+    | { token: string; scriptPath: string; url: () => string | undefined }
+    | undefined;
   readonly #spawn: SpawnFn;
   /** threadId → Gemini session id, for `--resume` continuity. */
   readonly #sessionByThread = new Map<string, string>();
   /** turnId → in-flight run, for cancellation. */
   readonly #active = new Map<string, ActiveRun>();
   #defaultCwd = process.cwd();
+  /** cwd's we've already written `.gemini/settings.json` into (idempotent). */
+  readonly #hookInstalledCwd = new Set<string>();
 
   /** Native Gemini session id for a thread (continuity + history-fallback locator). */
   nativeSessionId(threadId: string): string | undefined {
@@ -291,6 +334,7 @@ export class GeminiAdapter extends BaseAgentAdapter {
     this.#prependArgs = options.prependArgs ?? [];
     this.#defaultModel = options.defaultModel ?? DEFAULT_GEMINI_MODEL;
     this.#permissionMode = options.permissionMode ?? 'acceptEdits';
+    this.#approvalHook = options.approvalHook;
     this.#spawn = options.spawnFn ?? defaultSpawn;
   }
 
@@ -309,13 +353,56 @@ export class GeminiAdapter extends BaseAgentAdapter {
     return Promise.resolve();
   }
 
-  sendTurn(options: SendTurnOptions): Promise<void> {
+  async sendTurn(options: SendTurnOptions): Promise<void> {
     const { threadId, turnId, text } = options;
     const cwd = options.cwd ?? this.#defaultCwd;
     const model = options.service ?? this.#defaultModel;
     const resumeId = this.#sessionByThread.get(threadId);
     // First turn: create a session under a UUID we own; later turns resume it.
     const newSessionId = resumeId ? undefined : randomUUID();
+
+    // Interactive approvals: when `permissionMode === 'interactive'` and the
+    // bridge has a resolvable hook endpoint, write `<cwd>/.gemini/settings.json`
+    // with a `BeforeTool` hook that round-trips every tool to the phone. The
+    // hook script itself was written at bridge startup
+    // (`writeGeminiApprovalHook`). Idempotent per cwd so we don't re-write on
+    // every turn.
+    //
+    // We AWAIT the install before spawning the CLI so a misconfigured cwd (or
+    // a transient EACCES) fails the turn with a clear error — and so tests
+    // can assert on the written file synchronously after sendTurn resolves.
+    // A failure to write the settings fails the turn (no fallback) so the
+    // phone sees a clear "hook not installed" error instead of a CLI that
+    // blocks on a non-existent prompt gate.
+    const useHook = needsApprovalHook(this.#permissionMode, this.#approvalHook);
+    if (useHook) {
+      try {
+        await this.#installHook(cwd);
+      } catch (err) {
+        this.emit({
+          type: 'turn_error',
+          threadId,
+          turnId,
+          data: {
+            text: `failed to install Gemini approval hook (${errorMessage(err)}); interactive approvals unavailable this turn`,
+          },
+        });
+        return;
+      }
+    } else if (this.#permissionMode === 'interactive') {
+      // The user opted into interactive approvals but the bridge can't wire
+      // the hook (LAN server not started, no token, etc.). Fail the turn so
+      // the phone knows why the approval is not interactive.
+      this.emit({
+        type: 'turn_error',
+        threadId,
+        turnId,
+        data: {
+          text: 'gemini interactive approvals requested but the bridge hook URL is unavailable. Enable `lanEnabled` and ensure the bridge has bound its LAN server, or set `agents.gemini-cli.permissionMode` to a non-interactive value.',
+        },
+      });
+      return;
+    }
 
     const args = [
       '--output-format',
@@ -331,9 +418,23 @@ export class GeminiAdapter extends BaseAgentAdapter {
     else if (newSessionId) args.push('--session-id', newSessionId);
     args.push('-p', text);
 
+    // Pass the bridge endpoint + token to the hook via env so the script can
+    // POST each tool invocation to the bridge's local HTTP endpoint. The
+    // threadId is what the hook embeds in the request, so the bridge can
+    // route the response back to the right thread.
+    const spawnExtra = useHook && this.#approvalHook
+      ? {
+          env: {
+            UXNAN_HOOK_URL: this.#approvalHook.url() ?? '',
+            UXNAN_HOOK_TOKEN: this.#approvalHook.token,
+            UXNAN_HOOK_THREAD_ID: threadId,
+          },
+        }
+      : undefined;
+
     let child: SpawnedProcess;
     try {
-      child = this.#spawn(this.#binaryPath, [...this.#prependArgs, ...args], cwd);
+      child = this.#spawn(this.#binaryPath, [...this.#prependArgs, ...args], cwd, spawnExtra);
     } catch (err) {
       this.emit({
         type: 'turn_error',
@@ -341,7 +442,7 @@ export class GeminiAdapter extends BaseAgentAdapter {
         turnId,
         data: { text: `failed to launch gemini: ${errorMessage(err)}` },
       });
-      return Promise.resolve();
+      return;
     }
 
     this.#active.set(turnId, { child, threadId });
@@ -445,8 +546,6 @@ export class GeminiAdapter extends BaseAgentAdapter {
         this.emit({ type: 'turn_completed', threadId, turnId, data: { text: full } });
       }
     });
-
-    return Promise.resolve();
   }
 
   cancelTurn(threadId: string, turnId: string): Promise<void> {
@@ -457,6 +556,91 @@ export class GeminiAdapter extends BaseAgentAdapter {
       this.emit({ type: 'turn_aborted', threadId, turnId });
     }
     return Promise.resolve();
+  }
+
+  /**
+   * Write (or overwrite) `<cwd>/.gemini/settings.json` with a `BeforeTool` hook
+   * pointing at the bridge's local approval endpoint. Idempotent per cwd — the
+   * hook only needs to exist in the workspace, not per turn. Existing user
+   * settings (other hooks, theme, …) are preserved: we MERGE the `hooks` map
+   * over whatever is already there. The bridge's hook is named `uxnan-approval`
+   * so it's easy to identify and disable from `/hooks disable uxnan-approval`.
+   *
+   * The actual round-trip is handled by the bridge's central
+   * `AgentManager.requestApproval` (the same flow Claude's `PreToolUse` hook
+   * uses — the gemini hook POSTs to the same `POST /agent-hook/approval`
+   * endpoint). The adapter does NOT need its own `respondApproval` for the
+   * hook flow: the bridge resolves the pending approval and returns the
+   * `allow`/`deny` decision via the HTTP response.
+   */
+  async #installHook(cwd: string): Promise<void> {
+    const key = this.#hookKey(cwd);
+    if (this.#hookInstalledCwd.has(key)) return;
+    const hook = this.#approvalHook;
+    if (!hook) return;
+    const url = hook.url();
+    if (!url) return;
+    const dir = join(cwd, '.gemini');
+    const path = join(dir, 'settings.json');
+    let existing: Record<string, unknown> = {};
+    try {
+      const { readFile } = await import('node:fs/promises');
+      const raw = await readFile(path, 'utf-8');
+      const parsed: unknown = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        existing = parsed as Record<string, unknown>;
+      }
+    } catch {
+      // File doesn't exist or is unreadable / malformed — start fresh.
+    }
+    const hookEntry = {
+      hooks: [
+        {
+          type: 'command',
+          name: 'uxnan-approval',
+          command: `node "${hook.scriptPath}"`,
+        },
+      ],
+    };
+    // Wrap the entry under a matcher key (Gemini uses regex matchers on the
+    // tool name; `.*` matches every tool — the bridge decides per-call).
+    const matchers = existing.hooks && typeof existing.hooks === 'object'
+      ? (existing.hooks as Record<string, unknown>)
+      : {};
+    const beforeToolRaw = matchers['BeforeTool'];
+    const beforeTool = Array.isArray(beforeToolRaw) ? (beforeToolRaw as unknown[]) : [];
+    // Drop any prior uxnan-approval entry so re-installs don't duplicate.
+    const filtered = beforeTool.filter((entry) => {
+      if (!entry || typeof entry !== 'object') return true;
+      const hooks = (entry as Record<string, unknown>)['hooks'];
+      if (!Array.isArray(hooks)) return true;
+      return !hooks.some(
+        (h: unknown) =>
+          h &&
+          typeof h === 'object' &&
+          (h as Record<string, unknown>)['name'] === 'uxnan-approval',
+      );
+    });
+    filtered.push({ matcher: '.*', ...hookEntry });
+    const next = {
+      ...existing,
+      hooks: {
+        ...(matchers ?? {}),
+        BeforeTool: filtered,
+      },
+    };
+    await mkdir(dir, { recursive: true });
+    await writeFile(path, `${JSON.stringify(next, null, 2)}\n`, 'utf-8');
+    this.#hookInstalledCwd.add(key);
+  }
+
+  /**
+   * Normalize a cwd for the dedup set so Windows mixed slashes / case
+   * differences don't make us rewrite the same file. Best-effort — the
+   * Windows file system is case-insensitive but Node strings are not.
+   */
+  #hookKey(cwd: string): string {
+    return process.platform === 'win32' ? cwd.toLowerCase() : cwd;
   }
 
   /**
