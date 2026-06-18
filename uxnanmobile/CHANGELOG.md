@@ -6,6 +6,53 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- **File viewer / file browser / git screen — `NeTopBar` no longer
+  overflows on phone widths.** All three screens overlaid the bar with
+  `Positioned(top: 0, left: 0, right: 0, child: NeTopBar(...))` inside
+  a `Scaffold(body: Stack(children: [...]))` that defaulted to
+  `StackFit.loose`. With loose fit the stack's own size is the union
+  of its non-Positioned children — and on the file viewer the body
+  is a `MarkdownBody` whose intrinsic width is much smaller than the
+  screen, so the Stack collapsed to ~131 dp on a 360 dp viewport. The
+  Positioned inherited that narrow width (`left: 0, right: 0` on a
+  zero-width stack gives the bar zero horizontal room), the `Row` of
+  leading + title + actions tried to fit 4 × 48 dp `IconSurface`s
+  into ~131 dp, and the user saw a `RenderFlex overflowed by 86/73
+  pixels` exception. Switching all three screens to
+  `Stack(fit: StackFit.expand, children: [...])` makes the stack
+  fill the Scaffold body, so the bar gets the full row width.
+  A regression test (`file_viewer_screen_test.dart`) pumps the viewer
+  with three real markdown samples (CLAUDE.md → "AGENTS.md", a full
+  README with headings + lists + code blocks, and a long paragraph)
+  on a 1080×2160 / 3.0 viewport and asserts no captured layout
+  exceptions.
+- **File viewer chrome — bar gradient softened.** The bar's
+  `LinearGradient` peaked at `surface` (opaque) which read as a
+  solid app-bar band on top of the file tree. Now peaks at
+  `surface.withValues(alpha: 0.85)` and dissolves faster
+  (`0.55 → 0`) so the bar feels like a *veil* over the content, not
+  a solid panel. Affects every screen that uses `NeTopBar` (file
+  browser, file viewer, git screen, conversation, branch picker) so
+  the whole app now shares the lighter bar tone.
+- **`GitScreen` now uses `BouncingScrollPhysics`.** The
+  `CustomScrollView` in the file list was missing the `physics:`
+  argument and so fell back to `ClampingScrollPhysics` on Android —
+  the user couldn't see the iOS-style overscroll bounce the rest of
+  the app uses. Added `physics: const BouncingScrollPhysics(parent:
+  AlwaysScrollableScrollPhysics())` to match `ConversationScreen`,
+  `FileBrowserScreen`, and `NeScaffold`.
+- **Hardcoded colors replaced with theme tokens.** `_PrimaryActionButton`
+  (git screen) used a raw `Colors.white` literal for the busy spinner;
+  replaced with `colors.onPrimary` (the semantic token that already
+  drives the icon and the surface). `_MarkdownBody` (file viewer)
+  used raw `Color(0xFF282C34)` / `Color(0xFFFAFAFA)` literals for
+  the codeblock background; replaced with
+  `colors.surfaceContainerHighest` / `colors.surfaceContainerHigh`
+  so the block follows the active M3 scheme. New rule going forward:
+  never inline a hex literal in a widget — always reference
+  `UxnanColors.*` or `Theme.of(context).colorScheme.*`.
+
 ### Changed
 - **Git status now paints newly expanded subdirectories.** The file
   browser only applied `git/status` to children that were loaded in

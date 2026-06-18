@@ -43,12 +43,17 @@ class NeTopBar extends StatelessWidget {
     return Container(
       padding: EdgeInsets.only(top: topInset),
       decoration: BoxDecoration(
+        // A *subtle* scroll veil: the surface is mostly transparent
+        // (peaks at 0.85 alpha) so the content underneath reads through
+        // the bar instead of looking like a solid app-bar band. The top
+        // is just opaque enough to give the back / actions a stable
+        // background; the bottom dissolves into the surface.
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            colors.surface,
             colors.surface.withValues(alpha: 0.85),
+            colors.surface.withValues(alpha: 0.55),
             colors.surface.withValues(alpha: 0),
           ],
           stops: const [0, 0.6, 1],

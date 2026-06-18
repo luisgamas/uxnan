@@ -81,25 +81,60 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
 
     return Scaffold(
       body: Stack(
+        // StackFit.expand keeps the bar at the full row width — the
+        // default loose fit sizes the stack to its non-Positioned child
+        // (the file tree) which reports a narrow intrinsic width and
+        // starves the NeTopBar's actions row of horizontal space,
+        // triggering a RenderFlex overflow in the bar's Row.
+        fit: StackFit.expand,
         children: [
           Column(
             children: [
               Expanded(
-                child: rootAsync.when(
-                  data: (FileTreeNode? root) => _buildBody(
-                    context,
-                    root,
-                    showExtension,
-                    showHidden,
-                  ),
-                  loading: () => Padding(
-                    padding: EdgeInsets.only(top: topInset),
-                    child: const Center(child: CircularProgressIndicator()),
-                  ),
-                  error: (Object error, StackTrace _) => Padding(
-                    padding: EdgeInsets.only(top: topInset),
-                    child: _ErrorBody(message: '$error'),
-                  ),
+                child: Stack(
+                  children: [
+                    // The content surface — the actual scroll view, the
+                    // error state, or the loading spinner, depending on the
+                    // stream's current state.
+                    Positioned.fill(
+                      child: rootAsync.when(
+                        data: (FileTreeNode? root) => _buildList(
+                          context,
+                          root,
+                          showExtension,
+                          showHidden,
+                        ),
+                        loading: () => const Center(
+                          child: CircularProgressIndicator(),
+                        ),
+                        error: (Object error, StackTrace _) => _ErrorBody(
+                          message: '$error',
+                        ),
+                      ),
+                    ),
+                    // Bottom scroll veil mirroring the top bar's: the last
+                    // rows fade into the surface just above the status bar.
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      child: IgnorePointer(
+                        child: Container(
+                          height: UxnanSpacing.xl,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                colors.surface.withValues(alpha: 0),
+                                colors.surface,
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
               _StatusBar(cwd: widget.cwd),
@@ -164,14 +199,15 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
     );
   }
 
-  Widget _buildBody(
+  /// Renders the actual tree as a `CustomScrollView`. Errors and loading are
+  /// handled by the caller; this method assumes the tree is ready to display.
+  Widget _buildList(
     BuildContext context,
     FileTreeNode? root,
     bool showExtension,
     bool showHidden,
   ) {
     final l10n = AppLocalizations.of(context);
-    final colors = Theme.of(context).colorScheme;
     final topInset = NeTopBar.preferredHeight(context);
     final manager = ref.read(fileBrowserManagerProvider);
 
@@ -200,79 +236,53 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
     final tiles = <_TileEntry>[];
     _walk(root, 0, showHidden: showHidden, into: tiles);
 
-    return Stack(
-      children: [
-        GestureDetector(
-          behavior: HitTestBehavior.translucent,
-          onTap: () => FocusScope.of(context).unfocus(),
-          child: CustomScrollView(
-            // BouncingScrollPhysics + AlwaysScrollable is the same combo
-            // `NeScaffold` uses, so the list feels native on both iOS and
-            // Android and the user can always drag-to-refresh even when the
-            // tree fits on a single screen.
-            physics: const BouncingScrollPhysics(
-              parent: AlwaysScrollableScrollPhysics(),
-            ),
-            slivers: [
-              SliverToBoxAdapter(
-                child: SizedBox(height: topInset),
-              ),
-              SliverList.builder(
-                itemCount: tiles.length,
-                itemBuilder: (context, index) {
-                  final entry = tiles[index];
-                  return FileTreeTile(
-                    node: entry.node,
-                    depth: entry.depth,
-                    showExtension: showExtension,
-                    onTap: () {
-                      if (entry.node.isDir) {
-                        unawaited(
-                          manager.toggleDirectory(widget.cwd, entry.node.path),
-                        );
-                      } else {
-                        unawaited(
-                          FileViewerScreen.push(
-                            context,
-                            cwd: widget.cwd,
-                            path: entry.node.path,
-                            node: entry.node,
-                          ),
-                        );
-                      }
-                    },
-                  );
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: CustomScrollView(
+        // BouncingScrollPhysics + AlwaysScrollable is the same combo
+        // `NeScaffold` and `ConversationScreen` use, so the list feels
+        // native on both iOS and Android and the user can always
+        // drag-to-refresh even when the tree fits on a single screen.
+        physics: const BouncingScrollPhysics(
+          parent: AlwaysScrollableScrollPhysics(),
+        ),
+        slivers: [
+          SliverToBoxAdapter(
+            child: SizedBox(height: topInset),
+          ),
+          SliverList.builder(
+            itemCount: tiles.length,
+            itemBuilder: (context, index) {
+              final entry = tiles[index];
+              return FileTreeTile(
+                node: entry.node,
+                depth: entry.depth,
+                showExtension: showExtension,
+                onTap: () {
+                  if (entry.node.isDir) {
+                    unawaited(
+                      manager.toggleDirectory(widget.cwd, entry.node.path),
+                    );
+                  } else {
+                    unawaited(
+                      FileViewerScreen.push(
+                        context,
+                        cwd: widget.cwd,
+                        path: entry.node.path,
+                        node: entry.node,
+                      ),
+                    );
+                  }
                 },
-              ),
-              const SliverToBoxAdapter(
-                child: SizedBox(height: UxnanSpacing.lg),
-              ),
-            ],
+              );
+            },
           ),
-        ),
-        // Bottom scroll veil mirroring the top bar's: the last rows fade into
-        // the surface just above the status bar.
-        Positioned(
-          left: 0,
-          right: 0,
-          bottom: 0,
-          child: IgnorePointer(
-            child: Container(
-              height: UxnanSpacing.xl,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    colors.surface.withValues(alpha: 0),
-                    colors.surface,
-                  ],
-                ),
-              ),
-            ),
+          const SliverToBoxAdapter(
+            child: SizedBox(height: UxnanSpacing.lg),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 

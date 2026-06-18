@@ -120,6 +120,12 @@ class _FileViewerScreenState extends ConsumerState<FileViewerScreen> {
 
     return Scaffold(
       body: Stack(
+        // StackFit.expand forces the bar to the full row width — the
+        // default loose fit would size the stack to its non-Positioned
+        // child (the markdown body) which reports a narrow intrinsic
+        // width and starves the NeTopBar's actions row of horizontal
+        // space, triggering a RenderFlex overflow in the bar's Row.
+        fit: StackFit.expand,
         children: [
           Padding(
             padding: EdgeInsets.only(top: topInset),
@@ -369,9 +375,15 @@ class _ImageBody extends StatelessWidget {
   }
 }
 
-/// Markdown body — `MarkdownBody` from `flutter_markdown` (read-only, styled
-/// preview). Scrolled via a `Markdown(controller: …, …)` so it sits inside the
-/// page's scrollable surface.
+/// Markdown body — `MarkdownBody` (from `flutter_markdown`) wrapped in a
+/// `SingleChildScrollView` with `BouncingScrollPhysics`. Using `MarkdownBody`
+/// instead of `Markdown` is deliberate: `Markdown` carries its own scroll
+/// view + a `Column` of `Wrap`s that occasionally overflow horizontally
+/// when the parent `NeTopBar` is also constrained (the wrap tries to size
+/// against the constraint chain through the parent's Row, and the
+/// `NeTopBar`'s actions end up off-screen with a "RenderFlex overflowed"
+/// exception). `MarkdownBody` renders directly into the surrounding scroll
+/// surface and stays at the correct width.
 class _MarkdownBody extends StatelessWidget {
   const _MarkdownBody({required this.text});
   final String text;
@@ -380,30 +392,35 @@ class _MarkdownBody extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Markdown(
-      data: text,
-      padding: const EdgeInsets.fromLTRB(
-        UxnanSpacing.lg,
-        UxnanSpacing.sm,
-        UxnanSpacing.lg,
-        UxnanSpacing.lg,
+    return SingleChildScrollView(
+      physics: const BouncingScrollPhysics(
+        parent: AlwaysScrollableScrollPhysics(),
       ),
-      selectable: true,
-      styleSheet: MarkdownStyleSheet(
-        p: Theme.of(context).textTheme.bodyMedium,
-        h1: Theme.of(context).textTheme.headlineMedium,
-        h2: Theme.of(context).textTheme.titleLarge,
-        h3: Theme.of(context).textTheme.titleMedium,
-        code: UxnanTypography.codeBody.copyWith(
-          backgroundColor: colors.surfaceContainerHigh,
-        ),
-        codeblockDecoration: BoxDecoration(
-          color: isDark ? const Color(0xFF282C34) : const Color(0xFFFAFAFA),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        blockquoteDecoration: BoxDecoration(
-          border: Border(
-            left: BorderSide(color: colors.outline, width: 3),
+      child: MarkdownBody(
+        data: text,
+        selectable: true,
+        styleSheet: MarkdownStyleSheet(
+          p: Theme.of(context).textTheme.bodyMedium,
+          h1: Theme.of(context).textTheme.headlineMedium,
+          h2: Theme.of(context).textTheme.titleLarge,
+          h3: Theme.of(context).textTheme.titleMedium,
+          code: UxnanTypography.codeBody.copyWith(
+            backgroundColor: colors.surfaceContainerHigh,
+          ),
+          // Codeblocks use the same surface tone as elevated surfaces
+          // (surfaceContainerHighest in dark, surfaceContainerHigh in
+          // light) — never raw hex literals. Keeps the M3 surface
+          // hierarchy intact.
+          codeblockDecoration: BoxDecoration(
+            color: isDark
+                ? colors.surfaceContainerHighest
+                : colors.surfaceContainerHigh,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          blockquoteDecoration: BoxDecoration(
+            border: Border(
+              left: BorderSide(color: colors.outline, width: 3),
+            ),
           ),
         ),
       ),

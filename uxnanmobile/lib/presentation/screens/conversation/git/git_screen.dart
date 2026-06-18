@@ -749,6 +749,13 @@ class _GitScreenState extends ConsumerState<GitScreen> {
     final topInset = NeTopBar.preferredHeight(context);
     return Scaffold(
       body: Stack(
+        // StackFit.expand keeps the bar at the full row width — the
+        // default loose fit sizes the stack to its non-Positioned child
+        // (the file list / commit composer column) which can report a
+        // narrow intrinsic width and starve the NeTopBar's actions row
+        // of horizontal space, triggering a RenderFlex overflow in the
+        // bar's Row.
+        fit: StackFit.expand,
         children: [
           Column(
             children: [
@@ -759,6 +766,13 @@ class _GitScreenState extends ConsumerState<GitScreen> {
                       behavior: HitTestBehavior.translucent,
                       onTap: () => FocusScope.of(context).unfocus(),
                       child: CustomScrollView(
+                        // Bouncing + always-scrollable matches `NeScaffold`
+                        // and the file browser so the screen feels native
+                        // on iOS and the user can drag-to-refresh even when
+                        // the content fits the viewport.
+                        physics: const BouncingScrollPhysics(
+                          parent: AlwaysScrollableScrollPhysics(),
+                        ),
                         slivers: [
                           // Spacer so first content clears the overlaid bar.
                           SliverToBoxAdapter(
@@ -2331,22 +2345,21 @@ class _PrimaryActionButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final enabled = onPressed != null;
+    // The spinner's colour follows the foreground token (onPrimary) so it
+    // stays legible whether the button is enabled or disabled — never a
+    // raw `Colors.white` literal.
+    final foreground =
+        enabled ? colors.onPrimary : colors.onPrimary.withValues(alpha: 0.5);
     final spinner = busy
-        ? const SizedBox(
+        ? SizedBox(
             width: 16,
             height: 16,
             child: CircularProgressIndicator(
               strokeWidth: 2,
-              color: Colors.white,
+              valueColor: AlwaysStoppedAnimation<Color>(foreground),
             ),
           )
-        : Icon(
-            icon,
-            size: 20,
-            color: enabled
-                ? colors.onPrimary
-                : colors.onPrimary.withValues(alpha: 0.5),
-          );
+        : Icon(icon, size: 20, color: foreground);
     return Tooltip(
       message: tooltip,
       child: GestureDetector(
