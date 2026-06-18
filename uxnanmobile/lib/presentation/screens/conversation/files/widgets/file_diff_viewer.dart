@@ -14,16 +14,12 @@ class FileDiffViewer extends StatelessWidget {
   /// Creates a [FileDiffViewer].
   const FileDiffViewer({
     required this.diff,
-    required this.topInset,
     required this.path,
     super.key,
   });
 
   /// The unified diff text (`git/diff { path }` result).
   final String diff;
-
-  /// Top inset to clear the overlaid NeTopBar.
-  final double topInset;
 
   /// Workspace-relative file path (for the small header above the diff).
   final String path;
@@ -32,54 +28,52 @@ class FileDiffViewer extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final lines = _renderableLines(diff);
-    return Padding(
-      padding: EdgeInsets.only(top: topInset),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.vertical,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _DiffHeader(
-                path: path,
-                added: _count(lines, '+'),
-                deleted: _count(lines, '-')),
-            if (lines.isEmpty)
-              Padding(
-                padding: const EdgeInsets.all(UxnanSpacing.lg),
-                child: Text(
-                  'No textual changes to show.',
-                  style: UxnanTypography.codeSmall.copyWith(
-                    color: colors.onSurfaceVariant,
-                  ),
-                ),
-              )
-            else
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: IntrinsicWidth(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      for (final line in lines)
-                        ColoredBox(
-                          color: _lineColor(line),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: UxnanSpacing.md,
-                              vertical: 1,
-                            ),
-                            child: Text(
-                              line.isEmpty ? ' ' : line,
-                              style: UxnanTypography.codeBody,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
+    return SingleChildScrollView(
+      scrollDirection: Axis.vertical,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _DiffHeader(
+            path: path,
+            added: _count(lines, '+'),
+            deleted: _count(lines, '-'),
+          ),
+          if (lines.isEmpty)
+            Padding(
+              padding: const EdgeInsets.all(UxnanSpacing.lg),
+              child: Text(
+                'No textual changes to show.',
+                style: UxnanTypography.codeSmall.copyWith(
+                  color: colors.onSurfaceVariant,
                 ),
               ),
-          ],
-        ),
+            )
+          else
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: IntrinsicWidth(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (final line in lines)
+                      ColoredBox(
+                        color: _lineColor(line),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: UxnanSpacing.md,
+                            vertical: 1,
+                          ),
+                          child: Text(
+                            line.isEmpty ? ' ' : line,
+                            style: UxnanTypography.codeBody,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -132,8 +126,11 @@ class FileDiffViewer extends StatelessWidget {
 /// A small header above the diff body: the file path + green/red counters,
 /// matching the `_DiffNumericPill` in `ConversationScreen`.
 class _DiffHeader extends StatelessWidget {
-  const _DiffHeader(
-      {required this.path, required this.added, required this.deleted});
+  const _DiffHeader({
+    required this.path,
+    required this.added,
+    required this.deleted,
+  });
   final String path;
   final int added;
   final int deleted;
@@ -151,8 +148,11 @@ class _DiffHeader extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(Icons.difference_rounded,
-              size: 18, color: colors.onSurfaceVariant),
+          Icon(
+            Icons.difference_rounded,
+            size: 18,
+            color: colors.onSurfaceVariant,
+          ),
           const SizedBox(width: UxnanSpacing.sm),
           Expanded(
             child: Text(

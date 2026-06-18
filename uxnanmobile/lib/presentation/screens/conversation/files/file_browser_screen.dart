@@ -18,15 +18,16 @@ import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 /// Full-screen workspace file browser for the active thread's `cwd`.
 ///
 /// Lists every file/folder (incl. hidden dotfiles when enabled) with the
-/// git-aware color treatment the user asked for: tracked-but-unchanged files
-/// are neutral, modified/added/deleted/renamed/untracked each get a distinct
-/// color, and the file name is the painted surface. Tapping a directory
-/// toggles its expansion; tapping a file opens the file viewer.
+/// git-aware color treatment: tracked-but-unchanged files are neutral,
+/// modified/added/deleted/renamed/untracked each get a distinct color, and
+/// the file name is the painted surface. Tapping a directory toggles its
+/// expansion; tapping a file opens the file viewer.
 ///
-/// Mirrors the [GitScreen] chrome: a Neural Expressive top bar (back, title,
-/// refresh, settings overflow) with a body that scrolls behind it. The
-/// file-list state is driven by [FileBrowserManager] — see that class for the
-/// lazy walk, git-status merge and caching.
+/// Mirrors the chrome of the rest of the app: a Neural Expressive top bar
+/// (back, title, refresh, show-extensions toggle, show-hidden toggle)
+/// sitting over a `BouncingScrollPhysics` content surface, with a
+/// persistent bottom bar carrying the workspace path + git branch + a
+/// copy-path action.
 class FileBrowserScreen extends ConsumerStatefulWidget {
   /// Creates a [FileBrowserScreen].
   const FileBrowserScreen({required this.cwd, this.threadId, super.key});
@@ -69,12 +70,14 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
     final manager = ref.watch(fileBrowserManagerProvider);
     final showExtension = ref.watch(showFileExtensionsProvider);
     final showHidden = ref.watch(showHiddenFilesProvider);
     // The stream-based tree is the canonical state: the manager owns the
     // mutation, the UI just renders whatever was last emitted.
     final rootAsync = ref.watch(_fileTreeStreamProvider(widget.cwd));
+    final topInset = NeTopBar.preferredHeight(context);
 
     return Scaffold(
       body: Stack(
@@ -83,13 +86,20 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
             children: [
               Expanded(
                 child: rootAsync.when(
-                  data: (FileTreeNode? root) =>
-                      _buildBody(context, root, showExtension, showHidden),
-                  loading: () => const Center(
-                    child: CircularProgressIndicator(),
+                  data: (FileTreeNode? root) => _buildBody(
+                    context,
+                    root,
+                    showExtension,
+                    showHidden,
                   ),
-                  error: (Object error, StackTrace _) =>
-                      _ErrorBody(message: '$error'),
+                  loading: () => Padding(
+                    padding: EdgeInsets.only(top: topInset),
+                    child: const Center(child: CircularProgressIndicator()),
+                  ),
+                  error: (Object error, StackTrace _) => Padding(
+                    padding: EdgeInsets.only(top: topInset),
+                    child: _ErrorBody(message: '$error'),
+                  ),
                 ),
               ),
               _StatusBar(cwd: widget.cwd),
@@ -109,9 +119,10 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
                 l10n.fileBrowserTitle,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: Theme.of(
-                  context,
-                ).textTheme.titleLarge?.copyWith(fontSize: 20),
+                style: Theme.of(context)
+                    .textTheme
+                    .titleLarge
+                    ?.copyWith(fontSize: 20),
               ),
               actions: [
                 IconSurface(
@@ -119,7 +130,32 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
                   tooltip: l10n.gitRefresh,
                   onPressed: () => manager.loadRoot(widget.cwd),
                 ),
-                _SettingsMenu(),
+                // Toggles live in the app bar (not in a popup menu) so the
+                // selected state is visible at a glance — matches the diff
+                // toggle in the file viewer. Both fall back to the Icon
+                // Surface's neutral tone when off; the secondary-container
+                // highlight when on.
+                IconSurface(
+                  icon: Icons.text_fields_rounded,
+                  tooltip: l10n.fileBrowserShowExtensions,
+                  selected: showExtension,
+                  background: showExtension ? colors.secondaryContainer : null,
+                  foreground:
+                      showExtension ? colors.onSecondaryContainer : null,
+                  onPressed: () => ref
+                      .read(showFileExtensionsProvider.notifier)
+                      .set(value: !showExtension),
+                ),
+                IconSurface(
+                  icon: Icons.visibility_outlined,
+                  tooltip: l10n.fileBrowserShowHidden,
+                  selected: showHidden,
+                  background: showHidden ? colors.secondaryContainer : null,
+                  foreground: showHidden ? colors.onSecondaryContainer : null,
+                  onPressed: () => ref
+                      .read(showHiddenFilesProvider.notifier)
+                      .set(value: !showHidden),
+                ),
               ],
             ),
           ),
@@ -170,6 +206,13 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
           behavior: HitTestBehavior.translucent,
           onTap: () => FocusScope.of(context).unfocus(),
           child: CustomScrollView(
+            // BouncingScrollPhysics + AlwaysScrollable is the same combo
+            // `NeScaffold` uses, so the list feels native on both iOS and
+            // Android and the user can always drag-to-refresh even when the
+            // tree fits on a single screen.
+            physics: const BouncingScrollPhysics(
+              parent: AlwaysScrollableScrollPhysics(),
+            ),
             slivers: [
               SliverToBoxAdapter(
                 child: SizedBox(height: topInset),
@@ -258,14 +301,6 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
   bool _isHidden(String name) => name.startsWith('.');
 }
 
-/// Lightweight value type for the flattened tile list — keeps the tree node
-/// paired with its indent depth without mutating the tree itself.
-class _TileEntry {
-  const _TileEntry({required this.node, required this.depth});
-  final FileTreeNode node;
-  final int depth;
-}
-
 /// Adapts the manager's per-cwd stream into a [StreamProvider] the UI can
 /// watch directly with `ref.watch`. One provider per (cwd) — the manager
 /// caches the tree so multiple `watch`es on the same cwd re-emit the same
@@ -279,61 +314,12 @@ final _fileTreeStreamProvider =
   return manager.watchRoot(cwd);
 });
 
-/// Settings overflow — toggles for "show file extensions" and "show hidden
-/// files". A third toggle (file diff overlay) lives on the file viewer itself
-/// because it's a per-file concern, not a list concern.
-class _SettingsMenu extends ConsumerWidget {
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final l10n = AppLocalizations.of(context);
-    final showExt = ref.watch(showFileExtensionsProvider);
-    final showHidden = ref.watch(showHiddenFilesProvider);
-    return IconSurfaceMenu<void>(
-      tooltip: l10n.threadsMore,
-      icon: Icons.tune_rounded,
-      constraints: const BoxConstraints(minWidth: 220),
-      itemBuilder: (context) => [
-        PopupMenuItem<void>(
-          child: _ToggleRow(
-            label: l10n.fileBrowserShowExtensions,
-            value: showExt,
-            onChanged: (v) =>
-                ref.read(showFileExtensionsProvider.notifier).set(value: v),
-          ),
-        ),
-        PopupMenuItem<void>(
-          child: _ToggleRow(
-            label: l10n.fileBrowserShowHidden,
-            value: showHidden,
-            onChanged: (v) =>
-                ref.read(showHiddenFilesProvider.notifier).set(value: v),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _ToggleRow extends StatelessWidget {
-  const _ToggleRow({
-    required this.label,
-    required this.value,
-    required this.onChanged,
-  });
-  final String label;
-  final bool value;
-  final ValueChanged<bool> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(label),
-        Switch.adaptive(value: value, onChanged: onChanged),
-      ],
-    );
-  }
+/// Lightweight value type for the flattened tile list — keeps the tree node
+/// paired with its indent depth without mutating the tree itself.
+class _TileEntry {
+  const _TileEntry({required this.node, required this.depth});
+  final FileTreeNode node;
+  final int depth;
 }
 
 /// Persistent bottom bar showing the workspace path, the git status summary

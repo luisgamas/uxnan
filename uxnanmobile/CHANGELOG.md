@@ -6,6 +6,44 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- **File browser sends absolute paths to the bridge.** The bridge's
+  `workspace/list` does `resolve(cwd)` server-side, so a relative `cwd`
+  resolves against the project's CWD, not the worktree / sub-folder the
+  user is browsing — the visible symptom was `FormatException: Invalid
+  workspace/list response` whenever the user opened a directory under a
+  worktree. `FileBrowserManager` now joins the workspace's absolute root
+  (the `cwd` from the active thread) with each expanded directory's
+  relative path before sending. `loadRoot` and `toggleDirectory` both
+  honour this convention. `FileBrowserManager`'s docstring documents
+  the path contract.
+- **Folder/file load errors no longer crash the browser.** A
+  `workspace/list` failure (directory removed, permission denied, a
+  stale cwd) used to surface as an unhandled `FormatException`. The
+  manager now catches the underlying `RpcError` (or any
+  `FileListingException` from a malformed payload) and stores the
+  message on the affected `FileTreeNode.error`. The directory is shown
+  collapsed with its error visible; the root failure shows the
+  existing `_ErrorBody`. `readFile` / `readImage` throw a dedicated
+  `FileReadException` (also caught by the viewer) so the existing
+  error state still renders correctly.
+- **Toggles in the file browser now reflect their state in the app
+  bar.** The previous overflow-menu `Switch`es rebuilt only when the
+  popup reopened (the `PopupMenuItem` doesn't watch the provider), so
+  the user saw no visual feedback until the menu was closed. Both
+  "show file extensions" and "show hidden files" are now `IconSurface`s
+  in the app bar with `selected: bool` (matching the diff-toggle
+  pattern the file viewer already uses) — the secondary-container
+  tone + `onSecondaryContainer` foreground make the active state
+  immediately visible.
+- **File browser / viewer chrome matches the rest of the app.** Both
+  screens now use the same `Scaffold` + `Stack` + `NeTopBar` overlay
+  pattern that `ConversationScreen` and `GitScreen` use, with
+  `BouncingScrollPhysics` + `AlwaysScrollableScrollPhysics` on the
+  tree list (matches `NeScaffold`). The gradiente del app bar, el
+  scroll-veil inferior y la separación con el status bar now match
+  the conversation screen exactly.
+
 ### Added
 - **Workspace file browser (HECHO).** A full-screen file tree for the active
   thread's `cwd`, reachable from a new `folder_open` `IconSurface` in the

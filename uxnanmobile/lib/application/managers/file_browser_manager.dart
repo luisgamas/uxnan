@@ -5,6 +5,7 @@ import 'package:rxdart/rxdart.dart';
 import 'package:uxnan/application/managers/thread_manager.dart' show RpcSend;
 import 'package:uxnan/domain/entities/file_browser.dart';
 import 'package:uxnan/domain/enums/git_file_status.dart';
+import 'package:uxnan/domain/value_objects/rpc_message.dart';
 
 /// Maximum directory depth the file browser will auto-descend into. The
 /// browser is intentionally lazy (only the user-expanded directories fetch
@@ -18,8 +19,17 @@ const int _kMaxDepth = 16;
 ///
 /// Designed to mirror the other managers' [RpcSend] pattern: it owns no
 /// per-thread state, the providers' keys are the *active cwd* (a thread's
-/// workspace). One manager instance is shared across the app; per-cwd trees
-/// are cached and rebuilt when the cwd or git status changes.
+/// workspace, passed as an absolute path). One manager instance is shared
+/// across the app; per-cwd trees are cached and rebuilt when the cwd or git
+/// status changes.
+///
+/// **Path convention.** The bridge's `workspace/list` does `resolve(cwd)` on
+/// the server side, so the `cwd` parameter must be the **absolute** path of
+/// the directory to list — the bridge runs from the project root, not the
+/// worktree / sub-folder the user is browsing, so a relative `cwd` would be
+/// resolved against the wrong directory. The manager therefore joins the
+/// workspace's absolute root (the [cwd] passed to [loadRoot]) with the
+/// relative path of each expanded directory before sending.
 class FileBrowserManager {
   /// Creates a [FileBrowserManager].
   FileBrowserManager({required RpcSend sendRequest})
@@ -63,7 +73,7 @@ class FileBrowserManager {
   /// Loads the root of [cwd]. The first call lists the root entry itself; the
   /// phone then descends lazily as the user expands directories. Git status is
   /// fetched in parallel so changed files are painted immediately on first
-  /// render.
+  /// render. [cwd] is the **absolute** path of the workspace root.
   Future<void> loadRoot(String cwd) async {
     if (_roots.containsKey(cwd) && _loadingRoots[cwd] != true) {
       // Already loaded — still kick a git refresh in case the user just
@@ -89,7 +99,7 @@ class FileBrowserManager {
         name: '.',
         path: '.',
         type: FileEntryType.dir,
-        error: '$error',
+        error: _errorMessage(error),
       );
       _roots[cwd] = root;
       subject.add(root);
@@ -141,10 +151,13 @@ class FileBrowserManager {
   }
 
   /// Toggles the expansion of the directory at [path] under [cwd]. Expanding
-  /// fetches the children lazily (only if not already loaded).
+  /// fetches the children lazily (only if not already loaded). Failures (a
+  /// directory that no longer exists, a permission error, a stale cwd) mark
+  /// the directory with an [FileTreeNode.error] rather than throwing — the
+  /// UI then shows a recoverable error state without crashing the browser.
   Future<void> toggleDirectory(String cwd, String path) async {
     final current = _rootFor(cwd);
-    final next = await _toggle(current, path, depth: 0);
+    final next = await _toggle(cwd, current, path, depth: 0);
     if (identical(next, current)) return;
     _roots[cwd] = next;
     _subject(cwd).add(next);
@@ -158,11 +171,7 @@ class FileBrowserManager {
       'cwd': cwd,
       'path': path,
     });
-    final result = response.result;
-    if (result is! Map) {
-      throw const FormatException('Invalid workspace/readFile response');
-    }
-    return FileContent.fromJson(result.cast<String, dynamic>());
+    return _parseContent(response, 'workspace/readFile');
   }
 
   /// Reads a file as an inline base64 image. The bridge rejects non-image
@@ -174,11 +183,7 @@ class FileBrowserManager {
       'cwd': cwd,
       'path': path,
     });
-    final result = response.result;
-    if (result is! Map) {
-      throw const FormatException('Invalid workspace/readImage response');
-    }
-    return ImageFile.fromJson(result.cast<String, dynamic>());
+    return _parseImage(response, 'workspace/readImage');
   }
 
   /// Fetches the unified diff for a single file (`git/diff { path }`).
@@ -219,13 +224,55 @@ class FileBrowserManager {
         type: FileEntryType.dir,
       );
 
-  Future<FileListing> _list(String cwd) async {
+  FileContent _parseContent(RpcMessage response, String method) {
+    final result = response.result;
+    if (result is Map) {
+      return FileContent.fromJson(result.cast<String, dynamic>());
+    }
+    // A `null` or unexpected payload from the bridge is treated as a soft
+    // failure: the file viewer shows its own error state instead of
+    // crashing the whole browser. The message carries the method name so
+    // the user can tell which call failed.
+    throw FileReadException(
+      'Invalid $method response (got ${result.runtimeType})',
+    );
+  }
+
+  ImageFile _parseImage(RpcMessage response, String method) {
+    final result = response.result;
+    if (result is Map) {
+      return ImageFile.fromJson(result.cast<String, dynamic>());
+    }
+    throw FileReadException(
+      'Invalid $method response (got ${result.runtimeType})',
+    );
+  }
+
+  /// Builds the absolute path the bridge expects: [workspaceRoot] joined with
+  /// [relPath] (a workspace-relative path or `'.'` for the root itself).
+  String _joinPath(String workspaceRoot, String relPath) {
+    if (relPath == '.' || relPath.isEmpty) return workspaceRoot;
+    // Normalize separators so the bridge gets a POSIX-style path even on
+    // Windows clients.
+    final root = workspaceRoot.replaceAll('\\', '/');
+    final rel = relPath.replaceAll('\\', '/');
+    final cleanRel = rel.startsWith('/') ? rel.substring(1) : rel;
+    if (root.endsWith('/')) return '$root$cleanRel';
+    return '$root/$cleanRel';
+  }
+
+  /// Sends `workspace/list` for [absPath] (already absolute) and parses the
+  /// response. Throws [FileListingException] on a malformed response.
+  Future<FileListing> _list(String absPath) async {
     final response = await _sendRequest('workspace/list', <String, dynamic>{
-      'cwd': cwd,
+      'cwd': absPath,
     });
     final result = response.result;
     if (result is! Map) {
-      throw const FormatException('Invalid workspace/list response');
+      throw FileListingException(
+        'Invalid workspace/list response for "$absPath" '
+        '(got ${result.runtimeType}).',
+      );
     }
     return FileListing.fromJson(result.cast<String, dynamic>());
   }
@@ -253,6 +300,7 @@ class FileBrowserManager {
   /// Recursive toggle. Returns a new tree if the target's expansion state
   /// changed, or the same instance when nothing relevant was found.
   Future<FileTreeNode> _toggle(
+    String workspaceRoot,
     FileTreeNode node,
     String path, {
     required int depth,
@@ -263,41 +311,38 @@ class FileBrowserManager {
       if (node.expanded) return node.copyWith(expanded: false);
       // Expanding: if children haven't been loaded yet, fetch them first.
       if (node.children.isEmpty && !node.loading) {
-        final listing = await _listForDir(node);
-        return node.copyWith(
-          children: _buildInitialChildren(
-            listing.entries,
-            parent: node.path,
-          ),
-          expanded: true,
-          loading: false,
-        );
+        try {
+          final absPath = _joinPath(workspaceRoot, node.path);
+          final listing = await _list(absPath);
+          return node.copyWith(
+            children: _buildInitialChildren(
+              listing.entries,
+              parent: node.path,
+            ),
+            expanded: true,
+          );
+        } on Object catch (error) {
+          // Surface the failure on the directory itself instead of throwing
+          // out of the call. The user sees an inline error and can tap to
+          // retry (or refresh from the app-bar action).
+          return node.copyWith(
+            error: _errorMessage(error),
+            loading: false,
+          );
+        }
       }
       return node.copyWith(expanded: true);
     }
     var changed = false;
     final newChildren = <FileTreeNode>[];
     for (final child in node.children) {
-      final updated = await _toggle(child, path, depth: depth + 1);
+      final updated =
+          await _toggle(workspaceRoot, child, path, depth: depth + 1);
       if (!identical(updated, child)) changed = true;
       newChildren.add(updated);
     }
     if (!changed) return node;
     return node.copyWith(children: newChildren);
-  }
-
-  Future<FileListing> _listForDir(FileTreeNode dir) async {
-    // The bridge expects the path relative to the workspace root (e.g.
-    // `src/lib`). The browser uses the *active cwd* as the workspace root,
-    // so any nested directory's path is already in that form.
-    final response = await _sendRequest('workspace/list', <String, dynamic>{
-      'cwd': dir.path,
-    });
-    final result = response.result;
-    if (result is! Map) {
-      throw const FormatException('Invalid workspace/list response');
-    }
-    return FileListing.fromJson(result.cast<String, dynamic>());
   }
 
   /// Re-paints the current root tree for [cwd] so each file carries the
@@ -343,6 +388,50 @@ class FileBrowserManager {
     _gitFetched.clear();
     _loadingRoots.clear();
   }
+}
+
+/// Raised when the bridge returns an unexpected payload to a workspace call.
+/// Caught by the manager and surfaced as a per-node `error` field so the UI
+/// can recover instead of crashing the whole screen.
+class FileListingException implements Exception {
+  /// Creates a [FileListingException].
+  const FileListingException(this.message);
+
+  /// Human-readable diagnostic.
+  final String message;
+
+  @override
+  String toString() => 'FileListingException: $message';
+}
+
+/// Raised by [FileBrowserManager.readFile] / [readImage] when the bridge
+/// returns an unexpected payload. The file viewer catches this and shows
+/// its own error state.
+class FileReadException implements Exception {
+  /// Creates a [FileReadException].
+  const FileReadException(this.message);
+
+  /// Human-readable diagnostic.
+  final String message;
+
+  @override
+  String toString() => 'FileReadException: $message';
+}
+
+/// Returns a user-friendly message for any error the manager might catch
+/// (RPC errors, timeouts, malformed payloads, network drops). Keeps the
+/// diagnostic detail (the bridge's message) and drops the stack trace.
+String _errorMessage(Object error) {
+  if (error is RpcError) {
+    return error.message;
+  }
+  if (error is FileListingException) {
+    return error.message;
+  }
+  if (error is FileReadException) {
+    return error.message;
+  }
+  return error.toString();
 }
 
 /// Helpers for callers that want to turn a [FileContent] into a UTF-8 string
