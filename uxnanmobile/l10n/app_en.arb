@@ -267,6 +267,17 @@
   "approvalFullTitle": "Full access",
   "approvalFullBody": "Unrestricted access to the internet and any file.",
   "approvalNeedsApproval": "Needs approval",
+  "@approvalNeedsApproval": {
+    "description": "Title shown on a pending approval card while it is still actionable."
+  },
+  "approvalDecidedTitle": "Decision recorded",
+  "@approvalDecidedTitle": {
+    "description": "Title shown on a resolved approval card (after the user has chosen), replacing the actionable 'Needs approval' headline so the settled state reads at a glance."
+  },
+  "approvalAnsweredAt": "Answered",
+  "@approvalAnsweredAt": {
+    "description": "Prefix for the timestamp on a resolved approval card, formatted like 'Answered · 14:32' (today) or 'Answered · may 17 · 14:32' (older)."
+  },
   "approvalActionFallback": "Action awaiting approval",
   "approvalApprove": "Approve",
   "approvalReject": "Reject",

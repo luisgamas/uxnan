@@ -6,6 +6,27 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Approval decisions persist across scroll + restart** — the user's
+  decision on every interactive approval card (Approve / Reject / "always
+  allow this session") is now stored on-device via
+  `ApprovalResponseStore` (`infrastructure/storage/approval_response_store.dart`,
+  SharedPreferences) as soon as the card is tapped. The next time the same
+  card scrolls into view — even after a full app restart — it renders its
+  **resolved** state (`Decision recorded · Answered 14:32`) with no
+  action buttons, so an answered prompt can never be re-answered. The
+  resolved view also picks up a risk-tinted outline (success / warning /
+  error / neutral) and a muted body text, so the "already decided" state
+  reads at a glance in line with the Neural Expressive design language.
+  Two new l10n strings: `approvalDecidedTitle` ("Decision recorded" /
+  "Decisión registrada") and `approvalAnsweredAt` ("Answered" /
+  "Respondido"). Covered by
+  `test/unit/infrastructure/storage/approval_response_store_test.dart`
+  (9 cases: round-trip, persistence across store instances, idempotency,
+  forget, defensive decoding of corrupt/malformed blobs) and two new
+  widget tests in `conversation_widgets_test.dart` that pre-seed the
+  store and assert the action buttons are absent after hydration.
+
 ### Docs
 - **Synced the spec (`architecture/00-index.md`,
   `architecture/02a-system-architecture.md`,

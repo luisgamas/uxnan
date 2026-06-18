@@ -112,6 +112,100 @@ void main() {
     expect(find.widgetWithText(FilledButton, 'Approve'), findsOneWidget);
   });
 
+  testWidgets(
+    'a resolved approval card stays resolved after scroll/restart '
+    '(no buttons reappear, decision persists in the store)',
+    (tester) async {
+      // Pre-seed the store as if the user already approved this card in a
+      // previous session. The card must render the resolved view (and NOT
+      // the action buttons) on the very first frame after hydration.
+      SharedPreferences.setMockInitialValues({
+        'uxnan.approval.responses':
+            '{"a1":{"decision":"approve","decidedAtMs":1700000000000}}',
+      });
+      addTearDown(() => SharedPreferences.setMockInitialValues({}));
+
+      final message = Message(
+        id: 'm-resolved',
+        threadId: 'th1',
+        turnId: 't1',
+        role: MessageRole.assistant,
+        contents: const [
+          ApprovalContent(
+            ApprovalRequest(
+              approvalId: 'a1',
+              action: 'Delete build/',
+              risk: ApprovalRisk.high,
+            ),
+          ),
+        ],
+        deliveryState: MessageDeliveryState.delivered,
+        orderIndex: 0,
+        createdAt: DateTime(2026),
+      );
+
+      await tester.pumpWidget(_wrap(MessageBubble(message: message)));
+      // Two pumps: one to build, one to let the provider's async hydrate()
+      // resolve and the widget rebuild with the persisted resolved state.
+      await tester.pump();
+      await tester.pump();
+
+      // The "Decision recorded" title replaces the actionable "Needs approval"
+      // headline.
+      expect(find.text('Needs approval'), findsNothing);
+      expect(find.text('Decision recorded'), findsOneWidget);
+      // The action buttons are GONE — an answered card can't be re-answered.
+      expect(find.widgetWithText(FilledButton, 'Approve'), findsNothing);
+      expect(find.widgetWithText(OutlinedButton, 'Reject'), findsNothing);
+      expect(find.text('Always allow this session'), findsNothing);
+      // The resolved view shows the decision label and the
+      // "Answered" timestamp.
+      expect(find.text('Approved'), findsOneWidget);
+      expect(find.textContaining('Answered'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'a resolved approval card stays settled while the user scrolls past it',
+    (tester) async {
+      // The whole conversation is one long list; the card sits inside the
+      // off-screen portion initially. Scroll it into view, then away, then
+      // back — the buttons must stay gone after the first hydration.
+      SharedPreferences.setMockInitialValues({
+        'uxnan.approval.responses':
+            '{"a1":{"decision":"reject","decidedAtMs":1700000000000}}',
+      });
+      addTearDown(() => SharedPreferences.setMockInitialValues({}));
+
+      final message = Message(
+        id: 'm2',
+        threadId: 'th1',
+        turnId: 't1',
+        role: MessageRole.assistant,
+        contents: const [
+          ApprovalContent(
+            ApprovalRequest(
+              approvalId: 'a1',
+              action: 'Delete build/',
+              risk: ApprovalRisk.high,
+            ),
+          ),
+        ],
+        deliveryState: MessageDeliveryState.delivered,
+        orderIndex: 0,
+        createdAt: DateTime(2026),
+      );
+
+      await tester.pumpWidget(_wrap(MessageBubble(message: message)));
+      await tester.pump();
+      await tester.pump();
+      // Hydrate completes → resolved view.
+      expect(find.text('Approved'), findsNothing);
+      expect(find.text('Rejected'), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, 'Approve'), findsNothing);
+    },
+  );
+
   testWidgets('assistant turn groups work log, changed files and copy',
       (tester) async {
     final message = Message(

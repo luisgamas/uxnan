@@ -188,6 +188,17 @@
   "approvalFullTitle": "Acceso completo",
   "approvalFullBody": "Acceso sin restricciones a internet y a cualquier archivo.",
   "approvalNeedsApproval": "Requiere aprobación",
+  "@approvalNeedsApproval": {
+    "description": "Título de una tarjeta de aprobación pendiente mientras sigue siendo accionable."
+  },
+  "approvalDecidedTitle": "Decisión registrada",
+  "@approvalDecidedTitle": {
+    "description": "Título de una tarjeta de aprobación resuelta (después de que el usuario eligió), sustituyendo al encabezado accionable 'Requiere aprobación' para que el estado resuelto se lea de un vistazo."
+  },
+  "approvalAnsweredAt": "Respondido",
+  "@approvalAnsweredAt": {
+    "description": "Prefijo del timestamp en una tarjeta de aprobación resuelta, con formato 'Respondido · 14:32' (hoy) o 'Respondido · may 17 · 14:32' (anterior)."
+  },
   "approvalActionFallback": "Acción en espera de aprobación",
   "approvalApprove": "Aprobar",
   "approvalReject": "Rechazar",
