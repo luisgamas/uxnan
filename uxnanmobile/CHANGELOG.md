@@ -6,7 +6,45 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- **`flutter_markdown` → `flutter_markdown_plus`.** The original
+  `flutter_markdown 0.7.x` package is marked discontinued on pub.dev;
+  replaced with `flutter_markdown_plus 1.0.7` (the maintained fork
+  published by the Flutter team + community). The API is a
+  drop-in replacement — `MarkdownBody`, `Markdown`, and
+  `MarkdownStyleSheet` keep their exact signatures — so the only
+  changes are the `pubspec.yaml` entry and the package import in
+  `file_viewer_screen.dart`, `message_content_view.dart`, and the
+  matching test. The pubspec resolution dropped `flutter_markdown
+  0.7.7+1` automatically.
+
 ### Fixed
+- **File viewer no longer renders a solid band under the app bar.**
+  The viewer's body used `Padding(top: topInset, child: _buildBody)`
+  inside the `Stack`, which painted the `surface` background of the
+  Scaffold into the gap between the bar's gradient and the content.
+  The new body is a `Column` whose first child is a transparent
+  `SizedBox(height: topInset)` (no painted background), so the area
+  between the bar and the content is see-through and the gradient
+  dissolves naturally into the surface. Matches `ConversationScreen`
+  / `FileBrowserScreen` / `GitScreen` exactly.
+- **`NeTopBar` gradient softened.** Peaked at `surface` (alpha 1.0)
+  in the original; now peaks at 0.75 and dissolves faster
+  (`0.75 → 0.45 → 0`, stops `[0, 0.5, 1]`). Affects every screen
+  that uses `NeTopBar` (file browser, file viewer, git screen,
+  conversation, branch picker). The bar still gives the
+  back / actions a stable background but reads as a *veil* over the
+  content instead of a solid app-bar band.
+
+### Added
+- **Horizontal padding for file viewer text content.** The text body
+  (code, markdown source, markdown preview, diff, image, binary,
+  error) now wraps its content in `EdgeInsets.symmetric(horizontal:
+  UxnanSpacing.lg)` so the rendered text doesn't kiss the screen
+  edges on narrow viewports. Previously the text went from
+  `padding: 0` to `padding: 0` (only the highlight theme's own
+  internal padding kept it off the edge, and only sometimes). Same
+  `lg` (16 dp) inset the rest of the app uses for content surfaces.
 - **File viewer / file browser / git screen — `NeTopBar` no longer
   overflows on phone widths.** All three screens overlaid the bar with
   `Positioned(top: 0, left: 0, right: 0, child: NeTopBar(...))` inside

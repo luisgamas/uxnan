@@ -6,7 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_highlight/flutter_highlight.dart';
 import 'package:flutter_highlight/themes/atom-one-dark.dart';
 import 'package:flutter_highlight/themes/atom-one-light.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/application/managers/file_browser_manager.dart';
 import 'package:uxnan/domain/entities/file_browser.dart';
@@ -127,15 +127,19 @@ class _FileViewerScreenState extends ConsumerState<FileViewerScreen> {
         // space, triggering a RenderFlex overflow in the bar's Row.
         fit: StackFit.expand,
         children: [
-          Padding(
-            padding: EdgeInsets.only(top: topInset),
-            child: _buildBody(
-              context,
-              showMdPreview: showMdPreview,
-              showDiffOverlay: showDiffOverlay,
-              isImage: isImage,
-              isMarkdown: isMarkdown,
-            ),
+          // The content fills the stack — its own internal padding clears
+          // the NeTopBar so we don't use an outer `Padding(top: topInset)`.
+          // Using a non-painting widget for the top spacer (a transparent
+          // `SizedBox`) keeps the area between the bar and the content
+          // see-through, so the gradient dissolves into the surface and the
+          // content scrolls under the bar (matches `ConversationScreen`,
+          // `FileBrowserScreen`, `GitScreen`).
+          _buildBody(
+            context,
+            showMdPreview: showMdPreview,
+            showDiffOverlay: showDiffOverlay,
+            isImage: isImage,
+            isMarkdown: isMarkdown,
           ),
           Positioned(
             top: 0,
@@ -209,57 +213,61 @@ class _FileViewerScreenState extends ConsumerState<FileViewerScreen> {
     required bool isImage,
     required bool isMarkdown,
   }) {
+    final topInset = NeTopBar.preferredHeight(context);
     final payload = _payload;
+
+    // The top spacer (a transparent `SizedBox`) pushes the real content
+    // below the NeTopBar without painting a solid band where the gradient
+    // dissolves. Each leaf body owns its horizontal padding so the text
+    // doesn't kiss the screen edges.
+    Widget content;
     if (_loading && payload == null) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (payload == null) {
-      return const SizedBox.shrink();
-    }
-    if (payload.error != null) {
-      return _ErrorState(
-        message: payload.error!,
-        onRetry: _load,
-      );
-    }
-    if (isImage && payload.image != null) {
-      return _ImageBody(
+      content = const Center(child: CircularProgressIndicator());
+    } else if (payload == null) {
+      content = const SizedBox.shrink();
+    } else if (payload.error != null) {
+      content = _ErrorState(message: payload.error!, onRetry: _load);
+    } else if (isImage && payload.image != null) {
+      content = _ImageBody(
         base64: payload.image!.base64Data,
         mimeType: payload.image!.mimeType,
       );
-    }
-    if (isImage) {
-      return _ErrorState(
+    } else if (isImage) {
+      content = _ErrorState(
         message: payload.error ?? 'Image not available',
         onRetry: _load,
       );
+    } else {
+      final textContent = payload.content;
+      if (textContent == null) {
+        content = _ErrorState(
+          message: 'File not readable',
+          onRetry: _load,
+        );
+      } else if (textContent.encoding == FileEncoding.base64) {
+        content = _BinaryState(sizeBytes: textContent.content.length);
+      } else {
+        final text = textContent.content;
+        if (isMarkdown && showMdPreview) {
+          content = _MarkdownBody(text: text);
+        } else if (showDiffOverlay &&
+            payload.diff != null &&
+            payload.diff!.isNotEmpty) {
+          content = FileDiffViewer(diff: payload.diff!, path: widget.path);
+        } else {
+          content = _CodeBody(
+            text: text,
+            language: _languageForPath(widget.path),
+          );
+        }
+      }
     }
-    final content = payload.content;
-    if (content == null) {
-      return _ErrorState(
-        message: 'File not readable',
-        onRetry: _load,
-      );
-    }
-    if (content.encoding == FileEncoding.base64) {
-      return _BinaryState(
-        sizeBytes: content.content.length,
-      );
-    }
-    final text = content.content;
-    if (isMarkdown && showMdPreview) {
-      return _MarkdownBody(text: text);
-    }
-    if (showDiffOverlay && payload.diff != null && payload.diff!.isNotEmpty) {
-      return FileDiffViewer(
-        diff: payload.diff!,
-        path: widget.path,
-      );
-    }
-    // Plain code/text with optional syntax highlighting.
-    return _CodeBody(
-      text: text,
-      language: _languageForPath(widget.path),
+
+    return Column(
+      children: [
+        SizedBox(height: topInset),
+        Expanded(child: content),
+      ],
     );
   }
 
@@ -337,7 +345,8 @@ class _ViewerPayload {
 }
 
 /// Image body — base64 → `Image.memory` with an `InteractiveViewer` so the
-/// user can pinch-zoom and pan.
+/// user can pinch-zoom and pan. Padded with `UxnanSpacing.lg` so the image
+/// doesn't sit against the screen edges on small viewports.
 class _ImageBody extends StatelessWidget {
   const _ImageBody({required this.base64, required this.mimeType});
   final String base64;
@@ -346,27 +355,30 @@ class _ImageBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    return Center(
-      child: InteractiveViewer(
-        maxScale: 6,
-        minScale: 1,
-        child: Image.memory(
-          base64Decode(base64),
-          fit: BoxFit.contain,
-          gaplessPlayback: true,
-          errorBuilder: (context, error, stack) => Padding(
-            padding: const EdgeInsets.all(UxnanSpacing.xl),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.broken_image_outlined,
-                  size: 40,
-                  color: colors.error,
-                ),
-                const SizedBox(height: UxnanSpacing.sm),
-                Text(mimeType, style: UxnanTypography.codeSmall),
-              ],
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: UxnanSpacing.lg),
+      child: Center(
+        child: InteractiveViewer(
+          maxScale: 6,
+          minScale: 1,
+          child: Image.memory(
+            base64Decode(base64),
+            fit: BoxFit.contain,
+            gaplessPlayback: true,
+            errorBuilder: (context, error, stack) => Padding(
+              padding: const EdgeInsets.all(UxnanSpacing.xl),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.broken_image_outlined,
+                    size: 40,
+                    color: colors.error,
+                  ),
+                  const SizedBox(height: UxnanSpacing.sm),
+                  Text(mimeType, style: UxnanTypography.codeSmall),
+                ],
+              ),
             ),
           ),
         ),
@@ -375,7 +387,7 @@ class _ImageBody extends StatelessWidget {
   }
 }
 
-/// Markdown body — `MarkdownBody` (from `flutter_markdown`) wrapped in a
+/// Markdown body — `MarkdownBody` (from `flutter_markdown_plus`) wrapped in a
 /// `SingleChildScrollView` with `BouncingScrollPhysics`. Using `MarkdownBody`
 /// instead of `Markdown` is deliberate: `Markdown` carries its own scroll
 /// view + a `Column` of `Wrap`s that occasionally overflow horizontally
@@ -384,6 +396,9 @@ class _ImageBody extends StatelessWidget {
 /// `NeTopBar`'s actions end up off-screen with a "RenderFlex overflowed"
 /// exception). `MarkdownBody` renders directly into the surrounding scroll
 /// surface and stays at the correct width.
+///
+/// The horizontal padding (`UxnanSpacing.lg`) matches the rest of the app's
+/// content surfaces so the rendered text doesn't kiss the screen edges.
 class _MarkdownBody extends StatelessWidget {
   const _MarkdownBody({required this.text});
   final String text;
@@ -395,6 +410,12 @@ class _MarkdownBody extends StatelessWidget {
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(
         parent: AlwaysScrollableScrollPhysics(),
+      ),
+      padding: const EdgeInsets.fromLTRB(
+        UxnanSpacing.lg,
+        UxnanSpacing.sm,
+        UxnanSpacing.lg,
+        UxnanSpacing.lg,
       ),
       child: MarkdownBody(
         data: text,
@@ -428,7 +449,9 @@ class _MarkdownBody extends StatelessWidget {
   }
 }
 
-/// Plain code/text body with optional syntax highlighting.
+/// Plain code/text body with optional syntax highlighting. Pads the
+/// content horizontally with `UxnanSpacing.lg` (matches the rest of the
+/// app's content surfaces) so the text doesn't kiss the screen edges.
 class _CodeBody extends StatelessWidget {
   const _CodeBody({required this.text, required this.language});
   final String text;
@@ -440,14 +463,14 @@ class _CodeBody extends StatelessWidget {
     final theme = isDark ? atomOneDarkTheme : atomOneLightTheme;
     return SingleChildScrollView(
       scrollDirection: Axis.vertical,
+      padding: const EdgeInsets.fromLTRB(
+        UxnanSpacing.lg,
+        UxnanSpacing.sm,
+        UxnanSpacing.lg,
+        UxnanSpacing.lg,
+      ),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.fromLTRB(
-          UxnanSpacing.lg,
-          UxnanSpacing.sm,
-          UxnanSpacing.lg,
-          UxnanSpacing.lg,
-        ),
         child: HighlightView(
           text,
           language: language,
@@ -473,31 +496,34 @@ class _BinaryState extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     return Padding(
-      padding: const EdgeInsets.all(UxnanSpacing.xl),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.archive_outlined,
-            size: 40,
-            color: colors.onSurfaceVariant,
-          ),
-          const SizedBox(height: UxnanSpacing.md),
-          Text(l10n.fileViewerBinaryTitle, style: textTheme.titleSmall),
-          const SizedBox(height: UxnanSpacing.xs),
-          Text(
-            l10n.fileViewerBinaryBody,
-            style: textTheme.bodySmall?.copyWith(
+      padding: const EdgeInsets.symmetric(horizontal: UxnanSpacing.lg),
+      child: Padding(
+        padding: const EdgeInsets.all(UxnanSpacing.xl),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.archive_outlined,
+              size: 40,
               color: colors.onSurfaceVariant,
             ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: UxnanSpacing.sm),
-          Text(
-            '$sizeBytes bytes (base64)',
-            style: UxnanTypography.codeSmall,
-          ),
-        ],
+            const SizedBox(height: UxnanSpacing.md),
+            Text(l10n.fileViewerBinaryTitle, style: textTheme.titleSmall),
+            const SizedBox(height: UxnanSpacing.xs),
+            Text(
+              l10n.fileViewerBinaryBody,
+              style: textTheme.bodySmall?.copyWith(
+                color: colors.onSurfaceVariant,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: UxnanSpacing.sm),
+            Text(
+              '$sizeBytes bytes (base64)',
+              style: UxnanTypography.codeSmall,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -514,32 +540,35 @@ class _ErrorState extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     return Padding(
-      padding: const EdgeInsets.all(UxnanSpacing.xl),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.error_outline, size: 40, color: colors.error),
-          const SizedBox(height: UxnanSpacing.md),
-          Text(
-            l10n.fileViewerLoadFailed,
-            style: textTheme.titleSmall,
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: UxnanSpacing.xs),
-          Text(
-            message,
-            style: textTheme.bodySmall?.copyWith(
-              color: colors.onSurfaceVariant,
+      padding: const EdgeInsets.symmetric(horizontal: UxnanSpacing.lg),
+      child: Padding(
+        padding: const EdgeInsets.all(UxnanSpacing.xl),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error_outline, size: 40, color: colors.error),
+            const SizedBox(height: UxnanSpacing.md),
+            Text(
+              l10n.fileViewerLoadFailed,
+              style: textTheme.titleSmall,
+              textAlign: TextAlign.center,
             ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: UxnanSpacing.md),
-          FilledButton.icon(
-            onPressed: onRetry,
-            icon: const Icon(Icons.refresh_rounded),
-            label: Text(l10n.gitRefresh),
-          ),
-        ],
+            const SizedBox(height: UxnanSpacing.xs),
+            Text(
+              message,
+              style: textTheme.bodySmall?.copyWith(
+                color: colors.onSurfaceVariant,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: UxnanSpacing.md),
+            FilledButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh_rounded),
+              label: Text(l10n.gitRefresh),
+            ),
+          ],
+        ),
       ),
     );
   }

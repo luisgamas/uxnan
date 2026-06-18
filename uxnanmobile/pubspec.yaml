@@ -33,7 +33,7 @@ dependencies:
   flutter_local_notifications: ^17.2.3 # local notification display
   flutter_localizations:
     sdk: flutter
-  flutter_markdown: ^0.7.3 # markdown rendering
+  flutter_markdown_plus: ^1.0.0 # markdown rendering (maintained fork of flutter_markdown)
   flutter_riverpod: ^3.0.0 # state management (manual providers)
   flutter_secure_storage: ^9.2.0 # Keychain / Keystore
   flutter_svg: ^2.0.10 # SVG rendering (agent logos)

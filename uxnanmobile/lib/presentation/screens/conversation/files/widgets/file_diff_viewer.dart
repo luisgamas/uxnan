@@ -30,6 +30,12 @@ class FileDiffViewer extends StatelessWidget {
     final lines = _renderableLines(diff);
     return SingleChildScrollView(
       scrollDirection: Axis.vertical,
+      padding: const EdgeInsets.fromLTRB(
+        UxnanSpacing.lg,
+        UxnanSpacing.sm,
+        UxnanSpacing.lg,
+        UxnanSpacing.lg,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
