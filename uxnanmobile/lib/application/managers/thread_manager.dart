@@ -542,6 +542,17 @@ class ThreadManager {
     unawaited(_resyncThread(threadId));
   }
 
+  /// Re-pulls the active thread's newest turns from the bridge — call when the
+  /// app resumes / reconnects so a turn that completed while the app was
+  /// backgrounded (or the connection had dropped) is recovered without leaving
+  /// and re-entering the conversation. No-op when no thread is active; the
+  /// request buffers and flushes if the connection is still coming back.
+  Future<void> resyncActive() async {
+    final threadId = _activeThreadId;
+    if (threadId == null) return;
+    await _resyncThread(threadId);
+  }
+
   /// Loads one page of older history. First grows the rendered window over
   /// already-fetched messages; once the local store is exhausted it pulls the
   /// previous page of turns from the bridge (`turn/list` with an explicit

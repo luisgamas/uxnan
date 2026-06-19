@@ -656,6 +656,19 @@ void main() {
     await am.dispose();
   });
 
+  test('resyncActive re-pulls the active thread from the bridge', () async {
+    await manager.selectThread('th1');
+    await _settle();
+    sentMethods.clear();
+
+    await manager.resyncActive();
+    await _settle();
+
+    // Re-pulls the newest page (turn/list) so a turn that completed while the
+    // app was backgrounded / disconnected is recovered.
+    expect(sentMethods, contains('turn/list'));
+  });
+
   test('respondApproval sends turn/send with the approvalResponse', () async {
     final ok = await manager.respondApproval(
       threadId: 'th1',

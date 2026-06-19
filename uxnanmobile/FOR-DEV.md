@@ -94,6 +94,25 @@ browser and multi-PC connection correctness are now DONE — see below.)
 
 ## Connection / transport
 
+- ☑ **Background → resume reconnection + cold-start auto-connect** — DONE
+  (2026-06-18). The app no longer gets stuck "disconnected" after the OS
+  suspends/drops the socket on background. `SessionCoordinator.resume()` (called
+  from `_PushHost.didChangeAppLifecycleState` on `resumed`): wakes a pending
+  reconnect backoff so it retries **immediately** (new `_reconnectWake`
+  Completer + `_waitForRetry` race — the existing single-flight loop is
+  untouched), else `verifyConnection()` (round-trips `bridge/status` when
+  believed-connected, kicks a reconnect when disconnected). The open
+  conversation re-syncs via `ThreadManager.resyncActive()`. On launch,
+  `_PushHost._autoConnectLastDevice()` reconnects to the most-recently-used PC
+  (`lastSeen`, best-effort + backoff fallback), so reopening after an unexpected
+  close restores the session and the `turn/list` re-sync recovers the thread's
+  history (drift preserves it across restarts; reconciled by the deterministic
+  assistant id). Covered by coordinator (resume/wake/no-op) + `resyncActive`
+  tests. ☐ On-device: minimize+reopen shows connected (not stuck); kill+reopen
+  auto-reconnects and the thread history is intact. **Note:** a *truly* always-on
+  background socket (vs. fast resume-reconnect) would need an Android foreground
+  service / iOS background mode — out of scope; resume-reconnect is the mobile-
+  appropriate approach.
 - ☑ **IncomingMessageProcessor** — DONE (conversation managers).
 - ☑ **Consume `bridge/status.relayConnected`** — DONE: `BridgeStatus` entity +
   `bridgeStatusProvider` (refreshes when the connected device changes) drive a

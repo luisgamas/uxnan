@@ -101,6 +101,11 @@ class SessionCoordinator {
   bool _disposed = false;
   bool _reconnecting = false;
 
+  /// Completed to interrupt the current reconnect backoff so a foreground
+  /// [resume] retries immediately instead of waiting out the delay. `null` when
+  /// the reconnect loop is not currently sleeping between attempts.
+  Completer<void>? _reconnectWake;
+
   /// End-to-end liveness probe: while connected, periodically round-trips
   /// `bridge/status` so a dead bridge (even behind a still-open relay socket) is
   /// detected and reconnection is triggered. The transport-level close alone is
@@ -378,6 +383,46 @@ class SessionCoordinator {
     }
   }
 
+  /// Call when the app returns to the foreground (resume): ensures the bridge
+  /// connection is healthy after the OS may have suspended/dropped the socket
+  /// while backgrounded.
+  ///
+  /// - **Mid-reconnect**: interrupts the backoff so the next attempt runs *now*
+  ///   instead of after the (possibly long) delay — the user gets reconnected
+  ///   promptly on reopen.
+  /// - **Believed-connected**: round-trips `bridge/status` (via
+  ///   [verifyConnection]) to catch a silently-dropped socket and reconnect.
+  /// - **Disconnected with an active device**: kicks a reconnect.
+  ///
+  /// No-op after an intentional disconnect or once disposed.
+  Future<void> resume() async {
+    if (_intentionalDisconnect || _disposed || _activeMac.value == null) return;
+    if (_reconnecting) {
+      _wakeReconnect();
+      return;
+    }
+    await verifyConnection();
+  }
+
+  /// Waits out the reconnect backoff [wait], returning early when
+  /// [_wakeReconnect] fires (e.g. the app resumed) so the next attempt is
+  /// immediate. The [_delay] keeps running in the background harmlessly.
+  Future<void> _waitForRetry(Duration wait) async {
+    final wake = Completer<void>();
+    _reconnectWake = wake;
+    try {
+      await Future.any<void>([_delay(wait), wake.future]);
+    } finally {
+      _reconnectWake = null;
+    }
+  }
+
+  /// Interrupts the current reconnect backoff so the next attempt runs now.
+  void _wakeReconnect() {
+    final wake = _reconnectWake;
+    if (wake != null && !wake.isCompleted) wake.complete();
+  }
+
   Future<void> _runReconnectLoop(TrustedDevice device) async {
     _connectionPhase.add(ConnectionPhase.reconnecting);
     _connectedDevice.add(null);
@@ -395,7 +440,7 @@ class SessionCoordinator {
           lastConnectedAt: _recoveryState.value.lastConnectedAt,
         ),
       );
-      await _delay(wait);
+      await _waitForRetry(wait);
       if (_intentionalDisconnect || _disposed) return;
       try {
         await _establish(device, HandshakeMode.trustedReconnect);

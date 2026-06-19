@@ -110,7 +110,25 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   matching test. The pubspec resolution dropped `flutter_markdown
   0.7.7+1` automatically.
 
+### Fixed
+- **Bridge connection survives background → resume.** Backgrounding the
+  app could leave it stuck "disconnected" on reopen (the OS suspends/drops
+  the socket and nothing re-checked on resume). On resume the app now calls
+  `SessionCoordinator.resume()`: if a reconnect backoff was pending it
+  retries **immediately** (new wake mechanism — `resume` interrupts the
+  backoff delay instead of waiting it out), if it believed it was connected
+  it round-trips `bridge/status` to catch a silently-dropped socket, and if
+  disconnected it kicks a reconnect. The open conversation also re-syncs
+  (`ThreadManager.resyncActive`) so messages that landed while away appear
+  without leaving + re-entering it.
+
 ### Added
+- **Cold-start auto-reconnect + history recovery.** On launch (incl. after
+  an unexpected close) the app reconnects to the most-recently-used PC
+  (`lastSeen`, best-effort, with a backoff fallback) so the bridge session
+  is restored automatically; the existing `turn/list` re-sync then recovers
+  the thread's messages from the bridge (local drift history is preserved
+  across restarts and reconciled by the deterministic assistant id).
 - **Jump-to-latest button in the conversation.** Scrolling up in a long
   or streaming conversation now reveals a small circular button (over the
   timeline, above the composer) that springs in (NE small-element motion)
