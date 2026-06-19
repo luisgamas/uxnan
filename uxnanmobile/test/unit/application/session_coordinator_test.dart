@@ -66,10 +66,16 @@ class _FakeBridge {
   final KeyGeneration _keygen = KeyGeneration();
   late SecureChannel _channel;
 
+  /// The `resumeState.lastAppliedBridgeOutboundSeq` carried by this bridge's
+  /// clientHello (null when absent), captured for catch-up assertions.
+  int? helloResumeSeq;
+
   Future<void> run() async {
     final queue = StreamQueue<Uint8List>(transport.incoming);
     try {
       final hello = _json(await queue.next);
+      helloResumeSeq = (hello['resumeState'] as Map<String, dynamic>?)?[
+          'lastAppliedBridgeOutboundSeq'] as int?;
       final clientNonce = (hello['clientNonce'] as String).fromHex();
       final phoneEphPub =
           (hello['phoneEphemeralPublicKey'] as String).fromHex();
@@ -431,6 +437,54 @@ void main() {
       isEmpty,
     );
     expect(harness.coordinator.connectionPhase, ConnectionPhase.connected);
+  });
+
+  test('persists the applied bridge seq on disconnect for catch-up', () async {
+    final harness = await build(echo);
+    addTearDown(harness.coordinator.dispose);
+    await harness.coordinator.connect(forceQrBootstrap: true);
+
+    // The bridge pushes a notification (bridge→phone seq 1); the phone applies
+    // it, advancing the channel's bridgeOutboundSeq.
+    final received = harness.coordinator.incomingMessages.first
+        .timeout(const Duration(seconds: 5));
+    await harness.selector.currentBridge!.pushNotification(
+      RpcMessage.notification(method: 'stream/turn/started'),
+    );
+    await received;
+
+    await harness.coordinator.disconnect();
+    await Future<void>.delayed(Duration.zero); // let the async save land
+
+    final saved = await harness.repo.getDevice('mac-1');
+    expect(saved!.lastAppliedBridgeOutboundSeq, 1);
+  });
+
+  test('advertises resumeState on reconnect so the bridge replays the backlog',
+      () async {
+    final harness = await build(echo);
+    addTearDown(harness.coordinator.dispose);
+    await harness.coordinator.connect(forceQrBootstrap: true);
+
+    final received = harness.coordinator.incomingMessages.first
+        .timeout(const Duration(seconds: 5));
+    await harness.selector.currentBridge!.pushNotification(
+      RpcMessage.notification(method: 'stream/turn/started'),
+    );
+    await received;
+    await harness.coordinator.disconnect();
+    await Future<void>.delayed(Duration.zero);
+
+    // Reconnect: the new clientHello must carry resumeState = the applied seq.
+    await harness.coordinator.connect();
+    expect(harness.selector.currentBridge!.helloResumeSeq, 1);
+  });
+
+  test('a first connection sends no resumeState', () async {
+    final harness = await build(echo);
+    addTearDown(harness.coordinator.dispose);
+    await harness.coordinator.connect(forceQrBootstrap: true);
+    expect(harness.selector.currentBridge!.helloResumeSeq, isNull);
   });
 
   test('processPairingPayload registers the device and connects', () async {

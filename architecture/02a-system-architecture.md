@@ -1805,8 +1805,16 @@ MAX_BRIDGE_OUTBOUND_BYTES = 10 MB
 > (`SessionRegistry.forget`). Si el bridge se reinicia, el log en memoria se
 > pierde (el `seq` reinicia en 1); el punto de reanudación viejo del teléfono no
 > produce replay y el teléfono re-sincroniza con `turn/list` — comportamiento
-> aceptado. **Pendiente (móvil):** persistir `bridgeOutboundSeq` y enviarlo en
-> `clientHello.resumeState`.
+> aceptado.
+>
+> **Estado de implementación (móvil — hecho):** el teléfono persiste el último
+> `seq` aplicado por dispositivo en `TrustedDevice.lastAppliedBridgeOutboundSeq`
+> (columna drift nullable, esquema v5) y lo envía en
+> `clientHello.resumeState.lastAppliedBridgeOutboundSeq` (omitido cuando es 0).
+> `SessionCoordinator` lo carga en `performHandshake` y lo checkpointea en cada
+> teardown (drop/disconnect/cierre de socket) y periódicamente en el heartbeat.
+> El `seq` aplicado se rastrea en `SecureChannel.decrypt`
+> (`SecureSession.bridgeOutboundSeq`). Catch-up por `seq` cerrado end-to-end.
 
 #### 5.9.3 Seleccion de canal de transporte
 

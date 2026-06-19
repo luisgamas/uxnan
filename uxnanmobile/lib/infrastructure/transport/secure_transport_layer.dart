@@ -61,6 +61,7 @@ class SecureTransportLayer {
     required PhoneIdentity phoneIdentity,
     required TrustedDevice device,
     required HandshakeMode mode,
+    int lastAppliedBridgeOutboundSeq = 0,
     Duration stepTimeout = const Duration(seconds: 15),
   }) async {
     final ephemeral = await _keyGen.generateEphemeralKeyPair();
@@ -77,6 +78,7 @@ class SecureTransportLayer {
           phoneIdentityPublicKey: phoneIdentity.publicKey,
           phoneEphemeralPublicKey: ephemeral.publicKey,
           clientNonce: clientNonce,
+          lastAppliedBridgeOutboundSeq: lastAppliedBridgeOutboundSeq,
         ).toJson(),
       );
 

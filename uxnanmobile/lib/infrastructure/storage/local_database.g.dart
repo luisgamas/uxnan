@@ -2021,6 +2021,13 @@ class $TrustedDevicesTableTable extends TrustedDevicesTable
   late final GeneratedColumn<int> lastSeenMs = GeneratedColumn<int>(
       'last_seen_ms', aliasedName, true,
       type: DriftSqlType.int, requiredDuringInsert: false);
+  static const VerificationMeta _lastAppliedBridgeOutboundSeqMeta =
+      const VerificationMeta('lastAppliedBridgeOutboundSeq');
+  @override
+  late final GeneratedColumn<int> lastAppliedBridgeOutboundSeq =
+      GeneratedColumn<int>(
+          'last_applied_bridge_outbound_seq', aliasedName, true,
+          type: DriftSqlType.int, requiredDuringInsert: false);
   @override
   List<GeneratedColumn> get $columns => [
         macDeviceId,
@@ -2029,7 +2036,8 @@ class $TrustedDevicesTableTable extends TrustedDevicesTable
         hosts,
         sessionId,
         pairedAtMs,
-        lastSeenMs
+        lastSeenMs,
+        lastAppliedBridgeOutboundSeq
       ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -2087,6 +2095,13 @@ class $TrustedDevicesTableTable extends TrustedDevicesTable
           lastSeenMs.isAcceptableOrUnknown(
               data['last_seen_ms']!, _lastSeenMsMeta));
     }
+    if (data.containsKey('last_applied_bridge_outbound_seq')) {
+      context.handle(
+          _lastAppliedBridgeOutboundSeqMeta,
+          lastAppliedBridgeOutboundSeq.isAcceptableOrUnknown(
+              data['last_applied_bridge_outbound_seq']!,
+              _lastAppliedBridgeOutboundSeqMeta));
+    }
     return context;
   }
 
@@ -2110,6 +2125,9 @@ class $TrustedDevicesTableTable extends TrustedDevicesTable
           .read(DriftSqlType.int, data['${effectivePrefix}paired_at_ms'])!,
       lastSeenMs: attachedDatabase.typeMapping
           .read(DriftSqlType.int, data['${effectivePrefix}last_seen_ms']),
+      lastAppliedBridgeOutboundSeq: attachedDatabase.typeMapping.read(
+          DriftSqlType.int,
+          data['${effectivePrefix}last_applied_bridge_outbound_seq']),
     );
   }
 
@@ -2142,6 +2160,12 @@ class TrustedDeviceRow extends DataClass
 
   /// Last seen timestamp in epoch milliseconds, if any.
   final int? lastSeenMs;
+
+  /// Highest bridge→phone `seq` this phone has applied for this device, sent on
+  /// reconnect as `clientHello.resumeState.lastAppliedBridgeOutboundSeq` so the
+  /// bridge replays only what was missed (spec 02a §5.9.2). Nullable/absent for
+  /// older rows (schema < 5); treated as 0.
+  final int? lastAppliedBridgeOutboundSeq;
   const TrustedDeviceRow(
       {required this.macDeviceId,
       required this.displayName,
@@ -2149,7 +2173,8 @@ class TrustedDeviceRow extends DataClass
       this.hosts,
       required this.sessionId,
       required this.pairedAtMs,
-      this.lastSeenMs});
+      this.lastSeenMs,
+      this.lastAppliedBridgeOutboundSeq});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -2163,6 +2188,10 @@ class TrustedDeviceRow extends DataClass
     map['paired_at_ms'] = Variable<int>(pairedAtMs);
     if (!nullToAbsent || lastSeenMs != null) {
       map['last_seen_ms'] = Variable<int>(lastSeenMs);
+    }
+    if (!nullToAbsent || lastAppliedBridgeOutboundSeq != null) {
+      map['last_applied_bridge_outbound_seq'] =
+          Variable<int>(lastAppliedBridgeOutboundSeq);
     }
     return map;
   }
@@ -2179,6 +2208,10 @@ class TrustedDeviceRow extends DataClass
       lastSeenMs: lastSeenMs == null && nullToAbsent
           ? const Value.absent()
           : Value(lastSeenMs),
+      lastAppliedBridgeOutboundSeq:
+          lastAppliedBridgeOutboundSeq == null && nullToAbsent
+              ? const Value.absent()
+              : Value(lastAppliedBridgeOutboundSeq),
     );
   }
 
@@ -2193,6 +2226,8 @@ class TrustedDeviceRow extends DataClass
       sessionId: serializer.fromJson<String>(json['sessionId']),
       pairedAtMs: serializer.fromJson<int>(json['pairedAtMs']),
       lastSeenMs: serializer.fromJson<int?>(json['lastSeenMs']),
+      lastAppliedBridgeOutboundSeq:
+          serializer.fromJson<int?>(json['lastAppliedBridgeOutboundSeq']),
     );
   }
   @override
@@ -2206,6 +2241,8 @@ class TrustedDeviceRow extends DataClass
       'sessionId': serializer.toJson<String>(sessionId),
       'pairedAtMs': serializer.toJson<int>(pairedAtMs),
       'lastSeenMs': serializer.toJson<int?>(lastSeenMs),
+      'lastAppliedBridgeOutboundSeq':
+          serializer.toJson<int?>(lastAppliedBridgeOutboundSeq),
     };
   }
 
@@ -2216,7 +2253,8 @@ class TrustedDeviceRow extends DataClass
           Value<String?> hosts = const Value.absent(),
           String? sessionId,
           int? pairedAtMs,
-          Value<int?> lastSeenMs = const Value.absent()}) =>
+          Value<int?> lastSeenMs = const Value.absent(),
+          Value<int?> lastAppliedBridgeOutboundSeq = const Value.absent()}) =>
       TrustedDeviceRow(
         macDeviceId: macDeviceId ?? this.macDeviceId,
         displayName: displayName ?? this.displayName,
@@ -2225,6 +2263,9 @@ class TrustedDeviceRow extends DataClass
         sessionId: sessionId ?? this.sessionId,
         pairedAtMs: pairedAtMs ?? this.pairedAtMs,
         lastSeenMs: lastSeenMs.present ? lastSeenMs.value : this.lastSeenMs,
+        lastAppliedBridgeOutboundSeq: lastAppliedBridgeOutboundSeq.present
+            ? lastAppliedBridgeOutboundSeq.value
+            : this.lastAppliedBridgeOutboundSeq,
       );
   TrustedDeviceRow copyWithCompanion(TrustedDevicesTableCompanion data) {
     return TrustedDeviceRow(
@@ -2239,6 +2280,9 @@ class TrustedDeviceRow extends DataClass
           data.pairedAtMs.present ? data.pairedAtMs.value : this.pairedAtMs,
       lastSeenMs:
           data.lastSeenMs.present ? data.lastSeenMs.value : this.lastSeenMs,
+      lastAppliedBridgeOutboundSeq: data.lastAppliedBridgeOutboundSeq.present
+          ? data.lastAppliedBridgeOutboundSeq.value
+          : this.lastAppliedBridgeOutboundSeq,
     );
   }
 
@@ -2251,14 +2295,15 @@ class TrustedDeviceRow extends DataClass
           ..write('hosts: $hosts, ')
           ..write('sessionId: $sessionId, ')
           ..write('pairedAtMs: $pairedAtMs, ')
-          ..write('lastSeenMs: $lastSeenMs')
+          ..write('lastSeenMs: $lastSeenMs, ')
+          ..write('lastAppliedBridgeOutboundSeq: $lastAppliedBridgeOutboundSeq')
           ..write(')'))
         .toString();
   }
 
   @override
   int get hashCode => Object.hash(macDeviceId, displayName, relayUrl, hosts,
-      sessionId, pairedAtMs, lastSeenMs);
+      sessionId, pairedAtMs, lastSeenMs, lastAppliedBridgeOutboundSeq);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -2269,7 +2314,9 @@ class TrustedDeviceRow extends DataClass
           other.hosts == this.hosts &&
           other.sessionId == this.sessionId &&
           other.pairedAtMs == this.pairedAtMs &&
-          other.lastSeenMs == this.lastSeenMs);
+          other.lastSeenMs == this.lastSeenMs &&
+          other.lastAppliedBridgeOutboundSeq ==
+              this.lastAppliedBridgeOutboundSeq);
 }
 
 class TrustedDevicesTableCompanion extends UpdateCompanion<TrustedDeviceRow> {
@@ -2280,6 +2327,7 @@ class TrustedDevicesTableCompanion extends UpdateCompanion<TrustedDeviceRow> {
   final Value<String> sessionId;
   final Value<int> pairedAtMs;
   final Value<int?> lastSeenMs;
+  final Value<int?> lastAppliedBridgeOutboundSeq;
   final Value<int> rowid;
   const TrustedDevicesTableCompanion({
     this.macDeviceId = const Value.absent(),
@@ -2289,6 +2337,7 @@ class TrustedDevicesTableCompanion extends UpdateCompanion<TrustedDeviceRow> {
     this.sessionId = const Value.absent(),
     this.pairedAtMs = const Value.absent(),
     this.lastSeenMs = const Value.absent(),
+    this.lastAppliedBridgeOutboundSeq = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   TrustedDevicesTableCompanion.insert({
@@ -2299,6 +2348,7 @@ class TrustedDevicesTableCompanion extends UpdateCompanion<TrustedDeviceRow> {
     required String sessionId,
     required int pairedAtMs,
     this.lastSeenMs = const Value.absent(),
+    this.lastAppliedBridgeOutboundSeq = const Value.absent(),
     this.rowid = const Value.absent(),
   })  : macDeviceId = Value(macDeviceId),
         displayName = Value(displayName),
@@ -2313,6 +2363,7 @@ class TrustedDevicesTableCompanion extends UpdateCompanion<TrustedDeviceRow> {
     Expression<String>? sessionId,
     Expression<int>? pairedAtMs,
     Expression<int>? lastSeenMs,
+    Expression<int>? lastAppliedBridgeOutboundSeq,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -2323,6 +2374,8 @@ class TrustedDevicesTableCompanion extends UpdateCompanion<TrustedDeviceRow> {
       if (sessionId != null) 'session_id': sessionId,
       if (pairedAtMs != null) 'paired_at_ms': pairedAtMs,
       if (lastSeenMs != null) 'last_seen_ms': lastSeenMs,
+      if (lastAppliedBridgeOutboundSeq != null)
+        'last_applied_bridge_outbound_seq': lastAppliedBridgeOutboundSeq,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -2335,6 +2388,7 @@ class TrustedDevicesTableCompanion extends UpdateCompanion<TrustedDeviceRow> {
       Value<String>? sessionId,
       Value<int>? pairedAtMs,
       Value<int?>? lastSeenMs,
+      Value<int?>? lastAppliedBridgeOutboundSeq,
       Value<int>? rowid}) {
     return TrustedDevicesTableCompanion(
       macDeviceId: macDeviceId ?? this.macDeviceId,
@@ -2344,6 +2398,8 @@ class TrustedDevicesTableCompanion extends UpdateCompanion<TrustedDeviceRow> {
       sessionId: sessionId ?? this.sessionId,
       pairedAtMs: pairedAtMs ?? this.pairedAtMs,
       lastSeenMs: lastSeenMs ?? this.lastSeenMs,
+      lastAppliedBridgeOutboundSeq:
+          lastAppliedBridgeOutboundSeq ?? this.lastAppliedBridgeOutboundSeq,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -2372,6 +2428,10 @@ class TrustedDevicesTableCompanion extends UpdateCompanion<TrustedDeviceRow> {
     if (lastSeenMs.present) {
       map['last_seen_ms'] = Variable<int>(lastSeenMs.value);
     }
+    if (lastAppliedBridgeOutboundSeq.present) {
+      map['last_applied_bridge_outbound_seq'] =
+          Variable<int>(lastAppliedBridgeOutboundSeq.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -2388,6 +2448,8 @@ class TrustedDevicesTableCompanion extends UpdateCompanion<TrustedDeviceRow> {
           ..write('sessionId: $sessionId, ')
           ..write('pairedAtMs: $pairedAtMs, ')
           ..write('lastSeenMs: $lastSeenMs, ')
+          ..write(
+              'lastAppliedBridgeOutboundSeq: $lastAppliedBridgeOutboundSeq, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -4100,6 +4162,7 @@ typedef $$TrustedDevicesTableTableCreateCompanionBuilder
   required String sessionId,
   required int pairedAtMs,
   Value<int?> lastSeenMs,
+  Value<int?> lastAppliedBridgeOutboundSeq,
   Value<int> rowid,
 });
 typedef $$TrustedDevicesTableTableUpdateCompanionBuilder
@@ -4111,6 +4174,7 @@ typedef $$TrustedDevicesTableTableUpdateCompanionBuilder
   Value<String> sessionId,
   Value<int> pairedAtMs,
   Value<int?> lastSeenMs,
+  Value<int?> lastAppliedBridgeOutboundSeq,
   Value<int> rowid,
 });
 
@@ -4143,6 +4207,10 @@ class $$TrustedDevicesTableTableFilterComposer
 
   ColumnFilters<int> get lastSeenMs => $composableBuilder(
       column: $table.lastSeenMs, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get lastAppliedBridgeOutboundSeq => $composableBuilder(
+      column: $table.lastAppliedBridgeOutboundSeq,
+      builder: (column) => ColumnFilters(column));
 }
 
 class $$TrustedDevicesTableTableOrderingComposer
@@ -4174,6 +4242,10 @@ class $$TrustedDevicesTableTableOrderingComposer
 
   ColumnOrderings<int> get lastSeenMs => $composableBuilder(
       column: $table.lastSeenMs, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get lastAppliedBridgeOutboundSeq => $composableBuilder(
+      column: $table.lastAppliedBridgeOutboundSeq,
+      builder: (column) => ColumnOrderings(column));
 }
 
 class $$TrustedDevicesTableTableAnnotationComposer
@@ -4205,6 +4277,9 @@ class $$TrustedDevicesTableTableAnnotationComposer
 
   GeneratedColumn<int> get lastSeenMs => $composableBuilder(
       column: $table.lastSeenMs, builder: (column) => column);
+
+  GeneratedColumn<int> get lastAppliedBridgeOutboundSeq => $composableBuilder(
+      column: $table.lastAppliedBridgeOutboundSeq, builder: (column) => column);
 }
 
 class $$TrustedDevicesTableTableTableManager extends RootTableManager<
@@ -4244,6 +4319,7 @@ class $$TrustedDevicesTableTableTableManager extends RootTableManager<
             Value<String> sessionId = const Value.absent(),
             Value<int> pairedAtMs = const Value.absent(),
             Value<int?> lastSeenMs = const Value.absent(),
+            Value<int?> lastAppliedBridgeOutboundSeq = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               TrustedDevicesTableCompanion(
@@ -4254,6 +4330,7 @@ class $$TrustedDevicesTableTableTableManager extends RootTableManager<
             sessionId: sessionId,
             pairedAtMs: pairedAtMs,
             lastSeenMs: lastSeenMs,
+            lastAppliedBridgeOutboundSeq: lastAppliedBridgeOutboundSeq,
             rowid: rowid,
           ),
           createCompanionCallback: ({
@@ -4264,6 +4341,7 @@ class $$TrustedDevicesTableTableTableManager extends RootTableManager<
             required String sessionId,
             required int pairedAtMs,
             Value<int?> lastSeenMs = const Value.absent(),
+            Value<int?> lastAppliedBridgeOutboundSeq = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               TrustedDevicesTableCompanion.insert(
@@ -4274,6 +4352,7 @@ class $$TrustedDevicesTableTableTableManager extends RootTableManager<
             sessionId: sessionId,
             pairedAtMs: pairedAtMs,
             lastSeenMs: lastSeenMs,
+            lastAppliedBridgeOutboundSeq: lastAppliedBridgeOutboundSeq,
             rowid: rowid,
           ),
           withReferenceMapper: (p0) => p0

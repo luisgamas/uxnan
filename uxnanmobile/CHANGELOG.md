@@ -7,6 +7,27 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Seq-based catch-up on reconnect (mobile half)** — the phone now persists the
+  highest bridge→phone `seq` it has applied per device and advertises it on
+  reconnect so the bridge replays only the outbound it missed (spec 02a §5.9.2).
+  `ClientHello` gained a `resumeState` field
+  (`{ lastAppliedBridgeOutboundSeq }`, omitted when 0) serialized into the
+  handshake; `SecureTransportLayer.performHandshake` forwards it. The applied
+  seq (tracked by `SecureChannel.decrypt` on `SecureSession.bridgeOutboundSeq`)
+  is persisted on `TrustedDevice.lastAppliedBridgeOutboundSeq` — a new nullable
+  drift column (schema **v5**, additive migration) read/written by
+  `TrustedDeviceRepository`. `SessionCoordinator` loads it into the handshake and
+  checkpoints it on every teardown (drop / disconnect / socket close) **and**
+  periodically on the heartbeat, updating the in-memory active device
+  synchronously so an immediate reconnect advertises the freshest value. With
+  the bridge half already shipped, reconnects now resume the bridge→phone stream
+  instead of silently dropping anything sent while the phone was briefly away.
+  Covered by `handshake_messages_test.dart` (resumeState serialization),
+  `trusted_device_repository_test.dart` (column round-trip + older-row default
+  0), and `session_coordinator_test.dart` (persists on disconnect, advertises
+  resumeState on reconnect, first connection sends none). Note: a bridge restart
+  resets its in-memory outbound log, so a stale resume point yields no replay and
+  the phone re-syncs via `turn/list` — acceptable and expected.
 - **Approval decisions persist across scroll + restart** — the user's
   decision on every interactive approval card (Approve / Reject / "always
   allow this session") is now stored on-device via

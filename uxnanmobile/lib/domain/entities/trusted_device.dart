@@ -18,6 +18,7 @@ class TrustedDevice extends Equatable {
     required this.pairedAt,
     this.hosts = const [],
     this.lastSeen,
+    this.lastAppliedBridgeOutboundSeq = 0,
   });
 
   /// Bridge device identifier.
@@ -47,6 +48,12 @@ class TrustedDevice extends Equatable {
   /// When this device was last seen, if ever.
   final DateTime? lastSeen;
 
+  /// Highest bridge→phone sequence number this phone has applied for this
+  /// device. Persisted so a reconnect can advertise it in
+  /// `clientHello.resumeState.lastAppliedBridgeOutboundSeq` and the bridge can
+  /// replay only the outbound it missed (spec 02a §5.9.2). 0 = none yet.
+  final int lastAppliedBridgeOutboundSeq;
+
   /// Returns a copy with selected fields replaced.
   TrustedDevice copyWith({
     String? displayName,
@@ -54,6 +61,7 @@ class TrustedDevice extends Equatable {
     List<String>? hosts,
     String? sessionId,
     DateTime? lastSeen,
+    int? lastAppliedBridgeOutboundSeq,
   }) {
     return TrustedDevice(
       macDeviceId: macDeviceId,
@@ -64,6 +72,8 @@ class TrustedDevice extends Equatable {
       sessionId: sessionId ?? this.sessionId,
       pairedAt: pairedAt,
       lastSeen: lastSeen ?? this.lastSeen,
+      lastAppliedBridgeOutboundSeq:
+          lastAppliedBridgeOutboundSeq ?? this.lastAppliedBridgeOutboundSeq,
     );
   }
 
@@ -77,5 +87,6 @@ class TrustedDevice extends Equatable {
         sessionId,
         pairedAt,
         lastSeen,
+        lastAppliedBridgeOutboundSeq,
       ];
 }
