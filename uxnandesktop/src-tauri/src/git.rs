@@ -1,9 +1,12 @@
 //! Git operations for repos and worktrees.
 //!
-//! Phase 2 uses the git **CLI** (via `tokio::process::Command`, `shell:false` —
-//! args are passed as a vector, never interpolated) for worktree management,
-//! which libgit2 only supports partially. High-frequency status/diff work will
-//! move to the `git2` crate in later phases (spec §2.5).
+//! **Dual engine** (spec `02c` §3.1): high-frequency status/diff (`status_files`,
+//! `worktree_status`, `diff_file`, `diff_head`, `numstat`) run through `git2`
+//! (libgit2, in `gitfast.rs`, off the async runtime via `spawn_blocking`) to
+//! avoid a subprocess per 3 s poll, each with a **CLI fallback** here. Worktree
+//! management, branch listing, staging, commit, push/pull and patch-apply stay
+//! on the git **CLI** (via `tokio::process::Command`, `shell:false` — args are a
+//! vector, never interpolated), which libgit2 supports only partially.
 
 use std::path::Path;
 
@@ -192,8 +195,19 @@ pub async fn is_worktree_clean(worktree_path: &str) -> Result<bool, AppError> {
 }
 
 /// Summarize a worktree's working-tree status (changed entries + ahead/behind)
-/// for its sidebar card. Uses `status --porcelain=v1 --branch`.
+/// for its sidebar card. Fast path: `git2`; CLI fallback.
 pub async fn worktree_status(worktree_path: &str) -> Result<WorktreeStatus, AppError> {
+    let p = worktree_path.to_string();
+    if let Ok(Ok(v)) =
+        tokio::task::spawn_blocking(move || crate::gitfast::worktree_status(&p)).await
+    {
+        return Ok(v);
+    }
+    worktree_status_cli(worktree_path).await
+}
+
+/// CLI fallback for [`worktree_status`] (`status --porcelain=v1 --branch`).
+async fn worktree_status_cli(worktree_path: &str) -> Result<WorktreeStatus, AppError> {
     let out = git(worktree_path, &["status", "--porcelain=v1", "--branch"]).await?;
     Ok(parse_status_porcelain(&out))
 }
@@ -335,10 +349,20 @@ pub fn parse_worktree_porcelain(input: &str) -> Vec<WorktreeEntry> {
 
 // --- Status, diffs & staging (Phase 3) -------------------------------------
 
-/// List a worktree's changed files (`git status --porcelain=v1 -z
+/// List a worktree's changed files. Fast path: `git2` (no subprocess); falls
+/// back to the git CLI if `git2` can't handle the repo.
+pub async fn status_files(worktree_path: &str) -> Result<Vec<FileChange>, AppError> {
+    let p = worktree_path.to_string();
+    if let Ok(Ok(v)) = tokio::task::spawn_blocking(move || crate::gitfast::status_files(&p)).await {
+        return Ok(v);
+    }
+    status_files_cli(worktree_path).await
+}
+
+/// CLI fallback for [`status_files`] (`git status --porcelain=v1 -z
 /// --untracked-files=all`). NUL-terminated so paths with spaces/newlines are
 /// safe; rename/copy entries carry the original path in a trailing NUL field.
-pub async fn status_files(worktree_path: &str) -> Result<Vec<FileChange>, AppError> {
+async fn status_files_cli(worktree_path: &str) -> Result<Vec<FileChange>, AppError> {
     let out = git(
         worktree_path,
         &["status", "--porcelain=v1", "-z", "--untracked-files=all"],
@@ -377,9 +401,24 @@ pub fn parse_status_files(input: &str) -> Vec<FileChange> {
 }
 
 /// Unified diff for one file. `staged` selects the index-vs-HEAD diff; otherwise
-/// the worktree-vs-index diff, falling back to a whole-file "added" diff for an
-/// untracked file (which has no tracked diff).
+/// the worktree-vs-index diff. Fast path: `git2`; CLI fallback.
 pub async fn diff_file(worktree_path: &str, file: &str, staged: bool) -> Result<String, AppError> {
+    let (p, f) = (worktree_path.to_string(), file.to_string());
+    if let Ok(Ok(v)) =
+        tokio::task::spawn_blocking(move || crate::gitfast::diff_file(&p, &f, staged)).await
+    {
+        // git2 returns an empty diff for an untracked file unless asked; if it's
+        // empty, fall through to the CLI which handles the untracked `--no-index`
+        // whole-file case.
+        if !v.trim().is_empty() {
+            return Ok(v);
+        }
+    }
+    diff_file_cli(worktree_path, file, staged).await
+}
+
+/// CLI fallback for [`diff_file`], incl. the untracked whole-file "added" diff.
+async fn diff_file_cli(worktree_path: &str, file: &str, staged: bool) -> Result<String, AppError> {
     if staged {
         return git(worktree_path, &["diff", "--staged", "--", file]).await;
     }
@@ -393,6 +432,66 @@ pub async fn diff_file(worktree_path: &str, file: &str, staged: bool) -> Result<
         &["diff", "--no-index", "--", "/dev/null", file],
     )
     .await
+}
+
+/// Per-file added/deleted line counts vs `HEAD`, for the changed-files list. The
+/// `path` is worktree-relative (forward-slash, matching `status_files`). Binary
+/// files report 0/0. Untracked files have no `HEAD` baseline and are omitted (the
+/// frontend marks them as wholly new on its own).
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct FileNumstat {
+    pub path: String,
+    pub added: u32,
+    pub deleted: u32,
+}
+
+/// Added/deleted line counts per changed file vs `HEAD`. Fast path: `git2`;
+/// CLI fallback (`git diff --numstat HEAD`).
+pub async fn numstat(worktree_path: &str) -> Result<Vec<FileNumstat>, AppError> {
+    let p = worktree_path.to_string();
+    if let Ok(Ok(v)) = tokio::task::spawn_blocking(move || crate::gitfast::numstat(&p)).await {
+        return Ok(v);
+    }
+    numstat_cli(worktree_path).await
+}
+
+/// CLI fallback for [`numstat`].
+async fn numstat_cli(worktree_path: &str) -> Result<Vec<FileNumstat>, AppError> {
+    let out = git(worktree_path, &["diff", "--numstat", "HEAD"]).await?;
+    Ok(parse_numstat(&out))
+}
+
+/// Parse `git diff --numstat HEAD` output: `<added>\t<deleted>\t<path>` per line
+/// (`-` counts for binary files become 0).
+pub fn parse_numstat(input: &str) -> Vec<FileNumstat> {
+    let mut out = Vec::new();
+    for line in input.lines() {
+        let mut parts = line.splitn(3, '\t');
+        let (Some(a), Some(d), Some(path)) = (parts.next(), parts.next(), parts.next()) else {
+            continue;
+        };
+        out.push(FileNumstat {
+            added: a.trim().parse().unwrap_or(0),
+            deleted: d.trim().parse().unwrap_or(0),
+            path: path.to_string(),
+        });
+    }
+    out
+}
+
+/// Working-tree-vs-`HEAD` diff for one file (`git diff HEAD -- <file>`), used by
+/// the editor's change gutter: it shows every line that differs from the last
+/// commit (staged *and* unstaged together), which is what an IDE gutter marks.
+/// Returns an empty string for a clean or untracked file (untracked files have
+/// no `HEAD` baseline — the frontend treats those as wholly added on its own).
+pub async fn diff_head(worktree_path: &str, file: &str) -> Result<String, AppError> {
+    let (p, f) = (worktree_path.to_string(), file.to_string());
+    if let Ok(Ok(v)) = tokio::task::spawn_blocking(move || crate::gitfast::diff_head(&p, &f)).await
+    {
+        return Ok(v);
+    }
+    git(worktree_path, &["diff", "HEAD", "--", file]).await
 }
 
 /// Stage a file (`git add`).
@@ -615,5 +714,23 @@ mod tests {
     #[test]
     fn parses_status_files_empty() {
         assert!(parse_status_files("").is_empty());
+    }
+
+    #[test]
+    fn parses_numstat_counts_and_binary() {
+        let input = "3\t1\tsrc/a.rs\n0\t5\tsrc/b.rs\n-\t-\timg.png\n";
+        let stats = parse_numstat(input);
+        assert_eq!(stats.len(), 3);
+        assert_eq!((stats[0].added, stats[0].deleted), (3, 1));
+        assert_eq!(stats[0].path, "src/a.rs");
+        assert_eq!((stats[1].added, stats[1].deleted), (0, 5));
+        // Binary "-\t-" parses to 0/0.
+        assert_eq!((stats[2].added, stats[2].deleted), (0, 0));
+        assert_eq!(stats[2].path, "img.png");
+    }
+
+    #[test]
+    fn parses_numstat_empty() {
+        assert!(parse_numstat("").is_empty());
     }
 }

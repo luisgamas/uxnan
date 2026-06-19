@@ -81,8 +81,7 @@
     "&": { backgroundColor: "transparent", color: "inherit", height: "100%" },
     "&.cm-focused": { outline: "none" },
     ".cm-scroller": {
-      fontFamily:
-        'ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, monospace',
+      fontFamily: "var(--ux-font-mono)",
       fontSize: "12px",
       lineHeight: "1.5",
       overflow: "auto",

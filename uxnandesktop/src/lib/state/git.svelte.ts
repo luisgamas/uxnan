@@ -11,6 +11,7 @@ import {
   gitCommit,
   gitDiff,
   gitDiscard,
+  gitNumstat,
   gitPull,
   gitPush,
   gitSetWatch,
@@ -22,6 +23,8 @@ import {
   worktreeStatus,
 } from "$lib/api";
 import { projects } from "$lib/state/projects.svelte";
+import { toast, toastError } from "$lib/toast";
+import { i18n } from "$lib/i18n";
 import type { FileChange, GitStatusEvent } from "$lib/types";
 
 const msg = (e: unknown) =>
@@ -48,6 +51,8 @@ class GitStore {
   /** Active worktree path the panel reflects (null = no worktree selected). */
   path = $state<string | null>(null);
   files = $state<FileEntry[]>([]);
+  /** Added/deleted line counts vs HEAD, keyed by worktree-relative path. */
+  numstat = $state<Record<string, { added: number; deleted: number }>>({});
   loading = $state(false);
   /** A staging/commit action is in flight (disables the action buttons). */
   busy = $state(false);
@@ -85,6 +90,7 @@ class GitStore {
         this.files = ev.files.map(classify);
         this.ahead = ev.ahead;
         this.behind = ev.behind;
+        void this.loadNumstat(ev.path);
         // Keep the project card badge live too.
         projects.setStatus(ev.path, {
           dirty: ev.files.length,
@@ -109,11 +115,13 @@ class GitStore {
     void gitSetWatch(path).catch(() => {});
     if (!path) {
       this.files = [];
+      this.numstat = {};
       return;
     }
     this.loading = true;
     try {
       this.files = (await gitStatus(path)).map(classify);
+      void this.loadNumstat(path);
       const st = await worktreeStatus(path);
       this.ahead = st.ahead;
       this.behind = st.behind;
@@ -121,6 +129,7 @@ class GitStore {
       projects.setStatus(path, st);
     } catch (e) {
       this.error = msg(e);
+      toastError(e);
       this.files = [];
     } finally {
       this.loading = false;
@@ -130,6 +139,20 @@ class GitStore {
   /** Re-read the current worktree's status (no-op when none is selected). */
   refresh(): Promise<void> {
     return this.load(this.path);
+  }
+
+  /** Refresh the per-file added/deleted line counts (best-effort; only applied if
+   *  we're still showing the same worktree when it resolves). */
+  async loadNumstat(path: string): Promise<void> {
+    try {
+      const stats = await gitNumstat(path);
+      if (this.path !== path) return;
+      const map: Record<string, { added: number; deleted: number }> = {};
+      for (const s of stats) map[s.path] = { added: s.added, deleted: s.deleted };
+      this.numstat = map;
+    } catch {
+      // Non-fatal (e.g. transient git error); keep the last counts.
+    }
   }
 
   /** Open the diff viewer for a file in the given area (staged or not). A diff
@@ -146,6 +169,7 @@ class GitStore {
       this.diff = await Promise.race([gitDiff(this.path, file, staged), timeout]);
     } catch (e) {
       this.error = msg(e);
+      toastError(e);
     } finally {
       this.diffLoading = false;
     }
@@ -166,6 +190,7 @@ class GitStore {
       await this.refresh();
     } catch (e) {
       this.error = msg(e);
+      toastError(e);
     } finally {
       this.busy = false;
     }
@@ -208,6 +233,7 @@ class GitStore {
       if (this.diff.trim().length === 0) this.closeDiff();
     } catch (e) {
       this.error = msg(e);
+      toastError(e);
     } finally {
       this.busy = false;
     }
@@ -224,15 +250,18 @@ class GitStore {
       await gitCommit(path, message);
       this.message = "";
       await this.refresh();
+      toast.success(i18n.t("toast.committed"));
     } catch (e) {
       this.error = msg(e);
+      toastError(e);
     } finally {
       this.committing = false;
     }
   }
 
-  /** Push or pull the current branch, then refresh ahead/behind + status. */
-  private async sync(fn: (path: string) => Promise<void>): Promise<void> {
+  /** Push or pull the current branch, then refresh ahead/behind + status, and
+   *  toast `okMsg` on success. */
+  private async sync(fn: (path: string) => Promise<void>, okMsg: string): Promise<void> {
     const path = this.path;
     if (!path) return;
     this.syncing = true;
@@ -240,17 +269,19 @@ class GitStore {
     try {
       await fn(path);
       await this.refresh();
+      toast.success(okMsg);
     } catch (e) {
       this.error = msg(e);
+      toastError(e);
     } finally {
       this.syncing = false;
     }
   }
   push(): Promise<void> {
-    return this.sync((p) => gitPush(p));
+    return this.sync((p) => gitPush(p), i18n.t("toast.pushed"));
   }
   pull(): Promise<void> {
-    return this.sync((p) => gitPull(p));
+    return this.sync((p) => gitPull(p), i18n.t("toast.pulled"));
   }
 }
 

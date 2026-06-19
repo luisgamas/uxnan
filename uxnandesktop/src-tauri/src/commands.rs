@@ -9,6 +9,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 use uuid::Uuid;
 
+use crate::agent_hooks::{self, ClaudeHooksStatus, HookInstall};
 use crate::error::{AppError, CommandError};
 use crate::git::{self, WorktreeEntry};
 use crate::model::{AgentStateEntry, AppData, AppSettings, RepoData};
@@ -317,6 +318,55 @@ pub async fn browse_dirs(path: Option<String>) -> Result<crate::browse::DirListi
         .map_err(CommandError::from)
 }
 
+// --- Filesystem: file tree + editor ----------------------------------------
+//
+// Back the right-panel file-tree tab (browse the active worktree's working tree)
+// and the center file editor (read/write one text file). Paths are absolute, on
+// the user's own machine (not confined — mirrors `browse_dirs`).
+
+/// List the immediate children of a directory (sub-dirs first, then files),
+/// for the file-tree tab. Lazy: the frontend calls this per folder on expand,
+/// so a huge tree (e.g. `node_modules`) never loads until opened.
+#[tauri::command]
+pub async fn fs_list_dir(path: String) -> Result<Vec<crate::fs::FsEntry>, CommandError> {
+    crate::fs::list_dir(&path).await.map_err(CommandError::from)
+}
+
+/// Read a single text file for the editor (with binary / too-large guards).
+#[tauri::command]
+pub async fn fs_read_file(path: String) -> Result<crate::fs::FileContent, CommandError> {
+    crate::fs::read_file(&path)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Overwrite a file with the editor's content (atomic temp-write + rename).
+#[tauri::command]
+pub async fn fs_write_file(path: String, content: String) -> Result<(), CommandError> {
+    crate::fs::write_file(&path, &content)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Reveal a path in the OS file manager (Explorer / Finder / the default file
+/// manager), selecting the item. Powers the file tree's "open in file manager".
+#[tauri::command]
+pub fn reveal_path(app: AppHandle, path: String) -> Result<(), CommandError> {
+    use tauri_plugin_opener::OpenerExt;
+    app.opener()
+        .reveal_item_in_dir(std::path::PathBuf::from(path))
+        .map_err(|e| CommandError::new("REVEAL_FAILED", e.to_string()))
+}
+
+/// Working-tree-vs-`HEAD` diff for one file, powering the editor's change gutter
+/// (added lines + a peek at the removed lines). Empty for clean/untracked files.
+#[tauri::command]
+pub async fn git_diff_head(path: String, file: String) -> Result<String, CommandError> {
+    git::diff_head(&path, &file)
+        .await
+        .map_err(CommandError::from)
+}
+
 // --- Git status, diffs & staging (Phase 3) ---------------------------------
 //
 // These run git directly in the worktree `path` (the right panel's review view).
@@ -325,6 +375,12 @@ pub async fn browse_dirs(path: Option<String>) -> Result<crate::browse::DirListi
 #[tauri::command]
 pub async fn git_status(path: String) -> Result<Vec<git::FileChange>, CommandError> {
     git::status_files(&path).await.map_err(CommandError::from)
+}
+
+/// Per-file added/deleted line counts vs `HEAD` for the changed-files list.
+#[tauri::command]
+pub async fn git_numstat(path: String) -> Result<Vec<git::FileNumstat>, CommandError> {
+    git::numstat(&path).await.map_err(CommandError::from)
 }
 
 /// Unified diff for one file. `staged` selects the index-vs-HEAD diff.
@@ -485,4 +541,87 @@ pub async fn set_prevent_sleep(
 ) -> Result<(), CommandError> {
     state.power.set(active);
     Ok(())
+}
+
+// --- Ready-made agent hook configs (Phase 4 follow-up) ----------------------
+
+/// The textual content of every bundled hook script (with the Claude template
+/// already rendered for the installed script path). The Settings → Agents →
+/// Hooks pane uses this to show copy-pasteable snippets without having to
+/// shell out to `cat` the files.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HookScripts {
+    /// The rendered `hooks` block ready to paste into `~/.claude/settings.json`.
+    pub claude_json: String,
+    pub wrapper_bash: String,
+    pub wrapper_powershell: String,
+    pub wrapper_cmd: String,
+}
+
+/// Paths of the bundled hook scripts the ADE writes to `<app-data>/hooks/`
+/// on startup, plus the resolved `~/.claude/settings.json` path. Settings →
+/// Agents → Hooks uses this to render copy-pasteable commands and the install
+/// buttons. `None` if the install-on-startup step failed (e.g. the app-data
+/// directory is not writable) — in that case precise hook reporting still
+/// works, just the one-click install is unavailable.
+#[tauri::command]
+pub async fn get_hook_install(
+    state: State<'_, AppState>,
+) -> Result<Option<HookInstall>, CommandError> {
+    Ok(state.hook_install.read().await.clone())
+}
+
+/// The current state of the Claude `settings.json` `hooks` block. Lets the
+/// UI render an honest "Installed" / "Not installed" / "Unavailable" badge
+/// (we never claim installed unless our `__uxnan_managed_hooks__` marker is
+/// actually present).
+#[tauri::command]
+pub async fn get_claude_hooks_status() -> Result<ClaudeHooksStatus, CommandError> {
+    Ok(agent_hooks::read_claude_status())
+}
+
+/// Add (or replace) the ADE-managed `hooks` block in
+/// `~/.claude/settings.json`, pointing at the installed script. Preserves
+/// every other top-level key — existing Claude settings are untouched.
+/// Returns the new status so the UI can refresh without a second round-trip.
+#[tauri::command]
+pub async fn install_claude_hooks(
+    state: State<'_, AppState>,
+) -> Result<ClaudeHooksStatus, CommandError> {
+    let install = state.hook_install.read().await.clone().ok_or_else(|| {
+        CommandError::new("HOOK_SCRIPTS_MISSING", "hook scripts are not installed")
+    })?;
+    let script_path = std::path::PathBuf::from(install.claude_hook_script);
+    agent_hooks::install_claude_hooks(&script_path).map_err(CommandError::from)
+}
+
+/// Remove the ADE-managed `hooks` block from `~/.claude/settings.json` (no
+/// op if it's not ours). Idempotent: safe to call repeatedly.
+#[tauri::command]
+pub async fn uninstall_claude_hooks() -> Result<ClaudeHooksStatus, CommandError> {
+    agent_hooks::uninstall_claude_hooks().map_err(CommandError::from)
+}
+
+/// The textual content of every bundled hook script. The Settings UI uses
+/// this to show copy-pasteable snippets (rendered Claude `settings.json`,
+/// platform wrapper script). The Claude JSON is rendered against the
+/// installed script path so the user can copy it as-is.
+#[tauri::command]
+pub async fn get_hook_scripts(
+    state: State<'_, AppState>,
+) -> Result<Option<HookScripts>, CommandError> {
+    let install = match state.hook_install.read().await.clone() {
+        Some(install) => install,
+        None => return Ok(None),
+    };
+    let script_path = std::path::PathBuf::from(install.claude_hook_script);
+    let claude_json =
+        agent_hooks::render_claude_settings_json(&script_path).map_err(CommandError::from)?;
+    Ok(Some(HookScripts {
+        claude_json,
+        wrapper_bash: agent_hooks::WRAPPER_BASH.to_string(),
+        wrapper_powershell: agent_hooks::WRAPPER_POWERSHELL.to_string(),
+        wrapper_cmd: agent_hooks::WRAPPER_CMD.to_string(),
+    }))
 }

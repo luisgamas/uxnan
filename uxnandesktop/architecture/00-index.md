@@ -134,7 +134,7 @@ Esto es lo que hace posible el paralelismo real. Sin worktrees, multiples agente
 | **S** | Settings, design system & i18n (cross-cutting) | ✅ Hecho | Settings (theme + terminal profiles w/ OS templates), design tokens, full i18n (EN/ES), agents registry + install detection + manual + auto-launch |
 | **6** | Bridge integration (mobile pairing) | ⏳ Pendiente | Tauri sidecar para el bridge + QR pairing; **opcional para standalone**; el bridge standalone es la referencia del contrato |
 | **Ops** | CI/CD & release pipeline | ⏳ Pendiente | Branded icons + signing + auto-updater keys (FOR-HUMAN) antes de distribuir builds |
-| **S/Follow-up** | Ready-made per-agent hook configs (Claude Code + generic wrapper) | ⏳ Pendiente | La infraestructura (Layer 1 hook server) ya esta; falta la config empaquetada |
+| **S/Follow-up** | Ready-made per-agent hook configs (Claude Code + generic wrapper) | ✅ Hecho | Scripts bundleados en `static/hooks/` + escritos a `<app-data>/hooks/` al arranque; **Settings → Agents → Hooks** ofrece Install/Uninstall para Claude (`~/.claude/settings.json` con marcador `__uxnan_managed_hooks__`) y el wrapper generico (Bash / PowerShell / cmd) para cualquier agente CLI |
 | **S/Follow-up** | Multi-agent orchestration (task graph, fan-out, sidebar lineage) | ⏳ Pendiente | Out of MVP scope |
 | **S/Follow-up** | E2E tests (Playwright / WebdriverIO + tauri-driver) | ⏳ Pendiente | `cargo test` 8 passing + `npm run check` 0/0 + `cargo clippy` + `cargo fmt` ya son verde |
 

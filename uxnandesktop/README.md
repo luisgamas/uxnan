@@ -58,6 +58,7 @@ Detailed docs live in [`docs/`](./docs/):
 [testing & verification](./docs/testing.md) ·
 [architecture orientation](./docs/architecture.md) ·
 [design tokens](./docs/design-tokens.md) ·
+[theming & appearance](./docs/theming.md) ·
 [internationalization (i18n)](./docs/i18n.md) ·
 [agent hooks (precise states)](./docs/agent-hooks.md).
 

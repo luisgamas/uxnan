@@ -12,6 +12,7 @@ use tokio::sync::RwLock;
 
 use serde::Serialize;
 
+use crate::agent_hooks::HookInstall;
 use crate::model::AppData;
 use crate::persistence::PersistenceManager;
 use crate::power::SleepBlocker;
@@ -50,6 +51,11 @@ pub struct AppState {
     /// until then (e.g. if the port couldn't be bound — terminals still work,
     /// just without precise hook reporting).
     pub hook: Arc<RwLock<Option<HookServerInfo>>>,
+    /// Absolute paths of the ready-made per-agent hook scripts the ADE wrote
+    /// to `<app-data>/hooks/` at startup (Phase 4 follow-up; `None` if the
+    /// install step failed — precise hook reporting still works, only the
+    /// one-click install button is unavailable).
+    pub hook_install: Arc<RwLock<Option<HookInstall>>>,
     /// Keep-awake controller: blocks system sleep while an agent works (opt-in).
     pub power: SleepBlocker,
 }
@@ -64,6 +70,7 @@ impl AppState {
             focused: Arc::new(AtomicBool::new(true)),
             agent_commands: Arc::new(RwLock::new(Vec::new())),
             hook: Arc::new(RwLock::new(None)),
+            hook_install: Arc::new(RwLock::new(None)),
             power: SleepBlocker::new(),
         }
     }

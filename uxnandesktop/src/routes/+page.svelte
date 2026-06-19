@@ -1,17 +1,21 @@
 <script lang="ts">
   import { app } from "$lib/state/app.svelte";
   import { git } from "$lib/state/git.svelte";
+  import { files } from "$lib/state/files.svelte";
   import { projects } from "$lib/state/projects.svelte";
   import { i18n } from "$lib/i18n";
+  import { matchAction } from "$lib/keybindings";
   import { isUntestedPlatform, osLabel } from "$lib/platform";
   import TriangleAlertIcon from "@lucide/svelte/icons/triangle-alert";
   import TerminalArea from "$lib/components/TerminalArea.svelte";
   import DiffPanel from "$lib/components/DiffPanel.svelte";
+  import FileEditor from "$lib/components/FileEditor.svelte";
   import TitleBar from "$lib/components/TitleBar.svelte";
   import LeftSidebar from "$lib/components/LeftSidebar.svelte";
   import RightPanel from "$lib/components/RightPanel.svelte";
   import Settings from "$lib/components/Settings.svelte";
   import WorktreeSearch from "$lib/components/WorktreeSearch.svelte";
+  import { Toaster } from "$lib/components/ui/sonner";
 
   // Resize bounds for each sidebar (px).
   const LEFT_MIN = 200;
@@ -86,11 +90,46 @@
     e.preventDefault();
   }
 
-  // Ctrl/Cmd+P opens the quick worktree switcher.
+  // Global keyboard shortcuts (configurable in Settings → Keyboard shortcuts).
   function onKeyDown(e: KeyboardEvent) {
-    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "p") {
-      e.preventDefault();
-      projects.paletteOpen = true;
+    // Settings (full-screen) owns its own keys, including shortcut rebinding.
+    if (app.settingsOpen) return;
+    // Never steal keys while typing in a terminal — the shell owns Ctrl+W/J/etc.
+    const el = e.target as HTMLElement | null;
+    if (el?.closest(".xterm")) return;
+    const action = matchAction(e);
+    if (!action) return;
+    switch (action) {
+      case "closeCenter":
+        // Only when the center overlay is open; otherwise let the key through.
+        if (files.path) {
+          e.preventDefault();
+          files.close();
+        } else if (git.selected) {
+          e.preventDefault();
+          git.closeDiff();
+        }
+        return;
+      case "saveFile":
+        return; // handled by the editor's own keymap when focused
+      case "worktreePalette":
+        e.preventDefault();
+        projects.paletteOpen = true;
+        return;
+      case "openSettings":
+        e.preventDefault();
+        app.openSettings();
+        return;
+      case "toggleLeftSidebar":
+        e.preventDefault();
+        app.settings.leftSidebarOpen = !app.settings.leftSidebarOpen;
+        void app.persistSettings();
+        return;
+      case "toggleRightSidebar":
+        e.preventDefault();
+        app.settings.rightSidebarOpen = !app.settings.rightSidebarOpen;
+        void app.persistSettings();
+        return;
     }
   }
 </script>
@@ -98,89 +137,106 @@
 <svelte:window oncontextmenu={onContextMenu} onkeydown={onKeyDown} />
 
 <div class="flex h-screen w-screen flex-col bg-background text-foreground">
+  <!-- Non-blocking toasts (errors + successes) -->
+  <Toaster position="bottom-right" />
+
   <!-- Custom title bar (OS chrome disabled) -->
   <TitleBar />
-
-  <!-- Settings dialog (controlled by app.settingsOpen) -->
-  <Settings />
 
   <!-- Quick worktree switcher (Ctrl/Cmd+P) -->
   <WorktreeSearch />
 
-  <!-- Three-panel body -->
-  <div class="flex min-h-0 flex-1">
-    {#if app.settings.leftSidebarOpen}
-      <aside
-        class="flex shrink-0 flex-col overflow-hidden bg-sidebar text-sidebar-foreground"
-        style="width: {app.settings.leftSidebarWidth}px"
-      >
-        <LeftSidebar />
-      </aside>
+  <!-- Content region below the title bar. The three-panel body stays mounted
+       even while Settings is open (Settings overlays it), so terminals/PTYs are
+       never torn down — otherwise an agent's launch command would be re-typed on
+       return and xterm would lose its screen. -->
+  <div class="relative flex min-h-0 flex-1 flex-col">
+    <div class="flex min-h-0 flex-1">
+      {#if app.settings.leftSidebarOpen}
+        <aside
+          class="flex shrink-0 flex-col overflow-hidden bg-sidebar text-sidebar-foreground"
+          style="width: {app.settings.leftSidebarWidth}px"
+        >
+          <LeftSidebar />
+        </aside>
 
-      <!-- Left resize handle -->
-      <div
-        class="w-1 shrink-0 cursor-col-resize bg-border transition-colors hover:bg-ring"
-        role="separator"
-        aria-orientation="vertical"
-        onpointerdown={(e) => onHandleDown("left", e)}
-        onpointermove={onHandleMove}
-        onpointerup={onHandleUp}
-      ></div>
-    {/if}
-
-    <!-- Center area: multiplexed terminals (xterm.js + PTY). When a diff is open
-         it overlays the terminals full-size — they stay mounted underneath, so
-         no PTY/xterm is torn down while reviewing. -->
-    <main class="relative flex min-w-0 flex-1 flex-col overflow-hidden">
-      <TerminalArea />
-      {#if git.selected}
-        <div class="absolute inset-0 z-20">
-          <DiffPanel />
-        </div>
+        <!-- Left resize handle -->
+        <div
+          class="w-1 shrink-0 cursor-col-resize bg-border transition-colors hover:bg-ring"
+          role="separator"
+          aria-orientation="vertical"
+          onpointerdown={(e) => onHandleDown("left", e)}
+          onpointermove={onHandleMove}
+          onpointerup={onHandleUp}
+        ></div>
       {/if}
-    </main>
 
-    {#if app.settings.rightSidebarOpen}
-      <!-- Right resize handle -->
-      <div
-        class="w-1 shrink-0 cursor-col-resize bg-border transition-colors hover:bg-ring"
-        role="separator"
-        aria-orientation="vertical"
-        onpointerdown={(e) => onHandleDown("right", e)}
-        onpointermove={onHandleMove}
-        onpointerup={onHandleUp}
-      ></div>
+      <!-- Center area: multiplexed terminals (xterm.js + PTY). When a diff is open
+           it overlays the terminals full-size — they stay mounted underneath, so
+           no PTY/xterm is torn down while reviewing. -->
+      <main class="relative flex min-w-0 flex-1 flex-col overflow-hidden">
+        <TerminalArea />
+        {#if files.path}
+          <div class="absolute inset-0 z-10">
+            <FileEditor />
+          </div>
+        {/if}
+        {#if git.selected}
+          <div class="absolute inset-0 z-20">
+            <DiffPanel />
+          </div>
+        {/if}
+      </main>
 
-      <aside
-        class="flex shrink-0 flex-col overflow-hidden bg-sidebar text-sidebar-foreground"
-        style="width: {app.settings.rightSidebarWidth}px"
-      >
-        <RightPanel />
-      </aside>
+      {#if app.settings.rightSidebarOpen}
+        <!-- Right resize handle -->
+        <div
+          class="w-1 shrink-0 cursor-col-resize bg-border transition-colors hover:bg-ring"
+          role="separator"
+          aria-orientation="vertical"
+          onpointerdown={(e) => onHandleDown("right", e)}
+          onpointermove={onHandleMove}
+          onpointerup={onHandleUp}
+        ></div>
+
+        <aside
+          class="flex shrink-0 flex-col overflow-hidden bg-sidebar text-sidebar-foreground"
+          style="width: {app.settings.rightSidebarWidth}px"
+        >
+          <RightPanel />
+        </aside>
+      {/if}
+    </div>
+
+    <!-- Status bar -->
+    <footer
+      class="flex h-7 shrink-0 items-center gap-2 border-t border-border px-3 text-xs text-muted-foreground"
+    >
+      <span class="inline-flex items-center gap-1.5">
+        <span class="h-2 w-2 rounded-full {backendDot}"></span>
+        {backendLabel}
+      </span>
+      {#if app.errorMessage}
+        <span class="text-destructive">· {app.errorMessage}</span>
+      {/if}
+      <div class="flex-1"></div>
+      {#if isUntestedPlatform}
+        <span
+          class="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400"
+          title={i18n.t("status.untestedTooltip", { os: osLabel() })}
+        >
+          <TriangleAlertIcon class="size-3.5" />
+          {i18n.t("status.untested", { os: osLabel() })}
+        </span>
+      {/if}
+      <span>{i18n.plural(app.repos.length, "status.reposOne", "status.reposOther")}</span>
+    </footer>
+
+    <!-- Settings overlays the still-mounted body (full content region). -->
+    {#if app.settingsOpen}
+      <div class="absolute inset-0 z-30">
+        <Settings />
+      </div>
     {/if}
   </div>
-
-  <!-- Status bar -->
-  <footer
-    class="flex h-7 shrink-0 items-center gap-2 border-t border-border px-3 text-xs text-muted-foreground"
-  >
-    <span class="inline-flex items-center gap-1.5">
-      <span class="h-2 w-2 rounded-full {backendDot}"></span>
-      {backendLabel}
-    </span>
-    {#if app.errorMessage}
-      <span class="text-destructive">· {app.errorMessage}</span>
-    {/if}
-    <div class="flex-1"></div>
-    {#if isUntestedPlatform}
-      <span
-        class="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400"
-        title={i18n.t("status.untestedTooltip", { os: osLabel() })}
-      >
-        <TriangleAlertIcon class="size-3.5" />
-        {i18n.t("status.untested", { os: osLabel() })}
-      </span>
-    {/if}
-    <span>{i18n.plural(app.repos.length, "status.reposOne", "status.reposOther")}</span>
-  </footer>
 </div>

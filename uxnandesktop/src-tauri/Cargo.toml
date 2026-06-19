@@ -31,6 +31,10 @@ thiserror = "2"
 uuid = { version = "1", features = ["v4"] }
 portable-pty = "0.9"
 sysinfo = "0.33"
+# libgit2 bindings for high-frequency status/diff (the 3 s watcher + the review
+# panel), avoiding a subprocess per poll. Worktree mgmt / push / pull stay on the
+# git CLI (git.rs); git2 is the fast path with a CLI fallback. Vendored libgit2.
+git2 = { version = "0.20", default-features = false }
 axum = { version = "0.8", default-features = false, features = ["json", "tokio", "http1"] }
 
 # Windows-only: SetThreadExecutionState for the keep-awake feature (power.rs).

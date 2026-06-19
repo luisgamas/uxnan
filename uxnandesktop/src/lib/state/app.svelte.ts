@@ -20,6 +20,25 @@ import {
 } from "$lib/types";
 import { terminals } from "$lib/state/terminals.svelte";
 import { primeNotifications } from "$lib/notify";
+import {
+  BUILTIN_DARK,
+  BUILTIN_LIGHT,
+  BUILTIN_THEMES,
+  TERMINAL_INHERIT_ID,
+  mergeTerminalTypography,
+  resolveTerminal,
+  type ResolvedTerminal,
+  type TerminalThemePreset,
+  type Theme as CustomTheme,
+} from "$lib/theme";
+
+/** Whether the OS currently prefers a dark color scheme. */
+function detectSystemDark(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    !!window.matchMedia?.("(prefers-color-scheme: dark)").matches
+  );
+}
 
 /** Connection state of the Rust backend, surfaced in the status bar. */
 export type BackendStatus = "connecting" | "ready" | "error";
@@ -31,7 +50,13 @@ function quoteArg(arg: string): string {
 }
 
 /** A pane in the Settings dialog (also the deep-link target of `openSettings`). */
-export type SettingsSection = "general" | "language" | "agents" | "terminal";
+export type SettingsSection =
+  | "appearance"
+  | "language"
+  | "shortcuts"
+  | "agents"
+  | "hooks"
+  | "terminal";
 
 class AppStore {
   /** Registered repositories (and their worktrees). */
@@ -47,16 +72,95 @@ class AppStore {
   /** Whether the Settings dialog is open. */
   settingsOpen = $state(false);
   /** Which Settings pane is shown (deep-linked via `openSettings`). */
-  settingsSection = $state<SettingsSection>("general");
+  settingsSection = $state<SettingsSection>("appearance");
+  /** Live OS dark-mode preference (kept in sync via a matchMedia listener), so
+   *  the "System" theme reacts to the OS switching light/dark at runtime. */
+  systemDark = $state(detectSystemDark());
+  /** A theme being previewed in the editor (un-saved). When set it overrides the
+   *  active theme so edits show live without persisting until the user saves. */
+  previewTheme = $state<CustomTheme | null>(null);
+  /** A terminal theme being previewed in the editor (un-saved). */
+  previewTerminalTheme = $state<TerminalThemePreset | null>(null);
 
   /** Open the Settings dialog, optionally jumping straight to a pane. */
-  openSettings(section: SettingsSection = "general"): void {
+  openSettings(section: SettingsSection = "appearance"): void {
     this.settingsSection = section;
     this.settingsOpen = true;
   }
 
+  /** Subscribe to OS dark-mode changes so the "System" theme tracks them live. */
+  watchSystemTheme(): void {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia?.("(prefers-color-scheme: dark)");
+    mq?.addEventListener?.("change", (e) => (this.systemDark = e.matches));
+  }
+
+  /** Every selectable theme (built-ins + the user's custom themes). */
+  allThemes(): CustomTheme[] {
+    return [...BUILTIN_THEMES, ...(this.settings.customThemes ?? [])];
+  }
+
+  /** The resolved active theme — a live preview if one is open; else "system"
+   *  maps to the built-in light/dark by the OS preference; else the matching
+   *  built-in or custom theme. */
+  resolveActiveTheme(): CustomTheme {
+    if (this.previewTheme) return this.previewTheme;
+    const id = this.settings.activeThemeId ?? "system";
+    if (id === "system") return this.systemDark ? BUILTIN_DARK : BUILTIN_LIGHT;
+    return this.allThemes().find((t) => t.id === id) ?? BUILTIN_LIGHT;
+  }
+
+  /** The active theme with the global font override applied on top of its own
+   *  fonts (what actually gets rendered). */
+  effectiveTheme(): CustomTheme {
+    const theme = this.resolveActiveTheme();
+    const g = this.settings.fonts;
+    if (!g) return theme;
+    const fonts = {
+      title: g.title?.trim() || theme.fonts?.title,
+      body: g.body?.trim() || theme.fonts?.body,
+      mono: g.mono?.trim() || theme.fonts?.mono,
+    };
+    return { ...theme, fonts };
+  }
+
+  /** Every saved terminal theme. */
+  allTerminalThemes(): TerminalThemePreset[] {
+    return this.settings.terminalThemes ?? [];
+  }
+
+  /** The active terminal theme preset (a live preview if open; else by the
+   *  selection mode: a single theme, or a per-light/dark choice; "inherit" →
+   *  null = follow the app theme with no terminal override). */
+  resolveActiveTerminalTheme(): TerminalThemePreset | null {
+    if (this.previewTerminalTheme) return this.previewTerminalTheme;
+    let id: string;
+    if ((this.settings.terminalThemeMode ?? "single") === "scheme") {
+      const dark = this.resolveActiveTheme().base === "dark";
+      id =
+        (dark ? this.settings.terminalThemeDarkId : this.settings.terminalThemeLightId) ??
+        TERMINAL_INHERIT_ID;
+    } else {
+      id = this.settings.activeTerminalThemeId ?? TERMINAL_INHERIT_ID;
+    }
+    if (id === TERMINAL_INHERIT_ID) return null;
+    return this.allTerminalThemes().find((t) => t.id === id) ?? null;
+  }
+
+  /** Effective terminal options (font + xterm theme): the active theme's base
+   *  defaults, overlaid with the active terminal preset, overlaid with the global
+   *  terminal-typography override (which wins over each preset's fonts). */
+  resolveTerminal(): ResolvedTerminal {
+    const merged = mergeTerminalTypography(
+      this.resolveActiveTerminalTheme(),
+      this.settings.terminalFonts,
+    );
+    return resolveTerminal(this.resolveActiveTheme().base, merged);
+  }
+
   /** Hydrate from the backend: confirm liveness, then load persisted state. */
   async init(): Promise<void> {
+    this.watchSystemTheme();
     try {
       await ping();
       const data = await getAppState();
@@ -208,21 +312,9 @@ class AppStore {
     });
   }
 
-  /** xterm colors for the current theme, so terminals follow light/dark. */
-  terminalPalette(): { background: string; foreground: string; cursor: string } {
-    return this.prefersDark()
-      ? { background: "#0b0b0c", foreground: "#e6e6e6", cursor: "#e6e6e6" }
-      : { background: "#ffffff", foreground: "#1f2328", cursor: "#1f2328" };
-  }
-
-  /** Whether the dark theme should be applied right now. */
+  /** Whether the dark base applies right now (drives the `.dark` class). */
   prefersDark(): boolean {
-    if (this.settings.theme === "dark") return true;
-    if (this.settings.theme === "light") return false;
-    return (
-      typeof window !== "undefined" &&
-      window.matchMedia?.("(prefers-color-scheme: dark)").matches
-    );
+    return this.resolveActiveTheme().base === "dark";
   }
 }
 

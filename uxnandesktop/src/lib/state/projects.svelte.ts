@@ -24,6 +24,8 @@ import type {
 import { app } from "$lib/state/app.svelte";
 import { terminals } from "$lib/state/terminals.svelte";
 import { unread } from "$lib/state/unread.svelte";
+import { toast, toastError } from "$lib/toast";
+import { i18n } from "$lib/i18n";
 
 const msg = (e: unknown) =>
   e && typeof e === "object" && "message" in e
@@ -153,6 +155,7 @@ class ProjectsStore {
       await this.refreshStatuses(list.map((w) => w.path));
     } catch (e) {
       this.error = msg(e);
+      toastError(e);
     }
   }
 
@@ -210,8 +213,10 @@ class ProjectsStore {
       app.repos = app.repos.filter((r) => r.id !== id);
       const { [id]: _removed, ...rest } = this.worktreesByRepo;
       this.worktreesByRepo = rest;
+      toast.success(i18n.t("toast.projectRemoved"));
     } catch (e) {
       this.error = msg(e);
+      toastError(e);
     }
   }
 
@@ -261,6 +266,7 @@ class ProjectsStore {
       await new Promise((resolve) => setTimeout(resolve, 200));
       await worktreeRemove(row.repoId, row.path, row.branch, force);
       await this.loadWorktrees(row.repoId);
+      toast.success(i18n.t("toast.worktreeRemoved"));
       return true;
     } catch (e) {
       this.error = msg(e);

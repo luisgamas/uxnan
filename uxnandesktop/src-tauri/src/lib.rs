@@ -5,10 +5,13 @@
 //! webview ⇄ PTY processes) is documented in
 //! `architecture/02a-system-architecture.md`.
 
+mod agent_hooks;
 mod browse;
 mod commands;
 mod error;
+mod fs;
 mod git;
+mod gitfast;
 mod hooks;
 mod model;
 mod persistence;
@@ -49,10 +52,14 @@ pub fn run() {
             data.settings.ensure_terminal_profiles();
             // Drop agent cache entries past their 7-day TTL (spec 02d §1.5).
             data.prune_agent_cache(crate::hooks::now_secs());
+            // Whether to auto-install the Claude hooks block this launch (off once
+            // the user uninstalls). Captured before `data` moves into the state.
+            let auto_install_hooks = data.settings.auto_install_hooks;
             let state = AppState::new(persistence, data);
             let git_watch = state.git_watch.clone();
             let focused = state.focused.clone();
             let hook_slot = state.hook.clone();
+            let hook_install_slot = state.hook_install.clone();
             app.manage(state);
 
             // Start the local agent hook server (Layer 1). On success, publish its
@@ -67,6 +74,31 @@ pub fn run() {
                     }
                 }
             });
+
+            // Write the bundled per-agent hook scripts to <data>/hooks/ so the
+            // Settings → Agents → Hooks pane can install the ready-made configs.
+            // Best-effort: a failure here doesn't break the app (precise hook
+            // reporting still works; the one-click install is just unavailable).
+            let hooks_dir = data_dir.join("hooks");
+            match crate::agent_hooks::install_scripts_to(&hooks_dir) {
+                Ok(install) => {
+                    // Auto-install the Claude hooks block (idempotent: re-points it
+                    // at the current script path) unless the user opted out.
+                    if auto_install_hooks {
+                        let script = std::path::PathBuf::from(&install.claude_hook_script);
+                        if let Err(e) = crate::agent_hooks::install_claude_hooks(&script) {
+                            eprintln!("[uxnan-desktop] auto-install of Claude hooks failed: {e}");
+                        }
+                    }
+                    let slot = hook_install_slot;
+                    tauri::async_runtime::spawn(async move {
+                        *slot.write().await = Some(install);
+                    });
+                }
+                Err(err) => {
+                    eprintln!("[uxnan-desktop] hook scripts not installed at {hooks_dir:?}: {err}");
+                }
+            }
 
             // Pause the git watcher while the window is unfocused.
             if let Some(window) = app.get_webview_window("main") {
@@ -170,9 +202,15 @@ pub fn run() {
             commands::worktree_list,
             commands::worktree_status,
             commands::browse_dirs,
+            commands::fs_list_dir,
+            commands::fs_read_file,
+            commands::fs_write_file,
+            commands::reveal_path,
+            commands::git_diff_head,
             commands::set_terminal_layout,
             commands::agents_detect,
             commands::git_status,
+            commands::git_numstat,
             commands::git_diff,
             commands::git_stage,
             commands::git_unstage,
@@ -188,6 +226,11 @@ pub fn run() {
             commands::get_hook_info,
             commands::agent_states,
             commands::set_prevent_sleep,
+            commands::get_hook_install,
+            commands::get_claude_hooks_status,
+            commands::install_claude_hooks,
+            commands::uninstall_claude_hooks,
+            commands::get_hook_scripts,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

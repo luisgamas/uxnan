@@ -48,6 +48,58 @@ export function hunkPatch(parsed: ParsedDiff, hunk: Hunk): string {
   return body.endsWith("\n") ? body : body + "\n";
 }
 
+/** The editor change gutter, derived from a file's `git diff HEAD`: which new-file
+ *  lines are additions, and which removed lines sit at a given new-file line (for
+ *  the "peek the deleted lines" marker — we never show the full diff inline). */
+export interface GutterDiff {
+  /** 1-based new-file line numbers that are added (light highlight). */
+  added: Set<number>;
+  /** new-file line number → the consecutive removed lines that were deleted just
+   *  before it (rendered on demand when the gutter marker is clicked). */
+  removed: Map<number, string[]>;
+}
+
+/** Parse a `git diff HEAD -- <file>` into [`GutterDiff`]. Lines are tracked on
+ *  the **new** side so they map onto the editor document; a run of deletions is
+ *  attached to the new-file line that follows it (clamped to ≥ 1). */
+export function parseHeadDiff(diff: string): GutterDiff {
+  const added = new Set<number>();
+  const removed = new Map<number, string[]>();
+  const { hunks } = parseDiff(diff);
+
+  const stash = (line: number, lines: string[]) => {
+    if (lines.length === 0) return;
+    const key = Math.max(1, line);
+    const prev = removed.get(key);
+    if (prev) prev.push(...lines);
+    else removed.set(key, [...lines]);
+  };
+
+  for (const hunk of hunks) {
+    const m = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(hunk.header);
+    let newLine = m ? Math.max(1, parseInt(m[1], 10)) : 1;
+    let pending: string[] = [];
+    for (const line of hunk.lines.slice(1)) {
+      if (line.startsWith("+")) {
+        stash(newLine, pending);
+        pending = [];
+        added.add(newLine);
+        newLine++;
+      } else if (line.startsWith("-")) {
+        pending.push(line.slice(1));
+      } else if (line === "\\ No newline at end of file") {
+        // git's no-newline marker — not a real line.
+      } else {
+        stash(newLine, pending);
+        pending = [];
+        newLine++; // context line
+      }
+    }
+    stash(newLine - 1, pending); // trailing deletions sit at the hunk's last line
+  }
+  return { added, removed };
+}
+
 /** One visual row of a side-by-side diff. A `del`/`add` shows on one side only
  *  (the other side is a blank filler to keep the two columns aligned). */
 export interface SideRow {

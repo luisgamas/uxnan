@@ -58,20 +58,6 @@
     </div>
   </div>
 
-  {#if projects.error}
-    <div class="flex shrink-0 items-start gap-1.5 border-b border-sidebar-border px-3 py-1.5">
-      <p class="min-w-0 flex-1 text-xs text-destructive">{projects.error}</p>
-      <button
-        class="shrink-0 rounded p-0.5 text-destructive/70 hover:text-destructive"
-        title={i18n.t("common.dismiss")}
-        aria-label={i18n.t("common.dismiss")}
-        onclick={() => (projects.error = null)}
-      >
-        <XIcon class={icon.decorative} />
-      </button>
-    </div>
-  {/if}
-
   <!-- Header -->
   <header class="flex h-8 shrink-0 items-center gap-1 px-2">
     <span class={cn("flex-1", text.section)}>

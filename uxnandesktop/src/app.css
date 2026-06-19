@@ -7,6 +7,10 @@
 
 :root {
   --radius: 0.625rem;
+  /* Themeable font families (overridden at runtime by `applyTheme`). */
+  --ux-font-body: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif;
+  --ux-font-title: var(--ux-font-body);
+  --ux-font-mono: ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, monospace;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -55,6 +59,9 @@
 }
 
 @theme inline {
+  /* Route Tailwind's font utilities through the themeable families. */
+  --font-sans: var(--ux-font-body);
+  --font-mono: var(--ux-font-mono);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -93,11 +100,40 @@
   body {
     background-color: var(--background);
     color: var(--foreground);
+    font-family: var(--ux-font-body);
     /* The ADE is a desktop shell: never rubber-band/scroll the whole window. */
     overflow: hidden;
     -webkit-user-select: none;
     user-select: none;
   }
+
+  /* Interactive elements show the hand cursor (native buttons default to the
+     arrow). Disabled controls show not-allowed; inputs keep their text caret. */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]):not([data-disabled]),
+  [role="menuitem"]:not([data-disabled]),
+  [role="menuitemcheckbox"]:not([data-disabled]),
+  [role="menuitemradio"]:not([data-disabled]),
+  [role="option"]:not([data-disabled]),
+  [role="tab"]:not([data-disabled]),
+  [role="switch"]:not([data-disabled]),
+  [role="checkbox"]:not([data-disabled]),
+  [role="radio"]:not([data-disabled]),
+  a[href],
+  summary,
+  label[for] {
+    cursor: pointer;
+  }
+  button:disabled,
+  [aria-disabled="true"],
+  [data-disabled] {
+    cursor: not-allowed;
+  }
+}
+
+/* Title/heading font (applied via the `font-title` token in `design.ts`). */
+.font-title {
+  font-family: var(--ux-font-title);
 }
 
 /* Slim, themed scrollbars for the terminal viewport (xterm) and sidebars —

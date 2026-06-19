@@ -206,9 +206,61 @@ pub struct AppSettings {
     /// backend auto-releases after 2 h as a safety cap). Default off.
     #[serde(default)]
     pub prevent_sleep: bool,
+    /// Auto-install the ADE-managed Claude Code hooks block on startup (so precise
+    /// agent states work out of the box). Set false when the user uninstalls, so
+    /// it isn't re-added on the next launch. Default on.
+    #[serde(default = "default_true")]
+    pub auto_install_hooks: bool,
     /// UI language: "system" (follow the device) or a locale code (e.g. "en", "es").
     #[serde(default = "default_language")]
     pub language: String,
+    /// Custom keyboard-shortcut overrides, keyed by action id (e.g. `closeCenter`)
+    /// → chord string (e.g. `Ctrl+W`). Missing actions fall back to their default
+    /// binding; an empty string disables the action. Defaults are in the frontend.
+    #[serde(default)]
+    pub keybindings: std::collections::HashMap<String, String>,
+    /// Active theme id (built-in "system"/"light"/"dark"/… or a custom id).
+    #[serde(default = "default_theme_id")]
+    pub active_theme_id: String,
+    /// User-created themes (frontend-owned shape, persisted opaquely).
+    #[serde(default)]
+    pub custom_themes: Vec<serde_json::Value>,
+    /// Global font override (frontend-owned shape).
+    #[serde(default)]
+    pub fonts: Option<serde_json::Value>,
+    /// Global terminal typography override (frontend-owned shape).
+    #[serde(default)]
+    pub terminal_fonts: Option<serde_json::Value>,
+    /// Saved terminal themes (frontend-owned shape, persisted opaquely).
+    #[serde(default)]
+    pub terminal_themes: Vec<serde_json::Value>,
+    /// How the terminal theme is chosen: "single" or "scheme" (per light/dark).
+    #[serde(default = "default_terminal_mode")]
+    pub terminal_theme_mode: String,
+    /// Active terminal theme id ("single" mode; "inherit" = no override).
+    #[serde(default = "default_terminal_theme_id")]
+    pub active_terminal_theme_id: String,
+    /// Terminal theme for a light app theme ("scheme" mode).
+    #[serde(default = "default_terminal_theme_id")]
+    pub terminal_theme_light_id: String,
+    /// Terminal theme for a dark app theme ("scheme" mode).
+    #[serde(default = "default_terminal_theme_id")]
+    pub terminal_theme_dark_id: String,
+}
+
+/// Default terminal-theme selection mode: a single theme for both schemes.
+fn default_terminal_mode() -> String {
+    "single".to_string()
+}
+
+/// Default active theme: follow the system light/dark preference.
+fn default_theme_id() -> String {
+    "system".to_string()
+}
+
+/// Default terminal theme: inherit the app theme (no override).
+fn default_terminal_theme_id() -> String {
+    "inherit".to_string()
 }
 
 impl Default for AppSettings {
@@ -227,7 +279,18 @@ impl Default for AppSettings {
             default_agent_id: None,
             agent_notifications: true,
             prevent_sleep: false,
+            auto_install_hooks: true,
             language: default_language(),
+            keybindings: std::collections::HashMap::new(),
+            active_theme_id: default_theme_id(),
+            custom_themes: Vec::new(),
+            fonts: None,
+            terminal_fonts: None,
+            terminal_themes: Vec::new(),
+            terminal_theme_mode: default_terminal_mode(),
+            active_terminal_theme_id: default_terminal_theme_id(),
+            terminal_theme_light_id: default_terminal_theme_id(),
+            terminal_theme_dark_id: default_terminal_theme_id(),
         }
     }
 }

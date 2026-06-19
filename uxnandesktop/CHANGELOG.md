@@ -5,6 +5,229 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — agent state toasts + auto-installed hooks
+- **Agent state toasts**: when an agent's hook reports a meaningful transition,
+  a toast fires — **done** (success), **blocked** (warning), **waiting** (info),
+  named by the agent. `working` is skipped (too noisy). Gated by the existing
+  **Settings → Agents → Idle notifications** toggle. (`agentStatus.svelte.ts`.)
+- **Auto-installed Claude Code hooks**: the ADE-managed `hooks` block is merged
+  into `~/.claude/settings.json` on startup by default (idempotent; self-heals a
+  moved script path), so precise states work out of the box. **Settings → Agents
+  → Hooks** now has an **Install agent hooks** switch: turning it off removes the
+  block and stops re-installing it next launch (`AppSettings.autoInstallHooks`,
+  honored in `lib.rs` setup). Docs: `docs/agent-hooks.md`.
+
+### Fixed — agent launch command re-typed after visiting Settings
+- Opening Settings used to unmount the whole three-panel body, so returning
+  remounted every terminal — re-running each agent tab's launch command (e.g.
+  `opencode` typed again into the already-running agent) and blanking xterm.
+  Settings now **overlays** the still-mounted body (`+page.svelte`), and the
+  launch command is guarded to be sent **once per terminal id** (`Terminal.svelte`).
+
+### Added — in-app toasts (svelte-sonner)
+- A `<Toaster/>` (shadcn-svelte `sonner`, themed from the active app theme) mounted
+  in `+page.svelte`, with a `$lib/toast.ts` wrapper (`toast`, `toastError`).
+- The inline dismissible **error banners** (left sidebar `projects.error`, right
+  panel `git.error`) are replaced by non-blocking error toasts, plus **success
+  toasts** for commit / push / pull / worktree-removed / project-removed.
+  Dialog-scoped inline errors (new-/remove-worktree, directory picker) stay inline.
+
+### Changed — git2 fast path for status/diff
+- **`gitfast.rs`** (git2 / vendored libgit2): `status_files`, `worktree_status`,
+  `diff_file`, `diff_head` and `numstat` now run through libgit2 (off the async
+  runtime via `spawn_blocking`), avoiding a `git` subprocess on every 3 s status
+  poll and per diff. Each keeps a **CLI fallback** in `git.rs` (spec `02c` §3.1:
+  git2 + CLI fallback); worktree management, branch listing, staging, commit,
+  push/pull and patch-apply stay on the git CLI. 2 git2 integration tests.
+
+### Changed — pointer cursor on interactive elements
+- Buttons and other clickable controls (roles: button / menuitem / tab / option /
+  switch / …, links, `summary`, associated labels) now show the hand cursor;
+  disabled controls show `not-allowed`. A global base rule in `app.css` (native
+  buttons otherwise default to the arrow cursor).
+
+### Added — separate terminal theme per light/dark app theme
+- A **switch** in the Terminal themes section: off (default) keeps the single
+  grid (Inherit + presets, click to select). On splits the presets into two
+  subsections — **for the dark app theme** (top) and **for the light app theme**
+  (bottom) — and you pick one terminal theme in each; it applies by the resolved
+  app-theme base. (`AppSettings.terminalThemeMode` + `terminalThemeLightId` /
+  `terminalThemeDarkId`; `resolveActiveTerminalTheme` chooses by base.)
+- Terminal themes carry a **`base`** tag (light/dark, set in the editor; default
+  dark) used only to group them into those subsections — additive, it doesn't
+  change any existing behavior.
+
+### Changed — appearance layout + global terminal fonts + settings hierarchy
+- **Settings → Appearance** is now one scrolling page (no tabs): an **Interface**
+  heading then a **Terminal** heading, each starting with its **Fonts** section
+  then its **Themes** grid.
+- **Global terminal typography override** (`AppSettings.terminalFonts`,
+  `mergeTerminalTypography`): font family/size/line-height/letter-spacing/weight/
+  ligatures applied on top of every terminal theme (wins over each preset's font).
+- **Visual hierarchy** via new design tokens (`text.heading`, `text.subheading`):
+  every Settings pane now leads with a consistent larger/bolder section heading
+  (Appearance, Language, Keyboard shortcuts, Agents, Hooks, Terminal) for coherence.
+
+### Added — custom themes + terminal appearance (personalization)
+- **Theming engine** (`src/lib/theme.ts`): a `Theme` is a single palette with a
+  declared `base` (light/dark) covering every shadcn token, the corner radius,
+  and the title/body/mono fonts. `applyTheme` writes the values as CSS variables
+  on `<html>` (instant, no rebuild) and toggles `.dark` from the base. Built-ins:
+  System, Light, Dark, Midnight, Latte.
+- **Settings → Appearance** (`ThemeSettings.svelte`), two sub-tabs (shadcn Tabs):
+  - **Interface**: theme grid (applies live), **New theme** / **Edit** open an
+    editable **draft** previewed live and **saved only on Save** (Cancel/closing
+    discards); **Duplicate**, **Delete**, **import/export** as JSON via file
+    (native dialog) or clipboard (partial imports fill from the base); and a
+    **global font override** (title/body/mono) that wins over each theme's fonts.
+  - **Terminal**: terminal themes are saved **presets** that override the app
+    theme *in the terminal only* — Inherit + presets, draft Save/Cancel,
+    import/export, and per-field **overrides** dots (with the inherited value as
+    placeholder). Covers font family/size/line-height/letter-spacing/weight,
+    **ligatures** (`@xterm/addon-ligatures`, DOM renderer), cursor style + blink,
+    and the full color set (background, text, cursor, selection + 16 ANSI).
+- **Themeable fonts**: `--ux-font-body` (UI), `--ux-font-title` (titles, via the
+  `font-title` design token) and `--ux-font-mono` (editor + diffs) routed through
+  Tailwind's font utilities. Fonts are referenced by installed family name
+  (importing font *files* is a tracked follow-up — `FOR-DEV.md`).
+- **Editors** (`ThemeEditor.svelte`, `TerminalThemeEditor.svelte`) built from
+  shadcn-svelte components (Input, Textarea, Switch, Label, Select, Tabs, Dialog).
+- **Model**: `AppSettings.activeThemeId` + `customThemes` + `fonts` +
+  `terminalThemes` + `activeTerminalThemeId` (frontend-owned shapes, persisted
+  opaquely in Rust like `terminalLayout`).
+- **Docs**: `docs/theming.md` (app + terminal theme JSON templates).
+
+### Changed — agent-hooks docs enriched
+- **`docs/agent-hooks.md` rewritten as a guided installer.** Now opens with a
+  TL;DR, a state-table ("what do I get"), the ready-made scripts and the
+  env-injection contract, then step-by-step install for **Claude Code** (one
+  click) and **any other agent** via the generic wrapper, with a
+  per-platform breakdown:
+  - **Windows — PowerShell** (`uxnan-hook-wrapper.ps1`): the
+    `-Type / -Command / -Args` argument shape and the quoting caveats.
+  - **Windows — cmd / batch** (`uxnan-hook-wrapper.cmd`): when to fall back
+    from PowerShell and the `%2`–`%9` arg-list limit.
+  - **macOS / Linux — Bash** (`uxnan-hook-wrapper.sh`): exact app-data
+    paths for both platforms.
+  - **WSL** and **Git Bash on Windows**: which wrapper applies in each
+    shell context.
+  - **Verify** checklist for all platforms + a **Troubleshooting** section
+    covering stale tokens, dimmed (`stale`) reports, "401" from the
+    wrapper, and "dot never changes from `working`".
+- Adds **app-data path table** per OS (Windows / macOS / Linux) and a
+  **reference** section with the full request contract + env vars moved
+  here for one-stop lookup.
+
+### Added — precise agent states in the terminal tab bar + hooks-discovery hint
+- **Tab bar now uses the precise `AgentStatusDot`** (`TerminalArea.svelte`):
+  every terminal tab in a region shows the four-state dot (working green /
+  blocked amber / waiting orange / done blue / idle gray; stale dimmed) driven
+  by `resolveAgentDisplay`, with the same priority as the sidebar
+  (hook › title › output-activity). The coarse pulsing dot from
+  `tab.working` is gone — a plain terminal with no agent and no activity now
+  shows no dot at all.
+- **Install-hooks hint** on agent tabs that aren't being driven by the hook
+  server: a subtle `Webhook` icon button next to the status dot, only when
+  `display.source !== "hook"` and the tab is an *agent* terminal (so plain
+  shells and already-hook-driven agents don't see it). Clicking opens
+  **Settings → Hooks** so users discover the ready-made per-agent hook
+  configs and can wire them up. EN/ES (`monitor.installHooksHint`).
+
+### Added — configurable keyboard shortcuts
+- **Settings → Keyboard shortcuts**: rebind the app's shortcuts (click a chord to
+  record a new one, reset to default, or disable). Persisted in
+  `AppSettings.keybindings` (Rust + `types.ts`). Actions: close file/diff
+  (`Ctrl/Cmd+W`), save file (`Ctrl/Cmd+S`), quick-switch worktree (`Ctrl/Cmd+P`),
+  open settings (`Ctrl/Cmd+,`), toggle left / right sidebar (`Ctrl/Cmd+B` / `J`).
+- **`keybindings.ts`**: platform-agnostic chords (`Mod` = Ctrl/⌘), an event→chord
+  matcher, and a CodeMirror-key converter (for the editor's save key). The global
+  handler in `+page.svelte` routes shortcuts (skipping terminal focus + the
+  settings view); `Ctrl/Cmd+W` only closes the center overlay when one is open.
+
+### Changed — right-panel + settings polish (review feedback)
+- **Tabs** now carry icons (file tree / git compare), sized from the design tokens.
+- **Changes tab header reworked**: dropped the "Changes · worktree" label for a
+  **changed-file count**, plus a **search/filter** and refresh. **Stage all** /
+  **Unstage all** stay in their section headers as secondary (outline) buttons.
+  Each file row now shows its **`+added −deleted`** line counts (`git_numstat` →
+  `git diff --numstat HEAD`, live with the status watcher).
+- **File-tree "expand all"** now loads + expands the tree level by level (capped
+  at 1500 folders so it can't freeze on a giant tree).
+- **File-tree tab**: dropped the redundant "Files" label (worktree name only) and
+  added a toolbar — **search/filter**, **collapse all**, **expand all**, **reveal
+  in the OS file manager** (`reveal_path` command, via the opener plugin), and
+  refresh. The active worktree (left panel) and the open file/diff now use a
+  clearer selected style (primary tint + ring).
+- **Changes tab**: removed the "view diff" eye button — **clicking a file row**
+  opens its diff (matching the file tree); the stage/unstage/discard actions stay
+  on hover.
+- **Settings (full-screen)**: section content is centered in a column (text stays
+  left-aligned), **Hooks moved to its own nav item** (fixes the agents-pane scroll
+  and declutters it), and a **Keyboard shortcuts** item was added.
+
+### Added — right-panel file tree + center file editor
+- **Tabbed right panel** (`RightPanel.svelte`, shadcn-svelte Tabs): the existing
+  version-control view is now the **Changes** tab (`ChangesPanel.svelte`,
+  extracted verbatim), and a new **Files** tab is first, left-to-right. The
+  active worktree's git status is loaded by the always-mounted parent so the
+  Files tab is colored even while the Changes tab is unmounted.
+- **File-tree tab** (`FileTreePanel.svelte` + `fileTree.svelte.ts` store): the
+  whole working tree of the selected project/worktree, **lazily expanded one
+  folder at a time** (`node_modules`/`target` never load until opened); folders
+  first then files, `.git` hidden. Files with a git-tracked change are colored
+  (untracked green / deleted red / modified amber) and the **parent folders that
+  contain changes** are colored too, reusing the right-panel git status. Tree
+  expansion survives tab switches; clicking a file opens it in the center editor.
+- **File editor** (`FileEditor.svelte`, overlays the center panel like the diff
+  viewer): editable **CodeMirror 6** with **syntax highlighting** per file
+  extension (`editorLang.ts`: JS/TS/JSON/CSS/HTML/Markdown/Rust/Python/YAML/XML/
+  C++/Java/PHP/SQL/Go), line numbers and undo/redo. A **git change gutter** shows
+  added lines (vs `HEAD`) with a light highlight and a small left-edge marker
+  that **peeks only the removed lines** on demand — never the full diff. **Save**
+  with the button or **Ctrl/Cmd+S** writes the file and refreshes the gutter +
+  git status. Binary / too-large (> 2 MiB) files show a notice instead of loading.
+- **Backend** (`src-tauri/src/fs.rs` + `git::diff_head`): new commands
+  `fs_list_dir`, `fs_read_file` (binary / too-large guards), `fs_write_file`
+  (atomic temp-write + rename), and `git_diff_head` (working-tree-vs-`HEAD` diff
+  for the editor gutter). 3 new unit tests cover the listing order / `.git`
+  hiding, the binary / too-large flags, and the atomic overwrite.
+- **i18n**: EN/ES strings for the tabs, the file tree, and the editor.
+- **Dependencies**: `@codemirror/language`, `@codemirror/commands`,
+  `@lezer/highlight`, and the per-language `@codemirror/lang-*` packages for
+  syntax highlighting; the `tabs` shadcn-svelte component.
+- **Spec**: `architecture/02c-git-worktrees.md` §6 (file-tree tab + editor + the
+  new filesystem Tauri commands).
+
+### Added — ready-made per-agent hook configs (Phase 4 follow-up)
+- **Bundled hook scripts** (`static/hooks/`, embedded in the binary at compile
+  time and written to `<app-data>/hooks/` on every startup, idempotent):
+  - `uxnan-claude-hook.cjs` — Node CJS, no deps, cross-platform. Maps Claude
+    Code's `UserPromptSubmit` / `PreToolUse` / `PreCompact` / `Notification`
+    / `PermissionRequest` / `Stop` / `SessionEnd` events to the ADE's
+    `working` / `waiting` / `done` / `blocked` states, POSTing each to
+    `UXNAN_HOOK_URL` with `X-Uxnan-Token` + `UXNAN_AGENT_ID`.
+  - `uxnan-hook-wrapper.sh` / `.ps1` / `.cmd` — generic wrapper for any CLI
+    agent. Posts `working` before exec and `done` on exit (with
+    `interrupted: true` if the agent crashed). Bash for Unix + Git Bash +
+    WSL, PowerShell for Windows, cmd / batch as the no-PowerShell fallback.
+- **Settings → Agents → Hooks** (`AgentHooksPanel.svelte`): a one-click
+  **Install** for Claude Code that merges an ADE-managed `hooks` block into
+  `~/.claude/settings.json` (preserves every other key, marks the block with
+  `__uxnan_managed_hooks__: true` so Uninstall only touches ours), plus
+  the platform wrappers and their absolute paths so users can wire any
+  other agent as the launch command. Honest "Installed" / "Not installed" /
+  "Unavailable" badge, "Show JSON config" disclosure with copy-to-clipboard,
+  and EN/ES translations.
+- **Backend** (`src-tauri/src/agent_hooks.rs`): idempotent install of the
+  four scripts to `<app-data>/hooks/`, atomic read/modify/write of
+  `~/.claude/settings.json` (sibling-temp + rename), and the
+  `__uxnan_managed_hooks__` marker that scopes Install / Uninstall to the
+  ADE's own block (user-installed `hooks` survive). New commands:
+  `get_hook_install`, `get_claude_hooks_status`, `install_claude_hooks`,
+  `uninstall_claude_hooks`, `get_hook_scripts`. 6 new unit tests cover the
+  marker detection, the `{{HOOK_SCRIPT}}` substitution, the install
+  idempotency, and the camelCase serialization of the Tauri surface.
+
 ### Added — keep-awake on macOS/Linux + untested-platform notice
 - **Keep-awake now covers all three platforms** (`power.rs`): Windows
   (`SetThreadExecutionState`), macOS (`caffeinate -i`), Linux (`systemd-inhibit`),

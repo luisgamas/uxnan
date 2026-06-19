@@ -80,18 +80,22 @@ Tauri sidecar + QR pairing. Before distributing builds: a CI/CD pipeline (see
 "CI/CD — release builds") + branded icons/signing (`FOR-HUMAN.md`).
 
 **Phase 4 follow-ups (not blocking):** ready-made per-agent hook configs (Claude
-Code + generic wrapper) so precise states work out-of-the-box, multi-agent
-orchestration (`02d` §3), and a precise status dot in the terminal tab strip.
+Code + generic wrapper) so precise states work out-of-the-box **+ a precise
+status dot in the terminal tab strip** (both shipped). Multi-agent
+orchestration (`02d` §3) remains.
 
 Smaller non-blockers (tracked below): backend debounced persistence + rotating
 backups, `git2` migration, WSL paths, tab reorder/MRU, branded icons
 (`FOR-HUMAN.md`).
 
-**In-app toast/notification system** (`svelte-sonner`) — replace the inline,
-dismissible error banners (left sidebar `projects.error`, right panel
-`git.error`) with non-blocking, auto-expiring toasts for errors and successes
-(e.g. "worktree removed", "pushed"). Distinct from the **OS-level** notifications
-in Phase 4, which are for agent-completion events. **FOR-DEV.**
+**In-app toast/notification system** (`svelte-sonner`) — ✅ **DONE.** A
+`<Toaster/>` (shadcn-svelte `sonner`, themed from `app.prefersDark()`) is mounted
+in `+page.svelte`; `$lib/toast.ts` wraps it (`toast`, `toastError`). The inline
+dismissible banners (left sidebar `projects.error`, right panel `git.error`) were
+replaced by error toasts, plus success toasts ("Committed" / "Pushed" / "Pulled"
+/ "Worktree removed" / "Project removed"). Dialog-scoped inline errors
+(new-worktree, remove-worktree, directory picker) stay inline. Distinct from the
+**OS-level** notifications in Phase 4 (agent-completion events).
 
 **Windows shells out-of-the-box + npm-shim execution.**
 - [x] **Detect installed shells** — Settings → Terminal greys out uninstalled
@@ -333,7 +337,11 @@ earlier "superficial UX" warning is resolved.
 - [x] Commands: `repo_add/remove/list`, `worktree_create` (optional `base`,
       `--no-track`), `worktree_list`, `worktree_status`, `branch_list`,
       `worktree_remove`, `browse_dirs`.
-- [ ] Move high-frequency status/diff to `git2` (`0.20+`). **FOR-DEV** (Phase 3 will use it).
+- [x] **High-frequency status/diff on `git2`** (`0.20`, vendored libgit2) —
+      `gitfast.rs`: `status_files` / `worktree_status` / `diff_file` /
+      `diff_head` / `numstat` run via `git2` (off-runtime through `spawn_blocking`)
+      with a **CLI fallback** in `git.rs` (spec `02c` §3.1). Worktree mgmt / push /
+      pull / staging / apply stay on the CLI. 2 `git2` integration tests.
 - [ ] WSL path detection (`\\wsl.localhost\…`) → route through `wsl.exe`. **FOR-DEV.**
 - [ ] Aggressive branch cleanup for squash-merged branches (patch-equivalence). **FOR-DEV.**
 
@@ -401,9 +409,9 @@ earlier "superficial UX" warning is resolved.
       after **30 s** so the UI can't hang.
 
 **Deferred → Phase 5 (polish) or tracked below:**
-- [ ] **`git2` migration** for high-frequency status/diff (Phase 3 uses the CLI,
-      consistent with Phase 2; `git2` avoids per-poll subprocess overhead).
-      **FOR-DEV.**
+- [x] **`git2` migration** for high-frequency status/diff — `gitfast.rs` (git2)
+      with a CLI fallback in `git.rs`; avoids the per-poll subprocess. See the
+      Phase 2 backend item above.
 - [ ] **Side-by-side diff**, **hunk/line-level staging**, virtual-scroll polish for
       huge changesets → **Phase 5**.
 - [ ] **AI commit message** (needs an agent/bridge), **image diffs** → later.
@@ -475,13 +483,31 @@ earlier "superficial UX" warning is resolved.
       Layers 1/3 by `resolveAgentDisplay` (`agentDisplay.ts`).
 
 **Deferred (follow-ups / orchestration):**
-- [ ] **Ready-made per-agent hook configs** — ship a Claude Code `hooks` config
-      (and a generic wrapper script) that POST to `UXNAN_HOOK_URL`, so precise
-      states work out-of-the-box instead of manual setup. **FOR-DEV / FOR-HUMAN.**
+- [x] **Ready-made per-agent hook configs** — the ADE now ships a Claude Code
+      `hooks` config + a Node CJS script (no deps, cross-platform) and a
+      generic wrapper (Bash / PowerShell / cmd) that POST to `UXNAN_HOOK_URL`.
+      On every startup the ADE writes them to `<app-data>/hooks/`. **Settings
+      → Agents → Hooks** surfaces a one-click **Install** for Claude Code
+      (merges the ADE-managed `hooks` block into `~/.claude/settings.json`,
+      preserving every other key; **Uninstall** is its reverse), and the
+      generic wrapper script + its absolute path so users can wire it as
+      the launch command of any other agent (`uxnan-hook-wrapper.sh` on
+      Unix, `.ps1` on Windows PowerShell, `.cmd` as the no-PowerShell
+      fallback). Out-of-the-box precise states (`working` / `waiting` /
+      `done` / `blocked`) — no manual JSON editing. The pane also shows the
+      exact rendered JSON and a Copy button for users who prefer to paste
+      by hand. (`src-tauri/src/agent_hooks.rs`,
+      `src/lib/components/AgentHooksPanel.svelte`, `static/hooks/*`.)
 - [ ] **Multi-agent orchestration** (task graph, @type routing, fan-out,
       backpressure, sidebar lineage) per `02d` §3. **FOR-DEV.**
-- [ ] **Tab-bar status indicator** — the terminal tab strip still shows the coarse
-      working dot; could adopt the precise `AgentStatusDot` too. **FOR-DEV.**
+- [x] **Tab-bar status indicator** — the terminal tab strip now uses the same
+      precise `AgentStatusDot` as the sidebar (working / blocked / waiting /
+      done / idle, stale dimmed), driven by `resolveAgentDisplay` with the
+      same hook › title › activity priority. The coarse pulsing dot from
+      `tab.working` is gone. Agent tabs whose state isn't coming from the
+      hook server get a subtle `Webhook` icon next to the dot that opens
+      **Settings → Hooks**, so users see they can wire up the ready-made
+      configs for precise states.
 
 ---
 
@@ -528,6 +554,74 @@ earlier "superficial UX" warning is resolved.
       harness: tauri-driver + packaged app); do after the rest of Phase 5.
 
 ---
+
+## File tree tab + center file editor ✅
+
+A second right-panel view alongside git review, plus an editable center editor.
+
+**Done:**
+- [x] **Tabbed right panel** (`RightPanel.svelte`, shadcn-svelte Tabs): **Files**
+      (first) + **Changes** (the prior review UI, extracted to
+      `ChangesPanel.svelte`). Git status is loaded in the always-mounted parent so
+      the Files tab is colored even while Changes is unmounted.
+- [x] **File-tree tab** (`FileTreePanel.svelte` + `fileTree.svelte.ts`): lazy
+      per-folder listing (`fs_list_dir`), `.git` hidden, folders-first sort.
+      Changed files colored (untracked/deleted/modified) + parent folders colored
+      when they contain changes (reuses the right-panel git status). Tree state in
+      a store so it survives tab switches.
+- [x] **File editor** (`FileEditor.svelte`): editable CodeMirror 6 + syntax
+      highlighting per extension (`editorLang.ts`), line numbers, undo/redo. Git
+      change gutter — added lines (vs `HEAD`) highlighted + a left-edge marker
+      that peeks **only** the removed lines (`git_diff_head`, `parseHeadDiff`).
+      Save via button or **Ctrl/Cmd+S** (`fs_write_file`, atomic). Binary /
+      too-large guards (`fs_read_file`).
+- [x] Backend `fs.rs` (`fs_list_dir`/`fs_read_file`/`fs_write_file`) +
+      `git::diff_head`; 3 unit tests. Spec: `architecture/02c-git-worktrees.md` §6.
+- [x] **File-tree toolbar**: search/filter, collapse-all, expand-all, **reveal in
+      the OS file manager** (`reveal_path` via the opener plugin), refresh.
+- [x] **Changes tab**: row click opens the diff (eye button removed).
+- [x] **Configurable keyboard shortcuts** — `keybindings.ts` +
+      `AppSettings.keybindings` + **Settings → Keyboard shortcuts** (rebind / reset
+      / disable). `Ctrl/Cmd+W` closes the center overlay; save key flows into the
+      editor's CodeMirror keymap.
+- [x] **Settings full-screen polish** — centered section column, **Hooks** in its
+      own nav item, clearer active/selected styles in the left panel + file tree.
+
+**Deferred (non-blocking) — FOR-DEV:**
+- [ ] **Tree virtualization** (TanStack Virtual) for very large folders — the tree
+      renders a flat list; fine for typical folders, revisit if a single directory
+      has thousands of entries. **FOR-DEV.**
+- [ ] **Unsaved-edit guard** — re-opening a file (or switching files) discards
+      unsaved edits silently; add a confirm/keep-dirty prompt. **FOR-DEV.**
+- [ ] **File ops from the tree** — create / rename / delete / new folder context
+      menu. **FOR-DEV.**
+- [ ] **External-change watcher** — the editor doesn't auto-reload when the file
+      changes on disk (e.g. an agent edits it); refresh is manual via re-open.
+      **FOR-DEV.**
+
+## Personalization — custom themes + terminal appearance ✅
+
+- [x] **Theming engine** (`src/lib/theme.ts`): single-palette themes (base
+      light/dark) over every shadcn token + radius + fonts; `applyTheme` writes
+      CSS vars on `<html>`. Built-ins (System/Light/Dark/Midnight/Latte).
+- [x] **Settings → Appearance** (`ThemeSettings`/`ThemeEditor`): pick / new /
+      edit (visual + JSON) / duplicate / delete; import/export via file + clipboard.
+- [x] **Themeable fonts** (`--ux-font-body|title|mono`) + **terminal appearance**
+      overrides (`TerminalAppearance`, `resolveTerminal`): font/size/line-height/
+      spacing/weight, ligatures (`@xterm/addon-ligatures`), cursor, full ANSI set.
+- [x] Model: `AppSettings.activeThemeId` / `customThemes` / `terminalTheme`
+      (frontend-owned, persisted opaquely). Docs: `docs/theming.md`.
+
+**Deferred (non-blocking) — FOR-DEV:**
+- [ ] **Import font *files*** (.ttf/.otf/.woff2) — embed via `@font-face` /
+      data URLs so a theme is portable across machines without the family being
+      installed. Today only installed font families (by name) are supported.
+      Marker in `src/lib/theme.ts` module doc. **FOR-DEV.**
+- [ ] **Live ligature toggle** — toggling ligatures currently applies on the next
+      opened terminal (the renderer addon can't swap on a live xterm). Recreate
+      the terminal in place to apply immediately. **FOR-DEV.**
+- [ ] **Drop the legacy `theme` field** — superseded by `activeThemeId`; kept for
+      now to avoid a migration. Remove in a future schema bump. **FOR-DEV.**
 
 ## Phase 6 — Bridge integration ☐
 

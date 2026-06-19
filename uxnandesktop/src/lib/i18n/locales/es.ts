@@ -3,6 +3,17 @@
 import type { MessageKey } from "./en";
 
 export const es: Record<MessageKey, string> = {
+  // Toasts (notificaciones no bloqueantes)
+  "toast.committed": "Commit creado",
+  "toast.pushed": "Push realizado",
+  "toast.pulled": "Pull realizado",
+  "toast.worktreeRemoved": "Worktree eliminado",
+  "toast.projectRemoved": "Proyecto eliminado",
+  "toast.agent": "Agente",
+  "toast.agentDone": "{name} terminó",
+  "toast.agentBlocked": "{name} está bloqueado",
+  "toast.agentWaiting": "{name} espera tu respuesta",
+
   // Common
   "common.cancel": "Cancelar",
   "common.remove": "Eliminar",
@@ -112,6 +123,15 @@ export const es: Record<MessageKey, string> = {
   "settings.general": "General",
   "settings.terminal": "Terminal",
   "settings.language": "Idioma",
+  "settings.shortcuts": "Atajos de teclado",
+  "settings.shortcutsDesc":
+    "Personaliza los atajos de teclado de la app. Haz clic en un atajo para grabar uno nuevo.",
+  "settings.hooks": "Hooks",
+  "settings.hooksDesc":
+    "Configuraciones de hooks listas para usar para que los agentes reporten su estado preciso de fábrica.",
+  "settings.appearance": "Apariencia",
+  "settings.appearanceDesc":
+    "Temas y fuentes para toda la app. Elige uno integrado, crea el tuyo, o importa/exporta como JSON.",
   "settings.theme": "Tema",
   "settings.theme.system": "Sistema",
   "settings.theme.light": "Claro",
@@ -163,6 +183,118 @@ export const es: Record<MessageKey, string> = {
   "diff.discardHunkDesc": "Los cambios del bloque seleccionado se revertirán en el árbol de trabajo. No se puede deshacer.",
   "rightPanel.push": "Push",
   "rightPanel.pull": "Pull",
+  "rightPanel.changesTab": "Cambios",
+  "rightPanel.search": "Buscar archivos con cambios",
+  "rightPanel.searchPlaceholder": "Filtrar archivos con cambios…",
+  "rightPanel.noMatch": "Ningún archivo con cambios coincide.",
+  "rightPanel.changedOne": "{n} archivo con cambios",
+  "rightPanel.changedOther": "{n} archivos con cambios",
+
+  // File-tree tab
+  "fileTree.tab": "Archivos",
+  "fileTree.title": "Archivos",
+  "fileTree.refresh": "Actualizar árbol de archivos",
+  "fileTree.empty": "Esta carpeta está vacía.",
+  "fileTree.search": "Buscar archivos",
+  "fileTree.searchPlaceholder": "Filtrar archivos…",
+  "fileTree.collapseAll": "Contraer todas las carpetas",
+  "fileTree.expandAll": "Expandir todas las carpetas",
+  "fileTree.reveal": "Abrir en el explorador de archivos",
+  "fileTree.noMatch": "Ningún archivo coincide.",
+
+  // Keyboard shortcuts
+  "shortcuts.rebind": "Haz clic para grabar un nuevo atajo",
+  "shortcuts.press": "Presiona un atajo…",
+  "shortcuts.reset": "Restablecer al predeterminado",
+  "shortcuts.disable": "Deshabilitar",
+  "shortcuts.disabled": "Deshabilitado",
+  "shortcuts.closeCenter": "Cerrar archivo / diff",
+  "shortcuts.closeCenterDesc": "Cierra el archivo o diff abierto en el panel central.",
+  "shortcuts.saveFile": "Guardar archivo",
+  "shortcuts.saveFileDesc": "Guarda el archivo abierto en el editor.",
+  "shortcuts.worktreePalette": "Cambio rápido de worktree",
+  "shortcuts.worktreePaletteDesc": "Abre la paleta de cambio rápido de worktree.",
+  "shortcuts.openSettings": "Abrir configuración",
+  "shortcuts.openSettingsDesc": "Abre esta vista de configuración.",
+  "shortcuts.toggleLeftSidebar": "Alternar barra izquierda",
+  "shortcuts.toggleLeftSidebarDesc": "Muestra u oculta la barra de proyectos.",
+  "shortcuts.toggleRightSidebar": "Alternar barra derecha",
+  "shortcuts.toggleRightSidebarDesc": "Muestra u oculta el panel de archivos / cambios.",
+
+  // File editor (center panel)
+  "editor.save": "Guardar",
+  "editor.saving": "Guardando…",
+  "editor.close": "Cerrar archivo",
+  "editor.unsaved": "Cambios sin guardar",
+  "editor.tooLarge": "Este archivo es demasiado grande para editarse aquí.",
+  "editor.binary": "Es un archivo binario y no puede editarse como texto.",
+  "editor.removedPeek": "{n} línea(s) eliminada(s) — clic para ver",
+
+  // Appearance — temas
+  "appearance.import": "Importar",
+  "appearance.paste": "Pegar JSON",
+  "appearance.newTheme": "Nuevo tema",
+  "appearance.newThemeName": "Mi tema",
+  "appearance.edit": "Editar",
+  "appearance.duplicate": "Duplicar",
+  "appearance.exportFile": "Exportar a archivo",
+  "appearance.copyJson": "Copiar JSON",
+  "appearance.invalidJson": "JSON de tema inválido.",
+  "appearance.pasteTitle": "Importar tema desde JSON",
+  "appearance.pasteDesc": "Pega el JSON de un tema abajo.",
+  "appearance.editTheme": "Editar tema",
+  "appearance.visual": "Visual",
+  "appearance.name": "Nombre",
+  "appearance.base": "Base",
+  "appearance.fontTitle": "Fuente de títulos",
+  "appearance.fontBody": "Fuente de texto",
+  "appearance.fontMono": "Fuente monoespaciada",
+  "appearance.colors": "Colores",
+  "appearance.radius": "Radio de esquinas",
+  "appearance.jsonHelp": "Edita el tema como JSON y aplica. Úsalo como plantilla para temas personalizados.",
+  "appearance.applyJson": "Aplicar JSON",
+  "appearance.save": "Guardar",
+  "appearance.tabInterface": "Interfaz",
+  "appearance.tabTerminal": "Terminal",
+  "appearance.fonts": "Fuentes",
+  "appearance.fontsDesc": "Override global de fuentes — gana sobre las fuentes de cada tema. Deja vacío para usar las del tema.",
+  "appearance.terminalThemesDesc": "Los temas de terminal sobreescriben el tema general solo en la terminal. Elige uno, o Heredar para seguir el tema general.",
+  "appearance.terminalFontsDesc": "Tipografía global de la terminal — gana sobre la fuente de cada tema de terminal. Deja vacío para usar la del tema.",
+  "appearance.themesLabel": "Temas",
+  "appearance.inherit": "Heredar (tema general)",
+  "appearance.applySingle": "Único",
+  "appearance.applyScheme": "Por claro / oscuro",
+  "appearance.whenLight": "Cuando claro",
+  "appearance.whenDark": "Cuando oscuro",
+  "appearance.separateSchemes": "Temas separados para claro y oscuro",
+  "appearance.separateSchemesDesc": "Cuando está desactivado, un solo tema de terminal se usa para los temas claro y oscuro de la app.",
+  "appearance.darkThemes": "Para el tema oscuro de la app",
+  "appearance.lightThemes": "Para el tema claro de la app",
+
+  // Appearance — overrides de terminal
+  "terminalTheme.title": "Apariencia de la terminal",
+  "terminalTheme.desc": "Sobreescribe el tema general solo en la terminal. Deja un campo vacío para heredar.",
+  "terminalTheme.reset": "Restablecer",
+  "terminalTheme.font": "Familia de fuente",
+  "terminalTheme.size": "Tamaño de fuente",
+  "terminalTheme.lineHeight": "Interlineado",
+  "terminalTheme.letterSpacing": "Espaciado",
+  "terminalTheme.weight": "Peso de fuente",
+  "terminalTheme.cursorStyle": "Estilo de cursor",
+  "terminalTheme.cursorBlock": "Bloque",
+  "terminalTheme.cursorUnderline": "Subrayado",
+  "terminalTheme.cursorBar": "Barra",
+  "terminalTheme.cursorBlink": "Parpadeo de cursor",
+  "terminalTheme.ligatures": "Ligaduras",
+  "terminalTheme.ligaturesNote": "Las ligaduras usan el renderizador DOM (WebGL se desactiva); aplica en la próxima terminal que abras.",
+  "terminalTheme.overrides": "Sobreescribe el tema general",
+  "terminalTheme.overrideNote": "Cada campo aquí sobreescribe el tema general — solo en la terminal. Los campos vacíos lo heredan.",
+  "terminalTheme.colors": "Colores",
+  "terminalTheme.background": "Fondo",
+  "terminalTheme.foreground": "Texto",
+  "terminalTheme.cursor": "Cursor",
+  "terminalTheme.selection": "Selección",
+  "terminalTheme.ansi": "Paleta ANSI",
 
   // Agent monitoring (activity)
   "monitor.working": "Trabajando",
@@ -173,6 +305,8 @@ export const es: Record<MessageKey, string> = {
   "monitor.stale": "Sin actualizar hace rato",
   "monitor.detected": "Agente detectado",
   "monitor.unread": "El agente terminó — sin revisar",
+  "monitor.installHooksHint":
+    "Instala los hooks para estados precisos — abre Configuración → Hooks",
   "agents.spaceLabel": "Agentes",
   "settings.preventSleep": "Evitar suspensión al trabajar",
   "settings.preventSleepDesc":
@@ -230,6 +364,36 @@ export const es: Record<MessageKey, string> = {
   "settings.defaultAgentNone": "Ninguno",
   "settings.defaultAgentDesc":
     "Se lanza automáticamente en un worktree justo después de crearlo. Déjalo en “Ninguno” para no iniciar ningún agente automáticamente.",
+
+  // Settings → Agents → Hooks (configs listas para usar)
+  "hooks.title": "Hooks",
+  "hooks.desc":
+    "Configs listas para usar que envían estados precisos del agente al servidor de hooks local del ADE, para que la sidebar y la barra de tabs muestren trabajando / esperando / listo sin configuración manual.",
+  "hooks.claudeTitle": "Claude Code",
+  "hooks.claudeDesc":
+    "Agrega un bloque `hooks` a `~/.claude/settings.json` que ejecuta el script incluido en cada evento de Claude. Conserva tu configuración existente.",
+  "hooks.claudeStatusInstalled": "Instalado en {path}",
+  "hooks.claudeStatusNotInstalled": "No instalado",
+  "hooks.claudeStatusUnavailable":
+    "~/.claude/settings.json no se puede escribir (léelo manualmente para obtener el JSON a pegar).",
+  "hooks.claudeStatusMissing":
+    "El archivo de configuración de Claude Code aún no existe — al instalarlo se creará.",
+  "hooks.autoInstall": "Instalar hooks de agentes",
+  "hooks.autoInstallDesc":
+    "Permite que los agentes reporten su estado preciso. Se instalan automáticamente al inicio; desactiva para quitarlos y mantenerlos desactivados.",
+  "hooks.install": "Instalar",
+  "hooks.uninstall": "Desinstalar",
+  "hooks.installing": "Instalando…",
+  "hooks.uninstalling": "Desinstalando…",
+  "hooks.showJson": "Mostrar JSON de configuración",
+  "hooks.hideJson": "Ocultar JSON de configuración",
+  "hooks.wrapperTitle": "Envoltorio genérico",
+  "hooks.wrapperDesc":
+    "Envuelve cualquier agente CLI: envía `working` antes del `exec` y `done` al salir (con `interrupted: true` si el agente falló). Úsalo como comando de lanzamiento cuando el agente no tenga sistema de hooks propio.",
+  "hooks.wrapperUsage": "Uso: {script} <tipo-de-agente> -- <cli-del-agente> [args…]",
+  "hooks.copy": "Copiar",
+  "hooks.copied": "Copiado",
+  "hooks.installedAt": "Instalado en {path}",
 
   // Agent profile editor
   "agentEditor.namePlaceholder": "Nombre del agente (p. ej. Claude Code)",

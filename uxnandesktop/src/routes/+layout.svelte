@@ -2,6 +2,7 @@
   import "../app.css";
   import { onMount } from "svelte";
   import { app } from "$lib/state/app.svelte";
+  import { applyTheme } from "$lib/theme";
   import { agentMonitor } from "$lib/state/agentMonitor.svelte";
   import { agentStatus } from "$lib/state/agentStatus.svelte";
   import { anyAgentWorking } from "$lib/state/agentDisplay";
@@ -29,10 +30,15 @@
     app.syncAgentCommands();
   });
 
-  // Keep the document theme in sync with the persisted setting.
+  // Apply the active theme (CSS variables + fonts + .dark class). Re-runs when
+  // the selected theme, the custom themes, or the OS dark preference change.
   $effect(() => {
-    const dark = app.prefersDark();
-    document.documentElement.classList.toggle("dark", dark);
+    void app.settings.activeThemeId;
+    void app.settings.customThemes;
+    void app.settings.fonts;
+    void app.previewTheme;
+    void app.systemDark;
+    applyTheme(app.effectiveTheme());
   });
 
   // Opt-in keep-awake: while enabled and an agent is working, ask the OS not to
