@@ -367,6 +367,36 @@ export function resolveTerminal(base: "light" | "dark", ov: TerminalTheme | null
   };
 }
 
+/** Typography fields of a terminal theme (the global terminal-font override). */
+export const TERMINAL_TYPOGRAPHY: (keyof TerminalTheme)[] = [
+  "fontFamily",
+  "fontSize",
+  "lineHeight",
+  "letterSpacing",
+  "fontWeight",
+  "ligatures",
+];
+
+/** Merge a global terminal-font override (typography only) on top of a terminal
+ *  preset — the override wins for the fields it sets. Returns null when neither
+ *  contributes anything (so the terminal inherits the app theme). */
+export function mergeTerminalTypography(
+  preset: TerminalTheme | null,
+  fonts: TerminalTheme | null | undefined,
+): TerminalTheme | null {
+  if (!fonts) return preset;
+  const out: TerminalTheme = preset ? { ...preset } : {};
+  let any = preset != null;
+  for (const key of TERMINAL_TYPOGRAPHY) {
+    const v = fonts[key];
+    if (v !== undefined && v !== null && v !== "") {
+      (out as unknown as Record<string, unknown>)[key] = v;
+      any = true;
+    }
+  }
+  return any ? out : null;
+}
+
 // --- Import / export -------------------------------------------------------
 
 /** Generate a fresh id for a custom theme. */
@@ -422,10 +452,13 @@ export function themeToJson(theme: Theme): string {
 
 // --- Terminal theme presets (named, exportable/importable) -----------------
 
-/** A saved, named terminal theme (the per-terminal override layer). */
+/** A saved, named terminal theme (the per-terminal override layer). `base` tags
+ *  it as a light or dark theme — used only to group presets when the user opts
+ *  into a separate terminal theme per light/dark app theme (default: dark). */
 export interface TerminalThemePreset extends TerminalTheme {
   id: string;
   name: string;
+  base?: "light" | "dark";
 }
 
 /** "Inherit" sentinel id: no terminal override (use the app theme's defaults). */
@@ -473,6 +506,7 @@ export function normalizeImportedTerminalTheme(raw: unknown): {
   const preset: TerminalThemePreset = {
     id: newTerminalThemeId(),
     name: typeof r.name === "string" && r.name.trim() ? r.name : "Imported terminal theme",
+    base: r.base === "light" ? "light" : "dark",
   };
   for (const key of TERMINAL_FIELDS) {
     const v = r[key];
@@ -491,6 +525,7 @@ export function terminalThemeToJson(preset: TerminalThemePreset): string {
 export const TERMINAL_TEMPLATE: TerminalThemePreset = {
   id: "example",
   name: "My terminal theme",
+  base: "dark",
   fontFamily: "JetBrains Mono",
   fontSize: 13,
   lineHeight: 1.0,

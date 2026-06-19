@@ -311,7 +311,7 @@
           <ThemeSettings />
         {:else if app.settingsSection === "language"}
           <div class="flex flex-col gap-1.5">
-            <span class={cn("font-medium", text.body)}>{i18n.t("settings.language")}</span>
+            <span class={text.heading}>{i18n.t("settings.language")}</span>
             <Select.Root
               type="single"
               value={app.settings.language}
@@ -337,7 +337,7 @@
         {:else if app.settingsSection === "shortcuts"}
           <div class="flex flex-col gap-4">
             <div class="flex flex-col gap-1">
-              <span class={cn("font-medium", text.body)}>{i18n.t("settings.shortcuts")}</span>
+              <span class={text.heading}>{i18n.t("settings.shortcuts")}</span>
               <p class={text.meta}>{i18n.t("settings.shortcutsDesc")}</p>
             </div>
             <div class="flex flex-col divide-y divide-border rounded-md border border-border">
@@ -396,7 +396,7 @@
         {:else if app.settingsSection === "agents"}
           <div class="flex flex-col gap-4">
             <div class="flex flex-col gap-1">
-              <span class={cn("font-medium", text.body)}>{i18n.t("settings.agents")}</span>
+              <span class={text.heading}>{i18n.t("settings.agents")}</span>
               <p class={text.meta}>{i18n.t("settings.agentsDesc")}</p>
             </div>
 
@@ -544,13 +544,14 @@
         {:else if app.settingsSection === "hooks"}
           <div class="flex flex-col gap-4">
             <div class="flex flex-col gap-1">
-              <span class={cn("font-medium", text.body)}>{i18n.t("settings.hooks")}</span>
+              <span class={text.heading}>{i18n.t("settings.hooks")}</span>
               <p class={text.meta}>{i18n.t("settings.hooksDesc")}</p>
             </div>
             <AgentHooksPanel />
           </div>
         {:else}
           <div class="flex flex-col gap-4">
+            <span class={text.heading}>{i18n.t("settings.terminal")}</span>
             <div class="flex flex-col gap-1.5">
               <span class={cn("font-medium", text.body)}>{i18n.t("settings.defaultProfile")}</span>
               <Select.Root

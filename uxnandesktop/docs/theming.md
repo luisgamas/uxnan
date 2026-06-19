@@ -7,9 +7,14 @@ override layer on top.
 
 ## Where
 
-Everything lives under **Settings → Appearance**, split into two sub-tabs:
+Everything lives under **Settings → Appearance** — a single scrolling page with
+an **Interface** heading on top and a **Terminal** heading below. Each starts
+with its **Fonts** section, then its **Themes**.
 
-**Interface tab**
+**Interface → Fonts** — a **global font override** (title / body / mono) that
+wins over each theme's own fonts, so you can change fonts without switching theme.
+
+**Interface → Themes**
 
 - **Theme grid** — pick System, a built-in, or a custom theme (applies live).
 - **New theme** — opens an editable **draft** (previewed live); it is only saved
@@ -18,18 +23,29 @@ Everything lives under **Settings → Appearance**, split into two sub-tabs:
   base) and a **JSON** tab you can edit directly, with Save / Cancel.
 - **Duplicate / Delete**, and **Import** (`.json` file or pasted JSON) /
   **Export** (`.json` file or clipboard).
-- **Fonts** — a **global font override** (title / body / mono) that wins over
-  each theme's own fonts, so you can change fonts without switching theme.
 
-**Terminal tab**
+**Terminal → Fonts** — a **global terminal typography** override (font family /
+size / line-height / letter-spacing / weight / ligatures) that wins over each
+terminal theme's font. Leave empty to use the theme's.
 
-Terminal themes are saved presets that **override the app theme in the terminal
-only**. Pick **Inherit** to follow the app theme, or a preset. Each preset is
-created/edited as a draft (Save / Cancel), and import/exports as JSON just like
-app themes. In the editor, every field set is marked with an **overrides** dot
-and shows the inherited value as its placeholder; covers font family / size /
-line-height / letter-spacing / weight, ligatures, cursor style + blink, and the
-full color set (background, text, cursor, selection, and the 16 ANSI colors).
+**Terminal → Themes** — saved presets (cards with color swatches) that
+**override the app theme in the terminal only**. Pick **Inherit** to follow the
+app theme, or a preset.
+
+A **switch** — "separate terminal themes for light / dark app themes":
+
+- **Off** (default) — one grid; the chosen terminal theme applies regardless of
+  the app being light or dark.
+- **On** — the presets split into two subsections, **for the dark app theme** and
+  **for the light app theme**; you pick one in each, and it applies by the
+  resolved app-theme base. Presets are grouped by their **base** tag (light/dark),
+  set in the editor (default dark).
+
+Each preset is a draft (Save / Cancel) and import/exports as JSON. In the editor
+every field set is marked with an **overrides** dot and shows the inherited value
+as its placeholder; covers font, size, line-height, letter-spacing, weight,
+ligatures, cursor style + blink, and the full color set (background, text,
+cursor, selection, and the 16 ANSI colors).
 
 ## Theme JSON (template)
 

@@ -11,6 +11,7 @@
   import { Input } from "$lib/components/ui/input";
   import { Label } from "$lib/components/ui/label";
   import { Textarea } from "$lib/components/ui/textarea";
+  import { Switch } from "$lib/components/ui/switch";
   import { app } from "$lib/state/app.svelte";
   import {
     BUILTIN_IDS,
@@ -25,6 +26,7 @@
     themeToJson,
     terminalThemeToJson,
     type Theme,
+    type TerminalTheme,
     type TerminalThemePreset,
   } from "$lib/theme";
   import { fsReadFile, fsWriteFile } from "$lib/api";
@@ -55,6 +57,23 @@
     if (!app.settings.fonts) app.settings.fonts = {};
     return app.settings.fonts;
   }
+  function ensureTermFonts(): TerminalTheme {
+    if (!app.settings.terminalFonts) app.settings.terminalFonts = {};
+    return app.settings.terminalFonts;
+  }
+  function setTermFontNum(key: keyof TerminalTheme, raw: string) {
+    const v = raw.trim() === "" ? undefined : Number(raw);
+    (ensureTermFonts() as unknown as Record<string, unknown>)[key] = Number.isFinite(v as number) ? v : undefined;
+    persist();
+  }
+  function setTermFontStr(key: keyof TerminalTheme, raw: string) {
+    (ensureTermFonts() as unknown as Record<string, unknown>)[key] = raw.trim() === "" ? undefined : raw;
+    persist();
+  }
+  // Baseline terminal typography (preset → app theme) shown as the font-section
+  // placeholders, so the global override hints what it inherits.
+  const termFontBase = $derived(resolveTerminal(app.resolveActiveTheme().base, app.resolveActiveTerminalTheme()));
+  const tf = $derived(app.settings.terminalFonts ?? {});
 
   const activeId = $derived(app.settings.activeThemeId ?? "system");
   const customThemes = $derived(app.settings.customThemes ?? []);
@@ -226,150 +245,231 @@
     }
   }
 
-  /** Swatch colors for a terminal preset (inherited where unset). */
-  function termSwatches(preset: TerminalThemePreset): string[] {
-    const t = resolveTerminal(app.resolveActiveTheme().base, preset).theme;
+  /** Swatch colors for a terminal preset (Inherit = null), resolved against a
+   *  base, for the card color bars. */
+  function termSwatches(preset: TerminalThemePreset | null, base: "light" | "dark"): string[] {
+    const t = resolveTerminal(base, preset).theme;
     return [t.background, t.foreground, t.green, t.blue, t.red];
   }
-  const inheritSwatches = $derived.by(() => {
-    const t = resolveTerminal(app.resolveActiveTheme().base, null).theme;
-    return [t.background, t.foreground, t.green, t.blue, t.red];
-  });
+  const appBase = $derived(app.resolveActiveTheme().base);
+
+  // --- Terminal selection: one theme, or a separate one per light/dark -------
+  const termMode = $derived(app.settings.terminalThemeMode ?? "single");
+  const termLightId = $derived(app.settings.terminalThemeLightId ?? TERMINAL_INHERIT_ID);
+  const termDarkId = $derived(app.settings.terminalThemeDarkId ?? TERMINAL_INHERIT_ID);
+  function setTermMode(separate: boolean) {
+    app.settings.terminalThemeMode = separate ? "scheme" : "single";
+    persist();
+  }
+  function setTermScheme(which: "light" | "dark", id: string) {
+    if (which === "light") app.settings.terminalThemeLightId = id;
+    else app.settings.terminalThemeDarkId = id;
+    persist();
+  }
+  const presetBase = (p: TerminalThemePreset): "light" | "dark" => (p.base === "light" ? "light" : "dark");
+  const darkThemes = $derived(termThemes.filter((p) => presetBase(p) === "dark"));
+  const lightThemes = $derived(termThemes.filter((p) => presetBase(p) === "light"));
 </script>
 
-<div class="flex flex-col gap-4">
+<div class="flex flex-col gap-6">
   {#if error}<p class={cn("text-destructive", text.body)}>{error}</p>{/if}
 
-  <!-- Interface -->
-  <div class="flex items-center gap-1.5">
-    <PaletteIcon class={cn(icon.decorative, "text-muted-foreground")} />
-    <span class={cn("font-medium", text.body)}>{i18n.t("appearance.tabInterface")}</span>
+  <!-- ===== Interface ===== -->
+  <div class="flex items-center gap-2">
+    <PaletteIcon class={cn(icon.button, "text-muted-foreground")} />
+    <span class={text.heading}>{i18n.t("appearance.tabInterface")}</span>
   </div>
 
-      <div class="flex items-center justify-end gap-1.5">
+  <!-- Fonts (override every theme's fonts) -->
+  <div class="flex flex-col gap-1.5">
+    <span class={text.subheading}>{i18n.t("appearance.fonts")}</span>
+    <p class={text.meta}>{i18n.t("appearance.fontsDesc")}</p>
+    <datalist id="uxnan-fonts-global">
+      {#each ["Inter", "Roboto", "Segoe UI", "system-ui", "JetBrains Mono", "Cascadia Code", "Fira Code"] as f (f)}<option value={f}></option>{/each}
+    </datalist>
+    <div class="mt-1 grid grid-cols-3 gap-2">
+      {#each [["title", "appearance.fontTitle"], ["body", "appearance.fontBody"], ["mono", "appearance.fontMono"]] as [key, labelKey] (key)}
+        <div class="flex flex-col gap-1">
+          <Label class={text.meta}>{i18n.t(labelKey as never)}</Label>
+          <Input list="uxnan-fonts-global" placeholder={DEFAULT_FONTS[key as "title" | "body" | "mono"].split(",")[0]} value={app.settings.fonts?.[key as "title" | "body" | "mono"] ?? ""} oninput={(e) => { ensureFonts()[key as "title" | "body" | "mono"] = e.currentTarget.value || undefined; persist(); }} />
+        </div>
+      {/each}
+    </div>
+  </div>
+
+  <!-- Themes -->
+  <div class="flex flex-col gap-2">
+    <div class="flex items-center justify-between gap-2">
+      <span class={text.subheading}>{i18n.t("appearance.themesLabel")}</span>
+      <div class="flex items-center gap-1.5">
         <Button variant="outline" size="sm" onclick={() => importFile("theme")}><UploadIcon data-icon="inline-start" />{i18n.t("appearance.import")}</Button>
         <Button variant="outline" size="sm" onclick={() => openPaste("theme")}><ClipboardPasteIcon data-icon="inline-start" />{i18n.t("appearance.paste")}</Button>
         <Button size="sm" onclick={newTheme}><PlusIcon data-icon="inline-start" />{i18n.t("appearance.newTheme")}</Button>
       </div>
-
-      <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
-        <button type="button" class={cn("flex flex-col gap-2 rounded-lg border p-2 text-left", activeId === "system" ? "border-primary ring-1 ring-primary/30" : "border-border hover:bg-accent/40")} onclick={() => selectTheme("system")}>
-          <div class="flex h-8 overflow-hidden rounded border border-border">
-            <div class="flex-1 bg-white"></div>
-            <div class="flex-1 bg-neutral-900"></div>
-          </div>
-          <div class="flex items-center gap-1">
-            <span class={cn("flex-1 truncate", text.body)}>{i18n.t("settings.theme.system")}</span>
-            {#if activeId === "system"}<CheckIcon class={cn(icon.decorative, "text-primary")} />{/if}
-          </div>
-        </button>
-
-        {#each app.allThemes() as theme (theme.id)}
-          {@const isActive = activeId === theme.id}
-          {@const isCustom = !BUILTIN_IDS.has(theme.id)}
-          <div class={cn("flex flex-col gap-2 rounded-lg border p-2", isActive ? "border-primary ring-1 ring-primary/30" : "border-border")}>
-            <button type="button" class="flex flex-col gap-2 text-left" onclick={() => selectTheme(theme.id)}>
-              <div class="flex h-8 overflow-hidden rounded border border-border">
-                {#each swatchKeys as k (k)}<div class="flex-1" style:background-color={theme.colors[k]}></div>{/each}
-              </div>
-            </button>
-            <div class="flex items-center gap-1">
-              <button type="button" class={cn("min-w-0 flex-1 truncate text-left", text.body)} onclick={() => selectTheme(theme.id)}>{theme.name}</button>
-              {#if isActive}<CheckIcon class={cn(icon.decorative, "shrink-0 text-primary")} />{/if}
-              <DropdownMenu.Root>
-                <DropdownMenu.Trigger>
-                  {#snippet child({ props })}
-                    <Button variant="ghost" size="icon" class={cn(iconButton.action, "shrink-0")} title={i18n.t("common.more")} {...props}><MoreVerticalIcon class={icon.button} /></Button>
-                  {/snippet}
-                </DropdownMenu.Trigger>
-                <DropdownMenu.Content align="end" class="min-w-44">
-                  {#if isCustom}<DropdownMenu.Item class={text.menu} onclick={() => editTheme(theme)}><PencilIcon class={icon.button} />{i18n.t("appearance.edit")}</DropdownMenu.Item>{/if}
-                  <DropdownMenu.Item class={text.menu} onclick={() => duplicateThemeAction(theme)}><CopyIcon class={icon.button} />{i18n.t("appearance.duplicate")}</DropdownMenu.Item>
-                  <DropdownMenu.Item class={text.menu} onclick={() => exportFile(theme.name, themeToJson(theme))}><DownloadIcon class={icon.button} />{i18n.t("appearance.exportFile")}</DropdownMenu.Item>
-                  <DropdownMenu.Item class={text.menu} onclick={() => void clipboardWrite(themeToJson(theme))}><CopyIcon class={icon.button} />{i18n.t("appearance.copyJson")}</DropdownMenu.Item>
-                  {#if isCustom}
-                    <DropdownMenu.Separator />
-                    <DropdownMenu.Item variant="destructive" class={text.menu} onclick={() => removeTheme(theme.id)}><Trash2Icon class={icon.button} />{i18n.t("common.remove")}</DropdownMenu.Item>
-                  {/if}
-                </DropdownMenu.Content>
-              </DropdownMenu.Root>
-            </div>
-          </div>
-        {/each}
-      </div>
-
-      <!-- Global fonts (override every theme's fonts) -->
-      <div class="flex flex-col gap-1.5">
-        <span class={cn("font-medium", text.body)}>{i18n.t("appearance.fonts")}</span>
-        <p class={text.meta}>{i18n.t("appearance.fontsDesc")}</p>
-        <datalist id="uxnan-fonts-global">
-          {#each ["Inter", "Roboto", "Segoe UI", "system-ui", "JetBrains Mono", "Cascadia Code", "Fira Code"] as f (f)}<option value={f}></option>{/each}
-        </datalist>
-        <div class="mt-1 grid grid-cols-3 gap-2">
-          {#each [["title", "appearance.fontTitle"], ["body", "appearance.fontBody"], ["mono", "appearance.fontMono"]] as [key, labelKey] (key)}
-            <div class="flex flex-col gap-1">
-              <Label class={text.meta}>{i18n.t(labelKey as never)}</Label>
-              <Input list="uxnan-fonts-global" placeholder={DEFAULT_FONTS[key as "title" | "body" | "mono"].split(",")[0]} value={app.settings.fonts?.[key as "title" | "body" | "mono"] ?? ""} oninput={(e) => { ensureFonts()[key as "title" | "body" | "mono"] = e.currentTarget.value || undefined; persist(); }} />
-            </div>
-          {/each}
+    </div>
+    <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
+      <button type="button" class={cn("flex flex-col gap-2 rounded-lg border p-2 text-left", activeId === "system" ? "border-primary ring-1 ring-primary/30" : "border-border hover:bg-accent/40")} onclick={() => selectTheme("system")}>
+        <div class="flex h-8 overflow-hidden rounded border border-border">
+          <div class="flex-1 bg-white"></div>
+          <div class="flex-1 bg-neutral-900"></div>
         </div>
-      </div>
+        <div class="flex items-center gap-1">
+          <span class={cn("flex-1 truncate", text.body)}>{i18n.t("settings.theme.system")}</span>
+          {#if activeId === "system"}<CheckIcon class={cn(icon.decorative, "text-primary")} />{/if}
+        </div>
+      </button>
 
-  <!-- Terminal -->
-  <div class="flex items-center gap-1.5 pt-2">
-    <TerminalIcon class={cn(icon.decorative, "text-muted-foreground")} />
-    <span class={cn("font-medium", text.body)}>{i18n.t("appearance.tabTerminal")}</span>
+      {#each app.allThemes() as theme (theme.id)}
+        {@const isActive = activeId === theme.id}
+        {@const isCustom = !BUILTIN_IDS.has(theme.id)}
+        <div class={cn("flex flex-col gap-2 rounded-lg border p-2", isActive ? "border-primary ring-1 ring-primary/30" : "border-border")}>
+          <button type="button" class="flex flex-col gap-2 text-left" onclick={() => selectTheme(theme.id)}>
+            <div class="flex h-8 overflow-hidden rounded border border-border">
+              {#each swatchKeys as k (k)}<div class="flex-1" style:background-color={theme.colors[k]}></div>{/each}
+            </div>
+          </button>
+          <div class="flex items-center gap-1">
+            <button type="button" class={cn("min-w-0 flex-1 truncate text-left", text.body)} onclick={() => selectTheme(theme.id)}>{theme.name}</button>
+            {#if isActive}<CheckIcon class={cn(icon.decorative, "shrink-0 text-primary")} />{/if}
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger>
+                {#snippet child({ props })}
+                  <Button variant="ghost" size="icon" class={cn(iconButton.action, "shrink-0")} title={i18n.t("common.more")} {...props}><MoreVerticalIcon class={icon.button} /></Button>
+                {/snippet}
+              </DropdownMenu.Trigger>
+              <DropdownMenu.Content align="end" class="min-w-44">
+                {#if isCustom}<DropdownMenu.Item class={text.menu} onclick={() => editTheme(theme)}><PencilIcon class={icon.button} />{i18n.t("appearance.edit")}</DropdownMenu.Item>{/if}
+                <DropdownMenu.Item class={text.menu} onclick={() => duplicateThemeAction(theme)}><CopyIcon class={icon.button} />{i18n.t("appearance.duplicate")}</DropdownMenu.Item>
+                <DropdownMenu.Item class={text.menu} onclick={() => exportFile(theme.name, themeToJson(theme))}><DownloadIcon class={icon.button} />{i18n.t("appearance.exportFile")}</DropdownMenu.Item>
+                <DropdownMenu.Item class={text.menu} onclick={() => void clipboardWrite(themeToJson(theme))}><CopyIcon class={icon.button} />{i18n.t("appearance.copyJson")}</DropdownMenu.Item>
+                {#if isCustom}
+                  <DropdownMenu.Separator />
+                  <DropdownMenu.Item variant="destructive" class={text.menu} onclick={() => removeTheme(theme.id)}><Trash2Icon class={icon.button} />{i18n.t("common.remove")}</DropdownMenu.Item>
+                {/if}
+              </DropdownMenu.Content>
+            </DropdownMenu.Root>
+          </div>
+        </div>
+      {/each}
+    </div>
   </div>
-  <p class={text.meta}>{i18n.t("appearance.terminalThemesDesc")}</p>
 
-      <div class="flex items-center justify-end gap-1.5">
+  <!-- ===== Terminal ===== -->
+  <div class="flex items-center gap-2">
+    <TerminalIcon class={cn(icon.button, "text-muted-foreground")} />
+    <span class={text.heading}>{i18n.t("appearance.tabTerminal")}</span>
+  </div>
+
+  <!-- Fonts (terminal typography override — wins over each terminal theme) -->
+  <div class="flex flex-col gap-1.5">
+    <span class={text.subheading}>{i18n.t("appearance.fonts")}</span>
+    <p class={text.meta}>{i18n.t("appearance.terminalFontsDesc")}</p>
+    <datalist id="uxnan-term-fonts">
+      {#each ["JetBrains Mono", "Cascadia Code", "Fira Code", "Consolas", "ui-monospace"] as f (f)}<option value={f}></option>{/each}
+    </datalist>
+    <div class="mt-1 grid grid-cols-2 gap-2 sm:grid-cols-3">
+      <div class="col-span-2 flex flex-col gap-1 sm:col-span-3">
+        <Label class={text.meta}>{i18n.t("terminalTheme.font")}</Label>
+        <Input list="uxnan-term-fonts" value={tf.fontFamily ?? ""} placeholder={termFontBase.fontFamily.split(",")[0]} oninput={(e) => setTermFontStr("fontFamily", e.currentTarget.value)} />
+      </div>
+      <div class="flex flex-col gap-1">
+        <Label class={text.meta}>{i18n.t("terminalTheme.size")}</Label>
+        <Input type="number" value={tf.fontSize ?? ""} placeholder={String(termFontBase.fontSize)} oninput={(e) => setTermFontNum("fontSize", e.currentTarget.value)} />
+      </div>
+      <div class="flex flex-col gap-1">
+        <Label class={text.meta}>{i18n.t("terminalTheme.lineHeight")}</Label>
+        <Input type="number" step="0.05" value={tf.lineHeight ?? ""} placeholder={String(termFontBase.lineHeight)} oninput={(e) => setTermFontNum("lineHeight", e.currentTarget.value)} />
+      </div>
+      <div class="flex flex-col gap-1">
+        <Label class={text.meta}>{i18n.t("terminalTheme.letterSpacing")}</Label>
+        <Input type="number" step="0.5" value={tf.letterSpacing ?? ""} placeholder={String(termFontBase.letterSpacing)} oninput={(e) => setTermFontNum("letterSpacing", e.currentTarget.value)} />
+      </div>
+      <div class="flex flex-col gap-1">
+        <Label class={text.meta}>{i18n.t("terminalTheme.weight")}</Label>
+        <Input value={tf.fontWeight != null ? String(tf.fontWeight) : ""} placeholder="normal" oninput={(e) => setTermFontStr("fontWeight", e.currentTarget.value)} />
+      </div>
+    </div>
+    <div class="mt-1 flex items-center gap-2">
+      <Switch checked={tf.ligatures ?? false} onCheckedChange={(c) => { ensureTermFonts().ligatures = c; persist(); }} />
+      <Label class={text.body}>{i18n.t("terminalTheme.ligatures")}</Label>
+    </div>
+  </div>
+
+  <!-- Themes -->
+  <div class="flex flex-col gap-2">
+    <div class="flex items-center justify-between gap-2">
+      <span class={text.subheading}>{i18n.t("appearance.themesLabel")}</span>
+      <div class="flex items-center gap-1.5">
         <Button variant="outline" size="sm" onclick={() => importFile("terminal")}><UploadIcon data-icon="inline-start" />{i18n.t("appearance.import")}</Button>
         <Button variant="outline" size="sm" onclick={() => openPaste("terminal")}><ClipboardPasteIcon data-icon="inline-start" />{i18n.t("appearance.paste")}</Button>
         <Button size="sm" onclick={newTermTheme}><PlusIcon data-icon="inline-start" />{i18n.t("appearance.newTheme")}</Button>
       </div>
+    </div>
+    <p class={text.meta}>{i18n.t("appearance.terminalThemesDesc")}</p>
 
-      <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
-        <button type="button" class={cn("flex flex-col gap-2 rounded-lg border p-2 text-left", activeTermId === TERMINAL_INHERIT_ID ? "border-primary ring-1 ring-primary/30" : "border-border hover:bg-accent/40")} onclick={() => selectTerm(TERMINAL_INHERIT_ID)}>
-          <div class="flex h-8 overflow-hidden rounded border border-border">
-            {#each inheritSwatches as c (c)}<div class="flex-1" style:background-color={c}></div>{/each}
-          </div>
-          <div class="flex items-center gap-1">
-            <span class={cn("flex-1 truncate", text.body)}>{i18n.t("appearance.inherit")}</span>
-            {#if activeTermId === TERMINAL_INHERIT_ID}<CheckIcon class={cn(icon.decorative, "text-primary")} />{/if}
-          </div>
-        </button>
-
-        {#each termThemes as preset (preset.id)}
-          {@const isActive = activeTermId === preset.id}
-          <div class={cn("flex flex-col gap-2 rounded-lg border p-2", isActive ? "border-primary ring-1 ring-primary/30" : "border-border")}>
-            <button type="button" class="flex flex-col gap-2 text-left" onclick={() => selectTerm(preset.id)}>
-              <div class="flex h-8 overflow-hidden rounded border border-border">
-                {#each termSwatches(preset) as c (c)}<div class="flex-1" style:background-color={c}></div>{/each}
-              </div>
-            </button>
-            <div class="flex items-center gap-1">
-              <button type="button" class={cn("min-w-0 flex-1 truncate text-left", text.body)} onclick={() => selectTerm(preset.id)}>{preset.name}</button>
-              {#if isActive}<CheckIcon class={cn(icon.decorative, "shrink-0 text-primary")} />{/if}
-              <DropdownMenu.Root>
-                <DropdownMenu.Trigger>
-                  {#snippet child({ props })}
-                    <Button variant="ghost" size="icon" class={cn(iconButton.action, "shrink-0")} title={i18n.t("common.more")} {...props}><MoreVerticalIcon class={icon.button} /></Button>
-                  {/snippet}
-                </DropdownMenu.Trigger>
-                <DropdownMenu.Content align="end" class="min-w-44">
-                  <DropdownMenu.Item class={text.menu} onclick={() => editTermTheme(preset)}><PencilIcon class={icon.button} />{i18n.t("appearance.edit")}</DropdownMenu.Item>
-                  <DropdownMenu.Item class={text.menu} onclick={() => duplicateTermAction(preset)}><CopyIcon class={icon.button} />{i18n.t("appearance.duplicate")}</DropdownMenu.Item>
-                  <DropdownMenu.Item class={text.menu} onclick={() => exportFile(preset.name, terminalThemeToJson(preset))}><DownloadIcon class={icon.button} />{i18n.t("appearance.exportFile")}</DropdownMenu.Item>
-                  <DropdownMenu.Item class={text.menu} onclick={() => void clipboardWrite(terminalThemeToJson(preset))}><CopyIcon class={icon.button} />{i18n.t("appearance.copyJson")}</DropdownMenu.Item>
-                  <DropdownMenu.Separator />
-                  <DropdownMenu.Item variant="destructive" class={text.menu} onclick={() => removeTermTheme(preset.id)}><Trash2Icon class={icon.button} />{i18n.t("common.remove")}</DropdownMenu.Item>
-                </DropdownMenu.Content>
-              </DropdownMenu.Root>
-            </div>
-          </div>
-        {/each}
+    <!-- Optional: a separate terminal theme per light/dark app theme -->
+    <div class="flex items-center justify-between gap-4">
+      <div class="flex min-w-0 flex-col gap-0.5">
+        <span class={text.subheading}>{i18n.t("appearance.separateSchemes")}</span>
+        <span class={text.meta}>{i18n.t("appearance.separateSchemesDesc")}</span>
       </div>
+      <Switch checked={termMode === "scheme"} onCheckedChange={setTermMode} />
+    </div>
+
+    {#if termMode === "single"}
+      <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        {@render termCard(null, "single", appBase)}
+        {#each termThemes as preset (preset.id)}{@render termCard(preset, "single", presetBase(preset))}{/each}
+      </div>
+    {:else}
+      <span class={text.subheading}>{i18n.t("appearance.darkThemes")}</span>
+      <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        {@render termCard(null, "dark", "dark")}
+        {#each darkThemes as preset (preset.id)}{@render termCard(preset, "dark", "dark")}{/each}
+      </div>
+      <span class={cn("mt-2", text.subheading)}>{i18n.t("appearance.lightThemes")}</span>
+      <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        {@render termCard(null, "light", "light")}
+        {#each lightThemes as preset (preset.id)}{@render termCard(preset, "light", "light")}{/each}
+      </div>
+    {/if}
+  </div>
 </div>
+
+{#snippet termCard(preset: TerminalThemePreset | null, scope: "single" | "dark" | "light", base: "light" | "dark")}
+  {@const id = preset ? preset.id : TERMINAL_INHERIT_ID}
+  {@const selected = scope === "single" ? activeTermId === id : scope === "dark" ? termDarkId === id : termLightId === id}
+  <div class={cn("flex flex-col gap-2 rounded-lg border p-2", selected ? "border-primary ring-1 ring-primary/30" : "border-border")}>
+    <button type="button" class="flex flex-col gap-2 text-left" onclick={() => (scope === "single" ? selectTerm(id) : setTermScheme(scope, id))}>
+      <div class="flex h-8 overflow-hidden rounded border border-border">
+        {#each termSwatches(preset, base) as c, i (i)}<div class="flex-1" style:background-color={c}></div>{/each}
+      </div>
+    </button>
+    <div class="flex items-center gap-1">
+      <button type="button" class={cn("min-w-0 flex-1 truncate text-left", text.body)} onclick={() => (scope === "single" ? selectTerm(id) : setTermScheme(scope, id))}>
+        {preset ? preset.name : i18n.t("appearance.inherit")}
+      </button>
+      {#if selected}<CheckIcon class={cn(icon.decorative, "shrink-0 text-primary")} />{/if}
+      {#if preset}
+        <DropdownMenu.Root>
+          <DropdownMenu.Trigger>
+            {#snippet child({ props })}
+              <Button variant="ghost" size="icon" class={cn(iconButton.action, "shrink-0")} title={i18n.t("common.more")} {...props}><MoreVerticalIcon class={icon.button} /></Button>
+            {/snippet}
+          </DropdownMenu.Trigger>
+          <DropdownMenu.Content align="end" class="min-w-44">
+            <DropdownMenu.Item class={text.menu} onclick={() => editTermTheme(preset)}><PencilIcon class={icon.button} />{i18n.t("appearance.edit")}</DropdownMenu.Item>
+            <DropdownMenu.Item class={text.menu} onclick={() => duplicateTermAction(preset)}><CopyIcon class={icon.button} />{i18n.t("appearance.duplicate")}</DropdownMenu.Item>
+            <DropdownMenu.Item class={text.menu} onclick={() => exportFile(preset.name, terminalThemeToJson(preset))}><DownloadIcon class={icon.button} />{i18n.t("appearance.exportFile")}</DropdownMenu.Item>
+            <DropdownMenu.Item class={text.menu} onclick={() => void clipboardWrite(terminalThemeToJson(preset))}><CopyIcon class={icon.button} />{i18n.t("appearance.copyJson")}</DropdownMenu.Item>
+            <DropdownMenu.Separator />
+            <DropdownMenu.Item variant="destructive" class={text.menu} onclick={() => removeTermTheme(preset.id)}><Trash2Icon class={icon.button} />{i18n.t("common.remove")}</DropdownMenu.Item>
+          </DropdownMenu.Content>
+        </DropdownMenu.Root>
+      {/if}
+    </div>
+  </div>
+{/snippet}
 
 {#if themeDraft}
   <ThemeEditor

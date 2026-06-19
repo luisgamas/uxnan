@@ -5,6 +5,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — separate terminal theme per light/dark app theme
+- A **switch** in the Terminal themes section: off (default) keeps the single
+  grid (Inherit + presets, click to select). On splits the presets into two
+  subsections — **for the dark app theme** (top) and **for the light app theme**
+  (bottom) — and you pick one terminal theme in each; it applies by the resolved
+  app-theme base. (`AppSettings.terminalThemeMode` + `terminalThemeLightId` /
+  `terminalThemeDarkId`; `resolveActiveTerminalTheme` chooses by base.)
+- Terminal themes carry a **`base`** tag (light/dark, set in the editor; default
+  dark) used only to group them into those subsections — additive, it doesn't
+  change any existing behavior.
+
+### Changed — appearance layout + global terminal fonts + settings hierarchy
+- **Settings → Appearance** is now one scrolling page (no tabs): an **Interface**
+  heading then a **Terminal** heading, each starting with its **Fonts** section
+  then its **Themes** grid.
+- **Global terminal typography override** (`AppSettings.terminalFonts`,
+  `mergeTerminalTypography`): font family/size/line-height/letter-spacing/weight/
+  ligatures applied on top of every terminal theme (wins over each preset's font).
+- **Visual hierarchy** via new design tokens (`text.heading`, `text.subheading`):
+  every Settings pane now leads with a consistent larger/bolder section heading
+  (Appearance, Language, Keyboard shortcuts, Agents, Hooks, Terminal) for coherence.
+
 ### Added — custom themes + terminal appearance (personalization)
 - **Theming engine** (`src/lib/theme.ts`): a `Theme` is a single palette with a
   declared `base` (light/dark) covering every shadcn token, the corner radius,

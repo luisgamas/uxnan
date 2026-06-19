@@ -248,7 +248,17 @@ export const es: Record<MessageKey, string> = {
   "appearance.fonts": "Fuentes",
   "appearance.fontsDesc": "Override global de fuentes — gana sobre las fuentes de cada tema. Deja vacío para usar las del tema.",
   "appearance.terminalThemesDesc": "Los temas de terminal sobreescriben el tema general solo en la terminal. Elige uno, o Heredar para seguir el tema general.",
+  "appearance.terminalFontsDesc": "Tipografía global de la terminal — gana sobre la fuente de cada tema de terminal. Deja vacío para usar la del tema.",
+  "appearance.themesLabel": "Temas",
   "appearance.inherit": "Heredar (tema general)",
+  "appearance.applySingle": "Único",
+  "appearance.applyScheme": "Por claro / oscuro",
+  "appearance.whenLight": "Cuando claro",
+  "appearance.whenDark": "Cuando oscuro",
+  "appearance.separateSchemes": "Temas separados para claro y oscuro",
+  "appearance.separateSchemesDesc": "Cuando está desactivado, un solo tema de terminal se usa para los temas claro y oscuro de la app.",
+  "appearance.darkThemes": "Para el tema oscuro de la app",
+  "appearance.lightThemes": "Para el tema claro de la app",
 
   // Appearance — overrides de terminal
   "terminalTheme.title": "Apariencia de la terminal",

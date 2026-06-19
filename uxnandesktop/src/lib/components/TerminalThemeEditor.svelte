@@ -122,9 +122,21 @@
     <div class="uxnan-scroll min-h-0 flex-1 overflow-y-auto pr-1">
       {#if mode === "visual"}
         <div class="flex flex-col gap-3">
-          <div class="flex flex-col gap-1">
-            <Label class={text.meta}>{i18n.t("appearance.name")}</Label>
-            <Input bind:value={preset.name} />
+          <div class="grid grid-cols-2 gap-2">
+            <div class="flex flex-col gap-1">
+              <Label class={text.meta}>{i18n.t("appearance.name")}</Label>
+              <Input bind:value={preset.name} />
+            </div>
+            <div class="flex flex-col gap-1">
+              <Label class={text.meta}>{i18n.t("appearance.base")}</Label>
+              <Select.Root type="single" value={preset.base ?? "dark"} onValueChange={(v) => { if (v === "light" || v === "dark") preset.base = v; }}>
+                <Select.Trigger>{(preset.base ?? "dark") === "dark" ? i18n.t("settings.theme.dark") : i18n.t("settings.theme.light")}</Select.Trigger>
+                <Select.Content>
+                  <Select.Item value="dark" label={i18n.t("settings.theme.dark")}>{i18n.t("settings.theme.dark")}</Select.Item>
+                  <Select.Item value="light" label={i18n.t("settings.theme.light")}>{i18n.t("settings.theme.light")}</Select.Item>
+                </Select.Content>
+              </Select.Root>
+            </div>
           </div>
 
           <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">

@@ -251,7 +251,17 @@ export const en = {
   "appearance.fonts": "Fonts",
   "appearance.fontsDesc": "Global font override — wins over each theme's own fonts. Leave empty to use the theme's.",
   "appearance.terminalThemesDesc": "Terminal themes override the app theme in the terminal only. Pick one, or Inherit to follow the app theme.",
+  "appearance.terminalFontsDesc": "Global terminal typography — wins over each terminal theme's font. Leave empty to use the theme's.",
+  "appearance.themesLabel": "Themes",
   "appearance.inherit": "Inherit (app theme)",
+  "appearance.applySingle": "Single",
+  "appearance.applyScheme": "Per light / dark",
+  "appearance.whenLight": "When light",
+  "appearance.whenDark": "When dark",
+  "appearance.separateSchemes": "Separate themes for light & dark",
+  "appearance.separateSchemesDesc": "When off, one terminal theme applies to both the light and dark app themes.",
+  "appearance.darkThemes": "For the dark app theme",
+  "appearance.lightThemes": "For the light app theme",
 
   // Appearance — terminal overrides
   "terminalTheme.title": "Terminal appearance",

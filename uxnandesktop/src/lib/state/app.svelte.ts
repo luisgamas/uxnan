@@ -25,6 +25,7 @@ import {
   BUILTIN_LIGHT,
   BUILTIN_THEMES,
   TERMINAL_INHERIT_ID,
+  mergeTerminalTypography,
   resolveTerminal,
   type ResolvedTerminal,
   type TerminalThemePreset,
@@ -128,18 +129,33 @@ class AppStore {
     return this.settings.terminalThemes ?? [];
   }
 
-  /** The active terminal theme preset (a live preview if open; "inherit" → null). */
+  /** The active terminal theme preset (a live preview if open; else by the
+   *  selection mode: a single theme, or a per-light/dark choice; "inherit" →
+   *  null = follow the app theme with no terminal override). */
   resolveActiveTerminalTheme(): TerminalThemePreset | null {
     if (this.previewTerminalTheme) return this.previewTerminalTheme;
-    const id = this.settings.activeTerminalThemeId ?? TERMINAL_INHERIT_ID;
+    let id: string;
+    if ((this.settings.terminalThemeMode ?? "single") === "scheme") {
+      const dark = this.resolveActiveTheme().base === "dark";
+      id =
+        (dark ? this.settings.terminalThemeDarkId : this.settings.terminalThemeLightId) ??
+        TERMINAL_INHERIT_ID;
+    } else {
+      id = this.settings.activeTerminalThemeId ?? TERMINAL_INHERIT_ID;
+    }
     if (id === TERMINAL_INHERIT_ID) return null;
     return this.allTerminalThemes().find((t) => t.id === id) ?? null;
   }
 
-  /** Effective terminal options (font + xterm theme), the active theme's base
-   *  defaults overlaid with the active terminal theme's overrides. */
+  /** Effective terminal options (font + xterm theme): the active theme's base
+   *  defaults, overlaid with the active terminal preset, overlaid with the global
+   *  terminal-typography override (which wins over each preset's fonts). */
   resolveTerminal(): ResolvedTerminal {
-    return resolveTerminal(this.resolveActiveTheme().base, this.resolveActiveTerminalTheme());
+    const merged = mergeTerminalTypography(
+      this.resolveActiveTerminalTheme(),
+      this.settings.terminalFonts,
+    );
+    return resolveTerminal(this.resolveActiveTheme().base, merged);
   }
 
   /** Hydrate from the backend: confirm liveness, then load persisted state. */

@@ -4,6 +4,7 @@
 
 import type {
   Theme as CustomTheme,
+  TerminalTheme,
   TerminalThemePreset,
   ThemeFonts,
 } from "$lib/theme";
@@ -66,10 +67,19 @@ export interface AppSettings {
   customThemes?: CustomTheme[];
   /** Global font override (applied on top of the active theme's fonts). */
   fonts?: ThemeFonts;
+  /** Global terminal typography override (wins over each terminal theme's fonts). */
+  terminalFonts?: TerminalTheme;
   /** Saved terminal themes (the per-terminal override layer; import/exportable). */
   terminalThemes?: TerminalThemePreset[];
-  /** Active terminal theme id ("inherit" = no terminal override). */
+  /** How the active terminal theme is chosen: one for both schemes, or a
+   *  separate one per light/dark app theme. */
+  terminalThemeMode?: "single" | "scheme";
+  /** Active terminal theme id in "single" mode ("inherit" = no override). */
   activeTerminalThemeId?: string;
+  /** Terminal theme when the app theme is light ("scheme" mode; "inherit" ok). */
+  terminalThemeLightId?: string;
+  /** Terminal theme when the app theme is dark ("scheme" mode; "inherit" ok). */
+  terminalThemeDarkId?: string;
 }
 
 export interface WorktreeData {
@@ -289,6 +299,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
   activeThemeId: "system",
   customThemes: [],
   fonts: {},
+  terminalFonts: {},
   terminalThemes: [],
+  terminalThemeMode: "single",
   activeTerminalThemeId: "inherit",
+  terminalThemeLightId: "inherit",
+  terminalThemeDarkId: "inherit",
 };
