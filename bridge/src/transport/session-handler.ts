@@ -43,6 +43,10 @@ export async function handleSecureConnection(options: SecureConnectionOptions): 
       trustStore,
       displayName,
       now: ctx.now,
+      // Build the channel over this phone's persistent outbound log so its seq
+      // continues across reconnects and outbound messages are retained for
+      // seq-based catch-up.
+      outboundLogFor: (id: string) => ctx.sessionRegistry.logFor(id),
       ...(options.expectedSessionId !== undefined
         ? { expectedSessionId: options.expectedSessionId }
         : {}),
@@ -54,9 +58,23 @@ export async function handleSecureConnection(options: SecureConnectionOptions): 
     // (and later turn-end pushes) target the right relay session.
     ctx.pushService.setActiveSession(result.sessionId);
 
+    // Catch-up (architecture/02a §5.9.2): replay every retained outbound message
+    // the phone hasn't applied yet (seq > resumeState.lastAppliedBridgeOutboundSeq),
+    // re-encrypted under the new session key, BEFORE registering the live sink so
+    // the replayed backlog precedes any new traffic and ordering is preserved.
+    const outboundLog = ctx.sessionRegistry.logFor(result.phoneDeviceId);
+    for (const entry of outboundLog.entriesAfter(result.lastAppliedBridgeOutboundSeq)) {
+      io.send(
+        Buffer.from(
+          JSON.stringify(result.channel.encryptReplay(entry.seq, entry.plaintext)),
+          'utf-8',
+        ),
+      );
+    }
+
     // Register the encrypted sink synchronously (before any further await) so the
-    // bridge can push notifications immediately, flushing anything buffered while
-    // this device was offline.
+    // bridge can push notifications immediately. Each live send is encrypted by
+    // the channel, which records it in the outbound log for future catch-up.
     ctx.sessionRegistry.register(result.phoneDeviceId, {
       send: (message) =>
         io.send(Buffer.from(JSON.stringify(result.channel.encrypt(toBytes(message))), 'utf-8')),

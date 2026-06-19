@@ -356,6 +356,27 @@ type ApprovalDecision = 'approve' | 'reject' | 'approveSession';
 interface ApprovalResponse { approvalId: string; decision: ApprovalDecision; }
 ```
 
+**Cómo se enruta la respuesta.** El bridge mantiene un `pendingApprovals`
+compartido (en `AgentManager`) que el `AgentManager.requestApproval()`
+popula y `AgentManager.respondApproval()` resuelve. El transporte
+concreto depende del adaptador:
+
+- **Claude Code** — `--settings` inyecta un hook `PreToolUse` que
+  hace `POST /agent-hook/approval` a la LAN server del bridge; el
+  bridge reenvía al teléfono por el canal central.
+- **Codex** — protocolo JSON-RPC `codex app-server` (long-lived):
+  elicitaciones `item/commandExecution|fileChange|permissions/
+  requestApproval`, `mcpServer/elicitation/request`,
+  `item/tool/requestUserInput` (+ legacy `applyPatchApproval`,
+  `execCommandApproval`).
+- **Gemini CLI** — el bridge escribe
+  `<cwd>/.gemini/settings.json` con un hook `BeforeTool` que
+  `POST /agent-hook/approval` con el mismo shape que Claude.
+- **Echo (dev)** — el adaptador directamente llama a
+  `requestApproval` cuando el texto es `approval-demo` y pausa el
+  turno hasta que el usuario responde.
+
+
 **`AgentModel`** (item de `agent/models`):
 ```typescript
 interface AgentModel {

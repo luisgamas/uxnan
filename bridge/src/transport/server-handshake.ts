@@ -13,6 +13,7 @@ import type { SecureDeviceState } from '../secure-device-state.js';
 import type { MessageQueue } from './message-io.js';
 import type { TrustStore } from './trust-store.js';
 import { BridgeSecureChannel } from './secure-channel.js';
+import type { OutboundLog } from './outbound-log.js';
 import { deriveSessionKey, generateEphemeralKeyPair, randomHex, verifyEd25519 } from './crypto.js';
 
 export class HandshakeError extends Error {
@@ -33,6 +34,14 @@ export interface ServerHandshakeOptions {
   expectedSessionId?: string;
   /** Key epoch to advertise (default 1). */
   keyEpoch?: number;
+  /**
+   * Resolve the per-device outbound log (seq counter + catch-up window) for the
+   * phone identified in the clientHello. The channel is built over it so its
+   * `seq` continues across reconnects and every outbound message is retained.
+   * Omitted in tests that don't exercise catch-up (channel uses its fallback
+   * counter, nothing retained).
+   */
+  outboundLogFor?: (phoneDeviceId: string) => OutboundLog;
 }
 
 export interface ServerHandshakeResult {
@@ -42,6 +51,12 @@ export interface ServerHandshakeResult {
   mode: HandshakeMode;
   keyEpoch: number;
   channel: BridgeSecureChannel;
+  /**
+   * Highest bridge→phone `seq` the phone reports having applied, from
+   * `clientHello.resumeState` (0 when absent/invalid). The caller replays the
+   * outbound log's entries with a greater seq.
+   */
+  lastAppliedBridgeOutboundSeq: number;
 }
 
 function requireString(obj: Record<string, unknown>, key: string): string {
@@ -71,6 +86,7 @@ export async function performServerHandshake(
   const phoneIdentityPublicKey = requireString(hello, 'phoneIdentityPublicKey');
   const phoneEphemeralPublicKey = requireString(hello, 'phoneEphemeralPublicKey');
   const clientNonce = requireString(hello, 'clientNonce');
+  const lastAppliedBridgeOutboundSeq = parseResumeSeq(hello['resumeState']);
   const mode: HandshakeMode =
     hello['handshakeMode'] === 'trusted_reconnect' ? 'trusted_reconnect' : 'qr_bootstrap';
 
@@ -146,14 +162,32 @@ export async function performServerHandshake(
 
   send({ kind: 'ready', sessionId, keyEpoch, macDeviceId: identity.macDeviceId });
 
+  // Build the channel over this phone's persistent outbound log so its seq
+  // continues across reconnects and every outbound message is retained for
+  // catch-up.
+  const outboundLog = options.outboundLogFor?.(phoneDeviceId);
+
   return {
     sessionId,
     phoneDeviceId,
     phoneIdentityPublicKey,
     mode,
     keyEpoch,
-    channel: new BridgeSecureChannel(key, sessionId),
+    channel: new BridgeSecureChannel(key, sessionId, outboundLog),
+    lastAppliedBridgeOutboundSeq,
   };
+}
+
+/**
+ * Read `clientHello.resumeState.lastAppliedBridgeOutboundSeq` defensively: a
+ * non-negative integer is honored, anything else (absent, NaN, negative, wrong
+ * type) means "no catch-up" → 0.
+ */
+function parseResumeSeq(resumeState: unknown): number {
+  if (!resumeState || typeof resumeState !== 'object') return 0;
+  const value = (resumeState as Record<string, unknown>)['lastAppliedBridgeOutboundSeq'];
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return 0;
+  return Math.floor(value);
 }
 
 function parseJson(bytes: Buffer): Record<string, unknown> {

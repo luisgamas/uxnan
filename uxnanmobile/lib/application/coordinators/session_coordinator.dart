@@ -292,9 +292,49 @@ class SessionCoordinator {
     }
     try {
       await sendRequest('bridge/status').timeout(const Duration(seconds: 8));
+      // Checkpoint the applied seq periodically so a hard app-kill mid-session
+      // still resumes from a recent point (not just from the last disconnect).
+      _persistBridgeSeq();
     } on Object {
       await _dropAndReconnect();
     }
+  }
+
+  /// Persists the highest bridge→phone `seq` applied on the live channel so a
+  /// later reconnect can advertise it (`clientHello.resumeState`) and the
+  /// bridge replays only what was missed (spec 02a §5.9.2). Best-effort: it
+  /// updates the in-memory active device synchronously so an immediate
+  /// reconnect reads the fresh value, then persists asynchronously. No-op when
+  /// nothing advanced.
+  void _persistBridgeSeq() {
+    final repo = _trustedDeviceRepository;
+    final channel = _channel;
+    if (repo == null || channel == null) return;
+    final seq = channel.session.bridgeOutboundSeq;
+    final macId = channel.session.macDeviceId;
+    final active = _activeMac.value;
+    if (active != null && active.macDeviceId == macId) {
+      if (seq <= active.lastAppliedBridgeOutboundSeq) return;
+      final updated = active.copyWith(lastAppliedBridgeOutboundSeq: seq);
+      _activeMac.add(updated);
+      unawaited(repo.saveDevice(updated));
+    } else {
+      // The connected device is not the active one (e.g. browsing another PC):
+      // update its persisted record directly without touching `_activeMac`.
+      unawaited(_persistSeqForDevice(repo, macId, seq));
+    }
+  }
+
+  Future<void> _persistSeqForDevice(
+    ITrustedDeviceRepository repo,
+    String macId,
+    int seq,
+  ) async {
+    final device = await repo.getDevice(macId);
+    if (device == null || seq <= device.lastAppliedBridgeOutboundSeq) return;
+    await repo.saveDevice(
+      device.copyWith(lastAppliedBridgeOutboundSeq: seq),
+    );
   }
 
   /// Records "last seen = now" for [device] so the PC card reflects the real
@@ -309,6 +349,7 @@ class SessionCoordinator {
 
   /// Drops the (apparently dead) session and starts the reconnection loop.
   Future<void> _dropAndReconnect() async {
+    _persistBridgeSeq();
     _stopHeartbeat();
     await _rxSubscription?.cancel();
     _rxSubscription = null;
@@ -322,6 +363,7 @@ class SessionCoordinator {
   /// Tears down the session deliberately (no reconnection is attempted).
   Future<void> disconnect() async {
     _intentionalDisconnect = true;
+    _persistBridgeSeq();
     _stopHeartbeat();
     await _rxSubscription?.cancel();
     _rxSubscription = null;
@@ -513,6 +555,9 @@ class SessionCoordinator {
         phoneIdentity: identity,
         device: device,
         mode: mode,
+        // Advertise the last applied bridge→phone seq so the bridge replays the
+        // outbound we missed (spec 02a §5.9.2). 0 on first pairing.
+        lastAppliedBridgeOutboundSeq: device.lastAppliedBridgeOutboundSeq,
       );
       final channel = _secureTransport.openChannel(session);
       return (transport, channel);
@@ -589,6 +634,9 @@ class SessionCoordinator {
         _connectionPhase.value == ConnectionPhase.reconnecting) {
       return;
     }
+    // Persist (sync part updates `_activeMac`) BEFORE the reconnect captures
+    // the active device, so the reconnect advertises the freshest applied seq.
+    _persistBridgeSeq();
     unawaited(handleReconnect());
   }
 

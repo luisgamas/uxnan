@@ -39,6 +39,187 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   backward by computing offsets instead of pulling the whole thread. Cursor
   semantics (forward offset, oldest→newest) are unchanged and backward
   compatible. Covered by `test/conversation/thread-store.test.ts`.
+- **Seq-based catch-up on reconnect (bridge half)** — the bridge now retains
+  every bridge→phone message (replies AND notifications) in a per-device
+  **`OutboundLog`** (architecture/02a §5.9.2): a continuous, monotonic `seq`
+  counter that **survives reconnects** plus a sliding window of the recent
+  **plaintext** (caps `MAX_BRIDGE_OUTBOUND_MESSAGES` / `_BYTES`). On the
+  handshake, `performServerHandshake` reads
+  `clientHello.resumeState.lastAppliedBridgeOutboundSeq` (tolerant: absent /
+  invalid → 0) and the session handler **replays every retained entry with a
+  greater seq**, re-encrypted under the new session key (`BridgeSecureChannel.
+  encryptReplay`), BEFORE registering the live sink so the backlog precedes new
+  traffic. Plaintext (not envelopes) is retained because each reconnect derives
+  a fresh key. The channel's `seq` is now owned by the log, so it continues
+  across reconnects instead of restarting at 1; messages sent while a device is
+  offline are recorded in its log (not a separate buffer) and replayed too. The
+  log is created on first use, kept across disconnects, and dropped only when
+  the device is untrusted (`SessionRegistry.forget`, wired into
+  `bridge/removeTrustedDevice`). Replaces the old `OutboundMessageBuffer`
+  (offline-only, no seq, drain-on-register) with `OutboundLog`. Covered by
+  `outbound-log.test.ts`, `secure-channel.test.ts` (log continuity +
+  `encryptReplay`), and an end-to-end reconnect catch-up test
+  (`catch-up.test.ts`): a phone that applied seq 1–2, went offline while the
+  bridge produced seq 3–4, reconnects with `resumeState:{...Seq:2}` and receives
+  exactly seq 3–4 under the new key. **Mobile half still pending:** the phone
+  must persist `lastAppliedBridgeOutboundSeq` and send it in `clientHello.
+  resumeState` (until then the bridge replays nothing, since the phone reports
+  no resume point) — tracked in FOR-DEV.
+- **Codex real approvals via the `codex app-server` turn protocol** — the
+  bridge's Codex adapter is refactored from one-shot `codex exec --json` to
+  a **long-lived** `codex app-server` JSON-RPC process. The new path speaks
+  the full turn protocol (`initialize` → `thread/start` → `turn/start`) and
+  surfaces the approval elicitations the desktop app uses — `applyPatch
+  Approval`, `execCommandApproval`, plus the v2 `item/commandExecution/
+  requestApproval`, `item/fileChange/requestApproval`, `item/permissions/
+  requestApproval`, and `mcpServer/elicitation/request`. Every elicitation
+  is mapped to the bridge's generic `requestApproval` round-trip
+  (architecture/02a §6.2), so the phone's interactive approval card just
+  works for Codex. A user's `approveSession` decision becomes a session-
+  wide `approved_for_session`; `approve` → `approved`; `reject` → `denied`.
+  Verified end-to-end against `codex-cli` 0.139.0: handshake, turn
+  lifecycle, deltas, reasoning, blocks, usage, errors, app-server crash
+  mid-turn, `turn/interrupt` cancellation, and the approval elicitations
+  (the `item/commandExecution/requestApproval` elicitation round-trips to
+  the phone, the bridge replies with the user's decision; an unknown
+  elicitation is auto-rejected so the app-server does not hang).
+- **Gemini CLI real approvals via the `BeforeTool` hook** — the bridge's
+  Gemini adapter now opts into interactive approvals the same way Claude
+  Code does, with the same `requestApproval` round-trip the phone already
+  speaks (`turn/send { approvalResponse }`). Setting
+  `agents['gemini-cli'].interactiveApprovals: true` (gated on `lanEnabled`)
+  makes the bridge write `~/.uxnan/hooks/gemini-approval-hook.cjs` (a
+  dependency-free Node script that POSTs each `BeforeTool` event to the
+  bridge's local HTTP endpoint) AND, per turn, a `<cwd>/.gemini/
+  settings.json` with a `BeforeTool` hook pointing at it. `--approval-mode`
+  is set to Gemini's `default` ("prompt for approval" in their
+  vocabulary); the hook is the gate, NOT a TTY prompt (since `-p` is
+  non-interactive). Without the hook the prompt would block the CLI
+  forever; the adapter only injects the hook when the LAN endpoint is
+  resolvable, otherwise the turn fails with a clear "agent not running"-
+  style error. New `permissionMode: 'interactive'` value on
+  `GeminiAdapterOptions` (the other modes — `default`/`plan`,
+  `acceptEdits`/`auto_edit`, `bypassPermissions`/`yolo` — are unchanged).
+  Existing user settings (other hooks, theme, …) are preserved: the
+  bridge MERGES its `uxnan-approval` entry under
+  `hooks.BeforeTool[*]`. Gemini uses the same hook contract as Claude
+  Code (the CLI ships a `gemini hooks migrate` command that imports
+  Claude hook settings). Covered by `test/adapters/gemini-adapter.test.ts`
+  (mode mapping, env injection, `<cwd>/.gemini/settings.json` write) and
+  `test/hooks/gemini-approval-hook.test.ts` (allow/deny/no-URL/
+  unreachable paths). **Validated end-to-end against a real
+  `gemini -p ... --approval-mode default` run with a fake bridge in the
+  loop** — the CLI invoked the hook for both `update_topic` and
+  `list_directory` and waited for the response (the bridge received the
+  POSTs with the right payload shape). See `bridge/FOR-DEV.md` for the
+  per-adapter status; **OpenCode / pi remain documented as gaps** —
+  their headless modes don't expose a pre-tool protocol the bridge can
+  intercept, so no per-action gate is possible without driving their
+  server/RPC entry points (a much bigger refactor; tracked separately).
+
+### Changed
+- **Codex real approvals via the `codex app-server` turn protocol** — the
+  bridge's Codex adapter is refactored from one-shot `codex exec --json` to
+  a **long-lived** `codex app-server` JSON-RPC process. The new path speaks
+  the full turn protocol (`initialize` → `thread/start` → `turn/start`) and
+  surfaces the approval elicitations the desktop app uses — `applyPatch
+  Approval`, `execCommandApproval`, plus the v2 `item/commandExecution/
+  requestApproval`, `item/fileChange/requestApproval`, `item/permissions/
+  requestApproval`, and `mcpServer/elicitation/request`. Every elicitation
+  is mapped to the bridge's generic `requestApproval` round-trip
+  (architecture/02a §6.2), so the phone's interactive approval card just
+  works for Codex. A user's `approveSession` decision becomes a session-
+  wide `approved_for_session`; `approve` → `approved`; `reject` → `denied`.
+  Verified end-to-end against `codex-cli` 0.139.0: handshake, turn
+  lifecycle, deltas, reasoning, blocks, usage, errors, app-server crash
+  mid-turn, `turn/interrupt` cancellation, and the approval elicitations
+  (the `item/commandExecution/requestApproval` elicitation round-trips to
+  the phone, the bridge replies with the user's decision; an unknown
+  elicitation is auto-rejected so the app-server does not hang).
+
+### Changed
+- **Codex `permissionMode` default switched from `acceptEdits` to
+  `interactive`.** The old default auto-approved every tool via
+  `-s workspace-write` (a silent footgun); the new default is the app-
+  server's `on-request` + `workspace-write`, so the phone actually gets
+  asked. `acceptEdits` is still accepted for back-compat and maps to the
+  same no-prompt behavior. New `interactive` mode is the recommended
+  production posture; `bypassPermissions` and `default` (read-only)
+  unchanged.
+- **Agent-manager `requestApproval` return type widened** from
+  `'allow' | 'deny'` to the full `ApprovalDecision`
+  (`'approve' | 'reject' | 'approveSession'`). The Claude `PreToolUse`
+  hook caller (the bridge's local HTTP server) translates the decision to
+  `'allow' | 'deny'` for the hook's wire shape; the Codex adapter uses the
+  full decision to emit the right `ReviewDecision` kind. The shared
+  pending-map is keyed by `approvalId` and a single `respondApproval` call
+  resolves both backends.
+
+### Added (earlier)
+- **Richer block/tool reconstruction in the on-disk history fallback** —
+  `SessionHistoryReader` (`src/conversation/session-history.ts`) now ALSO
+  reconstructs the structured MessageContent blocks (`command_execution` /
+  `diff` / generic `tool`) the live adapter would have emitted, so the
+  phone's Work log and Changed files populate for history-fallback turns the
+  same way they do for live turns. Each agent's tool-call entries are
+  mapped using the same `*-tools.ts` helpers the live adapter uses, so the
+  on-the-wire block shape stays in lock-step:
+    - **Claude Code** — pairs `tool_use` (assistant) with the next
+      `tool_result` (user) by `tool_use_id`.
+    - **Codex** — handles BOTH the legacy `command_execution` /
+      `file_change` / `mcp_tool_call` format AND the newer codex-cli 0.98+
+      `function_call` + `function_call_output` / `custom_tool_call` +
+      `custom_tool_call_output` format (paired by `call_id`). Codex tool
+      events AND reasoning items precede the assistant text, so they're
+      queued and flushed onto the next assistant message. `shell_command`
+      → `command_execution`; `apply_patch` → `diff`; others → generic `tool`.
+    - **OpenCode** — reads each message's `tool` parts (already paired
+      with their result in the same part) and maps the tool name to a
+      structured block (`bash`/`edit`/`write` get typed blocks, others
+      → generic `tool`).
+    - **pi** — pairs the `toolCall` content block inside an assistant
+      message with the subsequent `role:'toolResult'` message (by
+      `toolCallId`). The `think` tags embedded in the assistant text
+      are extracted into `Message.thinking`.
+    - **Gemini CLI** — the `gemini` messages already include `toolCalls`
+      with both args and result inline; each one maps to a structured
+      block.
+  Covered by 12 new unit tests (basic pairing per agent, error exit
+  code, reasoning-from-summary, internal-tool filtering, etc.) AND
+  smoke-tested against real on-disk agent logs: parsed 44 Gemini blocks
+  from one session, 26 OpenCode blocks from another, and 4 Codex blocks
+  from a third — all from the actual `~/.gemini/tmp`, `~/.local/share/
+  opencode/storage`, and `~/.codex/sessions` directories. `turn/list`
+  is unchanged on the wire; the phone now sees structured Work log /
+  Changed files for history-fallback turns that previously rendered
+  empty.
+- **Gemini CLI on-disk session history** — the `SessionHistoryReader`
+  (`src/conversation/session-history.ts`) now parses the Gemini CLI's real
+  per-snapshot JSON log under `~/.gemini/tmp/<projectHash>/chats/
+  session-<ts>-<shortId>.json`, so `turn/list` falls back to the agent's own
+  history when the in-memory store is empty (bridge missed the turns,
+  `threads.json` was lost, or the session was driven from a terminal). The
+  adapter already persists the native session id, so the locator is now wired.
+  Per the `gemini-cli` 0.46.0 format: top-level `{ sessionId, projectHash,
+  startTime, lastUpdated, messages:[{id, timestamp, type, content, thoughts?}] }`,
+  with the 8-char short id in the filename = first 8 hex chars of the UUID
+  (dashes stripped). The reader (a) walks every `tmp/<hash>/chats/` dir looking
+  for `session-*-<shortId>.json`, (b) keeps ONLY files whose top-level
+  `sessionId` matches, (c) merges messages across snapshots deduplicating by
+  message `id`, (d) sorts by timestamp, (e) maps `user`→user and `gemini`→
+  assistant (skipping `info`/`error`), and (f) joins `thoughts[].description`
+  into the assistant message's `thinking` field. The multi-file path cache
+  (60s TTL) reuses the resolved file list. Best-effort + read-only: tolerant
+  of malformed JSON, returns `null` for unknown/unsupported agents, a
+  non-UUID session id, or a missing log. Covered by 7 new tests in
+  `test/conversation/session-history.test.ts` (basic, thoughts, multi-part
+  content, multi-snapshot merge + dedup, shortId collision, multi-project
+  scan, TTL re-scan) AND smoked end-to-end against a real on-disk gemini-cli
+  session log (verified parses of all 3 turns with user/gemini messages and
+  extracted thinking). `turn/list` is unchanged on the wire; the phone just
+  sees history it previously couldn't. Aider remains the only remaining agent
+  without an on-disk history reader (its CLI doesn't ship a per-session log —
+  follow-up in `FOR-DEV.md`).
 
 ### Docs
 - **Synced the spec (`architecture/02a-system-architecture.md` and

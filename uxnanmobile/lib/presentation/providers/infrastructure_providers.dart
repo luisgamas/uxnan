@@ -19,6 +19,7 @@ import 'package:uxnan/infrastructure/repositories/drift_thread_repository.dart';
 import 'package:uxnan/infrastructure/repositories/trusted_device_repository.dart';
 import 'package:uxnan/infrastructure/speech/speech_to_text_service.dart';
 import 'package:uxnan/infrastructure/storage/appearance_preferences_store.dart';
+import 'package:uxnan/infrastructure/storage/approval_response_store.dart';
 import 'package:uxnan/infrastructure/storage/conversation_preferences_store.dart';
 import 'package:uxnan/infrastructure/storage/local_database.dart';
 import 'package:uxnan/infrastructure/storage/notification_preferences_store.dart';
@@ -89,6 +90,13 @@ final appearancePreferencesStoreProvider = Provider<AppearancePreferencesStore>(
 /// Persists thread-list view preferences (sort + density, on-device).
 final threadListPreferencesStoreProvider = Provider<ThreadListPreferencesStore>(
   (ref) => ThreadListPreferencesStore(),
+);
+
+/// Persists the user's decisions on agent approval prompts (non-sensitive,
+/// on-device). Drives the in-conversation approval card so an answered card
+/// stays in its resolved state across scrolls and app restarts.
+final approvalResponseStoreProvider = Provider<ApprovalResponseStore>(
+  (ref) => ApprovalResponseStore(),
 );
 
 /// Firebase Cloud Messaging + local notifications, fully guarded so the app

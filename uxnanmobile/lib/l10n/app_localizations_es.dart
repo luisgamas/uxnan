@@ -601,6 +601,12 @@ class AppLocalizationsEs extends AppLocalizations {
   String get approvalNeedsApproval => 'Requiere aprobación';
 
   @override
+  String get approvalDecidedTitle => 'Decisión registrada';
+
+  @override
+  String get approvalAnsweredAt => 'Respondido';
+
+  @override
   String get approvalActionFallback => 'Acción en espera de aprobación';
 
   @override

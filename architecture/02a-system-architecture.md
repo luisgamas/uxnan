@@ -213,10 +213,10 @@ interface AgentCapabilities {
 
 // Agentes actualmente implementados (ver bridge/CHANGELOG.md):
 //   ✅ opencode  (default; per-turn `opencode run --format json`; --session para continuidad)
-//   ✅ claude-code (`claude -p --output-format stream-json`; --resume)
-//   ✅ codex     (`codex exec --json`; exec resume <thread_id>)
-//   ✅ pi-agent  (`pi -p --mode json`; --session-id)
-//   ✅ gemini-cli (`gemini -p --output-format stream-json`; --session-id + --resume)
+//   ✅ claude-code (`claude -p --output-format stream-json`; --resume; **PreToolUse hook** real approvals)
+//   ✅ codex     (`codex app-server`; long-lived JSON-RPC over stdio; `thread/start`/`turn/start` + every elicitation)
+//   ✅ pi-agent  (`pi -p --mode json`; --session-id; **no headless pre-tool protocol — see FOR-DEV**)
+//   ✅ gemini-cli (`gemini -p --output-format stream-json`; --session-id + --resume; **BeforeTool hook** real approvals)
 //   ⏳ aider     (FOR-DEV → recipe "Adding the next agent")
 ```
 
@@ -1628,15 +1628,30 @@ son consumidas hoy por:
 
 #### 5.8.8 Fallback JSONL (session-jsonl-history)
 
-Cuando el runtime del agente no tiene datos frescos de `thread/turns/list`, el bridge lee directamente de los archivos JSONL de sesion en disco:
+Cuando el runtime del agente no tiene datos frescos de `thread/turns/list`, el bridge lee directamente de los archivos de sesion en disco de cada agente:
 
 ```javascript
 // src/session-jsonl-history.js
-// Parsea archivos JSONL de sesion por agente:
-// - Codex: ~/.codex/sessions/<sessionId>.jsonl
-// - Claude Code: ~/.claude-code/sessions/<sessionId>.jsonl
-// - pi-agent: ~/.pi/agent/sessions/<sessionId>.jsonl
-// - OpenCode: SQLite de OpenCode
+// Parsea los archivos de sesion en disco por agente (cada CLI usa su propio formato):
+// - Codex:        ~/.codex/sessions/<Y>/<M>/<D>/rollout-<ts>-<sessionId>.jsonl
+//                 (JSONL, payloads {type:'message', role, content:[{type:'input_text'|'output_text',text}]})
+// - Claude Code:  ~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl
+//                 (JSONL, lineas {type:'user'|'assistant', message:{role, content:[{type:'text'|'thinking'|...}]}})
+// - pi-agent:     ~/.pi/agent/sessions/<encoded-cwd>/<ts>_<sessionId>.jsonl
+//                 (JSONL, lineas {type:'message', message:{role, content:[{type:'text',text}]}})
+// - OpenCode:     JSON store (no SQLite) bajo
+//                 ~/.local/share/opencode/storage/{message,part}/<sessionId>/<msgId>.json
+// - Gemini CLI:   ~/.gemini/tmp/<projectHash>/chats/session-<ts>-<shortId>.json
+//                 (un JSON por snapshot: { sessionId, projectHash, startTime,
+//                   lastUpdated, messages:[{id, timestamp, type:'user'|'gemini'|
+//                   'info'|'error', content (string | [{text}]), thoughts?}] });
+//                 <shortId> = primeros 8 chars hex del UUID (sin guiones);
+//                 multiples snapshots por session id se mergean deduplicados
+//                 por message id y ordenados por timestamp.
+//
+// El agente expone nativeSessionId(threadId) en IAgentAdapter y
+// AgentManager lo persiste via ThreadStore.setAgentSession al cierre de cada
+// turn, para que el bridge pueda localizar el archivo tras un restart.
 
 async function readHistoryFromDisk(threadId, { cursor, limit }) {
   // Soporta paginacion por cursor y limit
@@ -1793,6 +1808,31 @@ MAX_BRIDGE_OUTBOUND_BYTES = 10 MB
 
 // Telefono side: mantiene phoneOutboundSeq++ para mensajes que envia al bridge
 ```
+
+> **Estado de implementación (bridge — hecho):** el bridge implementa esto en
+> `src/transport/outbound-log.ts` (`OutboundLog`): un contador `seq` continuo
+> **por dispositivo** que **sobrevive a las reconexiones** (no se reinicia con
+> cada handshake) más una ventana deslizante con los topes de arriba. Retiene el
+> **texto plano** de cada mensaje saliente (respuestas Y notificaciones), no los
+> sobres cifrados, porque cada reconexión deriva una clave nueva: en la
+> reconexión el canal nuevo **re-cifra** las entradas con `seq > N`
+> (`BridgeSecureChannel.encryptReplay`) y las reenvía **antes** de registrar el
+> sink en vivo, preservando el orden. `performServerHandshake` lee
+> `clientHello.resumeState.lastAppliedBridgeOutboundSeq` (tolerante: ausente o
+> inválido → 0). El log se descarta al desconfiar del dispositivo
+> (`SessionRegistry.forget`). Si el bridge se reinicia, el log en memoria se
+> pierde (el `seq` reinicia en 1); el punto de reanudación viejo del teléfono no
+> produce replay y el teléfono re-sincroniza con `turn/list` — comportamiento
+> aceptado.
+>
+> **Estado de implementación (móvil — hecho):** el teléfono persiste el último
+> `seq` aplicado por dispositivo en `TrustedDevice.lastAppliedBridgeOutboundSeq`
+> (columna drift nullable, esquema v5) y lo envía en
+> `clientHello.resumeState.lastAppliedBridgeOutboundSeq` (omitido cuando es 0).
+> `SessionCoordinator` lo carga en `performHandshake` y lo checkpointea en cada
+> teardown (drop/disconnect/cierre de socket) y periódicamente en el heartbeat.
+> El `seq` aplicado se rastrea en `SecureChannel.decrypt`
+> (`SecureSession.bridgeOutboundSeq`). Catch-up por `seq` cerrado end-to-end.
 
 #### 5.9.3 Seleccion de canal de transporte
 

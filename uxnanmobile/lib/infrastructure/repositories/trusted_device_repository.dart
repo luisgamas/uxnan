@@ -28,6 +28,8 @@ class TrustedDeviceRepository implements ITrustedDeviceRepository {
             sessionId: Value(device.sessionId),
             pairedAtMs: Value(device.pairedAt.millisecondsSinceEpoch),
             lastSeenMs: Value(device.lastSeen?.millisecondsSinceEpoch),
+            lastAppliedBridgeOutboundSeq:
+                Value(device.lastAppliedBridgeOutboundSeq),
           ),
         );
     await _secureStore.write(
@@ -94,6 +96,7 @@ class TrustedDeviceRepository implements ITrustedDeviceRepository {
         lastSeen: row.lastSeenMs != null
             ? DateTime.fromMillisecondsSinceEpoch(row.lastSeenMs!)
             : null,
+        lastAppliedBridgeOutboundSeq: row.lastAppliedBridgeOutboundSeq ?? 0,
       );
 
   /// Serializes hosts newline-separated; `null` for an empty list so older rows

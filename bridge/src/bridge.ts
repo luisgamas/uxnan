@@ -33,6 +33,7 @@ import { SessionRegistry } from './transport/session-registry.js';
 import { ThreadStore } from './conversation/thread-store.js';
 import { AgentManager } from './agents/agent-manager.js';
 import { writeClaudeApprovalHook } from './hooks/claude-approval-hook.js';
+import { writeGeminiApprovalHook } from './hooks/gemini-approval-hook.js';
 import { EchoAgentAdapter } from './adapters/echo-agent-adapter.js';
 import { OpenCodeAdapter } from './adapters/opencode-adapter.js';
 import { resolveOpenCodeBinary } from './adapters/resolve-opencode.js';
@@ -184,9 +185,10 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   const claudeInteractiveApprovals =
     (claudeSettings.interactiveApprovals ?? false) && config.lanEnabled;
   const hookState: { port?: number; token: string } = { token: randomUUID() };
-  const hookScriptPath = state.pathFor(join('hooks', 'claude-approval-hook.cjs'));
+  const claudeHookScriptPath = state.pathFor(join('hooks', 'claude-approval-hook.cjs'));
+  const geminiHookScriptPath = state.pathFor(join('hooks', 'gemini-approval-hook.cjs'));
   if (claudeInteractiveApprovals) {
-    void writeClaudeApprovalHook(hookScriptPath).catch((err: unknown) =>
+    void writeClaudeApprovalHook(claudeHookScriptPath).catch((err: unknown) =>
       logger.warn(`failed to write the Claude approval hook: ${String(err)}`),
     );
   }
@@ -206,7 +208,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
             interactiveApprovals: true,
             approvalHook: {
               token: hookState.token,
-              scriptPath: hookScriptPath,
+              scriptPath: claudeHookScriptPath,
               url: () =>
                 hookState.port !== undefined
                   ? `http://127.0.0.1:${hookState.port}/agent-hook/approval`
@@ -223,14 +225,26 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       ...(claudeSettings.model !== undefined ? { defaultModel: claudeSettings.model } : {}),
     },
   );
-  // Codex: real agent driven via `codex exec --json` (see FOR-DEV.md).
+  // Codex: real agent driven via the `codex app-server` turn protocol
+  // (the bridge speaks JSON-RPC over the child's stdio; approvals go through
+  // the bridge's `requestApproval` flow — see `codex-approval.ts`).
   const codexSettings = config.agents['codex'] ?? {};
   const codex = resolveCodexBinary(codexSettings.binaryPath);
   agentManager.register(
     new CodexAdapter({
       binaryPath: codex.binaryPath,
       prependArgs: codex.prependArgs,
-      permissionMode: codexSettings.permissionMode ?? 'acceptEdits',
+      // The app-server has its own approval channel; default to `interactive`
+      // so every tool gating is surfaced to the phone (the previous
+      // `acceptEdits` default silently auto-approved everything via
+      // `codex exec -s workspace-write`). `acceptEdits` is still accepted
+      // for back-compat and maps to the same no-prompt behavior.
+      permissionMode: codexSettings.permissionMode ?? 'interactive',
+      // Route app-server approval elicitations to the bridge's shared
+      // approval round-trip (the same one the Claude PreToolUse hook and
+      // the Echo demo use).
+      onApprovalRequest: (threadId, info) =>
+        agentManager.requestApproval(threadId, info),
       ...(codexSettings.model !== undefined ? { defaultModel: codexSettings.model } : {}),
     }),
     {
@@ -258,11 +272,36 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   // Gemini: real agent driven via `gemini -p --output-format stream-json` (see FOR-DEV.md).
   const geminiSettings = config.agents['gemini-cli'] ?? {};
   const gemini = resolveGeminiBinary(geminiSettings.binaryPath);
+  // Interactive approvals for Gemini: opt-in (`agents['gemini-cli'].
+  // interactiveApprovals: true`) and only when the LAN server is enabled (the
+  // hook POSTs to the bridge's local HTTP endpoint). The adapter writes a
+  // `<cwd>/.gemini/settings.json` with a `BeforeTool` hook — Gemini uses the
+  // same hook contract as Claude Code (the CLI ships `gemini hooks migrate`
+  // for that).
+  const geminiInteractiveApprovals =
+    (geminiSettings.interactiveApprovals ?? false) && config.lanEnabled;
+  if (geminiInteractiveApprovals) {
+    void writeGeminiApprovalHook(geminiHookScriptPath).catch((err: unknown) =>
+      logger.warn(`failed to write the Gemini approval hook: ${String(err)}`),
+    );
+  }
   agentManager.register(
     new GeminiAdapter({
       binaryPath: gemini.binaryPath,
       prependArgs: gemini.prependArgs,
       permissionMode: geminiSettings.permissionMode ?? 'acceptEdits',
+      ...(geminiInteractiveApprovals
+        ? {
+            approvalHook: {
+              token: hookState.token,
+              scriptPath: geminiHookScriptPath,
+              url: () =>
+                hookState.port !== undefined
+                  ? `http://127.0.0.1:${hookState.port}/agent-hook/approval`
+                  : undefined,
+            },
+          }
+        : {}),
       ...(geminiSettings.model !== undefined ? { defaultModel: geminiSettings.model } : {}),
     }),
     {
@@ -421,15 +460,19 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
         onHookApproval: async (body, token) => {
           if (token !== hookState.token) return { status: 403, json: { error: 'bad_token' } };
           const b = body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
-          const threadId = typeof b['threadId'] === 'string' ? b['threadId'] : '';
+          const threadId = typeof b['threadId'] === 'string' ? (b['threadId'] as string) : '';
           if (!threadId) return { status: 400, json: { error: 'missing_thread' } };
-          const toolName = typeof b['toolName'] === 'string' ? b['toolName'] : 'tool';
+          const toolName = typeof b['toolName'] === 'string' ? (b['toolName'] as string) : 'tool';
           const input =
             b['input'] && typeof b['input'] === 'object'
               ? (b['input'] as Record<string, unknown>)
               : {};
+          // The hook script consumes `'allow' | 'deny'`; translate from the
+          // generic `ApprovalDecision` (the Codex app-server uses the same
+          // generic decision, so the same route serves both backends).
           const decision = await agentManager.requestApproval(threadId, { toolName, input });
-          return { status: 200, json: { decision } };
+          const hookDecision = decision === 'reject' ? 'deny' : 'allow';
+          return { status: 200, json: { decision: hookDecision } };
         },
       });
       hookState.port = lanHandle.port;

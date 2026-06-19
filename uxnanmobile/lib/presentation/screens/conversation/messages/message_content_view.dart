@@ -78,6 +78,10 @@ class MessageContentView extends StatelessWidget {
 /// flight, and re-enables on failure. Read-only when [threadId] is null or the
 /// request has no id.
 ///
+/// Once the user answers, the decision is persisted on-device (see
+/// `ApprovalResponseStore`) so the card stays in its resolved state across
+/// scrolls and app restarts — the action buttons never reappear.
+///
 /// FOR-DEV: dormant until the bridge emits approval requests and accepts
 /// `turn/send { approvalResponse }` (see `FOR-DEV.md`); the wiring is complete
 /// on the app side against the documented contract.
@@ -113,9 +117,18 @@ class _ApprovalCard extends ConsumerWidget {
 
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: colors.surfaceContainerHighest,
+        // Resolved cards drop the outline and pick up a soft tonal fill so the
+        // "already answered" state reads as a settled status row, not a
+        // pending prompt that the user might tap again.
+        color: resolved
+            ? riskColor.withValues(alpha: 0.08)
+            : colors.surfaceContainerHighest,
         borderRadius: const BorderRadius.all(UxnanRadius.lg),
-        border: Border.all(color: colors.outlineVariant),
+        border: Border.all(
+          color: resolved
+              ? riskColor.withValues(alpha: 0.32)
+              : colors.outlineVariant,
+        ),
       ),
       child: Padding(
         padding: const EdgeInsets.all(UxnanSpacing.md),
@@ -124,9 +137,22 @@ class _ApprovalCard extends ConsumerWidget {
           children: [
             Row(
               children: [
-                Icon(Icons.shield_outlined, size: 16, color: riskColor),
+                Icon(
+                  resolved
+                      ? (response!.decision == ApprovalDecision.reject
+                          ? Icons.cancel_rounded
+                          : Icons.verified_user_outlined)
+                      : Icons.shield_outlined,
+                  size: 16,
+                  color: riskColor,
+                ),
                 const SizedBox(width: UxnanSpacing.sm),
-                Text(l10n.approvalNeedsApproval, style: textTheme.labelMedium),
+                Text(
+                  resolved
+                      ? l10n.approvalDecidedTitle
+                      : l10n.approvalNeedsApproval,
+                  style: textTheme.labelMedium,
+                ),
                 const Spacer(),
                 _RiskBadge(risk: request.risk),
               ],
@@ -136,7 +162,11 @@ class _ApprovalCard extends ConsumerWidget {
               request.action.isEmpty
                   ? l10n.approvalActionFallback
                   : request.action,
-              style: textTheme.bodyMedium,
+              style: textTheme.bodyMedium?.copyWith(
+                color: resolved
+                    ? colors.onSurfaceVariant
+                    : colors.onSurface,
+              ),
             ),
             if (request.detail != null && request.detail!.isNotEmpty) ...[
               const SizedBox(height: UxnanSpacing.xs),
@@ -144,11 +174,14 @@ class _ApprovalCard extends ConsumerWidget {
             ],
             const SizedBox(height: UxnanSpacing.md),
             AnimatedSize(
-              duration: const Duration(milliseconds: 200),
+              duration: const Duration(milliseconds: 220),
               curve: Curves.easeOutCubic,
               alignment: Alignment.topLeft,
               child: resolved
-                  ? _ApprovalResolved(decision: response!.decision!)
+                  ? _ApprovalResolved(
+                      decision: response!.decision!,
+                      decidedAtMs: response.decidedAtMs,
+                    )
                   : _ApprovalActions(
                       sending: sending,
                       failed: phase == ApprovalResponsePhase.failed,
@@ -253,9 +286,15 @@ class _ApprovalActions extends StatelessWidget {
 }
 
 /// The settled status row shown once an approval has been answered.
+///
+/// Shows the decision + a relative timestamp ("Answered · 14:32") so the user
+/// can tell, at a glance, that the card is no longer actionable — even after
+/// a scroll, an app restart, or a thread re-open.
 class _ApprovalResolved extends StatelessWidget {
-  const _ApprovalResolved({required this.decision});
+  const _ApprovalResolved({required this.decision, this.decidedAtMs});
+
   final ApprovalDecision decision;
+  final int? decidedAtMs;
 
   @override
   Widget build(BuildContext context) {
@@ -276,12 +315,58 @@ class _ApprovalResolved extends StatelessWidget {
           color: color,
         ),
         const SizedBox(width: UxnanSpacing.sm),
-        Text(
-          label,
-          style: textTheme.labelLarge?.copyWith(color: color),
+        Expanded(
+          child: Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: UxnanSpacing.sm,
+            runSpacing: 2,
+            children: [
+              Text(
+                label,
+                style: textTheme.labelLarge?.copyWith(color: color),
+              ),
+              if (decidedAtMs != null)
+                Text(
+                  _formatTimestamp(decidedAtMs!, l10n),
+                  style: textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+            ],
+          ),
         ),
       ],
     );
+  }
+
+  /// Renders a compact "HH:MM" (today) or "MMM d · HH:MM" (older) timestamp,
+  /// prefixed by the localized "answered" label.
+  static String _formatTimestamp(int epochMs, AppLocalizations l10n) {
+    final when = DateTime.fromMillisecondsSinceEpoch(epochMs).toLocal();
+    final now = DateTime.now();
+    final sameDay =
+        when.year == now.year && when.month == now.month && when.day == now.day;
+    final hh = when.hour.toString().padLeft(2, '0');
+    final mm = when.minute.toString().padLeft(2, '0');
+    if (sameDay) return '${l10n.approvalAnsweredAt} · $hh:$mm';
+    // Older: include the short month + day. Locale-aware month names come
+    // from the resolved locale; this is a best-effort fallback.
+    final months = [
+      'jan',
+      'feb',
+      'mar',
+      'apr',
+      'may',
+      'jun',
+      'jul',
+      'aug',
+      'sep',
+      'oct',
+      'nov',
+      'dec',
+    ];
+    final m = months[(when.month - 1).clamp(0, 11)];
+    return '${l10n.approvalAnsweredAt} · $m ${when.day} · $hh:$mm';
   }
 }
 

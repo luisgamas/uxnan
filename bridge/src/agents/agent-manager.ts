@@ -108,10 +108,16 @@ export class AgentManager {
   readonly #activeTurnByThread = new Map<string, string>();
   /** turnId → temp attachment dir to remove once the turn ends (best-effort). */
   readonly #attachmentDirByTurn = new Map<string, string>();
-  /** approvalId → resolver for a pending hook approval (Claude PreToolUse round-trip). */
+  /** approvalId → resolver for a pending approval (covers the Claude `PreToolUse`
+   * hook round-trip AND the Codex app-server approval elicitations; the pending
+   * map is shared so a single `respondApproval` call resolves both). The
+   * resolver takes the user's `ApprovalDecision`; the caller (the hook server
+   * or the Codex adapter) translates that into the wire shape its protocol
+   * expects (`'allow' | 'deny'` for the Claude hook, `ReviewDecision` for
+   * Codex). */
   readonly #pendingHookApprovals = new Map<
     string,
-    { resolve: (decision: 'allow' | 'deny') => void; timer: ReturnType<typeof setTimeout> }
+    { resolve: (decision: ApprovalDecision) => void; timer: ReturnType<typeof setTimeout> }
   >();
   #approvalSeq = 0;
   readonly #options: AgentManagerOptions;
@@ -239,18 +245,24 @@ export class AgentManager {
   }
 
   /**
-   * Ask the user (via the phone) whether a tool may run, emitting an `approval`
-   * content block on the thread's in-flight turn and resolving once
-   * {@link respondApproval} arrives (or after {@link APPROVAL_TIMEOUT_MS} → deny).
-   * Backs the Claude `PreToolUse` hook round-trip. Returns the raw decision the
-   * hook maps to a permission decision.
+   * Ask the user (via the phone) whether an agent tool may run. Emits an
+   * `approval` content block on the thread's in-flight turn and resolves once
+   * {@link respondApproval} arrives (or after {@link APPROVAL_TIMEOUT_MS} →
+   * `reject`).
+   *
+   * The return type is the full {@link ApprovalDecision}: callers translate it
+   * into the wire shape their protocol expects — the Claude `PreToolUse` hook
+   * uses `allow`/`deny`, the Codex app-server uses the `ReviewDecision` oneOf
+   * (`approved` / `approved_for_session` / `denied` / `abort` / `timed_out`).
+   * A common pending map + common resolver keeps the phone's reply path
+   * (`turn/send { approvalResponse }`) uniform for both backends.
    */
   async requestApproval(
     threadId: string,
     info: { toolName: string; input: Record<string, unknown> },
-  ): Promise<'allow' | 'deny'> {
+  ): Promise<ApprovalDecision> {
     const turnId = this.#activeTurnByThread.get(threadId);
-    if (!turnId) return 'deny'; // no in-flight turn to attach the approval to
+    if (!turnId) return 'reject'; // no in-flight turn to attach the approval to
     const approvalId = `appr-${turnId}-${(this.#approvalSeq += 1)}`;
     const messageId = this.#assistantByTurn.get(turnId) ?? '';
     const content = approvalContent(approvalId, info.toolName, info.input);
@@ -262,20 +274,24 @@ export class AgentManager {
     this.#options.notify(
       makeNotification(StreamNotification.ContentBlock, { threadId, turnId, messageId, content }),
     );
-    return new Promise<'allow' | 'deny'>((resolve) => {
+    return new Promise<ApprovalDecision>((resolve) => {
       const timer = setTimeout(() => {
         this.#pendingHookApprovals.delete(approvalId);
-        resolve('deny');
+        resolve('reject');
       }, APPROVAL_TIMEOUT_MS);
       this.#pendingHookApprovals.set(approvalId, { resolve, timer });
     });
   }
 
   /**
-   * Route a user's approval decision. First resolves a pending **hook** approval
-   * (the Claude `PreToolUse` round-trip); otherwise forwards to the agent
-   * adapter (e.g. the Echo demo). No new turn is created. Returns the in-flight
-   * turn id (or `''`) so the `turn/send` reply still carries a `turnId`.
+   * Route a user's approval decision. Resolves a pending approval (shared by
+   * the Claude `PreToolUse` hook round-trip AND the Codex app-server
+   * elicitations) with the user's {@link ApprovalDecision}; the caller that
+   * started the request translates that into its protocol's wire shape.
+   * Otherwise, when no hook/app-server approval is pending, forwards to the
+   * agent adapter's `respondApproval` (e.g. the Echo demo) — no new turn is
+   * created. Returns the in-flight turn id (or `''`) so the `turn/send` reply
+   * still carries a `turnId`.
    */
   async respondApproval(
     threadId: string,
@@ -286,7 +302,7 @@ export class AgentManager {
     if (pending) {
       clearTimeout(pending.timer);
       this.#pendingHookApprovals.delete(approvalId);
-      pending.resolve(decision === 'reject' ? 'deny' : 'allow');
+      pending.resolve(decision);
       return { turnId: this.#activeTurnByThread.get(threadId) ?? '' };
     }
     const agentId = this.#agentByThread.get(threadId);

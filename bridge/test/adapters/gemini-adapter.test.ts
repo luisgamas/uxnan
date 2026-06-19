@@ -2,21 +2,35 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { PassThrough } from 'node:stream';
 import { EventEmitter } from 'node:events';
+import { mkdtempSync, readFileSync, existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { GeminiAdapter, parseGeminiLine, type SpawnedProcess } from '../../src/index.js';
 import { geminiToolBlock, isInternalGeminiTool } from '../../src/adapters/gemini-tools.js';
 import type { AgentStreamEvent } from '@uxnan/shared';
 
 interface FakeSpawn {
   args: string[];
+  env?: Record<string, string>;
   feed(lines: string[]): void;
 }
 
 function fakeSpawner(): {
-  spawnFn: (command: string, args: string[], cwd: string) => SpawnedProcess;
+  spawnFn: (
+    command: string,
+    args: string[],
+    cwd: string,
+    extra?: { env?: Record<string, string> },
+  ) => SpawnedProcess;
   last(): FakeSpawn;
 } {
   const spawns: FakeSpawn[] = [];
-  const spawnFn = (_command: string, args: string[]): SpawnedProcess => {
+  const spawnFn = (
+    _command: string,
+    args: string[],
+    _cwd: string,
+    extra?: { env?: Record<string, string> },
+  ): SpawnedProcess => {
     const stdout = new PassThrough();
     const emitter = new EventEmitter();
     stdout.on('end', () => emitter.emit('close', 0));
@@ -27,6 +41,7 @@ function fakeSpawner(): {
     } as SpawnedProcess;
     spawns.push({
       args,
+      ...(extra?.env ? { env: extra.env } : {}),
       feed: (lines) => {
         for (const line of lines) stdout.write(`${line}\n`);
         stdout.end();
@@ -245,4 +260,179 @@ test('gemini-tools maps tools and flags internal ones', () => {
   const other = geminiToolBlock('read_file', 'rd', { file_path: 'a.txt' }, 'data', false);
   assert.equal(other['type'], 'tool');
   assert.equal(other['toolName'], 'read_file');
+});
+
+test('interactive mode maps to Gemini --approval-mode default and injects the env for the hook', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new GeminiAdapter({
+    binaryPath: 'gemini',
+    spawnFn,
+    permissionMode: 'interactive',
+    approvalHook: {
+      token: 'tok-xyz',
+      scriptPath: 'C:/Users/x/.uxnan/hooks/gemini-approval-hook.cjs',
+      url: () => 'http://127.0.0.1:19850/agent-hook/approval',
+    },
+  });
+  const { done } = collect(adapter);
+  await adapter.sendTurn({ threadId: 'thread-g', turnId: 'u1', text: 'go' });
+  last().feed(['{"type":"result","status":"success","stats":{"total_tokens":1}}']);
+  await done;
+  // The CLI's "default" (prompt for approval) is what the hook intercepts.
+  const ai = last().args.indexOf('--approval-mode');
+  assert.equal(last().args[ai + 1], 'default');
+  // The bridge endpoint URL + token + threadId are passed to the hook via env.
+  assert.equal(last().env?.UXNAN_HOOK_THREAD_ID, 'thread-g');
+  assert.equal(last().env?.UXNAN_HOOK_TOKEN, 'tok-xyz');
+  assert.equal(last().env?.UXNAN_HOOK_URL, 'http://127.0.0.1:19850/agent-hook/approval');
+});
+
+test('interactive mode without a resolvable hook URL fails the turn (no silent plan fallback)', async () => {
+  const { spawnFn } = fakeSpawner();
+  const adapter = new GeminiAdapter({
+    binaryPath: 'gemini',
+    spawnFn,
+    permissionMode: 'interactive',
+    // No approvalHook at all → the bridge hasn't wired the LAN server.
+    approvalHook: { token: 't', scriptPath: 'C:/h.cjs', url: () => undefined },
+  });
+  const events: AgentStreamEvent[] = [];
+  let resolve!: (e: AgentStreamEvent[]) => void;
+  const done = new Promise<AgentStreamEvent[]>((r) => (resolve = r));
+  adapter.onEvent((event) => {
+    events.push(event);
+    if (event.type === 'turn_completed' || event.type === 'turn_error') resolve(events);
+  });
+  await adapter.sendTurn({ threadId: 't', turnId: 'u', text: 'go' });
+  const result = await done;
+  // The adapter must surface a clear turn_error (the CLI never gets spawned),
+  // NOT silently fall back to a posture that may look successful.
+  const err = result.find((e) => e.type === 'turn_error');
+  assert.ok(err, 'expected a turn_error when the hook URL is unavailable');
+  assert.match(
+    (err?.data as { text: string }).text,
+    /hook URL is unavailable|interactive approvals requested/,
+  );
+});
+
+test('interactive mode writes a <cwd>/.gemini/settings.json with the bridge hook', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  // Real temp cwd so #installHook can write the file there.
+  const cwd = mkdtempSync(join(tmpdir(), 'gemini-hook-'));
+  try {
+    const adapter = new GeminiAdapter({
+      binaryPath: 'gemini',
+      spawnFn,
+      permissionMode: 'interactive',
+      approvalHook: {
+        token: 'tok',
+        scriptPath: 'C:/hook.cjs',
+        url: () => 'http://127.0.0.1:19850/agent-hook/approval',
+      },
+    });
+    const { done } = collect(adapter);
+    await adapter.sendTurn({ threadId: 'th', turnId: 'u', text: 'go', cwd });
+    // First turn installs the hook file before spawning the CLI.
+    last().feed(['{"type":"result","status":"success","stats":{"total_tokens":1}}']);
+    await done;
+    const path = join(cwd, '.gemini', 'settings.json');
+    assert.ok(existsSync(path), 'settings.json must be written');
+    const parsed = JSON.parse(readFileSync(path, 'utf-8')) as Record<string, unknown>;
+    const hooks = parsed['hooks'] as Record<string, unknown>;
+    const beforeTool = hooks['BeforeTool'] as Array<Record<string, unknown>>;
+    assert.ok(Array.isArray(beforeTool));
+    // Exactly one bridge entry (re-installs don't duplicate).
+    const uxnanEntries = beforeTool.flatMap((e) => {
+      const list = e['hooks'] as Array<Record<string, unknown>> | undefined;
+      return list ?? [];
+    });
+    const ours = uxnanEntries.filter((h) => h['name'] === 'uxnan-approval');
+    assert.equal(ours.length, 1);
+    assert.equal(ours[0]!['type'], 'command');
+    assert.match(ours[0]!['command'] as string, /hook\.cjs/);
+    // Matchers catch every tool call.
+    assert.equal(beforeTool[beforeTool.length - 1]!['matcher'], '.*');
+  } finally {
+    // Best-effort cleanup.
+    try {
+      const { rmSync } = await import('node:fs');
+      rmSync(cwd, { recursive: true, force: true });
+    } catch {
+      /* ignore */
+    }
+  }
+});
+
+test('interactive mode preserves existing user settings when merging the bridge hook', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const cwd = mkdtempSync(join(tmpdir(), 'gemini-hook-'));
+  try {
+    // Seed the file with a theme + an unrelated hook (NOT ours).
+    const { mkdirSync, writeFileSync } = await import('node:fs');
+    mkdirSync(join(cwd, '.gemini'), { recursive: true });
+    writeFileSync(
+      join(cwd, '.gemini', 'settings.json'),
+      JSON.stringify({
+        ui: { theme: 'Dracula' },
+        hooks: {
+          BeforeAgent: [
+            {
+              hooks: [{ type: 'command', name: 'user-hook', command: 'echo hi' }],
+            },
+          ],
+          BeforeTool: [
+            // a stale uxnan-approval from a previous install: should be replaced
+            {
+              matcher: '.*',
+              hooks: [{ type: 'command', name: 'uxnan-approval', command: 'OLD' }],
+            },
+          ],
+        },
+      }),
+    );
+    const adapter = new GeminiAdapter({
+      binaryPath: 'gemini',
+      spawnFn,
+      permissionMode: 'interactive',
+      approvalHook: {
+        token: 'tok',
+        scriptPath: 'C:/hook.cjs',
+        url: () => 'http://127.0.0.1:19850/agent-hook/approval',
+      },
+    });
+    const { done } = collect(adapter);
+    await adapter.sendTurn({ threadId: 'th', turnId: 'u', text: 'go', cwd });
+    last().feed(['{"type":"result","status":"success","stats":{"total_tokens":1}}']);
+    await done;
+    const parsed = JSON.parse(
+      readFileSync(join(cwd, '.gemini', 'settings.json'), 'utf-8'),
+    ) as Record<string, unknown>;
+    // User theme preserved.
+    const ui = parsed['ui'] as Record<string, unknown>;
+    assert.equal(ui['theme'], 'Dracula');
+    // User's unrelated hook preserved.
+    const hooks = parsed['hooks'] as Record<string, unknown>;
+    const beforeAgent = hooks['BeforeAgent'] as Array<Record<string, unknown>>;
+    assert.equal(beforeAgent.length, 1);
+    // Stale uxnan-approval entry replaced (not duplicated) with the fresh one.
+    const beforeTool = hooks['BeforeTool'] as Array<Record<string, unknown>>;
+    const uxnanCount = beforeTool.flatMap((e) => {
+      const list = e['hooks'] as Array<Record<string, unknown>> | undefined;
+      return (list ?? []).filter((h) => h['name'] === 'uxnan-approval');
+    }).length;
+    assert.equal(uxnanCount, 1, 'stale uxnan-approval should be replaced, not duplicated');
+    // The remaining entry must reference the NEW script path.
+    const lastEntry = beforeTool[beforeTool.length - 1]!;
+    const lastHooks = lastEntry['hooks'] as Array<Record<string, unknown>>;
+    const lastUxn = lastHooks.find((h) => h['name'] === 'uxnan-approval');
+    assert.equal(lastUxn?.['type'], 'command');
+    assert.match(lastUxn?.['command'] as string, /C:\/hook\.cjs/);
+  } finally {
+    try {
+      const { rmSync } = await import('node:fs');
+      rmSync(cwd, { recursive: true, force: true });
+    } catch {
+      /* ignore */
+    }
+  }
 });

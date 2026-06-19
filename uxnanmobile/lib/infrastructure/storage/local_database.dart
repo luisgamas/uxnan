@@ -34,7 +34,7 @@ class UxnanDatabase extends _$UxnanDatabase {
   UxnanDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -59,6 +59,14 @@ class UxnanDatabase extends _$UxnanDatabase {
           // the phone can connect directly before falling back to the relay.
           if (from < 4) {
             await m.addColumn(trustedDevicesTable, trustedDevicesTable.hosts);
+          }
+          // v5: trusted devices remember the last bridge→phone seq applied
+          // (nullable) so a reconnect can request seq-based catch-up.
+          if (from < 5) {
+            await m.addColumn(
+              trustedDevicesTable,
+              trustedDevicesTable.lastAppliedBridgeOutboundSeq,
+            );
           }
         },
         beforeOpen: (details) async {

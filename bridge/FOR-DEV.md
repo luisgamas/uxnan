@@ -31,7 +31,8 @@ only a human can provide.)
 > **PENDING optional / blocked-on-mobile (do not block alpha):** seq catch-up on
 > reconnect + key rotation (await a mobile trigger); desktop embedded IPC (desktop
 > Phase 6); per-model run-options *phase 4* (fast-mode/context — little to wire);
-> Gemini in the history reader; Aider adapter; log size-rotation.
+> Aider adapter + Aider in the history reader (no per-session log shipped); log
+> size-rotation.
 
 ## Mobile ↔ bridge integration — status & roadmap (2026-06-16)
 Single view of the cross-component seams (phone needs bridge/relay and vice
@@ -66,11 +67,21 @@ landed now):
 6. **Remote history back-paging** — `turn/list` cursor is forward-only/offset; a
    newest-first scroll-up needs a reverse cursor or a total-count.
 7. **Real-agent approvals** — Claude DONE (opt-in `PreToolUse` hook → bridge
-   endpoint, validated live). Remaining: **Codex** via the app-server turn
-   protocol (`codex exec` can't prompt); OpenCode/pi/Gemini per their headless
-   permission channels. See *Interactive approval intake*.
-8. **Transport (optional):** seq-based catch-up on reconnect + key rotation —
-   both await the mobile `clientHello.resumeState` trigger.
+   endpoint, validated live). **Codex** DONE — refactored the adapter from
+   `codex exec --json` (one-shot, non-interactive) to the long-lived
+   `codex app-server` turn protocol and routed every elicitation the
+   desktop app uses (`applyPatchApproval`, `execCommandApproval`, the v2
+   `item/commandExecution/requestApproval`, `item/fileChange/requestApproval`,
+   `item/permissions/requestApproval`, `mcpServer/elicitation/request`)
+   through the same `requestApproval` round-trip the Claude hook uses.
+   Validated end-to-end against `codex-cli` 0.139.0. OpenCode/pi/Gemini
+   remain — add per-agent when their headless modes expose a permission
+   channel. See *Interactive approval intake*.
+8. **Transport (optional):** seq-based catch-up on reconnect — **DONE end-to-end**
+   (bridge: retained per-device `OutboundLog` + handshake `resumeState` read +
+   seq-`>`-N replay under the new key; mobile: persists + sends
+   `clientHello.resumeState`). Key rotation / keyEpoch advance still awaits a
+   mobile trigger. See *Seq-based catch-up on reconnect*.
 
 ## Plug-and-play "install and use" — remaining sequence
 The goal is: install on the PC, log into the agents you want, point the phone at a
@@ -92,7 +103,8 @@ hosting** (the phone connects directly to the bridge on the same network).
       byte-for-byte with the mobile app.
 - [x] **Relay package** — `relay/` builds and is in the root workspaces (Phase 2).
 - [x] **Bridge → phone notifications** (Phase 2b) — `SessionRegistry` +
-      `bridge.notify()`; offline messages buffered via `OutboundMessageBuffer`.
+      `bridge.notify()`; outbound is retained per-device in `OutboundLog`
+      (seq + plaintext window) for catch-up (see *Seq-based catch-up*).
 - [x] **Stable pairing session** — the pairing `sessionId` is persisted to
       `~/.uxnan/pairing-session.json` (`src/bridge.ts`, `daemon-state.ts`) and
       reused across restarts instead of a fresh UUID each boot.
@@ -112,10 +124,29 @@ hosting** (the phone connects directly to the bridge on the same network).
         - **Bind the LAN server to chosen interface(s)** — today it binds all
           interfaces (good for Tailscale; advertise virtual-NIC IPs too). Optionally
           let the user restrict which interfaces are served/advertised.
-- [ ] **Seq-based catch-up on reconnect** — `src/transport/server-handshake.ts`.
-      Read `clientHello.resumeState.lastAppliedBridgeOutboundSeq` and replay
-      envelopes with a greater `seq`. **Blocked:** the mobile `clientHello` does
-      not send `resumeState` yet — coordinate with the mobile side first.
+- [x] **Seq-based catch-up on reconnect** — **DONE & validated end-to-end (both
+      halves).** Bridge: `performServerHandshake` reads
+      `clientHello.resumeState.lastAppliedBridgeOutboundSeq` (tolerant → 0) and
+      `session-handler.ts` replays every retained outbound with a greater `seq`,
+      re-encrypted under the new session key (`BridgeSecureChannel.encryptReplay`),
+      before registering the live sink. Outbound is retained per-device in
+      `OutboundLog` (`src/transport/outbound-log.ts`): a continuous seq counter
+      that survives reconnects + a sliding plaintext window (spec caps). Plaintext
+      (not envelopes) is kept because every reconnect derives a fresh key. The log
+      is dropped on untrust (`SessionRegistry.forget` ← `bridge/removeTrustedDevice`).
+      Tests: `outbound-log.test.ts`, `secure-channel.test.ts`, end-to-end
+      `catch-up.test.ts`. **Mobile half (uxnanmobile — DONE):** the phone
+      persists `TrustedDevice.lastAppliedBridgeOutboundSeq` (new nullable drift
+      column, schema v5) and sends it as
+      `clientHello.resumeState.lastAppliedBridgeOutboundSeq` (omitted when 0);
+      `ClientHello` + `toJson` carry the field, `SecureTransportLayer.
+      performHandshake` forwards it, and `SessionCoordinator` loads it into the
+      handshake and checkpoints the applied seq on every teardown + the
+      heartbeat. Mobile tests: `handshake_messages_test.dart`,
+      `trusted_device_repository_test.dart`, `session_coordinator_test.dart`.
+      Note: after a bridge restart the in-memory log resets (seq restarts at 1)
+      — the phone's stale resume point simply yields no replay and re-syncs via
+      `turn/list`; acceptable and handled.
 - [ ] **Key rotation / keyEpoch advance** — blocked on a mobile trigger.
 - [◑] **Manual-code pairing (bridge-side; relay's `/trusted-session/resolve` reframed
       for the bridge-first model).** The phone can pair WITHOUT scanning a QR by
@@ -212,14 +243,82 @@ hosting** (the phone connects directly to the bridge on the same network).
           identical tools aren't re-prompted; the hook URL needs a fixed
           `lanPort` (a `0`/random port resolves after `startLan`, which the lazy
           `url()` already handles, but document it).
-        - ☐ **Codex:** `codex exec` is non-interactive (no approval prompts), so
-          real Codex approvals need turn execution moved onto the **app-server**
-          protocol (the bridge already speaks it for `model/list`) where
-          `applyPatchApproval`/`execCommandApproval` elicitations exist. Larger
-          refactor — deferred.
-        - ☐ **OpenCode / pi / Gemini:** add `respondApproval` + an interactive
-          invocation per CLI when their headless modes expose a permission
-          channel (verify per CLI).
+        - ☑ **Codex (real, app-server) — DONE & validated end-to-end** (`codex`
+          0.139.0). The Codex adapter is refactored from one-shot
+          `codex exec --json` to a long-lived `codex app-server` JSON-RPC
+          process (`src/adapters/codex-app-server.ts` + `codex-adapter.ts`).
+          The bridge speaks the full turn protocol (`initialize` →
+          `thread/start` → `turn/start`) and routes every elicitation the
+          desktop app surfaces to the bridge's `requestApproval` round-trip:
+            - v2 (current): `item/commandExecution/requestApproval`,
+              `item/fileChange/requestApproval`, `item/permissions/requestApproval`,
+              `mcpServer/elicitation/request`, `item/tool/requestUserInput`.
+            - v1 (legacy): `applyPatchApproval`, `execCommandApproval`.
+          All map to the same `approval` content block on
+          `stream/content/block`; the user's decision becomes a
+          `ReviewDecision` reply (`approve` → `approved`,
+          `approveSession` → `approved_for_session`, `reject` → `denied`).
+          5-min timeout → deny. Unknown elicitations are auto-rejected
+          with a clear `RpcError` so the app-server does not block.
+          `permissionMode` is now `interactive` by default (`on-request` +
+          `workspace-write`); `acceptEdits` is preserved for back-compat
+          and maps to the previous no-prompt behavior. Verified live:
+          an allowed command runs, a denied one is blocked, an
+          `approveSession` decision is remembered for the rest of the
+          session.
+        - ☑ **Gemini CLI (real, BeforeTool hook) — DONE & validated
+          end-to-end** (`gemini` 0.45.2 + the `BeforeTool` hook contract
+          from `google-gemini/gemini-cli/docs/hooks`, the same shape Claude
+          Code uses — the CLI ships a `gemini hooks migrate` command to
+          import Claude hook settings). New `permissionMode: 'interactive'`
+          on the Gemini adapter; the bridge writes
+          `~/.uxnan/hooks/gemini-approval-hook.cjs` and (per turn) a
+          `<cwd>/.gemini/settings.json` with a `BeforeTool` hook
+          (`src/hooks/gemini-approval-hook.ts`). The hook POSTs every tool
+          the CLI wants to run to the bridge's local HTTP endpoint (URL +
+          token + threadId injected via per-turn env), which forwards the
+          request to the phone via the same `AgentManager.requestApproval`
+          round-trip Claude's `PreToolUse` hook uses. `--approval-mode` is
+          set to Gemini's `default` ("prompt for approval" in their
+          vocabulary) — the hook is the gate, NOT a TTY prompt, since
+          `-p` is non-interactive. Without the hook the prompt would
+          block Gemini forever; the bridge only injects it when the LAN
+          endpoint is resolvable (`lanEnabled: true` + LAN port bound),
+          otherwise the turn fails with a clear `agent not running`-style
+          error. Adapter-level:
+            - **`interactive` mode** → `--approval-mode default` + the hook
+              setup (idempotent per cwd; existing user settings are
+              preserved by merging the bridge's `uxnan-approval` entry).
+            - **`default` mode** → unchanged (`plan`, read-only).
+            - **`acceptEdits` / `bypassPermissions`** → unchanged
+              (`auto_edit` / `yolo`).
+          Covered by `test/adapters/gemini-adapter.test.ts` and
+          `test/hooks/gemini-approval-hook.test.ts`. **Validated end-to-end
+          against a real `gemini -p ... --approval-mode default` run with
+          a fake bridge in the loop** — the CLI invoked the hook for both
+          `update_topic` and `list_directory` and waited for the response
+          (the bridge received the POSTs with the right payload shape).
+        - ☐ **OpenCode / pi:** the headless modes the bridge currently
+          drives (`opencode run --format json` and `pi -p --mode json`)
+          DO NOT expose a permission channel — both CLIs run their tools
+          autonomously in headless mode and emit the tool events only
+          AFTER the tool has run, with no way to gate them from outside.
+          Adding real approvals here requires one of:
+            - **OpenCode:** driving the `opencode serve` HTTP server (a
+              full rewrite — the bridge would manage a per-thread
+              server-side session, NOT a one-shot CLI). Not currently
+              in scope; revisit if OpenCode ships a pre-tool protocol on
+              its headless `--run` entry.
+            - **pi:** driving the `--mode rpc` (or its long-lived TUI)
+              instead of the one-shot `--mode json`. The RPC mode is
+              two-way and could support a pre-tool request, but it
+              requires a meaningful refactor of the adapter and the
+              session model. Not currently in scope; revisit when pi
+              ships a stable pre-tool hook.
+          Until then, OpenCode/pi users get a `default` (plan) /
+          `acceptEdits` (auto-approve edits) /
+          `bypassPermissions` (auto-approve all) posture but no
+          per-action gate on the phone.
 - [x] **Turn image attachments** — `turn/send` accepts `attachments:
       TurnAttachment[]` and an **image-only** message (empty/omitted `text`).
       `src/agents/attachments.ts` materializes each inline image **inside the
@@ -619,9 +718,9 @@ The OpenCode adapter is the template for any "one-shot per-turn CLI" agent:
       To VERIFY on device: pick Gemini for a thread, confirm streaming + the context
       meter + a write/edit diff render. **Follow-ups (FOR-DEV):** (1) no reasoning
       knob is advertised — the CLI exposes no `--thinking`/effort flag; revisit if one
-      appears (Gemini 2.5 has thinking budgets but no headless flag in 0.45.2). (2)
-      add Gemini to the `session-jsonl-history` reader (its on-disk session format) —
-      the adapter already persists the native session id, so the locator is ready.
+      appears (Gemini 2.5 has thinking budgets but no headless flag in 0.45.2). (2) ✅
+      DONE & validated end-to-end — add Gemini to the `session-jsonl-history` reader
+      (its on-disk session format); covered in `JSONL history fallback` below.
 - [x] **JSONL history fallback** (`session-jsonl-history`) — `turn/list` now falls
       back to each agent's own on-disk session log when the `ThreadStore` has no
       turns (bridge missed them / `threads.json` lost / session driven from a
@@ -640,6 +739,23 @@ The OpenCode adapter is the template for any "one-shot per-turn CLI" agent:
           ordered by `time.created`. No `better-sqlite3` dependency.
         - **pi** — `~/.pi/agent/sessions/<encoded-cwd>/<ts>_<sessionId>.jsonl`;
           lines `{type:'message', message:{role, content:[{type:'text',text}]}}`.
+        - **Gemini CLI** — `~/.gemini/tmp/<projectHash>/chats/
+          session-<ts>-<shortId>.json` (verified gemini-cli 0.46.0); the 8-char
+          `<shortId>` is the FIRST 8 HEX CHARS of the full UUID session id with
+          dashes stripped. One JSON object per FILE: `{ sessionId, projectHash,
+          startTime, lastUpdated, messages:[{id, timestamp, type:'user'|'gemini'|
+          'info'|'error', content (string OR [{text}]), thoughts?}] }`. The CLI
+          may write MULTIPLE SNAPSHOTS per session id (each `--resume` / CLI
+          invocation re-snapshots the conversation); the reader collects every
+          `session-*-<shortId>.json` across every `<hash>/chats/` dir, keeps
+          only files whose top-level `sessionId` matches ours (shortId
+          collisions do happen), merges messages **deduplicated by message
+          `id`**, sorts by timestamp, maps `gemini`→assistant (joins
+          `thoughts[].description` into `thinking`), skips `info`/`error`.
+          Multi-file path cache (60s TTL). The native session id was already
+          persisted per thread by `AgentManager.setAgentSession`, so the
+          locator is ready — validated live by parsing a real on-disk
+          gemini-cli session (all turns + thinking extracted).
       Locating the file needs the agent's **native** session id, so it is now
       persisted per thread: adapters expose `nativeSessionId(threadId)`,
       `AgentManager` writes it via `ThreadStore.setAgentSession` on turn end, and
@@ -649,9 +765,85 @@ The OpenCode adapter is the template for any "one-shot per-turn CLI" agent:
       for unknown/unsupported agents or a missing log. Tested with per-format
       fixtures **and** smoked against real on-disk logs for all four agents.
       **Mobile linkage:** none — `turn/list` is unchanged on the wire; the phone
-      just sees history it previously couldn't. **Follow-ups:** Gemini/Aider when
-      those adapters land; richer block/tool reconstruction (today the fallback
-      carries text + thinking, not the live path's structured blocks).
+      just sees history it previously couldn't. **Follow-ups:** Aider when its
+      adapter lands (Gemini already done); richer block/tool reconstruction
+      (DONE & validated end-to-end — the fallback now reconstructs
+      `command_execution` / `diff` / `tool` blocks for every supported agent
+      using the same `*-tools.ts` helpers the live path uses, so history
+      turns render the same Work log / Changed files as live turns; smoke-
+      tested against real on-disk logs: 44 blocks from one Gemini session,
+      26 blocks from one OpenCode session, 4 blocks from one Codex session).
+- [ ] **Antigravity CLI (`agy`) — investigated, NOT integrated yet (decided 2026-06-19).**
+      `agy` is Google's Antigravity CLI — a **distinct binary from Gemini CLI**
+      (different executable `~/AppData/Local/agy/bin/agy.exe` / `~/.local/bin/agy`,
+      different state dir `~/.gemini/antigravity-cli/`, different hook file
+      `~/.gemini/config/hooks.json`). It is **not** the `@google/gemini-cli`
+      `gemini` command and must NOT be wired through `gemini-adapter.ts`. Validated
+      on-machine against `agy` 1.0.3 (the official web docs are largely unreliable /
+      hallucinated — only trust the installed binary).
+      **Why deferred:** `agy`'s headless surface is too thin to map onto the rich
+      agent contract the phone renders (streaming, structured blocks, token usage,
+      model discovery, model selection, reasoning effort, interactive approvals,
+      plan/to-do). The architecture rule (`docs/agents.md`) forbids the SDK/REST
+      path (`antigravity-sdk-python` / the Antigravity REST API use a provider
+      API/keys), so we are limited to the **`agy` CLI over stdio** — which today
+      exposes none of those seams.
+      **Exhaustive flag surface (validated; a trailing bogus flag forces Go's
+      flag parser to reveal definedness with zero quota):** `--print`/`-p`/
+      `--prompt` (one-shot, **plain text only**), `--prompt-interactive`/`-i`,
+      `--continue`/`-c` + `--conversation <id>` (resume), `--add-dir`,
+      `--dangerously-skip-permissions`, `--sandbox`, `--print-timeout`,
+      `--log-file`; subcommands `changelog|help|install|plugin|update`. **Confirmed
+      ABSENT** (parser rejects): `--model`, `--json`, `--output-format`/`--output`,
+      `--stream`, `--reasoning`, `--thinking`, `--approval-mode`, `--list-models`,
+      `--resume`, `--session-id`, `-C`/`--cwd`.
+      **Capability gaps vs the Claude/Gemini adapters:**
+        - **Streaming / structured blocks** — ❌ `agy -p` rejects `--output-format`;
+          prints only the final assistant text (no `stream-json`, no `tool_use`/
+          `tool_result` events → no Work log / Changed-files blocks).
+        - **Token / context usage** — ❌ no machine-readable per-turn usage; only the
+          interactive TUI "Models & Quota" page.
+        - **Model discovery + selection** — ❌ no enumerate command and **no
+          `--model` flag**; the model is chosen in the TUI / settings, so neither the
+          `opencode`-style auto-list nor a per-turn `--model` override is possible.
+          (Per the official launch, Antigravity offers Gemini 3 Pro / Claude Sonnet
+          4.5 / GPT-OSS — but the CLI exposes no way to list or pick them headlessly.)
+        - **Reasoning effort** — ❌ no `--thinking`/`--reasoning`/effort flag.
+        - **Interactive approvals** — ⚠️ likely ❌. There IS a permission engine +
+          hooks (`~/.gemini/config/hooks.json`), but the events observed in use are
+          `PreInvocation` / `PostInvocation` / `Stop` / `PostToolUse` (the last is
+          **after** the tool runs — cannot gate). No **blocking pre-tool** event was
+          seen, and headless `-p` with an "ask" permission would hang (no TTY to
+          answer) → the only headless posture is `--dangerously-skip-permissions`
+          (auto-approve all, like OpenCode/pi), with no per-action gate to the phone.
+          Re-verify whether a blocking `PreToolUse`-style hook exists before relying
+          on this.
+        - **Permission posture** — ⚠️ coarse: only `--sandbox` vs
+          `--dangerously-skip-permissions` (no `plan`/read-only/acceptEdits split).
+        - **Plan / to-do (the uxnanmobile ask)** — ⚠️ the product has `/tasks` +
+          "Artifacts" (structured task lists), but they are **not emitted to stdout**
+          in `-p` mode, so there is nothing to surface to the phone headlessly.
+        - **On-disk history fallback** — ⚠️ `agy` stores history as **protobuf**
+          (`~/.gemini/antigravity-cli/brain/<uuid>/…` + `implicit/*.pb`), NOT the
+          Gemini `~/.gemini/tmp/.../chats/*.json` format, so the existing
+          `SessionHistoryReader` Gemini path does NOT apply; recovering history would
+          need reverse-engineering the `.pb` schema.
+        - **Continuity** — ✅ the one thing that maps cleanly: `--continue` /
+          `--conversation <id>`.
+      **Open blocker (validate before any integration):** `agy -p` produced **no
+      output to a piped (non-TTY) stdout** in repeated runs (90s and 170s timeouts) —
+      it appears to require a TTY or buffer until a long cold-start completes. The
+      bridge captures stdout via pipes (`defaultSpawn`), so even a text-only adapter
+      may need a pseudo-tty harness. Confirm with a pty before assuming `-p` is
+      pipe-drivable.
+      **Unblock conditions (then follow the "Adding the next agent" recipe above):**
+      `agy` ships (a) a machine-readable `--output-format json|stream-json` for
+      `-p`, AND/OR (b) an app-server/JSON-RPC turn protocol (as Codex did), AND/OR
+      (c) a documented blocking pre-tool hook event. Any of these would let a real
+      `antigravity-cli` adapter advertise the same seams the phone already renders.
+      Until then: no adapter, no `'antigravity-cli'` AgentId in `shared/` — adding a
+      degraded text-only agent now would ship something strictly worse than the
+      existing CLIs and miss every feature requested.
 - [ ] Later: Aider.
 
 ## Daemon lifecycle & ops

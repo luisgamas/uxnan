@@ -28,6 +28,7 @@ TrustedDevice _device(
   Uint8List? key,
   String relayUrl = 'wss://relay.test',
   List<String> hosts = const [],
+  int lastAppliedBridgeOutboundSeq = 0,
 }) =>
     TrustedDevice(
       macDeviceId: id,
@@ -38,6 +39,7 @@ TrustedDevice _device(
       hosts: hosts,
       sessionId: 'session-$id',
       pairedAt: DateTime(2026),
+      lastAppliedBridgeOutboundSeq: lastAppliedBridgeOutboundSeq,
     );
 
 void main() {
@@ -84,6 +86,18 @@ void main() {
       await repo.saveDevice(_device('mac-1'));
       final loaded = await repo.getDevice('mac-1');
       expect(loaded!.hosts, isEmpty);
+    });
+
+    test('round-trips the last applied bridge outbound seq', () async {
+      await repo.saveDevice(_device('mac-1', lastAppliedBridgeOutboundSeq: 42));
+      final loaded = await repo.getDevice('mac-1');
+      expect(loaded!.lastAppliedBridgeOutboundSeq, 42);
+    });
+
+    test('an older device (no seq stored) loads as 0', () async {
+      await repo.saveDevice(_device('mac-1'));
+      final loaded = await repo.getDevice('mac-1');
+      expect(loaded!.lastAppliedBridgeOutboundSeq, 0);
     });
 
     test('getDevice returns null for an unknown id', () async {

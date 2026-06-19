@@ -1202,11 +1202,23 @@ abstract class AppLocalizations {
   /// **'Unrestricted access to the internet and any file.'**
   String get approvalFullBody;
 
-  /// No description provided for @approvalNeedsApproval.
+  /// Title shown on a pending approval card while it is still actionable.
   ///
   /// In en, this message translates to:
   /// **'Needs approval'**
   String get approvalNeedsApproval;
+
+  /// Title shown on a resolved approval card (after the user has chosen), replacing the actionable 'Needs approval' headline so the settled state reads at a glance.
+  ///
+  /// In en, this message translates to:
+  /// **'Decision recorded'**
+  String get approvalDecidedTitle;
+
+  /// Prefix for the timestamp on a resolved approval card, formatted like 'Answered · 14:32' (today) or 'Answered · may 17 · 14:32' (older).
+  ///
+  /// In en, this message translates to:
+  /// **'Answered'**
+  String get approvalAnsweredAt;
 
   /// No description provided for @approvalActionFallback.
   ///

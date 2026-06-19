@@ -28,6 +28,12 @@ class TrustedDevicesTable extends Table {
   /// Last seen timestamp in epoch milliseconds, if any.
   IntColumn get lastSeenMs => integer().nullable()();
 
+  /// Highest bridge→phone `seq` this phone has applied for this device, sent on
+  /// reconnect as `clientHello.resumeState.lastAppliedBridgeOutboundSeq` so the
+  /// bridge replays only what was missed (spec 02a §5.9.2). Nullable/absent for
+  /// older rows (schema < 5); treated as 0.
+  IntColumn get lastAppliedBridgeOutboundSeq => integer().nullable()();
+
   @override
   Set<Column> get primaryKey => {macDeviceId};
 }

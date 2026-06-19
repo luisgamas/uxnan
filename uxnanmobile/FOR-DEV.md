@@ -276,6 +276,46 @@ browser and multi-PC connection correctness are now DONE — see below.)
       `interactiveApprovals` (opt-in `PreToolUse` hook) enabled → ask it to run a
       tool (e.g. write a file) and the card → Approve/Reject gates it. Both
       confirmed on-device. No mobile change was needed; the app is generic.
+    - ☑ **On-device paths that work today:** (a) any agent → start an **`echo`**
+      thread, send `approval-demo`; (b) **Claude** with `interactiveApprovals`
+      enabled → ask it to run a tool (e.g. write a file) and the card →
+      Approve/Reject gates it. No mobile change was needed; the app is generic.
+    - ☑ **Decisions persist across scroll + app restart** — DONE 2026-06-18.
+      `ApprovalResponseStore` (`infrastructure/storage/approval_response_store.dart`,
+      SharedPreferences) persists the user's decision per `approvalId` as
+      soon as the card is tapped, so the resolved view (`Decision recorded ·
+      Answered 14:32`) survives scroll, app backgrounding, and full restart.
+      `ApprovalResponses` (`approval_providers.dart`) hydrates the in-memory
+      map from the store on `build()` and stamps each entry with the
+      original `decidedAtMs`. Action buttons are gone forever for an
+      answered card; the card renders a settled status row with a
+      "Answered" timestamp (Neural Expressive: muted text, no fill) and
+      a risk-tinted outline (success / warning / error / neutral) so the
+      "already decided" state reads at a glance. New l10n strings
+      `approvalDecidedTitle` and `approvalAnsweredAt` (en + es). The
+      card UI reuses the existing `_ApprovalResolved` widget — the
+      "before/after" is the persistence and the muted styling. Covered
+      by `test/unit/infrastructure/storage/approval_response_store_test.dart`
+      and two new widget tests
+      (`a resolved approval card stays resolved after scroll/restart` +
+      `... while the user scrolls past it`) that pre-seed SharedPreferences
+      and assert the action buttons are absent after hydration.
+    - ☑ **Bridge now routes Gemini + Codex approvals too** — 2026-06-18.
+      `agents['gemini-cli'].interactiveApprovals: true` makes the bridge
+      write `<cwd>/.gemini/settings.json` with a `BeforeTool` hook and
+      set `--approval-mode default`; every tool the CLI wants to run
+      round-trips to the phone through the same `requestApproval` flow
+      Claude + Codex use. No mobile change. The Codex adapter was
+      refactored to the long-lived `codex app-server` turn protocol
+      (the prior one-shot `codex exec --json` couldn't gate tools); its
+      elicitations (`item/commandExecution/requestApproval`,
+      `item/fileChange/requestApproval`, `item/permissions/requestApproval`,
+      `mcpServer/elicitation/request`, `item/tool/requestUserInput`, plus
+      the legacy `applyPatchApproval` / `execCommandApproval`) all map
+      to the same `approval` content block the phone already renders. **OpenCode
+      / pi remain a known gap** (their headless modes don't expose a
+      pre-tool protocol the bridge can intercept) — see
+      `bridge/FOR-DEV.md`.
   - ☑ **Verify wire shapes (plan/subagent)** — DONE: confirmed `plan` and
     `subagent` content blocks are **informational** status updates, NOT approval
     gates — only `approval` blocks gate actions. Field names for plan steps /

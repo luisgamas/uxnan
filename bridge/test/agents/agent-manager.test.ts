@@ -171,7 +171,7 @@ test('requestApproval emits an approval block and resolves on respondApproval (h
 
   // Approving resolves the hook to 'allow'; rejecting would resolve 'deny'.
   await manager.respondApproval(thread.id, approvalId, 'approve');
-  assert.equal(await decisionPromise, 'allow');
+  assert.equal(await decisionPromise, 'approve');
 
   await rm(baseDir, { recursive: true, force: true });
 });
@@ -205,7 +205,7 @@ test('requestApproval resolves deny on rejection', async () => {
   await waitFor(() => blocks.some((b) => b.content.action?.includes('Bash')));
   const approvalId = blocks.find((b) => b.content.action?.includes('Bash'))!.content.approvalId!;
   await manager.respondApproval(thread.id, approvalId, 'reject');
-  assert.equal(await decisionPromise, 'deny');
+  assert.equal(await decisionPromise, 'reject');
 
   await rm(baseDir, { recursive: true, force: true });
 });

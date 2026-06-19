@@ -29,6 +29,7 @@ class ClientHello {
     required this.phoneEphemeralPublicKey,
     required this.clientNonce,
     this.protocolVersion = 1,
+    this.lastAppliedBridgeOutboundSeq = 0,
   });
 
   /// Discriminator.
@@ -55,6 +56,12 @@ class ClientHello {
   /// Random 32-byte client nonce.
   final Uint8List clientNonce;
 
+  /// Highest bridge→phone `seq` already applied for this device. Sent as
+  /// `resumeState` so the bridge replays only the outbound with a greater seq
+  /// (spec 02a §5.9.2). 0 = nothing to resume (first pairing / no prior state),
+  /// in which case `resumeState` is omitted.
+  final int lastAppliedBridgeOutboundSeq;
+
   /// Serializes to wire JSON.
   Map<String, dynamic> toJson() => {
         'kind': kind,
@@ -65,6 +72,10 @@ class ClientHello {
         'phoneIdentityPublicKey': phoneIdentityPublicKey.toHex(),
         'phoneEphemeralPublicKey': phoneEphemeralPublicKey.toHex(),
         'clientNonce': clientNonce.toHex(),
+        if (lastAppliedBridgeOutboundSeq > 0)
+          'resumeState': {
+            'lastAppliedBridgeOutboundSeq': lastAppliedBridgeOutboundSeq,
+          },
       };
 }
 
