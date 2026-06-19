@@ -1937,6 +1937,24 @@ Relay Server (opcional / self-hosted)
     └── Android: Firebase Admin SDK + service account
 ```
 
+**Routing de sesiones y reconexion.** Cada `sessionId` empareja un socket `mac`
+(bridge) con un socket `iphone` (telefono). El bridge sirve **exactamente una
+sesion por socket `mac`** y solo re-arma su handshake cuando ese socket se cierra
+(ver el loop `connectRelay` del bridge). Por eso el relay debe garantizar que el
+socket `mac` se cierre cuando la sesion del telefono deja de ser valida:
+
+- **Cierre real del socket actual** → el relay cierra el peer emparejado, para
+  que el telefono detecte un bridge muerto (y reconecte) y el bridge re-arme.
+- **Socket reemplazado (supersession)** → cuando un socket nuevo toma el rol de
+  uno previo para el mismo `sessionId` (caso tipico: el telefono reconecta tras
+  un *background* mientras su socket viejo sigue *half-open* y nunca envio FIN),
+  el relay cierra de inmediato el socket superado **y** su peer emparejado. El
+  cierre tardio del socket viejo se ignora (ya no es el socket actual del rol),
+  asi que este teardown ocurre en el momento de la supersession. Sin el, el
+  handshake del telefono que reconecta se reenvia al loop de sesion **obsoleto**
+  del bridge —que lo descarta como trafico cifrado invalido— y el telefono queda
+  atascado en "reconnecting" hasta forzar el cierre de la app.
+
 #### 5.10.2 Flujo de push notification (RUTA PRIMARIA: bridge-direct)
 
 ```

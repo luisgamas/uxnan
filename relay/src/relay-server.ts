@@ -163,9 +163,37 @@ export class RelayServer {
 
   #register(role: RelayRole, sessionId: string, ws: WebSocket): void {
     const peers = this.#sessions.get(sessionId) ?? {};
+    const superseded = peers[role];
     peers[role] = ws;
     this.#sessions.set(sessionId, peers);
     this.#logger.info(`socket joined: role=${role} session=${sessionId}`);
+
+    // A new socket for this role REPLACES an older one that never delivered a
+    // close — e.g. the phone reconnected after a background drop while its old,
+    // now half-open, socket still lingers (no FIN ever arrived). That stale
+    // socket's eventual close is ignored by the guard in the `close` handler
+    // below (it is no longer the current socket for its role), so its teardown
+    // must happen HERE, at supersession time: close the superseded socket AND
+    // its paired peer, so the paired side re-establishes a fresh session.
+    //
+    // This is critical for the bridge: it serves exactly one phone session per
+    // `mac` socket and only re-arms its handshake when that socket closes (see
+    // the bridge's `connectRelay` serve loop). Without this teardown a
+    // reconnecting phone's handshake is forwarded into the bridge's stale,
+    // still-running session loop — which treats the handshake frame as invalid
+    // encrypted traffic and drops it — leaving the phone stuck "reconnecting"
+    // until the app is force-killed (only then does its current socket close
+    // cleanly and free the session).
+    if (superseded && superseded !== ws) {
+      const peer = role === 'mac' ? peers.iphone : peers.mac;
+      closeQuietly(superseded);
+      if (peer && peer !== ws) {
+        if (role === 'mac') delete peers.iphone;
+        else delete peers.mac;
+        closeQuietly(peer);
+      }
+      this.#logger.info(`socket superseded: role=${role} session=${sessionId}`);
+    }
 
     ws.on('message', (data: RawData, isBinary: boolean) => {
       const current = this.#sessions.get(sessionId);
@@ -260,6 +288,15 @@ function parseConnection(req: IncomingMessage): { role: RelayRole; sessionId: st
   const sessionId = header(req, 'x-session-id') ?? url.searchParams.get('sessionId') ?? '';
   if ((role !== 'mac' && role !== 'iphone') || sessionId.length === 0) return null;
   return { role, sessionId };
+}
+
+/** Close a socket, swallowing any error (it may already be closing/dead). */
+function closeQuietly(ws: WebSocket): void {
+  try {
+    ws.close();
+  } catch {
+    /* already closing or closed */
+  }
 }
 
 function header(req: IncomingMessage, name: string): string | undefined {

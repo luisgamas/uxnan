@@ -5,6 +5,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — phone stuck "reconnecting" after a background resume
+- When the phone returns from the background, its old WebSocket is often
+  half-open (the OS never sent a FIN), so the reconnecting phone opens a **new**
+  `iphone` socket that **supersedes** the lingering one for the same `sessionId`.
+  The stale socket's eventual close is (correctly) ignored by the close-handler
+  guard, but nothing then tore down the paired `mac` socket — so the bridge,
+  which serves exactly one phone session per `mac` socket and only re-arms its
+  handshake when that socket closes, kept serving the dead session and dropped
+  the reconnecting phone's handshake as invalid encrypted traffic. The phone
+  stayed stuck "reconnecting" until the app was force-killed (only then did its
+  current socket close cleanly and free the session).
+- Fix: `#register` now detects supersession (a new socket replacing an existing
+  one for the same role+session) and tears down both the superseded socket and
+  its paired peer immediately — the same teardown the stale-close guard skips —
+  so the bridge re-arms a fresh handshake for the reconnecting phone. The LAN/
+  direct path was unaffected (each reconnect is an independent connection).
+- Regression test: `a reconnecting phone supersedes its stale socket and re-arms
+  the bridge` (`test/relay-server.test.ts`).
+
 ### Fixed — FCM sender never activated (push delivery)
 - `loadFcmSender` dereferenced the `firebase-admin` namespace directly, but under
   ESM dynamic `import()` the CommonJS module's API lands on the `.default` interop

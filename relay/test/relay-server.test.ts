@@ -49,6 +49,41 @@ test('closing one peer also closes the paired peer', async () => {
   await close();
 });
 
+test('a reconnecting phone supersedes its stale socket and re-arms the bridge', async () => {
+  // Regression: when the phone reconnects after a background drop, its old
+  // half-open socket never delivered a close, so a new `iphone` socket joins
+  // while the old one still lingers. The relay must close the superseded socket
+  // AND tear down the paired `mac` so the bridge re-arms a fresh handshake —
+  // otherwise the bridge keeps serving the dead session and the phone is stuck
+  // "reconnecting" forever (only fixed by force-killing the app).
+  const relay = new RelayServer();
+  const { port, close } = await relay.start(0, '127.0.0.1');
+  const url = `ws://127.0.0.1:${port}`;
+  const sessionId = 'sess-supersede';
+
+  const mac = await connect(url, 'mac', sessionId);
+  const staleIphone = await connect(url, 'iphone', sessionId);
+
+  // The bridge's `mac` socket must close so its serve loop re-arms, and the
+  // stale phone socket must be cleaned up.
+  const macClosed = once(mac, 'close');
+  const staleClosed = once(staleIphone, 'close');
+
+  // The phone reconnects (a brand-new socket) before the old one ever closed.
+  const freshIphone = await connect(url, 'iphone', sessionId);
+
+  await macClosed;
+  await staleClosed;
+  assert.equal(mac.readyState, WebSocket.CLOSED);
+  assert.equal(staleIphone.readyState, WebSocket.CLOSED);
+
+  // The fresh phone socket survives and is the live one for the session.
+  assert.equal(freshIphone.readyState, WebSocket.OPEN);
+
+  freshIphone.close();
+  await close();
+});
+
 test('a connection without a role/sessionId is rejected', async () => {
   const relay = new RelayServer();
   const { port, close } = await relay.start(0, '127.0.0.1');
