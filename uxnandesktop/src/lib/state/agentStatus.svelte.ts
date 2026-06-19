@@ -13,6 +13,9 @@ import { listen } from "@tauri-apps/api/event";
 import { agentStates } from "$lib/api";
 import { terminals } from "./terminals.svelte";
 import { unread } from "./unread.svelte";
+import { app } from "./app.svelte";
+import { toast } from "$lib/toast";
+import { i18n } from "$lib/i18n";
 import type { AgentStatus, AgentStatusEvent } from "$lib/types";
 
 /** A report grows stale (shown dimmed) after this long with no update (spec §1.5). */
@@ -60,7 +63,10 @@ class AgentStatusStore {
     try {
       await listen<AgentStatusEvent>("agent:status-changed", (e) => {
         const p = e.payload;
+        const prev = this.byId[p.agentId]?.status;
         this.byId = { ...this.byId, [p.agentId]: toLive(p) };
+        // Toast meaningful state transitions (done / blocked / waiting).
+        if (prev !== p.status) this.notifyChange(p.agentId, p.status);
         // A finished agent marks its worktree "unread" unless you're looking at
         // it (focused, on that terminal) — then there's nothing to flag.
         if (p.status === "done") {
@@ -71,6 +77,16 @@ class AgentStatusStore {
     } catch {
       this.started = false; // no Tauri event bus
     }
+  }
+
+  /** Toast a meaningful agent state transition (gated by the agent-notifications
+   *  setting). `working` is intentionally skipped — it fires on every tool call. */
+  private notifyChange(id: string, status: AgentStatus): void {
+    if (app.settings.agentNotifications === false) return;
+    const name = terminals.findTab(id)?.agentName ?? i18n.t("toast.agent");
+    if (status === "done") toast.success(i18n.t("toast.agentDone", { name }));
+    else if (status === "blocked") toast.warning(i18n.t("toast.agentBlocked", { name }));
+    else if (status === "waiting") toast.info(i18n.t("toast.agentWaiting", { name }));
   }
 
   /** Whether the user is currently looking at a given terminal (window focused,

@@ -9,6 +9,10 @@ export const es: Record<MessageKey, string> = {
   "toast.pulled": "Pull realizado",
   "toast.worktreeRemoved": "Worktree eliminado",
   "toast.projectRemoved": "Proyecto eliminado",
+  "toast.agent": "Agente",
+  "toast.agentDone": "{name} terminó",
+  "toast.agentBlocked": "{name} está bloqueado",
+  "toast.agentWaiting": "{name} espera tu respuesta",
 
   // Common
   "common.cancel": "Cancelar",

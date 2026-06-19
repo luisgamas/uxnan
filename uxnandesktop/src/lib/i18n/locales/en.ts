@@ -12,6 +12,10 @@ export const en = {
   "toast.pulled": "Pulled",
   "toast.worktreeRemoved": "Worktree removed",
   "toast.projectRemoved": "Project removed",
+  "toast.agent": "Agent",
+  "toast.agentDone": "{name} finished",
+  "toast.agentBlocked": "{name} is blocked",
+  "toast.agentWaiting": "{name} is waiting for input",
 
   // Common
   "common.cancel": "Cancel",
