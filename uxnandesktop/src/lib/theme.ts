@@ -521,7 +521,7 @@ export function terminalThemeToJson(preset: TerminalThemePreset): string {
   return JSON.stringify(preset, null, 2);
 }
 
-/** A ready-to-edit terminal theme template (docs / "new" starting point). */
+/** Coherent dark terminal starter: dark bg + light fg + VS Code–style ANSI. */
 export const TERMINAL_TEMPLATE: TerminalThemePreset = {
   id: "example",
   name: "My terminal theme",
@@ -529,13 +529,59 @@ export const TERMINAL_TEMPLATE: TerminalThemePreset = {
   fontFamily: "JetBrains Mono",
   fontSize: 13,
   lineHeight: 1.0,
+  letterSpacing: 0,
+  fontWeight: "normal",
   ligatures: true,
   cursorStyle: "block",
   cursorBlink: true,
   background: "#0b0b0c",
   foreground: "#e6e6e6",
+  cursor: "#e6e6e6",
+  cursorAccent: "#0b0b0c",
+  selectionBackground: "rgba(128,128,128,0.35)",
   ...DEFAULT_ANSI,
 };
+
+/** Coherent light terminal starter: white bg + dark fg + Primer–inspired ANSI. */
+export const TERMINAL_TEMPLATE_LIGHT: TerminalThemePreset = {
+  id: "example",
+  name: "My terminal theme",
+  base: "light",
+  fontFamily: "JetBrains Mono",
+  fontSize: 13,
+  lineHeight: 1.0,
+  letterSpacing: 0,
+  fontWeight: "normal",
+  ligatures: true,
+  cursorStyle: "block",
+  cursorBlink: true,
+  background: "#ffffff",
+  foreground: "#1f2328",
+  cursor: "#1f2328",
+  cursorAccent: "#ffffff",
+  selectionBackground: "rgba(128,128,128,0.35)",
+  black: "#24292f",
+  red: "#cf222e",
+  green: "#116329",
+  yellow: "#4d2d00",
+  blue: "#0969da",
+  magenta: "#8250df",
+  cyan: "#1b7c83",
+  white: "#6e7781",
+  brightBlack: "#57606a",
+  brightRed: "#a40e26",
+  brightGreen: "#1a7f37",
+  brightYellow: "#633c01",
+  brightBlue: "#218bff",
+  brightMagenta: "#a475f1",
+  brightCyan: "#3192aa",
+  brightWhite: "#8c959f",
+};
+
+/** Pick the coherent terminal starter for a given base (dark | light). */
+export function terminalTemplateFor(base: "light" | "dark"): TerminalThemePreset {
+  return base === "light" ? structuredClone(TERMINAL_TEMPLATE_LIGHT) : structuredClone(TERMINAL_TEMPLATE);
+}
 
 /** A ready-to-edit example theme used as the "new theme" template + docs sample. */
 export const THEME_TEMPLATE: Theme = {

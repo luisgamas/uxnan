@@ -23,6 +23,7 @@
     normalizeImportedTheme,
     normalizeImportedTerminalTheme,
     resolveTerminal,
+    terminalTemplateFor,
     themeToJson,
     terminalThemeToJson,
     type Theme,
@@ -145,9 +146,16 @@
 
   function newTermTheme() {
     const base = app.resolveActiveTerminalTheme();
-    termDraft = base
-      ? duplicateTerminalTheme(base, i18n.t("appearance.newThemeName"))
-      : { id: newTerminalThemeId(), name: i18n.t("appearance.newThemeName") };
+    const name = i18n.t("appearance.newThemeName");
+    const baseKind: "light" | "dark" = base?.base ?? app.resolveActiveTheme().base;
+    const seeded = terminalTemplateFor(baseKind);
+    seeded.id = newTerminalThemeId();
+    seeded.name = name;
+    if (base) {
+      Object.assign(seeded, duplicateTerminalTheme(base, name));
+      seeded.base = baseKind;
+    }
+    termDraft = seeded;
     termIsNew = true;
     termOriginalId = null;
     app.previewTerminalTheme = termDraft;
