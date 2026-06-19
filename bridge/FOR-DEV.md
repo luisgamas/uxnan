@@ -750,6 +750,77 @@ The OpenCode adapter is the template for any "one-shot per-turn CLI" agent:
       turns render the same Work log / Changed files as live turns; smoke-
       tested against real on-disk logs: 44 blocks from one Gemini session,
       26 blocks from one OpenCode session, 4 blocks from one Codex session).
+- [ ] **Antigravity CLI (`agy`) — investigated, NOT integrated yet (decided 2026-06-19).**
+      `agy` is Google's Antigravity CLI — a **distinct binary from Gemini CLI**
+      (different executable `~/AppData/Local/agy/bin/agy.exe` / `~/.local/bin/agy`,
+      different state dir `~/.gemini/antigravity-cli/`, different hook file
+      `~/.gemini/config/hooks.json`). It is **not** the `@google/gemini-cli`
+      `gemini` command and must NOT be wired through `gemini-adapter.ts`. Validated
+      on-machine against `agy` 1.0.3 (the official web docs are largely unreliable /
+      hallucinated — only trust the installed binary).
+      **Why deferred:** `agy`'s headless surface is too thin to map onto the rich
+      agent contract the phone renders (streaming, structured blocks, token usage,
+      model discovery, model selection, reasoning effort, interactive approvals,
+      plan/to-do). The architecture rule (`docs/agents.md`) forbids the SDK/REST
+      path (`antigravity-sdk-python` / the Antigravity REST API use a provider
+      API/keys), so we are limited to the **`agy` CLI over stdio** — which today
+      exposes none of those seams.
+      **Exhaustive flag surface (validated; a trailing bogus flag forces Go's
+      flag parser to reveal definedness with zero quota):** `--print`/`-p`/
+      `--prompt` (one-shot, **plain text only**), `--prompt-interactive`/`-i`,
+      `--continue`/`-c` + `--conversation <id>` (resume), `--add-dir`,
+      `--dangerously-skip-permissions`, `--sandbox`, `--print-timeout`,
+      `--log-file`; subcommands `changelog|help|install|plugin|update`. **Confirmed
+      ABSENT** (parser rejects): `--model`, `--json`, `--output-format`/`--output`,
+      `--stream`, `--reasoning`, `--thinking`, `--approval-mode`, `--list-models`,
+      `--resume`, `--session-id`, `-C`/`--cwd`.
+      **Capability gaps vs the Claude/Gemini adapters:**
+        - **Streaming / structured blocks** — ❌ `agy -p` rejects `--output-format`;
+          prints only the final assistant text (no `stream-json`, no `tool_use`/
+          `tool_result` events → no Work log / Changed-files blocks).
+        - **Token / context usage** — ❌ no machine-readable per-turn usage; only the
+          interactive TUI "Models & Quota" page.
+        - **Model discovery + selection** — ❌ no enumerate command and **no
+          `--model` flag**; the model is chosen in the TUI / settings, so neither the
+          `opencode`-style auto-list nor a per-turn `--model` override is possible.
+          (Per the official launch, Antigravity offers Gemini 3 Pro / Claude Sonnet
+          4.5 / GPT-OSS — but the CLI exposes no way to list or pick them headlessly.)
+        - **Reasoning effort** — ❌ no `--thinking`/`--reasoning`/effort flag.
+        - **Interactive approvals** — ⚠️ likely ❌. There IS a permission engine +
+          hooks (`~/.gemini/config/hooks.json`), but the events observed in use are
+          `PreInvocation` / `PostInvocation` / `Stop` / `PostToolUse` (the last is
+          **after** the tool runs — cannot gate). No **blocking pre-tool** event was
+          seen, and headless `-p` with an "ask" permission would hang (no TTY to
+          answer) → the only headless posture is `--dangerously-skip-permissions`
+          (auto-approve all, like OpenCode/pi), with no per-action gate to the phone.
+          Re-verify whether a blocking `PreToolUse`-style hook exists before relying
+          on this.
+        - **Permission posture** — ⚠️ coarse: only `--sandbox` vs
+          `--dangerously-skip-permissions` (no `plan`/read-only/acceptEdits split).
+        - **Plan / to-do (the uxnanmobile ask)** — ⚠️ the product has `/tasks` +
+          "Artifacts" (structured task lists), but they are **not emitted to stdout**
+          in `-p` mode, so there is nothing to surface to the phone headlessly.
+        - **On-disk history fallback** — ⚠️ `agy` stores history as **protobuf**
+          (`~/.gemini/antigravity-cli/brain/<uuid>/…` + `implicit/*.pb`), NOT the
+          Gemini `~/.gemini/tmp/.../chats/*.json` format, so the existing
+          `SessionHistoryReader` Gemini path does NOT apply; recovering history would
+          need reverse-engineering the `.pb` schema.
+        - **Continuity** — ✅ the one thing that maps cleanly: `--continue` /
+          `--conversation <id>`.
+      **Open blocker (validate before any integration):** `agy -p` produced **no
+      output to a piped (non-TTY) stdout** in repeated runs (90s and 170s timeouts) —
+      it appears to require a TTY or buffer until a long cold-start completes. The
+      bridge captures stdout via pipes (`defaultSpawn`), so even a text-only adapter
+      may need a pseudo-tty harness. Confirm with a pty before assuming `-p` is
+      pipe-drivable.
+      **Unblock conditions (then follow the "Adding the next agent" recipe above):**
+      `agy` ships (a) a machine-readable `--output-format json|stream-json` for
+      `-p`, AND/OR (b) an app-server/JSON-RPC turn protocol (as Codex did), AND/OR
+      (c) a documented blocking pre-tool hook event. Any of these would let a real
+      `antigravity-cli` adapter advertise the same seams the phone already renders.
+      Until then: no adapter, no `'antigravity-cli'` AgentId in `shared/` — adding a
+      degraded text-only agent now would ship something strictly worse than the
+      existing CLIs and miss every feature requested.
 - [ ] Later: Aider.
 
 ## Daemon lifecycle & ops
