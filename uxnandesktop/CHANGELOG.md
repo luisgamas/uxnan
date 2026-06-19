@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — in-app toasts (svelte-sonner)
+- A `<Toaster/>` (shadcn-svelte `sonner`, themed from the active app theme) mounted
+  in `+page.svelte`, with a `$lib/toast.ts` wrapper (`toast`, `toastError`).
+- The inline dismissible **error banners** (left sidebar `projects.error`, right
+  panel `git.error`) are replaced by non-blocking error toasts, plus **success
+  toasts** for commit / push / pull / worktree-removed / project-removed.
+  Dialog-scoped inline errors (new-/remove-worktree, directory picker) stay inline.
+
 ### Changed — git2 fast path for status/diff
 - **`gitfast.rs`** (git2 / vendored libgit2): `status_files`, `worktree_status`,
   `diff_file`, `diff_head` and `numstat` now run through libgit2 (off the async

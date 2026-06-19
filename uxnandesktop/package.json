@@ -50,15 +50,17 @@
   },
   "devDependencies": {
     "@internationalized/date": "^3.12.2",
-    "@lucide/svelte": "^1.17.0",
+    "@lucide/svelte": "^1.21.0",
     "@sveltejs/adapter-static": "^3.0.6",
     "@sveltejs/kit": "^2.9.0",
     "@sveltejs/vite-plugin-svelte": "^5.0.0",
     "@tailwindcss/vite": "^4.0.0",
     "@tauri-apps/cli": "^2",
     "@types/node": "^22.19.20",
+    "mode-watcher": "^1.1.0",
     "svelte": "^5.0.0",
     "svelte-check": "^4.0.0",
+    "svelte-sonner": "^1.1.1",
     "tailwindcss": "^4.0.0",
     "typescript": "~5.6.2",
     "vite": "^6.0.3"

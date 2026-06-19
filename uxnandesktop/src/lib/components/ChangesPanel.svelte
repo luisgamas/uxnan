@@ -237,20 +237,6 @@
   {#if !git.path}
     <p class={cn("p-3", text.meta)}>{i18n.t("rightPanel.selectWorktree")}</p>
   {:else}
-    {#if git.error}
-      <div class="flex shrink-0 items-start gap-1.5 border-b border-sidebar-border px-3 py-1.5">
-        <p class={cn("min-w-0 flex-1 text-destructive", text.body)}>{git.error}</p>
-        <button
-          class="shrink-0 rounded p-0.5 text-destructive/70 hover:text-destructive"
-          title={i18n.t("common.dismiss")}
-          aria-label={i18n.t("common.dismiss")}
-          onclick={() => (git.error = null)}
-        >
-          <XIcon class={icon.decorative} />
-        </button>
-      </div>
-    {/if}
-
     {#if rows.length === 0}
       <p class={cn("p-3", text.meta)}>
         {query.trim()

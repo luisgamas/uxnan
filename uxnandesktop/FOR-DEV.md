@@ -88,11 +88,14 @@ Smaller non-blockers (tracked below): backend debounced persistence + rotating
 backups, `git2` migration, WSL paths, tab reorder/MRU, branded icons
 (`FOR-HUMAN.md`).
 
-**In-app toast/notification system** (`svelte-sonner`) — replace the inline,
-dismissible error banners (left sidebar `projects.error`, right panel
-`git.error`) with non-blocking, auto-expiring toasts for errors and successes
-(e.g. "worktree removed", "pushed"). Distinct from the **OS-level** notifications
-in Phase 4, which are for agent-completion events. **FOR-DEV.**
+**In-app toast/notification system** (`svelte-sonner`) — ✅ **DONE.** A
+`<Toaster/>` (shadcn-svelte `sonner`, themed from `app.prefersDark()`) is mounted
+in `+page.svelte`; `$lib/toast.ts` wraps it (`toast`, `toastError`). The inline
+dismissible banners (left sidebar `projects.error`, right panel `git.error`) were
+replaced by error toasts, plus success toasts ("Committed" / "Pushed" / "Pulled"
+/ "Worktree removed" / "Project removed"). Dialog-scoped inline errors
+(new-worktree, remove-worktree, directory picker) stay inline. Distinct from the
+**OS-level** notifications in Phase 4 (agent-completion events).
 
 **Windows shells out-of-the-box + npm-shim execution.**
 - [x] **Detect installed shells** — Settings → Terminal greys out uninstalled

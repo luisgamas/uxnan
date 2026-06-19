@@ -23,6 +23,8 @@ import {
   worktreeStatus,
 } from "$lib/api";
 import { projects } from "$lib/state/projects.svelte";
+import { toast, toastError } from "$lib/toast";
+import { i18n } from "$lib/i18n";
 import type { FileChange, GitStatusEvent } from "$lib/types";
 
 const msg = (e: unknown) =>
@@ -127,6 +129,7 @@ class GitStore {
       projects.setStatus(path, st);
     } catch (e) {
       this.error = msg(e);
+      toastError(e);
       this.files = [];
     } finally {
       this.loading = false;
@@ -166,6 +169,7 @@ class GitStore {
       this.diff = await Promise.race([gitDiff(this.path, file, staged), timeout]);
     } catch (e) {
       this.error = msg(e);
+      toastError(e);
     } finally {
       this.diffLoading = false;
     }
@@ -186,6 +190,7 @@ class GitStore {
       await this.refresh();
     } catch (e) {
       this.error = msg(e);
+      toastError(e);
     } finally {
       this.busy = false;
     }
@@ -228,6 +233,7 @@ class GitStore {
       if (this.diff.trim().length === 0) this.closeDiff();
     } catch (e) {
       this.error = msg(e);
+      toastError(e);
     } finally {
       this.busy = false;
     }
@@ -244,15 +250,18 @@ class GitStore {
       await gitCommit(path, message);
       this.message = "";
       await this.refresh();
+      toast.success(i18n.t("toast.committed"));
     } catch (e) {
       this.error = msg(e);
+      toastError(e);
     } finally {
       this.committing = false;
     }
   }
 
-  /** Push or pull the current branch, then refresh ahead/behind + status. */
-  private async sync(fn: (path: string) => Promise<void>): Promise<void> {
+  /** Push or pull the current branch, then refresh ahead/behind + status, and
+   *  toast `okMsg` on success. */
+  private async sync(fn: (path: string) => Promise<void>, okMsg: string): Promise<void> {
     const path = this.path;
     if (!path) return;
     this.syncing = true;
@@ -260,17 +269,19 @@ class GitStore {
     try {
       await fn(path);
       await this.refresh();
+      toast.success(okMsg);
     } catch (e) {
       this.error = msg(e);
+      toastError(e);
     } finally {
       this.syncing = false;
     }
   }
   push(): Promise<void> {
-    return this.sync((p) => gitPush(p));
+    return this.sync((p) => gitPush(p), i18n.t("toast.pushed"));
   }
   pull(): Promise<void> {
-    return this.sync((p) => gitPull(p));
+    return this.sync((p) => gitPull(p), i18n.t("toast.pulled"));
   }
 }
 

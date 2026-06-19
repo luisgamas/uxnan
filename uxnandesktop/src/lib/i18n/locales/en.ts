@@ -6,6 +6,13 @@
 // register it in `../index.svelte.ts`. See docs/i18n.md.
 
 export const en = {
+  // Toasts (non-blocking notifications)
+  "toast.committed": "Committed",
+  "toast.pushed": "Pushed",
+  "toast.pulled": "Pulled",
+  "toast.worktreeRemoved": "Worktree removed",
+  "toast.projectRemoved": "Project removed",
+
   // Common
   "common.cancel": "Cancel",
   "common.remove": "Remove",

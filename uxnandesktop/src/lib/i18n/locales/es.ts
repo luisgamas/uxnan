@@ -3,6 +3,13 @@
 import type { MessageKey } from "./en";
 
 export const es: Record<MessageKey, string> = {
+  // Toasts (notificaciones no bloqueantes)
+  "toast.committed": "Commit creado",
+  "toast.pushed": "Push realizado",
+  "toast.pulled": "Pull realizado",
+  "toast.worktreeRemoved": "Worktree eliminado",
+  "toast.projectRemoved": "Proyecto eliminado",
+
   // Common
   "common.cancel": "Cancelar",
   "common.remove": "Eliminar",

@@ -15,6 +15,7 @@
   import RightPanel from "$lib/components/RightPanel.svelte";
   import Settings from "$lib/components/Settings.svelte";
   import WorktreeSearch from "$lib/components/WorktreeSearch.svelte";
+  import { Toaster } from "$lib/components/ui/sonner";
 
   // Resize bounds for each sidebar (px).
   const LEFT_MIN = 200;
@@ -136,6 +137,9 @@
 <svelte:window oncontextmenu={onContextMenu} onkeydown={onKeyDown} />
 
 <div class="flex h-screen w-screen flex-col bg-background text-foreground">
+  <!-- Non-blocking toasts (errors + successes) -->
+  <Toaster position="bottom-right" />
+
   <!-- Custom title bar (OS chrome disabled) -->
   <TitleBar />
 
