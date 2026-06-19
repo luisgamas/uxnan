@@ -5,12 +5,15 @@ setup. To get **precise** states — `working`, `blocked`, `waiting`, `done` —
 agent must actively report them to the ADE's local **hook server** (Layer 1 of
 the monitoring design, spec `architecture/02d-agent-monitoring.md` §1.1).
 
-This is **opt-in, per-agent configuration**: the ADE provides the endpoint and
-the ready-made scripts, you point your agent at them. Nothing here is
-auto-installed; you decide, per machine, which agents get precise states.
+The ADE provides the endpoint and the ready-made scripts. **Claude Code hooks are
+installed automatically on startup** (the ADE-managed block is merged into
+`~/.claude/settings.json`, preserving your other keys); you can turn that off any
+time. Every other agent is **opt-in**: point it at the generic wrapper.
 
 > **TL;DR.** Open **Settings → Agents → Hooks**:
-> - **Claude Code** → click **Install**. Done.
+> - **Claude Code** → already installed (auto on startup). The **Install agent
+>   hooks** switch turns it off (removes the block, and it stays off next launch)
+>   or back on.
 > - **Anything else** → use the **generic wrapper** as the agent's launch
 >   command (full step-by-step per OS below).
 
@@ -83,22 +86,24 @@ environment, and so does anything else you write against the contract.
 
 ## Install — Claude Code
 
-The fastest path. One click in the UI.
+Automatic. On every startup (unless you turned it off) the ADE merges its
+`hooks` block into `~/.claude/settings.json`:
 
-1. Launch the ADE and open **Settings → Agents → Hooks** (gear icon in the
-   title bar → "Hooks" in the left nav).
-2. In the **Claude Code** card, click **Install**.
-   - The ADE merges a `hooks` block into `~/.claude/settings.json`. Your
-     other settings are preserved verbatim. The block is marked with
-     `__uxnan_managed_hooks__: true` so Uninstall only touches ours.
-   - The script path is auto-injected (the ADE substitutes the absolute path
-     it just wrote to `<app-data>/hooks/`).
-3. (Optional) Click **Show JSON config** to inspect or copy the JSON the ADE
-   will write, in case you'd rather paste it by hand.
-4. Restart Claude Code (it only re-reads `settings.json` on startup).
+- Your other settings are preserved verbatim. The block is marked with
+  `__uxnan_managed_hooks__: true` so removing it only touches ours.
+- The script path is auto-injected (the ADE substitutes the absolute path it
+  wrote to `<app-data>/hooks/`); re-installing self-heals a moved path.
+- Restart Claude Code afterward (it only re-reads `settings.json` on startup).
 
-**Uninstall.** In the same card, click **Uninstall**. Only the ADE-managed
-`hooks` block is removed; any `hooks` you added yourself survive.
+In **Settings → Agents → Hooks**, the **Claude Code** card has an **Install agent
+hooks** switch:
+
+- **On** (default) — installs now and keeps it installed on startup.
+- **Off** — removes the ADE-managed block **and** stops re-installing it on the
+  next launch (the choice persists in `AppSettings.autoInstallHooks`).
+
+(Optional) **Show JSON config** inspects or copies the exact JSON, in case you'd
+rather paste it by hand.
 
 **Verify.** Launch Claude Code in any terminal. The tab should show a colored
 dot from a precise state (working while it's thinking / using a tool, waiting

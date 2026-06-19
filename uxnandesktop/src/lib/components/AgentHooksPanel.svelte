@@ -8,7 +8,9 @@
   import * as Collapsible from "$lib/components/ui/collapsible";
   import { Button } from "$lib/components/ui/button";
   import { Badge } from "$lib/components/ui/badge";
+  import { Switch } from "$lib/components/ui/switch";
   import * as Card from "$lib/components/ui/card";
+  import { app } from "$lib/state/app.svelte";
   import {
     getClaudeHooksStatus,
     getHookInstall,
@@ -108,6 +110,15 @@
     } finally {
       busy = null;
     }
+  }
+
+  /** The hooks switch: installs/uninstalls now AND persists whether to keep them
+   *  installed on startup, so an uninstall isn't re-added next launch. */
+  async function toggleHooks(on: boolean) {
+    app.settings.autoInstallHooks = on;
+    void app.persistSettings();
+    if (on) await doInstall();
+    else await doUninstall();
   }
 
   async function copy(id: string, text: string) {
@@ -210,26 +221,20 @@
           {install.claudeSettingsPath}
         </p>
       {/if}
-      <div class="flex items-center gap-2">
-        {#if claudeStatus?.installed}
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={busy !== null || unavailable}
-            onclick={doUninstall}
-          >
-            {busy === "uninstall" ? i18n.t("hooks.uninstalling") : i18n.t("hooks.uninstall")}
-          </Button>
-        {:else}
-          <Button
-            variant="default"
-            size="sm"
-            disabled={busy !== null || unavailable || degraded}
-            onclick={doInstall}
-          >
-            {busy === "install" ? i18n.t("hooks.installing") : i18n.t("hooks.install")}
-          </Button>
-        {/if}
+      <div class="flex items-center justify-between gap-3">
+        <div class="flex min-w-0 flex-col gap-0.5">
+          <span class={text.subheading}>{i18n.t("hooks.autoInstall")}</span>
+          <span class={text.meta}>
+            {busy !== null
+              ? i18n.t(busy === "install" ? "hooks.installing" : "hooks.uninstalling")
+              : i18n.t("hooks.autoInstallDesc")}
+          </span>
+        </div>
+        <Switch
+          checked={claudeStatus?.installed ?? false}
+          disabled={busy !== null || unavailable || degraded}
+          onCheckedChange={toggleHooks}
+        />
       </div>
       <Collapsible.Root bind:open={showClaudeJson}>
         <Collapsible.Trigger

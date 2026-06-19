@@ -52,6 +52,9 @@ pub fn run() {
             data.settings.ensure_terminal_profiles();
             // Drop agent cache entries past their 7-day TTL (spec 02d §1.5).
             data.prune_agent_cache(crate::hooks::now_secs());
+            // Whether to auto-install the Claude hooks block this launch (off once
+            // the user uninstalls). Captured before `data` moves into the state.
+            let auto_install_hooks = data.settings.auto_install_hooks;
             let state = AppState::new(persistence, data);
             let git_watch = state.git_watch.clone();
             let focused = state.focused.clone();
@@ -79,6 +82,14 @@ pub fn run() {
             let hooks_dir = data_dir.join("hooks");
             match crate::agent_hooks::install_scripts_to(&hooks_dir) {
                 Ok(install) => {
+                    // Auto-install the Claude hooks block (idempotent: re-points it
+                    // at the current script path) unless the user opted out.
+                    if auto_install_hooks {
+                        let script = std::path::PathBuf::from(&install.claude_hook_script);
+                        if let Err(e) = crate::agent_hooks::install_claude_hooks(&script) {
+                            eprintln!("[uxnan-desktop] auto-install of Claude hooks failed: {e}");
+                        }
+                    }
                     let slot = hook_install_slot;
                     tauri::async_runtime::spawn(async move {
                         *slot.write().await = Some(install);

@@ -56,6 +56,9 @@ export interface AppSettings {
   agentNotifications?: boolean;
   /** Keep the system awake while an agent is working (opt-in). Default off. */
   preventSleep?: boolean;
+  /** Auto-install the ADE-managed Claude Code hooks block on startup. Set false
+   *  when the user uninstalls so it isn't re-added next launch. Default on. */
+  autoInstallHooks?: boolean;
   /** UI language: "system" (follow the device) or a locale code ("en", "es"). */
   language: string;
   /** Custom keyboard-shortcut overrides, keyed by action id → chord string
@@ -294,6 +297,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   defaultAgentId: null,
   agentNotifications: true,
   preventSleep: false,
+  autoInstallHooks: true,
   language: "system",
   keybindings: {},
   activeThemeId: "system",

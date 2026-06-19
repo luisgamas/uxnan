@@ -206,6 +206,11 @@ pub struct AppSettings {
     /// backend auto-releases after 2 h as a safety cap). Default off.
     #[serde(default)]
     pub prevent_sleep: bool,
+    /// Auto-install the ADE-managed Claude Code hooks block on startup (so precise
+    /// agent states work out of the box). Set false when the user uninstalls, so
+    /// it isn't re-added on the next launch. Default on.
+    #[serde(default = "default_true")]
+    pub auto_install_hooks: bool,
     /// UI language: "system" (follow the device) or a locale code (e.g. "en", "es").
     #[serde(default = "default_language")]
     pub language: String,
@@ -274,6 +279,7 @@ impl Default for AppSettings {
             default_agent_id: None,
             agent_notifications: true,
             prevent_sleep: false,
+            auto_install_hooks: true,
             language: default_language(),
             keybindings: std::collections::HashMap::new(),
             active_theme_id: default_theme_id(),

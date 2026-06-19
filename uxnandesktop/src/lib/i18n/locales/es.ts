@@ -378,6 +378,9 @@ export const es: Record<MessageKey, string> = {
     "~/.claude/settings.json no se puede escribir (léelo manualmente para obtener el JSON a pegar).",
   "hooks.claudeStatusMissing":
     "El archivo de configuración de Claude Code aún no existe — al instalarlo se creará.",
+  "hooks.autoInstall": "Instalar hooks de agentes",
+  "hooks.autoInstallDesc":
+    "Permite que los agentes reporten su estado preciso. Se instalan automáticamente al inicio; desactiva para quitarlos y mantenerlos desactivados.",
   "hooks.install": "Instalar",
   "hooks.uninstall": "Desinstalar",
   "hooks.installing": "Instalando…",

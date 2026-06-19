@@ -5,11 +5,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
-### Added — agent state toasts
+### Added — agent state toasts + auto-installed hooks
 - **Agent state toasts**: when an agent's hook reports a meaningful transition,
   a toast fires — **done** (success), **blocked** (warning), **waiting** (info),
   named by the agent. `working` is skipped (too noisy). Gated by the existing
   **Settings → Agents → Idle notifications** toggle. (`agentStatus.svelte.ts`.)
+- **Auto-installed Claude Code hooks**: the ADE-managed `hooks` block is merged
+  into `~/.claude/settings.json` on startup by default (idempotent; self-heals a
+  moved script path), so precise states work out of the box. **Settings → Agents
+  → Hooks** now has an **Install agent hooks** switch: turning it off removes the
+  block and stops re-installing it next launch (`AppSettings.autoInstallHooks`,
+  honored in `lib.rs` setup). Docs: `docs/agent-hooks.md`.
+
+### Fixed — agent launch command re-typed after visiting Settings
+- Opening Settings used to unmount the whole three-panel body, so returning
+  remounted every terminal — re-running each agent tab's launch command (e.g.
+  `opencode` typed again into the already-running agent) and blanking xterm.
+  Settings now **overlays** the still-mounted body (`+page.svelte`), and the
+  launch command is guarded to be sent **once per terminal id** (`Terminal.svelte`).
 
 ### Added — in-app toasts (svelte-sonner)
 - A `<Toaster/>` (shadcn-svelte `sonner`, themed from the active app theme) mounted

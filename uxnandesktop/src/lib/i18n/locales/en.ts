@@ -379,6 +379,9 @@ export const en = {
   "hooks.claudeStatusUnavailable":
     "~/.claude/settings.json is not writable (read it manually for the JSON to paste).",
   "hooks.claudeStatusMissing": "Claude Code settings file not found yet — install will create it.",
+  "hooks.autoInstall": "Install agent hooks",
+  "hooks.autoInstallDesc":
+    "Lets agents report precise states. Installed automatically on startup; turn off to remove and keep it off.",
   "hooks.install": "Install",
   "hooks.uninstall": "Uninstall",
   "hooks.installing": "Installing…",
