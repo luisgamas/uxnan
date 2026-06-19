@@ -16,6 +16,7 @@ import 'package:uxnan/domain/value_objects/turn_timeline_snapshot.dart';
 import 'package:uxnan/infrastructure/media/attachment_picker_service.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
+import 'package:uxnan/presentation/providers/conversation_scroll_store.dart';
 import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_bar.dart';
@@ -68,6 +69,11 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   /// Whether the "jump to latest" button is shown — true once the user has
   /// scrolled up far enough that the newest messages are off-screen.
   bool _showJumpToBottom = false;
+
+  /// Whether the initial scroll position has been restored for this open.
+  /// Guards the one-time restore so later timeline updates don't re-yank the
+  /// scroll.
+  bool _restoredScroll = false;
 
   /// Images the user attached for the next turn (shown as removable thumbnails
   /// above the composer); cleared on send.
@@ -174,6 +180,46 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     if (show != _showJumpToBottom) {
       setState(() => _showJumpToBottom = show);
     }
+    // Persist the position per thread so reopening restores it (never the
+    // top). `atBottom` follows the newest message on the next open instead of
+    // pinning a now-stale offset. Only record once the initial restore has
+    // happened, so the restore jump itself doesn't overwrite the saved
+    // position with the top.
+    if (_restoredScroll) {
+      ref.read(conversationScrollStoreProvider).save(
+            widget.threadId,
+            offset: _scroll.offset,
+            atBottom: distance < 200,
+          );
+    }
+  }
+
+  /// Restores the saved scroll position for this thread once its content is
+  /// first laid out: jumps to where the user left off, or to the newest
+  /// message when there's no saved position (or the user was at the bottom).
+  /// Never opens at the top. Runs once per open ([_restoredScroll]).
+  void _restoreScroll() {
+    if (_restoredScroll) return;
+    _restoredScroll = true;
+    final saved = ref.read(conversationScrollStoreProvider).positionFor(
+          widget.threadId,
+        );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scroll.hasClients) return;
+      if (saved == null || saved.atBottom) {
+        _scrollToBottom();
+        return;
+      }
+      final max = _scroll.position.maxScrollExtent;
+      _scroll.jumpTo(saved.offset.clamp(0.0, max));
+      // Late layout (images / variable heights) can grow the extent — re-apply
+      // next frame so the restored position lands accurately.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_scroll.hasClients) return;
+        final grown = _scroll.position.maxScrollExtent;
+        _scroll.jumpTo(saved.offset.clamp(0.0, grown));
+      });
+    });
   }
 
   void _scrollToBottom() {
@@ -417,6 +463,12 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     );
     final cwd = thread?.cwd;
     final snapshot = timelineAsync.value;
+    // If the timeline already has content at first build (no later emission to
+    // drive the listener below), restore the saved scroll position now. Guarded
+    // + idempotent via [_restoredScroll].
+    if (!_restoredScroll && snapshot != null && snapshot.messages.isNotEmpty) {
+      _restoreScroll();
+    }
     // Aggregated edits of the most recent assistant turn that changed files,
     // for the green/red strip just above the composer.
     final lastEdits = _lastTurnEdits(snapshot);
@@ -442,7 +494,17 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     // just-sent message (with the setting on) forces the jump even from a
     // manually-scrolled position.
     ref.listen(activeTimelineProvider, (previous, next) {
-      if (next.value != null && (_forceScrollOnSend || _isNearBottom())) {
+      final snap = next.value;
+      if (snap == null || snap.messages.isEmpty) return;
+      // First real content for this open: restore the saved scroll position
+      // (or the bottom) instead of leaving it at the top.
+      if (!_restoredScroll) {
+        _restoreScroll();
+        return;
+      }
+      // After the initial restore, keep following the bottom on new content
+      // when the user is already near it (or just sent a message).
+      if (_forceScrollOnSend || _isNearBottom()) {
         _forceScrollOnSend = false;
         WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
       }

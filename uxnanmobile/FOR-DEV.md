@@ -353,6 +353,26 @@ browser and multi-PC connection correctness are now DONE — see below.)
   agent works (the per-thread activity, also on the list). A **jump-to-latest**
   button (`_JumpToBottomButton`) springs in over the timeline when the user
   scrolls up and jumps to the newest message in one tap (2026-06-18).
+- ☑ **Conversation scroll position persists across opens** — DONE
+  (2026-06-18). Opening a thread used to yank the timeline back to the top,
+  forcing users who had scrolled up to read older context to re-scroll every
+  time they left and re-entered. A session-scoped
+  `ConversationScrollStore` (`lib/presentation/providers/conversation_scroll_store.dart`,
+  in-memory `Map<threadId, { offset, atBottom }>`) records the pixel offset
+  + an `atBottom` flag while the user scrolls, and `ConversationScreen`
+  restores it once on first content (`_restoreScroll`, guarded by
+  `_restoredScroll`, re-applied on the next frame to catch late layout —
+  variable-height messages / images that grow `maxScrollExtent`). When the
+  user was at (or near) the bottom on close, the restore follows the
+  newest message instead of pinning a now-stale offset. In-memory only (per
+  session): a saved pixel offset only maps cleanly onto the same rendered
+  content, which a cross-restart resync can change. Pairs with the existing
+  *Jump to latest* button — the button still gets you to the newest
+  message manually; the restore makes the common case (returning to a
+  thread) just work. Covered by
+  `conversation_scroll_store_test.dart` (null until saved, round-trip,
+  overwrite). ☐ On-device: verify a thread opened repeatedly lands at the
+  same spot and that *Jump to latest* still works after the restore.
 - ☑ **Agent thinking (reasoning) — first structured-content slice** — DONE
   (Claude Code, end-to-end): the bridge parses `thinking_delta` and emits
   `stream/thinking/delta` (persisted via `Message.thinking`); the phone decodes a

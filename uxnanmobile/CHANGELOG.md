@@ -7,6 +7,30 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- **Conversation no longer opens at the top — scroll position is
+  remembered.** Opening a thread always reset the timeline to the top,
+  forcing users who had scrolled up to read older context to scroll all the
+  way back down (or tap *Jump to latest*) every time they left and re-entered.
+  A new session-scoped `ConversationScrollStore`
+  (`lib/presentation/providers/conversation_scroll_store.dart`, an
+  in-memory `Map<threadId, { offset, atBottom }>`) records the current
+  pixel offset while the user scrolls, and `ConversationScreen` now
+  restores it once on first content (a one-time, idempotent
+  `_restoreScroll` guarded by `_restoredScroll`, re-applied on the next
+  frame to catch late layout — variable-height messages / images that
+  grow `maxScrollExtent`). When the user was at (or near) the bottom on
+  close, the restore follows the newest message instead of pinning a now-
+  stale offset. The store is intentionally in-memory only (per session):
+  a saved pixel offset only maps cleanly onto the same rendered content,
+  which a cross-restart resync can change. Pairs with the existing
+  *Jump to latest* button — the button still gets you to the newest
+  message manually; the restore makes the common case (returning to a
+  thread) just work. New: 3 tests in
+  `test/unit/presentation/conversation_scroll_store_test.dart` (null until
+  saved, round-trip, overwrite). **346 unit + widget tests passing, all
+  green.**
+
+### Fixed
 - **File browser's git-status colours are now live across the app.**
   Previously `FileBrowserManager` cached the per-cwd `git/status` map and
   only refreshed it on `loadRoot` / `toggleDirectory` / `writeFile`, so a
