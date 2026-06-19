@@ -476,6 +476,12 @@ abstract class AppLocalizations {
   /// **'Cancel'**
   String get actionCancel;
 
+  /// No description provided for @actionApply.
+  ///
+  /// In en, this message translates to:
+  /// **'Apply'**
+  String get actionApply;
+
   /// No description provided for @threadsTitle.
   ///
   /// In en, this message translates to:
@@ -1943,7 +1949,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsPersonalizationSubtitle.
   ///
   /// In en, this message translates to:
-  /// **'Theme, accent color and language'**
+  /// **'Theme, custom themes and language'**
   String get settingsPersonalizationSubtitle;
 
   /// No description provided for @personalizationTitle.
@@ -1976,59 +1982,449 @@ abstract class AppLocalizations {
   /// **'Dark'**
   String get themeDark;
 
-  /// No description provided for @personalizationAccentSection.
+  /// Label for the 'custom theme' option in the theme-mode selector. Selecting this disables the system/light/dark controls and lets the user author or pick a custom theme.
   ///
   /// In en, this message translates to:
-  /// **'Accent color'**
-  String get personalizationAccentSection;
+  /// **'Custom'**
+  String get themeCustom;
 
-  /// No description provided for @accentBlue.
+  /// No description provided for @personalizationCustomThemeSection.
   ///
   /// In en, this message translates to:
-  /// **'Blue'**
-  String get accentBlue;
+  /// **'Custom theme'**
+  String get personalizationCustomThemeSection;
 
-  /// No description provided for @accentPurple.
+  /// No description provided for @personalizationCustomThemeDescription.
   ///
   /// In en, this message translates to:
-  /// **'Purple'**
-  String get accentPurple;
+  /// **'Design every Material 3 color role, export to JSON, or import a theme someone shared with you.'**
+  String get personalizationCustomThemeDescription;
 
-  /// No description provided for @accentPink.
+  /// No description provided for @personalizationCustomThemeAuthor.
   ///
   /// In en, this message translates to:
-  /// **'Pink'**
-  String get accentPink;
+  /// **'New theme'**
+  String get personalizationCustomThemeAuthor;
 
-  /// No description provided for @accentRed.
+  /// No description provided for @personalizationCustomThemeAuthorSubtitle.
   ///
   /// In en, this message translates to:
-  /// **'Red'**
-  String get accentRed;
+  /// **'Start from a seed color and fine-tune every role'**
+  String get personalizationCustomThemeAuthorSubtitle;
 
-  /// No description provided for @accentOrange.
+  /// No description provided for @personalizationCustomThemeEdit.
   ///
   /// In en, this message translates to:
-  /// **'Orange'**
-  String get accentOrange;
+  /// **'Edit current theme'**
+  String get personalizationCustomThemeEdit;
 
-  /// No description provided for @accentGreen.
+  /// No description provided for @personalizationCustomThemeEditSubtitle.
   ///
   /// In en, this message translates to:
-  /// **'Green'**
-  String get accentGreen;
+  /// **'Tweak the light and dark color roles'**
+  String get personalizationCustomThemeEditSubtitle;
 
-  /// No description provided for @accentTeal.
+  /// No description provided for @personalizationCustomThemeReset.
   ///
   /// In en, this message translates to:
-  /// **'Teal'**
-  String get accentTeal;
+  /// **'Use the default theme'**
+  String get personalizationCustomThemeReset;
+
+  /// No description provided for @personalizationCustomThemeResetSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard the custom theme and return to the brand baseline'**
+  String get personalizationCustomThemeResetSubtitle;
+
+  /// No description provided for @customThemeEditorTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Custom theme'**
+  String get customThemeEditorTitle;
+
+  /// No description provided for @customThemeEditorLight.
+  ///
+  /// In en, this message translates to:
+  /// **'Light'**
+  String get customThemeEditorLight;
+
+  /// No description provided for @customThemeEditorDark.
+  ///
+  /// In en, this message translates to:
+  /// **'Dark'**
+  String get customThemeEditorDark;
+
+  /// No description provided for @customThemeEditorName.
+  ///
+  /// In en, this message translates to:
+  /// **'Name'**
+  String get customThemeEditorName;
+
+  /// No description provided for @customThemeEditorDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Description'**
+  String get customThemeEditorDescription;
+
+  /// No description provided for @customThemeEditorNameHint.
+  ///
+  /// In en, this message translates to:
+  /// **'e.g. Midnight Purple'**
+  String get customThemeEditorNameHint;
+
+  /// No description provided for @customThemeEditorDescriptionHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Optional'**
+  String get customThemeEditorDescriptionHint;
+
+  /// No description provided for @customThemeEditorDeriveFromSeed.
+  ///
+  /// In en, this message translates to:
+  /// **'Derive from seed'**
+  String get customThemeEditorDeriveFromSeed;
+
+  /// No description provided for @customThemeEditorSeedHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Seed color'**
+  String get customThemeEditorSeedHint;
+
+  /// No description provided for @customThemeEditorRole.
+  ///
+  /// In en, this message translates to:
+  /// **'Role'**
+  String get customThemeEditorRole;
+
+  /// No description provided for @customThemeEditorResetRole.
+  ///
+  /// In en, this message translates to:
+  /// **'Reset role'**
+  String get customThemeEditorResetRole;
+
+  /// No description provided for @customThemeEditorResetBrightness.
+  ///
+  /// In en, this message translates to:
+  /// **'Reset brightness'**
+  String get customThemeEditorResetBrightness;
+
+  /// No description provided for @customThemeEditorExport.
+  ///
+  /// In en, this message translates to:
+  /// **'Export'**
+  String get customThemeEditorExport;
+
+  /// No description provided for @customThemeEditorImport.
+  ///
+  /// In en, this message translates to:
+  /// **'Import'**
+  String get customThemeEditorImport;
+
+  /// No description provided for @customThemeEditorExportDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Theme JSON'**
+  String get customThemeEditorExportDialogTitle;
+
+  /// No description provided for @customThemeEditorExportDialogBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Share the JSON below — paste it into any device signed in to your account to recreate the theme.'**
+  String get customThemeEditorExportDialogBody;
+
+  /// No description provided for @customThemeEditorImportDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Import theme'**
+  String get customThemeEditorImportDialogTitle;
+
+  /// No description provided for @customThemeEditorImportDialogBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Paste a theme JSON exported from another device.'**
+  String get customThemeEditorImportDialogBody;
+
+  /// No description provided for @customThemeEditorImportFieldHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Paste theme JSON here'**
+  String get customThemeEditorImportFieldHint;
+
+  /// No description provided for @customThemeEditorCopied.
+  ///
+  /// In en, this message translates to:
+  /// **'Theme JSON copied to clipboard'**
+  String get customThemeEditorCopied;
+
+  /// No description provided for @customThemeEditorImported.
+  ///
+  /// In en, this message translates to:
+  /// **'Theme imported'**
+  String get customThemeEditorImported;
+
+  /// No description provided for @customThemeEditorImportFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not import theme — check the JSON.'**
+  String get customThemeEditorImportFailed;
+
+  /// No description provided for @customThemeEditorResetConfirmTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Reset theme?'**
+  String get customThemeEditorResetConfirmTitle;
+
+  /// No description provided for @customThemeEditorResetConfirmBody.
+  ///
+  /// In en, this message translates to:
+  /// **'The current custom theme will be discarded and the app will return to the brand baseline.'**
+  String get customThemeEditorResetConfirmBody;
+
+  /// No description provided for @customThemeEditorResetConfirmAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Reset'**
+  String get customThemeEditorResetConfirmAction;
+
+  /// No description provided for @customThemeEditorDeriveSeedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Derive from seed'**
+  String get customThemeEditorDeriveSeedTitle;
+
+  /// No description provided for @customThemeEditorDeriveSeedBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Pick a single seed color; every role for the selected brightness will be regenerated from it via Material 3.'**
+  String get customThemeEditorDeriveSeedBody;
+
+  /// No description provided for @customThemeEditorPickColorTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Pick color'**
+  String get customThemeEditorPickColorTitle;
+
+  /// No description provided for @customThemeEditorResetRoleConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Reset this role to its derived value?'**
+  String get customThemeEditorResetRoleConfirm;
+
+  /// No description provided for @customThemeEditorDefaultName.
+  ///
+  /// In en, this message translates to:
+  /// **'Custom theme'**
+  String get customThemeEditorDefaultName;
+
+  /// No description provided for @customThemeEditorSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'Theme JSON saved'**
+  String get customThemeEditorSaved;
+
+  /// No description provided for @customThemeEditorSaveFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t save the theme JSON'**
+  String get customThemeEditorSaveFailed;
+
+  /// No description provided for @customThemeEditorShareFile.
+  ///
+  /// In en, this message translates to:
+  /// **'Share file'**
+  String get customThemeEditorShareFile;
 
   /// No description provided for @personalizationLanguageSection.
   ///
   /// In en, this message translates to:
   /// **'Language'**
   String get personalizationLanguageSection;
+
+  /// Label for the master switch on the Personalization screen. When on, the active custom theme replaces System/Light/Dark; when off, the segmented mode picker drives the app theme.
+  ///
+  /// In en, this message translates to:
+  /// **'Use a custom theme'**
+  String get personalizationUseCustomThemeLabel;
+
+  /// No description provided for @personalizationUseCustomThemeSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Replace System/Light/Dark with one of your saved themes.'**
+  String get personalizationUseCustomThemeSubtitle;
+
+  /// Section title for the collapsible list of saved custom themes on the Personalization screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Custom themes'**
+  String get personalizationCustomThemesHeader;
+
+  /// Badge shown next to a custom theme that is currently applied to the app.
+  ///
+  /// In en, this message translates to:
+  /// **'Active'**
+  String get personalizationCustomThemeActiveBadge;
+
+  /// Badge shown next to one of the shipped example themes that cannot be deleted from the library.
+  ///
+  /// In en, this message translates to:
+  /// **'Built-in'**
+  String get personalizationCustomThemeBuiltInBadge;
+
+  /// No description provided for @personalizationCustomThemeExport.
+  ///
+  /// In en, this message translates to:
+  /// **'Export JSON'**
+  String get personalizationCustomThemeExport;
+
+  /// No description provided for @personalizationCustomThemeExportCopy.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy to clipboard'**
+  String get personalizationCustomThemeExportCopy;
+
+  /// No description provided for @personalizationCustomThemeExportFile.
+  ///
+  /// In en, this message translates to:
+  /// **'Save to file'**
+  String get personalizationCustomThemeExportFile;
+
+  /// No description provided for @personalizationCustomThemeNewDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'New custom theme'**
+  String get personalizationCustomThemeNewDialogTitle;
+
+  /// No description provided for @personalizationCustomThemeNewDialogBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Pick a seed color and the brightness the new theme should target.'**
+  String get personalizationCustomThemeNewDialogBody;
+
+  /// No description provided for @personalizationCustomThemeDelete.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete'**
+  String get personalizationCustomThemeDelete;
+
+  /// No description provided for @personalizationCustomThemeDeleteConfirmTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete theme?'**
+  String get personalizationCustomThemeDeleteConfirmTitle;
+
+  /// No description provided for @personalizationCustomThemeDeleteConfirmBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This removes the theme from your library. This can\'t be undone.'**
+  String get personalizationCustomThemeDeleteConfirmBody;
+
+  /// No description provided for @personalizationCustomThemeDeleteConfirmAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete'**
+  String get personalizationCustomThemeDeleteConfirmAction;
+
+  /// No description provided for @personalizationCustomThemeDeleteFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Built-in themes can\'t be deleted'**
+  String get personalizationCustomThemeDeleteFailed;
+
+  /// No description provided for @personalizationCustomThemesImportAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Import theme'**
+  String get personalizationCustomThemesImportAction;
+
+  /// No description provided for @personalizationCustomThemesImportActionSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Paste a single theme or a list of themes as JSON'**
+  String get personalizationCustomThemesImportActionSubtitle;
+
+  /// No description provided for @personalizationCustomThemesExportAllAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Export all themes'**
+  String get personalizationCustomThemesExportAllAction;
+
+  /// No description provided for @personalizationCustomThemesExportAllActionSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy the whole library as a single JSON document'**
+  String get personalizationCustomThemesExportAllActionSubtitle;
+
+  /// No description provided for @personalizationCustomThemesResetAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Reset library'**
+  String get personalizationCustomThemesResetAction;
+
+  /// No description provided for @personalizationCustomThemesResetActionSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Restore the built-in examples and discard authored themes'**
+  String get personalizationCustomThemesResetActionSubtitle;
+
+  /// No description provided for @personalizationCustomThemesImportDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Import theme'**
+  String get personalizationCustomThemesImportDialogTitle;
+
+  /// No description provided for @personalizationCustomThemesImportDialogBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Paste a theme JSON exported from another device. You can paste a single theme or a JSON array of themes to import them all at once.'**
+  String get personalizationCustomThemesImportDialogBody;
+
+  /// No description provided for @personalizationCustomThemesImportFieldHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Paste theme JSON here'**
+  String get personalizationCustomThemesImportFieldHint;
+
+  /// Snackbar text shown after a successful import. The number of themes imported is appended in the message.
+  ///
+  /// In en, this message translates to:
+  /// **'Theme imported'**
+  String get personalizationCustomThemesImportSuccess;
+
+  /// No description provided for @personalizationCustomThemesImportPartial.
+  ///
+  /// In en, this message translates to:
+  /// **'Some themes couldn\'t be imported'**
+  String get personalizationCustomThemesImportPartial;
+
+  /// No description provided for @personalizationCustomThemesImportFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not import — check the JSON'**
+  String get personalizationCustomThemesImportFailed;
+
+  /// No description provided for @personalizationCustomThemesCopied.
+  ///
+  /// In en, this message translates to:
+  /// **'Theme JSON copied to clipboard'**
+  String get personalizationCustomThemesCopied;
+
+  /// No description provided for @personalizationCustomThemesCopiedAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Library JSON copied to clipboard'**
+  String get personalizationCustomThemesCopiedAll;
+
+  /// No description provided for @personalizationCustomThemesSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'Library JSON saved'**
+  String get personalizationCustomThemesSaved;
+
+  /// No description provided for @personalizationCustomThemesSaveFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t save the library JSON'**
+  String get personalizationCustomThemesSaveFailed;
 
   /// No description provided for @languageSystemDefault.
   ///

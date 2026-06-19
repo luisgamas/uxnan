@@ -6,6 +6,228 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- **Custom themes as a library (multi-selectable + JSON import/export of
+  many themes).** The personalization screen's previous 4-segment
+  `SegmentedButton` (System / Light / Dark / Custom) is replaced with a
+  **3-segment** picker + a **"Use a custom theme"** master switch + a
+  collapsible library. The library ships **2 built-in example themes**
+  ("Midnight" — leans dark, deep blue-violet seed;
+  "Sandstone" — leans light, warm amber seed) so a first-run user always
+  has something selectable before authoring anything; the master switch
+  controls whether the app applies the user's selected theme (when on)
+  or follows System/Light/Dark (when off). When the switch is on, the
+  segmented picker is disabled; when off, the library is rendered greyed
+  out (and its rows are non-interactive via `IgnorePointer`), so the
+  two states are visually + functionally exclusive. Each row in the
+  library shows a radio (the active theme), the theme's name, an
+  **Active** or **Built-in** badge, a 4-dot color preview (light
+  primary + dark primary + light surface + dark surface) and an
+  `IconSurfaceMenu` (Edit / Export JSON / Delete — Delete is disabled
+  for built-ins). Below the rows, library-level actions: **Import
+  theme** (paste a single theme JSON OR a JSON array — the typical
+  *Export all* payload — and assign fresh ids when an imported id
+  collides with an existing entry), **Export all themes** (copy the
+  whole library to the clipboard as a JSON array), and **Reset
+  library** (drop every authored theme, restore the built-in seed,
+  flip the switch off). State model:
+  - New providers in `application_providers.dart`:
+    `customThemesLibraryProvider` (`List<CustomTheme>`, seeded with
+    the built-ins on first hydrate, persisted under
+    `uxnan.appearance.customThemes` as a JSON array),
+    `activeCustomThemeIdProvider` (`String?`, persisted under
+    `uxnan.appearance.activeCustomThemeId`),
+    `useCustomThemeProvider` (`bool`, persisted under
+    `uxnan.appearance.useCustomTheme`).
+  - `customThemeSettingProvider` becomes a derived
+    `Provider<CustomTheme?>` (was a `Notifier<CustomTheme?>`) — it
+    resolves to the active theme when the switch is on and an id is
+    selected, so `app.dart` + `themeSourceSettingProvider` keep their
+    existing contract.
+  - Legacy `uxnan.appearance.customTheme` is migrated into the library
+    on first hydrate (single-shot; the key is removed after migration).
+  - `CustomThemeEditorScreen` saves via
+    `customThemesLibraryProvider.notifier.upsert(theme)` instead of
+    the old singular setter, so editing the active theme keeps it
+    active after save.
+  - `isBuiltInCustomThemeId(id)` (constant
+    `kBuiltInThemeIdPrefix = 'uxnan.builtin.'`) gates the Delete menu
+    item + the per-row deletion; the two shipped themes are read-only.
+  - `AppearancePreferencesStore` gains
+    `readCustomThemesLibrary` / `writeCustomThemesLibrary`,
+    `readActiveCustomThemeId` / `writeActiveCustomThemeId`, and
+    `readUseCustomTheme` / `writeUseCustomTheme`. The legacy
+    `readCustomTheme` / `writeCustomTheme` are kept for the one-shot
+    migration and the existing storage tests.
+  - `personalization_screen.dart` is rewritten: `ThemeModeOption` drops
+    its `custom` variant; `_ThemeModeOptionSelector` is 3 segments and
+    takes a `disabled` flag; `_CustomThemesSection` hosts the master
+    `SwitchListTile` + `_CustomThemesCollapsible` (an `ExpansionTile`
+    with the per-theme rows and the library-level action tiles).
+  - Tests in `personalization_screen_test.dart` are rewritten to cover
+    the new shape: 3-segment picker, switch + collapsible + built-in
+    examples, language persistence, switch-on + tap-to-activate flow,
+    and pre-seeded active-theme hydration with the *Active* badge.
+    All 349 unit + widget tests pass.
+  - **Spec drift:** `architecture/02c-implementation-guide.md` §3.1
+    ("Temas personalizables") is rewritten to describe the library
+    model (state shape, picker + collapsible UX, editor contract,
+    storage, JSON wire shape for both single-theme and library-array
+    payloads, redesign rationale).
+- **Custom themes replace the curated accent picker.** The personalization
+  screen no longer offers a closed 7-swatch palette (blue / purple / pink
+  / red / orange / green / teal). Instead, the theme-mode selector is a
+  4-segment `SegmentedButton` (System / Light / Dark / **Custom**);
+  selecting *Custom* (when a custom theme is present) flips the source
+  to `ThemeSource.custom` and opens a new
+  **`CustomThemeEditorScreen`** that lets the user fine-tune **every
+  public Material 3 color role** (46 roles, grouped: Primary,
+  Secondary, Tertiary, Error, Surface, Outline & inverse) for both
+  brightnesses independently. Two helpers — *Reset brightness* (regenerate
+  one side from the current `primary` via `ColorScheme.fromSeed`) and
+  *Derive from seed* (pick a seed and regenerate one side from scratch) —
+  give the user a fast path when they don't want to tweak every role.
+  The editor ships an inline HSV color picker (`ColorPickerSheet`) plus
+  hex entry; the visual baseline (the hand-tuned brand palette) is
+  preserved for users that never personalize. *Export* copies the theme
+  JSON to the clipboard and opens a pretty-printed, selectable dialog so
+  the JSON can be shared via any system share sheet; *Import* parses a
+  pasted JSON into the working theme (the user's current name +
+  description are preserved across an import).
+  - New: `domain/value_objects/custom_theme.dart` — `CustomTheme`
+    (id / name / description / schemaVersion + light + dark) and
+    `CustomThemeColors` (the flat role map). Builders
+    (`CustomTheme.derivedFromSeed`), copy-with (`withLightColors`,
+    `withDarkColors`, `withMetadata`), and a JSON codec
+    (`toJson` / `fromJson` / `toJsonString` / `fromJsonString`)
+    that round-trips every role as `#AARRGGBB` (also accepts legacy
+    integer ARGB) and is tolerant of unknown / missing keys so a
+    hand-edited or older document still loads.
+  - New: `presentation/screens/settings/custom_theme_editor_screen.dart`
+    — the full editor (metadata, brightness tabs, grouped role list,
+    export / import, derive-from-seed).
+  - New: `presentation/widgets/color_picker.dart` — `ColorPickerSheet`,
+    an HSV-based picker (`Slider`s + hex field + preview) used by the
+    editor's per-role editing and by the *Derive from seed* dialog.
+  - Removed: `domain/value_objects/accent_color.dart`
+    (`AccentPalette` + `AccentColorId` + 7 hard-coded seeds + the
+    tolerant id parser).
+  - Removed: `AccentSetting` notifier and `accentSettingProvider` from
+    `application_providers.dart`.
+  - Removed: l10n keys `accentBlue` … `accentTeal` (en + es).
+  - `presentation/theme/uxnan_theme.dart` —
+    `buildUxnanTheme({themeSource, customTheme, brightness})`. Two
+    mutually exclusive paths: `ThemeSource.brand` →
+    hand-tuned palette (identical visual baseline to a fresh install);
+    `ThemeSource.custom` → the user's `CustomTheme.colorScheme` /
+    `.darkColorScheme`. A transient null `customTheme` while the source
+    is `custom` degrades to brand rather than crashing the theme — the
+    UI never reaches that state, but it keeps a misconfigured provider
+    recoverable.
+  - `infrastructure/storage/appearance_preferences_store.dart` —
+    `readCustomTheme()` / `writeCustomTheme(CustomTheme?)` under
+    `uxnan.appearance.customTheme`. Tolerant parser (a malformed
+    document yields null → brand baseline) and a clear-the-key path
+    for `writeCustomTheme(null)`.
+  - `presentation/providers/application_providers.dart` — new
+    `CustomThemeSetting` notifier + `customThemeSettingProvider` and
+    `ThemeSourceSetting` notifier + `themeSourceSettingProvider`. The
+    source derives from the presence of a custom theme (no separate
+    key on disk; the two stay in lock-step).
+  - `presentation/screens/settings/personalization_screen.dart` —
+    4-segment `SegmentedButton<ThemeModeOption>` (System / Light / Dark
+    / Custom); while no custom theme is persisted the *Custom* segment
+    is disabled (the user must author one first). When *Custom* is
+    active, a card below the picker shows the active theme's name +
+    description + *Edit* / *Reset* tiles.
+  - `app.dart` — watches `themeSourceSettingProvider` +
+    `customThemeSettingProvider` and passes them to `buildUxnanTheme`
+    for both `theme` and `darkTheme`.
+  - `test/widget/presentation/file_viewer_screen_test.dart` — updated
+    the test helper to pass the new required `themeSource` argument.
+  - Tests: 8 new in `uxnan_theme_test.dart` (brand baseline +
+    dynamic from-theme for light + dark; custom source with null theme
+    falls back to brand); 14 new in `custom_theme_test.dart` (JSON
+    round-trip via `toJson` / `fromJson` and `toJsonString` /
+    `fromJsonString`, partial / unknown role tolerance, hex (RGB + ARGB)
+    and int ARGB parsing, malformed input, derived builders,
+    `toColorScheme` role coverage, `freshId` uniqueness); 7 new in
+    `appearance_preferences_custom_theme_test.dart` (read null,
+    write + read, clear via null, unparseable → null, namespacing,
+    isolation from other appearance keys, role-preserving round-trip);
+    5 rewritten in `personalization_screen_test.dart` (4-segment
+    picker, *Custom* disabled on first run, *Custom* enabled when a
+    theme is persisted, language persistence still works, active
+    theme card renders the persisted theme's name + description).
+    **354 unit + widget tests passing, all green.**
+  - **Spec drift:** `architecture/02c-implementation-guide.md` §3.1
+    replaces the *"Colores de acento personalizables"* section with the
+    full *"Temas personalizables"* spec (builder signature, picker UX,
+    editor structure, storage, JSON wire shape, redesign rationale);
+    `architecture/00-index.md` status table flips the entry from
+    *"7 swatches curados"* to *"Custom themes (temas personalizables)"*.
+    `FOR-DEV.md` marks the previous accent-picker item as superseded.
+
+- **Library-level actions live outside the collapsible themes tile.**
+  *+ New theme*, *Import theme*, *Export all themes* and *Reset library*
+  are no longer nested inside the `ExpansionTile`'s children — they're
+  rendered as siblings of the tile so they stay one tap away whether
+  the themes list is folded or open. The collapsible now only hosts the
+  per-theme rows; its persisted expand/collapse state (see Fixed
+  below) keeps controlling the row visibility. The `_CustomThemesSection`
+  in `personalization_screen.dart` lays out: master switch → optional
+  description (when empty) → `ExpansionTile` (rows only) → 4 action
+  rows separated by thin dividers. New widget test
+  (`library-level actions are visible without expanding the themes
+  tile`) locks the new layout in.
+
+- **Custom theme JSON exports can now save to a file (in addition to
+  the clipboard).** Every export surface — the per-row *Export* menu
+  item, the library-level *Export all themes* action, and the editor's
+  *Export* button — now lets the user choose between *Copy to clipboard*
+  (existing behaviour) and *Save to file* via the native share sheet
+  (`share_plus` + a temp file under `getTemporaryDirectory()`; the
+  sheet lets the user pick Files / Drive / email / any registered share
+  target). The per-theme payload is named
+  `uxnan-theme-<slug>.json` and the library payload
+  `uxnan-themes-<YYYYMMDD-HHmm>.json`. Helper:
+  `lib/presentation/screens/settings/theme_export.dart`
+  (`shareThemeJsonFile`). New `share_plus` dependency in `pubspec.yaml`.
+  New l10n keys: `personalizationCustomThemeExportCopy`,
+  `personalizationCustomThemeExportFile`,
+  `personalizationCustomThemesSaved`,
+  `personalizationCustomThemesSaveFailed`,
+  `customThemeEditorDefaultName`, `customThemeEditorSaved`,
+  `customThemeEditorSaveFailed`, `customThemeEditorShareFile`,
+  `actionApply` (en + es).
+
+- **+ New theme picker — seed color + brightness are now user input.**
+  Tapping *+ New theme* opens a small dialog (HSV preview + hue /
+  saturation / value sliders + a Light / Dark segmented button + Cancel
+  / Apply) instead of silently reusing the active app's primary as the
+  seed and always defaulting to the Light tab. The picked seed is
+  forced to the resulting theme's `primary` (and Material's
+  `ColorScheme.fromSeed` derives every other role from it); both
+  brightnesses are seeded. The editor opens on the brightness the user
+  picked. New l10n keys:
+  `personalizationCustomThemeNewDialogTitle`,
+  `personalizationCustomThemeNewDialogBody` (en + es).
+
+### Removed
+- `domain/value_objects/accent_color.dart` (`AccentPalette` /
+  `AccentColorId` and the 7 curated swatches).
+- `accentSettingProvider` (Riverpod notifier that drove
+  `ColorScheme.fromSeed` for non-default accents).
+- `infrastructure/storage/appearance_preferences_store.dart` keys
+  `readAccentId` / `writeAccentId` (replaced by
+  `readCustomTheme` / `writeCustomTheme`).
+- l10n keys `accentBlue` … `accentTeal` (en + es) — replaced by the
+  `customTheme*` key set on the editor + section headers.
+- Tests `test/unit/domain/value_objects/accent_color_test.dart` and
+  `test/unit/infrastructure/storage/appearance_preferences_accent_test.dart`
+  (the equivalent coverage now lives in `custom_theme_test.dart` +
+  `appearance_preferences_custom_theme_test.dart`).
+
 ### Fixed
 - **Conversation no longer opens at the top — scroll position is
   remembered.** Opening a thread always reset the timeline to the top,
@@ -68,6 +290,46 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
     (bus repaint for a managed cwd, ignored for an unknown cwd, own
     refresh publishes the new state). **340 unit + widget tests
     passing, all green.**
+
+### Fixed
+- **Custom themes: deleting an authored theme no longer crashes with
+  `Bad state: Using "ref" when a widget is about to or has been
+  unmounted`.** `_CustomThemeRow._delete` showed a confirm dialog
+  asynchronously; once the user confirmed, the library removed the
+  theme and the row unmounted before the follow-up
+  `ref.read(activeCustomThemeIdProvider…).set(null)` /
+  `ref.read(useCustomThemeProvider…).set(false)` ran — those late
+  reads tripped Riverpod's `assertNotDisposed`. The fix captures the
+  three notifiers + the local `isActive` flag into local fields
+  *before* the first `await`, so the post-delete cleanup operates on
+  stable handles. New widget test (`deleting an authored theme does
+  not crash when the row unmounts`) covers the path.
+
+- **New custom themes now actually apply to the app.** Tapping *+ New
+  theme* and confirming the seed+brightness dialog used to leave the
+  new theme sitting in the library waiting to be tapped — the
+  `themeMode` (System / Light / Dark) was untouched, so a brand-new
+  dark theme was hidden behind a `system`-mode + system-brightness-
+  light combo. The editor's *Save* now detects a fresh id (not yet
+  in the library) and atomically (a) upserts, (b) sets
+  `activeCustomThemeIdProvider`, (c) flips `useCustomThemeProvider` on,
+  and (d) syncs `themeModeSettingProvider` to the brightness the user
+  picked in the new-theme dialog — so the resulting dark/light custom
+  theme is what the app actually shows on pop. Editing an existing
+  theme keeps the existing activation + themeMode untouched. New
+  widget test (`creating a new dark theme applies it with
+  ThemeMode.dark on save`) covers the path.
+
+- **Custom themes library collapsible remembers its state across
+  restarts.** The ExpansionTile's expanded/collapsed state was owned
+  by the widget itself, so it always reset to collapsed on reopen. A
+  new `customThemesExpandedProvider`
+  (`Notifier<bool>` + `AppearancePreferencesStore.readCustomThemesExpanded`
+  / `writeCustomThemesExpanded`, persisted under
+  `uxnan.appearance.customThemesExpanded`) drives an `ExpansibleController`
+  from the screen's state class. Toggle → provider → disk; first
+  build → disk → controller. New widget test (`the library expansion
+  state persists across restarts`) covers the path.
 
 ### Added
 - **Custom accent colors (Personalization → Accent color).** The

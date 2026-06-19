@@ -215,6 +215,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get actionCancel => 'Cancel';
 
   @override
+  String get actionApply => 'Apply';
+
+  @override
   String get threadsTitle => 'Threads';
 
   @override
@@ -995,7 +998,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsPersonalizationSubtitle =>
-      'Theme, accent color and language';
+      'Theme, custom themes and language';
 
   @override
   String get personalizationTitle => 'Personalization';
@@ -1013,31 +1016,250 @@ class AppLocalizationsEn extends AppLocalizations {
   String get themeDark => 'Dark';
 
   @override
-  String get personalizationAccentSection => 'Accent color';
+  String get themeCustom => 'Custom';
 
   @override
-  String get accentBlue => 'Blue';
+  String get personalizationCustomThemeSection => 'Custom theme';
 
   @override
-  String get accentPurple => 'Purple';
+  String get personalizationCustomThemeDescription =>
+      'Design every Material 3 color role, export to JSON, or import a theme someone shared with you.';
 
   @override
-  String get accentPink => 'Pink';
+  String get personalizationCustomThemeAuthor => 'New theme';
 
   @override
-  String get accentRed => 'Red';
+  String get personalizationCustomThemeAuthorSubtitle =>
+      'Start from a seed color and fine-tune every role';
 
   @override
-  String get accentOrange => 'Orange';
+  String get personalizationCustomThemeEdit => 'Edit current theme';
 
   @override
-  String get accentGreen => 'Green';
+  String get personalizationCustomThemeEditSubtitle =>
+      'Tweak the light and dark color roles';
 
   @override
-  String get accentTeal => 'Teal';
+  String get personalizationCustomThemeReset => 'Use the default theme';
+
+  @override
+  String get personalizationCustomThemeResetSubtitle =>
+      'Discard the custom theme and return to the brand baseline';
+
+  @override
+  String get customThemeEditorTitle => 'Custom theme';
+
+  @override
+  String get customThemeEditorLight => 'Light';
+
+  @override
+  String get customThemeEditorDark => 'Dark';
+
+  @override
+  String get customThemeEditorName => 'Name';
+
+  @override
+  String get customThemeEditorDescription => 'Description';
+
+  @override
+  String get customThemeEditorNameHint => 'e.g. Midnight Purple';
+
+  @override
+  String get customThemeEditorDescriptionHint => 'Optional';
+
+  @override
+  String get customThemeEditorDeriveFromSeed => 'Derive from seed';
+
+  @override
+  String get customThemeEditorSeedHint => 'Seed color';
+
+  @override
+  String get customThemeEditorRole => 'Role';
+
+  @override
+  String get customThemeEditorResetRole => 'Reset role';
+
+  @override
+  String get customThemeEditorResetBrightness => 'Reset brightness';
+
+  @override
+  String get customThemeEditorExport => 'Export';
+
+  @override
+  String get customThemeEditorImport => 'Import';
+
+  @override
+  String get customThemeEditorExportDialogTitle => 'Theme JSON';
+
+  @override
+  String get customThemeEditorExportDialogBody =>
+      'Share the JSON below — paste it into any device signed in to your account to recreate the theme.';
+
+  @override
+  String get customThemeEditorImportDialogTitle => 'Import theme';
+
+  @override
+  String get customThemeEditorImportDialogBody =>
+      'Paste a theme JSON exported from another device.';
+
+  @override
+  String get customThemeEditorImportFieldHint => 'Paste theme JSON here';
+
+  @override
+  String get customThemeEditorCopied => 'Theme JSON copied to clipboard';
+
+  @override
+  String get customThemeEditorImported => 'Theme imported';
+
+  @override
+  String get customThemeEditorImportFailed =>
+      'Could not import theme — check the JSON.';
+
+  @override
+  String get customThemeEditorResetConfirmTitle => 'Reset theme?';
+
+  @override
+  String get customThemeEditorResetConfirmBody =>
+      'The current custom theme will be discarded and the app will return to the brand baseline.';
+
+  @override
+  String get customThemeEditorResetConfirmAction => 'Reset';
+
+  @override
+  String get customThemeEditorDeriveSeedTitle => 'Derive from seed';
+
+  @override
+  String get customThemeEditorDeriveSeedBody =>
+      'Pick a single seed color; every role for the selected brightness will be regenerated from it via Material 3.';
+
+  @override
+  String get customThemeEditorPickColorTitle => 'Pick color';
+
+  @override
+  String get customThemeEditorResetRoleConfirm =>
+      'Reset this role to its derived value?';
+
+  @override
+  String get customThemeEditorDefaultName => 'Custom theme';
+
+  @override
+  String get customThemeEditorSaved => 'Theme JSON saved';
+
+  @override
+  String get customThemeEditorSaveFailed => 'Couldn\'t save the theme JSON';
+
+  @override
+  String get customThemeEditorShareFile => 'Share file';
 
   @override
   String get personalizationLanguageSection => 'Language';
+
+  @override
+  String get personalizationUseCustomThemeLabel => 'Use a custom theme';
+
+  @override
+  String get personalizationUseCustomThemeSubtitle =>
+      'Replace System/Light/Dark with one of your saved themes.';
+
+  @override
+  String get personalizationCustomThemesHeader => 'Custom themes';
+
+  @override
+  String get personalizationCustomThemeActiveBadge => 'Active';
+
+  @override
+  String get personalizationCustomThemeBuiltInBadge => 'Built-in';
+
+  @override
+  String get personalizationCustomThemeExport => 'Export JSON';
+
+  @override
+  String get personalizationCustomThemeExportCopy => 'Copy to clipboard';
+
+  @override
+  String get personalizationCustomThemeExportFile => 'Save to file';
+
+  @override
+  String get personalizationCustomThemeNewDialogTitle => 'New custom theme';
+
+  @override
+  String get personalizationCustomThemeNewDialogBody =>
+      'Pick a seed color and the brightness the new theme should target.';
+
+  @override
+  String get personalizationCustomThemeDelete => 'Delete';
+
+  @override
+  String get personalizationCustomThemeDeleteConfirmTitle => 'Delete theme?';
+
+  @override
+  String get personalizationCustomThemeDeleteConfirmBody =>
+      'This removes the theme from your library. This can\'t be undone.';
+
+  @override
+  String get personalizationCustomThemeDeleteConfirmAction => 'Delete';
+
+  @override
+  String get personalizationCustomThemeDeleteFailed =>
+      'Built-in themes can\'t be deleted';
+
+  @override
+  String get personalizationCustomThemesImportAction => 'Import theme';
+
+  @override
+  String get personalizationCustomThemesImportActionSubtitle =>
+      'Paste a single theme or a list of themes as JSON';
+
+  @override
+  String get personalizationCustomThemesExportAllAction => 'Export all themes';
+
+  @override
+  String get personalizationCustomThemesExportAllActionSubtitle =>
+      'Copy the whole library as a single JSON document';
+
+  @override
+  String get personalizationCustomThemesResetAction => 'Reset library';
+
+  @override
+  String get personalizationCustomThemesResetActionSubtitle =>
+      'Restore the built-in examples and discard authored themes';
+
+  @override
+  String get personalizationCustomThemesImportDialogTitle => 'Import theme';
+
+  @override
+  String get personalizationCustomThemesImportDialogBody =>
+      'Paste a theme JSON exported from another device. You can paste a single theme or a JSON array of themes to import them all at once.';
+
+  @override
+  String get personalizationCustomThemesImportFieldHint =>
+      'Paste theme JSON here';
+
+  @override
+  String get personalizationCustomThemesImportSuccess => 'Theme imported';
+
+  @override
+  String get personalizationCustomThemesImportPartial =>
+      'Some themes couldn\'t be imported';
+
+  @override
+  String get personalizationCustomThemesImportFailed =>
+      'Could not import — check the JSON';
+
+  @override
+  String get personalizationCustomThemesCopied =>
+      'Theme JSON copied to clipboard';
+
+  @override
+  String get personalizationCustomThemesCopiedAll =>
+      'Library JSON copied to clipboard';
+
+  @override
+  String get personalizationCustomThemesSaved => 'Library JSON saved';
+
+  @override
+  String get personalizationCustomThemesSaveFailed =>
+      'Couldn\'t save the library JSON';
 
   @override
   String get languageSystemDefault => 'System default';

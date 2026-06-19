@@ -24,7 +24,7 @@ import 'package:uxnan/domain/enums/agent_id.dart';
 import 'package:uxnan/domain/enums/connection_phase.dart';
 import 'package:uxnan/domain/enums/thread_activity.dart';
 import 'package:uxnan/domain/services/pairing_validator.dart';
-import 'package:uxnan/domain/value_objects/accent_color.dart';
+import 'package:uxnan/domain/value_objects/custom_theme.dart';
 import 'package:uxnan/domain/value_objects/git/git_action_progress.dart';
 import 'package:uxnan/domain/value_objects/notification_preferences.dart';
 import 'package:uxnan/domain/value_objects/turn_timeline_snapshot.dart';
@@ -34,6 +34,7 @@ import 'package:uxnan/infrastructure/transport/websocket_transport.dart';
 import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
 import 'package:uxnan/presentation/screens/threads/thread_list_controls.dart'
     show ThreadSort;
+import 'package:uxnan/presentation/theme/uxnan_theme.dart' show ThemeSource;
 import 'package:uxnan/presentation/widgets/agent_visuals.dart';
 
 /// Application-layer providers (coordinators and their derived UI state).
@@ -671,45 +672,334 @@ class LocaleSetting extends Notifier<Locale?> {
 final localeSettingProvider =
     NotifierProvider<LocaleSetting, Locale?>(LocaleSetting.new);
 
-/// The user-picked accent color (a seed for `ColorScheme.fromSeed`).
-/// Persisted; defaults to the brand blue. The whole `ColorScheme` is
-/// derived from this seed by `buildUxnanTheme` when it is not the brand
-/// default, so every M3 role (primary, secondary, surfaces, containers,
-/// outline, …) stays harmonious in both light and dark. Mirrors the
-/// hydrate-then-persist pattern used by the other appearance notifiers.
-class AccentSetting extends Notifier<AccentColorId> {
+/// The two built-in example themes shipped on first run. Both are
+/// seed-derived (see [CustomTheme.derivedFromSeed]) so the library always has
+/// a working theme without any user input — the user can edit, delete (for
+/// non-built-ins), or import on top.
+///
+/// * `Midnight` leans dark: deep blue-violet seed, paired with a darker dark
+///   scheme than the brand baseline.
+/// * `Sandstone` leans light: warm amber seed, paired with a softer surface
+///   ramp on both modes.
+final List<CustomTheme> kBuiltInCustomThemes = <CustomTheme>[
+  CustomTheme(
+    id: 'uxnan.builtin.midnight',
+    name: 'Midnight',
+    description: 'Deep blue-violet — leans dark on both modes.',
+    colorScheme: ColorScheme(
+      brightness: Brightness.light,
+      primary: Color(0xFF4A3FB8),
+      onPrimary: Color(0xFFFFFFFF),
+      primaryContainer: Color(0xFFE2DEFF),
+      onPrimaryContainer: Color(0xFF0E0664),
+      secondary: Color(0xFF5C5B72),
+      onSecondary: Color(0xFFFFFFFF),
+      secondaryContainer: Color(0xFFE2E0F9),
+      onSecondaryContainer: Color(0xFF191A2C),
+      tertiary: Color(0xFF7A536D),
+      onTertiary: Color(0xFFFFFFFF),
+      tertiaryContainer: Color(0xFFFFD8F0),
+      onTertiaryContainer: Color(0xFF2F1128),
+      error: Color(0xFFB3261E),
+      onError: Color(0xFFFFFFFF),
+      errorContainer: Color(0xFFF9DEDC),
+      onErrorContainer: Color(0xFF410E0B),
+      surface: Color(0xFFFEFBFF),
+      onSurface: Color(0xFF1B1B22),
+      surfaceContainerLowest: Color(0xFFFFFFFF),
+      surfaceContainerLow: Color(0xFFF6F3FA),
+      surfaceContainer: Color(0xFFF1EDF7),
+      surfaceContainerHigh: Color(0xFFEBE7F1),
+      surfaceContainerHighest: Color(0xFFE5E1EC),
+      onSurfaceVariant: Color(0xFF48464F),
+      outline: Color(0xFF797681),
+      outlineVariant: Color(0xFFC9C5D0),
+      inverseSurface: Color(0xFF2F2F37),
+      onInverseSurface: Color(0xFFF1EFF7),
+      inversePrimary: Color(0xFFC4C0FF),
+      shadow: Color(0xFF000000),
+      scrim: Color(0xFF000000),
+      surfaceTint: Color(0xFF4A3FB8),
+    ),
+  ),
+  CustomTheme(
+    id: 'uxnan.builtin.sandstone',
+    name: 'Sandstone',
+    description: 'Warm amber — leans light on both modes.',
+    colorScheme: ColorScheme(
+      brightness: Brightness.light,
+      primary: Color(0xFF9C5A1E),
+      onPrimary: Color(0xFFFFFFFF),
+      primaryContainer: Color(0xFFFFDCC2),
+      onPrimaryContainer: Color(0xFF341000),
+      secondary: Color(0xFF765846),
+      onSecondary: Color(0xFFFFFFFF),
+      secondaryContainer: Color(0xFFFFDCC2),
+      onSecondaryContainer: Color(0xFF2B160A),
+      tertiary: Color(0xFF636032),
+      onTertiary: Color(0xFFFFFFFF),
+      tertiaryContainer: Color(0xFFE9E1AA),
+      onTertiaryContainer: Color(0xFF1E1C00),
+      error: Color(0xFFB3261E),
+      onError: Color(0xFFFFFFFF),
+      errorContainer: Color(0xFFF9DEDC),
+      onErrorContainer: Color(0xFF410E0B),
+      surface: Color(0xFFFFFBFF),
+      onSurface: Color(0xFF201A17),
+      surfaceContainerLowest: Color(0xFFFFFFFF),
+      surfaceContainerLow: Color(0xFFFEF1E7),
+      surfaceContainer: Color(0xFFF8EBE0),
+      surfaceContainerHigh: Color(0xFFF2E5DA),
+      surfaceContainerHighest: Color(0xFFECE0D4),
+      onSurfaceVariant: Color(0xFF51443A),
+      outline: Color(0xFF827469),
+      outlineVariant: Color(0xFFD4C3B4),
+      inverseSurface: Color(0xFF362F2B),
+      onInverseSurface: Color(0xFFFEEEDC),
+      inversePrimary: Color(0xFFFFB689),
+      shadow: Color(0xFF000000),
+      scrim: Color(0xFF000000),
+      surfaceTint: Color(0xFF9C5A1E),
+    ),
+  ),
+];
+
+/// Marker prefix for built-in theme ids. Any id that starts with this
+/// string is treated as read-only (cannot be deleted) by the library
+/// notifier.
+const String kBuiltInThemeIdPrefix = 'uxnan.builtin.';
+
+/// Whether [id] identifies one of the built-in shipped themes (and therefore
+/// cannot be deleted from the user's library).
+bool isBuiltInCustomThemeId(String id) => id.startsWith(kBuiltInThemeIdPrefix);
+
+/// The user's custom-themes library. Persisted as a JSON array under
+/// `uxnan.appearance.customThemes`. On first hydrate (and on a one-shot
+/// legacy migration), the library is seeded with the [kBuiltInCustomThemes]
+/// shipped examples so a first-run user always has two selectable themes
+/// even before authoring one.
+class CustomThemesLibrary extends Notifier<List<CustomTheme>> {
   @override
-  AccentColorId build() {
+  List<CustomTheme> build() {
     unawaited(_hydrate());
-    return AccentPalette.defaultAccent;
+    return List<CustomTheme>.unmodifiable(kBuiltInCustomThemes);
+  }
+
+  Future<void> _hydrate() async {
+    final store = ref.read(appearancePreferencesStoreProvider);
+    final stored = await store.readCustomThemesLibrary();
+    if (stored.isNotEmpty) {
+      if (!_listEquals(state, stored)) {
+        state = List<CustomTheme>.unmodifiable(stored);
+      }
+      return;
+    }
+    // Legacy migration: if the old single-theme key is set, fold its
+    // content into the library so existing installs do not lose their
+    // authored theme on first hydrate.
+    final legacy = await store.readCustomTheme();
+    if (legacy != null) {
+      final seeded = <CustomTheme>[
+        ...kBuiltInCustomThemes,
+        if (!kBuiltInCustomThemes.any((t) => t.id == legacy.id)) legacy,
+      ];
+      state = List<CustomTheme>.unmodifiable(seeded);
+      await store.writeCustomThemesLibrary(seeded);
+      // Activate the migrated theme + flip the master switch so the user
+      // keeps seeing their previously authored palette.
+      await ref.read(activeCustomThemeIdProvider.notifier).set(legacy.id);
+      await ref.read(useCustomThemeProvider.notifier).set(true);
+      // Drop the legacy key so we never re-migrate.
+      await store.writeCustomTheme(null);
+      return;
+    }
+    // First run / cleared storage: persist the built-in seed so a follow-
+    // up read sees what the user is currently seeing on screen.
+    await store.writeCustomThemesLibrary(kBuiltInCustomThemes);
+  }
+
+  /// Replaces a theme by id (or appends a new one). The id is preserved —
+  /// the editor does not change ids on save.
+  Future<void> upsert(CustomTheme theme) async {
+    final next = <CustomTheme>[...state];
+    final index = next.indexWhere((t) => t.id == theme.id);
+    if (index >= 0) {
+      next[index] = theme;
+    } else {
+      next.add(theme);
+    }
+    state = List<CustomTheme>.unmodifiable(next);
+    await ref
+        .read(appearancePreferencesStoreProvider)
+        .writeCustomThemesLibrary(state);
+  }
+
+  /// Removes a theme by id. Built-in themes are protected — the call is a
+  /// no-op for them so the user cannot strand themselves with an empty
+  /// library. Returns true if a theme was removed.
+  Future<bool> remove(String id) async {
+    if (isBuiltInCustomThemeId(id)) return false;
+    final next = state.where((t) => t.id != id).toList(growable: false);
+    if (next.length == state.length) return false;
+    state = List<CustomTheme>.unmodifiable(next);
+    await ref
+        .read(appearancePreferencesStoreProvider)
+        .writeCustomThemesLibrary(state);
+    return true;
+  }
+
+  /// Restores the library to the built-in seed (drops every authored
+  /// theme). Used by Personalization's *Reset* action.
+  Future<void> resetToBuiltIns() async {
+    state = List<CustomTheme>.unmodifiable(kBuiltInCustomThemes);
+    await ref
+        .read(appearancePreferencesStoreProvider)
+        .writeCustomThemesLibrary(state);
+    await ref.read(activeCustomThemeIdProvider.notifier).set(null);
+    await ref.read(useCustomThemeProvider.notifier).set(false);
+  }
+
+  static bool _listEquals(List<CustomTheme> a, List<CustomTheme> b) {
+    if (identical(a, b)) return true;
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+}
+
+/// The user's custom-themes library (built-ins + any imported/authored
+/// themes). Hydrates from disk and seeds the built-in examples on a fresh
+/// install.
+final customThemesLibraryProvider =
+    NotifierProvider<CustomThemesLibrary, List<CustomTheme>>(
+  CustomThemesLibrary.new,
+);
+
+/// The id of the user's active custom theme within the library, or null when
+/// no theme is selected. Persisted independently of the master switch so
+/// flipping the switch off and back on restores the same selection.
+class ActiveCustomThemeId extends Notifier<String?> {
+  @override
+  String? build() {
+    unawaited(_hydrate());
+    return null;
+  }
+
+  Future<void> _hydrate() async {
+    final stored = await ref
+        .read(appearancePreferencesStoreProvider)
+        .readActiveCustomThemeId();
+    if (stored != state) state = stored;
+  }
+
+  Future<void> set(String? id) async {
+    if (id == state) return;
+    state = id;
+    await ref
+        .read(appearancePreferencesStoreProvider)
+        .writeActiveCustomThemeId(id);
+  }
+}
+
+/// The id of the active custom theme (null when none).
+final activeCustomThemeIdProvider =
+    NotifierProvider<ActiveCustomThemeId, String?>(ActiveCustomThemeId.new);
+
+/// The master switch on the Personalization screen — when true, the app
+/// uses the selected custom theme; when false, the user's System/Light/Dark
+/// preference drives `MaterialApp.themeMode` against the brand baseline.
+class UseCustomTheme extends Notifier<bool> {
+  @override
+  bool build() {
+    unawaited(_hydrate());
+    return false;
   }
 
   Future<void> _hydrate() async {
     final stored =
-        await ref.read(appearancePreferencesStoreProvider).readAccentId();
-    final resolved = AccentPalette.fromId(stored);
-    if (resolved != state) state = resolved;
+        await ref.read(appearancePreferencesStoreProvider).readUseCustomTheme();
+    if (stored != state) state = stored;
   }
 
-  /// Persists and applies the accent. No-op when [accent] is already the
-  /// active one.
-  Future<void> set(AccentColorId accent) async {
-    if (accent == state) return;
-    state = accent;
-    await ref.read(appearancePreferencesStoreProvider).writeAccentId(accent.id);
-  }
-
-  /// Resets the accent to the brand default (clears the stored key).
-  Future<void> reset() async {
-    if (state == AccentPalette.defaultAccent) return;
-    state = AccentPalette.defaultAccent;
-    await ref.read(appearancePreferencesStoreProvider).writeAccentId(null);
+  Future<void> set(bool value) async {
+    if (value == state) return;
+    state = value;
+    await ref
+        .read(appearancePreferencesStoreProvider)
+        .writeUseCustomTheme(value);
   }
 }
 
-/// The user-picked accent (persisted; drives the whole `ColorScheme`).
-final accentSettingProvider =
-    NotifierProvider<AccentSetting, AccentColorId>(AccentSetting.new);
+/// Whether the active theme should be the user's custom theme instead of
+/// the brand baseline.
+final useCustomThemeProvider =
+    NotifierProvider<UseCustomTheme, bool>(UseCustomTheme.new);
+
+/// The user's active [CustomTheme] (the one currently applied to the app),
+/// or null when the master switch is off or no theme is selected. Derived
+/// from [useCustomThemeProvider] + [activeCustomThemeIdProvider] +
+/// [customThemesLibraryProvider] so a single source of truth feeds
+/// `app.dart` and `ThemeSourceSetting` without a parallel write path.
+final customThemeSettingProvider = Provider<CustomTheme?>((ref) {
+  final useCustom = ref.watch(useCustomThemeProvider);
+  if (!useCustom) return null;
+  final id = ref.watch(activeCustomThemeIdProvider);
+  if (id == null) return null;
+  final library = ref.watch(customThemesLibraryProvider);
+  for (final theme in library) {
+    if (theme.id == id) return theme;
+  }
+  return null;
+});
+
+/// Whether the active theme is the hand-tuned brand baseline
+/// ([ThemeSource.brand]) or the user's authored [CustomTheme]
+/// ([ThemeSource.custom]). The Personalization screen flips this when the
+/// user toggles the *Use a custom theme* switch on; the brand baseline is
+/// the implicit default for a first-run user with the switch off.
+class ThemeSourceSetting extends Notifier<ThemeSource> {
+  @override
+  ThemeSource build() {
+    final hasCustom = ref.watch(customThemeSettingProvider) != null;
+    return hasCustom ? ThemeSource.custom : ThemeSource.brand;
+  }
+}
+
+/// The active theme source (brand baseline vs. user-authored custom theme).
+final themeSourceSettingProvider =
+    NotifierProvider<ThemeSourceSetting, ThemeSource>(ThemeSourceSetting.new);
+
+/// Whether the *Custom themes* library collapsible on the Personalization
+/// screen is expanded or collapsed. Persisted so the user's choice survives
+/// restarts (the screen remembers whether the library was open or folded).
+class CustomThemesExpanded extends Notifier<bool> {
+  @override
+  bool build() {
+    unawaited(_hydrate());
+    return false;
+  }
+
+  Future<void> _hydrate() async {
+    final stored = await ref
+        .read(appearancePreferencesStoreProvider)
+        .readCustomThemesExpanded();
+    if (stored != state) state = stored;
+  }
+
+  Future<void> set(bool value) async {
+    if (value == state) return;
+    state = value;
+    await ref
+        .read(appearancePreferencesStoreProvider)
+        .writeCustomThemesExpanded(value);
+  }
+}
+
+/// Whether the *Custom themes* library collapsible is expanded.
+final customThemesExpandedProvider =
+    NotifierProvider<CustomThemesExpanded, bool>(CustomThemesExpanded.new);
 
 /// Registers the FCM push token with the bridge once the session connects and
 /// raises local notifications for turn-completed / turn-error events.

@@ -56,7 +56,10 @@ Widget _wrap({
       fileBrowserManagerProvider.overrideWith((ref) => manager),
     ],
     child: MaterialApp(
-      theme: buildUxnanTheme(brightness: brightness),
+      theme: buildUxnanTheme(
+        brightness: brightness,
+        themeSource: ThemeSource.brand,
+      ),
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
       home: child,

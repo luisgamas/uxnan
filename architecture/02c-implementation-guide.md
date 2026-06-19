@@ -829,64 +829,296 @@ ThemeData buildUxnanTheme({Brightness brightness = Brightness.dark}) {
 }
 ```
 
-#### Colores de acento personalizables (Personalization → Accent color)
+#### Temas personalizables (Personalization → Custom theme)
 
-> ✅ **Implementado** (rama `uxnanmobile`): el usuario puede elegir entre
-> 7 swatches curados (blue/purple/pink/red/orange/green/teal) en
-> `PersonalizationScreen`. La eleccion persiste en `shared_preferences`
-> bajo la clave `uxnan.appearance.accentId` (solo el id; el seed se
-> resuelve desde `AccentPalette` en `lib/domain/value_objects/accent_color.dart`).
+> ✅ **Implementado** (rama `uxnanmobile`): el usuario diseña temas
+> Material 3 completos (todos los roles M3 para light y dark) desde un
+> editor dedicado, o importa/exporta temas como JSON. La pantalla
+> ofrece una **librería multi-tema** (no un único tema activo): el
+> usuario alterna entre los temas guardados o el picker
+> System/Light/Dark mediante un *master switch* en la misma pantalla.
+> Persistido en `shared_preferences` bajo
+> `uxnan.appearance.customThemes` (array JSON de documentos), con
+> `uxnan.appearance.activeCustomThemeId` (id del tema activo) y
+> `uxnan.appearance.useCustomTheme` (estado del switch).
 
-El builder de tema acepta un `AccentColorId?` opcional. La regla clave es
-**dos caminos mutuamente excluyentes** — no se mezclan para evitar la
-incoherencia visual que tuvo un primer intento que solo sobreescribia
-`primary`:
+El builder de tema acepta un `ThemeSource` requerido y, cuando la fuente
+es `ThemeSource.custom`, el `CustomTheme` del usuario. Las dos rutas son
+**mutuamente excluyentes** — no se mezclan:
 
-1. **Accent == brand blue (default):** se usa la paleta hand-tuned de
-   `UxnanColors` para todos los roles M3. La experiencia por defecto es
-   identica a antes de la personalizacion (cero regresion visual para los
-   usuarios que nunca tocan la opcion).
-2. **Accent != brand blue:** se delega a `ColorScheme.fromSeed(seedColor:
-   accent.seed, brightness: …)` para **light y dark**. Flutter genera
-   todos los roles (primary, secondary, tertiary, surface, surfaceContainer*,
-   error, outline, …) a partir del seed en el espacio HCT de Material 3, lo
-   que garantiza coherencia harmoniosa en ambos modos — es exactamente
-   la "remap completo `ColorScheme`-from-seed" que pidio `FOR-DEV.md`.
+1. **`ThemeSource.brand` (default, switch *off*):** se usa la paleta
+   hand-tuned de `UxnanColors` para todos los roles M3. La experiencia
+   por defecto es identica a antes de la personalizacion (cero
+   regresion visual para los usuarios que nunca tocan el switch).
+2. **`ThemeSource.custom` (switch *on*, con `CustomTheme` activo):** se
+   delega al `ColorScheme` que el usuario seleccionó. El editor ofrece
+   *"Derive from seed"* por modo (regenera todos los roles via
+   `ColorScheme.fromSeed` para ese modo) y un editor por rol para
+   sobreescrituras puntuales. Garantiza coherencia harmoniosa en ambos
+   modos porque la fuente es siempre el `ColorScheme` del usuario, no
+   una derivacion en runtime.
 
-El provider `accentSettingProvider` (Riverpod 3.x manual, mismo patron que
-`themeModeSettingProvider` / `localeSettingProvider`) hidrata el id desde
-el store y lo expone al root widget, que lo pasa a `buildUxnanTheme` en
-`MaterialApp.theme` y `MaterialApp.darkTheme`. Asi un solo cambio de
-accent rebuilda todo el app en light y dark.
+##### Modelo de estado (3 providers + 1 derivado)
 
 ```dart
 // lib/presentation/providers/application_providers.dart
-class AccentSetting extends Notifier<AccentColorId> {
-  @override AccentColorId build() { unawaited(_hydrate()); return AccentPalette.defaultAccent; }
-  Future<void> _hydrate() async {
-    final stored = await ref.read(appearancePreferencesStoreProvider).readAccentId();
-    final resolved = AccentPalette.fromId(stored);
-    if (resolved != state) state = resolved;
+
+/// Librería de temas: built-ins + cualquier tema autoral/importado.
+class CustomThemesLibrary extends Notifier<List<CustomTheme>> {
+  @override List<CustomTheme> build() { unawaited(_hydrate()); return kBuiltInCustomThemes; }
+  Future<void> upsert(CustomTheme theme) async { /* reemplaza por id o agrega */ }
+  Future<bool> remove(String id) async {
+    if (isBuiltInCustomThemeId(id)) return false; // built-ins protegidos
+    /* ... */
   }
-  Future<void> set(AccentColorId accent) async { /* persists via writeAccentId(accent.id) */ }
+  Future<void> resetToBuiltIns() async { /* seed built-ins + switch off */ }
+}
+final customThemesLibraryProvider =
+    NotifierProvider<CustomThemesLibrary, List<CustomTheme>>(CustomThemesLibrary.new);
+
+/// Id del tema activo dentro de la librería (null = sin selección).
+final activeCustomThemeIdProvider =
+    NotifierProvider<ActiveCustomThemeId, String?>(ActiveCustomThemeId.new);
+
+/// Master switch: true ⇒ app usa el tema activo; false ⇒ System/Light/Dark.
+final useCustomThemeProvider =
+    NotifierProvider<UseCustomTheme, bool>(UseCustomTheme.new);
+
+/// Provider derivado que `app.dart` y `themeSourceSettingProvider`
+/// consumen: resuelve el tema activo cuando el switch está on y hay un
+/// id seleccionado; null en cualquier otro caso.
+final customThemeSettingProvider = Provider<CustomTheme?>((ref) {
+  if (!ref.watch(useCustomThemeProvider)) return null;
+  final id = ref.watch(activeCustomThemeIdProvider);
+  if (id == null) return null;
+  final lib = ref.watch(customThemesLibraryProvider);
+  for (final t in lib) { if (t.id == id) return t; }
+  return null;
+});
+
+class ThemeSourceSetting extends Notifier<ThemeSource> {
+  @override ThemeSource build() {
+    return ref.watch(customThemeSettingProvider) != null
+        ? ThemeSource.custom : ThemeSource.brand;
+  }
 }
 ```
 
 ```dart
 // lib/app.dart
-final accent = ref.watch(accentSettingProvider);
+final themeSource = ref.watch(themeSourceSettingProvider);
+final customTheme = ref.watch(customThemeSettingProvider); // derived
 return MaterialApp.router(
-  theme:     buildUxnanTheme(brightness: Brightness.light, accent: accent),
-  darkTheme: buildUxnanTheme(accent: accent),
+  theme:     buildUxnanTheme(brightness: Brightness.light, themeSource: themeSource, customTheme: customTheme),
+  darkTheme: buildUxnanTheme(brightness: Brightness.dark,  themeSource: themeSource, customTheme: customTheme),
   ...
 );
 ```
 
-El picker (`_AccentPicker` en `personalization_screen.dart`) es una
-lista M3 de `ListTile`s con un `_SwatchDot` (28 dp circular teñido con el
-seed) + etiqueta localizada + check en la fila seleccionada. Sin
-drawers, sin sliders: una lista simple que mantiene el idioma M3E y se
-integra con el resto de la pantalla de personalizacion.
+##### Temas integrados (built-ins)
+
+`kBuiltInCustomThemes` (constante en `application_providers.dart`)
+define **dos ejemplos** que se siembran en la librería la primera vez
+que arranca la app:
+
+- **`Midnight`** (`uxnan.builtin.midnight`) — azul-violeta profundo,
+  *leans dark*: roles light con primarios saturados y surface ramp casi
+  blanco, roles dark más profundos.
+- **`Sandstone`** (`uxnan.builtin.sandstone`) — ámbar cálido, *leans
+  light*: paleta cálida con surface ramp con tinte crema en ambos
+  modos.
+
+Los ids con el prefijo `uxnan.builtin.` (`isBuiltInCustomThemeId(id)`)
+son **protegidos** — la acción *Delete* en el menú del item está
+deshabilitada y `CustomThemesLibrary.remove` los rechaza, así que el
+usuario nunca queda con la librería vacía.
+
+##### Picker (`PersonalizationScreen`)
+
+`PersonalizationScreen` (`lib/presentation/screens/settings/personalization_screen.dart`)
+tiene tres secciones apiladas:
+
+1. **Tema** — *header* "Tema", seguido de:
+   - `SegmentedButton<ThemeModeOption>` de **3 segmentos**
+     (`system` / `light` / `dark`). El constructor acepta un flag
+     `disabled` que se activa cuando `useCustomThemeProvider` es true
+     (los segmentos se renderizan deshabilitados; el `onSelectionChanged`
+     se vuelve null).
+   - **Switch master** — `SwitchListTile.adaptive` con etiqueta "Use a
+     custom theme" + subtítulo. Conmuta `useCustomThemeProvider`.
+2. **Custom themes (colapsable + acciones de librería)** —
+   `Material(color: surfaceContainerHighest)` envuelve el switch y:
+   - **Switch master** (`SwitchListTile.adaptive` con etiqueta "Use a
+     custom theme" + subtítulo). Conmuta `useCustomThemeProvider`.
+   - **Lista de temas** (`_CustomThemesCollapsible`,
+     `ConsumerStatefulWidget` que envuelve un `ExpansionTile` con un
+     `ExpansibleController` dirigido por
+     `customThemesExpandedProvider` — `Notifier<bool>` persistido en
+     `AppearancePreferencesStore.readCustomThemesExpanded` /
+     `writeCustomThemesExpanded` bajo
+     `uxnan.appearance.customThemesExpanded`. La expansion/collapse
+     sobrevive restarts y el toggle del switch maestro. Solo contiene
+     las **filas de tema** (ver abajo); las acciones de librería son
+     hermanos del colapsable para que estén siempre a un tap.
+   - **Filas de tema**: cada item es un `ListTile` con un `Icon` de
+     radio (chequeado = activo) como leading, `name` + badge
+     (*Active* / *Built-in*) como título, 4 color dots
+     (light.primary + dark.primary + light.surface + dark.surface)
+     como subtítulo, y un `IconSurfaceMenu` (trailing) con tres
+     acciones:
+     - **Edit** — abre `CustomThemeEditorScreen` contra ese tema; al
+       guardar, `customThemesLibraryProvider.notifier.upsert(next)`
+       reemplaza la entrada por id (sin cambiar el id).
+     - **Export** — abre un bottom sheet con dos opciones:
+       *Copy to clipboard* (copia `theme.toJsonString()` y snackbar)
+       o *Save to file* (escribe el JSON a un archivo temporal y abre
+       el sheet nativo via `share_plus`, archivo
+       `uxnan-theme-<slug>.json`).
+     - **Delete** — `AlertDialog` de confirmación; falla silenciosa
+       (snackbar) si el id es built-in; al confirmar, elimina de la
+       librería y, si era el activo, limpia el active id y apaga el
+       switch. Captura notifiers antes del primer `await` para no
+       usar `ref` después de que la fila se desmonte.
+   - **Acciones a nivel de librería** (hermanos del colapsable, fuera
+     del `ExpansionTile`):
+     - **New theme** — abre un dialog (preview HSV + sliders H/S/V +
+       `SegmentedButton<Brightness>` Light/Dark + Cancel/Apply).
+       El seed es el color que el usuario eligió; el `primary` del
+       esquema se fuerza a ese seed y los demás roles se derivan via
+       `ColorScheme.fromSeed(seedColor: seed, brightness)`; el editor
+       abre en la pestaña que el usuario eligió.
+     - **Import theme** — `Dialog` con text field multi-línea (estilo
+       monoespaciado). Acepta un JSON objeto (un tema) o un JSON array
+       (varios temas). A cada entrada se le asigna un id fresco si
+       choca con un id existente en la librería. Snackbar con el
+       conteo de importados + advertencia si algunos fallaron.
+     - **Export all themes** — abre el mismo bottom sheet de Export:
+       *Copy to clipboard* (array JSON pretty-printed al portapapeles)
+       o *Save to file* (archivo `uxnan-themes-<YYYYMMDD-HHmm>.json`
+       vía share sheet nativo).
+     - **Reset library** — `customThemesLibraryProvider.notifier
+       .resetToBuiltIns()`: restaura `kBuiltInCustomThemes`, limpia el
+       active id y apaga el switch. Estilo de error en el tile
+       (ícono + texto en `colorScheme.error`) para que el affordance
+       sea claro.
+
+3. **Idioma** — sin cambios respecto al modelo anterior.
+
+##### Editor (`CustomThemeEditorScreen`)
+
+`CustomThemeEditorScreen` (`lib/presentation/screens/settings/custom_theme_editor_screen.dart`)
+es el editor completo. El botón *Save* llama
+`ref.read(customThemesLibraryProvider.notifier).upsert(next)` (sin
+cambiar el id, así editar el tema activo lo deja activo). Si el id es
+**nuevo** (no estaba en la librería), Save además (a) activa el tema
+(`activeCustomThemeIdProvider` ← id, `useCustomThemeProvider` ← true)
+y (b) sincroniza `themeModeSettingProvider` al `Brightness` de la
+pestaña que el editor tenía activa, para que el lado light/dark
+correcto del esquema personalizado sea el que Material aplica al
+pop. Editar un tema existente no cambia activation ni themeMode.
+Acepta un `initialBrightness` opcional (`Brightness.light` por
+defecto) para que el dialog *+ New theme* pueda abrir el editor en la
+pestaña que el usuario eligió. Estructura:
+
+- **Barra superior** (`NeScaffold` + `NeTopBar`): título, accion
+  `Export` (copia el JSON al portapapeles + dialog con JSON
+  pretty-printed seleccionable; el dialog incluye además un botón
+  *Share file* que abre el share sheet nativo con
+  `uxnan-theme-<slug>.json` via `share_plus`) y accion `Import`
+  (dialog con text field para pegar JSON; falla silenciosa con
+  snackbar si el JSON no parsea).
+- **Metadatos**: campos *Name* (requerido, se usa como título en la
+  fila de la librería) y *Description* (opcional, persiste en el
+  JSON pero no se renderiza en la fila).
+- **Tabs Light / Dark** (`SegmentedButton<Brightness>`): cambiar de
+  tab no cambia el tema aplicado — es estado local hasta *Save*.
+- **Lista de roles agrupados** (`_RoleList`): cada grupo (Primary,
+  Secondary, Tertiary, Error, Surface, Outline & inverse) es una
+  `Material(color: surfaceContainerHighest)` con `_GroupHeader` y
+  filas por rol. Cada fila muestra la etiqueta, el valor hex y un
+  swatch circular. Tap → `ColorPickerSheet` (HSV picker con sliders
+  H/S/V, hex field, preview, Apply/Cancel).
+- **Botones "Reset brightness"** (regenera el modo activo desde la
+  `primary` actual via `ColorScheme.fromSeed`) **y "Derive from seed"**
+  (regenera desde un nuevo seed elegido via dialog con HSV picker).
+
+##### `ColorPickerSheet`
+
+`ColorPickerSheet` (`lib/presentation/widgets/color_picker.dart`) sigue
+siendo el sheet HSV que el editor abre al tocar el swatch de un rol.
+Sigue siendo un detalle interno del editor — el usuario llega a él
+vía *Edit* sobre cualquier tema de la librería (un item con popup
+menu), no como destino de primer nivel. El picker ofrece preview +
+sliders H/S/V + campo hex + Apply/Cancel.
+
+##### `CustomTheme`
+
+`CustomTheme` (`lib/domain/value_objects/custom_theme.dart`) — sin
+cambios funcionales respecto al modelo anterior:
+
+- `id` (UUID v4 u opaco; los ids built-in usan el prefijo
+  `uxnan.builtin.`), `name`, `description` opcional, `schemaVersion`
+  (default 1).
+- `lightColors` + `darkColors` (`CustomThemeColors` con los 46 roles
+  públicos de `ColorScheme`, expuestos como campos planos — sin
+  dependencias de `flutter/material` para serializar).
+- Constructores: `CustomTheme({...})` (light only, dark derivado),
+  `CustomTheme.fromDualSchemes({light, dark})` (light + dark
+  independientes), `CustomTheme.derivedFromSeed({seed, ...})`
+  (regenera ambos modos via `ColorScheme.fromSeed`).
+- Copy-with: `withLightColors`, `withDarkColors`, `withMetadata`.
+- JSON: `toJson` / `fromJson` / `toJsonString` / `fromJsonString`.
+  Hex strings con `#AARRGGBB` (preferido, human-readable) y enteros
+  ARGB de 32 bits (compatibilidad con exports anteriores). Roles
+  desconocidos se ignoran; roles faltantes caen a defaults seguros de
+  Material 3 — un documento parcial (o hand-editado) sigue cargando
+  sin lanzar.
+- Versionado: `schemaVersion` se persiste en el JSON; el parser es
+  tolerante con `version` faltante (asume 1) y rechaza / migra en el
+  futuro.
+
+##### Almacenamiento
+
+`AppearancePreferencesStore` (`lib/infrastructure/storage/appearance_preferences_store.dart`)
+añade tres pares de getters bajo nuevas claves:
+
+- `uxnan.appearance.customThemes` — JSON array de
+  `CustomTheme.toJson()`. Tolerante con entradas malformadas (se
+  omiten sin tirar la librería entera).
+- `uxnan.appearance.activeCustomThemeId` — `String?` (id del tema
+  activo; ausente = sin selección).
+- `uxnan.appearance.useCustomTheme` — `bool` (estado del master
+  switch; default false).
+
+El getter legacy `uxnan.appearance.customTheme` se mantiene
+**sólo para migración**: en el primer hydrate de la librería, si la
+clave nueva está ausente pero la legacy existe, se copia su contenido
+a la librería, se setea el active id, se enciende el switch, y se
+borra la clave legacy. Hidrates posteriores nunca tocan la clave
+legacy.
+
+##### Justificación del rediseño (v2 — librería)
+
+El picker anterior (un único tema activo seleccionado vía el 4to
+segmento *Custom* del `SegmentedButton`) tenía dos fricciones:
+
+1. **El editor y los temas importados quedaban escondidos.** Para
+   abrir el editor el usuario tenía que seleccionar primero *Custom*,
+   lo que dependía de haber persistido un tema antes (si la librería
+   estaba vacía el segmento estaba deshabilitado). Un usuario nuevo
+   que quería probar un tema importado tenía que navegar un
+   callejón sin salida. La librería visible desde el primer arranque
+   elimina ese descubrimiento.
+2. **No había forma de tener varios temas seleccionables.** Un
+   usuario que diseña un tema *Midnight* y otro *Sandstone* tenía que
+   importar/exportar uno cada vez. La librería multi-tema es el
+   modelo natural para *pick a theme from your library*.
+
+El switch master reemplaza la semántica del antiguo segmento *Custom*:
+cuando el switch está on, la app aplica el tema activo; cuando está
+off, el picker System/Light/Dark conduce. El colapsable sigue el
+estado del switch (enabled cuando on, IgnorePointer+Opacity cuando
+off), tal como pide el feedback de UX.
 
 ### 3.2 Componentes de UI criticos
 

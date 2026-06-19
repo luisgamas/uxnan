@@ -1,14 +1,34 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:uxnan/domain/value_objects/accent_color.dart';
+import 'package:uxnan/domain/value_objects/custom_theme.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/uxnan_theme.dart';
 
-void main() {
-  group('buildUxnanTheme — default (hand-tuned brand palette)', () {
-    test('returns a light color scheme from UxnanColors', () {
-      final theme = buildUxnanTheme(brightness: Brightness.light);
+/// Hand-picked test theme — a custom [CustomTheme] the tests can rebuild
+/// from `fromJson` / `toJson` without depending on UUID ids.
+CustomTheme _testCustomTheme() {
+  return CustomTheme.fromDualSchemes(
+    id: 'test-theme',
+    name: 'Test theme',
+    description: 'Used by uxnan_theme_test.dart',
+    light: ColorScheme.fromSeed(
+      seedColor: const Color(0xFF6750A4),
+      brightness: Brightness.light,
+    ),
+    dark: ColorScheme.fromSeed(
+      seedColor: const Color(0xFF6750A4),
+      brightness: Brightness.dark,
+    ),
+  );
+}
 
+void main() {
+  group('buildUxnanTheme — brand source (default baseline)', () {
+    test('returns the hand-tuned brand light scheme', () {
+      final theme = buildUxnanTheme(
+        brightness: Brightness.light,
+        themeSource: ThemeSource.brand,
+      );
       expect(theme.brightness, Brightness.light);
       expect(theme.colorScheme.surface, UxnanColors.lightSurface);
       expect(theme.colorScheme.onSurface, UxnanColors.lightOnSurface);
@@ -20,9 +40,11 @@ void main() {
       );
     });
 
-    test('returns a dark color scheme from UxnanColors', () {
-      final theme = buildUxnanTheme();
-
+    test('returns the hand-tuned brand dark scheme', () {
+      final theme = buildUxnanTheme(
+        brightness: Brightness.dark,
+        themeSource: ThemeSource.brand,
+      );
       expect(theme.brightness, Brightness.dark);
       expect(theme.colorScheme.surface, UxnanColors.surface);
       expect(theme.colorScheme.onSurface, UxnanColors.onSurface);
@@ -32,90 +54,93 @@ void main() {
     });
 
     test(
-        'passing the brand blue accent explicitly behaves the same as '
-        'no accent (the hand-tuned palette is preserved)', () {
-      final none = buildUxnanTheme(brightness: Brightness.light);
-      final explicit = buildUxnanTheme(
+        'the brand source without a custom theme falls back to the same '
+        'palette as the implicit default', () {
+      final baseline = buildUxnanTheme(
         brightness: Brightness.light,
-        accent: AccentPalette.defaultAccent,
+        themeSource: ThemeSource.brand,
       );
-      expect(explicit.colorScheme.primary, none.colorScheme.primary);
-      expect(explicit.colorScheme.surface, none.colorScheme.surface);
-      expect(explicit.colorScheme.secondary, none.colorScheme.secondary);
+      // Two back-to-back calls with the brand source produce identical
+      // schemes — guards against accidental seed/time-of-day drift.
+      final again = buildUxnanTheme(
+        brightness: Brightness.light,
+        themeSource: ThemeSource.brand,
+      );
+      expect(again.colorScheme.primary, baseline.colorScheme.primary);
+      expect(again.colorScheme.surface, baseline.colorScheme.surface);
+      expect(again.colorScheme.secondary, baseline.colorScheme.secondary);
     });
   });
 
-  group('buildUxnanTheme — user-picked accent (dynamic ColorScheme)', () {
-    test('a non-default accent produces a non-brand primary in light mode', () {
+  group('buildUxnanTheme — custom source (user-authored theme)', () {
+    test('a custom theme replaces every M3 role in light mode', () {
+      final custom = _testCustomTheme();
       final theme = buildUxnanTheme(
         brightness: Brightness.light,
-        accent: AccentPalette.purple,
+        themeSource: ThemeSource.custom,
+        customTheme: custom,
       );
-      // The whole scheme is generated from the seed, so primary is the
-      // purple-derived role — it must NOT be the brand blue anymore.
+      // Primary is the seed-derived role — must NOT be the brand blue
+      // anymore, otherwise the custom theme is being silently dropped.
       expect(theme.colorScheme.primary, isNot(UxnanColors.lightPrimary));
-      expect(theme.brightness, Brightness.light);
+      expect(theme.colorScheme.brightness, Brightness.light);
     });
 
-    test('a non-default accent produces a non-brand primary in dark mode', () {
-      final theme = buildUxnanTheme(accent: AccentPalette.teal);
+    test('a custom theme replaces every M3 role in dark mode', () {
+      final custom = _testCustomTheme();
+      final theme = buildUxnanTheme(
+        brightness: Brightness.dark,
+        themeSource: ThemeSource.custom,
+        customTheme: custom,
+      );
       expect(theme.colorScheme.primary, isNot(UxnanColors.primary));
-      expect(theme.brightness, Brightness.dark);
+      expect(theme.colorScheme.brightness, Brightness.dark);
     });
 
-    test('every non-default swatch is distinct from the brand primary', () {
-      // No matter which swatch the user picks, the primary is no longer
-      // the brand blue — a misconfiguration (or a future palette change
-      // that introduces a brand-blue seed) must always change the look.
-      for (final accent in AccentPalette.all) {
-        if (accent.id == AccentPalette.defaultAccent.id) continue;
-        final light = buildUxnanTheme(
-          brightness: Brightness.light,
-          accent: accent,
-        );
-        final dark = buildUxnanTheme(accent: accent);
-        expect(
-          light.colorScheme.primary,
-          isNot(UxnanColors.lightPrimary),
-          reason: 'accent ${accent.id} should change light primary',
-        );
-        expect(
-          dark.colorScheme.primary,
-          isNot(UxnanColors.primary),
-          reason: 'accent ${accent.id} should change dark primary',
-        );
-      }
-    });
-
-    test('light and dark schemes share a seed but differ in brightness', () {
+    test('light and dark custom themes differ (no accidental pairing)', () {
+      final custom = _testCustomTheme();
       final light = buildUxnanTheme(
         brightness: Brightness.light,
-        accent: AccentPalette.pink,
+        themeSource: ThemeSource.custom,
+        customTheme: custom,
       );
-      final dark = buildUxnanTheme(accent: AccentPalette.pink);
-      // Brightness is propagated.
-      expect(light.colorScheme.brightness, Brightness.light);
-      expect(dark.colorScheme.brightness, Brightness.dark);
-      // The surface tones must differ between light and dark — guards
-      // against an accidental shortcut that builds a single scheme and
-      // returns it for both.
+      final dark = buildUxnanTheme(
+        brightness: Brightness.dark,
+        themeSource: ThemeSource.custom,
+        customTheme: custom,
+      );
       expect(light.colorScheme.surface, isNot(dark.colorScheme.surface));
       expect(light.colorScheme.onSurface, isNot(dark.colorScheme.onSurface));
     });
 
-    test('two calls with the same accent produce identical themes', () {
-      final a = buildUxnanTheme(accent: AccentPalette.green);
-      final b = buildUxnanTheme(accent: AccentPalette.green);
+    test('two calls with the same custom theme produce identical schemes', () {
+      final custom = _testCustomTheme();
+      final a = buildUxnanTheme(
+        brightness: Brightness.light,
+        themeSource: ThemeSource.custom,
+        customTheme: custom,
+      );
+      final b = buildUxnanTheme(
+        brightness: Brightness.light,
+        themeSource: ThemeSource.custom,
+        customTheme: custom,
+      );
       expect(a.colorScheme.primary, b.colorScheme.primary);
       expect(a.colorScheme.surface, b.colorScheme.surface);
       expect(a.colorScheme.secondary, b.colorScheme.secondary);
       expect(a.colorScheme.tertiary, b.colorScheme.tertiary);
     });
 
-    test('two different accents produce two different schemes', () {
-      final a = buildUxnanTheme(accent: AccentPalette.orange);
-      final b = buildUxnanTheme(accent: AccentPalette.purple);
-      expect(a.colorScheme.primary, isNot(b.colorScheme.primary));
+    test('the custom source with a null theme falls back to the brand '
+        'baseline', () {
+      // Defensive: the UI never reaches this state, but a transient null
+      // during a hot-reload or a misconfigured provider should not crash
+      // the theme — it should degrade to the brand baseline.
+      final theme = buildUxnanTheme(
+        brightness: Brightness.light,
+        themeSource: ThemeSource.custom,
+      );
+      expect(theme.colorScheme.primary, UxnanColors.lightPrimary);
     });
   });
 }

@@ -525,18 +525,60 @@ browser and multi-PC connection correctness are now DONE — see below.)
   "System default" option (`localeSettingProvider` → `MaterialApp.locale`; null
   follows the device). Persisted via `AppearancePreferencesStore`. A newly added
   locale shows up automatically. Covered by `personalization_screen_test.dart`.
-- ☐ **Custom accent colors (brand-independent theming)** — DONE &
-  validated: the personalization screen now offers 7 swatches (blue,
-  purple, pink, red, orange, green, teal); the brand blue keeps the
-  hand-tuned palette, every other swatch delegates to
-  `ColorScheme.fromSeed` for **both** light and dark (so every M3 role
-  stays coherent). Persisted under `uxnan.appearance.accentId` in
-  `AppearancePreferencesStore`; `buildUxnanTheme` accepts the accent
-  again (`buildUxnanTheme(accent: …)`). See `CHANGELOG.md` for the full
-  change set and `architecture/02c-implementation-guide.md` §3.1 for the
-  spec. ☐ Still open: **on-device visual review** of the swatch picker
-  (sizes, dot tone, selected state) — same on-device loop as the rest
-  of the UI.
+- ☑ **Custom themes (full M3 ColorScheme editor + JSON import/export) — DONE
+  (2026-06-19) & supersedes the previous 7-swatch accent picker.** The
+  personalization screen now offers a 4-segment `SegmentedButton`:
+  *System / Light / Dark / Custom*. While no custom theme is persisted the
+  *Custom* segment is disabled; once the user authors one, picking *Custom*
+  flips `themeSourceSettingProvider` to `ThemeSource.custom` and the whole
+  `ColorScheme` for both light and dark is sourced from the user's
+  `CustomTheme` (`buildUxnanTheme(themeSource: ThemeSource.custom, customTheme: …)`).
+  The full editor (`CustomThemeEditorScreen`) exposes **every public Material 3
+  color role** (46, grouped Primary/Secondary/Tertiary/Error/Surface/Outline)
+  for both brightnesses, with an inline HSV picker (`ColorPickerSheet`) per
+  role, *Reset brightness* / *Derive from seed* helpers per side, and
+  *Export* (clipboard JSON + selectable pretty-print dialog) / *Import*
+  (paste any previously-exported JSON). JSON shape is stable + versioned
+  (`schemaVersion`); roles are `#AARRGGBB` hex strings (integer ARGB accepted
+  for legacy exports); unknown / missing roles degrade to safe defaults so
+  hand-edited or older documents still load. The previous 7-swatch picker
+  (`AccentPalette` / `AccentColorId`, the `accentSettingProvider`, the
+  `uxnan.appearance.accentId` storage key, and the `accentBlue..accentTeal`
+  ARB keys) is removed — see `CHANGELOG.md → [Unreleased] → Changed` for the
+  full diff. Persisted under `uxnan.appearance.customTheme` as a single JSON
+  document. See `architecture/02c-implementation-guide.md` §3.1 for the spec.
+  ☐ On-device visual review of the new editor (role list spacing, picker
+  ergonomics, import copy) — same on-device loop as the rest of the UI.
+- ☑ **Custom themes as a library (multi-selectable + JSON import/export of
+  many themes)** — DONE (2026-06-19, supersedes the previous single-theme
+  picker): the personalization screen's 4-segment picker becomes a
+  3-segment `SegmentedButton<ThemeModeOption>` (System / Light / Dark) plus
+  a master **"Use a custom theme"** switch + a collapsible library with
+  **2 built-in example themes** ("Midnight" — leans dark, "Sandstone" —
+  leans light) seeded on first run. Each row in the library exposes an
+  `IconSurfaceMenu` with **Edit** (opens the existing
+  `CustomThemeEditorScreen` against that theme), **Export JSON** (copies
+  the theme to the clipboard) and **Delete** (built-ins are protected).
+  Below the per-theme rows, three library-level actions:
+  **Import theme** (accepts a single theme JSON OR an array of themes —
+  the typical *Export all* payload — and assigns fresh ids when an
+  imported id collides with an existing library entry), **Export all
+  themes** (serializes the whole library to the clipboard as a JSON
+  array), and **Reset library** (drops every authored theme and restores
+  the built-in seed + flips the master switch off). State model:
+  `customThemesLibraryProvider` (`List<CustomTheme>`, seeded with the
+  built-ins on first hydrate), `activeCustomThemeIdProvider`
+  (`String?`), `useCustomThemeProvider` (`bool`) — the existing
+  `customThemeSettingProvider` is now a derived `Provider<CustomTheme?>`
+  that resolves to the active theme when the switch is on and an id is
+  selected, so `app.dart` and `themeSourceSettingProvider` keep their
+  existing contract. Legacy `uxnan.appearance.customTheme` is migrated
+  into the library on first hydrate (single-shot; key is removed after
+  migration). New persistence keys: `uxnan.appearance.customThemes`
+  (JSON array), `uxnan.appearance.activeCustomThemeId`, and
+  `uxnan.appearance.useCustomTheme`. Spec: see
+  `architecture/02c-implementation-guide.md` §3.1 (rewritten to reflect
+  the library model).
 
 ## Git
 

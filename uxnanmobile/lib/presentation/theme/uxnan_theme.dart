@@ -1,39 +1,55 @@
 import 'package:flutter/material.dart';
-import 'package:uxnan/domain/value_objects/accent_color.dart';
+import 'package:uxnan/domain/value_objects/custom_theme.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
 
-/// Builds the Material 3 [ThemeData] for Uxnan from the centralized design
-/// tokens.
+/// Builds the Material 3 [ThemeData] for Uxnan.
 ///
-/// The builder takes an optional user-picked [accent] (a seed color). When
-/// the accent is the brand default ([AccentPalette.defaultAccent]) the
-/// hand-tuned palette in [UxnanColors] is used for every role, so the
-/// visual baseline is identical to a user that never opens the
-/// personalization screen. When the accent is **any other** swatch, the
-/// whole [ColorScheme] is derived from `ColorScheme.fromSeed(seedColor:
-/// accent, brightness: …)` for both light and dark — the Material 3 HCT
-/// generator guarantees every role (primary, secondary, tertiary, surface
-/// containers, outline, error, …) stays harmonious, addressing the visual
-/// incoherence a first cut that only overrode `primary` had (see
-/// `FOR-DEV.md`).
+/// The builder takes a [themeSource] (the source of the colors) and, when
+/// the source is [ThemeSource.custom], the user's [customTheme]. The
+/// [Brightness] is selected by the host — [MaterialApp.theme] and
+/// [MaterialApp.darkTheme] each pass their own brightness, so a single
+/// theme rebuilds both modes.
 ///
-/// The same builder is called for light and dark via [MaterialApp.theme] and
-/// [MaterialApp.darkTheme], so passing the accent through both is enough to
-/// switch the entire app.
-ThemeData buildUxnanTheme({
-  Brightness brightness = Brightness.dark,
-  AccentColorId? accent,
-}) {
-  final isDefaultAccent = accent == null ||
-      accent.id == AccentPalette.defaultAccent.id ||
-      accent.seed == AccentPalette.defaultAccent.seed;
+/// Sources (see `architecture/02c-implementation-guide.md` §3.1 for the
+/// rationale):
+///
+/// - [ThemeSource.brand]: the hand-tuned brand palette. The user has not
+///   personalized anything; the visual baseline is identical to a fresh
+///   install. This is the default — the personalization screen flips to
+///   [ThemeSource.custom] only when the user authors a custom theme.
+/// - [ThemeSource.custom]: a [CustomTheme] the user authored (or imported
+///   from JSON). The whole [ColorScheme] for the chosen brightness comes
+///   from the user's theme; nothing is derived from a seed. The editor
+///   surfaces a *"Derive from seed"* affordance to repopulate a brightness
+///   from a single seed, but the persisted theme stays user-controlled.
+enum ThemeSource {
+  /// The hand-tuned brand palette (default for first-run / unpersonalized).
+  brand,
 
+  /// A user-authored [CustomTheme] (light/dark both overridden).
+  custom,
+}
+
+/// Builds the Material 3 [ThemeData] for [brightness] from [themeSource]
+/// (and, when source is [ThemeSource.custom], [customTheme]).
+///
+/// When [customTheme] is null while [themeSource] is [ThemeSource.custom],
+/// the builder silently falls back to [ThemeSource.brand] — the only way
+/// to reach that state is to clear the custom theme while the source is
+/// still set, which the UI never does, but it keeps the theme recoverable.
+ThemeData buildUxnanTheme({
+  required Brightness brightness,
+  required ThemeSource themeSource,
+  CustomTheme? customTheme,
+}) {
   final ColorScheme colorScheme;
-  if (isDefaultAccent) {
-    colorScheme = _buildHandTunedColorScheme(brightness);
+  if (themeSource == ThemeSource.custom && customTheme != null) {
+    colorScheme = brightness == Brightness.dark
+        ? customTheme.darkColorScheme
+        : customTheme.colorScheme;
   } else {
-    colorScheme = _buildDynamicColorScheme(accent.seed, brightness);
+    colorScheme = _buildBrandColorScheme(brightness);
   }
 
   return ThemeData(
@@ -72,10 +88,9 @@ ThemeData buildUxnanTheme({
   );
 }
 
-/// Hand-tuned brand palette (the default accent). Uses the static tokens in
-/// [UxnanColors] so the visual baseline is exactly what shipped before the
-/// accent picker landed — no regression for users that never personalize.
-ColorScheme _buildHandTunedColorScheme(Brightness brightness) {
+/// The hand-tuned brand palette ([ThemeSource.brand]). Identical to a fresh
+/// install — no visual regression for users that never personalize.
+ColorScheme _buildBrandColorScheme(Brightness brightness) {
   final surface = UxnanColors.surfaceFor(brightness);
   final surfaceVariant = UxnanColors.surfaceVariantFor(brightness);
   final surfaceElevated = UxnanColors.surfaceElevatedFor(brightness);
@@ -111,16 +126,6 @@ ColorScheme _buildHandTunedColorScheme(Brightness brightness) {
     outline: outline,
     outlineVariant:
         outline.withValues(alpha: brightness == Brightness.dark ? 0.5 : 0.35),
-  );
-}
-
-/// Dynamic palette derived from a user-picked accent. Delegates to Flutter's
-/// `ColorScheme.fromSeed`, which fills every M3 role from the seed via the
-/// HCT color space — guaranteeing light/dark coherence for any accent.
-ColorScheme _buildDynamicColorScheme(Color seed, Brightness brightness) {
-  return ColorScheme.fromSeed(
-    seedColor: seed,
-    brightness: brightness,
   );
 }
 

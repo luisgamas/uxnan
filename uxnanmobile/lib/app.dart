@@ -25,16 +25,22 @@ class UxnanApp extends ConsumerWidget {
     final router = ref.watch(appRouterProvider);
     final themeMode = ref.watch(themeModeSettingProvider);
     final locale = ref.watch(localeSettingProvider);
-    final accent = ref.watch(accentSettingProvider);
+    final themeSource = ref.watch(themeSourceSettingProvider);
+    final customTheme = ref.watch(customThemeSettingProvider);
 
     return MaterialApp.router(
       title: 'Uxnan',
       debugShowCheckedModeBanner: false,
       theme: buildUxnanTheme(
         brightness: Brightness.light,
-        accent: accent,
+        themeSource: themeSource,
+        customTheme: customTheme,
       ),
-      darkTheme: buildUxnanTheme(accent: accent),
+      darkTheme: buildUxnanTheme(
+        brightness: Brightness.dark,
+        themeSource: themeSource,
+        customTheme: customTheme,
+      ),
       themeMode: themeMode,
       locale: locale,
       routerConfig: router,
