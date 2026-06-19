@@ -60,6 +60,9 @@ dev_dependencies:
   drift_dev: ^2.18.0
   flutter_test:
     sdk: flutter
+  # --- App icon + native splash screen generation (see bottom of this file) ---
+  flutter_launcher_icons: ^0.14.4
+  flutter_native_splash: ^2.4.7
   # --- Test doubles ---
   mocktail: ^1.0.0
   # --- Lint ruleset (see analysis_options.yaml) ---
@@ -90,3 +93,55 @@ flutter:
         - asset: assets/fonts/JetBrainsMono-Regular.ttf
         - asset: assets/fonts/JetBrainsMono-Medium.ttf
           weight: 500
+
+# ----------------------------------------------------------------------------
+# App launcher icons — generates Android (legacy + adaptive) + iOS + web +
+# macOS / Windows icons from `assets/images/logo_nb.svg` (the no-background
+# variant). Re-run with `dart run flutter_launcher_icons` whenever the source
+# SVG changes.
+# ----------------------------------------------------------------------------
+flutter_launcher_icons:
+  image_path: "assets/images/logo-1024-1024.png"
+  # Adaptive icon: Android 8+ renders the foreground over a background layer.
+  # We keep the foreground just the mark (no bg) and use a flat brand surface
+  # so the icon reads cleanly on every launcher mask shape.
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/images/logo-1024-1024.png"
+  adaptive_icon_monochrome: "assets/images/logo-1024-1024.png"
+  adaptive_icon_padding: "10%"
+  android: true
+  ios: true
+  web:
+    generate: true
+    image_path: "assets/images/logo-1024-1024.png"
+  macos:
+    generate: true
+  windows:
+    generate: true
+  min_sdk_android: 24
+
+# ----------------------------------------------------------------------------
+# Native splash screen — uses the Android 12+ SplashScreen API on supported
+# devices (the system handles the icon scale + fade-in animation), and the
+# classic drawable splash on older Android + a native LaunchScreen storyboard
+# on iOS. The image is the no-bg logo, which sits centered on a flat brand
+# surface in both light and dark mode (the splash is brief, so we trade a
+# dark-mode white box for guaranteed visibility without a white-mark variant).
+#
+# After Flutter takes over, the `UxnanSplash` overlay in `app.dart` shows the
+# same logo with a small scale-in/fade-out animation to smooth the hand-off.
+# ----------------------------------------------------------------------------
+flutter_native_splash:
+  color: "#FFFFFF"
+  color_dark: "#FFFFFF"
+  image: "assets/images/logo-1024-1024.png"
+  image_dark: "assets/images/logo-1024-1024.png"
+  android_12:
+    color: "#FFFFFF"
+    color_dark: "#FFFFFF"
+    image: "assets/images/logo-1024-1024.png"
+    image_dark: "assets/images/logo-1024-1024.png"
+  android: true
+  ios: true
+  fullscreen: true
+
