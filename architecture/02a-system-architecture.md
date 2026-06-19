@@ -1791,6 +1791,23 @@ MAX_BRIDGE_OUTBOUND_BYTES = 10 MB
 // Telefono side: mantiene phoneOutboundSeq++ para mensajes que envia al bridge
 ```
 
+> **Estado de implementación (bridge — hecho):** el bridge implementa esto en
+> `src/transport/outbound-log.ts` (`OutboundLog`): un contador `seq` continuo
+> **por dispositivo** que **sobrevive a las reconexiones** (no se reinicia con
+> cada handshake) más una ventana deslizante con los topes de arriba. Retiene el
+> **texto plano** de cada mensaje saliente (respuestas Y notificaciones), no los
+> sobres cifrados, porque cada reconexión deriva una clave nueva: en la
+> reconexión el canal nuevo **re-cifra** las entradas con `seq > N`
+> (`BridgeSecureChannel.encryptReplay`) y las reenvía **antes** de registrar el
+> sink en vivo, preservando el orden. `performServerHandshake` lee
+> `clientHello.resumeState.lastAppliedBridgeOutboundSeq` (tolerante: ausente o
+> inválido → 0). El log se descarta al desconfiar del dispositivo
+> (`SessionRegistry.forget`). Si el bridge se reinicia, el log en memoria se
+> pierde (el `seq` reinicia en 1); el punto de reanudación viejo del teléfono no
+> produce replay y el teléfono re-sincroniza con `turn/list` — comportamiento
+> aceptado. **Pendiente (móvil):** persistir `bridgeOutboundSeq` y enviarlo en
+> `clientHello.resumeState`.
+
 #### 5.9.3 Seleccion de canal de transporte
 
 ```dart

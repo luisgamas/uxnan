@@ -104,7 +104,7 @@ test('removeTrustedDevice prunes the device push registration', async () => {
   const ctx = ctxWith(pushStub(calls), {
     trustStore: { remove: (id: string) => Promise.resolve(removed.push(id)) } as never,
     sessions: { remove: () => true } as never,
-    sessionRegistry: { unregister: () => undefined } as never,
+    sessionRegistry: { forget: () => undefined } as never,
   });
   const router = new HandlerRouter(ctx);
   registerBridgeControlHandlers(router);

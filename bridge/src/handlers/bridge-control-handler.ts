@@ -55,7 +55,9 @@ export function registerBridgeControlHandlers(router: HandlerRouter): void {
     // deletes locally first and calls this best-effort).
     await ctx.trustStore.remove(deviceId);
     ctx.sessions.remove(deviceId);
-    ctx.sessionRegistry.unregister(deviceId);
+    // Forget (not just unregister): drop the outbound catch-up log too — an
+    // untrusted device has nothing left to catch up on.
+    ctx.sessionRegistry.forget(deviceId);
     // Prune any push registration owned by this device so a revoked phone stops
     // receiving background push (it otherwise lingered until re-register/overwrite).
     ctx.pushService?.unregisterDevice(deviceId);

@@ -194,7 +194,7 @@ export {
 } from './transport/lan-server.js';
 export { wsToMessageIO, rawDataToBuffer } from './transport/ws-adapter.js';
 export { localHostPorts, type InterfaceMap } from './transport/local-hosts.js';
-export { OutboundMessageBuffer } from './transport/outbound-buffer.js';
+export { OutboundLog, type OutboundLogEntry } from './transport/outbound-log.js';
 export { SessionRegistry, type SessionSink } from './transport/session-registry.js';
 
 // Git + workspace services

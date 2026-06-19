@@ -77,8 +77,11 @@ landed now):
    Validated end-to-end against `codex-cli` 0.139.0. OpenCode/pi/Gemini
    remain — add per-agent when their headless modes expose a permission
    channel. See *Interactive approval intake*.
-8. **Transport (optional):** seq-based catch-up on reconnect + key rotation —
-   both await the mobile `clientHello.resumeState` trigger.
+8. **Transport (optional):** seq-based catch-up on reconnect — **bridge half
+   DONE** (retained per-device `OutboundLog` + handshake `resumeState` read +
+   seq-`>`-N replay under the new key); **mobile half pending** (persist +
+   send `clientHello.resumeState`). Key rotation still awaits the mobile
+   `clientHello.resumeState` trigger. See *Seq-based catch-up on reconnect*.
 
 ## Plug-and-play "install and use" — remaining sequence
 The goal is: install on the PC, log into the agents you want, point the phone at a
@@ -100,7 +103,8 @@ hosting** (the phone connects directly to the bridge on the same network).
       byte-for-byte with the mobile app.
 - [x] **Relay package** — `relay/` builds and is in the root workspaces (Phase 2).
 - [x] **Bridge → phone notifications** (Phase 2b) — `SessionRegistry` +
-      `bridge.notify()`; offline messages buffered via `OutboundMessageBuffer`.
+      `bridge.notify()`; outbound is retained per-device in `OutboundLog`
+      (seq + plaintext window) for catch-up (see *Seq-based catch-up*).
 - [x] **Stable pairing session** — the pairing `sessionId` is persisted to
       `~/.uxnan/pairing-session.json` (`src/bridge.ts`, `daemon-state.ts`) and
       reused across restarts instead of a fresh UUID each boot.
@@ -120,10 +124,26 @@ hosting** (the phone connects directly to the bridge on the same network).
         - **Bind the LAN server to chosen interface(s)** — today it binds all
           interfaces (good for Tailscale; advertise virtual-NIC IPs too). Optionally
           let the user restrict which interfaces are served/advertised.
-- [ ] **Seq-based catch-up on reconnect** — `src/transport/server-handshake.ts`.
-      Read `clientHello.resumeState.lastAppliedBridgeOutboundSeq` and replay
-      envelopes with a greater `seq`. **Blocked:** the mobile `clientHello` does
-      not send `resumeState` yet — coordinate with the mobile side first.
+- [◑] **Seq-based catch-up on reconnect** — **bridge half DONE; mobile half
+      pending.** Bridge: `performServerHandshake` reads
+      `clientHello.resumeState.lastAppliedBridgeOutboundSeq` (tolerant → 0) and
+      `session-handler.ts` replays every retained outbound with a greater `seq`,
+      re-encrypted under the new session key (`BridgeSecureChannel.encryptReplay`),
+      before registering the live sink. Outbound is retained per-device in
+      `OutboundLog` (`src/transport/outbound-log.ts`): a continuous seq counter
+      that survives reconnects + a sliding plaintext window (spec caps). Plaintext
+      (not envelopes) is kept because every reconnect derives a fresh key. The log
+      is dropped on untrust (`SessionRegistry.forget` ← `bridge/removeTrustedDevice`).
+      Tests: `outbound-log.test.ts`, `secure-channel.test.ts`, end-to-end
+      `catch-up.test.ts`. **Mobile half (uxnanmobile — do next):** persist
+      `SecureSession.bridgeOutboundSeq` across disconnects and send it as
+      `clientHello.resumeState.lastAppliedBridgeOutboundSeq` (the `ClientHello`
+      Dart class + `toJson` need the field; `SessionCoordinator` reads the
+      persisted seq and passes it to `performHandshake`). Until then the bridge
+      replays nothing (the phone reports no resume point). Note: after a bridge
+      restart the in-memory log resets (seq restarts at 1) — the phone's stale
+      resume point simply yields no replay and re-syncs via `turn/list`; this is
+      acceptable and must be documented on the mobile side.
 - [ ] **Key rotation / keyEpoch advance** — blocked on a mobile trigger.
 - [◑] **Manual-code pairing (bridge-side; relay's `/trusted-session/resolve` reframed
       for the bridge-first model).** The phone can pair WITHOUT scanning a QR by

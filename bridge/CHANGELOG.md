@@ -6,6 +6,32 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 
 ### Added
+- **Seq-based catch-up on reconnect (bridge half)** — the bridge now retains
+  every bridge→phone message (replies AND notifications) in a per-device
+  **`OutboundLog`** (architecture/02a §5.9.2): a continuous, monotonic `seq`
+  counter that **survives reconnects** plus a sliding window of the recent
+  **plaintext** (caps `MAX_BRIDGE_OUTBOUND_MESSAGES` / `_BYTES`). On the
+  handshake, `performServerHandshake` reads
+  `clientHello.resumeState.lastAppliedBridgeOutboundSeq` (tolerant: absent /
+  invalid → 0) and the session handler **replays every retained entry with a
+  greater seq**, re-encrypted under the new session key (`BridgeSecureChannel.
+  encryptReplay`), BEFORE registering the live sink so the backlog precedes new
+  traffic. Plaintext (not envelopes) is retained because each reconnect derives
+  a fresh key. The channel's `seq` is now owned by the log, so it continues
+  across reconnects instead of restarting at 1; messages sent while a device is
+  offline are recorded in its log (not a separate buffer) and replayed too. The
+  log is created on first use, kept across disconnects, and dropped only when
+  the device is untrusted (`SessionRegistry.forget`, wired into
+  `bridge/removeTrustedDevice`). Replaces the old `OutboundMessageBuffer`
+  (offline-only, no seq, drain-on-register) with `OutboundLog`. Covered by
+  `outbound-log.test.ts`, `secure-channel.test.ts` (log continuity +
+  `encryptReplay`), and an end-to-end reconnect catch-up test
+  (`catch-up.test.ts`): a phone that applied seq 1–2, went offline while the
+  bridge produced seq 3–4, reconnects with `resumeState:{...Seq:2}` and receives
+  exactly seq 3–4 under the new key. **Mobile half still pending:** the phone
+  must persist `lastAppliedBridgeOutboundSeq` and send it in `clientHello.
+  resumeState` (until then the bridge replays nothing, since the phone reports
+  no resume point) — tracked in FOR-DEV.
 - **Codex real approvals via the `codex app-server` turn protocol** — the
   bridge's Codex adapter is refactored from one-shot `codex exec --json` to
   a **long-lived** `codex app-server` JSON-RPC process. The new path speaks
