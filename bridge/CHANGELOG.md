@@ -6,6 +6,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 
 ### Added
+- **Agent plan / to-do lists mapped to `plan` content blocks.** A new
+  `planBlock` builder + tolerant `extractPlanSteps` (content-blocks.ts) turn an
+  agent's plan-tool input into the `{ type:'plan', state:{ title?, steps:[{
+  description, status }] } }` block the phone renders as a checklist. Wired per
+  agent: **Claude** `TodoWrite` (confident), **OpenCode** `todowrite`, **pi**
+  `todo`, **Codex** `update_plan` item. Emits a block only when ≥1 step parses
+  (a wrong/absent shape → no block, never a malformed one). Codex/OpenCode/pi
+  tool names + shapes are ASSUMED and flagged `FOR-DEV:` for live confirmation;
+  Claude is verified by shape. Covered by `test/adapters/plan-blocks.test.ts`.
 - **Per-thread access mode is now enforced per turn (Claude).** `turn/send`
   reads the thread's persisted `accessMode` (`ThreadRuntime.accessMode` →
   `SendTurnOptions.accessMode`) and the Claude adapter maps it to the right CLI

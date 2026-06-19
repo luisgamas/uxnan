@@ -261,6 +261,18 @@ browser and multi-PC connection correctness are now DONE — see below.)
     `subagent` content blocks are **informational** status updates, NOT approval
     gates — only `approval` blocks gate actions. Field names for plan steps /
     subagent actions remain assumed; the parser is tolerant.
+  - ◑ **Plan / to-do lists rendered (plan mode) — bridge mapping added
+    (2026-06-18).** The phone already decoded+rendered `plan` blocks
+    (`PlanContent` → `_PlanCard`); the gap was the bridge emitting them. New
+    `planBlock` + tolerant `extractPlanSteps` (`adapters/content-blocks.ts`) now
+    map each agent's plan tool: **Claude** `TodoWrite` (verified by shape),
+    **OpenCode** `todowrite`, **pi** `todo`, **Codex** `update_plan` item. Safe:
+    a block is emitted only when ≥1 step parses (wrong/absent shape → no block).
+    ☐ **On-device per agent (the maintainer's validation):** Claude (available),
+    **OpenCode + pi** (minimax-m3 via tokenrouter, free — validate first), and
+    **Codex** (single monthly use — validate last/sparingly). The Codex/OpenCode/
+    pi tool **names + input shapes are ASSUMED** (`FOR-DEV:` markers at each
+    mapper) — if a real turn shows a different name/shape, it's a one-line tweak.
 - ☑ **Application managers** — DONE: `ThreadManager` (timeline build + streaming
   reducer application, `loadThreads`, `sendUserMessage`) and
   `IncomingMessageProcessor`.
@@ -319,7 +331,9 @@ browser and multi-PC connection correctness are now DONE — see below.)
   **bottom-anchored bar** (`surfaceContainer` + hairline, no floating card); the
   app-bar git affordance is a single commit `IconButton` (the redundant branch
   chip was dropped); and the header shows a **"Responding…"** spinner while the
-  agent works (the per-thread activity, also on the list).
+  agent works (the per-thread activity, also on the list). A **jump-to-latest**
+  button (`_JumpToBottomButton`) springs in over the timeline when the user
+  scrolls up and jumps to the newest message in one tap (2026-06-18).
 - ☑ **Agent thinking (reasoning) — first structured-content slice** — DONE
   (Claude Code, end-to-end): the bridge parses `thinking_delta` and emits
   `stream/thinking/delta` (persisted via `Message.thinking`); the phone decodes a

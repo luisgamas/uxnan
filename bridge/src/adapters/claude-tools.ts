@@ -7,6 +7,7 @@
  * blocks; outputs from the matching `tool_result` block in the following `user`
  * message (paired by `tool_use_id`). Verified against `claude` 2.x stream-json.
  */
+import { extractPlanSteps, planBlock } from './content-blocks.js';
 
 /** A complete tool invocation parsed from an `assistant` message. */
 export interface ClaudeToolUse {
@@ -146,6 +147,13 @@ export function toolUseToBlock(tool: ClaudeToolUse, result: ClaudeToolResult): R
   }
   if (EDIT_TOOLS.has(tool.name)) {
     return diffBlock(tool.name, tool.input);
+  }
+  // Claude's TodoWrite tool carries the plan/to-do list: `{ todos: [{ content,
+  // status, activeForm }] }`. Surface it as a `plan` block (the phone renders a
+  // checklist); fall through to a generic tool block if it has no parseable steps.
+  if (tool.name === 'TodoWrite') {
+    const steps = extractPlanSteps(tool.input);
+    if (steps.length > 0) return planBlock(steps);
   }
   const output = truncate(result.text);
   return {

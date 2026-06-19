@@ -10,7 +10,9 @@
 import {
   commandBlock,
   editDiffBlock,
+  extractPlanSteps,
   multiEditDiffBlock,
+  planBlock,
   toolBlock,
   writeDiffBlock,
 } from './content-blocks.js';
@@ -76,6 +78,19 @@ export function piToolBlock(
     case 'write':
     case 'create':
       return writeDiffBlock(path, str(tool.input['content']));
+    // pi's plan/to-do tool. FOR-DEV: tool name + input shape ASSUMED
+    // (`todo`/`update_plan`/`plan`) — verify against a real pi plan turn; a
+    // mismatch yields no steps → falls back to a generic tool block.
+    case 'todo':
+    case 'todowrite':
+    case 'update_plan':
+    case 'plan': {
+      const steps = extractPlanSteps(tool.input);
+      if (steps.length > 0) {
+        return planBlock(steps, str(tool.input['explanation']) || str(tool.input['title']));
+      }
+      return toolBlock(tool.name, tool.id, tool.input, output, isError);
+    }
     default:
       return toolBlock(tool.name, tool.id, tool.input, output, isError);
   }
