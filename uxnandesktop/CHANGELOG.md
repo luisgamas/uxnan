@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — pointer cursor on interactive elements
+- Buttons and other clickable controls (roles: button / menuitem / tab / option /
+  switch / …, links, `summary`, associated labels) now show the hand cursor;
+  disabled controls show `not-allowed`. A global base rule in `app.css` (native
+  buttons otherwise default to the arrow cursor).
+
 ### Added — separate terminal theme per light/dark app theme
 - A **switch** in the Terminal themes section: off (default) keeps the single
   grid (Inherit + presets, click to select). On splits the presets into two
