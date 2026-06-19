@@ -223,12 +223,29 @@ pub struct AppSettings {
     /// Global font override (frontend-owned shape).
     #[serde(default)]
     pub fonts: Option<serde_json::Value>,
+    /// Global terminal typography override (frontend-owned shape).
+    #[serde(default)]
+    pub terminal_fonts: Option<serde_json::Value>,
     /// Saved terminal themes (frontend-owned shape, persisted opaquely).
     #[serde(default)]
     pub terminal_themes: Vec<serde_json::Value>,
-    /// Active terminal theme id ("inherit" = no terminal override).
+    /// How the terminal theme is chosen: "single" or "scheme" (per light/dark).
+    #[serde(default = "default_terminal_mode")]
+    pub terminal_theme_mode: String,
+    /// Active terminal theme id ("single" mode; "inherit" = no override).
     #[serde(default = "default_terminal_theme_id")]
     pub active_terminal_theme_id: String,
+    /// Terminal theme for a light app theme ("scheme" mode).
+    #[serde(default = "default_terminal_theme_id")]
+    pub terminal_theme_light_id: String,
+    /// Terminal theme for a dark app theme ("scheme" mode).
+    #[serde(default = "default_terminal_theme_id")]
+    pub terminal_theme_dark_id: String,
+}
+
+/// Default terminal-theme selection mode: a single theme for both schemes.
+fn default_terminal_mode() -> String {
+    "single".to_string()
 }
 
 /// Default active theme: follow the system light/dark preference.
@@ -262,8 +279,12 @@ impl Default for AppSettings {
             active_theme_id: default_theme_id(),
             custom_themes: Vec::new(),
             fonts: None,
+            terminal_fonts: None,
             terminal_themes: Vec::new(),
+            terminal_theme_mode: default_terminal_mode(),
             active_terminal_theme_id: default_terminal_theme_id(),
+            terminal_theme_light_id: default_terminal_theme_id(),
+            terminal_theme_dark_id: default_terminal_theme_id(),
         }
     }
 }
