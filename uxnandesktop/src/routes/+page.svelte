@@ -143,14 +143,14 @@
   <!-- Custom title bar (OS chrome disabled) -->
   <TitleBar />
 
-  <!-- Full-screen Settings view (replaces the three-panel body while open) -->
-  <Settings />
-
   <!-- Quick worktree switcher (Ctrl/Cmd+P) -->
   <WorktreeSearch />
 
-  <!-- Three-panel body (hidden in settings mode; Settings takes the slot). -->
-  {#if !app.settingsOpen}
+  <!-- Content region below the title bar. The three-panel body stays mounted
+       even while Settings is open (Settings overlays it), so terminals/PTYs are
+       never torn down — otherwise an agent's launch command would be re-typed on
+       return and xterm would lose its screen. -->
+  <div class="relative flex min-h-0 flex-1 flex-col">
     <div class="flex min-h-0 flex-1">
       {#if app.settings.leftSidebarOpen}
         <aside
@@ -208,7 +208,7 @@
       {/if}
     </div>
 
-    <!-- Status bar (hidden in settings mode — the Settings view takes the slot). -->
+    <!-- Status bar -->
     <footer
       class="flex h-7 shrink-0 items-center gap-2 border-t border-border px-3 text-xs text-muted-foreground"
     >
@@ -231,5 +231,12 @@
       {/if}
       <span>{i18n.plural(app.repos.length, "status.reposOne", "status.reposOther")}</span>
     </footer>
-  {/if}
+
+    <!-- Settings overlays the still-mounted body (full content region). -->
+    {#if app.settingsOpen}
+      <div class="absolute inset-0 z-30">
+        <Settings />
+      </div>
+    {/if}
+  </div>
 </div>

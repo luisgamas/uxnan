@@ -1,3 +1,10 @@
+<script lang="ts" module>
+  // Terminal ids that have already been sent their agent launch command. Module
+  // scope (shared across mounts) so a remount never re-types the command into an
+  // already-running agent.
+  const launchedIds = new Set<string>();
+</script>
+
 <script lang="ts">
   import { onDestroy, onMount, tick } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
@@ -181,7 +188,8 @@
     // Agent launch: type the command into the freshly-started shell. Running it
     // inside the shell (rather than as the PTY process) lets PATH/PATHEXT shims
     // resolve (`codex.cmd`/`.ps1`), which spawning the bare command cannot.
-    if (runCommand) {
+    if (runCommand && !launchedIds.has(id)) {
+      launchedIds.add(id);
       setTimeout(() => {
         invoke("pty_write", { id, data: `${runCommand}\r` }).catch(() => {});
       }, RUN_COMMAND_DELAY_MS);
