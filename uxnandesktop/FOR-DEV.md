@@ -334,7 +334,11 @@ earlier "superficial UX" warning is resolved.
 - [x] Commands: `repo_add/remove/list`, `worktree_create` (optional `base`,
       `--no-track`), `worktree_list`, `worktree_status`, `branch_list`,
       `worktree_remove`, `browse_dirs`.
-- [ ] Move high-frequency status/diff to `git2` (`0.20+`). **FOR-DEV** (Phase 3 will use it).
+- [x] **High-frequency status/diff on `git2`** (`0.20`, vendored libgit2) —
+      `gitfast.rs`: `status_files` / `worktree_status` / `diff_file` /
+      `diff_head` / `numstat` run via `git2` (off-runtime through `spawn_blocking`)
+      with a **CLI fallback** in `git.rs` (spec `02c` §3.1). Worktree mgmt / push /
+      pull / staging / apply stay on the CLI. 2 `git2` integration tests.
 - [ ] WSL path detection (`\\wsl.localhost\…`) → route through `wsl.exe`. **FOR-DEV.**
 - [ ] Aggressive branch cleanup for squash-merged branches (patch-equivalence). **FOR-DEV.**
 
@@ -402,9 +406,9 @@ earlier "superficial UX" warning is resolved.
       after **30 s** so the UI can't hang.
 
 **Deferred → Phase 5 (polish) or tracked below:**
-- [ ] **`git2` migration** for high-frequency status/diff (Phase 3 uses the CLI,
-      consistent with Phase 2; `git2` avoids per-poll subprocess overhead).
-      **FOR-DEV.**
+- [x] **`git2` migration** for high-frequency status/diff — `gitfast.rs` (git2)
+      with a CLI fallback in `git.rs`; avoids the per-poll subprocess. See the
+      Phase 2 backend item above.
 - [ ] **Side-by-side diff**, **hunk/line-level staging**, virtual-scroll polish for
       huge changesets → **Phase 5**.
 - [ ] **AI commit message** (needs an agent/bridge), **image diffs** → later.

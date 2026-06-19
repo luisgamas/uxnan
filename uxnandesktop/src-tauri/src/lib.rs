@@ -11,6 +11,7 @@ mod commands;
 mod error;
 mod fs;
 mod git;
+mod gitfast;
 mod hooks;
 mod model;
 mod persistence;

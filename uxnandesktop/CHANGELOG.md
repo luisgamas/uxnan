@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — git2 fast path for status/diff
+- **`gitfast.rs`** (git2 / vendored libgit2): `status_files`, `worktree_status`,
+  `diff_file`, `diff_head` and `numstat` now run through libgit2 (off the async
+  runtime via `spawn_blocking`), avoiding a `git` subprocess on every 3 s status
+  poll and per diff. Each keeps a **CLI fallback** in `git.rs` (spec `02c` §3.1:
+  git2 + CLI fallback); worktree management, branch listing, staging, commit,
+  push/pull and patch-apply stay on the git CLI. 2 git2 integration tests.
+
 ### Changed — pointer cursor on interactive elements
 - Buttons and other clickable controls (roles: button / menuitem / tab / option /
   switch / …, links, `summary`, associated labels) now show the hand cursor;
