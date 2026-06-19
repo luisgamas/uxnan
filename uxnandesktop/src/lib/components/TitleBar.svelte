@@ -44,6 +44,18 @@
     </button>
   {/if}
 
+  <!-- Brand mark. Kept inside the drag region (purely decorative — no
+       click handler) so the user can grab the title bar by the logo too.
+       Tailwind's `dark:invert` filter flips the black mark to white in dark
+       themes so we don't need a second SVG variant; the source lives in
+       `static/`. -->
+  <img
+    src="/logo_nb.svg"
+    alt=""
+    aria-hidden="true"
+    data-tauri-drag-region
+    class="brand-mark h-5 w-5 dark:invert"
+  />
   <span data-tauri-drag-region class="font-semibold tracking-tight"
     >Uxnan Desktop</span
   >

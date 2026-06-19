@@ -103,6 +103,8 @@ export const en = {
   "terminal.toggleRight": "Toggle right panel",
   "terminal.general": "General",
   "terminal.noTerminalsIn": "No terminals in {context}",
+  "terminal.worktreeNeedsRepo":
+    "Pick a project or worktree in the left panel to enable this.",
   "terminal.newInRegion": "New terminal in this region",
   "terminal.copy": "Copy",
   "terminal.paste": "Paste",

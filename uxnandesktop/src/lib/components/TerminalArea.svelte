@@ -30,6 +30,8 @@
   import Columns2Icon from "@lucide/svelte/icons/columns-2";
   import Rows2Icon from "@lucide/svelte/icons/rows-2";
   import WebhookIcon from "@lucide/svelte/icons/webhook";
+  import GitBranchIcon from "@lucide/svelte/icons/git-branch";
+  import NewWorktreeDialog from "./NewWorktreeDialog.svelte";
 
   /** Default profile's shell/args, for region-level + and splits. A blank
    *  command falls back to the backend's platform default shell. */
@@ -65,6 +67,25 @@
     return { name: baseName(key) };
   }
   const ctx = $derived(contextLabel(terminals.activeWorkspace));
+
+  /** The repo the active workspace belongs to (if any). The empty-state
+   *  "New worktree" button is only enabled when this resolves to a repo —
+   *  worktrees must branch from a registered git repo, not from the Global
+   *  terminal space. Returns `null` for the Global workspace and when the
+   *  active key doesn't match any known repo or worktree. */
+  const activeRepo = $derived.by(() => {
+    const key = terminals.activeWorkspace;
+    if (key === GLOBAL_WORKSPACE) return null;
+    const mainRepo = app.repos.find((r) => r.path === key);
+    if (mainRepo) return mainRepo;
+    for (const r of app.repos) {
+      if (projects.worktreesOf(r.id).some((w) => w.path === key)) return r;
+    }
+    return null;
+  });
+
+  // --- Empty-state "New worktree" dialog state -----------------------------
+  let newWorktreeOpen = $state(false);
 
   let unlistenDrop: (() => void) | undefined;
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -456,29 +477,70 @@
       {/each}
 
       {#if !terminals.root}
-        <!-- Active workspace has no terminal open. -->
-        <div class="flex h-full flex-col items-center justify-center gap-3 text-center">
-          <TerminalIcon class={cn(icon.empty, "text-muted-foreground/60")} />
+        <!-- Active workspace has no terminal open. Centered brand mark +
+             two actions. The "New worktree" action only makes sense inside
+             a registered repo's context, so it's disabled (with a tooltip)
+             in the Global workspace where there's nothing to branch from. -->
+        <div class="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
+          <img
+            src="/logo_nb.svg"
+            alt=""
+            aria-hidden="true"
+            class="size-24 dark:invert opacity-90"
+          />
           <div class={cn("text-muted-foreground", text.body)}>
             {i18n.t("terminal.noTerminalsIn", {
               context: ctx.repo ? `${ctx.repo} / ${ctx.name}` : ctx.name,
             })}
           </div>
-          <button
-            class={cn(
-              "inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 font-medium text-foreground hover:bg-accent hover:text-accent-foreground",
-              text.body,
-            )}
-            onclick={() => app.openTerminal()}
-          >
-            <PlusIcon class={icon.button} />
-            {i18n.t("terminal.newTerminal")}
-          </button>
+          <div class="flex flex-wrap items-center justify-center gap-2">
+            <button
+              class={cn(
+                "inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 font-medium text-foreground hover:bg-accent hover:text-accent-foreground",
+                text.body,
+              )}
+              onclick={() => app.openTerminal()}
+            >
+              <PlusIcon class={icon.button} />
+              {i18n.t("terminal.newTerminal")}
+            </button>
+            {#if activeRepo}
+              <button
+                class={cn(
+                  "inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 font-medium text-foreground hover:bg-accent hover:text-accent-foreground",
+                  text.body,
+                )}
+                onclick={() => (newWorktreeOpen = true)}
+              >
+                <GitBranchIcon class={icon.button} />
+                {i18n.t("newWorktree.title")}
+              </button>
+            {:else}
+              <button
+                class={cn(
+                  "inline-flex cursor-not-allowed items-center gap-1.5 rounded-md border border-dashed border-border px-3 py-1.5 font-medium text-muted-foreground/70",
+                  text.body,
+                )}
+                disabled
+                title={i18n.t("terminal.worktreeNeedsRepo")}
+              >
+                <GitBranchIcon class={icon.button} />
+                {i18n.t("newWorktree.title")}
+              </button>
+            {/if}
+          </div>
         </div>
       {/if}
     {/if}
   </div>
 </div>
+
+<!-- Dialog is mounted once at the bottom of the component tree. We pass the
+     active repo (resolved above); the bindable `open` is only flipped when the
+     user clicks the empty-state's "New worktree" button. -->
+{#if activeRepo}
+  <NewWorktreeDialog repo={activeRepo} bind:open={newWorktreeOpen} />
+{/if}
 
 <!-- Floating context menu -->
 {#if menu}
