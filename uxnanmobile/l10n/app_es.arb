@@ -427,7 +427,6 @@
   "personalizationCustomThemesSaved": "JSON de la biblioteca guardado",
   "personalizationCustomThemesSaveFailed": "No se pudo guardar el JSON de la biblioteca",
   "languageSystemDefault": "Predeterminado del sistema",
-  "appTitleMobile": "Uxnan Móvil",
   "appVersionStage": "ALPHA",
   "actionEnterCode": "Ingresar un código",
   "manualCodeTitle": "Emparejar con código",

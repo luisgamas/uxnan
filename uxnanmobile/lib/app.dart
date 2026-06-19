@@ -10,18 +10,29 @@ import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/theme/uxnan_theme.dart';
+import 'package:uxnan/presentation/widgets/uxnan_splash.dart';
 
 /// Root widget of the Uxnan app.
 ///
 /// Wires Material 3, the adaptive light/dark theme, the GoRouter instance and
 /// localization. Theme and routing live in dedicated modules — never in
 /// `main.dart` — per the project conventions. See spec 03 section 3.2.
-class UxnanApp extends ConsumerWidget {
+class UxnanApp extends ConsumerStatefulWidget {
   /// Creates the root app widget.
   const UxnanApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<UxnanApp> createState() => _UxnanAppState();
+}
+
+class _UxnanAppState extends ConsumerState<UxnanApp> {
+  /// Completes once the first frame after the router is mounted has been
+  /// rendered — drives the in-Flutter splash overlay dismissal (see
+  /// [UxnanSplash]).
+  final Completer<void> _firstFrame = Completer<void>();
+
+  @override
+  Widget build(BuildContext context) {
     final router = ref.watch(appRouterProvider);
     final themeMode = ref.watch(themeModeSettingProvider);
     final locale = ref.watch(localeSettingProvider);
@@ -46,7 +57,49 @@ class UxnanApp extends ConsumerWidget {
       routerConfig: router,
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
-      builder: (context, child) => _PushHost(child: child ?? const SizedBox()),
+      builder: (context, child) => _AppShell(
+        firstFrame: _firstFrame,
+        child: child ?? const SizedBox(),
+      ),
+    );
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    // After the first frame is laid out (router mounted, themes applied), the
+    // in-Flutter splash overlay can dismiss and hand off to the real UI.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_firstFrame.isCompleted) _firstFrame.complete();
+    });
+  }
+}
+
+/// Composes the router output with [_PushHost] (which keeps the push
+/// registrar alive + handles notification deep-links) and the brand splash
+/// overlay ([UxnanSplash]). The overlay is mounted on top of everything via
+/// a [Stack] and removes itself once the first frame has rendered, so it
+/// adds zero interaction surface once dismissed.
+class _AppShell extends ConsumerWidget {
+  const _AppShell({required this.child, required this.firstFrame});
+
+  final Widget child;
+  final Completer<void> firstFrame;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Stack(
+      children: [
+        _PushHost(child: child),
+        // The splash is the brand's hand-off from the native launch screen;
+        // it lives above the router output and removes itself once dismissed.
+        UxnanSplash(
+          assetPath: 'assets/images/logo_nb.svg',
+          onReady: () async {
+            await firstFrame.future;
+          },
+        ),
+      ],
     );
   }
 }

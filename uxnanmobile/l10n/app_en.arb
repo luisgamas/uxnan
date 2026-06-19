@@ -607,10 +607,6 @@
   "personalizationCustomThemesSaved": "Library JSON saved",
   "personalizationCustomThemesSaveFailed": "Couldn't save the library JSON",
   "languageSystemDefault": "System default",
-  "appTitleMobile": "Uxnan Mobile",
-  "@appTitleMobile": {
-    "description": "App name with the 'Mobile' suffix, shown in the devices-screen footer. Localized — 'Uxnan Móvil' in Spanish."
-  },
   "appVersionStage": "ALPHA",
   "@appVersionStage": {
     "description": "Short release-stage label (e.g. ALPHA / BETA / STABLE) shown in the devices-screen footer to communicate the maturity of the build."

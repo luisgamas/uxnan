@@ -1271,9 +1271,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get languageSystemDefault => 'System default';
 
   @override
-  String get appTitleMobile => 'Uxnan Mobile';
-
-  @override
   String get appVersionStage => 'ALPHA';
 
   @override
