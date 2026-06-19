@@ -13,6 +13,8 @@
 import {
   commandBlock,
   editDiffBlock,
+  extractPlanSteps,
+  planBlock,
   toolBlock,
   writeDiffBlock,
 } from './content-blocks.js';
@@ -36,6 +38,16 @@ export function opencodeToolBlock(
       return editDiffBlock(str(input['filePath']), str(input['oldString']), str(input['newString']));
     case 'write':
       return writeDiffBlock(str(input['filePath']), str(input['content']));
+    // OpenCode's to-do tool surfaces the plan/task list. FOR-DEV: tool name +
+    // input shape ASSUMED (`todowrite`/`todoread`, `{ todos:[…] }`) — verify
+    // against a real OpenCode plan turn; a mismatch yields no steps → no block.
+    case 'todowrite':
+    case 'todoread':
+    case 'todo': {
+      const steps = extractPlanSteps(input);
+      if (steps.length > 0) return planBlock(steps);
+      return toolBlock(toolName, partId, input, output, isError);
+    }
     default:
       return toolBlock(toolName, partId, input, output, isError);
   }

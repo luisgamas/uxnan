@@ -7,6 +7,7 @@
  */
 import { RpcError } from '@uxnan/shared';
 import type {
+  AccessMode,
   AgentId,
   ApprovalDecision,
   ApprovalResponse,
@@ -17,7 +18,7 @@ import type {
 import type { BridgeContext } from '../bridge-context.js';
 import type { HandlerRouter } from '../handler-router.js';
 import type { SendTurnOptions } from '../agents/agent-manager.js';
-import { optionalNumber, optionalString, requireString } from './params.js';
+import { optionalBoolean, optionalNumber, optionalString, requireString } from './params.js';
 
 export function registerThreadHandlers(router: HandlerRouter): void {
   router.register('thread/list', (p, ctx: BridgeContext) =>
@@ -75,6 +76,13 @@ export function registerThreadHandlers(router: HandlerRouter): void {
       ctx.now(),
     ),
   );
+  router.register('thread/setAccessMode', (p, ctx: BridgeContext) =>
+    ctx.threadStore.setAccessMode(
+      requireString(p, 'threadId'),
+      parseAccessMode(requireString(p, 'mode')),
+      ctx.now(),
+    ),
+  );
   router.register('thread/archive', (p, ctx: BridgeContext) =>
     ctx.threadStore.archiveThread(requireString(p, 'threadId'), ctx.now()),
   );
@@ -90,7 +98,8 @@ export function registerThreadHandlers(router: HandlerRouter): void {
     const threadId = requireString(p, 'threadId');
     const cursor = optionalString(p, 'cursor');
     const limit = optionalNumber(p, 'limit');
-    const stored = await ctx.threadStore.listTurns(threadId, cursor, limit);
+    const fromEnd = optionalBoolean(p, 'fromEnd') ?? false;
+    const stored = await ctx.threadStore.listTurns(threadId, cursor, limit, fromEnd);
     // Fallback (§5.8.8): when the store has nothing for this thread, read the
     // agent's own on-disk session log so the phone can still show history (e.g.
     // after the bridge missed the turns, or threads.json was lost).
@@ -98,7 +107,7 @@ export function registerThreadHandlers(router: HandlerRouter): void {
     const source = await ctx.threadStore.getHistorySource(threadId);
     const turns = await ctx.sessionHistory.readTurns(source, threadId);
     if (!turns || turns.length === 0) return stored;
-    return paginateTurns(turns, cursor, limit);
+    return paginateTurns(turns, cursor, limit, fromEnd);
   });
   router.register('turn/read', (p, ctx: BridgeContext) =>
     ctx.threadStore.getTurn(requireString(p, 'turnId')),
@@ -129,6 +138,9 @@ export function registerThreadHandlers(router: HandlerRouter): void {
       ...optionalRunOptions(p),
       ...(attachments.length > 0 ? { attachments } : {}),
       ...(runtime.cwd !== undefined ? { cwd: runtime.cwd } : {}),
+      // Apply the thread's persisted access mode to this turn (adapters map it
+      // to their permission flag; absent → the adapter's configured posture).
+      ...(runtime.accessMode !== undefined ? { accessMode: runtime.accessMode } : {}),
     };
     return ctx.agentManager.sendTurn(threadId, text, options);
   });
@@ -142,15 +154,29 @@ export function registerThreadHandlers(router: HandlerRouter): void {
  * Page a full turn list (from the on-disk history fallback) the same way the
  * store does: numeric cursor offset + limit, with a `nextCursor` when more remain.
  */
+const ACCESS_MODES: readonly AccessMode[] = ['requestApproval', 'approveForMe', 'fullAccess'];
+
+/** Validates a wire `mode` string against the {@link AccessMode} union. */
+function parseAccessMode(mode: string): AccessMode {
+  if ((ACCESS_MODES as readonly string[]).includes(mode)) return mode as AccessMode;
+  throw RpcError.invalidParams(`mode must be one of ${ACCESS_MODES.join(' | ')}`);
+}
+
 function paginateTurns(
   turns: Turn[],
   cursor: string | undefined,
   limit: number | undefined,
+  fromEnd = false,
 ): TurnList {
-  const start = cursor ? Number.parseInt(cursor, 10) || 0 : 0;
+  const total = turns.length;
   const size = limit && limit > 0 ? limit : 20;
-  const result: TurnList = { turns: turns.slice(start, start + size) };
-  if (start + size < turns.length) result.nextCursor = String(start + size);
+  const start = fromEnd
+    ? Math.max(0, total - size)
+    : cursor
+      ? Number.parseInt(cursor, 10) || 0
+      : 0;
+  const result: TurnList = { turns: turns.slice(start, start + size), total };
+  if (start + size < total) result.nextCursor = String(start + size);
   return result;
 }
 

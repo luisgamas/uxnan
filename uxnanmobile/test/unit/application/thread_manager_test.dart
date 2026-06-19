@@ -7,6 +7,7 @@ import 'package:uxnan/application/managers/thread_manager.dart';
 import 'package:uxnan/application/processors/domain_event.dart';
 import 'package:uxnan/domain/entities/message.dart';
 import 'package:uxnan/domain/enums/approval_decision.dart';
+import 'package:uxnan/domain/enums/approval_mode.dart';
 import 'package:uxnan/domain/enums/command_status.dart';
 import 'package:uxnan/domain/enums/message_delivery_state.dart';
 import 'package:uxnan/domain/enums/message_role.dart';
@@ -521,6 +522,151 @@ void main() {
     expect(manager.timeline.messages.length, 45);
     expect(manager.timeline.hasMore, isFalse);
     expect(manager.timeline.messages.first.id, 'm0');
+  });
+
+  test('selectThread pulls the newest page and pages older remotely', () async {
+    // A 25-turn thread on the bridge (more than one 20-turn page), each turn a
+    // single assistant reply.
+    final server = [
+      for (var i = 0; i < 25; i++)
+        {
+          'id': 't$i',
+          'messages': [
+            {'role': 'assistant', 'content': 'reply $i', 'createdAt': 1000 + i},
+          ],
+        },
+    ];
+    final listCalls = <Map<String, dynamic>>[];
+    final paged = ThreadManager(
+      threadRepository: threadRepo,
+      messageRepository: messageRepo,
+      domainEvents: events.stream,
+      sendRequest: (method, [params]) async {
+        if (method != 'turn/list') {
+          return RpcMessage.response(id: '1', result: const <String, dynamic>{});
+        }
+        final p = params ?? const <String, dynamic>{};
+        listCalls.add(p);
+        final total = server.length;
+        final size = (p['limit'] as int?) ?? 20;
+        final fromEnd = p['fromEnd'] == true;
+        final start = fromEnd
+            ? (total - size < 0 ? 0 : total - size)
+            : int.parse(p['cursor'] as String? ?? '0');
+        final end = start + size > total ? total : start + size;
+        return RpcMessage.response(
+          id: '1',
+          result: <String, dynamic>{
+            'turns': server.sublist(start, end),
+            'total': total,
+            if (end < total) 'nextCursor': '$end',
+          },
+        );
+      },
+    );
+
+    await paged.selectThread('th1');
+    await _settle();
+
+    // Opened on the newest page (fromEnd), not the oldest.
+    expect(listCalls.first['fromEnd'], isTrue);
+    expect(paged.timeline.messages.length, 20);
+    expect(_text(paged.timeline.messages.first), 'reply 5');
+    expect(_text(paged.timeline.messages.last), 'reply 24');
+    // 5 older turns still live on the bridge → more history is available.
+    expect(paged.timeline.hasMore, isTrue);
+
+    await paged.loadMoreHistory();
+    await _settle();
+
+    // The older page was fetched with an explicit offset cursor ('0').
+    expect(listCalls.any((c) => c['cursor'] == '0'), isTrue);
+    expect(paged.timeline.messages.length, 25);
+    expect(_text(paged.timeline.messages.first), 'reply 0');
+    expect(paged.timeline.hasMore, isFalse);
+
+    await paged.dispose();
+  });
+
+  test('readAgentSessionId returns the session id from thread/read', () async {
+    final reader = ThreadManager(
+      threadRepository: threadRepo,
+      messageRepository: messageRepo,
+      domainEvents: events.stream,
+      sendRequest: (method, [params]) async {
+        if (method == 'thread/read') {
+          return RpcMessage.response(
+            id: '1',
+            result: <String, dynamic>{
+              'id': params?['threadId'],
+              'agentSessionId': 'sess-xyz',
+            },
+          );
+        }
+        return RpcMessage.response(id: '1', result: const <String, dynamic>{});
+      },
+    );
+
+    expect(await reader.readAgentSessionId('th1'), 'sess-xyz');
+    // Absent session id (older bridge / agent) degrades to null.
+    final none = ThreadManager(
+      threadRepository: threadRepo,
+      messageRepository: messageRepo,
+      domainEvents: events.stream,
+      sendRequest: (method, [params]) async =>
+          RpcMessage.response(id: '1', result: const <String, dynamic>{}),
+    );
+    expect(await none.readAgentSessionId('th1'), isNull);
+
+    await reader.dispose();
+    await none.dispose();
+  });
+
+  test('access mode: reads from thread/read and persists via setAccessMode',
+      () async {
+    Map<String, dynamic>? setParams;
+    final am = ThreadManager(
+      threadRepository: threadRepo,
+      messageRepository: messageRepo,
+      domainEvents: events.stream,
+      sendRequest: (method, [params]) async {
+        if (method == 'thread/read') {
+          return RpcMessage.response(
+            id: '1',
+            result: <String, dynamic>{
+              'id': params?['threadId'],
+              'accessMode': 'fullAccess',
+            },
+          );
+        }
+        if (method == 'thread/setAccessMode') {
+          setParams = params;
+          return RpcMessage.response(id: '1', result: const <String, dynamic>{});
+        }
+        return RpcMessage.response(id: '1', result: const <String, dynamic>{});
+      },
+    );
+
+    expect(await am.readAccessMode('th1'), ApprovalMode.fullAccess);
+
+    await am.setAccessMode('th1', ApprovalMode.requestApproval);
+    expect(setParams?['threadId'], 'th1');
+    expect(setParams?['mode'], 'requestApproval');
+
+    await am.dispose();
+  });
+
+  test('resyncActive re-pulls the active thread from the bridge', () async {
+    await manager.selectThread('th1');
+    await _settle();
+    sentMethods.clear();
+
+    await manager.resyncActive();
+    await _settle();
+
+    // Re-pulls the newest page (turn/list) so a turn that completed while the
+    // app was backgrounded / disconnected is recovered.
+    expect(sentMethods, contains('turn/list'));
   });
 
   test('respondApproval sends turn/send with the approvalResponse', () async {

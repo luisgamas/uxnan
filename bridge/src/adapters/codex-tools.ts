@@ -9,7 +9,7 @@
  * ASSUMED SHAPES — need on-device verification against a real Codex turn (the
  * adapter's documented event list only covered `agent_message`).
  */
-import { commandBlock, toolBlock } from './content-blocks.js';
+import { commandBlock, extractPlanSteps, planBlock, toolBlock } from './content-blocks.js';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -102,6 +102,14 @@ export function codexItemBlocks(item: Record<string, unknown>): Record<string, u
       return [
         toolBlock(name, str(item['id']), rec(item['arguments'] ?? item['input']), output, item['status'] === 'failed'),
       ];
+    }
+    // Codex plan mode: the `update_plan` item carries the task list. FOR-DEV:
+    // item type + shape ASSUMED (`{ plan:[{ step, status }], explanation? }`) —
+    // verify against a real Codex plan turn; no steps → no block (no breakage).
+    case 'update_plan':
+    case 'todo_list': {
+      const steps = extractPlanSteps(item['plan'] ?? item['todos'] ?? item);
+      return steps.length > 0 ? [planBlock(steps, str(item['explanation']))] : [];
     }
     default:
       return [];

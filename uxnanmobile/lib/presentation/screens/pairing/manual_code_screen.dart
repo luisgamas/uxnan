@@ -7,6 +7,7 @@ import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
+import 'package:uxnan/presentation/screens/pairing/bridge_discovery_sheet.dart';
 import 'package:uxnan/presentation/screens/pairing/qr_scanner_screen.dart'
     show QrScannerScreen;
 import 'package:uxnan/presentation/theme/spacing.dart';
@@ -16,9 +17,12 @@ import 'package:uxnan/presentation/theme/spacing.dart';
 /// bridge's `GET /pair/resolve` endpoint, then runs the normal pairing
 /// handshake (`SessionCoordinator.processPairingPayload`).
 ///
+/// A **Browse nearby bridges** action runs mDNS discovery
+/// ([BridgeDiscoverySheet]) so the user can pick a bridge instead of typing the
+/// host; manual entry stays the fallback.
+///
 /// FOR-DEV (UI): this is a minimal, M3-standard form pending the user's
-/// on-device visual review (AGENTS.md "UI changes"). mDNS auto-discovery of
-/// bridges is a follow-up (see `FOR-DEV.md`).
+/// on-device visual review (AGENTS.md "UI changes").
 class ManualCodeScreen extends ConsumerStatefulWidget {
   /// Creates a [ManualCodeScreen].
   const ManualCodeScreen({super.key});
@@ -50,6 +54,14 @@ class _ManualCodeScreenState extends ConsumerState<ManualCodeScreen> {
         ManualPairingErrorKind.server => l10n.manualCodeErrorServer,
         ManualPairingErrorKind.malformedPayload => l10n.manualCodeErrorPayload,
       };
+
+  /// Opens the mDNS discovery sheet; a picked bridge pre-fills the host field
+  /// (the user still types the pairing code).
+  Future<void> _browse() async {
+    final hostPort = await BridgeDiscoverySheet.show(context);
+    if (hostPort == null || !mounted) return;
+    setState(() => _host.text = hostPort);
+  }
 
   Future<void> _connect() async {
     final l10n = AppLocalizations.of(context);
@@ -97,7 +109,16 @@ class _ManualCodeScreenState extends ConsumerState<ManualCodeScreen> {
               style: theme.textTheme.bodyMedium
                   ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),
-            const SizedBox(height: UxnanSpacing.xl),
+            const SizedBox(height: UxnanSpacing.lg),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                onPressed: _connecting ? null : _browse,
+                icon: const Icon(Icons.wifi_find_rounded, size: 18),
+                label: Text(l10n.manualCodeBrowse),
+              ),
+            ),
+            const SizedBox(height: UxnanSpacing.lg),
             TextField(
               controller: _host,
               enabled: !_connecting,

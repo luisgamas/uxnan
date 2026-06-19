@@ -146,6 +146,94 @@ export function approvalBlock(
   };
 }
 
+/** One step of an agent plan / to-do list, on the wire (matches Dart `PlanStep`). */
+export interface PlanStepBlock {
+  description: string;
+  status: 'pending' | 'in_progress' | 'completed';
+}
+
+/** Normalizes an agent's free-form step status to the wire vocabulary. */
+function normalizePlanStatus(raw: unknown): PlanStepBlock['status'] {
+  const s = typeof raw === 'string' ? raw.toLowerCase().replace(/[\s-]+/g, '_') : '';
+  if (s === 'in_progress' || s === 'inprogress' || s === 'running' || s === 'active' || s === 'doing') {
+    return 'in_progress';
+  }
+  if (s === 'completed' || s === 'complete' || s === 'done' || s === 'finished') {
+    return 'completed';
+  }
+  return 'pending';
+}
+
+function planText(obj: Record<string, unknown>, keys: string[]): string {
+  for (const key of keys) {
+    const value = obj[key];
+    if (typeof value === 'string' && value.length > 0) return value;
+  }
+  return '';
+}
+
+/**
+ * Extracts plan/to-do steps from an agent's plan-tool input, tolerating the
+ * common shapes: the step list under `todos` (Claude/OpenCode), `plan` (Codex),
+ * `steps`/`items`, or a bare array; each item carrying its text under
+ * `content`/`description`/`text`/`step`/`activeForm`/`title`/`name` and its
+ * progress under `status`/`state`. Returns `[]` when nothing parses, so callers
+ * fall back to a generic block (no plan) instead of emitting an empty one.
+ */
+export function extractPlanSteps(input: unknown): PlanStepBlock[] {
+  const obj = isRecord(input) ? input : undefined;
+  const list: unknown[] = Array.isArray(input)
+    ? input
+    : Array.isArray(obj?.['todos'])
+      ? (obj!['todos'] as unknown[])
+      : Array.isArray(obj?.['plan'])
+        ? (obj!['plan'] as unknown[])
+        : Array.isArray(obj?.['steps'])
+          ? (obj!['steps'] as unknown[])
+          : Array.isArray(obj?.['items'])
+            ? (obj!['items'] as unknown[])
+            : [];
+  const steps: PlanStepBlock[] = [];
+  for (const raw of list) {
+    if (typeof raw === 'string') {
+      if (raw.length > 0) steps.push({ description: raw, status: 'pending' });
+      continue;
+    }
+    if (!isRecord(raw)) continue;
+    const description = planText(raw, [
+      'content',
+      'description',
+      'text',
+      'step',
+      'activeForm',
+      'title',
+      'name',
+    ]);
+    if (!description) continue;
+    steps.push({ description, status: normalizePlanStatus(raw['status'] ?? raw['state']) });
+  }
+  return steps;
+}
+
+/**
+ * A `plan` content block — the agent's to-do list for plan mode. The phone
+ * decodes it into a `PlanContent` and renders the checklist
+ * (`{ type:'plan', state:{ title?, steps:[{ description, status }] } }`).
+ */
+export function planBlock(steps: PlanStepBlock[], title?: string): Record<string, unknown> {
+  return {
+    type: 'plan',
+    state: {
+      ...(title !== undefined && title.length > 0 ? { title } : {}),
+      steps,
+    },
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 /** A generic `tool` block (a non-shell, non-edit tool call and its output). */
 export function toolBlock(
   toolName: string,

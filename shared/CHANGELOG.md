@@ -6,6 +6,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 
 ### Added
+- **`SendTurnOptions.accessMode`** (`agents/agent-adapter.ts`): the per-thread
+  access mode is now carried into each turn so adapters can map it to their
+  permission posture (Claude wired; others ignore it for now).
+- **Agent session id + per-thread access mode on the wire** (`models/thread.ts`,
+  `jsonrpc/methods.ts`, `jsonrpc/method-registry.ts`): `Thread.agentSessionId?`
+  (the agent CLI's native session id, for "resume from the CLI"), a new
+  `AccessMode` union (`requestApproval | approveForMe | fullAccess`) +
+  `Thread.accessMode?`, and a `thread/setAccessMode { threadId, mode }` method
+  (returns the updated `Thread`) so the per-thread approval mode persists
+  server-side.
+- **`turn/list` newest-first pagination** (`jsonrpc/methods.ts`,
+  `models/thread.ts`): `TurnListParams.fromEnd?: boolean` (return the newest
+  `limit` turns) and `TurnList.total?: number` (full turn count). Lets a client
+  open a long thread at its most recent messages and page backward by computing
+  offsets, instead of pulling the whole thread. Backward-compatible (both
+  optional; an older client/bridge ignores them).
 - **Git revert + safe branch/worktree deletion + cwd probe** (`jsonrpc/methods.ts`,
   `jsonrpc/method-registry.ts`, `models/workspace.ts`): `git/revert`
   (`GitRevertParams`), `git/deleteBranch` (`GitDeleteBranchParams`, `force`),

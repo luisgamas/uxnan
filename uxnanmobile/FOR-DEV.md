@@ -47,10 +47,16 @@ browser and multi-PC connection correctness are now DONE — see below.)
   unit-tested. ☐ Still open:
   - ☐ **On-device verification** against a live bridge (type the host + code the
     `qr` CLI prints, confirm the handshake completes).
-  - ☐ **mDNS browse** (`_uxnan._tcp` via `nsd`/`multicast_dns`) to auto-list
-    bridges so the user needn't type the host — the bridge already advertises
-    it (`bridge/src/transport/mdns-advertiser.ts`). Manual host stays the
-    fallback.
+  - ☑ **mDNS browse — DONE (2026-06-18).** A **Browse nearby bridges** action on
+    `ManualCodeScreen` opens `BridgeDiscoverySheet`, which streams bridges
+    advertising `_uxnan._tcp` (`BridgeDiscoveryService` over the native `nsd`
+    plugin — NsdManager / Bonjour, which handles the Android multicast lock).
+    Picking one pre-fills the host (the user still types the code); manual host
+    entry stays the fallback. TXT/addr parsing (`parseDiscoveredBridge`) is
+    unit-tested. Android `INTERNET` + `CHANGE_WIFI_MULTICAST_STATE` added; iOS
+    `NSBonjourServices` + `NSLocalNetworkUsageDescription` added (copy review is
+    `FOR-HUMAN.md` §4). ☐ On-device: verify discovery lists a real bridge on the
+    same Wi-Fi.
   - ☐ **UI visual review** — the screen is a minimal M3 form; restyle to the
     Neural Expressive language after the maintainer reviews it on-device
     (AGENTS.md "UI changes").
@@ -88,6 +94,25 @@ browser and multi-PC connection correctness are now DONE — see below.)
 
 ## Connection / transport
 
+- ☑ **Background → resume reconnection + cold-start auto-connect** — DONE
+  (2026-06-18). The app no longer gets stuck "disconnected" after the OS
+  suspends/drops the socket on background. `SessionCoordinator.resume()` (called
+  from `_PushHost.didChangeAppLifecycleState` on `resumed`): wakes a pending
+  reconnect backoff so it retries **immediately** (new `_reconnectWake`
+  Completer + `_waitForRetry` race — the existing single-flight loop is
+  untouched), else `verifyConnection()` (round-trips `bridge/status` when
+  believed-connected, kicks a reconnect when disconnected). The open
+  conversation re-syncs via `ThreadManager.resyncActive()`. On launch,
+  `_PushHost._autoConnectLastDevice()` reconnects to the most-recently-used PC
+  (`lastSeen`, best-effort + backoff fallback), so reopening after an unexpected
+  close restores the session and the `turn/list` re-sync recovers the thread's
+  history (drift preserves it across restarts; reconciled by the deterministic
+  assistant id). Covered by coordinator (resume/wake/no-op) + `resyncActive`
+  tests. ☐ On-device: minimize+reopen shows connected (not stuck); kill+reopen
+  auto-reconnects and the thread history is intact. **Note:** a *truly* always-on
+  background socket (vs. fast resume-reconnect) would need an Android foreground
+  service / iOS background mode — out of scope; resume-reconnect is the mobile-
+  appropriate approach.
 - ☑ **IncomingMessageProcessor** — DONE (conversation managers).
 - ☑ **Consume `bridge/status.relayConnected`** — DONE: `BridgeStatus` entity +
   `bridgeStatusProvider` (refreshes when the connected device changes) drive a
@@ -112,9 +137,9 @@ browser and multi-PC connection correctness are now DONE — see below.)
     direct LAN socket on iOS prompts for local-network access; add the Info.plist
     key (FOR-HUMAN once the iOS build exists) so direct LAN works on iPhone.
     Tailscale/relay are unaffected.
-  - ☐ **mDNS/Bonjour discovery** — only needed for a bridge that did NOT
-    advertise reachable `hosts` (e.g. dynamic IPs); the QR `hosts` cover the
-    common case, so this is now optional.
+  - ☑ **mDNS/Bonjour discovery — DONE (2026-06-18)** via the manual-pairing
+    **Browse nearby bridges** flow (see *Pairing module → mDNS browse*). Lets the
+    user pick a bridge without the QR `hosts`; manual host stays the fallback.
 - ◑ **Live WebSocket integration test** against a real bridge — the real-bridge
   interaction is now **manually validated on-device** (pairing, `thread/list`,
   `thread/start`, `turn/send` + streamed `stream/*` replies, `turn/list`
@@ -144,8 +169,11 @@ browser and multi-PC connection correctness are now DONE — see below.)
   name, folder); a **compact** density toggle; all kept to the M3 ≤3-actions
   app-bar guideline (Search + Sort visible, density + Archived in a `⋮` overflow
   menu). Threads with an **unread agent reply** are emphasized (tint + bold +
-  dot), cleared on open. Sort/density preference is in-memory (☐ persistence is
-  an optional follow-up).
+  dot), cleared on open. ☑ **Sort/density now persisted** (2026-06-18):
+  `ThreadListPreferencesStore` (`uxnan.threads.sort`/`uxnan.threads.compact`)
+  + `threadSortProvider`/`threadDensityCompactProvider`; both the active and
+  archived lists share the persisted choice (survives restart). Store
+  round-trip tested.
 - ◑ **Scope threads to the connected PC / project** — **PC scoping DONE +
   connection-targeting DONE**: `Thread.deviceId` tags each thread with its PC and
   the list filters by it. Crucially, **all live actions now target the PC we
@@ -155,10 +183,17 @@ browser and multi-PC connection correctness are now DONE — see below.)
   validated Connect), and the conversation composer is disabled unless connected
   to the thread's PC — so a message can never be sent over a *different*
   connected PC's channel. Browsing a PC no longer changes the connection target
-  (`setActiveDevice` removed from the browse path). ☐ Still open:
-  **project**-level scoping (drive `loadThreads(projectId:)` once the session
-  exposes the active project). The `thread/list` JSON shape is still assumed
-  (tolerant parser) — verify against the real bridge.
+  (`setActiveDevice` removed from the browse path). ◑ **Project-level scoping —
+  implemented, DISABLED in the UI (2026-06-18).** The client-side filter is
+  fully built — a `_ProjectFilterBar` on `ThreadsScreen` slicing by a project
+  key (`projectId` ?? `cwd`, labelled by the folder basename), composing with
+  the agent filter — and the bridge scopes too (`loadThreads(projectId:)`). But
+  it is **intentionally not shown**: a flat chip bar isn't the right surface
+  (maintainer call). Gated behind `_ThreadsScreenState._projectFilterEnabled`
+  (a getter returning `false`, with a `FOR-DEV:` note). ☐ **To enable:** surface
+  it from a proper **advanced filters / organization view** and flip the flag —
+  no other code/back change needed. The `thread/list` JSON shape is still
+  assumed (tolerant parser) — verify against the real bridge.
 - ◑ **Thread actions** — **new thread DONE**: a "New conversation" FAB on
   `ThreadsScreen` opens `NewConversationSheet` (pick project via `project/list`,
   agent via `agent/list`, model via `agent/models`) → `ThreadManager.startThread`
@@ -184,10 +219,15 @@ browser and multi-PC connection correctness are now DONE — see below.)
   - ☑ **Rename thread** — DONE (mobile): long-press menu → rename dialog →
     `ThreadManager.renameThread` (local-first + `thread/rename`, graceful
     degradation). Bridge `thread/rename` handler is the other agent's side.
-  - ◑ **Expose the thread id in the UI** — **thread id DONE**: long-press "Copy
-    thread ID" + a copyable **Thread ID** row in `SessionStatusSheet` (resume a
-    conversation from the CLI on the PC). ☐ Still: surface the agent's **session
-    id** (e.g. OpenCode `sessionID`) once the bridge exposes it via `thread/read`.
+  - ☑ **Expose the thread id + agent session id in the UI — DONE both sides
+    (2026-06-18).** The conversation overflow menu's **Session info** item opens a
+    sheet with the copyable **Thread ID** plus the agent's **native session id**
+    (Claude `session_id`, OpenCode `sessionID`, …) and a "resume from the CLI"
+    hint. The bridge now surfaces it: `toThread` includes `agentSessionId` (shared
+    `Thread.agentSessionId`), so `thread/read`/`thread/list` carry it; the phone
+    fetches it lazily via `ThreadManager.readAgentSessionId` (no drift migration —
+    transient, online-only, which is the resume context anyway). ☐ On-device:
+    confirm a real agent's session id shows and resumes from the CLI.
   - ☑ **Remove device** — DONE: a destructive "Remove device" action in the PC
     card's overflow menu (`my_devices_screen.dart`). After a confirm dialog it
     calls `SessionCoordinator.removeTrustedDevice` (sends
@@ -231,14 +271,27 @@ browser and multi-PC connection correctness are now DONE — see below.)
          `PreToolUse` hook round-trips each tool to the phone). Both validated
          end-to-end. **Codex** real approvals are still deferred (needs the
          app-server turn protocol — see `bridge/FOR-DEV.md`).
-    - ☑ **On-device paths that work today:** (a) any agent → start an **`echo`**
-      thread, send `approval-demo`; (b) **Claude** with `interactiveApprovals`
-      enabled → ask it to run a tool (e.g. write a file) and the card →
-      Approve/Reject gates it. No mobile change was needed; the app is generic.
+    - ☑ **On-device paths — VALIDATED (2026-06-18):** (a) any agent → start an
+      **`echo`** thread, send `approval-demo`; (b) **Claude** with
+      `interactiveApprovals` (opt-in `PreToolUse` hook) enabled → ask it to run a
+      tool (e.g. write a file) and the card → Approve/Reject gates it. Both
+      confirmed on-device. No mobile change was needed; the app is generic.
   - ☑ **Verify wire shapes (plan/subagent)** — DONE: confirmed `plan` and
     `subagent` content blocks are **informational** status updates, NOT approval
     gates — only `approval` blocks gate actions. Field names for plan steps /
     subagent actions remain assumed; the parser is tolerant.
+  - ◑ **Plan / to-do lists rendered (plan mode) — bridge mapping added
+    (2026-06-18).** The phone already decoded+rendered `plan` blocks
+    (`PlanContent` → `_PlanCard`); the gap was the bridge emitting them. New
+    `planBlock` + tolerant `extractPlanSteps` (`adapters/content-blocks.ts`) now
+    map each agent's plan tool: **Claude** `TodoWrite` (verified by shape),
+    **OpenCode** `todowrite`, **pi** `todo`, **Codex** `update_plan` item. Safe:
+    a block is emitted only when ≥1 step parses (wrong/absent shape → no block).
+    ☐ **On-device per agent (the maintainer's validation):** Claude (available),
+    **OpenCode + pi** (minimax-m3 via tokenrouter, free — validate first), and
+    **Codex** (single monthly use — validate last/sparingly). The Codex/OpenCode/
+    pi tool **names + input shapes are ASSUMED** (`FOR-DEV:` markers at each
+    mapper) — if a real turn shows a different name/shape, it's a one-line tweak.
 - ☑ **Application managers** — DONE: `ThreadManager` (timeline build + streaming
   reducer application, `loadThreads`, `sendUserMessage`) and
   `IncomingMessageProcessor`.
@@ -277,13 +330,18 @@ browser and multi-PC connection correctness are now DONE — see below.)
     and `forkThread` (`thread/fork` → persists the returned thread with the
     source's `deviceId`, opens it). Fork is a **"Fork conversation"** item in the
     conversation overflow menu.
-  - ☐ **Incremental remote paging (follow-up).** `loadMoreHistory` paginates the
-    *local* store (already complete after resync). True remote back-paging using
-    `turn/list`'s `nextCursor` to avoid re-pulling the whole thread on open needs
-    a bridge change: its cursor is **forward-only / offset** (oldest→newest), so
-    a newest-first scroll-up needs a reverse cursor or a total-count from the
-    bridge. The `turn/list` JSON shape is assumed (tolerant parser); verify
-    against the real bridge.
+  - ☑ **Incremental remote paging — DONE both sides (2026-06-18).** The bridge
+    `turn/list` now reports `total` and accepts `fromEnd` (shared
+    `TurnList.total`, `TurnListParams.fromEnd`; `ThreadStore.listTurns` +
+    `paginateTurns`). On open, `ThreadManager._resyncThread` pulls only the
+    **newest** page (`fromEnd:true`, `_turnPageSize=20`) instead of the oldest
+    page, and `loadMoreHistory` pages **backward** remotely — widening the local
+    window first, then fetching the previous turn page by an explicit offset
+    cursor derived from `total`, persisting older assistant answers **below** the
+    current min `orderIndex`. `hasMore` reflects local-window OR remote-offset.
+    Backward-compatible: an older bridge omits `total`, disabling remote paging
+    (local windowing only). Covered by a store test (bridge) + a back-paging
+    test (mobile). ☐ On-device: verify scroll-up paging on a long real thread.
 - ☑ **Conversation UI (visual layer)** — DONE: `ConversationScreen`
   (`SliverAppBar.large`, floating + snap, auto-scroll), message renderers
   (`MessageBubble` + `MessageContentView`: markdown, code, command card, diff,
@@ -292,7 +350,29 @@ browser and multi-PC connection correctness are now DONE — see below.)
   **bottom-anchored bar** (`surfaceContainer` + hairline, no floating card); the
   app-bar git affordance is a single commit `IconButton` (the redundant branch
   chip was dropped); and the header shows a **"Responding…"** spinner while the
-  agent works (the per-thread activity, also on the list).
+  agent works (the per-thread activity, also on the list). A **jump-to-latest**
+  button (`_JumpToBottomButton`) springs in over the timeline when the user
+  scrolls up and jumps to the newest message in one tap (2026-06-18).
+- ☑ **Conversation scroll position persists across opens** — DONE
+  (2026-06-18). Opening a thread used to yank the timeline back to the top,
+  forcing users who had scrolled up to read older context to re-scroll every
+  time they left and re-entered. A session-scoped
+  `ConversationScrollStore` (`lib/presentation/providers/conversation_scroll_store.dart`,
+  in-memory `Map<threadId, { offset, atBottom }>`) records the pixel offset
+  + an `atBottom` flag while the user scrolls, and `ConversationScreen`
+  restores it once on first content (`_restoreScroll`, guarded by
+  `_restoredScroll`, re-applied on the next frame to catch late layout —
+  variable-height messages / images that grow `maxScrollExtent`). When the
+  user was at (or near) the bottom on close, the restore follows the
+  newest message instead of pinning a now-stale offset. In-memory only (per
+  session): a saved pixel offset only maps cleanly onto the same rendered
+  content, which a cross-restart resync can change. Pairs with the existing
+  *Jump to latest* button — the button still gets you to the newest
+  message manually; the restore makes the common case (returning to a
+  thread) just work. Covered by
+  `conversation_scroll_store_test.dart` (null until saved, round-trip,
+  overwrite). ☐ On-device: verify a thread opened repeatedly lands at the
+  same spot and that *Jump to latest* still works after the restore.
 - ☑ **Agent thinking (reasoning) — first structured-content slice** — DONE
   (Claude Code, end-to-end): the bridge parses `thinking_delta` and emits
   `stream/thinking/delta` (persisted via `Message.thinking`); the phone decodes a
@@ -369,10 +449,27 @@ browser and multi-PC connection correctness are now DONE — see below.)
     knobs/agents need no app change. ☐ On-device: verify picking an effort
     changes the agent's behavior on a live bridge. (Phase 4 — fast-mode/context —
     has no validated CLI argv flag yet; the renderer is already forward-ready.)
-  - ◑ **Approval mode** (`ApprovalModeSheet`) → now an explicit local per-thread
-    setting (no sampled value); the status-sheet row is **gated by the agent's
-    `approvals` capability** (`agentCapabilitiesProvider`). ☐ Read/persist via an
-    access-mode RPC when one exists.
+  - ☑ **Approval (access) mode — persisted server-side, DONE both sides
+    (2026-06-18).** `ApprovalModeSheet` is gated by the agent's `approvals`
+    capability; the chosen mode now **persists on the bridge** via the new
+    `thread/setAccessMode { threadId, mode }` RPC (shared `AccessMode` +
+    `Thread.accessMode`; `ThreadStore.setAccessMode`, idempotent). The phone
+    seeds the picker from the bridge on open (`ThreadManager.readAccessMode` via
+    `thread/read`, the source of truth) and persists on change
+    (`ThreadManager.setAccessMode`, best-effort). ☑ **Enforcement — DONE
+    (2026-06-18, Claude).** The bridge applies the persisted mode per turn: the
+    `turn/send` handler reads it from the thread runtime (`ThreadRuntime.accessMode`
+    → `SendTurnOptions.accessMode`) and the **Claude adapter** maps it —
+    `requestApproval` keeps the interactive `PreToolUse` hook in play,
+    `approveForMe` → `--permission-mode acceptEdits` (hook suppressed),
+    `fullAccess` → `--dangerously-skip-permissions`. **Non-breaking by design:**
+    when a thread has **no** mode set, the adapter's configured posture is used
+    unchanged (the validated interactive-approval flow is untouched), and
+    `requestApproval` without a usable hook falls back to the configured posture
+    (never denies wholesale). Covered by four adapter tests + a runtime test.
+    ☐ **Follow-up:** map `accessMode` for the other agents that gate tools
+    (Codex `--ask-for-approval`/`--full-auto`, etc.); today they accept the
+    field and ignore it (Claude is the agent with the validated approval flow).
   - ☑ **Git branch / remote / local** (`_EnvironmentChip`, status-sheet git
     section) → real values from `git/status` via `gitRepoStateProvider`; the
     commit/push rows call `GitActionManager.commit` / `.push` against the active
@@ -394,8 +491,9 @@ browser and multi-PC connection correctness are now DONE — see below.)
       file/vision-capable agent CLI can open it (no per-CLI image flag needed).
       The app already sends `attachments: [{type:'image', mimeType, base64Data}]`,
       so no further mobile change is required.
-    - ☐ **On-device verification:** pick a photo, send an image-only message, and
-      confirm the agent actually reads/acts on the image against a live bridge.
+    - ☑ **On-device verification — DONE (2026-06-18):** picked a photo, sent an
+      image-only message, and confirmed the agent reads/acts on the image
+      against a live bridge.
     - ☐ **Native CLI image flags (bridge follow-up, optional):** some agents may
       accept images more richly via a dedicated flag/MCP than a file-path
       reference; the temp-file path is the CLI-agnostic MVP. Tracked in
@@ -427,17 +525,60 @@ browser and multi-PC connection correctness are now DONE — see below.)
   "System default" option (`localeSettingProvider` → `MaterialApp.locale`; null
   follows the device). Persisted via `AppearancePreferencesStore`. A newly added
   locale shows up automatically. Covered by `personalization_screen_test.dart`.
-- ☐ **Custom accent colors (brand-independent theming)** — currently a
-  *"Coming soon"* placeholder. A first cut (override just the `primary` role via
-  a seed) was removed because it broke visual coherence: surfaces, secondary,
-  containers and other roles stayed brand-tuned and clashed with the chosen
-  accent. The correct implementation is a **larger theming change** — make the
-  whole `ColorScheme` derive from the accent (e.g. `ColorScheme.fromSeed` with a
-  curated set of surface/secondary overrides, or a full token remap) so every
-  role stays harmonious across light/dark for any accent. Re-introduce the
-  accent picker (swatch palette + persistence; a `uxnan.appearance.accentId`
-  key in `AppearancePreferencesStore`) once that lands. `buildUxnanTheme` will
-  take the accent seed again at that point.
+- ☑ **Custom themes (full M3 ColorScheme editor + JSON import/export) — DONE
+  (2026-06-19) & supersedes the previous 7-swatch accent picker.** The
+  personalization screen now offers a 4-segment `SegmentedButton`:
+  *System / Light / Dark / Custom*. While no custom theme is persisted the
+  *Custom* segment is disabled; once the user authors one, picking *Custom*
+  flips `themeSourceSettingProvider` to `ThemeSource.custom` and the whole
+  `ColorScheme` for both light and dark is sourced from the user's
+  `CustomTheme` (`buildUxnanTheme(themeSource: ThemeSource.custom, customTheme: …)`).
+  The full editor (`CustomThemeEditorScreen`) exposes **every public Material 3
+  color role** (46, grouped Primary/Secondary/Tertiary/Error/Surface/Outline)
+  for both brightnesses, with an inline HSV picker (`ColorPickerSheet`) per
+  role, *Reset brightness* / *Derive from seed* helpers per side, and
+  *Export* (clipboard JSON + selectable pretty-print dialog) / *Import*
+  (paste any previously-exported JSON). JSON shape is stable + versioned
+  (`schemaVersion`); roles are `#AARRGGBB` hex strings (integer ARGB accepted
+  for legacy exports); unknown / missing roles degrade to safe defaults so
+  hand-edited or older documents still load. The previous 7-swatch picker
+  (`AccentPalette` / `AccentColorId`, the `accentSettingProvider`, the
+  `uxnan.appearance.accentId` storage key, and the `accentBlue..accentTeal`
+  ARB keys) is removed — see `CHANGELOG.md → [Unreleased] → Changed` for the
+  full diff. Persisted under `uxnan.appearance.customTheme` as a single JSON
+  document. See `architecture/02c-implementation-guide.md` §3.1 for the spec.
+  ☐ On-device visual review of the new editor (role list spacing, picker
+  ergonomics, import copy) — same on-device loop as the rest of the UI.
+- ☑ **Custom themes as a library (multi-selectable + JSON import/export of
+  many themes)** — DONE (2026-06-19, supersedes the previous single-theme
+  picker): the personalization screen's 4-segment picker becomes a
+  3-segment `SegmentedButton<ThemeModeOption>` (System / Light / Dark) plus
+  a master **"Use a custom theme"** switch + a collapsible library with
+  **2 built-in example themes** ("Midnight" — leans dark, "Sandstone" —
+  leans light) seeded on first run. Each row in the library exposes an
+  `IconSurfaceMenu` with **Edit** (opens the existing
+  `CustomThemeEditorScreen` against that theme), **Export JSON** (copies
+  the theme to the clipboard) and **Delete** (built-ins are protected).
+  Below the per-theme rows, three library-level actions:
+  **Import theme** (accepts a single theme JSON OR an array of themes —
+  the typical *Export all* payload — and assigns fresh ids when an
+  imported id collides with an existing library entry), **Export all
+  themes** (serializes the whole library to the clipboard as a JSON
+  array), and **Reset library** (drops every authored theme and restores
+  the built-in seed + flips the master switch off). State model:
+  `customThemesLibraryProvider` (`List<CustomTheme>`, seeded with the
+  built-ins on first hydrate), `activeCustomThemeIdProvider`
+  (`String?`), `useCustomThemeProvider` (`bool`) — the existing
+  `customThemeSettingProvider` is now a derived `Provider<CustomTheme?>`
+  that resolves to the active theme when the switch is on and an id is
+  selected, so `app.dart` and `themeSourceSettingProvider` keep their
+  existing contract. Legacy `uxnan.appearance.customTheme` is migrated
+  into the library on first hydrate (single-shot; key is removed after
+  migration). New persistence keys: `uxnan.appearance.customThemes`
+  (JSON array), `uxnan.appearance.activeCustomThemeId`, and
+  `uxnan.appearance.useCustomTheme`. Spec: see
+  `architecture/02c-implementation-guide.md` §3.1 (rewritten to reflect
+  the library model).
 
 ## Git
 
@@ -481,24 +622,28 @@ browser and multi-PC connection correctness are now DONE — see below.)
     an optional "Run in a worktree" toggle creates the worktree from the chosen
     working dir and points the new thread's `cwd` at the resulting checkout — so
     it no longer duplicates work inside the per-thread git screen.
-  - ☑ **`git/revert` — DONE both sides.** Bridge `GitService.revert` +
-    `git/revert`; phone `GitActionManager.revert` + a **"Revert last commit"**
-    item in the git-screen overflow (reverts `HEAD`, preserving history —
-    distinct from Undo commit's soft reset).
-  - ◑ **Safe branch/worktree deletion — bridge DONE, phone partial.** Bridge
-    `git/deleteBranch` (refuses unmerged unless `force`) + `git/removeWorktree`
-    (refuses dirty unless `force`) landed; `GitActionManager.deleteBranch` /
-    `removeWorktree` are wired (callable). ☐ **Phone UI pending:** a delete
-    affordance in the branch picker that, on the unmerged-error, offers a
-    forced retry behind a confirm; and a worktree-management entry to remove the
-    worktree a conversation was created in. UX pending review.
-  - ◑ **Vanished-cwd detection — bridge DONE, phone wiring pending.** Bridge
-    `workspace/exists` (`{ exists, isGitRepo? }`) is ready. ☐ **Phone:** probe a
-    thread's `cwd` on open and, when gone, mark the thread **unavailable** +
-    disable its composer with a "folder no longer exists" state (the
-    conversation composer's connection-gating is the integration point). Add a
-    `workspace/exists` call (e.g. on `WorkspaceBrowser` or the session
-    coordinator) and gate `ConversationScreen`'s send on it.
+  - ☑ **`git/revert` — DONE both sides + on-device validated (2026-06-18).**
+    Bridge `GitService.revert` + `git/revert`; phone `GitActionManager.revert` +
+    a **"Revert last commit"** item in the git-screen overflow (reverts `HEAD`,
+    preserving history — distinct from Undo commit's soft reset). Verified
+    on-device against a live bridge.
+  - ☑ **Safe branch/worktree deletion — DONE both sides** (phone landed
+    2026-06-18 review pass; confirmed already wired). Bridge `git/deleteBranch`
+    (refuses unmerged unless `force`) + `git/removeWorktree` (refuses dirty
+    unless `force`); `GitActionManager.deleteBranch`/`removeWorktree`. **Phone
+    UI:** the branch picker (`_BranchPicker` in `git_screen.dart`) has a delete
+    affordance per branch (`_deleteBranch`) that, on the unmerged-error, offers
+    an explicit **forced delete** behind an error-styled confirm; the git-screen
+    overflow exposes **Remove worktree** (`_removeWorktree`, force-on-dirty) when
+    the thread runs in a worktree. ☐ On-device: verify the force path against a
+    live bridge.
+  - ☑ **Vanished-cwd detection — DONE both sides** (phone confirmed wired,
+    2026-06-18). Bridge `workspace/exists` (`{ exists, isGitRepo? }`);
+    `ThreadManager.workspaceExists` (fail-open) is probed once per cwd by
+    `ConversationScreen._checkCwd` on open, and the composer is gated
+    `enabled: connectedHere && !_cwdMissing` with a `_CwdMissingBanner`
+    ("folder no longer exists") above it. ☐ On-device: verify against a removed
+    folder/worktree on a live bridge.
   - FOR-DEV: **managed worktrees** — the bridge's `git/createWorktree` requires an
     explicit `path` (no auto-path). The phone derives a sibling path from `cwd`
     (`_worktreePath` in `NewConversationScreen`) so the user only types a branch
@@ -523,6 +668,55 @@ browser and multi-PC connection correctness are now DONE — see below.)
   `GitActionManager.fileDiff` → the `git/diff` RPC (with a `path`, incl.
   untracked-file synthesis on the bridge). The changed-files list also shows
   per-file +/- counts from `git/status`.
+
+- ☑ **Workspace file browser (`workspace/list` + `workspace/readFile` +**
+  **`workspace/readImage` + `git/diff`)** — DONE: a new
+  `FileBrowserScreen` reachable from a `folder_open` `IconSurface` in the
+  conversation top bar (next to the git action). Lists every file and folder
+  in the active thread's `cwd` (incl. hidden dotfiles, with a toggle),
+  colored by git status (`added`/`modified`/`deleted`/`renamed`/`untracked`
+  each get a distinct color; tracked files stay neutral — matching the rest of
+  the app's git chrome). Lazy tree: directories fetch their children on
+  first expand via `workspace/list { cwd: <dir> }`. A new **`FileViewerScreen`**
+  pushed from a file tile decides the rendering by extension:
+  - **Images** → `workspace/readImage` → `Image.memory` inside an
+    `InteractiveViewer` (pinch-zoom / pan).
+  - **Markdown** (`.md`/`.markdown`) → a **preview** (`flutter_markdown` with
+    M3 chrome — code blocks, blockquotes, …) **or the raw source** (toggle in
+    the top bar; preserves indent / escape sequences).
+  - **Code / text** → `flutter_highlight` with the `atom-one-{dark,light}`
+    themes (matches the message-content renderer); per-extension language
+    detection (Dart/TypeScript/JavaScript/Python/Swift/Kotlin/Java/Go/Rust/
+    C/C++/CSS/SCSS/HTML/JSON/YAML/TOML/XML/Bash/SQL/Markdown).
+  - **Git diff overlay** — for files that report a `git status`, the viewer
+    fetches `git/diff { path }` and renders the unified diff with the same
+    +/- coloring as `GitDiffView`; a top-bar toggle switches back to the raw
+    content. The footer status pill paints the file's git state.
+  - **Binary placeholder** for base64 payloads.
+  - **Copy file** action (clipboard).
+  New `FileBrowserManager` (`application/managers/`) + per-cwd stream
+  provider; entity layer in `domain/entities/file_browser.dart`. Lazy walk is
+  pure RPC — no native file APIs; the bridge's `path-guard` keeps reads
+  confined to the workspace root (spec 02a §5.8.9). i18n strings added in EN
+  + ES. Covered by `file_browser_manager_test.dart` (loadRoot + git-status
+  paint, lazy expand, readFile/readImage/fileDiff, soft-fail on non-git
+  cwds). Sits next to `GitScreen` in the conversation top bar — together
+  they cover both the "what changed" and the "show me the file" questions.
+  - ☑ **Live git-status colours across the app (DONE 2026-06-18).** The
+    file browser's per-cwd `git/status` cache used to only refresh on
+    `loadRoot` / `toggleDirectory` / `writeFile`, so a commit made
+    elsewhere (the git screen, a CLI `git commit` on the PC) left the
+    browser painting stale colours. The manager now subscribes to the
+    shared `GitStatusBus` (`gitStatusBusProvider`,
+    `application/services/git_status_bus.dart`); every successful
+    `git/status` fetch from any producer (`GitActionManager` after every
+    action, `FileBrowserManager` on its own refresh) publishes a
+    `GitStatusChange { cwd, state }` and every manager holding that cwd
+    repaints from the payload. No new RPC, no per-screen lifecycle
+    gymnastics — the bus is generic so any future consumer can subscribe.
+    Documented in `architecture/02c-implementation-guide.md` (§3.x —
+    managers) and `architecture/03-technical-reference.md` (provider
+    tree). **CHANGELOG.md → [Unreleased] → Fixed.**
 
 ## Push notifications
 
@@ -607,24 +801,28 @@ Nothing below blocks an Android alpha build; these are the remaining feature/
 polish gaps, ordered by importance:
 
 - **App-side, buildable now (no bridge needed):**
-  - ☐ **Attach (file/image picker)** — gated by the `images` capability; today a
-    disabled placeholder. Medium importance: the only composer input still
-    missing (text + voice already work).
-  - ☐ **Custom accent colors** — placeholder; needs a full `ColorScheme`-from-seed
-    remap to stay coherent. Low importance (cosmetic).
-  - ☐ **Persist sort/density + project-level thread scoping** — small UX
-    follow-ups. Low importance.
+  - ☑ **Attach (image picker)** — DONE & **on-device validated (2026-06-18)**:
+    photo-library / camera capture → inline base64 `ImageContent`, image-only
+    messages ride `turn/send { attachments }`; the agent reads the image. Arbitrary
+    (non-image) file attach stays deferred (no bridge contract). See *Attach* above.
+  - ☑ **Persist sort/density** — DONE (2026-06-18). ◑ **Project-level thread
+    scoping** — implemented (chips + filter + bridge), **disabled in the UI**
+    (2026-06-18); flip `_projectFilterEnabled` from a future advanced-filters
+    view to enable.
   - ☐ **Work-log auto-expand while streaming; tap Last-edits strip to jump.** Low.
 - **App-side seam, needs a live bridge to finish/verify:**
-  - ☐ **Remote history pagination** (`loadMoreHistory` cursor + `resumeThread`/
-    `forkThread`). Medium importance for long-lived threads; re-sync already
-    recovers in-flight turns.
+  - ☑ **Remote history pagination** — DONE both sides (2026-06-18): newest-page
+    open (`fromEnd`) + remote back-paging via `total`. ☐ On-device: verify
+    scroll-up paging on a long real thread.
   - ☐ **Automated integration test against a real bridge** (today: simulated
     in-memory bridge). Medium importance for regression safety.
-- **Bridge-blocked (documented contracts above; not the app's fault):**
-  interactive approval intake, `git/revert`, safe branch/worktree deletion,
-  vanished-cwd detection, agent session-id surfacing, approval-mode persistence
-  RPC. Important for feature-completeness but each waits on the bridge agent.
+- **Bridge-blocked (documented contracts above; not the app's fault):** none
+  outstanding for the items tracked here. (Interactive approval intake,
+  `git/revert`, safe branch/worktree deletion, vanished-cwd detection, remote
+  history pagination, **agent session-id surfacing** and the **access-mode
+  persistence RPC** are now **DONE both sides** — see the sections above. The
+  remaining access-mode *enforcement* per turn is an app+bridge follow-up, not a
+  missing contract.)
 - **FOR-HUMAN assets (gate iOS + live push):** iOS APNs key (paid Apple
   account), iOS Info.plist permission strings (camera, local network, mic),
   Firebase config (`google-services.json` / `GoogleService-Info.plist`), Android

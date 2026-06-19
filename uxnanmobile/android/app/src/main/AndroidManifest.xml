@@ -1,4 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Network: WebSocket transport (LAN/Tailscale/relay), REST pairing, FCM,
+         and mDNS bridge discovery. Required for release builds (Flutter only
+         auto-adds INTERNET to debug/profile). -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- mDNS/DNS-SD bridge discovery (nsd / NsdManager). -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <!-- QR pairing scanner (mobile_scanner + permission_handler). -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />

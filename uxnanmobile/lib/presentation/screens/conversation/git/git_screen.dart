@@ -749,6 +749,13 @@ class _GitScreenState extends ConsumerState<GitScreen> {
     final topInset = NeTopBar.preferredHeight(context);
     return Scaffold(
       body: Stack(
+        // StackFit.expand keeps the bar at the full row width — the
+        // default loose fit sizes the stack to its non-Positioned child
+        // (the file list / commit composer column) which can report a
+        // narrow intrinsic width and starve the NeTopBar's actions row
+        // of horizontal space, triggering a RenderFlex overflow in the
+        // bar's Row.
+        fit: StackFit.expand,
         children: [
           Column(
             children: [
@@ -759,6 +766,13 @@ class _GitScreenState extends ConsumerState<GitScreen> {
                       behavior: HitTestBehavior.translucent,
                       onTap: () => FocusScope.of(context).unfocus(),
                       child: CustomScrollView(
+                        // Bouncing + always-scrollable matches `NeScaffold`
+                        // and the file browser so the screen feels native
+                        // on iOS and the user can drag-to-refresh even when
+                        // the content fits the viewport.
+                        physics: const BouncingScrollPhysics(
+                          parent: AlwaysScrollableScrollPhysics(),
+                        ),
                         slivers: [
                           // Spacer so first content clears the overlaid bar.
                           SliverToBoxAdapter(
@@ -1076,8 +1090,9 @@ class _MenuRow extends StatelessWidget {
   }
 }
 
-/// Branch, upstream, ahead/behind and aggregate diff counters (info only —
-/// branch actions live in the app-bar overflow).
+/// Branch, upstream, ahead/behind and aggregate diff counters. A neutral NE
+/// surface (no M3 `Card`): rounded corners + `surfaceContainerHigh` background
+/// + an outline subtle enough to disappear on dark mode.
 class _BranchSummary extends StatelessWidget {
   const _BranchSummary({required this.state});
   final GitRepoState state;
@@ -1095,82 +1110,77 @@ class _BranchSummary extends StatelessWidget {
         UxnanSpacing.lg,
         UxnanSpacing.sm,
       ),
-      child: Card.filled(
-        margin: EdgeInsets.zero,
-        child: Padding(
-          padding: const EdgeInsets.all(UxnanSpacing.md),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(
-                    Icons.account_tree_outlined,
-                    size: 18,
-                    color: colors.onSurfaceVariant,
-                  ),
-                  const SizedBox(width: UxnanSpacing.sm),
-                  Expanded(
-                    child: Text(
-                      state.branch,
-                      style: textTheme.titleMedium,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  if (state.ahead > 0)
-                    _Counter(
-                      icon: Icons.arrow_upward_rounded,
-                      value: state.ahead,
-                    ),
-                  if (state.behind > 0) ...[
-                    const SizedBox(width: UxnanSpacing.sm),
-                    _Counter(
-                      icon: Icons.arrow_downward_rounded,
-                      value: state.behind,
-                    ),
-                  ],
-                ],
-              ),
-              if (state.upstream != null) ...[
-                const SizedBox(height: UxnanSpacing.xs),
-                Text(
-                  state.upstream!,
-                  style: UxnanTypography.codeSmall.copyWith(
-                    color: colors.onSurfaceVariant,
+      child: NeSurface(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.account_tree_outlined,
+                  size: 18,
+                  color: colors.onSurfaceVariant,
+                ),
+                const SizedBox(width: UxnanSpacing.sm),
+                Expanded(
+                  child: Text(
+                    state.branch,
+                    style: textTheme.titleMedium,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
-              ],
-              const SizedBox(height: UxnanSpacing.sm),
-              Row(
-                children: [
-                  Icon(
-                    state.isDirty
-                        ? Icons.pending_outlined
-                        : Icons.check_circle_outline,
-                    size: 15,
-                    color: state.isDirty
-                        ? UxnanColors.warning
-                        : UxnanColors.success,
+                if (state.ahead > 0)
+                  _Counter(
+                    icon: Icons.arrow_upward_rounded,
+                    value: state.ahead,
                   ),
-                  const SizedBox(width: UxnanSpacing.xs),
-                  Text(
-                    state.isDirty ? l10n.gitDirtyState : l10n.gitCleanState,
-                    style: textTheme.bodySmall,
+                if (state.behind > 0) ...[
+                  const SizedBox(width: UxnanSpacing.sm),
+                  _Counter(
+                    icon: Icons.arrow_downward_rounded,
+                    value: state.behind,
                   ),
-                  if (state.isDirty && !totals.isEmpty) ...[
-                    const SizedBox(width: UxnanSpacing.sm),
-                    Text(
-                      '+${totals.additions} −${totals.deletions} · '
-                      '${totals.changedFileCount}',
-                      style: UxnanTypography.codeSmall.copyWith(
-                        color: colors.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
                 ],
+              ],
+            ),
+            if (state.upstream != null) ...[
+              const SizedBox(height: UxnanSpacing.xs),
+              Text(
+                state.upstream!,
+                style: UxnanTypography.codeSmall.copyWith(
+                  color: colors.onSurfaceVariant,
+                ),
               ),
             ],
-          ),
+            const SizedBox(height: UxnanSpacing.sm),
+            Row(
+              children: [
+                Icon(
+                  state.isDirty
+                      ? Icons.pending_outlined
+                      : Icons.check_circle_outline,
+                  size: 15,
+                  color:
+                      state.isDirty ? UxnanColors.warning : UxnanColors.success,
+                ),
+                const SizedBox(width: UxnanSpacing.xs),
+                Text(
+                  state.isDirty ? l10n.gitDirtyState : l10n.gitCleanState,
+                  style: textTheme.bodySmall,
+                ),
+                if (state.isDirty && !totals.isEmpty) ...[
+                  const SizedBox(width: UxnanSpacing.sm),
+                  Text(
+                    '+${totals.additions} −${totals.deletions} · '
+                    '${totals.changedFileCount}',
+                    style: UxnanTypography.codeSmall.copyWith(
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ],
         ),
       ),
     );
@@ -1200,7 +1210,9 @@ class _Counter extends StatelessWidget {
   }
 }
 
-/// Select-all control, the selected/total count and *Discard selected*.
+/// Select-all control, the selected/total count and *Discard selected*. Uses
+/// an [_NeCheckbox] (a circular IconSurface) instead of the M3 Checkbox so
+/// the gesture + scale spring match the rest of the screen.
 class _SelectionBar extends StatelessWidget {
   const _SelectionBar({
     required this.total,
@@ -1231,17 +1243,22 @@ class _SelectionBar extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Checkbox(
+          _NeCheckbox(
+            // `null` ⇒ indeterminate (some-but-not-all selected) — matches the
+            // previous `Checkbox(tristate: true)` semantics.
             value: none ? false : (all ? true : null),
-            tristate: true,
             onChanged: (_) => all ? onDeselectAll() : onSelectAll(),
           ),
+          const SizedBox(width: UxnanSpacing.xs),
           Expanded(
             child: Text(
               l10n.gitSelectedCount(selected, total),
               style: Theme.of(context).textTheme.bodyMedium,
             ),
           ),
+          // The destructive "Discard selected" action as a TextButton with an
+          // error-tinted glyph (kept; it sits outside the app-bar flow and is
+          // contextual to the row).
           TextButton.icon(
             onPressed: none ? null : onDiscardSelected,
             icon: Icon(
@@ -1260,8 +1277,10 @@ class _SelectionBar extends StatelessWidget {
   }
 }
 
-/// A collapsible card for one changed file: selection checkbox, status icon,
-/// name/path title, green/red counter, and the per-line diff body.
+/// A collapsible card for one changed file: selection glyph, status icon,
+/// name/path title, green/red counter, and the per-line diff body. Uses the
+/// app's [_NeSurface] chrome and an [_NeCheckbox] so the gesture ripple is
+/// the round NE shape (not the rectangular M3 default).
 class _FileCard extends StatelessWidget {
   const _FileCard({
     required this.file,
@@ -1300,83 +1319,79 @@ class _FileCard extends StatelessWidget {
         UxnanSpacing.lg,
         UxnanSpacing.xs,
       ),
-      child: Card.outlined(
-        margin: EdgeInsets.zero,
-        clipBehavior: Clip.antiAlias,
+      child: NeSurface(
+        outlined: true,
         child: Column(
           children: [
-            InkWell(
+            // Tappable row: the *whole* card toggles expansion so a tap on the
+            // path or counter still expands it (only the selection glyph and
+            // the discard action consume their own tap).
+            _ExpandableRow(
               onTap: () => onExpandedChanged(!expanded),
-              child: Padding(
-                padding: const EdgeInsets.only(
-                  left: UxnanSpacing.xs,
-                  right: UxnanSpacing.sm,
-                  top: UxnanSpacing.xs,
-                  bottom: UxnanSpacing.xs,
-                ),
-                child: Row(
-                  children: [
-                    Checkbox(
-                      value: selected,
-                      onChanged: (value) => onSelectedChanged(value ?? false),
-                    ),
-                    Icon(icon, size: 18, color: color, semanticLabel: label),
-                    const SizedBox(width: UxnanSpacing.sm),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
+              child: Row(
+                children: [
+                  _NeCheckbox(
+                    value: selected,
+                    onChanged: (v) => onSelectedChanged(v ?? false),
+                  ),
+                  Icon(icon, size: 18, color: color, semanticLabel: label),
+                  const SizedBox(width: UxnanSpacing.sm),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          name,
+                          style: textTheme.titleSmall?.copyWith(
+                            // The file's name also takes the git-status colour
+                            // so the row reads at a glance, even before reading
+                            // the icon. Matches the file browser's tile.
+                            color: color,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (dir != null)
                           Text(
-                            name,
-                            style: textTheme.titleSmall,
+                            dir,
+                            style: UxnanTypography.codeSmall.copyWith(
+                              color: colors.onSurfaceVariant,
+                            ),
                             overflow: TextOverflow.ellipsis,
                           ),
-                          if (dir != null)
-                            Text(
-                              dir,
-                              style: UxnanTypography.codeSmall.copyWith(
-                                color: colors.onSurfaceVariant,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: UxnanSpacing.sm),
+                  if (file.additions > 0)
+                    Text(
+                      '+${file.additions}',
+                      style: UxnanTypography.codeSmall.copyWith(
+                        color: UxnanColors.gitAdded,
                       ),
                     ),
-                    const SizedBox(width: UxnanSpacing.sm),
-                    if (file.additions > 0)
-                      Text(
-                        '+${file.additions}',
-                        style: UxnanTypography.codeSmall.copyWith(
-                          color: UxnanColors.gitAdded,
-                        ),
+                  if (file.deletions > 0) ...[
+                    const SizedBox(width: UxnanSpacing.xs),
+                    Text(
+                      '−${file.deletions}',
+                      style: UxnanTypography.codeSmall.copyWith(
+                        color: UxnanColors.gitDeleted,
                       ),
-                    if (file.deletions > 0) ...[
-                      const SizedBox(width: UxnanSpacing.xs),
-                      Text(
-                        '−${file.deletions}',
-                        style: UxnanTypography.codeSmall.copyWith(
-                          color: UxnanColors.gitDeleted,
-                        ),
-                      ),
-                    ],
-                    IconButton(
-                      tooltip: l10n.gitDiscard,
-                      visualDensity: VisualDensity.compact,
-                      onPressed: onDiscard,
-                      icon: Icon(
-                        Icons.undo_rounded,
-                        size: 18,
-                        color: colors.onSurfaceVariant,
-                      ),
-                    ),
-                    Icon(
-                      expanded
-                          ? Icons.expand_less_rounded
-                          : Icons.expand_more_rounded,
-                      color: colors.onSurfaceVariant,
                     ),
                   ],
-                ),
+                  IconSurface(
+                    icon: Icons.undo_rounded,
+                    tooltip: l10n.gitDiscard,
+                    onPressed: onDiscard,
+                  ),
+                  IconSurface(
+                    icon: expanded
+                        ? Icons.expand_less_rounded
+                        : Icons.expand_more_rounded,
+                    tooltip: l10n.gitActionsTitle,
+                    onPressed: () => onExpandedChanged(!expanded),
+                  ),
+                ],
               ),
             ),
             if (expanded)
@@ -1392,7 +1407,9 @@ class _FileCard extends StatelessWidget {
 }
 
 /// The persistent bottom composer: commit title, optional details, and the
-/// Commit / Push action row.
+/// Commit / Push action row. The morphing pill (stadium → rounded rect) is a
+/// signature element from the conversation composer — re-used here so both
+/// input surfaces share the same shape language.
 class _CommitBar extends StatelessWidget {
   const _CommitBar({
     required this.state,
@@ -1480,58 +1497,42 @@ class _CommitBar extends StatelessWidget {
                       // Secondary: the details toggle while committing; the
                       // undo-last-commit once committed (push mode).
                       if (pushMode)
-                        IconButton(
+                        IconSurface(
+                          icon: Icons.undo_rounded,
                           tooltip: l10n.gitUndoCommit,
-                          visualDensity: VisualDensity.compact,
                           onPressed: busy ? null : onUndoCommit,
-                          icon: const Icon(Icons.undo_rounded),
                         )
                       else
-                        IconButton(
+                        IconSurface(
+                          icon: showDetails
+                              ? Icons.expand_more_rounded
+                              : Icons.notes_rounded,
                           tooltip: l10n.gitCommitDescriptionLabel,
-                          isSelected: showDetails,
-                          visualDensity: VisualDensity.compact,
+                          selected: showDetails,
                           onPressed: canCommit ? onToggleDetails : null,
-                          icon: Icon(
-                            showDetails
-                                ? Icons.expand_more_rounded
-                                : Icons.notes_rounded,
-                          ),
                         ),
                       const SizedBox(width: UxnanSpacing.xs),
                       // Primary: commit while dirty; push once committed.
                       if (pushMode)
-                        IconButton.filled(
+                        _PrimaryActionButton(
+                          icon: Icons.arrow_upward_rounded,
                           tooltip: '${l10n.gitPushButton} (${state.ahead})',
-                          onPressed: busy ? null : onPush,
-                          icon: busy
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : Badge.count(
+                          busy: busy,
+                          // Push is badged with the number of commits ahead.
+                          badge: state.ahead > 0
+                              ? Badge.count(
                                   count: state.ahead,
-                                  child: const Icon(
-                                    Icons.arrow_upward_rounded,
-                                  ),
-                                ),
+                                  child: const SizedBox.shrink(),
+                                )
+                              : null,
+                          onPressed: busy ? null : onPush,
                         )
                       else
-                        IconButton.filled(
+                        _PrimaryActionButton(
+                          icon: Icons.check_rounded,
                           tooltip: l10n.gitCommitButton,
+                          busy: busy,
                           onPressed: canCommit ? onCommit : null,
-                          icon: busy
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Icon(Icons.check_rounded),
                         ),
                     ],
                   ),
@@ -1729,7 +1730,9 @@ String _bareBranch(String ref) {
 }
 
 /// A bottom-sheet list of branches to switch to (local + bare remotes), with
-/// the current branch shown at the top, disabled.
+/// the current branch shown at the top, disabled. Each row is a tap target
+/// with a leading glyph + trailing delete (when applicable) — the press
+/// feedback matches the rest of the app.
 class _BranchPicker extends StatefulWidget {
   const _BranchPicker({
     required this.branches,
@@ -1805,43 +1808,120 @@ class _BranchPickerState extends State<_BranchPicker> {
               style: textTheme.titleMedium,
             ),
           ),
-          ListTile(
+          // Current branch — leading check + bodyMedium title. Disabled because
+          // switching to the branch you're already on is a no-op.
+          _BranchPickerRow(
             leading: Icon(Icons.check_rounded, color: colors.primary),
             title: Text(widget.current),
             subtitle: Text(l10n.gitSwitchBranchCurrent(widget.current)),
             enabled: false,
+            onTap: () {},
+            trailing: null,
           ),
           if (_others.isNotEmpty)
             Divider(height: 1, color: colors.outlineVariant),
           for (final branch in _others)
-            ListTile(
+            _BranchPickerRow(
               leading: Icon(
                 Icons.account_tree_outlined,
                 color: colors.onSurfaceVariant,
               ),
               title: Text(branch, overflow: TextOverflow.ellipsis),
+              enabled: _deleting == null,
               onTap: _deleting == null
                   ? () => Navigator.of(context).pop(branch)
                   : null,
-              // Deletable: a local, non-primary branch (remotes need
-              // push --delete; main/master are protected).
               trailing: !_canDelete(branch)
                   ? null
                   : _deleting == branch
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
+                      ? const Padding(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: UxnanSpacing.sm,
+                          ),
+                          child: SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
                         )
-                      : IconButton(
-                          icon: const Icon(Icons.delete_outline_rounded),
-                          color: colors.error,
+                      : IconSurface(
+                          icon: Icons.delete_outline_rounded,
                           tooltip: l10n.gitDeleteBranch,
+                          background: colors.surfaceContainerHigh,
+                          foreground: colors.error,
                           onPressed:
                               _deleting != null ? null : () => _delete(branch),
                         ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+/// A row in [_BranchPicker] with a leading glyph, optional subtitle, and an
+/// optional trailing action — replaces the M3 `ListTile` so the entire
+/// surface speaks NE.
+class _BranchPickerRow extends StatelessWidget {
+  const _BranchPickerRow({
+    required this.leading,
+    required this.title,
+    required this.onTap,
+    required this.enabled,
+    this.subtitle,
+    this.trailing,
+  });
+
+  final Widget leading;
+  final Widget title;
+  final Widget? subtitle;
+  final Widget? trailing;
+  final VoidCallback? onTap;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: UxnanSpacing.lg,
+            vertical: UxnanSpacing.sm,
+          ),
+          child: Row(
+            children: [
+              leading,
+              const SizedBox(width: UxnanSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    DefaultTextStyle.merge(
+                      style: TextStyle(
+                        color: enabled
+                            ? colors.onSurface
+                            : colors.onSurfaceVariant,
+                      ),
+                      child: title,
+                    ),
+                    if (subtitle != null)
+                      DefaultTextStyle.merge(
+                        style: Theme.of(context).textTheme.bodySmall!.copyWith(
+                              color: colors.onSurfaceVariant,
+                            ),
+                        child: subtitle!,
+                      ),
+                  ],
+                ),
+              ),
+              if (trailing != null) trailing!,
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -2102,6 +2182,229 @@ class _BranchField extends StatelessWidget {
           ),
       ],
       onChanged: onChanged,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Local NE primitives
+//
+// These three widgets live here because they're only used by `git_screen.dart`
+// today. If they get reused by another screen, hoist them into the shared
+// `presentation/widgets/` tree.
+// ---------------------------------------------------------------------------
+
+/// A rounded NE surface used in place of M3's `Card.filled` / `Card.outlined`.
+/// Filled by default on `surfaceContainerHigh`; the `outlined` flag adds a thin
+/// `outlineVariant` border so cards nested inside other surfaces remain
+/// legible. No drop shadow — NE is flat by design.
+class NeSurface extends StatelessWidget {
+  /// Creates a [NeSurface].
+  const NeSurface({
+    required this.child,
+    this.outlined = false,
+    this.padding = const EdgeInsets.all(UxnanSpacing.md),
+    super.key,
+  });
+
+  /// The widget this surface wraps.
+  final Widget child;
+
+  /// Whether to draw a thin `outlineVariant` border (use when the card sits
+  /// on a background that matches `surfaceContainerHigh`).
+  final bool outlined;
+
+  /// Padding applied to [child].
+  final EdgeInsetsGeometry padding;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Material(
+      color: colors.surfaceContainerHigh,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: outlined
+            ? BorderSide(color: colors.outlineVariant)
+            : BorderSide.none,
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Padding(padding: padding, child: child),
+    );
+  }
+}
+
+/// An M3-style checkbox rendered as a circular NE surface so the gesture
+/// ripple matches the rest of the screen. `null` renders an indeterminate
+/// (mixed) state — partial selection across the list.
+class _NeCheckbox extends StatelessWidget {
+  /// Creates an [_NeCheckbox].
+  const _NeCheckbox({required this.value, required this.onChanged});
+
+  /// `true` = checked, `false` = unchecked, `null` = indeterminate.
+  final bool? value;
+
+  /// Tap handler; receives the new state (`true` / `false`).
+  final ValueChanged<bool?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final isOn = value ?? false;
+    final isMixed = value == null;
+    return _NeSelectionSurface(
+      icon: isMixed
+          ? Icons.remove_rounded
+          : (isOn
+              ? Icons.check_rounded
+              : Icons.check_box_outline_blank_rounded),
+      tooltip: isMixed ? 'Mixed' : (isOn ? 'Selected' : 'Not selected'),
+      selected: isOn || isMixed,
+      // When off, force the empty-box glyph in onSurfaceVariant.
+      foreground: isOn || isMixed ? colors.onPrimary : colors.onSurfaceVariant,
+      onPressed: () => onChanged(!(value ?? false)),
+    );
+  }
+}
+
+/// Internal helper for [_NeCheckbox] — a circular surface with the M3 press
+/// scale spring from [IconSurface] but no tooltip tooltips inside the file
+/// card (the file card has its own discards; we only want the press ripple).
+class _NeSelectionSurface extends StatelessWidget {
+  const _NeSelectionSurface({
+    required this.icon,
+    required this.tooltip,
+    required this.selected,
+    required this.foreground,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final bool selected;
+  final Color foreground;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final background = selected ? colors.primary : colors.surfaceContainerHigh;
+    final fg = selected ? foreground : colors.onSurfaceVariant;
+    return Tooltip(
+      message: tooltip,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onPressed,
+        child: Padding(
+          // 8 dp touch padding around a 24 dp visual — keeps the file-row
+          // tap target roomy without making the glyph feel oversized.
+          padding: const EdgeInsets.all(UxnanSpacing.xs),
+          child: Material(
+            color: background,
+            shape: const CircleBorder(),
+            clipBehavior: Clip.antiAlias,
+            child: SizedBox(
+              width: 24,
+              height: 24,
+              child: Center(
+                child: Icon(
+                  icon,
+                  size: 18,
+                  color: fg,
+                  semanticLabel: tooltip,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Filled primary action button for the commit composer's primary slot. The
+/// M3 `IconButton.filled` shows a square ripple that breaks the round NE
+/// gesture language; this widget keeps the round press feedback and adds a
+/// 16 dp spinner slot while a git action is in flight.
+class _PrimaryActionButton extends StatelessWidget {
+  const _PrimaryActionButton({
+    required this.icon,
+    required this.tooltip,
+    required this.busy,
+    required this.onPressed,
+    this.badge,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final bool busy;
+  final VoidCallback? onPressed;
+  final Widget? badge;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final enabled = onPressed != null;
+    // The spinner's colour follows the foreground token (onPrimary) so it
+    // stays legible whether the button is enabled or disabled — never a
+    // raw `Colors.white` literal.
+    final foreground =
+        enabled ? colors.onPrimary : colors.onPrimary.withValues(alpha: 0.5);
+    final spinner = busy
+        ? SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              valueColor: AlwaysStoppedAnimation<Color>(foreground),
+            ),
+          )
+        : Icon(icon, size: 20, color: foreground);
+    return Tooltip(
+      message: tooltip,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onPressed,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Material(
+              color: enabled ? colors.primary : colors.surfaceContainerHigh,
+              shape: const CircleBorder(),
+              clipBehavior: Clip.antiAlias,
+              child: SizedBox(
+                  width: 48, height: 48, child: Center(child: spinner)),
+            ),
+            if (badge != null) badge!,
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Tappable row that toggles expansion on tap — a Material+InkWell rounded to
+/// the surface radius so the press ripple stays inside the file card. Used
+/// by [_FileCard] so the entire row is the tap target (not just the icon).
+class _ExpandableRow extends StatelessWidget {
+  const _ExpandableRow({required this.child, required this.onTap});
+  final Widget child;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: UxnanSpacing.xs,
+            vertical: UxnanSpacing.sm,
+          ),
+          child: child,
+        ),
+      ),
     );
   }
 }

@@ -7,6 +7,7 @@ import type { AgentCapabilities, AgentId, AgentModel } from './agent-capabilitie
 import type { AgentConfig } from './agent-config.js';
 import type { TurnAttachment } from '../models/workspace.js';
 import type { ApprovalDecision } from '../models/approval.js';
+import type { AccessMode } from '../models/thread.js';
 
 /** A single streamed event produced by a running agent turn. */
 export interface AgentStreamEvent {
@@ -50,6 +51,14 @@ export interface SendTurnOptions {
   attachments?: TurnAttachment[];
   /** Working directory the agent should run in for this turn. */
   cwd?: string;
+  /**
+   * The thread's persisted access (approval) mode (see {@link AccessMode}).
+   * Adapters that gate tool execution map it to their per-turn permission flag
+   * — `requestApproval` keeps interactive approvals in play, `approveForMe`
+   * auto-approves, `fullAccess` bypasses gating. Absent → the adapter's
+   * configured default posture (no behaviour change).
+   */
+  accessMode?: AccessMode;
 }
 
 export interface IAgentAdapter {

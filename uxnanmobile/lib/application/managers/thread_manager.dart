@@ -12,6 +12,7 @@ import 'package:uxnan/domain/entities/message.dart';
 import 'package:uxnan/domain/entities/project.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/enums/approval_decision.dart';
+import 'package:uxnan/domain/enums/approval_mode.dart';
 import 'package:uxnan/domain/enums/message_delivery_state.dart';
 import 'package:uxnan/domain/enums/message_role.dart';
 import 'package:uxnan/domain/enums/thread_activity.dart';
@@ -87,15 +88,29 @@ class ThreadManager {
   /// composed with any [_LiveTurn] overlay to build the active timeline.
   List<Message> _activePersisted = const [];
 
-  /// One page of timeline history.
+  /// One page of timeline history (messages rendered per local window step).
   static const int _historyPageSize = 40;
 
+  /// One page of remote history (turns fetched per `turn/list` call). Matches
+  /// the bridge's default turn limit so a page maps to one bridge slice.
+  static const int _turnPageSize = 20;
+
   /// How many of the most-recent persisted messages the active timeline
-  /// renders. The local store holds the whole thread (kept complete by the
-  /// `turn/list` resync); this bounds the rendered window so a long history
-  /// doesn't build thousands of widgets at once, and grows by a page when the
-  /// user scrolls to the top ([loadMoreHistory]).
+  /// renders. The local store holds the pages fetched so far; this bounds the
+  /// rendered window so a long history doesn't build thousands of widgets at
+  /// once, and grows by a page when the user scrolls to the top
+  /// ([loadMoreHistory]).
   int _renderLimit = _historyPageSize;
+
+  /// Turn-index offset of the oldest turn fetched so far for the active thread.
+  /// `0` once the whole thread has been pulled (or on an older bridge that
+  /// doesn't report `total`, disabling remote back-paging); `> 0` means older
+  /// turns remain on the bridge and can be paged in by [loadMoreHistory].
+  int _remoteOldestOffset = 0;
+
+  /// `true` while an older-page `turn/list` fetch is in flight, so a double tap
+  /// on "show earlier" doesn't fire two overlapping fetches.
+  bool _loadingOlder = false;
 
   /// Token usage of each thread's most recent turn (context occupied, and the
   /// model's window when known), reported via `turn/completed`. In memory only.
@@ -339,6 +354,66 @@ class ThreadManager {
     }
   }
 
+  /// Reads the bridge record for [threadId] (`thread/read`) and returns the
+  /// agent's native session id (Claude `session_id`, OpenCode `sessionID`, …),
+  /// or `null` when unknown / unsupported / offline. Lets the conversation show
+  /// "resume from the CLI" beyond the bridge thread id. Failures degrade to
+  /// `null` rather than surfacing an error.
+  Future<String?> readAgentSessionId(String threadId) async {
+    try {
+      final res = await _sendRequest('thread/read', {'threadId': threadId});
+      if (res.error != null) return null;
+      final result = res.result;
+      if (result is Map) {
+        final id = result['agentSessionId'];
+        if (id is String && id.isNotEmpty) return id;
+      }
+      return null;
+    } on Object catch (error, stackTrace) {
+      AppLogger.warn('thread/read failed', error, stackTrace);
+      return null;
+    }
+  }
+
+  /// Reads the persisted per-thread access (approval) mode from the bridge
+  /// (`thread/read`), or `null` when unknown / unsupported / offline — so the
+  /// conversation can seed its mode from the server (the source of truth) on
+  /// open. Failures degrade to `null` (keep the local default).
+  Future<ApprovalMode?> readAccessMode(String threadId) async {
+    try {
+      final res = await _sendRequest('thread/read', {'threadId': threadId});
+      if (res.error != null) return null;
+      final result = res.result;
+      if (result is Map) {
+        final raw = result['accessMode'];
+        if (raw is String) {
+          for (final mode in ApprovalMode.values) {
+            if (mode.name == raw) return mode;
+          }
+        }
+      }
+      return null;
+    } on Object catch (error, stackTrace) {
+      AppLogger.warn('thread/read accessMode failed', error, stackTrace);
+      return null;
+    }
+  }
+
+  /// Persists the per-thread access (approval) [mode] on the bridge
+  /// (`thread/setAccessMode`) so the choice survives a restart and is shared
+  /// across devices. Best-effort: failures (offline / older bridge) are
+  /// swallowed so the local UI choice still applies this session.
+  Future<void> setAccessMode(String threadId, ApprovalMode mode) async {
+    try {
+      await _sendRequest('thread/setAccessMode', {
+        'threadId': threadId,
+        'mode': mode.name,
+      });
+    } on Object catch (error, stackTrace) {
+      AppLogger.warn('thread/setAccessMode failed', error, stackTrace);
+    }
+  }
+
   /// Forks [threadId] on the bridge (`thread/fork`): the bridge deep-copies the
   /// thread and its turns into a new thread, which is persisted locally
   /// (inheriting the source's `deviceId`) and returned so the caller can open
@@ -452,6 +527,8 @@ class ThreadManager {
     markRead(threadId); // opening the conversation clears its unread flag
     _activePersisted = const [];
     _renderLimit = _historyPageSize; // reset the window for the new thread
+    _remoteOldestOffset = 0; // reset remote paging state for the new thread
+    _loadingOlder = false;
     _timeline.add(const TurnTimelineSnapshot());
     await _messagesSub?.cancel();
     _messagesSub =
@@ -465,43 +542,131 @@ class ThreadManager {
     unawaited(_resyncThread(threadId));
   }
 
-  /// Grows the rendered timeline window by one page of older messages and
-  /// rebuilds the snapshot. No-op when the whole local history is already
-  /// shown. The local store is the source (kept complete by the resync), so
-  /// this never hits the network.
-  ///
-  /// FOR-DEV: this paginates the *local* store. Incremental *remote* paging
-  /// (using `turn/list`'s `nextCursor` to avoid re-pulling the whole thread on
-  /// open) is a follow-up — the bridge's cursor is forward-only/offset
-  /// (oldest→newest), which doesn't fit a newest-first scroll-up without a
-  /// reverse cursor or total-count on the bridge.
-  void loadMoreHistory() {
-    if (_activeThreadId == null) return;
-    if (_renderLimit >= _activePersisted.length) return;
-    _renderLimit += _historyPageSize;
+  /// Re-pulls the active thread's newest turns from the bridge — call when the
+  /// app resumes / reconnects so a turn that completed while the app was
+  /// backgrounded (or the connection had dropped) is recovered without leaving
+  /// and re-entering the conversation. No-op when no thread is active; the
+  /// request buffers and flushes if the connection is still coming back.
+  Future<void> resyncActive() async {
+    final threadId = _activeThreadId;
+    if (threadId == null) return;
+    await _resyncThread(threadId);
+  }
+
+  /// Loads one page of older history. First grows the rendered window over
+  /// already-fetched messages; once the local store is exhausted it pulls the
+  /// previous page of turns from the bridge (`turn/list` with an explicit
+  /// offset cursor derived from the reported `total`), persists them and grows
+  /// the window so they show. No-op when nothing older remains, locally or
+  /// remotely. On an older bridge that doesn't report `total`, remote paging is
+  /// disabled and this only grows the local window (prior behaviour).
+  Future<void> loadMoreHistory() async {
+    final threadId = _activeThreadId;
+    if (threadId == null) return;
+    // 1) Reveal already-fetched older messages by widening the window first.
+    if (_renderLimit < _activePersisted.length) {
+      _renderLimit += _historyPageSize;
+      _rebuildActiveTimeline();
+      return;
+    }
+    // 2) Local store exhausted — pull the previous page of turns, if any.
+    if (_loadingOlder || _remoteOldestOffset <= 0) return;
+    _loadingOlder = true;
+    try {
+      final size = _remoteOldestOffset < _turnPageSize
+          ? _remoteOldestOffset
+          : _turnPageSize;
+      final start = _remoteOldestOffset - size;
+      final page = await _fetchTurns(threadId, cursor: '$start', limit: size);
+      if (threadId != _activeThreadId || page == null) return;
+      await _persistTurns(
+        threadId,
+        page.turns,
+        trackLatestUsage: false,
+        olderPage: true,
+      );
+      _remoteOldestOffset = start;
+      // Widen the window so the just-fetched older messages are visible.
+      _renderLimit += _historyPageSize;
+      _rebuildActiveTimeline();
+    } finally {
+      _loadingOlder = false;
+    }
+  }
+
+  /// Pulls the bridge's **newest** page of turns for [threadId] (`turn/list`
+  /// with `fromEnd`) and persists any assistant answer not already stored,
+  /// keyed by the deterministic `stream-<turnId>` id. Opening a long thread no
+  /// longer re-pulls the whole history — older pages load on demand via
+  /// [loadMoreHistory]. User messages are authored locally and persisted on
+  /// send, so they are never re-synced (which would duplicate them).
+  Future<void> _resyncThread(String threadId) async {
+    final page =
+        await _fetchTurns(threadId, limit: _turnPageSize, fromEnd: true);
+    if (page == null) return;
+    await _persistTurns(threadId, page.turns, trackLatestUsage: true);
+    if (threadId != _activeThreadId) return;
+    final total = page.total;
+    if (total == null) {
+      // Older bridge without `total`: no remote back-paging, fall back to local
+      // windowing over whatever this page returned.
+      _remoteOldestOffset = 0;
+    } else {
+      // The fetched page is the last `turns.length` turns, so older turns live
+      // below this offset.
+      final offset = total - page.turns.length;
+      _remoteOldestOffset = offset < 0 ? 0 : offset;
+    }
     _rebuildActiveTimeline();
   }
 
-  /// Pulls the bridge's turns for [threadId] (`turn/list`) and persists any
-  /// assistant answer not already stored, keyed by the deterministic
-  /// `stream-<turnId>` id. User messages are authored locally and persisted on
-  /// send, so they are never re-synced (which would duplicate them).
-  Future<void> _resyncThread(String threadId) async {
+  /// Sends `turn/list` for one page and returns its turns + reported `total`
+  /// (null on failure or an older bridge). [fromEnd] asks for the newest page;
+  /// otherwise [cursor] is an explicit offset.
+  Future<({List<Object?> turns, int? total})?> _fetchTurns(
+    String threadId, {
+    String? cursor,
+    int? limit,
+    bool fromEnd = false,
+  }) async {
+    final params = <String, dynamic>{'threadId': threadId};
+    if (cursor != null) params['cursor'] = cursor;
+    if (limit != null) params['limit'] = limit;
+    if (fromEnd) params['fromEnd'] = true;
     final RpcMessage response;
     try {
-      response = await _sendRequest('turn/list', {'threadId': threadId});
+      response = await _sendRequest('turn/list', params);
     } on Object catch (error, stackTrace) {
       AppLogger.warn('turn/list resync failed (kept local)', error, stackTrace);
-      return;
+      return null;
     }
     final result = response.result;
-    final turns = result is Map ? result['turns'] : null;
-    if (turns is! List) return;
+    if (result is! Map) return null;
+    final turns = result['turns'];
+    if (turns is! List) return null;
+    final total = result['total'];
+    return (turns: turns, total: total is int ? total : null);
+  }
 
+  /// Persists the assistant answers from a fetched page of [turns] into the
+  /// local store (reconciling against any already-stored copy by the
+  /// deterministic `stream-<turnId>` id). When [trackLatestUsage] is true the
+  /// last turn's token usage restores the context meter (only meaningful for
+  /// the newest page).
+  Future<void> _persistTurns(
+    String threadId,
+    List<Object?> turns, {
+    required bool trackLatestUsage,
+    bool olderPage = false,
+  }) async {
     final existing = await _messageRepository.getMessages(threadId);
     final byId = {for (final m in existing) m.id: m};
-    var order = _maxOrder(existing);
     final toSave = <Message>[];
+    // New (not-yet-stored) messages collected in document order (oldest→newest);
+    // their `orderIndex` is assigned after the loop so an older page lands
+    // *below* the current minimum (it's older) and the newest page *above* the
+    // maximum, keeping the ascending-by-orderIndex timeline chronological.
+    final pending = <Message>[];
     // The latest turn's usage (turns are in order) restores the context meter
     // on re-open — it lives in memory only, so leaving and returning resets it.
     ({int tokens, int? contextWindow})? latestUsage;
@@ -551,8 +716,7 @@ class ThreadManager {
           }
           continue;
         }
-        order += 1;
-        toSave.add(
+        pending.add(
           Message(
             id: id,
             threadId: threadId,
@@ -560,16 +724,30 @@ class ThreadManager {
             role: MessageRole.assistant,
             contents: contents,
             deliveryState: MessageDeliveryState.delivered,
-            orderIndex: order,
+            orderIndex: 0, // assigned below, relative to the existing window
             createdAt: _millisToDate(rawMsg['createdAt']),
           ),
         );
       }
     }
+    // Assign order indices: an older page sits below the current minimum, the
+    // newest page above the current maximum. Both keep the page's own
+    // oldest→newest order.
+    if (pending.isNotEmpty) {
+      final base = olderPage
+          ? _minOrder(existing) - pending.length
+          : _maxOrder(existing) + 1;
+      for (var i = 0; i < pending.length; i += 1) {
+        toSave.add(pending[i].copyWith(orderIndex: base + i));
+      }
+    }
     if (toSave.isNotEmpty) await _messageRepository.saveMessages(toSave);
     // Restore the context meter from the latest turn's stored usage, unless a
-    // live turn already set a fresher value for this thread.
-    if (latestUsage != null && !_contextUsage.value.containsKey(threadId)) {
+    // live turn already set a fresher value for this thread. Only the newest
+    // page carries the *current* usage — older pages must never overwrite it.
+    if (trackLatestUsage &&
+        latestUsage != null &&
+        !_contextUsage.value.containsKey(threadId)) {
       final next = Map<String, ({int tokens, int? contextWindow})>.from(
         _contextUsage.value,
       )..[threadId] = latestUsage;
@@ -815,8 +993,12 @@ class ThreadManager {
     if (threadId == null) return;
     // Render only the most-recent window; older history loads on scroll-to-top.
     final all = _activePersisted;
-    final hasMore = all.length > _renderLimit;
-    final windowed = hasMore ? all.sublist(all.length - _renderLimit) : all;
+    final localHasMore = all.length > _renderLimit;
+    // More history is available when the local window hides older messages OR
+    // the bridge still holds older turns we haven't paged in yet.
+    final hasMore = localHasMore || _remoteOldestOffset > 0;
+    final windowed =
+        localHasMore ? all.sublist(all.length - _renderLimit) : all;
     var snapshot = const TurnTimelineSnapshot().reconcile(windowed).copyWith(
           hasMore: hasMore,
         );
@@ -860,6 +1042,9 @@ class ThreadManager {
 
   static int _maxOrder(List<Message> messages) =>
       messages.isEmpty ? -1 : messages.map((m) => m.orderIndex).reduce(max);
+
+  static int _minOrder(List<Message> messages) =>
+      messages.isEmpty ? 0 : messages.map((m) => m.orderIndex).reduce(min);
 
   static List<Message> _upsert(List<Message> messages, Message message) {
     final next = [

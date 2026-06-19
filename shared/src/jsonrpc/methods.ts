@@ -5,7 +5,7 @@
  * Source: architecture/02b-contracts-and-requirements.md and
  * uxnandesktop/architecture/02e-bridge-integration.md §4.4.
  */
-import type { Thread, ThreadList, Turn, TurnList } from '../models/thread.js';
+import type { AccessMode, Thread, ThreadList, Turn, TurnList } from '../models/thread.js';
 import type {
   GitBranchList,
   GitBranchResult,
@@ -59,6 +59,12 @@ export interface TurnListParams {
   threadId: string;
   cursor?: string;
   limit?: number;
+  /**
+   * When true, return the newest `limit` turns (the last page) regardless of
+   * `cursor`. Lets a client open a long thread at its most recent messages and
+   * page backward from there using `total`.
+   */
+  fromEnd?: boolean;
 }
 export interface TurnSendParams {
   threadId: string;
@@ -101,6 +107,11 @@ export interface ThreadRenameParams {
   threadId: string;
   /** New, non-empty title for the thread. */
   title: string;
+}
+export interface ThreadSetAccessModeParams {
+  threadId: string;
+  /** The per-thread access (approval) mode to persist. */
+  mode: AccessMode;
 }
 export interface TurnSendResult {
   turnId: string;
@@ -270,6 +281,7 @@ export interface JsonRpcMethodRegistry {
   'thread/fork': { params: ForkParams; result: Thread };
   'thread/setModel': { params: ThreadSetModelParams; result: void };
   'thread/rename': { params: ThreadRenameParams; result: Thread };
+  'thread/setAccessMode': { params: ThreadSetAccessModeParams; result: Thread };
   'thread/archive': { params: { threadId: string }; result: Thread };
   'thread/unarchive': { params: { threadId: string }; result: Thread };
   'thread/delete': { params: { threadId: string }; result: void };

@@ -16,10 +16,12 @@ import 'package:uxnan/domain/value_objects/turn_timeline_snapshot.dart';
 import 'package:uxnan/infrastructure/media/attachment_picker_service.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
+import 'package:uxnan/presentation/providers/conversation_scroll_store.dart';
 import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_bar.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/turn_tools_sheet.dart';
+import 'package:uxnan/presentation/screens/conversation/files/file_browser_screen.dart';
 import 'package:uxnan/presentation/screens/conversation/git/git_screen.dart';
 import 'package:uxnan/presentation/screens/conversation/messages/message_bubble.dart';
 import 'package:uxnan/presentation/screens/conversation/session_environment.dart';
@@ -48,8 +50,9 @@ class ConversationScreen extends ConsumerStatefulWidget {
 
 class _ConversationScreenState extends ConsumerState<ConversationScreen>
     with WidgetsBindingObserver {
-  // FOR-DEV: there is no bridge RPC for the approval/access mode yet, so it is
-  // a local per-thread setting (no sampled default — see SessionEnvironment).
+  // Per-thread access (approval) mode. Seeded from the bridge on open
+  // (`thread/read`, source of truth) and persisted on change
+  // (`thread/setAccessMode`); the default here is just the pre-load fallback.
   ApprovalMode _approvalMode = ApprovalMode.approveForMe;
   final ScrollController _scroll = ScrollController();
   String? _gitCwd;
@@ -62,6 +65,15 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   // setting is on: forces the next timeline update to jump to the bottom if the
   // user had scrolled up. Cleared once that scroll happens.
   bool _forceScrollOnSend = false;
+
+  /// Whether the "jump to latest" button is shown — true once the user has
+  /// scrolled up far enough that the newest messages are off-screen.
+  bool _showJumpToBottom = false;
+
+  /// Whether the initial scroll position has been restored for this open.
+  /// Guards the one-time restore so later timeline updates don't re-yank the
+  /// scroll.
+  bool _restoredScroll = false;
 
   /// Images the user attached for the next turn (shown as removable thumbnails
   /// above the composer); cleared on send.
@@ -76,12 +88,16 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _scroll.addListener(_onScroll);
     _foreground = ref.read(foregroundThreadProvider.notifier);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(threadManagerProvider).selectThread(widget.threadId);
       // Opening a conversation resumes it on the bridge (reactivates its agent
       // session); best-effort and skips archived threads.
       unawaited(ref.read(threadManagerProvider).resumeThread(widget.threadId));
+      // Seed the access mode from the bridge (source of truth) so the picker
+      // reflects the persisted per-thread choice, not just this session's local.
+      unawaited(_seedAccessMode());
       // Mark this conversation as the foreground one so its turn-end
       // notifications are suppressed while it's on screen.
       _foreground?.enter(widget.threadId);
@@ -97,6 +113,17 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
       ref.read(threadManagerProvider).markRead(widget.threadId);
     } else {
       _foreground?.leave(widget.threadId);
+    }
+  }
+
+  /// Seeds [_approvalMode] from the bridge's persisted per-thread access mode
+  /// (`thread/read`). No-op when the bridge reports none (older bridge / never
+  /// set) — the local default stays.
+  Future<void> _seedAccessMode() async {
+    final mode =
+        await ref.read(threadManagerProvider).readAccessMode(widget.threadId);
+    if (mounted && mode != null && mode != _approvalMode) {
+      setState(() => _approvalMode = mode);
     }
   }
 
@@ -132,6 +159,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     final foreground = _foreground;
     final threadId = widget.threadId;
     Future(() => foreground?.leave(threadId));
+    _scroll.removeListener(_onScroll);
     _scroll.dispose();
     super.dispose();
   }
@@ -139,6 +167,59 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   bool _isNearBottom() {
     if (!_scroll.hasClients) return true;
     return _scroll.position.maxScrollExtent - _scroll.offset < 200;
+  }
+
+  /// Shows the "jump to latest" affordance once the user has scrolled more than
+  /// roughly a screenful away from the bottom; hides it again near the bottom.
+  /// The wider hide/show gap avoids flicker as the content height changes while
+  /// a turn streams.
+  void _onScroll() {
+    if (!_scroll.hasClients) return;
+    final distance = _scroll.position.maxScrollExtent - _scroll.offset;
+    final show = distance > 320;
+    if (show != _showJumpToBottom) {
+      setState(() => _showJumpToBottom = show);
+    }
+    // Persist the position per thread so reopening restores it (never the
+    // top). `atBottom` follows the newest message on the next open instead of
+    // pinning a now-stale offset. Only record once the initial restore has
+    // happened, so the restore jump itself doesn't overwrite the saved
+    // position with the top.
+    if (_restoredScroll) {
+      ref.read(conversationScrollStoreProvider).save(
+            widget.threadId,
+            offset: _scroll.offset,
+            atBottom: distance < 200,
+          );
+    }
+  }
+
+  /// Restores the saved scroll position for this thread once its content is
+  /// first laid out: jumps to where the user left off, or to the newest
+  /// message when there's no saved position (or the user was at the bottom).
+  /// Never opens at the top. Runs once per open ([_restoredScroll]).
+  void _restoreScroll() {
+    if (_restoredScroll) return;
+    _restoredScroll = true;
+    final saved = ref.read(conversationScrollStoreProvider).positionFor(
+          widget.threadId,
+        );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scroll.hasClients) return;
+      if (saved == null || saved.atBottom) {
+        _scrollToBottom();
+        return;
+      }
+      final max = _scroll.position.maxScrollExtent;
+      _scroll.jumpTo(saved.offset.clamp(0.0, max));
+      // Late layout (images / variable heights) can grow the extent — re-apply
+      // next frame so the restored position lands accurately.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_scroll.hasClients) return;
+        final grown = _scroll.position.maxScrollExtent;
+        _scroll.jumpTo(saved.offset.clamp(0.0, grown));
+      });
+    });
   }
 
   void _scrollToBottom() {
@@ -171,6 +252,19 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     }
   }
 
+  /// Opens the workspace file browser for the thread's `cwd`. Surfaces the
+  /// full file tree (with git-status color treatment) alongside the focused
+  /// git diff + commit surface in `GitScreen` — together they cover both the
+  /// "what changed" and the "show me the file" questions.
+  Future<void> _openFileBrowser(String? cwd) async {
+    if (cwd == null) return;
+    await FileBrowserScreen.push(
+      context,
+      cwd: cwd,
+      threadId: widget.threadId,
+    );
+  }
+
   /// Opens the unified turn-tools sheet (attach + run-option knobs + approval).
   void _openTurnTools(
     List<AgentModelOption> runOptions, {
@@ -184,7 +278,13 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
       runOptions: runOptions,
       showApproval: showApproval,
       approvalMode: _approvalMode,
-      onApprovalChanged: (mode) => setState(() => _approvalMode = mode),
+      onApprovalChanged: (mode) {
+        setState(() => _approvalMode = mode);
+        // Persist to the bridge (source of truth); best-effort offline.
+        unawaited(
+          ref.read(threadManagerProvider).setAccessMode(widget.threadId, mode),
+        );
+      },
       onAttach: _pickAttachment,
     );
   }
@@ -210,16 +310,19 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     setState(() => _attachments.removeAt(index));
   }
 
-  /// Copies the full thread id so the same conversation can be resumed from the
-  /// CLI on the PC.
-  Future<void> _copyThreadId() async {
-    final l10n = AppLocalizations.of(context);
-    final messenger = ScaffoldMessenger.of(context);
-    await Clipboard.setData(ClipboardData(text: widget.threadId));
-    if (!mounted) return;
-    messenger
-      ..clearSnackBars()
-      ..showSnackBar(SnackBar(content: Text(l10n.threadIdCopied)));
+  /// Opens the session-info sheet: the bridge thread id plus the agent's native
+  /// session id (fetched via `thread/read`), so the same conversation can be
+  /// resumed from the agent's CLI on the PC.
+  Future<void> _showSessionInfo() async {
+    final manager = ref.read(threadManagerProvider);
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (_) => _SessionInfoSheet(
+        threadId: widget.threadId,
+        sessionIdFuture: manager.readAgentSessionId(widget.threadId),
+      ),
+    );
   }
 
   /// Prompts for a new title and renames the active thread — the same flow as
@@ -360,6 +463,12 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     );
     final cwd = thread?.cwd;
     final snapshot = timelineAsync.value;
+    // If the timeline already has content at first build (no later emission to
+    // drive the listener below), restore the saved scroll position now. Guarded
+    // + idempotent via [_restoredScroll].
+    if (!_restoredScroll && snapshot != null && snapshot.messages.isNotEmpty) {
+      _restoreScroll();
+    }
     // Aggregated edits of the most recent assistant turn that changed files,
     // for the green/red strip just above the composer.
     final lastEdits = _lastTurnEdits(snapshot);
@@ -385,7 +494,17 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     // just-sent message (with the setting on) forces the jump even from a
     // manually-scrolled position.
     ref.listen(activeTimelineProvider, (previous, next) {
-      if (next.value != null && (_forceScrollOnSend || _isNearBottom())) {
+      final snap = next.value;
+      if (snap == null || snap.messages.isEmpty) return;
+      // First real content for this open: restore the saved scroll position
+      // (or the bottom) instead of leaving it at the top.
+      if (!_restoredScroll) {
+        _restoreScroll();
+        return;
+      }
+      // After the initial restore, keep following the bottom on new content
+      // when the user is already near it (or just sent a message).
+      if (_forceScrollOnSend || _isNearBottom()) {
         _forceScrollOnSend = false;
         WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
       }
@@ -488,6 +607,17 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                         ),
                       ),
                     ),
+                    // Jump-to-latest button: appears (with a small spring) over
+                    // the last messages when the user has scrolled up, so the
+                    // bottom of a long/streaming conversation is one tap away.
+                    Positioned(
+                      right: UxnanSpacing.lg,
+                      bottom: UxnanSpacing.md,
+                      child: _JumpToBottomButton(
+                        visible: _showJumpToBottom,
+                        onTap: _scrollToBottom,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -570,6 +700,11 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
               ),
               actions: [
                 IconSurface(
+                  icon: Icons.folder_open_rounded,
+                  tooltip: l10n.fileBrowserOpenTooltip,
+                  onPressed: connectedHere ? () => _openFileBrowser(cwd) : null,
+                ),
+                IconSurface(
                   icon: Icons.commit_rounded,
                   tooltip: gitBranch != null
                       ? '${l10n.environmentGit} · $gitBranch'
@@ -577,7 +712,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                   onPressed: cwd != null ? () => _openGit(cwd) : null,
                 ),
                 _ConversationMenu(
-                  onCopyId: _copyThreadId,
+                  onSessionInfo: _showSessionInfo,
                   onRename: _renameThread,
                   onFork: _forkThread,
                 ),
@@ -987,12 +1122,12 @@ class _EmptyState extends StatelessWidget {
 /// beside it; the connection state lives on the earlier screens, not here.
 class _ConversationMenu extends StatelessWidget {
   const _ConversationMenu({
-    required this.onCopyId,
+    required this.onSessionInfo,
     required this.onRename,
     required this.onFork,
   });
 
-  final VoidCallback onCopyId;
+  final VoidCallback onSessionInfo;
   final VoidCallback onRename;
   final VoidCallback onFork;
 
@@ -1015,12 +1150,12 @@ class _ConversationMenu extends StatelessWidget {
           ),
         ),
         PopupMenuItem<void>(
-          onTap: onCopyId,
+          onTap: onSessionInfo,
           child: Row(
             children: [
-              const Icon(Icons.content_copy_outlined, size: 18),
+              const Icon(Icons.badge_outlined, size: 18),
               const SizedBox(width: UxnanSpacing.sm),
-              Text(l10n.threadActionCopyId),
+              Text(l10n.threadActionSessionInfo),
             ],
           ),
         ),
@@ -1033,6 +1168,206 @@ class _ConversationMenu extends StatelessWidget {
               Text(l10n.threadActionFork),
             ],
           ),
+        ),
+      ],
+    );
+  }
+}
+
+/// A small circular "jump to latest" button shown over the timeline when the
+/// user has scrolled up. Scales in with a light spring (NE small-element
+/// motion) and is non-interactive while hidden.
+class _JumpToBottomButton extends StatelessWidget {
+  const _JumpToBottomButton({required this.visible, required this.onTap});
+
+  final bool visible;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context);
+    return IgnorePointer(
+      ignoring: !visible,
+      child: AnimatedScale(
+        scale: visible ? 1 : 0,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutBack,
+        child: AnimatedOpacity(
+          opacity: visible ? 1 : 0,
+          duration: const Duration(milliseconds: 140),
+          child: Tooltip(
+            message: l10n.conversationScrollToBottom,
+            child: Material(
+              color: colors.secondaryContainer,
+              shape: const CircleBorder(),
+              elevation: 3,
+              shadowColor: colors.shadow,
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: onTap,
+                child: SizedBox(
+                  width: 44,
+                  height: 44,
+                  child: Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    color: colors.onSecondaryContainer,
+                    size: 26,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Bottom sheet showing the conversation's identifiers: the bridge **thread
+/// id** (always) and the agent's **native session id** (fetched lazily via
+/// `thread/read`; may be absent on older bridges / agents that don't report
+/// one). Each id is copyable. A hint explains they let the user resume the
+/// conversation from the agent's CLI on the PC.
+class _SessionInfoSheet extends StatelessWidget {
+  const _SessionInfoSheet({
+    required this.threadId,
+    required this.sessionIdFuture,
+  });
+
+  final String threadId;
+  final Future<String?> sessionIdFuture;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          UxnanSpacing.lg,
+          0,
+          UxnanSpacing.lg,
+          UxnanSpacing.lg,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(l10n.sessionInfoTitle, style: textTheme.titleMedium),
+            const SizedBox(height: UxnanSpacing.md),
+            _IdRow(label: l10n.threadIdLabel, value: threadId),
+            const SizedBox(height: UxnanSpacing.sm),
+            FutureBuilder<String?>(
+              future: sessionIdFuture,
+              builder: (context, snapshot) {
+                final waiting =
+                    snapshot.connectionState == ConnectionState.waiting;
+                return _IdRow(
+                  label: l10n.sessionInfoAgentSessionLabel,
+                  value: snapshot.data,
+                  loading: waiting,
+                  placeholder: l10n.sessionInfoUnavailable,
+                );
+              },
+            ),
+            const SizedBox(height: UxnanSpacing.md),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  Icons.terminal_rounded,
+                  size: 16,
+                  color: colors.onSurfaceVariant,
+                ),
+                const SizedBox(width: UxnanSpacing.sm),
+                Expanded(
+                  child: Text(
+                    l10n.sessionInfoResumeHint,
+                    style: textTheme.bodySmall?.copyWith(
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A single id row in [_SessionInfoSheet]: a label, the monospace value (or a
+/// spinner / placeholder), and a copy action enabled only when a value exists.
+class _IdRow extends StatelessWidget {
+  const _IdRow({
+    required this.label,
+    required this.value,
+    this.loading = false,
+    this.placeholder,
+  });
+
+  final String label;
+  final String? value;
+  final bool loading;
+  final String? placeholder;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final hasValue = value != null && value!.isNotEmpty;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: textTheme.labelSmall?.copyWith(
+                  color: colors.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: UxnanSpacing.xs),
+              if (loading)
+                const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              else
+                Text(
+                  hasValue ? value! : (placeholder ?? '—'),
+                  style: UxnanTypography.codeSmall.copyWith(
+                    color:
+                        hasValue ? colors.onSurface : colors.onSurfaceVariant,
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(width: UxnanSpacing.sm),
+        IconSurface(
+          icon: Icons.content_copy_outlined,
+          tooltip: MaterialLocalizations.of(context).copyButtonLabel,
+          onPressed: hasValue
+              ? () async {
+                  final messenger = ScaffoldMessenger.of(context);
+                  await Clipboard.setData(ClipboardData(text: value!));
+                  messenger
+                    ..clearSnackBars()
+                    ..showSnackBar(
+                      SnackBar(content: Text(l10n.sessionInfoCopied)),
+                    );
+                }
+              : null,
         ),
       ],
     );

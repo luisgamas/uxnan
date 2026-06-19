@@ -35,6 +35,16 @@ export interface Turn {
   completedAt?: number;
 }
 
+/**
+ * Per-thread access (approval) mode: how much the agent may do before it must
+ * pause for the user. Persisted on the bridge so the phone's choice survives a
+ * restart and is the source of truth across devices.
+ * - `requestApproval` — ask before each risky action.
+ * - `approveForMe` — auto-approve routine edits.
+ * - `fullAccess` — no approval gating.
+ */
+export type AccessMode = 'requestApproval' | 'approveForMe' | 'fullAccess';
+
 export interface Thread {
   id: string;
   projectId: string;
@@ -49,6 +59,14 @@ export interface Thread {
   model?: string;
   /** Absolute working directory the agent and git operations run in. */
   cwd?: string;
+  /**
+   * The agent CLI's NATIVE session id (Claude `session_id`, Codex `thread_id`,
+   * OpenCode `sessionID`, pi session id), when known. Surfaced so the phone can
+   * show "resume this conversation from the CLI" beyond the bridge thread id.
+   */
+  agentSessionId?: string;
+  /** Per-thread access (approval) mode; see {@link AccessMode}. */
+  accessMode?: AccessMode;
 }
 
 export interface ThreadList {
@@ -58,4 +76,10 @@ export interface ThreadList {
 export interface TurnList {
   turns: Turn[];
   nextCursor?: string;
+  /**
+   * Total number of turns available for the thread, regardless of the page
+   * returned. Lets a client page from the end (newest-first) by computing
+   * offsets without first pulling the whole thread.
+   */
+  total?: number;
 }

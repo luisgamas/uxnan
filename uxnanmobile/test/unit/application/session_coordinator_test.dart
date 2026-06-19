@@ -237,6 +237,7 @@ void main() {
       })> build(
     RpcMessage Function(RpcMessage) handler, {
     bool setActive = true,
+    DelayFn? delay,
   }) async {
     bridgeId = await keygen.generateIdentityKeyPair();
     final phoneId = await keygen.generateIdentityKeyPair();
@@ -251,7 +252,7 @@ void main() {
         publicKey: phoneId.publicKey,
         privateSeed: phoneId.privateSeed,
       ),
-      delay: (_) async {}, // elide backoff in tests
+      delay: delay ?? (_) async {}, // elide backoff in tests by default
     );
     if (setActive) {
       coordinator.setActiveDevice(
@@ -373,6 +374,50 @@ void main() {
           const Duration(seconds: 5),
         );
     expect((response.result! as Map)['echo'], 'ping');
+  });
+
+  test('resume() retries immediately when a reconnect backoff is pending',
+      () async {
+    final reached = Completer<void>();
+    final blocked = Completer<void>();
+    // A delay that parks forever (until woken) and signals once entered, so the
+    // test knows the reconnect loop is sitting in its backoff.
+    final harness = await build(
+      echo,
+      delay: (_) {
+        if (!reached.isCompleted) reached.complete();
+        return blocked.future;
+      },
+    );
+    addTearDown(harness.coordinator.dispose);
+    await harness.coordinator.connect(forceQrBootstrap: true);
+
+    // Drop → the reconnect loop enters and parks on the (never-completing) delay.
+    await harness.selector.dropCurrent();
+    await reached.future.timeout(const Duration(seconds: 5));
+
+    // Resume wakes the backoff so the next attempt runs now — without ever
+    // waiting the delay out.
+    await harness.coordinator.resume();
+    await harness.coordinator.connectionPhaseStream
+        .firstWhere((p) => p == ConnectionPhase.connected)
+        .timeout(const Duration(seconds: 5));
+
+    expect(harness.coordinator.connectionPhase, ConnectionPhase.connected);
+    expect(blocked.isCompleted, isFalse);
+  });
+
+  test('resume() is a no-op after an intentional disconnect', () async {
+    final harness = await build(echo);
+    addTearDown(harness.coordinator.dispose);
+    await harness.coordinator.connect(forceQrBootstrap: true);
+    await harness.coordinator.disconnect();
+    expect(harness.coordinator.connectionPhase, ConnectionPhase.disconnected);
+
+    await harness.coordinator.resume();
+    // Stays disconnected — backgrounding after the user disconnected must not
+    // silently reconnect.
+    expect(harness.coordinator.connectionPhase, ConnectionPhase.disconnected);
   });
 
   test('removeTrustedDevice notifies the bridge with the phone id, disconnects',

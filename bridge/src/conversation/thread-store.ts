@@ -10,6 +10,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import type {
+  AccessMode,
   Message,
   MessageRole,
   Thread,
@@ -62,6 +63,8 @@ interface StoredThread {
    * be located for the `turn/list` history fallback after a bridge restart.
    */
   agentSessionId?: string;
+  /** Per-thread access (approval) mode; persisted so the phone's choice sticks. */
+  accessMode?: AccessMode;
 }
 
 const DEFAULT_TURN_LIMIT = 20;
@@ -85,6 +88,8 @@ export interface ThreadRuntime {
   agentId?: string;
   model?: string;
   cwd?: string;
+  /** Persisted per-thread access (approval) mode, applied per turn. */
+  accessMode?: AccessMode;
 }
 
 export class ThreadStore {
@@ -105,14 +110,26 @@ export class ThreadStore {
     return toThread(await this.#requireThread(await this.#read(), threadId));
   }
 
-  async listTurns(threadId: string, cursor?: string, limit?: number): Promise<TurnList> {
+  async listTurns(
+    threadId: string,
+    cursor?: string,
+    limit?: number,
+    fromEnd = false,
+  ): Promise<TurnList> {
     const threads = await this.#read();
     const thread = await this.#requireThread(threads, threadId);
-    const start = cursor ? Number.parseInt(cursor, 10) || 0 : 0;
+    const total = thread.turns.length;
     const size = limit && limit > 0 ? limit : DEFAULT_TURN_LIMIT;
+    // `fromEnd` returns the last page (newest turns) so the phone can open a
+    // long thread at its most recent messages and page backward from there.
+    const start = fromEnd
+      ? Math.max(0, total - size)
+      : cursor
+        ? Number.parseInt(cursor, 10) || 0
+        : 0;
     const slice = thread.turns.slice(start, start + size);
-    const result: TurnList = { turns: slice.map(toTurn) };
-    if (start + size < thread.turns.length) {
+    const result: TurnList = { turns: slice.map(toTurn), total };
+    if (start + size < total) {
       result.nextCursor = String(start + size);
     }
     return result;
@@ -153,6 +170,7 @@ export class ThreadStore {
     if (thread.agentId !== undefined) runtime.agentId = thread.agentId;
     if (thread.model !== undefined) runtime.model = thread.model;
     if (thread.cwd !== undefined) runtime.cwd = thread.cwd;
+    if (thread.accessMode !== undefined) runtime.accessMode = thread.accessMode;
     return runtime;
   }
 
@@ -203,6 +221,21 @@ export class ThreadStore {
       const thread = await this.#requireThread(threads, threadId);
       thread.title = title;
       thread.updatedAt = now;
+      return toThread(thread);
+    });
+  }
+
+  /**
+   * Persists the per-thread access (approval) [mode]. Idempotent: setting the
+   * same mode is a no-op (does not bump `updatedAt`). Returns the updated Thread.
+   */
+  setAccessMode(threadId: string, mode: AccessMode, now: number): Promise<Thread> {
+    return this.#mutate(async (threads) => {
+      const thread = await this.#requireThread(threads, threadId);
+      if (thread.accessMode !== mode) {
+        thread.accessMode = mode;
+        thread.updatedAt = now;
+      }
       return toThread(thread);
     });
   }
@@ -413,6 +446,12 @@ function toThread(thread: StoredThread): Thread {
     ...(thread.agentId !== undefined ? { agentId: thread.agentId } : {}),
     ...(thread.model !== undefined ? { model: thread.model } : {}),
     ...(thread.cwd !== undefined ? { cwd: thread.cwd } : {}),
+    // The agent's NATIVE session id (Claude `session_id`, OpenCode `sessionID`,
+    // …) so the phone can show "resume from the CLI" beyond the thread id.
+    ...(thread.agentSessionId !== undefined
+      ? { agentSessionId: thread.agentSessionId }
+      : {}),
+    ...(thread.accessMode !== undefined ? { accessMode: thread.accessMode } : {}),
   };
 }
 

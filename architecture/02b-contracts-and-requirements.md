@@ -111,10 +111,11 @@ thread/resume           -> reanudar thread existente (best-effort)
 thread/fork             -> fork de un thread en uno nuevo
 thread/setModel         -> cambiar el modelo de un thread mid-conversacion
 thread/rename           -> renombrar thread (devuelve el Thread actualizado)
+thread/setAccessMode    -> persistir el modo de acceso/aprobacion por hilo. Params: { threadId, mode: AccessMode } (requestApproval | approveForMe | fullAccess). Devuelve el Thread actualizado; idempotente. El Thread expone `accessMode?` (fuente de verdad) y `agentSessionId?` (id de sesion nativo del agente, para "reanudar desde la CLI"). **Enforcement:** en cada `turn/send` el bridge lee `accessMode` del hilo y lo pasa al adapter (`SendTurnOptions.accessMode`); Claude lo mapea a su postura (requestApproval=hook interactivo, approveForMe=`--permission-mode acceptEdits`, fullAccess=`--dangerously-skip-permissions`). Sin modo → postura configurada (sin cambio).
 thread/archive          -> archivar thread (status -> archived, reversible)
 thread/unarchive        -> restaurar thread archivado (status -> active)
 thread/delete           -> eliminar thread y sus turns
-turn/list               -> turnos de un thread, paginacion por cursor
+turn/list               -> turnos de un thread; paginacion por cursor offset (oldest->newest). Params: { threadId, cursor?, limit?, fromEnd? }. Result: { turns, nextCursor?, total? }. `fromEnd:true` devuelve la pagina mas reciente (ultimos `limit` turnos); `total` permite paginar hacia atras (newest-first) calculando offsets sin traer todo el thread.
 turn/read               -> datos de un turno especifico
 turn/send               -> enviar contenido a un turno activo (texto opcional, attachments, options, approvalResponse)
 turn/cancel             -> cancelar turno en curso

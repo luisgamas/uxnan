@@ -216,6 +216,9 @@ class AppLocalizationsEs extends AppLocalizations {
   String get actionCancel => 'Cancelar';
 
   @override
+  String get actionApply => 'Aplicar';
+
+  @override
   String get threadsTitle => 'Conversaciones';
 
   @override
@@ -278,6 +281,9 @@ class AppLocalizationsEs extends AppLocalizations {
   String get conversationLoadEarlier => 'Mostrar mensajes anteriores';
 
   @override
+  String get conversationScrollToBottom => 'Ir al final';
+
+  @override
   String get threadActionArchive => 'Archivar';
 
   @override
@@ -310,6 +316,25 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get threadIdLabel => 'ID del hilo';
+
+  @override
+  String get threadActionSessionInfo => 'Información de sesión';
+
+  @override
+  String get sessionInfoTitle => 'Información de sesión';
+
+  @override
+  String get sessionInfoAgentSessionLabel => 'ID de sesión del agente';
+
+  @override
+  String get sessionInfoUnavailable => 'Aún no disponible';
+
+  @override
+  String get sessionInfoResumeHint =>
+      'Reanuda esta conversación desde la CLI del agente en tu PC.';
+
+  @override
+  String get sessionInfoCopied => 'Copiado al portapapeles';
 
   @override
   String get threadDeleteTitle => '¿Eliminar hilo?';
@@ -977,7 +1002,7 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get settingsPersonalizationSubtitle =>
-      'Tema, color de acento e idioma';
+      'Tema, temas personalizados e idioma';
 
   @override
   String get personalizationTitle => 'Personalización';
@@ -995,17 +1020,254 @@ class AppLocalizationsEs extends AppLocalizations {
   String get themeDark => 'Oscuro';
 
   @override
-  String get personalizationAccentSection => 'Color de acento';
+  String get themeCustom => 'Personalizado';
 
   @override
-  String get personalizationAccentComingSoon => 'Próximamente';
+  String get personalizationCustomThemeSection => 'Tema personalizado';
 
   @override
-  String get personalizationAccentComingSoonBody =>
-      'Los colores de acento personalizados están en diseño — llegarán cuando se mantengan coherentes en toda la app.';
+  String get personalizationCustomThemeDescription =>
+      'Diseña cada rol de color de Material 3, exporta a JSON o importa un tema compartido.';
+
+  @override
+  String get personalizationCustomThemeAuthor => 'Nuevo tema';
+
+  @override
+  String get personalizationCustomThemeAuthorSubtitle =>
+      'Empieza desde un color semilla y ajusta cada rol';
+
+  @override
+  String get personalizationCustomThemeEdit => 'Editar tema actual';
+
+  @override
+  String get personalizationCustomThemeEditSubtitle =>
+      'Ajusta los roles de color de claro y oscuro';
+
+  @override
+  String get personalizationCustomThemeReset => 'Usar el tema predeterminado';
+
+  @override
+  String get personalizationCustomThemeResetSubtitle =>
+      'Descarta el tema personalizado y vuelve al tema base';
+
+  @override
+  String get customThemeEditorTitle => 'Tema personalizado';
+
+  @override
+  String get customThemeEditorLight => 'Claro';
+
+  @override
+  String get customThemeEditorDark => 'Oscuro';
+
+  @override
+  String get customThemeEditorName => 'Nombre';
+
+  @override
+  String get customThemeEditorDescription => 'Descripción';
+
+  @override
+  String get customThemeEditorNameHint => 'p. ej. Púrpura medianoche';
+
+  @override
+  String get customThemeEditorDescriptionHint => 'Opcional';
+
+  @override
+  String get customThemeEditorDeriveFromSeed => 'Derivar desde semilla';
+
+  @override
+  String get customThemeEditorSeedHint => 'Color semilla';
+
+  @override
+  String get customThemeEditorRole => 'Rol';
+
+  @override
+  String get customThemeEditorResetRole => 'Restablecer rol';
+
+  @override
+  String get customThemeEditorResetBrightness => 'Restablecer modo';
+
+  @override
+  String get customThemeEditorExport => 'Exportar';
+
+  @override
+  String get customThemeEditorImport => 'Importar';
+
+  @override
+  String get customThemeEditorExportDialogTitle => 'JSON del tema';
+
+  @override
+  String get customThemeEditorExportDialogBody =>
+      'Comparte el siguiente JSON — pégalo en cualquier dispositivo con tu cuenta para recrear el tema.';
+
+  @override
+  String get customThemeEditorImportDialogTitle => 'Importar tema';
+
+  @override
+  String get customThemeEditorImportDialogBody =>
+      'Pega un JSON de tema exportado desde otro dispositivo.';
+
+  @override
+  String get customThemeEditorImportFieldHint => 'Pega aquí el JSON del tema';
+
+  @override
+  String get customThemeEditorCopied => 'JSON del tema copiado al portapapeles';
+
+  @override
+  String get customThemeEditorImported => 'Tema importado';
+
+  @override
+  String get customThemeEditorImportFailed =>
+      'No se pudo importar el tema — revisa el JSON.';
+
+  @override
+  String get customThemeEditorResetConfirmTitle => '¿Restablecer tema?';
+
+  @override
+  String get customThemeEditorResetConfirmBody =>
+      'Se descartará el tema personalizado actual y la app volverá al tema base.';
+
+  @override
+  String get customThemeEditorResetConfirmAction => 'Restablecer';
+
+  @override
+  String get customThemeEditorDeriveSeedTitle => 'Derivar desde semilla';
+
+  @override
+  String get customThemeEditorDeriveSeedBody =>
+      'Elige un color semilla; todos los roles del modo seleccionado se regenerarán con Material 3.';
+
+  @override
+  String get customThemeEditorPickColorTitle => 'Elegir color';
+
+  @override
+  String get customThemeEditorResetRoleConfirm =>
+      '¿Restablecer este rol a su valor derivado?';
+
+  @override
+  String get customThemeEditorDefaultName => 'Tema personalizado';
+
+  @override
+  String get customThemeEditorSaved => 'JSON del tema guardado';
+
+  @override
+  String get customThemeEditorSaveFailed =>
+      'No se pudo guardar el JSON del tema';
+
+  @override
+  String get customThemeEditorShareFile => 'Compartir archivo';
 
   @override
   String get personalizationLanguageSection => 'Idioma';
+
+  @override
+  String get personalizationUseCustomThemeLabel => 'Usar tema personalizado';
+
+  @override
+  String get personalizationUseCustomThemeSubtitle =>
+      'Sustituye Sistema/Claro/Oscuro por uno de tus temas guardados.';
+
+  @override
+  String get personalizationCustomThemesHeader => 'Temas personalizados';
+
+  @override
+  String get personalizationCustomThemeActiveBadge => 'Activo';
+
+  @override
+  String get personalizationCustomThemeBuiltInBadge => 'Integrado';
+
+  @override
+  String get personalizationCustomThemeExport => 'Exportar JSON';
+
+  @override
+  String get personalizationCustomThemeExportCopy => 'Copiar al portapapeles';
+
+  @override
+  String get personalizationCustomThemeExportFile => 'Guardar en archivo';
+
+  @override
+  String get personalizationCustomThemeNewDialogTitle =>
+      'Nuevo tema personalizado';
+
+  @override
+  String get personalizationCustomThemeNewDialogBody =>
+      'Elige un color semilla y el modo al que debe apuntar el nuevo tema.';
+
+  @override
+  String get personalizationCustomThemeDelete => 'Eliminar';
+
+  @override
+  String get personalizationCustomThemeDeleteConfirmTitle => '¿Eliminar tema?';
+
+  @override
+  String get personalizationCustomThemeDeleteConfirmBody =>
+      'Esto eliminará el tema de tu biblioteca. No se puede deshacer.';
+
+  @override
+  String get personalizationCustomThemeDeleteConfirmAction => 'Eliminar';
+
+  @override
+  String get personalizationCustomThemeDeleteFailed =>
+      'Los temas integrados no se pueden eliminar';
+
+  @override
+  String get personalizationCustomThemesImportAction => 'Importar tema';
+
+  @override
+  String get personalizationCustomThemesImportActionSubtitle =>
+      'Pega un solo tema o una lista de temas como JSON';
+
+  @override
+  String get personalizationCustomThemesExportAllAction =>
+      'Exportar todos los temas';
+
+  @override
+  String get personalizationCustomThemesExportAllActionSubtitle =>
+      'Copia toda la biblioteca en un único documento JSON';
+
+  @override
+  String get personalizationCustomThemesResetAction => 'Restablecer biblioteca';
+
+  @override
+  String get personalizationCustomThemesResetActionSubtitle =>
+      'Restaura los ejemplos integrados y descarta los temas creados';
+
+  @override
+  String get personalizationCustomThemesImportDialogTitle => 'Importar tema';
+
+  @override
+  String get personalizationCustomThemesImportDialogBody =>
+      'Pega un JSON de tema exportado desde otro dispositivo. Puedes pegar un solo tema o un arreglo JSON para importar varios a la vez.';
+
+  @override
+  String get personalizationCustomThemesImportFieldHint =>
+      'Pega aquí el JSON del tema';
+
+  @override
+  String get personalizationCustomThemesImportSuccess => 'Tema importado';
+
+  @override
+  String get personalizationCustomThemesImportPartial =>
+      'Algunos temas no pudieron importarse';
+
+  @override
+  String get personalizationCustomThemesImportFailed =>
+      'No se pudo importar — revisa el JSON';
+
+  @override
+  String get personalizationCustomThemesCopied =>
+      'JSON del tema copiado al portapapeles';
+
+  @override
+  String get personalizationCustomThemesCopiedAll =>
+      'JSON de la biblioteca copiado al portapapeles';
+
+  @override
+  String get personalizationCustomThemesSaved =>
+      'JSON de la biblioteca guardado';
+
+  @override
+  String get personalizationCustomThemesSaveFailed =>
+      'No se pudo guardar el JSON de la biblioteca';
 
   @override
   String get languageSystemDefault => 'Predeterminado del sistema';
@@ -1043,6 +1305,19 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get manualCodeConnecting => 'Resolviendo código…';
+
+  @override
+  String get manualCodeBrowse => 'Buscar bridges cercanos';
+
+  @override
+  String get bridgeDiscoveryTitle => 'Bridges cercanos';
+
+  @override
+  String get bridgeDiscoverySearching => 'Buscando en tu red…';
+
+  @override
+  String get bridgeDiscoveryEmpty =>
+      'Aún no se encontraron bridges. Asegúrate de que el bridge corre en la misma red Wi-Fi, o escribe el host abajo.';
 
   @override
   String get manualCodeErrorInvalidInput =>
@@ -1126,4 +1401,95 @@ class AppLocalizationsEs extends AppLocalizations {
   @override
   String get conversationCwdMissing =>
       'La carpeta de esta conversación ya no existe. Reconéctate o elimínala.';
+
+  @override
+  String get fileBrowserTitle => 'Archivos';
+
+  @override
+  String get fileBrowserShowExtensions => 'Mostrar extensiones de archivo';
+
+  @override
+  String get fileBrowserShowHidden => 'Mostrar archivos ocultos';
+
+  @override
+  String get fileBrowserCopyPath => 'Copiar ruta del workspace';
+
+  @override
+  String get fileBrowserPathCopied => 'Ruta del workspace copiada';
+
+  @override
+  String get fileBrowserEmpty => 'Esta carpeta está vacía';
+
+  @override
+  String get fileBrowserEmptyTitle => 'Nada por aquí';
+
+  @override
+  String get fileBrowserLoadFailed => 'No se pudo cargar el workspace';
+
+  @override
+  String get fileBrowserOpenTooltip => 'Explorar archivos';
+
+  @override
+  String get fileViewerViewSource => 'Ver código fuente';
+
+  @override
+  String get fileViewerViewPreview => 'Ver vista previa';
+
+  @override
+  String get fileViewerShowDiff => 'Mostrar diff';
+
+  @override
+  String get fileViewerHideDiff => 'Ocultar diff';
+
+  @override
+  String get fileViewerCopy => 'Copiar archivo';
+
+  @override
+  String get fileViewerCopied => 'Archivo copiado';
+
+  @override
+  String get fileViewerCopyFailed => 'No se pudo copiar este archivo';
+
+  @override
+  String get fileViewerBinaryTitle => 'Archivo binario';
+
+  @override
+  String get fileViewerBinaryBody =>
+      'Los archivos binarios no se pueden previsualizar en el teléfono. Descárgalo a tu PC para inspeccionarlo.';
+
+  @override
+  String get fileViewerLoadFailed => 'No se pudo abrir este archivo';
+
+  @override
+  String get fileViewerModePreview => 'Vista previa';
+
+  @override
+  String get fileViewerModeSource => 'Fuente';
+
+  @override
+  String get fileViewerEdit => 'Editar archivo';
+
+  @override
+  String get fileViewerSave => 'Guardar';
+
+  @override
+  String get fileViewerSaved => 'Archivo guardado';
+
+  @override
+  String fileViewerSaveFailed(String error) {
+    return 'No se pudo guardar este archivo: $error';
+  }
+
+  @override
+  String get fileViewerDiscardTitle => '¿Descartar cambios?';
+
+  @override
+  String get fileViewerDiscardBody =>
+      'Tus cambios en este archivo no se han guardado. ¿Descartarlos?';
+
+  @override
+  String get fileViewerDiscard => 'Descartar';
+
+  @override
+  String get fileViewerKeepEditing => 'Seguir editando';
 }

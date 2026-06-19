@@ -29,18 +29,17 @@ class ArchivedThreadsScreen extends ConsumerStatefulWidget {
 }
 
 class _ArchivedThreadsScreenState extends ConsumerState<ArchivedThreadsScreen> {
-  ThreadSort _sort = ThreadSort.created;
-  bool _compact = false;
-
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final allThreads = ref.watch(threadsProvider).value ?? const <Thread>[];
+    final sort = ref.watch(threadSortProvider);
+    final compact = ref.watch(threadDensityCompactProvider);
     final archived = allThreads
         .where((t) => t.status == ThreadStatus.archived)
         .where((t) => t.deviceId == null || t.deviceId == widget.deviceId)
         .toList();
-    final visible = sortThreads(archived, _sort);
+    final visible = sortThreads(archived, sort);
 
     return NeScaffold(
       title: l10n.archivedTitle,
@@ -50,12 +49,14 @@ class _ArchivedThreadsScreenState extends ConsumerState<ArchivedThreadsScreen> {
           onSelect: (id) => context.push(AppRoutes.conversation(id)),
         ),
         ThreadSortMenu(
-          sort: _sort,
-          onChanged: (value) => setState(() => _sort = value),
+          sort: sort,
+          onChanged: (value) =>
+              ref.read(threadSortProvider.notifier).set(value),
         ),
         ThreadMoreMenu(
-          compact: _compact,
-          onCompactChanged: (value) => setState(() => _compact = value),
+          compact: compact,
+          onCompactChanged: (value) =>
+              ref.read(threadDensityCompactProvider.notifier).set(value: value),
         ),
       ],
       slivers: [
@@ -75,10 +76,10 @@ class _ArchivedThreadsScreenState extends ConsumerState<ArchivedThreadsScreen> {
             sliver: SliverList.separated(
               itemCount: visible.length,
               separatorBuilder: (_, __) => SizedBox(
-                height: _compact ? UxnanSpacing.sm : UxnanSpacing.md,
+                height: compact ? UxnanSpacing.sm : UxnanSpacing.md,
               ),
               itemBuilder: (context, index) =>
-                  ThreadTile(thread: visible[index], compact: _compact),
+                  ThreadTile(thread: visible[index], compact: compact),
             ),
           ),
       ],

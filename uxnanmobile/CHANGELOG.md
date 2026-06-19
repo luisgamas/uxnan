@@ -6,6 +6,706 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- **Custom themes as a library (multi-selectable + JSON import/export of
+  many themes).** The personalization screen's previous 4-segment
+  `SegmentedButton` (System / Light / Dark / Custom) is replaced with a
+  **3-segment** picker + a **"Use a custom theme"** master switch + a
+  collapsible library. The library ships **2 built-in example themes**
+  ("Midnight" — leans dark, deep blue-violet seed;
+  "Sandstone" — leans light, warm amber seed) so a first-run user always
+  has something selectable before authoring anything; the master switch
+  controls whether the app applies the user's selected theme (when on)
+  or follows System/Light/Dark (when off). When the switch is on, the
+  segmented picker is disabled; when off, the library is rendered greyed
+  out (and its rows are non-interactive via `IgnorePointer`), so the
+  two states are visually + functionally exclusive. Each row in the
+  library shows a radio (the active theme), the theme's name, an
+  **Active** or **Built-in** badge, a 4-dot color preview (light
+  primary + dark primary + light surface + dark surface) and an
+  `IconSurfaceMenu` (Edit / Export JSON / Delete — Delete is disabled
+  for built-ins). Below the rows, library-level actions: **Import
+  theme** (paste a single theme JSON OR a JSON array — the typical
+  *Export all* payload — and assign fresh ids when an imported id
+  collides with an existing entry), **Export all themes** (copy the
+  whole library to the clipboard as a JSON array), and **Reset
+  library** (drop every authored theme, restore the built-in seed,
+  flip the switch off). State model:
+  - New providers in `application_providers.dart`:
+    `customThemesLibraryProvider` (`List<CustomTheme>`, seeded with
+    the built-ins on first hydrate, persisted under
+    `uxnan.appearance.customThemes` as a JSON array),
+    `activeCustomThemeIdProvider` (`String?`, persisted under
+    `uxnan.appearance.activeCustomThemeId`),
+    `useCustomThemeProvider` (`bool`, persisted under
+    `uxnan.appearance.useCustomTheme`).
+  - `customThemeSettingProvider` becomes a derived
+    `Provider<CustomTheme?>` (was a `Notifier<CustomTheme?>`) — it
+    resolves to the active theme when the switch is on and an id is
+    selected, so `app.dart` + `themeSourceSettingProvider` keep their
+    existing contract.
+  - Legacy `uxnan.appearance.customTheme` is migrated into the library
+    on first hydrate (single-shot; the key is removed after migration).
+  - `CustomThemeEditorScreen` saves via
+    `customThemesLibraryProvider.notifier.upsert(theme)` instead of
+    the old singular setter, so editing the active theme keeps it
+    active after save.
+  - `isBuiltInCustomThemeId(id)` (constant
+    `kBuiltInThemeIdPrefix = 'uxnan.builtin.'`) gates the Delete menu
+    item + the per-row deletion; the two shipped themes are read-only.
+  - `AppearancePreferencesStore` gains
+    `readCustomThemesLibrary` / `writeCustomThemesLibrary`,
+    `readActiveCustomThemeId` / `writeActiveCustomThemeId`, and
+    `readUseCustomTheme` / `writeUseCustomTheme`. The legacy
+    `readCustomTheme` / `writeCustomTheme` are kept for the one-shot
+    migration and the existing storage tests.
+  - `personalization_screen.dart` is rewritten: `ThemeModeOption` drops
+    its `custom` variant; `_ThemeModeOptionSelector` is 3 segments and
+    takes a `disabled` flag; `_CustomThemesSection` hosts the master
+    `SwitchListTile` + `_CustomThemesCollapsible` (an `ExpansionTile`
+    with the per-theme rows and the library-level action tiles).
+  - Tests in `personalization_screen_test.dart` are rewritten to cover
+    the new shape: 3-segment picker, switch + collapsible + built-in
+    examples, language persistence, switch-on + tap-to-activate flow,
+    and pre-seeded active-theme hydration with the *Active* badge.
+    All 349 unit + widget tests pass.
+  - **Spec drift:** `architecture/02c-implementation-guide.md` §3.1
+    ("Temas personalizables") is rewritten to describe the library
+    model (state shape, picker + collapsible UX, editor contract,
+    storage, JSON wire shape for both single-theme and library-array
+    payloads, redesign rationale).
+- **Custom themes replace the curated accent picker.** The personalization
+  screen no longer offers a closed 7-swatch palette (blue / purple / pink
+  / red / orange / green / teal). Instead, the theme-mode selector is a
+  4-segment `SegmentedButton` (System / Light / Dark / **Custom**);
+  selecting *Custom* (when a custom theme is present) flips the source
+  to `ThemeSource.custom` and opens a new
+  **`CustomThemeEditorScreen`** that lets the user fine-tune **every
+  public Material 3 color role** (46 roles, grouped: Primary,
+  Secondary, Tertiary, Error, Surface, Outline & inverse) for both
+  brightnesses independently. Two helpers — *Reset brightness* (regenerate
+  one side from the current `primary` via `ColorScheme.fromSeed`) and
+  *Derive from seed* (pick a seed and regenerate one side from scratch) —
+  give the user a fast path when they don't want to tweak every role.
+  The editor ships an inline HSV color picker (`ColorPickerSheet`) plus
+  hex entry; the visual baseline (the hand-tuned brand palette) is
+  preserved for users that never personalize. *Export* copies the theme
+  JSON to the clipboard and opens a pretty-printed, selectable dialog so
+  the JSON can be shared via any system share sheet; *Import* parses a
+  pasted JSON into the working theme (the user's current name +
+  description are preserved across an import).
+  - New: `domain/value_objects/custom_theme.dart` — `CustomTheme`
+    (id / name / description / schemaVersion + light + dark) and
+    `CustomThemeColors` (the flat role map). Builders
+    (`CustomTheme.derivedFromSeed`), copy-with (`withLightColors`,
+    `withDarkColors`, `withMetadata`), and a JSON codec
+    (`toJson` / `fromJson` / `toJsonString` / `fromJsonString`)
+    that round-trips every role as `#AARRGGBB` (also accepts legacy
+    integer ARGB) and is tolerant of unknown / missing keys so a
+    hand-edited or older document still loads.
+  - New: `presentation/screens/settings/custom_theme_editor_screen.dart`
+    — the full editor (metadata, brightness tabs, grouped role list,
+    export / import, derive-from-seed).
+  - New: `presentation/widgets/color_picker.dart` — `ColorPickerSheet`,
+    an HSV-based picker (`Slider`s + hex field + preview) used by the
+    editor's per-role editing and by the *Derive from seed* dialog.
+  - Removed: `domain/value_objects/accent_color.dart`
+    (`AccentPalette` + `AccentColorId` + 7 hard-coded seeds + the
+    tolerant id parser).
+  - Removed: `AccentSetting` notifier and `accentSettingProvider` from
+    `application_providers.dart`.
+  - Removed: l10n keys `accentBlue` … `accentTeal` (en + es).
+  - `presentation/theme/uxnan_theme.dart` —
+    `buildUxnanTheme({themeSource, customTheme, brightness})`. Two
+    mutually exclusive paths: `ThemeSource.brand` →
+    hand-tuned palette (identical visual baseline to a fresh install);
+    `ThemeSource.custom` → the user's `CustomTheme.colorScheme` /
+    `.darkColorScheme`. A transient null `customTheme` while the source
+    is `custom` degrades to brand rather than crashing the theme — the
+    UI never reaches that state, but it keeps a misconfigured provider
+    recoverable.
+  - `infrastructure/storage/appearance_preferences_store.dart` —
+    `readCustomTheme()` / `writeCustomTheme(CustomTheme?)` under
+    `uxnan.appearance.customTheme`. Tolerant parser (a malformed
+    document yields null → brand baseline) and a clear-the-key path
+    for `writeCustomTheme(null)`.
+  - `presentation/providers/application_providers.dart` — new
+    `CustomThemeSetting` notifier + `customThemeSettingProvider` and
+    `ThemeSourceSetting` notifier + `themeSourceSettingProvider`. The
+    source derives from the presence of a custom theme (no separate
+    key on disk; the two stay in lock-step).
+  - `presentation/screens/settings/personalization_screen.dart` —
+    4-segment `SegmentedButton<ThemeModeOption>` (System / Light / Dark
+    / Custom); while no custom theme is persisted the *Custom* segment
+    is disabled (the user must author one first). When *Custom* is
+    active, a card below the picker shows the active theme's name +
+    description + *Edit* / *Reset* tiles.
+  - `app.dart` — watches `themeSourceSettingProvider` +
+    `customThemeSettingProvider` and passes them to `buildUxnanTheme`
+    for both `theme` and `darkTheme`.
+  - `test/widget/presentation/file_viewer_screen_test.dart` — updated
+    the test helper to pass the new required `themeSource` argument.
+  - Tests: 8 new in `uxnan_theme_test.dart` (brand baseline +
+    dynamic from-theme for light + dark; custom source with null theme
+    falls back to brand); 14 new in `custom_theme_test.dart` (JSON
+    round-trip via `toJson` / `fromJson` and `toJsonString` /
+    `fromJsonString`, partial / unknown role tolerance, hex (RGB + ARGB)
+    and int ARGB parsing, malformed input, derived builders,
+    `toColorScheme` role coverage, `freshId` uniqueness); 7 new in
+    `appearance_preferences_custom_theme_test.dart` (read null,
+    write + read, clear via null, unparseable → null, namespacing,
+    isolation from other appearance keys, role-preserving round-trip);
+    5 rewritten in `personalization_screen_test.dart` (4-segment
+    picker, *Custom* disabled on first run, *Custom* enabled when a
+    theme is persisted, language persistence still works, active
+    theme card renders the persisted theme's name + description).
+    **354 unit + widget tests passing, all green.**
+  - **Spec drift:** `architecture/02c-implementation-guide.md` §3.1
+    replaces the *"Colores de acento personalizables"* section with the
+    full *"Temas personalizables"* spec (builder signature, picker UX,
+    editor structure, storage, JSON wire shape, redesign rationale);
+    `architecture/00-index.md` status table flips the entry from
+    *"7 swatches curados"* to *"Custom themes (temas personalizables)"*.
+    `FOR-DEV.md` marks the previous accent-picker item as superseded.
+
+- **Library-level actions live outside the collapsible themes tile.**
+  *+ New theme*, *Import theme*, *Export all themes* and *Reset library*
+  are no longer nested inside the `ExpansionTile`'s children — they're
+  rendered as siblings of the tile so they stay one tap away whether
+  the themes list is folded or open. The collapsible now only hosts the
+  per-theme rows; its persisted expand/collapse state (see Fixed
+  below) keeps controlling the row visibility. The `_CustomThemesSection`
+  in `personalization_screen.dart` lays out: master switch → optional
+  description (when empty) → `ExpansionTile` (rows only) → 4 action
+  rows separated by thin dividers. New widget test
+  (`library-level actions are visible without expanding the themes
+  tile`) locks the new layout in.
+
+- **Custom theme JSON exports can now save to a file (in addition to
+  the clipboard).** Every export surface — the per-row *Export* menu
+  item, the library-level *Export all themes* action, and the editor's
+  *Export* button — now lets the user choose between *Copy to clipboard*
+  (existing behaviour) and *Save to file* via the native share sheet
+  (`share_plus` + a temp file under `getTemporaryDirectory()`; the
+  sheet lets the user pick Files / Drive / email / any registered share
+  target). The per-theme payload is named
+  `uxnan-theme-<slug>.json` and the library payload
+  `uxnan-themes-<YYYYMMDD-HHmm>.json`. Helper:
+  `lib/presentation/screens/settings/theme_export.dart`
+  (`shareThemeJsonFile`). New `share_plus` dependency in `pubspec.yaml`.
+  New l10n keys: `personalizationCustomThemeExportCopy`,
+  `personalizationCustomThemeExportFile`,
+  `personalizationCustomThemesSaved`,
+  `personalizationCustomThemesSaveFailed`,
+  `customThemeEditorDefaultName`, `customThemeEditorSaved`,
+  `customThemeEditorSaveFailed`, `customThemeEditorShareFile`,
+  `actionApply` (en + es).
+
+- **+ New theme picker — seed color + brightness are now user input.**
+  Tapping *+ New theme* opens a small dialog (HSV preview + hue /
+  saturation / value sliders + a Light / Dark segmented button + Cancel
+  / Apply) instead of silently reusing the active app's primary as the
+  seed and always defaulting to the Light tab. The picked seed is
+  forced to the resulting theme's `primary` (and Material's
+  `ColorScheme.fromSeed` derives every other role from it); both
+  brightnesses are seeded. The editor opens on the brightness the user
+  picked. New l10n keys:
+  `personalizationCustomThemeNewDialogTitle`,
+  `personalizationCustomThemeNewDialogBody` (en + es).
+
+### Removed
+- `domain/value_objects/accent_color.dart` (`AccentPalette` /
+  `AccentColorId` and the 7 curated swatches).
+- `accentSettingProvider` (Riverpod notifier that drove
+  `ColorScheme.fromSeed` for non-default accents).
+- `infrastructure/storage/appearance_preferences_store.dart` keys
+  `readAccentId` / `writeAccentId` (replaced by
+  `readCustomTheme` / `writeCustomTheme`).
+- l10n keys `accentBlue` … `accentTeal` (en + es) — replaced by the
+  `customTheme*` key set on the editor + section headers.
+- Tests `test/unit/domain/value_objects/accent_color_test.dart` and
+  `test/unit/infrastructure/storage/appearance_preferences_accent_test.dart`
+  (the equivalent coverage now lives in `custom_theme_test.dart` +
+  `appearance_preferences_custom_theme_test.dart`).
+
+### Fixed
+- **Conversation no longer opens at the top — scroll position is
+  remembered.** Opening a thread always reset the timeline to the top,
+  forcing users who had scrolled up to read older context to scroll all the
+  way back down (or tap *Jump to latest*) every time they left and re-entered.
+  A new session-scoped `ConversationScrollStore`
+  (`lib/presentation/providers/conversation_scroll_store.dart`, an
+  in-memory `Map<threadId, { offset, atBottom }>`) records the current
+  pixel offset while the user scrolls, and `ConversationScreen` now
+  restores it once on first content (a one-time, idempotent
+  `_restoreScroll` guarded by `_restoredScroll`, re-applied on the next
+  frame to catch late layout — variable-height messages / images that
+  grow `maxScrollExtent`). When the user was at (or near) the bottom on
+  close, the restore follows the newest message instead of pinning a now-
+  stale offset. The store is intentionally in-memory only (per session):
+  a saved pixel offset only maps cleanly onto the same rendered content,
+  which a cross-restart resync can change. Pairs with the existing
+  *Jump to latest* button — the button still gets you to the newest
+  message manually; the restore makes the common case (returning to a
+  thread) just work. New: 3 tests in
+  `test/unit/presentation/conversation_scroll_store_test.dart` (null until
+  saved, round-trip, overwrite). **346 unit + widget tests passing, all
+  green.**
+
+### Fixed
+- **File browser's git-status colours are now live across the app.**
+  Previously `FileBrowserManager` cached the per-cwd `git/status` map and
+  only refreshed it on `loadRoot` / `toggleDirectory` / `writeFile`, so a
+  commit made elsewhere on the same PC (the git screen, a CLI `git commit`,
+  a pull on the bridge) left the browser painting stale colours until the
+  user navigated away and back. The browser now listens to a new
+  `GitStatusBus` (a process-wide broadcast owned by
+  `gitStatusBusProvider`) that `GitActionManager` and `FileBrowserManager`
+  both publish to; every successful `git/status` fetch pushes a
+  `GitStatusChange` onto the bus, and every manager holding that cwd
+  repaints from the payload. No more stale `modified` colours on a tree
+  that has actually been committed. The bus is generic — any future
+  consumer can subscribe without touching the producer side.
+  - New: `lib/domain/value_objects/git/git_status_change.dart`
+    (`GitStatusChange { cwd, state }` value object).
+  - New: `lib/application/services/git_status_bus.dart`
+    (`GitStatusBus` — broadcast `Stream<GitStatusChange>`, `emit`,
+    `dispose`; safe no-op after close).
+  - `lib/application/managers/git_action_manager.dart` — emits on the
+    bus after every successful `refreshStatus(cwd)` (the single point
+    that issues the `git/status` RPC).
+  - `lib/application/managers/file_browser_manager.dart` — subscribes
+    once; repaints any managed cwd from a bus event whose `cwd` matches;
+    also publishes on the bus from its own `refreshGitStatus` (with a
+    minimal `GitRepoState` carrying only the `changedFiles`, since that
+    is the only field the colour treatment needs).
+  - `lib/presentation/providers/application_providers.dart` — new
+    `gitStatusBusProvider` (one instance per app, disposed with the
+    providers); `gitActionManagerProvider` and `fileBrowserManagerProvider`
+    are wired to it.
+  - Tests: 5 in `git_status_bus_test.dart` (broadcast, no replay, no-op
+    after dispose, payload preservation, ordering), 2 added to
+    `git_action_manager_test.dart` (`refreshStatus` emits;
+    `commit` propagates), 3 added to `file_browser_manager_test.dart`
+    (bus repaint for a managed cwd, ignored for an unknown cwd, own
+    refresh publishes the new state). **340 unit + widget tests
+    passing, all green.**
+
+### Fixed
+- **Custom themes: deleting an authored theme no longer crashes with
+  `Bad state: Using "ref" when a widget is about to or has been
+  unmounted`.** `_CustomThemeRow._delete` showed a confirm dialog
+  asynchronously; once the user confirmed, the library removed the
+  theme and the row unmounted before the follow-up
+  `ref.read(activeCustomThemeIdProvider…).set(null)` /
+  `ref.read(useCustomThemeProvider…).set(false)` ran — those late
+  reads tripped Riverpod's `assertNotDisposed`. The fix captures the
+  three notifiers + the local `isActive` flag into local fields
+  *before* the first `await`, so the post-delete cleanup operates on
+  stable handles. New widget test (`deleting an authored theme does
+  not crash when the row unmounts`) covers the path.
+
+- **New custom themes now actually apply to the app.** Tapping *+ New
+  theme* and confirming the seed+brightness dialog used to leave the
+  new theme sitting in the library waiting to be tapped — the
+  `themeMode` (System / Light / Dark) was untouched, so a brand-new
+  dark theme was hidden behind a `system`-mode + system-brightness-
+  light combo. The editor's *Save* now detects a fresh id (not yet
+  in the library) and atomically (a) upserts, (b) sets
+  `activeCustomThemeIdProvider`, (c) flips `useCustomThemeProvider` on,
+  and (d) syncs `themeModeSettingProvider` to the brightness the user
+  picked in the new-theme dialog — so the resulting dark/light custom
+  theme is what the app actually shows on pop. Editing an existing
+  theme keeps the existing activation + themeMode untouched. New
+  widget test (`creating a new dark theme applies it with
+  ThemeMode.dark on save`) covers the path.
+
+- **Custom themes library collapsible remembers its state across
+  restarts.** The ExpansionTile's expanded/collapsed state was owned
+  by the widget itself, so it always reset to collapsed on reopen. A
+  new `customThemesExpandedProvider`
+  (`Notifier<bool>` + `AppearancePreferencesStore.readCustomThemesExpanded`
+  / `writeCustomThemesExpanded`, persisted under
+  `uxnan.appearance.customThemesExpanded`) drives an `ExpansibleController`
+  from the screen's state class. Toggle → provider → disk; first
+  build → disk → controller. New widget test (`the library expansion
+  state persists across restarts`) covers the path.
+
+### Added
+- **Custom accent colors (Personalization → Accent color).** The
+  personalization screen now offers a curated palette of **7 swatches**
+  (`blue` / `purple` / `pink` / `red` / `orange` / `green` / `teal`)
+  in place of the previous *"Coming soon"* placeholder. The whole
+  `ColorScheme` is derived from the picked swatch via
+  `ColorScheme.fromSeed(seedColor: accent.seed, brightness: …)` for
+  **both** light and dark, so every M3 role (primary, secondary,
+  tertiary, surface containers, outline, …) stays coherent and
+  harmonious — exactly the *"larger theming change"* `FOR-DEV.md`
+  called for, and a direct fix for the visual incoherence a first cut
+  that only overrode `primary` had. The brand `blue` keeps the
+  hand-tuned palette (no visual regression for users that never
+  personalize); every other swatch switches to the dynamic scheme.
+  The pick is persisted in `shared_preferences` under
+  `uxnan.appearance.accentId` (only the id; the seed is resolved
+  from the immutable `AccentPalette`, so adding a swatch is
+  non-breaking for old saves and `AccentPalette.fromId` degrades
+  unknown ids to the default).
+  - `domain/value_objects/accent_color.dart` — `AccentColorId` + the
+    closed `AccentPalette` (7 swatches with M3-friendly chroma).
+  - `infrastructure/storage/appearance_preferences_store.dart` —
+    `readAccentId()` / `writeAccentId(String?)` (replaces the
+    `FOR-DEV:` reservation in the doc comment).
+  - `presentation/providers/application_providers.dart` —
+    `AccentSetting` notifier + `accentSettingProvider`
+    (Riverpod 3.x manual, same hydrate-then-persist pattern as
+    `ThemeModeSetting` / `LocaleSetting`).
+  - `presentation/theme/uxnan_theme.dart` —
+    `buildUxnanTheme({ accent: AccentColorId? })`; brand blue →
+    hand-tuned palette, anything else → dynamic from-seed scheme.
+  - `presentation/screens/settings/personalization_screen.dart` —
+    `_AccentPicker` (M3 list of swatch rows, M3E chrome), replacing
+    the `_AccentComingSoon` placeholder.
+  - `app.dart` — watches `accentSettingProvider` and passes the seed
+    to `buildUxnanTheme` for both `theme` and `darkTheme`.
+  - l10n (en + es): `accentBlue` … `accentTeal`.
+  - Tests: 8 in `accent_color_test.dart` (palette, tolerant parser,
+    equality), 7 in `appearance_preferences_accent_test.dart`
+    (store round-trip, namespacing, isolation from the other
+    appearance keys), 7 new + 2 pre-existing in
+    `uxnan_theme_test.dart` (default-palette preservation, dynamic
+    from-seed for every non-default swatch, light/dark coherence,
+    determinism), 4 in `personalization_screen_test.dart` (7
+    swatches render, default is pre-selected, tap persists, language
+    flow still works). **319 unit + widget tests passing, all green.**
+  - **Spec drift:** `architecture/02c-implementation-guide.md` §3.1
+    documents the two-path rule (brand-blue → hand-tuned;
+    non-default → from-seed for both brightnesses);
+    `architecture/00-index.md` status table flips the item to
+    ✅ Hecho. `FOR-DEV.md` marks the entry as DONE (on-device
+    visual review of the swatch picker is the remaining UX step).
+
+### Changed
+- **`flutter_markdown` → `flutter_markdown_plus`.** The original
+  `flutter_markdown 0.7.x` package is marked discontinued on pub.dev;
+  replaced with `flutter_markdown_plus 1.0.7` (the maintained fork
+  published by the Flutter team + community). The API is a
+  drop-in replacement — `MarkdownBody`, `Markdown`, and
+  `MarkdownStyleSheet` keep their exact signatures — so the only
+  changes are the `pubspec.yaml` entry and the package import in
+  `file_viewer_screen.dart`, `message_content_view.dart`, and the
+  matching test. The pubspec resolution dropped `flutter_markdown
+  0.7.7+1` automatically.
+
+### Fixed
+- **Bridge connection survives background → resume.** Backgrounding the
+  app could leave it stuck "disconnected" on reopen (the OS suspends/drops
+  the socket and nothing re-checked on resume). On resume the app now calls
+  `SessionCoordinator.resume()`: if a reconnect backoff was pending it
+  retries **immediately** (new wake mechanism — `resume` interrupts the
+  backoff delay instead of waiting it out), if it believed it was connected
+  it round-trips `bridge/status` to catch a silently-dropped socket, and if
+  disconnected it kicks a reconnect. The open conversation also re-syncs
+  (`ThreadManager.resyncActive`) so messages that landed while away appear
+  without leaving + re-entering it.
+
+### Added
+- **Cold-start auto-reconnect + history recovery.** On launch (incl. after
+  an unexpected close) the app reconnects to the most-recently-used PC
+  (`lastSeen`, best-effort, with a backoff fallback) so the bridge session
+  is restored automatically; the existing `turn/list` re-sync then recovers
+  the thread's messages from the bridge (local drift history is preserved
+  across restarts and reconciled by the deterministic assistant id).
+- **Jump-to-latest button in the conversation.** Scrolling up in a long
+  or streaming conversation now reveals a small circular button (over the
+  timeline, above the composer) that springs in (NE small-element motion)
+  and jumps back to the newest message in one tap; it hides again near the
+  bottom. Driven by a scroll listener (`_showJumpToBottom`) reusing the
+  existing `_scrollToBottom`.
+- **Agent plan / to-do lists now render (plan mode).** When an agent emits
+  its task list, it shows as a checklist in the turn (the `PlanContent`
+  decoder + `_PlanCard` already existed; the bridge now maps each agent's
+  plan/to-do tool to a `plan` content block — see the bridge changelog).
+  No mobile change beyond confirming the end-to-end render.
+- **mDNS "Browse nearby bridges" in manual pairing.** The manual-code
+  screen now has a **Browse nearby bridges** action that opens a sheet
+  listing bridges advertising `_uxnan._tcp` on the LAN (a new
+  `BridgeDiscoveryService` over the native `nsd` plugin — NsdManager /
+  Bonjour, which handles the Android multicast lock). Picking one
+  pre-fills the host; typing the host stays the fallback. TXT/addr
+  parsing (`parseDiscoveredBridge`, prefers the advertised `addr`/`port`,
+  falls back to the resolved IPv4 + SRV port) is unit-tested. Adds the
+  `nsd` dependency; Android `INTERNET` + `CHANGE_WIFI_MULTICAST_STATE`
+  permissions and iOS `NSBonjourServices` + `NSLocalNetworkUsageDescription`
+  (copy review tracked in `FOR-HUMAN.md`).
+- **Session info sheet ("resume from the CLI").** The conversation
+  overflow menu's **Session info** item (replacing the bare "Copy thread
+  ID") opens a sheet showing the copyable **Thread ID** and the agent's
+  **native session id** (fetched lazily via `thread/read`,
+  `ThreadManager.readAgentSessionId`; absent on older bridges/agents),
+  with a hint that they let you resume the conversation from the agent's
+  CLI on the PC.
+- **Per-thread approval mode now persists server-side.** The approval
+  (access) mode picked in the turn-tools sheet is seeded from the bridge
+  on open (`ThreadManager.readAccessMode` via `thread/read`, the source
+  of truth) and persisted on change (`ThreadManager.setAccessMode` →
+  `thread/setAccessMode`), so the per-thread choice survives a restart and
+  is shared across devices. (Enforcing the mode per turn — mapping it to
+  each agent's permission flag — is a tracked follow-up.)
+- **Remote history pagination (newest-page open + backward paging).**
+  Opening a thread now pulls only the **newest** page of turns
+  (`turn/list { fromEnd: true, limit: 20 }`) instead of the oldest page,
+  and "Show earlier messages" pages **backward** over the bridge: it
+  widens the local window first, then fetches the previous turn page by
+  an explicit offset cursor derived from the bridge's new `total`,
+  persisting older answers below the current min `orderIndex`. `hasMore`
+  reflects local-window OR remote-offset. Backward-compatible (an older
+  bridge that omits `total` falls back to local windowing only). Requires
+  the bridge/shared `turn/list` changes below. Covered by a manager
+  back-paging test.
+- **Project filter chips on the threads list (implemented, disabled in
+  the UI).** A PC hosting several repos can be sliced by project: a
+  horizontal chip bar filtering by a project key (`projectId` when set,
+  otherwise the working `cwd`, labelled by the folder basename),
+  composing with the agent filter. The code (`_ProjectFilterBar` +
+  grouping helpers) is complete but **intentionally not shown** — a flat
+  chip bar isn't the right surface; it's gated behind
+  `_projectFilterEnabled` (`false`) until a dedicated advanced
+  filters / organization view exists. Flip the flag from that view to
+  enable; no other change needed.
+- **Sort + density thread-list preference now persists.** The list
+  ordering (created / name / folder) and the compact-density toggle were
+  in-memory `StatefulWidget` fields; they're now persisted on-device
+  (`ThreadListPreferencesStore`, keys `uxnan.threads.sort` /
+  `uxnan.threads.compact`) and exposed as `threadSortProvider` /
+  `threadDensityCompactProvider`, so the active and archived thread lists
+  share one persisted choice that survives restarts. Covered by a store
+  round-trip test.
+- **Inline file editing in the file viewer.** Text files (UTF-8, not
+  images or binaries) now show an **Edit** action in the viewer's top
+  bar. Editing opens a full-height monospace editor over the raw file
+  content; saving writes the buffer back through the existing
+  `workspace/applyPatch` RPC (a single `modify` change — no new bridge
+  contract) and immediately re-fetches the file so the git diff and the
+  browser tree colours repaint with the new changes. An unsaved buffer
+  prompts a discard confirmation on close / system-back (`PopScope`).
+  New manager method `FileBrowserManager.writeFile`; new strings
+  `fileViewer{Edit,Save,Saved,SaveFailed,Discard,DiscardTitle,DiscardBody,KeepEditing}`.
+
+### Changed
+- **File-browser folders now colour by their contents' git status.**
+  A directory whose (possibly still-collapsed) descendants contain
+  changes now paints its name + folder icon: `modified` when any tracked
+  descendant changed, `untracked` when the only changes underneath are
+  untracked. Previously only files coloured, so a changed file deep in
+  the tree left every parent folder neutral until expanded. Implemented
+  as an aggregate scan over the `git/status` map in `FileBrowserManager`
+  (`_dirStatus`), applied to directory nodes on build and repatch.
+
+### Fixed
+- **File viewer content now scrolls *under* the transparent app bar.**
+  The previous `Column([SizedBox(topInset), Expanded(body)])` layout
+  pinned the scrollable body *below* the bar, so the bar always sat over
+  a blank `surface` band and read as a solid app bar. The body now fills
+  the `Stack` and each scrollable leaf (`_CodeBody`, `_MarkdownBody`,
+  `FileDiffViewer`) pads its own top by `topInset`, so content scrolls
+  beneath the gradient veil — matching `ConversationScreen` /
+  `FileBrowserScreen` / `GitScreen`.
+- **File viewer no longer renders a solid band under the app bar.**
+  The viewer's body used `Padding(top: topInset, child: _buildBody)`
+  inside the `Stack`, which painted the `surface` background of the
+  Scaffold into the gap between the bar's gradient and the content.
+  The new body is a `Column` whose first child is a transparent
+  `SizedBox(height: topInset)` (no painted background), so the area
+  between the bar and the content is see-through and the gradient
+  dissolves naturally into the surface. Matches `ConversationScreen`
+  / `FileBrowserScreen` / `GitScreen` exactly.
+- **`NeTopBar` gradient softened.** Peaked at `surface` (alpha 1.0)
+  in the original; now peaks at 0.75 and dissolves faster
+  (`0.75 → 0.45 → 0`, stops `[0, 0.5, 1]`). Affects every screen
+  that uses `NeTopBar` (file browser, file viewer, git screen,
+  conversation, branch picker). The bar still gives the
+  back / actions a stable background but reads as a *veil* over the
+  content instead of a solid app-bar band.
+
+### Added
+- **Horizontal padding for file viewer text content.** The text body
+  (code, markdown source, markdown preview, diff, image, binary,
+  error) now wraps its content in `EdgeInsets.symmetric(horizontal:
+  UxnanSpacing.lg)` so the rendered text doesn't kiss the screen
+  edges on narrow viewports. Previously the text went from
+  `padding: 0` to `padding: 0` (only the highlight theme's own
+  internal padding kept it off the edge, and only sometimes). Same
+  `lg` (16 dp) inset the rest of the app uses for content surfaces.
+- **File viewer / file browser / git screen — `NeTopBar` no longer
+  overflows on phone widths.** All three screens overlaid the bar with
+  `Positioned(top: 0, left: 0, right: 0, child: NeTopBar(...))` inside
+  a `Scaffold(body: Stack(children: [...]))` that defaulted to
+  `StackFit.loose`. With loose fit the stack's own size is the union
+  of its non-Positioned children — and on the file viewer the body
+  is a `MarkdownBody` whose intrinsic width is much smaller than the
+  screen, so the Stack collapsed to ~131 dp on a 360 dp viewport. The
+  Positioned inherited that narrow width (`left: 0, right: 0` on a
+  zero-width stack gives the bar zero horizontal room), the `Row` of
+  leading + title + actions tried to fit 4 × 48 dp `IconSurface`s
+  into ~131 dp, and the user saw a `RenderFlex overflowed by 86/73
+  pixels` exception. Switching all three screens to
+  `Stack(fit: StackFit.expand, children: [...])` makes the stack
+  fill the Scaffold body, so the bar gets the full row width.
+  A regression test (`file_viewer_screen_test.dart`) pumps the viewer
+  with three real markdown samples (CLAUDE.md → "AGENTS.md", a full
+  README with headings + lists + code blocks, and a long paragraph)
+  on a 1080×2160 / 3.0 viewport and asserts no captured layout
+  exceptions.
+- **File viewer chrome — bar gradient softened.** The bar's
+  `LinearGradient` peaked at `surface` (opaque) which read as a
+  solid app-bar band on top of the file tree. Now peaks at
+  `surface.withValues(alpha: 0.85)` and dissolves faster
+  (`0.55 → 0`) so the bar feels like a *veil* over the content, not
+  a solid panel. Affects every screen that uses `NeTopBar` (file
+  browser, file viewer, git screen, conversation, branch picker) so
+  the whole app now shares the lighter bar tone.
+- **`GitScreen` now uses `BouncingScrollPhysics`.** The
+  `CustomScrollView` in the file list was missing the `physics:`
+  argument and so fell back to `ClampingScrollPhysics` on Android —
+  the user couldn't see the iOS-style overscroll bounce the rest of
+  the app uses. Added `physics: const BouncingScrollPhysics(parent:
+  AlwaysScrollableScrollPhysics())` to match `ConversationScreen`,
+  `FileBrowserScreen`, and `NeScaffold`.
+- **Hardcoded colors replaced with theme tokens.** `_PrimaryActionButton`
+  (git screen) used a raw `Colors.white` literal for the busy spinner;
+  replaced with `colors.onPrimary` (the semantic token that already
+  drives the icon and the surface). `_MarkdownBody` (file viewer)
+  used raw `Color(0xFF282C34)` / `Color(0xFFFAFAFA)` literals for
+  the codeblock background; replaced with
+  `colors.surfaceContainerHighest` / `colors.surfaceContainerHigh`
+  so the block follows the active M3 scheme. New rule going forward:
+  never inline a hex literal in a widget — always reference
+  `UxnanColors.*` or `Theme.of(context).colorScheme.*`.
+
+### Changed
+- **Git status now paints newly expanded subdirectories.** The file
+  browser only applied `git/status` to children that were loaded in
+  the initial root listing — when the user expanded a deeper
+  directory, its children were created with `gitStatus = null`, so
+  the new entries rendered in the neutral `onSurface` colour instead
+  of the git-status colour. `_buildInitialChildren` now takes the
+  cached git-status map and pre-paints each file the same way the
+  root does; `toggleDirectory` forwards the map when it fetches a
+  new sub-listing. Visible effect: the entire tree, not just the
+  root level, reflects `git status`.
+- **File viewer's app bar matches the conversation chrome.** The
+  file viewer's title used `titleMedium`; every other NE-styled
+  screen (`ConversationScreen`, `GitScreen`, file browser) uses
+  `titleLarge.copyWith(fontSize: 20)`. The viewer now uses the same
+  size — the back, title, and trailing action row are visually
+  indistinguishable from the rest of the app.
+- **`GitScreen` is now a true Neural Expressive surface.** The
+  screen kept using M3 widgets (`Card.outlined`, `Card.filled`,
+  `Checkbox`, `IconButton`, `IconButton.filled`, `ListTile`,
+  `InkWell`) while every other screen was rebuilt against NE — the
+  result was a card-style chrome that didn't match the file browser,
+  conversation, or new-conversation dialog. The screen now uses:
+    - `_NeSurface` (a new shared widget) in place of
+      `Card.filled` / `Card.outlined` — rounded 20 dp corners,
+      `surfaceContainerHigh` fill, optional thin outline.
+    - `_NeCheckbox` in place of M3's `Checkbox` — a 24 dp circular
+      surface on `primary` when selected, the empty-box / check /
+      dash glyph in the same M3E scale spring as the rest of the
+      bar.
+    - `IconSurface` in place of every `IconButton` (refresh,
+      expand-all, undo-commit, etc.) — same round press feedback,
+      same tooltip contract.
+    - `_PrimaryActionButton` in place of `IconButton.filled` for
+      the commit / push primary slot — keeps the round ripple that
+      `IconButton.filled` breaks, supports a busy-spinner overlay,
+      and accepts the `Badge.count` for the push-ahead count.
+    - `_BranchPickerRow` in place of `ListTile` for the
+      branch-switcher bottom sheet — a tappable row with the same
+      M3E ripple.
+    - `_ExpandableRow` for the whole file card so a tap anywhere
+      on the row (not just the chevron) toggles expansion.
+  The file's *name* in the row now picks up the git-status colour
+  (matching the file browser's tile), so the row reads at a glance
+  before reading the icon.
+
+### Fixed
+- **File browser sends absolute paths to the bridge.** The bridge's
+  `workspace/list` does `resolve(cwd)` server-side, so a relative `cwd`
+  resolves against the project's CWD, not the worktree / sub-folder the
+  user is browsing — the visible symptom was `FormatException: Invalid
+  workspace/list response` whenever the user opened a directory under a
+  worktree. `FileBrowserManager` now joins the workspace's absolute root
+  (the `cwd` from the active thread) with each expanded directory's
+  relative path before sending. `loadRoot` and `toggleDirectory` both
+  honour this convention. `FileBrowserManager`'s docstring documents
+  the path contract.
+- **Folder/file load errors no longer crash the browser.** A
+  `workspace/list` failure (directory removed, permission denied, a
+  stale cwd) used to surface as an unhandled `FormatException`. The
+  manager now catches the underlying `RpcError` (or any
+  `FileListingException` from a malformed payload) and stores the
+  message on the affected `FileTreeNode.error`. The directory is shown
+  collapsed with its error visible; the root failure shows the
+  existing `_ErrorBody`. `readFile` / `readImage` throw a dedicated
+  `FileReadException` (also caught by the viewer) so the existing
+  error state still renders correctly.
+- **Toggles in the file browser now reflect their state in the app
+  bar.** The previous overflow-menu `Switch`es rebuilt only when the
+  popup reopened (the `PopupMenuItem` doesn't watch the provider), so
+  the user saw no visual feedback until the menu was closed. Both
+  "show file extensions" and "show hidden files" are now `IconSurface`s
+  in the app bar with `selected: bool` (matching the diff-toggle
+  pattern the file viewer already uses) — the secondary-container
+  tone + `onSecondaryContainer` foreground make the active state
+  immediately visible.
+- **File browser / viewer chrome matches the rest of the app.** Both
+  screens now use the same `Scaffold` + `Stack` + `NeTopBar` overlay
+  pattern that `ConversationScreen` and `GitScreen` use, with
+  `BouncingScrollPhysics` + `AlwaysScrollableScrollPhysics` on the
+  tree list (matches `NeScaffold`). The gradiente del app bar, el
+  scroll-veil inferior y la separación con el status bar now match
+  the conversation screen exactly.
+
+### Added
+- **Workspace file browser (HECHO).** A full-screen file tree for the active
+  thread's `cwd`, reachable from a new `folder_open` `IconSurface` in the
+  conversation top bar (next to the existing git action). Lists every file and
+  folder, including hidden dotfiles, with the git-aware color treatment the
+  user asked for: tracked-but-unchanged files are neutral; `added`,
+  `modified`, `deleted`, `renamed` and `untracked` each get a distinct color
+  (matching the `GitScreen` + `GitDiffView` chrome). Tapping a directory
+  toggles its expansion (lazy `workspace/list` walks); tapping a file opens
+  the new **file viewer**. New `FileBrowserManager`
+  (`application/managers/`) + per-cwd stream provider; entity layer in
+  `domain/entities/file_browser.dart`. i18n strings added in EN + ES.
+
+- **File viewer (HECHO).** A second screen, pushed from the browser, that
+  decides the rendering by extension:
+  - **Images** (`.png`/`.jpg`/`.jpeg`/`.gif`/`.webp`/`.bmp`): inline
+    `Image.memory` from `workspace/readImage`'s base64, wrapped in an
+    `InteractiveViewer` for pinch-zoom and pan.
+  - **Markdown** (`.md`/`.markdown`): a **preview** (rich
+    `flutter_markdown` rendering with M3 chrome — code blocks, blockquotes,
+    …) **or the raw source** (preserving indent / escape sequences), toggled
+    by a top-bar action; the choice is a per-session toggle. The footer pill
+    surfaces the current mode.
+  - **Code / text**: syntax highlighting via `flutter_highlight` with the
+    `atom-one-{dark,light}` themes (matching the message-content renderer);
+    per-extension language detection (Dart/TypeScript/JavaScript/Python/Swift/
+    Kotlin/Java/Go/Rust/C/C++/CSS/SCSS/HTML/JSON/YAML/TOML/XML/Bash/SQL/Markdown).
+  - **Git diff overlay**: for files that report a `git status`, the viewer
+    fetches `git/diff { path }` and renders the unified diff with the same
+    +/- coloring as `GitDiffView` in the conversation; a top-bar toggle
+    switches back to the raw file content. The footer status pill paints the
+    file's git state (added/modified/deleted/renamed/untracked).
+  - **Binary placeholder**: a graceful "binary file" message when the
+    bridge returned base64 instead of UTF-8.
+  - **Copy file** action: copies the current content (or base64) to the
+    clipboard, with a snackbar.
+  The viewer's chrome mirrors the browser (transparent `NeTopBar` +
+    scroll-veil body) and reuses the `IconSurface` / `IconSurfaceMenu`
+    components for a consistent Neural Expressive feel.
+
 ### Docs
 - **Synced the spec (`architecture/00-index.md`,
   `architecture/02a-system-architecture.md`,

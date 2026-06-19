@@ -5,6 +5,41 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added
+- **Agent plan / to-do lists mapped to `plan` content blocks.** A new
+  `planBlock` builder + tolerant `extractPlanSteps` (content-blocks.ts) turn an
+  agent's plan-tool input into the `{ type:'plan', state:{ title?, steps:[{
+  description, status }] } }` block the phone renders as a checklist. Wired per
+  agent: **Claude** `TodoWrite` (confident), **OpenCode** `todowrite`, **pi**
+  `todo`, **Codex** `update_plan` item. Emits a block only when ≥1 step parses
+  (a wrong/absent shape → no block, never a malformed one). Codex/OpenCode/pi
+  tool names + shapes are ASSUMED and flagged `FOR-DEV:` for live confirmation;
+  Claude is verified by shape. Covered by `test/adapters/plan-blocks.test.ts`.
+- **Per-thread access mode is now enforced per turn (Claude).** `turn/send`
+  reads the thread's persisted `accessMode` (`ThreadRuntime.accessMode` →
+  `SendTurnOptions.accessMode`) and the Claude adapter maps it to the right CLI
+  posture: `requestApproval` keeps the interactive `PreToolUse` hook,
+  `approveForMe` → `--permission-mode acceptEdits` (hook suppressed),
+  `fullAccess` → `--dangerously-skip-permissions`. Non-breaking: a thread with
+  no mode keeps the adapter's configured posture (the validated interactive
+  approvals are untouched), and `requestApproval` without a usable hook falls
+  back to that posture instead of denying. Other agents accept the field and
+  ignore it for now. Covered by four adapter tests + a runtime test.
+- **Agent session id surfaced + per-thread access mode persisted.**
+  `toThread` now includes `agentSessionId` (the agent's native session id) so
+  `thread/read`/`thread/list` carry it for the phone's "resume from the CLI".
+  New `thread/setAccessMode { threadId, mode }` handler + `ThreadStore.setAccessMode`
+  (idempotent) persist the per-thread approval mode (`AccessMode`); `toThread`
+  returns `accessMode`. Covered by `test/conversation/thread-store.test.ts`.
+- **`turn/list` newest-first pagination.** The handler now accepts
+  `fromEnd?: boolean` and the response carries `total` (full turn count).
+  `ThreadStore.listTurns` (and the on-disk-history `paginateTurns` fallback)
+  honour `fromEnd` by returning the last `limit` turns and always report
+  `total`, so the phone can open a long thread at its newest messages and page
+  backward by computing offsets instead of pulling the whole thread. Cursor
+  semantics (forward offset, oldest→newest) are unchanged and backward
+  compatible. Covered by `test/conversation/thread-store.test.ts`.
+
 ### Docs
 - **Synced the spec (`architecture/02a-system-architecture.md` and
   `architecture/02b-contracts-and-requirements.md`) with the code.** This

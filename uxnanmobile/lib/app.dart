@@ -3,8 +3,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/application/managers/push_registrar.dart';
+import 'package:uxnan/core/utils/logger.dart';
+import 'package:uxnan/domain/entities/trusted_device.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
+import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/theme/uxnan_theme.dart';
 
@@ -22,12 +25,22 @@ class UxnanApp extends ConsumerWidget {
     final router = ref.watch(appRouterProvider);
     final themeMode = ref.watch(themeModeSettingProvider);
     final locale = ref.watch(localeSettingProvider);
+    final themeSource = ref.watch(themeSourceSettingProvider);
+    final customTheme = ref.watch(customThemeSettingProvider);
 
     return MaterialApp.router(
       title: 'Uxnan',
       debugShowCheckedModeBanner: false,
-      theme: buildUxnanTheme(brightness: Brightness.light),
-      darkTheme: buildUxnanTheme(),
+      theme: buildUxnanTheme(
+        brightness: Brightness.light,
+        themeSource: themeSource,
+        customTheme: customTheme,
+      ),
+      darkTheme: buildUxnanTheme(
+        brightness: Brightness.dark,
+        themeSource: themeSource,
+        customTheme: customTheme,
+      ),
       themeMode: themeMode,
       locale: locale,
       routerConfig: router,
@@ -74,19 +87,54 @@ class _PushHostState extends ConsumerState<_PushHost>
     // first frame is laid out (so the router is mounted).
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final threadId = await registrar.initialThreadId();
-      if (!mounted || threadId == null) return;
-      _openThread(threadId);
+      if (mounted && threadId != null) _openThread(threadId);
+      // Reconnect to the last-used PC so reopening the app (incl. after an
+      // unexpected close) restores the bridge session + history automatically.
+      unawaited(_autoConnectLastDevice());
     });
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
     // The user may have signed an agent in/out on the PC while we were away;
     // re-query auth/status on resume so a stale "not signed in" state clears.
-    if (state == AppLifecycleState.resumed) {
-      ref.read(authStatusRefreshProvider.notifier).bump();
+    ref.read(authStatusRefreshProvider.notifier).bump();
+    // The OS may have suspended/dropped the bridge socket while backgrounded.
+    // Ensure the connection is healthy again (reconnect now if it dropped or a
+    // backoff was pending) and re-sync the open conversation so messages that
+    // landed while away appear without leaving + re-entering it.
+    unawaited(ref.read(sessionCoordinatorProvider).resume());
+    unawaited(ref.read(threadManagerProvider).resyncActive());
+  }
+
+  /// Best-effort cold-start reconnect to the most-recently-connected trusted PC
+  /// (by `lastSeen`, falling back to pairing time). No-op when there are no
+  /// paired devices or a session is already active (e.g. a deep link beat us).
+  Future<void> _autoConnectLastDevice() async {
+    final coordinator = ref.read(sessionCoordinatorProvider);
+    if (coordinator.activeMac != null || coordinator.connectedDevice != null) {
+      return;
+    }
+    final devices =
+        await ref.read(trustedDeviceRepositoryProvider).getDevices();
+    if (devices.isEmpty) return;
+    final device = devices.reduce(
+      (a, b) => _recency(a).isAfter(_recency(b)) ? a : b,
+    );
+    coordinator.setActiveDevice(device);
+    try {
+      await coordinator.connect();
+    } on Object catch (error, stackTrace) {
+      // First attempt failed (PC asleep / off-network) — hand off to the
+      // backoff reconnect loop instead of leaving it stuck.
+      AppLogger.warn('cold-start auto-connect failed', error, stackTrace);
+      unawaited(coordinator.handleReconnect());
     }
   }
+
+  /// Recency key for picking the last-used device.
+  DateTime _recency(TrustedDevice device) => device.lastSeen ?? device.pairedAt;
 
   void _openThread(String threadId) {
     if (threadId.isEmpty) return;

@@ -4,6 +4,14 @@
 <dict>
 	<key>NSCameraUsageDescription</key>
 	<string>Uxnan uses the camera only to scan the pairing QR code shown by the bridge on your PC.</string>
+	<!-- mDNS/Bonjour browse of bridges on the local network (Browse nearby bridges). -->
+	<!-- FOR-HUMAN: review the user-facing local-network usage copy before App Store submission. -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Uxnan looks for bridges running on your local network so you can pair without typing the host.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_uxnan._tcp</string>
+	</array>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>

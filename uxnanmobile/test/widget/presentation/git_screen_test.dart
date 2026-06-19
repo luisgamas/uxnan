@@ -73,9 +73,13 @@ void main() {
     await tester.pumpWidget(_wrap(const GitScreen(), state: _sampleState()));
     await tester.pump();
 
-    // The first per-file checkbox (after the select-all one) toggles selection.
-    final checkboxes = find.byType(Checkbox);
-    await tester.tap(checkboxes.at(1));
+    // Every file row's `_NeCheckbox` is initially selected → `Icons.check_rounded`
+    // (the on-state glyph). The selection-bar checkbox (tristate) lives
+    // separately as the all-on glyph too, but tapping the second per-file
+    // checkbox is what flips one file's selection state.
+    final checks = find.byIcon(Icons.check_rounded);
+    expect(checks, findsAtLeastNWidgets(3));
+    await tester.tap(checks.at(1));
     await tester.pump();
 
     expect(find.text('2 of 3 selected'), findsOneWidget);

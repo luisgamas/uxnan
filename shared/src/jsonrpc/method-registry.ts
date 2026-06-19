@@ -13,6 +13,7 @@ export const METHOD_NAMES = [
   'thread/fork',
   'thread/setModel',
   'thread/rename',
+  'thread/setAccessMode',
   'thread/archive',
   'thread/unarchive',
   'thread/delete',

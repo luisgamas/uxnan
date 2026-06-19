@@ -5,12 +5,14 @@ import 'package:rxdart/rxdart.dart';
 import 'package:uuid/uuid.dart';
 import 'package:uxnan/application/managers/thread_manager.dart' show RpcSend;
 import 'package:uxnan/application/processors/domain_event.dart';
+import 'package:uxnan/application/services/git_status_bus.dart';
 import 'package:uxnan/domain/entities/git/git_action_log_entry.dart';
 import 'package:uxnan/domain/entities/git/git_repo_state.dart';
 import 'package:uxnan/domain/enums/git_action_kind.dart';
 import 'package:uxnan/domain/repositories/i_git_action_log_repository.dart';
 import 'package:uxnan/domain/value_objects/git/git_action_io.dart';
 import 'package:uxnan/domain/value_objects/git/git_action_progress.dart';
+import 'package:uxnan/domain/value_objects/git/git_status_change.dart';
 
 /// Coordinates git actions for the active workspace (spec 02a §5.2.4).
 ///
@@ -23,19 +25,29 @@ import 'package:uxnan/domain/value_objects/git/git_action_progress.dart';
 /// this exposes streams (`BehaviorSubject`) to fit Riverpod 3.x.
 class GitActionManager {
   /// Creates a [GitActionManager].
+  ///
+  /// [statusBus] (optional, recommended) receives a [GitStatusChange] after
+  /// every successful [refreshStatus] so consumers like the file browser can
+  /// repaint from the payload without re-fetching `git/status` themselves.
+  /// In production the bus is the shared `gitStatusBusProvider`; tests may
+  /// pass their own or `null` (which silently skips the broadcast — useful
+  /// for tests that do not care about cross-manager propagation).
   GitActionManager({
     required RpcSend sendRequest,
     required Stream<DomainEvent> domainEvents,
     IGitActionLogRepository? actionLog,
+    GitStatusBus? statusBus,
     Uuid? uuid,
   })  : _sendRequest = sendRequest,
         _actionLog = actionLog,
+        _statusBus = statusBus,
         _uuid = uuid ?? const Uuid() {
     _eventsSub = domainEvents.listen(_applyEvent);
   }
 
   final RpcSend _sendRequest;
   final IGitActionLogRepository? _actionLog;
+  final GitStatusBus? _statusBus;
   final Uuid _uuid;
   late final StreamSubscription<DomainEvent> _eventsSub;
 
@@ -60,7 +72,10 @@ class GitActionManager {
   /// The in-flight action snapshot.
   GitActionProgress? get activeAction => _activeAction.value;
 
-  /// Fetches `git/status` for [cwd] and publishes the parsed [GitRepoState].
+  /// Fetches `git/status` for [cwd], publishes the parsed [GitRepoState],
+  /// and broadcasts it on the [GitStatusBus] (when wired) so any other
+  /// consumer — typically the file browser — can repaint from the payload
+  /// without re-fetching.
   Future<GitRepoState?> refreshStatus(String cwd) async {
     _isLoading.add(true);
     try {
@@ -69,6 +84,7 @@ class GitActionManager {
       if (result is! Map) return null;
       final state = GitRepoState.fromJson(result.cast<String, dynamic>());
       _repoState.add(state);
+      _statusBus?.emit(GitStatusChange(cwd: cwd, state: state));
       return state;
     } finally {
       _isLoading.add(false);
