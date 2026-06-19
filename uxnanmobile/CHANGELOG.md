@@ -6,7 +6,41 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Brand splash screen + launcher icons (Android, iOS, web).** The
+  Uxnan brand mark is now the splash + home/launcher icon on every
+  surface:
+  - New `assets/images/logo.svg` (with white bg, splash fallback) and
+    `assets/images/logo_nb.svg` (no bg, the brand mark used everywhere
+    it needs to adapt to a theme); a 1024×1024 PNG
+    (`assets/images/logo-1024-1024.png`) is generated alongside because
+    `flutter_launcher_icons` / `flutter_native_splash` need a raster
+    source.
+  - `flutter_launcher_icons ^0.14.4` +
+    `flutter_native_splash ^2.4.7` added as `dev_dependencies`; their
+    config in `pubspec.yaml` regenerates the Android legacy + adaptive
+    icons, the iOS `AppIcon.appiconset`, the iOS launch storyboard, the
+    web PWA manifest + icons, and the Android 12+ SplashScreen API
+    assets (`android12splash.png` + `values-v31`/`values-night-v31`
+    styles).
+  - New `UxnanSplash` overlay
+    (`lib/presentation/widgets/uxnan_splash.dart`) shown on top of the
+    first frame after the native splash hands off — the logo scales in
+    with the M3E `spatialDefault` spring (slight overshoot) and the
+    overlay fades out with `effectsSlow` once `onReady` resolves. A
+    900 ms minimum hold guarantees the splash reads as a deliberate
+    moment on fast devices. Black-on-white in light mode,
+    white-on-white in dark mode via a `ColorFilter` (no second SVG
+    variant needed). Wired in `app.dart` via a new `_AppShell` that
+    composes the router output with `_PushHost` + `UxnanSplash` in a
+    `Stack`.
+
 ### Changed
+- **Devices-screen footer is now the brand mark + ALPHA caption.**
+  `_BrandingFooter` no longer renders the localized "Uxnan Mobile"
+  text; instead it shows a small SVG of the brand mark (28 dp tall,
+  theme-aware via `ColorFilter`) with the existing ALPHA pill kept as
+  the caption underneath.
 - **Custom themes as a library (multi-selectable + JSON import/export of
   many themes).** The personalization screen's previous 4-segment
   `SegmentedButton` (System / Light / Dark / Custom) is replaced with a
@@ -221,6 +255,9 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 - `infrastructure/storage/appearance_preferences_store.dart` keys
   `readAccentId` / `writeAccentId` (replaced by
   `readCustomTheme` / `writeCustomTheme`).
+- **Unused l10n key `appTitleMobile`** (en + es). The key only fed the
+  old footer text we replaced with the brand mark; the descriptions
+  in the .arb files were updated to reflect that.
 - l10n keys `accentBlue` … `accentTeal` (en + es) — replaced by the
   `customTheme*` key set on the editor + section headers.
 - Tests `test/unit/domain/value_objects/accent_color_test.dart` and

@@ -5,6 +5,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — brand mark across every desktop surface
+- **Brand assets**: `static/logo.svg` (with white bg, splash fallback) +
+  `static/logo_nb.svg` (no bg, the brand mark used in-app and in the
+  Tauri icon set); `static/favicon.png` regenerated from the SVG
+  (256×256). `src-tauri/icons/*` regenerated from the same source:
+  `32x32 / 128x128 / 128x128@2x / Square* / StoreLogo / icon.png /
+  icon.ico (16/24/32/48/64/128/256) / icon.icns (16/32/64/128/256/512)`.
+- **Title bar brand mark** (`TitleBar.svelte`): the brand mark now
+  sits to the left of the "Uxnan Desktop" label, inside the existing
+  drag region (so it doesn't break window-dragging). Theme-aware via
+  Tailwind's `dark:invert` filter — no second SVG variant. The ALPHA
+  pill is unchanged.
+- **Empty terminal state** (`TerminalArea.svelte`): when an active
+  workspace has no terminals, the centered placeholder is now the
+  brand mark (`size-24`, `dark:invert`) and the single "+ New
+  terminal" button becomes **two actions**:
+  - **New terminal** — always available (unchanged).
+  - **New worktree here** — enabled when the active workspace is
+    inside a registered repo's context (resolved from
+    `terminals.activeWorkspace`); opens `NewWorktreeDialog` pre-pointed
+    at that repo. In the Global workspace the button is disabled with
+    a tooltip ("Pick a project or worktree in the left panel to enable
+    this.").
+
 ### Added — agent state toasts + auto-installed hooks
 - **Agent state toasts**: when an agent's hook reports a meaningful transition,
   a toast fires — **done** (success), **blocked** (warning), **waiting** (info),
