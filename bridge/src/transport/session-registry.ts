@@ -45,9 +45,19 @@ export class SessionRegistry {
   /**
    * Drop the live sink (e.g. on disconnect) but KEEP the outbound log so the
    * phone can be caught up when it reconnects.
+   *
+   * Only removes [sink] if it is still the device's CURRENT sink. A returning
+   * phone (LAN/direct) can open a new connection — whose handshake calls
+   * {@link register} and overwrites the sink — while the old connection's socket
+   * is still half-open; when that stale connection finally tears down, it must
+   * not delete the newer connection's live sink. Returns `true` when this sink
+   * was the current one (i.e. the caller still owned the session), `false` when
+   * a newer connection had already superseded it.
    */
-  unregister(deviceId: string): void {
+  unregister(deviceId: string, sink: SessionSink): boolean {
+    if (this.#sinks.get(deviceId) !== sink) return false;
     this.#sinks.delete(deviceId);
+    return true;
   }
 
   /**

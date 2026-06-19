@@ -12,6 +12,7 @@ import type { HandlerRouter } from '../handler-router.js';
 import type { SecureDeviceState } from '../secure-device-state.js';
 import { queueFor, type MessageIO } from './message-io.js';
 import { performServerHandshake } from './server-handshake.js';
+import type { SessionSink } from './session-registry.js';
 import type { TrustStore } from './trust-store.js';
 
 export interface SecureConnectionOptions {
@@ -35,6 +36,7 @@ export async function handleSecureConnection(options: SecureConnectionOptions): 
 
   let phoneDeviceId: string | undefined;
   let sessionId: string | undefined;
+  let sink: SessionSink | undefined;
   try {
     const handshakeOptions = {
       queue,
@@ -75,10 +77,13 @@ export async function handleSecureConnection(options: SecureConnectionOptions): 
     // Register the encrypted sink synchronously (before any further await) so the
     // bridge can push notifications immediately. Each live send is encrypted by
     // the channel, which records it in the outbound log for future catch-up.
-    ctx.sessionRegistry.register(result.phoneDeviceId, {
+    // Kept in a variable so the teardown below only fires when this connection
+    // is still the current one (a reconnecting phone may have superseded it).
+    sink = {
       send: (message) =>
         io.send(Buffer.from(JSON.stringify(result.channel.encrypt(toBytes(message))), 'utf-8')),
-    });
+    };
+    ctx.sessionRegistry.register(result.phoneDeviceId, sink);
 
     const trusted = await trustStore.get(result.phoneDeviceId);
     ctx.sessions.add({
@@ -120,9 +125,18 @@ export async function handleSecureConnection(options: SecureConnectionOptions): 
     }
   } finally {
     if (phoneDeviceId !== undefined) {
-      ctx.sessions.remove(phoneDeviceId);
-      ctx.sessionRegistry.unregister(phoneDeviceId);
-      if (sessionId !== undefined) ctx.pushService.clearActiveSession(sessionId);
+      // Only tear down the shared session state if THIS connection still owns
+      // it. A reconnecting phone (LAN/direct) may have opened a newer connection
+      // that already replaced our sink + active session while our old socket was
+      // still half-open; when our stale connection finally closes, clobbering
+      // the newer one's sink/session/active-id would silently kill its push
+      // delivery. `unregister` returns false when we were superseded.
+      const stillCurrent =
+        sink === undefined || ctx.sessionRegistry.unregister(phoneDeviceId, sink);
+      if (stillCurrent) {
+        ctx.sessions.remove(phoneDeviceId);
+        if (sessionId !== undefined) ctx.pushService.clearActiveSession(sessionId);
+      }
       ctx.logger.info(`phone session closed: ${phoneDeviceId}`);
     }
     io.close();

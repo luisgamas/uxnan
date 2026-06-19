@@ -82,6 +82,36 @@ test('messages sent to an offline device are recorded in its log for catch-up', 
   assert.deepEqual(received, [{ method: 'c' }]);
 });
 
+test('a stale unregister does not drop a sink a reconnect already replaced', () => {
+  // Regression: a returning phone (LAN/direct) opens a new connection — whose
+  // handshake re-registers the sink — while the old connection's socket is still
+  // half-open. When that stale connection finally tears down, its unregister
+  // must NOT delete the newer connection's live sink (or push/streaming would
+  // silently die after every background reconnect).
+  const registry = new SessionRegistry();
+  const deviceId = 'device-1';
+
+  const receivedA: unknown[] = [];
+  const sinkA = { send: (m: unknown) => receivedA.push(m) };
+  registry.register(deviceId, sinkA);
+
+  // The phone reconnects: connection B replaces A's sink.
+  const receivedB: unknown[] = [];
+  const sinkB = { send: (m: unknown) => receivedB.push(m) };
+  registry.register(deviceId, sinkB);
+
+  // A's late teardown is a no-op on B's live sink and reports it was superseded.
+  assert.equal(registry.unregister(deviceId, sinkA), false);
+  assert.equal(registry.isActive(deviceId), true);
+  assert.equal(registry.notify(deviceId, { method: 'x' }), true);
+  assert.deepEqual(receivedB, [{ method: 'x' }]);
+  assert.deepEqual(receivedA, []);
+
+  // B's own teardown removes it and reports it was the current sink.
+  assert.equal(registry.unregister(deviceId, sinkB), true);
+  assert.equal(registry.isActive(deviceId), false);
+});
+
 test('forget drops the device log so nothing is replayed after untrust', () => {
   const registry = new SessionRegistry();
   const deviceId = 'device-1';

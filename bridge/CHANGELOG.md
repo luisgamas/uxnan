@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed
+- **A stale connection no longer clobbers a reconnecting phone's live session
+  (LAN/direct).** On the direct path a returning phone opens a *new* connection
+  whose handshake re-registers its push sink, active session and session-state
+  entry — while the old connection's socket may still be half-open. When that
+  stale connection finally tore down, its `finally` unconditionally removed the
+  sink (`SessionRegistry.unregister`), the `SessionState` entry and the
+  `pushService` active session — silently killing the **newer** connection's
+  push/streaming delivery after a background reconnect. `unregister` now takes
+  the sink and only removes it when it is still the current one (returns
+  `false` when superseded), and `handleSecureConnection`'s teardown is gated on
+  that result so a superseded connection leaves the live session untouched.
+  Covered by `test/transport/notify.test.ts`
+  ("a stale unregister does not drop a sink a reconnect already replaced").
+
 ### Added
 - **Agent plan / to-do lists mapped to `plan` content blocks.** A new
   `planBlock` builder + tolerant `extractPlanSteps` (content-blocks.ts) turn an
