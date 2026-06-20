@@ -83,7 +83,8 @@ Detailed docs live in [`docs/`](./docs/):
 [connectivity (LAN/Tailscale/relay)](./docs/connectivity.md) ·
 [how agents are driven](./docs/agents.md) ·
 [testing](./docs/testing.md) ·
-[packaging & deploy](./docs/deploy.md).
+[packaging & deploy](./docs/deploy.md) ·
+[push notifications](./docs/push-notifications.md).
 
 ## Install (later, as a global package)
 

@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — push notifications doc moved here, rewritten bridge-first
+- `relay/docs/push-notifications.md` → **`bridge/docs/push-notifications.md`**.
+  Reframed bridge-first: background push is delivered **directly by the bridge**
+  via FCM by default (the bridge owns the Firebase service account at
+  `~/.uxnan/firebase-service-account.json` and sends on any transport); a
+  self-hosted relay holding the credential is now documented only as the
+  optional delivery fallback. The "Docs" links in both `bridge/README.md` and
+  `relay/README.md` were updated to point here.
+
 ### Changed — macOS LaunchAgent label renamed `com.uxnan.bridge` → `dev.luisgamas.bridge`
 - **`LAUNCH_LABEL` constant updated** in `src/service-installer.ts`. The
   label is the reverse-DNS identifier used by `launchctl` (and is also the

@@ -64,5 +64,8 @@ full end-to-end (relay + bridge + a fake phone over a real WebSocket).
 ## Docs
 
 See [`docs/`](./docs/): [deployment & hosting](./docs/deploy.md) (LAN-only vs
-Cloudflare Tunnel / Fly.io / Workers) · [testing](./docs/testing.md) ·
-[push notifications](./docs/push-notifications.md).
+Cloudflare Tunnel / Fly.io / Workers) · [testing](./docs/testing.md).
+
+Push notifications are **bridge-first** now (the relay is only an optional
+delivery fallback) — see
+[`bridge/docs/push-notifications.md`](../bridge/docs/push-notifications.md).

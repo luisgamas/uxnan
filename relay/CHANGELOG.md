@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — push notifications doc moved to the bridge
+- `relay/docs/push-notifications.md` was **moved to
+  `bridge/docs/push-notifications.md`** and rewritten bridge-first (push is
+  bridge-direct by default; the relay is only an optional delivery fallback).
+  The relay README "Docs" section now links to the bridge copy.
+
 ### Changed — push docs refer to new mobile bundle id
 - No code changes in the relay itself (it does not carry a bundle id; the
   bridge LaunchAgent label and the mobile app id are the relevant namespaces).

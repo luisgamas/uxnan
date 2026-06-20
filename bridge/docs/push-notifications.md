@@ -6,6 +6,13 @@ commit. Push is **code-complete and gated**: everything builds and runs without
 any Firebase config — notifications simply stay off until the credentials below
 exist.
 
+> **Bridge-first (2026-06-12).** The relay is **optional/self-hosted**, so
+> background push is sent **directly by the bridge** via FCM on whatever
+> transport the phone paired on (direct LAN / Tailscale / relay alike). The
+> bridge owns the Firebase service account. A **self-hosted relay** can still
+> hold the credential and deliver instead — that's the optional fallback,
+> documented alongside the bridge-direct path below.
+
 ---
 
 ## 1. What you get
@@ -14,8 +21,8 @@ Two independent surfaces, both already wired in the app:
 
 | Kind | When it fires | Needs Firebase? |
 |---|---|---|
-| **Local notification** | App is **open/foreground** and an agent turn completes or errors (driven by the bridge's `stream/turn/*` events), or a foreground FCM message arrives. Shown via `flutter_local_notifications`. | Yes, indirectly — see note below |
-| **Push (FCM)** | App is **backgrounded or terminated**: the bridge asks the relay to deliver, FCM wakes the phone, tapping opens the thread. | Yes |
+| **Local notification** | App is **open/foreground** and an agent turn completes or errors (driven by the bridge's `stream/turn/*` events), or a foreground FCM message arrives. Shown via `flutter_local_notifications`. | No — see note below |
+| **Push (FCM)** | App is **backgrounded or terminated**: the bridge sends to FCM, FCM wakes the phone, tapping opens the thread. | Yes |
 
 > **Note:** in the current build the app's `PushNotificationService.init()`
 > initializes Firebase first and only then the local-notifications plugin, so on a
@@ -27,61 +34,63 @@ Two independent surfaces, both already wired in the app:
 
 ## 2. The delivery flow
 
+Default — **the bridge delivers directly** (no relay):
+
 ```
 agent turn ends ─► bridge (PushService.onTurnEnd)
-                     │  POST /push/notify  (sessionId + notificationSecret)
-                     ▼
-                   relay (PushRegistry → FCM sender)
-                     │  FCM HTTP v1  (firebase-admin, service account)
+                     │  createBridgePushSender → FCM HTTP v1
+                     │  (firebase-admin, service account on the bridge)
                      ▼
                    Firebase Cloud Messaging ─► phone (background) ─► tap opens thread
 ```
 
+Optional fallback — **a self-hosted relay delivers** (only when the bridge holds
+no FCM credential and `relayEnabled: true`):
+
+```
+agent turn ends ─► bridge ──POST /push/notify──► relay (PushRegistry → FCM sender)
+                                                   │  FCM HTTP v1 (service account on the relay)
+                                                   ▼
+                                                 Firebase Cloud Messaging ─► phone
+```
+
 - The phone registers its FCM token over the live E2EE session
-  (`notifications/register`); the bridge forwards it to the relay
-  (`POST /push/register`) and keeps the returned `notificationSecret`.
-- The relay only delivers when `UXNAN_FCM_SERVICE_ACCOUNT` points at a valid
-  service-account key; otherwise it accepts the calls but no-ops (gracefully
-  degraded). Routing/dedupe/secret-validation are unit-tested with a fake sender.
+  (`notifications/register`) with the **bridge**, which keeps it for delivery.
+- The bridge loads its service account at startup
+  (`createBridgePushSender`): present → it delivers directly; absent → it logs
+  `direct FCM disabled (relay fallback only)` and, if `relayEnabled` and the
+  relay holds the credential, forwards delivery to the relay.
 
 ### Do I need the relay?
 
-The relay in this project is **optional and self-hosted** (`relayEnabled` defaults
-to `false` — a fresh install is LAN/Tailscale-direct with no hosting). How that
-interacts with notifications:
+The relay is **optional and self-hosted** (`relayEnabled` defaults to `false` —
+a fresh install is LAN/Tailscale-direct with no hosting). How that interacts with
+notifications:
 
 | Notification | Needs the relay? | Why |
 |---|---|---|
-| **Local** (app open/foreground) | **No** | The app raises them itself from the live E2EE session's `stream/turn/*` events — they ride the same direct (LAN/Tailscale) or relayed channel the app is already on. No FCM, no relay-push endpoints. |
-| **Push / FCM** (app backgrounded or closed) | **Either direct-from-bridge OR via the relay** | When the bridge holds the Firebase service account (the **default** with `~/.uxnan/firebase-service-account.json` in place) it delivers directly via FCM — no relay needed. When the bridge has no FCM credential and `relayEnabled: true`, it forwards the token to the relay and the relay delivers. |
+| **Local** (app open/foreground) | **No** | The app raises them itself from the live E2EE session's `stream/turn/*` events — they ride the same direct (LAN/Tailscale) or relayed channel the app is already on. No FCM at all. |
+| **Push / FCM** (app backgrounded or closed) | **No, by default** | When the bridge holds the Firebase service account (the **default** with `~/.uxnan/firebase-service-account.json` in place) it delivers directly via FCM on any transport. A self-hosted relay with the credential is only needed if you'd rather keep the key off the bridge. |
 
 So with the **default bridge-direct setup you get push on every transport** —
-local notifications while the app is open, background FCM push anywhere. To
-also receive background push on a relay-only setup (no FCM credential on the
-bridge), you must run your self-hosted relay with `UXNAN_FCM_SERVICE_ACCOUNT`
-set and pair the phone with a `relayUrl`. They're complementary: local covers
-"app open", FCM covers "app backgrounded/closed" (when the OS suspends the
-socket and live events stop arriving).
-
-> This keeps the relay-optional philosophy intact for everything **except**
-> background push. A relay-less direct-FCM-from-the-bridge path is deliberately
-> **not** built — it's tracked in `bridge/FOR-DEV.md` as an opt-in only to be done
-> under an explicit developer request.
+local notifications while the app is open, background FCM push anywhere. The two
+are complementary: local covers "app open", FCM covers "app backgrounded/closed"
+(when the OS suspends the socket and live events stop arriving).
 
 ---
 
 ## 3. Current status
 
-- **Android — LIVE.** Firebase project `uxnan-app`, app `com.uxnan.mobile`,
-  `google-services.json` provisioned, Gradle plugin wired conditionally, relay
-  service account + `UXNAN_FCM_SERVICE_ACCOUNT` set, FCM verified by dry-run.
+- **Android — LIVE.** Firebase project `uxnan-app`, app `dev.luisgamas.uxnanmobile`,
+  `google-services.json` provisioned, Gradle plugin wired conditionally, the
+  bridge service account + `UXNAN_FCM_SERVICE_ACCOUNT` set, FCM verified by dry-run.
 - **iOS — PENDING.** App is registered in the same Firebase project and
   `GoogleService-Info.plist` is placed, but delivery needs an **APNs auth key**
   (a paid Apple Developer account) uploaded to Firebase, plus Xcode capabilities
   on macOS. No code changes are needed. See `uxnanmobile/FOR-HUMAN.md`.
 
 The exact assets and where they live are tracked in
-[`relay/FOR-HUMAN.md`](../FOR-HUMAN.md) and `uxnanmobile/FOR-HUMAN.md`.
+[`bridge/FOR-HUMAN.md`](../FOR-HUMAN.md) and `uxnanmobile/FOR-HUMAN.md`.
 
 ---
 
@@ -102,18 +111,23 @@ firebase projects:create my-uxnan --display-name "uxnan"
 
 # 2) Android app (FCM works directly)
 firebase apps:create ANDROID "uxnan Android" \
-  --package-name com.uxnan.mobile --project my-uxnan
+  --package-name dev.luisgamas.uxnanmobile --project my-uxnan
 firebase apps:sdkconfig ANDROID <ANDROID_APP_ID> --project my-uxnan \
   --out uxnanmobile/android/app/google-services.json
 
 # 3) iOS app (optional now; needed for iOS push later)
 firebase apps:create IOS "uxnan iOS" \
-  --bundle-id com.uxnan.mobile --project my-uxnan
+  --bundle-id dev.luisgamas.uxnanmobile --project my-uxnan
 firebase apps:sdkconfig IOS <IOS_APP_ID> --project my-uxnan \
   --out uxnanmobile/ios/Runner/GoogleService-Info.plist
 ```
 
 Cloud Messaging (FCM HTTP v1) is enabled by default on new projects.
+
+> **Note on the bundle id:** Firebase does **not** let you change an existing
+> app's package/bundle id (it is immutable). If you rename the app, register a
+> **new** Firebase app under the new id and re-fetch its client config; the old
+> app stays as an orphan and can be deleted in the Console.
 
 ### 4.2 Android Gradle — nothing to edit
 
@@ -123,22 +137,24 @@ classpath in `android/settings.gradle.kts` (`apply false`) and is applied in
 Drop the json in and the next build picks it up; remove it and the build still
 works (push just off).
 
-### 4.3 Relay service account + env var
+### 4.3 Bridge service account + env var
 
-The relay sends via the Firebase Admin SDK, which needs a **service-account key**.
+The bridge sends via the Firebase Admin SDK, which needs a **service-account key**.
 
 - **Console path (simplest):** Firebase Console → Project settings → **Service
   accounts → Generate new private key** → save the JSON to
   `~/.uxnan/firebase-service-account.json` (`C:\Users\<you>\.uxnan\…` on Windows).
-- Point the relay at it:
+  This is the bridge's **default** location — no env var needed if you use it.
+- To override the path, point the bridge at it:
   - Windows (persistent, user scope):
     `setx UXNAN_FCM_SERVICE_ACCOUNT "C:\Users\<you>\.uxnan\firebase-service-account.json"`
     (open a **new** terminal afterwards).
   - macOS/Linux: add `export UXNAN_FCM_SERVICE_ACCOUNT="$HOME/.uxnan/firebase-service-account.json"`
     to your shell profile.
 
-`firebase-admin` is already a relay `optionalDependency`, resolved from the
-workspace root `node_modules` — no separate install needed.
+`firebase-admin` is already a bridge `optionalDependency`, resolved from the
+workspace root `node_modules` — no separate install needed. (A self-hosted relay
+reads the **same** env var / path if you choose the relay-delivery fallback.)
 
 ### 4.4 iOS only — APNs (needs Apple Developer + macOS)
 
@@ -181,13 +197,13 @@ firebase apps:sdkconfig IOS <ios-app-id> --project <project> \
   --out uxnanmobile/ios/Runner/GoogleService-Info.plist
 ```
 
-**2) Relay service-account key** (`firebase-service-account.json`): this is a
+**2) Bridge service-account key** (`firebase-service-account.json`): this is a
 secret and **cannot** be re-downloaded — generate a **new** key on the new
-machine and point the relay at it:
+machine and point the bridge at it:
 
 - Firebase Console → Project settings → **Service accounts → Generate new private
   key** → save the JSON to `~/.uxnan/firebase-service-account.json`.
-- Set `UXNAN_FCM_SERVICE_ACCOUNT` to that path (see §4.3).
+- Set `UXNAN_FCM_SERVICE_ACCOUNT` to that path if you don't use the default (see §4.3).
 - Optionally revoke old/unused keys in Google Cloud Console → IAM & Admin →
   Service Accounts → the `firebase-adminsdk-…` account → **Keys**.
 
@@ -197,14 +213,15 @@ machine and point the relay at it:
 
 ## 5. Test that it works
 
-### 5.1 Relay credentials (no device needed)
+### 5.1 Credentials (no device needed)
 
 A dry-run validates the service account + project against FCM without delivering:
 
 ```bash
 node -e '
 const admin = require("firebase-admin");
-const cred = require(process.env.UXNAN_FCM_SERVICE_ACCOUNT);
+const cred = require(process.env.UXNAN_FCM_SERVICE_ACCOUNT
+  || require("path").join(require("os").homedir(), ".uxnan", "firebase-service-account.json"));
 const app = admin.initializeApp({ credential: admin.credential.cert(cred) }, "dryrun");
 admin.messaging(app).send({ topic: "uxnan-validation",
   notification: { title: "check", body: "creds valid" } }, true)
@@ -213,9 +230,9 @@ admin.messaging(app).send({ topic: "uxnan-validation",
 '
 ```
 
-You can also confirm the relay loads the **FCM** sender (not the noop) by starting
-it with `UXNAN_FCM_SERVICE_ACCOUNT` set and looking for `push: FCM sender ready`
-in the log (vs. `delivery disabled (noop sender)`).
+You can also confirm the **bridge** loads the FCM sender by starting it with the
+credential in place: it delivers directly. With no credential it logs
+`push: no Firebase service account at <path> — direct FCM disabled (relay fallback only)`.
 
 ### 5.2 Real device (Android)
 
@@ -225,14 +242,16 @@ in the log (vs. `delivery disabled (noop sender)`).
 3. **Local notification:** keep the app open and let an agent finish a turn — a
    "Turn completed" notification appears.
 4. **Push:** background the app (home button), trigger another turn from the
-   running agent; the relay → FCM delivers a push. Tapping it opens the thread.
-   (Requires the relay running with valid credentials and reachable by the bridge.)
+   running agent; the bridge → FCM delivers a push. Tapping it opens the thread.
+   (Requires the bridge running with a valid service account, or a self-hosted
+   relay holding the credential.)
 
 ### 5.3 Troubleshooting
 
-- Relay logs `noop sender` → `UXNAN_FCM_SERVICE_ACCOUNT` not set in that process
-  (reopen the terminal after `setx`), or the JSON path is wrong.
-- `notify` returns `unauthorized` → the phone never completed
+- Bridge logs `direct FCM disabled (relay fallback only)` → no service account at
+  `~/.uxnan/firebase-service-account.json` and `UXNAN_FCM_SERVICE_ACCOUNT` is
+  unset/wrong (reopen the terminal after `setx`), or the JSON path is wrong.
+- `notify` returns `unauthorized` (relay fallback path) → the phone never completed
   `notifications/register` (no token yet, or push disabled in config).
 - No Android notification at all → `google-services.json` missing/mismatched
   package name, or the OS notification permission was denied.
@@ -243,13 +262,13 @@ in the log (vs. `delivery disabled (noop sender)`).
 
 - **Another person using the project** links their **own** Firebase project and
   generates their **own** service account; substitute their app IDs in §4. The
-  app's package/bundle id stays `com.uxnan.mobile` (or change it consistently in
+  app's package/bundle id stays `dev.luisgamas.uxnanmobile` (or change it consistently in
   `android/app/build.gradle.kts`, `AndroidManifest`, the iOS bundle id, and the
   Firebase apps).
 - **You, on a second PC:** you need the same two things present locally — the
-  mobile client config (re-fetch with `firebase apps:sdkconfig …`) and, to run
-  the relay there, a service-account key + the env var. See §7 for what travels
-  with the repo and what does not.
+  mobile client config (re-fetch with `firebase apps:sdkconfig …`) and, on the
+  bridge there, a service-account key + (optionally) the env var. See §7 for what
+  travels with the repo and what does not.
 
 ---
 
