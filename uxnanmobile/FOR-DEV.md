@@ -6,6 +6,21 @@ Deferred implementation work (code the team/agent will do later). Distinct from
 
 > Convention defined in the root `AGENTS.md` → "Pending developer work".
 
+## FOR-DEV: keep the R8 keep rules complete (release minification is ON)
+
+`android/app/build.gradle.kts` keeps `isMinifyEnabled = true` +
+`isShrinkResources = true` for `release` (smaller APK). R8 full mode (AGP 9
+default) had stripped the no-arg constructors of the reflectively-instantiated
+ML Kit (`BarcodeRegistrar`) and Firebase (`FirebaseMessagingKtxRegistrar`)
+component registrars (`NoSuchMethodException: <init>[]`), breaking the QR
+scanner (mobile_scanner NPE) and background push in `--release`.
+`android/app/proguard-rules.pro` now keeps those.
+
+Watch for regressions: if a **new** reflective dependency works in debug but
+breaks only in `--release`, add its keep rule to `proguard-rules.pro` (debug
+doesn't minify, so it won't catch it). Always re-test a real QR scan **and** a
+background push in a `--release` build before shipping.
+
 ## Recommended next steps (mobile-only, no live bridge needed)
 
 These can be built and unit/widget-tested locally; bridge calls degrade

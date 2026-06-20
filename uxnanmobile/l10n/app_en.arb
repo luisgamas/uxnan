@@ -62,6 +62,9 @@
   "qrHint": "Point the camera at the QR code in your bridge terminal.",
   "qrErrorExpired": "This QR code has expired. Generate a new one on your PC.",
   "qrErrorMalformed": "This isn't a valid Uxnan pairing code.",
+  "qrCameraErrorTitle": "Camera unavailable",
+  "qrCameraErrorBody": "Couldn't start the camera to scan. You can pair with a code instead, or try again.",
+  "actionRetry": "Try again",
   "pairingConnecting": "Establishing a secure session…",
 
   "updateRequiredTitle": "Update required",

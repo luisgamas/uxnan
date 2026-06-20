@@ -138,6 +138,16 @@ class AppLocalizationsEs extends AppLocalizations {
       'Este no es un código de vinculación de Uxnan válido.';
 
   @override
+  String get qrCameraErrorTitle => 'Cámara no disponible';
+
+  @override
+  String get qrCameraErrorBody =>
+      'No se pudo iniciar la cámara para escanear. Puedes emparejar con un código o intentar de nuevo.';
+
+  @override
+  String get actionRetry => 'Reintentar';
+
+  @override
   String get pairingConnecting => 'Estableciendo una sesión segura…';
 
   @override

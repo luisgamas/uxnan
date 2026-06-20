@@ -30,6 +30,9 @@ enum _CameraAccess {
 
   /// Permission permanently denied (must be changed in Settings).
   permanentlyDenied,
+
+  /// The camera failed to start (a `MobileScannerException`).
+  error,
 }
 
 /// Scans a bridge pairing QR, validates it and starts the pairing handshake
@@ -45,6 +48,7 @@ class QrScannerScreen extends ConsumerStatefulWidget {
 class _QrScannerScreenState extends ConsumerState<QrScannerScreen> {
   MobileScannerController? _controller;
   _CameraAccess _access = _CameraAccess.checking;
+  MobileScannerException? _scanError;
   bool _handling = false;
   bool _connecting = false;
 
@@ -75,6 +79,34 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen> {
       } else {
         _access = _CameraAccess.denied;
       }
+    });
+  }
+
+  /// Hoists a `MobileScanner` start failure out of its (rapidly rebuilding)
+  /// `errorBuilder` into stable top-level state, so the fallback screen and
+  /// its buttons don't get torn down/rebuilt under the user's finger.
+  void _onScannerError(MobileScannerException error) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _access == _CameraAccess.error) return;
+      setState(() {
+        _scanError = error;
+        _access = _CameraAccess.error;
+      });
+    });
+  }
+
+  /// Disposes the failed controller and creates a fresh one so the
+  /// `MobileScanner` widget re-mounts and re-attempts `start()` (autoStart).
+  Future<void> _retryCamera() async {
+    final old = _controller;
+    _controller = null;
+    _scanError = null;
+    if (mounted) setState(() => _access = _CameraAccess.checking);
+    await old?.dispose();
+    if (!mounted) return;
+    setState(() {
+      _controller = MobileScannerController();
+      _access = _CameraAccess.granted;
     });
   }
 
@@ -141,6 +173,11 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen> {
           controller: _controller!,
           onDetect: _onDetect,
           connecting: _connecting,
+          onError: _onScannerError,
+        ),
+      _CameraAccess.error => _ScannerError(
+          error: _scanError!,
+          onRetry: _retryCamera,
         ),
       _CameraAccess.denied => _PermissionRequest(
           onAllow: () => _resolvePermission(request: true),
@@ -186,11 +223,17 @@ class _ScannerView extends StatelessWidget {
     required this.controller,
     required this.onDetect,
     required this.connecting,
+    required this.onError,
   });
 
   final MobileScannerController controller;
   final void Function(BarcodeCapture) onDetect;
   final bool connecting;
+
+  /// Reports a camera start failure up to the screen so it can render the
+  /// fallback at a stable level (the package's `errorBuilder` rebuilds with
+  /// the scanner, which would make the fallback buttons unreliable).
+  final void Function(MobileScannerException) onError;
 
   @override
   Widget build(BuildContext context) {
@@ -200,7 +243,17 @@ class _ScannerView extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
-        MobileScanner(controller: controller, onDetect: onDetect),
+        // On a start failure, report the error upward and paint black for the
+        // single frame before the screen swaps to the stable fallback — never
+        // the package's cryptic default error glyph.
+        MobileScanner(
+          controller: controller,
+          onDetect: onDetect,
+          errorBuilder: (context, error, child) {
+            onError(error);
+            return const ColoredBox(color: Colors.black);
+          },
+        ),
         const _ScanWindowOverlay(),
         Align(
           alignment: Alignment.bottomCenter,
@@ -248,6 +301,80 @@ class _ScanWindowOverlay extends StatelessWidget {
         decoration: BoxDecoration(
           border: Border.all(color: colors.primary, width: 3),
           borderRadius: const BorderRadius.all(UxnanRadius.xl),
+        ),
+      ),
+    );
+  }
+}
+
+/// Shown over the (dark) camera area when `MobileScanner` reports a start
+/// failure: the real error code/message plus a manual-code fallback and a
+/// retry, instead of the package's default error glyph.
+class _ScannerError extends StatelessWidget {
+  const _ScannerError({required this.error, required this.onRetry});
+
+  final MobileScannerException error;
+  final Future<void> Function() onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final textTheme = Theme.of(context).textTheme;
+    final colors = Theme.of(context).colorScheme;
+    final detail = error.errorDetails?.message;
+    final diagnostic = detail != null && detail.isNotEmpty
+        ? '${error.errorCode.name}: $detail'
+        : error.errorCode.name;
+
+    return ColoredBox(
+      color: colors.surface,
+      child: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(UxnanSpacing.xl),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.no_photography_rounded,
+                size: 56,
+                color: colors.onSurface,
+                semanticLabel: 'Camera error',
+              ),
+              const SizedBox(height: UxnanSpacing.lg),
+              Text(
+                l10n.qrCameraErrorTitle,
+                style: textTheme.headlineMedium,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: UxnanSpacing.sm),
+              Text(
+                l10n.qrCameraErrorBody,
+                style: textTheme.bodyMedium?.copyWith(
+                  color: colors.onSurfaceVariant,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: UxnanSpacing.md),
+              Text(
+                diagnostic,
+                style: textTheme.bodySmall?.copyWith(
+                  color: colors.onSurfaceVariant,
+                  fontFamily: 'JetBrainsMono',
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: UxnanSpacing.xl),
+              FilledButton(
+                onPressed: () => context.go(AppRoutes.manualPairing),
+                child: Text(l10n.manualCodeTitle),
+              ),
+              const SizedBox(height: UxnanSpacing.sm),
+              TextButton(
+                onPressed: () => unawaited(onRetry()),
+                child: Text(l10n.actionRetry),
+              ),
+            ],
+          ),
         ),
       ),
     );

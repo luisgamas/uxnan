@@ -45,6 +45,24 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+
+            // R8/minification + resource shrinking ON (smaller release). R8
+            // full mode (AGP 9 default) strips the no-arg constructors of the
+            // reflectively-instantiated component registrars used by ML Kit
+            // (BarcodeRegistrar) and Firebase (FirebaseMessagingKtxRegistrar) —
+            // "NoSuchMethodException: <init>[]" — which broke the QR scanner
+            // (mobile_scanner NPE: "getClass() on a null object reference") and
+            // FCM push. `proguard-rules.pro` keeps those, so both keep working
+            // while everything else is shrunk.
+            // FOR-DEV: if a new reflective dep breaks only in --release, add its
+            // keep rule to proguard-rules.pro (debug doesn't minify). Always
+            // re-test a QR scan + a background push in --release before shipping.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
     }
 }

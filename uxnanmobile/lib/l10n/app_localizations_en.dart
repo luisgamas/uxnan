@@ -137,6 +137,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get qrErrorMalformed => 'This isn\'t a valid Uxnan pairing code.';
 
   @override
+  String get qrCameraErrorTitle => 'Camera unavailable';
+
+  @override
+  String get qrCameraErrorBody =>
+      'Couldn\'t start the camera to scan. You can pair with a code instead, or try again.';
+
+  @override
+  String get actionRetry => 'Try again';
+
+  @override
   String get pairingConnecting => 'Establishing a secure session…';
 
   @override

@@ -332,6 +332,24 @@ abstract class AppLocalizations {
   /// **'This isn\'t a valid Uxnan pairing code.'**
   String get qrErrorMalformed;
 
+  /// No description provided for @qrCameraErrorTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Camera unavailable'**
+  String get qrCameraErrorTitle;
+
+  /// No description provided for @qrCameraErrorBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t start the camera to scan. You can pair with a code instead, or try again.'**
+  String get qrCameraErrorBody;
+
+  /// No description provided for @actionRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'Try again'**
+  String get actionRetry;
+
   /// No description provided for @pairingConnecting.
   ///
   /// In en, this message translates to:

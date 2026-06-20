@@ -6,6 +6,34 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — QR scanner (and FCM push) broken in `--release` by R8 stripping
+- **Root cause:** AGP 9 enables R8/minification by default for `release`, and
+  in full mode it stripped the no-arg constructors of the reflectively-
+  instantiated component registrars used by ML Kit (`BarcodeRegistrar`) and
+  Firebase (`FirebaseMessagingKtxRegistrar`) — `NoSuchMethodException:
+  <init>[]`. That left the barcode scanner null, so `mobile_scanner` threw
+  `genericError: … getClass() on a null object reference` on camera start
+  (dark screen), and it would also have broken background push in release.
+  Debug builds (no minify) were unaffected, which is why it only showed under
+  `flutter run --release`. **Fix:** added `android/app/proguard-rules.pro` with
+  keep rules for the ML Kit, Firebase and mobile_scanner classes (and any
+  `ComponentRegistrar`), keeping minification **on** (`isMinifyEnabled = true` +
+  `isShrinkResources = true`) so the release stays small while the scanner and
+  push keep working.
+- **Graceful fallback instead of a dead screen:** the scanner had no
+  `errorBuilder`, so a start failure left the user on a dark screen with the
+  package's cryptic default glyph and no way out. A camera start error is now
+  hoisted into stable top-level state (`_ScannerError`) — out of the package's
+  rapidly-rebuilding `errorBuilder`, which made the fallback buttons
+  unresponsive — showing the real error (code + message) plus **Pair with a
+  code** (manual pairing) and **Try again** (recreates the controller).
+  (`qr_scanner_screen.dart`; new l10n keys `qrCameraErrorTitle`,
+  `qrCameraErrorBody`, `actionRetry`.)
+- **Modernized `mobile_scanner` 5.2.3 → 6.0.11** along the way (newer CameraX
+  1.5 + ML Kit 17.3; source-compatible: autoStart, `onDetect`, 3-arg
+  `errorBuilder`). Requires `compileSdk 36` (already our default) and bumps the
+  **iOS deployment target to 15.5** (`project.pbxproj`).
+
 ### Changed — bundle id renamed `com.uxnan.mobile` → `dev.luisgamas.uxnanmobile`
 - **Android.** `android/app/build.gradle.kts` `namespace` + `applicationId`
   rewritten. The Kotlin source moved from
