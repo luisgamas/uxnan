@@ -1564,7 +1564,7 @@ El bridge mantiene estado en `~/.uxnan/`:
 
 #### 5.8.4 Autostart del bridge
 
-- **macOS:** LaunchAgent en `~/Library/LaunchAgents/com.uxnan.bridge.plist`
+- **macOS:** LaunchAgent en `~/Library/LaunchAgents/dev.luisgamas.bridge.plist`
 - **Windows:** Windows Service o Task Scheduler via PowerShell
 - **Linux:** systemd user unit en `~/.config/systemd/user/uxnan-bridge.service`
 

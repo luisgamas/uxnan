@@ -5,6 +5,31 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — macOS LaunchAgent label renamed `com.uxnan.bridge` → `dev.luisgamas.bridge`
+- **`LAUNCH_LABEL` constant updated** in `src/service-installer.ts`. The
+  label is the reverse-DNS identifier used by `launchctl` (and is also the
+  basename of the per-user LaunchAgent plist):
+  - Plist path: `~/Library/LaunchAgents/dev.luisgamas.bridge.plist`
+    (was `~/Library/LaunchAgents/com.uxnan.bridge.plist`)
+  - Plist `Label` key: `dev.luisgamas.bridge` (was `com.uxnan.bridge`)
+- **Legacy install script mirrored.** `scripts/install-service-macos.sh`
+  rewrites the plist path, label and trailing echo to use the new id (the
+  script is the reference recipe; the live code path is the in-process
+  installer in `service-installer.ts`).
+- **Test aligned.** `test/service-installer.test.ts` "macOS plan writes a
+  LaunchAgent plist and loads it" now asserts the plist path under
+  `dev.luisgamas.bridge.plist`. The Linux and Windows plans are unaffected
+  (Linux uses a `uxnan-bridge.service` systemd unit, Windows uses a Task
+  Scheduler entry named `UxnanBridge` — neither was namespace-derived).
+- **No uninstall migration.** The old plist (if previously installed as
+  `com.uxnan.bridge.plist`) is **not** auto-removed — the user must run the
+  uninstall path once (`uxnan-bridge service uninstall`) to drop the old
+  file before installing under the new label. Re-install under the new
+  label works without uninstalling first; macOS just keeps both plists.
+- **Spec updated.** `architecture/02a-system-architecture.md` §5.8.4
+  LaunchAgent path, and `uxnandesktop/architecture/02e-bridge-integration.md`
+  autostart table, both reflect the new id.
+
 ### Fixed
 - **A stale connection no longer clobbers a reconnecting phone's live session
   (LAN/direct).** On the direct path a returning phone opens a *new* connection

@@ -23,7 +23,7 @@ import { join } from 'node:path';
 const run = promisify(execFile);
 
 const TASK_NAME = 'UxnanBridge';
-const LAUNCH_LABEL = 'com.uxnan.bridge';
+const LAUNCH_LABEL = 'dev.luisgamas.bridge';
 const UNIT_NAME = 'uxnan-bridge.service';
 
 export type ServicePlatform = 'win32' | 'darwin' | 'linux';

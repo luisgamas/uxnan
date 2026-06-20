@@ -4,8 +4,8 @@
 # Installs a LaunchAgent so the uxnan-bridge daemon starts at login.
 # Requires the global CLI: npm install -g uxnan-bridge
 #
-# Remove:  launchctl unload ~/Library/LaunchAgents/com.uxnan.bridge.plist && \
-#          rm ~/Library/LaunchAgents/com.uxnan.bridge.plist
+# Remove:  launchctl unload ~/Library/LaunchAgents/dev.luisgamas.bridge.plist && \
+#          rm ~/Library/LaunchAgents/dev.luisgamas.bridge.plist
 set -euo pipefail
 
 BIN="$(command -v uxnan-bridge || true)"
@@ -15,14 +15,14 @@ if [ -z "$BIN" ]; then
 fi
 
 mkdir -p "$HOME/Library/LaunchAgents" "$HOME/.uxnan/logs"
-PLIST="$HOME/Library/LaunchAgents/com.uxnan.bridge.plist"
+PLIST="$HOME/Library/LaunchAgents/dev.luisgamas.bridge.plist"
 
 cat > "$PLIST" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>Label</key><string>com.uxnan.bridge</string>
+  <key>Label</key><string>dev.luisgamas.bridge</string>
   <key>ProgramArguments</key>
   <array><string>$BIN</string><string>start</string></array>
   <key>RunAtLoad</key><true/>
@@ -35,4 +35,4 @@ EOF
 
 launchctl unload "$PLIST" 2>/dev/null || true
 launchctl load "$PLIST"
-echo "Loaded LaunchAgent com.uxnan.bridge (starts at login)."
+echo "Loaded LaunchAgent dev.luisgamas.bridge (starts at login)."

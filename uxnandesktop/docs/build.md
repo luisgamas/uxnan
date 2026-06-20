@@ -67,6 +67,6 @@ distribution. They depend on assets only a human can provide — tracked in
 - **Auto-updater** — `pubkey` + `endpoints` for `tauri-plugin-updater` in
   `tauri.conf.json` (see the spec, `architecture/03-implementation-guide.md` §5.2).
 
-Bundle identity (product name, identifier `com.uxnan.desktop`, icons) lives in
+Bundle identity (product name, identifier `dev.luisgamas.uxnandesktop`, icons) lives in
 `src-tauri/tauri.conf.json`. Replace the placeholder icons before release
 (`npm run tauri icon path/to/source.png`) — see `../FOR-HUMAN.md`.

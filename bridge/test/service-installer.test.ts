@@ -39,7 +39,7 @@ test('windows plan registers a logon Task Scheduler task at LIMITED run level', 
 
 test('macOS plan writes a LaunchAgent plist and loads it', () => {
   const plan = buildServicePlan(envFor('darwin'));
-  const plist = join(HOME, 'Library', 'LaunchAgents', 'com.uxnan.bridge.plist');
+  const plist = join(HOME, 'Library', 'LaunchAgents', 'dev.luisgamas.bridge.plist');
   assert.equal(plan.file?.path, plist);
   assert.equal(plan.removeFile, plist);
   assert.ok(plan.file!.content.includes(`<string>${NODE}</string>`));

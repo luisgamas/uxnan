@@ -68,7 +68,7 @@ Firebase service account); the APNs key is uploaded to Firebase, not to the rela
       Identifiers & Profiles → Keys → +** → enable **Apple Push Notifications service
       (APNs)** → Continue → download `AuthKey_XXXXXXXXXX.p8` (you can download it ONCE).
 - [ ] Record the **Key ID** (10 chars) and your **Team ID** (Membership page).
-- [ ] App bundle id is `com.uxnan.mobile` (matches the mobile app).
+- [ ] App bundle id is `dev.luisgamas.uxnanmobile` (matches the mobile app).
 - [ ] **Recommended path:** Firebase Console → Project settings → **Cloud
       Messaging → Apple app configuration → APNs Authentication Key → Upload** the
       `.p8` with its Key ID + Team ID. (Then the relay sends iOS push via FCM too.)
@@ -78,7 +78,7 @@ Only if you prefer not to route iOS through FCM. The relay would then need the
 `.p8` locally and build APNs HTTP/2 JWTs itself:
 - [ ] Put the key at `~/.uxnan/apns/AuthKey_XXXXXXXXXX.p8` (do not commit).
 - [ ] Env: `UXNAN_APNS_KEY_PATH`, `UXNAN_APNS_KEY_ID`, `UXNAN_APNS_TEAM_ID`,
-      `UXNAN_APNS_BUNDLE_ID=com.uxnan.mobile`,
+      `UXNAN_APNS_BUNDLE_ID=dev.luisgamas.uxnanmobile`,
       `UXNAN_APNS_ENV=sandbox|production`.
 
 ### Mobile-app side (tracked separately, on the `uxnanmobile` branch)

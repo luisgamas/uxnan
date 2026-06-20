@@ -193,7 +193,7 @@ validated Tauri command/event round-trip.
 
 Done in this increment:
 - [x] Tauri 2 + SvelteKit (SPA, `adapter-static`, `ssr=false`) scaffold,
-      rebranded to `uxnan-desktop` / `com.uxnan.desktop`, window `1280×800`
+      rebranded to `uxnan-desktop` / `dev.luisgamas.uxnandesktop`, window `1280×800`
       (min `880×560`).
 - [x] Tailwind v4 via `@tailwindcss/vite` + shadcn-svelte design tokens
       (`src/app.css`) + `cn()` helper (`src/lib/utils.ts`) + `components.json`

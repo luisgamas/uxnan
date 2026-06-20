@@ -411,9 +411,9 @@ fn get_data_dir(app: &tauri::AppHandle) -> std::path::PathBuf {
 ```
 
 Esto resuelve a rutas especificas del OS:
-- **Windows**: `%APPDATA%/com.uxnan.desktop/`
-- **macOS**: `~/Library/Application Support/com.uxnan.desktop/`
-- **Linux**: `~/.local/share/com.uxnan.desktop/`
+- **Windows**: `%APPDATA%/dev.luisgamas.uxnandesktop/`
+- **macOS**: `~/Library/Application Support/dev.luisgamas.uxnandesktop/`
+- **Linux**: `~/.local/share/dev.luisgamas.uxnandesktop/`
 
 #### Migraciones de Esquema
 

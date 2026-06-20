@@ -5,6 +5,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — Tauri bundle id renamed `com.uxnan.desktop` → `dev.luisgamas.uxnandesktop`
+- **`src-tauri/tauri.conf.json` `identifier` rewritten.** The Tauri 2 runtime
+  derives its app-data directory from the bundle identifier, so the on-disk
+  paths used by `app.path().app_data_dir()` change everywhere:
+  - Windows: `%APPDATA%/dev.luisgamas.uxnandesktop/`
+    (was `%APPDATA%/com.uxnan.desktop/`)
+  - macOS: `~/Library/Application Support/dev.luisgamas.uxnandesktop/`
+    (was `~/Library/Application Support/com.uxnan.desktop/`)
+  - Linux: `~/.local/share/dev.luisgamas.uxnandesktop/`
+    (was `~/.local/share/com.uxnan.desktop/`)
+- **Spec updated.** `uxnandesktop/architecture/03-implementation-guide.md`
+  §"Directorio de Datos de la Aplicacion", `uxnandesktop/docs/build.md` bundle
+  identity note, and `uxnandesktop/docs/agent-hooks.md` per-OS hook-installer
+  paths all reflect the new id. The Rust code paths are unaffected
+  (`app.path().app_data_dir()` is the only thing the app uses, and it follows
+  the new identifier automatically).
+- **Visible product name unchanged.** `tauri.conf.json` `productName` stays
+  `Uxnan Desktop` and the window title stays `Uxnan Desktop`.
+- **No user data migration is included.** A pre-existing `com.uxnan.desktop`
+  data directory (state JSON + backups + installed Claude hook scripts) is
+  not migrated; the next launch starts fresh under the new directory. The
+  `FOR-DEV.md` row that mentioned `com.uxnan.desktop` was kept untouched as
+  a historical snapshot.
+
 ### Changed — brand icon, theme variants & startup splash
 - **Refreshed brand mark + new dark variant.** `static/logo.svg` (black
   mark on a white, rounded surface) and `static/logo_nb.svg` (black

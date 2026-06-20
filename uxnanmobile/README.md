@@ -23,7 +23,7 @@ coding agents running on a PC, over an end-to-end encrypted channel.
 | Crypto | `cryptography` + `pointycastle` (X25519, Ed25519, AES-256-GCM, HKDF) |
 | Lint | `very_good_analysis` |
 
-Package id: `com.uxnan.mobile` · Dart package name: `uxnan` (imports use
+Package id: `dev.luisgamas.uxnanmobile` · Dart package name: `uxnan` (imports use
 `package:uxnan/...`).
 
 ## Project layout (`lib/`)

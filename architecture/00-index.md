@@ -38,7 +38,7 @@
 
 | Área | Estado | Notas |
 |---|---|---|
-| Bootstrap (Android+iOS, package Dart `uxnan`, bundle `com.uxnan.mobile`) | ✅ Hecho | `flutter analyze` sin issues; `minSdk` 24, iOS 15 |
+| Bootstrap (Android+iOS, package Dart `uxnan`, bundle `dev.luisgamas.uxnanmobile`) | ✅ Hecho | `flutter analyze` sin issues; `minSdk` 24, iOS 15 |
 | Estructura de capas (`core/`, `domain/`, `application/`, `infrastructure/`, `presentation/`) | ✅ Hecho | Ver 02a §7 |
 | Capa `core/` (constantes de protocolo, errores tipados, extensiones, logger/debouncer) | ✅ Hecho | — |
 | Enums de dominio | ✅ Hecho | 02a §5.1.2 |

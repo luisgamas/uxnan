@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — push docs refer to new mobile bundle id
+- No code changes in the relay itself (it does not carry a bundle id; the
+  bridge LaunchAgent label and the mobile app id are the relevant namespaces).
+- `relay/FOR-HUMAN.md` APNs-config checklist and `relay/docs/push-notifications.md`
+  bundle-id references (`com.uxnan.mobile` → `dev.luisgamas.uxnanmobile`)
+  updated to match the new mobile bundle id; the Firebase CLI examples and
+  the "another person using the project" note now point at the new id.
+
 ### Added — push state persistence
 - `PushRegistry` now persists the per-session token map AND the
   `(sessionId,turnId)` dedupe window to `~/.uxnan/relay-state.json` (override

@@ -54,14 +54,30 @@ end-to-end (mobile token ⇄ relay delivery). Path chosen: **FCM-for-both**
 The push module is implemented and **fully guarded**: the app still builds and
 runs without the config files below — push just stays disabled until they exist.
 
-### ☑ Android — DONE (2026-06-09)
+### ☑ Android — RE-REGISTERED (bundle id renamed 2026-06-20) — DONE (2026-06-20)
 
-- App registered: package **`com.uxnan.mobile`**, app id
-  `1:97810225919:android:0905f8a9f35a77955f0aca`.
-- `google-services.json` placed at `uxnanmobile/android/app/google-services.json`
-  (gitignored, machine-local — **never committed**).
-- Google Services Gradle plugin wired **conditionally** so the build stays green
-  without the json:
+The mobile bundle id changed from `com.uxnan.mobile` to
+**`dev.luisgamas.uxnanmobile`**. A new Android app was registered in the same
+`uxnan-app` Firebase project and its `google-services.json` was re-fetched —
+**Android push is unblocked again.**
+
+> Correction to the old note here: Firebase does **not** let you change the
+> package name of an existing app (it is immutable). The only path is to
+> **register a new app** under the new package name (the old
+> `com.uxnan.mobile` app stays as an orphan and can be deleted in the Console).
+
+**Done via the Firebase CLI (already authenticated):**
+```bash
+firebase apps:create ANDROID "Uxnan Mobile" \
+  --package-name dev.luisgamas.uxnanmobile --project uxnan-app
+firebase apps:sdkconfig ANDROID 1:97810225919:android:401c579528716a685f0aca \
+  --project uxnan-app --out uxnanmobile/android/app/google-services.json
+```
+- New Android App ID: `1:97810225919:android:401c579528716a685f0aca`.
+- `google-services.json` is present (gitignored) and contains the
+  `dev.luisgamas.uxnanmobile` client; `Firebase.initializeApp()` now accepts
+  the package name.
+- The Gradle wiring is already conditional (the file just needs to exist):
   - `android/settings.gradle.kts` → `id("com.google.gms.google-services")
     version "4.4.2" apply false` (on the classpath).
   - `android/app/build.gradle.kts` → applied only `if
@@ -69,17 +85,28 @@ runs without the config files below — push just stays disabled until they exis
   - (Core-library desugaring already enabled for `flutter_local_notifications`.)
 - To build with push live: `flutter clean && flutter pub get && flutter run`.
 
-> Re-provisioning on another PC: pull `google-services.json` from the Firebase
-> console (or `firebase apps:sdkconfig ANDROID
-> 1:97810225919:android:0905f8a9f35a77955f0aca`) into the same path.
+### ◐ iOS — RE-REGISTER (bundle id renamed 2026-06-20) — config fetched; macOS steps pending
 
-### ☐ iOS — PENDING (requires macOS + a paid Apple Developer account)
+The mobile bundle id changed from `com.uxnan.mobile` to
+**`dev.luisgamas.uxnanmobile`**. A new iOS app was registered in the same
+`uxnan-app` Firebase project and its `GoogleService-Info.plist` was re-fetched.
+The remaining iOS work is **macOS-only** (Apple Developer + Xcode), so it cannot
+be finished from this Windows PC.
 
-The Firebase side is already prepared on Windows:
-- iOS app registered: bundle **`com.uxnan.mobile`**, app id
-  `1:97810225919:ios:0d917b9407c2a5f05f0aca`.
-- `GoogleService-Info.plist` already placed at `uxnanmobile/ios/Runner/`
-  (gitignored). It still needs to be **added to the Runner target in Xcode**.
+> Same correction as Android: the iOS app's Bundle ID is immutable — a new app
+> must be registered (the old `com.uxnan.mobile` iOS app stays as an orphan).
+
+**Done via the Firebase CLI:**
+```bash
+firebase apps:create IOS "Uxnan Mobile" \
+  --bundle-id dev.luisgamas.uxnanmobile --project uxnan-app
+firebase apps:sdkconfig IOS 1:97810225919:ios:36cd3cd7181cb1325f0aca \
+  --project uxnan-app --out uxnanmobile/ios/Runner/GoogleService-Info.plist
+```
+- New iOS App ID: `1:97810225919:ios:36cd3cd7181cb1325f0aca`.
+- `GoogleService-Info.plist` (gitignored) is present with
+  `BUNDLE_ID = dev.luisgamas.uxnanmobile`. It still needs to be **added to the
+  Runner target in Xcode** after macOS setup.
 
 What only a human on macOS can finish (cannot be done from this Windows PC):
 1. **Apple Developer Program** enrollment ($99/yr) — required for any APNs key.

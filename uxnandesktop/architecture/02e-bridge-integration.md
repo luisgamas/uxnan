@@ -116,7 +116,7 @@ El comando `uxnan-bridge install-service` configura el arranque automatico del b
 
 | Plataforma | Mecanismo | Ubicacion |
 |---|---|---|
-| **macOS** | LaunchAgent | `~/Library/LaunchAgents/com.uxnan.bridge.plist` |
+| **macOS** | LaunchAgent | `~/Library/LaunchAgents/dev.luisgamas.bridge.plist` |
 | **Windows** | Windows Service / Task Scheduler | Configurado via PowerShell (`scripts/install-service-windows.ps1`) |
 | **Linux** | systemd user unit | `~/.config/systemd/user/uxnan-bridge.service` |
 

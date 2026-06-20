@@ -920,7 +920,7 @@ Firebase es necesario para push notifications (FCM en Android, APNs via FCM en i
 #### Android
 
 1. Crear proyecto en [Firebase Console](https://console.firebase.google.com/)
-2. Registrar la app Android con el package name `com.uxnan.mobile`
+2. Registrar la app Android con el package name `dev.luisgamas.uxnanmobile`
 3. Descargar `google-services.json` y colocarlo en:
 
 ```
@@ -947,7 +947,7 @@ apply plugin: 'com.google.gms.google-services'
 
 #### iOS
 
-1. En el mismo proyecto de Firebase Console, registrar la app iOS con el bundle ID `com.uxnan.mobile`
+1. En el mismo proyecto de Firebase Console, registrar la app iOS con el bundle ID `dev.luisgamas.uxnanmobile`
 2. Descargar `GoogleService-Info.plist` y colocarlo en:
 
 ```

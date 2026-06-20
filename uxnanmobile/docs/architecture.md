@@ -5,7 +5,7 @@ monorepo [`architecture/`](../../architecture/00-index.md) spec — when this do
 and the spec disagree, the spec wins (the project is ALPHA; code follows spec).
 
 Dart package: `uxnan` (imports are `package:uxnan/...`). Android applicationId /
-iOS bundle: `com.uxnan.mobile`. State management: **Riverpod 3.x, manual** (no
+iOS bundle: `dev.luisgamas.uxnanmobile`. State management: **Riverpod 3.x, manual** (no
 codegen). Local persistence: **drift** (SQLite). UI: **Material 3**.
 
 ## Layers

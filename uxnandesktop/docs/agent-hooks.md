@@ -57,9 +57,9 @@ exact path is shown in **Settings → Agents → Hooks** ("Installed at …"):
 
 | OS | `<app-data>` |
 |---|---|
-| Windows | `%APPDATA%\com.uxnan.desktop\hooks\` |
-| macOS | `~/Library/Application Support/com.uxnan.desktop/hooks/` |
-| Linux | `~/.local/share/com.uxnan.desktop/hooks/` |
+| Windows | `%APPDATA%\dev.luisgamas.uxnandesktop\hooks\` |
+| macOS | `~/Library/Application Support/dev.luisgamas.uxnandesktop/hooks/` |
+| Linux | `~/.local/share/dev.luisgamas.uxnandesktop/hooks/` |
 
 The four files:
 
@@ -150,7 +150,7 @@ arguments look slightly different.
 
 **Settings → Agents → Add custom agent:**
 
-- **Command:** `C:\Users\<you>\AppData\Roaming\com.uxnan.desktop\hooks\uxnan-hook-wrapper.ps1`
+- **Command:** `C:\Users\<you>\AppData\Roaming\dev.luisgamas.uxnandesktop\hooks\uxnan-hook-wrapper.ps1`
 - **Arguments** *(space-separated)*: `-Type codex -Command codex -Args --version`
 
 Then launch from the worktree's Bot menu. The wrapper invokes `codex
@@ -172,7 +172,7 @@ Use `uxnan-hook-wrapper.cmd`. Only needed on hosts without PowerShell
 
 **Settings → Agents → Add custom agent:**
 
-- **Command:** `C:\Users\<you>\AppData\Roaming\com.uxnan.desktop\hooks\uxnan-hook-wrapper.cmd`
+- **Command:** `C:\Users\<you>\AppData\Roaming\dev.luisgamas.uxnandesktop\hooks\uxnan-hook-wrapper.cmd`
 - **Arguments:** `codex -- --version`
 
 (Or `codex --` followed by whatever your agent's normal CLI args are.)
@@ -187,8 +187,8 @@ Use `uxnan-hook-wrapper.sh`.
 
 **Settings → Agents → Add custom agent:**
 
-- **Command:** `/Users/<you>/Library/Application Support/com.uxnan.desktop/hooks/uxnan-hook-wrapper.sh`
-  (Linux: `/home/<you>/.local/share/com.uxnan.desktop/hooks/uxnan-hook-wrapper.sh`)
+- **Command:** `/Users/<you>/Library/Application Support/dev.luisgamas.uxnandesktop/hooks/uxnan-hook-wrapper.sh`
+  (Linux: `/home/<you>/.local/share/dev.luisgamas.uxnandesktop/hooks/uxnan-hook-wrapper.sh`)
 - **Arguments:** `codex -- --version`
 
 Or with no args (most common interactive use):

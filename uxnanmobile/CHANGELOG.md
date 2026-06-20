@@ -6,6 +6,37 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — bundle id renamed `com.uxnan.mobile` → `dev.luisgamas.uxnanmobile`
+- **Android.** `android/app/build.gradle.kts` `namespace` + `applicationId`
+  rewritten. The Kotlin source moved from
+  `android/app/src/main/kotlin/com/uxnan/mobile/MainActivity.kt` (package
+  `com.uxnan.mobile`) to
+  `android/app/src/main/kotlin/dev/luisgamas/uxnanmobile/MainActivity.kt`
+  (package `dev.luisgamas.uxnanmobile`). `AndroidManifest.xml` was unaffected
+  (it uses `${applicationName}` / `.MainActivity`, no hard-coded `package=`).
+- **iOS.** All 6 `PRODUCT_BUNDLE_IDENTIFIER` entries in
+  `ios/Runner.xcodeproj/project.pbxproj` rewritten
+  (`dev.luisgamas.uxnanmobile` for the Runner target and the
+  derived `dev.luisgamas.uxnanmobile.RunnerTests` for the test target).
+  `Info.plist` was unaffected (it uses `$(PRODUCT_BUNDLE_IDENTIFIER)`).
+- **Firebase client config invalidated.** The locally-cached
+  `android/app/google-services.json` and `ios/Runner/GoogleService-Info.plist`
+  were pinned to the old `com.uxnan.mobile` bundle id and are now stale
+  (`Firebase.initializeApp()` would refuse them). They are gitignored and
+  were deleted; the Gradle Google Services plugin stays conditionally applied
+  (`if (file("google-services.json").exists())`) so the build stays green.
+  See `FOR-HUMAN.md` §2 — re-register / re-fetch under
+  `dev.luisgamas.uxnanmobile` to re-enable push.
+- **Spec updated.** `architecture/00-index.md` bootstrap row,
+  `architecture/03-technical-reference.md` Firebase-registration steps,
+  `uxnanmobile/README.md` package-id line, and `uxnanmobile/docs/architecture.md`
+  iOS-bundle line all reflect the new id. The Dart package name `uxnan`
+  (import path `package:uxnan/...`) is **unchanged** — it is a separate
+  namespace from the Android / iOS bundle id.
+- **Visible app name unchanged.** `android:label="Uxnan"`,
+  `Info.plist` `CFBundleDisplayName=Uxnan`, and the user-facing brand "Uxnan"
+  are unaffected.
+
 ### Changed — brand icon & splash rework
 - **New brand mark + two theme variants.** The source SVGs were
   refreshed: `assets/images/logo.svg` (black mark on a white, rounded
