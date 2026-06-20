@@ -515,6 +515,12 @@ class ThreadManager {
       thread = thread.copyWith(worktreePath: worktreePath);
     }
     await _threadRepository.saveThread(thread);
+    // Persist the default access mode (full access) on the bridge at creation
+    // so the first turn runs without per-tool prompts — deterministic, with no
+    // race against the turn that would otherwise inherit the bridge's
+    // interactive default. Best-effort: a failure just falls back to seeding on
+    // open. The user can still change it per-thread from the composer.
+    unawaited(setAccessMode(thread.id, kDefaultApprovalMode));
     return thread;
   }
 

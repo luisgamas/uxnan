@@ -52,8 +52,9 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     with WidgetsBindingObserver {
   // Per-thread access (approval) mode. Seeded from the bridge on open
   // (`thread/read`, source of truth) and persisted on change
-  // (`thread/setAccessMode`); the default here is just the pre-load fallback.
-  ApprovalMode _approvalMode = ApprovalMode.approveForMe;
+  // (`thread/setAccessMode`); the default here ([kDefaultApprovalMode], full
+  // access) is the pre-load fallback for a thread the bridge has no mode for.
+  ApprovalMode _approvalMode = kDefaultApprovalMode;
   final ScrollController _scroll = ScrollController();
   String? _gitCwd;
   // Vanished-cwd detection: the thread's folder/worktree can be removed outside
@@ -117,14 +118,23 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   }
 
   /// Seeds [_approvalMode] from the bridge's persisted per-thread access mode
-  /// (`thread/read`). No-op when the bridge reports none (older bridge / never
-  /// set) — the local default stays.
+  /// (`thread/read`). When the bridge reports none (older thread created before
+  /// the default existed / never set), persists [kDefaultApprovalMode] so the
+  /// thread settles on full access instead of the bridge's interactive default.
   Future<void> _seedAccessMode() async {
-    final mode =
-        await ref.read(threadManagerProvider).readAccessMode(widget.threadId);
-    if (mounted && mode != null && mode != _approvalMode) {
-      setState(() => _approvalMode = mode);
+    final manager = ref.read(threadManagerProvider);
+    final mode = await manager.readAccessMode(widget.threadId);
+    if (!mounted) return;
+    if (mode == null) {
+      // No persisted mode: adopt the default and write it back so the bridge
+      // stops prompting per tool on this legacy thread.
+      unawaited(manager.setAccessMode(widget.threadId, kDefaultApprovalMode));
+      if (_approvalMode != kDefaultApprovalMode) {
+        setState(() => _approvalMode = kDefaultApprovalMode);
+      }
+      return;
     }
+    if (mode != _approvalMode) setState(() => _approvalMode = mode);
   }
 
   /// Fetches `git/status` for the thread's [cwd] once it is known/changes.
