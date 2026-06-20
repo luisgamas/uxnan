@@ -50,6 +50,13 @@ uxnan-relay 8787          # or: RELAY_PORT=8787 uxnan-relay
   verification.
 - **Rate limiting:** per-IP limits for HTTP and WebSocket upgrades are built in
   (`RelayServerOptions.rateLimits`); over-limit → HTTP 429 / dropped upgrade.
+- **CSWSH defense:** WebSocket upgrades with a cross-host `Origin` are rejected
+  with 403 by default (server-to-server `ws` clients without `Origin` are
+  accepted). Operators behind a tunnel/proxy that mangles the `Host` header
+  should set `allowedOrigins: string[]` to their public origin(s)
+  (`[ 'https://relay.example.com' ]`).
+- **Push state:** `~/.uxnan/relay-state.json` (atomic write) persists token
+  registrations + dedupe across restarts. Override with `UXNAN_RELAY_STATE`.
 - **Point clients at it:** set the bridge's `relayUrl` to your `wss://…` URL (it is
   carried in the pairing QR).
 
@@ -58,10 +65,15 @@ uxnan-relay 8787          # or: RELAY_PORT=8787 uxnan-relay
 The relay exposes `POST /push/register` + `POST /push/notify` (Phase 6). Real
 delivery is **gated** on a Firebase service account (`UXNAN_FCM_SERVICE_ACCOUNT`);
 without it the sender is a no-op. Setup: [`../FOR-HUMAN.md`](../FOR-HUMAN.md).
+The bridge is the **primary** push path — the relay's `/push/*` endpoints are
+a hosted fallback for setups that prefer to keep the Firebase credential on the
+relay.
 
 ## Security model
 
 The relay only routes opaque frames by `sessionId` and exposes `GET /health`. It
-cannot read user data (E2EE). Hardening still deferred (see
-[`../FOR-DEV.md`](../FOR-DEV.md)): auth-on-forwarding (identity-key pinning /
-notification-secret checks) and multi-session registration.
+cannot read user data (E2EE). The default CSWSH defense closes the most common
+browser-initiated hijack attempt. Hardening still deferred for shared/public
+relay deployments (see [`../FOR-DEV.md`](../FOR-DEV.md)): auth-on-forwarding
+(identity-key pinning / notification-secret checks) and multi-session
+`mac` registration.

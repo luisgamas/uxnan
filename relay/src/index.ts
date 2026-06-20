@@ -17,4 +17,5 @@ export {
   type PushPayload,
   type PushRegistryOptions,
   type NotifyOutcome,
+  type PersistedRelayState,
 } from './push.js';

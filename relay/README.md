@@ -15,13 +15,14 @@ plaintext, keys, code, or diffs.
 >
 > **DONE:** E2EE envelope relay (one `mac`+`iphone` per `sessionId`),
 > `GET /health`, per-IP rate limiting, reconnection support (peer-close +
-> stale-socket handling), push endpoints (`/push/register|notify`, FCM, gated
-> on creds).
+> stale-socket handling), **CSWSH `Origin` check on upgrades**, push
+> endpoints (`/push/register|notify`, FCM, gated on creds) with
+> **atomic state persistence** to `~/.uxnan/relay-state.json` (token registry
+> + dedupe window, with TTL 7d + cap 10k).
 >
 > **PENDING — relay-only / optional** (does not block the bridge-first
-> product): multi-session `mac`, auth-on-forwarding, dedupe + token
-> persistence (only for a hosted/public relay); APNs-direct is superseded
-> (FCM-for-both). See [`FOR-DEV.md`](FOR-DEV.md).
+> product): multi-session `mac`, auth-on-forwarding (only for a
+> hosted/public relay). See [`FOR-DEV.md`](FOR-DEV.md).
 
 > **`mac` / `iphone` are ROLES, not platforms.** `mac` = the PC/bridge side
 > (runs on Windows, macOS or Linux); `iphone` = the mobile app side (Android or

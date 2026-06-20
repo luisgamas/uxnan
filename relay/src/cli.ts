@@ -4,6 +4,8 @@
  *
  * Usage: uxnan-relay [port]   (default port 8787, or $RELAY_PORT)
  */
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { RelayServer } from './relay-server.js';
 import { PushRegistry, createDefaultPushSender } from './push.js';
 
@@ -20,12 +22,24 @@ async function main(): Promise<void> {
     info: (m: string) => process.stdout.write(`[relay] ${m}\n`),
     warn: (m: string) => process.stderr.write(`[relay] ${m}\n`),
   };
+  // Persist push state under ~/.uxnan/ so registrations + dedupe survive a relay
+  // restart. Override with UXNAN_RELAY_STATE.
+  const statePath =
+    process.env['UXNAN_RELAY_STATE'] ?? join(homedir(), '.uxnan', 'relay-state.json');
   // Push delivery uses FCM when UXNAN_FCM_SERVICE_ACCOUNT is set, else a noop
   // sender (registrations + dedupe still work; nothing is delivered).
-  const pushRegistry = new PushRegistry({ sender: await createDefaultPushSender(logger), logger });
+  const pushRegistry = new PushRegistry({
+    sender: await createDefaultPushSender(logger),
+    logger,
+    statePath,
+  });
+  // Rehydrate persisted state before the server starts accepting requests so
+  // a phone whose token is on disk can receive push immediately on reconnect.
+  await pushRegistry.load();
   const server = new RelayServer({ logger, pushRegistry });
   const handle = await server.start(port);
   process.stdout.write(`uxnan-relay listening on port ${handle.port}\n`);
+  process.stdout.write(`uxnan-relay state: ${statePath}\n`);
 
   await new Promise<void>((resolve) => {
     const shutdown = (): void => {

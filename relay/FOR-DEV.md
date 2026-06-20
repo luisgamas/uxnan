@@ -3,20 +3,27 @@
 Deferred developer work for the relay. (Human-only assets — Firebase/APNs creds —
 are in `relay/FOR-HUMAN.md`.)
 
-## MVP status — ALPHA-FUNCTIONAL (optional component)
-> Snapshot 2026-06. The relay builds clean and its tests are green (9/9). It is
+## MVP status — ALPHA-FUNCTIONAL (optional / self-hosted)
+> Snapshot 2026-06. The relay builds clean and its tests are green (27/27). It is
 > **optional and self-hosted**: the product's primary path is LAN/Tailscale-direct
 > to the bridge, and push is now bridge-direct. The relay is alpha-functional for
 > anyone who wants hosted off-LAN access.
 >
 > **DONE:** E2EE envelope relay (one `mac`+`iphone` per `sessionId`), `GET /health`,
-> per-IP rate limiting, reconnection support, push endpoints (`/push/register|notify`,
-> FCM, gated on creds).
+> per-IP rate limiting, reconnection support, CSWSH Origin defense on upgrades,
+> push endpoints (`/push/register|notify`, FCM, gated on creds) with **atomic
+> persistence** of the token registry + dedupe window (survives restarts).
 >
-> **PENDING — all relay-only / optional** (none block the bridge-first product):
-> multi-session `mac`, auth-on-forwarding, dedupe + token persistence (only for a
-> hosted/public relay); APNs-direct is superseded (FCM-for-both). Real-device push
-> validation is shared with the bridge (not relay-specific).
+> **CLOSED (superseded; not built):** `/trusted-session/resolve` (manual-code
+> pairing on the relay — replaced by the bridge's `/pair/resolve?code=`,
+> `bridge/FOR-DEV.md` → *Manual-code pairing*) and APNs-direct (FCM-for-both is
+> the decided path; iOS reaches FCM via the APNs key uploaded to Firebase).
+> See `architecture/02a-system-architecture.md` §5.5.3 + §5.10.1 for the
+> matching spec sync.
+>
+> **PENDING — relay-only / optional** (none block the bridge-first product):
+> multi-session `mac`, auth-on-forwarding, only for a hosted/public relay.
+> Real-device push validation is shared with the bridge (not relay-specific).
 >
 > **CI/CD:** same pipeline as the bridge — see `bridge/FOR-DEV.md` → *CI/CD & release*.
 > The relay is a pure Node package; it ships via `npm publish` and is exercised by
@@ -30,6 +37,17 @@ are in `relay/FOR-HUMAN.md`.)
       socket so the other side detects a dead peer (phone reconnect); a
       stale/replaced socket's close is ignored so it doesn't tear down a freshly
       reconnected peer's handshake (`relay-server.ts` `#register`).
+- [x] **CSWSH defense** — upgrade requests with `Origin` whose host does not
+      match `Host` (or the explicit `allowedOrigins` allowlist) are rejected
+      with 403. Server-to-server `ws` clients (no Origin) are accepted.
+      Covers the most common browser-initiated CSWSH attempt without requiring
+      operator config.
+- [x] **Push state persistence** — token registry + dedupe window are written
+      atomically to `~/.uxnan/relay-state.json` (override with
+      `UXNAN_RELAY_STATE`). Reload via `PushRegistry.load()` at startup.
+      Dedupe TTL 7 days + cap 10 000 keys, enforced in-memory on every
+      insertion (`push.ts` `#pruneDedupe`). Persistence failures are logged
+      but never fail a request.
 
 ## Direction (2026-06-12): push is moving to the bridge; the relay is optional
 The product is **bridge-first**: background push should be sent **by the bridge**
@@ -47,19 +65,24 @@ bridge must keep working (securely, E2EE) **with or without** the relay. See
       `UXNAN_FCM_SERVICE_ACCOUNT`). Unit-tested with a fake sender. Real delivery
       needs the user's Firebase project (`relay/FOR-HUMAN.md`).
 
+## Closed — superseded by bridge-first
+- [x] **`/trusted-session/resolve` (manual-code pairing on the relay)** —
+      CLOSED (never built). The bridge's `GET /pair/resolve?code=` on the LAN
+      server covers manual-code pairing (`bridge/FOR-DEV.md` →
+      *Manual-code pairing*). For off-LAN manual pairing, Tailscale (or any
+      mesh VPN) reaches the bridge's LAN server directly. No relay endpoint
+      needed; the spec is updated (`architecture/02a §5.5.3` + `§5.10.1`).
+- [x] **APNs-direct path** — CLOSED. The decision is FCM-for-both (iOS reaches
+      FCM once the APNs key is uploaded to Firebase). No relay-specific APNs
+      sender is planned or built. See `architecture/02a §5.10.4`.
+
 ## Deferred — routing/hardening (reclassified for the bridge-first model)
 > DIRECTION (2026-06): with the relay now **optional/self-hosted** and push moved
 > to the bridge, these items are reclassified. They matter ONLY for a hosted/shared
 > relay; the primary LAN/Tailscale-direct path does not need them.
-- [→bridge] **Pairing-code resolution** — `GET /trusted-session/resolve` was the
-      OFF-LAN equivalent of manual-code pairing. The bridge-first version is built on
-      the **bridge** (`bridge/src/pairing/pairing-code-service.ts` +
-      `GET /pair/resolve?code=` on the LAN server — see `bridge/FOR-DEV.md` →
-      *Manual-code pairing*). Keep this relay endpoint ONLY if you want hosted
-      off-LAN pairing-by-code through a relay; otherwise it's superseded.
 - [ ] **Multi-session `mac` registration** (relay-only) — one `mac` socket per
       `sessionId` today; multi-session via `x-mac-device-id` + `x-pairing-code`
-      headers (§5.10.1). Needed ONLY if a hosted relay serves several bridges/sessions.
+      headers. Needed ONLY if a hosted relay serves several bridges/sessions.
       Deferred unless you run a shared relay.
 - [ ] **Auth on forwarding** (relay-only hardening) — add `x-notification-secret`
       checks + identity-key pinning before forwarding. The frames are already E2EE
@@ -78,23 +101,20 @@ Endpoints (architecture §5.10.1–§5.10.4), in `src/push.ts` + `src/relay-serv
       dedupe logic is unit-tested without real creds (`test/push.test.ts`).
 - [x] FCM sender via `firebase-admin` (optionalDependency, lazy dynamic import),
       enabled only when `UXNAN_FCM_SERVICE_ACCOUNT` is set; else noop.
-- [x] Add `notifications/*` contracts to `@uxnan/shared` and wire the bridge
-      handlers + turn-completed hook (`bridge/src/push/push-service.ts`).
+- [x] **Atomic persistence** of token registry + dedupe window to
+      `~/.uxnan/relay-state.json` (override via `UXNAN_RELAY_STATE`). Reload via
+      `PushRegistry.load()` on startup; mutations are serialized through a
+      promise chain so concurrent register/unregister/notify never race.
+- [x] **Dedupe cap (spec §5.10.5):** TTL 7 days + max 10 000 keys, oldest-first
+      eviction, enforced in-memory on every insertion (capped map never grows
+      unbounded).
 
 ### Remaining follow-ups
 > DIRECTION (2026-06): push now ships **from the bridge** (direct FCM, registrations
 > persisted in `~/.uxnan/push-state.json`). The relay push path is a FALLBACK for
 > setups that keep the Firebase credential on a hosted relay, so the two
-> persistence items below matter ONLY for that variant.
-- [ ] **Dedupe store persistence** (relay-only fallback) — dedupe is in-memory;
-      persist to `push-dedupe-keys.json` with TTL (7 days) + max keys (§5.10.4). The
-      bridge-direct path fires once per turn and needs no dedupe.
-- [ ] **Token persistence** (relay-only fallback) — the per-session token registry
-      is in-memory; persist so registrations survive a relay restart. The bridge
-      already persists its own registrations.
-- [~] **APNs-direct path** (no Firebase for iOS) — **superseded.** The decision is
-      FCM-for-both (iOS via FCM once the APNs key is uploaded to Firebase), so a
-      separate APNs path is redundant. Close unless that decision changes.
+> persistence items below matter ONLY for that variant — both are DONE.
+- [~] **APNs-direct path** — CLOSED (see *Closed — superseded* above).
 - [ ] **Real-device validation** — STILL REQUIRED (not relay-specific): it validates
       the **bridge-direct** FCM stack. Android needs no paid account; iOS needs the
       APNs `.p8` key in Firebase (`FOR-HUMAN.md`).
@@ -102,7 +122,8 @@ Endpoints (architecture §5.10.1–§5.10.4), in `src/push.ts` + `src/relay-serv
 ## How to test the relay
 - Unit/integration (current): `npm run test -w uxnan-relay` — starts the server on
   an ephemeral port and drives it with `ws` clients (forwarding both ways,
-  role/sessionId rejection, `/health`, rate-limit 429).
+  role/sessionId rejection, `/health`, rate-limit 429, CSWSH Origin checks,
+  push state persistence + dedupe TTL + cap).
 - Manual smoke: `node relay/dist/src/cli.js 8787`, then `curl http://127.0.0.1:8787/health`.
 - End-to-end with the bridge: see `bridge/test/transport/relay-e2e.test.ts`
   (relay + bridge + a fake phone over a real WebSocket) and the manual plan in

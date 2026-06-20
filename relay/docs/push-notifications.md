@@ -53,13 +53,15 @@ interacts with notifications:
 | Notification | Needs the relay? | Why |
 |---|---|---|
 | **Local** (app open/foreground) | **No** | The app raises them itself from the live E2EE session's `stream/turn/*` events — they ride the same direct (LAN/Tailscale) or relayed channel the app is already on. No FCM, no relay-push endpoints. |
-| **Push / FCM** (app backgrounded or closed) | **Yes** | The bridge holds **no** FCM credentials by design; it `POST`s `/push/notify` to the relay, which owns the Firebase service account and calls FCM. Token registration (`/push/register`) also goes through the relay. |
+| **Push / FCM** (app backgrounded or closed) | **Either direct-from-bridge OR via the relay** | When the bridge holds the Firebase service account (the **default** with `~/.uxnan/firebase-service-account.json` in place) it delivers directly via FCM — no relay needed. When the bridge has no FCM credential and `relayEnabled: true`, it forwards the token to the relay and the relay delivers. |
 
-So with the **default relay-off setup you get local notifications only** (while the
-app is open). To also receive **background** push you must run your self-hosted
-relay with `UXNAN_FCM_SERVICE_ACCOUNT` set and pair the phone with a `relayUrl`.
-They're complementary: local covers "app open", FCM covers "app backgrounded/closed"
-(when the OS suspends the socket and live events stop arriving).
+So with the **default bridge-direct setup you get push on every transport** —
+local notifications while the app is open, background FCM push anywhere. To
+also receive background push on a relay-only setup (no FCM credential on the
+bridge), you must run your self-hosted relay with `UXNAN_FCM_SERVICE_ACCOUNT`
+set and pair the phone with a `relayUrl`. They're complementary: local covers
+"app open", FCM covers "app backgrounded/closed" (when the OS suspends the
+socket and live events stop arriving).
 
 > This keeps the relay-optional philosophy intact for everything **except**
 > background push. A relay-less direct-FCM-from-the-bridge path is deliberately

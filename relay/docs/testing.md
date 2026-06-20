@@ -10,9 +10,11 @@ Covers (server started on an ephemeral port, driven with real `ws` clients):
 forwarding frames both ways between a paired `mac` + `iphone` on the same
 `sessionId`; rejection of a bad/missing role or `sessionId`; `GET /health`; per-IP
 rate limiting (HTTP 429 / dropped upgrade); peer-close + stale-socket reconnection
-handling; and the push endpoints (`/push/register`, `/push/notify`) with a fake
-`PushSender` (register → notify → secret validation → dedupe), so all logic is
-tested without real Firebase creds.
+handling; CSWSH `Origin` checks on WebSocket upgrades (server-to-server,
+same-origin, cross-origin, allowlist); the push endpoints (`/push/register`,
+`/push/notify`) with a fake `PushSender` (register → notify → secret validation
+→ dedupe); and push state persistence + dedupe TTL + cap (`~/.uxnan/relay-state.json`),
+so all logic is tested without real Firebase creds.
 
 > `mac` / `iphone` are protocol **roles**, not operating systems — `mac` is the
 > bridge side, `iphone` is the mobile side.

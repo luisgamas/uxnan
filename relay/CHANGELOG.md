@@ -5,6 +5,42 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — push state persistence
+- `PushRegistry` now persists the per-session token map AND the
+  `(sessionId,turnId)` dedupe window to `~/.uxnan/relay-state.json` (override
+  with `UXNAN_RELAY_STATE`), atomic temp+rename. The CLI calls `load()` at
+  startup so background push survives a relay restart WITHOUT the phone
+  re-registering — the self-hosted fallback's most important hardening gap
+  for the bridge-first model. Persistence failures are logged and never fail
+  a request; missing/corrupt files leave the registry empty.
+- Dedupe enforcement is now in-memory on every insertion: TTL 7 days + cap
+  10 000 keys (spec §5.10.5) — the dedupe map never grows unbounded, even
+  before a write to disk. New `flush()` test seam awaits the serialized
+  persist chain. Covered by `test/push-persistence.test.ts` (9 tests:
+  token + dedupe round-trip across restarts, TTL eviction on load, cap,
+  missing/corrupt file tolerance, in-memory prune, unregister).
+
+### Added — CSWSH defense on WebSocket upgrades
+- `RelayServer` now validates the `Origin` header on upgrade requests to
+  prevent cross-site WebSocket hijacking (a browser page on `evil.com`
+  opening a WS to the relay). Default behavior: reject upgrades whose
+  `Origin` host does not match the request's `Host` header with HTTP 403;
+  server-to-server `ws` clients (no `Origin`) are accepted. Operators behind
+  a tunnel/proxy that mangles the `Host` header can set the new
+  `allowedOrigins: string[]` option to an explicit allowlist (e.g.
+  `['https://relay.example.com']`). Covered by `test/origin-check.test.ts`
+  (7 tests: Origin-less, same-origin, cross-origin, malformed Origin,
+  allowlist hit + miss, /health unaffected).
+
+### Closed — superseded by bridge-first
+- `/trusted-session/resolve` (manual-code pairing on the relay) — the
+  endpoint was never built; manual-code pairing lives on the bridge as
+  `GET /pair/resolve?code=` (`bridge/FOR-DEV.md` → *Manual-code pairing*).
+  Spec updated: `architecture/02a §5.5.3` + `§5.10.1`.
+- **APNs-direct path** — FCM-for-both is the decided route (iOS reaches
+  FCM via the APNs key uploaded to Firebase). No relay-specific APNs sender
+  is built or planned. Spec updated: `architecture/02a §5.10.4`.
+
 ### Fixed — phone stuck "reconnecting" after a background resume
 - When the phone returns from the background, its old WebSocket is often
   half-open (the OS never sent a FIN), so the reconnecting phone opens a **new**
