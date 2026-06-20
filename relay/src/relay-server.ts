@@ -51,6 +51,17 @@ export interface RelayServerOptions {
   now?: () => number;
   /** Push delivery registry; defaults to a noop-sender registry (no FCM creds). */
   pushRegistry?: PushRegistry;
+  /**
+   * CSWSH defense — explicit allowlist of `Origin` header values accepted on
+   * WebSocket upgrades. When set, an upgrade with an `Origin` header that
+   * doesn't match any entry is rejected (mismatch = potential browser
+   * cross-site WebSocket hijack). When unset (default), the relay still
+   * defends against the most common case — `Origin` whose host does not match
+   * the `Host` header — and accepts Origin-less upgrades (Node `ws` clients
+   * don't send Origin). Operators behind a tunnel/proxy that mangles the Host
+   * header should set this to their public origin(s).
+   */
+  allowedOrigins?: string[];
 }
 
 export interface RelayServerHandle {
@@ -89,6 +100,7 @@ export class RelayServer {
   readonly #httpLimiter: RateLimiter;
   readonly #upgradeLimiter: RateLimiter;
   readonly #pushRegistry: PushRegistry;
+  readonly #allowedOrigins: string[] | undefined;
   #http: Server | undefined;
   #wss: WebSocketServer | undefined;
 
@@ -101,6 +113,7 @@ export class RelayServer {
     this.#pushRegistry =
       options.pushRegistry ??
       new PushRegistry({ sender: new NoopPushSender(this.#logger), logger: this.#logger, now });
+    this.#allowedOrigins = options.allowedOrigins;
   }
 
   get sessionCount(): number {
@@ -135,6 +148,19 @@ export class RelayServer {
 
     http.on('upgrade', (req, socket, head) => {
       if (!this.#upgradeLimiter.allow(ipOf(req.socket.remoteAddress))) {
+        socket.destroy();
+        return;
+      }
+      // CSWSH defense: a browser-initiated upgrade carries `Origin`; an
+      // attacker page can use that to open a WS against the relay and have
+      // the user's cookies / session ride the channel. Reject Origin values
+      // that don't match the allowed set (explicit allowlist) or, when no
+      // allowlist is configured, the request's own Host header (covers the
+      // common self-hosted case: Origin = Host means same origin). Origin-less
+      // upgrades (Node `ws` clients, server-to-server) are accepted.
+      if (!isAllowedOrigin(req, this.#allowedOrigins)) {
+        this.#logger.warn(`upgrade rejected: bad origin "${req.headers['origin'] ?? ''}"`);
+        socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
         socket.destroy();
         return;
       }
@@ -302,6 +328,31 @@ function closeQuietly(ws: WebSocket): void {
 function header(req: IncomingMessage, name: string): string | undefined {
   const value = req.headers[name];
   return Array.isArray(value) ? value[0] : value;
+}
+
+/**
+ * CSWSH defense for WebSocket upgrades. When `allowedOrigins` is configured,
+ * the upgrade's `Origin` header (if present) must match one of those values.
+ * Otherwise (the default), a same-origin check — `Origin`'s host must equal
+ * the request's `Host` header — is applied. Origin-less upgrades (server-to-
+ * server `ws` clients) are always accepted.
+ */
+function isAllowedOrigin(req: IncomingMessage, allowedOrigins: string[] | undefined): boolean {
+  const origin = header(req, 'origin');
+  if (!origin) return true; // server-to-server client; no Origin header.
+  if (allowedOrigins && allowedOrigins.length > 0) {
+    return allowedOrigins.includes(origin);
+  }
+  // Default defense: reject cross-origin browser upgrades. We compare hosts
+  // (host + port) so a self-hosted relay over a tunnel is naturally allowed
+  // (the browser sends Origin == Host == the public hostname).
+  let originHost: string;
+  try {
+    originHost = new URL(origin).host;
+  } catch {
+    return false; // malformed Origin → reject.
+  }
+  return originHost === header(req, 'host');
 }
 
 function ipOf(remoteAddress: string | undefined): string {
