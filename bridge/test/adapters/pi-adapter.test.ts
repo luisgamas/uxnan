@@ -7,6 +7,7 @@ import {
   parsePiLine,
   parsePiModelList,
   parsePiUsageTokens,
+  parsePiContextWindow,
   type SpawnedProcess,
 } from '../../src/index.js';
 import type { AgentStreamEvent } from '@uxnan/shared';
@@ -141,6 +142,44 @@ test('parsePiUsageTokens prefers totalTokens, falls back to input+output', () =>
   assert.equal(parsePiUsageTokens({ input: 10, output: 5 }), 15);
   assert.equal(parsePiUsageTokens({}), undefined);
   assert.equal(parsePiUsageTokens('nope'), undefined);
+});
+
+test('parsePiContextWindow parses K/M suffixes and bare numbers', () => {
+  assert.equal(parsePiContextWindow('1.0M'), 1_000_000);
+  assert.equal(parsePiContextWindow('1M'), 1_000_000);
+  assert.equal(parsePiContextWindow('384K'), 384_000);
+  assert.equal(parsePiContextWindow('200000'), 200_000);
+  assert.equal(parsePiContextWindow('-'), undefined);
+  assert.equal(parsePiContextWindow(undefined), undefined);
+});
+
+test('PiAdapter emits usage.contextWindow from the cached model list', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new PiAdapter({ binaryPath: 'pi', spawnFn });
+  // Prime the per-model window cache from `--list-models`.
+  const listing = adapter.listModels();
+  last().feedStderr([
+    'provider      model                    context  max-out  thinking  images',
+    'google        gemini-2.5-pro           1.0M     65.5K    yes       yes',
+  ]);
+  await listing;
+
+  const { done } = collect(adapter);
+  await adapter.sendTurn({
+    threadId: 't1',
+    turnId: 'u1',
+    text: 'hi',
+    service: 'google/gemini-2.5-pro',
+  });
+  last().feed([SESSION, assistantEnd('ok', { tokens: 99 }), AGENT_END]);
+
+  const events = await done;
+  const completed = events.find((e) => e.type === 'turn_completed');
+  const usage = (completed?.data as {
+    usage?: { tokens: number; contextWindow?: number };
+  }).usage;
+  assert.equal(usage?.tokens, 99);
+  assert.equal(usage?.contextWindow, 1_000_000);
 });
 
 test('PiAdapter streams text_delta as deltas and completes with the text + usage', async () => {
@@ -284,6 +323,9 @@ test('parsePiModelList parses the --list-models table', () => {
   assert.equal(models[0]?.displayName, 'gemini-2.5-pro');
   assert.equal(models[0]?.description, 'google');
   assert.equal(models[0]?.isDefault, true);
+  // the `context` column is parsed into a token count for usage percentages
+  assert.equal(models[0]?.contextWindow, 1_000_000);
+  assert.equal(models[2]?.contextWindow, 1_000_000);
   // thinking==yes advertises the reasoning knob; thinking==no does not
   assert.equal(models[0]?.options?.[0]?.key, 'reasoning');
   assert.equal(models[1]?.options, undefined);

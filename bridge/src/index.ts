@@ -100,6 +100,7 @@ export {
   parsePiLine,
   parsePiModelList,
   parsePiUsageTokens,
+  parsePiContextWindow,
   type PiAdapterOptions,
   type PiEvent,
   type PiPermissionMode,
@@ -117,6 +118,7 @@ export {
   OpenCodeAdapter,
   parseOpenCodeLine,
   parseModelList,
+  openCodeUsageTokens,
   type OpenCodeAdapterOptions,
   type OpenCodeEvent,
 } from './adapters/opencode-adapter.js';

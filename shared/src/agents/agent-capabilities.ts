@@ -108,4 +108,11 @@ export interface AgentModel {
    * generically and sends chosen values on `turn/send` via `options`.
    */
   options?: AgentModelOption[];
+  /**
+   * Context-window size in tokens, when the CLI reports it (e.g. pi's
+   * `--list-models` `context` column). Lets the adapter emit `usage.contextWindow`
+   * per turn so the phone can show context usage as a percentage. Absent when the
+   * CLI does not expose it.
+   */
+  contextWindow?: number;
 }

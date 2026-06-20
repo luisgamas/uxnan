@@ -41,7 +41,30 @@ const OPENCODE_CAPABILITIES: AgentCapabilities = {
   approvals: false,
   forking: true,
   images: true,
+  // OpenCode reports per-step token counts (`step_finish.part.tokens`), surfaced
+  // as `usage.tokens` so the phone shows the context indicator.
+  reportsContextUsage: true,
 };
+
+/**
+ * Sum the context-occupying tokens from an OpenCode `step_finish.part.tokens`
+ * object (`{ input, output, reasoning, cache: { read, write } }`). Counts the
+ * distinct buckets — cache read/write are subsets of `input`, so they are not
+ * added (avoids double counting). Falls back to summing any top-level numeric
+ * fields if the shape differs, and returns undefined when there is nothing.
+ */
+export function openCodeUsageTokens(tokens: unknown): number | undefined {
+  if (!isRecord(tokens)) return undefined;
+  const num = (key: string): number =>
+    typeof tokens[key] === 'number' ? (tokens[key] as number) : 0;
+  const known = num('input') + num('output') + num('reasoning');
+  if (known > 0) return known;
+  let sum = 0;
+  for (const value of Object.values(tokens)) {
+    if (typeof value === 'number') sum += value;
+  }
+  return sum > 0 ? sum : undefined;
+}
 
 export interface OpenCodeAdapterOptions {
   /** Executable to spawn (resolved exe path; see resolve-opencode.ts). */
@@ -71,6 +94,8 @@ export interface OpenCodeEvent {
   toolInput?: Record<string, unknown>;
   /** `tool`: the tool's output, when finished. */
   toolOutput?: string;
+  /** `finish`: context-occupying token count from `step_finish.part.tokens`. */
+  tokens?: number;
 }
 
 /** Parse one `opencode run --format json` line, or null if it isn't JSON. */
@@ -104,7 +129,7 @@ export function parseOpenCodeLine(line: string): OpenCodeEvent | null {
       };
     }
     case 'step_finish':
-      return { kind: 'finish', ...base };
+      return { kind: 'finish', ...base, tokens: openCodeUsageTokens(part?.['tokens']) };
     case 'error':
       return { kind: 'error', ...base, text: readErrorMessage(parsed['error']) };
     default:
@@ -192,6 +217,9 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     const emittedTools = new Set<string>();
     let full = '';
     let errored = false;
+    // Latest per-step token count (`step_finish.part.tokens`); emitted as
+    // `usage.tokens` on completion so the phone's context indicator fills in.
+    let tokens: number | undefined;
 
     const reader = createInterface({ input: child.stdout });
     reader.on('line', (line) => {
@@ -232,6 +260,9 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
             },
           });
         }
+      } else if (event.kind === 'finish') {
+        // Keep the latest step's token count as the turn's context usage.
+        if (event.tokens !== undefined) tokens = event.tokens;
       } else if (event.kind === 'error') {
         errored = true;
         this.emit({
@@ -261,7 +292,13 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       reader.close();
       this.#active.delete(turnId);
       if (!errored) {
-        this.emit({ type: 'turn_completed', threadId, turnId, data: { text: full } });
+        const usage = tokens !== undefined ? { tokens } : undefined;
+        this.emit({
+          type: 'turn_completed',
+          threadId,
+          turnId,
+          data: { text: full, ...(usage !== undefined ? { usage } : {}) },
+        });
       }
     });
 

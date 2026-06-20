@@ -123,6 +123,22 @@ export function parsePiUsageTokens(usage: unknown): number | undefined {
   return total > 0 ? total : undefined;
 }
 
+/**
+ * Parse a pi `--list-models` `context` cell into a token count: `"1.0M"` →
+ * 1_000_000, `"384K"` → 384_000, a bare `"200000"` → 200000. Returns undefined
+ * for an unparseable / non-positive cell (so the model just omits its window).
+ */
+export function parsePiContextWindow(cell: string | undefined): number | undefined {
+  if (!cell) return undefined;
+  const match = cell.trim().match(/^([\d.]+)\s*([KMkm]?)$/);
+  if (!match) return undefined;
+  const value = Number(match[1]);
+  if (!Number.isFinite(value) || value <= 0) return undefined;
+  const unit = match[2]?.toUpperCase();
+  const multiplier = unit === 'M' ? 1_000_000 : unit === 'K' ? 1_000 : 1;
+  return Math.round(value * multiplier);
+}
+
 /** Parse one `pi -p --mode json` line, or null if it isn't JSON. */
 export function parsePiLine(line: string): PiEvent | null {
   const trimmed = line.trim();
@@ -207,17 +223,20 @@ export function parsePiModelList(output: string, defaultModel?: string): AgentMo
     if (cols.length < 6) continue;
     const provider = cols[0]!;
     const model = cols[1]!;
+    const context = cols[2]!;
     const thinking = cols[4]!;
     if (provider === 'provider') continue; // header row
     const id = `${provider}/${model}`;
     if (seen.has(id)) continue;
     seen.add(id);
+    const contextWindow = parsePiContextWindow(context);
     out.push({
       id,
       displayName: model,
       description: provider,
       isDefault: id === defaultModel,
       ...(thinking === 'yes' ? { options: [PI_REASONING_OPTION] } : {}),
+      ...(contextWindow !== undefined ? { contextWindow } : {}),
     });
   }
   return out;
@@ -236,6 +255,8 @@ export class PiAdapter extends BaseAgentAdapter {
   readonly #sessionByThread = new Map<string, string>();
   /** turnId → in-flight run, for cancellation. */
   readonly #active = new Map<string, ActiveRun>();
+  /** model id → context-window tokens, cached from `--list-models` for `usage`. */
+  readonly #contextWindowByModel = new Map<string, number>();
   #defaultCwd = process.cwd();
 
   /** Native pi session id for a thread (on-disk history-fallback locator). */
@@ -338,7 +359,12 @@ export class PiAdapter extends BaseAgentAdapter {
         });
         return;
       }
-      const usage = tokens !== undefined ? { tokens } : undefined;
+      const contextWindow =
+        model !== undefined ? this.#contextWindowByModel.get(model) : undefined;
+      const usage =
+        tokens !== undefined
+          ? { tokens, ...(contextWindow !== undefined ? { contextWindow } : {}) }
+          : undefined;
       this.emit({
         type: 'turn_completed',
         threadId,
@@ -468,7 +494,17 @@ export class PiAdapter extends BaseAgentAdapter {
       child.stdout.on('data', collect);
       child.stderr?.on('data', collect);
       child.on('error', () => finish([]));
-      child.on('close', () => finish(parsePiModelList(output, this.#defaultModel)));
+      child.on('close', () => {
+        const models = parsePiModelList(output, this.#defaultModel);
+        // Cache each model's context window so `sendTurn` can emit `usage`
+        // with a window (→ percentage on the phone) without re-listing.
+        for (const m of models) {
+          if (m.contextWindow !== undefined) {
+            this.#contextWindowByModel.set(m.id, m.contextWindow);
+          }
+        }
+        finish(models);
+      });
     });
   }
 }

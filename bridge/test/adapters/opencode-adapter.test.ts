@@ -6,6 +6,7 @@ import {
   OpenCodeAdapter,
   parseOpenCodeLine,
   parseModelList,
+  openCodeUsageTokens,
   type SpawnedProcess,
 } from '../../src/index.js';
 import type { AgentStreamEvent } from '@uxnan/shared';
@@ -91,6 +92,41 @@ test('parseOpenCodeLine maps the documented event shapes', () => {
     parseOpenCodeLine('{"type":"error","error":{"data":{"message":"boom"}}}')?.text,
     'boom',
   );
+  // step_finish carries the per-step token counts
+  assert.equal(
+    parseOpenCodeLine(
+      '{"type":"step_finish","sessionID":"s","part":{"tokens":{"input":1200,"output":300,"reasoning":50}}}',
+    )?.tokens,
+    1550,
+  );
+});
+
+test('openCodeUsageTokens sums known buckets and falls back to numeric fields', () => {
+  assert.equal(
+    openCodeUsageTokens({ input: 1200, output: 300, reasoning: 50, cache: { read: 900, write: 0 } }),
+    1550,
+  );
+  // unknown shape: sum any top-level numeric fields
+  assert.equal(openCodeUsageTokens({ prompt: 10, completion: 5 }), 15);
+  assert.equal(openCodeUsageTokens({}), undefined);
+  assert.equal(openCodeUsageTokens('nope'), undefined);
+});
+
+test('OpenCodeAdapter reports usage.tokens from step_finish', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new OpenCodeAdapter({ binaryPath: 'opencode', defaultModel: 'm', spawnFn });
+  const { done } = collect(adapter);
+
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi' });
+  last().feed([
+    '{"type":"text","sessionID":"ses_1","part":{"id":"p1","type":"text","text":"ok"}}',
+    '{"type":"step_finish","sessionID":"ses_1","part":{"tokens":{"input":1200,"output":300}}}',
+  ]);
+
+  const events = await done;
+  const completed = events.find((e) => e.type === 'turn_completed');
+  const usage = (completed?.data as { usage?: { tokens: number } }).usage;
+  assert.equal(usage?.tokens, 1500);
 });
 
 test('OpenCodeAdapter streams text parts as deltas and completes', async () => {
