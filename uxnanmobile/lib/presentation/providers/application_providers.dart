@@ -22,6 +22,7 @@ import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/entities/trusted_device.dart';
 import 'package:uxnan/domain/enums/agent_id.dart';
 import 'package:uxnan/domain/enums/connection_phase.dart';
+import 'package:uxnan/domain/enums/context_indicator_mode.dart';
 import 'package:uxnan/domain/enums/thread_activity.dart';
 import 'package:uxnan/domain/services/pairing_validator.dart';
 import 'package:uxnan/domain/value_objects/custom_theme.dart';
@@ -490,6 +491,41 @@ class ScrollToBottomOnSend extends Notifier<bool> {
 /// Whether sending a message scrolls to the latest (persisted toggle).
 final scrollToBottomOnSendProvider =
     NotifierProvider<ScrollToBottomOnSend, bool>(ScrollToBottomOnSend.new);
+
+/// What the conversation's context indicator shows: the context-window
+/// percentage, the raw token count, or both. Persisted; defaults to
+/// [ContextIndicatorMode.percentage] (the prior behaviour).
+class ContextIndicatorModeSetting extends Notifier<ContextIndicatorMode> {
+  @override
+  ContextIndicatorMode build() {
+    unawaited(_hydrate());
+    return ContextIndicatorMode.percentage;
+  }
+
+  Future<void> _hydrate() async {
+    final stored = await ref
+        .read(conversationPreferencesStoreProvider)
+        .readContextIndicatorMode();
+    if (stored == null) return;
+    final match = ContextIndicatorMode.values.where((m) => m.name == stored);
+    if (match.isNotEmpty && match.first != state) state = match.first;
+  }
+
+  /// Persists and applies the context-indicator display mode.
+  Future<void> set(ContextIndicatorMode value) async {
+    if (value == state) return;
+    state = value;
+    await ref
+        .read(conversationPreferencesStoreProvider)
+        .writeContextIndicatorMode(value.name);
+  }
+}
+
+/// The context-indicator display mode (persisted choice).
+final contextIndicatorModeProvider =
+    NotifierProvider<ContextIndicatorModeSetting, ContextIndicatorMode>(
+  ContextIndicatorModeSetting.new,
+);
 
 /// Whether a confirmation is shown before pushing. Persisted; defaults to on
 /// (a push can't be undone, so it's guarded by default).

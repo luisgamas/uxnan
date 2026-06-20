@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uxnan/domain/enums/context_indicator_mode.dart';
 import 'package:uxnan/domain/value_objects/notification_preferences.dart';
+import 'package:uxnan/infrastructure/storage/conversation_preferences_store.dart';
 import 'package:uxnan/infrastructure/storage/notification_preferences_store.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
@@ -69,4 +71,33 @@ void main() {
     ).read();
     expect(stored, const NotificationPreferences(turnCompleted: false));
   });
+
+  testWidgets(
+    'context indicator selector defaults to percentage and persists a change',
+    (tester) async {
+      await tester.pumpWidget(_wrap());
+      await tester.pumpAndSettle();
+
+      // The three options render; percentage is selected by default.
+      await tester.ensureVisible(
+        find.byType(SegmentedButton<ContextIndicatorMode>),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Percentage'), findsOneWidget);
+      expect(find.text('Tokens'), findsOneWidget);
+      expect(find.text('Both'), findsOneWidget);
+      final segmented = tester.widget<SegmentedButton<ContextIndicatorMode>>(
+        find.byType(SegmentedButton<ContextIndicatorMode>),
+      );
+      expect(segmented.selected, {ContextIndicatorMode.percentage});
+
+      // Choosing "Both" persists it.
+      await tester.tap(find.text('Both'));
+      await tester.pumpAndSettle();
+      final stored = await ConversationPreferencesStore(
+        preferences: SharedPreferences.getInstance(),
+      ).readContextIndicatorMode();
+      expect(stored, ContextIndicatorMode.both.name);
+    },
+  );
 }

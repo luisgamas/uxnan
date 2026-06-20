@@ -13,6 +13,8 @@ class ConversationPreferencesStore {
 
   static const String _showThinkingKey = 'uxnan.conversation.showThinking';
   static const String _scrollOnSendKey = 'uxnan.conversation.scrollOnSend';
+  static const String _contextIndicatorModeKey =
+      'uxnan.conversation.contextIndicatorMode';
   static const String _confirmPushKey = 'uxnan.git.confirmPush';
   static const String _confirmPrKey = 'uxnan.git.confirmPr';
 
@@ -42,6 +44,20 @@ class ConversationPreferencesStore {
   Future<void> writeScrollOnSend({required bool value}) async {
     final prefs = await _prefs;
     await prefs.setBool(_scrollOnSendKey, value);
+  }
+
+  /// The context-indicator display mode (enum name), or `null` if never set
+  /// (keep the default).
+  Future<String?> readContextIndicatorMode() async {
+    final prefs = await _prefs;
+    if (!prefs.containsKey(_contextIndicatorModeKey)) return null;
+    return prefs.getString(_contextIndicatorModeKey);
+  }
+
+  /// Persists the context-indicator display mode (enum name).
+  Future<void> writeContextIndicatorMode(String value) async {
+    final prefs = await _prefs;
+    await prefs.setString(_contextIndicatorModeKey, value);
   }
 
   /// Whether a confirmation is required before pushing, or `null` if never set.

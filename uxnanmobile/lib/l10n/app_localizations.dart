@@ -1916,6 +1916,36 @@ abstract class AppLocalizations {
   /// **'Jump to your message when you send, even if you\'ve scrolled up.'**
   String get settingsScrollOnSendSubtitle;
 
+  /// Title of the setting choosing what the above-composer context indicator shows.
+  ///
+  /// In en, this message translates to:
+  /// **'Context indicator'**
+  String get settingsContextIndicatorTitle;
+
+  /// Subtitle of the context-indicator setting.
+  ///
+  /// In en, this message translates to:
+  /// **'Show the context-window percentage, the token count, or both.'**
+  String get settingsContextIndicatorSubtitle;
+
+  /// Context-indicator option: show the context-window usage percentage.
+  ///
+  /// In en, this message translates to:
+  /// **'Percentage'**
+  String get settingsContextIndicatorPercentage;
+
+  /// Context-indicator option: show the raw token count.
+  ///
+  /// In en, this message translates to:
+  /// **'Tokens'**
+  String get settingsContextIndicatorTokens;
+
+  /// Context-indicator option: show both the token count and the percentage.
+  ///
+  /// In en, this message translates to:
+  /// **'Both'**
+  String get settingsContextIndicatorBoth;
+
   /// No description provided for @settingsGitSection.
   ///
   /// In en, this message translates to:

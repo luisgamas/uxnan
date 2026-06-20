@@ -501,6 +501,26 @@
   "@settingsScrollOnSendSubtitle": {
     "description": "Subtitle of the scroll-on-send toggle."
   },
+  "settingsContextIndicatorTitle": "Context indicator",
+  "@settingsContextIndicatorTitle": {
+    "description": "Title of the setting choosing what the above-composer context indicator shows."
+  },
+  "settingsContextIndicatorSubtitle": "Show the context-window percentage, the token count, or both.",
+  "@settingsContextIndicatorSubtitle": {
+    "description": "Subtitle of the context-indicator setting."
+  },
+  "settingsContextIndicatorPercentage": "Percentage",
+  "@settingsContextIndicatorPercentage": {
+    "description": "Context-indicator option: show the context-window usage percentage."
+  },
+  "settingsContextIndicatorTokens": "Tokens",
+  "@settingsContextIndicatorTokens": {
+    "description": "Context-indicator option: show the raw token count."
+  },
+  "settingsContextIndicatorBoth": "Both",
+  "@settingsContextIndicatorBoth": {
+    "description": "Context-indicator option: show both the token count and the percentage."
+  },
   "settingsGitSection": "Source control",
   "settingsConfirmPushTitle": "Confirm before push",
   "settingsConfirmPushSubtitle": "Ask before pushing — a push can't be undone.",

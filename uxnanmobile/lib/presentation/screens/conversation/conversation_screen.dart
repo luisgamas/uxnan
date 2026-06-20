@@ -9,6 +9,7 @@ import 'package:uxnan/domain/entities/agent_model.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/enums/agent_id.dart';
 import 'package:uxnan/domain/enums/approval_mode.dart';
+import 'package:uxnan/domain/enums/context_indicator_mode.dart';
 import 'package:uxnan/domain/enums/message_role.dart';
 import 'package:uxnan/domain/enums/thread_activity.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
@@ -462,6 +463,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     final gitBranch = ref.watch(gitRepoStateProvider).value?.branch;
     final resolvedModel = ref.watch(resolvedModelProvider(widget.threadId));
     final usage = ref.watch(contextUsageForProvider(widget.threadId));
+    final contextMode = ref.watch(contextIndicatorModeProvider);
     // Live activity of this thread's turn (running/error), so the bar shows the
     // wavy "responding" line while we wait for the agent.
     final activity = ref.watch(threadActivityForProvider(widget.threadId));
@@ -646,6 +648,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                     hasContext: environment.hasContext,
                     percent: environment.contextPercent,
                     tokenLabel: environment.contextTokensLabel,
+                    mode: contextMode,
                   ),
                 ),
               if (_attachments.isNotEmpty)
@@ -1010,6 +1013,7 @@ class _ComposerInfoBar extends StatelessWidget {
     required this.showContext,
     required this.hasContext,
     required this.percent,
+    required this.mode,
     this.edits,
     this.tokenLabel,
   });
@@ -1019,6 +1023,24 @@ class _ComposerInfoBar extends StatelessWidget {
   final bool hasContext;
   final int percent;
   final String? tokenLabel;
+  final ContextIndicatorMode mode;
+
+  /// The context indicator(s) to show for the chosen [mode]. When the window is
+  /// unknown ([hasContext] false) a percentage can't be computed, so the token
+  /// count is shown instead even in percentage/both modes.
+  List<Widget> _contextWidgets() {
+    final chip = _TokenChip(label: tokenLabel ?? '0');
+    final badge = _ContextBadge(percent: percent);
+    if (!hasContext) return [chip];
+    switch (mode) {
+      case ContextIndicatorMode.percentage:
+        return [badge];
+      case ContextIndicatorMode.tokens:
+        return [chip];
+      case ContextIndicatorMode.both:
+        return [chip, const SizedBox(width: UxnanSpacing.xs), badge];
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1040,10 +1062,7 @@ class _ComposerInfoBar extends StatelessWidget {
             ),
           if (edits != null && showContext)
             const SizedBox(width: UxnanSpacing.xs),
-          if (showContext)
-            hasContext
-                ? _ContextBadge(percent: percent)
-                : _TokenChip(label: tokenLabel ?? '0'),
+          if (showContext) ..._contextWidgets(),
         ],
       ),
     );

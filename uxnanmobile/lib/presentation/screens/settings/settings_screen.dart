@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uxnan/domain/enums/context_indicator_mode.dart';
 import 'package:uxnan/domain/value_objects/notification_preferences.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
@@ -72,6 +73,9 @@ class SettingsScreen extends ConsumerWidget {
                 onScrollOnSendChanged: (value) => ref
                     .read(scrollToBottomOnSendProvider.notifier)
                     .set(value: value),
+                contextMode: ref.watch(contextIndicatorModeProvider),
+                onContextModeChanged: (value) =>
+                    ref.read(contextIndicatorModeProvider.notifier).set(value),
               ),
               const SizedBox(height: UxnanSpacing.xl),
               _SectionHeader(label: l10n.settingsGitSection),
@@ -100,12 +104,16 @@ class _ConversationCard extends StatelessWidget {
     required this.onShowThinkingChanged,
     required this.scrollOnSend,
     required this.onScrollOnSendChanged,
+    required this.contextMode,
+    required this.onContextModeChanged,
   });
 
   final bool showThinking;
   final ValueChanged<bool> onShowThinkingChanged;
   final bool scrollOnSend;
   final ValueChanged<bool> onScrollOnSendChanged;
+  final ContextIndicatorMode contextMode;
+  final ValueChanged<ContextIndicatorMode> onContextModeChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -132,6 +140,40 @@ class _ConversationCard extends StatelessWidget {
             subtitle: Text(l10n.settingsScrollOnSendSubtitle),
             value: scrollOnSend,
             onChanged: onScrollOnSendChanged,
+          ),
+          Divider(height: 1, color: colors.outlineVariant),
+          ListTile(
+            leading: const Icon(Icons.donut_large_outlined),
+            title: Text(l10n.settingsContextIndicatorTitle),
+            subtitle: Text(l10n.settingsContextIndicatorSubtitle),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              UxnanSpacing.lg,
+              0,
+              UxnanSpacing.lg,
+              UxnanSpacing.md,
+            ),
+            child: SegmentedButton<ContextIndicatorMode>(
+              segments: [
+                ButtonSegment(
+                  value: ContextIndicatorMode.percentage,
+                  label: Text(l10n.settingsContextIndicatorPercentage),
+                ),
+                ButtonSegment(
+                  value: ContextIndicatorMode.tokens,
+                  label: Text(l10n.settingsContextIndicatorTokens),
+                ),
+                ButtonSegment(
+                  value: ContextIndicatorMode.both,
+                  label: Text(l10n.settingsContextIndicatorBoth),
+                ),
+              ],
+              selected: {contextMode},
+              showSelectedIcon: false,
+              onSelectionChanged: (selection) =>
+                  onContextModeChanged(selection.first),
+            ),
           ),
         ],
       ),

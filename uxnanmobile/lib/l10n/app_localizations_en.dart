@@ -981,6 +981,22 @@ class AppLocalizationsEn extends AppLocalizations {
       'Jump to your message when you send, even if you\'ve scrolled up.';
 
   @override
+  String get settingsContextIndicatorTitle => 'Context indicator';
+
+  @override
+  String get settingsContextIndicatorSubtitle =>
+      'Show the context-window percentage, the token count, or both.';
+
+  @override
+  String get settingsContextIndicatorPercentage => 'Percentage';
+
+  @override
+  String get settingsContextIndicatorTokens => 'Tokens';
+
+  @override
+  String get settingsContextIndicatorBoth => 'Both';
+
+  @override
   String get settingsGitSection => 'Source control';
 
   @override

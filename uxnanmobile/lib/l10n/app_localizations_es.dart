@@ -984,6 +984,22 @@ class AppLocalizationsEs extends AppLocalizations {
       'Salta a tu mensaje al enviarlo, aunque hayas subido el scroll.';
 
   @override
+  String get settingsContextIndicatorTitle => 'Indicador de contexto';
+
+  @override
+  String get settingsContextIndicatorSubtitle =>
+      'Muestra el porcentaje de la ventana de contexto, el conteo de tokens, o ambos.';
+
+  @override
+  String get settingsContextIndicatorPercentage => 'Porcentaje';
+
+  @override
+  String get settingsContextIndicatorTokens => 'Tokens';
+
+  @override
+  String get settingsContextIndicatorBoth => 'Ambos';
+
+  @override
   String get settingsGitSection => 'Control de versiones';
 
   @override
