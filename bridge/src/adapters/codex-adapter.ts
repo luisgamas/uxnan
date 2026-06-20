@@ -204,6 +204,8 @@ interface ActiveRun {
   threadId: string;
   /** Accumulated final-text of the last `agentMessage` item-completed, for `turn/completed`. */
   lastAgentText: string;
+  /** Model the turn ran on, for looking up its context window on completion. */
+  model?: string;
 }
 
 /** A normalized Codex event extracted from one app-server notification line. */
@@ -286,6 +288,9 @@ export class CodexAdapter extends BaseAgentAdapter {
   readonly #threadByBridgeThread = new Map<string, string>();
   /** turnId (bridge) → in-flight run, for cancellation. */
   readonly #active = new Map<string, ActiveRun>();
+  /** model id → context-window tokens, from `~/.codex/models_cache.json`. */
+  readonly #contextWindowByModel = new Map<string, number>();
+  #windowsLoaded = false;
   #defaultCwd = process.cwd();
   /** Long-lived app-server connection. Spawned lazily on first use. */
   #rpc: CodexAppServerRpc | null = null;
@@ -396,7 +401,11 @@ export class CodexAdapter extends BaseAgentAdapter {
       codexTurnId: null,
       threadId,
       lastAgentText: '',
+      ...(typeof model === 'string' ? { model } : {}),
     });
+    // Warm the per-model context-window cache (once) so completion can emit a
+    // window → a percentage on the phone.
+    void this.#loadContextWindows();
     this.emit({ type: 'turn_started', threadId, turnId });
 
     try {
@@ -682,13 +691,17 @@ export class CodexAdapter extends BaseAgentAdapter {
     }
     const usage = isRecord(turn['tokenUsage']) ? turn['tokenUsage'] : undefined;
     const tokens = codexUsageTokens(usage);
+    const contextWindow =
+      run.model !== undefined ? this.#contextWindowByModel.get(run.model) : undefined;
     this.emit({
       type: 'turn_completed',
       threadId: run.threadId,
       turnId: run.bridgeTurnId,
       data: {
         text: run.lastAgentText,
-        ...(tokens !== undefined ? { usage: { tokens } } : {}),
+        ...(tokens !== undefined
+          ? { usage: { tokens, ...(contextWindow !== undefined ? { contextWindow } : {}) } }
+          : {}),
       },
     });
   }
@@ -852,6 +865,53 @@ export class CodexAdapter extends BaseAgentAdapter {
       return [];
     }
   }
+
+  /**
+   * Populate the per-model context-window cache from Codex's own metadata cache
+   * (`~/.codex/models_cache.json`, refreshed by the codex CLI), keyed by model
+   * slug (e.g. `gpt-5.5` → 272000). Runs once; best-effort — a missing/unreadable
+   * file leaves usage count-only. The app-server `model/list` does not reliably
+   * carry a window, so this file is the authoritative source.
+   */
+  #loadContextWindows(): Promise<void> {
+    if (this.#windowsLoaded) return Promise.resolve();
+    this.#windowsLoaded = true;
+    try {
+      const path = join(homedir(), '.codex', 'models_cache.json');
+      if (existsSync(path)) {
+        for (const [slug, win] of parseCodexModelWindows(readFileSync(path, 'utf-8'))) {
+          this.#contextWindowByModel.set(slug, win);
+        }
+      }
+    } catch {
+      /* leave the cache empty; usage stays count-only */
+    }
+    return Promise.resolve();
+  }
+}
+
+/**
+ * Parse `~/.codex/models_cache.json` into a model-slug → context-window map.
+ * The file is `{ models: [{ slug, context_window, … }] }`; entries without a
+ * positive `context_window` are skipped.
+ */
+export function parseCodexModelWindows(raw: string): Map<string, number> {
+  const windows = new Map<string, number>();
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return windows;
+  }
+  const models = isRecord(parsed) && Array.isArray(parsed['models']) ? parsed['models'] : [];
+  for (const entry of models) {
+    if (!isRecord(entry)) continue;
+    const slug = typeof entry['slug'] === 'string' ? entry['slug'] : undefined;
+    const window =
+      typeof entry['context_window'] === 'number' ? entry['context_window'] : undefined;
+    if (slug && window !== undefined && window > 0) windows.set(slug, window);
+  }
+  return windows;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

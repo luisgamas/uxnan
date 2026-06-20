@@ -6,6 +6,7 @@ import {
   codexUsageTokens,
   parseCodexConfigModels,
   parseCodexModelList,
+  parseCodexModelWindows,
   parseCodexReasoning,
   type SpawnedAppServer,
 } from '../../src/index.js';
@@ -286,6 +287,26 @@ test('codexUsageTokens sums input, output and reasoning (not cached)', () => {
   );
   assert.equal(codexUsageTokens({}), undefined);
   assert.equal(codexUsageTokens('nope'), undefined);
+});
+
+test('parseCodexModelWindows maps slug → context_window from models_cache.json', () => {
+  // shape of the real ~/.codex/models_cache.json (verified against codex 0.141)
+  const raw = JSON.stringify({
+    fetched_at: '2026-06-20T01:09:52Z',
+    models: [
+      { slug: 'gpt-5.5', display_name: 'GPT-5.5', context_window: 272000 },
+      { slug: 'gpt-5.4', context_window: 272000, max_context_window: 1000000 },
+      { slug: 'no-window', display_name: 'No Window' },
+      { slug: 'zero', context_window: 0 },
+    ],
+  });
+  const windows = parseCodexModelWindows(raw);
+  assert.equal(windows.get('gpt-5.5'), 272000);
+  assert.equal(windows.get('gpt-5.4'), 272000);
+  assert.equal(windows.has('no-window'), false);
+  assert.equal(windows.has('zero'), false);
+  assert.equal(parseCodexModelWindows('not json').size, 0);
+  assert.equal(parseCodexModelWindows('{}').size, 0);
 });
 
 test('codexFileChanges extracts changed paths/kinds (adapter reads the content)', () => {

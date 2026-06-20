@@ -88,6 +88,7 @@ export {
   codexUsageTokens,
   parseCodexConfigModels,
   parseCodexModelList,
+  parseCodexModelWindows,
   parseCodexReasoning,
   type CodexAdapterOptions,
   type CodexEvent,
