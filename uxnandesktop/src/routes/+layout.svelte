@@ -21,6 +21,14 @@
     // Coming back to the window clears the "unread agent result" badges.
     const onFocus = () => unread.clearAll();
     window.addEventListener("focus", onFocus);
+    // Dismiss the pre-hydration brand splash (in `app.html`) once the shell
+    // has painted its first frame, handing off to the real UI.
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() =>
+        (window as unknown as { __uxnanSplashDone?: () => void })
+          .__uxnanSplashDone?.(),
+      ),
+    );
     return () => window.removeEventListener("focus", onFocus);
   });
 

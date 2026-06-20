@@ -5,6 +5,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — brand icon, theme variants & startup splash
+- **Refreshed brand mark + new dark variant.** `static/logo.svg` (black
+  mark on a white, rounded surface) and `static/logo_nb.svg` (black
+  stroke, light surfaces) were updated, and `static/logo_wnb.svg` (white
+  stroke, dark surfaces) added. `static/favicon.png` and the whole
+  `src-tauri/icons/*` set were regenerated from `logo.svg` (rounded,
+  transparent corners — the Windows/menu icon keeps the PNG alpha).
+- **In-app marks swap by theme instead of inverting.** `TitleBar.svelte`
+  and the empty-terminal placeholder in `TerminalArea.svelte` now render
+  `logo_nb` on light themes and `logo_wnb` on dark themes (toggled by the
+  `.dark` class) rather than applying a `dark:invert` filter to a single
+  black mark.
+- **Startup splash.** A brand splash is painted by `app.html` the instant
+  the webview loads — before SvelteKit hydrates — so the previously blank
+  startup window now shows the animated mark (70% → 100% scale while
+  untwisting a half-turn). It is theme-aware via `prefers-color-scheme`
+  and dismissed on first paint by `+layout.svelte`
+  (`window.__uxnanSplashDone`), with a 4 s fallback.
+
 ### Added — brand mark across every desktop surface
 - **Brand assets**: `static/logo.svg` (with white bg, splash fallback) +
   `static/logo_nb.svg` (no bg, the brand mark used in-app and in the

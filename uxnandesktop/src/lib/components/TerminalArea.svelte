@@ -486,7 +486,13 @@
             src="/logo_nb.svg"
             alt=""
             aria-hidden="true"
-            class="size-24 dark:invert opacity-90"
+            class="block size-24 opacity-90 dark:hidden"
+          />
+          <img
+            src="/logo_wnb.svg"
+            alt=""
+            aria-hidden="true"
+            class="hidden size-24 opacity-90 dark:block"
           />
           <div class={cn("text-muted-foreground", text.body)}>
             {i18n.t("terminal.noTerminalsIn", {
