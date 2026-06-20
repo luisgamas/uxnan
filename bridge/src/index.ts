@@ -118,6 +118,7 @@ export {
   OpenCodeAdapter,
   parseOpenCodeLine,
   parseModelList,
+  parseOpenCodeModelWindows,
   openCodeUsageTokens,
   type OpenCodeAdapterOptions,
   type OpenCodeEvent,

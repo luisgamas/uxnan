@@ -6,6 +6,7 @@ import {
   OpenCodeAdapter,
   parseOpenCodeLine,
   parseModelList,
+  parseOpenCodeModelWindows,
   openCodeUsageTokens,
   type SpawnedProcess,
 } from '../../src/index.js';
@@ -101,7 +102,13 @@ test('parseOpenCodeLine maps the documented event shapes', () => {
   );
 });
 
-test('openCodeUsageTokens sums known buckets and falls back to numeric fields', () => {
+test('openCodeUsageTokens prefers total, then buckets, then numeric fields', () => {
+  // real shape: { total, input, output, reasoning, cache } — prefer total
+  assert.equal(
+    openCodeUsageTokens({ total: 17266, input: 17253, output: 2, reasoning: 11, cache: { read: 0, write: 0 } }),
+    17266,
+  );
+  // no total: sum input + output + reasoning (cache read/write are subsets)
   assert.equal(
     openCodeUsageTokens({ input: 1200, output: 300, reasoning: 50, cache: { read: 900, write: 0 } }),
     1550,
@@ -110,6 +117,37 @@ test('openCodeUsageTokens sums known buckets and falls back to numeric fields', 
   assert.equal(openCodeUsageTokens({ prompt: 10, completion: 5 }), 15);
   assert.equal(openCodeUsageTokens({}), undefined);
   assert.equal(openCodeUsageTokens('nope'), undefined);
+});
+
+test('parseOpenCodeModelWindows maps provider/model → limit.context', () => {
+  // shape from `opencode models --verbose`: a header line then the model JSON
+  const verbose = [
+    'opencode/big-pickle',
+    '{',
+    '  "id": "big-pickle",',
+    '  "providerID": "opencode",',
+    '  "limit": {',
+    '    "context": 200000,',
+    '    "input": 160000,',
+    '    "output": 32000',
+    '  },',
+    '  "capabilities": {',
+    '    "input": { "type": "context" }',
+    '  }',
+    '}',
+    'opencode/claude-opus-4-8',
+    '{',
+    '  "id": "claude-opus-4-8",',
+    '  "providerID": "opencode",',
+    '  "limit": {',
+    '    "context": 1000000',
+    '  }',
+    '}',
+  ].join('\n');
+  const windows = parseOpenCodeModelWindows(verbose);
+  assert.equal(windows.get('opencode/big-pickle'), 200000);
+  assert.equal(windows.get('opencode/claude-opus-4-8'), 1_000_000);
+  assert.equal(windows.size, 2);
 });
 
 test('OpenCodeAdapter reports usage.tokens from step_finish', async () => {
@@ -127,6 +165,48 @@ test('OpenCodeAdapter reports usage.tokens from step_finish', async () => {
   const completed = events.find((e) => e.type === 'turn_completed');
   const usage = (completed?.data as { usage?: { tokens: number } }).usage;
   assert.equal(usage?.tokens, 1500);
+});
+
+test('OpenCodeAdapter emits usage.contextWindow from the verbose model cache', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new OpenCodeAdapter({
+    binaryPath: 'opencode',
+    defaultModel: 'opencode/big-pickle',
+    spawnFn,
+  });
+  // Warm the window cache from `opencode models --verbose`.
+  const loading = adapter.loadContextWindows();
+  last().feed([
+    'opencode/big-pickle',
+    '{',
+    '  "id": "big-pickle",',
+    '  "providerID": "opencode",',
+    '  "limit": {',
+    '    "context": 200000',
+    '  }',
+    '}',
+  ]);
+  await loading;
+
+  const { done } = collect(adapter);
+  await adapter.sendTurn({
+    threadId: 't1',
+    turnId: 'u1',
+    text: 'hi',
+    service: 'opencode/big-pickle',
+  });
+  last().feed([
+    '{"type":"text","sessionID":"ses_1","part":{"id":"p1","type":"text","text":"ok"}}',
+    '{"type":"step_finish","sessionID":"ses_1","part":{"tokens":{"total":17266,"input":17253,"output":2,"reasoning":11}}}',
+  ]);
+
+  const events = await done;
+  const completed = events.find((e) => e.type === 'turn_completed');
+  const usage = (completed?.data as {
+    usage?: { tokens: number; contextWindow?: number };
+  }).usage;
+  assert.equal(usage?.tokens, 17266);
+  assert.equal(usage?.contextWindow, 200000);
 });
 
 test('OpenCodeAdapter streams text parts as deltas and completes', async () => {

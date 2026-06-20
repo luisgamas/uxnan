@@ -47,16 +47,19 @@ const OPENCODE_CAPABILITIES: AgentCapabilities = {
 };
 
 /**
- * Sum the context-occupying tokens from an OpenCode `step_finish.part.tokens`
- * object (`{ input, output, reasoning, cache: { read, write } }`). Counts the
- * distinct buckets — cache read/write are subsets of `input`, so they are not
- * added (avoids double counting). Falls back to summing any top-level numeric
- * fields if the shape differs, and returns undefined when there is nothing.
+ * Context-occupying token count from an OpenCode `step_finish.part.tokens`
+ * object. The real shape (verified against opencode 0.x) is
+ * `{ total, input, output, reasoning, cache: { read, write } }` where
+ * `total === input + output + reasoning`. Prefer the reported `total`; fall
+ * back to summing the distinct buckets (cache read/write are subsets of
+ * `input`, so not added), then to any top-level numeric field. Returns
+ * undefined when there is nothing to report.
  */
 export function openCodeUsageTokens(tokens: unknown): number | undefined {
   if (!isRecord(tokens)) return undefined;
   const num = (key: string): number =>
     typeof tokens[key] === 'number' ? (tokens[key] as number) : 0;
+  if (num('total') > 0) return num('total');
   const known = num('input') + num('output') + num('reasoning');
   if (known > 0) return known;
   let sum = 0;
@@ -148,6 +151,9 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   readonly #sessionByThread = new Map<string, string>();
   /** turnId → in-flight run, for cancellation. */
   readonly #active = new Map<string, ActiveRun>();
+  /** model id → context-window tokens, from `opencode models --verbose`. */
+  readonly #contextWindowByModel = new Map<string, number>();
+  #windowsLoaded = false;
   #defaultCwd = process.cwd();
 
   /** Native OpenCode session id for a thread (on-disk history-fallback locator). */
@@ -168,7 +174,42 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
 
   start(config: AgentConfig): Promise<void> {
     if (config.cwd) this.#defaultCwd = config.cwd;
+    // Warm the per-model context-window cache so the first turn can already
+    // emit usage.contextWindow (→ a percentage on the phone).
+    void this.loadContextWindows();
     return Promise.resolve();
+  }
+
+  /**
+   * Populate the per-model context-window cache from `opencode models --verbose`
+   * (once). Best-effort: a spawn/parse failure leaves the cache empty and usage
+   * stays count-only.
+   */
+  loadContextWindows(): Promise<void> {
+    if (this.#windowsLoaded) return Promise.resolve();
+    this.#windowsLoaded = true;
+    return new Promise((resolve) => {
+      let child: SpawnedProcess;
+      try {
+        child = this.#spawn(this.#binaryPath, ['models', '--verbose'], this.#defaultCwd);
+      } catch {
+        resolve();
+        return;
+      }
+      let out = '';
+      const collect = (chunk: unknown): void => {
+        out += String(chunk);
+      };
+      child.stdout.on('data', collect);
+      child.stderr?.on('data', collect);
+      child.on('error', () => resolve());
+      child.on('close', () => {
+        for (const [id, win] of parseOpenCodeModelWindows(out)) {
+          this.#contextWindowByModel.set(id, win);
+        }
+        resolve();
+      });
+    });
   }
 
   stop(): Promise<void> {
@@ -184,6 +225,9 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     const cwd = options.cwd ?? this.#defaultCwd;
     const model = options.service ?? this.#defaultModel;
     const sessionId = this.#sessionByThread.get(threadId);
+
+    // Warm the context-window cache (once) so this/next turn can emit a window.
+    void this.loadContextWindows();
 
     const args = ['run', '--format', 'json'];
     if (model) args.push('--model', model);
@@ -292,7 +336,12 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       reader.close();
       this.#active.delete(turnId);
       if (!errored) {
-        const usage = tokens !== undefined ? { tokens } : undefined;
+        const contextWindow =
+          model !== undefined ? this.#contextWindowByModel.get(model) : undefined;
+        const usage =
+          tokens !== undefined
+            ? { tokens, ...(contextWindow !== undefined ? { contextWindow } : {}) }
+            : undefined;
         this.emit({
           type: 'turn_completed',
           threadId,
@@ -375,6 +424,34 @@ export function parseModelList(stdout: string): string[] {
     if (line.includes('/') && !line.includes(' ')) seen.add(line);
   }
   return [...seen];
+}
+
+/**
+ * Parse `opencode models --verbose` into a `provider/model` → context-window map.
+ *
+ * The verbose output is a sequence of `provider/model` header lines, each
+ * followed by that model's pretty-printed JSON (`{ … "limit": { "context": N … } }`).
+ * We track the current header and capture the first `"context": <number>` that
+ * follows it (only `limit.context` is a numeric `context`; capabilities use a
+ * `"type": "context"` string). Models without a window are simply absent.
+ */
+export function parseOpenCodeModelWindows(verboseStdout: string): Map<string, number> {
+  const windows = new Map<string, number>();
+  let currentId: string | undefined;
+  for (const raw of verboseStdout.split(/\r?\n/)) {
+    const line = raw.replace(ANSI_PATTERN, '').trim();
+    // Header line before each model's JSON block: bare `provider/model`.
+    if (line.includes('/') && !/[\s{}":]/.test(line)) {
+      currentId = line;
+      continue;
+    }
+    const match = line.match(/^"context":\s*(\d+)/);
+    if (match && currentId && !windows.has(currentId)) {
+      const value = Number(match[1]);
+      if (value > 0) windows.set(currentId, value);
+    }
+  }
+  return windows;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
