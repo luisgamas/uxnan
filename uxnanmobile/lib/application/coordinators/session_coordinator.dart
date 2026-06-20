@@ -100,6 +100,14 @@ class SessionCoordinator {
   bool _intentionalDisconnect = false;
   bool _disposed = false;
   bool _reconnecting = false;
+  // Set while a post-resume liveness probe is in flight. The socket can be
+  // silently half-open after the OS suspends the app in the background, yet the
+  // phase still reads "connected". While this is true, new user requests are
+  // held in the replay buffer instead of being written to a possibly-dead
+  // socket (where they'd be lost): they flush once the probe confirms the link,
+  // or replay after the reconnect a failed probe triggers. The probe itself
+  // bypasses the hold (see [_probeBridgeStatus]).
+  bool _verifyingAfterResume = false;
 
   /// Completed to interrupt the current reconnect backoff so a foreground
   /// [resume] retries immediately instead of waiting out the delay. `null` when
@@ -231,7 +239,10 @@ class SessionCoordinator {
   /// Sends a JSON-RPC request and resolves with the bridge's response.
   ///
   /// When connected the request is encrypted and sent immediately; otherwise it
-  /// is buffered and flushed on the next successful (re)connection.
+  /// is buffered and flushed on the next successful (re)connection. While a
+  /// post-resume liveness probe is in flight ([_verifyingAfterResume]) the
+  /// request is held in the buffer rather than risk a write to a half-open
+  /// socket.
   Future<RpcMessage> sendRequest(
     String method, [
     Map<String, dynamic>? params,
@@ -239,13 +250,23 @@ class SessionCoordinator {
     final id = _uuid.v4();
     final request = RpcMessage.request(id: id, method: method, params: params);
     final future = _correlator.register(id);
+    if (_verifyingAfterResume) {
+      _outboundBuffer.enqueue(request);
+    } else {
+      _dispatch(request);
+    }
+    return future;
+  }
+
+  /// Sends [request] now if the channel is up, otherwise buffers it for the
+  /// next (re)connection. Shared by [sendRequest] and the resume probe.
+  void _dispatch(RpcMessage request) {
     if (_connectionPhase.value == ConnectionPhase.connected &&
         _channel != null) {
       unawaited(_sendEncrypted(request));
     } else {
       _outboundBuffer.enqueue(request);
     }
-    return future;
   }
 
   /// Actively checks the bridge is reachable with an encrypted `bridge/status`
@@ -265,12 +286,23 @@ class SessionCoordinator {
       return false;
     }
     try {
-      await sendRequest('bridge/status').timeout(timeout);
+      await _probeBridgeStatus(timeout);
       return true;
     } on Object {
       await _dropAndReconnect();
       return false;
     }
+  }
+
+  /// Round-trips `bridge/status`, bypassing the post-resume send hold so the
+  /// probe itself is never buffered (it's what decides whether the link is
+  /// alive). Mirrors [sendRequest]'s correlation but always dispatches now.
+  Future<RpcMessage> _probeBridgeStatus(Duration timeout) {
+    final id = _uuid.v4();
+    final request = RpcMessage.request(id: id, method: 'bridge/status');
+    final future = _correlator.register(id);
+    _dispatch(request);
+    return future.timeout(timeout);
   }
 
   void _startHeartbeat() {
@@ -432,8 +464,11 @@ class SessionCoordinator {
   /// - **Mid-reconnect**: interrupts the backoff so the next attempt runs *now*
   ///   instead of after the (possibly long) delay — the user gets reconnected
   ///   promptly on reopen.
-  /// - **Believed-connected**: round-trips `bridge/status` (via
-  ///   [verifyConnection]) to catch a silently-dropped socket and reconnect.
+  /// - **Believed-connected**: holds new user sends, round-trips `bridge/status`
+  ///   (via [verifyConnection]) to catch a silently-dropped socket, then either
+  ///   flushes the held sends (link confirmed) or lets the reconnect replay
+  ///   them (link dead) — so a message typed right after reopening is never
+  ///   written to a half-open socket and lost.
   /// - **Disconnected with an active device**: kicks a reconnect.
   ///
   /// No-op after an intentional disconnect or once disposed.
@@ -443,7 +478,18 @@ class SessionCoordinator {
       _wakeReconnect();
       return;
     }
-    await verifyConnection();
+    // Hold user traffic until the probe confirms the socket is actually alive.
+    _verifyingAfterResume = true;
+    try {
+      final alive = await verifyConnection();
+      _verifyingAfterResume = false;
+      // Link confirmed: send anything the user queued during the probe. If it
+      // wasn't alive, verifyConnection already kicked the reconnect, whose
+      // successful (re)connection flushes the buffer instead.
+      if (alive) await _flushOutbound();
+    } finally {
+      _verifyingAfterResume = false;
+    }
   }
 
   /// Waits out the reconnect backoff [wait], returning early when

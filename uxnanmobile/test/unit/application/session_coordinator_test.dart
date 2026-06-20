@@ -74,8 +74,8 @@ class _FakeBridge {
     final queue = StreamQueue<Uint8List>(transport.incoming);
     try {
       final hello = _json(await queue.next);
-      helloResumeSeq = (hello['resumeState'] as Map<String, dynamic>?)?[
-          'lastAppliedBridgeOutboundSeq'] as int?;
+      helloResumeSeq = (hello['resumeState']
+          as Map<String, dynamic>?)?['lastAppliedBridgeOutboundSeq'] as int?;
       final clientNonce = (hello['clientNonce'] as String).fromHex();
       final phoneEphPub =
           (hello['phoneEphemeralPublicKey'] as String).fromHex();
@@ -424,6 +424,26 @@ void main() {
     // Stays disconnected — backgrounding after the user disconnected must not
     // silently reconnect.
     expect(harness.coordinator.connectionPhase, ConnectionPhase.disconnected);
+  });
+
+  test(
+      'resume() holds a concurrent send until the probe confirms, then '
+      'delivers it (not lost to a half-open socket)', () async {
+    final harness = await build(echo);
+    addTearDown(harness.coordinator.dispose);
+    await harness.coordinator.connect(forceQrBootstrap: true);
+    expect(harness.coordinator.connectionPhase, ConnectionPhase.connected);
+
+    // Resume kicks the liveness probe; a user message sent during that window
+    // is held in the buffer (not written to a possibly-dead socket), then
+    // flushed once the probe confirms the link. It must still resolve.
+    final resuming = harness.coordinator.resume();
+    final sending = harness.coordinator.sendRequest('turn/send', {'x': 1});
+    await resuming;
+    final response = await sending.timeout(const Duration(seconds: 2));
+
+    expect((response.result as Map)['echo'], 'turn/send');
+    expect(harness.coordinator.connectionPhase, ConnectionPhase.connected);
   });
 
   test('removeTrustedDevice notifies the bridge with the phone id, disconnects',
