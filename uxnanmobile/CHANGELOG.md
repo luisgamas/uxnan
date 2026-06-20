@@ -6,6 +6,39 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — brand icon & splash rework
+- **New brand mark + two theme variants.** The source SVGs were
+  refreshed: `assets/images/logo.svg` (black mark on a white, rounded
+  surface — the launcher mark), `assets/images/logo_nb.svg` (black
+  stroke, for light surfaces) and the new `assets/images/logo_wnb.svg`
+  (white stroke, for dark surfaces).
+- **Launcher icon now derives from `logo.svg`.** Rasters regenerated:
+  `logo-1024-1024.png` (square white background — iOS/macOS reject alpha
+  corners and apply their own mask) and `logo_fg_1024.png` (padded mark
+  on transparency, for the Android 8+ adaptive foreground over a flat
+  white background layer). `flutter_launcher_icons` is now scoped to
+  **Android + iOS only** (the "PC menu" icon lives in the desktop app),
+  with `remove_alpha_ios: true`.
+- **In-app marks pick the variant by surface, no runtime tint.** The
+  devices-screen footer swaps `logo_nb`/`logo_wnb` by theme brightness
+  instead of `ColorFilter`-tinting a single black mark.
+- **Splash double-render fixed.** The mandatory Android 12+ SplashScreen
+  API used to show the mark (cropped/zoomed into its circular icon mask)
+  and then hard-cut to a differently sized Flutter overlay — a visible
+  "two splashes" sequence. The Android 12+ splash icon is now a fully
+  transparent image (`splash_blank.png`) over a white window, so the
+  system splash is a plain white screen with no mark. The brand mark then
+  appears exactly once — animated — in the `UxnanSplash` overlay over the
+  same white surface, so it reads as a single splash. Pre-Android-12
+  devices use the padded `logo_fg_1024.png` in the classic drawable splash.
+- **`UxnanSplash` animation reworked.** The mark now enters at 70% scale
+  rotated a half-turn (180°) and springs to 100% / 0° in place
+  (`spatialSlow`), then the overlay fades out (`effectsSlow`). The intro is
+  started on the first painted frame (not in `initState`) so the engine's
+  init time can't fast-forward past it, and the minimum hold is 1200 ms so
+  it always reads. Also fixes the dark-mode white-on-white invisibility —
+  the overlay is always a flat white surface with the black mark.
+
 ### Added
 - **Brand splash screen + launcher icons (Android, iOS, web).** The
   Uxnan brand mark is now the splash + home/launcher icon on every

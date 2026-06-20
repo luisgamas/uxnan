@@ -599,8 +599,9 @@ String _relativeTime(DateTime time) {
 }
 
 /// Footer pinned to the bottom of the devices screen: a small rendition of
-/// the brand mark (`assets/images/logo_nb.svg`) with the localized "ALPHA"
-/// release-stage pill as a caption underneath.
+/// the brand mark with the localized "ALPHA" release-stage pill as a caption
+/// underneath. Picks the white-stroke (`logo_wnb.svg`) or black-stroke
+/// (`logo_nb.svg`) variant by theme brightness.
 ///
 /// Layout: lives inside a `SliverFillRemaining(hasScrollBody: false)`, so it
 /// fills the remaining viewport when the device list is short (the inner
@@ -608,10 +609,9 @@ String _relativeTime(DateTime time) {
 /// to its natural height — right after the last card — when the list
 /// overflows. The footer is purely informational, never tappable.
 ///
-/// Theming: the source SVG is a black mark. We paint it via [ColorFilter] so
-/// it inverts to white on dark surfaces without requiring a second, hand-
-/// authored white-mark SVG; the caption reuses the same neutral surface
-/// family the rest of the app uses for non-interactive status labels.
+/// Theming: a dedicated white-mark SVG is swapped in on dark surfaces (no
+/// runtime tint); the caption reuses the same neutral surface family the rest
+/// of the app uses for non-interactive status labels.
 class _BrandingFooter extends StatelessWidget {
   const _BrandingFooter();
 
@@ -621,7 +621,11 @@ class _BrandingFooter extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final isDark = colors.brightness == Brightness.dark;
-    final markColor = isDark ? Colors.white : colors.onSurface;
+    // Two hand-authored mark variants: white stroke for dark surfaces,
+    // black stroke for light ones (no runtime tint).
+    final markAsset = isDark
+        ? 'assets/images/logo_wnb.svg'
+        : 'assets/images/logo_nb.svg';
 
     return SafeArea(
       top: false,
@@ -639,12 +643,9 @@ class _BrandingFooter extends StatelessWidget {
             // collapses to 0 when the list overflows (so the footer takes
             // only its natural height right after the last card).
             const Spacer(),
-            ColorFiltered(
-              colorFilter: ColorFilter.mode(markColor, BlendMode.srcIn),
-              child: SvgPicture.asset(
-                'assets/images/logo_nb.svg',
-                height: 28,
-              ),
+            SvgPicture.asset(
+              markAsset,
+              height: 28,
             ),
             const SizedBox(height: UxnanSpacing.sm),
             // Release-stage indicator. A neutral, non-interactive label pill

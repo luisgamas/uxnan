@@ -95,52 +95,53 @@ flutter:
           weight: 500
 
 # ----------------------------------------------------------------------------
-# App launcher icons — generates Android (legacy + adaptive) + iOS + web +
-# macOS / Windows icons from `assets/images/logo_nb.svg` (the no-background
-# variant). Re-run with `dart run flutter_launcher_icons` whenever the source
-# SVG changes.
+# App launcher icons — the brand launcher mark (`logo.svg`: black mark on a
+# white, rounded surface). Two rasters drive this:
+#   - `logo-1024-1024.png`  : square white background + mark. Used for the
+#     legacy Android icon, iOS and macOS (these platforms apply their own
+#     rounded mask, and iOS rejects alpha corners — so the source must be a
+#     full white square, not pre-rounded).
+#   - `logo_fg_1024.png`    : padded mark on transparency, for the Android 8+
+#     adaptive foreground over a flat white background layer.
+# This is a mobile (Android + iOS) target only; the "PC menu" icon lives in
+# the desktop app (`uxnandesktop/src-tauri/icons`).
+# Re-run with `dart run flutter_launcher_icons` whenever a source SVG changes.
 # ----------------------------------------------------------------------------
 flutter_launcher_icons:
   image_path: "assets/images/logo-1024-1024.png"
-  # Adaptive icon: Android 8+ renders the foreground over a background layer.
-  # We keep the foreground just the mark (no bg) and use a flat brand surface
-  # so the icon reads cleanly on every launcher mask shape.
   adaptive_icon_background: "#FFFFFF"
-  adaptive_icon_foreground: "assets/images/logo-1024-1024.png"
-  adaptive_icon_monochrome: "assets/images/logo-1024-1024.png"
-  adaptive_icon_padding: "10%"
+  adaptive_icon_foreground: "assets/images/logo_fg_1024.png"
+  adaptive_icon_monochrome: "assets/images/logo_fg_1024.png"
   android: true
   ios: true
-  web:
-    generate: true
-    image_path: "assets/images/logo-1024-1024.png"
-  macos:
-    generate: true
-  windows:
-    generate: true
+  remove_alpha_ios: true
   min_sdk_android: 24
 
 # ----------------------------------------------------------------------------
-# Native splash screen — uses the Android 12+ SplashScreen API on supported
-# devices (the system handles the icon scale + fade-in animation), and the
-# classic drawable splash on older Android + a native LaunchScreen storyboard
-# on iOS. The image is the no-bg logo, which sits centered on a flat brand
-# surface in both light and dark mode (the splash is brief, so we trade a
-# dark-mode white box for guaranteed visibility without a white-mark variant).
+# Native splash screen — classic drawable splash on older Android + a native
+# LaunchScreen storyboard on iOS. The image is the PADDED mark on a flat white
+# surface (`logo_fg_1024.png`), so the mark never touches the edges.
 #
-# After Flutter takes over, the `UxnanSplash` overlay in `app.dart` shows the
-# same logo with a small scale-in/fade-out animation to smooth the hand-off.
+# Android 12+: the system SplashScreen API is mandatory and ALWAYS shows on
+# top of any Flutter-side splash. Showing a mark there too produced a visible
+# "two splashes" sequence (the system mark, cropped into its circular mask,
+# then a hard cut to the Flutter overlay). So we give Android 12 a fully
+# TRANSPARENT icon (`splash_blank.png`) over the white window background — the
+# system splash becomes a plain white screen with no mark. The brand mark then
+# appears exactly once, animated, in the `UxnanSplash` overlay (`app.dart`)
+# over that same white surface, so the hand-off reads as a single splash.
+# Pre-Android-12 devices use the padded mark in the classic drawable splash.
 # ----------------------------------------------------------------------------
 flutter_native_splash:
   color: "#FFFFFF"
   color_dark: "#FFFFFF"
-  image: "assets/images/logo-1024-1024.png"
-  image_dark: "assets/images/logo-1024-1024.png"
+  image: "assets/images/logo_fg_1024.png"
+  image_dark: "assets/images/logo_fg_1024.png"
   android_12:
     color: "#FFFFFF"
     color_dark: "#FFFFFF"
-    image: "assets/images/logo-1024-1024.png"
-    image_dark: "assets/images/logo-1024-1024.png"
+    image: "assets/images/splash_blank.png"
+    image_dark: "assets/images/splash_blank.png"
   android: true
   ios: true
   fullscreen: true
