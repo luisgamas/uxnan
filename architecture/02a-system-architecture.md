@@ -1139,10 +1139,12 @@ QrScannerScreen
 
 > **Cambio (2026-06):** el código manual es ahora una función **bridge-first**
 > (no relay). El bridge emite un código corto rotativo y expone
-> `GET /pair/resolve?code=<code>` en su servidor LAN; el relay
-> `/trusted-session/resolve` queda como fallback opcional para hosted relay.
-> El bridge también anuncia mDNS `_uxnan._tcp.local` para descubrimiento
-> automático en LAN (el telefono puede autocompletar el host).
+> `GET /pair/resolve?code=<code>` en su servidor LAN. El bridge también anuncia
+> mDNS `_uxnan._tcp.local` para descubrimiento automático en LAN (el telefono
+> puede autocompletar el host). El relay nunca implementó el endpoint fuera-de-
+> LAN `/trusted-session/resolve` que el whitepaper original proponía — la
+> variante bridge-first cubre el caso LAN; para acceso fuera-de-LAN se usa
+> Tailscale o un relay genérico de WebSocket con la sesión E2EE.
 
 ```
 ManualCodeScreen
@@ -1907,34 +1909,28 @@ gestionar push notifications.
 
 ```
 Relay Server (opcional / self-hosted)
-├── HTTP Server (Express o http nativo)
+├── HTTP Server (http nativo)
 │   ├── GET  /health                        → health check
 │   ├── POST /push/register                 → registra token push (fallback)
-│   ├── POST /push/notify                   → envia notificacion (fallback)
-│   └── (Superseded en la ruta primaria) GET /trusted-session/resolve
-│                                         → la version bridge-first vive
-│                                           en el bridge; el relay conserva
-│                                           este endpoint solo para setups
-│                                           con relay hospedado.
+│   └── POST /push/notify                   → envia notificacion (fallback)
 ├── WebSocket Server (noServer mode)
 │   ├── Upgrade HTTP → WS con rate limiting por IP
-│   │   ├── Rate limits: HTTP 120/min, push 30/min, upgrade 60/min
+│   │   ├── Rate limits: HTTP 120/min, upgrade 60/min
+│   │   ├── Origin check (CSWSH defense): mismo host o allowlist
 │   │   └── Rechaza upgrades en paths no-relay
 │   └── Routing de sesiones por sessionId
 │       ├── Rol "mac" (bridge PC)
-│       │   Headers: x-role, x-notification-secret, x-mac-device-id,
-│       │            x-mac-identity-public-key, x-machine-name, x-pairing-code
+│       │   Headers: x-role, x-session-id
 │       └── Rol "iphone" (app movil)
 │           Headers: x-role, x-session-id
 ├── Push Service (fallback; ruta primaria es bridge-direct)
-│   ├── Registro de device token por sesion
-│   ├── Envio via APNs (iOS) o FCM (Android)
-│   ├── Deduplicacion por dedupeKey + TTL
-│   └── Persistencia de estado en archivo (diferido; in-memory por ahora)
-└── APNs Client (iOS) / FCM Client (Android)
-    ├── iOS: HTTP/2 + JWT firmado con teamId/keyId/privateKey
-    │        (Superseded: FCM-for-both es la ruta recomendada)
-    └── Android: Firebase Admin SDK + service account
+│   ├── Registro de device token por sesion (persistido a relay-state.json)
+│   ├── Envio via FCM HTTP v1 (Android directo + iOS via APNs-uploaded-to-FCM)
+│   ├── Deduplicacion por (sessionId,turnId) + TTL 7d, cap 10k
+│   └── Persistencia atomic temp+rename; restaurado al arranque via load()
+└── FCM Client (firebase-admin, optionalDependency)
+    Carga perezosa cuando UXNAN_FCM_SERVICE_ACCOUNT esta definido.
+    (No existe emisor APNs-directo: la decision es FCM-for-both.)
 ```
 
 **Routing de sesiones y reconexion.** Cada `sessionId` empareja un socket `mac`
