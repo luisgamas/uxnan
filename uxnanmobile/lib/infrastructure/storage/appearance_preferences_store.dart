@@ -154,7 +154,7 @@ class AppearancePreferencesStore {
   }
 
   /// Persists the master switch for custom themes.
-  Future<void> writeUseCustomTheme(bool value) async {
+  Future<void> writeUseCustomTheme({required bool value}) async {
     final prefs = await _prefs;
     await prefs.setBool(_useCustomThemeKey, value);
   }
@@ -168,7 +168,7 @@ class AppearancePreferencesStore {
 
   /// Persists the expansion state of the custom-themes library tile so
   /// the user's choice (expanded vs collapsed) survives restarts.
-  Future<void> writeCustomThemesExpanded(bool value) async {
+  Future<void> writeCustomThemesExpanded({required bool value}) async {
     final prefs = await _prefs;
     await prefs.setBool(_customThemesExpandedKey, value);
   }

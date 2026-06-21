@@ -128,10 +128,14 @@ void main() {
     );
     expect(container.read(useCustomThemeProvider), isTrue);
     expect(
-        container.read(activeCustomThemeIdProvider), 'uxnan.builtin.midnight');
+      container.read(activeCustomThemeIdProvider),
+      'uxnan.builtin.midnight',
+    );
     expect(container.read(customThemeSettingProvider), isNotNull);
-    expect(container.read(customThemeSettingProvider)!.id,
-        'uxnan.builtin.midnight');
+    expect(
+      container.read(customThemeSettingProvider)!.id,
+      'uxnan.builtin.midnight',
+    );
   });
 
   testWidgets('a pre-seeded active theme hydrates and shows the Active badge',
@@ -142,7 +146,6 @@ void main() {
       description: 'A vivid purple light/dark pair.',
       light: ColorScheme.fromSeed(
         seedColor: const Color(0xFF6750A4),
-        brightness: Brightness.light,
       ),
       dark: ColorScheme.fromSeed(
         seedColor: const Color(0xFF6750A4),
@@ -183,10 +186,11 @@ void main() {
     await tester.pumpAndSettle();
     await _expandThemes(tester);
     expect(
-        SharedPreferences.getInstance().then(
-          (prefs) => prefs.getBool('uxnan.appearance.customThemesExpanded'),
-        ),
-        completion(isTrue));
+      SharedPreferences.getInstance().then(
+        (prefs) => prefs.getBool('uxnan.appearance.customThemesExpanded'),
+      ),
+      completion(isTrue),
+    );
 
     // Second session: re-mount the screen with the same prefs and confirm
     // the library opens expanded by default.
@@ -198,15 +202,13 @@ void main() {
     expect(find.text('Midnight'), findsOneWidget);
   });
 
-  testWidgets(
-      'deleting an authored theme does not crash when the row unmounts',
+  testWidgets('deleting an authored theme does not crash when the row unmounts',
       (tester) async {
     final authored = CustomTheme.fromDualSchemes(
       id: 'autumn',
       name: 'Autumn',
       light: ColorScheme.fromSeed(
         seedColor: const Color(0xFF6750A4),
-        brightness: Brightness.light,
       ),
       dark: ColorScheme.fromSeed(
         seedColor: const Color(0xFF6750A4),
@@ -216,8 +218,7 @@ void main() {
     SharedPreferences.setMockInitialValues({
       'uxnan.appearance.useCustomTheme': true,
       'uxnan.appearance.activeCustomThemeId': 'autumn',
-      'uxnan.appearance.customThemes':
-          '[${jsonEncodeForPrefs(authored)}]',
+      'uxnan.appearance.customThemes': '[${jsonEncodeForPrefs(authored)}]',
     });
     await _useTallViewport(tester);
     await tester.pumpWidget(_wrap());
@@ -243,8 +244,7 @@ void main() {
     expect(container.read(customThemeSettingProvider), isNull);
   });
 
-  testWidgets(
-      'tapping + New theme opens the seed+brightness picker dialog',
+  testWidgets('tapping + New theme opens the seed+brightness picker dialog',
       (tester) async {
     await _useTallViewport(tester);
     await tester.pumpWidget(_wrap());
@@ -306,7 +306,10 @@ void main() {
     // The dialog has its own Light/Dark segmented button. Scope the find
     // to the AlertDialog so it can't collide with the screen-level picker.
     await tester.tap(
-      find.descendant(of: find.byType(AlertDialog), matching: find.text('Dark')),
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.text('Dark'),
+      ),
     );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Apply'));
@@ -314,17 +317,26 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
 
     // Editor opens with the Dark tab active; type a name + save.
-    expect(find.byType(TextField), findsWidgets,
-        reason: 'editor should expose the name/description fields');
+    expect(
+      find.byType(TextField),
+      findsWidgets,
+      reason: 'editor should expose the name/description fields',
+    );
     await tester.enterText(find.byType(TextField).first, 'Charcoal');
     await tester.pumpAndSettle();
     // The Save button sits below a tall role list — scroll until it comes
     // into view so the tap registers.
     final saveFinder = find.text('Save');
-    await tester.scrollUntilVisible(saveFinder, 200,
-        scrollable: find.byType(Scrollable).first);
-    expect(saveFinder, findsOneWidget,
-        reason: 'editor should have a Save button');
+    await tester.scrollUntilVisible(
+      saveFinder,
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(
+      saveFinder,
+      findsOneWidget,
+      reason: 'editor should have a Save button',
+    );
     await tester.tap(saveFinder);
     await tester.pumpAndSettle();
 

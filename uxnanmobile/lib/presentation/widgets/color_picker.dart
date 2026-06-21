@@ -129,15 +129,15 @@ class _ColorPickerSheetState extends State<ColorPickerSheet> {
           _LabeledSlider(
             label: 'S',
             value: _hsv.saturation,
-            max: 1.0,
-            activeColor: HSVColor.fromAHSV(1, _hsv.hue, 1, _hsv.value)
-                .toColor(),
+            max: 1,
+            activeColor:
+                HSVColor.fromAHSV(1, _hsv.hue, 1, _hsv.value).toColor(),
             onChanged: (s) => _emit(_hsv.withSaturation(s)),
           ),
           _LabeledSlider(
             label: 'V',
             value: _hsv.value,
-            max: 1.0,
+            max: 1,
             activeColor: _color,
             onChanged: (v) => _emit(_hsv.withValue(v)),
           ),
@@ -194,7 +194,6 @@ class _Preview extends StatelessWidget {
         borderRadius: const BorderRadius.all(UxnanRadius.lg),
         border: Border.all(
           color: colors.outline.withValues(alpha: 0.5),
-          width: 1,
         ),
       ),
     );
@@ -240,16 +239,15 @@ class _HueSlider extends StatelessWidget {
             trackHeight: 12,
             thumbColor: Colors.white,
             overlayColor: colors.primary.withValues(alpha: 0.2),
-            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 10),
+            thumbShape: const RoundSliderThumbShape(),
           ),
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: const BorderRadius.all(UxnanRadius.full),
-              gradient: const LinearGradient(colors: _stops),
+          child: DecoratedBox(
+            decoration: const BoxDecoration(
+              borderRadius: BorderRadius.all(UxnanRadius.full),
+              gradient: LinearGradient(colors: _stops),
             ),
             child: Slider(
               value: hue,
-              min: 0,
               max: 360,
               onChanged: onChanged,
             ),
@@ -347,8 +345,8 @@ class _HexFieldState extends State<_HexField> {
             ),
         filled: true,
         fillColor: colors.surfaceContainerHigh,
-        border: OutlineInputBorder(
-          borderRadius: const BorderRadius.all(UxnanRadius.md),
+        border: const OutlineInputBorder(
+          borderRadius: BorderRadius.all(UxnanRadius.md),
           borderSide: BorderSide.none,
         ),
         contentPadding: const EdgeInsets.symmetric(
@@ -359,7 +357,7 @@ class _HexFieldState extends State<_HexField> {
       inputFormatters: [
         LengthLimitingTextInputFormatter(9),
         FilteringTextInputFormatter.allow(
-          RegExp(r'[#0-9a-fA-F]'),
+          RegExp('[#0-9a-fA-F]'),
         ),
       ],
       onSubmitted: widget.onSubmit,

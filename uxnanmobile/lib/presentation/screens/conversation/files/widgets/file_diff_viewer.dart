@@ -33,7 +33,6 @@ class FileDiffViewer extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     final lines = _renderableLines(diff);
     return SingleChildScrollView(
-      scrollDirection: Axis.vertical,
       padding: EdgeInsets.fromLTRB(
         UxnanSpacing.lg,
         topInset + UxnanSpacing.sm,

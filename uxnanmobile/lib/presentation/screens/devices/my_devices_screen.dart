@@ -623,9 +623,8 @@ class _BrandingFooter extends StatelessWidget {
     final isDark = colors.brightness == Brightness.dark;
     // Two hand-authored mark variants: white stroke for dark surfaces,
     // black stroke for light ones (no runtime tint).
-    final markAsset = isDark
-        ? 'assets/images/logo_wnb.svg'
-        : 'assets/images/logo_nb.svg';
+    final markAsset =
+        isDark ? 'assets/images/logo_wnb.svg' : 'assets/images/logo_nb.svg';
 
     return SafeArea(
       top: false,

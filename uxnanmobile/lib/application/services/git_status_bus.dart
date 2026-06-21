@@ -1,5 +1,9 @@
 import 'dart:async';
 
+import 'package:uxnan/application/managers/file_browser_manager.dart'
+    show FileBrowserManager;
+import 'package:uxnan/application/managers/git_action_manager.dart'
+    show GitActionManager;
 import 'package:uxnan/domain/value_objects/git/git_status_change.dart';
 
 /// Process-wide broadcast bus for `git/status` updates.

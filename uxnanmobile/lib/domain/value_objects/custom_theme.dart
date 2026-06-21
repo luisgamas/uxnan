@@ -1,9 +1,10 @@
 import 'dart:convert';
-import 'dart:ui' show Color;
 
 import 'package:equatable/equatable.dart';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
+import 'package:uxnan/infrastructure/storage/appearance_preferences_store.dart'
+    show AppearancePreferencesStore;
 
 /// A user-authored Material 3 [ColorScheme] for both [Brightness.light] and
 /// [Brightness.dark]. The whole theme is a flat map of M3 role → ARGB color;
@@ -83,6 +84,68 @@ class CustomTheme extends Equatable {
             surfaceTint: colorScheme.surfaceTint,
           ),
         );
+
+  /// A copy of this theme that delegates to a fresh
+  /// `ColorScheme.fromSeed` for both brightnesses — used by the editor's
+  /// *"Derive from seed"* affordance to reset one brightness from a single
+  /// seed color.
+  factory CustomTheme.derivedFromSeed({
+    required String id,
+    required String name,
+    required Color seed,
+    String description = '',
+  }) {
+    final light = ColorScheme.fromSeed(seedColor: seed);
+    final dark = ColorScheme.fromSeed(
+      seedColor: seed,
+      brightness: Brightness.dark,
+    );
+    return CustomTheme.fromDualSchemes(
+      id: id,
+      name: name,
+      description: description,
+      light: light,
+      dark: dark,
+    );
+  }
+
+  /// Parses a [CustomTheme] from its JSON wire shape. Unknown role keys
+  /// are ignored; missing roles fall back to the theme's seed-derived
+  /// scheme so an older document (or a hand-edited one) still loads.
+  factory CustomTheme.fromJson(Map<String, dynamic> json) {
+    final id = json['id'] as String? ?? CustomTheme.freshId();
+    final name = json['name'] as String? ?? 'Custom theme';
+    final description = json['description'] as String? ?? '';
+    final version = (json['version'] as num?)?.toInt() ?? currentSchemaVersion;
+    final lightJson =
+        (json['light'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final darkJson =
+        (json['dark'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final lightColors = CustomThemeColors.fromJson(lightJson);
+    final darkColors = CustomThemeColors.fromJson(darkJson);
+    return CustomTheme.fromDualSchemes(
+      id: id,
+      name: name,
+      description: description,
+      schemaVersion: version,
+      light: lightColors.toColorScheme(Brightness.light),
+      dark: darkColors.toColorScheme(Brightness.dark),
+    );
+  }
+
+  /// Parses a [CustomTheme] from a JSON string. Throws [FormatException]
+  /// for malformed input (the editor surfaces the message).
+  factory CustomTheme.fromJsonString(String source) {
+    final trimmed = source.trim();
+    if (trimmed.isEmpty) {
+      throw const FormatException('Empty theme JSON');
+    }
+    final decoded = jsonDecode(trimmed);
+    if (decoded is! Map<String, dynamic>) {
+      throw const FormatException('Theme JSON must be an object');
+    }
+    return CustomTheme.fromJson(decoded);
+  }
 
   /// Creates a [CustomTheme] from two independent [ColorScheme]s (one per
   /// brightness). The editor uses this path so a light tweak never disturbs
@@ -224,27 +287,6 @@ class CustomTheme extends Equatable {
     );
   }
 
-  /// A copy of this theme that delegates to a fresh
-  /// `ColorScheme.fromSeed` for both brightnesses — used by the editor's
-  /// *"Derive from seed"* affordance to reset one brightness from a single
-  /// seed color.
-  factory CustomTheme.derivedFromSeed({
-    required String id,
-    required String name,
-    required Color seed,
-    String description = '',
-  }) {
-    final light = ColorScheme.fromSeed(seedColor: seed, brightness: Brightness.light);
-    final dark = ColorScheme.fromSeed(seedColor: seed, brightness: Brightness.dark);
-    return CustomTheme.fromDualSchemes(
-      id: id,
-      name: name,
-      description: description,
-      light: light,
-      dark: dark,
-    );
-  }
-
   /// The JSON wire shape. Stable across versions; guarded by [schemaVersion].
   Map<String, dynamic> toJson() {
     return <String, dynamic>{
@@ -255,45 +297,6 @@ class CustomTheme extends Equatable {
       'light': _lightColors.toJson(),
       'dark': _darkColors.toJson(),
     };
-  }
-
-  /// Parses a [CustomTheme] from its JSON wire shape. Unknown role keys
-  /// are ignored; missing roles fall back to the theme's seed-derived
-  /// scheme so an older document (or a hand-edited one) still loads.
-  factory CustomTheme.fromJson(Map<String, dynamic> json) {
-    final String id = json['id'] as String? ?? CustomTheme.freshId();
-    final String name = json['name'] as String? ?? 'Custom theme';
-    final String description = json['description'] as String? ?? '';
-    final int version =
-        (json['version'] as num?)?.toInt() ?? currentSchemaVersion;
-    final Map<String, dynamic> lightJson =
-        (json['light'] as Map?)?.cast<String, dynamic>() ?? const {};
-    final Map<String, dynamic> darkJson =
-        (json['dark'] as Map?)?.cast<String, dynamic>() ?? const {};
-    final lightColors = CustomThemeColors.fromJson(lightJson);
-    final darkColors = CustomThemeColors.fromJson(darkJson);
-    return CustomTheme.fromDualSchemes(
-      id: id,
-      name: name,
-      description: description,
-      schemaVersion: version,
-      light: lightColors.toColorScheme(Brightness.light),
-      dark: darkColors.toColorScheme(Brightness.dark),
-    );
-  }
-
-  /// Parses a [CustomTheme] from a JSON string. Throws [FormatException]
-  /// for malformed input (the editor surfaces the message).
-  factory CustomTheme.fromJsonString(String source) {
-    final trimmed = source.trim();
-    if (trimmed.isEmpty) {
-      throw const FormatException('Empty theme JSON');
-    }
-    final decoded = jsonDecode(trimmed);
-    if (decoded is! Map<String, dynamic>) {
-      throw const FormatException('Theme JSON must be an object');
-    }
-    return CustomTheme.fromJson(decoded);
   }
 
   /// Serializes this theme to its pretty-printed JSON string.
@@ -480,7 +483,8 @@ class CustomThemeColors extends Equatable {
           read('surfaceContainerLowest', const Color(0xFFFFFFFF)),
       surfaceContainerLow: read('surfaceContainerLow', const Color(0xFFF7F2FA)),
       surfaceContainer: read('surfaceContainer', const Color(0xFFF3EDF7)),
-      surfaceContainerHigh: read('surfaceContainerHigh', const Color(0xFFECE6F0)),
+      surfaceContainerHigh:
+          read('surfaceContainerHigh', const Color(0xFFECE6F0)),
       surfaceContainerHighest:
           read('surfaceContainerHighest', const Color(0xFFE6E0E9)),
       onSurfaceVariant: read('onSurfaceVariant', const Color(0xFF49454F)),

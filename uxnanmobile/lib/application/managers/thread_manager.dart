@@ -668,7 +668,8 @@ class ThreadManager {
     final existing = await _messageRepository.getMessages(threadId);
     final byId = {for (final m in existing) m.id: m};
     final toSave = <Message>[];
-    // New (not-yet-stored) messages collected in document order (oldest→newest);
+    // New (not-yet-stored) messages collected in document order
+    // (oldest→newest);
     // their `orderIndex` is assigned after the loop so an older page lands
     // *below* the current minimum (it's older) and the newest page *above* the
     // maximum, keeping the ascending-by-orderIndex timeline chronological.
