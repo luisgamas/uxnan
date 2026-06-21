@@ -15,6 +15,8 @@
     type SplitDir,
   } from "$lib/state/terminals.svelte";
   import Terminal from "./Terminal.svelte";
+  import FileEditor from "./FileEditor.svelte";
+  import DiffPane from "./DiffPane.svelte";
   import { resolveAgentDisplay } from "$lib/state/agentDisplay";
   import AgentStatusDot from "./AgentStatusDot.svelte";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
@@ -31,6 +33,8 @@
   import Rows2Icon from "@lucide/svelte/icons/rows-2";
   import WebhookIcon from "@lucide/svelte/icons/webhook";
   import GitBranchIcon from "@lucide/svelte/icons/git-branch";
+  import FileIcon from "@lucide/svelte/icons/file";
+  import FileDiffIcon from "@lucide/svelte/icons/file-diff";
   import NewWorktreeDialog from "./NewWorktreeDialog.svelte";
 
   /** Default profile's shell/args, for region-level + and splits. A blank
@@ -340,52 +344,80 @@
                     class="uxnan-scroll flex h-8 shrink-0 items-center gap-1 overflow-x-auto border-b border-border bg-card px-1"
                   >
                     {#each g.group.tabs as t (t.id)}
-                      {@const display = resolveAgentDisplay(t)}
-                      {@const showHooksHint =
-                        display !== null &&
-                        display.source !== "hook" &&
-                        !!t.agentName &&
-                        !t.exited}
+                      {@const activeChip = g.group.activeTabId === t.id}
                       <div
-                        class="flex shrink-0 items-center gap-1 rounded px-2 py-0.5 text-xs {g
-                          .group.activeTabId === t.id
+                        class="flex shrink-0 items-center gap-1 rounded px-2 py-0.5 text-xs {activeChip
                           ? 'bg-background text-foreground'
                           : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'}"
                         role="group"
-                        oncontextmenu={(e) => tabMenu(e, g.group.id, t.id)}
+                        oncontextmenu={t.kind === "terminal"
+                          ? (e) => tabMenu(e, g.group.id, t.id)
+                          : undefined}
                       >
-                        {#if display}
-                          <AgentStatusDot status={display.status} stale={display.stale} />
-                        {/if}
-                        {#if showHooksHint}
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            class={cn(
-                              iconButton.action,
-                              "text-muted-foreground opacity-60 hover:opacity-100",
-                            )}
-                            title={i18n.t("monitor.installHooksHint")}
-                            aria-label={i18n.t("monitor.installHooksHint")}
-                            onclick={(e) => {
-                              e.stopPropagation();
-                              app.openSettings("hooks");
-                            }}
+                        {#if t.kind === "terminal"}
+                          {@const display = resolveAgentDisplay(t)}
+                          {@const showHooksHint =
+                            display !== null &&
+                            display.source !== "hook" &&
+                            !!t.agentName &&
+                            !t.exited}
+                          {#if display}
+                            <AgentStatusDot status={display.status} stale={display.stale} />
+                          {/if}
+                          {#if showHooksHint}
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              class={cn(
+                                iconButton.action,
+                                "text-muted-foreground opacity-60 hover:opacity-100",
+                              )}
+                              title={i18n.t("monitor.installHooksHint")}
+                              aria-label={i18n.t("monitor.installHooksHint")}
+                              onclick={(e) => {
+                                e.stopPropagation();
+                                app.openSettings("hooks");
+                              }}
+                            >
+                              <WebhookIcon class={icon.button} />
+                            </Button>
+                          {/if}
+                          <button
+                            class="max-w-[120px] truncate {t.exited ? 'line-through' : ''}"
+                            onclick={() => terminals.setActiveTab(g.group.id, t.id)}
+                            title={t.agentName ?? t.title}
                           >
-                            <WebhookIcon class={icon.button} />
-                          </Button>
+                            {t.agentName ?? t.title}
+                          </button>
+                        {:else if t.kind === "file"}
+                          <FileIcon class={cn(icon.decorative, "shrink-0")} />
+                          <button
+                            class="max-w-[120px] truncate"
+                            onclick={() => terminals.setActiveTab(g.group.id, t.id)}
+                            title={t.path}
+                          >
+                            {t.title}
+                          </button>
+                          {#if terminals.fileState(t.id)?.dirty}
+                            <span
+                              class="text-amber-600 dark:text-amber-400"
+                              title={i18n.t("editor.unsaved")}>●</span
+                            >
+                          {/if}
+                        {:else}
+                          <FileDiffIcon class={cn(icon.decorative, "shrink-0")} />
+                          <button
+                            class="max-w-[120px] truncate"
+                            onclick={() => terminals.setActiveTab(g.group.id, t.id)}
+                            title={t.file}
+                          >
+                            {t.title}
+                          </button>
                         {/if}
-                        <button
-                          class="max-w-[120px] truncate {t.exited ? 'line-through' : ''}"
-                          onclick={() => terminals.setActiveTab(g.group.id, t.id)}
-                          title={t.agentName ?? t.title}
-                        >
-                          {t.agentName ?? t.title}
-                        </button>
                         <button
                           class="rounded px-0.5 text-muted-foreground opacity-60 hover:bg-destructive/20 hover:text-foreground hover:opacity-100"
-                          title={i18n.t("terminal.closeTerminal")}
-                          aria-label={i18n.t("terminal.closeTerminal")}
+                          title={i18n.t("terminal.closeTab")}
+                          aria-label={i18n.t("terminal.closeTab")}
                           onclick={() => terminals.closeTab(g.group.id, t.id)}
                         >
                           ×
@@ -420,32 +452,49 @@
                     </button>
                   </div>
 
-                  <!-- Terminal stack for this region (active tab shown) -->
+                  <!-- Pane stack for this region (active tab shown). One pane per
+                       tab, branched by kind; every pane stays mounted (id-keyed)
+                       so xterm/CodeMirror never remount on split/reorder. -->
                   <div class="relative min-h-0 flex-1">
                     {#each g.group.tabs as t (t.id)}
+                      {@const paneActive = g.group.activeTabId === t.id}
                       <div
                         class="absolute inset-0 overflow-hidden"
-                        style:display={g.group.activeTabId === t.id ? "block" : "none"}
+                        style:display={paneActive ? "block" : "none"}
                         role="group"
-                        data-pty-id={t.id}
+                        data-pty-id={t.kind === "terminal" ? t.id : undefined}
                         onpointerdown={() => terminals.setActiveTab(g.group.id, t.id)}
-                        oncontextmenu={(e) => terminalMenu(e, g.group.id, t.id)}
+                        oncontextmenu={t.kind === "terminal"
+                          ? (e) => terminalMenu(e, g.group.id, t.id)
+                          : undefined}
                       >
-                        {#if t.exited}
-                          <span
-                            class="absolute left-1 top-1 z-10 rounded bg-card/80 px-1 text-[10px] text-muted-foreground"
-                            >{i18n.t("terminal.exited")}</span
-                          >
+                        {#if t.kind === "terminal"}
+                          {#if t.exited}
+                            <span
+                              class="absolute left-1 top-1 z-10 rounded bg-card/80 px-1 text-[10px] text-muted-foreground"
+                              >{i18n.t("terminal.exited")}</span
+                            >
+                          {/if}
+                          <Terminal
+                            id={t.id}
+                            cwd={t.cwd}
+                            shell={t.shell}
+                            args={t.args}
+                            runCommand={t.runCommand}
+                            focused={activeRegion && paneActive}
+                            onexit={() => void terminals.closeTabAnywhere(t.id)}
+                          />
+                        {:else if t.kind === "file"}
+                          {@const st = terminals.fileState(t.id)}
+                          {#if st}
+                            <FileEditor fileState={st} active={activeRegion && paneActive} />
+                          {/if}
+                        {:else}
+                          {@const st = terminals.diffState(t.id)}
+                          {#if st}
+                            <DiffPane state={st} />
+                          {/if}
                         {/if}
-                        <Terminal
-                          id={t.id}
-                          cwd={t.cwd}
-                          shell={t.shell}
-                          args={t.args}
-                          runCommand={t.runCommand}
-                          focused={activeRegion && g.group.activeTabId === t.id}
-                          onexit={() => void terminals.closeTabAnywhere(t.id)}
-                        />
                       </div>
                     {/each}
                   </div>

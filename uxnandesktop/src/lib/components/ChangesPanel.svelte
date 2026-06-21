@@ -4,6 +4,7 @@
   // viewer. Status updates live via the backend `git:status-changed` event.
   import { Button } from "$lib/components/ui/button";
   import { git, type FileEntry } from "$lib/state/git.svelte";
+  import { terminals } from "$lib/state/terminals.svelte";
   import { cn } from "$lib/utils";
   import { icon, iconButton, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
@@ -98,7 +99,7 @@
 {#snippet fileRow(f: FileEntry, area: Area)}
   {@const b = badge(f, area)}
   {@const isOpen =
-    git.selected?.file === f.path && git.selected?.staged === (area === "staged")}
+    git.path != null && terminals.isDiffOpen(git.path, f.path, area === "staged")}
   {@const ns = git.numstat[f.path]}
   <div
     class={cn(
@@ -108,9 +109,11 @@
     role="button"
     tabindex="0"
     title={i18n.t("rightPanel.viewDiff")}
-    onclick={() => void git.openDiff(f.path, area === "staged")}
+    onclick={() => git.path && terminals.openDiff(git.path, f.path, area === "staged")}
     onkeydown={(e) =>
-      (e.key === "Enter" || e.key === " ") && void git.openDiff(f.path, area === "staged")}
+      (e.key === "Enter" || e.key === " ") &&
+      git.path &&
+      terminals.openDiff(git.path, f.path, area === "staged")}
   >
     <span class={cn("w-3 shrink-0 text-center font-mono font-semibold", text.indicator, b.cls)}>
       {b.letter}

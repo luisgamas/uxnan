@@ -1,10 +1,12 @@
-// File-editor state for the center panel (Svelte 5 runes).
+// Per-tab file-editor state (Svelte 5 runes).
 //
-// Opened from the file-tree tab (right panel). Holds the file currently open in
-// the CodeMirror editor: its content baseline (for dirty tracking), the
-// `git diff HEAD` text that drives the change gutter, and the load/save
-// orchestration. The CodeMirror document itself lives in `FileEditor.svelte`;
-// this store owns everything around it. All FS/git access goes through `$lib/api`.
+// One instance per **file tab** in the center area (registered in the terminals
+// store, rendered by `FileEditor.svelte`). Holds the open file's content
+// baseline (for dirty tracking), the live editor `content` (so the document can
+// be saved headlessly — e.g. from the dirty-close guard), the `git diff HEAD`
+// text that drives the change gutter, and the load/save orchestration. The
+// CodeMirror document itself lives in `FileEditor.svelte`. All FS/git access
+// goes through `$lib/api`.
 
 import { fsReadFile, fsWriteFile, gitDiffHead } from "$lib/api";
 import { git } from "$lib/state/git.svelte";
@@ -23,14 +25,14 @@ function relativeTo(abs: string, root: string): string {
   return abs.split("/").pop() ?? abs;
 }
 
-class FilesStore {
+export class FileEditorState {
+  /** Absolute (forward-slash) path of the file open in the editor. */
+  readonly path: string;
   /** Worktree root (forward-slash) of the open file, for git-relative ops. */
-  worktree = $state<string | null>(null);
-  /** Absolute (forward-slash) path of the file open in the editor, or null. */
-  path = $state<string | null>(null);
+  readonly worktree: string | null;
   /** Worktree-relative path (forward-slash), for git diff + status matching. */
-  rel = $state("");
-  loading = $state(false);
+  readonly rel: string;
+  loading = $state(true);
   saving = $state(false);
   error = $state<string | null>(null);
   /** The file isn't editable text (binary / invalid UTF-8). */
@@ -39,71 +41,82 @@ class FilesStore {
   tooLarge = $state(false);
   /** Last loaded / saved content — the baseline the editor diffs "dirty" against. */
   baseline = $state("");
+  /** Live editor document text (kept in sync by the editor's update listener) so
+   *  the file can be saved without reaching into CodeMirror. */
+  content = $state("");
   /** `git diff HEAD` for the open file; drives the change gutter (empty = clean). */
   headDiff = $state("");
   /** Whether the editor document differs from `baseline` (the editor sets this). */
   dirty = $state(false);
+  /** The file changed on disk while we hold unsaved edits — surfaced as a banner
+   *  offering reload-vs-keep (a clean file is reloaded silently instead). */
+  externallyChanged = $state(false);
   /** Bumped on each successful load so the editor re-initializes its document. */
   rev = $state(0);
 
-  /** File name (last path segment) of the open file. */
-  get name(): string {
-    return this.path ? (this.path.split("/").pop() ?? this.path) : "";
-  }
-
-  /** Open `absPath` (forward-slash) in the editor, resolving its path relative to
-   *  `worktree` for the git gutter. Reads the content + `git diff HEAD`. */
-  async open(absPath: string, worktree: string | null): Promise<void> {
+  constructor(absPath: string, worktree: string | null) {
     this.path = absPath;
     this.worktree = worktree;
     this.rel = worktree ? relativeTo(absPath, worktree) : (absPath.split("/").pop() ?? absPath);
+    void this.load();
+  }
+
+  /** File name (last path segment) of the open file. */
+  get name(): string {
+    return this.path.split("/").pop() ?? this.path;
+  }
+
+  /** Read the file content + its `git diff HEAD` from disk, resetting dirty /
+   *  external-change state. Used on open and to reload after an external edit. */
+  async load(): Promise<void> {
     this.loading = true;
     this.error = null;
     this.binary = false;
     this.tooLarge = false;
     this.dirty = false;
+    this.externallyChanged = false;
     this.headDiff = "";
     try {
-      const r = await fsReadFile(absPath);
+      const r = await fsReadFile(this.path);
       this.binary = r.binary;
       this.tooLarge = r.tooLarge;
       this.baseline = r.content;
-      if (!r.binary && !r.tooLarge && worktree) {
-        this.headDiff = await gitDiffHead(worktree, this.rel).catch(() => "");
+      this.content = r.content;
+      if (!r.binary && !r.tooLarge && this.worktree) {
+        this.headDiff = await gitDiffHead(this.worktree, this.rel).catch(() => "");
       }
       this.rev++;
     } catch (e) {
       this.error = msg(e);
       this.baseline = "";
+      this.content = "";
       this.rev++;
     } finally {
       this.loading = false;
     }
   }
 
-  /** Close the editor (returns the center panel to the terminals). */
-  close(): void {
-    this.path = null;
-    this.dirty = false;
-    this.headDiff = "";
-    this.error = null;
+  /** The file changed on disk: reload silently when clean, else flag the banner
+   *  so the user chooses reload-vs-keep (never clobber unsaved edits). */
+  noteExternalChange(): void {
+    if (this.dirty) this.externallyChanged = true;
+    else void this.load();
   }
 
   /** Persist `content` to disk, then refresh the gutter + the right-panel status
-   *  so the change indicators update immediately (not just on the 3 s watcher). */
+   *  so the change indicators update immediately (not just on the watcher). */
   async save(content: string): Promise<void> {
-    const path = this.path;
-    const worktree = this.worktree;
-    if (!path) return;
     this.saving = true;
     this.error = null;
     try {
-      await fsWriteFile(path, content);
+      await fsWriteFile(this.path, content);
       this.baseline = content;
+      this.content = content;
       this.dirty = false;
-      if (worktree) {
-        this.headDiff = await gitDiffHead(worktree, this.rel).catch(() => "");
-        if (git.path === worktree) void git.refresh();
+      this.externallyChanged = false;
+      if (this.worktree) {
+        this.headDiff = await gitDiffHead(this.worktree, this.rel).catch(() => "");
+        if (git.path === this.worktree) void git.refresh();
       }
     } catch (e) {
       this.error = msg(e);
@@ -113,6 +126,3 @@ class FilesStore {
     }
   }
 }
-
-/** Singleton file-editor store shared by the tree + the center editor. */
-export const files = new FilesStore();

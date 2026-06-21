@@ -59,7 +59,7 @@ class AgentMonitor {
     try {
       await listen<AgentDetected>("agent:detected", (e) => {
         const tab = terminals.findTab(e.payload.ptyId);
-        if (!tab) return;
+        if (!tab || tab.kind !== "terminal") return;
         if (e.payload.command) {
           const a = app.resolveAgent(e.payload.command);
           tab.agentName = a.name;
@@ -94,7 +94,7 @@ class AgentMonitor {
     this.lastOutputAt.set(tabId, Date.now());
     this.notified.delete(tabId);
     const tab = terminals.findTab(tabId);
-    if (tab && !tab.exited && !tab.working) tab.working = true;
+    if (tab && tab.kind === "terminal" && !tab.exited && !tab.working) tab.working = true;
     this.start();
   }
 
@@ -104,6 +104,7 @@ class AgentMonitor {
     const live = new Set<string>();
     for (const { tab, workspace } of terminals.tabsWithWorkspace()) {
       live.add(tab.id);
+      if (tab.kind !== "terminal") continue;
       if (tab.exited) {
         if (tab.working) tab.working = false;
         continue;

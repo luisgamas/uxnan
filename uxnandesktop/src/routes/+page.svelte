@@ -1,15 +1,14 @@
 <script lang="ts">
   import { app } from "$lib/state/app.svelte";
-  import { git } from "$lib/state/git.svelte";
-  import { files } from "$lib/state/files.svelte";
+  import { terminals } from "$lib/state/terminals.svelte";
   import { projects } from "$lib/state/projects.svelte";
+  import { fsSetWatch } from "$lib/api";
   import { i18n } from "$lib/i18n";
   import { matchAction } from "$lib/keybindings";
   import { isUntestedPlatform, osLabel } from "$lib/platform";
   import TriangleAlertIcon from "@lucide/svelte/icons/triangle-alert";
   import TerminalArea from "$lib/components/TerminalArea.svelte";
-  import DiffPanel from "$lib/components/DiffPanel.svelte";
-  import FileEditor from "$lib/components/FileEditor.svelte";
+  import SaveDiscardDialog from "$lib/components/SaveDiscardDialog.svelte";
   import TitleBar from "$lib/components/TitleBar.svelte";
   import LeftSidebar from "$lib/components/LeftSidebar.svelte";
   import RightPanel from "$lib/components/RightPanel.svelte";
@@ -80,6 +79,14 @@
         : "bg-destructive",
   );
 
+  // Aim the backend filesystem watcher at the active worktree (here, not in the
+  // file-tree panel, so it follows the worktree even when the right panel/Files
+  // tab is closed — the center file/diff tabs depend on it for external-change
+  // detection). Emits `fs:changed`, consumed by the file tree + open tabs.
+  $effect(() => {
+    void fsSetWatch(projects.activeWorktreePath).catch(() => {});
+  });
+
   // Suppress the webview's built-in context menu (it's most visible in debug
   // builds and exposes dev/inspect entries). Native menus stay on text fields so
   // right-click paste keeps working; our terminal tab/pane menus call
@@ -101,13 +108,11 @@
     if (!action) return;
     switch (action) {
       case "closeCenter":
-        // Only when the center overlay is open; otherwise let the key through.
-        if (files.path) {
+        // Close the active center tab (terminal / file / diff). Only when one is
+        // open; otherwise let the key through.
+        if (terminals.root) {
           e.preventDefault();
-          files.close();
-        } else if (git.selected) {
-          e.preventDefault();
-          git.closeDiff();
+          terminals.closeActiveTab();
         }
         return;
       case "saveFile":
@@ -146,6 +151,9 @@
   <!-- Quick worktree switcher (Ctrl/Cmd+P) -->
   <WorktreeSearch />
 
+  <!-- Unsaved-edit prompt (driven by the saveDiscard service on tab close) -->
+  <SaveDiscardDialog />
+
   <!-- Content region below the title bar. The three-panel body stays mounted
        even while Settings is open (Settings overlays it), so terminals/PTYs are
        never torn down — otherwise an agent's launch command would be re-typed on
@@ -171,21 +179,11 @@
         ></div>
       {/if}
 
-      <!-- Center area: multiplexed terminals (xterm.js + PTY). When a diff is open
-           it overlays the terminals full-size — they stay mounted underneath, so
-           no PTY/xterm is torn down while reviewing. -->
+      <!-- Center area: a tree of regions whose tabs are terminals, file editors
+           or diffs (TerminalArea). Every tab stays mounted (id-keyed) so no
+           PTY/xterm/CodeMirror is torn down on split or tab switch. -->
       <main class="relative flex min-w-0 flex-1 flex-col overflow-hidden">
         <TerminalArea />
-        {#if files.path}
-          <div class="absolute inset-0 z-10">
-            <FileEditor />
-          </div>
-        {/if}
-        {#if git.selected}
-          <div class="absolute inset-0 z-20">
-            <DiffPanel />
-          </div>
-        {/if}
       </main>
 
       {#if app.settings.rightSidebarOpen}

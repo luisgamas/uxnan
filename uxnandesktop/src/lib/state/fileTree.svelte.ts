@@ -6,7 +6,7 @@
 // access goes through `$lib/api`.
 
 import { listen } from "@tauri-apps/api/event";
-import { fsListDir, fsSetWatch } from "$lib/api";
+import { fsListDir } from "$lib/api";
 import type { FsChangedEvent, FsEntry } from "$lib/types";
 
 /** Safety cap for "expand all" so it never tries to load an unbounded tree. */
@@ -59,9 +59,10 @@ class FileTreeStore {
     }
   }
 
-  /** Point the tree at a worktree root, resetting + loading it, and aim the
-   *  backend filesystem watcher at it. No-op when the root is unchanged, so
-   *  remounting the tab keeps the expanded state. */
+  /** Point the tree at a worktree root, resetting + loading it. No-op when the
+   *  root is unchanged, so remounting the tab keeps the expanded state. The
+   *  backend filesystem watcher is aimed centrally (in `+page.svelte`) so it
+   *  follows the active worktree regardless of which panel/tab is open. */
   setRoot(root: string | null): void {
     void this.startListening();
     if (root === this.root) return;
@@ -70,7 +71,6 @@ class FileTreeStore {
     this.expanded = new Set();
     this.error = null;
     this.query = "";
-    void fsSetWatch(root).catch(() => {});
     if (root) void this.loadDir(root);
   }
 

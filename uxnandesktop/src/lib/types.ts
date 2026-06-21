@@ -256,10 +256,17 @@ export interface HookScripts {
 
 /** Persisted terminal layout (structure only — fresh shells spawn on restore).
  *  Mirrors the serialized form produced by the terminals store. */
+/** One persisted tab descriptor. `kind` is optional for backward compatibility:
+ *  a descriptor with no `kind` (older saved layouts) is a terminal. Diff tabs are
+ *  transient and never persisted. */
+export type SavedTab =
+  | { kind?: "terminal"; title: string; cwd?: string; shell?: string; args?: string[] }
+  | { kind: "file"; title: string; path: string; worktree?: string | null };
+
 export type SavedTermNode =
   | {
       type: "group";
-      tabs: { title: string; cwd?: string; shell?: string; args?: string[] }[];
+      tabs: SavedTab[];
       activeTab: number;
     }
   | {

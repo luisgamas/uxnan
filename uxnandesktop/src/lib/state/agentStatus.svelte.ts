@@ -83,7 +83,9 @@ class AgentStatusStore {
    *  setting). `working` is intentionally skipped — it fires on every tool call. */
   private notifyChange(id: string, status: AgentStatus): void {
     if (app.settings.agentNotifications === false) return;
-    const name = terminals.findTab(id)?.agentName ?? i18n.t("toast.agent");
+    const tab = terminals.findTab(id);
+    const name =
+      (tab?.kind === "terminal" ? tab.agentName : undefined) ?? i18n.t("toast.agent");
     if (status === "done") toast.success(i18n.t("toast.agentDone", { name }));
     else if (status === "blocked") toast.warning(i18n.t("toast.agentBlocked", { name }));
     else if (status === "waiting") toast.info(i18n.t("toast.agentWaiting", { name }));

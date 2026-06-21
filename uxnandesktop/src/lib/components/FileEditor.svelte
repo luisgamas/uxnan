@@ -1,10 +1,11 @@
 <script lang="ts">
-  // Editable file viewer on CodeMirror 6, taking over the center panel (overlays
-  // the terminals, which stay mounted underneath — like DiffPanel). Opened from
-  // the file-tree tab. Syntax-highlighted, with a git change gutter: added lines
-  // get a light highlight, and a small left-edge marker peeks the *removed* lines
-  // on demand (we never show the full diff inline). Save with the button or
-  // Ctrl/Cmd+S → writes to disk and refreshes the change indicators.
+  // Editable file viewer on CodeMirror 6, rendered inside a center **file tab**
+  // (one instance per open file; its state is the `FileEditorState` passed in).
+  // Syntax-highlighted, with a git change gutter: added lines get a light
+  // highlight, and a small left-edge marker peeks the *removed* lines on demand
+  // (we never show the full diff inline). Save with the button or Ctrl/Cmd+S →
+  // writes to disk and refreshes the change indicators. A banner appears when the
+  // file changes on disk while you hold unsaved edits (reload vs keep).
   import { onDestroy, untrack } from "svelte";
   import {
     Decoration,
@@ -23,7 +24,7 @@
     historyKeymap,
     indentWithTab,
   } from "@codemirror/commands";
-  import { files } from "$lib/state/files.svelte";
+  import type { FileEditorState } from "$lib/state/files.svelte";
   import { languageFor, syntaxHighlight } from "$lib/editorLang";
   import { resolveBinding, toCodeMirrorKey } from "$lib/keybindings";
   import { parseHeadDiff } from "$lib/diff";
@@ -33,7 +34,10 @@
   import { i18n } from "$lib/i18n";
   import FileIcon from "@lucide/svelte/icons/file";
   import SaveIcon from "@lucide/svelte/icons/save";
-  import XIcon from "@lucide/svelte/icons/x";
+  import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
+
+  let { fileState, active = false }: { fileState: FileEditorState; active?: boolean } =
+    $props();
 
   // --- change gutter: added-line highlight + removed-line peek ---------------
 
@@ -69,7 +73,7 @@
       for (const ln of this.lines) {
         const row = document.createElement("div");
         row.className = "cm-removed-peek-line";
-        row.textContent = ln.length ? ln : " ";
+        row.textContent = ln.length ? ln : " ";
         wrap.appendChild(row);
       }
       return wrap;
@@ -152,16 +156,16 @@
   });
 
   /** Build the added-line decoration set + removed gutter markers for a doc. */
-  function buildGutter(state: EditorState, diff: string) {
+  function buildGutter(editorState: EditorState, diff: string) {
     const { added, removed } = parseHeadDiff(diff);
-    const lineCount = state.doc.lines;
+    const lineCount = editorState.doc.lines;
     const addedRanges = [...added]
       .filter((n) => n >= 1 && n <= lineCount)
       .sort((a, b) => a - b)
-      .map((n) => Decoration.line({ class: "cm-added-line" }).range(state.doc.line(n).from));
+      .map((n) => Decoration.line({ class: "cm-added-line" }).range(editorState.doc.line(n).from));
     const removedRanges = [...removed.entries()]
       .map(([n, lines]) => {
-        const pos = state.doc.line(Math.min(Math.max(1, n), lineCount)).from;
+        const pos = editorState.doc.line(Math.min(Math.max(1, n), lineCount)).from;
         return new RemovedMarker(lines).range(pos);
       })
       .sort((a, b) => a.from - b.from);
@@ -191,20 +195,20 @@
 
   function doSave() {
     if (!view) return;
-    void files.save(view.state.doc.toString());
+    void fileState.save(view.state.doc.toString());
   }
 
   function build() {
     view?.destroy();
     view = undefined;
     if (!host) return; // binary / too-large / loading: no editor to build
-    const content = untrack(() => files.baseline);
-    const diff = untrack(() => files.headDiff);
-    const name = untrack(() => files.name);
+    const content = untrack(() => fileState.baseline);
+    const diff = untrack(() => fileState.headDiff);
+    const name = untrack(() => fileState.name);
     const lang = languageFor(name);
 
     const saveKey = toCodeMirrorKey(resolveBinding("saveFile"));
-    const state = EditorState.create({
+    const editorState = EditorState.create({
       doc: content,
       extensions: [
         lineNumbers(),
@@ -225,11 +229,15 @@
         changeGutter,
         baseTheme,
         EditorView.updateListener.of((u) => {
-          if (u.docChanged) files.dirty = u.state.doc.toString() !== files.baseline;
+          if (u.docChanged) {
+            const doc = u.state.doc.toString();
+            fileState.content = doc;
+            fileState.dirty = doc !== fileState.baseline;
+          }
         }),
       ],
     });
-    view = new EditorView({ state, parent: host });
+    view = new EditorView({ state: editorState, parent: host });
     const g = buildGutter(view.state, diff);
     view.dispatch({ effects: [setAdded.of(g.added), setRemoved.of(g.removed)] });
   }
@@ -237,7 +245,7 @@
   // Rebuild the document only when a new file is loaded (rev bump). Reading the
   // content/diff under `untrack` keeps this effect from re-running on save.
   $effect(() => {
-    void files.rev;
+    void fileState.rev;
     void host;
     build();
   });
@@ -245,10 +253,22 @@
   // Refresh the gutter when the HEAD diff changes (e.g. after a save) without
   // tearing down the editor — preserves cursor/scroll and unsaved edits.
   $effect(() => {
-    const diff = files.headDiff;
+    const diff = fileState.headDiff;
     if (!view) return;
     const g = buildGutter(view.state, diff);
     view.dispatch({ effects: [clearPeek.of(null), setAdded.of(g.added), setRemoved.of(g.removed)] });
+  });
+
+  // When this tab becomes active (also after a rebuild), the pane went from
+  // hidden (display:none → zero-size) to visible: re-measure so CodeMirror
+  // paints, and take focus for editing.
+  $effect(() => {
+    void fileState.rev;
+    if (!active || !view) return;
+    requestAnimationFrame(() => {
+      view?.requestMeasure();
+      view?.focus();
+    });
   });
 
   onDestroy(() => view?.destroy());
@@ -257,45 +277,56 @@
 <div class="flex h-full min-h-0 flex-col bg-background">
   <header class="flex h-9 shrink-0 items-center gap-2 border-b border-border px-2">
     <FileIcon class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
-    <span class={cn("min-w-0 flex-1 truncate font-mono", text.body)} title={files.path ?? ""}>
-      {files.rel || files.name}
-      {#if files.dirty}<span class="text-amber-600 dark:text-amber-400" title={i18n.t("editor.unsaved")}>●</span>{/if}
+    <span class={cn("min-w-0 flex-1 truncate font-mono", text.body)} title={fileState.path}>
+      {fileState.rel || fileState.name}
+      {#if fileState.dirty}<span class="text-amber-600 dark:text-amber-400" title={i18n.t("editor.unsaved")}>●</span>{/if}
     </span>
-    {#if !files.binary && !files.tooLarge}
+    {#if !fileState.binary && !fileState.tooLarge}
       <Button
         variant="ghost"
         size="sm"
         class={cn("h-6", text.body)}
-        disabled={!files.dirty || files.saving}
+        disabled={!fileState.dirty || fileState.saving}
         title={i18n.t("editor.save")}
         onclick={doSave}
       >
         <SaveIcon data-icon="inline-start" />
-        {files.saving ? i18n.t("editor.saving") : i18n.t("editor.save")}
+        {fileState.saving ? i18n.t("editor.saving") : i18n.t("editor.save")}
       </Button>
     {/if}
-    <Button
-      variant="ghost"
-      size="icon"
-      class="size-6 shrink-0"
-      title={i18n.t("editor.close")}
-      onclick={() => files.close()}
-    >
-      <XIcon class={icon.button} />
-    </Button>
   </header>
 
-  {#if files.error}
-    <div class="shrink-0 border-b border-border px-3 py-1.5">
-      <p class={cn("text-destructive", text.body)}>{files.error}</p>
+  {#if fileState.externallyChanged}
+    <div
+      class="flex shrink-0 items-center gap-2 border-b border-amber-500/40 bg-amber-500/10 px-3 py-1.5"
+    >
+      <RefreshCwIcon class={cn(icon.decorative, "shrink-0 text-amber-600 dark:text-amber-400")} />
+      <span class={cn("min-w-0 flex-1", text.body)}>{i18n.t("editor.externalChanged")}</span>
+      <Button variant="outline" size="sm" class={cn("h-6", text.body)} onclick={() => void fileState.load()}>
+        {i18n.t("editor.reload")}
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        class={cn("h-6", text.body)}
+        onclick={() => (fileState.externallyChanged = false)}
+      >
+        {i18n.t("editor.keepMine")}
+      </Button>
     </div>
   {/if}
 
-  {#if files.loading}
+  {#if fileState.error}
+    <div class="shrink-0 border-b border-border px-3 py-1.5">
+      <p class={cn("text-destructive", text.body)}>{fileState.error}</p>
+    </div>
+  {/if}
+
+  {#if fileState.loading}
     <p class={cn("p-4", text.meta)}>{i18n.t("common.loading")}</p>
-  {:else if files.tooLarge}
+  {:else if fileState.tooLarge}
     <p class={cn("p-4", text.meta)}>{i18n.t("editor.tooLarge")}</p>
-  {:else if files.binary}
+  {:else if fileState.binary}
     <p class={cn("p-4", text.meta)}>{i18n.t("editor.binary")}</p>
   {:else}
     <div bind:this={host} class="min-h-0 flex-1 overflow-hidden"></div>

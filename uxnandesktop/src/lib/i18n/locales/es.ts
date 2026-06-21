@@ -108,6 +108,7 @@ export const es: Record<MessageKey, string> = {
   "terminal.splitRight": "Dividir a la derecha",
   "terminal.splitDown": "Dividir abajo",
   "terminal.closeTerminal": "Cerrar terminal",
+  "terminal.closeTab": "Cerrar pestaña",
 
   // Directory picker
   "picker.title": "Agregar proyecto",
@@ -231,6 +232,16 @@ export const es: Record<MessageKey, string> = {
   "editor.tooLarge": "Este archivo es demasiado grande para editarse aquí.",
   "editor.binary": "Es un archivo binario y no puede editarse como texto.",
   "editor.removedPeek": "{n} línea(s) eliminada(s) — clic para ver",
+  "editor.externalChanged": "Este archivo cambió en disco.",
+  "editor.reload": "Recargar",
+  "editor.keepMine": "Mantener mis cambios",
+  "editor.unsavedTitle": "Cambios sin guardar",
+  "editor.unsavedDesc": "{file} tiene cambios sin guardar. ¿Guardar antes de cerrar?",
+  "editor.unsavedManyDesc": "{n} archivo(s) tienen cambios sin guardar. ¿Guardarlos antes de cerrar?",
+  "editor.saveAndClose": "Guardar y cerrar",
+  "editor.discardClose": "Descartar y cerrar",
+  "editor.saveAllClose": "Guardar todo y cerrar",
+  "editor.discardAllClose": "Descartar todo y cerrar",
 
   // Appearance — temas
   "appearance.import": "Importar",

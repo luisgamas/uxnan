@@ -111,6 +111,7 @@ export const en = {
   "terminal.splitRight": "Split right",
   "terminal.splitDown": "Split down",
   "terminal.closeTerminal": "Close terminal",
+  "terminal.closeTab": "Close tab",
 
   // Directory picker
   "picker.title": "Add project",
@@ -234,6 +235,16 @@ export const en = {
   "editor.tooLarge": "This file is too large to edit here.",
   "editor.binary": "This is a binary file and can't be edited as text.",
   "editor.removedPeek": "{n} removed line(s) — click to peek",
+  "editor.externalChanged": "This file changed on disk.",
+  "editor.reload": "Reload",
+  "editor.keepMine": "Keep my changes",
+  "editor.unsavedTitle": "Unsaved changes",
+  "editor.unsavedDesc": "{file} has unsaved changes. Save before closing?",
+  "editor.unsavedManyDesc": "{n} file(s) have unsaved changes. Save them before closing?",
+  "editor.saveAndClose": "Save & close",
+  "editor.discardClose": "Discard & close",
+  "editor.saveAllClose": "Save all & close",
+  "editor.discardAllClose": "Discard all & close",
 
   // Appearance — themes
   "appearance.import": "Import",
