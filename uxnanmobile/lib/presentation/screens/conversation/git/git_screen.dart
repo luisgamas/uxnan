@@ -111,6 +111,14 @@ class _GitScreenState extends ConsumerState<GitScreen> {
     if (mounted) setState(() {});
   }
 
+  /// Pull-to-refresh handler: forwards to [_refresh] with the screen's `cwd`.
+  /// `RefreshIndicator` needs a parameterless `Future<void> Function()`.
+  Future<void> _pullToRefresh() async {
+    final cwd = widget.cwd;
+    if (cwd == null) return;
+    await _refresh(cwd);
+  }
+
   // --- Actions -------------------------------------------------------------
 
   Future<void> _commit(GitRepoState state) async {
@@ -765,85 +773,90 @@ class _GitScreenState extends ConsumerState<GitScreen> {
                     GestureDetector(
                       behavior: HitTestBehavior.translucent,
                       onTap: () => FocusScope.of(context).unfocus(),
-                      child: CustomScrollView(
-                        // Bouncing + always-scrollable matches `NeScaffold`
-                        // and the file browser so the screen feels native
-                        // on iOS and the user can drag-to-refresh even when
-                        // the content fits the viewport.
-                        physics: const BouncingScrollPhysics(
-                          parent: AlwaysScrollableScrollPhysics(),
-                        ),
-                        slivers: [
-                          // Spacer so first content clears the overlaid bar.
-                          SliverToBoxAdapter(
-                            child: SizedBox(height: topInset),
+                      child: RefreshIndicator(
+                        onRefresh: _pullToRefresh,
+                        child: CustomScrollView(
+                          // Bouncing + always-scrollable matches `NeScaffold`
+                          // and the file browser so the screen feels native
+                          // on iOS and the user can drag-to-refresh even when
+                          // the content fits the viewport.
+                          physics: const BouncingScrollPhysics(
+                            parent: AlwaysScrollableScrollPhysics(),
                           ),
-                          if (state == null)
-                            SliverFillRemaining(
-                              hasScrollBody: false,
-                              child:
-                                  _NoRepository(connecting: widget.cwd != null),
-                            )
-                          else ...[
+                          slivers: [
+                            // Spacer so first content clears the overlaid bar.
                             SliverToBoxAdapter(
-                              child: _BranchSummary(state: state),
+                              child: SizedBox(height: topInset),
                             ),
-                            if (files.isEmpty)
-                              const SliverToBoxAdapter(child: _CleanState())
+                            if (state == null)
+                              SliverFillRemaining(
+                                hasScrollBody: false,
+                                child: _NoRepository(
+                                    connecting: widget.cwd != null),
+                              )
                             else ...[
                               SliverToBoxAdapter(
-                                child: _SelectionBar(
-                                  total: files.length,
-                                  selected: _selectedPaths(files).length,
-                                  onSelectAll: () =>
-                                      setState(_deselected.clear),
-                                  onDeselectAll: () => setState(
-                                    () => _deselected
-                                        .addAll(files.map((f) => f.path)),
+                                child: _BranchSummary(state: state),
+                              ),
+                              if (files.isEmpty)
+                                const SliverToBoxAdapter(child: _CleanState())
+                              else ...[
+                                SliverToBoxAdapter(
+                                  child: _SelectionBar(
+                                    total: files.length,
+                                    selected: _selectedPaths(files).length,
+                                    onSelectAll: () =>
+                                        setState(_deselected.clear),
+                                    onDeselectAll: () => setState(
+                                      () => _deselected
+                                          .addAll(files.map((f) => f.path)),
+                                    ),
+                                    onDiscardSelected: _busy
+                                        ? null
+                                        : () => _discard(state, all: false),
                                   ),
-                                  onDiscardSelected: _busy
-                                      ? null
-                                      : () => _discard(state, all: false),
                                 ),
-                              ),
-                              SliverList.builder(
-                                itemCount: files.length,
-                                itemBuilder: (context, index) {
-                                  final file = files[index];
-                                  return _FileCard(
-                                    file: file,
-                                    selected: _isSelected(file.path),
-                                    expanded: _isExpanded(file.path),
-                                    onSelectedChanged: (value) => setState(() {
-                                      if (value) {
-                                        _deselected.remove(file.path);
-                                      } else {
-                                        _deselected.add(file.path);
-                                      }
-                                    }),
-                                    onExpandedChanged: (value) => setState(() {
-                                      if (value) {
-                                        _expanded.add(file.path);
-                                      } else {
-                                        _expanded.remove(file.path);
-                                      }
-                                    }),
-                                    onDiscard: _busy
-                                        ? null
-                                        : () => _discardOne(state, file.path),
-                                    diff: widget.cwd == null ||
-                                            !_isExpanded(file.path)
-                                        ? null
-                                        : _diffFor(widget.cwd!, file.path),
-                                  );
-                                },
-                              ),
-                              const SliverToBoxAdapter(
-                                child: SizedBox(height: UxnanSpacing.lg),
-                              ),
+                                SliverList.builder(
+                                  itemCount: files.length,
+                                  itemBuilder: (context, index) {
+                                    final file = files[index];
+                                    return _FileCard(
+                                      file: file,
+                                      selected: _isSelected(file.path),
+                                      expanded: _isExpanded(file.path),
+                                      onSelectedChanged: (value) =>
+                                          setState(() {
+                                        if (value) {
+                                          _deselected.remove(file.path);
+                                        } else {
+                                          _deselected.add(file.path);
+                                        }
+                                      }),
+                                      onExpandedChanged: (value) =>
+                                          setState(() {
+                                        if (value) {
+                                          _expanded.add(file.path);
+                                        } else {
+                                          _expanded.remove(file.path);
+                                        }
+                                      }),
+                                      onDiscard: _busy
+                                          ? null
+                                          : () => _discardOne(state, file.path),
+                                      diff: widget.cwd == null ||
+                                              !_isExpanded(file.path)
+                                          ? null
+                                          : _diffFor(widget.cwd!, file.path),
+                                    );
+                                  },
+                                ),
+                                const SliverToBoxAdapter(
+                                  child: SizedBox(height: UxnanSpacing.lg),
+                                ),
+                              ],
                             ],
                           ],
-                        ],
+                        ),
                       ),
                     ),
                     Positioned(
@@ -915,13 +928,6 @@ class _GitScreenState extends ConsumerState<GitScreen> {
                       onPressed: _busy ? null : () => _pull(state),
                     ),
                   ),
-                IconSurface(
-                  icon: Icons.refresh_rounded,
-                  tooltip: l10n.gitRefresh,
-                  onPressed: _busy || widget.cwd == null
-                      ? null
-                      : () => _refresh(widget.cwd!),
-                ),
                 if (files.isNotEmpty)
                   IconSurface(
                     icon: allExpanded

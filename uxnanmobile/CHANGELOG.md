@@ -6,6 +6,66 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- **File browser, Git screen and file viewer: app-bar refresh moved to
+  pull-to-refresh.** The standalone *Refresh* `IconSurface` is gone from the
+  `FileBrowserScreen`, `GitScreen` and `FileViewerScreen` app bars; users now
+  refresh by pulling down on the list / file tree / file content (a
+  `RefreshIndicator` wrapping the scroll surface — same gesture the threads
+  list already uses, same `BouncingScrollPhysics` +
+  `AlwaysScrollableScrollPhysics` combo). The
+  `GitScreen` keeps its existing *Pull* (badged, behind > 0) action;
+  refresh was redundant with it. The `FileBrowserScreen` keeps its
+  *Show extensions* / *Show hidden* toggles — moved into a new
+  three-dot overflow menu (see *Added* below) so the bar stays under
+  the M3 ≤3-actions guideline and the chrome matches every other
+  Neural Expressive screen (the conversation screen uses the same
+  `IconSurfaceMenu` pattern for its overflow). The screens no longer
+  carry refresh chrome that the threads list and conversation screen
+  never had; the whole app now refreshes by
+  pull-to-refresh except for the few actions that need to be one-tap
+  reachable (pull, expand-all, the conversation menu).
+  - `file_browser_screen.dart`: new `_refresh()` wraps
+    `manager.loadRoot(cwd)`; `CustomScrollView` wrapped in
+    `RefreshIndicator(onRefresh: _refresh, …)`. Refresh
+    `IconSurface` removed from the app bar; toggle `IconSurface`s
+    moved to a new `IconSurfaceMenu<void>` (see *Added*).
+  - `git_screen.dart`: new `_pullToRefresh()` wrapper for the
+    existing `_refresh(cwd)` (which takes a parameter — the
+    `RefreshIndicator` needs a parameterless `Future<void>
+    Function()`); `CustomScrollView` wrapped in
+    `RefreshIndicator(onRefresh: _pullToRefresh, …)`. Refresh
+    `IconSurface` removed from the app bar.
+  - `git_screen_test.dart`: new widget test (`GitScreen no longer
+    renders a Refresh button in the app bar`) locks in the change
+    (the `Icons.refresh_rounded` glyph is absent and the
+    `RefreshIndicator` is in the tree).
+  - `file_viewer_screen.dart`: refresh `IconSurface` removed from the
+    app bar; the scrollable bodies (code, markdown source/preview, diff)
+    are each wrapped in `RefreshIndicator(onRefresh: _load, edgeOffset:
+    …)` so the spinner clears the transparent `NeTopBar`. `_CodeBody`
+    and `FileDiffViewer` gain the `AlwaysScrollableScrollPhysics` combo
+    so the pull works even when the content fits the viewport.
+
+### Added
+- **File browser: three-dot overflow menu.** The two view toggles
+  (*Show file extensions* / *Show hidden files*) that used to live as
+  standalone `IconSurface`s in the app bar are now in a popup menu
+  triggered by a `Icons.more_vert_rounded` `IconSurfaceMenu` — the same
+  pattern the conversation screen, the git screen overflow and the
+  threads list use for their low-frequency actions. The bar now
+  carries a single trailing action (the overflow) so it lines up with
+  the M3 ≤3-actions guideline and the rest of the Neural Expressive
+  chrome. Each toggle is a `CheckedPopupMenuItem<void>` with the same
+  icon and label the `IconSurface` used, so the selection state is
+  visible at a glance when the menu is open.
+  - `file_browser_screen.dart`: the app bar's `actions:` now holds a
+    single `IconSurfaceMenu<void>` with two
+    `CheckedPopupMenuItem<void>` entries (one per toggle). The
+    `showFileExtensionsProvider` / `showHiddenFilesProvider` setters
+    are unchanged — the menu is a pure UI surface, the persistence +
+    the on-device store are the source of truth.
+
 ### Added
 - **Threads screen — scope selector (Agent / Project).** The threads filter
   bar now starts with a small chip-styled **scope selector** on the left

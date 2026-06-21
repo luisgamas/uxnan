@@ -341,11 +341,9 @@ class _FileViewerScreenState extends ConsumerState<FileViewerScreen> {
                           tooltip: l10n.fileViewerCopy,
                           onPressed: _copyContent,
                         ),
-                        IconSurface(
-                          icon: Icons.refresh_rounded,
-                          tooltip: l10n.gitRefresh,
-                          onPressed: _load,
-                        ),
+                        // Refreshing moved to pull-to-refresh on the content
+                        // body (see [_buildBody]) — matching FileBrowserScreen
+                        // and GitScreen — so the appbar stays lean.
                       ],
               ),
             ),
@@ -418,21 +416,35 @@ class _FileViewerScreenState extends ConsumerState<FileViewerScreen> {
     }
     final text = textContent.content;
     if (isMarkdown && showMdPreview) {
-      return _MarkdownBody(text: text, topInset: topInset);
+      return _refreshable(_MarkdownBody(text: text, topInset: topInset));
     }
     if (showDiffOverlay && payload.diff != null && payload.diff!.isNotEmpty) {
-      return FileDiffViewer(
-        diff: payload.diff!,
-        path: widget.path,
-        topInset: topInset,
+      return _refreshable(
+        FileDiffViewer(
+          diff: payload.diff!,
+          path: widget.path,
+          topInset: topInset,
+        ),
       );
     }
-    return _CodeBody(
-      text: text,
-      language: _languageForPath(widget.path),
-      topInset: topInset,
+    return _refreshable(
+      _CodeBody(
+        text: text,
+        language: _languageForPath(widget.path),
+        topInset: topInset,
+      ),
     );
   }
+
+  /// Wraps a scrollable content body in a pull-to-refresh that re-fetches the
+  /// file (the same `_load` the old appbar refresh button called). The bodies
+  /// scroll under the transparent [NeTopBar], so `edgeOffset` pushes the
+  /// spinner below the bar instead of behind it.
+  Widget _refreshable(Widget child) => RefreshIndicator(
+        onRefresh: _load,
+        edgeOffset: NeTopBar.preferredHeight(context),
+        child: child,
+      );
 
   /// Wraps a non-scrolling placeholder so it sits below the transparent bar
   /// rather than under it.
@@ -643,6 +655,11 @@ class _CodeBody extends StatelessWidget {
     final theme = isDark ? atomOneDarkTheme : atomOneLightTheme;
     return SingleChildScrollView(
       scrollDirection: Axis.vertical,
+      // AlwaysScrollable so the parent RefreshIndicator can be pulled even
+      // when the source fits the viewport (matches the markdown body).
+      physics: const BouncingScrollPhysics(
+        parent: AlwaysScrollableScrollPhysics(),
+      ),
       padding: EdgeInsets.fromLTRB(
         UxnanSpacing.lg,
         topInset + UxnanSpacing.sm,

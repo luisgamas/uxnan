@@ -140,4 +140,19 @@ void main() {
         tester.widget<EditableText>(find.byType(EditableText).first);
     expect(titleEditable.focusNode.hasPrimaryFocus, isFalse);
   });
+
+  testWidgets(
+      'GitScreen no longer renders a Refresh button in the app bar '
+      '(refresh moved to pull-to-refresh)', (tester) async {
+    await tester.pumpWidget(_wrap(const GitScreen(), state: _sampleState()));
+    await tester.pumpAndSettle();
+
+    // The pull-to-refresh gesture lives on the timeline; the app bar no
+    // longer carries a dedicated refresh action. The `Icons.refresh_rounded`
+    // glyph must not appear anywhere on screen.
+    expect(find.byIcon(Icons.refresh_rounded), findsNothing);
+
+    // And the RefreshIndicator must be wired into the scroll surface.
+    expect(find.byType(RefreshIndicator), findsOneWidget);
+  });
 }

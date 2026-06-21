@@ -67,11 +67,17 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
     });
   }
 
+  /// Pull-to-refresh handler: re-issues the root load so the tree rebuilds
+  /// with any out-of-band changes (a write from the file viewer, a git
+  /// commit, a CLI edit). Matches the gesture on the threads list.
+  Future<void> _refresh() async {
+    await ref.read(fileBrowserManagerProvider).loadRoot(widget.cwd);
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final colors = Theme.of(context).colorScheme;
-    final manager = ref.watch(fileBrowserManagerProvider);
     final showExtension = ref.watch(showFileExtensionsProvider);
     final showHidden = ref.watch(showHiddenFilesProvider);
     // The stream-based tree is the canonical state: the manager owns the
@@ -159,36 +165,44 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
                     ?.copyWith(fontSize: 20),
               ),
               actions: [
-                IconSurface(
-                  icon: Icons.refresh_rounded,
-                  tooltip: l10n.gitRefresh,
-                  onPressed: () => manager.loadRoot(widget.cwd),
-                ),
-                // Toggles live in the app bar (not in a popup menu) so the
-                // selected state is visible at a glance — matches the diff
-                // toggle in the file viewer. Both fall back to the Icon
-                // Surface's neutral tone when off; the secondary-container
-                // highlight when on.
-                IconSurface(
-                  icon: Icons.text_fields_rounded,
-                  tooltip: l10n.fileBrowserShowExtensions,
-                  selected: showExtension,
-                  background: showExtension ? colors.secondaryContainer : null,
-                  foreground:
-                      showExtension ? colors.onSecondaryContainer : null,
-                  onPressed: () => ref
-                      .read(showFileExtensionsProvider.notifier)
-                      .set(value: !showExtension),
-                ),
-                IconSurface(
-                  icon: Icons.visibility_outlined,
-                  tooltip: l10n.fileBrowserShowHidden,
-                  selected: showHidden,
-                  background: showHidden ? colors.secondaryContainer : null,
-                  foreground: showHidden ? colors.onSecondaryContainer : null,
-                  onPressed: () => ref
-                      .read(showHiddenFilesProvider.notifier)
-                      .set(value: !showHidden),
+                // The view toggles (extensions, hidden files) live in a popup
+                // menu on the right so the bar stays under the M3 ≤3-actions
+                // guideline and the same chrome as every other NE screen
+                // (the conversation screen uses the same `IconSurfaceMenu`
+                // pattern for its overflow). Refresh was here before; it's
+                // now pull-to-refresh only — matches the threads list.
+                IconSurfaceMenu<void>(
+                  tooltip: l10n.threadsMore,
+                  icon: Icons.more_vert_rounded,
+                  constraints: const BoxConstraints(minWidth: 240),
+                  itemBuilder: (_) => [
+                    CheckedPopupMenuItem<void>(
+                      checked: showExtension,
+                      onTap: () => ref
+                          .read(showFileExtensionsProvider.notifier)
+                          .set(value: !showExtension),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.text_fields_rounded, size: 18),
+                          const SizedBox(width: UxnanSpacing.sm),
+                          Text(l10n.fileBrowserShowExtensions),
+                        ],
+                      ),
+                    ),
+                    CheckedPopupMenuItem<void>(
+                      checked: showHidden,
+                      onTap: () => ref
+                          .read(showHiddenFilesProvider.notifier)
+                          .set(value: !showHidden),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.visibility_outlined, size: 18),
+                          const SizedBox(width: UxnanSpacing.sm),
+                          Text(l10n.fileBrowserShowHidden),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -238,49 +252,52 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
       onTap: () => FocusScope.of(context).unfocus(),
-      child: CustomScrollView(
-        // BouncingScrollPhysics + AlwaysScrollable is the same combo
-        // `NeScaffold` and `ConversationScreen` use, so the list feels
-        // native on both iOS and Android and the user can always
-        // drag-to-refresh even when the tree fits on a single screen.
-        physics: const BouncingScrollPhysics(
-          parent: AlwaysScrollableScrollPhysics(),
+      child: RefreshIndicator(
+        onRefresh: _refresh,
+        child: CustomScrollView(
+          // BouncingScrollPhysics + AlwaysScrollable is the same combo
+          // `NeScaffold` and `ConversationScreen` use, so the list feels
+          // native on both iOS and Android and the user can always
+          // drag-to-refresh even when the tree fits on a single screen.
+          physics: const BouncingScrollPhysics(
+            parent: AlwaysScrollableScrollPhysics(),
+          ),
+          slivers: [
+            SliverToBoxAdapter(
+              child: SizedBox(height: topInset),
+            ),
+            SliverList.builder(
+              itemCount: tiles.length,
+              itemBuilder: (context, index) {
+                final entry = tiles[index];
+                return FileTreeTile(
+                  node: entry.node,
+                  depth: entry.depth,
+                  showExtension: showExtension,
+                  onTap: () {
+                    if (entry.node.isDir) {
+                      unawaited(
+                        manager.toggleDirectory(widget.cwd, entry.node.path),
+                      );
+                    } else {
+                      unawaited(
+                        FileViewerScreen.push(
+                          context,
+                          cwd: widget.cwd,
+                          path: entry.node.path,
+                          node: entry.node,
+                        ),
+                      );
+                    }
+                  },
+                );
+              },
+            ),
+            const SliverToBoxAdapter(
+              child: SizedBox(height: UxnanSpacing.lg),
+            ),
+          ],
         ),
-        slivers: [
-          SliverToBoxAdapter(
-            child: SizedBox(height: topInset),
-          ),
-          SliverList.builder(
-            itemCount: tiles.length,
-            itemBuilder: (context, index) {
-              final entry = tiles[index];
-              return FileTreeTile(
-                node: entry.node,
-                depth: entry.depth,
-                showExtension: showExtension,
-                onTap: () {
-                  if (entry.node.isDir) {
-                    unawaited(
-                      manager.toggleDirectory(widget.cwd, entry.node.path),
-                    );
-                  } else {
-                    unawaited(
-                      FileViewerScreen.push(
-                        context,
-                        cwd: widget.cwd,
-                        path: entry.node.path,
-                        node: entry.node,
-                      ),
-                    );
-                  }
-                },
-              );
-            },
-          ),
-          const SliverToBoxAdapter(
-            child: SizedBox(height: UxnanSpacing.lg),
-          ),
-        ],
       ),
     );
   }
