@@ -191,6 +191,12 @@ export function revealPath(path: string): Promise<void> {
   return invoke("reveal_path", { path });
 }
 
+/** Set (or clear with `null`) the worktree root the filesystem watcher follows.
+ *  The backend then emits `fs:changed` as files under it change on disk. */
+export function fsSetWatch(path: string | null): Promise<void> {
+  return invoke("fs_set_watch", { path });
+}
+
 /** Working-tree-vs-HEAD diff for one file, for the editor's change gutter.
  *  Empty for a clean or untracked file. */
 export function gitDiffHead(path: string, file: string): Promise<string> {

@@ -5,8 +5,9 @@
 // the "Changes" tab and back. Reset whenever the active worktree changes. All FS
 // access goes through `$lib/api`.
 
-import { fsListDir } from "$lib/api";
-import type { FsEntry } from "$lib/types";
+import { listen } from "@tauri-apps/api/event";
+import { fsListDir, fsSetWatch } from "$lib/api";
+import type { FsChangedEvent, FsEntry } from "$lib/types";
 
 /** Safety cap for "expand all" so it never tries to load an unbounded tree. */
 const EXPAND_ALL_CAP = 1500;
@@ -28,16 +29,48 @@ class FileTreeStore {
   error = $state<string | null>(null);
   /** Live filter query for the tree (matches entry names; empty = no filter). */
   query = $state("");
+  private listening = false;
 
-  /** Point the tree at a worktree root, resetting + loading it. No-op when the
-   *  root is unchanged, so remounting the tab keeps the expanded state. */
+  /** Subscribe to the backend's `fs:changed` events (once) so files created,
+   *  deleted or edited on disk reload the affected directories automatically.
+   *  Events for a root other than the one we're showing are ignored. */
+  async startListening(): Promise<void> {
+    if (this.listening) return;
+    this.listening = true;
+    try {
+      await listen<FsChangedEvent>("fs:changed", (e) => {
+        if (e.payload.root === this.root) this.applyFsChange(e.payload.paths);
+      });
+    } catch {
+      // No Tauri event bus (e.g. the plain web preview) — manual refresh only.
+      this.listening = false;
+    }
+  }
+
+  /** Reload every already-loaded directory whose contents may have changed. The
+   *  backend reports each changed path together with its parent dir, so a new or
+   *  deleted entry surfaces by reloading the parent (which we have loaded iff
+   *  it's expanded/visible). Collapsed/unloaded dirs are skipped — they reload
+   *  lazily on next expand. */
+  private applyFsChange(paths: string[]): void {
+    const affected = new Set(paths);
+    for (const dir of Object.keys(this.childrenByDir)) {
+      if (affected.has(dir)) void this.loadDir(dir, true);
+    }
+  }
+
+  /** Point the tree at a worktree root, resetting + loading it, and aim the
+   *  backend filesystem watcher at it. No-op when the root is unchanged, so
+   *  remounting the tab keeps the expanded state. */
   setRoot(root: string | null): void {
+    void this.startListening();
     if (root === this.root) return;
     this.root = root;
     this.childrenByDir = {};
     this.expanded = new Set();
     this.error = null;
     this.query = "";
+    void fsSetWatch(root).catch(() => {});
     if (root) void this.loadDir(root);
   }
 

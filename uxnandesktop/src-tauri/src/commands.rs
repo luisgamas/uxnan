@@ -348,6 +348,23 @@ pub async fn fs_write_file(path: String, content: String) -> Result<(), CommandE
         .map_err(CommandError::from)
 }
 
+/// Set (or clear with `None`) the worktree root the filesystem watcher follows.
+/// The frontend calls this when the active worktree changes; the backend emits
+/// `fs:changed` (debounced) as files under it are created/deleted/edited so the
+/// file tree + open editor stay current without a manual refresh.
+#[tauri::command]
+pub async fn fs_set_watch(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    path: Option<String>,
+) -> Result<(), CommandError> {
+    state
+        .fs_watcher
+        .set(&app, path)
+        .await
+        .map_err(|e| CommandError::new("FS_WATCH_FAILED", e.to_string()))
+}
+
 /// Reveal a path in the OS file manager (Explorer / Finder / the default file
 /// manager), selecting the item. Powers the file tree's "open in file manager".
 #[tauri::command]

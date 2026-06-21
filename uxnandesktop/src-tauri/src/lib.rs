@@ -10,6 +10,7 @@ mod browse;
 mod commands;
 mod error;
 mod fs;
+mod fswatch;
 mod git;
 mod gitfast;
 mod hooks;
@@ -205,6 +206,7 @@ pub fn run() {
             commands::fs_list_dir,
             commands::fs_read_file,
             commands::fs_write_file,
+            commands::fs_set_watch,
             commands::reveal_path,
             commands::git_diff_head,
             commands::set_terminal_layout,

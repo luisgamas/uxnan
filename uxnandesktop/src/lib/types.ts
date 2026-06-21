@@ -168,6 +168,14 @@ export interface FileNumstat {
   deleted: number;
 }
 
+/** Payload of the `fs:changed` event (mirror of Rust `FsChangedEvent`): the
+ *  watched worktree root plus the affected paths (changed entries + their parent
+ *  dirs), all forward-slash normalized. */
+export interface FsChangedEvent {
+  root: string;
+  paths: string[];
+}
+
 /** Payload of the `git:status-changed` event (mirror of Rust `GitStatusEvent`). */
 export interface GitStatusEvent {
   path: string;

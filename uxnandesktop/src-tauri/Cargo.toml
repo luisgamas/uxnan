@@ -36,6 +36,12 @@ sysinfo = "0.33"
 # git CLI (git.rs); git2 is the fast path with a CLI fallback. Vendored libgit2.
 git2 = { version = "0.20", default-features = false }
 axum = { version = "0.8", default-features = false, features = ["json", "tokio", "http1"] }
+# Filesystem watcher for the right-panel file tree + the open-file editor: a
+# debounced, cross-platform watch of the active worktree root that emits
+# `fs:changed` so the UI reflects files created/deleted/edited on disk without a
+# manual refresh. `notify` is re-exported by the debouncer; pinned together.
+notify = "6"
+notify-debouncer-full = "0.3"
 
 # Windows-only: SetThreadExecutionState for the keep-awake feature (power.rs).
 [target.'cfg(windows)'.dependencies]
