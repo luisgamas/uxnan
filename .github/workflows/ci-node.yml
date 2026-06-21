@@ -39,7 +39,10 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
-        node: ["20", "22"]
+        # node 22 (LTS) + 24 (current). node 20 is dropped: it is deprecated on
+        # GitHub runners AND its `node --test` does not support glob patterns
+        # (the "dist/test/**/*.test.js" arg) — that landed in node 21.
+        node: ["22", "24"]
 
     steps:
       - name: Checkout
