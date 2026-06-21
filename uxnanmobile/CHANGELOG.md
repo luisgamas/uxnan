@@ -7,6 +7,22 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Git screen commit composer autofocus on open.** The title field of the
+  commit composer in the full-screen `GitScreen` now opens with primary
+  focus, so the keyboard pops up as soon as the repo state loads (matches
+  the conversation composer: the user opened the screen to type a commit
+  message). The existing tap-outside-to-unfocus behavior on the timeline
+  area (`GestureDetector` + `FocusScope.unfocus` in `GitScreen.build`) is
+  preserved — tapping the file list or branch summary still dismisses the
+  keyboard. Implemented as `autofocus: true` on the title
+  `_BorderlessField` (only the title; the description and co-author fields
+  stay non-autofocus so expanding the details doesn't yank the caret).
+  `_BorderlessField` gained an optional `autofocus` parameter (default
+  `false`) so the other call sites are unaffected. Covered by two widget
+  tests in `git_screen_test.dart` (`GitScreen autofocuses the commit
+  title field on first build` + `GitScreen keeps the
+  tap-outside-to-unfocus behavior on the commit title field`).
+
 - **Composer autofocus on conversation open.** The message composer's text
   field now opens with primary focus, so the keyboard pops up the moment a
   conversation is opened (matches the user's expectation: the composer is

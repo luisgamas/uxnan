@@ -1491,6 +1491,15 @@ class _CommitBar extends StatelessWidget {
                           hint: l10n.gitCommitMessageLabel,
                           style: textTheme.titleSmall,
                           textInputAction: TextInputAction.next,
+                          // Autofocus the title field the first time the
+                          // commit bar appears: the user opened the git
+                          // screen to type a commit message, so the keyboard
+                          // should pop up as soon as the repo state loads.
+                          // Tapping the timeline area (the
+                          // GestureDetector in build()) still drops focus
+                          // via FocusScope.unfocus — the existing
+                          // tap-outside-to-unfocus behavior is preserved.
+                          autofocus: true,
                         ),
                       ),
                       const SizedBox(width: UxnanSpacing.xs),
@@ -1584,6 +1593,7 @@ class _BorderlessField extends StatelessWidget {
     this.minLines,
     this.maxLines = 1,
     this.textInputAction,
+    this.autofocus = false,
   });
 
   final TextEditingController controller;
@@ -1593,6 +1603,11 @@ class _BorderlessField extends StatelessWidget {
   final int? minLines;
   final int maxLines;
   final TextInputAction? textInputAction;
+
+  /// Whether the field should request focus on first build. Only the title
+  /// field passes `true`; the description and co-author fields stay
+  /// non-autofocus so expanding the details doesn't yank the caret.
+  final bool autofocus;
 
   @override
   Widget build(BuildContext context) {
@@ -1605,6 +1620,7 @@ class _BorderlessField extends StatelessWidget {
       style: style,
       textInputAction: textInputAction,
       textCapitalization: TextCapitalization.sentences,
+      autofocus: autofocus,
       decoration: InputDecoration(
         isDense: true,
         border: InputBorder.none,

@@ -98,4 +98,46 @@ void main() {
 
     expect(find.text('No changes to commit'), findsOneWidget);
   });
+
+  testWidgets('GitScreen autofocuses the commit title field on first build',
+      (tester) async {
+    await tester.pumpWidget(_wrap(const GitScreen(), state: _sampleState()));
+    await tester.pumpAndSettle();
+
+    // The title is the first TextField in the commit bar; the description and
+    // co-author fields live inside an AnimatedSize that's collapsed by
+    // default, so they're not in the tree yet.
+    final titleField = tester.widget<TextField>(find.byType(TextField).first);
+    expect(titleField.autofocus, isTrue);
+
+    // The framework-level primary focus is on the title field's editable.
+    final editable =
+        tester.widget<EditableText>(find.byType(EditableText).first);
+    expect(editable.focusNode.hasPrimaryFocus, isTrue);
+  });
+
+  testWidgets('GitScreen keeps the tap-outside-to-unfocus behavior on the '
+      'commit title field', (tester) async {
+    // Mirrors the conversation screen test: the GestureDetector wrapping the
+    // timeline (CustomScrollView) calls FocusManager.primaryFocus.unfocus on
+    // tap, and the commit title — autofocused on open — must drop focus when
+    // the user taps the timeline area.
+    await tester.pumpWidget(_wrap(const GitScreen(), state: _sampleState()));
+    await tester.pumpAndSettle();
+
+    // Pre-condition: the title field is focused.
+    expect(
+      FocusManager.instance.primaryFocus,
+      isNotNull,
+      reason: 'autofocus should have assigned primary focus to the title field',
+    );
+
+    // Tap the timeline area (a SliverList region) → primary focus drops.
+    await tester.tap(find.text('feature/login'));
+    await tester.pumpAndSettle();
+
+    final titleEditable =
+        tester.widget<EditableText>(find.byType(EditableText).first);
+    expect(titleEditable.focusNode.hasPrimaryFocus, isFalse);
+  });
 }
