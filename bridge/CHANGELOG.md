@@ -5,6 +5,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — tool approvals no longer auto-reject while the phone is backgrounded
+- **Connection-aware approval timeout.** `AgentManager.requestApproval`'s
+  auto-reject countdown (`APPROVAL_TIMEOUT_MS`, 5 min) now only runs while a
+  phone has a live channel. While no phone is connected the approval **waits**
+  (its card is already replayed from the per-device outbound log on reconnect),
+  so a turn that hits an approval (incl. Claude's `AskUserQuestion`) while the
+  app is backgrounded no longer defaults to `reject` on a prompt the user never
+  saw — which made the agent take an unauthorized default and the turn appear
+  "cut". A phone (re)connect grants a fresh window; the last disconnect pauses
+  the countdown. Wired via `SessionRegistry.anyActive()` →
+  `AgentManager.isPhoneConnected`, with `onPhoneConnected` / `onPhoneDisconnected`
+  called from the session handler on sink register/unregister. New
+  `approvalTimeoutMs` option (test seam). Files: `src/agents/agent-manager.ts`,
+  `src/transport/session-registry.ts`, `src/transport/session-handler.ts`,
+  `src/bridge.ts`. Tests: `test/agents/agent-manager.test.ts` (offline-wait +
+  disconnect-pause).
+- **Approval hooks wait long enough for the user to return.** The Claude
+  `PreToolUse` hook (and the Gemini `BeforeTool` hook) now set an explicit
+  `timeout` of 1800 s, well above the CLI's ~60 s default. Without it the CLI
+  aborted the hook (defaulting the tool to deny) long before a backgrounded
+  phone could reconnect and answer — the other half of the same "auto-answered"
+  bug. Files: `src/adapters/claude-adapter.ts`, `src/adapters/gemini-adapter.ts`.
+
 ### Changed — push notifications doc moved here, rewritten bridge-first
 - `relay/docs/push-notifications.md` → **`bridge/docs/push-notifications.md`**.
   Reframed bridge-first: background push is delivered **directly by the bridge**

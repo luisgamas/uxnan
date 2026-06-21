@@ -210,6 +210,88 @@ test('requestApproval resolves deny on rejection', async () => {
   await rm(baseDir, { recursive: true, force: true });
 });
 
+test('approval waits while no phone is connected, then times out once one connects', async () => {
+  const baseDir = join(tmpdir(), `uxnan-am-appr-offline-${randomUUID()}`);
+  const store = new ThreadStore(new DaemonState(baseDir));
+  const blocks: { content: { approvalId?: string; action?: string } }[] = [];
+  let connected = false;
+  const manager = new AgentManager({
+    store,
+    notify: (message) => {
+      const m = message as { method: string; params?: unknown };
+      if (m.method === StreamNotification.ContentBlock) {
+        blocks.push(m.params as { content: { approvalId?: string; action?: string } });
+      }
+    },
+    now: () => 1,
+    logger: createLogger('test', 'error'),
+    defaultAgent: 'echo',
+    isPhoneConnected: () => connected,
+    approvalTimeoutMs: 60, // tiny window so the test is fast
+  });
+  manager.register(new EchoAgentAdapter());
+
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  await manager.sendTurn(thread.id, 'approval-demo');
+  await waitFor(() => blocks.length > 0);
+
+  // Phone offline: the approval must NOT auto-reject, even past its window.
+  let settled: string | undefined;
+  const decisionPromise = manager
+    .requestApproval(thread.id, { toolName: 'Bash', input: { command: 'ls' } })
+    .then((d) => (settled = d));
+  await waitFor(() => blocks.some((b) => b.content.action?.includes('Bash')));
+  await new Promise((resolve) => setTimeout(resolve, 200)); // > window
+  assert.equal(settled, undefined, 'must keep waiting while offline');
+
+  // Phone connects: a fresh window is armed and the approval now times out.
+  connected = true;
+  manager.onPhoneConnected();
+  await decisionPromise;
+  assert.equal(settled, 'reject', 'times out to reject once a phone can see it');
+
+  await rm(baseDir, { recursive: true, force: true });
+});
+
+test('a disconnect pauses the approval countdown so it never fires offline', async () => {
+  const baseDir = join(tmpdir(), `uxnan-am-appr-pause-${randomUUID()}`);
+  const store = new ThreadStore(new DaemonState(baseDir));
+  const blocks: { content: { approvalId?: string; action?: string } }[] = [];
+  let connected = true;
+  const manager = new AgentManager({
+    store,
+    notify: (message) => {
+      const m = message as { method: string; params?: unknown };
+      if (m.method === StreamNotification.ContentBlock) {
+        blocks.push(m.params as { content: { approvalId?: string; action?: string } });
+      }
+    },
+    now: () => 1,
+    logger: createLogger('test', 'error'),
+    defaultAgent: 'echo',
+    isPhoneConnected: () => connected,
+    approvalTimeoutMs: 60,
+  });
+  manager.register(new EchoAgentAdapter());
+
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  await manager.sendTurn(thread.id, 'approval-demo');
+  await waitFor(() => blocks.length > 0);
+
+  // Armed while connected, but the phone drops before the window elapses.
+  let settled: string | undefined;
+  void manager
+    .requestApproval(thread.id, { toolName: 'Bash', input: { command: 'ls' } })
+    .then((d) => (settled = d));
+  await waitFor(() => blocks.some((b) => b.content.action?.includes('Bash')));
+  connected = false;
+  manager.onPhoneDisconnected();
+  await new Promise((resolve) => setTimeout(resolve, 200)); // > window
+  assert.equal(settled, undefined, 'paused countdown must not fire while offline');
+
+  await rm(baseDir, { recursive: true, force: true });
+});
+
 test('respondApproval rejects when the thread has no agent', async () => {
   const baseDir = join(tmpdir(), `uxnan-am-appr2-${randomUUID()}`);
   const store = new ThreadStore(new DaemonState(baseDir));

@@ -82,6 +82,23 @@ export interface AgentManagerOptions {
   defaultAgent: AgentId;
   /** Optional hook fired when a turn completes or errors (e.g. push notifications). */
   onTurnEnd?: (info: TurnEndInfo) => void;
+  /**
+   * Whether at least one phone currently has a live channel. The approval
+   * auto-reject countdown ({@link APPROVAL_TIMEOUT_MS}) only runs while this is
+   * true, so an approval requested while the phone is backgrounded/offline
+   * WAITS (its card is replayed from the outbound log on reconnect) instead of
+   * defaulting to reject on a prompt the user never saw — which would make the
+   * agent take an unauthorized default action and the turn appear "cut".
+   * Defaults to always-connected when omitted (preserves the prior timeout
+   * behavior, e.g. in tests).
+   */
+  isPhoneConnected?: () => boolean;
+  /**
+   * Override the approval auto-reject window in ms (defaults to
+   * {@link APPROVAL_TIMEOUT_MS}). Injected so tests can exercise the timeout
+   * without waiting minutes.
+   */
+  approvalTimeoutMs?: number;
 }
 
 export interface SendTurnOptions {
@@ -117,13 +134,19 @@ export class AgentManager {
    * Codex). */
   readonly #pendingHookApprovals = new Map<
     string,
-    { resolve: (decision: ApprovalDecision) => void; timer: ReturnType<typeof setTimeout> }
+    { resolve: (decision: ApprovalDecision) => void; timer: ReturnType<typeof setTimeout> | undefined }
   >();
   #approvalSeq = 0;
   readonly #options: AgentManagerOptions;
+  /** Whether a phone is connected to see/answer approvals (see options). */
+  readonly #isPhoneConnected: () => boolean;
+  /** Approval auto-reject window in ms (see options). */
+  readonly #approvalTimeoutMs: number;
 
   constructor(options: AgentManagerOptions) {
     this.#options = options;
+    this.#isPhoneConnected = options.isPhoneConnected ?? (() => true);
+    this.#approvalTimeoutMs = options.approvalTimeoutMs ?? APPROVAL_TIMEOUT_MS;
   }
 
   register(adapter: IAgentAdapter, meta?: Partial<AgentMeta>): void {
@@ -275,12 +298,52 @@ export class AgentManager {
       makeNotification(StreamNotification.ContentBlock, { threadId, turnId, messageId, content }),
     );
     return new Promise<ApprovalDecision>((resolve) => {
-      const timer = setTimeout(() => {
-        this.#pendingHookApprovals.delete(approvalId);
-        resolve('reject');
-      }, APPROVAL_TIMEOUT_MS);
-      this.#pendingHookApprovals.set(approvalId, { resolve, timer });
+      this.#pendingHookApprovals.set(approvalId, { resolve, timer: undefined });
+      // Only start the auto-reject countdown while a phone is connected to see
+      // and answer the card. While offline the approval WAITS (the card replays
+      // from the outbound log on reconnect), so the agent never takes an
+      // unauthorized default the user never saw. The countdown (re)starts when a
+      // phone (re)connects — see onPhoneConnected.
+      if (this.#isPhoneConnected()) this.#armApprovalTimeout(approvalId);
     });
+  }
+
+  /**
+   * (Re)arms the auto-reject countdown for a pending approval. Idempotent —
+   * clears any existing timer first, so a phone reconnect grants a fresh window.
+   */
+  #armApprovalTimeout(approvalId: string): void {
+    const pending = this.#pendingHookApprovals.get(approvalId);
+    if (!pending) return;
+    if (pending.timer) clearTimeout(pending.timer);
+    pending.timer = setTimeout(() => {
+      this.#pendingHookApprovals.delete(approvalId);
+      pending.resolve('reject');
+    }, this.#approvalTimeoutMs);
+  }
+
+  /**
+   * A phone (re)connected: grant a fresh auto-reject window to every approval
+   * that was waiting while the user was away (its card is replayed on
+   * reconnect), so the user actually gets time to answer it.
+   */
+  onPhoneConnected(): void {
+    for (const approvalId of this.#pendingHookApprovals.keys()) {
+      this.#armApprovalTimeout(approvalId);
+    }
+  }
+
+  /**
+   * The last phone disconnected: stop every approval's auto-reject countdown so
+   * a pending approval waits for the user to return instead of defaulting to
+   * reject on a card they never saw. No-op while any phone is still connected.
+   */
+  onPhoneDisconnected(): void {
+    if (this.#isPhoneConnected()) return;
+    for (const pending of this.#pendingHookApprovals.values()) {
+      if (pending.timer) clearTimeout(pending.timer);
+      pending.timer = undefined;
+    }
   }
 
   /**

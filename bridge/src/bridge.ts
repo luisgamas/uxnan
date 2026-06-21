@@ -158,6 +158,10 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
     logger,
     defaultAgent: config.defaultAgent,
     onTurnEnd: (info) => pushService.onTurnEnd(info),
+    // Pause the approval auto-reject countdown while no phone is connected, so an
+    // approval requested while the app is backgrounded waits (and replays on
+    // reconnect) instead of defaulting to reject on a card the user never saw.
+    isPhoneConnected: () => sessionRegistry.anyActive(),
   });
   // Echo: built-in reference agent (no external CLI), useful for development.
   agentManager.register(new EchoAgentAdapter(), { displayName: 'Echo (dev)' });
