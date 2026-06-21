@@ -915,3 +915,20 @@ the maintainer approves:
    + `ANDROID_KEY_PROPERTIES`, Firebase config files, iOS signing
    cert/provisioning profile + APNs key. List them in `FOR-HUMAN.md` when we
    wire the workflow.
+
+**Status (2026-06-21):** the **verify** workflow is DONE
+(`.github/workflows/ci-mobile.yml`: gen-l10n + l10n drift check, dart format,
+analyze, test — validated locally, 375 tests green). Release signing is wired in
+`android/app/build.gradle.kts` (reads `key.properties`, debug fallback). The
+signed **release** job (AAB → Google Play **internal** track via
+`r0adkll/upload-google-play`) is the remaining piece (`release-mobile.yml`).
+Secrets already loaded: `ANDROID_KEYSTORE_B64`, keystore password/alias/key
+password, `GOOGLE_SERVICES_JSON`, `PLAY_SERVICE_ACCOUNT_JSON_BASE64`. Mobile is
+distributed via **Google Play**, not GitHub Releases.
+
+### Deferred — in-app version checker
+- [ ] Notify the user when a newer app version is available and let them decide
+  to update (no silent install). Paths: (a) while distributed as an APK → poll
+  the GitHub Releases API + show a banner with the download link; (b) on Google
+  Play → the In-App Updates API (flexible/immediate). iOS waits for the App
+  Store path when Apple resumes.

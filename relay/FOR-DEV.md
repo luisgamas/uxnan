@@ -130,3 +130,18 @@ Endpoints (architecture §5.10.1–§5.10.4), in `src/push.ts` + `src/relay-serv
   `docs/testing.md` / `../bridge/docs/testing.md`.
 - Push (Phase 6): test endpoints with a fake `PushSender`; real delivery needs a
   device + Firebase project (see `relay/FOR-HUMAN.md`).
+
+## CI/CD status (2026-06-21) + deferred
+- ✅ **Verify** — covered by `.github/workflows/ci-node.yml` (shared+bridge+relay
+  matrix). The npm **publish** workflow is shared with the bridge (publish order
+  `@uxnan/shared` → `uxnan-bridge`/`uxnan-relay`, `--tag alpha`).
+- [ ] **Docker image (GHCR)** — DEFERRED. Containerize for one-command
+  self-hosting: a `Dockerfile` (`node:20-alpine`, copy `dist/`,
+  `CMD ["uxnan-relay"]`, expose `8787`/`$RELAY_PORT`) + a CI job publishing to
+  **GHCR** (free for public repos) per release. Env: `RELAY_PORT`,
+  `UXNAN_FCM_SERVICE_ACCOUNT` (optional push), `UXNAN_RELAY_STATE`. Document
+  `docker run` + a `docker-compose.yml` in `docs/deploy.md`. Until then: npm
+  (`uxnan-relay`) + manual host.
+- [ ] **CLI version-update notice** — on startup, compare the installed version
+  against the npm registry and print "new version available: npm i -g
+  uxnan-relay@latest"; the user decides. No auto-update.
