@@ -176,6 +176,22 @@ export interface FsChangedEvent {
   paths: string[];
 }
 
+/** One commit in the history log (mirror of Rust `CommitInfo`). `parents` powers
+ *  the branch graph (2+ = a merge); `refs` are the decorations (`HEAD`, branch
+ *  names, `tag: …`) pointing at this commit. */
+export interface CommitInfo {
+  hash: string;
+  shortHash: string;
+  parents: string[];
+  subject: string;
+  body: string;
+  authorName: string;
+  authorEmail: string;
+  /** Author time, Unix seconds. */
+  timestamp: number;
+  refs: string[];
+}
+
 /** Payload of the `git:status-changed` event (mirror of Rust `GitStatusEvent`). */
 export interface GitStatusEvent {
   path: string;

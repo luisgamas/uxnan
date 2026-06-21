@@ -17,7 +17,7 @@ import type { FsChangedEvent, SavedTab, SavedTermNode, SavedTerminalLayout } fro
 import { i18n } from "$lib/i18n";
 import { saveDiscard } from "$lib/state/confirm.svelte";
 import { FileEditorState } from "$lib/state/files.svelte";
-import { DiffViewerState } from "$lib/state/git.svelte";
+import { CommitViewerState, DiffViewerState } from "$lib/state/git.svelte";
 
 export type SplitDir = "row" | "col";
 
@@ -75,7 +75,19 @@ export interface DiffTab extends BaseTab {
   staged: boolean;
 }
 
-export type GroupTab = TerminalTab | FileTab | DiffTab;
+/** A commit-viewer tab (read-only): the full diff a commit introduced. Its live
+ *  state lives in the per-tab registry (`commitState`). Self-contained: carries
+ *  its own `worktree`, independent of the right panel's active worktree. */
+export interface CommitTab extends BaseTab {
+  kind: "commit";
+  worktree: string;
+  /** Full commit hash. */
+  hash: string;
+  /** Commit subject (for the tab title tooltip). */
+  subject: string;
+}
+
+export type GroupTab = TerminalTab | FileTab | DiffTab | CommitTab;
 
 /** A region: a tab strip over one-or-more terminals. */
 export interface TabGroup {
@@ -248,12 +260,13 @@ export function computeAreaLayout(root: AreaNode): {
 
 // --- Persistence (structure only; fresh shells spawn on restore) ----------
 
-/** Drop **diff** tabs from a cloned tree (they're transient — never persisted)
- *  and collapse any region/split left empty, so serialization only ever sees
- *  terminal + file tabs in non-empty groups. Returns null when nothing remains. */
+/** Drop **diff** and **commit** tabs from a cloned tree (both transient — never
+ *  persisted) and collapse any region/split left empty, so serialization only
+ *  ever sees terminal + file tabs in non-empty groups. Returns null when nothing
+ *  remains. */
 function pruneDiffs(node: AreaNode): AreaNode | null {
   if (node.kind === "group") {
-    const tabs = node.tabs.filter((t) => t.kind !== "diff");
+    const tabs = node.tabs.filter((t) => t.kind !== "diff" && t.kind !== "commit");
     if (tabs.length === 0) return null;
     const activeTabId = tabs.some((t) => t.id === node.activeTabId)
       ? node.activeTabId
@@ -375,6 +388,8 @@ class TerminalStore {
   private fileStates = new Map<string, FileEditorState>();
   /** Per-tab live state for `diff` tabs, keyed by tab id. */
   private diffStates = new Map<string, DiffViewerState>();
+  /** Per-tab live state for `commit` tabs, keyed by tab id. */
+  private commitStates = new Map<string, CommitViewerState>();
   private fsListening = false;
 
   // The active workspace's tree / active region, proxied so all the per-tree
@@ -611,6 +626,34 @@ class TerminalStore {
     return id;
   }
 
+  /** Open a read-only commit-viewer tab for `hash` in `worktree` (or focus it if
+   *  already open). Carries its own worktree, independent of the right panel. */
+  openCommit(
+    worktree: string,
+    hash: string,
+    subject: string,
+    opts?: { workspace?: string; groupId?: string },
+  ): string {
+    const existing = this.findCommitTab(worktree, hash);
+    if (existing) {
+      this.revealTab(existing.workspace, existing.tab.id);
+      return existing.tab.id;
+    }
+    if (opts?.workspace !== undefined) this.setWorkspace(opts.workspace);
+    const id = crypto.randomUUID();
+    const tab: CommitTab = {
+      kind: "commit",
+      id,
+      title: hash.slice(0, 7),
+      worktree,
+      hash,
+      subject,
+    };
+    this.commitStates.set(id, new CommitViewerState(worktree, hash, subject));
+    this.insertTab(tab, opts?.groupId);
+    return id;
+  }
+
   /** The live editor state for a file tab (undefined for other kinds). */
   fileState(id: string): FileEditorState | undefined {
     return this.fileStates.get(id);
@@ -619,11 +662,17 @@ class TerminalStore {
   diffState(id: string): DiffViewerState | undefined {
     return this.diffStates.get(id);
   }
+  /** The live commit-viewer state for a commit tab (undefined for other kinds). */
+  commitState(id: string): CommitViewerState | undefined {
+    return this.commitStates.get(id);
+  }
   /** Drop the per-tab registry entry for a tab leaving the tree (no-op for a
-   *  terminal). Called from every close path so editor/diff state can't leak. */
+   *  terminal). Called from every close path so editor/diff/commit state can't
+   *  leak. */
   private disposeTab(id: string): void {
     this.fileStates.delete(id);
     this.diffStates.delete(id);
+    this.commitStates.delete(id);
   }
 
   private findFileTab(path: string): { tab: FileTab; workspace: string } | undefined {
@@ -643,6 +692,16 @@ class TerminalStore {
     }
     return undefined;
   }
+  private findCommitTab(
+    worktree: string,
+    hash: string,
+  ): { tab: CommitTab; workspace: string } | undefined {
+    for (const { tab, workspace } of this.tabsWithWorkspace()) {
+      if (tab.kind === "commit" && tab.worktree === worktree && tab.hash === hash)
+        return { tab, workspace };
+    }
+    return undefined;
+  }
   /** Whether a file is already open in some tab (for the tree's open-row mark). */
   isFileOpen(path: string): boolean {
     return this.findFileTab(path) !== undefined;
@@ -650,6 +709,10 @@ class TerminalStore {
   /** Whether a diff is already open in some tab (for the changes-list mark). */
   isDiffOpen(worktree: string, file: string, staged: boolean): boolean {
     return this.findDiffTab(worktree, file, staged) !== undefined;
+  }
+  /** Whether a commit is already open in some tab (for the history-list mark). */
+  isCommitOpen(worktree: string, hash: string): boolean {
+    return this.findCommitTab(worktree, hash) !== undefined;
   }
 
   // --- Agent activity monitoring (read by the agent monitor + the sidebar) ---

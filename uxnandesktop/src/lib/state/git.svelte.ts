@@ -15,6 +15,7 @@ import {
   gitPull,
   gitPush,
   gitSetWatch,
+  gitShow,
   gitStage,
   gitStageAll,
   gitStatus,
@@ -23,6 +24,7 @@ import {
   worktreeStatus,
 } from "$lib/api";
 import { projects } from "$lib/state/projects.svelte";
+import { history } from "$lib/state/history.svelte";
 import { toast, toastError } from "$lib/toast";
 import { i18n } from "$lib/i18n";
 import type { FileChange, GitStatusEvent } from "$lib/types";
@@ -57,8 +59,16 @@ class GitStore {
   /** A staging/commit action is in flight (disables the action buttons). */
   busy = $state(false);
   error = $state<string | null>(null);
-  /** Commit message composer. */
+  /** Commit message composer: subject line. */
   message = $state("");
+  /** Optional extended description (commit body) — collapsed in the composer. */
+  body = $state("");
+  /** Optional `Co-authored-by:` entries, each `Name <email>` — collapsed. */
+  coAuthors = $state<string[]>([]);
+  /** Amend the previous commit instead of creating a new one. */
+  amend = $state(false);
+  /** Append a `Signed-off-by:` trailer (git `-s`). */
+  signOff = $state(false);
   committing = $state(false);
   /** Commits ahead / behind the upstream (for the push/pull bar). */
   ahead = $state(0);
@@ -188,16 +198,45 @@ class GitStore {
     if (this.path === path) void this.refresh();
   }
 
-  /** Commit the staged changes; clears the message and refreshes on success. */
+  /** Compose the full commit message from the composer fields: the subject, the
+   *  optional body (after a blank line), and a trailer block with any
+   *  `Co-authored-by:` entries. `Signed-off-by:` is appended by git itself (the
+   *  `signOff` flag → `-s`) so it uses the configured identity. */
+  buildCommitMessage(): string {
+    const subject = this.message.trim();
+    const body = this.body.trim();
+    const trailers = this.coAuthors
+      .map((c) => c.trim())
+      .filter(Boolean)
+      .map((c) => `Co-authored-by: ${c}`);
+    let out = subject;
+    if (body) out += `\n\n${body}`;
+    if (trailers.length > 0) out += `\n\n${trailers.join("\n")}`;
+    return out;
+  }
+
+  /** Clear the composer (subject + all optional fields) after a successful commit. */
+  private resetComposer(): void {
+    this.message = "";
+    this.body = "";
+    this.coAuthors = [];
+    this.amend = false;
+    this.signOff = false;
+  }
+
+  /** Commit the staged changes (or amend HEAD); clears the composer and refreshes
+   *  on success. The message is composed from the subject + optional body +
+   *  co-author trailers. */
   async commit(): Promise<void> {
     const path = this.path;
-    const message = this.message.trim();
-    if (!path || !message) return;
+    const message = this.buildCommitMessage().trim();
+    if (!path || !this.message.trim()) return;
     this.committing = true;
     this.error = null;
     try {
-      await gitCommit(path, message);
-      this.message = "";
+      await gitCommit(path, message, this.amend, this.signOff);
+      this.resetComposer();
+      history.markStale();
       await this.refresh();
       toast.success(i18n.t("toast.committed"));
     } catch (e) {
@@ -217,6 +256,7 @@ class GitStore {
     this.error = null;
     try {
       await fn(path);
+      history.markStale();
       await this.refresh();
       toast.success(okMsg);
     } catch (e) {
@@ -297,6 +337,44 @@ export class DiffViewerState {
     } catch (e) {
       this.error = msg(e);
       toastError(e);
+    }
+  }
+}
+
+/** Per-tab state for a **commit viewer** opened as a center tab (from the History
+ *  tab). Read-only: shows the full diff a commit introduced (vs its first
+ *  parent). Self-contained — it carries its own `worktree` so it keeps working
+ *  when the right panel switches worktree. One instance per commit tab, rendered
+ *  by `CommitPane.svelte`. */
+export class CommitViewerState {
+  readonly worktree: string;
+  readonly hash: string;
+  readonly subject: string;
+  diff = $state("");
+  diffLoading = $state(true);
+  error = $state<string | null>(null);
+
+  constructor(worktree: string, hash: string, subject: string) {
+    this.worktree = worktree;
+    this.hash = hash;
+    this.subject = subject;
+    void this.reload();
+  }
+
+  /** (Re)load the commit diff. Abandoned after 30 s so the UI never hangs. */
+  async reload(): Promise<void> {
+    this.diffLoading = true;
+    this.error = null;
+    try {
+      const timeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("diff timed out")), 30_000),
+      );
+      this.diff = await Promise.race([gitShow(this.worktree, this.hash), timeout]);
+    } catch (e) {
+      this.error = msg(e);
+      toastError(e);
+    } finally {
+      this.diffLoading = false;
     }
   }
 }

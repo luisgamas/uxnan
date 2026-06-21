@@ -7,6 +7,7 @@
   import * as Tabs from "$lib/components/ui/tabs";
   import FileTreePanel from "./FileTreePanel.svelte";
   import ChangesPanel from "./ChangesPanel.svelte";
+  import HistoryPanel from "./HistoryPanel.svelte";
   import { git } from "$lib/state/git.svelte";
   import { projects } from "$lib/state/projects.svelte";
   import { i18n } from "$lib/i18n";
@@ -14,8 +15,9 @@
   import { cn } from "$lib/utils";
   import FolderTreeIcon from "@lucide/svelte/icons/folder-tree";
   import GitCompareIcon from "@lucide/svelte/icons/git-compare-arrows";
+  import GitBranchIcon from "@lucide/svelte/icons/git-branch";
 
-  let tab = $state<"files" | "changes">("files");
+  let tab = $state<"files" | "changes" | "history">("files");
 
   // Load git status here (the always-mounted parent), not in a tab body: the
   // "Files" tab colors its tree from this status, and the inactive "Changes" tab
@@ -39,11 +41,18 @@
       <GitCompareIcon data-icon="inline-start" class={cn(icon.decorative)} />
       {i18n.t("rightPanel.changesTab")}
     </Tabs.Trigger>
+    <Tabs.Trigger value="history" class="text-xs">
+      <GitBranchIcon data-icon="inline-start" class={cn(icon.decorative)} />
+      {i18n.t("history.tab")}
+    </Tabs.Trigger>
   </Tabs.List>
   <Tabs.Content value="files" class="min-h-0 flex-1 overflow-hidden">
     <FileTreePanel />
   </Tabs.Content>
   <Tabs.Content value="changes" class="min-h-0 flex-1 overflow-hidden">
     <ChangesPanel />
+  </Tabs.Content>
+  <Tabs.Content value="history" class="min-h-0 flex-1 overflow-hidden">
+    <HistoryPanel />
   </Tabs.Content>
 </Tabs.Root>

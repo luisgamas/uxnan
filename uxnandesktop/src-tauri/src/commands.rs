@@ -458,18 +458,45 @@ pub async fn git_apply(
         .map_err(CommandError::from)
 }
 
-/// Commit the staged changes with `message`.
+/// Commit the staged changes with `message`. With `amend`, rewrites the current
+/// `HEAD` commit instead of creating a new one. With `sign_off`, appends a
+/// `Signed-off-by:` trailer using the configured git identity.
 #[tauri::command]
-pub async fn git_commit(path: String, message: String) -> Result<(), CommandError> {
+pub async fn git_commit(
+    path: String,
+    message: String,
+    amend: bool,
+    sign_off: bool,
+) -> Result<(), CommandError> {
     let message = message.trim();
     if message.is_empty() {
         return Err(CommandError::from(AppError::Invalid(
             "commit message is required".to_string(),
         )));
     }
-    git::commit(&path, message)
+    git::commit(&path, message, amend, sign_off)
         .await
         .map_err(CommandError::from)
+}
+
+/// List the worktree's commit history (newest first), `limit` commits from
+/// `skip`. Powers the right panel's "History" tab + branch graph.
+#[tauri::command]
+pub async fn git_log(
+    path: String,
+    limit: u32,
+    skip: u32,
+) -> Result<Vec<git::CommitInfo>, CommandError> {
+    git::log(&path, limit as usize, skip as usize)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Unified diff a single commit introduced (vs its first parent), for the
+/// "History" tab's commit viewer.
+#[tauri::command]
+pub async fn git_show(path: String, hash: String) -> Result<String, CommandError> {
+    git::show(&path, &hash).await.map_err(CommandError::from)
 }
 
 /// Payload of the `git:status-changed` event emitted by the background watcher

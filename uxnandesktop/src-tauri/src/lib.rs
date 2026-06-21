@@ -221,6 +221,8 @@ pub fn run() {
             commands::git_discard,
             commands::git_apply,
             commands::git_commit,
+            commands::git_log,
+            commands::git_show,
             commands::git_set_watch,
             commands::git_push,
             commands::git_pull,

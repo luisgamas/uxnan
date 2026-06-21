@@ -17,6 +17,7 @@
   import Terminal from "./Terminal.svelte";
   import FileEditor from "./FileEditor.svelte";
   import DiffPane from "./DiffPane.svelte";
+  import CommitPane from "./CommitPane.svelte";
   import { resolveAgentDisplay } from "$lib/state/agentDisplay";
   import AgentStatusDot from "./AgentStatusDot.svelte";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
@@ -35,6 +36,7 @@
   import GitBranchIcon from "@lucide/svelte/icons/git-branch";
   import FileIcon from "@lucide/svelte/icons/file";
   import FileDiffIcon from "@lucide/svelte/icons/file-diff";
+  import GitCommitIcon from "@lucide/svelte/icons/git-commit-horizontal";
   import NewWorktreeDialog from "./NewWorktreeDialog.svelte";
 
   /** Default profile's shell/args, for region-level + and splits. A blank
@@ -404,12 +406,21 @@
                               title={i18n.t("editor.unsaved")}>●</span
                             >
                           {/if}
-                        {:else}
+                        {:else if t.kind === "diff"}
                           <FileDiffIcon class={cn(icon.decorative, "shrink-0")} />
                           <button
                             class="max-w-[120px] truncate"
                             onclick={() => terminals.setActiveTab(g.group.id, t.id)}
                             title={t.file}
+                          >
+                            {t.title}
+                          </button>
+                        {:else}
+                          <GitCommitIcon class={cn(icon.decorative, "shrink-0")} />
+                          <button
+                            class="max-w-[120px] truncate font-mono"
+                            onclick={() => terminals.setActiveTab(g.group.id, t.id)}
+                            title={t.subject}
                           >
                             {t.title}
                           </button>
@@ -489,10 +500,15 @@
                           {#if st}
                             <FileEditor fileState={st} active={activeRegion && paneActive} />
                           {/if}
-                        {:else}
+                        {:else if t.kind === "diff"}
                           {@const st = terminals.diffState(t.id)}
                           {#if st}
                             <DiffPane state={st} />
+                          {/if}
+                        {:else}
+                          {@const st = terminals.commitState(t.id)}
+                          {#if st}
+                            <CommitPane state={st} />
                           {/if}
                         {/if}
                       </div>

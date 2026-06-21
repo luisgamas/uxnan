@@ -170,10 +170,20 @@ El usuario puede añadir **anotaciones a nivel de línea** en los diffs:
 
 ### 4.5 Composición de Commits
 
-Integrada en el panel de cambios:
-- **Editor de mensaje de commit** con soporte markdown.
-- **Generación AI del mensaje**: Un botón para que el agente genere automáticamente un mensaje de commit basado en los cambios staged.
-- **Botón de acción primaria** contextual: Commit, Push, Sync, o Publish según el estado de la rama.
+Integrada en el panel de cambios (`ChangesPanel.svelte`):
+- **Editor de mensaje de commit** (resumen/summary) siempre visible.
+- **Opciones opcionales colapsadas** (`shadcn-svelte` Collapsible, cerradas por
+  defecto): **descripción extendida** (cuerpo del commit), **coautores**
+  (`Co-authored-by:` trailers, lista add/remove de `Nombre <email>`), **enmendar
+  el último commit** (`--amend`) y **sign-off** (`Signed-off-by:`, `-s`). El
+  mensaje final se compone en el frontend (`git.svelte.ts → buildCommitMessage`):
+  resumen + línea en blanco + cuerpo + línea en blanco + trailers
+  `Co-authored-by:`; el sign-off lo añade git (`-s`) usando la identidad
+  configurada. El comando backend `git_commit(path, message, amend, signOff)`.
+- **Botón de acción primaria** contextual: Commit / Amend commit según el estado
+  del composer; Push / Pull aparecen cuando hay ahead/behind.
+- **Generación AI del mensaje** (pendiente): un botón para que el agente genere
+  el mensaje a partir de los cambios staged.
 
 ### 4.6 Fuentes de Diff
 
@@ -221,17 +231,21 @@ El siguiente diagrama muestra cómo se conectan los módulos de Git, diffs y wor
 
 ## 6. Pestaña de Archivos y Editor
 
-El panel derecho expone **dos vistas mediante pestañas** (`RightPanel.svelte` con
+El panel derecho expone **tres vistas mediante pestañas** (`RightPanel.svelte` con
 `shadcn-svelte` Tabs). De izquierda a derecha:
 
 1. **Archivos** (`FileTreePanel.svelte`): el árbol de archivos completo del
    worktree/proyecto activo, no solo los archivos con cambios.
 2. **Cambios** (`ChangesPanel.svelte`): el visor de control de versiones descrito
    en las secciones 3–4 (estado/diff/stage/commit/push/pull).
+3. **Historial** (`HistoryPanel.svelte`): el log de commits del worktree activo,
+   con un grafo de ramas opcional (ver §6.4).
 
 El estado git del worktree activo se carga en el padre `RightPanel` (siempre
 montado), de modo que la pestaña Archivos colorea su árbol aunque la pestaña
-Cambios esté desmontada.
+Cambios esté desmontada. La pestaña Historial mantiene su propio store
+(`history.svelte.ts`) que sobrevive al cambio de pestaña y se refresca tras
+commit/push/pull.
 
 ### 6.1 Árbol de Archivos
 
@@ -310,3 +324,43 @@ en **Configuración → Atajos de teclado** (`AppSettings.keybindings`,
 
 Acceso de archivos no confinado (la propia máquina del usuario, igual que
 `browse_dirs`). Implementación: `src-tauri/src/fs.rs` + `git::diff_head`.
+
+### 6.4 Pestaña Historial y Grafo de Ramas
+
+La pestaña **Historial** (`HistoryPanel.svelte`) muestra el log de commits del
+worktree activo. Características:
+
+- **Log paginado y virtualizado**: el backend devuelve commits del más reciente
+  al más antiguo en orden topológico (`git_log(path, limit, skip)`); el frontend
+  los renderiza con `VirtualList` y pagina con un botón **Cargar más**. El estado
+  vive en `history.svelte.ts` (sobrevive al cambio de pestaña; se marca obsoleto
+  tras commit/push/pull para refrescarse la próxima vez que se muestra).
+- **Fila de commit**: badges de decoración (`HEAD`, ramas, `tag:`), resumen,
+  hash corto, autor y **tiempo relativo localizado** (`Intl.RelativeTimeFormat`).
+- **Estados**: sin worktree, no es repo (el log falla), repo sin commits, sin
+  resultados de filtro. **Filtro** cliente por resumen/hash/autor.
+- **Ver commit**: un clic abre el **diff completo del commit** como una **pestaña
+  central** (`CommitPane.svelte`, `DiffView` en solo-lectura), respaldada por un
+  `CommitViewerState` autocontenido registrado en el store de terminales —
+  igual que abren las pestañas de archivo/diff. Backend: `git_show(path, hash)`
+  (diff vs primer padre; el `hash` se valida como hexadecimal antes de usarse).
+- **Grafo de ramas integrado**: un toggle dibuja un *gutter* SVG de carriles de
+  colores (ramas, merges, separaciones) a la izquierda de cada commit. Los
+  carriles se calculan **puramente en el frontend** a partir de los `parents` de
+  cada commit (`gitGraph.ts → computeGraph`): cada carril mantiene el hash que
+  espera a continuación; el commit ocupa el/los carriles que lo esperaban (el más
+  a la izquierda es su nodo, el resto son aristas de merge que colapsan en él), su
+  primer padre continúa en el mismo carril y cada padre extra abre/reutiliza otro.
+  Color fijo por índice de carril. El grafo solo se muestra sobre el log sin
+  filtrar (un filtro rompería las cadenas de padres).
+
+#### Comandos Tauri (historial)
+
+| Comando | Descripción |
+|---|---|
+| `git_log(path, limit, skip)` | Lista el historial del worktree (más reciente primero, topológico). Motor `git2` (revwalk) con fallback CLI; un `HEAD` sin nacer (repo sin commits) devuelve lista vacía. |
+| `git_show(path, hash)` | Diff unificado que introdujo un commit (vs su primer padre). `git2` con fallback `git show`; `hash` validado como hexadecimal. |
+| `git_commit(path, message, amend, signOff)` | Commit de lo staged; `amend` reescribe `HEAD`, `signOff` añade `Signed-off-by:` (`-s`). |
+
+Implementación: `src-tauri/src/git.rs` + `gitfast.rs` (`CommitInfo`, `log`,
+`show`, `commit`).

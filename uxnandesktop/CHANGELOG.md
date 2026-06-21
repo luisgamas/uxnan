@@ -43,6 +43,36 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   editor-as-tab, unsaved-edit guard, external-change, `fs_set_watch`) and
   `architecture/02b-terminal-engine.md` §3.3 (editor/diff tabs implemented).
 
+### Added — right-panel commit composer options + "History" tab with branch graph
+- **Commit composer — optional fields (collapsed by default).** `ChangesPanel.svelte`
+  now exposes an "Options" `Collapsible` under the summary box with: an **extended
+  description** (commit body), one or more **`Co-authored-by:`** entries, an
+  **amend last commit** toggle, and a **sign-off** (`Signed-off-by:`) toggle. The
+  message is composed in the frontend (`git.svelte.ts → buildCommitMessage`):
+  `subject` + blank line + body + blank line + `Co-authored-by:` trailers;
+  sign-off is applied by git itself (`-s`) so it uses the configured identity.
+- **New "History" tab** (`HistoryPanel.svelte`, third tab in `RightPanel.svelte`).
+  Shows the active worktree's commit log (newest first), virtualized
+  (`VirtualList`) and paginated ("Load more"), with per-commit ref badges
+  (`HEAD`/branches/`tag:`), author and localized relative time. Filterable;
+  empty/`not a repo`/`no commits` states handled. Clicking a commit opens its
+  full diff as a center **tab** (`CommitPane.svelte`, read-only `DiffView`),
+  backed by a self-contained `CommitViewerState` registered in the terminals
+  store — consistent with how file/diff tabs now open.
+- **Integrated branch graph.** A toggle in the History header draws a colored
+  lane gutter (branches, merges, splits) left of each commit, computed purely on
+  the frontend from each commit's parents (`gitGraph.ts → computeGraph`). The
+  graph is shown only over the unfiltered log (a filter would break parent chains).
+- **Backend (additive).** `git.rs`/`gitfast.rs`: new `CommitInfo`, `log(limit,
+  skip)` (git2 revwalk + CLI fallback, topological order, unborn-HEAD tolerant)
+  and `show(hash)` (first-parent diff; hex-validated). `commit()` gained `amend`
+  and `sign_off` flags. New Tauri commands `git_log` / `git_show` and the extended
+  `git_commit(amend, sign_off)`, registered in `lib.rs`. Unit tests cover
+  `parse_log`/`parse_refs` and a real-repo `log`/`show`/pagination round-trip.
+- **Spec + i18n updated.** `architecture/02c-git-worktrees.md` §3.5 (history/show
+  commands) and §6 (the right panel is now three tabs + §6.4 History/graph). EN/ES
+  strings added under `rightPanel.*` (composer) and a new `history.*` namespace.
+
 ### Changed — Tauri bundle id renamed `com.uxnan.desktop` → `dev.luisgamas.uxnandesktop`
 - **`src-tauri/tauri.conf.json` `identifier` rewritten.** The Tauri 2 runtime
   derives its app-data directory from the bundle identifier, so the on-disk
