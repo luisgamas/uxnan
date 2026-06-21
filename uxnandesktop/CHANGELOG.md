@@ -5,6 +5,44 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — filesystem watcher: file tree auto-refresh
+- **Backend watcher** (`src-tauri/src/fswatch.rs`, `notify` +
+  `notify-debouncer-full`): watches the active worktree root recursively
+  (debounced ~300 ms, `.git` filtered) and emits a `fs:changed` event. New
+  `fs_set_watch(path?)` command + `FsWatcher` in `AppState`; the watch is aimed
+  at the active worktree centrally in `+page.svelte`.
+- **File tree** reloads only the affected (already-loaded) directories on
+  `fs:changed`, preserving expansion — files created/deleted on disk (e.g. by an
+  agent) now appear without a manual refresh (`fileTree.svelte.ts`). Unit tests
+  for the `.git` path filter. Closes the FOR-DEV "External-change watcher" item.
+
+### Added — unified center tabs (terminal | file | diff) + mixed splits
+- The center area's `GroupTab` is now a discriminated union
+  (`terminal | file | diff`, `terminals.svelte.ts`); files and diffs are real
+  tabs in the same region tree instead of full-size singleton overlays, enabling
+  any mix of agents/files/diffs across tabs and **mixed splits** (e.g. terminal
+  left, editor right). Realizes the already-documented mixed-content tab design
+  (`architecture/02b-terminal-engine.md` §3.1/§3.3).
+- Per-tab editor/diff live state lives in an id-keyed registry
+  (`FileEditorState` in `files.svelte.ts`, self-contained `DiffViewerState` in
+  `git.svelte.ts`) kept out of the serialized tree, so CodeMirror/xterm never
+  remount on split/reorder and typing doesn't churn the persisted layout. File
+  tabs are restored on startup (by path); diff tabs are transient.
+- `DiffPanel.svelte` removed (overlay) → new `DiffPane.svelte`; `+page.svelte`
+  no longer overlays the editor/diff; `Ctrl/Cmd+W` closes the active center tab.
+
+### Added — unsaved-edit guard + external-change handling
+- Closing a dirty file tab prompts **Save / Discard / Cancel**
+  (`SaveDiscardDialog.svelte` + `confirm.svelte.ts` service); closing a region
+  with several dirty files asks once. Every close path runs the guard and
+  disposes per-tab state. Closes the FOR-DEV "Unsaved-edit guard" item.
+- When an open file changes on disk while dirty, the editor offers **Reload /
+  Keep my changes** (clean files reload silently; diffs reload). New EN/ES i18n
+  keys.
+- **Spec sync:** `architecture/02c-git-worktrees.md` §6 (file-tree watcher,
+  editor-as-tab, unsaved-edit guard, external-change, `fs_set_watch`) and
+  `architecture/02b-terminal-engine.md` §3.3 (editor/diff tabs implemented).
+
 ### Changed — Tauri bundle id renamed `com.uxnan.desktop` → `dev.luisgamas.uxnandesktop`
 - **`src-tauri/tauri.conf.json` `identifier` rewritten.** The Tauri 2 runtime
   derives its app-data directory from the bundle identifier, so the on-disk

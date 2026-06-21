@@ -244,12 +244,27 @@ Cambios esté desmontada.
   (untracked = verde, eliminado = rojo, modificado = ámbar) reutilizando el mismo
   estado git del panel de cambios; las **carpetas padre** que contienen cambios
   también se colorean (ámbar) para poder rastrear visualmente dónde hay cambios.
-- **Abrir archivo**: un clic en un archivo lo abre en el editor central.
+- **Auto-refresco (watcher de filesystem)**: el backend vigila la raíz del
+  worktree activo (`src-tauri/src/fswatch.rs`, `notify` + debounce, `.git`
+  filtrado) y emite el evento `fs:changed`; el árbol recarga **solo** los
+  directorios afectados conservando la expansión, de modo que archivos
+  creados/eliminados en disco (p. ej. por un agente) aparecen sin recargar a
+  mano. El watcher se apunta al worktree activo centralmente (`+page.svelte`).
+- **Abrir archivo**: un clic en un archivo lo abre como **pestaña de archivo**
+  en el área central (ver §6.2).
 
 ### 6.2 Editor de Archivos (panel central)
 
-`FileEditor.svelte` superpone el área central (sobre las terminales, que siguen
-montadas) igual que el `DiffPanel`. Características:
+`FileEditor.svelte` se renderiza como una **pestaña de archivo** en el árbol de
+regiones del área central — ya no como un overlay superpuesto. Editores, diffs y
+terminales son pestañas del mismo `TabGroup` (ver `02b-terminal-engine.md`
+§3.1/§3.3), por lo que conviven entre pestañas y permiten **splits mixtos** (p.
+ej. terminal a la izquierda / editor a la derecha). El estado vivo de cada
+pestaña (contenido, dirty, diff) vive en un registro por id en el store de
+terminales, no en el árbol serializado, así CodeMirror/xterm nunca se remontan al
+dividir/reordenar y escribir no ensucia el layout persistido. Las pestañas de
+archivo se restauran al reiniciar (por ruta); las de diff son transitorias.
+Características:
 
 - **Edición real con CodeMirror 6** + **resaltado de sintaxis** por extensión de
   archivo (`editorLang.ts`: JS/TS/JSON/CSS/HTML/Markdown/Rust/Python/YAML/XML/
@@ -265,6 +280,14 @@ montadas) igual que el `DiffPanel`. Características:
 - **Guardas**: archivos binarios o demasiado grandes (> 2 MiB) no se editan; se
   muestra un aviso en lugar de cargar contenido (`fs_read_file` reporta los
   flags `binary` / `tooLarge`).
+- **Aviso de cambios sin guardar**: cerrar una pestaña de archivo con ediciones
+  pendientes pregunta **Guardar / Descartar / Cancelar** (`SaveDiscardDialog`
+  + el servicio `confirm.svelte.ts`); cerrar una región con varios archivos
+  sucios pregunta una sola vez. Aplica en todas las rutas de cierre.
+- **Cambio externo en disco**: si el archivo abierto cambia en disco (evento
+  `fs:changed`) mientras hay ediciones sin guardar, el editor muestra una barra
+  **Recargar / Mantener mis cambios**; si la pestaña está limpia, recarga sola.
+  Los visores de diff recargan su contenido.
 
 ### 6.3 Comandos Tauri (sistema de archivos)
 
@@ -275,13 +298,15 @@ montadas) igual que el `DiffPanel`. Características:
 | `fs_write_file(path, content)` | Sobrescribe un archivo (atómico: temp + rename). |
 | `git_diff_head(path, file)` | Diff working-tree-vs-`HEAD` de un archivo, para el medianil del editor. |
 | `reveal_path(path)` | Revela una ruta en el explorador de archivos del SO (plugin opener). |
+| `fs_set_watch(path?)` | Apunta (o limpia) el watcher de filesystem al worktree activo; emite `fs:changed` al crearse/eliminarse/editarse archivos. |
 | `git_numstat(path)` | Líneas añadidas/eliminadas por archivo vs `HEAD` (`+a −d` en la lista de cambios). |
 
 La barra de la pestaña Archivos ofrece además: **búsqueda/filtro** por nombre,
 **contraer/expandir todas** las carpetas, **abrir en el explorador del SO**
 (`reveal_path`) y actualizar. Los atajos de teclado de la app son configurables
 en **Configuración → Atajos de teclado** (`AppSettings.keybindings`,
-`keybindings.ts`); p. ej. `Ctrl/Cmd+W` cierra el archivo/diff del panel central.
+`keybindings.ts`); p. ej. `Ctrl/Cmd+W` cierra la pestaña activa del área central
+(con la guarda de cambios sin guardar si es un archivo sucio).
 
 Acceso de archivos no confinado (la propia máquina del usuario, igual que
 `browse_dirs`). Implementación: `src-tauri/src/fs.rs` + `git::diff_head`.
