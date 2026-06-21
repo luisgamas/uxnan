@@ -86,12 +86,16 @@ test('parsePiLine maps the documented event shapes', () => {
   assert.equal(parsePiLine('not json'), null);
   assert.deepEqual(parsePiLine(SESSION), { kind: 'session', sessionId: 'sess-1' });
   assert.deepEqual(
-    parsePiLine('{"type":"message_update","assistantMessageEvent":{"type":"text_delta","delta":"hi"}}'),
+    parsePiLine(
+      '{"type":"message_update","assistantMessageEvent":{"type":"text_delta","delta":"hi"}}',
+    ),
     { kind: 'delta', text: 'hi' },
   );
   // thinking deltas become thinking events (not answer text)
   assert.deepEqual(
-    parsePiLine('{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","delta":"hmm"}}'),
+    parsePiLine(
+      '{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","delta":"hmm"}}',
+    ),
     { kind: 'thinking', text: 'hmm' },
   );
   const final = parsePiLine(assistantEnd('hello', { tokens: 42 }));
@@ -175,9 +179,11 @@ test('PiAdapter emits usage.contextWindow from the cached model list', async () 
 
   const events = await done;
   const completed = events.find((e) => e.type === 'turn_completed');
-  const usage = (completed?.data as {
-    usage?: { tokens: number; contextWindow?: number };
-  }).usage;
+  const usage = (
+    completed?.data as {
+      usage?: { tokens: number; contextWindow?: number };
+    }
+  ).usage;
   assert.equal(usage?.tokens, 99);
   assert.equal(usage?.contextWindow, 1_000_000);
 });
@@ -337,7 +343,11 @@ test('parsePiModelList parses the --list-models table', () => {
 
 test('PiAdapter.listModels parses the table pi prints to stderr', async () => {
   const { spawnFn, last } = fakeSpawner();
-  const adapter = new PiAdapter({ binaryPath: 'pi', spawnFn, defaultModel: 'google/gemini-2.5-pro' });
+  const adapter = new PiAdapter({
+    binaryPath: 'pi',
+    spawnFn,
+    defaultModel: 'google/gemini-2.5-pro',
+  });
   const promise = adapter.listModels();
   // pi prints the --list-models table to STDERR, not stdout.
   last().feedStderr([

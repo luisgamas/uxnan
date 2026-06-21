@@ -71,9 +71,7 @@ function runFile(
           const rawCode = (error as NodeJS.ErrnoException).code;
           const code = typeof rawCode === 'number' ? rawCode : null;
           const detail = sanitizePaths(stderr || stdout || error.message, cwd);
-          reject(
-            new GitCommandError(`${file} ${args[0] ?? ''} failed`, detail, code),
-          );
+          reject(new GitCommandError(`${file} ${args[0] ?? ''} failed`, detail, code));
           return;
         }
         resolve({ stdout, stderr });

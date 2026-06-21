@@ -155,7 +155,13 @@ export interface PlanStepBlock {
 /** Normalizes an agent's free-form step status to the wire vocabulary. */
 function normalizePlanStatus(raw: unknown): PlanStepBlock['status'] {
   const s = typeof raw === 'string' ? raw.toLowerCase().replace(/[\s-]+/g, '_') : '';
-  if (s === 'in_progress' || s === 'inprogress' || s === 'running' || s === 'active' || s === 'doing') {
+  if (
+    s === 'in_progress' ||
+    s === 'inprogress' ||
+    s === 'running' ||
+    s === 'active' ||
+    s === 'doing'
+  ) {
     return 'in_progress';
   }
   if (s === 'completed' || s === 'complete' || s === 'done' || s === 'finished') {

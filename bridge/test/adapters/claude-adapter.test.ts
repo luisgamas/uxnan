@@ -573,7 +573,12 @@ test('accessMode requestApproval keeps the interactive hook in play', async () =
     },
   });
   const { done } = collect(adapter);
-  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'go', accessMode: 'requestApproval' });
+  await adapter.sendTurn({
+    threadId: 't1',
+    turnId: 'u1',
+    text: 'go',
+    accessMode: 'requestApproval',
+  });
   last().feed(['{"type":"result","subtype":"success","result":"ok","session_id":"s"}']);
   await done;
 
@@ -590,7 +595,12 @@ test('accessMode requestApproval without a hook falls back to the configured pos
   // back to the adapter's configured posture (acceptEdits default).
   const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
   const { done } = collect(adapter);
-  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'go', accessMode: 'requestApproval' });
+  await adapter.sendTurn({
+    threadId: 't1',
+    turnId: 'u1',
+    text: 'go',
+    accessMode: 'requestApproval',
+  });
   last().feed(['{"type":"result","subtype":"success","result":"ok","session_id":"s"}']);
   await done;
 

@@ -158,7 +158,10 @@ test('turn/send with approvalResponse drives the echo demo approval over the rou
     async () => (await bridge.context.threadStore.getTurn(turnId)).status === 'completed',
   );
   const turn = await bridge.context.threadStore.getTurn(turnId);
-  assert.match(String(turn.messages.find((m) => m.role === 'assistant')?.content ?? ''), /Approved/);
+  assert.match(
+    String(turn.messages.find((m) => m.role === 'assistant')?.content ?? ''),
+    /Approved/,
+  );
 
   await bridge.stop();
   await rm(baseDir, { recursive: true, force: true });

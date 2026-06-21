@@ -35,7 +35,11 @@ export function opencodeToolBlock(
     case 'bash':
       return commandBlock(str(input['command']), output, isError);
     case 'edit':
-      return editDiffBlock(str(input['filePath']), str(input['oldString']), str(input['newString']));
+      return editDiffBlock(
+        str(input['filePath']),
+        str(input['oldString']),
+        str(input['newString']),
+      );
     case 'write':
       return writeDiffBlock(str(input['filePath']), str(input['content']));
     // OpenCode's to-do tool surfaces the plan/task list. FOR-DEV: tool name +

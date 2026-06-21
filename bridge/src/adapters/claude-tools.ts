@@ -67,7 +67,11 @@ export function extractToolResults(content: unknown): ClaudeToolResult[] {
   if (!Array.isArray(content)) return [];
   const results: ClaudeToolResult[] = [];
   for (const block of content) {
-    if (isRecord(block) && block['type'] === 'tool_result' && typeof block['tool_use_id'] === 'string') {
+    if (
+      isRecord(block) &&
+      block['type'] === 'tool_result' &&
+      typeof block['tool_use_id'] === 'string'
+    ) {
       results.push({
         toolUseId: block['tool_use_id'],
         text: extractResultText(block['content']),
@@ -112,9 +116,8 @@ function diffBlock(name: string, input: Record<string, unknown>): Record<string,
     };
   }
   // Edit / MultiEdit: render old→new as -/+ hunks.
-  const edits = name === 'MultiEdit' && Array.isArray(input['edits'])
-    ? (input['edits'] as unknown[])
-    : [input];
+  const edits =
+    name === 'MultiEdit' && Array.isArray(input['edits']) ? (input['edits'] as unknown[]) : [input];
   const parts: string[] = [];
   let added = 0;
   let removed = 0;
@@ -135,7 +138,10 @@ function diffBlock(name: string, input: Record<string, unknown>): Record<string,
  * a generic `tool` block. Returns the JSON the phone decodes via
  * `MessageContent.fromJson`.
  */
-export function toolUseToBlock(tool: ClaudeToolUse, result: ClaudeToolResult): Record<string, unknown> {
+export function toolUseToBlock(
+  tool: ClaudeToolUse,
+  result: ClaudeToolResult,
+): Record<string, unknown> {
   if (tool.name === 'Bash') {
     const output = truncate(result.text);
     return {

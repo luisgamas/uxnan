@@ -121,10 +121,7 @@ export function buildReplyResult(
   return { decision: reply.kind };
 }
 
-function describeCommandExecution(
-  params: unknown,
-  id: number | string,
-): PendingCodexApproval {
+function describeCommandExecution(params: unknown, id: number | string): PendingCodexApproval {
   const p = asRecord(params) ?? {};
   // `command` is a string[] (argv); `parsedCmd` is a best-effort parse.
   const command = Array.isArray(p['command'])
@@ -148,10 +145,7 @@ function describeCommandExecution(
   };
 }
 
-function describeFileChange(
-  params: unknown,
-  id: number | string,
-): PendingCodexApproval {
+function describeFileChange(params: unknown, id: number | string): PendingCodexApproval {
   const p = asRecord(params) ?? {};
   const fileChanges = asRecord(p['fileChanges']) ?? {};
   const paths = Object.keys(fileChanges);
@@ -167,12 +161,10 @@ function describeFileChange(
   };
 }
 
-function describePermissions(
-  params: unknown,
-  id: number | string,
-): PendingCodexApproval {
+function describePermissions(params: unknown, id: number | string): PendingCodexApproval {
   const p = asRecord(params) ?? {};
-  const reason = typeof p['reason'] === 'string' ? (p['reason'] as string) : 'codex wants extra permissions';
+  const reason =
+    typeof p['reason'] === 'string' ? (p['reason'] as string) : 'codex wants extra permissions';
   return {
     kind: 'permissions',
     serverRequestId: id,
@@ -184,13 +176,11 @@ function describePermissions(
   };
 }
 
-function describeMcpElicitation(
-  params: unknown,
-  id: number | string,
-): PendingCodexApproval {
+function describeMcpElicitation(params: unknown, id: number | string): PendingCodexApproval {
   const p = asRecord(params) ?? {};
   const serverName = typeof p['serverName'] === 'string' ? (p['serverName'] as string) : 'mcp';
-  const message = typeof p['message'] === 'string' ? (p['message'] as string) : 'mcp server needs input';
+  const message =
+    typeof p['message'] === 'string' ? (p['message'] as string) : 'mcp server needs input';
   return {
     kind: 'mcpElicitation',
     serverRequestId: id,
@@ -202,13 +192,11 @@ function describeMcpElicitation(
   };
 }
 
-function describeToolUserInput(
-  params: unknown,
-  id: number | string,
-): PendingCodexApproval {
+function describeToolUserInput(params: unknown, id: number | string): PendingCodexApproval {
   const p = asRecord(params) ?? {};
   const toolName = typeof p['toolName'] === 'string' ? (p['toolName'] as string) : 'codex tool';
-  const question = typeof p['question'] === 'string' ? (p['question'] as string) : 'codex needs input';
+  const question =
+    typeof p['question'] === 'string' ? (p['question'] as string) : 'codex needs input';
   return {
     kind: 'toolUserInput',
     serverRequestId: id,
@@ -220,10 +208,7 @@ function describeToolUserInput(
   };
 }
 
-function describeLegacyExecCommand(
-  params: unknown,
-  id: number | string,
-): PendingCodexApproval {
+function describeLegacyExecCommand(params: unknown, id: number | string): PendingCodexApproval {
   const p = asRecord(params) ?? {};
   const command = Array.isArray(p['command'])
     ? (p['command'] as unknown[]).filter((c): c is string => typeof c === 'string').join(' ')
@@ -239,10 +224,7 @@ function describeLegacyExecCommand(
   };
 }
 
-function describeLegacyApplyPatch(
-  params: unknown,
-  id: number | string,
-): PendingCodexApproval {
+function describeLegacyApplyPatch(params: unknown, id: number | string): PendingCodexApproval {
   const p = asRecord(params) ?? {};
   const fileChanges = asRecord(p['fileChanges']) ?? {};
   const paths = Object.keys(fileChanges);

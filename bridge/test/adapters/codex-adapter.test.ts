@@ -149,7 +149,9 @@ function setup(
     if (msg.method === 'initialize') {
       server.feed([JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { ok: true } })]);
     } else if (msg.method === 'thread/start' || msg.method === 'thread/resume') {
-      server.feed([JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { thread: { id: THREAD_ID } } })]);
+      server.feed([
+        JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { thread: { id: THREAD_ID } } }),
+      ]);
     } else if (msg.method === 'turn/start') {
       turnSeq += 1;
       const id = `codex-turn-${turnSeq}`;
@@ -190,7 +192,6 @@ test.after(async () => {
   // workaround for the Node test runner.
   setImmediate(() => process.exit(0));
 });
-
 
 // ============================================================================
 // Pure parsers / utilities (kept — they are the public surface the history
@@ -251,10 +252,7 @@ test('parseCodexReasoning builds a knob from supportedReasoningEfforts', () => {
   );
   assert.equal(opts[0]?.default, 'high');
   assert.deepEqual(parseCodexReasoning(undefined, 'high'), []);
-  assert.equal(
-    parseCodexReasoning([{ reasoningEffort: 'low' }], 'bogus')[0]?.default,
-    undefined,
-  );
+  assert.equal(parseCodexReasoning([{ reasoningEffort: 'low' }], 'bogus')[0]?.default, undefined);
 });
 
 test('parseCodexConfigModels reads model + availability table from config.toml', () => {
@@ -312,7 +310,10 @@ test('parseCodexModelWindows maps slug → context_window from models_cache.json
 test('codexFileChanges extracts changed paths/kinds (adapter reads the content)', () => {
   const changes = codexFileChanges({
     type: 'file_change',
-    changes: [{ path: 'a.dart', kind: 'update' }, { path: 'b.dart', kind: 'add' }],
+    changes: [
+      { path: 'a.dart', kind: 'update' },
+      { path: 'b.dart', kind: 'add' },
+    ],
   });
   assert.deepEqual(changes, [
     { path: 'a.dart', kind: 'update' },

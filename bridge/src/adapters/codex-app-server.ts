@@ -62,10 +62,7 @@ export type ServerNotificationHandler = (method: string, params: unknown) => voi
  * A server-initiated REQUEST (has `id` + `method`) — we MUST reply. The handler
  * returns the `result` payload (or throws an `RpcError`, see below).
  */
-export type ServerRequestHandler = (
-  method: string,
-  params: unknown,
-) => Promise<unknown> | unknown;
+export type ServerRequestHandler = (method: string, params: unknown) => Promise<unknown> | unknown;
 
 export class RpcError extends Error {
   readonly code: number;
@@ -145,12 +142,20 @@ export class CodexAppServerRpc {
         entry.timer = setTimeout(() => {
           this.#pending.delete(id);
           reject(
-            new RpcError(-32010, `rpc: request '${method}' (id=${id}) timed out after ${effectiveTimeout}ms`),
+            new RpcError(
+              -32010,
+              `rpc: request '${method}' (id=${id}) timed out after ${effectiveTimeout}ms`,
+            ),
           );
         }, effectiveTimeout);
       }
       this.#pending.set(id, entry);
-      const msg: JsonRpcRequest = { jsonrpc: '2.0', id, method, ...(params !== undefined ? { params } : {}) };
+      const msg: JsonRpcRequest = {
+        jsonrpc: '2.0',
+        id,
+        method,
+        ...(params !== undefined ? { params } : {}),
+      };
       try {
         this.#stdin.write(`${JSON.stringify(msg)}\n`);
       } catch (err) {
@@ -164,7 +169,11 @@ export class CodexAppServerRpc {
   /** Send a one-way notification (no `id`, no reply). */
   notify(method: string, params?: unknown): void {
     if (this.#closed) return;
-    const msg: JsonRpcNotification = { jsonrpc: '2.0', method, ...(params !== undefined ? { params } : {}) };
+    const msg: JsonRpcNotification = {
+      jsonrpc: '2.0',
+      method,
+      ...(params !== undefined ? { params } : {}),
+    };
     try {
       this.#stdin.write(`${JSON.stringify(msg)}\n`);
     } catch {
@@ -179,7 +188,11 @@ export class CodexAppServerRpc {
 
   /** Send an error reply to a server-initiated request. */
   replyError(id: RpcId, code: number, message: string, data?: unknown): void {
-    this.#write({ jsonrpc: '2.0', id, error: { code, message, ...(data !== undefined ? { data } : {}) } });
+    this.#write({
+      jsonrpc: '2.0',
+      id,
+      error: { code, message, ...(data !== undefined ? { data } : {}) },
+    });
   }
 
   /** Reject every pending request and stop reading. Idempotent. */
@@ -259,11 +272,7 @@ export class CodexAppServerRpc {
         if (err instanceof RpcError) {
           this.replyError(id, err.code, err.message, err.data);
         } else {
-          this.replyError(
-            id,
-            -32000,
-            err instanceof Error ? err.message : String(err),
-          );
+          this.replyError(id, -32000, err instanceof Error ? err.message : String(err));
         }
       }
       return;
