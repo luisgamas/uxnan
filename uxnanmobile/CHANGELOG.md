@@ -6,6 +6,22 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Composer autofocus on conversation open.** The message composer's text
+  field now opens with primary focus, so the keyboard pops up the moment a
+  conversation is opened (matches the user's expectation: the composer is
+  the primary input surface, and opening a thread almost always means
+  "type something"). The existing tap-outside-to-unfocus behavior on the
+  timeline (`GestureDetector` + `FocusScope.unfocus` in
+  `ConversationScreen`) is preserved — tapping the message area still
+  dismisses the keyboard. Implemented as a single `autofocus: true` flag on
+  the composer's `TextField` (no `FocusNode` plumbing required) so the
+  change is intentionally minimal; the field's lifecycle is fully owned by
+  the framework. Covered by two widget tests in
+  `conversation_widgets_test.dart` (`ComposerBar autofocuses the text field
+  on first build` + `ComposerBar keeps the tap-outside-to-unfocus
+  behavior`) that lock in both the autofocus and the unfocus-from-tap.
+
 ### Fixed — QR scanner (and FCM push) broken in `--release` by R8 stripping
 - **Root cause:** AGP 9 enables R8/minification by default for `release`, and
   in full mode it stripped the no-arg constructors of the reflectively-
