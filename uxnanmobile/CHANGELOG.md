@@ -7,6 +7,26 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Threads screen — scope selector (Agent / Project).** The threads filter
+  bar now starts with a small chip-styled **scope selector** on the left
+  that shows the active scope (Agent or Project) and opens a popup to
+  switch between them. To its right, the chip bar shows the matching
+  filter: *All + each agent* under the Agent scope, *All + each project*
+  (one per distinct `projectId` / `cwd`) under the Project scope. Only
+  one scope is visible at a time — the previous "two stacked chip bars"
+  layout is gone. Switching scope clears the other dimension's filter so
+  the two stay independent (an agent filter has no meaning under the
+  Project scope and vice versa). The project filter — which was already
+  fully implemented (`_projectsPresent` / `_projectKeyOf` / bridge
+  `loadThreads(projectId:)`) but hidden behind the `_projectFilterEnabled`
+  flag — is now reachable from the UI without any back-end change. Same
+  visual language as the filter chips (M3 `ChoiceChip` + popup menu
+  trigger), same horizontal `ListView` scrolling, so the whole bar reads
+  as one coherent surface. New l10n keys: `threadsFilterByAgent`,
+  `threadsFilterByProject`, `threadsFilterScopeTooltip` (en + es).
+  Covered by three widget tests in `threads_list_test.dart` (default
+  scope renders Agent, switching to Project swaps the chip bar,
+  switching scope clears the other dimension's filter).
 - **Git screen commit composer autofocus on open.** The title field of the
   commit composer in the full-screen `GitScreen` now opens with primary
   focus, so the keyboard pops up as soon as the repo state loads (matches

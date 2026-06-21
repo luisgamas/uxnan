@@ -512,6 +512,24 @@ abstract class AppLocalizations {
   /// **'All'**
   String get threadsFilterAll;
 
+  /// No description provided for @threadsFilterByAgent.
+  ///
+  /// In en, this message translates to:
+  /// **'Agent'**
+  String get threadsFilterByAgent;
+
+  /// No description provided for @threadsFilterByProject.
+  ///
+  /// In en, this message translates to:
+  /// **'Project'**
+  String get threadsFilterByProject;
+
+  /// No description provided for @threadsFilterScopeTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Filter scope'**
+  String get threadsFilterScopeTooltip;
+
   /// No description provided for @threadsViewOptions.
   ///
   /// In en, this message translates to:

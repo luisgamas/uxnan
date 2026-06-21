@@ -234,6 +234,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get threadsFilterAll => 'All';
 
   @override
+  String get threadsFilterByAgent => 'Agent';
+
+  @override
+  String get threadsFilterByProject => 'Project';
+
+  @override
+  String get threadsFilterScopeTooltip => 'Filter scope';
+
+  @override
   String get threadsViewOptions => 'View options';
 
   @override
