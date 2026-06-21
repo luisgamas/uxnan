@@ -35,6 +35,7 @@ jobs:
   verify:
     name: verify (node ${{ matrix.node }} · ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 15 # kills a hung job instead of running to the 6h default
     strategy:
       fail-fast: false
       matrix:

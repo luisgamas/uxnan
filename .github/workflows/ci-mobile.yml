@@ -27,6 +27,7 @@ jobs:
   verify:
     name: verify (ubuntu)
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@v4

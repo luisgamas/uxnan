@@ -20,6 +20,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60 # building installers for two OSes is the slow case
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -57,10 +58,15 @@ jobs:
         shell: bash
         working-directory: uxnandesktop
         run: |
-          V="${{ steps.meta.outputs.version }}"
-          npm version "$V" --no-git-tag-version --allow-same-version
-          node -e "const f='src-tauri/tauri.conf.json',fs=require('fs');const o=JSON.parse(fs.readFileSync(f,'utf8'));o.version='$V';fs.writeFileSync(f,JSON.stringify(o,null,2)+'\n')"
-          perl -0pi -e 's/^version = "[^"]*"/version = "'"$V"'"/m' src-tauri/Cargo.toml
+          V="${{ steps.meta.outputs.version }}"   # full, e.g. 0.0.1-alpha.20260621
+          # The Windows MSI target rejects a non-numeric pre-release identifier
+          # (and any number > 65535), so the BUNDLE version is the numeric base
+          # only. The full version still names the GitHub Release + tag.
+          BASE="${V%%-*}"                          # e.g. 0.0.1
+          echo "Bundle version (MSI-safe): $BASE   |   release name: $V"
+          npm version "$BASE" --no-git-tag-version --allow-same-version
+          node -e "const f='src-tauri/tauri.conf.json',fs=require('fs');const o=JSON.parse(fs.readFileSync(f,'utf8'));o.version='$BASE';fs.writeFileSync(f,JSON.stringify(o,null,2)+'\n')"
+          perl -0pi -e 's/^version = "[^"]*"/version = "'"$BASE"'"/m' src-tauri/Cargo.toml
 
       - name: Install frontend deps
         working-directory: uxnandesktop

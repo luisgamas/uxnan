@@ -27,6 +27,7 @@ jobs:
   verify:
     name: verify (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 40 # Rust build (cold cache, Windows) is the slow case
     strategy:
       fail-fast: false
       matrix:
