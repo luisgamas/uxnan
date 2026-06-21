@@ -8,7 +8,7 @@
   "main": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",
   "bin": {
-    "uxnan-bridge": "./dist/src/cli.js"
+    "uxnan-bridge": "dist/src/cli.js"
   },
   "files": [
     "dist/src",
