@@ -127,9 +127,7 @@ class _CustomThemeEditorScreenState
       // one Material applies (a custom dark theme must not be hidden
       // behind a system-mode + system-brightness-light combo).
       await ref.read(themeModeSettingProvider.notifier).set(
-            _brightness == Brightness.light
-                ? ThemeMode.light
-                : ThemeMode.dark,
+            _brightness == Brightness.light ? ThemeMode.light : ThemeMode.dark,
           );
     }
     if (mounted) Navigator.of(context).pop(next);
@@ -233,15 +231,26 @@ class _CustomThemeEditorScreenState
     );
     if (result == null) return;
     try {
-      final imported = CustomTheme.fromJsonString(result);
-      // Preserve the current name/description; the imported one is metadata
-      // only — the user is customizing the existing theme, not adopting
-      // someone else's metadata.
+      // Parse into separate light/dark sides so a single-brightness palette
+      // patches only the side it describes (and a full theme replaces both).
+      // Detection lives in [CustomTheme.parseImport] — native, Material Theme
+      // Builder and flat single-scheme JSON are all understood.
+      final parsed = CustomTheme.parseImport(result);
       setState(() {
-        _working = imported.withMetadata(
+        var next = _working;
+        if (parsed.light != null) next = next.withLightColors(parsed.light!);
+        if (parsed.dark != null) next = next.withDarkColors(parsed.dark!);
+        // Preserve the current name/description; the imported file's metadata
+        // is ignored — the user is customizing the existing theme.
+        _working = next.withMetadata(
           name: _nameController.text,
           description: _descriptionController.text,
         );
+        // A single-brightness import flips the visible tab to the side that
+        // actually changed so the result is immediately visible.
+        if (parsed.hasLight != parsed.hasDark) {
+          _brightness = parsed.hasDark ? Brightness.dark : Brightness.light;
+        }
       });
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

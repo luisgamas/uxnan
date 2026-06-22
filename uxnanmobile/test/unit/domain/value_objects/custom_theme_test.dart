@@ -18,7 +18,8 @@ void main() {
       expect(restored.darkColors.primary, original.darkColors.primary);
       expect(restored.darkColors.surface, original.darkColors.surface);
       expect(restored.darkColors.outline, original.darkColors.outline);
-      expect(restored.lightColors.surfaceTint, original.lightColors.surfaceTint);
+      expect(
+          restored.lightColors.surfaceTint, original.lightColors.surfaceTint);
     });
 
     test('round-trips a manually edited theme', () {
@@ -151,6 +152,103 @@ void main() {
     });
   });
 
+  group('CustomTheme — tolerant multi-format import', () {
+    // The canonical Material purple primary the old parser fell back to for
+    // any unrecognized shape. None of these imports may produce it.
+    const m3Purple = Color(0xFF6750A4);
+
+    test('imports a Material Theme Builder export (schemes.light/dark)', () {
+      // Trimmed but real-shaped Material Theme Builder JSON: the schemes are
+      // nested under "schemes" with light/dark + contrast variants.
+      final theme = CustomTheme.fromJsonString('''
+{
+  "description": "TYPE: CUSTOM",
+  "seed": "#415F91",
+  "coreColors": {"primary": "#415F91"},
+  "schemes": {
+    "light": {"primary": "#415F91", "surface": "#F9F9FF", "onSurface": "#191C20"},
+    "dark": {"primary": "#AAC7FF", "surface": "#111318", "onSurface": "#E2E2E9"},
+    "light-medium-contrast": {"primary": "#0A2D5E"},
+    "dark-high-contrast": {"primary": "#FBFAFF"}
+  }
+}''');
+      // The BASE light/dark win over the contrast variants — and the purple
+      // fallback never appears.
+      expect(theme.lightColors.primary, const Color(0xFF415F91));
+      expect(theme.darkColors.primary, const Color(0xFFAAC7FF));
+      expect(theme.lightColors.primary, isNot(m3Purple));
+      expect(theme.darkColors.primary, isNot(m3Purple));
+    });
+
+    test('detects a flat dark single-scheme by surface luminance', () {
+      const flatDark =
+          '{"primary": "#AAC7FF", "surface": "#111318", "onSurface": "#E2E2E9"}';
+      final parsed = CustomTheme.parseImport(flatDark);
+      expect(parsed.hasDark, isTrue);
+      expect(parsed.hasLight, isFalse);
+      expect(parsed.dark!.primary, const Color(0xFFAAC7FF));
+
+      // Through fromJson the missing light side is paired off the dark
+      // primary and stays light (a bright surface), never purple.
+      final theme = CustomTheme.fromJsonString(flatDark);
+      expect(theme.darkColors.primary, const Color(0xFFAAC7FF));
+      expect(theme.lightColors.surface.computeLuminance(), greaterThan(0.5));
+    });
+
+    test('detects a flat light single-scheme by surface luminance', () {
+      const flatLight = '{"primary": "#415F91", "surface": "#F9F9FF"}';
+      final parsed = CustomTheme.parseImport(flatLight);
+      expect(parsed.hasLight, isTrue);
+      expect(parsed.hasDark, isFalse);
+      expect(parsed.light!.primary, const Color(0xFF415F91));
+    });
+
+    test('an explicit "brightness" field overrides luminance', () {
+      // Surface is bright but the document declares dark — the explicit
+      // marker wins.
+      const explicit =
+          '{"brightness": "dark", "primary": "#FF0000", "surface": "#FFFFFF"}';
+      final parsed = CustomTheme.parseImport(explicit);
+      expect(parsed.hasDark, isTrue);
+      expect(parsed.hasLight, isFalse);
+    });
+
+    test('partial dark import keeps missing roles dark (no purple bleed)', () {
+      // Only the primary is given on each side — the regression was that
+      // missing dark roles fell back to the fixed light purple palette.
+      final theme = CustomTheme.fromJsonString('''
+{
+  "light": {"primary": "#224488"},
+  "dark": {"primary": "#88AAFF"}
+}''');
+      expect(theme.darkColors.primary, const Color(0xFF88AAFF));
+      // The derived dark surface must actually be dark.
+      expect(theme.darkColors.surface.computeLuminance(), lessThan(0.5));
+      // The derived light surface must actually be light.
+      expect(theme.lightColors.surface.computeLuminance(), greaterThan(0.5));
+    });
+
+    test('parseImport reports both sides for a full theme', () {
+      const full =
+          '{"light": {"primary": "#111111"}, "dark": {"primary": "#EEEEEE"}}';
+      final parsed = CustomTheme.parseImport(full);
+      expect(parsed.isComplete, isTrue);
+      expect(parsed.light!.primary, const Color(0xFF111111));
+      expect(parsed.dark!.primary, const Color(0xFFEEEEEE));
+    });
+
+    test('a scheme-less object throws instead of materializing purple', () {
+      expect(
+        () => CustomTheme.fromJsonString('{"id": "x", "name": "y"}'),
+        throwsA(isA<FormatException>()),
+      );
+      expect(
+        () => CustomTheme.parseImport('{"id": "x", "name": "y"}'),
+        throwsA(isA<FormatException>()),
+      );
+    });
+  });
+
   group('CustomTheme — derived builders', () {
     test('derivedFromSeed fills every role from a single seed', () {
       final theme = CustomTheme.derivedFromSeed(
@@ -172,8 +270,7 @@ void main() {
       expect(theme.lightColors.surface, isNot(theme.darkColors.surface));
     });
 
-    test('withLightColors / withDarkColors only update the chosen side',
-        () {
+    test('withLightColors / withDarkColors only update the chosen side', () {
       final base = CustomTheme.derivedFromSeed(
         id: 'split-1',
         name: 'Split',
@@ -189,8 +286,7 @@ void main() {
   });
 
   group('CustomThemeColors — color scheme conversion', () {
-    test('toColorScheme carries every role into a Material ColorScheme',
-        () {
+    test('toColorScheme carries every role into a Material ColorScheme', () {
       final colors = CustomThemeColors(
         primary: const Color(0xFF111111),
         onPrimary: const Color(0xFF222222),

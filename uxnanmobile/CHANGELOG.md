@@ -6,6 +6,48 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- **Custom theme JSON import now detects light/dark and stops defaulting to
+  purple.** The importer only understood Uxnan's own `{light, dark}` document;
+  any other shape left both scheme maps empty, and `CustomThemeColors.fromJson`
+  then materialized the Material 3 baseline palette — whose primary is the
+  canonical `#6750A4` purple. That is why "the import always saved a purple
+  theme" and "light/dark was never detected". The parser is now tolerant of
+  the three shapes a user actually pastes:
+  - **Uxnan native** — `{ "light": {...}, "dark": {...} }`.
+  - **Material Theme Builder export** — `{ "schemes": { "light": {...},
+    "dark": {...}, "light-medium-contrast": {...}, ... } }`. The base
+    `light`/`dark` schemes are used; the contrast variants are ignored. The
+    role keys already match Material's, so these import directly.
+  - **A single flat scheme** — role keys at the top level. Its brightness is
+    detected from an explicit `"brightness"` field or, failing that, the
+    `surface` (then `onSurface`) luminance, and it is applied to the matching
+    side only.
+  Missing roles in a partial document now fall back to a Material 3 scheme
+  **seed-derived from the document's own `primary`** for the correct
+  brightness (so a partial *dark* import stays dark) instead of a fixed
+  light-purple palette. A document with no recognizable scheme now throws a
+  `FormatException` (surfaced as an import-failed snackbar) instead of
+  silently producing purple.
+  - `domain/value_objects/custom_theme.dart`: `CustomThemeColors.fromJson`
+    gained a required `brightness` + seed-derived fallback; `CustomTheme.fromJson`
+    routes through a new `_extractSchemeMaps` (native / Material Theme Builder
+    / flat) + `_detectBrightness`, and pairs an absent side off the present
+    side's primary; new `CustomTheme.parseImport` → `CustomThemeImport`
+    reports which sides were found so the editor can patch just one.
+  - `presentation/screens/settings/custom_theme_editor_screen.dart`: *Import*
+    now uses `parseImport` — a single-brightness palette patches only its side
+    (leaving the other untouched) and flips the visible tab to match; a full
+    theme replaces both.
+  - The library-level *Import* on the Personalization screen inherits the same
+    tolerant `CustomTheme.fromJson`, so Material Theme Builder and flat
+    single-scheme JSON now import there too (a single scheme is paired into a
+    complete light+dark theme).
+  - `test/unit/domain/value_objects/custom_theme_test.dart`: new
+    "tolerant multi-format import" group (Material Theme Builder, flat
+    light/dark detection, explicit `brightness`, no-purple partial fill,
+    `parseImport` sides, scheme-less throws).
+
 ### Added
 - **`git/log` RPC contract.** The shared package gains three new types
   (`GitCommit`, `GitLogResult`, `GitLogParams` in `models/git.ts`) plus
