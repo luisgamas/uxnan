@@ -940,6 +940,108 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get gitHistoryTitle => 'History';
+
+  @override
+  String get gitHistoryButton => 'View history';
+
+  @override
+  String get gitHistoryListView => 'List';
+
+  @override
+  String get gitHistoryGraphView => 'Graph';
+
+  @override
+  String get gitHistoryViewTooltip => 'Toggle view';
+
+  @override
+  String get gitHistoryEmpty => 'No commits yet';
+
+  @override
+  String get gitHistoryEmptyBody =>
+      'Once you commit changes they\'ll show up here.';
+
+  @override
+  String get gitHistoryLoadMore => 'Load older commits';
+
+  @override
+  String get gitHistoryLoadingMore => 'Loading…';
+
+  @override
+  String get gitHistoryErrorTitle => 'Couldn\'t load commit history';
+
+  @override
+  String get gitHistoryRetry => 'Retry';
+
+  @override
+  String get gitHistoryMergeBadge => 'Merge';
+
+  @override
+  String gitHistoryCommitBy(String name) {
+    return 'by $name';
+  }
+
+  @override
+  String get gitHistoryParentsLabel => 'Parents';
+
+  @override
+  String get gitHistoryDetailsTitle => 'Commit details';
+
+  @override
+  String get gitHistoryDetailsMessage => 'Full message';
+
+  @override
+  String get gitHistoryDetailsAuthor => 'Author';
+
+  @override
+  String get gitHistoryDetailsCommitter => 'Committer';
+
+  @override
+  String get gitHistoryDetailsDate => 'Date';
+
+  @override
+  String get gitHistoryDetailsStats => 'Changes';
+
+  @override
+  String gitHistoryDetailsFiles(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count files changed',
+      one: '1 file changed',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String gitHistoryDetailsParents(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count parents',
+      one: '1 parent',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get gitHistoryCopySha => 'Copy SHA';
+
+  @override
+  String get gitHistoryCopiedSha => 'SHA copied';
+
+  @override
+  String get gitHistoryCopyMessage => 'Copy message';
+
+  @override
+  String get gitHistoryCopiedMessage => 'Message copied';
+
+  @override
+  String gitHistoryFilesTouched(int additions, int deletions, int files) {
+    return '$additions additions, $deletions deletions, $files files';
+  }
+
+  @override
   String get pushChannelName => 'Agent activity';
 
   @override

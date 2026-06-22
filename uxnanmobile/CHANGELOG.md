@@ -54,6 +54,55 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   - `uxnanmobile/test/unit/application/git_action_manager_test.dart`:
     two new unit tests (round-trip parse of the bridge payload +
     empty-result handling).
+- **Git commit history screen (`GitHistoryScreen`).** Fourth and final
+  commit of the history feature: the mobile UI on top of
+  `GitActionManager.log`. Two views share the same cursor-paginated
+  data, switched via a `ConnectedButtonGroup` (Neural Expressive §4.5):
+  - **List** — chronological commit rows (`ExpressiveCard`, title,
+    "Merge" badge when more than one parent, author + relative date,
+    +/- stats).
+  - **Graph** — GitKraken-style lanes assigned by parent continuation
+    with Bézier curves connecting parents to children.
+
+  Cursor-based pagination (50 commits per page), *Load older commits*
+  footer, pull-to-refresh, empty + error states with a Retry button.
+  Tapping a row opens a bottom sheet with the full message, authors,
+  parents, stats, and **Copy SHA** / **Copy message** actions (each
+  with a SnackBar confirmation). The `Icons.history_rounded`
+  `IconSurface` lives in `GitScreen`'s app bar (visible only when a
+  repo is open) and pushes the new screen. Built strictly on the
+  Neural Expressive design system: `ExpressiveCard` for rows,
+  `PolygonLoader` for the initial-load spinner, `UxnanSpacing` /
+  `UxnanRadius` tokens throughout.
+  - `uxnanmobile/lib/presentation/screens/conversation/git/git_history_screen.dart`:
+    new screen with the `List` and `Graph` views, the lane-assignment
+    algorithm (`_assignLanes`), and the custom `_GraphPainter` that
+    draws lane tracks, the commit circle, outgoing lines, and Bézier
+    branch curves.
+  - `uxnanmobile/lib/presentation/widgets/connected_button_group.dart`:
+    new shared widget implementing Neural Expressive §4.5 — a
+    physically fused horizontal strip with dynamic corner radii (outer
+    stadium, inner 4 dp), neighbour-squish on press via `spatialFast`.
+    Asserted to 2–5 options per spec.
+  - `uxnanmobile/lib/presentation/screens/conversation/git/git_screen.dart`:
+    new `IconSurface` in the app-bar `actions` row that pushes
+    `GitHistoryScreen`.
+  - `uxnanmobile/l10n/app_en.arb` + `app_es.arb`: 19 new keys
+    (history title, button, list/graph view labels, empty/loading/error
+    states, merge badge, details sheet, copy actions with snackbars).
+  - `test/widget/presentation/git_history_screen_test.dart`: 5 new
+    widget tests (list rendering, empty state, error state, list↔graph
+    toggle, details bottom sheet).
+    `test/widget/presentation/connected_button_group_test.dart`: 4 new
+    widget tests (renders N values, onChanged fires, selected uses
+    bold text, asserts 2–5 options).
+    `test/widget/presentation/git_screen_test.dart`: 1 new test
+    verifying the History `IconSurface` is exposed in the app bar.
+    394/394 mobile tests pass; 339/339 bridge tests pass.
+  - `architecture/02a-system-architecture.md` §5.8.6 documents the UI
+    half of the history feature (lane algorithm, list+graph views,
+    bottom sheet actions, pull-to-refresh, NE design tokens).
+  - `uxnanmobile/FOR-DEV.md` flips the entry to **DONE**.
 
 ### Changed
 - **File browser, Git screen and file viewer: app-bar refresh moved to

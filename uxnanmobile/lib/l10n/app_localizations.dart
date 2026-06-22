@@ -1850,6 +1850,168 @@ abstract class AppLocalizations {
   /// **'Switched to {branch}'**
   String gitSwitchSuccess(String branch);
 
+  /// No description provided for @gitHistoryTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'History'**
+  String get gitHistoryTitle;
+
+  /// No description provided for @gitHistoryButton.
+  ///
+  /// In en, this message translates to:
+  /// **'View history'**
+  String get gitHistoryButton;
+
+  /// No description provided for @gitHistoryListView.
+  ///
+  /// In en, this message translates to:
+  /// **'List'**
+  String get gitHistoryListView;
+
+  /// No description provided for @gitHistoryGraphView.
+  ///
+  /// In en, this message translates to:
+  /// **'Graph'**
+  String get gitHistoryGraphView;
+
+  /// No description provided for @gitHistoryViewTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Toggle view'**
+  String get gitHistoryViewTooltip;
+
+  /// No description provided for @gitHistoryEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No commits yet'**
+  String get gitHistoryEmpty;
+
+  /// No description provided for @gitHistoryEmptyBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Once you commit changes they\'ll show up here.'**
+  String get gitHistoryEmptyBody;
+
+  /// No description provided for @gitHistoryLoadMore.
+  ///
+  /// In en, this message translates to:
+  /// **'Load older commits'**
+  String get gitHistoryLoadMore;
+
+  /// No description provided for @gitHistoryLoadingMore.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading…'**
+  String get gitHistoryLoadingMore;
+
+  /// No description provided for @gitHistoryErrorTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load commit history'**
+  String get gitHistoryErrorTitle;
+
+  /// No description provided for @gitHistoryRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get gitHistoryRetry;
+
+  /// No description provided for @gitHistoryMergeBadge.
+  ///
+  /// In en, this message translates to:
+  /// **'Merge'**
+  String get gitHistoryMergeBadge;
+
+  /// No description provided for @gitHistoryCommitBy.
+  ///
+  /// In en, this message translates to:
+  /// **'by {name}'**
+  String gitHistoryCommitBy(String name);
+
+  /// No description provided for @gitHistoryParentsLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Parents'**
+  String get gitHistoryParentsLabel;
+
+  /// No description provided for @gitHistoryDetailsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Commit details'**
+  String get gitHistoryDetailsTitle;
+
+  /// No description provided for @gitHistoryDetailsMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Full message'**
+  String get gitHistoryDetailsMessage;
+
+  /// No description provided for @gitHistoryDetailsAuthor.
+  ///
+  /// In en, this message translates to:
+  /// **'Author'**
+  String get gitHistoryDetailsAuthor;
+
+  /// No description provided for @gitHistoryDetailsCommitter.
+  ///
+  /// In en, this message translates to:
+  /// **'Committer'**
+  String get gitHistoryDetailsCommitter;
+
+  /// No description provided for @gitHistoryDetailsDate.
+  ///
+  /// In en, this message translates to:
+  /// **'Date'**
+  String get gitHistoryDetailsDate;
+
+  /// No description provided for @gitHistoryDetailsStats.
+  ///
+  /// In en, this message translates to:
+  /// **'Changes'**
+  String get gitHistoryDetailsStats;
+
+  /// No description provided for @gitHistoryDetailsFiles.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 file changed} other{{count} files changed}}'**
+  String gitHistoryDetailsFiles(int count);
+
+  /// No description provided for @gitHistoryDetailsParents.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 parent} other{{count} parents}}'**
+  String gitHistoryDetailsParents(int count);
+
+  /// No description provided for @gitHistoryCopySha.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy SHA'**
+  String get gitHistoryCopySha;
+
+  /// No description provided for @gitHistoryCopiedSha.
+  ///
+  /// In en, this message translates to:
+  /// **'SHA copied'**
+  String get gitHistoryCopiedSha;
+
+  /// No description provided for @gitHistoryCopyMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy message'**
+  String get gitHistoryCopyMessage;
+
+  /// No description provided for @gitHistoryCopiedMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Message copied'**
+  String get gitHistoryCopiedMessage;
+
+  /// No description provided for @gitHistoryFilesTouched.
+  ///
+  /// In en, this message translates to:
+  /// **'{additions} additions, {deletions} deletions, {files} files'**
+  String gitHistoryFilesTouched(int additions, int deletions, int files);
+
   /// Name of the Android notification channel for agent activity.
   ///
   /// In en, this message translates to:

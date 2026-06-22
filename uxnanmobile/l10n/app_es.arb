@@ -327,6 +327,50 @@
   "gitSwitchLeave": "Dejar en la actual",
   "gitSwitchSuccess": "Cambiado a {branch}",
 
+  "gitHistoryTitle": "Historial",
+  "gitHistoryButton": "Ver historial",
+  "gitHistoryListView": "Lista",
+  "gitHistoryGraphView": "Grafo",
+  "gitHistoryViewTooltip": "Cambiar vista",
+  "gitHistoryEmpty": "Aún no hay commits",
+  "gitHistoryEmptyBody": "Cuando confirmes cambios aparecerán aquí.",
+  "gitHistoryLoadMore": "Cargar más antiguos",
+  "gitHistoryLoadingMore": "Cargando…",
+  "gitHistoryErrorTitle": "No se pudo cargar el historial",
+  "gitHistoryRetry": "Reintentar",
+  "gitHistoryMergeBadge": "Merge",
+  "gitHistoryCommitBy": "por {name}",
+  "@gitHistoryCommitBy": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "gitHistoryParentsLabel": "Padres",
+  "gitHistoryDetailsTitle": "Detalle del commit",
+  "gitHistoryDetailsMessage": "Mensaje completo",
+  "gitHistoryDetailsAuthor": "Autor",
+  "gitHistoryDetailsCommitter": "Committer",
+  "gitHistoryDetailsDate": "Fecha",
+  "gitHistoryDetailsStats": "Cambios",
+  "gitHistoryDetailsFiles": "{count, plural, =1{1 archivo modificado} other{{count} archivos modificados}}",
+  "@gitHistoryDetailsFiles": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "gitHistoryDetailsParents": "{count, plural, =1{1 padre} other{{count} padres}}",
+  "@gitHistoryDetailsParents": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "gitHistoryCopySha": "Copiar SHA",
+  "gitHistoryCopiedSha": "SHA copiado",
+  "gitHistoryCopyMessage": "Copiar mensaje",
+  "gitHistoryCopiedMessage": "Mensaje copiado",
+  "gitHistoryFilesTouched": "{additions} adiciones, {deletions} eliminaciones, {files} archivos",
+  "@gitHistoryFilesTouched": {
+    "placeholders": {
+      "additions": { "type": "int" },
+      "deletions": { "type": "int" },
+      "files": { "type": "int" }
+    }
+  },
+
   "pushChannelName": "Actividad del agente",
   "pushChannelDescription": "Turnos completados y errores de tus agentes de código.",
   "pushFallbackTitle": "Uxnan",

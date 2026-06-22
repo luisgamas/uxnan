@@ -8,6 +8,7 @@ import 'package:uxnan/domain/value_objects/git/git_changed_file.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/screens/conversation/git/git_diff_view.dart';
+import 'package:uxnan/presentation/screens/conversation/git/git_history_screen.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
@@ -942,6 +943,17 @@ class _GitScreenState extends ConsumerState<GitScreen> {
                         _expanded.addAll(files.map((f) => f.path));
                       }
                     }),
+                  ),
+                if (state != null)
+                  IconSurface(
+                    icon: Icons.history_rounded,
+                    tooltip: l10n.gitHistoryButton,
+                    onPressed: _busy
+                        ? null
+                        : () => GitHistoryScreen.push(
+                              context,
+                              cwd: widget.cwd,
+                            ),
                   ),
                 if (state != null)
                   _OverflowMenu(

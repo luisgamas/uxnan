@@ -155,4 +155,16 @@ void main() {
     // And the RefreshIndicator must be wired into the scroll surface.
     expect(find.byType(RefreshIndicator), findsOneWidget);
   });
+
+  testWidgets(
+      'GitScreen exposes the History action in the app bar when a repo '
+      'is present', (tester) async {
+    await tester.pumpWidget(_wrap(const GitScreen(), state: _sampleState()));
+    await tester.pump();
+
+    // The History IconSurface is in the app bar with the "View history"
+    // tooltip. It's disabled while the screen is busy.
+    final historyTooltip = find.byTooltip('View history');
+    expect(historyTooltip, findsOneWidget);
+  });
 }
