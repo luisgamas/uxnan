@@ -1597,7 +1597,20 @@ async function handleGitCheckout({ cwd, branch }) { ... }
 async function handleGitCreateBranch({ cwd, name }) { ... }
 async function handleGitCreateWorktree({ cwd, branch, path, managed }) { ... }
 async function handleGitStackedPublish({ cwd, message, remote, branch }) { ... }
+async function handleGitLog({ cwd, limit, cursor, ref }) {
+  // git log --format=...%x1e -z --shortstat -n (limit+1) [cursor^|ref]
+  // Paginación por cursor: cursor^ excluye el cursor y devuelve los commits
+  // estrictamente más antiguos. Devuelve {commits, hasMore, nextCursor}.
+  // Repo fresco (sin HEAD) → {commits:[], hasMore:false} (no error).
+}
 ```
+
+El método `git/log` es la fuente de la pantalla de historial de commits
+(`GitHistoryScreen` en `presentation/screens/conversation/git/`): la app
+lo llama al abrir y en cada `loadMoreHistory`, pasando el `nextCursor`
+de la página anterior como `cursor`. `parents[]` es lo que alimenta la
+vista gráfico (GitKraken-style) — cada parent es un "lane" donde se
+dibuja la línea.
 
 #### 5.8.7 Workspace handler (bridge)
 

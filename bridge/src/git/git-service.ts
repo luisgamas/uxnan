@@ -10,10 +10,12 @@ import type {
   GitBranchList,
   GitBranchResult,
   GitChangedFile,
+  GitCommit,
   GitCommitResult,
   GitDiff,
   GitDiffTotals,
   GitFileStatus,
+  GitLogResult,
   GitPrResult,
   GitPullResult,
   GitPushResult,
@@ -72,6 +74,71 @@ export class GitService {
       deletions = 0;
     }
     return { diff: text, additions, deletions };
+  }
+
+  /**
+   * Returns the commit log for [cwd], newest first. Supports cursor-based
+   * pagination: pass `options.cursor` (a commit SHA) to fetch the page
+   * strictly older than that commit, and `options.limit` to cap the page
+   * size (the bridge default is 50). The result includes `hasMore` +
+   * `nextCursor` so the phone can keep paging without offsets that go
+   * stale on rebase.
+   *
+   * The output is parsed from a single `git log` invocation using a custom
+   * format: fields are null-separated, commits are record-separated
+   * (ASCII 0x1E). The phone renders the parsed list in either a flat list
+   * or a GitKraken-style graph (which uses `parents` to draw the lanes).
+   */
+  async log(
+    cwd: string,
+    options: { limit?: number; cursor?: string; ref?: string } = {},
+  ): Promise<GitLogResult> {
+    const limit = Math.max(1, Math.min(options.limit ?? 50, 500));
+    // Fetch one extra commit so we can tell `hasMore` without a second git
+    // invocation (the extra is dropped from the result).
+    const fetchLimit = limit + 1;
+    const format = [
+      '%H', // full SHA
+      '%h', // short SHA
+      '%P', // parents (space-separated)
+      '%an', // author name
+      '%ae', // author email
+      '%at', // author date (unix seconds)
+      '%cn', // committer name
+      '%ce', // committer email
+      '%ct', // committer date (unix seconds)
+      '%B', // raw message (title + body, separated by a blank line)
+    ].join('%x00');
+    const args = [
+      'log',
+      `--format=${format}%x1e`,
+      '-z',
+      '--shortstat',
+      '-n',
+      String(fetchLimit),
+      // Cursor: when set, start from the cursor's parent (`<cursor>^`) so
+      // the cursor itself is excluded and we get strictly older commits.
+      // The `^` notation is a shorthand for `~1` and works for both
+      // regular and merge commits.
+      options.cursor
+        ? `${options.cursor}^`
+        : options.ref ?? 'HEAD',
+    ];
+    try {
+      const { stdout } = await runGit(cwd, args);
+      return parseLogOutput(stdout, limit);
+    } catch (err) {
+      // A fresh repo (no commits yet) has no HEAD — `git log HEAD` exits
+      // non-zero. That's not an error from the caller's perspective: it
+      // just means there's nothing to list.
+      if (
+        err instanceof GitCommandError &&
+        /unknown revision|bad revision/i.test(err.stderr)
+      ) {
+        return { commits: [], hasMore: false };
+      }
+      throw err;
+    }
   }
 
   async commit(
@@ -517,6 +584,112 @@ export class GitService {
 /** Label used to tag a branch's auto-stash so it can be restored on return. */
 function autoStashLabel(branch: string): string {
   return `uxnan-auto:${branch}`;
+}
+
+/**
+ * Parses a `git log` payload produced by the format in {@link GitService.log}.
+ *
+ * The output is NUL-terminated records (`-z`) where each record's
+ * `--format=...%x1e` injects a 0x1E record separator, then `--shortstat`
+ * appends a line of stats after the separator, then the next commit starts.
+ * The resulting shape is:
+ *
+ *     <commit1 fields>\n<msg>\n\x1e\x00\n<shortstat1>\n<commit2 fields>\n<msg>\n\x1e\x00\n<shortstat2>\n...
+ *
+ * We split on `\x1e`. The first record is just commit1's fields; every
+ * subsequent record starts with a `\x00\n<shortstat>\n` prefix that
+ * belongs to the *previous* commit, followed by the current commit's
+ * fields. We pair them by deferring the shortstat attachment by one record.
+ */
+function parseLogOutput(stdout: string, limit: number): GitLogResult {
+  // Trim the trailing 0x1E so the last record isn't empty, then split.
+  const records = stdout.replace(/\x1e+$/, '').split('\x1e');
+  // Each entry holds the parsed commit (without stats) and the shortstat
+  // that belongs to it. We populate the shortstat retroactively when the
+  // next record provides it.
+  const parsed: { commit: Omit<GitCommit, 'stats'>; shortstat: string }[] = [];
+  for (const rawRecord of records) {
+    if (!rawRecord.trim()) continue;
+    // Peel off a leading `\x00\n<shortstat>\n` (present on every record
+    // except the first). The shortstat belongs to the PREVIOUS commit.
+    let shortstat = '';
+    let record = rawRecord;
+    const shortstatMatch = rawRecord.match(/^\x00\n(.*?)\n([\s\S]*)$/);
+    if (shortstatMatch) {
+      shortstat = shortstatMatch[1] ?? '';
+      record = shortstatMatch[2] ?? '';
+    }
+    const parts = record.split('\x00');
+    const [
+      sha,
+      shortSha,
+      parentsRaw,
+      authorName,
+      authorEmail,
+      authorTs,
+      committerName,
+      committerEmail,
+      committerTs,
+      messageRaw,
+    ] = parts;
+    if (!sha) continue;
+    // Attach the shortstat from THIS record to the PREVIOUS commit (it
+    // appeared after that commit in the git output).
+    if (parsed.length > 0 && shortstat) {
+      parsed[parsed.length - 1]!.shortstat = shortstat;
+    }
+    const parents = parentsRaw ? parentsRaw.trim().split(/\s+/).filter(Boolean) : [];
+    const message = messageRaw ?? '';
+    // Message: first line is the title, the rest (after a blank line) is
+    // the body. git's %B includes a trailing newline.
+    const messageLines = message.replace(/\n$/, '').split('\n');
+    const messageTitle = messageLines[0] ?? '';
+    let messageBody = '';
+    for (let i = 1; i < messageLines.length; i++) {
+      if (messageLines[i] === '' && i + 1 < messageLines.length) {
+        messageBody = messageLines.slice(i + 1).join('\n').trim();
+        break;
+      }
+    }
+    const commit: Omit<GitCommit, 'stats'> = {
+      sha: sha.trim(),
+      shortSha: shortSha?.trim() ?? sha.trim().slice(0, 7),
+      parents,
+      authorName: authorName ?? '',
+      authorEmail: authorEmail ?? '',
+      authorTimestamp: Number(authorTs) || 0,
+      committerName: committerName ?? authorName ?? '',
+      committerEmail: committerEmail ?? authorEmail ?? '',
+      committerTimestamp: Number(committerTs) || Number(authorTs) || 0,
+      messageTitle,
+      messageBody,
+    };
+    parsed.push({ commit, shortstat: '' });
+  }
+  // Materialise the shortstat on each commit.
+  const commits: GitCommit[] = parsed.map(({ commit, shortstat }) => {
+    const statMatch = shortstat.match(
+      /(\d+) files? changed(?:, (\d+) insertions?\(\+\))?(?:, (\d+) deletions?\(-\))?/,
+    );
+    if (statMatch) {
+      const filesChanged = Number(statMatch[1]) || 0;
+      const additions = Number(statMatch[2]) || 0;
+      const deletions = Number(statMatch[3]) || 0;
+      return {
+        ...commit,
+        stats: { changedFileCount: filesChanged, additions, deletions },
+      };
+    }
+    return commit;
+  });
+  const hasMore = commits.length > limit;
+  const trimmed = hasMore ? commits.slice(0, limit) : commits;
+  const nextCursor = hasMore ? trimmed[trimmed.length - 1]?.sha : undefined;
+  return {
+    commits: trimmed,
+    hasMore,
+    ...(nextCursor ? { nextCursor } : {}),
+  };
 }
 
 function mapStatus(xy: string): GitFileStatus {

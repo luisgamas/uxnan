@@ -15,6 +15,27 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   the mobile manager land in the next commits.
   - `architecture/02b-contracts-and-requirements.md` lists `git/log` in
     the git method table.
+- **`git/log` bridge handler.** The bridge exposes the new RPC: it runs
+  `git log --format=...%x1e -z --shortstat` and parses the stream into
+  the typed `GitCommit[]`. Cursor semantics: the caller passes the last
+  commit's SHA on the next page; the bridge uses `<cursor>^` to start
+  from the parent so the cursor itself is excluded. A fresh repo (no
+  HEAD) returns `{commits:[], hasMore:false}` instead of a 128 exit, so
+  the history screen opens cleanly on a brand-new repository. 21/21
+  git tests pass.
+  - `bridge/src/git/git-service.ts`: new `log(cwd, {limit, cursor,
+    ref})` plus a `parseLogOutput` helper (shortstat from `--shortstat`
+    is emitted after each `%x1e` record and is associated with the
+    previous commit via deferred attachment).
+  - `bridge/src/handlers/git-handler.ts`: new `git/log` handler with
+    tolerant param coercion (optional `limit: number`, `cursor?: string`,
+    `ref?: string`).
+  - `bridge/test/git/git-service.test.ts`: three new tests (`log`
+    returns commits newest-first with author/parents/stats; cursor
+    pagination + hasMore + nextCursor; empty repo returns an empty
+    list).
+  - `architecture/02a-system-architecture.md` §5.8.6 documents the new
+    handler and its cursor pagination contract.
 
 ### Changed
 - **File browser, Git screen and file viewer: app-bar refresh moved to
