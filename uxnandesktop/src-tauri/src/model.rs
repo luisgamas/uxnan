@@ -54,6 +54,12 @@ pub struct RepoData {
     pub path: String,
     #[serde(default)]
     pub worktrees: Vec<WorktreeData>,
+    /// Whether the folder is a git repository. Non-git folders are valid projects
+    /// too (terminal + file-tree workspace); their git-only panels stay empty.
+    /// Defaults to `true` for state persisted before this field existed (every
+    /// repo back then was a git repo).
+    #[serde(default = "default_true")]
+    pub is_git: bool,
 }
 
 /// An independent git worktree — the ADE's fundamental unit of isolation.

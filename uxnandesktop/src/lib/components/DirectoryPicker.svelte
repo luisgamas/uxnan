@@ -119,17 +119,15 @@
                 </Badge>
               {/if}
             </button>
-            {#if entry.isRepo}
-              <Button
-                variant="ghost"
-                size="sm"
-                class="h-6 text-[11px] opacity-0 group-hover:opacity-100"
-                disabled={busy}
-                onclick={() => add(entry.path)}
-              >
-                {i18n.t("common.add")}
-              </Button>
-            {/if}
+            <Button
+              variant="ghost"
+              size="sm"
+              class="h-6 text-[11px] opacity-0 group-hover:opacity-100"
+              disabled={busy}
+              onclick={() => add(entry.path)}
+            >
+              {i18n.t("common.add")}
+            </Button>
           </div>
         {/each}
       {/if}
@@ -146,7 +144,7 @@
     <Dialog.Footer>
       <Button variant="ghost" onclick={() => (open = false)}>{i18n.t("common.cancel")}</Button>
       <Button
-        disabled={!listing?.isRepo || busy}
+        disabled={!listing || busy}
         onclick={() => listing && add(listing.path)}
       >
         {busy ? i18n.t("common.adding") : i18n.t("picker.addFolder")}

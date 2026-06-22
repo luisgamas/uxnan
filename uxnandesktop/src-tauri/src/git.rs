@@ -322,8 +322,19 @@ async fn remove_dir_with_retry(path: &str) {
     }
 }
 
-/// List all worktrees of a repo (ADE-created and external).
+/// List all worktrees of a repo (ADE-created and external). A registered folder
+/// that isn't a git repo has no worktrees, so we synthesize a single "main"
+/// entry pointing at the folder itself — the project still works as a terminal /
+/// file-tree workspace, only its git-only panels stay empty.
 pub async fn list_worktrees(repo_path: &str) -> Result<Vec<WorktreeEntry>, AppError> {
+    if !is_git_repo(repo_path).await {
+        return Ok(vec![WorktreeEntry {
+            path: repo_path.to_string(),
+            branch: None,
+            head: None,
+            is_main: true,
+        }]);
+    }
     let out = git(repo_path, &["worktree", "list", "--porcelain"]).await?;
     Ok(parse_worktree_porcelain(&out))
 }

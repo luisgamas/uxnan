@@ -102,6 +102,11 @@ export interface RepoData {
   name: string;
   path: string;
   worktrees: WorktreeData[];
+  /** Whether the folder is a git repository. Non-git folders are valid projects
+   *  too — they just have no worktrees/branches and their git panels stay empty.
+   *  Optional for back-compat with state persisted before this field existed
+   *  (treated as git when absent). */
+  isGit?: boolean;
 }
 
 /** A worktree as reported by `git worktree list` (ADE- or agent-created). */

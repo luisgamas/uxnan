@@ -155,15 +155,18 @@ pub async fn pty_close(state: State<'_, AppState>, id: String) -> Result<(), Com
 
 // --- Repositories ----------------------------------------------------------
 
-/// Register a git repository (by absolute path) with the ADE. Idempotent: a
+/// Register a project folder (by absolute path) with the ADE. Any directory may
+/// be added — git or not; a non-git folder simply has no worktrees/branches and
+/// its git-only panels stay empty (see `git::list_worktrees`). Idempotent: a
 /// path already registered returns the existing entry.
 #[tauri::command]
 pub async fn repo_add(state: State<'_, AppState>, path: String) -> Result<RepoData, CommandError> {
-    if !git::is_git_repo(&path).await {
+    if !std::path::Path::new(&path).is_dir() {
         return Err(CommandError::from(AppError::Invalid(format!(
-            "{path} is not a git repository"
+            "{path} is not a folder"
         ))));
     }
+    let is_git = git::is_git_repo(&path).await;
     let mut data = state.data.write().await;
     if let Some(existing) = data.repos.iter().find(|r| r.path == path) {
         return Ok(existing.clone());
@@ -173,6 +176,7 @@ pub async fn repo_add(state: State<'_, AppState>, path: String) -> Result<RepoDa
         name: git::repo_name(&path),
         path,
         worktrees: Vec::new(),
+        is_git,
     };
     data.repos.push(repo.clone());
     state.persistence.save(&data).map_err(CommandError::from)?;
@@ -304,6 +308,9 @@ pub async fn worktree_list(
 /// for its sidebar card badges. Runs git directly in `path`.
 #[tauri::command]
 pub async fn worktree_status(path: String) -> Result<git::WorktreeStatus, CommandError> {
+    if !git::is_git_repo(&path).await {
+        return Ok(git::WorktreeStatus::default());
+    }
     git::worktree_status(&path)
         .await
         .map_err(CommandError::from)
@@ -388,9 +395,15 @@ pub async fn git_diff_head(path: String, file: String) -> Result<String, Command
 //
 // These run git directly in the worktree `path` (the right panel's review view).
 
-/// List a worktree's changed files (staged + unstaged + untracked).
+/// List a worktree's changed files (staged + unstaged + untracked). A registered
+/// folder that isn't a git repo simply has no changes, so we return an empty list
+/// rather than an error (keeps the Changes tab + project card quiet for non-git
+/// projects).
 #[tauri::command]
 pub async fn git_status(path: String) -> Result<Vec<git::FileChange>, CommandError> {
+    if !git::is_git_repo(&path).await {
+        return Ok(Vec::new());
+    }
     git::status_files(&path).await.map_err(CommandError::from)
 }
 
