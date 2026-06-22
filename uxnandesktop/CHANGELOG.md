@@ -5,6 +5,31 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — left/right panel polish + any-folder projects + window state
+- **Right-panel tabs (Files | Changes | History)** now show a clear, primary-
+  tinted **active indicator** matching the left panel's selected card (shared
+  `surface` design token in `design.ts`), instead of the easy-to-miss underline.
+- **Selection language unified.** Project/worktree cards and the active tab use
+  `surface.active` (`bg-primary/15` + primary ring); the selected **agent row**
+  uses the lighter `surface.activeNested` (`bg-primary/10`) so it always reads as
+  subordinate to its parent card (`ProjectCard`/`WorktreeRow`/`AgentSpace`).
+- **Hooks indicator moved.** Removed the per-terminal-tab "install hooks" hint
+  (`TerminalArea.svelte`). A single indicator now lives in the **status bar,
+  bottom-right** (next to the repo count) and only appears when hooks actually
+  need attention — not installed, unreadable, or the OS refused them. Backed by
+  new `app` hook-health state (`hookInstall`/`claudeHooks`/`hooksNeedAttention`,
+  refreshed on startup and after a Settings → Hooks toggle). Claude + generic
+  hook scripts still auto-install on startup (`auto_install_hooks` default on).
+- **Any folder is now a project.** `repo_add` accepts any directory (git or not)
+  instead of rejecting non-git folders; `RepoData.is_git` records which. Non-git
+  folders synthesize a single main worktree (`git::list_worktrees`), and
+  `git_status`/`worktree_status` return empty/default for them (no error toast).
+  The picker can add any folder; non-git project cards hide the worktree
+  affordances and use a plain folder icon (`DirectoryPicker`/`ProjectCard`).
+- **Window size remembered.** Added `tauri-plugin-window-state` so the window
+  reopens at the last size/position/maximized state; bumped the first-run default
+  to 1480×920 (`tauri.conf.json`).
+
 ### Added — filesystem watcher: file tree auto-refresh
 - **Backend watcher** (`src-tauri/src/fswatch.rs`, `notify` +
   `notify-debouncer-full`): watches the active worktree root recursively
