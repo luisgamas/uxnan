@@ -225,6 +225,8 @@ export interface AgentStateEntry {
   prompt?: string | null;
   tool?: string | null;
   interrupted: boolean;
+  /** Short preview of the agent's latest response (sent on `done`), if any. */
+  summary?: string | null;
   firstSeen: number;
   lastUpdate: number;
 }

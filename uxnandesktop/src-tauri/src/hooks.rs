@@ -64,6 +64,9 @@ pub struct HookPayload {
     /// Whether the agent was interrupted.
     #[serde(default)]
     pub interrupted: bool,
+    /// Short preview of the agent's latest response (sent on `done`), if any.
+    #[serde(default)]
+    pub summary: Option<String>,
 }
 
 /// The `agent:status-changed` event payload broadcast to the frontend on every
@@ -77,6 +80,7 @@ pub struct AgentStatusEvent {
     pub prompt: Option<String>,
     pub tool: Option<String>,
     pub interrupted: bool,
+    pub summary: Option<String>,
     pub first_seen: i64,
     pub last_update: i64,
 }
@@ -145,6 +149,7 @@ async fn handle_hook(
                 prompt: payload.prompt,
                 tool: payload.tool,
                 interrupted: payload.interrupted,
+                summary: payload.summary,
             },
             now,
         );
@@ -162,6 +167,7 @@ async fn handle_hook(
             prompt: entry.prompt,
             tool: entry.tool,
             interrupted: entry.interrupted,
+            summary: entry.summary,
             first_seen: entry.first_seen,
             last_update: entry.last_update,
         },
@@ -212,6 +218,7 @@ mod tests {
             prompt: None,
             tool: None,
             interrupted: false,
+            summary: None,
             first_seen: 1,
             last_update: 2,
         };
