@@ -36,6 +36,24 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
     list).
   - `architecture/02a-system-architecture.md` §5.8.6 documents the new
     handler and its cursor pagination contract.
+- **Mobile `git/log` support (`GitActionManager.log`).** The mobile
+  half of the bridge RPC: the domain value objects (`GitCommit`,
+  `GitLogResult`, `GitLogParams` with a tolerant JSON codec) and a
+  `log(GitLogParams)` method on `GitActionManager`. Pure read — no
+  side effects on the manager state, no `git/status` refresh (the
+  history screen is independent of the working-tree state, the same
+  way the conversation timeline is independent of `git/status`).
+  12/12 git action manager tests pass.
+  - `uxnanmobile/lib/domain/value_objects/git/git_log.dart`: new
+    `GitCommit` (sha, shortSha, parents[], author/committer name+email+
+    timestamp, messageTitle, messageBody, stats?), `GitLogResult`
+    (commits, hasMore, nextCursor), `GitLogParams` (cwd, limit?,
+    cursor?, ref?) with `toRpcParams()`.
+  - `uxnanmobile/lib/application/managers/git_action_manager.dart`:
+    new `log(GitLogParams)` method.
+  - `uxnanmobile/test/unit/application/git_action_manager_test.dart`:
+    two new unit tests (round-trip parse of the bridge payload +
+    empty-result handling).
 
 ### Changed
 - **File browser, Git screen and file viewer: app-bar refresh moved to

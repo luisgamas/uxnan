@@ -12,6 +12,7 @@ import 'package:uxnan/domain/enums/git_action_kind.dart';
 import 'package:uxnan/domain/repositories/i_git_action_log_repository.dart';
 import 'package:uxnan/domain/value_objects/git/git_action_io.dart';
 import 'package:uxnan/domain/value_objects/git/git_action_progress.dart';
+import 'package:uxnan/domain/value_objects/git/git_log.dart';
 import 'package:uxnan/domain/value_objects/git/git_status_change.dart';
 
 /// Coordinates git actions for the active workspace (spec 02a §5.2.4).
@@ -292,6 +293,29 @@ class GitActionManager {
     final result = response.result;
     if (result is! Map) return const GitBranchList();
     return GitBranchList.fromJson(result.cast<String, dynamic>());
+  }
+
+  /// Fetches a page of the repository's commit log, newest first. Backed by
+  /// the bridge's `git/log` RPC. Supports cursor-based pagination — pass
+  /// [GitLogParams.cursor] (a commit SHA) to fetch the page strictly older
+  /// than that commit; the result's `nextCursor` is the SHA to pass for the
+  /// next call (only set when `hasMore` is true).
+  ///
+  /// Pure read: no side effects on the manager state, no refresh of the
+  /// repo status. The history screen calls this on open and on each
+  /// `loadMoreHistory`; status refreshes happen separately (via
+  /// [refreshStatus] on the git screen's pull-to-refresh).
+  Future<GitLogResult> log(GitLogParams params) async {
+    final rpcParams = <String, dynamic>{
+      'cwd': params.cwd,
+      if (params.limit != null) 'limit': params.limit,
+      if (params.cursor != null) 'cursor': params.cursor,
+      if (params.ref != null) 'ref': params.ref,
+    };
+    final response = await _sendRequest('git/log', rpcParams);
+    final result = response.result;
+    if (result is! Map) return GitLogResult.empty;
+    return GitLogResult.fromJson(result.cast<String, dynamic>());
   }
 
   /// Releases resources.
