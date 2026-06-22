@@ -249,6 +249,121 @@ void main() {
     });
   });
 
+  group('CustomTheme — single vs dual brightness', () {
+    test('a single-scheme import is single and omits the other side on export',
+        () {
+      const flatDark =
+          '{"primary": "#AAC7FF", "surface": "#111318", "onSurface": "#E2E2E9"}';
+      final theme = CustomTheme.fromJsonString(flatDark);
+      expect(theme.isSingle, isTrue);
+      expect(theme.isDual, isFalse);
+      expect(theme.brightness, Brightness.dark);
+      expect(theme.authoredBrightnesses, {Brightness.dark});
+      // Export carries ONLY the authored dark side.
+      final json = theme.toJson();
+      expect(json.containsKey('dark'), isTrue);
+      expect(json.containsKey('light'), isFalse);
+      // Re-import stays single.
+      expect(CustomTheme.fromJson(json).isSingle, isTrue);
+    });
+
+    test('the derived side is usable on demand but never persisted', () {
+      final theme = CustomTheme.single(
+        id: 's1',
+        name: 'Solo',
+        brightness: Brightness.light,
+        scheme: ColorScheme.fromSeed(seedColor: const Color(0xFF1B6EF3)),
+      );
+      // The dark side is materialized (derived) and is actually dark...
+      expect(theme.darkColors.surface.computeLuminance(), lessThan(0.5));
+      // ...but it is not written out.
+      expect(theme.toJson().containsKey('dark'), isFalse);
+      expect(theme.toJson().containsKey('light'), isTrue);
+    });
+
+    test('withOtherSideDerived promotes a single theme to dual', () {
+      final single = CustomTheme.single(
+        id: 's2',
+        name: 'Solo',
+        brightness: Brightness.light,
+        scheme: ColorScheme.fromSeed(seedColor: const Color(0xFF1B6EF3)),
+      );
+      final dual = single.withOtherSideDerived();
+      expect(dual.isDual, isTrue);
+      expect(dual.toJson().containsKey('light'), isTrue);
+      expect(dual.toJson().containsKey('dark'), isTrue);
+      // The promoted dark equals the previously-derived dark.
+      expect(dual.darkColors, single.darkColors);
+      // No-op when already dual.
+      expect(identical(dual.withOtherSideDerived(), dual), isTrue);
+    });
+
+    test('derivation follows each key color hue (no collapse onto primary)',
+        () {
+      // A light scheme with deliberately different hues per key color.
+      final light = ColorScheme.fromSeed(
+        seedColor: const Color(0xFF1B6EF3), // blue primary
+      ).copyWith(
+        secondary: const Color(0xFF8B5A2B), // brown
+        tertiary: const Color(0xFF2E7D32), // green
+      );
+      final theme = CustomTheme.single(
+        id: 'h',
+        name: 'Hues',
+        scheme: light,
+        brightness: Brightness.light,
+      );
+      final dark = theme.darkColors;
+      double hue(Color c) => HSVColor.fromColor(c).hue;
+      double dist(double a, double b) {
+        final d = (a - b).abs();
+        return d > 180 ? 360 - d : d;
+      }
+
+      final priHue = hue(const Color(0xFF1B6EF3));
+      // The derived dark secondary's hue is closer to the brown seed than to
+      // the blue primary — proof the secondary seed was honored, not collapsed.
+      expect(
+        dist(hue(dark.secondary), hue(const Color(0xFF8B5A2B))) <
+            dist(hue(dark.secondary), priHue),
+        isTrue,
+      );
+      expect(
+        dist(hue(dark.tertiary), hue(const Color(0xFF2E7D32))) <
+            dist(hue(dark.tertiary), priHue),
+        isTrue,
+      );
+    });
+
+    test('the built-in / template constructor yields a dual theme', () {
+      final t = CustomTheme(
+        id: 'b',
+        name: 'Built',
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF9C5A1E)),
+      );
+      expect(t.isDual, isTrue);
+      expect(t.darkColors.surface.computeLuminance(), lessThan(0.5));
+      expect(t.lightColors.surface.computeLuminance(), greaterThan(0.5));
+    });
+
+    test('withId keeps cardinality + colors, only changing the id', () {
+      final single = CustomTheme.single(
+        id: 'old',
+        name: 'X',
+        brightness: Brightness.dark,
+        scheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF112233),
+          brightness: Brightness.dark,
+        ),
+      );
+      final renamed = single.withId('new');
+      expect(renamed.id, 'new');
+      expect(renamed.isSingle, isTrue);
+      expect(renamed.brightness, Brightness.dark);
+      expect(renamed.darkColors, single.darkColors);
+    });
+  });
+
   group('CustomTheme — derived builders', () {
     test('derivedFromSeed fills every role from a single seed', () {
       final theme = CustomTheme.derivedFromSeed(

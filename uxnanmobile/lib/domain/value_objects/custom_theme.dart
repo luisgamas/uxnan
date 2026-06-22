@@ -5,88 +5,49 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 
-/// A user-authored Material 3 [ColorScheme] for both [Brightness.light] and
-/// [Brightness.dark]. The whole theme is a flat map of M3 role → ARGB color;
-/// the editor (and the JSON import/export) round-trips every public role on
-/// [ColorScheme] so a custom theme can override any single tone without
-/// touching the rest.
+/// A user-authored Material 3 theme. A theme authors **at least one**
+/// brightness side ([Brightness.light] and/or [Brightness.dark]); when the
+/// opposite side is needed for rendering it is derived from the authored side's
+/// key colors via Material 3's multi-seed generator ([_deriveSide]). A theme
+/// with both sides authored is **dual** ([isDual]); with one, **single**
+/// ([isSingle]). Each authored side is a flat map of M3 role → ARGB color
+/// ([CustomThemeColors]), so the editor and the JSON import/export round-trip
+/// every public role.
 ///
-/// Storage shape: a JSON document with the stable shape described in
-/// [toJson]. A theme's [id] is opaque to the storage layer (only
-/// [AppearancePreferencesStore] keys the document by id); the editor is
-/// free to rename a theme by writing a new id on save.
+/// Storage shape: a JSON document with the stable shape described in [toJson]
+/// — a single theme serializes only its authored side, a dual theme both. A
+/// theme's [id] is opaque to storage (only [AppearancePreferencesStore] keys
+/// the document by id); the editor may rename by writing a new id on save.
 ///
-/// Versioning: the [schemaVersion] field guards the on-disk shape so a future
-/// reader can refuse (or migrate) an older document. Bump it on any
-/// breaking change to [toJson] / [fromJson].
+/// Versioning: the [schemaVersion] field guards the on-disk shape. v2 added
+/// single-brightness themes; v1 documents always carried both sides and load
+/// as dual. Bump it on any breaking change to [toJson] / [fromJson].
 @immutable
 class CustomTheme extends Equatable {
-  /// Creates a [CustomTheme]. The [colorScheme] and [darkColorScheme] are
-  /// the source of truth — [lightColors] / [darkColors] are derived from
-  /// them at construction time.
+  /// Creates a **dual** theme from a single light [colorScheme]; the dark side
+  /// is generated from its key colors (primary/secondary/tertiary/error) via
+  /// Material 3's multi-seed generator. Built-in themes / templates use this so
+  /// they need only specify the light side — there is no second hand-maintained
+  /// dark palette.
   CustomTheme({
     required this.id,
     required this.name,
-    required this.colorScheme,
+    required ColorScheme colorScheme,
     this.description = '',
     this.schemaVersion = currentSchemaVersion,
-  })  : _darkColorScheme = null,
-        _lightColors = CustomThemeColors.fromScheme(colorScheme),
+  })  : _lightColors = CustomThemeColors.fromScheme(colorScheme),
         _darkColors = CustomThemeColors.fromScheme(
-          ColorScheme(
+          _seededScheme(
             brightness: Brightness.dark,
             primary: colorScheme.primary,
-            onPrimary: colorScheme.onPrimary,
-            primaryContainer: colorScheme.primaryContainer,
-            onPrimaryContainer: colorScheme.onPrimaryContainer,
-            primaryFixed: colorScheme.primaryFixed,
-            primaryFixedDim: colorScheme.primaryFixedDim,
-            onPrimaryFixed: colorScheme.onPrimaryFixed,
-            onPrimaryFixedVariant: colorScheme.onPrimaryFixedVariant,
             secondary: colorScheme.secondary,
-            onSecondary: colorScheme.onSecondary,
-            secondaryContainer: colorScheme.secondaryContainer,
-            onSecondaryContainer: colorScheme.onSecondaryContainer,
-            secondaryFixed: colorScheme.secondaryFixed,
-            secondaryFixedDim: colorScheme.secondaryFixedDim,
-            onSecondaryFixed: colorScheme.onSecondaryFixed,
-            onSecondaryFixedVariant: colorScheme.onSecondaryFixedVariant,
             tertiary: colorScheme.tertiary,
-            onTertiary: colorScheme.onTertiary,
-            tertiaryContainer: colorScheme.tertiaryContainer,
-            onTertiaryContainer: colorScheme.onTertiaryContainer,
-            tertiaryFixed: colorScheme.tertiaryFixed,
-            tertiaryFixedDim: colorScheme.tertiaryFixedDim,
-            onTertiaryFixed: colorScheme.onTertiaryFixed,
-            onTertiaryFixedVariant: colorScheme.onTertiaryFixedVariant,
             error: colorScheme.error,
-            onError: colorScheme.onError,
-            errorContainer: colorScheme.errorContainer,
-            onErrorContainer: colorScheme.onErrorContainer,
-            surface: colorScheme.surface,
-            onSurface: colorScheme.onSurface,
-            surfaceDim: colorScheme.surfaceDim,
-            surfaceBright: colorScheme.surfaceBright,
-            surfaceContainerLowest: colorScheme.surfaceContainerLowest,
-            surfaceContainerLow: colorScheme.surfaceContainerLow,
-            surfaceContainer: colorScheme.surfaceContainer,
-            surfaceContainerHigh: colorScheme.surfaceContainerHigh,
-            surfaceContainerHighest: colorScheme.surfaceContainerHighest,
-            onSurfaceVariant: colorScheme.onSurfaceVariant,
-            outline: colorScheme.outline,
-            outlineVariant: colorScheme.outlineVariant,
-            inverseSurface: colorScheme.inverseSurface,
-            onInverseSurface: colorScheme.onInverseSurface,
-            inversePrimary: colorScheme.inversePrimary,
-            shadow: colorScheme.shadow,
-            scrim: colorScheme.scrim,
-            surfaceTint: colorScheme.surfaceTint,
           ),
         );
 
-  /// Creates a [CustomTheme] from two independent [ColorScheme]s (one per
-  /// brightness). The editor uses this path so a light tweak never disturbs
-  /// dark (and vice versa).
+  /// Creates a **dual** theme from two independent authored [ColorScheme]s (one
+  /// per brightness). The editor uses this so a light tweak never disturbs dark.
   CustomTheme.fromDualSchemes({
     required this.id,
     required this.name,
@@ -94,18 +55,51 @@ class CustomTheme extends Equatable {
     required ColorScheme dark,
     this.description = '',
     this.schemaVersion = currentSchemaVersion,
-  })  : colorScheme = light,
-        _darkColorScheme = dark,
-        _lightColors = CustomThemeColors.fromScheme(light),
+  })  : _lightColors = CustomThemeColors.fromScheme(light),
         _darkColors = CustomThemeColors.fromScheme(dark);
+
+  /// Creates a **single**-brightness theme: only [brightness] is authored; the
+  /// opposite side is derived on demand (and is never persisted or exported).
+  CustomTheme.single({
+    required this.id,
+    required this.name,
+    required ColorScheme scheme,
+    required Brightness brightness,
+    this.description = '',
+    this.schemaVersion = currentSchemaVersion,
+  })  : _lightColors = brightness == Brightness.light
+            ? CustomThemeColors.fromScheme(scheme)
+            : null,
+        _darkColors = brightness == Brightness.dark
+            ? CustomThemeColors.fromScheme(scheme)
+            : null;
+
+  /// Raw constructor over the two authored-side maps. At least one must be
+  /// non-null; the codecs and copy-with helpers build through this so they can
+  /// preserve single-vs-dual cardinality.
+  CustomTheme._raw({
+    required this.id,
+    required this.name,
+    required this.description,
+    required this.schemaVersion,
+    required CustomThemeColors? light,
+    required CustomThemeColors? dark,
+  })  : assert(
+          light != null || dark != null,
+          'A CustomTheme must author at least one brightness side',
+        ),
+        _lightColors = light,
+        _darkColors = dark;
 
   /// A fresh id (UUID v4). The editor uses this for a brand-new theme; the
   /// storage layer keeps whatever id was on disk.
   static String freshId() => const Uuid().v4();
 
   /// The current on-disk schema version. Bump on breaking changes to
-  /// [toJson] / [fromJson].
-  static const int currentSchemaVersion = 1;
+  /// [toJson] / [fromJson]. v2 introduced single-brightness themes (a document
+  /// may carry only `light` or only `dark`); v1 documents always carried both
+  /// and load as dual.
+  static const int currentSchemaVersion = 2;
 
   /// Stable id (UUID v4 or stable name). Treated as opaque by storage; the
   /// editor is free to rename a theme by writing a new id on save.
@@ -120,107 +114,162 @@ class CustomTheme extends Equatable {
   /// On-disk schema version. See [currentSchemaVersion].
   final int schemaVersion;
 
-  /// The light [ColorScheme] for this theme.
-  final ColorScheme colorScheme;
+  /// The authored sides. At least one is non-null. A null side is **derived on
+  /// demand** from the authored side's key colors (it is never persisted).
+  final CustomThemeColors? _lightColors;
+  final CustomThemeColors? _darkColors;
 
-  final ColorScheme? _darkColorScheme;
-  final CustomThemeColors _lightColors;
-  final CustomThemeColors _darkColors;
+  /// The brightness sides the user actually authored (never empty).
+  Set<Brightness> get authoredBrightnesses => {
+        if (_lightColors != null) Brightness.light,
+        if (_darkColors != null) Brightness.dark,
+      };
 
-  /// The dark [ColorScheme] for this theme. Always returns a real scheme
-  /// (when constructed without an explicit dark scheme, the dark scheme is
-  /// derived from the light one so light/dark stay paired).
-  ColorScheme get darkColorScheme =>
-      _darkColorScheme ??
-      ColorScheme(
-        brightness: Brightness.dark,
-        primary: colorScheme.primary,
-        onPrimary: colorScheme.onPrimary,
-        primaryContainer: colorScheme.primaryContainer,
-        onPrimaryContainer: colorScheme.onPrimaryContainer,
-        primaryFixed: colorScheme.primaryFixed,
-        primaryFixedDim: colorScheme.primaryFixedDim,
-        onPrimaryFixed: colorScheme.onPrimaryFixed,
-        onPrimaryFixedVariant: colorScheme.onPrimaryFixedVariant,
-        secondary: colorScheme.secondary,
-        onSecondary: colorScheme.onSecondary,
-        secondaryContainer: colorScheme.secondaryContainer,
-        onSecondaryContainer: colorScheme.onSecondaryContainer,
-        secondaryFixed: colorScheme.secondaryFixed,
-        secondaryFixedDim: colorScheme.secondaryFixedDim,
-        onSecondaryFixed: colorScheme.onSecondaryFixed,
-        onSecondaryFixedVariant: colorScheme.onSecondaryFixedVariant,
-        tertiary: colorScheme.tertiary,
-        onTertiary: colorScheme.onTertiary,
-        tertiaryContainer: colorScheme.tertiaryContainer,
-        onTertiaryContainer: colorScheme.onTertiaryContainer,
-        tertiaryFixed: colorScheme.tertiaryFixed,
-        tertiaryFixedDim: colorScheme.tertiaryFixedDim,
-        onTertiaryFixed: colorScheme.onTertiaryFixed,
-        onTertiaryFixedVariant: colorScheme.onTertiaryFixedVariant,
-        error: colorScheme.error,
-        onError: colorScheme.onError,
-        errorContainer: colorScheme.errorContainer,
-        onErrorContainer: colorScheme.onErrorContainer,
-        surface: colorScheme.surface,
-        onSurface: colorScheme.onSurface,
-        surfaceDim: colorScheme.surfaceDim,
-        surfaceBright: colorScheme.surfaceBright,
-        surfaceContainerLowest: colorScheme.surfaceContainerLowest,
-        surfaceContainerLow: colorScheme.surfaceContainerLow,
-        surfaceContainer: colorScheme.surfaceContainer,
-        surfaceContainerHigh: colorScheme.surfaceContainerHigh,
-        surfaceContainerHighest: colorScheme.surfaceContainerHighest,
-        onSurfaceVariant: colorScheme.onSurfaceVariant,
-        outline: colorScheme.outline,
-        outlineVariant: colorScheme.outlineVariant,
-        inverseSurface: colorScheme.inverseSurface,
-        onInverseSurface: colorScheme.onInverseSurface,
-        inversePrimary: colorScheme.inversePrimary,
-        shadow: colorScheme.shadow,
-        scrim: colorScheme.scrim,
-        surfaceTint: colorScheme.surfaceTint,
-      );
+  /// Whether both brightness sides are authored.
+  bool get isDual => _lightColors != null && _darkColors != null;
 
-  /// The flat role map for the light scheme.
-  CustomThemeColors get lightColors => _lightColors;
+  /// Whether only one brightness side is authored.
+  bool get isSingle => !isDual;
 
-  /// The flat role map for the dark scheme.
-  CustomThemeColors get darkColors => _darkColors;
+  /// The single authored [Brightness]. Only valid when [isSingle].
+  Brightness get brightness {
+    assert(isSingle, 'brightness is only defined for single-brightness themes');
+    return _lightColors != null ? Brightness.light : Brightness.dark;
+  }
 
-  /// Returns a copy of this theme with [lightColors] updated.
-  CustomTheme withLightColors(CustomThemeColors next) {
-    return CustomTheme.fromDualSchemes(
-      id: id,
-      name: name,
-      description: description,
-      schemaVersion: schemaVersion,
-      light: next.toColorScheme(Brightness.light),
-      dark: darkColorScheme,
+  /// The flat role map for the light side — the authored one, or, for a
+  /// single-dark theme, the side derived from the dark key colors.
+  CustomThemeColors get lightColors =>
+      _lightColors ?? _deriveSide(Brightness.light);
+
+  /// The flat role map for the dark side — the authored one, or, for a
+  /// single-light theme, the side derived from the light key colors.
+  CustomThemeColors get darkColors =>
+      _darkColors ?? _deriveSide(Brightness.dark);
+
+  /// The light [ColorScheme] (authored or derived).
+  ColorScheme get colorScheme => lightColors.toColorScheme(Brightness.light);
+
+  /// The dark [ColorScheme] (authored or derived).
+  ColorScheme get darkColorScheme => darkColors.toColorScheme(Brightness.dark);
+
+  /// Derives the missing [target] side from the authored side's KEY colors
+  /// (primary/secondary/tertiary/error) via Material 3's multi-seed generator.
+  /// Multi-seed — not a single `fromSeed` — preserves the distinct
+  /// secondary/tertiary/error hues the user chose instead of collapsing them
+  /// onto one tonal palette.
+  CustomThemeColors _deriveSide(Brightness target) {
+    final source = _lightColors ?? _darkColors!;
+    return CustomThemeColors.fromScheme(
+      _seededScheme(
+        brightness: target,
+        primary: source.primary,
+        secondary: source.secondary,
+        tertiary: source.tertiary,
+        error: source.error,
+      ),
     );
   }
 
-  /// Returns a copy of this theme with [darkColors] updated.
-  CustomTheme withDarkColors(CustomThemeColors next) {
-    return CustomTheme.fromDualSchemes(
-      id: id,
-      name: name,
-      description: description,
-      schemaVersion: schemaVersion,
-      light: colorScheme,
-      dark: next.toColorScheme(Brightness.dark),
+  /// Builds a [brightness] [ColorScheme] from four key colors via Material 3's
+  /// tonal generator, preserving each color's own hue.
+  ///
+  /// Flutter's `ColorScheme.fromSeed` derives the whole scheme from a *single*
+  /// seed, which would collapse the user's distinct secondary/tertiary/error
+  /// hues onto the primary's tonal palette. Instead we seed each key color on
+  /// its own and splice the generated primary roles into the matching
+  /// secondary/tertiary/error slots — so blue/brown/green chosen for light
+  /// become the tone-correct blue/brown/green for dark (and vice versa).
+  static ColorScheme _seededScheme({
+    required Brightness brightness,
+    required Color primary,
+    required Color secondary,
+    required Color tertiary,
+    required Color error,
+  }) {
+    ColorScheme seed(Color c) =>
+        ColorScheme.fromSeed(seedColor: c, brightness: brightness);
+    final p = seed(primary);
+    final s = seed(secondary);
+    final t = seed(tertiary);
+    final e = seed(error);
+    return p.copyWith(
+      secondary: s.primary,
+      onSecondary: s.onPrimary,
+      secondaryContainer: s.primaryContainer,
+      onSecondaryContainer: s.onPrimaryContainer,
+      secondaryFixed: s.primaryFixed,
+      secondaryFixedDim: s.primaryFixedDim,
+      onSecondaryFixed: s.onPrimaryFixed,
+      onSecondaryFixedVariant: s.onPrimaryFixedVariant,
+      tertiary: t.primary,
+      onTertiary: t.onPrimary,
+      tertiaryContainer: t.primaryContainer,
+      onTertiaryContainer: t.onPrimaryContainer,
+      tertiaryFixed: t.primaryFixed,
+      tertiaryFixedDim: t.primaryFixedDim,
+      onTertiaryFixed: t.onPrimaryFixed,
+      onTertiaryFixedVariant: t.onPrimaryFixedVariant,
+      error: e.primary,
+      onError: e.onPrimary,
+      errorContainer: e.primaryContainer,
+      onErrorContainer: e.onPrimaryContainer,
     );
   }
 
-  /// Returns a copy of this theme with [name] and/or [description] updated.
-  CustomTheme withMetadata({String? name, String? description}) {
-    return CustomTheme.fromDualSchemes(
+  /// Copy-with that PRESERVES cardinality: passing only the authored side keeps
+  /// the theme single; passing the opposite side promotes it to dual.
+  CustomTheme _copyWith({
+    CustomThemeColors? light,
+    CustomThemeColors? dark,
+    String? name,
+    String? description,
+  }) {
+    return CustomTheme._raw(
       id: id,
       name: name ?? this.name,
       description: description ?? this.description,
       schemaVersion: schemaVersion,
-      light: colorScheme,
-      dark: darkColorScheme,
+      light: light ?? _lightColors,
+      dark: dark ?? _darkColors,
+    );
+  }
+
+  /// Returns a copy with the light side set. Promotes a single-dark theme to
+  /// dual (an explicit edit of the other side = the user wants it authored).
+  CustomTheme withLightColors(CustomThemeColors next) => _copyWith(light: next);
+
+  /// Returns a copy with the dark side set. Promotes a single-light theme to
+  /// dual.
+  CustomTheme withDarkColors(CustomThemeColors next) => _copyWith(dark: next);
+
+  /// Returns a copy with [name]/[description] updated; cardinality preserved.
+  CustomTheme withMetadata({String? name, String? description}) =>
+      _copyWith(name: name, description: description);
+
+  /// Returns a copy under a fresh [newId]; cardinality preserved. Used when an
+  /// import would otherwise clash with an existing library id.
+  CustomTheme withId(String newId) => CustomTheme._raw(
+        id: newId,
+        name: name,
+        description: description,
+        schemaVersion: schemaVersion,
+        light: _lightColors,
+        dark: _darkColors,
+      );
+
+  /// Materializes the currently-derived opposite side as an authored side,
+  /// turning a single-brightness theme into a dual one. No-op when already
+  /// dual. Used by the editor's *"Add the other side"* affordance.
+  CustomTheme withOtherSideDerived() {
+    if (isDual) return this;
+    return CustomTheme._raw(
+      id: id,
+      name: name,
+      description: description,
+      schemaVersion: schemaVersion,
+      light: lightColors,
+      dark: darkColors,
     );
   }
 
@@ -248,14 +297,16 @@ class CustomTheme extends Equatable {
   }
 
   /// The JSON wire shape. Stable across versions; guarded by [schemaVersion].
+  /// Only **authored** sides are serialized: a single-brightness theme emits
+  /// just its side, a dual theme emits both. The derived side is never written.
   Map<String, dynamic> toJson() {
     return <String, dynamic>{
       'id': id,
       'name': name,
       if (description.isNotEmpty) 'description': description,
       'version': schemaVersion,
-      'light': _lightColors.toJson(),
-      'dark': _darkColors.toJson(),
+      if (_lightColors != null) 'light': _lightColors.toJson(),
+      if (_darkColors != null) 'dark': _darkColors.toJson(),
     };
   }
 
@@ -265,8 +316,9 @@ class CustomTheme extends Equatable {
   /// [_extractSchemeMaps]): the Uxnan native `{light, dark}` document, a
   /// Material Theme Builder export (`{schemes: {light, dark, ...}}`), and a
   /// single flat role map whose brightness is auto-detected. A document that
-  /// describes only one brightness is paired off the present side's `primary`
-  /// so the result is always a complete light+dark theme.
+  /// describes only **one** brightness loads as a **single**-brightness theme;
+  /// the missing side is derived on demand (never persisted). A document with
+  /// both sides loads as **dual**.
   ///
   /// Throws [FormatException] when no color scheme can be recognized — the
   /// caller surfaces the failure instead of silently materializing the M3
@@ -279,10 +331,10 @@ class CustomTheme extends Equatable {
         (json['version'] as num?)?.toInt() ?? currentSchemaVersion;
 
     final maps = _extractSchemeMaps(json);
-    var light = maps.light == null
+    final light = maps.light == null
         ? null
         : CustomThemeColors.fromJson(maps.light!, brightness: Brightness.light);
-    var dark = maps.dark == null
+    final dark = maps.dark == null
         ? null
         : CustomThemeColors.fromJson(maps.dark!, brightness: Brightness.dark);
 
@@ -292,25 +344,14 @@ class CustomTheme extends Equatable {
         'keys, a "schemes" block, or a flat role map)',
       );
     }
-    // Pair an absent side off the present side's primary so a single-scheme
-    // import still yields a complete, coherent light+dark theme.
-    light ??= CustomThemeColors.fromScheme(
-      ColorScheme.fromSeed(seedColor: dark!.primary),
-    );
-    dark ??= CustomThemeColors.fromScheme(
-      ColorScheme.fromSeed(
-        seedColor: light.primary,
-        brightness: Brightness.dark,
-      ),
-    );
-
-    return CustomTheme.fromDualSchemes(
+    // Keep the document's cardinality: a one-sided document stays single.
+    return CustomTheme._raw(
       id: id,
       name: name,
       description: description,
       schemaVersion: version,
-      light: light.toColorScheme(Brightness.light),
-      dark: dark.toColorScheme(Brightness.dark),
+      light: light,
+      dark: dark,
     );
   }
 
