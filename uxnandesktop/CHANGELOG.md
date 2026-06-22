@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — window chrome relocation: status bar + sidebar
+- **Settings entry moved to the projects sidebar** (a full-width outline button
+  with a Kbd shortcut hint, under the search button) and removed from the title
+  bar. Closing still uses the Settings view's own back button.
+- **Status bar reorganized.** The active-workspace **breadcrumb** (repo / branch)
+  moved out of the center terminal strip to the **left** of the status bar
+  (shared `projects.activeContext`). The **show/hide panel toggles** (left & right)
+  now live at the **right** of the status bar and are selectable — the primary
+  tint (`surface.tab`) shows when a panel is visible, mirroring the right-panel
+  tabs. The left toggle left the title bar and the right toggle left the terminal
+  strip.
+- **Backend indicator is now an icon + popover** (`BackendStatus.svelte`, new
+  shadcn `popover`). The color tracks the connection (green/amber/red) and the
+  popover surfaces live detail (state, error, project count). The flat
+  "N repositories" status-bar text was removed (the count lives in the popover).
+
 ### Changed — sidebar search palette, shortcuts & command-dialog polish
 - **Sidebar search is now a full-width button** (`LeftSidebar.svelte`) that opens
   the command palette, with a `Kbd` shortcut hint (Ctrl/⌘+P). Removed the
