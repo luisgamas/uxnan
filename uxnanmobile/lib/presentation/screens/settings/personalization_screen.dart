@@ -49,7 +49,6 @@ class PersonalizationScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
     final themeMode = ref.watch(themeModeSettingProvider);
-    final useCustom = ref.watch(useCustomThemeProvider);
     final localeTag = ref.watch(localeSettingProvider)?.languageCode;
 
     return NeScaffold(
@@ -67,8 +66,11 @@ class PersonalizationScreen extends ConsumerWidget {
               _Header(label: l10n.personalizationThemeSection),
               const SizedBox(height: UxnanSpacing.sm),
               _ThemeModeOptionSelector(
+                // Enabled for the brand baseline and for DUAL custom themes
+                // (so the user can flip which side shows); disabled only for a
+                // single-brightness custom theme, whose brightness is forced.
                 option: _toOption(themeMode),
-                disabled: useCustom,
+                disabled: !ref.watch(themePickerEnabledProvider),
                 onChanged: (next) => ref
                     .read(themeModeSettingProvider.notifier)
                     .set(_toMaterialThemeMode(next)),

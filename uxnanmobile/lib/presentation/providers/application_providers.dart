@@ -990,6 +990,32 @@ final customThemeSettingProvider = Provider<CustomTheme?>((ref) {
   return null;
 });
 
+/// The [ThemeMode] the host `MaterialApp` should actually apply.
+///
+/// For the brand baseline or a **dual** custom theme this is the user's
+/// System/Light/Dark choice, unchanged — so the user can still flip which side
+/// of a dual theme they see. For a **single**-brightness custom theme it is
+/// FORCED to that theme's brightness, so the one authored side always renders
+/// regardless of the picker or the OS setting. The user's stored preference is
+/// never overwritten (a later switch back to brand/dual restores it).
+final effectiveThemeModeProvider = Provider<ThemeMode>((ref) {
+  final custom = ref.watch(customThemeSettingProvider);
+  if (custom != null && custom.isSingle) {
+    return custom.brightness == Brightness.dark
+        ? ThemeMode.dark
+        : ThemeMode.light;
+  }
+  return ref.watch(themeModeSettingProvider);
+});
+
+/// Whether the System/Light/Dark picker on Personalization should be enabled.
+/// Disabled only when a **single**-brightness custom theme is active (its
+/// brightness is forced); enabled for the brand baseline and for dual themes.
+final themePickerEnabledProvider = Provider<bool>((ref) {
+  final custom = ref.watch(customThemeSettingProvider);
+  return !(custom != null && custom.isSingle);
+});
+
 /// Whether the active theme is the hand-tuned brand baseline
 /// ([ThemeSource.brand]) or the user's authored [CustomTheme]
 /// ([ThemeSource.custom]). The Personalization screen flips this when the

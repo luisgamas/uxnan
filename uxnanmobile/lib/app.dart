@@ -34,7 +34,10 @@ class _UxnanAppState extends ConsumerState<UxnanApp> {
   @override
   Widget build(BuildContext context) {
     final router = ref.watch(appRouterProvider);
-    final themeMode = ref.watch(themeModeSettingProvider);
+    // Effective mode: the user's choice for brand/dual themes, but forced to a
+    // single-brightness custom theme's own side so it can't be hidden behind a
+    // mismatched System/OS brightness.
+    final themeMode = ref.watch(effectiveThemeModeProvider);
     final locale = ref.watch(localeSettingProvider);
     final themeSource = ref.watch(themeSourceSettingProvider);
     final customTheme = ref.watch(customThemeSettingProvider);
