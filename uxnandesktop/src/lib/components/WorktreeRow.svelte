@@ -6,7 +6,7 @@
   import { unread } from "$lib/state/unread.svelte";
   import { clipboardWrite } from "$lib/clipboard";
   import { cn } from "$lib/utils";
-  import { icon, iconButton, text } from "$lib/design";
+  import { icon, iconButton, surface, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
   import LaunchAgentMenu from "./LaunchAgentMenu.svelte";
   import AgentSpace from "./AgentSpace.svelte";
@@ -49,7 +49,7 @@
 <div
   class={cn(
     "group flex items-center gap-1.5 rounded-md py-1 pl-1 pr-1 hover:bg-accent/40",
-    active && "bg-primary/15 ring-1 ring-inset ring-primary/25",
+    active && surface.active,
   )}
   role="button"
   tabindex="0"

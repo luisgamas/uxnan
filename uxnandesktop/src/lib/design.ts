@@ -28,6 +28,24 @@ export const iconButton = {
   action: "size-6",
 } as const;
 
+/** Selection surfaces — a single primary-tinted language for "this is the
+ *  active thing", shared across the left panel (project/worktree cards), the
+ *  nested agent rows and the right-panel tabs, so a selection reads the same
+ *  everywhere. The nested variant is deliberately lighter than its parent. */
+export const surface = {
+  /** A selected project / worktree card (the strongest selection). */
+  active: "bg-primary/15 ring-1 ring-inset ring-primary/25",
+  /** A selected agent row nested under a worktree — same hue, lighter, so it
+   *  always reads as subordinate to its parent card. */
+  activeNested: "bg-primary/10",
+  /** Active state for a right-panel tab. Plain classes (apply *conditionally*
+   *  on the active tab) — bits-ui exposes selection via `data-state="active"`,
+   *  not `data-active`, and this project doesn't define a `data-active` variant,
+   *  so the component's own `data-active:` classes never render. Same fill + ring
+   *  as `active`, plus primary text for a clearer indicator than the cards. */
+  tab: "bg-primary/15 text-primary ring-1 ring-inset ring-primary/25",
+} as const;
+
 /** Text roles. Informational text stays muted and un-bold on purpose — only
  *  primary/interactive text gets `text-foreground` / `font-medium`. */
 export const text = {
