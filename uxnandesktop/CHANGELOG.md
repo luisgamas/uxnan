@@ -21,6 +21,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   navigation over its folder list.
 - **Spanish (MX) copy fixes.** Replaced "Saltar a un worktree" with "Buscar un
   proyecto o worktree"; reworded the palette/shortcut strings accordingly.
+- **Settings → Keyboard shortcuts is grouped into sections** (General · Projects
+  & navigation · Panels · Editor) instead of one flat unordered list, so a
+  shortcut is easy to locate (`KeyAction.category` + `SHORTCUT_GROUPS`).
 
 ### Changed — left/right panel polish + any-folder projects + window state
 - **Right-panel tabs (Files | Changes | History)** now show a clear, primary-
