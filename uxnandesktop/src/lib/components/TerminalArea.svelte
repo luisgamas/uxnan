@@ -21,8 +21,7 @@
   import { resolveAgentDisplay } from "$lib/state/agentDisplay";
   import AgentStatusDot from "./AgentStatusDot.svelte";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
-  import { Button } from "$lib/components/ui/button";
-  import { icon, iconButton, text } from "$lib/design";
+  import { icon, text } from "$lib/design";
   import { cn } from "$lib/utils";
   import { i18n } from "$lib/i18n";
   import PlusIcon from "@lucide/svelte/icons/plus";
@@ -32,7 +31,6 @@
   import PanelRightIcon from "@lucide/svelte/icons/panel-right";
   import Columns2Icon from "@lucide/svelte/icons/columns-2";
   import Rows2Icon from "@lucide/svelte/icons/rows-2";
-  import WebhookIcon from "@lucide/svelte/icons/webhook";
   import GitBranchIcon from "@lucide/svelte/icons/git-branch";
   import FileIcon from "@lucide/svelte/icons/file";
   import FileDiffIcon from "@lucide/svelte/icons/file-diff";
@@ -358,31 +356,8 @@
                       >
                         {#if t.kind === "terminal"}
                           {@const display = resolveAgentDisplay(t)}
-                          {@const showHooksHint =
-                            display !== null &&
-                            display.source !== "hook" &&
-                            !!t.agentName &&
-                            !t.exited}
                           {#if display}
                             <AgentStatusDot status={display.status} stale={display.stale} />
-                          {/if}
-                          {#if showHooksHint}
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              class={cn(
-                                iconButton.action,
-                                "text-muted-foreground opacity-60 hover:opacity-100",
-                              )}
-                              title={i18n.t("monitor.installHooksHint")}
-                              aria-label={i18n.t("monitor.installHooksHint")}
-                              onclick={(e) => {
-                                e.stopPropagation();
-                                app.openSettings("hooks");
-                              }}
-                            >
-                              <WebhookIcon class={icon.button} />
-                            </Button>
                           {/if}
                           <button
                             class="max-w-[120px] truncate {t.exited ? 'line-through' : ''}"

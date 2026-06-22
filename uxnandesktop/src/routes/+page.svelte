@@ -7,6 +7,7 @@
   import { matchAction } from "$lib/keybindings";
   import { isUntestedPlatform, osLabel } from "$lib/platform";
   import TriangleAlertIcon from "@lucide/svelte/icons/triangle-alert";
+  import WebhookIcon from "@lucide/svelte/icons/webhook";
   import TerminalArea from "$lib/components/TerminalArea.svelte";
   import SaveDiscardDialog from "$lib/components/SaveDiscardDialog.svelte";
   import TitleBar from "$lib/components/TitleBar.svelte";
@@ -226,6 +227,17 @@
           <TriangleAlertIcon class="size-3.5" />
           {i18n.t("status.untested", { os: osLabel() })}
         </span>
+      {/if}
+      {#if app.hooksNeedAttention}
+        <button
+          class="inline-flex items-center gap-1 text-amber-600 hover:text-amber-500 dark:text-amber-400"
+          title={i18n.t("status.hooksIssueTooltip")}
+          onclick={() => app.openSettings("hooks")}
+        >
+          <WebhookIcon class="size-3.5" />
+          {i18n.t("status.hooksIssue")}
+        </button>
+        <span class="text-muted-foreground/40">·</span>
       {/if}
       <span>{i18n.plural(app.repos.length, "status.reposOne", "status.reposOther")}</span>
     </footer>

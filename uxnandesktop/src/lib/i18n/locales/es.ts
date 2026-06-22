@@ -113,7 +113,7 @@ export const es: Record<MessageKey, string> = {
   // Directory picker
   "picker.title": "Agregar proyecto",
   "picker.desc":
-    "Navega hasta un repositorio git y agrégalo. Las carpetas con la etiqueta “repo” son repositorios git.",
+    "Navega hasta cualquier carpeta y agrégala. Las carpetas con la etiqueta “repo” son repositorios git; las que no lo son también funcionan — solo que sin worktrees.",
   "picker.pathPlaceholder": "Escribe o pega una ruta y presiona Enter…",
   "picker.parent": "Carpeta superior",
   "picker.empty": "No hay subcarpetas aquí.",
@@ -349,8 +349,6 @@ export const es: Record<MessageKey, string> = {
   "monitor.stale": "Sin actualizar hace rato",
   "monitor.detected": "Agente detectado",
   "monitor.unread": "El agente terminó — sin revisar",
-  "monitor.installHooksHint":
-    "Instala los hooks para estados precisos — abre Configuración → Hooks",
   "agents.spaceLabel": "Agentes",
   "settings.preventSleep": "Evitar suspensión al trabajar",
   "settings.preventSleepDesc":
@@ -370,6 +368,9 @@ export const es: Record<MessageKey, string> = {
   "status.unreachable": "Backend inalcanzable",
   "status.reposOne": "{n} repositorio",
   "status.reposOther": "{n} repositorios",
+  "status.hooksIssue": "Hooks sin instalar",
+  "status.hooksIssueTooltip":
+    "Los hooks de agente no están del todo instalados, así que los estados precisos pueden no estar disponibles. Haz clic para revisarlos en Configuración → Hooks.",
 
   // Terminal tab state
   "terminal.exited": "finalizada",

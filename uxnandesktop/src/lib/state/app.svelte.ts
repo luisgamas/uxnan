@@ -6,6 +6,8 @@
 
 import {
   getAppState,
+  getClaudeHooksStatus,
+  getHookInstall,
   ping,
   setAgentCommands,
   updateSettings,
@@ -15,6 +17,8 @@ import {
   DEFAULT_SETTINGS,
   type AgentProfile,
   type AppSettings,
+  type ClaudeHooksStatus,
+  type HookInstall,
   type RepoData,
   type TerminalProfile,
 } from "$lib/types";
@@ -81,6 +85,47 @@ class AppStore {
   previewTheme = $state<CustomTheme | null>(null);
   /** A terminal theme being previewed in the editor (un-saved). */
   previewTerminalTheme = $state<TerminalThemePreset | null>(null);
+
+  // --- Agent hooks health (drives the status-bar indicator) ----------------
+  /** On-disk hook scripts layout, or `null` if the startup install step failed. */
+  hookInstall = $state<HookInstall | null>(null);
+  /** Latest Claude hooks install status (read on startup + after a toggle). */
+  claudeHooks = $state<ClaudeHooksStatus | null>(null);
+  /** Whether we've performed at least one hook-status check (so the indicator
+   *  stays hidden until we actually know, instead of flashing on launch). */
+  hooksChecked = $state(false);
+
+  /** Whether the agent hooks need the user's attention — the only condition
+   *  under which the status-bar indicator shows. The hooks auto-install on
+   *  startup, so this is true only when something actually went wrong: the
+   *  script/install step degraded, the status couldn't be read, the OS refused
+   *  it, or Claude's block isn't installed while auto-install is on. */
+  get hooksNeedAttention(): boolean {
+    if (!this.hooksChecked) return false;
+    if (this.hookInstall === null) return true;
+    const c = this.claudeHooks;
+    if (!c) return true;
+    if (c.unavailable && !c.installed) return true;
+    if (!c.installed && this.settings.autoInstallHooks !== false) return true;
+    return false;
+  }
+
+  /** Refresh the cached hook status (install layout + Claude block). Best-effort:
+   *  a failed read leaves the indicator showing "needs attention". Called once
+   *  after hydrate and again whenever the Hooks settings pane changes it. */
+  async refreshHooksStatus(): Promise<void> {
+    try {
+      this.hookInstall = await getHookInstall();
+    } catch {
+      this.hookInstall = null;
+    }
+    try {
+      this.claudeHooks = await getClaudeHooksStatus();
+    } catch {
+      this.claudeHooks = null;
+    }
+    this.hooksChecked = true;
+  }
 
   /** Open the Settings dialog, optionally jumping straight to a pane. */
   openSettings(section: SettingsSection = "appearance"): void {
@@ -170,6 +215,8 @@ class AppStore {
       this.errorMessage = null;
       terminals.restore(data.terminalLayout ?? null);
       this.syncAgentCommands();
+      // Check hook health in the background (drives the status-bar indicator).
+      void this.refreshHooksStatus();
     } catch (err) {
       this.backend = "error";
       this.errorMessage = err instanceof Error ? err.message : String(err);

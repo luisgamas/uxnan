@@ -116,7 +116,7 @@ export const en = {
   // Directory picker
   "picker.title": "Add project",
   "picker.desc":
-    "Browse to a git repository and add it. Folders tagged “repo” are git repositories.",
+    "Browse to any folder and add it. Folders tagged “repo” are git repositories; non-git folders work too — they just have no worktrees.",
   "picker.pathPlaceholder": "Type or paste a path, then Enter…",
   "picker.parent": "Parent folder",
   "picker.empty": "No sub-folders here.",
@@ -352,8 +352,6 @@ export const en = {
   "monitor.stale": "No update in a while",
   "monitor.detected": "Agent detected",
   "monitor.unread": "Agent finished — not yet reviewed",
-  "monitor.installHooksHint":
-    "Install hooks for precise states — open Settings → Hooks",
   "agents.spaceLabel": "Agents",
   "settings.agentNotifications": "Idle notifications",
   "settings.agentNotificationsDesc":
@@ -373,6 +371,9 @@ export const en = {
   "status.unreachable": "Backend unreachable",
   "status.reposOne": "{n} repository",
   "status.reposOther": "{n} repositories",
+  "status.hooksIssue": "Hooks not installed",
+  "status.hooksIssueTooltip":
+    "Agent hooks aren't fully installed, so precise agent states may be unavailable. Click to review them in Settings → Hooks.",
 
   // Terminal tab state
   "terminal.exited": "exited",
