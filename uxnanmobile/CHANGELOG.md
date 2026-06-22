@@ -6,6 +6,16 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **`git/log` RPC contract.** The shared package gains three new types
+  (`GitCommit`, `GitLogResult`, `GitLogParams` in `models/git.ts`) plus
+  the runtime registration of `git/log` in the JSON-RPC method registry
+  (`method-registry.ts` and the typed `methods.ts`). This is the
+  contract half of the commit history feature; the bridge handler and
+  the mobile manager land in the next commits.
+  - `architecture/02b-contracts-and-requirements.md` lists `git/log` in
+    the git method table.
+
 ### Changed
 - **File browser, Git screen and file viewer: app-bar refresh moved to
   pull-to-refresh.** The standalone *Refresh* `IconSurface` is gone from the
