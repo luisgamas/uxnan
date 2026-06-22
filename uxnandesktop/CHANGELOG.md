@@ -5,6 +5,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — agent notifications: precise, hook-driven, enriched
+- **No more "agent is idle" notifications.** The coarse output-activity inference
+  no longer raises any notification or unread badge — it only drives the visual
+  "working" dot (`agentMonitor.svelte.ts`). It used to fire ~12 s after an agent
+  fell quiet, even when no task had run (just leaving an agent at its prompt).
+- **Notifications now come from the precise hook layer** (`agentStatus.svelte.ts`)
+  on meaningful transitions — `done` / `waiting` / `blocked` (never `working`):
+  app in background → native OS notification; app focused → in-app toast; already
+  looking at that terminal → nothing. Each non-`working` result also flags the
+  worktree unread.
+- **Enriched completion notifications.** The Claude Stop hook now reads the
+  session transcript and sends the task (last user prompt) + a short **response
+  preview** (`summary`, new field threaded through the hook payload → report →
+  cache → `agent:status-changed` event). The `done` notification reads
+  "{agent} finished the task" with the preview (or the task) as the body.
+- **Spec/docs:** `architecture/02d-agent-monitoring.md` §1/§2.1 (payload `summary`,
+  notification behavior), `docs/agent-hooks.md` (payload table).
+
 ### Changed — window chrome relocation: status bar + sidebar
 - **Settings entry moved to the projects sidebar** (a full-width outline button
   with a Kbd shortcut hint, under the search button) and removed from the title
