@@ -39,6 +39,10 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_notification::init())
+        // Restore the main window's last size/position/maximized state on launch
+        // and save it on exit (so the app reopens where the user left it). The
+        // window config provides the first-run defaults.
+        .plugin(tauri_plugin_window_state::Builder::default().build())
         .setup(|app| {
             // Resolve the OS-specific app data directory and load (or default)
             // the persisted state, then publish it as managed state.
