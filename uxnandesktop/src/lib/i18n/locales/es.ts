@@ -368,8 +368,13 @@ export const es: Record<MessageKey, string> = {
   "settings.agentNotifications": "Notificaciones de inactividad",
   "settings.agentNotificationsDesc":
     "Notificar cuando un agente queda inactivo y estás viendo otro espacio.",
-  "notify.agentIdleTitle": "{agent} está inactivo",
-  "notify.agentIdleBody": "En {worktree} — puede estar esperándote.",
+  "notify.agentDoneTitle": "{agent} terminó la tarea",
+  "notify.agentDoneBody": "Tarea completada.",
+  "notify.agentTask": "Tarea: {task}",
+  "notify.agentWaitingTitle": "{agent} te está esperando",
+  "notify.agentWaitingBody": "Necesita tu atención.",
+  "notify.agentBlockedTitle": "{agent} encontró un problema",
+  "notify.agentBlockedBody": "Revisa la terminal del agente.",
 
   // Status bar
   "status.connected": "Backend conectado",

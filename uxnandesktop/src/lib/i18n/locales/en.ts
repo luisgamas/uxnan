@@ -371,8 +371,13 @@ export const en = {
   "status.untested": "Untested on {os}",
   "status.untestedTooltip":
     "Uxnan is developed and validated on Windows. {os} support is implemented but not yet tested on real hardware (alpha).",
-  "notify.agentIdleTitle": "{agent} is idle",
-  "notify.agentIdleBody": "In {worktree} — it may be waiting for you.",
+  "notify.agentDoneTitle": "{agent} finished the task",
+  "notify.agentDoneBody": "Task complete.",
+  "notify.agentTask": "Task: {task}",
+  "notify.agentWaitingTitle": "{agent} is waiting for you",
+  "notify.agentWaitingBody": "It needs your attention.",
+  "notify.agentBlockedTitle": "{agent} hit a problem",
+  "notify.agentBlockedBody": "Check the agent's terminal.",
 
   // Status bar
   "status.connected": "Backend connected",
