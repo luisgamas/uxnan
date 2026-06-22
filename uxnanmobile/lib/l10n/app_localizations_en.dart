@@ -1405,6 +1405,71 @@ class AppLocalizationsEn extends AppLocalizations {
       'Couldn\'t save the library JSON';
 
   @override
+  String get themeManagerTitle => 'Themes';
+
+  @override
+  String get themeManagerEmptyTitle => 'No themes yet';
+
+  @override
+  String get themeManagerEmptyBody =>
+      'Create one from a seed color or import a theme JSON.';
+
+  @override
+  String get themeBrightnessDual => 'Light & dark';
+
+  @override
+  String get themeBrightnessLightOnly => 'Light only';
+
+  @override
+  String get themeBrightnessDarkOnly => 'Dark only';
+
+  @override
+  String themeManagerSelectedCount(int count) {
+    return '$count selected';
+  }
+
+  @override
+  String get themeManagerSelectAll => 'Select all';
+
+  @override
+  String get themeManagerExitSelection => 'Cancel selection';
+
+  @override
+  String get themeManagerDeleteSelectedTitle => 'Delete selected themes?';
+
+  @override
+  String themeManagerDeleteSelectedBody(int count) {
+    return 'This removes $count theme(s) from your library. Built-in themes are kept and can\'t be deleted. This can\'t be undone.';
+  }
+
+  @override
+  String get themeManagerBuiltInsSkipped =>
+      'Built-in themes can\'t be deleted and were kept.';
+
+  @override
+  String get themeNewSheetBody =>
+      'Pick a seed color. We\'ll generate a full Material 3 light and dark theme you can fine-tune.';
+
+  @override
+  String get themeNewSheetCreate => 'Create & edit';
+
+  @override
+  String get customThemeEditorAddDarkSide => 'Add a dark side';
+
+  @override
+  String get customThemeEditorAddLightSide => 'Add a light side';
+
+  @override
+  String customThemeEditorSingleNote(String brightness) {
+    return 'Only the $brightness side is defined; the other is generated automatically.';
+  }
+
+  @override
+  String personalizationManageThemesSubtitle(int count) {
+    return '$count saved';
+  }
+
+  @override
   String get languageSystemDefault => 'System default';
 
   @override

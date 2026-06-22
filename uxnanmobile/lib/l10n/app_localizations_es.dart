@@ -1412,6 +1412,72 @@ class AppLocalizationsEs extends AppLocalizations {
       'No se pudo guardar el JSON de la biblioteca';
 
   @override
+  String get themeManagerTitle => 'Temas';
+
+  @override
+  String get themeManagerEmptyTitle => 'Aún no hay temas';
+
+  @override
+  String get themeManagerEmptyBody =>
+      'Crea uno desde un color semilla o importa un JSON de tema.';
+
+  @override
+  String get themeBrightnessDual => 'Claro y oscuro';
+
+  @override
+  String get themeBrightnessLightOnly => 'Solo claro';
+
+  @override
+  String get themeBrightnessDarkOnly => 'Solo oscuro';
+
+  @override
+  String themeManagerSelectedCount(int count) {
+    return '$count seleccionados';
+  }
+
+  @override
+  String get themeManagerSelectAll => 'Seleccionar todo';
+
+  @override
+  String get themeManagerExitSelection => 'Cancelar selección';
+
+  @override
+  String get themeManagerDeleteSelectedTitle =>
+      '¿Eliminar los temas seleccionados?';
+
+  @override
+  String themeManagerDeleteSelectedBody(int count) {
+    return 'Esto elimina $count tema(s) de tu biblioteca. Los temas integrados se conservan y no se pueden eliminar. No se puede deshacer.';
+  }
+
+  @override
+  String get themeManagerBuiltInsSkipped =>
+      'Los temas integrados no se pueden eliminar y se conservaron.';
+
+  @override
+  String get themeNewSheetBody =>
+      'Elige un color semilla. Generaremos un tema Material 3 completo (claro y oscuro) que podrás ajustar.';
+
+  @override
+  String get themeNewSheetCreate => 'Crear y editar';
+
+  @override
+  String get customThemeEditorAddDarkSide => 'Añadir lado oscuro';
+
+  @override
+  String get customThemeEditorAddLightSide => 'Añadir lado claro';
+
+  @override
+  String customThemeEditorSingleNote(String brightness) {
+    return 'Solo está definido el lado $brightness; el otro se genera automáticamente.';
+  }
+
+  @override
+  String personalizationManageThemesSubtitle(int count) {
+    return '$count guardados';
+  }
+
+  @override
   String get languageSystemDefault => 'Predeterminado del sistema';
 
   @override

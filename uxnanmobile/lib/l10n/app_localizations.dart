@@ -2666,6 +2666,114 @@ abstract class AppLocalizations {
   /// **'Couldn\'t save the library JSON'**
   String get personalizationCustomThemesSaveFailed;
 
+  /// No description provided for @themeManagerTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Themes'**
+  String get themeManagerTitle;
+
+  /// No description provided for @themeManagerEmptyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'No themes yet'**
+  String get themeManagerEmptyTitle;
+
+  /// No description provided for @themeManagerEmptyBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Create one from a seed color or import a theme JSON.'**
+  String get themeManagerEmptyBody;
+
+  /// No description provided for @themeBrightnessDual.
+  ///
+  /// In en, this message translates to:
+  /// **'Light & dark'**
+  String get themeBrightnessDual;
+
+  /// No description provided for @themeBrightnessLightOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'Light only'**
+  String get themeBrightnessLightOnly;
+
+  /// No description provided for @themeBrightnessDarkOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'Dark only'**
+  String get themeBrightnessDarkOnly;
+
+  /// No description provided for @themeManagerSelectedCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} selected'**
+  String themeManagerSelectedCount(int count);
+
+  /// No description provided for @themeManagerSelectAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Select all'**
+  String get themeManagerSelectAll;
+
+  /// No description provided for @themeManagerExitSelection.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel selection'**
+  String get themeManagerExitSelection;
+
+  /// No description provided for @themeManagerDeleteSelectedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete selected themes?'**
+  String get themeManagerDeleteSelectedTitle;
+
+  /// No description provided for @themeManagerDeleteSelectedBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This removes {count} theme(s) from your library. Built-in themes are kept and can\'t be deleted. This can\'t be undone.'**
+  String themeManagerDeleteSelectedBody(int count);
+
+  /// No description provided for @themeManagerBuiltInsSkipped.
+  ///
+  /// In en, this message translates to:
+  /// **'Built-in themes can\'t be deleted and were kept.'**
+  String get themeManagerBuiltInsSkipped;
+
+  /// No description provided for @themeNewSheetBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Pick a seed color. We\'ll generate a full Material 3 light and dark theme you can fine-tune.'**
+  String get themeNewSheetBody;
+
+  /// No description provided for @themeNewSheetCreate.
+  ///
+  /// In en, this message translates to:
+  /// **'Create & edit'**
+  String get themeNewSheetCreate;
+
+  /// No description provided for @customThemeEditorAddDarkSide.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a dark side'**
+  String get customThemeEditorAddDarkSide;
+
+  /// No description provided for @customThemeEditorAddLightSide.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a light side'**
+  String get customThemeEditorAddLightSide;
+
+  /// No description provided for @customThemeEditorSingleNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Only the {brightness} side is defined; the other is generated automatically.'**
+  String customThemeEditorSingleNote(String brightness);
+
+  /// No description provided for @personalizationManageThemesSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} saved'**
+  String personalizationManageThemesSubtitle(int count);
+
   /// No description provided for @languageSystemDefault.
   ///
   /// In en, this message translates to:
