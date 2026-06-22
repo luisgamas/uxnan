@@ -55,6 +55,10 @@ class ProjectsStore {
   error = $state<string | null>(null);
   /** Whether the quick worktree-switch palette is open. */
   paletteOpen = $state(false);
+  /** Whether the "add project" directory picker is open. Lives here (not in a
+   *  component) so a global keyboard shortcut can open it even when the left
+   *  sidebar is collapsed — the picker is mounted once at the page root. */
+  pickerOpen = $state(false);
 
   /** Projects visible for the search query: those whose name/path matches OR
    *  that have a matching worktree. */

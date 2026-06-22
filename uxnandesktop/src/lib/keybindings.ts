@@ -41,6 +41,12 @@ export const KEY_ACTIONS: KeyAction[] = [
     default: "Mod+P",
   },
   {
+    id: "addProject",
+    labelKey: "shortcuts.addProject",
+    descKey: "shortcuts.addProjectDesc",
+    default: "Mod+O",
+  },
+  {
     id: "openSettings",
     labelKey: "shortcuts.openSettings",
     descKey: "shortcuts.openSettingsDesc",

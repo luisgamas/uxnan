@@ -15,6 +15,7 @@
   import RightPanel from "$lib/components/RightPanel.svelte";
   import Settings from "$lib/components/Settings.svelte";
   import WorktreeSearch from "$lib/components/WorktreeSearch.svelte";
+  import DirectoryPicker from "$lib/components/DirectoryPicker.svelte";
   import { Toaster } from "$lib/components/ui/sonner";
 
   // Resize bounds for each sidebar (px).
@@ -122,6 +123,10 @@
         e.preventDefault();
         projects.paletteOpen = true;
         return;
+      case "addProject":
+        e.preventDefault();
+        projects.pickerOpen = true;
+        return;
       case "openSettings":
         e.preventDefault();
         app.openSettings();
@@ -151,6 +156,9 @@
 
   <!-- Quick worktree switcher (Ctrl/Cmd+P) -->
   <WorktreeSearch />
+
+  <!-- Add-project directory picker (Ctrl/Cmd+O; also from the sidebar) -->
+  <DirectoryPicker bind:open={projects.pickerOpen} />
 
   <!-- Unsaved-edit prompt (driven by the saveDiscard service on tab close) -->
   <SaveDiscardDialog />

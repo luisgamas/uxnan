@@ -9,6 +9,7 @@
   import { icon, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
   import VirtualList from "./VirtualList.svelte";
+  import DialogHints from "./DialogHints.svelte";
   import SearchIcon from "@lucide/svelte/icons/search";
   import GitBranchIcon from "@lucide/svelte/icons/git-branch";
 
@@ -65,6 +66,8 @@
 
 <Dialog.Root bind:open={projects.paletteOpen}>
   <Dialog.Content class="gap-0 overflow-hidden p-0 sm:max-w-lg">
+    <Dialog.Title class="sr-only">{i18n.t("palette.title")}</Dialog.Title>
+    <Dialog.Description class="sr-only">{i18n.t("palette.placeholder")}</Dialog.Description>
     <div class="flex items-center gap-2 border-b border-border px-3 py-2">
       <SearchIcon class={cn(icon.button, "shrink-0 text-muted-foreground")} />
       <input
@@ -100,5 +103,6 @@
         {/snippet}
       </VirtualList>
     {/if}
+    <DialogHints class="border-t border-border bg-muted/30 px-3 py-1.5" />
   </Dialog.Content>
 </Dialog.Root>
