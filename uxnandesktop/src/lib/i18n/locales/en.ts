@@ -383,6 +383,8 @@ export const en = {
   "status.hooksIssue": "Hooks not installed",
   "status.hooksIssueTooltip":
     "Agent hooks aren't fully installed, so precise agent states may be unavailable. Click to review them in Settings → Hooks.",
+  "status.backendDesc": "Uxnan's local backend (terminals, git, agents).",
+  "status.backendRepos": "Projects",
 
   // Terminal tab state
   "terminal.exited": "exited",

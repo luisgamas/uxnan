@@ -27,8 +27,6 @@
   import PlusIcon from "@lucide/svelte/icons/plus";
   import TerminalIcon from "@lucide/svelte/icons/terminal";
   import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
-  import LayersIcon from "@lucide/svelte/icons/layers";
-  import PanelRightIcon from "@lucide/svelte/icons/panel-right";
   import Columns2Icon from "@lucide/svelte/icons/columns-2";
   import Rows2Icon from "@lucide/svelte/icons/rows-2";
   import GitBranchIcon from "@lucide/svelte/icons/git-branch";
@@ -50,27 +48,9 @@
   const paneBg = $derived(app.resolveTerminal().theme.background);
 
   // --- Workspaces (one terminal set per worktree + a Global space) ---------
-  const baseName = (p: string) =>
-    p.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || p;
-
-  /** Friendly label for the active terminal context (repo / branch). The
-   *  context is chosen in the left panel; here it's only displayed. */
-  function contextLabel(key: string): { repo?: string; name: string } {
-    if (key === GLOBAL_WORKSPACE) return { name: i18n.t("terminal.general") };
-    const mainRepo = app.repos.find((r) => r.path === key);
-    if (mainRepo) {
-      return {
-        repo: mainRepo.name,
-        name: projects.mainWorktree(mainRepo.id)?.branch ?? "main",
-      };
-    }
-    for (const r of app.repos) {
-      const wt = projects.worktreesOf(r.id).find((w) => w.path === key);
-      if (wt) return { repo: r.name, name: wt.branch ?? baseName(key) };
-    }
-    return { name: baseName(key) };
-  }
-  const ctx = $derived(contextLabel(terminals.activeWorkspace));
+  // Active workspace breadcrumb (repo / branch). Rendered in the status bar
+  // (`+page.svelte`); here it's only used for the empty-state copy.
+  const ctx = $derived(projects.activeContext);
 
   /** The repo the active workspace belongs to (if any). The empty-state
    *  "New worktree" button is only enabled when this resolves to a repo —
@@ -231,10 +211,6 @@
     openMenu(e, [...splitItems(groupId), { separator: true }, ...regionItems(groupId, tabId)]);
   }
 
-  function toggleRight() {
-    app.settings.rightSidebarOpen = !app.settings.rightSidebarOpen;
-    void app.persistSettings();
-  }
 </script>
 
 <svelte:window
@@ -285,31 +261,7 @@
       </DropdownMenu.Root>
     </div>
 
-    <!-- Active terminal context (read-only; selected in the left panel) -->
-    <div
-      class={cn(
-        "ml-1 inline-flex max-w-[240px] items-center gap-1 px-1 text-muted-foreground",
-        text.body,
-      )}
-      title={i18n.t("terminal.context")}
-    >
-      <LayersIcon class={cn(icon.decorative, "shrink-0")} />
-      {#if ctx.repo}
-        <span class="truncate">{ctx.repo}</span>
-        <span class="text-muted-foreground/50">/</span>
-      {/if}
-      <span class="truncate font-medium text-foreground">{ctx.name}</span>
-    </div>
-
     <div class="flex-1"></div>
-    <button
-      class="flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-      title={i18n.t("terminal.toggleRight")}
-      aria-label={i18n.t("terminal.toggleRight")}
-      onclick={toggleRight}
-    >
-      <PanelRightIcon class={icon.button} />
-    </button>
   </div>
 
   <!-- Each workspace's region tree is rendered (and stays mounted) but only the

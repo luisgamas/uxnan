@@ -6,8 +6,13 @@
   import { i18n } from "$lib/i18n";
   import { matchAction } from "$lib/keybindings";
   import { isUntestedPlatform, osLabel } from "$lib/platform";
+  import { cn } from "$lib/utils";
+  import { surface } from "$lib/design";
   import TriangleAlertIcon from "@lucide/svelte/icons/triangle-alert";
   import WebhookIcon from "@lucide/svelte/icons/webhook";
+  import PanelLeftIcon from "@lucide/svelte/icons/panel-left";
+  import PanelRightIcon from "@lucide/svelte/icons/panel-right";
+  import LayersIcon from "@lucide/svelte/icons/layers";
   import TerminalArea from "$lib/components/TerminalArea.svelte";
   import SaveDiscardDialog from "$lib/components/SaveDiscardDialog.svelte";
   import TitleBar from "$lib/components/TitleBar.svelte";
@@ -16,6 +21,7 @@
   import Settings from "$lib/components/Settings.svelte";
   import WorktreeSearch from "$lib/components/WorktreeSearch.svelte";
   import DirectoryPicker from "$lib/components/DirectoryPicker.svelte";
+  import BackendStatus from "$lib/components/BackendStatus.svelte";
   import { Toaster } from "$lib/components/ui/sonner";
 
   // Resize bounds for each sidebar (px).
@@ -65,21 +71,17 @@
     void app.persistSettings();
   }
 
-  const backendLabel = $derived(
-    app.backend === "ready"
-      ? i18n.t("status.connected")
-      : app.backend === "connecting"
-        ? i18n.t("status.connecting")
-        : i18n.t("status.unreachable"),
-  );
+  // Active workspace breadcrumb (repo / branch), shown at the left of the status bar.
+  const ctx = $derived(projects.activeContext);
 
-  const backendDot = $derived(
-    app.backend === "ready"
-      ? "bg-green-500"
-      : app.backend === "connecting"
-        ? "bg-amber-500"
-        : "bg-destructive",
-  );
+  function toggleLeftSidebar() {
+    app.settings.leftSidebarOpen = !app.settings.leftSidebarOpen;
+    void app.persistSettings();
+  }
+  function toggleRightSidebar() {
+    app.settings.rightSidebarOpen = !app.settings.rightSidebarOpen;
+    void app.persistSettings();
+  }
 
   // Aim the backend filesystem watcher at the active worktree (here, not in the
   // file-tree panel, so it follows the worktree even when the right panel/Files
@@ -133,13 +135,11 @@
         return;
       case "toggleLeftSidebar":
         e.preventDefault();
-        app.settings.leftSidebarOpen = !app.settings.leftSidebarOpen;
-        void app.persistSettings();
+        toggleLeftSidebar();
         return;
       case "toggleRightSidebar":
         e.preventDefault();
-        app.settings.rightSidebarOpen = !app.settings.rightSidebarOpen;
-        void app.persistSettings();
+        toggleRightSidebar();
         return;
     }
   }
@@ -215,18 +215,22 @@
       {/if}
     </div>
 
-    <!-- Status bar -->
+    <!-- Status bar: breadcrumb (left) · backend + panel toggles (right) -->
     <footer
-      class="flex h-7 shrink-0 items-center gap-2 border-t border-border px-3 text-xs text-muted-foreground"
+      class="flex h-7 shrink-0 items-center gap-2 border-t border-border px-2 text-xs text-muted-foreground"
     >
-      <span class="inline-flex items-center gap-1.5">
-        <span class="h-2 w-2 rounded-full {backendDot}"></span>
-        {backendLabel}
-      </span>
-      {#if app.errorMessage}
-        <span class="text-destructive">· {app.errorMessage}</span>
-      {/if}
+      <!-- Active workspace breadcrumb -->
+      <div class="inline-flex min-w-0 items-center gap-1" title={i18n.t("terminal.context")}>
+        <LayersIcon class="size-3 shrink-0" />
+        {#if ctx.repo}
+          <span class="truncate">{ctx.repo}</span>
+          <span class="text-muted-foreground/50">/</span>
+        {/if}
+        <span class="truncate font-medium text-foreground">{ctx.name}</span>
+      </div>
+
       <div class="flex-1"></div>
+
       {#if isUntestedPlatform}
         <span
           class="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400"
@@ -245,9 +249,40 @@
           <WebhookIcon class="size-3.5" />
           {i18n.t("status.hooksIssue")}
         </button>
-        <span class="text-muted-foreground/40">·</span>
       {/if}
-      <span>{i18n.plural(app.repos.length, "status.reposOne", "status.reposOther")}</span>
+
+      <!-- Backend status (icon + live popover) -->
+      <BackendStatus />
+
+      <!-- Show/hide panels — selected = panel visible (primary tint) -->
+      <button
+        class={cn(
+          "flex size-6 items-center justify-center rounded",
+          app.settings.leftSidebarOpen
+            ? surface.tab
+            : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+        )}
+        title={i18n.t("titlebar.toggleLeft")}
+        aria-label={i18n.t("titlebar.toggleLeft")}
+        aria-pressed={app.settings.leftSidebarOpen}
+        onclick={toggleLeftSidebar}
+      >
+        <PanelLeftIcon class="size-3.5" />
+      </button>
+      <button
+        class={cn(
+          "flex size-6 items-center justify-center rounded",
+          app.settings.rightSidebarOpen
+            ? surface.tab
+            : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+        )}
+        title={i18n.t("terminal.toggleRight")}
+        aria-label={i18n.t("terminal.toggleRight")}
+        aria-pressed={app.settings.rightSidebarOpen}
+        onclick={toggleRightSidebar}
+      >
+        <PanelRightIcon class="size-3.5" />
+      </button>
     </footer>
 
     <!-- Settings overlays the still-mounted body (full content region). -->

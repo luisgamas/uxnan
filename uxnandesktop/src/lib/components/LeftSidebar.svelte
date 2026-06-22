@@ -10,6 +10,7 @@
   import { i18n } from "$lib/i18n";
   import { formatChord, resolveBinding } from "$lib/keybindings";
   import SearchIcon from "@lucide/svelte/icons/search";
+  import SettingsIcon from "@lucide/svelte/icons/settings";
   import FolderPlusIcon from "@lucide/svelte/icons/folder-plus";
   import ArrowUpDownIcon from "@lucide/svelte/icons/arrow-up-down";
   import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
@@ -20,6 +21,7 @@
   // Display chords for the shortcut hints on the big actions.
   const searchChord = $derived(formatChord(resolveBinding("worktreePalette")));
   const addChord = $derived(formatChord(resolveBinding("addProject")));
+  const settingsChord = $derived(formatChord(resolveBinding("openSettings")));
 
   // Load every repo's worktrees once the backend is ready.
   let initialized = false;
@@ -40,8 +42,8 @@
 </script>
 
 <div class="flex h-full min-h-0 flex-col">
-  <!-- Search = a full-width button that opens the quick-switch palette. -->
-  <div class="shrink-0 border-b border-sidebar-border p-2">
+  <!-- Search = a full-width button that opens the palette; Settings below it. -->
+  <div class="flex shrink-0 flex-col gap-2 border-b border-sidebar-border p-2">
     <Button
       variant="outline"
       class="h-8 w-full justify-start gap-2 px-2.5 font-normal text-muted-foreground"
@@ -52,6 +54,18 @@
       <span class={cn("flex-1 truncate text-left", text.body)}>{i18n.t("sidebar.search")}</span>
       {#if searchChord}
         <Kbd>{searchChord}</Kbd>
+      {/if}
+    </Button>
+    <Button
+      variant="outline"
+      class="h-8 w-full justify-start gap-2 px-2.5 font-normal text-muted-foreground"
+      title={i18n.t("settings.title")}
+      onclick={() => (app.settingsOpen = true)}
+    >
+      <SettingsIcon data-icon="inline-start" class="text-muted-foreground" />
+      <span class={cn("flex-1 truncate text-left", text.body)}>{i18n.t("settings.title")}</span>
+      {#if settingsChord}
+        <Kbd>{settingsChord}</Kbd>
       {/if}
     </Button>
   </div>

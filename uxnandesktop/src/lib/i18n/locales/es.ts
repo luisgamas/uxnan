@@ -380,6 +380,8 @@ export const es: Record<MessageKey, string> = {
   "status.hooksIssue": "Hooks sin instalar",
   "status.hooksIssueTooltip":
     "Los hooks de agente no están del todo instalados, así que los estados precisos pueden no estar disponibles. Haz clic para revisarlos en Configuración → Hooks.",
+  "status.backendDesc": "Backend local de Uxnan (terminales, git, agentes).",
+  "status.backendRepos": "Proyectos",
 
   // Terminal tab state
   "terminal.exited": "finalizada",
