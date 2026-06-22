@@ -5,6 +5,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — sidebar search palette, shortcuts & command-dialog polish
+- **Sidebar search is now a full-width button** (`LeftSidebar.svelte`) that opens
+  the command palette, with a `Kbd` shortcut hint (Ctrl/⌘+P). Removed the
+  separate quick-switch (Zap) button — the search button is the single entry
+  point. New reusable `Kbd.svelte` keycap for surfacing shortcuts on big actions.
+- **Add-project keyboard shortcut** (`addProject`, default Ctrl/⌘+O, rebindable
+  in Settings → Keyboard shortcuts). The directory picker is now mounted at the
+  page root and opened via shared `projects.pickerOpen`, so the shortcut works
+  even when the sidebar is collapsed.
+- **Coherent command dialogs.** The quick-switch palette and the add-project
+  picker share a navigation hint bar (`DialogHints.svelte`: ↑↓ navigate · ↵
+  select · Esc exit). The palette gained an accessible `Dialog.Title`/
+  `Description` (was missing), and the picker now supports ↑/↓ + Enter keyboard
+  navigation over its folder list.
+- **Spanish (MX) copy fixes.** Replaced "Saltar a un worktree" with "Buscar un
+  proyecto o worktree"; reworded the palette/shortcut strings accordingly.
+
 ### Changed — left/right panel polish + any-folder projects + window state
 - **Right-panel tabs (Files | Changes | History)** now show a clear, primary-
   tinted **active indicator** matching the left panel's selected card (shared
