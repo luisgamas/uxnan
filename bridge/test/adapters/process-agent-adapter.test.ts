@@ -16,7 +16,7 @@ const FAKE_AGENT = [
 ].join('');
 
 // 30s default: guards only against CPU starvation under parallel node:test on Windows.
-async function waitFor(predicate: () => boolean, timeoutMs = 30000): Promise<void> {
+async function waitFor(predicate: () => boolean, timeoutMs = 120000): Promise<void> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     if (predicate()) return;

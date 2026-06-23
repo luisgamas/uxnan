@@ -18,7 +18,7 @@ import {
 // against CPU starvation when node:test runs all files in parallel on Windows.
 async function waitFor(
   predicate: () => Promise<boolean> | boolean,
-  timeoutMs = 30000,
+  timeoutMs = 120000,
 ): Promise<void> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {

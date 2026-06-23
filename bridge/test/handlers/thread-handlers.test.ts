@@ -26,7 +26,7 @@ async function boot(): Promise<{ bridge: Bridge; baseDir: string }> {
 // 30s default: the predicate resolves in ~50ms in isolation; the generous budget
 // only guards against CPU starvation when node:test runs all files in parallel on
 // Windows (documented flake — not a correctness issue).
-async function waitFor(predicate: () => Promise<boolean>, timeoutMs = 60000): Promise<void> {
+async function waitFor(predicate: () => Promise<boolean>, timeoutMs = 120000): Promise<void> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     if (await predicate()) return;
