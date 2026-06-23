@@ -1,4 +1,8 @@
 import 'package:equatable/equatable.dart';
+import 'package:uxnan/application/managers/file_browser_manager.dart'
+    show FileBrowserManager;
+import 'package:uxnan/application/managers/git_action_manager.dart'
+    show GitActionManager;
 import 'package:uxnan/domain/entities/git/git_repo_state.dart';
 
 /// A push-style notification that a `git/status` fetch just produced a new

@@ -1,0 +1,86 @@
+name: CI — Desktop (uxnandesktop · Tauri 2)
+
+# Verification gate for the desktop app: Svelte type-check + Vite build +
+# Rust fmt/clippy/test. No secrets required. Builds NO installers (that is
+# release-desktop.yml). macOS deferred (Apple) — see CI_CD_MONOREPOS.md §9.
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "uxnandesktop/**"
+      - ".github/workflows/ci-desktop.yml"
+  pull_request:
+    paths:
+      - "uxnandesktop/**"
+      - ".github/workflows/ci-desktop.yml"
+
+concurrency:
+  group: ci-desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: uxnandesktop
+
+jobs:
+  verify:
+    name: verify (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40 # Rust build (cold cache, Windows) is the slow case
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Linux system deps (Tauri/WebKitGTK)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libxdo-dev \
+            libssl-dev \
+            build-essential curl wget file
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: uxnandesktop/package-lock.json
+
+      - name: Set up Rust toolchain (stable + rustfmt + clippy)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: uxnandesktop/src-tauri
+
+      - name: Install frontend deps
+        run: npm ci
+
+      - name: Svelte type-check
+        run: npm run check
+
+      - name: Frontend build (Vite)
+        run: npm run build
+
+      - name: Rust format check
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+
+      - name: Rust clippy (deny warnings)
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+
+      - name: Rust tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml

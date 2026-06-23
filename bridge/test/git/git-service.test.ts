@@ -243,10 +243,7 @@ test('createPr rejects when head and base are the same branch', async () => {
   const dir = await newRepo();
   await writeFile(join(dir, 'a.txt'), 'x');
   await git.commit(dir, 'init');
-  await assert.rejects(
-    git.createPr(dir, 'title', 'body', 'main', 'main'),
-    GitCommandError,
-  );
+  await assert.rejects(git.createPr(dir, 'title', 'body', 'main', 'main'), GitCommandError);
   await rmrf(dir);
 });
 

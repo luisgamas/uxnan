@@ -76,8 +76,7 @@ void main() {
       expect(prefs.containsKey('uxnan.appearance.localeTag'), isFalse);
     });
 
-    test('writing the custom theme does not disturb the other keys',
-        () async {
+    test('writing the custom theme does not disturb the other keys', () async {
       final store = AppearancePreferencesStore();
       await store.writeThemeMode('dark');
       await store.writeLocaleTag('es');
@@ -98,27 +97,27 @@ void main() {
       final original = CustomTheme.fromDualSchemes(
         id: 'round-1',
         name: 'Round-trip',
-        light: ColorScheme(
+        light: const ColorScheme(
           brightness: Brightness.light,
-          primary: const Color(0xFF112233),
-          onPrimary: const Color(0xFF445566),
-          secondary: const Color(0xFF778899),
-          onSecondary: const Color(0xFFAABBCC),
-          error: const Color(0xFFDDEEFF),
-          onError: const Color(0xFF001122),
-          surface: const Color(0xFF334455),
-          onSurface: const Color(0xFF667788),
+          primary: Color(0xFF112233),
+          onPrimary: Color(0xFF445566),
+          secondary: Color(0xFF778899),
+          onSecondary: Color(0xFFAABBCC),
+          error: Color(0xFFDDEEFF),
+          onError: Color(0xFF001122),
+          surface: Color(0xFF334455),
+          onSurface: Color(0xFF667788),
         ),
-        dark: ColorScheme(
+        dark: const ColorScheme(
           brightness: Brightness.dark,
-          primary: const Color(0xFF99AABB),
-          onPrimary: const Color(0xFFCCDD11),
-          secondary: const Color(0xFFFF1122),
-          onSecondary: const Color(0xFF334455),
-          error: const Color(0xFF667788),
-          onError: const Color(0xFF99AABB),
-          surface: const Color(0xFFCCDD11),
-          onSurface: const Color(0xFFFF1122),
+          primary: Color(0xFF99AABB),
+          onPrimary: Color(0xFFCCDD11),
+          secondary: Color(0xFFFF1122),
+          onSecondary: Color(0xFF334455),
+          error: Color(0xFF667788),
+          onError: Color(0xFF99AABB),
+          surface: Color(0xFFCCDD11),
+          onSurface: Color(0xFFFF1122),
         ),
       );
       await store.writeCustomTheme(original);

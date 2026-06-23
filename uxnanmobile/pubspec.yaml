@@ -4,7 +4,7 @@ description: "Uxnan - remote control for AI coding agents (E2EE mobile client)"
 publish_to: 'none'
 
 # version: <build-name>+<build-number>
-version: 1.0.0+1
+version: 0.0.1+1
 
 environment:
   sdk: '>=3.4.0 <4.0.0'
@@ -48,25 +48,22 @@ dependencies:
   pointycastle: ^3.9.0 # AES-256-GCM, HKDF, SHA-256
   riverpod: ^3.0.0 # core Riverpod
   rxdart: ^0.28.0 # reactive stream operators
-  shared_preferences: ^2.3.0 # non-sensitive preferences
   share_plus: ^10.1.4 # native share sheet (theme JSON export to file)
+  shared_preferences: ^2.3.0 # non-sensitive preferences
   speech_to_text: ^7.0.0 # on-device speech-to-text (composer dictation)
   uuid: ^4.4.0 # UUID generation
   web_socket_channel: ^3.0.0 # WebSocket client (LAN + relay)
 
 dev_dependencies:
-  # --- drift code generation ---
-  build_runner: ^2.4.0
-  drift_dev: ^2.18.0
-  flutter_test:
-    sdk: flutter
-  # --- App icon + native splash screen generation (see bottom of this file) ---
+  build_runner: ^2.4.0 # drift code generation
+  drift_dev: ^2.18.0 # drift code generation
+  # App icon + native splash screen generation (see bottom of this file).
   flutter_launcher_icons: ^0.14.4
   flutter_native_splash: ^2.4.7
-  # --- Test doubles ---
-  mocktail: ^1.0.0
-  # --- Lint ruleset (see analysis_options.yaml) ---
-  very_good_analysis: ^7.0.0
+  flutter_test:
+    sdk: flutter
+  mocktail: ^1.0.0 # test doubles
+  very_good_analysis: ^7.0.0 # lint ruleset (see analysis_options.yaml)
 
 flutter:
   uses-material-design: true

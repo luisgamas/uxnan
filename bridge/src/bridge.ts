@@ -247,8 +247,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       // Route app-server approval elicitations to the bridge's shared
       // approval round-trip (the same one the Claude PreToolUse hook and
       // the Echo demo use).
-      onApprovalRequest: (threadId, info) =>
-        agentManager.requestApproval(threadId, info),
+      onApprovalRequest: (threadId, info) => agentManager.requestApproval(threadId, info),
       ...(codexSettings.model !== undefined ? { defaultModel: codexSettings.model } : {}),
     }),
     {

@@ -163,8 +163,8 @@ class FileTreeTile extends StatelessWidget {
 
     // The leading icon mirrors the git status (added/edited/removed/) for
     // files; for directories we keep the folder icon regardless of status.
-    final IconData leadingIcon = isDir ? Icons.folder_outlined : visuals.icon;
-    final Color leadingColor = isDir
+    final leadingIcon = isDir ? Icons.folder_outlined : visuals.icon;
+    final leadingColor = isDir
         ? (status == null ? colors.onSurfaceVariant : visuals.color)
         : visuals.color;
 

@@ -83,7 +83,9 @@ test('git/revert is routed and undoes the last commit', async () => {
   await runGit(repo, ['add', '-A']);
   await runGit(repo, ['commit', '-m', 'two']);
 
-  const res = await bridge.router.dispatch(makeRequest('5', 'git/revert', { cwd: repo, commit: 'HEAD' }));
+  const res = await bridge.router.dispatch(
+    makeRequest('5', 'git/revert', { cwd: repo, commit: 'HEAD' }),
+  );
   assert.ok('result' in res);
   const { stdout } = await runGit(repo, ['rev-list', '--count', 'HEAD']);
   assert.equal(stdout.trim(), '3');

@@ -1,7 +1,11 @@
 import 'package:equatable/equatable.dart';
 
 /// A JSON-RPC 2.0 error object.
-class RpcError extends Equatable {
+///
+/// Implements [Exception] because the transport layer raises it as a thrown
+/// error when a request fails (e.g. the bridge refuses a path); callers catch
+/// it like any other exception.
+class RpcError extends Equatable implements Exception {
   /// Creates an [RpcError].
   const RpcError({required this.code, required this.message, this.data});
 

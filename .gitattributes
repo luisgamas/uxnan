@@ -1,0 +1,11 @@
+# Force LF line endings on checkout across ALL platforms. Without this, the
+# Windows CI runners (git autocrlf=true by default) check files out as CRLF and
+# LF-expecting tools — prettier in particular — reject every file. With it, the
+# repo behaves identically on local Windows/macOS/Linux and on every CI runner.
+* text=auto eol=lf
+
+# Windows-only scripts keep CRLF (some shells require it). Not checked by
+# prettier (only *.ts/*.json are), so this does not affect the format gate.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf

@@ -347,8 +347,9 @@ class _AgentFilterBar extends StatelessWidget implements PreferredSizeWidget {
   }
 }
 
-/// Horizontal chips that scope the list to one project (working folder). Mirrors
-/// [_AgentFilterBar]; shown only when the PC hosts more than one project.
+/// Horizontal chips that scope the list to one project (working folder).
+/// Mirrors [_AgentFilterBar]; shown only when the PC hosts more than one
+/// project.
 class _ProjectFilterBar extends StatelessWidget {
   const _ProjectFilterBar({
     required this.projects,

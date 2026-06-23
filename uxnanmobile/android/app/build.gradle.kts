@@ -1,7 +1,20 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+// Release signing config, loaded from android/key.properties when present. The
+// CI release job (release-mobile.yml) generates that file from GitHub Secrets;
+// it is gitignored and never committed. When absent (local dev), release falls
+// back to the debug keys below. See uxnanmobile/FOR-HUMAN.md.
+val keystoreProperties = Properties()
+val keystorePropertiesFile = rootProject.file("key.properties")
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
 
 // FOR-HUMAN: apply the Google Services plugin ONLY when google-services.json is
@@ -40,11 +53,27 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        create("release") {
+            if (keystorePropertiesFile.exists()) {
+                keyAlias = keystoreProperties["keyAlias"] as String
+                keyPassword = keystoreProperties["keyPassword"] as String
+                storeFile = file(keystoreProperties["storeFile"] as String)
+                storePassword = keystoreProperties["storePassword"] as String
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // Sign with the upload keystore (key.properties) when available
+            // (CI release builds); otherwise fall back to the debug keys so
+            // `flutter run --release` still works locally without secrets.
+            signingConfig = if (keystorePropertiesFile.exists()) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
 
             // R8/minification + resource shrinking ON (smaller release). R8
             // full mode (AGP 9 default) strips the no-arg constructors of the

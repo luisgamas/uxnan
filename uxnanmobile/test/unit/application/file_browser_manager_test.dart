@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uxnan/application/managers/file_browser_manager.dart';
 import 'package:uxnan/application/services/git_status_bus.dart';
@@ -44,23 +42,17 @@ const _statusResult = <String, dynamic>{
 
 const _emptyList = <String, dynamic>{'cwd': '.', 'entries': <dynamic>[]};
 
-/// Default `sendRequest` for the manager-under-test: each call gets a
-/// pre-registered response from [responder], else returns an empty map. The
-/// responder also receives the call params so it can dispatch on the
-/// absolute `cwd` (e.g. switch behaviour for the root vs a subdirectory).
-typedef _Responder = RpcMessage Function(
-    String method, Map<String, dynamic> params);
-
 FileBrowserManager _buildManager({
   required void Function(String method, Map<String, dynamic> params) onCall,
-  required _Responder responder,
+  required RpcMessage Function(String, Map<String, dynamic>) responder,
   GitStatusBus? statusBus,
 }) {
   return FileBrowserManager(
     sendRequest: (method, [params]) {
       onCall(method, params ?? const <String, dynamic>{});
       return Future.value(
-          responder(method, params ?? const <String, dynamic>{}));
+        responder(method, params ?? const <String, dynamic>{}),
+      );
     },
     statusBus: statusBus,
   );
@@ -470,19 +462,21 @@ void main() {
     // GitStatusChange for the same cwd. The manager must repaint without
     // us touching the API — the modified descendant under `src/` flips
     // the folder to the modified colour even while collapsed.
-    bus.emit(GitStatusChange(
-      cwd: _workspaceRoot,
-      state: const GitRepoState(
-        branch: 'main',
-        isDirty: true,
-        changedFiles: [
-          GitChangedFile(
-            path: 'src/main.dart',
-            status: GitFileStatus.modified,
-          ),
-        ],
+    bus.emit(
+      const GitStatusChange(
+        cwd: _workspaceRoot,
+        state: GitRepoState(
+          branch: 'main',
+          isDirty: true,
+          changedFiles: [
+            GitChangedFile(
+              path: 'src/main.dart',
+              status: GitFileStatus.modified,
+            ),
+          ],
+        ),
       ),
-    ));
+    );
     await _settle();
 
     final root = manager.rootFor(_workspaceRoot)!;
@@ -508,15 +502,17 @@ void main() {
     );
 
     // No loadRoot — the manager does not manage this cwd.
-    bus.emit(GitStatusChange(
-      cwd: '/some/other/workspace',
-      state: const GitRepoState(
-        branch: 'main',
-        changedFiles: [
-          GitChangedFile(path: 'a.dart', status: GitFileStatus.modified),
-        ],
+    bus.emit(
+      const GitStatusChange(
+        cwd: '/some/other/workspace',
+        state: GitRepoState(
+          branch: 'main',
+          changedFiles: [
+            GitChangedFile(path: 'a.dart', status: GitFileStatus.modified),
+          ],
+        ),
       ),
-    ));
+    );
     await _settle();
     // No throw, no crash. Nothing to assert beyond that.
     expect(manager.rootFor('/some/other/workspace'), isNull);

@@ -13,7 +13,6 @@ CustomTheme _testCustomTheme() {
     description: 'Used by uxnan_theme_test.dart',
     light: ColorScheme.fromSeed(
       seedColor: const Color(0xFF6750A4),
-      brightness: Brightness.light,
     ),
     dark: ColorScheme.fromSeed(
       seedColor: const Color(0xFF6750A4),
@@ -131,7 +130,8 @@ void main() {
       expect(a.colorScheme.tertiary, b.colorScheme.tertiary);
     });
 
-    test('the custom source with a null theme falls back to the brand '
+    test(
+        'the custom source with a null theme falls back to the brand '
         'baseline', () {
       // Defensive: the UI never reaches this state, but a transient null
       // during a hot-reload or a misconfigured provider should not crash

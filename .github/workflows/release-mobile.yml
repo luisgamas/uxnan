@@ -1,0 +1,90 @@
+name: Release — Mobile (Google Play, internal track)
+
+# Builds a signed AAB on a `mobile-v<version>[+<build>]` tag and uploads it to
+# the Google Play **internal** testing track. Distribution is via Google Play,
+# not GitHub Releases. iOS is deferred (Apple).
+#
+# Tag examples:
+#   mobile-v0.0.1-alpha.20260621+5  → build-name 0.0.1-alpha.20260621, code 5
+#   mobile-v0.0.1-alpha.20260621    → build code falls back to the run number
+#
+# Required secrets (already configured): ANDROID_KEYSTORE_B64,
+# ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD,
+# GOOGLE_SERVICES_JSON, PLAY_SERVICE_ACCOUNT_JSON_BASE64.
+
+on:
+  push:
+    tags:
+      - "mobile-v*"
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: uxnanmobile
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+          cache: "gradle"
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.44.0"
+          channel: "stable"
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Decode signing + Play service-account secrets
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_B64 }}" | base64 --decode > android/app/upload-keystore.jks
+          echo "${{ secrets.PLAY_SERVICE_ACCOUNT_JSON_BASE64 }}" | base64 --decode > play-account.json
+          echo "${{ secrets.GOOGLE_SERVICES_JSON }}" | base64 --decode > android/app/google-services.json
+
+      - name: Create key.properties
+        run: |
+          cat <<EOF > android/key.properties
+          storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
+          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
+          storeFile=upload-keystore.jks
+          EOF
+
+      - name: Resolve version from tag
+        id: meta
+        run: |
+          FULL="${GITHUB_REF_NAME#mobile-v}"   # 0.0.1-alpha.20260621+5
+          NAME="${FULL%%+*}"                    # 0.0.1-alpha.20260621
+          BUILD="${FULL#*+}"                    # 5  (or the whole string if no +)
+          if [ "$BUILD" = "$FULL" ]; then BUILD="${{ github.run_number }}"; fi
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "build=$BUILD" >> "$GITHUB_OUTPUT"
+          echo "build-name=$NAME  build-number=$BUILD"
+
+      - name: Build AAB (release)
+        run: |
+          flutter build appbundle --release \
+            --build-name="${{ steps.meta.outputs.name }}" \
+            --build-number="${{ steps.meta.outputs.build }}"
+
+      - name: Upload to Google Play (internal track)
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJson: uxnanmobile/play-account.json
+          packageName: dev.luisgamas.uxnanmobile
+          releaseFiles: uxnanmobile/build/app/outputs/bundle/release/app-release.aab
+          track: internal
+          status: completed

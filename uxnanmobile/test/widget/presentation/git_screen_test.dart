@@ -73,9 +73,10 @@ void main() {
     await tester.pumpWidget(_wrap(const GitScreen(), state: _sampleState()));
     await tester.pump();
 
-    // Every file row's `_NeCheckbox` is initially selected → `Icons.check_rounded`
-    // (the on-state glyph). The selection-bar checkbox (tristate) lives
-    // separately as the all-on glyph too, but tapping the second per-file
+    // Every file row's `_NeCheckbox` is initially selected →
+    // `Icons.check_rounded` (the on-state glyph). The selection-bar checkbox
+    // (tristate) lives separately as the all-on glyph too, but tapping the
+    // second per-file
     // checkbox is what flips one file's selection state.
     final checks = find.byIcon(Icons.check_rounded);
     expect(checks, findsAtLeastNWidgets(3));

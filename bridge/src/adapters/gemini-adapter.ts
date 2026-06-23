@@ -430,15 +430,16 @@ export class GeminiAdapter extends BaseAgentAdapter {
     // POST each tool invocation to the bridge's local HTTP endpoint. The
     // threadId is what the hook embeds in the request, so the bridge can
     // route the response back to the right thread.
-    const spawnExtra = useHook && this.#approvalHook
-      ? {
-          env: {
-            UXNAN_HOOK_URL: this.#approvalHook.url() ?? '',
-            UXNAN_HOOK_TOKEN: this.#approvalHook.token,
-            UXNAN_HOOK_THREAD_ID: threadId,
-          },
-        }
-      : undefined;
+    const spawnExtra =
+      useHook && this.#approvalHook
+        ? {
+            env: {
+              UXNAN_HOOK_URL: this.#approvalHook.url() ?? '',
+              UXNAN_HOOK_TOKEN: this.#approvalHook.token,
+              UXNAN_HOOK_THREAD_ID: threadId,
+            },
+          }
+        : undefined;
 
     let child: SpawnedProcess;
     try {
@@ -616,9 +617,10 @@ export class GeminiAdapter extends BaseAgentAdapter {
     };
     // Wrap the entry under a matcher key (Gemini uses regex matchers on the
     // tool name; `.*` matches every tool — the bridge decides per-call).
-    const matchers = existing.hooks && typeof existing.hooks === 'object'
-      ? (existing.hooks as Record<string, unknown>)
-      : {};
+    const matchers =
+      existing.hooks && typeof existing.hooks === 'object'
+        ? (existing.hooks as Record<string, unknown>)
+        : {};
     const beforeToolRaw = matchers['BeforeTool'];
     const beforeTool = Array.isArray(beforeToolRaw) ? (beforeToolRaw as unknown[]) : [];
     // Drop any prior uxnan-approval entry so re-installs don't duplicate.
@@ -628,9 +630,7 @@ export class GeminiAdapter extends BaseAgentAdapter {
       if (!Array.isArray(hooks)) return true;
       return !hooks.some(
         (h: unknown) =>
-          h &&
-          typeof h === 'object' &&
-          (h as Record<string, unknown>)['name'] === 'uxnan-approval',
+          h && typeof h === 'object' && (h as Record<string, unknown>)['name'] === 'uxnan-approval',
       );
     });
     filtered.push({ matcher: '.*', ...hookEntry });

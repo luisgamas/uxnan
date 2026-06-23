@@ -26,7 +26,7 @@ async function boot(): Promise<{ bridge: Bridge; baseDir: string }> {
 // 30s default: the predicate resolves in ~50ms in isolation; the generous budget
 // only guards against CPU starvation when node:test runs all files in parallel on
 // Windows (documented flake — not a correctness issue).
-async function waitFor(predicate: () => Promise<boolean>, timeoutMs = 30000): Promise<void> {
+async function waitFor(predicate: () => Promise<boolean>, timeoutMs = 60000): Promise<void> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     if (await predicate()) return;
@@ -158,7 +158,10 @@ test('turn/send with approvalResponse drives the echo demo approval over the rou
     async () => (await bridge.context.threadStore.getTurn(turnId)).status === 'completed',
   );
   const turn = await bridge.context.threadStore.getTurn(turnId);
-  assert.match(String(turn.messages.find((m) => m.role === 'assistant')?.content ?? ''), /Approved/);
+  assert.match(
+    String(turn.messages.find((m) => m.role === 'assistant')?.content ?? ''),
+    /Approved/,
+  );
 
   await bridge.stop();
   await rm(baseDir, { recursive: true, force: true });

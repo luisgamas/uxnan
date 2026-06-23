@@ -98,7 +98,8 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
       // session); best-effort and skips archived threads.
       unawaited(ref.read(threadManagerProvider).resumeThread(widget.threadId));
       // Seed the access mode from the bridge (source of truth) so the picker
-      // reflects the persisted per-thread choice, not just this session's local.
+      // reflects the persisted per-thread choice, not just this session's
+      // local.
       unawaited(_seedAccessMode());
       // Mark this conversation as the foreground one so its turn-end
       // notifications are suppressed while it's on screen.
@@ -170,8 +171,9 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     final foreground = _foreground;
     final threadId = widget.threadId;
     Future(() => foreground?.leave(threadId));
-    _scroll.removeListener(_onScroll);
-    _scroll.dispose();
+    _scroll
+      ..removeListener(_onScroll)
+      ..dispose();
     super.dispose();
   }
 
@@ -1351,7 +1353,6 @@ class _IdRow extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
     final hasValue = value != null && value!.isNotEmpty;
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Expanded(
           child: Column(
