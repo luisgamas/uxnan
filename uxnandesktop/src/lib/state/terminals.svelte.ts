@@ -12,18 +12,29 @@
 // the tree never remounts xterm or restarts a PTY.
 
 import { invoke } from "@tauri-apps/api/core";
-import type { SavedTermNode, SavedTerminalLayout } from "$lib/types";
+import { listen } from "@tauri-apps/api/event";
+import type { FsChangedEvent, SavedTab, SavedTermNode, SavedTerminalLayout } from "$lib/types";
+import { i18n } from "$lib/i18n";
+import { saveDiscard } from "$lib/state/confirm.svelte";
+import { FileEditorState } from "$lib/state/files.svelte";
+import { CommitViewerState, DiffViewerState } from "$lib/state/git.svelte";
 
 export type SplitDir = "row" | "col";
 
 /** The unassigned "Global" workspace key. */
 export const GLOBAL_WORKSPACE = "";
 
-/** One terminal tab inside a region, backed by a single PTY. */
-export interface GroupTab {
-  /** PTY id (also the event channel suffix: `pty:output:{id}`). */
+/** Fields shared by every kind of tab in a region. */
+interface BaseTab {
+  /** Universal tab id. For a terminal it's also the PTY id (and the event
+   *  channel suffix: `pty:output:{id}`). */
   id: string;
   title: string;
+}
+
+/** A terminal tab, backed by a single PTY. */
+export interface TerminalTab extends BaseTab {
+  kind: "terminal";
   cwd?: string;
   /** Shell executable for this tab's PTY (from the chosen terminal profile). */
   shell?: string;
@@ -42,6 +53,41 @@ export interface GroupTab {
   working?: boolean;
   exited: boolean;
 }
+
+/** A file-editor tab. Its live state (content/dirty/diff) lives in the store's
+ *  per-tab registry, keyed by `id` (see `fileState`). */
+export interface FileTab extends BaseTab {
+  kind: "file";
+  /** Absolute, forward-slash path of the open file. */
+  path: string;
+  /** Worktree root for git-relative ops + the change gutter (null = none). */
+  worktree: string | null;
+}
+
+/** A diff-viewer tab. Its live state lives in the per-tab registry (`diffState`).
+ *  Self-contained: carries its own `worktree` so it's independent of the right
+ *  panel's active worktree. */
+export interface DiffTab extends BaseTab {
+  kind: "diff";
+  worktree: string;
+  /** Worktree-relative file path. */
+  file: string;
+  staged: boolean;
+}
+
+/** A commit-viewer tab (read-only): the full diff a commit introduced. Its live
+ *  state lives in the per-tab registry (`commitState`). Self-contained: carries
+ *  its own `worktree`, independent of the right panel's active worktree. */
+export interface CommitTab extends BaseTab {
+  kind: "commit";
+  worktree: string;
+  /** Full commit hash. */
+  hash: string;
+  /** Commit subject (for the tab title tooltip). */
+  subject: string;
+}
+
+export type GroupTab = TerminalTab | FileTab | DiffTab | CommitTab;
 
 /** A region: a tab strip over one-or-more terminals. */
 export interface TabGroup {
@@ -81,9 +127,10 @@ export interface NewTabOptions {
   workspace?: string;
 }
 
-function newTab(opts?: Omit<NewTabOptions, "groupId" | "workspace">): GroupTab {
+function newTab(opts?: Omit<NewTabOptions, "groupId" | "workspace">): TerminalTab {
   termCount += 1;
   return {
+    kind: "terminal",
     id: crypto.randomUUID(),
     title: opts?.title ?? `Terminal ${termCount}`,
     cwd: opts?.cwd,
@@ -213,7 +260,40 @@ export function computeAreaLayout(root: AreaNode): {
 
 // --- Persistence (structure only; fresh shells spawn on restore) ----------
 
-/** Serialize one area tree to a structure-only snapshot (no PTY ids/state). */
+/** Drop **diff** and **commit** tabs from a cloned tree (both transient — never
+ *  persisted) and collapse any region/split left empty, so serialization only
+ *  ever sees terminal + file tabs in non-empty groups. Returns null when nothing
+ *  remains. */
+function pruneDiffs(node: AreaNode): AreaNode | null {
+  if (node.kind === "group") {
+    const tabs = node.tabs.filter((t) => t.kind !== "diff" && t.kind !== "commit");
+    if (tabs.length === 0) return null;
+    const activeTabId = tabs.some((t) => t.id === node.activeTabId)
+      ? node.activeTabId
+      : tabs[tabs.length - 1].id;
+    return { kind: "group", id: node.id, tabs, activeTabId };
+  }
+  const a = pruneDiffs(node.a);
+  const b = pruneDiffs(node.b);
+  if (!a) return b;
+  if (!b) return a;
+  return { ...node, a, b };
+}
+
+/** Serialize one tab to its persisted descriptor. Diff tabs are pruned before
+ *  this runs (the diff arm is an unreachable safety net). */
+function serializeTab(t: GroupTab): SavedTab {
+  if (t.kind === "file") {
+    return { kind: "file", title: t.title, path: t.path, worktree: t.worktree ?? undefined };
+  }
+  if (t.kind === "terminal") {
+    return { kind: "terminal", title: t.title, cwd: t.cwd, shell: t.shell, args: t.args };
+  }
+  return { kind: "terminal", title: t.title };
+}
+
+/** Serialize one area tree to a structure-only snapshot (no PTY ids / live
+ *  state). Run on a `pruneDiffs`'d tree so no diff tabs or empty groups appear. */
 export function serializeArea(node: AreaNode): SavedTermNode {
   if (node.kind === "group") {
     const activeTab = Math.max(
@@ -222,12 +302,7 @@ export function serializeArea(node: AreaNode): SavedTermNode {
     );
     return {
       type: "group",
-      tabs: node.tabs.map((t) => ({
-        title: t.title,
-        cwd: t.cwd,
-        shell: t.shell,
-        args: t.args,
-      })),
+      tabs: node.tabs.map(serializeTab),
       activeTab,
     };
   }
@@ -240,23 +315,35 @@ export function serializeArea(node: AreaNode): SavedTermNode {
   };
 }
 
-/** Rebuild an area tree from a saved snapshot, assigning fresh PTY ids. */
+/** Rebuild one tab from its saved descriptor, assigning a fresh id. Terminals
+ *  spawn a new PTY; file tabs reopen by path (a missing file surfaces an error
+ *  in its editor pane). A descriptor with no `kind` is a legacy terminal. */
+function buildTab(t: SavedTab): GroupTab {
+  if (t.kind === "file") {
+    return {
+      kind: "file",
+      id: crypto.randomUUID(),
+      title: t.title,
+      path: t.path,
+      worktree: t.worktree ?? null,
+    };
+  }
+  termCount += 1;
+  return {
+    kind: "terminal",
+    id: crypto.randomUUID(),
+    title: t.title,
+    cwd: t.cwd,
+    shell: t.shell,
+    args: t.args,
+    exited: false,
+  };
+}
+
+/** Rebuild an area tree from a saved snapshot, assigning fresh ids. */
 function buildFromSaved(saved: SavedTermNode): AreaNode {
   if (saved.type === "group") {
-    const tabs: GroupTab[] =
-      saved.tabs.length > 0
-        ? saved.tabs.map((t) => {
-            termCount += 1;
-            return {
-              id: crypto.randomUUID(),
-              title: t.title,
-              cwd: t.cwd,
-              shell: t.shell,
-              args: t.args,
-              exited: false,
-            };
-          })
-        : [newTab()];
+    const tabs: GroupTab[] = saved.tabs.length > 0 ? saved.tabs.map(buildTab) : [newTab()];
     const activeIdx = Math.min(Math.max(0, saved.activeTab), tabs.length - 1);
     return {
       kind: "group",
@@ -296,6 +383,14 @@ class TerminalStore {
    *  discarded by a restore. */
   hydrated = $state(false);
   private controllers = new Map<string, TermController>();
+  /** Per-tab live state for `file` tabs, keyed by tab id (kept out of the
+   *  serialized tree so typing never churns the persisted layout). */
+  private fileStates = new Map<string, FileEditorState>();
+  /** Per-tab live state for `diff` tabs, keyed by tab id. */
+  private diffStates = new Map<string, DiffViewerState>();
+  /** Per-tab live state for `commit` tabs, keyed by tab id. */
+  private commitStates = new Map<string, CommitViewerState>();
+  private fsListening = false;
 
   // The active workspace's tree / active region, proxied so all the per-tree
   // methods below operate on the visible workspace without change.
@@ -362,16 +457,63 @@ class TerminalStore {
     this.activeGroups = ag;
     this.activeWorkspace = active;
     this.hydrated = true;
+    this.registerFileStates();
+    void this.startFsListening();
   }
 
-  /** Snapshot of every non-empty workspace + the active key (for persistence). */
+  /** Create the per-tab editor state for every restored `file` tab (the tree
+   *  carries only the path; the live content loads lazily). */
+  private registerFileStates(): void {
+    for (const key of Object.keys(this.workspaces)) {
+      const tree = this.workspaces[key];
+      if (!tree) continue;
+      for (const tab of allTabs(tree)) {
+        if (tab.kind === "file" && !this.fileStates.has(tab.id)) {
+          this.fileStates.set(tab.id, new FileEditorState(tab.path, tab.worktree));
+        }
+      }
+    }
+  }
+
+  /** Snapshot of every non-empty workspace + the active key (for persistence).
+   *  Diff tabs are pruned (transient); empty regions are collapsed. */
   serialize(): SavedTerminalLayout {
     const workspaces: Record<string, SavedTermNode> = {};
     for (const key of Object.keys(this.workspaces)) {
       const tree = this.workspaces[key];
-      if (tree) workspaces[key] = serializeArea(tree);
+      if (!tree) continue;
+      const pruned = pruneDiffs(tree);
+      if (pruned) workspaces[key] = serializeArea(pruned);
     }
     return { active: this.activeWorkspace, workspaces };
+  }
+
+  // --- Filesystem external-change wiring ------------------------------------
+
+  /** Subscribe to `fs:changed` (once) so open file/diff tabs react to on-disk
+   *  edits: a clean file reloads silently, a dirty one shows a reload-vs-keep
+   *  banner, a diff reloads. The file tree handles its own subscription. */
+  async startFsListening(): Promise<void> {
+    if (this.fsListening) return;
+    this.fsListening = true;
+    try {
+      await listen<FsChangedEvent>("fs:changed", (e) =>
+        this.applyExternalChange(e.payload.paths),
+      );
+    } catch {
+      this.fsListening = false; // no Tauri event bus (web preview)
+    }
+  }
+
+  private applyExternalChange(paths: string[]): void {
+    const set = new Set(paths);
+    for (const st of this.fileStates.values()) {
+      if (set.has(st.path)) st.noteExternalChange();
+    }
+    for (const st of this.diffStates.values()) {
+      const root = st.worktree.replace(/\\/g, "/").replace(/\/+$/, "");
+      if (set.has(`${root}/${st.file}`)) st.noteExternalChange();
+    }
   }
 
   // --- Focus / selection ---------------------------------------------------
@@ -384,11 +526,15 @@ class TerminalStore {
     if (group) group.activeTabId = tabId;
     this.activeGroupId = groupId;
   }
-  /** PTY id of the active tab of the active region, or null when empty. */
+  /** PTY id of the active tab of the active region — only when that tab is a
+   *  terminal (a file/diff active tab yields null, so file-drop and the agent
+   *  "are you viewing it" check behave correctly). */
   activePtyId(): string | null {
     if (!this.root) return null;
     const group = findGroup(this.root, this.activeGroupId) ?? firstGroup(this.root);
-    return group?.activeTabId ?? null;
+    if (!group) return null;
+    const tab = group.tabs.find((t) => t.id === group.activeTabId);
+    return tab?.kind === "terminal" ? tab.id : null;
   }
 
   // --- Tabs ----------------------------------------------------------------
@@ -397,19 +543,176 @@ class TerminalStore {
    *  opens its first region. */
   create(opts?: NewTabOptions): string {
     if (opts?.workspace !== undefined) this.setWorkspace(opts.workspace);
+    const tab = newTab(opts);
+    this.insertTab(tab, opts?.groupId);
+    return tab.id;
+  }
+
+  /** Insert an already-built tab into a region (the target region, the active
+   *  region, or — when the workspace is empty — a fresh first region), make it
+   *  active, and focus its region. Shared by terminal / file / diff opens. */
+  private insertTab(tab: GroupTab, groupId?: string): void {
     if (!this.root) {
-      const group = newGroup(opts);
+      const group: TabGroup = {
+        kind: "group",
+        id: crypto.randomUUID(),
+        tabs: [tab],
+        activeTabId: tab.id,
+      };
       this.root = group;
       this.activeGroupId = group.id;
-      return group.tabs[0].id;
+      return;
     }
-    const groupId = opts?.groupId ?? this.activeGroupId;
-    const group = findGroup(this.root, groupId) ?? firstGroup(this.root);
-    const tab = newTab(opts);
+    const group = findGroup(this.root, groupId ?? this.activeGroupId) ?? firstGroup(this.root);
     group.tabs.push(tab);
     group.activeTabId = tab.id;
     this.activeGroupId = group.id;
-    return tab.id;
+  }
+
+  /** Open `absPath` as a file-editor tab (or focus it if already open). The file
+   *  loads into its own per-tab state; `worktree` drives the git change gutter. */
+  openFile(
+    absPath: string,
+    worktree: string | null,
+    opts?: { workspace?: string; groupId?: string },
+  ): string {
+    const existing = this.findFileTab(absPath);
+    if (existing) {
+      this.revealTab(existing.workspace, existing.tab.id);
+      return existing.tab.id;
+    }
+    if (opts?.workspace !== undefined) this.setWorkspace(opts.workspace);
+    const id = crypto.randomUUID();
+    const tab: FileTab = {
+      kind: "file",
+      id,
+      title: absPath.split("/").pop() ?? absPath,
+      path: absPath,
+      worktree,
+    };
+    this.fileStates.set(id, new FileEditorState(absPath, worktree));
+    this.insertTab(tab, opts?.groupId);
+    return id;
+  }
+
+  /** Open a diff-viewer tab for `file` in `worktree` (or focus it if already
+   *  open). The diff carries its own worktree, independent of the right panel. */
+  openDiff(
+    worktree: string,
+    file: string,
+    staged: boolean,
+    opts?: { workspace?: string; groupId?: string },
+  ): string {
+    const existing = this.findDiffTab(worktree, file, staged);
+    if (existing) {
+      this.revealTab(existing.workspace, existing.tab.id);
+      return existing.tab.id;
+    }
+    if (opts?.workspace !== undefined) this.setWorkspace(opts.workspace);
+    const id = crypto.randomUUID();
+    const tab: DiffTab = {
+      kind: "diff",
+      id,
+      title: file.split("/").pop() ?? file,
+      worktree,
+      file,
+      staged,
+    };
+    this.diffStates.set(
+      id,
+      new DiffViewerState(worktree, file, staged, () => void this.closeTabById(id)),
+    );
+    this.insertTab(tab, opts?.groupId);
+    return id;
+  }
+
+  /** Open a read-only commit-viewer tab for `hash` in `worktree` (or focus it if
+   *  already open). Carries its own worktree, independent of the right panel. */
+  openCommit(
+    worktree: string,
+    hash: string,
+    subject: string,
+    opts?: { workspace?: string; groupId?: string },
+  ): string {
+    const existing = this.findCommitTab(worktree, hash);
+    if (existing) {
+      this.revealTab(existing.workspace, existing.tab.id);
+      return existing.tab.id;
+    }
+    if (opts?.workspace !== undefined) this.setWorkspace(opts.workspace);
+    const id = crypto.randomUUID();
+    const tab: CommitTab = {
+      kind: "commit",
+      id,
+      title: hash.slice(0, 7),
+      worktree,
+      hash,
+      subject,
+    };
+    this.commitStates.set(id, new CommitViewerState(worktree, hash, subject));
+    this.insertTab(tab, opts?.groupId);
+    return id;
+  }
+
+  /** The live editor state for a file tab (undefined for other kinds). */
+  fileState(id: string): FileEditorState | undefined {
+    return this.fileStates.get(id);
+  }
+  /** The live diff state for a diff tab (undefined for other kinds). */
+  diffState(id: string): DiffViewerState | undefined {
+    return this.diffStates.get(id);
+  }
+  /** The live commit-viewer state for a commit tab (undefined for other kinds). */
+  commitState(id: string): CommitViewerState | undefined {
+    return this.commitStates.get(id);
+  }
+  /** Drop the per-tab registry entry for a tab leaving the tree (no-op for a
+   *  terminal). Called from every close path so editor/diff/commit state can't
+   *  leak. */
+  private disposeTab(id: string): void {
+    this.fileStates.delete(id);
+    this.diffStates.delete(id);
+    this.commitStates.delete(id);
+  }
+
+  private findFileTab(path: string): { tab: FileTab; workspace: string } | undefined {
+    for (const { tab, workspace } of this.tabsWithWorkspace()) {
+      if (tab.kind === "file" && tab.path === path) return { tab, workspace };
+    }
+    return undefined;
+  }
+  private findDiffTab(
+    worktree: string,
+    file: string,
+    staged: boolean,
+  ): { tab: DiffTab; workspace: string } | undefined {
+    for (const { tab, workspace } of this.tabsWithWorkspace()) {
+      if (tab.kind === "diff" && tab.worktree === worktree && tab.file === file && tab.staged === staged)
+        return { tab, workspace };
+    }
+    return undefined;
+  }
+  private findCommitTab(
+    worktree: string,
+    hash: string,
+  ): { tab: CommitTab; workspace: string } | undefined {
+    for (const { tab, workspace } of this.tabsWithWorkspace()) {
+      if (tab.kind === "commit" && tab.worktree === worktree && tab.hash === hash)
+        return { tab, workspace };
+    }
+    return undefined;
+  }
+  /** Whether a file is already open in some tab (for the tree's open-row mark). */
+  isFileOpen(path: string): boolean {
+    return this.findFileTab(path) !== undefined;
+  }
+  /** Whether a diff is already open in some tab (for the changes-list mark). */
+  isDiffOpen(worktree: string, file: string, staged: boolean): boolean {
+    return this.findDiffTab(worktree, file, staged) !== undefined;
+  }
+  /** Whether a commit is already open in some tab (for the history-list mark). */
+  isCommitOpen(worktree: string, hash: string): boolean {
+    return this.findCommitTab(worktree, hash) !== undefined;
   }
 
   // --- Agent activity monitoring (read by the agent monitor + the sidebar) ---
@@ -448,17 +751,19 @@ class TerminalStore {
   workspaceWorking(key: string): boolean {
     const tree = this.workspaces[key];
     if (!tree) return false;
-    for (const tab of allTabs(tree)) if (tab.working) return true;
+    for (const tab of allTabs(tree)) if (tab.kind === "terminal" && tab.working) return true;
     return false;
   }
 
   /** The agent terminals open in a workspace (tabs launched as an agent), in
    *  tab order — these get their own clickable rows in the sidebar. */
-  agentTabs(key: string): GroupTab[] {
+  agentTabs(key: string): TerminalTab[] {
     const tree = this.workspaces[key];
     if (!tree) return [];
-    const out: GroupTab[] = [];
-    for (const tab of allTabs(tree)) if (tab.agentName) out.push(tab);
+    const out: TerminalTab[] = [];
+    for (const tab of allTabs(tree)) {
+      if (tab.kind === "terminal" && tab.agentName) out.push(tab);
+    }
     return out;
   }
 
@@ -472,23 +777,67 @@ class TerminalStore {
     if (group) this.setActiveTab(group.id, tabId);
   }
 
-  /** Close one tab in the active workspace: kill its PTY; if it was the region's
-   *  last tab, collapse the region (or empty the workspace if it was the last). */
+  /** If `tab` is a file tab with unsaved edits, prompt save/discard/cancel and
+   *  return whether the close may proceed (false = the user cancelled). "Save"
+   *  persists the live document first; a failed save also aborts so edits aren't
+   *  lost. Non-file (and clean file) tabs proceed without a prompt. */
+  private async confirmDirty(tab: GroupTab): Promise<boolean> {
+    if (tab.kind !== "file") return true;
+    const st = this.fileStates.get(tab.id);
+    if (!st || !st.dirty) return true;
+    const choice = await saveDiscard.request({
+      title: i18n.t("editor.unsavedTitle"),
+      description: i18n.t("editor.unsavedDesc", { file: st.rel || st.name }),
+      saveLabel: i18n.t("editor.saveAndClose"),
+      discardLabel: i18n.t("editor.discardClose"),
+    });
+    if (choice === "cancel") return false;
+    if (choice === "save") {
+      try {
+        await st.save(st.content);
+      } catch {
+        return false; // save failed → keep the tab open so edits survive
+      }
+    }
+    return true;
+  }
+
+  /** Close one tab in the active workspace: guard unsaved file edits, kill its
+   *  PTY (terminals only), drop its per-tab state; if it was the region's last
+   *  tab, collapse the region (or empty the workspace if it was the last). */
   async closeTab(groupId: string, tabId: string): Promise<void> {
     if (!this.root) return;
     const group = findGroup(this.root, groupId);
     if (!group) return;
-    try {
-      await invoke("pty_close", { id: tabId });
-    } catch {
-      // Already gone — idempotent.
+    const tab = group.tabs.find((t) => t.id === tabId);
+    if (!tab) return;
+    if (!(await this.confirmDirty(tab))) return;
+    if (tab.kind === "terminal") {
+      try {
+        await invoke("pty_close", { id: tabId });
+      } catch {
+        // Already gone — idempotent.
+      }
     }
+    this.disposeTab(tabId);
     group.tabs = group.tabs.filter((t) => t.id !== tabId);
     if (group.tabs.length === 0) {
       this.collapseGroup(groupId);
     } else if (group.activeTabId === tabId) {
       group.activeTabId = group.tabs[group.tabs.length - 1].id;
     }
+  }
+
+  /** Close the active tab of the active region (the `closeCenter` shortcut). */
+  closeActiveTab(): void {
+    if (!this.root) return;
+    const group = findGroup(this.root, this.activeGroupId) ?? firstGroup(this.root);
+    if (group) void this.closeTab(group.id, group.activeTabId);
+  }
+
+  /** Close a tab by id wherever it lives (used by a diff tab closing itself). */
+  closeTabById(tabId: string): Promise<void> {
+    return this.closeTabAnywhere(tabId);
   }
 
   /** Close a tab in whichever workspace holds it (even a hidden one): kill its
@@ -501,11 +850,16 @@ class TerminalStore {
       if (!tree) continue;
       const group = groupOfTab(tree, tabId);
       if (!group) continue;
-      try {
-        await invoke("pty_close", { id: tabId });
-      } catch {
-        // Already gone — idempotent.
+      const tab = group.tabs.find((t) => t.id === tabId);
+      if (tab && !(await this.confirmDirty(tab))) return;
+      if (tab?.kind === "terminal") {
+        try {
+          await invoke("pty_close", { id: tabId });
+        } catch {
+          // Already gone — idempotent.
+        }
       }
+      this.disposeTab(tabId);
       if (group.tabs.length > 1) {
         group.tabs = group.tabs.filter((t) => t.id !== tabId);
         if (group.activeTabId === tabId) {
@@ -553,13 +907,39 @@ class TerminalStore {
     this.activeGroupId = fresh.id;
   }
 
-  /** Close a whole region: kill every tab's PTY and collapse it. */
+  /** Close a whole region: guard unsaved file edits (a single aggregated prompt
+   *  when several files are dirty), kill every terminal's PTY, drop per-tab
+   *  state, and collapse it. */
   async closeGroup(groupId: string): Promise<void> {
     if (!this.root) return;
     const group = findGroup(this.root, groupId);
     if (!group) return;
+    const dirty = group.tabs.filter(
+      (t) => t.kind === "file" && this.fileStates.get(t.id)?.dirty,
+    );
+    if (dirty.length > 0) {
+      const choice = await saveDiscard.request({
+        title: i18n.t("editor.unsavedTitle"),
+        description: i18n.t("editor.unsavedManyDesc", { n: dirty.length }),
+        saveLabel: i18n.t("editor.saveAllClose"),
+        discardLabel: i18n.t("editor.discardAllClose"),
+      });
+      if (choice === "cancel") return;
+      if (choice === "save") {
+        for (const t of dirty) {
+          const st = this.fileStates.get(t.id);
+          if (!st) continue;
+          try {
+            await st.save(st.content);
+          } catch {
+            return; // a save failed → abort the close so edits survive
+          }
+        }
+      }
+    }
     for (const tab of group.tabs) {
-      invoke("pty_close", { id: tab.id }).catch(() => {});
+      if (tab.kind === "terminal") invoke("pty_close", { id: tab.id }).catch(() => {});
+      this.disposeTab(tab.id);
     }
     this.collapseGroup(groupId);
   }
@@ -582,7 +962,8 @@ class TerminalStore {
     const tree = this.workspaces[key];
     if (tree) {
       for (const tab of allTabs(tree)) {
-        invoke("pty_close", { id: tab.id }).catch(() => {});
+        if (tab.kind === "terminal") invoke("pty_close", { id: tab.id }).catch(() => {});
+        this.disposeTab(tab.id);
       }
     }
     const { [key]: _root, ...restWs } = this.workspaces;

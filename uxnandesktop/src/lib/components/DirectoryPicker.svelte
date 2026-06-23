@@ -8,6 +8,7 @@
   import { cn } from "$lib/utils";
   import { icon, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
+  import DialogHints from "./DialogHints.svelte";
   import type { DirListing } from "$lib/types";
   import FolderIcon from "@lucide/svelte/icons/folder";
   import FolderGitIcon from "@lucide/svelte/icons/folder-git-2";
@@ -20,6 +21,8 @@
   let loading = $state(false);
   let error = $state<string | null>(null);
   let busy = $state(false);
+  /** Highlighted sub-folder index, for keyboard navigation. */
+  let activeIdx = $state(0);
 
   const msg = (e: unknown) =>
     e && typeof e === "object" && "message" in e
@@ -32,10 +35,35 @@
     try {
       listing = await browseDirs(path);
       pathInput = listing.path;
+      activeIdx = 0;
     } catch (e) {
       error = msg(e);
     } finally {
       loading = false;
+    }
+  }
+
+  // Keep the highlight within range as the listing changes.
+  $effect(() => {
+    const n = listing?.entries.length ?? 0;
+    if (activeIdx >= n) activeIdx = Math.max(0, n - 1);
+  });
+
+  /** Arrow/Enter navigation from the path field: ↑/↓ move the highlight, Enter
+   *  opens the highlighted folder (or goes to a typed path when it was edited). */
+  function onNavKey(e: KeyboardEvent) {
+    const entries = listing?.entries ?? [];
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      activeIdx = Math.min(entries.length - 1, activeIdx + 1);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      activeIdx = Math.max(0, activeIdx - 1);
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const typed = pathInput.trim();
+      if (typed && typed !== listing?.path) void go(typed);
+      else if (entries[activeIdx]) void go(entries[activeIdx].path);
     }
   }
 
@@ -82,12 +110,7 @@
         placeholder={i18n.t("picker.pathPlaceholder")}
         bind:value={pathInput}
         spellcheck={false}
-        onkeydown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            void go(pathInput.trim() || undefined);
-          }
-        }}
+        onkeydown={onNavKey}
       />
     </div>
 
@@ -100,8 +123,15 @@
           {i18n.t("picker.empty")}
         </div>
       {:else if listing}
-        {#each listing.entries as entry (entry.path)}
-          <div class="group flex items-center gap-2 px-2 py-1.5 hover:bg-accent/50">
+        {#each listing.entries as entry, i (entry.path)}
+          <div
+            class={cn(
+              "group flex items-center gap-2 px-2 py-1.5",
+              i === activeIdx ? "bg-accent" : "hover:bg-accent/50",
+            )}
+            onmouseenter={() => (activeIdx = i)}
+            role="presentation"
+          >
             <button
               class={cn("flex min-w-0 flex-1 items-center gap-2 text-left", text.body)}
               title={i18n.t("picker.open", { name: entry.name })}
@@ -119,17 +149,15 @@
                 </Badge>
               {/if}
             </button>
-            {#if entry.isRepo}
-              <Button
-                variant="ghost"
-                size="sm"
-                class="h-6 text-[11px] opacity-0 group-hover:opacity-100"
-                disabled={busy}
-                onclick={() => add(entry.path)}
-              >
-                {i18n.t("common.add")}
-              </Button>
-            {/if}
+            <Button
+              variant="ghost"
+              size="sm"
+              class="h-6 text-[11px] opacity-0 group-hover:opacity-100"
+              disabled={busy}
+              onclick={() => add(entry.path)}
+            >
+              {i18n.t("common.add")}
+            </Button>
           </div>
         {/each}
       {/if}
@@ -143,14 +171,17 @@
       </div>
     {/if}
 
-    <Dialog.Footer>
-      <Button variant="ghost" onclick={() => (open = false)}>{i18n.t("common.cancel")}</Button>
-      <Button
-        disabled={!listing?.isRepo || busy}
-        onclick={() => listing && add(listing.path)}
-      >
-        {busy ? i18n.t("common.adding") : i18n.t("picker.addFolder")}
-      </Button>
+    <Dialog.Footer class="items-center sm:justify-between">
+      <DialogHints class="hidden sm:flex" />
+      <div class="flex items-center gap-2">
+        <Button variant="ghost" onclick={() => (open = false)}>{i18n.t("common.cancel")}</Button>
+        <Button
+          disabled={!listing || busy}
+          onclick={() => listing && add(listing.path)}
+        >
+          {busy ? i18n.t("common.adding") : i18n.t("picker.addFolder")}
+        </Button>
+      </div>
     </Dialog.Footer>
   </Dialog.Content>
 </Dialog.Root>

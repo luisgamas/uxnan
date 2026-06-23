@@ -509,8 +509,7 @@ class _CommitGraphRow extends StatelessWidget {
                 trackColor: colors.outlineVariant,
                 parentLanes: entry.parentLanes,
                 nextLane: nextEntry?.lane,
-                parentsContinue:
-                    nextEntry?.continuesFrom == entry.commit.sha,
+                parentsContinue: nextEntry?.continuesFrom == entry.commit.sha,
                 hasMoreBelow: hasMoreBelow,
               ),
             ),
@@ -992,8 +991,7 @@ class _CommitDetailsSheet extends StatelessWidget {
                 commit.committerEmail != commit.authorEmail)
               _DetailRow(
                 label: l10n.gitHistoryDetailsCommitter,
-                value:
-                    '${commit.committerName} <${commit.committerEmail}>',
+                value: '${commit.committerName} <${commit.committerEmail}>',
               ),
             const SizedBox(height: UxnanSpacing.md),
             Container(

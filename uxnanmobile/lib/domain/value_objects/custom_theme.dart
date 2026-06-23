@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:ui' show Color;
 
 import 'package:equatable/equatable.dart';
 import 'package:flutter/material.dart';
@@ -46,8 +45,89 @@ class CustomTheme extends Equatable {
           ),
         );
 
+  /// A copy of this theme that delegates to a fresh
+  /// `ColorScheme.fromSeed` for both brightnesses — used by the editor's
+  /// *"Derive from seed"* affordance to reset one brightness from a single
+  /// seed color.
+  factory CustomTheme.derivedFromSeed({
+    required String id,
+    required String name,
+    required Color seed,
+    String description = '',
+  }) {
+    final light = ColorScheme.fromSeed(seedColor: seed);
+    final dark =
+        ColorScheme.fromSeed(seedColor: seed, brightness: Brightness.dark);
+    return CustomTheme.fromDualSchemes(
+      id: id,
+      name: name,
+      description: description,
+      light: light,
+      dark: dark,
+    );
+  }
+
+  /// Parses a [CustomTheme] from an imported / stored JSON document.
+  ///
+  /// Tolerant of the three shapes the importer must accept (see
+  /// [_extractSchemeMaps]): the Uxnan native `{light, dark}` document, a
+  /// Material Theme Builder export (`{schemes: {light, dark, ...}}`), and a
+  /// single flat role map whose brightness is auto-detected. A document that
+  /// describes only **one** brightness loads as a **single**-brightness theme;
+  /// the missing side is derived on demand (never persisted). A document with
+  /// both sides loads as **dual**.
+  ///
+  /// Throws [FormatException] when no color scheme can be recognized — the
+  /// caller surfaces the failure instead of silently materializing the M3
+  /// purple baseline.
+  factory CustomTheme.fromJson(Map<String, dynamic> json) {
+    final id = json['id'] as String? ?? CustomTheme.freshId();
+    final name = json['name'] as String? ?? 'Custom theme';
+    final description = json['description'] as String? ?? '';
+    final version = (json['version'] as num?)?.toInt() ?? currentSchemaVersion;
+
+    final maps = _extractSchemeMaps(json);
+    final light = maps.light == null
+        ? null
+        : CustomThemeColors.fromJson(maps.light!, brightness: Brightness.light);
+    final dark = maps.dark == null
+        ? null
+        : CustomThemeColors.fromJson(maps.dark!, brightness: Brightness.dark);
+
+    if (light == null && dark == null) {
+      throw const FormatException(
+        'Theme JSON has no recognizable color scheme (expected "light"/"dark" '
+        'keys, a "schemes" block, or a flat role map)',
+      );
+    }
+    // Keep the document's cardinality: a one-sided document stays single.
+    return CustomTheme._raw(
+      id: id,
+      name: name,
+      description: description,
+      schemaVersion: version,
+      light: light,
+      dark: dark,
+    );
+  }
+
+  /// Parses a [CustomTheme] from a JSON string. Throws [FormatException]
+  /// for malformed input (the editor surfaces the message).
+  factory CustomTheme.fromJsonString(String source) {
+    final trimmed = source.trim();
+    if (trimmed.isEmpty) {
+      throw const FormatException('Empty theme JSON');
+    }
+    final decoded = jsonDecode(trimmed);
+    if (decoded is! Map<String, dynamic>) {
+      throw const FormatException('Theme JSON must be an object');
+    }
+    return CustomTheme.fromJson(decoded);
+  }
+
   /// Creates a **dual** theme from two independent authored [ColorScheme]s (one
-  /// per brightness). The editor uses this so a light tweak never disturbs dark.
+  /// per brightness). The editor uses this so a light tweak never disturbs
+  /// dark.
   CustomTheme.fromDualSchemes({
     required this.id,
     required this.name,
@@ -77,7 +157,7 @@ class CustomTheme extends Equatable {
   /// Raw constructor over the two authored-side maps. At least one must be
   /// non-null; the codecs and copy-with helpers build through this so they can
   /// preserve single-vs-dual cardinality.
-  CustomTheme._raw({
+  const CustomTheme._raw({
     required this.id,
     required this.name,
     required this.description,
@@ -273,29 +353,6 @@ class CustomTheme extends Equatable {
     );
   }
 
-  /// A copy of this theme that delegates to a fresh
-  /// `ColorScheme.fromSeed` for both brightnesses — used by the editor's
-  /// *"Derive from seed"* affordance to reset one brightness from a single
-  /// seed color.
-  factory CustomTheme.derivedFromSeed({
-    required String id,
-    required String name,
-    required Color seed,
-    String description = '',
-  }) {
-    final light =
-        ColorScheme.fromSeed(seedColor: seed, brightness: Brightness.light);
-    final dark =
-        ColorScheme.fromSeed(seedColor: seed, brightness: Brightness.dark);
-    return CustomTheme.fromDualSchemes(
-      id: id,
-      name: name,
-      description: description,
-      light: light,
-      dark: dark,
-    );
-  }
-
   /// The JSON wire shape. Stable across versions; guarded by [schemaVersion].
   /// Only **authored** sides are serialized: a single-brightness theme emits
   /// just its side, a dual theme emits both. The derived side is never written.
@@ -308,65 +365,6 @@ class CustomTheme extends Equatable {
       if (_lightColors != null) 'light': _lightColors.toJson(),
       if (_darkColors != null) 'dark': _darkColors.toJson(),
     };
-  }
-
-  /// Parses a [CustomTheme] from an imported / stored JSON document.
-  ///
-  /// Tolerant of the three shapes the importer must accept (see
-  /// [_extractSchemeMaps]): the Uxnan native `{light, dark}` document, a
-  /// Material Theme Builder export (`{schemes: {light, dark, ...}}`), and a
-  /// single flat role map whose brightness is auto-detected. A document that
-  /// describes only **one** brightness loads as a **single**-brightness theme;
-  /// the missing side is derived on demand (never persisted). A document with
-  /// both sides loads as **dual**.
-  ///
-  /// Throws [FormatException] when no color scheme can be recognized — the
-  /// caller surfaces the failure instead of silently materializing the M3
-  /// purple baseline.
-  factory CustomTheme.fromJson(Map<String, dynamic> json) {
-    final String id = json['id'] as String? ?? CustomTheme.freshId();
-    final String name = json['name'] as String? ?? 'Custom theme';
-    final String description = json['description'] as String? ?? '';
-    final int version =
-        (json['version'] as num?)?.toInt() ?? currentSchemaVersion;
-
-    final maps = _extractSchemeMaps(json);
-    final light = maps.light == null
-        ? null
-        : CustomThemeColors.fromJson(maps.light!, brightness: Brightness.light);
-    final dark = maps.dark == null
-        ? null
-        : CustomThemeColors.fromJson(maps.dark!, brightness: Brightness.dark);
-
-    if (light == null && dark == null) {
-      throw const FormatException(
-        'Theme JSON has no recognizable color scheme (expected "light"/"dark" '
-        'keys, a "schemes" block, or a flat role map)',
-      );
-    }
-    // Keep the document's cardinality: a one-sided document stays single.
-    return CustomTheme._raw(
-      id: id,
-      name: name,
-      description: description,
-      schemaVersion: version,
-      light: light,
-      dark: dark,
-    );
-  }
-
-  /// Parses a [CustomTheme] from a JSON string. Throws [FormatException]
-  /// for malformed input (the editor surfaces the message).
-  factory CustomTheme.fromJsonString(String source) {
-    final trimmed = source.trim();
-    if (trimmed.isEmpty) {
-      throw const FormatException('Empty theme JSON');
-    }
-    final decoded = jsonDecode(trimmed);
-    if (decoded is! Map<String, dynamic>) {
-      throw const FormatException('Theme JSON must be an object');
-    }
-    return CustomTheme.fromJson(decoded);
   }
 
   /// Parses an imported document into its constituent sides **without**

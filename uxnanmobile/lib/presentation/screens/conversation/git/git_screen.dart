@@ -793,7 +793,8 @@ class _GitScreenState extends ConsumerState<GitScreen> {
                               SliverFillRemaining(
                                 hasScrollBody: false,
                                 child: _NoRepository(
-                                    connecting: widget.cwd != null),
+                                  connecting: widget.cwd != null,
+                                ),
                               )
                             else ...[
                               SliverToBoxAdapter(
@@ -1850,7 +1851,6 @@ class _BranchPickerState extends State<_BranchPicker> {
             subtitle: Text(l10n.gitSwitchBranchCurrent(widget.current)),
             enabled: false,
             onTap: () {},
-            trailing: null,
           ),
           if (_others.isNotEmpty)
             Divider(height: 1, color: colors.outlineVariant),
@@ -2407,7 +2407,10 @@ class _PrimaryActionButton extends StatelessWidget {
               shape: const CircleBorder(),
               clipBehavior: Clip.antiAlias,
               child: SizedBox(
-                  width: 48, height: 48, child: Center(child: spinner)),
+                width: 48,
+                height: 48,
+                child: Center(child: spinner),
+              ),
             ),
             if (badge != null) badge!,
           ],

@@ -27,6 +27,17 @@ google-services.json
 GoogleService-Info.plist
 *.p8
 
+# CI/CD signing & publishing artifacts — decoded at build time from GitHub
+# Secrets on the runner; never commit. (Android keystores are *.jks above.)
+*.keystore
+key.properties
+play-account.json
+*-service-account*.json
+
+# Agent CLI local config / test scratch (e.g. bridge Gemini-hook tests write
+# a .gemini/settings.json into the cwd — local only, never committed).
+.gemini/
+
 # IDE
 .idea/
 .vscode/

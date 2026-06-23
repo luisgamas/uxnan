@@ -15,6 +15,7 @@ import {
   gitPull,
   gitPush,
   gitSetWatch,
+  gitShow,
   gitStage,
   gitStageAll,
   gitStatus,
@@ -23,6 +24,7 @@ import {
   worktreeStatus,
 } from "$lib/api";
 import { projects } from "$lib/state/projects.svelte";
+import { history } from "$lib/state/history.svelte";
 import { toast, toastError } from "$lib/toast";
 import { i18n } from "$lib/i18n";
 import type { FileChange, GitStatusEvent } from "$lib/types";
@@ -57,8 +59,16 @@ class GitStore {
   /** A staging/commit action is in flight (disables the action buttons). */
   busy = $state(false);
   error = $state<string | null>(null);
-  /** Commit message composer. */
+  /** Commit message composer: subject line. */
   message = $state("");
+  /** Optional extended description (commit body) — collapsed in the composer. */
+  body = $state("");
+  /** Optional `Co-authored-by:` entries, each `Name <email>` — collapsed. */
+  coAuthors = $state<string[]>([]);
+  /** Amend the previous commit instead of creating a new one. */
+  amend = $state(false);
+  /** Append a `Signed-off-by:` trailer (git `-s`). */
+  signOff = $state(false);
   committing = $state(false);
   /** Commits ahead / behind the upstream (for the push/pull bar). */
   ahead = $state(0);
@@ -66,11 +76,6 @@ class GitStore {
   /** A push/pull is in flight. */
   syncing = $state(false);
   private listening = false;
-
-  /** The file whose diff is open in the viewer, or null when closed. */
-  selected = $state<{ file: string; staged: boolean } | null>(null);
-  diff = $state("");
-  diffLoading = $state(false);
 
   /** Files with a staged change / with a working-tree (or untracked) change. */
   staged = $derived(this.files.filter((f) => f.staged));
@@ -109,7 +114,6 @@ class GitStore {
   async load(path: string | null): Promise<void> {
     this.path = path;
     this.error = null;
-    this.selected = null;
     this.ahead = 0;
     this.behind = 0;
     void gitSetWatch(path).catch(() => {});
@@ -155,30 +159,6 @@ class GitStore {
     }
   }
 
-  /** Open the diff viewer for a file in the given area (staged or not). A diff
-   *  that takes longer than 30 s is abandoned so the UI never hangs. */
-  async openDiff(file: string, staged: boolean): Promise<void> {
-    if (!this.path) return;
-    this.selected = { file, staged };
-    this.diff = "";
-    this.diffLoading = true;
-    try {
-      const timeout = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("diff timed out")), 30_000),
-      );
-      this.diff = await Promise.race([gitDiff(this.path, file, staged), timeout]);
-    } catch (e) {
-      this.error = msg(e);
-      toastError(e);
-    } finally {
-      this.diffLoading = false;
-    }
-  }
-  closeDiff(): void {
-    this.selected = null;
-    this.diff = "";
-  }
-
   /** Run a staging action then refresh, surfacing any error. */
   private async op(fn: (path: string) => Promise<void>): Promise<void> {
     const path = this.path;
@@ -212,43 +192,51 @@ class GitStore {
     return this.op((p) => gitDiscard(p, file, untracked));
   }
 
-  /** Apply a single hunk (its sub-patch from the diff viewer) to the index or
-   *  working tree, then refresh status + reload the open diff (closing the
-   *  viewer if nothing is left). `stage`/`unstage` target the index; `discard`
-   *  reverts the hunk in the working tree (destructive — confirmed in the UI). */
-  async applyHunk(patch: string, action: "stage" | "unstage" | "discard"): Promise<void> {
-    const path = this.path;
-    const sel = this.selected;
-    if (!path || !sel) return;
-    this.busy = true;
-    this.error = null;
-    try {
-      const cached = action !== "discard";
-      const reverse = action !== "stage";
-      await gitApply(path, patch, cached, reverse);
-      await this.refresh();
-      // Reload the diff in place; if the hunk was the last change, close it.
-      this.selected = sel;
-      await this.openDiff(sel.file, sel.staged);
-      if (this.diff.trim().length === 0) this.closeDiff();
-    } catch (e) {
-      this.error = msg(e);
-      toastError(e);
-    } finally {
-      this.busy = false;
-    }
+  /** Reload the status if the panel is currently showing `path` (used by a diff
+   *  tab after it applies a hunk in that worktree). */
+  refreshIfWatching(path: string): void {
+    if (this.path === path) void this.refresh();
   }
 
-  /** Commit the staged changes; clears the message and refreshes on success. */
+  /** Compose the full commit message from the composer fields: the subject, the
+   *  optional body (after a blank line), and a trailer block with any
+   *  `Co-authored-by:` entries. `Signed-off-by:` is appended by git itself (the
+   *  `signOff` flag → `-s`) so it uses the configured identity. */
+  buildCommitMessage(): string {
+    const subject = this.message.trim();
+    const body = this.body.trim();
+    const trailers = this.coAuthors
+      .map((c) => c.trim())
+      .filter(Boolean)
+      .map((c) => `Co-authored-by: ${c}`);
+    let out = subject;
+    if (body) out += `\n\n${body}`;
+    if (trailers.length > 0) out += `\n\n${trailers.join("\n")}`;
+    return out;
+  }
+
+  /** Clear the composer (subject + all optional fields) after a successful commit. */
+  private resetComposer(): void {
+    this.message = "";
+    this.body = "";
+    this.coAuthors = [];
+    this.amend = false;
+    this.signOff = false;
+  }
+
+  /** Commit the staged changes (or amend HEAD); clears the composer and refreshes
+   *  on success. The message is composed from the subject + optional body +
+   *  co-author trailers. */
   async commit(): Promise<void> {
     const path = this.path;
-    const message = this.message.trim();
-    if (!path || !message) return;
+    const message = this.buildCommitMessage().trim();
+    if (!path || !this.message.trim()) return;
     this.committing = true;
     this.error = null;
     try {
-      await gitCommit(path, message);
-      this.message = "";
+      await gitCommit(path, message, this.amend, this.signOff);
+      this.resetComposer();
+      history.markStale();
       await this.refresh();
       toast.success(i18n.t("toast.committed"));
     } catch (e) {
@@ -268,6 +256,7 @@ class GitStore {
     this.error = null;
     try {
       await fn(path);
+      history.markStale();
       await this.refresh();
       toast.success(okMsg);
     } catch (e) {
@@ -287,3 +276,105 @@ class GitStore {
 
 /** Singleton git-review store shared by the right panel. */
 export const git = new GitStore();
+
+/** Per-tab state for a **diff viewer** opened as a center tab. Self-contained —
+ *  it carries its own `worktree` so it keeps working when the right panel
+ *  switches to another worktree (or is closed). One instance per diff tab,
+ *  registered in the terminals store and rendered by `DiffPane.svelte`. */
+export class DiffViewerState {
+  readonly worktree: string;
+  readonly file: string;
+  staged = $state(false);
+  diff = $state("");
+  diffLoading = $state(true);
+  error = $state<string | null>(null);
+  /** Called when applying a hunk leaves the file with no remaining diff, so the
+   *  owning tab can close itself. */
+  private onEmpty: () => void;
+
+  constructor(worktree: string, file: string, staged: boolean, onEmpty: () => void) {
+    this.worktree = worktree;
+    this.file = file;
+    this.staged = staged;
+    this.onEmpty = onEmpty;
+    void this.reload();
+  }
+
+  /** (Re)load the diff. Abandoned after 30 s so the UI never hangs. */
+  async reload(): Promise<void> {
+    this.diffLoading = true;
+    this.error = null;
+    try {
+      const timeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("diff timed out")), 30_000),
+      );
+      this.diff = await Promise.race([gitDiff(this.worktree, this.file, this.staged), timeout]);
+    } catch (e) {
+      this.error = msg(e);
+      toastError(e);
+    } finally {
+      this.diffLoading = false;
+    }
+  }
+
+  /** The file changed on disk → reload (diffs are read-only, always safe). */
+  noteExternalChange(): void {
+    void this.reload();
+  }
+
+  /** Apply a single hunk (its sub-patch) to this diff's own worktree, then
+   *  reload; if nothing is left, ask the owning tab to close. Refreshes the
+   *  right panel only when it happens to be showing the same worktree. */
+  async applyHunk(patch: string, action: "stage" | "unstage" | "discard"): Promise<void> {
+    this.error = null;
+    try {
+      const cached = action !== "discard";
+      const reverse = action !== "stage";
+      await gitApply(this.worktree, patch, cached, reverse);
+      git.refreshIfWatching(this.worktree);
+      await this.reload();
+      if (this.diff.trim().length === 0) this.onEmpty();
+    } catch (e) {
+      this.error = msg(e);
+      toastError(e);
+    }
+  }
+}
+
+/** Per-tab state for a **commit viewer** opened as a center tab (from the History
+ *  tab). Read-only: shows the full diff a commit introduced (vs its first
+ *  parent). Self-contained — it carries its own `worktree` so it keeps working
+ *  when the right panel switches worktree. One instance per commit tab, rendered
+ *  by `CommitPane.svelte`. */
+export class CommitViewerState {
+  readonly worktree: string;
+  readonly hash: string;
+  readonly subject: string;
+  diff = $state("");
+  diffLoading = $state(true);
+  error = $state<string | null>(null);
+
+  constructor(worktree: string, hash: string, subject: string) {
+    this.worktree = worktree;
+    this.hash = hash;
+    this.subject = subject;
+    void this.reload();
+  }
+
+  /** (Re)load the commit diff. Abandoned after 30 s so the UI never hangs. */
+  async reload(): Promise<void> {
+    this.diffLoading = true;
+    this.error = null;
+    try {
+      const timeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("diff timed out")), 30_000),
+      );
+      this.diff = await Promise.race([gitShow(this.worktree, this.hash), timeout]);
+    } catch (e) {
+      this.error = msg(e);
+      toastError(e);
+    } finally {
+      this.diffLoading = false;
+    }
+  }
+}

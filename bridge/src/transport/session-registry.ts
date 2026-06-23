@@ -84,6 +84,11 @@ export class SessionRegistry {
     return this.#sinks.has(deviceId);
   }
 
+  /** Whether at least one phone currently has a live sink (any connection). */
+  anyActive(): boolean {
+    return this.#sinks.size > 0;
+  }
+
   /**
    * Deliver a message to a device. Returns `true` if sent live (the sink
    * encrypts it, which records it in the log), `false` if the device is offline

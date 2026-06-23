@@ -12,53 +12,91 @@ import type { MessageKey } from "$lib/i18n/locales/en";
 export const isMac =
   typeof navigator !== "undefined" && /mac/i.test(navigator.platform || navigator.userAgent);
 
+/** A group the shortcuts settings list is organized under. */
+export type ShortcutCategory =
+  | "general"
+  | "navigation"
+  | "panels"
+  | "editor";
+
+/** Section titles, in display order (Settings → Keyboard shortcuts). */
+export const SHORTCUT_CATEGORIES: { id: ShortcutCategory; titleKey: MessageKey }[] = [
+  { id: "general", titleKey: "shortcuts.catGeneral" },
+  { id: "navigation", titleKey: "shortcuts.catNavigation" },
+  { id: "panels", titleKey: "shortcuts.catPanels" },
+  { id: "editor", titleKey: "shortcuts.catEditor" },
+];
+
 /** An action the user can rebind. `id` is the persisted key. */
 export interface KeyAction {
   id: string;
   labelKey: MessageKey;
   descKey: MessageKey;
+  /** Which section it appears under in the settings list. */
+  category: ShortcutCategory;
   /** Default chord (platform-agnostic, `Mod` = Ctrl/⌘). */
   default: string;
 }
 
 export const KEY_ACTIONS: KeyAction[] = [
   {
-    id: "closeCenter",
-    labelKey: "shortcuts.closeCenter",
-    descKey: "shortcuts.closeCenterDesc",
-    default: "Mod+W",
-  },
-  {
-    id: "saveFile",
-    labelKey: "shortcuts.saveFile",
-    descKey: "shortcuts.saveFileDesc",
-    default: "Mod+S",
+    id: "openSettings",
+    labelKey: "shortcuts.openSettings",
+    descKey: "shortcuts.openSettingsDesc",
+    category: "general",
+    default: "Mod+,",
   },
   {
     id: "worktreePalette",
     labelKey: "shortcuts.worktreePalette",
     descKey: "shortcuts.worktreePaletteDesc",
+    category: "navigation",
     default: "Mod+P",
   },
   {
-    id: "openSettings",
-    labelKey: "shortcuts.openSettings",
-    descKey: "shortcuts.openSettingsDesc",
-    default: "Mod+,",
+    id: "addProject",
+    labelKey: "shortcuts.addProject",
+    descKey: "shortcuts.addProjectDesc",
+    category: "navigation",
+    default: "Mod+O",
   },
   {
     id: "toggleLeftSidebar",
     labelKey: "shortcuts.toggleLeftSidebar",
     descKey: "shortcuts.toggleLeftSidebarDesc",
+    category: "panels",
     default: "Mod+B",
   },
   {
     id: "toggleRightSidebar",
     labelKey: "shortcuts.toggleRightSidebar",
     descKey: "shortcuts.toggleRightSidebarDesc",
+    category: "panels",
     default: "Mod+J",
   },
+  {
+    id: "closeCenter",
+    labelKey: "shortcuts.closeCenter",
+    descKey: "shortcuts.closeCenterDesc",
+    category: "editor",
+    default: "Mod+W",
+  },
+  {
+    id: "saveFile",
+    labelKey: "shortcuts.saveFile",
+    descKey: "shortcuts.saveFileDesc",
+    category: "editor",
+    default: "Mod+S",
+  },
 ];
+
+/** `KEY_ACTIONS` grouped by category, in `SHORTCUT_CATEGORIES` order (empty
+ *  groups omitted). Drives the sectioned settings list. */
+export const SHORTCUT_GROUPS: { titleKey: MessageKey; actions: KeyAction[] }[] =
+  SHORTCUT_CATEGORIES.map((c) => ({
+    titleKey: c.titleKey,
+    actions: KEY_ACTIONS.filter((a) => a.category === c.id),
+  })).filter((g) => g.actions.length > 0);
 
 const DEFAULTS: Record<string, string> = Object.fromEntries(
   KEY_ACTIONS.map((a) => [a.id, a.default]),

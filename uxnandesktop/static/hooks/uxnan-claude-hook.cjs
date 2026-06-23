@@ -27,7 +27,51 @@
 'use strict';
 
 const http = require('node:http');
+const fs = require('node:fs');
 const { URL } = require('node:url');
+
+/** Max length of the response preview we attach to a `done` report. */
+const PREVIEW_MAX = 240;
+
+/** Flatten a Claude message `content` (string, or array of blocks) to plain
+ *  text — only `text` blocks contribute; tool calls/results are ignored. */
+function textOf(content) {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  return content
+    .filter((b) => b && b.type === 'text' && typeof b.text === 'string')
+    .map((b) => b.text)
+    .join('\n');
+}
+
+/** Collapse whitespace and truncate for a one-glance notification preview. */
+function tidy(s, max) {
+  const t = String(s || '').replace(/\s+/g, ' ').trim();
+  return t.length > max ? t.slice(0, max - 1).trimEnd() + '…' : t;
+}
+
+/** Read a Claude transcript (JSONL) and return the last user prompt + the last
+ *  assistant text response, for enriching the `done` notification. Best-effort:
+ *  any read/parse problem yields empty fields. */
+function transcriptPreview(path) {
+  const out = { prompt: null, summary: null };
+  if (!path || typeof path !== 'string') return out;
+  let raw;
+  try { raw = fs.readFileSync(path, 'utf8'); } catch { return out; }
+  for (const line of raw.split('\n')) {
+    if (!line.trim()) continue;
+    let entry;
+    try { entry = JSON.parse(line); } catch { continue; }
+    const msg = entry && entry.message;
+    const role = (msg && msg.role) || entry.type;
+    if (role !== 'user' && role !== 'assistant') continue;
+    const text = tidy(textOf(msg ? msg.content : ''), PREVIEW_MAX);
+    if (!text) continue;
+    if (role === 'user') out.prompt = text;
+    else out.summary = text;
+  }
+  return out;
+}
 
 const HOOK_URL = process.env.UXNAN_HOOK_URL || '';
 const HOOK_TOKEN = process.env.UXNAN_HOOK_TOKEN || '';
@@ -116,12 +160,22 @@ function mapEvent(evt) {
   try { evt = raw ? JSON.parse(raw) : {}; } catch { /* ignore bad JSON */ }
   const mapped = mapEvent(evt);
   if (!mapped) { return; }
+  let prompt = mapped.prompt;
+  let summary = null;
+  // On completion, enrich with the task (last user prompt) + a short preview of
+  // the response (last assistant text), read from the session transcript.
+  if (mapped.status === 'done') {
+    const t = transcriptPreview(evt.transcript_path);
+    if (t.prompt) prompt = t.prompt;
+    summary = t.summary;
+  }
   const payload = {
     agentId: AGENT_ID,
     status: mapped.status,
     agentType: 'claude',
     tool: mapped.tool,
-    prompt: mapped.prompt,
+    prompt,
+    summary,
     interrupted: false,
   };
   postState(payload, () => { /* fire-and-forget */ });

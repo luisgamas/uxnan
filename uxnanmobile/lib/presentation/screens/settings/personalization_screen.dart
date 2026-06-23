@@ -154,7 +154,7 @@ class _CustomThemeCard extends ConsumerWidget {
   const _CustomThemeCard();
 
   Future<void> _onToggle(WidgetRef ref, {required bool next}) async {
-    await ref.read(useCustomThemeProvider.notifier).set(next);
+    await ref.read(useCustomThemeProvider.notifier).set(value: next);
     // Turning the switch on with nothing selected yet → activate the first
     // library theme so the change is immediately visible (the user can pick a
     // different one in the manager).

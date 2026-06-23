@@ -923,3 +923,20 @@ The OpenCode adapter is the template for any "one-shot per-turn CLI" agent:
 ## Contracts verified
 - [x] **Pairing QR encoding** — `@uxnan/shared` now emits Base64 JSON matching the
       mobile `PairingPayload.fromQrString` (Phase 3).
+
+## CI/CD status (2026-06-21) + deferred
+- ✅ **Verify workflow DONE** — `.github/workflows/ci-node.yml` runs
+  format/build/typecheck/test for shared+bridge+relay on `{ubuntu, windows}` ×
+  node `{20, 22}` (263 bridge tests green locally).
+- ✅ **version.ts stamped** — `BRIDGE_VERSION` now reads `package.json` at
+  runtime (the old FOR-DEV drift note is closed).
+- [ ] **npm release workflow** — publish `@uxnan/shared` first, pin
+      `@uxnan/shared` in bridge/relay, then publish `uxnan-bridge`/`uxnan-relay`
+      with `--tag alpha`; migrate from `NPM_TOKEN` to Trusted Publishing (OIDC)
+      after the first publish.
+- [ ] **CLI version-update notice** — DEFERRED. On startup, compare
+      `BRIDGE_VERSION` against the npm registry
+      (`https://registry.npmjs.org/uxnan-bridge`) and print a notice when newer
+      ("update with `npm i -g uxnan-bridge@latest`"); the user decides. No
+      auto-update. Lightweight fetch (dependency-minimal per AGENTS.md), silent
+      when offline.

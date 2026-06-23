@@ -1,26 +1,27 @@
 <script lang="ts">
   import { app } from "$lib/state/app.svelte";
   import { projects } from "$lib/state/projects.svelte";
-  import { Input } from "$lib/components/ui/input";
   import { Button } from "$lib/components/ui/button";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import ProjectCard from "./ProjectCard.svelte";
-  import DirectoryPicker from "./DirectoryPicker.svelte";
+  import Kbd from "./Kbd.svelte";
   import { icon, text } from "$lib/design";
   import { cn } from "$lib/utils";
   import { i18n } from "$lib/i18n";
+  import { formatChord, resolveBinding } from "$lib/keybindings";
   import SearchIcon from "@lucide/svelte/icons/search";
-  import ZapIcon from "@lucide/svelte/icons/zap";
+  import SettingsIcon from "@lucide/svelte/icons/settings";
   import FolderPlusIcon from "@lucide/svelte/icons/folder-plus";
   import ArrowUpDownIcon from "@lucide/svelte/icons/arrow-up-down";
   import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
-  import XIcon from "@lucide/svelte/icons/x";
 
   type Sort = "manual" | "name-asc" | "name-desc";
   let sort = $state<Sort>("manual");
 
-  /** In-app directory picker (replaces the OS-native folder dialog). */
-  let pickerOpen = $state(false);
+  // Display chords for the shortcut hints on the big actions.
+  const searchChord = $derived(formatChord(resolveBinding("worktreePalette")));
+  const addChord = $derived(formatChord(resolveBinding("addProject")));
+  const settingsChord = $derived(formatChord(resolveBinding("openSettings")));
 
   // Load every repo's worktrees once the backend is ready.
   let initialized = false;
@@ -41,21 +42,32 @@
 </script>
 
 <div class="flex h-full min-h-0 flex-col">
-  <!-- Search (filters projects and their worktrees) -->
-  <div class="shrink-0 border-b border-sidebar-border p-2">
-    <div class="relative">
-      <SearchIcon
-        class={cn(
-          icon.button,
-          "pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground",
-        )}
-      />
-      <Input
-        class="h-8 pl-8 text-xs"
-        placeholder={i18n.t("sidebar.search")}
-        bind:value={projects.query}
-      />
-    </div>
+  <!-- Search = a full-width button that opens the palette; Settings below it. -->
+  <div class="flex shrink-0 flex-col gap-2 border-b border-sidebar-border p-2">
+    <Button
+      variant="outline"
+      class="h-8 w-full justify-start gap-2 px-2.5 font-normal text-muted-foreground"
+      title={i18n.t("sidebar.search")}
+      onclick={() => (projects.paletteOpen = true)}
+    >
+      <SearchIcon data-icon="inline-start" class="text-muted-foreground" />
+      <span class={cn("flex-1 truncate text-left", text.body)}>{i18n.t("sidebar.search")}</span>
+      {#if searchChord}
+        <Kbd>{searchChord}</Kbd>
+      {/if}
+    </Button>
+    <Button
+      variant="outline"
+      class="h-8 w-full justify-start gap-2 px-2.5 font-normal text-muted-foreground"
+      title={i18n.t("settings.title")}
+      onclick={() => (app.settingsOpen = true)}
+    >
+      <SettingsIcon data-icon="inline-start" class="text-muted-foreground" />
+      <span class={cn("flex-1 truncate text-left", text.body)}>{i18n.t("settings.title")}</span>
+      {#if settingsChord}
+        <Kbd>{settingsChord}</Kbd>
+      {/if}
+    </Button>
   </div>
 
   <!-- Header -->
@@ -68,17 +80,8 @@
       variant="ghost"
       size="icon"
       class="size-6"
-      title={i18n.t("sidebar.quickSwitch")}
-      onclick={() => (projects.paletteOpen = true)}
-    >
-      <ZapIcon class={icon.button} />
-    </Button>
-    <Button
-      variant="ghost"
-      size="icon"
-      class="size-6"
-      title={i18n.t("sidebar.addProject")}
-      onclick={() => (pickerOpen = true)}
+      title={`${i18n.t("sidebar.addProject")} (${addChord})`}
+      onclick={() => (projects.pickerOpen = true)}
     >
       <FolderPlusIcon class={icon.button} />
     </Button>
@@ -119,9 +122,12 @@
           {projects.query ? i18n.t("sidebar.noMatch") : i18n.t("sidebar.empty")}
         </p>
         {#if !projects.query}
-          <Button variant="outline" size="sm" onclick={() => (pickerOpen = true)}>
+          <Button variant="outline" size="sm" onclick={() => (projects.pickerOpen = true)}>
             <FolderPlusIcon data-icon="inline-start" />
             {i18n.t("sidebar.addRepo")}
+            {#if addChord}
+              <Kbd class="ml-1">{addChord}</Kbd>
+            {/if}
           </Button>
         {/if}
       </div>
@@ -133,6 +139,4 @@
       </div>
     {/if}
   </div>
-
-  <DirectoryPicker bind:open={pickerOpen} />
 </div>

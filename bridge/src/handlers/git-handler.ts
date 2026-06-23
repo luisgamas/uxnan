@@ -24,15 +24,10 @@ export function registerGitHandlers(router: HandlerRouter): void {
 
   const handlers: Record<string, RpcHandler> = {
     'git/status': (p) => gitOp(() => git.status(requireString(p, 'cwd'))),
-    'git/diff': (p) =>
-      gitOp(() => git.diff(requireString(p, 'cwd'), optionalSafe(p, 'path'))),
+    'git/diff': (p) => gitOp(() => git.diff(requireString(p, 'cwd'), optionalSafe(p, 'path'))),
     'git/commit': (p) =>
       gitOp(() =>
-        git.commit(
-          requireString(p, 'cwd'),
-          requireString(p, 'message'),
-          optionalPaths(p, 'paths'),
-        ),
+        git.commit(requireString(p, 'cwd'), requireString(p, 'message'), optionalPaths(p, 'paths')),
       ),
     'git/push': (p) =>
       gitOp(() =>
@@ -54,8 +49,7 @@ export function registerGitHandlers(router: HandlerRouter): void {
           requireSafe(p, 'path'),
         ),
       ),
-    'git/stage': (p) =>
-      gitOp(() => git.stage(requireString(p, 'cwd'), requirePaths(p, 'paths'))),
+    'git/stage': (p) => gitOp(() => git.stage(requireString(p, 'cwd'), requirePaths(p, 'paths'))),
     'git/unstage': (p) =>
       gitOp(() => git.unstage(requireString(p, 'cwd'), requirePaths(p, 'paths'))),
     'git/discard': (p) =>
@@ -80,15 +74,22 @@ export function registerGitHandlers(router: HandlerRouter): void {
           requireBool(p, 'carryChanges'),
         ),
       ),
-    'git/revert': (p) =>
-      gitOp(() => git.revert(requireString(p, 'cwd'), requireSafe(p, 'commit'))),
+    'git/revert': (p) => gitOp(() => git.revert(requireString(p, 'cwd'), requireSafe(p, 'commit'))),
     'git/deleteBranch': (p) =>
       gitOp(() =>
-        git.deleteBranch(requireString(p, 'cwd'), requireSafe(p, 'branch'), requireBool(p, 'force')),
+        git.deleteBranch(
+          requireString(p, 'cwd'),
+          requireSafe(p, 'branch'),
+          requireBool(p, 'force'),
+        ),
       ),
     'git/removeWorktree': (p) =>
       gitOp(() =>
-        git.removeWorktree(requireString(p, 'cwd'), requireSafe(p, 'path'), requireBool(p, 'force')),
+        git.removeWorktree(
+          requireString(p, 'cwd'),
+          requireSafe(p, 'path'),
+          requireBool(p, 'force'),
+        ),
       ),
     'git/log': (p) => {
       const cwd = requireString(p, 'cwd');

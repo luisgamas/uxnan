@@ -6,7 +6,7 @@
   import { unread } from "$lib/state/unread.svelte";
   import { clipboardWrite } from "$lib/clipboard";
   import { cn } from "$lib/utils";
-  import { icon, iconButton, text } from "$lib/design";
+  import { icon, iconButton, surface, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
   import NewWorktreeDialog from "./NewWorktreeDialog.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
@@ -15,6 +15,7 @@
   import LaunchAgentMenu from "./LaunchAgentMenu.svelte";
   import type { RepoData } from "$lib/types";
   import FolderGitIcon from "@lucide/svelte/icons/folder-git-2";
+  import FolderIcon from "@lucide/svelte/icons/folder";
   import TerminalIcon from "@lucide/svelte/icons/terminal";
   import GitBranchPlusIcon from "@lucide/svelte/icons/git-branch-plus";
   import MoreVerticalIcon from "@lucide/svelte/icons/ellipsis-vertical";
@@ -23,6 +24,11 @@
   import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
 
   let { repo }: { repo: RepoData } = $props();
+
+  // A non-git folder is a valid project but has no worktrees/branches, so its
+  // worktree affordances (expand, "new worktree", the worktrees subtree) are
+  // hidden. Absent flag (older persisted state) means git.
+  const isGit = $derived(repo.isGit !== false);
 
   let newWorktreeOpen = $state(false);
   let confirmRemoveOpen = $state(false);
@@ -51,26 +57,34 @@
   <div
     class={cn(
       "flex items-center gap-1 px-1.5 py-1.5 transition-colors hover:bg-accent/40",
-      activeProject && "bg-primary/15 ring-1 ring-inset ring-primary/25",
+      activeProject && surface.active,
     )}
   >
-    <button
-      class="shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground"
-      title={isExpanded ? i18n.t("project.collapse") : i18n.t("project.expand")}
-      aria-label={isExpanded ? i18n.t("project.collapse") : i18n.t("project.expand")}
-      onclick={() => (expanded = !isExpanded)}
-    >
-      <ChevronRightIcon
-        class={cn(icon.button, "transition-transform", isExpanded && "rotate-90")}
-      />
-    </button>
+    {#if isGit}
+      <button
+        class="shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground"
+        title={isExpanded ? i18n.t("project.collapse") : i18n.t("project.expand")}
+        aria-label={isExpanded ? i18n.t("project.collapse") : i18n.t("project.expand")}
+        onclick={() => (expanded = !isExpanded)}
+      >
+        <ChevronRightIcon
+          class={cn(icon.button, "transition-transform", isExpanded && "rotate-90")}
+        />
+      </button>
+    {:else}
+      <span class="shrink-0 p-0.5"><span class={cn(icon.button, "block")}></span></span>
+    {/if}
 
     <button
       class="flex min-w-0 flex-1 items-center gap-1.5 text-left"
       title={i18n.t("project.workIn", { name: repo.name })}
       onclick={() => projects.setActiveWorktree(mainPath)}
     >
-      <FolderGitIcon class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
+      {#if isGit}
+        <FolderGitIcon class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
+      {:else}
+        <FolderIcon class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
+      {/if}
       <div class="min-w-0 flex-1">
         <div class="flex items-center gap-1.5">
           <span class={cn("truncate", text.title)} title={repo.name}>{repo.name}</span>
@@ -109,15 +123,17 @@
         <TerminalIcon class={icon.button} />
       </Button>
       <LaunchAgentMenu label={repo.name} path={mainPath} />
-      <Button
-        variant="ghost"
-        size="icon"
-        class={iconButton.action}
-        title={i18n.t("project.newWorktree")}
-        onclick={() => (newWorktreeOpen = true)}
-      >
-        <GitBranchPlusIcon class={icon.button} />
-      </Button>
+      {#if isGit}
+        <Button
+          variant="ghost"
+          size="icon"
+          class={iconButton.action}
+          title={i18n.t("project.newWorktree")}
+          onclick={() => (newWorktreeOpen = true)}
+        >
+          <GitBranchPlusIcon class={icon.button} />
+        </Button>
+      {/if}
       <DropdownMenu.Root>
         <DropdownMenu.Trigger>
           {#snippet child({ props })}
@@ -150,8 +166,8 @@
     <AgentSpace path={mainPath} />
   </div>
 
-  <!-- Worktrees (non-main) as nested sub-rows -->
-  {#if isExpanded}
+  <!-- Worktrees (non-main) as nested sub-rows — git projects only -->
+  {#if isGit && isExpanded}
     <div class="border-t border-sidebar-border bg-background/40 py-1 pl-3 pr-1">
       {#if childRows.length === 0}
         <div class="flex items-center justify-between px-1 py-0.5">
@@ -174,7 +190,7 @@
         </div>
       {/if}
     </div>
-  {:else if children.length > 0}
+  {:else if isGit && children.length > 0}
     <!-- Collapsed: a compact count so the relationship is visible -->
     <div class="px-2.5 pb-1.5">
       <Badge variant="secondary" class={cn("font-normal", text.indicator)}>

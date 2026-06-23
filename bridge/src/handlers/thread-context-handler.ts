@@ -170,11 +170,7 @@ function paginateTurns(
 ): TurnList {
   const total = turns.length;
   const size = limit && limit > 0 ? limit : 20;
-  const start = fromEnd
-    ? Math.max(0, total - size)
-    : cursor
-      ? Number.parseInt(cursor, 10) || 0
-      : 0;
+  const start = fromEnd ? Math.max(0, total - size) : cursor ? Number.parseInt(cursor, 10) || 0 : 0;
   const result: TurnList = { turns: turns.slice(start, start + size), total };
   if (start + size < total) result.nextCursor = String(start + size);
   return result;
@@ -228,7 +224,8 @@ function optionalAttachments(params: unknown): TurnAttachment[] {
   for (const item of raw) {
     if (!item || typeof item !== 'object') continue;
     const obj = item as Record<string, unknown>;
-    const mimeType = typeof obj['mimeType'] === 'string' ? obj['mimeType'] : 'application/octet-stream';
+    const mimeType =
+      typeof obj['mimeType'] === 'string' ? obj['mimeType'] : 'application/octet-stream';
     const base64Data = typeof obj['base64Data'] === 'string' ? obj['base64Data'] : undefined;
     const path = typeof obj['path'] === 'string' ? obj['path'] : undefined;
     if (base64Data === undefined && path === undefined) continue;

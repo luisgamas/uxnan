@@ -65,7 +65,9 @@ void main() {
     final container = _container(tester);
     expect(container.read(useCustomThemeProvider), isTrue);
     expect(
-        container.read(activeCustomThemeIdProvider), 'uxnan.builtin.midnight');
+      container.read(activeCustomThemeIdProvider),
+      'uxnan.builtin.midnight',
+    );
   });
 
   testWidgets('long-pressing a card enters multi-select mode', (tester) async {

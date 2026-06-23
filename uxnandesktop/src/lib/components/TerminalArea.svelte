@@ -15,22 +15,24 @@
     type SplitDir,
   } from "$lib/state/terminals.svelte";
   import Terminal from "./Terminal.svelte";
+  import FileEditor from "./FileEditor.svelte";
+  import DiffPane from "./DiffPane.svelte";
+  import CommitPane from "./CommitPane.svelte";
   import { resolveAgentDisplay } from "$lib/state/agentDisplay";
   import AgentStatusDot from "./AgentStatusDot.svelte";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
-  import { Button } from "$lib/components/ui/button";
-  import { icon, iconButton, text } from "$lib/design";
+  import { icon, text } from "$lib/design";
   import { cn } from "$lib/utils";
   import { i18n } from "$lib/i18n";
   import PlusIcon from "@lucide/svelte/icons/plus";
   import TerminalIcon from "@lucide/svelte/icons/terminal";
   import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
-  import LayersIcon from "@lucide/svelte/icons/layers";
-  import PanelRightIcon from "@lucide/svelte/icons/panel-right";
   import Columns2Icon from "@lucide/svelte/icons/columns-2";
   import Rows2Icon from "@lucide/svelte/icons/rows-2";
-  import WebhookIcon from "@lucide/svelte/icons/webhook";
   import GitBranchIcon from "@lucide/svelte/icons/git-branch";
+  import FileIcon from "@lucide/svelte/icons/file";
+  import FileDiffIcon from "@lucide/svelte/icons/file-diff";
+  import GitCommitIcon from "@lucide/svelte/icons/git-commit-horizontal";
   import NewWorktreeDialog from "./NewWorktreeDialog.svelte";
 
   /** Default profile's shell/args, for region-level + and splits. A blank
@@ -46,27 +48,9 @@
   const paneBg = $derived(app.resolveTerminal().theme.background);
 
   // --- Workspaces (one terminal set per worktree + a Global space) ---------
-  const baseName = (p: string) =>
-    p.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || p;
-
-  /** Friendly label for the active terminal context (repo / branch). The
-   *  context is chosen in the left panel; here it's only displayed. */
-  function contextLabel(key: string): { repo?: string; name: string } {
-    if (key === GLOBAL_WORKSPACE) return { name: i18n.t("terminal.general") };
-    const mainRepo = app.repos.find((r) => r.path === key);
-    if (mainRepo) {
-      return {
-        repo: mainRepo.name,
-        name: projects.mainWorktree(mainRepo.id)?.branch ?? "main",
-      };
-    }
-    for (const r of app.repos) {
-      const wt = projects.worktreesOf(r.id).find((w) => w.path === key);
-      if (wt) return { repo: r.name, name: wt.branch ?? baseName(key) };
-    }
-    return { name: baseName(key) };
-  }
-  const ctx = $derived(contextLabel(terminals.activeWorkspace));
+  // Active workspace breadcrumb (repo / branch). Rendered in the status bar
+  // (`+page.svelte`); here it's only used for the empty-state copy.
+  const ctx = $derived(projects.activeContext);
 
   /** The repo the active workspace belongs to (if any). The empty-state
    *  "New worktree" button is only enabled when this resolves to a repo —
@@ -227,10 +211,6 @@
     openMenu(e, [...splitItems(groupId), { separator: true }, ...regionItems(groupId, tabId)]);
   }
 
-  function toggleRight() {
-    app.settings.rightSidebarOpen = !app.settings.rightSidebarOpen;
-    void app.persistSettings();
-  }
 </script>
 
 <svelte:window
@@ -281,31 +261,7 @@
       </DropdownMenu.Root>
     </div>
 
-    <!-- Active terminal context (read-only; selected in the left panel) -->
-    <div
-      class={cn(
-        "ml-1 inline-flex max-w-[240px] items-center gap-1 px-1 text-muted-foreground",
-        text.body,
-      )}
-      title={i18n.t("terminal.context")}
-    >
-      <LayersIcon class={cn(icon.decorative, "shrink-0")} />
-      {#if ctx.repo}
-        <span class="truncate">{ctx.repo}</span>
-        <span class="text-muted-foreground/50">/</span>
-      {/if}
-      <span class="truncate font-medium text-foreground">{ctx.name}</span>
-    </div>
-
     <div class="flex-1"></div>
-    <button
-      class="flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-      title={i18n.t("terminal.toggleRight")}
-      aria-label={i18n.t("terminal.toggleRight")}
-      onclick={toggleRight}
-    >
-      <PanelRightIcon class={icon.button} />
-    </button>
   </div>
 
   <!-- Each workspace's region tree is rendered (and stays mounted) but only the
@@ -340,52 +296,66 @@
                     class="uxnan-scroll flex h-8 shrink-0 items-center gap-1 overflow-x-auto border-b border-border bg-card px-1"
                   >
                     {#each g.group.tabs as t (t.id)}
-                      {@const display = resolveAgentDisplay(t)}
-                      {@const showHooksHint =
-                        display !== null &&
-                        display.source !== "hook" &&
-                        !!t.agentName &&
-                        !t.exited}
+                      {@const activeChip = g.group.activeTabId === t.id}
                       <div
-                        class="flex shrink-0 items-center gap-1 rounded px-2 py-0.5 text-xs {g
-                          .group.activeTabId === t.id
+                        class="flex shrink-0 items-center gap-1 rounded px-2 py-0.5 text-xs {activeChip
                           ? 'bg-background text-foreground'
                           : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'}"
                         role="group"
-                        oncontextmenu={(e) => tabMenu(e, g.group.id, t.id)}
+                        oncontextmenu={t.kind === "terminal"
+                          ? (e) => tabMenu(e, g.group.id, t.id)
+                          : undefined}
                       >
-                        {#if display}
-                          <AgentStatusDot status={display.status} stale={display.stale} />
-                        {/if}
-                        {#if showHooksHint}
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            class={cn(
-                              iconButton.action,
-                              "text-muted-foreground opacity-60 hover:opacity-100",
-                            )}
-                            title={i18n.t("monitor.installHooksHint")}
-                            aria-label={i18n.t("monitor.installHooksHint")}
-                            onclick={(e) => {
-                              e.stopPropagation();
-                              app.openSettings("hooks");
-                            }}
+                        {#if t.kind === "terminal"}
+                          {@const display = resolveAgentDisplay(t)}
+                          {#if display}
+                            <AgentStatusDot status={display.status} stale={display.stale} />
+                          {/if}
+                          <button
+                            class="max-w-[120px] truncate {t.exited ? 'line-through' : ''}"
+                            onclick={() => terminals.setActiveTab(g.group.id, t.id)}
+                            title={t.agentName ?? t.title}
                           >
-                            <WebhookIcon class={icon.button} />
-                          </Button>
+                            {t.agentName ?? t.title}
+                          </button>
+                        {:else if t.kind === "file"}
+                          <FileIcon class={cn(icon.decorative, "shrink-0")} />
+                          <button
+                            class="max-w-[120px] truncate"
+                            onclick={() => terminals.setActiveTab(g.group.id, t.id)}
+                            title={t.path}
+                          >
+                            {t.title}
+                          </button>
+                          {#if terminals.fileState(t.id)?.dirty}
+                            <span
+                              class="text-amber-600 dark:text-amber-400"
+                              title={i18n.t("editor.unsaved")}>●</span
+                            >
+                          {/if}
+                        {:else if t.kind === "diff"}
+                          <FileDiffIcon class={cn(icon.decorative, "shrink-0")} />
+                          <button
+                            class="max-w-[120px] truncate"
+                            onclick={() => terminals.setActiveTab(g.group.id, t.id)}
+                            title={t.file}
+                          >
+                            {t.title}
+                          </button>
+                        {:else}
+                          <GitCommitIcon class={cn(icon.decorative, "shrink-0")} />
+                          <button
+                            class="max-w-[120px] truncate font-mono"
+                            onclick={() => terminals.setActiveTab(g.group.id, t.id)}
+                            title={t.subject}
+                          >
+                            {t.title}
+                          </button>
                         {/if}
-                        <button
-                          class="max-w-[120px] truncate {t.exited ? 'line-through' : ''}"
-                          onclick={() => terminals.setActiveTab(g.group.id, t.id)}
-                          title={t.agentName ?? t.title}
-                        >
-                          {t.agentName ?? t.title}
-                        </button>
                         <button
                           class="rounded px-0.5 text-muted-foreground opacity-60 hover:bg-destructive/20 hover:text-foreground hover:opacity-100"
-                          title={i18n.t("terminal.closeTerminal")}
-                          aria-label={i18n.t("terminal.closeTerminal")}
+                          title={i18n.t("terminal.closeTab")}
+                          aria-label={i18n.t("terminal.closeTab")}
                           onclick={() => terminals.closeTab(g.group.id, t.id)}
                         >
                           ×
@@ -420,32 +390,54 @@
                     </button>
                   </div>
 
-                  <!-- Terminal stack for this region (active tab shown) -->
+                  <!-- Pane stack for this region (active tab shown). One pane per
+                       tab, branched by kind; every pane stays mounted (id-keyed)
+                       so xterm/CodeMirror never remount on split/reorder. -->
                   <div class="relative min-h-0 flex-1">
                     {#each g.group.tabs as t (t.id)}
+                      {@const paneActive = g.group.activeTabId === t.id}
                       <div
                         class="absolute inset-0 overflow-hidden"
-                        style:display={g.group.activeTabId === t.id ? "block" : "none"}
+                        style:display={paneActive ? "block" : "none"}
                         role="group"
-                        data-pty-id={t.id}
+                        data-pty-id={t.kind === "terminal" ? t.id : undefined}
                         onpointerdown={() => terminals.setActiveTab(g.group.id, t.id)}
-                        oncontextmenu={(e) => terminalMenu(e, g.group.id, t.id)}
+                        oncontextmenu={t.kind === "terminal"
+                          ? (e) => terminalMenu(e, g.group.id, t.id)
+                          : undefined}
                       >
-                        {#if t.exited}
-                          <span
-                            class="absolute left-1 top-1 z-10 rounded bg-card/80 px-1 text-[10px] text-muted-foreground"
-                            >{i18n.t("terminal.exited")}</span
-                          >
+                        {#if t.kind === "terminal"}
+                          {#if t.exited}
+                            <span
+                              class="absolute left-1 top-1 z-10 rounded bg-card/80 px-1 text-[10px] text-muted-foreground"
+                              >{i18n.t("terminal.exited")}</span
+                            >
+                          {/if}
+                          <Terminal
+                            id={t.id}
+                            cwd={t.cwd}
+                            shell={t.shell}
+                            args={t.args}
+                            runCommand={t.runCommand}
+                            focused={activeRegion && paneActive}
+                            onexit={() => void terminals.closeTabAnywhere(t.id)}
+                          />
+                        {:else if t.kind === "file"}
+                          {@const st = terminals.fileState(t.id)}
+                          {#if st}
+                            <FileEditor fileState={st} active={activeRegion && paneActive} />
+                          {/if}
+                        {:else if t.kind === "diff"}
+                          {@const st = terminals.diffState(t.id)}
+                          {#if st}
+                            <DiffPane state={st} />
+                          {/if}
+                        {:else}
+                          {@const st = terminals.commitState(t.id)}
+                          {#if st}
+                            <CommitPane state={st} />
+                          {/if}
                         {/if}
-                        <Terminal
-                          id={t.id}
-                          cwd={t.cwd}
-                          shell={t.shell}
-                          args={t.args}
-                          runCommand={t.runCommand}
-                          focused={activeRegion && g.group.activeTabId === t.id}
-                          onexit={() => void terminals.closeTabAnywhere(t.id)}
-                        />
                       </div>
                     {/each}
                   </div>

@@ -516,7 +516,7 @@ void main() {
     expect(manager.timeline.hasMore, isTrue);
     expect(manager.timeline.messages.first.id, 'm5');
 
-    manager.loadMoreHistory();
+    unawaited(manager.loadMoreHistory());
     await _settle();
 
     expect(manager.timeline.messages.length, 45);
@@ -543,7 +543,10 @@ void main() {
       domainEvents: events.stream,
       sendRequest: (method, [params]) async {
         if (method != 'turn/list') {
-          return RpcMessage.response(id: '1', result: const <String, dynamic>{});
+          return RpcMessage.response(
+            id: '1',
+            result: const <String, dynamic>{},
+          );
         }
         final p = params ?? const <String, dynamic>{};
         listCalls.add(p);
@@ -641,7 +644,10 @@ void main() {
         }
         if (method == 'thread/setAccessMode') {
           setParams = params;
-          return RpcMessage.response(id: '1', result: const <String, dynamic>{});
+          return RpcMessage.response(
+            id: '1',
+            result: const <String, dynamic>{},
+          );
         }
         return RpcMessage.response(id: '1', result: const <String, dynamic>{});
       },

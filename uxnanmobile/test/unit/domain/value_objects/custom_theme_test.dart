@@ -19,7 +19,9 @@ void main() {
       expect(restored.darkColors.surface, original.darkColors.surface);
       expect(restored.darkColors.outline, original.darkColors.outline);
       expect(
-          restored.lightColors.surfaceTint, original.lightColors.surfaceTint);
+        restored.lightColors.surfaceTint,
+        original.lightColors.surfaceTint,
+      );
     });
 
     test('round-trips a manually edited theme', () {
@@ -27,27 +29,27 @@ void main() {
         id: 'rt-2',
         name: 'Edited',
         description: 'Custom overrides',
-        light: ColorScheme(
+        light: const ColorScheme(
           brightness: Brightness.light,
-          primary: const Color(0xFFFF112233),
-          onPrimary: const Color(0xFFAABBCCDD),
-          secondary: const Color(0xFF11223344),
-          onSecondary: const Color(0xFF55667788),
-          error: const Color(0xFFB3261E),
-          onError: const Color(0xFFFFFFFF),
-          surface: const Color(0xFFFEF7FF),
-          onSurface: const Color(0xFF1D1B20),
+          primary: Color(0xff112233),
+          onPrimary: Color(0xaabbccdd),
+          secondary: Color(0x11223344),
+          onSecondary: Color(0x55667788),
+          error: Color(0xFFB3261E),
+          onError: Color(0xFFFFFFFF),
+          surface: Color(0xFFFEF7FF),
+          onSurface: Color(0xFF1D1B20),
         ),
-        dark: ColorScheme(
+        dark: const ColorScheme(
           brightness: Brightness.dark,
-          primary: const Color(0xFF99AABBCC),
-          onPrimary: const Color(0xFF00112233),
-          secondary: const Color(0xFF44556677),
-          onSecondary: const Color(0xFF8899AABB),
-          error: const Color(0xFFFFB4AB),
-          onError: const Color(0xFF690005),
-          surface: const Color(0xFF1D1B20),
-          onSurface: const Color(0xFFE6E0E9),
+          primary: Color(0x99aabbcc),
+          onPrimary: Color(0x00112233),
+          secondary: Color(0x44556677),
+          onSecondary: Color(0x8899aabb),
+          error: Color(0xFFFFB4AB),
+          onError: Color(0xFF690005),
+          surface: Color(0xFF1D1B20),
+          onSurface: Color(0xFFE6E0E9),
         ),
       );
       final restored = CustomTheme.fromJson(original.toJson());
@@ -89,8 +91,8 @@ void main() {
       expect(restored.id, 'partial');
       expect(restored.name, 'Partial');
       // The one role we set was preserved.
-      expect(restored.lightColors.primary, const Color(0xFFFF0066CC));
-      expect(restored.darkColors.primary, const Color(0xFFFFCC0066));
+      expect(restored.lightColors.primary, const Color(0xff0066cc));
+      expect(restored.darkColors.primary, const Color(0xffcc0066));
       // A role we did NOT set still has a sensible default.
       expect(restored.lightColors.surface, isNotNull);
     });
@@ -181,8 +183,8 @@ void main() {
     });
 
     test('detects a flat dark single-scheme by surface luminance', () {
-      const flatDark =
-          '{"primary": "#AAC7FF", "surface": "#111318", "onSurface": "#E2E2E9"}';
+      const flatDark = '{"primary": "#AAC7FF", "surface": "#111318", '
+          '"onSurface": "#E2E2E9"}';
       final parsed = CustomTheme.parseImport(flatDark);
       expect(parsed.hasDark, isTrue);
       expect(parsed.hasLight, isFalse);
@@ -252,8 +254,8 @@ void main() {
   group('CustomTheme — single vs dual brightness', () {
     test('a single-scheme import is single and omits the other side on export',
         () {
-      const flatDark =
-          '{"primary": "#AAC7FF", "surface": "#111318", "onSurface": "#E2E2E9"}';
+      const flatDark = '{"primary": "#AAC7FF", "surface": "#111318", '
+          '"onSurface": "#E2E2E9"}';
       final theme = CustomTheme.fromJsonString(flatDark);
       expect(theme.isSingle, isTrue);
       expect(theme.isDual, isFalse);
@@ -402,53 +404,53 @@ void main() {
 
   group('CustomThemeColors — color scheme conversion', () {
     test('toColorScheme carries every role into a Material ColorScheme', () {
-      final colors = CustomThemeColors(
-        primary: const Color(0xFF111111),
-        onPrimary: const Color(0xFF222222),
-        primaryContainer: const Color(0xFF333333),
-        onPrimaryContainer: const Color(0xFF444444),
-        primaryFixed: const Color(0xFF555555),
-        primaryFixedDim: const Color(0xFF666666),
-        onPrimaryFixed: const Color(0xFF777777),
-        onPrimaryFixedVariant: const Color(0xFF888888),
-        secondary: const Color(0xFF999999),
-        onSecondary: const Color(0xFFAAAAAAAA),
-        secondaryContainer: const Color(0xFFBBBBBB),
-        onSecondaryContainer: const Color(0xFFCCCCCC),
-        secondaryFixed: const Color(0xFFDDDDDD),
-        secondaryFixedDim: const Color(0xFFEEEEEE),
-        onSecondaryFixed: const Color(0xFFF0F0F0),
-        onSecondaryFixedVariant: const Color(0xFFF1F1F1),
-        tertiary: const Color(0xFFF2F2F2),
-        onTertiary: const Color(0xFFF3F3F3),
-        tertiaryContainer: const Color(0xFFF4F4F4),
-        onTertiaryContainer: const Color(0xFFF5F5F5),
-        tertiaryFixed: const Color(0xFFF6F6F6),
-        tertiaryFixedDim: const Color(0xFFF7F7F7),
-        onTertiaryFixed: const Color(0xFFF8F8F8),
-        onTertiaryFixedVariant: const Color(0xFFF9F9F9),
-        error: const Color(0xFFFAFAFA),
-        onError: const Color(0xFFFBFBFB),
-        errorContainer: const Color(0xFFFCFCFC),
-        onErrorContainer: const Color(0xFFFDFDFD),
-        surface: const Color(0xFFFEFFFE),
-        onSurface: const Color(0xFFFFFFFF),
-        surfaceDim: const Color(0xFF000000),
-        surfaceBright: const Color(0xFF010101),
-        surfaceContainerLowest: const Color(0xFF020202),
-        surfaceContainerLow: const Color(0xFF030303),
-        surfaceContainer: const Color(0xFF040404),
-        surfaceContainerHigh: const Color(0xFF050505),
-        surfaceContainerHighest: const Color(0xFF060606),
-        onSurfaceVariant: const Color(0xFF070707),
-        outline: const Color(0xFF080808),
-        outlineVariant: const Color(0xFF090909),
-        inverseSurface: const Color(0xFF0A0A0A),
-        onInverseSurface: const Color(0xFF0B0B0B),
-        inversePrimary: const Color(0xFF0C0C0C),
-        shadow: const Color(0xFF0D0D0D),
-        scrim: const Color(0xFF0E0E0E),
-        surfaceTint: const Color(0xFF0F0F0F),
+      const colors = CustomThemeColors(
+        primary: Color(0xFF111111),
+        onPrimary: Color(0xFF222222),
+        primaryContainer: Color(0xFF333333),
+        onPrimaryContainer: Color(0xFF444444),
+        primaryFixed: Color(0xFF555555),
+        primaryFixedDim: Color(0xFF666666),
+        onPrimaryFixed: Color(0xFF777777),
+        onPrimaryFixedVariant: Color(0xFF888888),
+        secondary: Color(0xFF999999),
+        onSecondary: Color(0xaaaaaaaa),
+        secondaryContainer: Color(0xFFBBBBBB),
+        onSecondaryContainer: Color(0xFFCCCCCC),
+        secondaryFixed: Color(0xFFDDDDDD),
+        secondaryFixedDim: Color(0xFFEEEEEE),
+        onSecondaryFixed: Color(0xFFF0F0F0),
+        onSecondaryFixedVariant: Color(0xFFF1F1F1),
+        tertiary: Color(0xFFF2F2F2),
+        onTertiary: Color(0xFFF3F3F3),
+        tertiaryContainer: Color(0xFFF4F4F4),
+        onTertiaryContainer: Color(0xFFF5F5F5),
+        tertiaryFixed: Color(0xFFF6F6F6),
+        tertiaryFixedDim: Color(0xFFF7F7F7),
+        onTertiaryFixed: Color(0xFFF8F8F8),
+        onTertiaryFixedVariant: Color(0xFFF9F9F9),
+        error: Color(0xFFFAFAFA),
+        onError: Color(0xFFFBFBFB),
+        errorContainer: Color(0xFFFCFCFC),
+        onErrorContainer: Color(0xFFFDFDFD),
+        surface: Color(0xFFFEFFFE),
+        onSurface: Color(0xFFFFFFFF),
+        surfaceDim: Color(0xFF000000),
+        surfaceBright: Color(0xFF010101),
+        surfaceContainerLowest: Color(0xFF020202),
+        surfaceContainerLow: Color(0xFF030303),
+        surfaceContainer: Color(0xFF040404),
+        surfaceContainerHigh: Color(0xFF050505),
+        surfaceContainerHighest: Color(0xFF060606),
+        onSurfaceVariant: Color(0xFF070707),
+        outline: Color(0xFF080808),
+        outlineVariant: Color(0xFF090909),
+        inverseSurface: Color(0xFF0A0A0A),
+        onInverseSurface: Color(0xFF0B0B0B),
+        inversePrimary: Color(0xFF0C0C0C),
+        shadow: Color(0xFF0D0D0D),
+        scrim: Color(0xFF0E0E0E),
+        surfaceTint: Color(0xFF0F0F0F),
       );
       final scheme = colors.toColorScheme(Brightness.light);
       expect(scheme.primary, colors.primary);

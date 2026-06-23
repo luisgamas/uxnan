@@ -289,7 +289,8 @@ class _FileViewerScreenState extends ConsumerState<FileViewerScreen> {
                         if (_saving)
                           const Padding(
                             padding: EdgeInsets.symmetric(
-                                horizontal: UxnanSpacing.md),
+                              horizontal: UxnanSpacing.md,
+                            ),
                             child: SizedBox(
                               width: 20,
                               height: 20,
@@ -654,7 +655,6 @@ class _CodeBody extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final theme = isDark ? atomOneDarkTheme : atomOneLightTheme;
     return SingleChildScrollView(
-      scrollDirection: Axis.vertical,
       // AlwaysScrollable so the parent RefreshIndicator can be pulled even
       // when the source fits the viewport (matches the markdown body).
       physics: const BouncingScrollPhysics(

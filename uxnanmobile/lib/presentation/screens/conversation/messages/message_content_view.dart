@@ -163,9 +163,7 @@ class _ApprovalCard extends ConsumerWidget {
                   ? l10n.approvalActionFallback
                   : request.action,
               style: textTheme.bodyMedium?.copyWith(
-                color: resolved
-                    ? colors.onSurfaceVariant
-                    : colors.onSurface,
+                color: resolved ? colors.onSurfaceVariant : colors.onSurface,
               ),
             ),
             if (request.detail != null && request.detail!.isNotEmpty) ...[

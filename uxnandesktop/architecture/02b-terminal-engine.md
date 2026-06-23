@@ -186,9 +186,17 @@ Cada tab en el área central puede contener distintos tipos de contenido:
 |------|-------------|
 | **Terminal con agente** | Proceso interactivo con detección de estado. El ADE monitorea si el agente está trabajando, esperando input, bloqueado o terminó, mediante secuencias OSC o heurísticas de título de terminal. |
 | **Terminal shell puro** | Bash, zsh o PowerShell sin agente asociado. Para operaciones manuales del usuario (ejecutar comandos, inspeccionar archivos, etc.). |
-| **Editor de archivos** | Utiliza **CodeMirror 6** para edición directa rápida de archivos dentro del ADE, sin necesidad de abrir un editor externo. |
-| **Visor de diff** | Para revisión inline de cambios. Permite al usuario ver los diffs que un agente ha producido sin salir del área central. |
-| **Navegador embebido** | Un webview integrado para previsualizar aplicaciones web que el agente está desarrollando o modificando. |
+| **Editor de archivos** | Utiliza **CodeMirror 6** para edición directa rápida de archivos dentro del ADE, sin necesidad de abrir un editor externo. **Implementado** como pestaña real (`FileEditor.svelte`), abierta desde el árbol de archivos. |
+| **Visor de diff** | Para revisión inline de cambios. Permite al usuario ver los diffs que un agente ha producido sin salir del área central. **Implementado** como pestaña real (`DiffPane.svelte` + `DiffView.svelte`), abierta desde la lista de cambios. |
+| **Navegador embebido** | Un webview integrado para previsualizar aplicaciones web que el agente está desarrollando o modificando. *(Pendiente — FOR-DEV.)* |
+
+> **Estado:** terminal, editor y diff son pestañas del mismo `TabGroup` (modelo
+> `GroupTab` = `terminal \| file \| diff` en `terminals.svelte.ts`), por lo que
+> admiten **splits mixtos** (terminal + editor lado a lado). El estado vivo por
+> pestaña (contenido/dirty/diff) vive en un registro por id fuera del árbol
+> serializado, de modo que xterm/CodeMirror no se remontan al dividir/reordenar.
+> Las pestañas de archivo se restauran al reiniciar (por ruta); las de diff son
+> transitorias. El navegador embebido sigue pendiente.
 
 ---
 

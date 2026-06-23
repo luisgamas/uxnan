@@ -155,6 +155,7 @@ mod tests {
             name: "demo".into(),
             path: "/tmp/demo".into(),
             worktrees: vec![],
+            is_git: true,
         });
         mgr.save(&data).unwrap();
 

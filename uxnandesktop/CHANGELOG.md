@@ -5,6 +5,153 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — agent notifications: precise, hook-driven, enriched
+- **No more "agent is idle" notifications.** The coarse output-activity inference
+  no longer raises any notification or unread badge — it only drives the visual
+  "working" dot (`agentMonitor.svelte.ts`). It used to fire ~12 s after an agent
+  fell quiet, even when no task had run (just leaving an agent at its prompt).
+- **Notifications now come from the precise hook layer** (`agentStatus.svelte.ts`)
+  on meaningful transitions — `done` / `waiting` / `blocked` (never `working`):
+  app in background → native OS notification; app focused → in-app toast; already
+  looking at that terminal → nothing. Each non-`working` result also flags the
+  worktree unread.
+- **Enriched completion notifications.** The Claude Stop hook now reads the
+  session transcript and sends the task (last user prompt) + a short **response
+  preview** (`summary`, new field threaded through the hook payload → report →
+  cache → `agent:status-changed` event). The `done` notification reads
+  "{agent} finished the task" with the preview (or the task) as the body.
+- **Spec/docs:** `architecture/02d-agent-monitoring.md` §1/§2.1 (payload `summary`,
+  notification behavior), `docs/agent-hooks.md` (payload table).
+
+### Changed — window chrome relocation: status bar + sidebar
+- **Settings entry moved to the projects sidebar** (a full-width outline button
+  with a Kbd shortcut hint, under the search button) and removed from the title
+  bar. Closing still uses the Settings view's own back button.
+- **Status bar reorganized.** The active-workspace **breadcrumb** (repo / branch)
+  moved out of the center terminal strip to the **left** of the status bar
+  (shared `projects.activeContext`). The **show/hide panel toggles** (left & right)
+  now live at the **right** of the status bar and are selectable — the primary
+  tint (`surface.tab`) shows when a panel is visible, mirroring the right-panel
+  tabs. The left toggle left the title bar and the right toggle left the terminal
+  strip.
+- **Backend indicator is now an icon + popover** (`BackendStatus.svelte`, new
+  shadcn `popover`). The color tracks the connection (green/amber/red) and the
+  popover surfaces live detail (state, error, project count). The flat
+  "N repositories" status-bar text was removed (the count lives in the popover).
+
+### Changed — sidebar search palette, shortcuts & command-dialog polish
+- **Sidebar search is now a full-width button** (`LeftSidebar.svelte`) that opens
+  the command palette, with a `Kbd` shortcut hint (Ctrl/⌘+P). Removed the
+  separate quick-switch (Zap) button — the search button is the single entry
+  point. New reusable `Kbd.svelte` keycap for surfacing shortcuts on big actions.
+- **Add-project keyboard shortcut** (`addProject`, default Ctrl/⌘+O, rebindable
+  in Settings → Keyboard shortcuts). The directory picker is now mounted at the
+  page root and opened via shared `projects.pickerOpen`, so the shortcut works
+  even when the sidebar is collapsed.
+- **Coherent command dialogs.** The quick-switch palette and the add-project
+  picker share a navigation hint bar (`DialogHints.svelte`: ↑↓ navigate · ↵
+  select · Esc exit). The palette gained an accessible `Dialog.Title`/
+  `Description` (was missing), and the picker now supports ↑/↓ + Enter keyboard
+  navigation over its folder list.
+- **Spanish (MX) copy fixes.** Replaced "Saltar a un worktree" with "Buscar un
+  proyecto o worktree"; reworded the palette/shortcut strings accordingly.
+- **Settings → Keyboard shortcuts is grouped into sections** (General · Projects
+  & navigation · Panels · Editor) instead of one flat unordered list, so a
+  shortcut is easy to locate (`KeyAction.category` + `SHORTCUT_GROUPS`).
+
+### Changed — left/right panel polish + any-folder projects + window state
+- **Right-panel tabs (Files | Changes | History)** now show a clear, primary-
+  tinted **active indicator** matching the left panel's selected card (shared
+  `surface` design token in `design.ts`), instead of the easy-to-miss underline.
+- **Selection language unified.** Project/worktree cards and the active tab use
+  `surface.active` (`bg-primary/15` + primary ring); the selected **agent row**
+  uses the lighter `surface.activeNested` (`bg-primary/10`) so it always reads as
+  subordinate to its parent card (`ProjectCard`/`WorktreeRow`/`AgentSpace`).
+- **Hooks indicator moved.** Removed the per-terminal-tab "install hooks" hint
+  (`TerminalArea.svelte`). A single indicator now lives in the **status bar,
+  bottom-right** (next to the repo count) and only appears when hooks actually
+  need attention — not installed, unreadable, or the OS refused them. Backed by
+  new `app` hook-health state (`hookInstall`/`claudeHooks`/`hooksNeedAttention`,
+  refreshed on startup and after a Settings → Hooks toggle). Claude + generic
+  hook scripts still auto-install on startup (`auto_install_hooks` default on).
+- **Any folder is now a project.** `repo_add` accepts any directory (git or not)
+  instead of rejecting non-git folders; `RepoData.is_git` records which. Non-git
+  folders synthesize a single main worktree (`git::list_worktrees`), and
+  `git_status`/`worktree_status` return empty/default for them (no error toast).
+  The picker can add any folder; non-git project cards hide the worktree
+  affordances and use a plain folder icon (`DirectoryPicker`/`ProjectCard`).
+- **Window size remembered.** Added `tauri-plugin-window-state` so the window
+  reopens at the last size/position/maximized state; bumped the first-run default
+  to 1480×920 (`tauri.conf.json`).
+
+### Added — filesystem watcher: file tree auto-refresh
+- **Backend watcher** (`src-tauri/src/fswatch.rs`, `notify` +
+  `notify-debouncer-full`): watches the active worktree root recursively
+  (debounced ~300 ms, `.git` filtered) and emits a `fs:changed` event. New
+  `fs_set_watch(path?)` command + `FsWatcher` in `AppState`; the watch is aimed
+  at the active worktree centrally in `+page.svelte`.
+- **File tree** reloads only the affected (already-loaded) directories on
+  `fs:changed`, preserving expansion — files created/deleted on disk (e.g. by an
+  agent) now appear without a manual refresh (`fileTree.svelte.ts`). Unit tests
+  for the `.git` path filter. Closes the FOR-DEV "External-change watcher" item.
+
+### Added — unified center tabs (terminal | file | diff) + mixed splits
+- The center area's `GroupTab` is now a discriminated union
+  (`terminal | file | diff`, `terminals.svelte.ts`); files and diffs are real
+  tabs in the same region tree instead of full-size singleton overlays, enabling
+  any mix of agents/files/diffs across tabs and **mixed splits** (e.g. terminal
+  left, editor right). Realizes the already-documented mixed-content tab design
+  (`architecture/02b-terminal-engine.md` §3.1/§3.3).
+- Per-tab editor/diff live state lives in an id-keyed registry
+  (`FileEditorState` in `files.svelte.ts`, self-contained `DiffViewerState` in
+  `git.svelte.ts`) kept out of the serialized tree, so CodeMirror/xterm never
+  remount on split/reorder and typing doesn't churn the persisted layout. File
+  tabs are restored on startup (by path); diff tabs are transient.
+- `DiffPanel.svelte` removed (overlay) → new `DiffPane.svelte`; `+page.svelte`
+  no longer overlays the editor/diff; `Ctrl/Cmd+W` closes the active center tab.
+
+### Added — unsaved-edit guard + external-change handling
+- Closing a dirty file tab prompts **Save / Discard / Cancel**
+  (`SaveDiscardDialog.svelte` + `confirm.svelte.ts` service); closing a region
+  with several dirty files asks once. Every close path runs the guard and
+  disposes per-tab state. Closes the FOR-DEV "Unsaved-edit guard" item.
+- When an open file changes on disk while dirty, the editor offers **Reload /
+  Keep my changes** (clean files reload silently; diffs reload). New EN/ES i18n
+  keys.
+- **Spec sync:** `architecture/02c-git-worktrees.md` §6 (file-tree watcher,
+  editor-as-tab, unsaved-edit guard, external-change, `fs_set_watch`) and
+  `architecture/02b-terminal-engine.md` §3.3 (editor/diff tabs implemented).
+
+### Added — right-panel commit composer options + "History" tab with branch graph
+- **Commit composer — optional fields (collapsed by default).** `ChangesPanel.svelte`
+  now exposes an "Options" `Collapsible` under the summary box with: an **extended
+  description** (commit body), one or more **`Co-authored-by:`** entries, an
+  **amend last commit** toggle, and a **sign-off** (`Signed-off-by:`) toggle. The
+  message is composed in the frontend (`git.svelte.ts → buildCommitMessage`):
+  `subject` + blank line + body + blank line + `Co-authored-by:` trailers;
+  sign-off is applied by git itself (`-s`) so it uses the configured identity.
+- **New "History" tab** (`HistoryPanel.svelte`, third tab in `RightPanel.svelte`).
+  Shows the active worktree's commit log (newest first), virtualized
+  (`VirtualList`) and paginated ("Load more"), with per-commit ref badges
+  (`HEAD`/branches/`tag:`), author and localized relative time. Filterable;
+  empty/`not a repo`/`no commits` states handled. Clicking a commit opens its
+  full diff as a center **tab** (`CommitPane.svelte`, read-only `DiffView`),
+  backed by a self-contained `CommitViewerState` registered in the terminals
+  store — consistent with how file/diff tabs now open.
+- **Integrated branch graph.** A toggle in the History header draws a colored
+  lane gutter (branches, merges, splits) left of each commit, computed purely on
+  the frontend from each commit's parents (`gitGraph.ts → computeGraph`). The
+  graph is shown only over the unfiltered log (a filter would break parent chains).
+- **Backend (additive).** `git.rs`/`gitfast.rs`: new `CommitInfo`, `log(limit,
+  skip)` (git2 revwalk + CLI fallback, topological order, unborn-HEAD tolerant)
+  and `show(hash)` (first-parent diff; hex-validated). `commit()` gained `amend`
+  and `sign_off` flags. New Tauri commands `git_log` / `git_show` and the extended
+  `git_commit(amend, sign_off)`, registered in `lib.rs`. Unit tests cover
+  `parse_log`/`parse_refs` and a real-repo `log`/`show`/pagination round-trip.
+- **Spec + i18n updated.** `architecture/02c-git-worktrees.md` §3.5 (history/show
+  commands) and §6 (the right panel is now three tabs + §6.4 History/graph). EN/ES
+  strings added under `rightPanel.*` (composer) and a new `history.*` namespace.
+
 ### Changed — Tauri bundle id renamed `com.uxnan.desktop` → `dev.luisgamas.uxnandesktop`
 - **`src-tauri/tauri.conf.json` `identifier` rewritten.** The Tauri 2 runtime
   derives its app-data directory from the bundle identifier, so the on-disk

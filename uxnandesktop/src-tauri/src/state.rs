@@ -13,6 +13,7 @@ use tokio::sync::RwLock;
 use serde::Serialize;
 
 use crate::agent_hooks::HookInstall;
+use crate::fswatch::FsWatcher;
 use crate::model::AppData;
 use crate::persistence::PersistenceManager;
 use crate::power::SleepBlocker;
@@ -42,6 +43,10 @@ pub struct AppState {
     /// Worktree path the right panel is reviewing, polled for status while set
     /// (the background git watcher reads this). `None` = nothing to watch.
     pub git_watch: Arc<RwLock<Option<String>>>,
+    /// Filesystem watcher for the active worktree's file tree + open editor.
+    /// Emits `fs:changed` (debounced) so the UI reflects created/deleted/edited
+    /// files without a manual refresh.
+    pub fs_watcher: FsWatcher,
     /// Whether the app window is focused; the watcher pauses polling when not.
     pub focused: Arc<AtomicBool>,
     /// Agent commands to look for in the process-detection poll (the catalog +
@@ -67,6 +72,7 @@ impl AppState {
             persistence,
             pty: PtyManager::default(),
             git_watch: Arc::new(RwLock::new(None)),
+            fs_watcher: FsWatcher::default(),
             focused: Arc::new(AtomicBool::new(true)),
             agent_commands: Arc::new(RwLock::new(Vec::new())),
             hook: Arc::new(RwLock::new(None)),

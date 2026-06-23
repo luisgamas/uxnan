@@ -587,17 +587,38 @@ A second right-panel view alongside git review, plus an editable center editor.
 - [x] **Settings full-screen polish** — centered section column, **Hooks** in its
       own nav item, clearer active/selected styles in the left panel + file tree.
 
+**Done (center tabs + watcher increment):**
+- [x] **Unified center tabs** — files, diffs and terminals are now tabs in the
+      same per-workspace region tree (`GroupTab` = terminal | file | diff;
+      `terminals.svelte.ts`), so you can open an agent, several files and a diff
+      across tabs and **split mixed** (e.g. terminal left / editor right). Files
+      and diffs are no longer full-size singleton overlays. Per-tab editor/diff
+      state lives in an id-keyed registry (`FileEditorState` in `files.svelte.ts`,
+      `DiffViewerState` in `git.svelte.ts`) so CodeMirror/xterm never remount and
+      typing doesn't churn the persisted layout. File tabs are restored on
+      startup (by path); diff tabs are transient.
+- [x] **Unsaved-edit guard** — closing a dirty file tab prompts Save / Discard /
+      Cancel (`SaveDiscardDialog.svelte` + `confirm.svelte.ts`); closing a region
+      with several dirty files asks once. Runs on every close path.
+- [x] **External-change watcher** — backend `fswatch.rs` (`notify` +
+      `notify-debouncer-full`) watches the active worktree and emits `fs:changed`
+      (`.git`-filtered, debounced). The file tree reloads affected dirs; an open
+      editor shows a reload-vs-keep banner when the file changes on disk while
+      dirty (clean files reload silently; diffs reload). Watch aimed centrally in
+      `+page.svelte`.
+
 **Deferred (non-blocking) — FOR-DEV:**
 - [ ] **Tree virtualization** (TanStack Virtual) for very large folders — the tree
       renders a flat list; fine for typical folders, revisit if a single directory
       has thousands of entries. **FOR-DEV.**
-- [ ] **Unsaved-edit guard** — re-opening a file (or switching files) discards
-      unsaved edits silently; add a confirm/keep-dirty prompt. **FOR-DEV.**
 - [ ] **File ops from the tree** — create / rename / delete / new folder context
       menu. **FOR-DEV.**
-- [ ] **External-change watcher** — the editor doesn't auto-reload when the file
-      changes on disk (e.g. an agent edits it); refresh is manual via re-open.
-      **FOR-DEV.**
+- [ ] **Multi-worktree external-change** — the filesystem watcher follows the
+      single active worktree; a file tab from a previously-active worktree won't
+      get `fs:changed` events until you switch back. Per-tab/multi-root watching
+      if it ever matters. **FOR-DEV.**
+- [ ] **Tab/region reorder + drag tabs between regions** for the new mixed tabs
+      (still Tier 2, as for terminals). **FOR-DEV.**
 
 ## Personalization — custom themes + terminal appearance ✅
 
@@ -684,6 +705,22 @@ reference; this phase embeds it.
 **Notes:** the machine's home `pnpm-workspace.yaml` hijacks `pnpm install` here —
 CI uses `npm ci`. `cargo test` needs the SPA built first (the Tauri
 `generate_context!` reads `frontendDist = ../build`).
+
+### Status (2026-06-21) + deferred follow-ups
+- ✅ **Verify workflow DONE** — `.github/workflows/ci-desktop.yml` runs the gate
+  above on `{ubuntu, windows}` (macOS deferred with Apple). Validated locally
+  (svelte-check, vite build, cargo fmt/clippy/test — 59 tests green).
+- [ ] **`release-desktop.yml`** — still TODO (tauri-action bundles on a
+  `desktop-v*` tag → draft GitHub Release). Windows ships unsigned for now.
+- [ ] **Auto-updater (real)** — DEFERRED by decision; when built it will be a
+  real auto-update via `tauri-plugin-updater`: add the plugin + an `updater`
+  block in `tauri.conf.json`, generate the signing keypair
+  (`TAURI_SIGNING_PRIVATE_KEY` + `_PASSWORD` secrets, pubkey in config) and host
+  `latest.json` (the GitHub Release "latest" URL). Until then installers are
+  downloaded manually.
+- [ ] **In-app version checker** — DEFERRED. A lightweight check against the
+  GitHub Releases API (or the updater plugin once enabled) that *notifies* the
+  user of a newer version and lets them decide to update — no silent install.
 
 ---
 

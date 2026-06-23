@@ -119,6 +119,8 @@
     void app.persistSettings();
     if (on) await doInstall();
     else await doUninstall();
+    // Keep the global status-bar indicator in sync with this change.
+    void app.refreshHooksStatus();
   }
 
   async function copy(id: string, text: string) {

@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/application/coordinators/session_coordinator.dart';
+import 'package:uxnan/application/managers/file_browser_manager.dart'
+    show FileBrowserManager;
 import 'package:uxnan/application/managers/git_action_manager.dart';
 import 'package:uxnan/application/managers/push_registrar.dart';
 import 'package:uxnan/application/managers/thread_manager.dart';
@@ -27,6 +29,8 @@ import 'package:uxnan/domain/enums/thread_activity.dart';
 import 'package:uxnan/domain/services/pairing_validator.dart';
 import 'package:uxnan/domain/value_objects/custom_theme.dart';
 import 'package:uxnan/domain/value_objects/git/git_action_progress.dart';
+import 'package:uxnan/domain/value_objects/git/git_status_change.dart'
+    show GitStatusChange;
 import 'package:uxnan/domain/value_objects/notification_preferences.dart';
 import 'package:uxnan/domain/value_objects/turn_timeline_snapshot.dart';
 import 'package:uxnan/infrastructure/transport/secure_transport_layer.dart';
@@ -722,7 +726,7 @@ final List<CustomTheme> kBuiltInCustomThemes = <CustomTheme>[
     id: 'uxnan.builtin.midnight',
     name: 'Midnight',
     description: 'Deep blue-violet — leans dark on both modes.',
-    colorScheme: ColorScheme(
+    colorScheme: const ColorScheme(
       brightness: Brightness.light,
       primary: Color(0xFF4A3FB8),
       onPrimary: Color(0xFFFFFFFF),
@@ -762,7 +766,7 @@ final List<CustomTheme> kBuiltInCustomThemes = <CustomTheme>[
     id: 'uxnan.builtin.sandstone',
     name: 'Sandstone',
     description: 'Warm amber — leans light on both modes.',
-    colorScheme: ColorScheme(
+    colorScheme: const ColorScheme(
       brightness: Brightness.light,
       primary: Color(0xFF9C5A1E),
       onPrimary: Color(0xFFFFFFFF),
@@ -863,7 +867,7 @@ class CustomThemesLibrary extends Notifier<List<CustomTheme>> {
       // Activate the migrated theme + flip the master switch so the user
       // keeps seeing their previously authored palette.
       await ref.read(activeCustomThemeIdProvider.notifier).set(legacy.id);
-      await ref.read(useCustomThemeProvider.notifier).set(true);
+      await ref.read(useCustomThemeProvider.notifier).set(value: true);
       // Drop the legacy key so we never re-migrate.
       await store.writeCustomTheme(null);
       return;
@@ -917,7 +921,7 @@ class CustomThemesLibrary extends Notifier<List<CustomTheme>> {
         .read(appearancePreferencesStoreProvider)
         .writeCustomThemesLibrary(state);
     await ref.read(activeCustomThemeIdProvider.notifier).set(null);
-    await ref.read(useCustomThemeProvider.notifier).set(false);
+    await ref.read(useCustomThemeProvider.notifier).set(value: false);
   }
 
   static bool _listEquals(List<CustomTheme> a, List<CustomTheme> b) {
@@ -1011,12 +1015,12 @@ class UseCustomTheme extends Notifier<bool> {
     if (stored != state) state = stored;
   }
 
-  Future<void> set(bool value) async {
+  Future<void> set({required bool value}) async {
     if (value == state) return;
     state = value;
     await ref
         .read(appearancePreferencesStoreProvider)
-        .writeUseCustomTheme(value);
+        .writeUseCustomTheme(value: value);
   }
 }
 
@@ -1102,12 +1106,12 @@ class CustomThemesExpanded extends Notifier<bool> {
     if (stored != state) state = stored;
   }
 
-  Future<void> set(bool value) async {
+  Future<void> set({required bool value}) async {
     if (value == state) return;
     state = value;
     await ref
         .read(appearancePreferencesStoreProvider)
-        .writeCustomThemesExpanded(value);
+        .writeCustomThemesExpanded(value: value);
   }
 }
 

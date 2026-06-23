@@ -1,10 +1,11 @@
 [package]
 name = "uxnan-desktop"
-version = "0.0.0"
+version = "0.0.1"
 description = "Uxnan Desktop — Agent Development Environment (ADE)."
-authors = ["Uxnan"]
+authors = ["Luis Donaldo Gamas Vazquez"]
 edition = "2021"
 rust-version = "1.77.2"
+license = "MPL-2.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -24,6 +25,10 @@ tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-notification = "2"
+# Persists & restores the main window's size/position/maximized state across
+# launches (so the app reopens at the size the user left it). Official Tauri
+# plugin; auto-saves on exit and restores on startup.
+tauri-plugin-window-state = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "fs", "process", "macros"] }
@@ -36,6 +41,12 @@ sysinfo = "0.33"
 # git CLI (git.rs); git2 is the fast path with a CLI fallback. Vendored libgit2.
 git2 = { version = "0.20", default-features = false }
 axum = { version = "0.8", default-features = false, features = ["json", "tokio", "http1"] }
+# Filesystem watcher for the right-panel file tree + the open-file editor: a
+# debounced, cross-platform watch of the active worktree root that emits
+# `fs:changed` so the UI reflects files created/deleted/edited on disk without a
+# manual refresh. `notify` is re-exported by the debouncer; pinned together.
+notify = "6"
+notify-debouncer-full = "0.3"
 
 # Windows-only: SetThreadExecutionState for the keep-awake feature (power.rs).
 [target.'cfg(windows)'.dependencies]

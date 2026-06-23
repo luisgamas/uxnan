@@ -377,6 +377,17 @@ concreto depende del adaptador:
   `requestApproval` cuando el texto es `approval-demo` y pausa el
   turno hasta que el usuario responde.
 
+**Timeout consciente de la conexión.** El auto-rechazo de una aprobación
+(`APPROVAL_TIMEOUT_MS`, 5 min) solo corre **mientras hay un teléfono con canal
+vivo**. Si el teléfono está en background/desconectado, la aprobación **espera**
+(su `approval` content block se reenvía vía el outbound log al reconectar), de
+modo que un turno que pide aprobación con la app cerrada nunca cae al `reject`
+por una tarjeta que el usuario no vio. Una reconexión otorga una ventana nueva;
+la última desconexión pausa la cuenta atrás. Para que el propio CLI no aborte el
+hook antes de que el usuario regrese, los hooks `PreToolUse` (Claude) y
+`BeforeTool` (Gemini) fijan un `timeout` amplio (1800 s), por encima del default
+~60 s del CLI.
+
 
 **`AgentModel`** (item de `agent/models`):
 ```typescript

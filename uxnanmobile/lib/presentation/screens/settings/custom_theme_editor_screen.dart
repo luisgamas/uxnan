@@ -140,7 +140,7 @@ class _CustomThemeEditorScreenState
     await ref.read(customThemesLibraryProvider.notifier).upsert(next);
     if (isNew) {
       await ref.read(activeCustomThemeIdProvider.notifier).set(next.id);
-      await ref.read(useCustomThemeProvider.notifier).set(true);
+      await ref.read(useCustomThemeProvider.notifier).set(value: true);
     }
     if (mounted) Navigator.of(context).pop(next);
   }
@@ -353,8 +353,8 @@ class _NameField extends StatelessWidget {
         hintText: hint,
         filled: true,
         fillColor: colors.surfaceContainerHigh,
-        border: OutlineInputBorder(
-          borderRadius: const BorderRadius.all(UxnanRadius.md),
+        border: const OutlineInputBorder(
+          borderRadius: BorderRadius.all(UxnanRadius.md),
           borderSide: BorderSide.none,
         ),
         contentPadding: const EdgeInsets.symmetric(
@@ -848,7 +848,6 @@ class _RoleRow extends StatelessWidget {
                 shape: BoxShape.circle,
                 border: Border.all(
                   color: scheme.outline.withValues(alpha: 0.5),
-                  width: 1,
                 ),
               ),
             ),
@@ -925,7 +924,7 @@ class _SingleSideNotice extends StatelessWidget {
 /// blank. Used by the export-to-file flow.
 String _slugify(String input) {
   final lower = input.toLowerCase().trim();
-  final replaced = lower.replaceAll(RegExp(r'[^a-z0-9]+'), '-');
+  final replaced = lower.replaceAll(RegExp('[^a-z0-9]+'), '-');
   final trimmed = replaced.replaceAll(RegExp(r'^-+|-+$'), '');
   return trimmed.isEmpty ? 'theme' : trimmed;
 }

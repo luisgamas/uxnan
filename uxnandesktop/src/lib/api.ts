@@ -9,6 +9,7 @@ import type {
   AppSettings,
   BranchList,
   ClaudeHooksStatus,
+  CommitInfo,
   DirListing,
   FileChange,
   FileContent,
@@ -191,6 +192,12 @@ export function revealPath(path: string): Promise<void> {
   return invoke("reveal_path", { path });
 }
 
+/** Set (or clear with `null`) the worktree root the filesystem watcher follows.
+ *  The backend then emits `fs:changed` as files under it change on disk. */
+export function fsSetWatch(path: string | null): Promise<void> {
+  return invoke("fs_set_watch", { path });
+}
+
 /** Working-tree-vs-HEAD diff for one file, for the editor's change gutter.
  *  Empty for a clean or untracked file. */
 export function gitDiffHead(path: string, file: string): Promise<string> {
@@ -258,9 +265,31 @@ export function gitApply(
   return invoke("git_apply", { path, patch, cached, reverse });
 }
 
-/** Commit the staged changes with `message`. */
-export function gitCommit(path: string, message: string): Promise<void> {
-  return invoke("git_commit", { path, message });
+/** Commit the staged changes with `message`. With `amend`, rewrites the current
+ *  HEAD commit instead of creating a new one. With `signOff`, appends a
+ *  `Signed-off-by:` trailer using the configured git identity. */
+export function gitCommit(
+  path: string,
+  message: string,
+  amend = false,
+  signOff = false,
+): Promise<void> {
+  return invoke("git_commit", { path, message, amend, signOff });
+}
+
+/** List the worktree's commit history (newest first), `limit` commits from
+ *  `skip`. Powers the History tab + branch graph. */
+export function gitLog(
+  path: string,
+  limit: number,
+  skip: number,
+): Promise<CommitInfo[]> {
+  return invoke<CommitInfo[]>("git_log", { path, limit, skip });
+}
+
+/** Unified diff a single commit introduced (vs its first parent). */
+export function gitShow(path: string, hash: string): Promise<string> {
+  return invoke<string>("git_show", { path, hash });
 }
 
 /** Set (or clear) the worktree the backend watcher polls for live status. */

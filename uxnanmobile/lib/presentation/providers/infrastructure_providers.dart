@@ -124,9 +124,10 @@ final attachmentPickerServiceProvider = Provider<AttachmentPickerService>(
   (ref) => AttachmentPickerService(),
 );
 
-/// Streams bridges discovered on the LAN via mDNS (`_uxnan._tcp`) so the pairing
-/// flow can offer them instead of a typed host. Discovery starts on first watch
-/// and stops when no longer watched (autoDispose); errors degrade to an empty
+/// Streams bridges discovered on the LAN via mDNS (`_uxnan._tcp`) so the
+/// pairing flow can offer them instead of a typed host. Discovery starts on
+/// first watch and stops when no longer watched (autoDispose); errors degrade
+/// to an empty
 /// list (manual host entry stays the fallback).
 final bridgeDiscoveryProvider =
     StreamProvider.autoDispose<List<DiscoveredBridge>>((ref) {

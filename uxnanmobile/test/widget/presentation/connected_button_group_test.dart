@@ -61,7 +61,11 @@ void main() {
     // DefaultTextStyle and compare its font weight.
     final selectedStyle = tester
         .widget<DefaultTextStyle>(
-          find.ancestor(of: find.text('B'), matching: find.byType(DefaultTextStyle))
+          find
+              .ancestor(
+                of: find.text('B'),
+                matching: find.byType(DefaultTextStyle),
+              )
               .first,
         )
         .style;
@@ -69,7 +73,11 @@ void main() {
 
     final notSelectedStyle = tester
         .widget<DefaultTextStyle>(
-          find.ancestor(of: find.text('A'), matching: find.byType(DefaultTextStyle))
+          find
+              .ancestor(
+                of: find.text('A'),
+                matching: find.byType(DefaultTextStyle),
+              )
               .first,
         )
         .style;

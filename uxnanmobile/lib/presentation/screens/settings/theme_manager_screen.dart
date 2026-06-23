@@ -60,7 +60,7 @@ class _ThemeManagerScreenState extends ConsumerState<ThemeManagerScreen> {
 
   Future<void> _activate(CustomTheme theme) async {
     await ref.read(activeCustomThemeIdProvider.notifier).set(theme.id);
-    await ref.read(useCustomThemeProvider.notifier).set(true);
+    await ref.read(useCustomThemeProvider.notifier).set(value: true);
   }
 
   // --- New / Import / Export / Delete --------------------------------------
@@ -104,7 +104,7 @@ class _ThemeManagerScreenState extends ConsumerState<ThemeManagerScreen> {
     // accepted (see [CustomTheme.fromJson]); a multi-theme JSON is a top-level
     // array of those theme objects.
     final seenIds = <String>{
-      for (final t in ref.read(customThemesLibraryProvider)) t.id
+      for (final t in ref.read(customThemesLibraryProvider)) t.id,
     };
     final addedIds = <String>[];
     var failed = 0;
@@ -156,7 +156,7 @@ class _ThemeManagerScreenState extends ConsumerState<ThemeManagerScreen> {
     // First-time importer with nothing active yet → show an immediate result.
     if (ref.read(activeCustomThemeIdProvider) == null) {
       await ref.read(activeCustomThemeIdProvider.notifier).set(addedIds.first);
-      await ref.read(useCustomThemeProvider.notifier).set(true);
+      await ref.read(useCustomThemeProvider.notifier).set(value: true);
     }
   }
 
@@ -250,13 +250,13 @@ class _ThemeManagerScreenState extends ConsumerState<ThemeManagerScreen> {
       );
       return;
     }
+    final messenger = ScaffoldMessenger.of(context);
     final confirmed = await _confirm(
       title: l10n.themeManagerDeleteSelectedTitle,
       body: l10n.themeManagerDeleteSelectedBody(deletable.length),
       action: l10n.personalizationCustomThemeDeleteConfirmAction,
     );
     if (confirmed != true) return;
-    final messenger = ScaffoldMessenger.of(context);
     await _removeThemes(deletable);
     if (hasBuiltIns && mounted) {
       _snack(messenger, l10n.themeManagerBuiltInsSkipped);
@@ -277,7 +277,7 @@ class _ThemeManagerScreenState extends ConsumerState<ThemeManagerScreen> {
     }
     if (activeId != null && ids.contains(activeId)) {
       await activeNotifier.set(null);
-      await useCustomNotifier.set(false);
+      await useCustomNotifier.set(value: false);
     }
   }
 
@@ -287,7 +287,6 @@ class _ThemeManagerScreenState extends ConsumerState<ThemeManagerScreen> {
       title: l10n.personalizationCustomThemesResetAction,
       body: l10n.personalizationCustomThemesResetActionSubtitle,
       action: l10n.personalizationCustomThemeDeleteConfirmAction,
-      destructive: true,
     );
     if (confirmed != true) return;
     await ref.read(customThemesLibraryProvider.notifier).resetToBuiltIns();
@@ -779,7 +778,7 @@ class _SelectionDot extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    return Container(
+    return DecoratedBox(
       decoration: BoxDecoration(
         color:
             selected ? colors.primary : colors.surface.withValues(alpha: 0.7),
@@ -876,7 +875,7 @@ class _EmptyState extends StatelessWidget {
 /// result. Empty input falls back to "theme" so the filename is never blank.
 String _slugify(String input) {
   final lower = input.toLowerCase().trim();
-  final replaced = lower.replaceAll(RegExp(r'[^a-z0-9]+'), '-');
+  final replaced = lower.replaceAll(RegExp('[^a-z0-9]+'), '-');
   final trimmed = replaced.replaceAll(RegExp(r'^-+|-+$'), '');
   return trimmed.isEmpty ? 'theme' : trimmed;
 }

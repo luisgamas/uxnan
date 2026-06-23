@@ -132,8 +132,11 @@ void main() {
               }).join('\n----\n')}',
             );
           }
-          expect(tester.takeException(), isNull,
-              reason: 'Sample overflowed:\n$sample');
+          expect(
+            tester.takeException(),
+            isNull,
+            reason: 'Sample overflowed:\n$sample',
+          );
         } finally {
           FlutterError.onError = previousHandler;
           await manager.dispose();

@@ -22,7 +22,7 @@
   import AgentHooksPanel from "./AgentHooksPanel.svelte";
   import ThemeSettings from "./ThemeSettings.svelte";
   import {
-    KEY_ACTIONS,
+    SHORTCUT_GROUPS,
     eventToChord,
     formatChord,
     resolveBinding,
@@ -340,58 +340,63 @@
               <span class={text.heading}>{i18n.t("settings.shortcuts")}</span>
               <p class={text.meta}>{i18n.t("settings.shortcutsDesc")}</p>
             </div>
-            <div class="flex flex-col divide-y divide-border rounded-md border border-border">
-              {#each KEY_ACTIONS as action (action.id)}
-                {@const chord = resolveBinding(action.id)}
-                {@const isCapturing = capturing === action.id}
-                <div class="flex items-center gap-3 px-3 py-2">
-                  <div class="min-w-0 flex-1">
-                    <div class={text.body}>{i18n.t(action.labelKey)}</div>
-                    <div class={cn("truncate", text.meta)}>{i18n.t(action.descKey)}</div>
-                  </div>
-                  <button
-                    type="button"
-                    class={cn(
-                      "inline-flex h-7 min-w-24 shrink-0 items-center justify-center rounded-md border px-2 font-mono",
-                      text.body,
-                      isCapturing
-                        ? "border-primary text-primary"
-                        : "border-border hover:bg-accent/50",
-                    )}
-                    title={i18n.t("shortcuts.rebind")}
-                    onclick={() => (capturing = isCapturing ? null : action.id)}
-                  >
-                    {#if isCapturing}
-                      {i18n.t("shortcuts.press")}
-                    {:else if chord}
-                      {formatChord(chord)}
-                    {:else}
-                      <span class="text-muted-foreground">{i18n.t("shortcuts.disabled")}</span>
-                    {/if}
-                  </button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    class={iconButton.action}
-                    disabled={chord === ""}
-                    title={i18n.t("shortcuts.disable")}
-                    onclick={() => setBinding(action.id, "")}
-                  >
-                    <XIcon class={icon.button} />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    class={iconButton.action}
-                    disabled={chord === action.default}
-                    title={i18n.t("shortcuts.reset")}
-                    onclick={() => resetBinding(action.id)}
-                  >
-                    <RotateCcwIcon class={icon.button} />
-                  </Button>
+            {#each SHORTCUT_GROUPS as group (group.titleKey)}
+              <div class="flex flex-col gap-1.5">
+                <span class={text.section}>{i18n.t(group.titleKey)}</span>
+                <div class="flex flex-col divide-y divide-border rounded-md border border-border">
+                  {#each group.actions as action (action.id)}
+                    {@const chord = resolveBinding(action.id)}
+                    {@const isCapturing = capturing === action.id}
+                    <div class="flex items-center gap-3 px-3 py-2">
+                      <div class="min-w-0 flex-1">
+                        <div class={text.body}>{i18n.t(action.labelKey)}</div>
+                        <div class={cn("truncate", text.meta)}>{i18n.t(action.descKey)}</div>
+                      </div>
+                      <button
+                        type="button"
+                        class={cn(
+                          "inline-flex h-7 min-w-24 shrink-0 items-center justify-center rounded-md border px-2 font-mono",
+                          text.body,
+                          isCapturing
+                            ? "border-primary text-primary"
+                            : "border-border hover:bg-accent/50",
+                        )}
+                        title={i18n.t("shortcuts.rebind")}
+                        onclick={() => (capturing = isCapturing ? null : action.id)}
+                      >
+                        {#if isCapturing}
+                          {i18n.t("shortcuts.press")}
+                        {:else if chord}
+                          {formatChord(chord)}
+                        {:else}
+                          <span class="text-muted-foreground">{i18n.t("shortcuts.disabled")}</span>
+                        {/if}
+                      </button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        class={iconButton.action}
+                        disabled={chord === ""}
+                        title={i18n.t("shortcuts.disable")}
+                        onclick={() => setBinding(action.id, "")}
+                      >
+                        <XIcon class={icon.button} />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        class={iconButton.action}
+                        disabled={chord === action.default}
+                        title={i18n.t("shortcuts.reset")}
+                        onclick={() => resetBinding(action.id)}
+                      >
+                        <RotateCcwIcon class={icon.button} />
+                      </Button>
+                    </div>
+                  {/each}
                 </div>
-              {/each}
-            </div>
+              </div>
+            {/each}
           </div>
         {:else if app.settingsSection === "agents"}
           <div class="flex flex-col gap-4">

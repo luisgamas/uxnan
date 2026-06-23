@@ -189,9 +189,8 @@ class _ConnectedButtonState<T> extends State<_ConnectedButton<T>>
                 color: widget.isSelected
                     ? colors.onSecondaryContainer
                     : colors.onSurfaceVariant,
-                fontWeight: widget.isSelected
-                    ? FontWeight.w600
-                    : FontWeight.w500,
+                fontWeight:
+                    widget.isSelected ? FontWeight.w600 : FontWeight.w500,
                 fontFamily: textTheme.labelMedium?.fontFamily,
                 fontSize: textTheme.labelMedium?.fontSize,
               ),

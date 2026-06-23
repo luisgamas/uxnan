@@ -398,7 +398,8 @@ void main() {
     addTearDown(harness.coordinator.dispose);
     await harness.coordinator.connect(forceQrBootstrap: true);
 
-    // Drop → the reconnect loop enters and parks on the (never-completing) delay.
+    // Drop → the reconnect loop enters and parks on the (never-completing)
+    // delay.
     await harness.selector.dropCurrent();
     await reached.future.timeout(const Duration(seconds: 5));
 
@@ -442,7 +443,7 @@ void main() {
     await resuming;
     final response = await sending.timeout(const Duration(seconds: 2));
 
-    expect((response.result as Map)['echo'], 'turn/send');
+    expect((response.result! as Map)['echo'], 'turn/send');
     expect(harness.coordinator.connectionPhase, ConnectionPhase.connected);
   });
 

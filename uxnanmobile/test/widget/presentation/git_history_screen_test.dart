@@ -66,9 +66,7 @@ GitActionManager _stubManager({
         return RpcMessage.response(
           id: '1',
           result: {
-            'commits': moreCommits
-                .map(_commitToJson)
-                .toList(),
+            'commits': moreCommits.map(_commitToJson).toList(),
             'hasMore': false,
           },
         );

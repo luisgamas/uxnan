@@ -1,0 +1,79 @@
+name: Release — npm (shared, bridge, relay)
+
+# Publishes one npm package per component tag:
+#   shared-v<version>  → @uxnan/shared
+#   bridge-v<version>  → uxnan-bridge
+#   relay-v<version>   → uxnan-relay
+# <version> is the full identifier, e.g. 0.0.1-alpha.20260621.
+#
+# Dependency order: publish shared FIRST (its own tag). bridge/relay then pin
+# @uxnan/shared to the exact alpha version already on npm before publishing.
+#
+# First publish uses NPM_TOKEN. After each package exists, configure Trusted
+# Publishing (OIDC) in npm and drop the token — see CI_CD_MONOREPOS.md §3.7.
+
+on:
+  push:
+    tags:
+      - "shared-v*"
+      - "bridge-v*"
+      - "relay-v*"
+
+permissions:
+  contents: read
+  id-token: write # enables npm provenance / future Trusted Publishing
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Resolve package + version from tag
+        id: meta
+        run: |
+          TAG="${GITHUB_REF_NAME}"        # e.g. bridge-v0.0.1-alpha.20260621
+          PREFIX="${TAG%%-v*}"            # shared | bridge | relay
+          VERSION="${TAG#*-v}"            # 0.0.1-alpha.20260621
+          case "$PREFIX" in
+            shared) WS="shared" ;;
+            bridge) WS="bridge" ;;
+            relay)  WS="relay" ;;
+            *) echo "::error::unknown tag prefix '$PREFIX' (expected shared|bridge|relay)"; exit 1 ;;
+          esac
+          echo "ws=$WS" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Publishing workspace '$WS' at version '$VERSION'"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Set package version
+        run: npm version "${{ steps.meta.outputs.version }}" --no-git-tag-version -w ${{ steps.meta.outputs.ws }}
+
+      - name: Pin @uxnan/shared (bridge/relay only)
+        if: steps.meta.outputs.ws != 'shared'
+        run: |
+          SHARED_VER=$(npm view @uxnan/shared dist-tags.alpha 2>/dev/null || true)
+          if [ -z "$SHARED_VER" ]; then
+            echo "::error::@uxnan/shared@alpha is not on npm yet. Publish it first (push a shared-v* tag)."
+            exit 1
+          fi
+          npm pkg set "dependencies.@uxnan/shared=$SHARED_VER" -w ${{ steps.meta.outputs.ws }}
+          echo "Pinned @uxnan/shared to exact $SHARED_VER"
+
+      - name: Build (all workspaces, dependency order)
+        run: npm run build
+
+      - name: Publish to npm (alpha tag)
+        run: npm publish -w ${{ steps.meta.outputs.ws }} --tag alpha --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

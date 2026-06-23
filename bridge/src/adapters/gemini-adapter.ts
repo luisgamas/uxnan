@@ -75,6 +75,14 @@ const GEMINI_CAPABILITIES: AgentCapabilities = {
 const GEMINI_CONTEXT_WINDOW = 1_048_576;
 
 /**
+ * Timeout (seconds) for the injected `BeforeTool` approval hook. Mirrors the
+ * Claude adapter: raise it well above the CLI's short default so a backgrounded
+ * phone can reconnect and answer before the CLI aborts the hook (defaulting the
+ * tool to deny and making the agent take an unauthorized default).
+ */
+const APPROVAL_HOOK_TIMEOUT_SECONDS = 1800;
+
+/**
  * Curated Gemini model set. The Gemini CLI exposes **no headless enumerate
  * command** (like Claude Code — only Codex via app-server and OpenCode/pi via
  * their own list commands can enumerate), so we ship a hand-kept table sourced
@@ -422,15 +430,16 @@ export class GeminiAdapter extends BaseAgentAdapter {
     // POST each tool invocation to the bridge's local HTTP endpoint. The
     // threadId is what the hook embeds in the request, so the bridge can
     // route the response back to the right thread.
-    const spawnExtra = useHook && this.#approvalHook
-      ? {
-          env: {
-            UXNAN_HOOK_URL: this.#approvalHook.url() ?? '',
-            UXNAN_HOOK_TOKEN: this.#approvalHook.token,
-            UXNAN_HOOK_THREAD_ID: threadId,
-          },
-        }
-      : undefined;
+    const spawnExtra =
+      useHook && this.#approvalHook
+        ? {
+            env: {
+              UXNAN_HOOK_URL: this.#approvalHook.url() ?? '',
+              UXNAN_HOOK_TOKEN: this.#approvalHook.token,
+              UXNAN_HOOK_THREAD_ID: threadId,
+            },
+          }
+        : undefined;
 
     let child: SpawnedProcess;
     try {
@@ -599,14 +608,19 @@ export class GeminiAdapter extends BaseAgentAdapter {
           type: 'command',
           name: 'uxnan-approval',
           command: `node "${hook.scriptPath}"`,
+          // Raise the hook timeout above the CLI default so a backgrounded phone
+          // can reconnect and answer before the CLI aborts the hook (which would
+          // default the tool to deny).
+          timeout: APPROVAL_HOOK_TIMEOUT_SECONDS,
         },
       ],
     };
     // Wrap the entry under a matcher key (Gemini uses regex matchers on the
     // tool name; `.*` matches every tool — the bridge decides per-call).
-    const matchers = existing.hooks && typeof existing.hooks === 'object'
-      ? (existing.hooks as Record<string, unknown>)
-      : {};
+    const matchers =
+      existing.hooks && typeof existing.hooks === 'object'
+        ? (existing.hooks as Record<string, unknown>)
+        : {};
     const beforeToolRaw = matchers['BeforeTool'];
     const beforeTool = Array.isArray(beforeToolRaw) ? (beforeToolRaw as unknown[]) : [];
     // Drop any prior uxnan-approval entry so re-installs don't duplicate.
@@ -616,9 +630,7 @@ export class GeminiAdapter extends BaseAgentAdapter {
       if (!Array.isArray(hooks)) return true;
       return !hooks.some(
         (h: unknown) =>
-          h &&
-          typeof h === 'object' &&
-          (h as Record<string, unknown>)['name'] === 'uxnan-approval',
+          h && typeof h === 'object' && (h as Record<string, unknown>)['name'] === 'uxnan-approval',
       );
     });
     filtered.push({ matcher: '.*', ...hookEntry });

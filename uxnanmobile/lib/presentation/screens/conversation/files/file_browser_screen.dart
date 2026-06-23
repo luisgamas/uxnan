@@ -394,7 +394,7 @@ class _StatusBar extends ConsumerWidget {
             ),
             if (gitState != null && gitState.branch.isNotEmpty) ...[
               const SizedBox(width: UxnanSpacing.sm),
-              Icon(
+              const Icon(
                 Icons.account_tree_outlined,
                 size: 14,
                 color: UxnanColors.success,

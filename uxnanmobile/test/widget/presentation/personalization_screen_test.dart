@@ -104,9 +104,13 @@ void main() {
     expect(container.read(useCustomThemeProvider), isTrue);
     // The first built-in (Midnight) becomes active so the change is visible.
     expect(
-        container.read(activeCustomThemeIdProvider), 'uxnan.builtin.midnight');
-    expect(container.read(customThemeSettingProvider)?.id,
-        'uxnan.builtin.midnight');
+      container.read(activeCustomThemeIdProvider),
+      'uxnan.builtin.midnight',
+    );
+    expect(
+      container.read(customThemeSettingProvider)?.id,
+      'uxnan.builtin.midnight',
+    );
   });
 
   testWidgets('a pre-seeded active theme shows its name on the card',

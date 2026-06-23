@@ -33,7 +33,6 @@ class FileDiffViewer extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     final lines = _renderableLines(diff);
     return SingleChildScrollView(
-      scrollDirection: Axis.vertical,
       // AlwaysScrollable so a parent RefreshIndicator (the file viewer's
       // pull-to-refresh) can be triggered even when the diff fits the viewport.
       physics: const BouncingScrollPhysics(

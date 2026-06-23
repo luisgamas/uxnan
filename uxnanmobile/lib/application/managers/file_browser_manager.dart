@@ -106,8 +106,7 @@ class FileBrowserManager {
       return;
     }
     _loadingRoots[cwd] = true;
-    final subject = _subject(cwd);
-    subject.add(_rootFor(cwd).copyWith(loading: true));
+    final subject = _subject(cwd)..add(_rootFor(cwd).copyWith(loading: true));
     try {
       final listing = await _list(cwd);
       // Apply the current git status (if any) to each entry so changed files
@@ -176,10 +175,12 @@ class FileBrowserManager {
       _gitStatusByCwd[cwd] = map;
       _gitFetched.add(cwd);
       _repatchTree(cwd);
-      _statusBus?.emit(GitStatusChange(
-        cwd: cwd,
-        state: GitRepoState(branch: '', changedFiles: changedFiles),
-      ));
+      _statusBus?.emit(
+        GitStatusChange(
+          cwd: cwd,
+          state: GitRepoState(branch: '', changedFiles: changedFiles),
+        ),
+      );
     } on Object {
       // Best-effort: missing git status (no repo / not connected / older
       // bridge) is a soft state, not an error. We mark the cwd as "fetched"
@@ -323,8 +324,8 @@ class FileBrowserManager {
     if (relPath == '.' || relPath.isEmpty) return workspaceRoot;
     // Normalize separators so the bridge gets a POSIX-style path even on
     // Windows clients.
-    final root = workspaceRoot.replaceAll('\\', '/');
-    final rel = relPath.replaceAll('\\', '/');
+    final root = workspaceRoot.replaceAll(r'\', '/');
+    final rel = relPath.replaceAll(r'\', '/');
     final cleanRel = rel.startsWith('/') ? rel.substring(1) : rel;
     if (root.endsWith('/')) return '$root$cleanRel';
     return '$root/$cleanRel';

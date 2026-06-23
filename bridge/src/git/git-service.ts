@@ -59,12 +59,7 @@ export class GitService {
     const ref = (await this.#hasHead(cwd)) ? ['HEAD'] : [];
     const pathArgs = path ? ['--', path] : [];
     const { stdout: diff } = await runGit(cwd, ['diff', ...ref, ...pathArgs]);
-    const { stdout: numstat } = await runGit(cwd, [
-      'diff',
-      '--numstat',
-      ...ref,
-      ...pathArgs,
-    ]);
+    const { stdout: numstat } = await runGit(cwd, ['diff', '--numstat', ...ref, ...pathArgs]);
     let { additions, deletions } = this.#sumNumstat(numstat);
     let text = diff;
     if (path && diff.trim() === '' && (await this.#isUntracked(cwd, path))) {
@@ -120,9 +115,7 @@ export class GitService {
       // the cursor itself is excluded and we get strictly older commits.
       // The `^` notation is a shorthand for `~1` and works for both
       // regular and merge commits.
-      options.cursor
-        ? `${options.cursor}^`
-        : options.ref ?? 'HEAD',
+      options.cursor ? `${options.cursor}^` : (options.ref ?? 'HEAD'),
     ];
     try {
       const { stdout } = await runGit(cwd, args);
@@ -131,21 +124,14 @@ export class GitService {
       // A fresh repo (no commits yet) has no HEAD — `git log HEAD` exits
       // non-zero. That's not an error from the caller's perspective: it
       // just means there's nothing to list.
-      if (
-        err instanceof GitCommandError &&
-        /unknown revision|bad revision/i.test(err.stderr)
-      ) {
+      if (err instanceof GitCommandError && /unknown revision|bad revision/i.test(err.stderr)) {
         return { commits: [], hasMore: false };
       }
       throw err;
     }
   }
 
-  async commit(
-    cwd: string,
-    message: string,
-    paths?: string[],
-  ): Promise<GitCommitResult> {
+  async commit(cwd: string, message: string, paths?: string[]): Promise<GitCommitResult> {
     if (paths && paths.length > 0) {
       await runGit(cwd, ['add', '--', ...paths]);
     } else {
@@ -203,20 +189,12 @@ export class GitService {
   async discard(cwd: string, paths: string[]): Promise<void> {
     if (paths.length === 0) return;
     const untracked = new Set(
-      (await this.#changedFiles(cwd))
-        .filter((f) => f.status === 'untracked')
-        .map((f) => f.path),
+      (await this.#changedFiles(cwd)).filter((f) => f.status === 'untracked').map((f) => f.path),
     );
     const tracked = paths.filter((p) => !untracked.has(p));
     const toDelete = paths.filter((p) => untracked.has(p));
     if (tracked.length > 0) {
-      await runGit(cwd, [
-        'restore',
-        '--staged',
-        '--worktree',
-        '--',
-        ...tracked,
-      ]);
+      await runGit(cwd, ['restore', '--staged', '--worktree', '--', ...tracked]);
     }
     for (const path of toDelete) {
       await rm(join(cwd, path), { force: true, recursive: true });
@@ -251,11 +229,7 @@ export class GitService {
     // Without this gh can appear to "succeed" with nothing to deliver.
     const baseRef = await this.#baseRef(cwd, base);
     if (baseRef) {
-      const { stdout } = await runGit(cwd, [
-        'rev-list',
-        '--count',
-        `${baseRef}..${branch}`,
-      ]);
+      const { stdout } = await runGit(cwd, ['rev-list', '--count', `${baseRef}..${branch}`]);
       if ((Number(stdout.trim()) || 0) === 0) {
         throw new GitCommandError(
           'gh pr create failed',
@@ -265,16 +239,7 @@ export class GitService {
         );
       }
     }
-    const args = [
-      'pr',
-      'create',
-      '--title',
-      title,
-      '--body',
-      body ?? '',
-      '--head',
-      branch,
-    ];
+    const args = ['pr', 'create', '--title', title, '--body', body ?? '', '--head', branch];
     if (base) args.push('--base', base);
     const { stdout } = await runGh(cwd, args);
     const url = stdout.trim().split('\n').pop()?.trim() ?? '';
@@ -294,10 +259,7 @@ export class GitService {
   async #baseRef(cwd: string, base?: string): Promise<string | undefined> {
     if (base) return `origin/${base}`;
     try {
-      const { stdout } = await runGit(cwd, [
-        'symbolic-ref',
-        'refs/remotes/origin/HEAD',
-      ]);
+      const { stdout } = await runGit(cwd, ['symbolic-ref', 'refs/remotes/origin/HEAD']);
       const ref = stdout.trim().replace(/^refs\/remotes\//, '');
       return ref || undefined;
     } catch {
@@ -332,23 +294,13 @@ export class GitService {
    * Either way, any changes previously *left* on the target branch are restored
    * after checkout.
    */
-  async switchBranch(
-    cwd: string,
-    target: string,
-    carryChanges: boolean,
-  ): Promise<void> {
+  async switchBranch(cwd: string, target: string, carryChanges: boolean): Promise<void> {
     const current = await this.#currentBranch(cwd);
     if (target === current) return;
     if (!carryChanges) {
       const { stdout } = await runGit(cwd, ['status', '--porcelain']);
       if (stdout.trim()) {
-        await runGit(cwd, [
-          'stash',
-          'push',
-          '--include-untracked',
-          '-m',
-          autoStashLabel(current),
-        ]);
+        await runGit(cwd, ['stash', 'push', '--include-untracked', '-m', autoStashLabel(current)]);
       }
     }
     await runGit(cwd, ['checkout', target]);
@@ -357,11 +309,7 @@ export class GitService {
 
   /** Pops the auto-stash that belongs to {@link branch}, if one exists. */
   async #restoreAutoStash(cwd: string, branch: string): Promise<void> {
-    const { stdout } = await runGit(cwd, [
-      'stash',
-      'list',
-      '--format=%gd %gs',
-    ]);
+    const { stdout } = await runGit(cwd, ['stash', 'list', '--format=%gd %gs']);
     const label = autoStashLabel(branch);
     for (const line of stdout.split('\n')) {
       const ref = line.trim().split(/\s+/)[0];
@@ -532,20 +480,12 @@ export class GitService {
   }
 
   async #isUntracked(cwd: string, path: string): Promise<boolean> {
-    const { stdout } = await runGit(cwd, [
-      'status',
-      '--porcelain',
-      '--',
-      path,
-    ]);
+    const { stdout } = await runGit(cwd, ['status', '--porcelain', '--', path]);
     return stdout.startsWith('??');
   }
 
   /** Builds an all-additions unified diff for an untracked file's contents. */
-  async #untrackedDiff(
-    cwd: string,
-    path: string,
-  ): Promise<{ diff: string; additions: number }> {
+  async #untrackedDiff(cwd: string, path: string): Promise<{ diff: string; additions: number }> {
     let content: string;
     try {
       content = await readFile(join(cwd, path), 'utf8');
@@ -647,7 +587,10 @@ function parseLogOutput(stdout: string, limit: number): GitLogResult {
     let messageBody = '';
     for (let i = 1; i < messageLines.length; i++) {
       if (messageLines[i] === '' && i + 1 < messageLines.length) {
-        messageBody = messageLines.slice(i + 1).join('\n').trim();
+        messageBody = messageLines
+          .slice(i + 1)
+          .join('\n')
+          .trim();
         break;
       }
     }

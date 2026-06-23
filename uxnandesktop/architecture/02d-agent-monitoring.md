@@ -24,6 +24,9 @@ El ADE levanta un **servidor HTTP en localhost** que los agentes pueden usar par
   - Tipo de agente (identificador: `claude`, `codex`, `aider`, etc.).
   - Herramienta en uso (si aplica, por ejemplo: `file_edit`, `bash`, `web_search`).
   - Flag `interrupted` indicando si el agente fue interrumpido.
+  - Preview corto de la última respuesta (`summary`), enviado en `done` para
+    enriquecer la notificación de finalización (el hook de Claude lo extrae del
+    transcript de la sesión).
 - **Cache persistente:** El ultimo estado de cada agente se guarda en disco con un **TTL de 7 dias**. Esto permite que al reiniciar el ADE, la sidebar muestre el estado correcto de cada agente sin necesidad de que estos re-reporten.
 - **Broadcast:** Cada cambio de estado se difunde al frontend via **Tauri events** para actualizacion inmediata de la UI. El evento `agent:status-changed` se emite con el nuevo estado normalizado.
 - **Configs listas para usar:** El ADE embebe en su binario cuatro scripts
@@ -127,7 +130,7 @@ El sistema de notificaciones mantiene al usuario informado del progreso de los a
 
 | Tipo | Mecanismo | Descripcion |
 |------|-----------|-------------|
-| **Completacion de agente** | Notificacion nativa del OS via `tauri-plugin-notification` | Cuando un agente llega al estado `done`, el backend Rust dispara una notificacion nativa del sistema operativo. El usuario ve la notificacion aunque el ADE este minimizado o en background. |
+| **Transicion de estado del agente** | Notificacion nativa del OS via `tauri-plugin-notification` | En una transicion **precisa** del hook (`done` / `waiting` / `blocked`) el ADE avisa: con la app en background dispara una notificacion nativa del OS (la de `done` incluye la tarea y un preview de la respuesta); con la app enfocada usa un toast in-app; si el usuario ya esta mirando esa terminal no avisa. **`working` nunca notifica** (cambia en cada herramienta). La inferencia gruesa de output-activity **no** dispara notificaciones — solo el punto visual — para no avisar cuando un agente quedo en reposo sin tarea. |
 | **Badge en dock/taskbar** | Contador nativo del OS | Muestra un contador de agentes con cambios no-leidos. En macOS aparece como badge numerico en el icono del dock; en Windows como overlay en el icono de la taskbar. |
 | **Indicador en sidebar** | Badge rojo en la tarjeta del worktree | Un indicador visual rojo en la tarjeta del worktree correspondiente, senalando que el agente termino y el usuario aun no ha revisado los resultados. |
 | **Limpieza automatica** | Evento de foco de ventana | Al enfocar la ventana del ADE, los badges se limpian automaticamente. Esto evita que el usuario tenga que limpiarlos manualmente y asegura que los indicadores siempre reflejen el estado real de atencion. |

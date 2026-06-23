@@ -100,7 +100,13 @@ export function codexItemBlocks(item: Record<string, unknown>): Record<string, u
       const name = str(item['tool']) || str(item['name']) || 'tool';
       const output = codexResultText(item['result']) || str(item['output']);
       return [
-        toolBlock(name, str(item['id']), rec(item['arguments'] ?? item['input']), output, item['status'] === 'failed'),
+        toolBlock(
+          name,
+          str(item['id']),
+          rec(item['arguments'] ?? item['input']),
+          output,
+          item['status'] === 'failed',
+        ),
       ];
     }
     // Codex plan mode: the `update_plan` item carries the task list. FOR-DEV:
