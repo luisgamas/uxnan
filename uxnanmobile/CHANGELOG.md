@@ -6,6 +6,59 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Dedicated Theme Manager screen (`ThemeManagerScreen`).** The custom-themes
+  library moved out of the Personalization list into its own M3 Expressive +
+  Neural Expressive screen: a responsive grid (`SliverGrid`, max-extent tiles)
+  of **live preview cards**, each painted with the theme's own colors — a dual
+  theme shows light|dark side by side, a single theme one panel — with a
+  brightness chip (*Light & dark* / *Light only* / *Dark only*) and *Active* /
+  *Built-in* badges. Tap a card to activate it; **long-press to enter
+  multi-select** for bulk delete / export. *New* / *Import* / *Export all* /
+  *Reset* live in the `NeTopBar` (`IconSurface` + overflow); the bar swaps to a
+  selection bar with a live count while selecting. This fixes the
+  "30 themes → scroll Personalization to the bottom for any action" problem and
+  adds bulk import (already array-aware) + bulk delete/export.
+  - `presentation/screens/settings/theme_manager_screen.dart` (new).
+  - `presentation/screens/settings/theme_sheets.dart` (new): Import and Export
+    are **bottom sheets**, not dialogs — the Neural Expressive surface for
+    input + menus (pasting JSON / choosing copy-vs-file). Confirmations remain
+    `AlertDialog`s. Reused by the editor.
+
+### Changed
+- **Custom themes can now be single-brightness (light-only / dark-only) or
+  dual.** A `CustomTheme` authors at least one side; the other, when needed for
+  rendering, is derived from the authored side's key colors
+  (primary/secondary/tertiary/error) via Material 3 — so blue/brown/green
+  chosen for light become the tone-correct blue/brown/green for dark. JSON
+  carries the cardinality: a one-sided document imports as a single theme and
+  exports only that side; a two-sided document is dual. `schemaVersion` 1 → 2
+  (v1 documents load as dual). See *Fixed* for the parser that feeds this.
+- **A dual custom theme no longer locks the System/Light/Dark picker.**
+  `effectiveThemeModeProvider` forces a *single* theme to its own brightness
+  (so it can't hide behind a mismatched OS setting) but lets a *dual* theme (or
+  the brand baseline) follow the user's choice; `themePickerEnabledProvider`
+  re-enables the picker for dual themes. `app.dart` applies the effective mode.
+- **Personalization slimmed down.** The inline library list + per-row menus +
+  library-action rows are gone; the screen now shows the theme-mode picker, a
+  compact custom-theme card (master switch + a *Custom themes* entry that opens
+  the manager and previews the active theme), and the language selector.
+- **Theme editor follows single/dual.** Light/Dark tabs show only for a dual
+  theme; a single theme shows its side plus *Add a {light/dark} side* (promotes
+  to dual via `withOtherSideDerived`). Import/Export/Derive-from-seed use bottom
+  sheets. Saving no longer force-writes the global theme mode.
+- **New themes are created dual from one seed.** The *New theme* flow dropped
+  its redundant brightness toggle: pick a seed color and a full Material 3 light
+  **and** dark theme is generated (the dark side derived), nudging users to
+  configure both — single themes come from importing a one-sided JSON. The two
+  built-in templates likewise derive their dark side (no second hardcoded
+  palette; `UxnanColors` stays the only hand-tuned palette).
+- **i18n:** new theme-manager / brightness-chip / multi-select / add-side keys
+  (en + es), regenerated localizations.
+- Tests: new `theme_manager_screen_test` + `custom_theme_editor_screen_test`,
+  `custom_theme_test` single/dual group, rewritten `personalization_screen_test`
+  for the slim screen. Full suite green; `flutter analyze` clean.
+
 ### Fixed
 - **Custom theme JSON import now detects light/dark and stops defaulting to
   purple.** The importer only understood Uxnan's own `{light, dark}` document;
