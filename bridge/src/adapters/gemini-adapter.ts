@@ -75,6 +75,14 @@ const GEMINI_CAPABILITIES: AgentCapabilities = {
 const GEMINI_CONTEXT_WINDOW = 1_048_576;
 
 /**
+ * Timeout (seconds) for the injected `BeforeTool` approval hook. Mirrors the
+ * Claude adapter: raise it well above the CLI's short default so a backgrounded
+ * phone can reconnect and answer before the CLI aborts the hook (defaulting the
+ * tool to deny and making the agent take an unauthorized default).
+ */
+const APPROVAL_HOOK_TIMEOUT_SECONDS = 1800;
+
+/**
  * Curated Gemini model set. The Gemini CLI exposes **no headless enumerate
  * command** (like Claude Code — only Codex via app-server and OpenCode/pi via
  * their own list commands can enumerate), so we ship a hand-kept table sourced
@@ -600,6 +608,10 @@ export class GeminiAdapter extends BaseAgentAdapter {
           type: 'command',
           name: 'uxnan-approval',
           command: `node "${hook.scriptPath}"`,
+          // Raise the hook timeout above the CLI default so a backgrounded phone
+          // can reconnect and answer before the CLI aborts the hook (which would
+          // default the tool to deny).
+          timeout: APPROVAL_HOOK_TIMEOUT_SECONDS,
         },
       ],
     };

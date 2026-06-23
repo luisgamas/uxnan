@@ -40,6 +40,17 @@ import {
 import { effortValues, reasoningOption, reasoningValue, withOptions } from './run-options.js';
 import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
 
+/**
+ * Timeout (seconds) for the injected `PreToolUse` approval hook. Claude Code's
+ * default hook timeout is ~60s; without raising it Claude aborts the hook (and
+ * the tool defaults to deny) long before a backgrounded phone can reconnect and
+ * answer the approval — making the agent take an unauthorized default and the
+ * turn appear "cut". A generous cap lets the user return and answer; the bridge
+ * still auto-rejects after its own (connection-aware) window once a phone is
+ * connected. The total wait is bounded by this value, after which Claude denies.
+ */
+const APPROVAL_HOOK_TIMEOUT_SECONDS = 1800;
+
 const CLAUDE_CAPABILITIES: AgentCapabilities = {
   planMode: true,
   streaming: true,
@@ -343,7 +354,16 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
           PreToolUse: [
             {
               matcher: '*',
-              hooks: [{ type: 'command', command: `node "${this.#approvalHook!.scriptPath}"` }],
+              hooks: [
+                {
+                  type: 'command',
+                  command: `node "${this.#approvalHook!.scriptPath}"`,
+                  // Raise the hook timeout well above Claude's ~60s default so a
+                  // backgrounded phone can reconnect and answer before Claude
+                  // aborts the hook (which would default the tool to deny).
+                  timeout: APPROVAL_HOOK_TIMEOUT_SECONDS,
+                },
+              ],
             },
           ],
         },

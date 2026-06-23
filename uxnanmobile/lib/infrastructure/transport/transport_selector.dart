@@ -43,14 +43,25 @@ class DirectTransportSelector implements TransportSelector {
     //    so an unreachable address — e.g. a virtual NIC — doesn't stall us).
     for (final host in device.hosts) {
       final transport = _createTransport();
+      // FOR-DEV: Bug A diagnostic — time each transport attempt so we can see
+      // where post-resume relink latency goes (see uxnanmobile/FOR-DEV.md).
+      final sw = Stopwatch()..start();
       try {
         await transport.connect(_directUrl(host)).timeout(_directTimeout);
+        AppLogger.info(
+          '[reconn] direct "$host" connected in '
+          '${sw.elapsedMilliseconds}ms',
+        );
         return transport;
       } on Object catch (error) {
-        AppLogger.info('Direct host "$host" unreachable: $error');
+        AppLogger.info(
+          '[reconn] direct "$host" unreachable in '
+          '${sw.elapsedMilliseconds}ms: $error',
+        );
         await transport.disconnect().catchError((_) {});
       }
     }
+    AppLogger.info('[reconn] all direct hosts failed → relay fallback');
 
     // 2. Relay fallback (WAN), routed with the session headers. Bounded by
     //    [_relayTimeout] so an unreachable relay never hangs the caller.
@@ -61,6 +72,7 @@ class DirectTransportSelector implements TransportSelector {
       );
     }
     final transport = _createTransport();
+    final sw = Stopwatch()..start();
     try {
       await transport.connect(
         device.relayUrl,
@@ -69,8 +81,13 @@ class DirectTransportSelector implements TransportSelector {
           'x-session-id': device.sessionId,
         },
       ).timeout(_relayTimeout);
+      AppLogger.info('[reconn] relay connected in ${sw.elapsedMilliseconds}ms');
       return transport;
     } on Object catch (error) {
+      AppLogger.info(
+        '[reconn] relay fallback failed in '
+        '${sw.elapsedMilliseconds}ms: $error',
+      );
       await transport.disconnect().catchError((_) {});
       throw TransportException(
         TransportErrorKind.connection,

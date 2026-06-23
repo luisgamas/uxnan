@@ -6,6 +6,16 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — `[reconn]` diagnostic logs for Bug A (relink latency after resume)
+- Temporary, greppable `[reconn]` timing logs at the resume/reconnect sites
+  (`SessionCoordinator.resume` / `verifyConnection` / `_runReconnectLoop` /
+  `_dropAndReconnect` / `_heartbeatTick` and `DirectTransportSelector.select`)
+  to pin where the post-"recents" relink spends its time before changing the
+  reconnect logic. No behavior change; logs are suppressed unless built with
+  `--dart-define=ENABLE_LOGGING=true`. Tracked (with capture steps + recovery
+  session IDs) in `uxnanmobile/FOR-DEV.md` → "Bug A". To be removed once the
+  root cause is fixed.
+
 ### Fixed — QR scanner (and FCM push) broken in `--release` by R8 stripping
 - **Root cause:** AGP 9 enables R8/minification by default for `release`, and
   in full mode it stripped the no-arg constructors of the reflectively-
