@@ -169,7 +169,7 @@ class _CustomThemesSection extends ConsumerWidget {
           SwitchListTile.adaptive(
             value: useCustom,
             onChanged: (next) =>
-                ref.read(useCustomThemeProvider.notifier).set(next),
+                ref.read(useCustomThemeProvider.notifier).set(value: next),
             title: Text(l10n.personalizationUseCustomThemeLabel),
             subtitle: Text(l10n.personalizationUseCustomThemeSubtitle),
             secondary: Icon(
@@ -301,7 +301,7 @@ class _CustomThemesCollapsibleState
         ),
         childrenPadding: EdgeInsets.zero,
         onExpansionChanged: (next) {
-          ref.read(customThemesExpandedProvider.notifier).set(next);
+          ref.read(customThemesExpandedProvider.notifier).set(value: next);
         },
         children: [
           for (var i = 0; i < widget.themes.length; i++) ...[
@@ -337,7 +337,7 @@ class _CustomThemeRow extends ConsumerWidget {
 
   Future<void> _activate(WidgetRef ref) async {
     await ref.read(activeCustomThemeIdProvider.notifier).set(theme.id);
-    await ref.read(useCustomThemeProvider.notifier).set(true);
+    await ref.read(useCustomThemeProvider.notifier).set(value: true);
   }
 
   Future<void> _openEditor(BuildContext context) async {
@@ -393,12 +393,9 @@ class _CustomThemeRow extends ConsumerWidget {
     // is unmounted by the library's state change and `ref` becomes a dead
     // handle (Riverpod asserts). Working from the captured notifiers keeps
     // the post-delete `active`/`useCustom` cleanup safe.
-    final libraryNotifier =
-        ref.read(customThemesLibraryProvider.notifier);
-    final activeNotifier =
-        ref.read(activeCustomThemeIdProvider.notifier);
-    final useCustomNotifier =
-        ref.read(useCustomThemeProvider.notifier);
+    final libraryNotifier = ref.read(customThemesLibraryProvider.notifier);
+    final activeNotifier = ref.read(activeCustomThemeIdProvider.notifier);
+    final useCustomNotifier = ref.read(useCustomThemeProvider.notifier);
     final wasActive = isActive;
     final themeId = theme.id;
     if (isBuiltInCustomThemeId(themeId)) {
@@ -432,7 +429,7 @@ class _CustomThemeRow extends ConsumerWidget {
     final removed = await libraryNotifier.remove(themeId);
     if (removed && wasActive) {
       await activeNotifier.set(null);
-      await useCustomNotifier.set(false);
+      await useCustomNotifier.set(value: false);
     }
   }
 
@@ -596,7 +593,6 @@ class _Dot extends StatelessWidget {
           shape: BoxShape.circle,
           border: Border.all(
             color: outline.withValues(alpha: 0.5),
-            width: 1,
           ),
         ),
       ),
@@ -651,7 +647,10 @@ class _CustomThemesNewThemeRow extends ConsumerWidget {
   /// primary is then forced to the seed itself so the user sees exactly the
   /// color they picked in the picker (instead of the seed-derived offset).
   static ColorScheme _schemeFromSeed(Color seed, Brightness brightness) {
-    final derived = ColorScheme.fromSeed(seedColor: seed, brightness: brightness);
+    final derived = ColorScheme.fromSeed(
+      seedColor: seed,
+      brightness: brightness,
+    );
     return derived.copyWith(primary: seed);
   }
 
@@ -699,9 +698,9 @@ class _ImportThemeRow extends ConsumerWidget {
     var failed = 0;
     try {
       final dynamic decoded = jsonDecode(result.trim());
-      final List<dynamic> entries = switch (decoded) {
-        List<dynamic> list => list,
-        Map<String, dynamic> map => [map],
+      final entries = switch (decoded) {
+        final List<dynamic> list => list,
+        final Map<String, dynamic> map => [map],
         _ => const <dynamic>[],
       };
       if (entries.isEmpty) {
@@ -769,7 +768,7 @@ class _ImportThemeRow extends ConsumerWidget {
     final hasActive = ref.read(activeCustomThemeIdProvider) != null;
     if (!hasActive) {
       await ref.read(activeCustomThemeIdProvider.notifier).set(addedIds.first);
-      await ref.read(useCustomThemeProvider.notifier).set(true);
+      await ref.read(useCustomThemeProvider.notifier).set(value: true);
     }
   }
 
@@ -944,8 +943,8 @@ class _ImportDialogState extends State<_ImportDialog> {
                     hintText: widget.hint,
                     filled: true,
                     fillColor: colors.surfaceContainerHigh,
-                    border: OutlineInputBorder(
-                      borderRadius: const BorderRadius.all(UxnanRadius.md),
+                    border: const OutlineInputBorder(
+                      borderRadius: BorderRadius.all(UxnanRadius.md),
                       borderSide: BorderSide.none,
                     ),
                     contentPadding: const EdgeInsets.all(UxnanSpacing.md),
@@ -1135,12 +1134,10 @@ class _NewThemeDialogState extends State<_NewThemeDialog> {
             ),
             Slider(
               value: _hsv.saturation,
-              max: 1,
               onChanged: (s) => setState(() => _hsv = _hsv.withSaturation(s)),
             ),
             Slider(
               value: _hsv.value,
-              max: 1,
               onChanged: (v) => setState(() => _hsv = _hsv.withValue(v)),
             ),
             const SizedBox(height: UxnanSpacing.md),
@@ -1236,16 +1233,14 @@ class _ExportSheet extends StatelessWidget {
               icon: Icons.copy_rounded,
               label: copyLabel,
               color: colors,
-              onTap: () => Navigator.of(context)
-                  .pop(_ExportSheetAction.copy),
+              onTap: () => Navigator.of(context).pop(_ExportSheetAction.copy),
             ),
             const SizedBox(height: UxnanSpacing.xs),
             _ExportTile(
               icon: Icons.save_alt_rounded,
               label: fileLabel,
               color: colors,
-              onTap: () => Navigator.of(context)
-                  .pop(_ExportSheetAction.file),
+              onTap: () => Navigator.of(context).pop(_ExportSheetAction.file),
             ),
           ],
         ),
@@ -1318,7 +1313,7 @@ class _HueSlider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return DecoratedBox(
       decoration: const BoxDecoration(
         borderRadius: BorderRadius.all(UxnanRadius.full),
         gradient: LinearGradient(colors: _stops),
@@ -1329,11 +1324,10 @@ class _HueSlider extends StatelessWidget {
           thumbColor: Colors.white,
           activeTrackColor: Colors.transparent,
           inactiveTrackColor: Colors.transparent,
-          thumbShape: RoundSliderThumbShape(enabledThumbRadius: 10),
+          thumbShape: RoundSliderThumbShape(),
         ),
         child: Slider(
           value: hue,
-          min: 0,
           max: 360,
           onChanged: onChanged,
         ),
@@ -1355,8 +1349,9 @@ String _themeFileName(String themeName) {
 String _libraryFileName() {
   final now = DateTime.now();
   String two(int n) => n.toString().padLeft(2, '0');
-  final stamp =
-      '${now.year}${two(now.month)}${two(now.day)}-${two(now.hour)}${two(now.minute)}';
+  final date = '${now.year}${two(now.month)}${two(now.day)}';
+  final time = '${two(now.hour)}${two(now.minute)}';
+  final stamp = '$date-$time';
   return 'uxnan-themes-$stamp.json';
 }
 
@@ -1365,7 +1360,7 @@ String _libraryFileName() {
 /// blank.
 String _slugify(String input) {
   final lower = input.toLowerCase().trim();
-  final replaced = lower.replaceAll(RegExp(r'[^a-z0-9]+'), '-');
+  final replaced = lower.replaceAll(RegExp('[^a-z0-9]+'), '-');
   final trimmed = replaced.replaceAll(RegExp(r'^-+|-+$'), '');
   return trimmed.isEmpty ? 'theme' : trimmed;
 }

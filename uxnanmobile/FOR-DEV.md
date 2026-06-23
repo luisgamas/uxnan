@@ -6,6 +6,54 @@ Deferred implementation work (code the team/agent will do later). Distinct from
 
 > Convention defined in the root `AGENTS.md` → "Pending developer work".
 
+## FOR-DEV: Bug A — relink latency after returning from "recents" (URGENT, immediate)
+
+**Status:** open. Diagnostic instrumentation is in place (Option 1); the actual
+fix is pending the captured logs.
+
+**Symptom (user-reported, remote/Tailscale LAN-direct setup,
+`relayEnabled:false` on the bridge):** a full app kill → reopen reconnects fast,
+but leaving the app in "recents" for a while → reopen often fails to relink the
+phone↔bridge session for a long time (feels like it never relinks), so the user
+force-kills to get an instant reconnect. The bridge log shows LAN reconnects DO
+happen repeatedly, so this is **relink latency**, not a hard "never reconnects".
+
+**Suspected cause (to confirm with logs):** on resume, `SessionCoordinator.resume`
+runs a 6 s `bridge/status` probe; on a half-open socket it times out → reconnect
+loop with backoff (up to 60 s). Each attempt may also waste time on the
+`DirectTransportSelector` **relay fallback** (`relay.uxnan.io`, 10 s connect +
+15 s handshake) which has no bridge behind it (relay disabled), and/or sit in a
+slow handshake step (15 s) while `resume`'s `_reconnecting` early-return only
+wakes the backoff (a no-op mid-`_establish`).
+
+**Where (deferral sites, all `// FOR-DEV` tagged):**
+- `lib/application/coordinators/session_coordinator.dart` — `resume`,
+  `verifyConnection`, `_runReconnectLoop`, `_dropAndReconnect`, `_heartbeatTick`.
+- `lib/infrastructure/transport/transport_selector.dart` — `DirectTransportSelector.select`.
+
+**Option 1 (prepared, in this commit):** temporary `[reconn]` diagnostic logs at
+the sites above time every step (probe, each reconnect attempt, each transport
+attempt + relay fallback). **To capture:** build with
+`--dart-define=ENABLE_LOGGING=true` (logs are suppressed otherwise — see
+`AppConstants.enableLogging`) and read `adb logcat` while reproducing
+(background → wait → reopen). Then pin the dominant cost and fix
+(candidates: skip/parallelize the dead relay fallback, interrupt a stuck
+`_establish` on resume, shorten the first post-resume backoff). **Remove the
+`[reconn]` logs once root-caused.**
+
+**Recovery context (in case the uxnanmobile chat history is lost — so this can be
+resumed from a new session):**
+- Claude Code session ID: `24aeeeb5-11fc-4a2f-9cb3-8e9362280d44`
+- uxnanmobile thread ID: `09b6668e-6b41-41cc-80a4-9c7e78790260`
+- Related prior evidence (the original report session): Claude Code
+  `71698c0b-6e8d-4207-8dda-9dae48e043db` / mobile thread
+  `4fadeb99-ab18-4ee1-9eb9-535b1fcff3aa`; pi
+  `019eeb97-72cb-7045-9573-478ae5e21ed4` / mobile thread
+  `2d352d74-6e20-4cfd-8205-972f66443930`.
+- The companion bug (tool approvals auto-rejecting while backgrounded) is already
+  FIXED on this branch — see `bridge/CHANGELOG.md` "keep tool approvals pending
+  while the phone is offline".
+
 ## FOR-DEV: keep the R8 keep rules complete (release minification is ON)
 
 `android/app/build.gradle.kts` keeps `isMinifyEnabled = true` +
@@ -915,3 +963,20 @@ the maintainer approves:
    + `ANDROID_KEY_PROPERTIES`, Firebase config files, iOS signing
    cert/provisioning profile + APNs key. List them in `FOR-HUMAN.md` when we
    wire the workflow.
+
+**Status (2026-06-21):** the **verify** workflow is DONE
+(`.github/workflows/ci-mobile.yml`: gen-l10n + l10n drift check, dart format,
+analyze, test — validated locally, 375 tests green). Release signing is wired in
+`android/app/build.gradle.kts` (reads `key.properties`, debug fallback). The
+signed **release** job (AAB → Google Play **internal** track via
+`r0adkll/upload-google-play`) is the remaining piece (`release-mobile.yml`).
+Secrets already loaded: `ANDROID_KEYSTORE_B64`, keystore password/alias/key
+password, `GOOGLE_SERVICES_JSON`, `PLAY_SERVICE_ACCOUNT_JSON_BASE64`. Mobile is
+distributed via **Google Play**, not GitHub Releases.
+
+### Deferred — in-app version checker
+- [ ] Notify the user when a newer app version is available and let them decide
+  to update (no silent install). Paths: (a) while distributed as an APK → poll
+  the GitHub Releases API + show a banner with the download link; (b) on Google
+  Play → the In-App Updates API (flexible/immediate). iOS waits for the App
+  Store path when Apple resumes.

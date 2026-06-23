@@ -20,41 +20,48 @@ analyzer:
     strict-raw-types: true
 
 linter:
+  # Map form (rule: bool) so we can both enable project rules and disable a few
+  # very_good_analysis rules that are package-oriented noise for an *app*.
   rules:
-    # Style rules.
+    # Disabled: these are meant for published libraries, not an application.
+    # They produced ~80 doc-only "issues" with no real quality value here.
+    # Decision recorded in CI_CD_MONOREPOS.md §8 (CI/CD setup).
+    public_member_api_docs: false # would require a /// on every public member
+    comment_references: false # resolves type refs inside doc comments
+    # Style rules (enabled).
     # NOTE: the spec listed both `always_use_package_imports` and
     # `prefer_relative_imports`, which are mutually exclusive. Per the import
     # convention in 03-technical-reference.md §1.5 (full package imports), the
     # project enforces package imports and omits `prefer_relative_imports`.
-    - always_use_package_imports
-    - avoid_dynamic_calls
-    - avoid_print
-    - avoid_relative_lib_imports
-    - avoid_type_to_string
-    - cancel_subscriptions
-    - close_sinks
-    - collection_methods_unrelated_type
-    - combinators_ordering
-    - directives_ordering
-    - eol_at_end_of_file
-    - no_adjacent_strings_in_list
-    - no_literal_bool_comparisons
-    - prefer_const_constructors
-    - prefer_const_declarations
-    - prefer_final_fields
-    - prefer_final_in_for_each
-    - prefer_final_locals
-    - require_trailing_commas
-    - sort_constructors_first
-    - sort_pub_dependencies
-    - unawaited_futures
-    - unnecessary_await_in_return
-    - unnecessary_breaks
-    - unnecessary_lambdas
-    - unnecessary_null_checks
-    - use_colored_box
-    - use_decorated_box
-    - use_enums
-    - use_if_null_to_convert_nulls_to_bools
-    - use_string_buffers
-    - use_super_parameters
+    always_use_package_imports: true
+    avoid_dynamic_calls: true
+    avoid_print: true
+    avoid_relative_lib_imports: true
+    avoid_type_to_string: true
+    cancel_subscriptions: true
+    close_sinks: true
+    collection_methods_unrelated_type: true
+    combinators_ordering: true
+    directives_ordering: true
+    eol_at_end_of_file: true
+    no_adjacent_strings_in_list: true
+    no_literal_bool_comparisons: true
+    prefer_const_constructors: true
+    prefer_const_declarations: true
+    prefer_final_fields: true
+    prefer_final_in_for_each: true
+    prefer_final_locals: true
+    require_trailing_commas: true
+    sort_constructors_first: true
+    sort_pub_dependencies: true
+    unawaited_futures: true
+    unnecessary_await_in_return: true
+    unnecessary_breaks: true
+    unnecessary_lambdas: true
+    unnecessary_null_checks: true
+    use_colored_box: true
+    use_decorated_box: true
+    use_enums: true
+    use_if_null_to_convert_nulls_to_bools: true
+    use_string_buffers: true
+    use_super_parameters: true

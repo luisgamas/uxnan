@@ -13,6 +13,8 @@ import 'package:uxnan/domain/entities/file_browser.dart';
 import 'package:uxnan/domain/enums/git_file_status.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/file_browser_providers.dart';
+import 'package:uxnan/presentation/screens/conversation/files/file_browser_screen.dart'
+    show FileBrowserScreen;
 import 'package:uxnan/presentation/screens/conversation/files/widgets/file_diff_viewer.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
@@ -289,7 +291,8 @@ class _FileViewerScreenState extends ConsumerState<FileViewerScreen> {
                         if (_saving)
                           const Padding(
                             padding: EdgeInsets.symmetric(
-                                horizontal: UxnanSpacing.md),
+                              horizontal: UxnanSpacing.md,
+                            ),
                             child: SizedBox(
                               width: 20,
                               height: 20,
@@ -642,7 +645,6 @@ class _CodeBody extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final theme = isDark ? atomOneDarkTheme : atomOneLightTheme;
     return SingleChildScrollView(
-      scrollDirection: Axis.vertical,
       padding: EdgeInsets.fromLTRB(
         UxnanSpacing.lg,
         topInset + UxnanSpacing.sm,

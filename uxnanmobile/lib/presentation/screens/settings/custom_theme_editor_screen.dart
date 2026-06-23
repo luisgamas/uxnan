@@ -121,15 +121,13 @@ class _CustomThemeEditorScreenState
     await ref.read(customThemesLibraryProvider.notifier).upsert(next);
     if (isNew) {
       await ref.read(activeCustomThemeIdProvider.notifier).set(next.id);
-      await ref.read(useCustomThemeProvider.notifier).set(true);
+      await ref.read(useCustomThemeProvider.notifier).set(value: true);
       // Sync the global theme mode to the brightness the user picked in
       // the new-theme dialog so the matching side of the theme is the
       // one Material applies (a custom dark theme must not be hidden
       // behind a system-mode + system-brightness-light combo).
       await ref.read(themeModeSettingProvider.notifier).set(
-            _brightness == Brightness.light
-                ? ThemeMode.light
-                : ThemeMode.dark,
+            _brightness == Brightness.light ? ThemeMode.light : ThemeMode.dark,
           );
     }
     if (mounted) Navigator.of(context).pop(next);
@@ -353,8 +351,8 @@ class _NameField extends StatelessWidget {
         hintText: hint,
         filled: true,
         fillColor: colors.surfaceContainerHigh,
-        border: OutlineInputBorder(
-          borderRadius: const BorderRadius.all(UxnanRadius.md),
+        border: const OutlineInputBorder(
+          borderRadius: BorderRadius.all(UxnanRadius.md),
           borderSide: BorderSide.none,
         ),
         contentPadding: const EdgeInsets.symmetric(
@@ -872,7 +870,6 @@ class _RoleRow extends StatelessWidget {
                 shape: BoxShape.circle,
                 border: Border.all(
                   color: scheme.outline.withValues(alpha: 0.5),
-                  width: 1,
                 ),
               ),
             ),
@@ -927,13 +924,11 @@ class _SeedDialogState extends State<_SeedDialog> {
             const SizedBox(height: UxnanSpacing.sm),
             Slider(
               value: _hsv.saturation,
-              max: 1,
               label: 'Saturation',
               onChanged: (s) => setState(() => _hsv = _hsv.withSaturation(s)),
             ),
             Slider(
               value: _hsv.value,
-              max: 1,
               label: 'Value',
               onChanged: (v) => setState(() => _hsv = _hsv.withValue(v)),
             ),
@@ -1097,8 +1092,8 @@ class _ImportDialogState extends State<_ImportDialog> {
                     hintText: widget.hint,
                     filled: true,
                     fillColor: colors.surfaceContainerHigh,
-                    border: OutlineInputBorder(
-                      borderRadius: const BorderRadius.all(UxnanRadius.md),
+                    border: const OutlineInputBorder(
+                      borderRadius: BorderRadius.all(UxnanRadius.md),
                       borderSide: BorderSide.none,
                     ),
                     contentPadding: const EdgeInsets.all(UxnanSpacing.md),
@@ -1153,7 +1148,7 @@ class HueSlider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return DecoratedBox(
       decoration: const BoxDecoration(
         borderRadius: BorderRadius.all(UxnanRadius.full),
         gradient: LinearGradient(colors: _stops),
@@ -1164,11 +1159,10 @@ class HueSlider extends StatelessWidget {
           thumbColor: Colors.white,
           activeTrackColor: Colors.transparent,
           inactiveTrackColor: Colors.transparent,
-          thumbShape: RoundSliderThumbShape(enabledThumbRadius: 10),
+          thumbShape: RoundSliderThumbShape(),
         ),
         child: Slider(
           value: hue,
-          min: 0,
           max: 360,
           onChanged: onChanged,
         ),
@@ -1182,7 +1176,7 @@ class HueSlider extends StatelessWidget {
 /// blank. Used by the export-to-file flow.
 String _slugify(String input) {
   final lower = input.toLowerCase().trim();
-  final replaced = lower.replaceAll(RegExp(r'[^a-z0-9]+'), '-');
+  final replaced = lower.replaceAll(RegExp('[^a-z0-9]+'), '-');
   final trimmed = replaced.replaceAll(RegExp(r'^-+|-+$'), '');
   return trimmed.isEmpty ? 'theme' : trimmed;
 }

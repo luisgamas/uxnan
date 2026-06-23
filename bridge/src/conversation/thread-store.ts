@@ -448,9 +448,7 @@ function toThread(thread: StoredThread): Thread {
     ...(thread.cwd !== undefined ? { cwd: thread.cwd } : {}),
     // The agent's NATIVE session id (Claude `session_id`, OpenCode `sessionID`,
     // …) so the phone can show "resume from the CLI" beyond the thread id.
-    ...(thread.agentSessionId !== undefined
-      ? { agentSessionId: thread.agentSessionId }
-      : {}),
+    ...(thread.agentSessionId !== undefined ? { agentSessionId: thread.agentSessionId } : {}),
     ...(thread.accessMode !== undefined ? { accessMode: thread.accessMode } : {}),
   };
 }

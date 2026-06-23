@@ -48,7 +48,7 @@ void main() {
 
   test('returns null when no usable host or port is known', () {
     expect(
-      parseDiscoveredBridge(name: 'x', host: '', port: null),
+      parseDiscoveredBridge(name: 'x', host: ''),
       isNull,
     );
     expect(

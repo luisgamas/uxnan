@@ -105,12 +105,23 @@ test('parseOpenCodeLine maps the documented event shapes', () => {
 test('openCodeUsageTokens prefers total, then buckets, then numeric fields', () => {
   // real shape: { total, input, output, reasoning, cache } — prefer total
   assert.equal(
-    openCodeUsageTokens({ total: 17266, input: 17253, output: 2, reasoning: 11, cache: { read: 0, write: 0 } }),
+    openCodeUsageTokens({
+      total: 17266,
+      input: 17253,
+      output: 2,
+      reasoning: 11,
+      cache: { read: 0, write: 0 },
+    }),
     17266,
   );
   // no total: sum input + output + reasoning (cache read/write are subsets)
   assert.equal(
-    openCodeUsageTokens({ input: 1200, output: 300, reasoning: 50, cache: { read: 900, write: 0 } }),
+    openCodeUsageTokens({
+      input: 1200,
+      output: 300,
+      reasoning: 50,
+      cache: { read: 900, write: 0 },
+    }),
     1550,
   );
   // unknown shape: sum any top-level numeric fields
@@ -202,9 +213,11 @@ test('OpenCodeAdapter emits usage.contextWindow from the verbose model cache', a
 
   const events = await done;
   const completed = events.find((e) => e.type === 'turn_completed');
-  const usage = (completed?.data as {
-    usage?: { tokens: number; contextWindow?: number };
-  }).usage;
+  const usage = (
+    completed?.data as {
+      usage?: { tokens: number; contextWindow?: number };
+    }
+  ).usage;
   assert.equal(usage?.tokens, 17266);
   assert.equal(usage?.contextWindow, 200000);
 });

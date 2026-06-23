@@ -106,11 +106,7 @@ const CODEX_CAPABILITIES: AgentCapabilities = {
  *  - `interactive`       → workspace writes allowed; the user is asked (this
  *                          is the recommended default for production use).
  */
-export type CodexPermissionMode =
-  | 'default'
-  | 'acceptEdits'
-  | 'bypassPermissions'
-  | 'interactive';
+export type CodexPermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'interactive';
 
 /** Internal: the `askForApproval` value passed to `thread/start`. */
 type ApprovalPolicy = 'untrusted' | 'on-failure' | 'on-request' | 'never';
@@ -125,9 +121,10 @@ type SandboxPolicy = 'read-only' | 'workspace-write' | 'danger-full-access';
  * whole point of the app-server refactor) — the previous `acceptEdits`
  * default silently auto-approved everything.
  */
-function permissionToPolicies(
-  mode: CodexPermissionMode,
-): { approvalPolicy: ApprovalPolicy; sandbox: SandboxPolicy } {
+function permissionToPolicies(mode: CodexPermissionMode): {
+  approvalPolicy: ApprovalPolicy;
+  sandbox: SandboxPolicy;
+} {
   switch (mode) {
     case 'default':
       return { approvalPolicy: 'untrusted', sandbox: 'read-only' };
@@ -248,10 +245,7 @@ export function codexUsageTokens(usage: unknown): number | undefined {
  * production; tests inject a `spawnAppServer` that wires a fake app-server
  * (NDJSON over a PassThrough) so the JSON-RPC client can be exercised.
  */
-function defaultSpawnAppServer(
-  binaryPath: string,
-  prependArgs: string[],
-): () => SpawnedAppServer {
+function defaultSpawnAppServer(binaryPath: string, prependArgs: string[]): () => SpawnedAppServer {
   return () => {
     const child = spawn(binaryPath, [...prependArgs, 'app-server'], {
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -297,10 +291,7 @@ export class CodexAdapter extends BaseAgentAdapter {
   #appServerInit: Promise<CodexAppServerRpc> | null = null;
   /** Pending approvals keyed by the bridge's `approvalId`; the server request id
    * is captured so the reply is shaped with the right `ReviewDecision` kind. */
-  #pendingApprovals = new Map<
-    string,
-    { kind: ApprovalKind; serverRequestId: number | string }
-  >();
+  #pendingApprovals = new Map<string, { kind: ApprovalKind; serverRequestId: number | string }>();
   #approvalSeq = 0;
 
   /** Native Codex thread id for a thread (on-disk history-fallback locator). */
@@ -564,8 +555,7 @@ export class CodexAdapter extends BaseAgentAdapter {
         // An error notification is rare but the app-server uses it for
         // catastrophic failures (e.g. context overflow). Surface to the
         // current in-flight turn.
-        const message =
-          typeof p['message'] === 'string' ? p['message'] : 'codex app-server error';
+        const message = typeof p['message'] === 'string' ? p['message'] : 'codex app-server error';
         this.#emitTurnErrorForActive(message);
         return;
       }
@@ -594,13 +584,20 @@ export class CodexAdapter extends BaseAgentAdapter {
         // (others only via deltas). Surface anything we haven't already
         // streamed.
         const text = codexReasoningText(item);
-        if (text) this.emit({ type: 'thinking', threadId: run.threadId, turnId: run.bridgeTurnId, data: { text } });
+        if (text)
+          this.emit({
+            type: 'thinking',
+            threadId: run.threadId,
+            turnId: run.bridgeTurnId,
+            data: { text },
+          });
         return;
       }
       case 'commandExecution': {
         const exit = item['exitCode'];
         const isError = item['status'] === 'failed' || (typeof exit === 'number' && exit !== 0);
-        const output = typeof item['aggregatedOutput'] === 'string' ? (item['aggregatedOutput'] as string) : '';
+        const output =
+          typeof item['aggregatedOutput'] === 'string' ? (item['aggregatedOutput'] as string) : '';
         const command = typeof item['command'] === 'string' ? (item['command'] as string) : '';
         if (command) {
           this.emit({
@@ -621,8 +618,9 @@ export class CodexAdapter extends BaseAgentAdapter {
             }))
           : [];
         for (const change of changes) {
-          const name =
-            isAbsolutePath(change.path) ? relative(this.#defaultCwd, change.path) || change.path : change.path;
+          const name = isAbsolutePath(change.path)
+            ? relative(this.#defaultCwd, change.path) || change.path
+            : change.path;
           // The app-server already attaches the unified diff (unlike the
           // `exec --json` path which only carried the path); use it directly
           // when present, else fall back to reading the file.
@@ -631,7 +629,12 @@ export class CodexAdapter extends BaseAgentAdapter {
             content = unifiedDiffBlock(name, change.diff);
           } else if (change.kind !== 'delete') {
             try {
-              const { stdout } = await runGit(this.#defaultCwd, ['diff', 'HEAD', '--', change.path]);
+              const { stdout } = await runGit(this.#defaultCwd, [
+                'diff',
+                'HEAD',
+                '--',
+                change.path,
+              ]);
               if (stdout.trim().length > 0) content = unifiedDiffBlock(name, stdout);
             } catch {
               /* not a git repo / no HEAD */
@@ -645,7 +648,12 @@ export class CodexAdapter extends BaseAgentAdapter {
             }
           }
           content ??= fileChangeBlock(change.path);
-          this.emit({ type: 'block', threadId: run.threadId, turnId: run.bridgeTurnId, data: { content } });
+          this.emit({
+            type: 'block',
+            threadId: run.threadId,
+            turnId: run.bridgeTurnId,
+            data: { content },
+          });
         }
         return;
       }
@@ -656,7 +664,15 @@ export class CodexAdapter extends BaseAgentAdapter {
           type: 'block',
           threadId: run.threadId,
           turnId: run.bridgeTurnId,
-          data: { content: toolBlock(name, typeof item['id'] === 'string' ? (item['id'] as string) : '', {}, output, item['status'] === 'failed') },
+          data: {
+            content: toolBlock(
+              name,
+              typeof item['id'] === 'string' ? (item['id'] as string) : '',
+              {},
+              output,
+              item['status'] === 'failed',
+            ),
+          },
         });
         return;
       }
@@ -685,8 +701,15 @@ export class CodexAdapter extends BaseAgentAdapter {
     this.#active.delete(run.bridgeTurnId);
     if (status === 'failed' || error) {
       const message =
-        error && typeof error['message'] === 'string' ? (error['message'] as string) : 'codex turn failed';
-      this.emit({ type: 'turn_error', threadId: run.threadId, turnId: run.bridgeTurnId, data: { text: message } });
+        error && typeof error['message'] === 'string'
+          ? (error['message'] as string)
+          : 'codex turn failed';
+      this.emit({
+        type: 'turn_error',
+        threadId: run.threadId,
+        turnId: run.bridgeTurnId,
+        data: { text: message },
+      });
       return;
     }
     const usage = isRecord(turn['tokenUsage']) ? turn['tokenUsage'] : undefined;
@@ -740,13 +763,23 @@ export class CodexAdapter extends BaseAgentAdapter {
   #emitThinking(_p: Record<string, unknown>, delta: string): void {
     const run = this.#currentRun();
     if (!run) return;
-    this.emit({ type: 'thinking', threadId: run.threadId, turnId: run.turnId, data: { text: delta } });
+    this.emit({
+      type: 'thinking',
+      threadId: run.threadId,
+      turnId: run.turnId,
+      data: { text: delta },
+    });
   }
 
   #emitTurnErrorForActive(message: string): void {
     const run = this.#currentRun();
     if (!run) return;
-    this.emit({ type: 'turn_error', threadId: run.threadId, turnId: run.turnId, data: { text: message } });
+    this.emit({
+      type: 'turn_error',
+      threadId: run.threadId,
+      turnId: run.turnId,
+      data: { text: message },
+    });
   }
 
   /**
@@ -766,7 +799,9 @@ export class CodexAdapter extends BaseAgentAdapter {
   }
 
   /** Run a Codex approval through the bridge's approval round-trip. */
-  async #routeApproval(draft: Omit<PendingCodexApproval, 'serverRequestId'> & { serverRequestId: number | string }): Promise<unknown> {
+  async #routeApproval(
+    draft: Omit<PendingCodexApproval, 'serverRequestId'> & { serverRequestId: number | string },
+  ): Promise<unknown> {
     if (!this.#onApprovalRequest) {
       // No bridge callback wired (unit test, or a caller that didn't pass
       // `onApprovalRequest`): default to denying to fail safe.

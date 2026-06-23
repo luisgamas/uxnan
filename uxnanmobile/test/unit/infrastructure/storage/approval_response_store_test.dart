@@ -112,7 +112,7 @@ void main() {
       SharedPreferences.setMockInitialValues({
         'uxnan.approval.responses':
             '{"good":{"decision":"approve","decidedAtMs":1},'
-            '"bad":"oops","missing-decision":{"decidedAtMs":2}}',
+                '"bad":"oops","missing-decision":{"decidedAtMs":2}}',
       });
       final store = ApprovalResponseStore();
       final all = await store.readAll();

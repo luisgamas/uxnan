@@ -3,7 +3,8 @@
   "private": true,
   "version": "0.0.0",
   "description": "Uxnan ecosystem — Node.js workspaces (shared contracts, bridge daemon, relay).",
-  "license": "UNLICENSED",
+  "license": "MPL-2.0",
+  "author": "Luis Donaldo Gamas Vazquez",
   "workspaces": [
     "shared",
     "bridge",

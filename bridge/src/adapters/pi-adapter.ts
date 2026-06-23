@@ -359,8 +359,7 @@ export class PiAdapter extends BaseAgentAdapter {
         });
         return;
       }
-      const contextWindow =
-        model !== undefined ? this.#contextWindowByModel.get(model) : undefined;
+      const contextWindow = model !== undefined ? this.#contextWindowByModel.get(model) : undefined;
       const usage =
         tokens !== undefined
           ? { tokens, ...(contextWindow !== undefined ? { contextWindow } : {}) }

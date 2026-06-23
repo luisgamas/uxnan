@@ -706,6 +706,22 @@ reference; this phase embeds it.
 CI uses `npm ci`. `cargo test` needs the SPA built first (the Tauri
 `generate_context!` reads `frontendDist = ../build`).
 
+### Status (2026-06-21) + deferred follow-ups
+- ✅ **Verify workflow DONE** — `.github/workflows/ci-desktop.yml` runs the gate
+  above on `{ubuntu, windows}` (macOS deferred with Apple). Validated locally
+  (svelte-check, vite build, cargo fmt/clippy/test — 59 tests green).
+- [ ] **`release-desktop.yml`** — still TODO (tauri-action bundles on a
+  `desktop-v*` tag → draft GitHub Release). Windows ships unsigned for now.
+- [ ] **Auto-updater (real)** — DEFERRED by decision; when built it will be a
+  real auto-update via `tauri-plugin-updater`: add the plugin + an `updater`
+  block in `tauri.conf.json`, generate the signing keypair
+  (`TAURI_SIGNING_PRIVATE_KEY` + `_PASSWORD` secrets, pubkey in config) and host
+  `latest.json` (the GitHub Release "latest" URL). Until then installers are
+  downloaded manually.
+- [ ] **In-app version checker** — DEFERRED. A lightweight check against the
+  GitHub Releases API (or the updater plugin once enabled) that *notifies* the
+  user of a newer version and lets them decide to update — no silent install.
+
 ---
 
 ## Cross-cutting / standing rules

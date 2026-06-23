@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uxnan/application/services/git_status_bus.dart';
 import 'package:uxnan/domain/entities/git/git_repo_state.dart';
@@ -17,10 +15,12 @@ void main() {
     final subA = bus.changes.listen(received.add);
     final subB = bus.changes.listen((_) {});
 
-    bus.emit(GitStatusChange(
-      cwd: '/repo',
-      state: const GitRepoState(branch: 'main'),
-    ));
+    bus.emit(
+      const GitStatusChange(
+        cwd: '/repo',
+        state: GitRepoState(branch: 'main'),
+      ),
+    );
     await _settle();
 
     expect(received, hasLength(1));
@@ -33,11 +33,13 @@ void main() {
   });
 
   test('late subscribers do not receive a replay', () async {
-    final bus = GitStatusBus();
-    bus.emit(GitStatusChange(
-      cwd: '/repo',
-      state: const GitRepoState(branch: 'main'),
-    ));
+    final bus = GitStatusBus()
+      ..emit(
+        const GitStatusChange(
+          cwd: '/repo',
+          state: GitRepoState(branch: 'main'),
+        ),
+      );
     await _settle();
 
     final received = <GitStatusChange>[];
@@ -53,17 +55,19 @@ void main() {
     final bus = GitStatusBus();
     await bus.dispose();
     expect(
-      () => bus.emit(GitStatusChange(
-        cwd: '/repo',
-        state: const GitRepoState(branch: 'main'),
-      )),
+      () => bus.emit(
+        const GitStatusChange(
+          cwd: '/repo',
+          state: GitRepoState(branch: 'main'),
+        ),
+      ),
       returnsNormally,
     );
   });
 
   test('payload preserves the full GitRepoState', () async {
     final bus = GitStatusBus();
-    final state = const GitRepoState(
+    const state = GitRepoState(
       branch: 'feat/x',
       upstream: 'origin/feat/x',
       isDirty: true,
@@ -73,7 +77,7 @@ void main() {
     GitStatusChange? captured;
     final sub = bus.changes.listen((c) => captured = c);
 
-    bus.emit(GitStatusChange(cwd: '/repo', state: state));
+    bus.emit(const GitStatusChange(cwd: '/repo', state: state));
     await _settle();
 
     expect(captured, isNotNull);
@@ -91,19 +95,21 @@ void main() {
     final sub = bus.changes.listen(received.add);
 
     for (var i = 0; i < 3; i++) {
-      bus.emit(GitStatusChange(
-        cwd: '/repo',
-        state: GitRepoState(
-          branch: 'main',
-          changedFiles: [
-            if (i > 0)
-              const GitChangedFile(
-                path: 'a.dart',
-                status: GitFileStatus.modified,
-              ),
-          ],
+      bus.emit(
+        GitStatusChange(
+          cwd: '/repo',
+          state: GitRepoState(
+            branch: 'main',
+            changedFiles: [
+              if (i > 0)
+                const GitChangedFile(
+                  path: 'a.dart',
+                  status: GitFileStatus.modified,
+                ),
+            ],
+          ),
         ),
-      ));
+      );
     }
     await _settle();
 
