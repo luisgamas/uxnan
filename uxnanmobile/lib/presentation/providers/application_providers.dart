@@ -825,8 +825,16 @@ class CustomThemesLibrary extends Notifier<List<CustomTheme>> {
     final store = ref.read(appearancePreferencesStoreProvider);
     final stored = await store.readCustomThemesLibrary();
     if (stored.isNotEmpty) {
-      if (!_listEquals(state, stored)) {
-        state = List<CustomTheme>.unmodifiable(stored);
+      // Built-in themes are app-shipped templates, not user data: always
+      // reconcile them against the current code definition so a stale entry
+      // persisted by an older build (e.g. one with the pre-fix broken derived
+      // dark side) is healed on load. User-authored themes are untouched.
+      final reconciled = _reconcileBuiltIns(stored);
+      if (!_listEquals(state, reconciled)) {
+        state = List<CustomTheme>.unmodifiable(reconciled);
+      }
+      if (!_listEquals(stored, reconciled)) {
+        await store.writeCustomThemesLibrary(reconciled);
       }
       return;
     }
@@ -902,6 +910,33 @@ class CustomThemesLibrary extends Notifier<List<CustomTheme>> {
       if (a[i] != b[i]) return false;
     }
     return true;
+  }
+
+  /// Returns [stored] with every built-in entry replaced by its current code
+  /// definition (and any newly-shipped built-in appended), preserving the order
+  /// and contents of user-authored themes. Built-ins are app-owned, so a stale
+  /// persisted copy (e.g. with an old broken dark side) is healed against the
+  /// shipped definition; user themes pass through untouched.
+  static List<CustomTheme> _reconcileBuiltIns(List<CustomTheme> stored) {
+    final code = {for (final t in kBuiltInCustomThemes) t.id: t};
+    final seen = <String>{};
+    final result = <CustomTheme>[];
+    for (final theme in stored) {
+      final fresh = code[theme.id];
+      if (fresh != null) {
+        result.add(fresh);
+        seen.add(theme.id);
+      } else if (isBuiltInCustomThemeId(theme.id)) {
+        // A built-in id that's no longer shipped — drop it (app-owned).
+        continue;
+      } else {
+        result.add(theme);
+      }
+    }
+    for (final builtIn in kBuiltInCustomThemes) {
+      if (!seen.contains(builtIn.id)) result.add(builtIn);
+    }
+    return result;
   }
 }
 

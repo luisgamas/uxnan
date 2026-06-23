@@ -121,10 +121,16 @@ class _CustomThemeEditorScreenState
   Future<void> _save() async {
     final name = _nameController.text.trim();
     final description = _descriptionController.text.trim();
-    final next = _working.withMetadata(
+    var next = _working.withMetadata(
       name: name.isEmpty ? 'Custom theme' : name,
       description: description,
     );
+    // Built-ins are shipped templates that are reconciled from code on every
+    // load — editing one forks it into a new user theme instead of mutating
+    // (and then silently losing) the shipped entry.
+    if (isBuiltInCustomThemeId(next.id)) {
+      next = next.withId(CustomTheme.freshId());
+    }
     // Auto-activate a brand-new theme (its id is not yet in the library) so the
     // "+ New theme" → editor flow feels like a single gesture. We no longer
     // force the global theme mode: a single-brightness theme is forced to its

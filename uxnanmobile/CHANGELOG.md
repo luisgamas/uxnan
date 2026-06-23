@@ -60,6 +60,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   for the slim screen. Full suite green; `flutter analyze` clean.
 
 ### Fixed
+- **Built-in themes (Midnight / Sandstone) are healed from code on load.** A
+  device that persisted the built-ins under an older build kept their broken
+  dark side (a light-ish copy — dark mode and the dual preview showed light on
+  both sides). Built-ins are app-owned templates, so `CustomThemesLibrary`
+  now reconciles every built-in entry against the current code definition on
+  hydrate (user-authored themes pass through untouched) and rewrites the
+  corrected library. Editing a built-in now forks it into a new user theme so
+  the reconciliation never clobbers a deliberate edit.
 - **Custom theme JSON import now detects light/dark and stops defaulting to
   purple.** The importer only understood Uxnan's own `{light, dark}` document;
   any other shape left both scheme maps empty, and `CustomThemeColors.fromJson`
