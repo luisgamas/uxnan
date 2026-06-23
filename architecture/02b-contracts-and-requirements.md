@@ -141,6 +141,7 @@ git/switchBranch        -> cambiar de rama (con auto-stash)
 git/revert              -> revertir el ultimo commit (git revert, preserva historia)
 git/deleteBranch        -> eliminar rama (refusa unmerged salvo force)
 git/removeWorktree      -> eliminar worktree (refusa dirty salvo force)
+git/log                -> historial de commits (paginado por cursor; parents[] para la vista gráfico)
 ```
 
 **Workspace (9):**

@@ -429,6 +429,23 @@ void main() {
     expect(sentCount, 0);
   });
 
+  testWidgets('ComposerBar autofocuses the text field on first build',
+      (tester) async {
+    await tester.pumpWidget(_wrap(ComposerBar(onSend: (_) {})));
+    await tester.pumpAndSettle();
+
+    // The TextField is created with autofocus: true so the keyboard pops up
+    // the moment the conversation is opened. The tap-outside-to-unfocus
+    // behavior (FocusScope.unfocus in ConversationScreen's GestureDetector)
+    // is unchanged by this flag — autofocus only seeds the initial focus, the
+    // user can still dismiss it by tapping the timeline.
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.autofocus, isTrue);
+    // The EditableText it owns should hold primary focus.
+    final editable = tester.widget<EditableText>(find.byType(EditableText));
+    expect(editable.focusNode.hasPrimaryFocus, isTrue);
+  });
+
   testWidgets('ComposerBar dictates recognized speech into the field',
       (tester) async {
     final speech = _FakeSpeech();

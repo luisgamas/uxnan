@@ -91,6 +91,19 @@ export function registerGitHandlers(router: HandlerRouter): void {
           requireBool(p, 'force'),
         ),
       ),
+    'git/log': (p) => {
+      const cwd = requireString(p, 'cwd');
+      const limit = optionalNumber(p, 'limit');
+      const cursor = optionalString(p, 'cursor');
+      const ref = optionalString(p, 'ref');
+      return gitOp(() =>
+        git.log(cwd, {
+          ...(limit !== undefined ? { limit } : {}),
+          ...(cursor ? { cursor } : {}),
+          ...(ref ? { ref } : {}),
+        }),
+      );
+    },
   };
 
   for (const [method, handler] of Object.entries(handlers)) {
@@ -132,6 +145,15 @@ function requireBool(params: unknown, key: string): boolean {
   const raw = (params as Record<string, unknown> | null)?.[key];
   if (typeof raw !== 'boolean') {
     throw RpcError.invalidParams(`'${key}' must be a boolean`);
+  }
+  return raw;
+}
+
+function optionalNumber(params: unknown, key: string): number | undefined {
+  const raw = (params as Record<string, unknown> | null)?.[key];
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) {
+    throw RpcError.invalidParams(`'${key}' must be a finite number`);
   }
   return raw;
 }

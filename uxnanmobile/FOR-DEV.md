@@ -762,6 +762,23 @@ browser and multi-PC connection correctness are now DONE — see below.)
   rises with the keyboard, inline commit + push-mode buttons), undo-commit, and a
   full-screen smart-PR dialog. Push/PR confirmations are user-toggleable in
   Settings (default on). `git_diff_view.dart` renders the per-file unified diff.
+- ◑ **Git commit history screen** — **DONE (2026-06-21, four PRs).** The
+  `git/log` RPC is wired end-to-end (shared contract + bridge handler +
+  mobile manager) and the mobile UI (`GitHistoryScreen` in
+  `lib/presentation/screens/conversation/git/git_history_screen.dart`)
+  is in place: two views with the same data — a chronological **list**
+  and a GitKraken-style **graph** (lanes assigned by parent continuation,
+  Bézier curves connecting commits) — built on the Neural Expressive
+  design system (`ExpressiveCard` for the rows, `PolygonLoader` for the
+  spinner, `ConnectedButtonGroup` for the list↔graph toggle). Cursor
+  pagination with a *Load older commits* footer, pull-to-refresh, empty
+  + error states. Tapping a row opens a bottom sheet with the full
+  message, author, committer, parents, stats, and **Copy SHA** /
+  **Copy message** actions. The `Icons.history_rounded` button lives
+  in `GitScreen`'s app bar (visible only when a repo is open) and
+  pushes the new screen. Spec: `architecture/02a` §5.8.6 documents
+  `git/log` + the UI; `architecture/02b` lists it in the git-section
+  table.
 - ☑ **Wire the git UI to a live session** — DONE: `GitScreen` reads
   `gitRepoStateProvider` and runs real commit/push/discard/PR/switch against the
   active thread's `cwd`. `GitRepoState.sample()` is retained only as a widget-test

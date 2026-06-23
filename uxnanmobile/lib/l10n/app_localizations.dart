@@ -512,6 +512,24 @@ abstract class AppLocalizations {
   /// **'All'**
   String get threadsFilterAll;
 
+  /// No description provided for @threadsFilterByAgent.
+  ///
+  /// In en, this message translates to:
+  /// **'Agent'**
+  String get threadsFilterByAgent;
+
+  /// No description provided for @threadsFilterByProject.
+  ///
+  /// In en, this message translates to:
+  /// **'Project'**
+  String get threadsFilterByProject;
+
+  /// No description provided for @threadsFilterScopeTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Filter scope'**
+  String get threadsFilterScopeTooltip;
+
   /// No description provided for @threadsViewOptions.
   ///
   /// In en, this message translates to:
@@ -1832,6 +1850,168 @@ abstract class AppLocalizations {
   /// **'Switched to {branch}'**
   String gitSwitchSuccess(String branch);
 
+  /// No description provided for @gitHistoryTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'History'**
+  String get gitHistoryTitle;
+
+  /// No description provided for @gitHistoryButton.
+  ///
+  /// In en, this message translates to:
+  /// **'View history'**
+  String get gitHistoryButton;
+
+  /// No description provided for @gitHistoryListView.
+  ///
+  /// In en, this message translates to:
+  /// **'List'**
+  String get gitHistoryListView;
+
+  /// No description provided for @gitHistoryGraphView.
+  ///
+  /// In en, this message translates to:
+  /// **'Graph'**
+  String get gitHistoryGraphView;
+
+  /// No description provided for @gitHistoryViewTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Toggle view'**
+  String get gitHistoryViewTooltip;
+
+  /// No description provided for @gitHistoryEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No commits yet'**
+  String get gitHistoryEmpty;
+
+  /// No description provided for @gitHistoryEmptyBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Once you commit changes they\'ll show up here.'**
+  String get gitHistoryEmptyBody;
+
+  /// No description provided for @gitHistoryLoadMore.
+  ///
+  /// In en, this message translates to:
+  /// **'Load older commits'**
+  String get gitHistoryLoadMore;
+
+  /// No description provided for @gitHistoryLoadingMore.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading…'**
+  String get gitHistoryLoadingMore;
+
+  /// No description provided for @gitHistoryErrorTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load commit history'**
+  String get gitHistoryErrorTitle;
+
+  /// No description provided for @gitHistoryRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get gitHistoryRetry;
+
+  /// No description provided for @gitHistoryMergeBadge.
+  ///
+  /// In en, this message translates to:
+  /// **'Merge'**
+  String get gitHistoryMergeBadge;
+
+  /// No description provided for @gitHistoryCommitBy.
+  ///
+  /// In en, this message translates to:
+  /// **'by {name}'**
+  String gitHistoryCommitBy(String name);
+
+  /// No description provided for @gitHistoryParentsLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Parents'**
+  String get gitHistoryParentsLabel;
+
+  /// No description provided for @gitHistoryDetailsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Commit details'**
+  String get gitHistoryDetailsTitle;
+
+  /// No description provided for @gitHistoryDetailsMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Full message'**
+  String get gitHistoryDetailsMessage;
+
+  /// No description provided for @gitHistoryDetailsAuthor.
+  ///
+  /// In en, this message translates to:
+  /// **'Author'**
+  String get gitHistoryDetailsAuthor;
+
+  /// No description provided for @gitHistoryDetailsCommitter.
+  ///
+  /// In en, this message translates to:
+  /// **'Committer'**
+  String get gitHistoryDetailsCommitter;
+
+  /// No description provided for @gitHistoryDetailsDate.
+  ///
+  /// In en, this message translates to:
+  /// **'Date'**
+  String get gitHistoryDetailsDate;
+
+  /// No description provided for @gitHistoryDetailsStats.
+  ///
+  /// In en, this message translates to:
+  /// **'Changes'**
+  String get gitHistoryDetailsStats;
+
+  /// No description provided for @gitHistoryDetailsFiles.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 file changed} other{{count} files changed}}'**
+  String gitHistoryDetailsFiles(int count);
+
+  /// No description provided for @gitHistoryDetailsParents.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 parent} other{{count} parents}}'**
+  String gitHistoryDetailsParents(int count);
+
+  /// No description provided for @gitHistoryCopySha.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy SHA'**
+  String get gitHistoryCopySha;
+
+  /// No description provided for @gitHistoryCopiedSha.
+  ///
+  /// In en, this message translates to:
+  /// **'SHA copied'**
+  String get gitHistoryCopiedSha;
+
+  /// No description provided for @gitHistoryCopyMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy message'**
+  String get gitHistoryCopyMessage;
+
+  /// No description provided for @gitHistoryCopiedMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Message copied'**
+  String get gitHistoryCopiedMessage;
+
+  /// No description provided for @gitHistoryFilesTouched.
+  ///
+  /// In en, this message translates to:
+  /// **'{additions} additions, {deletions} deletions, {files} files'**
+  String gitHistoryFilesTouched(int additions, int deletions, int files);
+
   /// Name of the Android notification channel for agent activity.
   ///
   /// In en, this message translates to:
@@ -2180,6 +2360,12 @@ abstract class AppLocalizations {
   /// **'Import'**
   String get customThemeEditorImport;
 
+  /// No description provided for @customThemeEditorSave.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get customThemeEditorSave;
+
   /// No description provided for @customThemeEditorExportDialogTitle.
   ///
   /// In en, this message translates to:
@@ -2485,6 +2671,114 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Couldn\'t save the library JSON'**
   String get personalizationCustomThemesSaveFailed;
+
+  /// No description provided for @themeManagerTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Themes'**
+  String get themeManagerTitle;
+
+  /// No description provided for @themeManagerEmptyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'No themes yet'**
+  String get themeManagerEmptyTitle;
+
+  /// No description provided for @themeManagerEmptyBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Create one from a seed color or import a theme JSON.'**
+  String get themeManagerEmptyBody;
+
+  /// No description provided for @themeBrightnessDual.
+  ///
+  /// In en, this message translates to:
+  /// **'Light & dark'**
+  String get themeBrightnessDual;
+
+  /// No description provided for @themeBrightnessLightOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'Light only'**
+  String get themeBrightnessLightOnly;
+
+  /// No description provided for @themeBrightnessDarkOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'Dark only'**
+  String get themeBrightnessDarkOnly;
+
+  /// No description provided for @themeManagerSelectedCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} selected'**
+  String themeManagerSelectedCount(int count);
+
+  /// No description provided for @themeManagerSelectAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Select all'**
+  String get themeManagerSelectAll;
+
+  /// No description provided for @themeManagerExitSelection.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel selection'**
+  String get themeManagerExitSelection;
+
+  /// No description provided for @themeManagerDeleteSelectedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete selected themes?'**
+  String get themeManagerDeleteSelectedTitle;
+
+  /// No description provided for @themeManagerDeleteSelectedBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This removes {count} theme(s) from your library. Built-in themes are kept and can\'t be deleted. This can\'t be undone.'**
+  String themeManagerDeleteSelectedBody(int count);
+
+  /// No description provided for @themeManagerBuiltInsSkipped.
+  ///
+  /// In en, this message translates to:
+  /// **'Built-in themes can\'t be deleted and were kept.'**
+  String get themeManagerBuiltInsSkipped;
+
+  /// No description provided for @themeNewSheetBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Pick a seed color. We\'ll generate a full Material 3 light and dark theme you can fine-tune.'**
+  String get themeNewSheetBody;
+
+  /// No description provided for @themeNewSheetCreate.
+  ///
+  /// In en, this message translates to:
+  /// **'Create & edit'**
+  String get themeNewSheetCreate;
+
+  /// No description provided for @customThemeEditorAddDarkSide.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a dark side'**
+  String get customThemeEditorAddDarkSide;
+
+  /// No description provided for @customThemeEditorAddLightSide.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a light side'**
+  String get customThemeEditorAddLightSide;
+
+  /// No description provided for @customThemeEditorSingleNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Only the {brightness} side is defined; the other is generated automatically.'**
+  String customThemeEditorSingleNote(String brightness);
+
+  /// No description provided for @personalizationManageThemesSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} saved'**
+  String personalizationManageThemesSubtitle(int count);
 
   /// No description provided for @languageSystemDefault.
   ///

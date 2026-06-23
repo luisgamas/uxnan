@@ -819,6 +819,13 @@ bool isBuiltInCustomThemeId(String id) => id.startsWith(kBuiltInThemeIdPrefix);
 /// shipped examples so a first-run user always has two selectable themes
 /// even before authoring one.
 class CustomThemesLibrary extends Notifier<List<CustomTheme>> {
+  /// Set the moment the user mutates the library (import / upsert / remove /
+  /// reset). The async [_hydrate] reads disk at startup; if the user changes
+  /// the library before that read resolves, hydrate must NOT overwrite their
+  /// change with the stale value it read — otherwise a fast first-run import
+  /// gets clobbered by the built-in re-seed and is lost on the next restart.
+  bool _userMutated = false;
+
   @override
   List<CustomTheme> build() {
     unawaited(_hydrate());
@@ -828,9 +835,20 @@ class CustomThemesLibrary extends Notifier<List<CustomTheme>> {
   Future<void> _hydrate() async {
     final store = ref.read(appearancePreferencesStoreProvider);
     final stored = await store.readCustomThemesLibrary();
+    // A mutation raced in while we were reading disk — the user's change (and
+    // its own write) win; bail rather than clobber it.
+    if (_userMutated) return;
     if (stored.isNotEmpty) {
-      if (!_listEquals(state, stored)) {
-        state = List<CustomTheme>.unmodifiable(stored);
+      // Built-in themes are app-shipped templates, not user data: always
+      // reconcile them against the current code definition so a stale entry
+      // persisted by an older build (e.g. one with the pre-fix broken derived
+      // dark side) is healed on load. User-authored themes are untouched.
+      final reconciled = _reconcileBuiltIns(stored);
+      if (!_listEquals(state, reconciled)) {
+        state = List<CustomTheme>.unmodifiable(reconciled);
+      }
+      if (!_listEquals(stored, reconciled)) {
+        await store.writeCustomThemesLibrary(reconciled);
       }
       return;
     }
@@ -838,6 +856,7 @@ class CustomThemesLibrary extends Notifier<List<CustomTheme>> {
     // content into the library so existing installs do not lose their
     // authored theme on first hydrate.
     final legacy = await store.readCustomTheme();
+    if (_userMutated) return;
     if (legacy != null) {
       final seeded = <CustomTheme>[
         ...kBuiltInCustomThemes,
@@ -854,13 +873,17 @@ class CustomThemesLibrary extends Notifier<List<CustomTheme>> {
       return;
     }
     // First run / cleared storage: persist the built-in seed so a follow-
-    // up read sees what the user is currently seeing on screen.
+    // up read sees what the user is currently seeing on screen — unless the
+    // user already imported/created something in the meantime (their write
+    // is authoritative; re-seeding here would drop it).
+    if (_userMutated) return;
     await store.writeCustomThemesLibrary(kBuiltInCustomThemes);
   }
 
   /// Replaces a theme by id (or appends a new one). The id is preserved —
   /// the editor does not change ids on save.
   Future<void> upsert(CustomTheme theme) async {
+    _userMutated = true;
     final next = <CustomTheme>[...state];
     final index = next.indexWhere((t) => t.id == theme.id);
     if (index >= 0) {
@@ -879,6 +902,7 @@ class CustomThemesLibrary extends Notifier<List<CustomTheme>> {
   /// library. Returns true if a theme was removed.
   Future<bool> remove(String id) async {
     if (isBuiltInCustomThemeId(id)) return false;
+    _userMutated = true;
     final next = state.where((t) => t.id != id).toList(growable: false);
     if (next.length == state.length) return false;
     state = List<CustomTheme>.unmodifiable(next);
@@ -891,6 +915,7 @@ class CustomThemesLibrary extends Notifier<List<CustomTheme>> {
   /// Restores the library to the built-in seed (drops every authored
   /// theme). Used by Personalization's *Reset* action.
   Future<void> resetToBuiltIns() async {
+    _userMutated = true;
     state = List<CustomTheme>.unmodifiable(kBuiltInCustomThemes);
     await ref
         .read(appearancePreferencesStoreProvider)
@@ -906,6 +931,33 @@ class CustomThemesLibrary extends Notifier<List<CustomTheme>> {
       if (a[i] != b[i]) return false;
     }
     return true;
+  }
+
+  /// Returns [stored] with every built-in entry replaced by its current code
+  /// definition (and any newly-shipped built-in appended), preserving the order
+  /// and contents of user-authored themes. Built-ins are app-owned, so a stale
+  /// persisted copy (e.g. with an old broken dark side) is healed against the
+  /// shipped definition; user themes pass through untouched.
+  static List<CustomTheme> _reconcileBuiltIns(List<CustomTheme> stored) {
+    final code = {for (final t in kBuiltInCustomThemes) t.id: t};
+    final seen = <String>{};
+    final result = <CustomTheme>[];
+    for (final theme in stored) {
+      final fresh = code[theme.id];
+      if (fresh != null) {
+        result.add(fresh);
+        seen.add(theme.id);
+      } else if (isBuiltInCustomThemeId(theme.id)) {
+        // A built-in id that's no longer shipped — drop it (app-owned).
+        continue;
+      } else {
+        result.add(theme);
+      }
+    }
+    for (final builtIn in kBuiltInCustomThemes) {
+      if (!seen.contains(builtIn.id)) result.add(builtIn);
+    }
+    return result;
   }
 }
 
@@ -992,6 +1044,32 @@ final customThemeSettingProvider = Provider<CustomTheme?>((ref) {
     if (theme.id == id) return theme;
   }
   return null;
+});
+
+/// The [ThemeMode] the host `MaterialApp` should actually apply.
+///
+/// For the brand baseline or a **dual** custom theme this is the user's
+/// System/Light/Dark choice, unchanged — so the user can still flip which side
+/// of a dual theme they see. For a **single**-brightness custom theme it is
+/// FORCED to that theme's brightness, so the one authored side always renders
+/// regardless of the picker or the OS setting. The user's stored preference is
+/// never overwritten (a later switch back to brand/dual restores it).
+final effectiveThemeModeProvider = Provider<ThemeMode>((ref) {
+  final custom = ref.watch(customThemeSettingProvider);
+  if (custom != null && custom.isSingle) {
+    return custom.brightness == Brightness.dark
+        ? ThemeMode.dark
+        : ThemeMode.light;
+  }
+  return ref.watch(themeModeSettingProvider);
+});
+
+/// Whether the System/Light/Dark picker on Personalization should be enabled.
+/// Disabled only when a **single**-brightness custom theme is active (its
+/// brightness is forced); enabled for the brand baseline and for dual themes.
+final themePickerEnabledProvider = Provider<bool>((ref) {
+  final custom = ref.watch(customThemeSettingProvider);
+  return !(custom != null && custom.isSingle);
 });
 
 /// Whether the active theme is the hand-tuned brand baseline

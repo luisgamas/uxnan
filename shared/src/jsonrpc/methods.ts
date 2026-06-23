@@ -11,6 +11,8 @@ import type {
   GitBranchResult,
   GitCommitResult,
   GitDiff,
+  GitLogParams,
+  GitLogResult,
   GitPrResult,
   GitPullResult,
   GitPushResult,
@@ -309,6 +311,7 @@ export interface JsonRpcMethodRegistry {
   'git/revert': { params: GitRevertParams; result: void };
   'git/deleteBranch': { params: GitDeleteBranchParams; result: void };
   'git/removeWorktree': { params: GitRemoveWorktreeParams; result: void };
+  'git/log': { params: GitLogParams; result: GitLogResult };
 
   // Workspace
   'workspace/readFile': { params: { cwd: string; path: string }; result: FileContent };

@@ -9,6 +9,7 @@ import 'package:uxnan/domain/enums/git_action_kind.dart';
 import 'package:uxnan/domain/enums/git_action_phase_status.dart';
 import 'package:uxnan/domain/enums/git_file_status.dart';
 import 'package:uxnan/domain/value_objects/git/git_action_io.dart';
+import 'package:uxnan/domain/value_objects/git/git_log.dart';
 import 'package:uxnan/domain/value_objects/git/git_status_change.dart';
 import 'package:uxnan/domain/value_objects/rpc_message.dart';
 import 'package:uxnan/infrastructure/repositories/drift_git_action_log_repository.dart';
@@ -34,6 +35,31 @@ const _statusResult = <String, dynamic>{
       'deletions': 3,
     },
   ],
+};
+
+const _logResult = <String, dynamic>{
+  'commits': [
+    {
+      'sha': 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2',
+      'shortSha': 'a1b2c3d',
+      'parents': ['0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f'],
+      'authorName': 'Luis',
+      'authorEmail': 'luis@example.com',
+      'authorTimestamp': 1735689600,
+      'committerName': 'Luis',
+      'committerEmail': 'luis@example.com',
+      'committerTimestamp': 1735689600,
+      'messageTitle': 'feat: history view',
+      'messageBody': 'adds the new screen',
+      'stats': {
+        'additions': 12,
+        'deletions': 3,
+        'changedFileCount': 2,
+      },
+    },
+  ],
+  'hasMore': true,
+  'nextCursor': 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2',
 };
 
 Future<void> _settle() =>
@@ -75,6 +101,12 @@ void main() {
               ),
             ),
           'git/push' => pushCompleter.future,
+          'git/log' => Future.value(
+              RpcMessage.response(
+                id: '1',
+                result: _logResult,
+              ),
+            ),
           _ => Future.value(
               RpcMessage.response(id: '1', result: const <String, dynamic>{}),
             ),
@@ -270,5 +302,76 @@ void main() {
 
     expect(busEvents, hasLength(1));
     expect(busEvents.single.cwd, '/repo');
+  });
+
+  test('log sends git/log with cwd + limit + cursor and parses the result',
+      () async {
+    Map<String, dynamic>? capturedParams;
+    // Override the sendRequest so we can capture the params for the log call.
+    final managerWithCapture = GitActionManager(
+      domainEvents: events.stream,
+      actionLog: logRepo,
+      statusBus: bus,
+      sendRequest: (method, [params]) {
+        if (method == 'git/log') {
+          capturedParams = params;
+        }
+        return Future.value(
+          RpcMessage.response(id: '1', result: _logResult),
+        );
+      },
+    );
+    addTearDown(managerWithCapture.dispose);
+
+    final result = await managerWithCapture.log(
+      const GitLogParams(
+        cwd: '/repo',
+        limit: 25,
+        cursor: 'deadbeef',
+      ),
+    );
+
+    // The params reach the bridge unchanged (rpc shape).
+    expect(capturedParams, isNotNull);
+    expect(capturedParams!['cwd'], '/repo');
+    expect(capturedParams!['limit'], 25);
+    expect(capturedParams!['cursor'], 'deadbeef');
+
+    // The result decodes into a typed GitLogResult.
+    expect(result.hasMore, isTrue);
+    expect(result.nextCursor, 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2');
+    expect(result.commits, hasLength(1));
+    final commit = result.commits.first;
+    expect(commit.sha, 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2');
+    expect(commit.shortSha, 'a1b2c3d');
+    expect(commit.parents, hasLength(1));
+    expect(commit.messageTitle, 'feat: history view');
+    expect(commit.messageBody, 'adds the new screen');
+    expect(commit.stats, isNotNull);
+    expect(commit.stats!.additions, 12);
+    expect(commit.stats!.deletions, 3);
+    expect(commit.stats!.changedFileCount, 2);
+  });
+
+  test('log returns an empty result when the bridge has no commits', () async {
+    final emptyManager = GitActionManager(
+      domainEvents: events.stream,
+      actionLog: logRepo,
+      statusBus: bus,
+      sendRequest: (method, [params]) => Future.value(
+        RpcMessage.response(
+          id: '1',
+          result: const <String, dynamic>{
+            'commits': <dynamic>[],
+            'hasMore': false,
+          },
+        ),
+      ),
+    );
+    addTearDown(emptyManager.dispose);
+
+    final result = await emptyManager.log(const GitLogParams(cwd: '/repo'));
+    expect(result.hasMore, isFalse);
+    expect(result.commits, isEmpty);
   });
 }

@@ -308,3 +308,84 @@ test('removeWorktree removes a clean worktree and refuses a dirty one unless for
   await rmrf(wt1);
   await rmrf(wt2);
 });
+
+test('log returns commits newest-first with author, parents and stats', async () => {
+  const dir = await newRepo();
+  await writeFile(join(dir, 'a.txt'), 'one');
+  await git.commit(dir, 'first commit\n\nthe body of the first one');
+
+  await writeFile(join(dir, 'a.txt'), 'one\ntwo');
+  await git.commit(dir, 'second commit');
+
+  await writeFile(join(dir, 'a.txt'), 'one\ntwo\nthree');
+  const third = await git.commit(dir, 'third commit');
+
+  const log = await git.log(dir, { limit: 10 });
+  assert.equal(log.commits.length, 3);
+  assert.equal(log.hasMore, false);
+  assert.equal(log.commits[0]?.sha, third.sha);
+  assert.equal(log.commits[0]?.messageTitle, 'third commit');
+  assert.equal(log.commits[0]?.messageBody, '');
+  assert.equal(log.commits[1]?.messageTitle, 'second commit');
+  assert.equal(log.commits[2]?.messageTitle, 'first commit');
+  assert.equal(log.commits[2]?.messageBody, 'the body of the first one');
+  // The newest commit's only parent is the second-newest; the oldest has no
+  // parents (it was the initial commit on the branch).
+  assert.equal(log.commits[0]?.parents.length, 1);
+  assert.equal(log.commits[2]?.parents.length, 0);
+  // The oldest commit's sha appears as the parent of the second-oldest.
+  assert.equal(log.commits[1]?.parents[0], log.commits[2]?.sha);
+  // shortstat: third commit's diff against the previous one (the exact
+  // numbers depend on the platform's line-ending handling — the important
+  // invariants are that stats is set and `changedFileCount === 1`).
+  const thirdStats = log.commits[0]?.stats;
+  assert.ok(thirdStats !== undefined, 'third commit should carry stats');
+  assert.equal(thirdStats!.changedFileCount, 1);
+  assert.ok((thirdStats!.additions ?? 0) > 0);
+  await rmrf(dir);
+});
+
+test('log paginates by cursor and reports hasMore + nextCursor', async () => {
+  const dir = await newRepo();
+  for (let i = 0; i < 5; i++) {
+    await writeFile(join(dir, `f${i}.txt`), `v${i}`);
+    await git.commit(dir, `commit ${i}`);
+  }
+
+  // First page: limit 2 → newest 2 of 5, hasMore true.
+  const page1 = await git.log(dir, { limit: 2 });
+  assert.equal(page1.commits.length, 2);
+  assert.equal(page1.hasMore, true);
+  assert.ok(page1.nextCursor);
+  assert.match(page1.commits[0]?.messageTitle ?? '', /commit 4/);
+  assert.match(page1.commits[1]?.messageTitle ?? '', /commit 3/);
+
+  // Second page: pass the cursor → strictly older commits.
+  const page2 = await git.log(dir, {
+    limit: 2,
+    cursor: page1.nextCursor,
+  });
+  assert.equal(page2.commits.length, 2);
+  assert.equal(page2.hasMore, true);
+  assert.match(page2.commits[0]?.messageTitle ?? '', /commit 2/);
+  assert.match(page2.commits[1]?.messageTitle ?? '', /commit 1/);
+
+  // Third page: last commit, no more pages.
+  const page3 = await git.log(dir, {
+    limit: 2,
+    cursor: page2.nextCursor,
+  });
+  assert.equal(page3.commits.length, 1);
+  assert.equal(page3.hasMore, false);
+  assert.equal(page3.nextCursor, undefined);
+  assert.match(page3.commits[0]?.messageTitle ?? '', /commit 0/);
+  await rmrf(dir);
+});
+
+test('log returns an empty list on a fresh repo with no commits', async () => {
+  const dir = await newRepo();
+  const log = await git.log(dir);
+  assert.deepEqual(log.commits, []);
+  assert.equal(log.hasMore, false);
+  await rmrf(dir);
+});

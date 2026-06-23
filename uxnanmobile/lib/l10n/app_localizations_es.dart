@@ -235,6 +235,15 @@ class AppLocalizationsEs extends AppLocalizations {
   String get threadsFilterAll => 'Todos';
 
   @override
+  String get threadsFilterByAgent => 'Agente';
+
+  @override
+  String get threadsFilterByProject => 'Proyecto';
+
+  @override
+  String get threadsFilterScopeTooltip => 'Alcance del filtro';
+
+  @override
   String get threadsViewOptions => 'Opciones de vista';
 
   @override
@@ -933,6 +942,107 @@ class AppLocalizationsEs extends AppLocalizations {
   }
 
   @override
+  String get gitHistoryTitle => 'Historial';
+
+  @override
+  String get gitHistoryButton => 'Ver historial';
+
+  @override
+  String get gitHistoryListView => 'Lista';
+
+  @override
+  String get gitHistoryGraphView => 'Grafo';
+
+  @override
+  String get gitHistoryViewTooltip => 'Cambiar vista';
+
+  @override
+  String get gitHistoryEmpty => 'Aún no hay commits';
+
+  @override
+  String get gitHistoryEmptyBody => 'Cuando confirmes cambios aparecerán aquí.';
+
+  @override
+  String get gitHistoryLoadMore => 'Cargar más antiguos';
+
+  @override
+  String get gitHistoryLoadingMore => 'Cargando…';
+
+  @override
+  String get gitHistoryErrorTitle => 'No se pudo cargar el historial';
+
+  @override
+  String get gitHistoryRetry => 'Reintentar';
+
+  @override
+  String get gitHistoryMergeBadge => 'Merge';
+
+  @override
+  String gitHistoryCommitBy(String name) {
+    return 'por $name';
+  }
+
+  @override
+  String get gitHistoryParentsLabel => 'Padres';
+
+  @override
+  String get gitHistoryDetailsTitle => 'Detalle del commit';
+
+  @override
+  String get gitHistoryDetailsMessage => 'Mensaje completo';
+
+  @override
+  String get gitHistoryDetailsAuthor => 'Autor';
+
+  @override
+  String get gitHistoryDetailsCommitter => 'Committer';
+
+  @override
+  String get gitHistoryDetailsDate => 'Fecha';
+
+  @override
+  String get gitHistoryDetailsStats => 'Cambios';
+
+  @override
+  String gitHistoryDetailsFiles(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count archivos modificados',
+      one: '1 archivo modificado',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String gitHistoryDetailsParents(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count padres',
+      one: '1 padre',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get gitHistoryCopySha => 'Copiar SHA';
+
+  @override
+  String get gitHistoryCopiedSha => 'SHA copiado';
+
+  @override
+  String get gitHistoryCopyMessage => 'Copiar mensaje';
+
+  @override
+  String get gitHistoryCopiedMessage => 'Mensaje copiado';
+
+  @override
+  String gitHistoryFilesTouched(int additions, int deletions, int files) {
+    return '$additions adiciones, $deletions eliminaciones, $files archivos';
+  }
+
+  @override
   String get pushChannelName => 'Actividad del agente';
 
   @override
@@ -1125,6 +1235,9 @@ class AppLocalizationsEs extends AppLocalizations {
   String get customThemeEditorImport => 'Importar';
 
   @override
+  String get customThemeEditorSave => 'Guardar';
+
+  @override
   String get customThemeEditorExportDialogTitle => 'JSON del tema';
 
   @override
@@ -1300,6 +1413,72 @@ class AppLocalizationsEs extends AppLocalizations {
   @override
   String get personalizationCustomThemesSaveFailed =>
       'No se pudo guardar el JSON de la biblioteca';
+
+  @override
+  String get themeManagerTitle => 'Temas';
+
+  @override
+  String get themeManagerEmptyTitle => 'Aún no hay temas';
+
+  @override
+  String get themeManagerEmptyBody =>
+      'Crea uno desde un color semilla o importa un JSON de tema.';
+
+  @override
+  String get themeBrightnessDual => 'Claro y oscuro';
+
+  @override
+  String get themeBrightnessLightOnly => 'Solo claro';
+
+  @override
+  String get themeBrightnessDarkOnly => 'Solo oscuro';
+
+  @override
+  String themeManagerSelectedCount(int count) {
+    return '$count seleccionados';
+  }
+
+  @override
+  String get themeManagerSelectAll => 'Seleccionar todo';
+
+  @override
+  String get themeManagerExitSelection => 'Cancelar selección';
+
+  @override
+  String get themeManagerDeleteSelectedTitle =>
+      '¿Eliminar los temas seleccionados?';
+
+  @override
+  String themeManagerDeleteSelectedBody(int count) {
+    return 'Esto elimina $count tema(s) de tu biblioteca. Los temas integrados se conservan y no se pueden eliminar. No se puede deshacer.';
+  }
+
+  @override
+  String get themeManagerBuiltInsSkipped =>
+      'Los temas integrados no se pueden eliminar y se conservaron.';
+
+  @override
+  String get themeNewSheetBody =>
+      'Elige un color semilla. Generaremos un tema Material 3 completo (claro y oscuro) que podrás ajustar.';
+
+  @override
+  String get themeNewSheetCreate => 'Crear y editar';
+
+  @override
+  String get customThemeEditorAddDarkSide => 'Añadir lado oscuro';
+
+  @override
+  String get customThemeEditorAddLightSide => 'Añadir lado claro';
+
+  @override
+  String customThemeEditorSingleNote(String brightness) {
+    return 'Solo está definido el lado $brightness; el otro se genera automáticamente.';
+  }
+
+  @override
+  String personalizationManageThemesSubtitle(int count) {
+    return '$count guardados';
+  }
 
   @override
   String get languageSystemDefault => 'Predeterminado del sistema';

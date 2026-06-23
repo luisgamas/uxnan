@@ -190,6 +190,13 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
                         ),
                         child: TextField(
                           controller: _controller,
+                          // Autofocus so the keyboard opens as soon as the
+                          // conversation is opened — users almost always want
+                          // to start typing right away. The tap-outside-
+                          // to-unfocus behavior (FocusScope.unfocus in
+                          // ConversationScreen) still works: tapping the
+                          // timeline dismisses the keyboard.
+                          autofocus: true,
                           // Always editable so a message can be drafted while
                           // offline; only *sending* is gated by [enabled].
                           minLines: 1,

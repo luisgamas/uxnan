@@ -6,6 +6,337 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Dedicated Theme Manager screen (`ThemeManagerScreen`).** The custom-themes
+  library moved out of the Personalization list into its own M3 Expressive +
+  Neural Expressive screen: a responsive grid (`SliverGrid`, max-extent tiles)
+  of **live preview cards**, each painted with the theme's own colors — a dual
+  theme shows light|dark side by side, a single theme one panel — with a
+  brightness chip (*Light & dark* / *Light only* / *Dark only*) and *Active* /
+  *Built-in* badges. Tap a card to activate it; **long-press to enter
+  multi-select** for bulk delete / export. *New* / *Import* / *Export all* /
+  *Reset* live in the `NeTopBar` (`IconSurface` + overflow); the bar swaps to a
+  selection bar with a live count while selecting. This fixes the
+  "30 themes → scroll Personalization to the bottom for any action" problem and
+  adds bulk import (already array-aware) + bulk delete/export.
+  - `presentation/screens/settings/theme_manager_screen.dart` (new).
+  - `presentation/screens/settings/theme_sheets.dart` (new): Import and Export
+    are **bottom sheets**, not dialogs — the Neural Expressive surface for
+    input + menus (pasting JSON / choosing copy-vs-file). Confirmations remain
+    `AlertDialog`s. Reused by the editor.
+
+### Changed
+- **Custom themes can now be single-brightness (light-only / dark-only) or
+  dual.** A `CustomTheme` authors at least one side; the other, when needed for
+  rendering, is derived from the authored side's key colors
+  (primary/secondary/tertiary/error) via Material 3 — so blue/brown/green
+  chosen for light become the tone-correct blue/brown/green for dark. JSON
+  carries the cardinality: a one-sided document imports as a single theme and
+  exports only that side; a two-sided document is dual. `schemaVersion` 1 → 2
+  (v1 documents load as dual). See *Fixed* for the parser that feeds this.
+- **A dual custom theme no longer locks the System/Light/Dark picker.**
+  `effectiveThemeModeProvider` forces a *single* theme to its own brightness
+  (so it can't hide behind a mismatched OS setting) but lets a *dual* theme (or
+  the brand baseline) follow the user's choice; `themePickerEnabledProvider`
+  re-enables the picker for dual themes. `app.dart` applies the effective mode.
+- **Personalization slimmed down.** The inline library list + per-row menus +
+  library-action rows are gone; the screen now shows the theme-mode picker, a
+  compact custom-theme card (master switch + a *Custom themes* entry that opens
+  the manager and previews the active theme), and the language selector.
+- **Theme editor follows single/dual.** Light/Dark tabs show only for a dual
+  theme; a single theme shows its side plus *Add a {light/dark} side* (promotes
+  to dual via `withOtherSideDerived`). Import/Export/Derive-from-seed use bottom
+  sheets. Saving no longer force-writes the global theme mode.
+- **Theme editor app bar reworked.** *Save* (primary) and *Export* are the app
+  bar actions; *Reset brightness* and *Derive from seed* moved into an overflow
+  menu; the bottom Save button is gone. The *Import* action was removed from
+  the editor — importing JSON belongs to the library manager, not a theme you
+  already have open.
+- **Preview-card overflow menu is legible on every palette.** The three-dot
+  menu on a theme card sat over the theme's own (often dark) preview, so the
+  app's `onSurface` glyph vanished in light mode; it now uses a fixed neutral
+  grey that reads on both light and dark surfaces.
+- **New themes are created dual from one seed.** The *New theme* flow dropped
+  its redundant brightness toggle: pick a seed color and a full Material 3 light
+  **and** dark theme is generated (the dark side derived), nudging users to
+  configure both — single themes come from importing a one-sided JSON. The two
+  built-in templates likewise derive their dark side (no second hardcoded
+  palette; `UxnanColors` stays the only hand-tuned palette).
+- **i18n:** new theme-manager / brightness-chip / multi-select / add-side keys
+  (en + es), regenerated localizations.
+- Tests: new `theme_manager_screen_test` + `custom_theme_editor_screen_test`,
+  `custom_theme_test` single/dual group, rewritten `personalization_screen_test`
+  for the slim screen. Full suite green; `flutter analyze` clean.
+
+### Fixed
+- **Imported themes persist (incl. multi-theme JSON), and the import bar copy
+  is clearer.** A late-finishing library hydrate could re-seed the built-ins
+  over a freshly-imported theme on a fast first run, losing it on the next
+  restart; `CustomThemesLibrary` now flags user mutations and never lets a
+  stale hydrate clobber them. Importing a JSON **array of several themes** adds
+  every entry — and the dedup now tracks ids across the whole batch, so even a
+  JSON with repeated ids keeps each as a distinct, separately-saved theme
+  (instead of overwriting). Single- and dual-scheme themes are still both
+  accepted per entry.
+- **Built-in themes (Midnight / Sandstone) are healed from code on load.** A
+  device that persisted the built-ins under an older build kept their broken
+  dark side (a light-ish copy — dark mode and the dual preview showed light on
+  both sides). Built-ins are app-owned templates, so `CustomThemesLibrary`
+  now reconciles every built-in entry against the current code definition on
+  hydrate (user-authored themes pass through untouched) and rewrites the
+  corrected library. Editing a built-in now forks it into a new user theme so
+  the reconciliation never clobbers a deliberate edit.
+- **Custom theme JSON import now detects light/dark and stops defaulting to
+  purple.** The importer only understood Uxnan's own `{light, dark}` document;
+  any other shape left both scheme maps empty, and `CustomThemeColors.fromJson`
+  then materialized the Material 3 baseline palette — whose primary is the
+  canonical `#6750A4` purple. That is why "the import always saved a purple
+  theme" and "light/dark was never detected". The parser is now tolerant of
+  the three shapes a user actually pastes:
+  - **Uxnan native** — `{ "light": {...}, "dark": {...} }`.
+  - **Material Theme Builder export** — `{ "schemes": { "light": {...},
+    "dark": {...}, "light-medium-contrast": {...}, ... } }`. The base
+    `light`/`dark` schemes are used; the contrast variants are ignored. The
+    role keys already match Material's, so these import directly.
+  - **A single flat scheme** — role keys at the top level. Its brightness is
+    detected from an explicit `"brightness"` field or, failing that, the
+    `surface` (then `onSurface`) luminance, and it is applied to the matching
+    side only.
+  Missing roles in a partial document now fall back to a Material 3 scheme
+  **seed-derived from the document's own `primary`** for the correct
+  brightness (so a partial *dark* import stays dark) instead of a fixed
+  light-purple palette. A document with no recognizable scheme now throws a
+  `FormatException` (surfaced as an import-failed snackbar) instead of
+  silently producing purple.
+  - `domain/value_objects/custom_theme.dart`: `CustomThemeColors.fromJson`
+    gained a required `brightness` + seed-derived fallback; `CustomTheme.fromJson`
+    routes through a new `_extractSchemeMaps` (native / Material Theme Builder
+    / flat) + `_detectBrightness`, and pairs an absent side off the present
+    side's primary; new `CustomTheme.parseImport` → `CustomThemeImport`
+    reports which sides were found so the editor can patch just one.
+  - `presentation/screens/settings/custom_theme_editor_screen.dart`: *Import*
+    now uses `parseImport` — a single-brightness palette patches only its side
+    (leaving the other untouched) and flips the visible tab to match; a full
+    theme replaces both.
+  - The library-level *Import* on the Personalization screen inherits the same
+    tolerant `CustomTheme.fromJson`, so Material Theme Builder and flat
+    single-scheme JSON now import there too (a single scheme is paired into a
+    complete light+dark theme).
+  - `test/unit/domain/value_objects/custom_theme_test.dart`: new
+    "tolerant multi-format import" group (Material Theme Builder, flat
+    light/dark detection, explicit `brightness`, no-purple partial fill,
+    `parseImport` sides, scheme-less throws).
+
+### Added
+- **`git/log` RPC contract.** The shared package gains three new types
+  (`GitCommit`, `GitLogResult`, `GitLogParams` in `models/git.ts`) plus
+  the runtime registration of `git/log` in the JSON-RPC method registry
+  (`method-registry.ts` and the typed `methods.ts`). This is the
+  contract half of the commit history feature; the bridge handler and
+  the mobile manager land in the next commits.
+  - `architecture/02b-contracts-and-requirements.md` lists `git/log` in
+    the git method table.
+- **`git/log` bridge handler.** The bridge exposes the new RPC: it runs
+  `git log --format=...%x1e -z --shortstat` and parses the stream into
+  the typed `GitCommit[]`. Cursor semantics: the caller passes the last
+  commit's SHA on the next page; the bridge uses `<cursor>^` to start
+  from the parent so the cursor itself is excluded. A fresh repo (no
+  HEAD) returns `{commits:[], hasMore:false}` instead of a 128 exit, so
+  the history screen opens cleanly on a brand-new repository. 21/21
+  git tests pass.
+  - `bridge/src/git/git-service.ts`: new `log(cwd, {limit, cursor,
+    ref})` plus a `parseLogOutput` helper (shortstat from `--shortstat`
+    is emitted after each `%x1e` record and is associated with the
+    previous commit via deferred attachment).
+  - `bridge/src/handlers/git-handler.ts`: new `git/log` handler with
+    tolerant param coercion (optional `limit: number`, `cursor?: string`,
+    `ref?: string`).
+  - `bridge/test/git/git-service.test.ts`: three new tests (`log`
+    returns commits newest-first with author/parents/stats; cursor
+    pagination + hasMore + nextCursor; empty repo returns an empty
+    list).
+  - `architecture/02a-system-architecture.md` §5.8.6 documents the new
+    handler and its cursor pagination contract.
+- **Mobile `git/log` support (`GitActionManager.log`).** The mobile
+  half of the bridge RPC: the domain value objects (`GitCommit`,
+  `GitLogResult`, `GitLogParams` with a tolerant JSON codec) and a
+  `log(GitLogParams)` method on `GitActionManager`. Pure read — no
+  side effects on the manager state, no `git/status` refresh (the
+  history screen is independent of the working-tree state, the same
+  way the conversation timeline is independent of `git/status`).
+  12/12 git action manager tests pass.
+  - `uxnanmobile/lib/domain/value_objects/git/git_log.dart`: new
+    `GitCommit` (sha, shortSha, parents[], author/committer name+email+
+    timestamp, messageTitle, messageBody, stats?), `GitLogResult`
+    (commits, hasMore, nextCursor), `GitLogParams` (cwd, limit?,
+    cursor?, ref?) with `toRpcParams()`.
+  - `uxnanmobile/lib/application/managers/git_action_manager.dart`:
+    new `log(GitLogParams)` method.
+  - `uxnanmobile/test/unit/application/git_action_manager_test.dart`:
+    two new unit tests (round-trip parse of the bridge payload +
+    empty-result handling).
+- **Git commit history screen (`GitHistoryScreen`).** Fourth and final
+  commit of the history feature: the mobile UI on top of
+  `GitActionManager.log`. Two views share the same cursor-paginated
+  data, switched via a `ConnectedButtonGroup` (Neural Expressive §4.5):
+  - **List** — chronological commit rows (`ExpressiveCard`, title,
+    "Merge" badge when more than one parent, author + relative date,
+    +/- stats).
+  - **Graph** — GitKraken-style lanes assigned by parent continuation
+    with Bézier curves connecting parents to children.
+
+  Cursor-based pagination (50 commits per page), *Load older commits*
+  footer, pull-to-refresh, empty + error states with a Retry button.
+  Tapping a row opens a bottom sheet with the full message, authors,
+  parents, stats, and **Copy SHA** / **Copy message** actions (each
+  with a SnackBar confirmation). The `Icons.history_rounded`
+  `IconSurface` lives in `GitScreen`'s app bar (visible only when a
+  repo is open) and pushes the new screen. Built strictly on the
+  Neural Expressive design system: `ExpressiveCard` for rows,
+  `PolygonLoader` for the initial-load spinner, `UxnanSpacing` /
+  `UxnanRadius` tokens throughout.
+  - `uxnanmobile/lib/presentation/screens/conversation/git/git_history_screen.dart`:
+    new screen with the `List` and `Graph` views, the lane-assignment
+    algorithm (`_assignLanes`), and the custom `_GraphPainter` that
+    draws lane tracks, the commit circle, outgoing lines, and Bézier
+    branch curves.
+  - `uxnanmobile/lib/presentation/widgets/connected_button_group.dart`:
+    new shared widget implementing Neural Expressive §4.5 — a
+    physically fused horizontal strip with dynamic corner radii (outer
+    stadium, inner 4 dp), neighbour-squish on press via `spatialFast`.
+    Asserted to 2–5 options per spec.
+  - `uxnanmobile/lib/presentation/screens/conversation/git/git_screen.dart`:
+    new `IconSurface` in the app-bar `actions` row that pushes
+    `GitHistoryScreen`.
+  - `uxnanmobile/l10n/app_en.arb` + `app_es.arb`: 19 new keys
+    (history title, button, list/graph view labels, empty/loading/error
+    states, merge badge, details sheet, copy actions with snackbars).
+  - `test/widget/presentation/git_history_screen_test.dart`: 5 new
+    widget tests (list rendering, empty state, error state, list↔graph
+    toggle, details bottom sheet).
+    `test/widget/presentation/connected_button_group_test.dart`: 4 new
+    widget tests (renders N values, onChanged fires, selected uses
+    bold text, asserts 2–5 options).
+    `test/widget/presentation/git_screen_test.dart`: 1 new test
+    verifying the History `IconSurface` is exposed in the app bar.
+    394/394 mobile tests pass; 339/339 bridge tests pass.
+  - `architecture/02a-system-architecture.md` §5.8.6 documents the UI
+    half of the history feature (lane algorithm, list+graph views,
+    bottom sheet actions, pull-to-refresh, NE design tokens).
+  - `uxnanmobile/FOR-DEV.md` flips the entry to **DONE**.
+
+### Changed
+- **File browser, Git screen and file viewer: app-bar refresh moved to
+  pull-to-refresh.** The standalone *Refresh* `IconSurface` is gone from the
+  `FileBrowserScreen`, `GitScreen` and `FileViewerScreen` app bars; users now
+  refresh by pulling down on the list / file tree / file content (a
+  `RefreshIndicator` wrapping the scroll surface — same gesture the threads
+  list already uses, same `BouncingScrollPhysics` +
+  `AlwaysScrollableScrollPhysics` combo). The
+  `GitScreen` keeps its existing *Pull* (badged, behind > 0) action;
+  refresh was redundant with it. The `FileBrowserScreen` keeps its
+  *Show extensions* / *Show hidden* toggles — moved into a new
+  three-dot overflow menu (see *Added* below) so the bar stays under
+  the M3 ≤3-actions guideline and the chrome matches every other
+  Neural Expressive screen (the conversation screen uses the same
+  `IconSurfaceMenu` pattern for its overflow). The screens no longer
+  carry refresh chrome that the threads list and conversation screen
+  never had; the whole app now refreshes by
+  pull-to-refresh except for the few actions that need to be one-tap
+  reachable (pull, expand-all, the conversation menu).
+  - `file_browser_screen.dart`: new `_refresh()` wraps
+    `manager.loadRoot(cwd)`; `CustomScrollView` wrapped in
+    `RefreshIndicator(onRefresh: _refresh, …)`. Refresh
+    `IconSurface` removed from the app bar; toggle `IconSurface`s
+    moved to a new `IconSurfaceMenu<void>` (see *Added*).
+  - `git_screen.dart`: new `_pullToRefresh()` wrapper for the
+    existing `_refresh(cwd)` (which takes a parameter — the
+    `RefreshIndicator` needs a parameterless `Future<void>
+    Function()`); `CustomScrollView` wrapped in
+    `RefreshIndicator(onRefresh: _pullToRefresh, …)`. Refresh
+    `IconSurface` removed from the app bar.
+  - `git_screen_test.dart`: new widget test (`GitScreen no longer
+    renders a Refresh button in the app bar`) locks in the change
+    (the `Icons.refresh_rounded` glyph is absent and the
+    `RefreshIndicator` is in the tree).
+  - `file_viewer_screen.dart`: refresh `IconSurface` removed from the
+    app bar; the scrollable bodies (code, markdown source/preview, diff)
+    are each wrapped in `RefreshIndicator(onRefresh: _load, edgeOffset:
+    …)` so the spinner clears the transparent `NeTopBar`. `_CodeBody`
+    and `FileDiffViewer` gain the `AlwaysScrollableScrollPhysics` combo
+    so the pull works even when the content fits the viewport.
+
+### Added
+- **File browser: three-dot overflow menu.** The two view toggles
+  (*Show file extensions* / *Show hidden files*) that used to live as
+  standalone `IconSurface`s in the app bar are now in a popup menu
+  triggered by a `Icons.more_vert_rounded` `IconSurfaceMenu` — the same
+  pattern the conversation screen, the git screen overflow and the
+  threads list use for their low-frequency actions. The bar now
+  carries a single trailing action (the overflow) so it lines up with
+  the M3 ≤3-actions guideline and the rest of the Neural Expressive
+  chrome. Each toggle is a `CheckedPopupMenuItem<void>` with the same
+  icon and label the `IconSurface` used, so the selection state is
+  visible at a glance when the menu is open.
+  - `file_browser_screen.dart`: the app bar's `actions:` now holds a
+    single `IconSurfaceMenu<void>` with two
+    `CheckedPopupMenuItem<void>` entries (one per toggle). The
+    `showFileExtensionsProvider` / `showHiddenFilesProvider` setters
+    are unchanged — the menu is a pure UI surface, the persistence +
+    the on-device store are the source of truth.
+
+### Added
+- **Threads screen — scope selector (Agent / Project).** The threads filter
+  bar now starts with a small chip-styled **scope selector** on the left
+  that shows the active scope (Agent or Project) and opens a popup to
+  switch between them. To its right, the chip bar shows the matching
+  filter: *All + each agent* under the Agent scope, *All + each project*
+  (one per distinct `projectId` / `cwd`) under the Project scope. Only
+  one scope is visible at a time — the previous "two stacked chip bars"
+  layout is gone. Switching scope clears the other dimension's filter so
+  the two stay independent (an agent filter has no meaning under the
+  Project scope and vice versa). The project filter — which was already
+  fully implemented (`_projectsPresent` / `_projectKeyOf` / bridge
+  `loadThreads(projectId:)`) but hidden behind the `_projectFilterEnabled`
+  flag — is now reachable from the UI without any back-end change. Same
+  visual language as the filter chips (M3 `ChoiceChip` + popup menu
+  trigger), same horizontal `ListView` scrolling, so the whole bar reads
+  as one coherent surface. New l10n keys: `threadsFilterByAgent`,
+  `threadsFilterByProject`, `threadsFilterScopeTooltip` (en + es).
+  Covered by three widget tests in `threads_list_test.dart` (default
+  scope renders Agent, switching to Project swaps the chip bar,
+  switching scope clears the other dimension's filter).
+- **Git screen commit composer autofocus on open.** The title field of the
+  commit composer in the full-screen `GitScreen` now opens with primary
+  focus, so the keyboard pops up as soon as the repo state loads (matches
+  the conversation composer: the user opened the screen to type a commit
+  message). The existing tap-outside-to-unfocus behavior on the timeline
+  area (`GestureDetector` + `FocusScope.unfocus` in `GitScreen.build`) is
+  preserved — tapping the file list or branch summary still dismisses the
+  keyboard. Implemented as `autofocus: true` on the title
+  `_BorderlessField` (only the title; the description and co-author fields
+  stay non-autofocus so expanding the details doesn't yank the caret).
+  `_BorderlessField` gained an optional `autofocus` parameter (default
+  `false`) so the other call sites are unaffected. Covered by two widget
+  tests in `git_screen_test.dart` (`GitScreen autofocuses the commit
+  title field on first build` + `GitScreen keeps the
+  tap-outside-to-unfocus behavior on the commit title field`).
+
+- **Composer autofocus on conversation open.** The message composer's text
+  field now opens with primary focus, so the keyboard pops up the moment a
+  conversation is opened (matches the user's expectation: the composer is
+  the primary input surface, and opening a thread almost always means
+  "type something"). The existing tap-outside-to-unfocus behavior on the
+  timeline (`GestureDetector` + `FocusScope.unfocus` in
+  `ConversationScreen`) is preserved — tapping the message area still
+  dismisses the keyboard. Implemented as a single `autofocus: true` flag on
+  the composer's `TextField` (no `FocusNode` plumbing required) so the
+  change is intentionally minimal; the field's lifecycle is fully owned by
+  the framework. Covered by two widget tests in
+  `conversation_widgets_test.dart` (`ComposerBar autofocuses the text field
+  on first build` + `ComposerBar keeps the tap-outside-to-unfocus
+  behavior`) that lock in both the autofocus and the unfocus-from-tap.
+
 ### Added — `[reconn]` diagnostic logs for Bug A (relink latency after resume)
 - Temporary, greppable `[reconn]` timing logs at the resume/reconnect sites
   (`SessionCoordinator.resume` / `verifyConnection` / `_runReconnectLoop` /
