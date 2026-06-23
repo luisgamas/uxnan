@@ -430,6 +430,7 @@
   "customThemeEditorResetBrightness": "Restablecer modo",
   "customThemeEditorExport": "Exportar",
   "customThemeEditorImport": "Importar",
+  "customThemeEditorSave": "Guardar",
   "customThemeEditorExportDialogTitle": "JSON del tema",
   "customThemeEditorExportDialogBody": "Comparte el siguiente JSON — pégalo en cualquier dispositivo con tu cuenta para recrear el tema.",
   "customThemeEditorImportDialogTitle": "Importar tema",

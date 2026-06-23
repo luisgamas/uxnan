@@ -1235,6 +1235,9 @@ class AppLocalizationsEs extends AppLocalizations {
   String get customThemeEditorImport => 'Importar';
 
   @override
+  String get customThemeEditorSave => 'Guardar';
+
+  @override
   String get customThemeEditorExportDialogTitle => 'JSON del tema';
 
   @override

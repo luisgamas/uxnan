@@ -79,4 +79,23 @@ void main() {
     expect(find.text('Add a dark side'), findsNothing);
     expect(find.text('Add a light side'), findsNothing);
   });
+
+  testWidgets('the app bar exposes Save + Export and an overflow, not Import',
+      (tester) async {
+    _useTallViewport(tester);
+    await tester.pumpWidget(_wrap(_dual()));
+    await tester.pumpAndSettle();
+
+    // Save (check) is the primary action; Export sits next to it; Import is
+    // gone (it belongs to the library manager, not the per-theme editor).
+    expect(find.byIcon(Icons.check_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.upload_file_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.download_outlined), findsNothing);
+
+    // Reset / derive moved into the overflow menu.
+    await tester.tap(find.byIcon(Icons.more_vert_rounded));
+    await tester.pumpAndSettle();
+    expect(find.text('Reset brightness'), findsOneWidget);
+    expect(find.text('Derive from seed'), findsOneWidget);
+  });
 }

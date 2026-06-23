@@ -2360,6 +2360,12 @@ abstract class AppLocalizations {
   /// **'Import'**
   String get customThemeEditorImport;
 
+  /// No description provided for @customThemeEditorSave.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get customThemeEditorSave;
+
   /// No description provided for @customThemeEditorExportDialogTitle.
   ///
   /// In en, this message translates to:

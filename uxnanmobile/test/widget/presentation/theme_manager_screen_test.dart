@@ -80,6 +80,54 @@ void main() {
     expect(find.text('1 selected'), findsOneWidget);
   });
 
+  testWidgets('importing a multi-theme JSON adds all and persists on remount',
+      (tester) async {
+    _useTallViewport(tester);
+    await tester.pumpWidget(_wrap());
+    await tester.pumpAndSettle();
+
+    final json = '[${_authored('imp-a', 'ImpA').toJsonString()},'
+        '${_authored('imp-b', 'ImpB').toJsonString()}]';
+
+    await tester.tap(find.byIcon(Icons.file_download_outlined));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), json);
+    await tester.tap(find.widgetWithText(FilledButton, 'Import theme'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('ImpA'), findsOneWidget);
+    expect(find.text('ImpB'), findsOneWidget);
+
+    // Simulate an app restart: a fresh ProviderScope rehydrates from the same
+    // (persisted) SharedPreferences.
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(_wrap());
+    await tester.pumpAndSettle();
+
+    expect(find.text('ImpA'), findsOneWidget);
+    expect(find.text('ImpB'), findsOneWidget);
+  });
+
+  testWidgets('a JSON with duplicate ids imports each as a distinct theme',
+      (tester) async {
+    _useTallViewport(tester);
+    await tester.pumpWidget(_wrap());
+    await tester.pumpAndSettle();
+
+    final dup = _authored('dup', 'Dup');
+    final json = '[${dup.toJsonString()},${dup.toJsonString()}]';
+
+    await tester.tap(find.byIcon(Icons.file_download_outlined));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), json);
+    await tester.tap(find.widgetWithText(FilledButton, 'Import theme'));
+    await tester.pumpAndSettle();
+
+    // Both kept (the second got a fresh id) — two cards named 'Dup'.
+    expect(find.text('Dup'), findsNWidgets(2));
+  });
+
   testWidgets('multi-select delete removes the selected authored theme',
       (tester) async {
     final autumn = _authored('autumn', 'Autumn');

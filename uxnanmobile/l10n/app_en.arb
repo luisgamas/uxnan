@@ -610,6 +610,7 @@
   "customThemeEditorResetBrightness": "Reset brightness",
   "customThemeEditorExport": "Export",
   "customThemeEditorImport": "Import",
+  "customThemeEditorSave": "Save",
   "customThemeEditorExportDialogTitle": "Theme JSON",
   "customThemeEditorExportDialogBody": "Share the JSON below — paste it into any device signed in to your account to recreate the theme.",
   "customThemeEditorImportDialogTitle": "Import theme",

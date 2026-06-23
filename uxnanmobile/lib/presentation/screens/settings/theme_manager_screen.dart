@@ -97,7 +97,15 @@ class _ThemeManagerScreenState extends ConsumerState<ThemeManagerScreen> {
     if (raw == null || raw.trim().isEmpty || !mounted) return;
     final messenger = ScaffoldMessenger.of(context);
     final libraryNotifier = ref.read(customThemesLibraryProvider.notifier);
-    final existing = ref.read(customThemesLibraryProvider);
+    // Track every id we'd clash with — the existing library AND themes added
+    // earlier in this same batch — so a JSON that carries several themes (even
+    // ones that share an id) keeps each as a distinct, separately-saved theme
+    // instead of silently overwriting. Single- and dual-scheme themes are all
+    // accepted (see [CustomTheme.fromJson]); a multi-theme JSON is a top-level
+    // array of those theme objects.
+    final seenIds = <String>{
+      for (final t in ref.read(customThemesLibraryProvider)) t.id
+    };
     final addedIds = <String>[];
     var failed = 0;
     try {
@@ -117,14 +125,13 @@ class _ThemeManagerScreenState extends ConsumerState<ThemeManagerScreen> {
           continue;
         }
         try {
-          final imported = CustomTheme.fromJson(entry.cast<String, dynamic>());
-          // Give a clashing import a fresh id so it never overwrites an
-          // existing theme; the authored sides (single or dual) are preserved.
-          final theme = existing.any((t) => t.id == imported.id)
-              ? imported.withId(CustomTheme.freshId())
-              : imported;
-          await libraryNotifier.upsert(theme);
-          addedIds.add(theme.id);
+          var imported = CustomTheme.fromJson(entry.cast<String, dynamic>());
+          if (seenIds.contains(imported.id)) {
+            imported = imported.withId(CustomTheme.freshId());
+          }
+          seenIds.add(imported.id);
+          await libraryNotifier.upsert(imported);
+          addedIds.add(imported.id);
         } on Object catch (error, stackTrace) {
           failed++;
           AppLogger.warn('theme import entry failed', error, stackTrace);
@@ -708,9 +715,14 @@ class _CardMenu extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     return PopupMenuButton<_CardAction>(
       tooltip: l10n.personalizationCustomThemesHeader,
-      icon: Icon(Icons.more_vert_rounded, size: 18, color: colors.onSurface),
-      // Sit the glyph on a small neutral chip so it reads over any palette.
-      iconColor: colors.onSurface,
+      // The menu sits over the preview's own colors (the dark side for a dual
+      // theme). A fixed neutral grey reads on both light and dark surfaces —
+      // the app's `onSurface` would vanish into the dark preview in light mode.
+      icon: const Icon(
+        Icons.more_vert_rounded,
+        size: 18,
+        color: Color(0xFF9AA0A6),
+      ),
       onSelected: (action) => switch (action) {
         _CardAction.edit => onEdit(),
         _CardAction.export => onExport(),

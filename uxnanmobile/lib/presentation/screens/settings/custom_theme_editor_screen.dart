@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:uxnan/core/utils/logger.dart';
 import 'package:uxnan/domain/value_objects/custom_theme.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
@@ -229,50 +228,6 @@ class _CustomThemeEditorScreenState
     }
   }
 
-  Future<void> _importSheet() async {
-    final l10n = AppLocalizations.of(context);
-    final result = await showImportThemeSheet(
-      context,
-      title: l10n.customThemeEditorImportDialogTitle,
-      body: l10n.customThemeEditorImportDialogBody,
-      hint: l10n.customThemeEditorImportFieldHint,
-    );
-    if (result == null || result.trim().isEmpty) return;
-    try {
-      // Parse into separate light/dark sides so a single-brightness palette
-      // patches only the side it describes (and a full theme replaces both).
-      // Detection lives in [CustomTheme.parseImport] — native, Material Theme
-      // Builder and flat single-scheme JSON are all understood.
-      final parsed = CustomTheme.parseImport(result);
-      setState(() {
-        var next = _working;
-        if (parsed.light != null) next = next.withLightColors(parsed.light!);
-        if (parsed.dark != null) next = next.withDarkColors(parsed.dark!);
-        // Preserve the current name/description; the imported file's metadata
-        // is ignored — the user is customizing the existing theme.
-        _working = next.withMetadata(
-          name: _nameController.text,
-          description: _descriptionController.text,
-        );
-        // A single-brightness import flips the visible tab to the side that
-        // actually changed so the result is immediately visible.
-        if (parsed.hasLight != parsed.hasDark) {
-          _brightness = parsed.hasDark ? Brightness.dark : Brightness.light;
-        }
-      });
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(l10n.customThemeEditorImported)),
-      );
-    } on Object catch (error, stackTrace) {
-      AppLogger.warn('custom theme import failed', error, stackTrace);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(l10n.customThemeEditorImportFailed)),
-      );
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -280,15 +235,47 @@ class _CustomThemeEditorScreenState
     return NeScaffold(
       title: l10n.customThemeEditorTitle,
       actions: [
+        // Save is the primary action; Export sits next to it. Reset / derive
+        // are low-frequency, so they live in the overflow. Import is gone —
+        // you already have a theme open; importing JSON belongs to the
+        // library manager, not the per-theme editor.
+        IconSurface(
+          icon: Icons.check_rounded,
+          tooltip: l10n.customThemeEditorSave,
+          background: colors.secondaryContainer,
+          foreground: colors.onSecondaryContainer,
+          onPressed: _save,
+        ),
         IconSurface(
           icon: Icons.upload_file_outlined,
           tooltip: l10n.customThemeEditorExport,
           onPressed: _exportSheet,
         ),
-        IconSurface(
-          icon: Icons.download_outlined,
-          tooltip: l10n.customThemeEditorImport,
-          onPressed: _importSheet,
+        IconSurfaceMenu<_EditorMenuAction>(
+          icon: Icons.more_vert_rounded,
+          tooltip: l10n.customThemeEditorTitle,
+          onSelected: (action) => switch (action) {
+            _EditorMenuAction.resetBrightness => _resetBrightness(),
+            _EditorMenuAction.deriveFromSeed => _deriveFromSeedSheet(),
+          },
+          itemBuilder: (ctx) => [
+            PopupMenuItem(
+              value: _EditorMenuAction.resetBrightness,
+              child: ListTile(
+                leading: const Icon(Icons.refresh_rounded),
+                title: Text(l10n.customThemeEditorResetBrightness),
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+            PopupMenuItem(
+              value: _EditorMenuAction.deriveFromSeed,
+              child: ListTile(
+                leading: const Icon(Icons.auto_awesome_outlined),
+                title: Text(l10n.customThemeEditorDeriveFromSeed),
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+          ],
         ),
         const SizedBox(width: UxnanSpacing.xs),
       ],
@@ -335,21 +322,6 @@ class _CustomThemeEditorScreenState
               _RoleList(
                 colors: _activeColors,
                 onChanged: _setActiveColors,
-                onResetBrightness: _resetBrightness,
-                onDeriveFromSeed: _deriveFromSeedSheet,
-                resetBrightnessLabel: l10n.customThemeEditorResetBrightness,
-                deriveFromSeedLabel: l10n.customThemeEditorDeriveFromSeed,
-              ),
-              const SizedBox(height: UxnanSpacing.xl),
-              FilledButton.icon(
-                style: FilledButton.styleFrom(
-                  backgroundColor: colors.primary,
-                  foregroundColor: colors.onPrimary,
-                  minimumSize: const Size.fromHeight(48),
-                ),
-                icon: const Icon(Icons.check_rounded),
-                label: const Text('Save'),
-                onPressed: _save,
               ),
             ],
           ),
@@ -436,25 +408,17 @@ class _BrightnessTabs extends StatelessWidget {
 }
 
 /// A scrollable, grouped list of color roles. Each row shows the role's
-/// localized label, a color swatch, and the hex value; tapping the row
-/// opens [ColorPickerSheet]. Reset / derive actions are exposed as small
-/// text-buttons inside the card header.
+/// localized label, a color swatch, and the hex value; tapping the row opens
+/// [ColorPickerSheet]. Reset-brightness / derive-from-seed live in the app
+/// bar's overflow menu.
 class _RoleList extends StatelessWidget {
   const _RoleList({
     required this.colors,
     required this.onChanged,
-    required this.onResetBrightness,
-    required this.onDeriveFromSeed,
-    required this.resetBrightnessLabel,
-    required this.deriveFromSeedLabel,
   });
 
   final CustomThemeColors colors;
   final ValueChanged<CustomThemeColors> onChanged;
-  final VoidCallback onResetBrightness;
-  final VoidCallback onDeriveFromSeed;
-  final String resetBrightnessLabel;
-  final String deriveFromSeedLabel;
 
   static const List<_RoleGroup> _groups = [
     _RoleGroup('Primary', [
@@ -532,29 +496,13 @@ class _RoleList extends StatelessWidget {
           ),
           const SizedBox(height: UxnanSpacing.lg),
         ],
-        Row(
-          children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: onResetBrightness,
-                icon: const Icon(Icons.refresh_rounded),
-                label: Text(resetBrightnessLabel),
-              ),
-            ),
-            const SizedBox(width: UxnanSpacing.md),
-            Expanded(
-              child: FilledButton.tonalIcon(
-                onPressed: onDeriveFromSeed,
-                icon: const Icon(Icons.auto_awesome_outlined),
-                label: Text(deriveFromSeedLabel),
-              ),
-            ),
-          ],
-        ),
       ],
     );
   }
 }
+
+/// Low-frequency editor actions, hosted in the app bar's overflow menu.
+enum _EditorMenuAction { resetBrightness, deriveFromSeed }
 
 class _RoleGroup {
   const _RoleGroup(this.label, this.roles);

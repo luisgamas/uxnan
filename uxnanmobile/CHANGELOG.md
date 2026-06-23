@@ -47,6 +47,15 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   theme; a single theme shows its side plus *Add a {light/dark} side* (promotes
   to dual via `withOtherSideDerived`). Import/Export/Derive-from-seed use bottom
   sheets. Saving no longer force-writes the global theme mode.
+- **Theme editor app bar reworked.** *Save* (primary) and *Export* are the app
+  bar actions; *Reset brightness* and *Derive from seed* moved into an overflow
+  menu; the bottom Save button is gone. The *Import* action was removed from
+  the editor — importing JSON belongs to the library manager, not a theme you
+  already have open.
+- **Preview-card overflow menu is legible on every palette.** The three-dot
+  menu on a theme card sat over the theme's own (often dark) preview, so the
+  app's `onSurface` glyph vanished in light mode; it now uses a fixed neutral
+  grey that reads on both light and dark surfaces.
 - **New themes are created dual from one seed.** The *New theme* flow dropped
   its redundant brightness toggle: pick a seed color and a full Material 3 light
   **and** dark theme is generated (the dark side derived), nudging users to
@@ -60,6 +69,15 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   for the slim screen. Full suite green; `flutter analyze` clean.
 
 ### Fixed
+- **Imported themes persist (incl. multi-theme JSON), and the import bar copy
+  is clearer.** A late-finishing library hydrate could re-seed the built-ins
+  over a freshly-imported theme on a fast first run, losing it on the next
+  restart; `CustomThemesLibrary` now flags user mutations and never lets a
+  stale hydrate clobber them. Importing a JSON **array of several themes** adds
+  every entry — and the dedup now tracks ids across the whole batch, so even a
+  JSON with repeated ids keeps each as a distinct, separately-saved theme
+  (instead of overwriting). Single- and dual-scheme themes are still both
+  accepted per entry.
 - **Built-in themes (Midnight / Sandstone) are healed from code on load.** A
   device that persisted the built-ins under an older build kept their broken
   dark side (a light-ish copy — dark mode and the dual preview showed light on

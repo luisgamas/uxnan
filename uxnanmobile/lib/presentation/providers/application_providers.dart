@@ -815,6 +815,13 @@ bool isBuiltInCustomThemeId(String id) => id.startsWith(kBuiltInThemeIdPrefix);
 /// shipped examples so a first-run user always has two selectable themes
 /// even before authoring one.
 class CustomThemesLibrary extends Notifier<List<CustomTheme>> {
+  /// Set the moment the user mutates the library (import / upsert / remove /
+  /// reset). The async [_hydrate] reads disk at startup; if the user changes
+  /// the library before that read resolves, hydrate must NOT overwrite their
+  /// change with the stale value it read — otherwise a fast first-run import
+  /// gets clobbered by the built-in re-seed and is lost on the next restart.
+  bool _userMutated = false;
+
   @override
   List<CustomTheme> build() {
     unawaited(_hydrate());
@@ -824,6 +831,9 @@ class CustomThemesLibrary extends Notifier<List<CustomTheme>> {
   Future<void> _hydrate() async {
     final store = ref.read(appearancePreferencesStoreProvider);
     final stored = await store.readCustomThemesLibrary();
+    // A mutation raced in while we were reading disk — the user's change (and
+    // its own write) win; bail rather than clobber it.
+    if (_userMutated) return;
     if (stored.isNotEmpty) {
       // Built-in themes are app-shipped templates, not user data: always
       // reconcile them against the current code definition so a stale entry
@@ -842,6 +852,7 @@ class CustomThemesLibrary extends Notifier<List<CustomTheme>> {
     // content into the library so existing installs do not lose their
     // authored theme on first hydrate.
     final legacy = await store.readCustomTheme();
+    if (_userMutated) return;
     if (legacy != null) {
       final seeded = <CustomTheme>[
         ...kBuiltInCustomThemes,
@@ -858,13 +869,17 @@ class CustomThemesLibrary extends Notifier<List<CustomTheme>> {
       return;
     }
     // First run / cleared storage: persist the built-in seed so a follow-
-    // up read sees what the user is currently seeing on screen.
+    // up read sees what the user is currently seeing on screen — unless the
+    // user already imported/created something in the meantime (their write
+    // is authoritative; re-seeding here would drop it).
+    if (_userMutated) return;
     await store.writeCustomThemesLibrary(kBuiltInCustomThemes);
   }
 
   /// Replaces a theme by id (or appends a new one). The id is preserved —
   /// the editor does not change ids on save.
   Future<void> upsert(CustomTheme theme) async {
+    _userMutated = true;
     final next = <CustomTheme>[...state];
     final index = next.indexWhere((t) => t.id == theme.id);
     if (index >= 0) {
@@ -883,6 +898,7 @@ class CustomThemesLibrary extends Notifier<List<CustomTheme>> {
   /// library. Returns true if a theme was removed.
   Future<bool> remove(String id) async {
     if (isBuiltInCustomThemeId(id)) return false;
+    _userMutated = true;
     final next = state.where((t) => t.id != id).toList(growable: false);
     if (next.length == state.length) return false;
     state = List<CustomTheme>.unmodifiable(next);
@@ -895,6 +911,7 @@ class CustomThemesLibrary extends Notifier<List<CustomTheme>> {
   /// Restores the library to the built-in seed (drops every authored
   /// theme). Used by Personalization's *Reset* action.
   Future<void> resetToBuiltIns() async {
+    _userMutated = true;
     state = List<CustomTheme>.unmodifiable(kBuiltInCustomThemes);
     await ref
         .read(appearancePreferencesStoreProvider)
