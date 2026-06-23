@@ -134,7 +134,10 @@ export class AgentManager {
    * Codex). */
   readonly #pendingHookApprovals = new Map<
     string,
-    { resolve: (decision: ApprovalDecision) => void; timer: ReturnType<typeof setTimeout> | undefined }
+    {
+      resolve: (decision: ApprovalDecision) => void;
+      timer: ReturnType<typeof setTimeout> | undefined;
+    }
   >();
   #approvalSeq = 0;
   readonly #options: AgentManagerOptions;
