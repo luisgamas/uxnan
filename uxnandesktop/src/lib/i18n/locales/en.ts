@@ -35,7 +35,7 @@ export const en = {
   "common.loading": "Loading…",
 
   // Left sidebar
-  "sidebar.search": "Search projects & worktrees…",
+  "sidebar.search": "Search a project or worktree…",
   "sidebar.projects": "Projects",
   "sidebar.addProject": "Add project…",
   "sidebar.refresh": "Refresh worktrees & status",
@@ -46,7 +46,7 @@ export const en = {
   "sidebar.sortNameDesc": "Name (Z–A)",
   "sidebar.noMatch": "No projects match your search.",
   "sidebar.empty": "No projects yet.",
-  "sidebar.addRepo": "Add a git repository",
+  "sidebar.addRepo": "Add a folder",
 
   // Project card
   "project.expand": "Expand",
@@ -111,11 +111,12 @@ export const en = {
   "terminal.splitRight": "Split right",
   "terminal.splitDown": "Split down",
   "terminal.closeTerminal": "Close terminal",
+  "terminal.closeTab": "Close tab",
 
   // Directory picker
   "picker.title": "Add project",
   "picker.desc":
-    "Browse to a git repository and add it. Folders tagged “repo” are git repositories.",
+    "Browse to any folder and add it. Folders tagged “repo” are git repositories; non-git folders work too — they just have no worktrees.",
   "picker.pathPlaceholder": "Type or paste a path, then Enter…",
   "picker.parent": "Parent folder",
   "picker.empty": "No sub-folders here.",
@@ -178,9 +179,12 @@ export const en = {
   "diff.sideBySide": "Side by side",
   "diff.close": "Close diff",
   "rightPanel.viewDiff": "View diff",
-  "palette.placeholder": "Jump to a worktree…",
-  "palette.empty": "No worktrees match.",
-  "sidebar.quickSwitch": "Quick switch worktree (Ctrl+P)",
+  "palette.title": "Search a project or worktree",
+  "palette.placeholder": "Search a project or worktree…",
+  "palette.empty": "No projects or worktrees match.",
+  "palette.hintNavigate": "Navigate",
+  "palette.hintSelect": "Select",
+  "palette.hintExit": "Exit",
   "diff.stageHunk": "Stage hunk",
   "diff.unstageHunk": "Unstage hunk",
   "diff.discardHunk": "Discard hunk",
@@ -194,6 +198,37 @@ export const en = {
   "rightPanel.noMatch": "No changed files match.",
   "rightPanel.changedOne": "{n} changed file",
   "rightPanel.changedOther": "{n} changed files",
+  // Commit composer (optional fields)
+  "rightPanel.summaryPlaceholder": "Summary (required)",
+  "rightPanel.descriptionPlaceholder": "Extended description (optional)",
+  "rightPanel.commitOptions": "Options",
+  "rightPanel.coAuthors": "Co-authors",
+  "rightPanel.coAuthorPlaceholder": "Name <email>",
+  "rightPanel.addCoAuthor": "Add co-author",
+  "rightPanel.removeCoAuthor": "Remove co-author",
+  "rightPanel.amend": "Amend last commit",
+  "rightPanel.amendDesc": "Rewrite the previous commit instead of adding a new one.",
+  "rightPanel.amendCommit": "Amend commit",
+  "rightPanel.signOff": "Sign off",
+  "rightPanel.signOffDesc": "Add a Signed-off-by trailer.",
+
+  // History tab (commit log + branch graph)
+  "history.tab": "History",
+  "history.search": "Search commits",
+  "history.searchPlaceholder": "Filter commits…",
+  "history.refresh": "Refresh history",
+  "history.showGraph": "Show branch graph",
+  "history.hideGraph": "Hide branch graph",
+  "history.selectWorktree": "Select a project or worktree to see its history.",
+  "history.notRepo": "Not a git repository.",
+  "history.noCommits": "No commits yet.",
+  "history.noMatch": "No commits match.",
+  "history.loadMore": "Load more",
+  "history.viewCommit": "View commit",
+  "history.copyHash": "Copy commit hash",
+  "history.hashCopied": "Commit hash copied",
+  "history.countOne": "{n} commit",
+  "history.countOther": "{n} commits",
 
   // File-tree tab
   "fileTree.tab": "Files",
@@ -217,8 +252,14 @@ export const en = {
   "shortcuts.closeCenterDesc": "Close the open file or diff in the center panel.",
   "shortcuts.saveFile": "Save file",
   "shortcuts.saveFileDesc": "Save the file open in the editor.",
-  "shortcuts.worktreePalette": "Quick switch worktree",
-  "shortcuts.worktreePaletteDesc": "Open the worktree quick-switch palette.",
+  "shortcuts.catGeneral": "General",
+  "shortcuts.catNavigation": "Projects & navigation",
+  "shortcuts.catPanels": "Panels",
+  "shortcuts.catEditor": "Editor",
+  "shortcuts.worktreePalette": "Search project or worktree",
+  "shortcuts.worktreePaletteDesc": "Open the project/worktree search palette.",
+  "shortcuts.addProject": "Add project",
+  "shortcuts.addProjectDesc": "Open the folder picker to add a project.",
   "shortcuts.openSettings": "Open settings",
   "shortcuts.openSettingsDesc": "Open this settings view.",
   "shortcuts.toggleLeftSidebar": "Toggle left sidebar",
@@ -234,6 +275,16 @@ export const en = {
   "editor.tooLarge": "This file is too large to edit here.",
   "editor.binary": "This is a binary file and can't be edited as text.",
   "editor.removedPeek": "{n} removed line(s) — click to peek",
+  "editor.externalChanged": "This file changed on disk.",
+  "editor.reload": "Reload",
+  "editor.keepMine": "Keep my changes",
+  "editor.unsavedTitle": "Unsaved changes",
+  "editor.unsavedDesc": "{file} has unsaved changes. Save before closing?",
+  "editor.unsavedManyDesc": "{n} file(s) have unsaved changes. Save them before closing?",
+  "editor.saveAndClose": "Save & close",
+  "editor.discardClose": "Discard & close",
+  "editor.saveAllClose": "Save all & close",
+  "editor.discardAllClose": "Discard all & close",
 
   // Appearance — themes
   "appearance.import": "Import",
@@ -310,8 +361,6 @@ export const en = {
   "monitor.stale": "No update in a while",
   "monitor.detected": "Agent detected",
   "monitor.unread": "Agent finished — not yet reviewed",
-  "monitor.installHooksHint":
-    "Install hooks for precise states — open Settings → Hooks",
   "agents.spaceLabel": "Agents",
   "settings.agentNotifications": "Idle notifications",
   "settings.agentNotificationsDesc":
@@ -322,8 +371,13 @@ export const en = {
   "status.untested": "Untested on {os}",
   "status.untestedTooltip":
     "Uxnan is developed and validated on Windows. {os} support is implemented but not yet tested on real hardware (alpha).",
-  "notify.agentIdleTitle": "{agent} is idle",
-  "notify.agentIdleBody": "In {worktree} — it may be waiting for you.",
+  "notify.agentDoneTitle": "{agent} finished the task",
+  "notify.agentDoneBody": "Task complete.",
+  "notify.agentTask": "Task: {task}",
+  "notify.agentWaitingTitle": "{agent} is waiting for you",
+  "notify.agentWaitingBody": "It needs your attention.",
+  "notify.agentBlockedTitle": "{agent} hit a problem",
+  "notify.agentBlockedBody": "Check the agent's terminal.",
 
   // Status bar
   "status.connected": "Backend connected",
@@ -331,6 +385,11 @@ export const en = {
   "status.unreachable": "Backend unreachable",
   "status.reposOne": "{n} repository",
   "status.reposOther": "{n} repositories",
+  "status.hooksIssue": "Hooks not installed",
+  "status.hooksIssueTooltip":
+    "Agent hooks aren't fully installed, so precise agent states may be unavailable. Click to review them in Settings → Hooks.",
+  "status.backendDesc": "Uxnan's local backend (terminals, git, agents).",
+  "status.backendRepos": "Projects",
 
   // Terminal tab state
   "terminal.exited": "exited",

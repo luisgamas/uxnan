@@ -32,7 +32,7 @@ export const es: Record<MessageKey, string> = {
   "common.loading": "Cargando…",
 
   // Left sidebar
-  "sidebar.search": "Buscar proyectos y worktrees…",
+  "sidebar.search": "Buscar un proyecto o worktree…",
   "sidebar.projects": "Proyectos",
   "sidebar.addProject": "Agregar proyecto…",
   "sidebar.refresh": "Actualizar worktrees y estado",
@@ -43,7 +43,7 @@ export const es: Record<MessageKey, string> = {
   "sidebar.sortNameDesc": "Nombre (Z–A)",
   "sidebar.noMatch": "Ningún proyecto coincide con tu búsqueda.",
   "sidebar.empty": "Aún no hay proyectos.",
-  "sidebar.addRepo": "Agregar un repositorio git",
+  "sidebar.addRepo": "Agregar una carpeta",
 
   // Project card
   "project.expand": "Expandir",
@@ -108,11 +108,12 @@ export const es: Record<MessageKey, string> = {
   "terminal.splitRight": "Dividir a la derecha",
   "terminal.splitDown": "Dividir abajo",
   "terminal.closeTerminal": "Cerrar terminal",
+  "terminal.closeTab": "Cerrar pestaña",
 
   // Directory picker
   "picker.title": "Agregar proyecto",
   "picker.desc":
-    "Navega hasta un repositorio git y agrégalo. Las carpetas con la etiqueta “repo” son repositorios git.",
+    "Navega hasta cualquier carpeta y agrégala. Las carpetas con la etiqueta “repo” son repositorios git; las que no lo son también funcionan — solo que sin worktrees.",
   "picker.pathPlaceholder": "Escribe o pega una ruta y presiona Enter…",
   "picker.parent": "Carpeta superior",
   "picker.empty": "No hay subcarpetas aquí.",
@@ -175,9 +176,12 @@ export const es: Record<MessageKey, string> = {
   "diff.sideBySide": "Lado a lado",
   "diff.close": "Cerrar diff",
   "rightPanel.viewDiff": "Ver diff",
-  "palette.placeholder": "Saltar a un worktree…",
-  "palette.empty": "Ningún worktree coincide.",
-  "sidebar.quickSwitch": "Cambio rápido de worktree (Ctrl+P)",
+  "palette.title": "Buscar un proyecto o worktree",
+  "palette.placeholder": "Buscar un proyecto o worktree…",
+  "palette.empty": "Ningún proyecto o worktree coincide.",
+  "palette.hintNavigate": "Navegar",
+  "palette.hintSelect": "Seleccionar",
+  "palette.hintExit": "Salir",
   "diff.stageHunk": "Preparar bloque",
   "diff.unstageHunk": "Quitar bloque",
   "diff.discardHunk": "Descartar bloque",
@@ -191,6 +195,37 @@ export const es: Record<MessageKey, string> = {
   "rightPanel.noMatch": "Ningún archivo con cambios coincide.",
   "rightPanel.changedOne": "{n} archivo con cambios",
   "rightPanel.changedOther": "{n} archivos con cambios",
+  // Compositor de commit (campos opcionales)
+  "rightPanel.summaryPlaceholder": "Resumen (obligatorio)",
+  "rightPanel.descriptionPlaceholder": "Descripción extendida (opcional)",
+  "rightPanel.commitOptions": "Opciones",
+  "rightPanel.coAuthors": "Coautores",
+  "rightPanel.coAuthorPlaceholder": "Nombre <email>",
+  "rightPanel.addCoAuthor": "Añadir coautor",
+  "rightPanel.removeCoAuthor": "Quitar coautor",
+  "rightPanel.amend": "Enmendar último commit",
+  "rightPanel.amendDesc": "Reescribe el commit anterior en lugar de crear uno nuevo.",
+  "rightPanel.amendCommit": "Enmendar commit",
+  "rightPanel.signOff": "Firmar (sign-off)",
+  "rightPanel.signOffDesc": "Añade un trailer Signed-off-by.",
+
+  // Pestaña Historial (log de commits + grafo de ramas)
+  "history.tab": "Historial",
+  "history.search": "Buscar commits",
+  "history.searchPlaceholder": "Filtrar commits…",
+  "history.refresh": "Actualizar historial",
+  "history.showGraph": "Mostrar grafo de ramas",
+  "history.hideGraph": "Ocultar grafo de ramas",
+  "history.selectWorktree": "Selecciona un proyecto o worktree para ver su historial.",
+  "history.notRepo": "No es un repositorio git.",
+  "history.noCommits": "Aún no hay commits.",
+  "history.noMatch": "Ningún commit coincide.",
+  "history.loadMore": "Cargar más",
+  "history.viewCommit": "Ver commit",
+  "history.copyHash": "Copiar hash del commit",
+  "history.hashCopied": "Hash del commit copiado",
+  "history.countOne": "{n} commit",
+  "history.countOther": "{n} commits",
 
   // File-tree tab
   "fileTree.tab": "Archivos",
@@ -214,8 +249,14 @@ export const es: Record<MessageKey, string> = {
   "shortcuts.closeCenterDesc": "Cierra el archivo o diff abierto en el panel central.",
   "shortcuts.saveFile": "Guardar archivo",
   "shortcuts.saveFileDesc": "Guarda el archivo abierto en el editor.",
-  "shortcuts.worktreePalette": "Cambio rápido de worktree",
-  "shortcuts.worktreePaletteDesc": "Abre la paleta de cambio rápido de worktree.",
+  "shortcuts.catGeneral": "General",
+  "shortcuts.catNavigation": "Proyectos y navegación",
+  "shortcuts.catPanels": "Paneles",
+  "shortcuts.catEditor": "Editor",
+  "shortcuts.worktreePalette": "Buscar proyecto o worktree",
+  "shortcuts.worktreePaletteDesc": "Abre la búsqueda de proyectos y worktrees.",
+  "shortcuts.addProject": "Agregar proyecto",
+  "shortcuts.addProjectDesc": "Abre el selector de carpeta para agregar un proyecto.",
   "shortcuts.openSettings": "Abrir configuración",
   "shortcuts.openSettingsDesc": "Abre esta vista de configuración.",
   "shortcuts.toggleLeftSidebar": "Alternar barra izquierda",
@@ -231,6 +272,16 @@ export const es: Record<MessageKey, string> = {
   "editor.tooLarge": "Este archivo es demasiado grande para editarse aquí.",
   "editor.binary": "Es un archivo binario y no puede editarse como texto.",
   "editor.removedPeek": "{n} línea(s) eliminada(s) — clic para ver",
+  "editor.externalChanged": "Este archivo cambió en disco.",
+  "editor.reload": "Recargar",
+  "editor.keepMine": "Mantener mis cambios",
+  "editor.unsavedTitle": "Cambios sin guardar",
+  "editor.unsavedDesc": "{file} tiene cambios sin guardar. ¿Guardar antes de cerrar?",
+  "editor.unsavedManyDesc": "{n} archivo(s) tienen cambios sin guardar. ¿Guardarlos antes de cerrar?",
+  "editor.saveAndClose": "Guardar y cerrar",
+  "editor.discardClose": "Descartar y cerrar",
+  "editor.saveAllClose": "Guardar todo y cerrar",
+  "editor.discardAllClose": "Descartar todo y cerrar",
 
   // Appearance — temas
   "appearance.import": "Importar",
@@ -307,8 +358,6 @@ export const es: Record<MessageKey, string> = {
   "monitor.stale": "Sin actualizar hace rato",
   "monitor.detected": "Agente detectado",
   "monitor.unread": "El agente terminó — sin revisar",
-  "monitor.installHooksHint":
-    "Instala los hooks para estados precisos — abre Configuración → Hooks",
   "agents.spaceLabel": "Agentes",
   "settings.preventSleep": "Evitar suspensión al trabajar",
   "settings.preventSleepDesc":
@@ -319,8 +368,13 @@ export const es: Record<MessageKey, string> = {
   "settings.agentNotifications": "Notificaciones de inactividad",
   "settings.agentNotificationsDesc":
     "Notificar cuando un agente queda inactivo y estás viendo otro espacio.",
-  "notify.agentIdleTitle": "{agent} está inactivo",
-  "notify.agentIdleBody": "En {worktree} — puede estar esperándote.",
+  "notify.agentDoneTitle": "{agent} terminó la tarea",
+  "notify.agentDoneBody": "Tarea completada.",
+  "notify.agentTask": "Tarea: {task}",
+  "notify.agentWaitingTitle": "{agent} te está esperando",
+  "notify.agentWaitingBody": "Necesita tu atención.",
+  "notify.agentBlockedTitle": "{agent} encontró un problema",
+  "notify.agentBlockedBody": "Revisa la terminal del agente.",
 
   // Status bar
   "status.connected": "Backend conectado",
@@ -328,6 +382,11 @@ export const es: Record<MessageKey, string> = {
   "status.unreachable": "Backend inalcanzable",
   "status.reposOne": "{n} repositorio",
   "status.reposOther": "{n} repositorios",
+  "status.hooksIssue": "Hooks sin instalar",
+  "status.hooksIssueTooltip":
+    "Los hooks de agente no están del todo instalados, así que los estados precisos pueden no estar disponibles. Haz clic para revisarlos en Configuración → Hooks.",
+  "status.backendDesc": "Backend local de Uxnan (terminales, git, agentes).",
+  "status.backendRepos": "Proyectos",
 
   // Terminal tab state
   "terminal.exited": "finalizada",

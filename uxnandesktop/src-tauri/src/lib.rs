@@ -10,6 +10,7 @@ mod browse;
 mod commands;
 mod error;
 mod fs;
+mod fswatch;
 mod git;
 mod gitfast;
 mod hooks;
@@ -38,6 +39,10 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_notification::init())
+        // Restore the main window's last size/position/maximized state on launch
+        // and save it on exit (so the app reopens where the user left it). The
+        // window config provides the first-run defaults.
+        .plugin(tauri_plugin_window_state::Builder::default().build())
         .setup(|app| {
             // Resolve the OS-specific app data directory and load (or default)
             // the persisted state, then publish it as managed state.
@@ -205,6 +210,7 @@ pub fn run() {
             commands::fs_list_dir,
             commands::fs_read_file,
             commands::fs_write_file,
+            commands::fs_set_watch,
             commands::reveal_path,
             commands::git_diff_head,
             commands::set_terminal_layout,
@@ -219,6 +225,8 @@ pub fn run() {
             commands::git_discard,
             commands::git_apply,
             commands::git_commit,
+            commands::git_log,
+            commands::git_show,
             commands::git_set_watch,
             commands::git_push,
             commands::git_pull,

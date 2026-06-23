@@ -30,6 +30,8 @@ export interface AgentDisplay {
  *  nothing to indicate. Reactive: reads the monitoring stores, so callers in a
  *  `$derived`/template re-run when any layer changes. */
 export function resolveAgentDisplay(tab: GroupTab): AgentDisplay | null {
+  // Only terminal tabs carry agent activity; file/diff tabs show nothing.
+  if (tab.kind !== "terminal") return null;
   if (tab.exited) {
     // A finished agent terminal reads as "done"; a plain one shows nothing.
     return tab.agentName ? { status: "done", source: "activity", stale: false } : null;

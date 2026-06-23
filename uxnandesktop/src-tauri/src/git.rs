@@ -53,6 +53,30 @@ pub struct FileChange {
     pub worktree: String,
 }
 
+/// One commit in the history log, for the right panel's "History" tab. `parents`
+/// powers the branch graph (a commit with 2+ parents is a merge); `refs` carries
+/// the ref decorations (e.g. `HEAD`, branch names, `tag: v1`).
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CommitInfo {
+    /// Full 40-char commit hash.
+    pub hash: String,
+    /// Abbreviated hash (git's default short length).
+    pub short_hash: String,
+    /// Parent hashes (0 for a root commit, 2+ for a merge).
+    pub parents: Vec<String>,
+    /// First line of the message.
+    pub subject: String,
+    /// The rest of the message (after the first blank line); may be empty.
+    pub body: String,
+    pub author_name: String,
+    pub author_email: String,
+    /// Author time, Unix seconds.
+    pub timestamp: i64,
+    /// Ref decorations pointing at this commit (`HEAD`, branches, `tag: …`).
+    pub refs: Vec<String>,
+}
+
 /// Run `git` in `repo_path` and return stdout on success, mapping a non-zero
 /// exit (with stderr) to [`AppError::Git`].
 async fn git(repo_path: &str, args: &[&str]) -> Result<String, AppError> {
@@ -298,8 +322,19 @@ async fn remove_dir_with_retry(path: &str) {
     }
 }
 
-/// List all worktrees of a repo (ADE-created and external).
+/// List all worktrees of a repo (ADE-created and external). A registered folder
+/// that isn't a git repo has no worktrees, so we synthesize a single "main"
+/// entry pointing at the folder itself — the project still works as a terminal /
+/// file-tree workspace, only its git-only panels stay empty.
 pub async fn list_worktrees(repo_path: &str) -> Result<Vec<WorktreeEntry>, AppError> {
+    if !is_git_repo(repo_path).await {
+        return Ok(vec![WorktreeEntry {
+            path: repo_path.to_string(),
+            branch: None,
+            head: None,
+            is_main: true,
+        }]);
+    }
     let out = git(repo_path, &["worktree", "list", "--porcelain"]).await?;
     Ok(parse_worktree_porcelain(&out))
 }
@@ -598,12 +633,26 @@ pub async fn apply_patch(
     Ok(())
 }
 
-/// Commit the staged changes with `message` (`git commit -m`). Fails (surfaced to
-/// the user) when nothing is staged.
-pub async fn commit(worktree_path: &str, message: &str) -> Result<(), AppError> {
-    git(worktree_path, &["commit", "-m", message])
-        .await
-        .map(|_| ())
+/// Commit the staged changes with `message` (`git commit -m`). With `amend`,
+/// rewrites the current `HEAD` commit instead of creating a new one
+/// (`git commit --amend -m`), which also works to reword with nothing staged.
+/// With `sign_off`, appends a `Signed-off-by:` trailer using the configured git
+/// identity (`-s`). Without `amend`, fails (surfaced to the user) when nothing is
+/// staged.
+pub async fn commit(
+    worktree_path: &str,
+    message: &str,
+    amend: bool,
+    sign_off: bool,
+) -> Result<(), AppError> {
+    let mut args = vec!["commit", "-m", message];
+    if amend {
+        args.push("--amend");
+    }
+    if sign_off {
+        args.push("-s");
+    }
+    git(worktree_path, &args).await.map(|_| ())
 }
 
 /// Push the current branch (`git push`). Never retried (not idempotent).
@@ -615,6 +664,127 @@ pub async fn push(worktree_path: &str) -> Result<(), AppError> {
 /// surprise merge; the user resolves diverged history explicitly.
 pub async fn pull(worktree_path: &str) -> Result<(), AppError> {
     git(worktree_path, &["pull", "--ff-only"]).await.map(|_| ())
+}
+
+// --- History log & commit show (right-panel "History" tab) -----------------
+
+/// Field separator (US) and record separator (RS) used in the `git log` pretty
+/// format. Both are control chars that never appear in a commit message, so they
+/// parse a multi-line body unambiguously.
+const LOG_FIELD_SEP: char = '\u{1f}';
+const LOG_RECORD_SEP: char = '\u{1e}';
+
+/// The `--pretty=format:` template for [`log_cli`], matching the field order
+/// [`parse_log`] expects (hash, short, parents, name, email, time, refs, subject,
+/// body), terminated by the record separator.
+const LOG_FORMAT: &str = "format:%H%x1f%h%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%D%x1f%s%x1f%b%x1e";
+
+/// List the worktree's commit history (newest first, topological), `limit`
+/// commits starting `skip` from `HEAD`. Fast path: `git2` revwalk; CLI fallback
+/// (`git log --topo-order`). An unborn `HEAD` (a repo with no commits) yields an
+/// empty list rather than an error.
+pub async fn log(
+    worktree_path: &str,
+    limit: usize,
+    skip: usize,
+) -> Result<Vec<CommitInfo>, AppError> {
+    let p = worktree_path.to_string();
+    if let Ok(Ok(v)) =
+        tokio::task::spawn_blocking(move || crate::gitfast::log(&p, limit, skip)).await
+    {
+        return Ok(v);
+    }
+    log_cli(worktree_path, limit, skip).await
+}
+
+/// CLI fallback for [`log`]. Tolerates the "no commits yet" case (empty list).
+async fn log_cli(
+    worktree_path: &str,
+    limit: usize,
+    skip: usize,
+) -> Result<Vec<CommitInfo>, AppError> {
+    let limit_s = limit.to_string();
+    let skip_s = format!("--skip={skip}");
+    let pretty = format!("--pretty={LOG_FORMAT}");
+    let out = match git(
+        worktree_path,
+        &[
+            "log",
+            "--topo-order",
+            &skip_s,
+            "-n",
+            &limit_s,
+            "--decorate=short",
+            &pretty,
+        ],
+    )
+    .await
+    {
+        Ok(out) => out,
+        // A fresh repo with no commits: not an error for the history view.
+        Err(AppError::Git(e)) if e.contains("does not have any commits") => String::new(),
+        Err(e) => return Err(e),
+    };
+    Ok(parse_log(&out))
+}
+
+/// Parse the `git log` output produced by [`LOG_FORMAT`] into [`CommitInfo`]s.
+/// Records are RS-separated; fields within a record are US-separated.
+pub fn parse_log(input: &str) -> Vec<CommitInfo> {
+    let mut out = Vec::new();
+    for record in input.split(LOG_RECORD_SEP) {
+        // Trim the inter-record newline git inserts; skip the trailing empty one.
+        let record = record.trim_matches(['\n', '\r']);
+        if record.is_empty() {
+            continue;
+        }
+        let fields: Vec<&str> = record.split(LOG_FIELD_SEP).collect();
+        if fields.len() < 9 {
+            continue;
+        }
+        out.push(CommitInfo {
+            hash: fields[0].to_string(),
+            short_hash: fields[1].to_string(),
+            parents: fields[2].split_whitespace().map(str::to_string).collect(),
+            author_name: fields[3].to_string(),
+            author_email: fields[4].to_string(),
+            timestamp: fields[5].trim().parse().unwrap_or(0),
+            refs: parse_refs(fields[6]),
+            subject: fields[7].to_string(),
+            body: fields[8].trim_end().to_string(),
+        });
+    }
+    out
+}
+
+/// Parse `git log`'s `%D` decoration field (e.g. `HEAD -> main, origin/main,
+/// tag: v1.0`) into a flat list of labels. `HEAD -> x` becomes `HEAD` + `x`;
+/// `tag: x` is kept as `tag: x` so the frontend can style tags distinctly.
+fn parse_refs(input: &str) -> Vec<String> {
+    input
+        .split(',')
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+        .flat_map(|p| match p.split_once("->") {
+            Some((head, branch)) => vec![head.trim().to_string(), branch.trim().to_string()],
+            None => vec![p.to_string()],
+        })
+        .collect()
+}
+
+/// Unified diff a single commit introduced (its first-parent diff). `hash` is
+/// validated as hex before use. Fast path: `git2`; CLI fallback (`git show`).
+pub async fn show(worktree_path: &str, hash: &str) -> Result<String, AppError> {
+    if hash.is_empty() || !hash.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err(AppError::Invalid(format!("invalid commit hash: {hash}")));
+    }
+    let (p, h) = (worktree_path.to_string(), hash.to_string());
+    if let Ok(Ok(v)) = tokio::task::spawn_blocking(move || crate::gitfast::show(&p, &h)).await {
+        if !v.trim().is_empty() {
+            return Ok(v);
+        }
+    }
+    git(worktree_path, &["show", "--format=", "-p", hash]).await
 }
 
 #[cfg(test)]
@@ -732,5 +902,42 @@ mod tests {
     #[test]
     fn parses_numstat_empty() {
         assert!(parse_numstat("").is_empty());
+    }
+
+    #[test]
+    fn parses_log_records_fields_and_merges() {
+        // Two records (US between fields, RS terminates each). The second is a
+        // merge (two parents) with a multi-line body and a HEAD/branch decoration.
+        let input = "h1\u{1f}h1s\u{1f}p0\u{1f}Ann\u{1f}ann@x\u{1f}1700000000\u{1f}\u{1f}first\u{1f}\u{1e}\nh2\u{1f}h2s\u{1f}p1 p0\u{1f}Bob\u{1f}bob@x\u{1f}1700000100\u{1f}HEAD -> main, tag: v1\u{1f}merge branch\u{1f}line one\nline two\u{1e}\n";
+        let commits = parse_log(input);
+        assert_eq!(commits.len(), 2);
+
+        assert_eq!(commits[0].hash, "h1");
+        assert_eq!(commits[0].short_hash, "h1s");
+        assert_eq!(commits[0].parents, vec!["p0"]);
+        assert_eq!(commits[0].author_name, "Ann");
+        assert_eq!(commits[0].timestamp, 1700000000);
+        assert_eq!(commits[0].subject, "first");
+        assert!(commits[0].body.is_empty());
+        assert!(commits[0].refs.is_empty());
+
+        assert_eq!(commits[1].parents, vec!["p1", "p0"]); // merge
+        assert_eq!(commits[1].body, "line one\nline two");
+        assert_eq!(commits[1].refs, vec!["HEAD", "main", "tag: v1"]);
+    }
+
+    #[test]
+    fn parses_log_empty() {
+        assert!(parse_log("").is_empty());
+        assert!(parse_log("\n").is_empty());
+    }
+
+    #[test]
+    fn parse_refs_splits_head_arrow_and_keeps_tags() {
+        assert_eq!(
+            parse_refs("HEAD -> main, origin/main, tag: v1.0"),
+            vec!["HEAD", "main", "origin/main", "tag: v1.0"]
+        );
+        assert!(parse_refs("").is_empty());
     }
 }

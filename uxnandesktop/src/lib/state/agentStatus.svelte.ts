@@ -15,6 +15,7 @@ import { terminals } from "./terminals.svelte";
 import { unread } from "./unread.svelte";
 import { app } from "./app.svelte";
 import { toast } from "$lib/toast";
+import { notify } from "$lib/notify";
 import { i18n } from "$lib/i18n";
 import type { AgentStatus, AgentStatusEvent } from "$lib/types";
 
@@ -28,6 +29,8 @@ export interface LiveAgentState {
   prompt?: string | null;
   tool?: string | null;
   interrupted: boolean;
+  /** Short preview of the agent's latest response (sent on `done`), if any. */
+  summary?: string | null;
   /** Last hook update (epoch ms; the backend reports seconds, scaled here). */
   lastUpdate: number;
 }
@@ -39,6 +42,7 @@ function toLive(e: AgentStatusEvent): LiveAgentState {
     prompt: e.prompt,
     tool: e.tool,
     interrupted: e.interrupted,
+    summary: e.summary,
     lastUpdate: e.lastUpdate * 1000,
   };
 }
@@ -63,30 +67,72 @@ class AgentStatusStore {
     try {
       await listen<AgentStatusEvent>("agent:status-changed", (e) => {
         const p = e.payload;
-        const prev = this.byId[p.agentId]?.status;
+        const prevState = this.byId[p.agentId];
         this.byId = { ...this.byId, [p.agentId]: toLive(p) };
-        // Toast meaningful state transitions (done / blocked / waiting).
-        if (prev !== p.status) this.notifyChange(p.agentId, p.status);
-        // A finished agent marks its worktree "unread" unless you're looking at
-        // it (focused, on that terminal) — then there's nothing to flag.
-        if (p.status === "done") {
-          const ws = terminals.workspaceOfTab(p.agentId);
-          if (ws !== undefined && !this.viewing(ws, p.agentId)) unread.mark(ws);
-        }
+        // Announce meaningful transitions (done / blocked / waiting). Pass the
+        // previous state so we can recover the task prompt on `done` (the Stop
+        // report's own prompt may be the freshly-read transcript task).
+        if (prevState?.status !== p.status) this.notifyChange(p, prevState);
       });
     } catch {
       this.started = false; // no Tauri event bus
     }
   }
 
-  /** Toast a meaningful agent state transition (gated by the agent-notifications
-   *  setting). `working` is intentionally skipped — it fires on every tool call. */
-  private notifyChange(id: string, status: AgentStatus): void {
+  /** Announce a meaningful agent state transition (gated by the agent-
+   *  notifications setting). `working` is intentionally skipped — it fires on
+   *  every tool call. When the app is focused, an in-app toast is enough; when
+   *  it's in the background, a native OS notification is sent (enriched with the
+   *  task and a short response preview for `done`). A non-`working` result also
+   *  flags its worktree "unread" unless you're already looking at it. */
+  private notifyChange(p: AgentStatusEvent, prevState?: LiveAgentState): void {
+    const status = p.status;
+    if (status === "working") return;
     if (app.settings.agentNotifications === false) return;
-    const name = terminals.findTab(id)?.agentName ?? i18n.t("toast.agent");
-    if (status === "done") toast.success(i18n.t("toast.agentDone", { name }));
-    else if (status === "blocked") toast.warning(i18n.t("toast.agentBlocked", { name }));
-    else if (status === "waiting") toast.info(i18n.t("toast.agentWaiting", { name }));
+
+    const tab = terminals.findTab(p.agentId);
+    const name =
+      (tab?.kind === "terminal" ? tab.agentName : undefined) ?? i18n.t("toast.agent");
+    const ws = terminals.workspaceOfTab(p.agentId);
+    const viewing = ws !== undefined && this.viewing(ws, p.agentId);
+
+    // Already looking right at this agent? Nothing to announce — you see it.
+    if (viewing) return;
+
+    // Flag the worktree as having an unreviewed result (red badge).
+    if (ws !== undefined) unread.mark(ws);
+
+    const focused = typeof document !== "undefined" ? document.hasFocus() : true;
+    if (focused) {
+      // In-app, lightweight — only useful while the window is up.
+      if (status === "done") toast.success(i18n.t("toast.agentDone", { name }));
+      else if (status === "blocked") toast.warning(i18n.t("toast.agentBlocked", { name }));
+      else if (status === "waiting") toast.info(i18n.t("toast.agentWaiting", { name }));
+      return;
+    }
+
+    // Background → native OS notification with enriching detail.
+    const task = (p.prompt ?? prevState?.prompt ?? "").trim();
+    if (status === "done") {
+      const preview = (p.summary ?? "").trim();
+      const body = preview
+        ? preview
+        : task
+          ? i18n.t("notify.agentTask", { task })
+          : i18n.t("notify.agentDoneBody");
+      void notify(i18n.t("notify.agentDoneTitle", { agent: name }), body);
+    } else if (status === "waiting") {
+      void notify(
+        i18n.t("notify.agentWaitingTitle", { agent: name }),
+        task ? i18n.t("notify.agentTask", { task }) : i18n.t("notify.agentWaitingBody"),
+      );
+    } else if (status === "blocked") {
+      const preview = (p.summary ?? "").trim();
+      void notify(
+        i18n.t("notify.agentBlockedTitle", { agent: name }),
+        preview || i18n.t("notify.agentBlockedBody"),
+      );
+    }
   }
 
   /** Whether the user is currently looking at a given terminal (window focused,

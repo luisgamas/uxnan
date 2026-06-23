@@ -1,11 +1,6 @@
 <script lang="ts">
   import { getCurrentWindow } from "@tauri-apps/api/window";
-  import { app } from "$lib/state/app.svelte";
   import { i18n } from "$lib/i18n";
-  import { cn } from "$lib/utils";
-  import { icon } from "$lib/design";
-  import SettingsIcon from "@lucide/svelte/icons/settings";
-  import PanelLeftIcon from "@lucide/svelte/icons/panel-left";
 
   // Window controls degrade gracefully in a plain browser (no Tauri runtime).
   function windowAction(fn: (w: ReturnType<typeof getCurrentWindow>) => void) {
@@ -15,35 +10,16 @@
       // Not running inside Tauri (web preview) — ignore.
     }
   }
-
-  function toggleLeft() {
-    app.settings.leftSidebarOpen = !app.settings.leftSidebarOpen;
-    void app.persistSettings();
-  }
 </script>
 
 <!-- Custom title bar (the OS chrome is disabled via `decorations: false`).
-     The bar itself is a drag region; interactive children are not. -->
+     The bar itself is a drag region; interactive children are not. The
+     left-sidebar toggle and the Settings entry live elsewhere now (the status
+     bar and the projects sidebar, respectively). -->
 <header
   data-tauri-drag-region
   class="flex h-10 shrink-0 select-none items-center gap-2 border-b border-border bg-card px-2 text-sm"
 >
-  <!-- Hide the left-sidebar toggle while the settings view is open — the
-       left side IS the settings menu, so toggling the project tree makes
-       no sense. -->
-  {#if !app.settingsOpen}
-    <button
-      class={cn(
-        "flex size-7 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-      )}
-      title={i18n.t("titlebar.toggleLeft")}
-      aria-label={i18n.t("titlebar.toggleLeft")}
-      onclick={toggleLeft}
-    >
-      <PanelLeftIcon class={icon.button} />
-    </button>
-  {/if}
-
   <!-- Brand mark. Kept inside the drag region (purely decorative — no
        click handler) so the user can grab the title bar by the logo too.
        Two hand-authored variants: black stroke (`logo_nb`) on light themes,
@@ -76,19 +52,6 @@
 
   <!-- Draggable filler -->
   <div data-tauri-drag-region class="h-full flex-1"></div>
-
-  <!-- Settings (toggle) -->
-  <button
-    class={cn(
-      "flex size-7 items-center justify-center rounded hover:bg-accent hover:text-accent-foreground",
-      app.settingsOpen ? "bg-accent text-accent-foreground" : "text-muted-foreground",
-    )}
-    title={i18n.t("titlebar.settings")}
-    aria-label={i18n.t("titlebar.settings")}
-    onclick={() => (app.settingsOpen = !app.settingsOpen)}
-  >
-    <SettingsIcon class={icon.button} />
-  </button>
 
   <!-- Window controls -->
   <div class="ml-1 flex items-center">

@@ -3,7 +3,10 @@
   // per-file stage / unstage / discard, a commit composer, push/pull, and a diff
   // viewer. Status updates live via the backend `git:status-changed` event.
   import { Button } from "$lib/components/ui/button";
+  import { Switch } from "$lib/components/ui/switch";
+  import * as Collapsible from "$lib/components/ui/collapsible";
   import { git, type FileEntry } from "$lib/state/git.svelte";
+  import { terminals } from "$lib/state/terminals.svelte";
   import { cn } from "$lib/utils";
   import { icon, iconButton, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
@@ -18,14 +21,43 @@
   import ArrowUpIcon from "@lucide/svelte/icons/arrow-up";
   import ArrowDownIcon from "@lucide/svelte/icons/arrow-down";
   import XIcon from "@lucide/svelte/icons/x";
+  import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
+  import UsersIcon from "@lucide/svelte/icons/users";
+  import Trash2Icon from "@lucide/svelte/icons/trash-2";
 
   type Area = "staged" | "changes";
 
   // The active worktree's git status is loaded by the parent (RightPanel), which
   // stays mounted across tab switches; this panel just renders the shared store.
+  // Amend can reword the previous commit with nothing staged, so it relaxes the
+  // "needs staged changes" requirement.
   const canCommit = $derived(
-    git.staged.length > 0 && git.message.trim().length > 0 && !git.committing,
+    (git.staged.length > 0 || git.amend) &&
+      git.message.trim().length > 0 &&
+      !git.committing,
   );
+
+  // The optional commit fields (body, co-authors, amend, sign-off) live in a
+  // collapsed section. Opened locally; auto-opens when any field already carries
+  // a value (e.g. after an error so the user doesn't lose sight of what they set).
+  let optionsOpen = $state(false);
+  const hasOptions = $derived(
+    git.body.trim().length > 0 ||
+      git.coAuthors.length > 0 ||
+      git.amend ||
+      git.signOff,
+  );
+
+  function addCoAuthor() {
+    git.coAuthors = [...git.coAuthors, ""];
+    optionsOpen = true;
+  }
+  function setCoAuthor(i: number, value: string) {
+    git.coAuthors = git.coAuthors.map((c, j) => (j === i ? value : c));
+  }
+  function removeCoAuthor(i: number) {
+    git.coAuthors = git.coAuthors.filter((_, j) => j !== i);
+  }
   /** Total distinct changed files (for the header count). */
   const changedCount = $derived(git.files.length);
 
@@ -98,7 +130,7 @@
 {#snippet fileRow(f: FileEntry, area: Area)}
   {@const b = badge(f, area)}
   {@const isOpen =
-    git.selected?.file === f.path && git.selected?.staged === (area === "staged")}
+    git.path != null && terminals.isDiffOpen(git.path, f.path, area === "staged")}
   {@const ns = git.numstat[f.path]}
   <div
     class={cn(
@@ -108,9 +140,11 @@
     role="button"
     tabindex="0"
     title={i18n.t("rightPanel.viewDiff")}
-    onclick={() => void git.openDiff(f.path, area === "staged")}
+    onclick={() => git.path && terminals.openDiff(git.path, f.path, area === "staged")}
     onkeydown={(e) =>
-      (e.key === "Enter" || e.key === " ") && void git.openDiff(f.path, area === "staged")}
+      (e.key === "Enter" || e.key === " ") &&
+      git.path &&
+      terminals.openDiff(git.path, f.path, area === "staged")}
   >
     <span class={cn("w-3 shrink-0 text-center font-mono font-semibold", text.indicator, b.cls)}>
       {b.letter}
@@ -262,9 +296,90 @@
       <textarea
         class="uxnan-scroll w-full resize-none rounded-md border border-input bg-transparent px-2 py-1.5 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
         rows="2"
-        placeholder={i18n.t("rightPanel.commitPlaceholder")}
+        placeholder={i18n.t("rightPanel.summaryPlaceholder")}
         bind:value={git.message}
       ></textarea>
+
+      <!-- Optional fields (body / co-authors / amend / sign-off), collapsed. -->
+      <Collapsible.Root bind:open={optionsOpen} class="mt-1.5">
+        <Collapsible.Trigger
+          class={cn(
+            "flex w-full items-center gap-1 rounded-md px-1 py-1 hover:bg-accent/40",
+            text.meta,
+          )}
+        >
+          <ChevronDownIcon
+            class={cn(icon.button, "transition-transform", optionsOpen && "rotate-180")}
+          />
+          {i18n.t("rightPanel.commitOptions")}
+          {#if !optionsOpen && hasOptions}
+            <span class="ml-0.5 size-1.5 rounded-full bg-primary"></span>
+          {/if}
+        </Collapsible.Trigger>
+        <Collapsible.Content class="mt-1.5 flex flex-col gap-2">
+          <!-- Extended description (body). -->
+          <textarea
+            class="uxnan-scroll w-full resize-none rounded-md border border-input bg-transparent px-2 py-1.5 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            rows="3"
+            placeholder={i18n.t("rightPanel.descriptionPlaceholder")}
+            bind:value={git.body}
+          ></textarea>
+
+          <!-- Co-authors → Co-authored-by trailers. -->
+          <div class="flex flex-col gap-1">
+            <span class={cn("flex items-center gap-1.5", text.meta)}>
+              <UsersIcon class={icon.decorative} />
+              {i18n.t("rightPanel.coAuthors")}
+            </span>
+            {#each git.coAuthors as coAuthor, i (i)}
+              <div class="flex items-center gap-1">
+                <input
+                  type="text"
+                  class="min-w-0 flex-1 rounded-md border border-input bg-transparent px-2 py-1 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  placeholder={i18n.t("rightPanel.coAuthorPlaceholder")}
+                  value={coAuthor}
+                  oninput={(e) => setCoAuthor(i, e.currentTarget.value)}
+                />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  class={iconButton.action}
+                  title={i18n.t("rightPanel.removeCoAuthor")}
+                  onclick={() => removeCoAuthor(i)}
+                >
+                  <Trash2Icon class={icon.button} />
+                </Button>
+              </div>
+            {/each}
+            <Button
+              variant="outline"
+              size="sm"
+              class={cn("h-6 self-start", text.body)}
+              onclick={addCoAuthor}
+            >
+              <PlusIcon data-icon="inline-start" />
+              {i18n.t("rightPanel.addCoAuthor")}
+            </Button>
+          </div>
+
+          <!-- Amend / sign-off toggles. -->
+          <label class="flex items-center justify-between gap-2">
+            <span class="flex flex-col">
+              <span class={text.body}>{i18n.t("rightPanel.amend")}</span>
+              <span class={text.meta}>{i18n.t("rightPanel.amendDesc")}</span>
+            </span>
+            <Switch checked={git.amend} onCheckedChange={(v) => (git.amend = v)} />
+          </label>
+          <label class="flex items-center justify-between gap-2">
+            <span class="flex flex-col">
+              <span class={text.body}>{i18n.t("rightPanel.signOff")}</span>
+              <span class={text.meta}>{i18n.t("rightPanel.signOffDesc")}</span>
+            </span>
+            <Switch checked={git.signOff} onCheckedChange={(v) => (git.signOff = v)} />
+          </label>
+        </Collapsible.Content>
+      </Collapsible.Root>
+
       <Button
         class="mt-1.5 w-full"
         size="sm"
@@ -272,7 +387,11 @@
         onclick={() => void git.commit()}
       >
         <GitCommitIcon data-icon="inline-start" />
-        {git.committing ? i18n.t("rightPanel.committing") : i18n.t("rightPanel.commit")}
+        {git.committing
+          ? i18n.t("rightPanel.committing")
+          : git.amend
+            ? i18n.t("rightPanel.amendCommit")
+            : i18n.t("rightPanel.commit")}
       </Button>
 
       {#if git.ahead > 0 || git.behind > 0}

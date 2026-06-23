@@ -22,7 +22,7 @@ import type {
   WorktreeStatus,
 } from "$lib/types";
 import { app } from "$lib/state/app.svelte";
-import { terminals } from "$lib/state/terminals.svelte";
+import { terminals, GLOBAL_WORKSPACE } from "$lib/state/terminals.svelte";
 import { unread } from "$lib/state/unread.svelte";
 import { toast, toastError } from "$lib/toast";
 import { i18n } from "$lib/i18n";
@@ -55,6 +55,10 @@ class ProjectsStore {
   error = $state<string | null>(null);
   /** Whether the quick worktree-switch palette is open. */
   paletteOpen = $state(false);
+  /** Whether the "add project" directory picker is open. Lives here (not in a
+   *  component) so a global keyboard shortcut can open it even when the left
+   *  sidebar is collapsed — the picker is mounted once at the page root. */
+  pickerOpen = $state(false);
 
   /** Projects visible for the search query: those whose name/path matches OR
    *  that have a matching worktree. */
@@ -292,6 +296,30 @@ class ProjectsStore {
   launchAgentAt(path: string, agent: AgentProfile): void {
     this.activeWorktreePath = path;
     app.launchAgent(agent, { cwd: path, workspace: path });
+  }
+
+  /** Friendly label for a workspace key (repo / branch), for the breadcrumb. The
+   *  Global terminal space has no repo; a registered repo resolves to its main
+   *  branch; a worktree resolves to its branch. */
+  contextLabel(key: string): { repo?: string; name: string } {
+    if (key === GLOBAL_WORKSPACE) return { name: i18n.t("terminal.general") };
+    const mainRepo = app.repos.find((r) => r.path === key);
+    if (mainRepo) {
+      return {
+        repo: mainRepo.name,
+        name: this.mainWorktree(mainRepo.id)?.branch ?? "main",
+      };
+    }
+    for (const r of app.repos) {
+      const wt = this.worktreesOf(r.id).find((w) => w.path === key);
+      if (wt) return { repo: r.name, name: wt.branch ?? baseName(key) };
+    }
+    return { name: baseName(key) };
+  }
+
+  /** The active terminal workspace's breadcrumb label (reactive). */
+  get activeContext(): { repo?: string; name: string } {
+    return this.contextLabel(terminals.activeWorkspace);
   }
 }
 

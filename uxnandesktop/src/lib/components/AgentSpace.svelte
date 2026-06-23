@@ -8,7 +8,7 @@
   import { terminals } from "$lib/state/terminals.svelte";
   import { resolveAgentDisplay } from "$lib/state/agentDisplay";
   import { cn } from "$lib/utils";
-  import { icon, text } from "$lib/design";
+  import { icon, surface, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
   import AgentLogo from "./AgentLogo.svelte";
   import AgentStatusDot from "./AgentStatusDot.svelte";
@@ -57,7 +57,7 @@
           <button
             class={cn(
               "flex items-center gap-1.5 rounded-md py-1 pl-1 pr-1 text-left hover:bg-accent/40",
-              revealedId === t.id && "bg-accent/60",
+              revealedId === t.id && surface.activeNested,
             )}
             title={d ? `${t.agentName} · ${i18n.t(`monitor.${d.status}`)}` : t.agentName}
             onclick={() => reveal(t.id)}

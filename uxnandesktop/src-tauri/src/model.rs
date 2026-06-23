@@ -54,6 +54,12 @@ pub struct RepoData {
     pub path: String,
     #[serde(default)]
     pub worktrees: Vec<WorktreeData>,
+    /// Whether the folder is a git repository. Non-git folders are valid projects
+    /// too (terminal + file-tree workspace); their git-only panels stay empty.
+    /// Defaults to `true` for state persisted before this field existed (every
+    /// repo back then was a git repo).
+    #[serde(default = "default_true")]
+    pub is_git: bool,
 }
 
 /// An independent git worktree — the ADE's fundamental unit of isolation.
@@ -348,6 +354,8 @@ pub struct AgentReport {
     pub prompt: Option<String>,
     pub tool: Option<String>,
     pub interrupted: bool,
+    /// Short preview of the agent's latest response (for `done` notifications).
+    pub summary: Option<String>,
 }
 
 /// Last-known state reported by an agent via the local hook server (spec `02d`
@@ -372,6 +380,9 @@ pub struct AgentStateEntry {
     /// Whether the agent reported being interrupted.
     #[serde(default)]
     pub interrupted: bool,
+    /// Short preview of the agent's latest response (for `done` notifications).
+    #[serde(default)]
+    pub summary: Option<String>,
     pub first_seen: i64,
     pub last_update: i64,
 }
@@ -401,6 +412,7 @@ impl AppData {
             entry.prompt = report.prompt;
             entry.tool = report.tool;
             entry.interrupted = report.interrupted;
+            entry.summary = report.summary;
             entry.last_update = now;
             entry.clone()
         } else {
@@ -411,6 +423,7 @@ impl AppData {
                 prompt: report.prompt,
                 tool: report.tool,
                 interrupted: report.interrupted,
+                summary: report.summary,
                 first_seen: now,
                 last_update: now,
             };
@@ -553,6 +566,7 @@ mod tests {
             prompt: None,
             tool: None,
             interrupted: false,
+            summary: None,
         }
     }
 
@@ -600,6 +614,7 @@ mod tests {
             prompt: Some("p".into()),
             tool: Some("web_search".into()),
             interrupted: true,
+            summary: None,
             first_seen: 1,
             last_update: 2,
         };

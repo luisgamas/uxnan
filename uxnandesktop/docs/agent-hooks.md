@@ -296,6 +296,7 @@ JSON body:
 | `prompt` | string | no | The prompt being processed. |
 | `tool` | string | no | Tool in use: `file_edit`, `bash`, `web_search`, … |
 | `interrupted` | bool | no | Whether the agent was interrupted. |
+| `summary` | string | no | Short preview of the latest response; sent on `done` to enrich the completion notification. |
 
 Responses:
 

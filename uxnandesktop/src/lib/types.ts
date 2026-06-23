@@ -102,6 +102,11 @@ export interface RepoData {
   name: string;
   path: string;
   worktrees: WorktreeData[];
+  /** Whether the folder is a git repository. Non-git folders are valid projects
+   *  too — they just have no worktrees/branches and their git panels stay empty.
+   *  Optional for back-compat with state persisted before this field existed
+   *  (treated as git when absent). */
+  isGit?: boolean;
 }
 
 /** A worktree as reported by `git worktree list` (ADE- or agent-created). */
@@ -168,6 +173,30 @@ export interface FileNumstat {
   deleted: number;
 }
 
+/** Payload of the `fs:changed` event (mirror of Rust `FsChangedEvent`): the
+ *  watched worktree root plus the affected paths (changed entries + their parent
+ *  dirs), all forward-slash normalized. */
+export interface FsChangedEvent {
+  root: string;
+  paths: string[];
+}
+
+/** One commit in the history log (mirror of Rust `CommitInfo`). `parents` powers
+ *  the branch graph (2+ = a merge); `refs` are the decorations (`HEAD`, branch
+ *  names, `tag: …`) pointing at this commit. */
+export interface CommitInfo {
+  hash: string;
+  shortHash: string;
+  parents: string[];
+  subject: string;
+  body: string;
+  authorName: string;
+  authorEmail: string;
+  /** Author time, Unix seconds. */
+  timestamp: number;
+  refs: string[];
+}
+
 /** Payload of the `git:status-changed` event (mirror of Rust `GitStatusEvent`). */
 export interface GitStatusEvent {
   path: string;
@@ -196,6 +225,8 @@ export interface AgentStateEntry {
   prompt?: string | null;
   tool?: string | null;
   interrupted: boolean;
+  /** Short preview of the agent's latest response (sent on `done`), if any. */
+  summary?: string | null;
   firstSeen: number;
   lastUpdate: number;
 }
@@ -248,10 +279,17 @@ export interface HookScripts {
 
 /** Persisted terminal layout (structure only — fresh shells spawn on restore).
  *  Mirrors the serialized form produced by the terminals store. */
+/** One persisted tab descriptor. `kind` is optional for backward compatibility:
+ *  a descriptor with no `kind` (older saved layouts) is a terminal. Diff tabs are
+ *  transient and never persisted. */
+export type SavedTab =
+  | { kind?: "terminal"; title: string; cwd?: string; shell?: string; args?: string[] }
+  | { kind: "file"; title: string; path: string; worktree?: string | null };
+
 export type SavedTermNode =
   | {
       type: "group";
-      tabs: { title: string; cwd?: string; shell?: string; args?: string[] }[];
+      tabs: SavedTab[];
       activeTab: number;
     }
   | {

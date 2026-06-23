@@ -72,7 +72,7 @@ Cada command es una funcion async de Rust que recibe parametros tipados, ejecuta
 #### Lista Completa de Commands Planificados
 
 **Gestion de Repositorios:**
-- `repo_add` - Agregar un repositorio al ADE (ruta en filesystem)
+- `repo_add` - Agregar una carpeta al ADE por ruta (git o no; las carpetas no-git son proyectos válidos sin worktrees — `RepoData.is_git` lo registra)
 - `repo_remove` - Eliminar un repositorio de la lista del ADE
 - `repo_list` - Listar todos los repositorios registrados
 
@@ -357,6 +357,7 @@ pub struct RepoData {
     pub name: String,
     pub path: String,
     pub worktrees: Vec<WorktreeData>,
+    pub is_git: bool, // false = carpeta plana (sin worktrees/branches); paneles git vacíos
 }
 ```
 

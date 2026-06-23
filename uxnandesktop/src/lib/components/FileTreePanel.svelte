@@ -8,7 +8,7 @@
   import type { FsEntry } from "$lib/types";
   import { projects } from "$lib/state/projects.svelte";
   import { git, type FileEntry } from "$lib/state/git.svelte";
-  import { files } from "$lib/state/files.svelte";
+  import { terminals } from "$lib/state/terminals.svelte";
   import { fileTree } from "$lib/state/fileTree.svelte";
   import { revealPath } from "$lib/api";
   import { cn } from "$lib/utils";
@@ -45,8 +45,9 @@
   }
 
   function openFile(entry: FsEntry): void {
-    git.closeDiff(); // editor + diff share the center overlay — keep one open
-    void files.open(entry.path, root);
+    // Open as a file tab in the active workspace (which corresponds to this
+    // worktree); `root` (forward-slash) drives the git change gutter.
+    terminals.openFile(entry.path, root);
   }
 
   function reveal(): void {
@@ -170,7 +171,7 @@
       <div class="uxnan-scroll min-h-0 flex-1 overflow-auto px-1 py-1">
         {#each rows as r (r.entry.path)}
           {@const rel = relOf(r.entry.path)}
-          {@const isOpen = files.path === r.entry.path}
+          {@const isOpen = terminals.isFileOpen(r.entry.path)}
           {@const isExpanded = fileTree.expanded.has(r.entry.path)}
           {@const changed = r.entry.isDir
             ? changes.dirs.has(rel)

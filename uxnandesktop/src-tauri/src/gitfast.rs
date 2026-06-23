@@ -5,10 +5,11 @@
 //! can't open still works (spec `02c` §3.1: git2 + CLI fallback).
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 
-use git2::{Branch, DiffFormat, DiffOptions, Repository, Status, StatusOptions};
+use git2::{Branch, DiffFormat, DiffOptions, Oid, Repository, Sort, Status, StatusOptions};
 
-use crate::git::{FileChange, FileNumstat, WorktreeStatus};
+use crate::git::{CommitInfo, FileChange, FileNumstat, WorktreeStatus};
 
 /// Map a libgit2 `Status` to the porcelain `XY` code pair the frontend expects
 /// (`index` = X, `worktree` = Y). Untracked → `"?","?"`, conflicts → `"U","U"`.
@@ -219,6 +220,98 @@ pub fn numstat(path: &str) -> Result<Vec<FileNumstat>, git2::Error> {
     Ok(inner.0)
 }
 
+/// Map each commit oid to its ref decorations (`HEAD`, branch names, `tag: …`),
+/// resolving annotated tags to the commit they point at (so a tag decorates the
+/// right node). Mirrors `git log --decorate`'s `%D`.
+fn ref_decorations(repo: &Repository) -> HashMap<Oid, Vec<String>> {
+    let mut decs: HashMap<Oid, Vec<String>> = HashMap::new();
+    if let Ok(refs) = repo.references() {
+        for r in refs.flatten() {
+            // Peel through annotated tags / symbolic refs to the commit.
+            let Ok(commit) = r.peel_to_commit() else {
+                continue;
+            };
+            let Some(name) = r.shorthand() else { continue };
+            if name == "HEAD" {
+                continue; // added explicitly below, first
+            }
+            let label = if r.is_tag() {
+                format!("tag: {name}")
+            } else {
+                name.to_string()
+            };
+            decs.entry(commit.id()).or_default().push(label);
+        }
+    }
+    // HEAD first, so the frontend can show it leading.
+    if let Ok(head) = repo.head() {
+        if let Ok(commit) = head.peel_to_commit() {
+            decs.entry(commit.id())
+                .or_default()
+                .insert(0, "HEAD".to_string());
+        }
+    }
+    decs
+}
+
+/// Commit history (newest first, topological), `limit` commits from `skip`.
+/// An unborn `HEAD` (no commits yet) yields an empty list, not an error.
+pub fn log(path: &str, limit: usize, skip: usize) -> Result<Vec<CommitInfo>, git2::Error> {
+    let repo = Repository::open(path)?;
+    let decs = ref_decorations(&repo);
+    let mut walk = repo.revwalk()?;
+    walk.set_sorting(Sort::TOPOLOGICAL | Sort::TIME)?;
+    if walk.push_head().is_err() {
+        return Ok(Vec::new()); // no commits yet
+    }
+    let mut out = Vec::with_capacity(limit);
+    for oid in walk.skip(skip) {
+        if out.len() >= limit {
+            break;
+        }
+        let oid = oid?;
+        let commit = repo.find_commit(oid)?;
+        let message = commit.message().unwrap_or("");
+        let mut parts = message.splitn(2, '\n');
+        let subject = parts.next().unwrap_or("").trim_end().to_string();
+        let body = parts.next().unwrap_or("").trim().to_string();
+        let author = commit.author();
+        out.push(CommitInfo {
+            hash: oid.to_string(),
+            short_hash: short_hash(&oid),
+            parents: commit.parent_ids().map(|p| p.to_string()).collect(),
+            subject,
+            body,
+            author_name: author.name().unwrap_or("").to_string(),
+            author_email: author.email().unwrap_or("").to_string(),
+            timestamp: commit.time().seconds(),
+            refs: decs.get(&oid).cloned().unwrap_or_default(),
+        });
+    }
+    Ok(out)
+}
+
+/// Git's default 7+ char abbreviated hash (first 7 chars; git lengthens only on
+/// collision, rare enough that 7 matches the CLI for almost every repo).
+fn short_hash(oid: &Oid) -> String {
+    oid.to_string().chars().take(7).collect()
+}
+
+/// Unified diff a commit introduced vs its first parent (root commit → vs empty).
+pub fn show(path: &str, hash: &str) -> Result<String, git2::Error> {
+    let repo = Repository::open(path)?;
+    let oid = Oid::from_str(hash)?;
+    let commit = repo.find_commit(oid)?;
+    let tree = commit.tree()?;
+    let parent_tree = if commit.parent_count() > 0 {
+        Some(commit.parent(0)?.tree()?)
+    } else {
+        None
+    };
+    let diff = repo.diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), None)?;
+    diff_to_string(&diff)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -277,5 +370,61 @@ mod tests {
         let st = worktree_status(&tmp.path().to_string_lossy()).unwrap();
         assert_eq!(st.dirty, 0);
         assert_eq!((st.ahead, st.behind), (0, 0));
+    }
+
+    /// Commit a file to `repo`, returning the new commit oid. Stages the whole
+    /// working tree onto the current `HEAD`.
+    fn commit_file(repo: &Repository, dir: &std::path::Path, name: &str, content: &str, msg: &str) {
+        std::fs::write(dir.join(name), content).unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(std::path::Path::new(name)).unwrap();
+        index.write().unwrap();
+        let tree = repo.find_tree(index.write_tree().unwrap()).unwrap();
+        let sig = repo.signature().unwrap();
+        let parents = match repo.head().ok().and_then(|h| h.peel_to_commit().ok()) {
+            Some(c) => vec![c],
+            None => vec![],
+        };
+        let parent_refs: Vec<&git2::Commit> = parents.iter().collect();
+        repo.commit(Some("HEAD"), &sig, &sig, msg, &tree, &parent_refs)
+            .unwrap();
+    }
+
+    #[test]
+    fn log_lists_commits_newest_first_with_parents_and_show() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        let repo = Repository::init(dir).unwrap();
+        let mut cfg = repo.config().unwrap();
+        cfg.set_str("user.name", "Tester").unwrap();
+        cfg.set_str("user.email", "t@t").unwrap();
+
+        // Unborn HEAD → empty log (not an error).
+        let path = dir.to_string_lossy().to_string();
+        assert!(log(&path, 50, 0).unwrap().is_empty());
+
+        commit_file(&repo, dir, "a.txt", "one\n", "first");
+        commit_file(&repo, dir, "a.txt", "one\ntwo\n", "second");
+
+        let commits = log(&path, 50, 0).unwrap();
+        assert_eq!(commits.len(), 2);
+        // Newest first.
+        assert_eq!(commits[0].subject, "second");
+        assert_eq!(commits[1].subject, "first");
+        // The second commit's parent is the first; the first is a root (no parent).
+        assert_eq!(commits[0].parents, vec![commits[1].hash.clone()]);
+        assert!(commits[1].parents.is_empty());
+        assert_eq!(commits[0].author_name, "Tester");
+        // HEAD decorates the tip.
+        assert!(commits[0].refs.iter().any(|r| r == "HEAD"));
+
+        // Pagination: skip the newest, get one.
+        let page = log(&path, 1, 1).unwrap();
+        assert_eq!(page.len(), 1);
+        assert_eq!(page[0].subject, "first");
+
+        // show() of the tip is a real unified diff adding "two".
+        let diff = show(&path, &commits[0].hash).unwrap();
+        assert!(diff.contains("@@") && diff.contains("+two"));
     }
 }
