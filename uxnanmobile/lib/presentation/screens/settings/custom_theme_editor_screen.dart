@@ -6,6 +6,7 @@ import 'package:uxnan/domain/value_objects/custom_theme.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/screens/settings/theme_export.dart';
+import 'package:uxnan/presentation/screens/settings/theme_sheets.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/color_picker.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
@@ -77,7 +78,9 @@ class _CustomThemeEditorScreenState
   void initState() {
     super.initState();
     _working = widget.initial;
-    _brightness = widget.initialBrightness;
+    // A single-brightness theme has only one editable side — open on it.
+    _brightness =
+        _working.isSingle ? _working.brightness : widget.initialBrightness;
     _nameController.text = _working.name;
     _descriptionController.text = _working.description;
   }
@@ -103,6 +106,18 @@ class _CustomThemeEditorScreenState
     });
   }
 
+  /// Promotes a single-brightness theme to dual by authoring the
+  /// currently-derived opposite side, then switches the editor to it.
+  void _addOtherSide() {
+    final other = _working.brightness == Brightness.light
+        ? Brightness.dark
+        : Brightness.light;
+    setState(() {
+      _working = _working.withOtherSideDerived();
+      _brightness = other;
+    });
+  }
+
   Future<void> _save() async {
     final name = _nameController.text.trim();
     final description = _descriptionController.text.trim();
@@ -110,25 +125,17 @@ class _CustomThemeEditorScreenState
       name: name.isEmpty ? 'Custom theme' : name,
       description: description,
     );
-    // Detect a brand-new theme (its id is not yet in the library) so we
-    // can auto-activate it after Save — this is what makes the "+ New
-    // theme" → seed-picker → editor flow feel like a single gesture: the
-    // app immediately uses the new theme with the brightness the user
-    // picked, instead of leaving it sitting in the library waiting to be
-    // tapped.
+    // Auto-activate a brand-new theme (its id is not yet in the library) so the
+    // "+ New theme" → editor flow feels like a single gesture. We no longer
+    // force the global theme mode: a single-brightness theme is forced to its
+    // own side by `effectiveThemeModeProvider`, and a dual theme respects the
+    // user's System/Light/Dark choice (which the editor must not clobber).
     final library = ref.read(customThemesLibraryProvider);
     final isNew = !library.any((t) => t.id == next.id);
     await ref.read(customThemesLibraryProvider.notifier).upsert(next);
     if (isNew) {
       await ref.read(activeCustomThemeIdProvider.notifier).set(next.id);
       await ref.read(useCustomThemeProvider.notifier).set(true);
-      // Sync the global theme mode to the brightness the user picked in
-      // the new-theme dialog so the matching side of the theme is the
-      // one Material applies (a custom dark theme must not be hidden
-      // behind a system-mode + system-brightness-light combo).
-      await ref.read(themeModeSettingProvider.notifier).set(
-            _brightness == Brightness.light ? ThemeMode.light : ThemeMode.dark,
-          );
     }
     if (mounted) Navigator.of(context).pop(next);
   }
@@ -153,12 +160,12 @@ class _CustomThemeEditorScreenState
 
   Future<void> _deriveFromSeedSheet() async {
     final l10n = AppLocalizations.of(context);
-    final seed = await showDialog<Color>(
-      context: context,
-      builder: (ctx) => _SeedDialog(initial: _activeColors.primary),
+    final seed = await ColorPickerSheet.show(
+      context,
+      initial: _activeColors.primary,
+      title: l10n.customThemeEditorSeedHint,
     );
-    if (seed == null) return;
-    if (!mounted) return;
+    if (seed == null || !mounted) return;
     final scheme = ColorScheme.fromSeed(
       seedColor: seed,
       brightness: _brightness,
@@ -183,53 +190,48 @@ class _CustomThemeEditorScreenState
   Future<void> _exportSheet() async {
     final l10n = AppLocalizations.of(context);
     final text = _working.toJsonString();
-    await Clipboard.setData(ClipboardData(text: text));
-    if (!mounted) return;
+    final choice = await showThemeExportSheet(
+      context,
+      title: l10n.customThemeEditorExportDialogTitle,
+      copyLabel: l10n.personalizationCustomThemeExportCopy,
+      fileLabel: l10n.personalizationCustomThemeExportFile,
+    );
+    if (choice == null || !mounted) return;
     final messenger = ScaffoldMessenger.of(context);
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => _JsonDialog(
-        title: l10n.customThemeEditorExportDialogTitle,
-        body: l10n.customThemeEditorExportDialogBody,
-        text: text,
-        shareLabel: l10n.customThemeEditorShareFile,
-        onShare: () async {
-          Navigator.of(ctx).pop();
-          final ok = await shareThemeJsonFile(
-            fileName: 'uxnan-theme-${_slugify(_working.name)}.json',
-            json: text,
-            subject: _working.name,
-          );
-          if (!mounted) return;
-          messenger.showSnackBar(
-            SnackBar(
-              content: Text(
-                ok
-                    ? l10n.customThemeEditorSaved
-                    : l10n.customThemeEditorSaveFailed,
-              ),
+    switch (choice) {
+      case ThemeExportChoice.copy:
+        await Clipboard.setData(ClipboardData(text: text));
+        messenger.showSnackBar(
+          SnackBar(content: Text(l10n.customThemeEditorCopied)),
+        );
+      case ThemeExportChoice.file:
+        final ok = await shareThemeJsonFile(
+          fileName: 'uxnan-theme-${_slugify(_working.name)}.json',
+          json: text,
+          subject: _working.name,
+        );
+        if (!mounted) return;
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(
+              ok
+                  ? l10n.customThemeEditorSaved
+                  : l10n.customThemeEditorSaveFailed,
             ),
-          );
-        },
-      ),
-    );
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(l10n.customThemeEditorCopied)),
-    );
+          ),
+        );
+    }
   }
 
   Future<void> _importSheet() async {
     final l10n = AppLocalizations.of(context);
-    final result = await showDialog<String>(
-      context: context,
-      builder: (ctx) => _ImportDialog(
-        title: l10n.customThemeEditorImportDialogTitle,
-        body: l10n.customThemeEditorImportDialogBody,
-        hint: l10n.customThemeEditorImportFieldHint,
-      ),
+    final result = await showImportThemeSheet(
+      context,
+      title: l10n.customThemeEditorImportDialogTitle,
+      body: l10n.customThemeEditorImportDialogBody,
+      hint: l10n.customThemeEditorImportFieldHint,
     );
-    if (result == null) return;
+    if (result == null || result.trim().isEmpty) return;
     try {
       // Parse into separate light/dark sides so a single-brightness palette
       // patches only the side it describes (and a full theme replaces both).
@@ -306,13 +308,24 @@ class _CustomThemeEditorScreenState
                 hint: l10n.customThemeEditorDescriptionHint,
               ),
               const SizedBox(height: UxnanSpacing.xl),
-              _BrightnessTabs(
-                brightness: _brightness,
-                onChanged: (b) => setState(() => _brightness = b),
-                lightLabel: l10n.customThemeEditorLight,
-                darkLabel: l10n.customThemeEditorDark,
-              ),
-              const SizedBox(height: UxnanSpacing.md),
+              // The Light/Dark tabs only make sense for a dual theme. A single
+              // theme shows its one side plus an affordance to add (and edit)
+              // the other, which promotes it to dual.
+              if (_working.isDual) ...[
+                _BrightnessTabs(
+                  brightness: _brightness,
+                  onChanged: (b) => setState(() => _brightness = b),
+                  lightLabel: l10n.customThemeEditorLight,
+                  darkLabel: l10n.customThemeEditorDark,
+                ),
+                const SizedBox(height: UxnanSpacing.md),
+              ] else ...[
+                _SingleSideNotice(
+                  brightness: _working.brightness,
+                  onAddOtherSide: _addOtherSide,
+                ),
+                const SizedBox(height: UxnanSpacing.md),
+              ],
               _RoleList(
                 colors: _activeColors,
                 onChanged: _setActiveColors,
@@ -892,295 +905,62 @@ class _RoleRow extends StatelessWidget {
   }
 }
 
-/// Dialog used by *Derive from seed* — a single HSV picker that returns
-/// the chosen seed color when the user confirms.
-class _SeedDialog extends StatefulWidget {
-  const _SeedDialog({required this.initial});
-  final Color initial;
-
-  @override
-  State<_SeedDialog> createState() => _SeedDialogState();
-}
-
-class _SeedDialogState extends State<_SeedDialog> {
-  late HSVColor _hsv;
-
-  @override
-  void initState() {
-    super.initState();
-    _hsv = HSVColor.fromColor(widget.initial);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return AlertDialog(
-      title: const Text('Derive from seed'),
-      content: SizedBox(
-        width: 320,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              height: 56,
-              decoration: BoxDecoration(
-                color: _hsv.toColor(),
-                borderRadius: const BorderRadius.all(UxnanRadius.lg),
-              ),
-            ),
-            const SizedBox(height: UxnanSpacing.lg),
-            HueSlider(
-              hue: _hsv.hue,
-              onChanged: (h) => setState(() => _hsv = _hsv.withHue(h)),
-            ),
-            const SizedBox(height: UxnanSpacing.sm),
-            Slider(
-              value: _hsv.saturation,
-              max: 1,
-              label: 'Saturation',
-              onChanged: (s) => setState(() => _hsv = _hsv.withSaturation(s)),
-            ),
-            Slider(
-              value: _hsv.value,
-              max: 1,
-              label: 'Value',
-              onChanged: (v) => setState(() => _hsv = _hsv.withValue(v)),
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          style: FilledButton.styleFrom(
-            backgroundColor: colors.primary,
-            foregroundColor: colors.onPrimary,
-          ),
-          onPressed: () => Navigator.of(context).pop(_hsv.toColor()),
-          child: const Text('Apply'),
-        ),
-      ],
-    );
-  }
-}
-
-/// Read-only dialog for the export JSON (the JSON is shown in a scrollable
-/// monospaced text field so the user can also copy it via the system
-/// text-selection gesture; the snackbar confirms the copy). When
-/// [onShare] is non-null a *Share file* action is exposed next to the
-/// *Close* button so the user can save the JSON to a file of their choice
-/// through the native share sheet.
-class _JsonDialog extends StatelessWidget {
-  const _JsonDialog({
-    required this.title,
-    required this.body,
-    required this.text,
-    this.shareLabel,
-    this.onShare,
-  });
-  final String title;
-  final String body;
-  final String text;
-  final String? shareLabel;
-  final VoidCallback? onShare;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return Dialog(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 480, maxHeight: 600),
-        child: Padding(
-          padding: const EdgeInsets.all(UxnanSpacing.lg),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(title, style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: UxnanSpacing.sm),
-              Text(body, style: Theme.of(context).textTheme.bodyMedium),
-              const SizedBox(height: UxnanSpacing.md),
-              Expanded(
-                child: Material(
-                  color: colors.surfaceContainerHigh,
-                  borderRadius: const BorderRadius.all(UxnanRadius.md),
-                  child: Padding(
-                    padding: const EdgeInsets.all(UxnanSpacing.md),
-                    child: SingleChildScrollView(
-                      child: SelectableText(
-                        text,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              fontFamily: 'JetBrainsMono',
-                            ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: UxnanSpacing.md),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  if (onShare != null && shareLabel != null) ...[
-                    OutlinedButton.icon(
-                      onPressed: onShare,
-                      icon: const Icon(Icons.ios_share_rounded),
-                      label: Text(shareLabel!),
-                    ),
-                    const SizedBox(width: UxnanSpacing.sm),
-                  ],
-                  FilledButton(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: colors.primary,
-                      foregroundColor: colors.onPrimary,
-                    ),
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Close'),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Input dialog used by *Import* — a multi-line text field for the JSON.
-/// The caller parses the returned string into a [CustomTheme] (and shows
-/// the failure snackbar on bad input).
-class _ImportDialog extends StatefulWidget {
-  const _ImportDialog({
-    required this.title,
-    required this.body,
-    required this.hint,
+/// Shown in the editor when the theme defines only one brightness side: a note
+/// explaining the other side is auto-generated, plus an affordance to author
+/// (and then edit) it — promoting the theme to dual.
+class _SingleSideNotice extends StatelessWidget {
+  const _SingleSideNotice({
+    required this.brightness,
+    required this.onAddOtherSide,
   });
 
-  final String title;
-  final String body;
-  final String hint;
-
-  @override
-  State<_ImportDialog> createState() => _ImportDialogState();
-}
-
-class _ImportDialogState extends State<_ImportDialog> {
-  final TextEditingController _controller = TextEditingController();
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
+  final Brightness brightness;
+  final VoidCallback onAddOtherSide;
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final colors = Theme.of(context).colorScheme;
-    return Dialog(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 480, maxHeight: 600),
-        child: Padding(
-          padding: const EdgeInsets.all(UxnanSpacing.lg),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(widget.title, style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: UxnanSpacing.sm),
-              Text(widget.body, style: Theme.of(context).textTheme.bodyMedium),
-              const SizedBox(height: UxnanSpacing.md),
-              Expanded(
-                child: TextField(
-                  controller: _controller,
-                  maxLines: null,
-                  expands: true,
-                  textAlignVertical: TextAlignVertical.top,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        fontFamily: 'JetBrainsMono',
-                      ),
-                  decoration: InputDecoration(
-                    hintText: widget.hint,
-                    filled: true,
-                    fillColor: colors.surfaceContainerHigh,
-                    border: OutlineInputBorder(
-                      borderRadius: const BorderRadius.all(UxnanRadius.md),
-                      borderSide: BorderSide.none,
-                    ),
-                    contentPadding: const EdgeInsets.all(UxnanSpacing.md),
-                  ),
-                ),
-              ),
-              const SizedBox(height: UxnanSpacing.md),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Cancel'),
-                  ),
-                  const SizedBox(width: UxnanSpacing.sm),
-                  FilledButton(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: colors.primary,
-                      foregroundColor: colors.onPrimary,
-                    ),
-                    onPressed: () =>
-                        Navigator.of(context).pop(_controller.text),
-                    child: const Text('Import'),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// A simplified inline hue slider used by [_SeedDialog] (the picker sheet
-/// exposes its own). Duplicated here to keep the dialog self-contained.
-class HueSlider extends StatelessWidget {
-  const HueSlider({required this.hue, required this.onChanged, super.key});
-
-  final double hue;
-  final ValueChanged<double> onChanged;
-
-  static const List<Color> _stops = [
-    Color(0xFFFF0000),
-    Color(0xFFFFFF00),
-    Color(0xFF00FF00),
-    Color(0xFF00FFFF),
-    Color(0xFF0000FF),
-    Color(0xFFFF00FF),
-    Color(0xFFFF0000),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
+    final isLight = brightness == Brightness.light;
+    final sideLabel = isLight ? l10n.themeLight : l10n.themeDark;
+    final addLabel = isLight
+        ? l10n.customThemeEditorAddDarkSide
+        : l10n.customThemeEditorAddLightSide;
     return Container(
-      decoration: const BoxDecoration(
-        borderRadius: BorderRadius.all(UxnanRadius.full),
-        gradient: LinearGradient(colors: _stops),
+      padding: const EdgeInsets.all(UxnanSpacing.md),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerHighest,
+        borderRadius: const BorderRadius.all(UxnanRadius.lg),
       ),
-      child: SliderTheme(
-        data: const SliderThemeData(
-          trackHeight: 12,
-          thumbColor: Colors.white,
-          activeTrackColor: Colors.transparent,
-          inactiveTrackColor: Colors.transparent,
-          thumbShape: RoundSliderThumbShape(enabledThumbRadius: 10),
-        ),
-        child: Slider(
-          value: hue,
-          min: 0,
-          max: 360,
-          onChanged: onChanged,
-        ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                isLight ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
+                size: 18,
+                color: colors.onSurfaceVariant,
+              ),
+              const SizedBox(width: UxnanSpacing.sm),
+              Expanded(
+                child: Text(
+                  l10n.customThemeEditorSingleNote(sideLabel),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: colors.onSurfaceVariant,
+                      ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: UxnanSpacing.md),
+          FilledButton.tonalIcon(
+            onPressed: onAddOtherSide,
+            icon: const Icon(Icons.add_rounded),
+            label: Text(addLabel),
+          ),
+        ],
       ),
     );
   }
