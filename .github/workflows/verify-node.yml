@@ -1,0 +1,43 @@
+name: _verify-node (reusable)
+
+# Reusable verification for the npm workspaces. Called by ci-node.yml (on
+# push/PR) and by release-npm.yml (before publishing) so the gates are defined
+# ONCE and a release only publishes a commit that actually passes them.
+
+on:
+  workflow_call:
+
+jobs:
+  verify:
+    name: verify (node ${{ matrix.node }} · ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: ["22", "24"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node ${{ matrix.node }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Format check (prettier)
+        run: npm run format:check
+
+      - name: Build (shared → relay → bridge)
+        run: npm run build
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test

@@ -24,7 +24,12 @@ permissions:
   id-token: write # enables npm provenance / future Trusted Publishing
 
 jobs:
+  # Verify the exact tagged commit first; publish only if it is green.
+  verify:
+    uses: ./.github/workflows/verify-node.yml
+
   publish:
+    needs: verify
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

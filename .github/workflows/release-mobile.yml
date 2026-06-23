@@ -21,7 +21,12 @@ permissions:
   contents: read
 
 jobs:
+  # Verify the exact tagged commit first; build + upload only if it is green.
+  verify:
+    uses: ./.github/workflows/verify-mobile.yml
+
   deploy:
+    needs: verify
     runs-on: ubuntu-latest
     timeout-minutes: 30
     defaults:

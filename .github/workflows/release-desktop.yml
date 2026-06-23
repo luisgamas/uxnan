@@ -14,7 +14,12 @@ permissions:
   contents: write # create/upload the GitHub Release
 
 jobs:
+  # Verify the exact tagged commit first; build installers only if it is green.
+  verify:
+    uses: ./.github/workflows/verify-desktop.yml
+
   build:
+    needs: verify
     strategy:
       fail-fast: false
       matrix:

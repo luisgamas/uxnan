@@ -1,0 +1,57 @@
+name: _verify-mobile (reusable)
+
+# Reusable verification for the Flutter app (l10n drift, format, analyze, test).
+# Called by ci-mobile.yml (push/PR) and release-mobile.yml (before building the
+# AAB).
+
+on:
+  workflow_call:
+
+defaults:
+  run:
+    working-directory: uxnanmobile
+
+jobs:
+  verify:
+    name: verify (ubuntu)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.44.0"
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Generate localizations
+        run: flutter gen-l10n
+
+      - name: Check l10n is up to date
+        run: |
+          if ! git diff --quiet -- lib/l10n; then
+            echo "::error::lib/l10n is out of date. Run 'flutter gen-l10n' and commit the result."
+            git --no-pager diff -- lib/l10n
+            exit 1
+          fi
+
+      - name: Format check
+        run: |
+          find lib test -name '*.dart' \
+            ! -name '*.g.dart' \
+            ! -name '*.freezed.dart' \
+            ! -name '*.gen.dart' \
+            ! -path 'lib/l10n/*' \
+            -print0 | xargs -0 dart format --output=none --set-exit-if-changed
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test

@@ -1,69 +1,58 @@
 name: CI — Mobile (uxnanmobile · Flutter)
 
-# Verification gate for the Flutter app: l10n drift check, format, analyze,
-# tests. No secrets required. Builds NO artifacts (that is release-mobile.yml).
-# iOS is deferred (Apple) — see CI_CD_MONOREPOS.md §8.5.
+# Runs the reusable mobile verification on every PR and on push to main.
+# A failed PR run posts a sticky comment with the failing run link (no AI).
 
 on:
   push:
-    branches: ["**"]
+    branches: [main]
     paths:
       - "uxnanmobile/**"
       - ".github/workflows/ci-mobile.yml"
+      - ".github/workflows/verify-mobile.yml"
   pull_request:
     paths:
       - "uxnanmobile/**"
       - ".github/workflows/ci-mobile.yml"
+      - ".github/workflows/verify-mobile.yml"
 
 concurrency:
   group: ci-mobile-${{ github.ref }}
   cancel-in-progress: true
 
-defaults:
-  run:
-    working-directory: uxnanmobile
-
 jobs:
   verify:
-    name: verify (ubuntu)
+    uses: ./.github/workflows/verify-mobile.yml
+
+  pr-comment-on-failure:
+    needs: verify
+    if: failure() && github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    permissions:
+      pull-requests: write
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
+      - name: Comment the failure on the PR
+        uses: actions/github-script@v7
         with:
-          flutter-version: "3.44.0"
-          channel: stable
-          cache: true
-
-      - name: Install dependencies
-        run: flutter pub get
-
-      - name: Generate localizations
-        run: flutter gen-l10n
-
-      - name: Check l10n is up to date
-        run: |
-          if ! git diff --quiet -- lib/l10n; then
-            echo "::error::lib/l10n is out of date. Run 'flutter gen-l10n' and commit the result."
-            git --no-pager diff -- lib/l10n
-            exit 1
-          fi
-
-      - name: Format check
-        run: |
-          find lib test -name '*.dart' \
-            ! -name '*.g.dart' \
-            ! -name '*.freezed.dart' \
-            ! -name '*.gen.dart' \
-            ! -path 'lib/l10n/*' \
-            -print0 | xargs -0 dart format --output=none --set-exit-if-changed
-
-      - name: Analyze
-        run: flutter analyze
-
-      - name: Test
-        run: flutter test
+          script: |
+            const marker = '<!-- ci-failure-mobile -->';
+            const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = [
+              marker,
+              '### ❌ CI (Mobile) falló',
+              'La verificación de `uxnanmobile` (gen-l10n / format / analyze / test) no pasó en `' + context.sha.slice(0, 7) + '`.',
+              '',
+              '- Detalle del error: ' + run,
+              '- Reproduce local (en `uxnanmobile/`): `flutter pub get && flutter gen-l10n && flutter analyze && flutter test`',
+              '',
+              '_Comentario automático; se actualiza cuando cambia el resultado._',
+            ].join('\n');
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number,
+            });
+            const prev = comments.find((c) => c.body && c.body.includes(marker));
+            if (prev) {
+              await github.rest.issues.updateComment({ owner: context.repo.owner, repo: context.repo.repo, comment_id: prev.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number, body });
+            }
