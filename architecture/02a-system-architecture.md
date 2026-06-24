@@ -2036,7 +2036,8 @@ doble entrega si ambos paths estan activos.
 // lib/infrastructure/platform/push_notification_adapter.dart
 // Usa firebase_messaging para ambas plataformas:
 // - Android: FCM direct
-// - iOS: APNs via FCM gateway (o APNs directo si se prefiere)
+// - iOS: APNs via el gateway de FCM (decision: FCM-para-ambos; la APNs key
+//   se sube a Firebase. El path APNs-directo quedo descartado.)
 
 class PushNotificationAdapter {
   // Inicializacion
@@ -2063,7 +2064,7 @@ class PushNotificationAdapter {
 #### 5.10.5 Deduplicacion de notificaciones (solo en el path via relay)
 
 ```javascript
-// relay/push-notification-completion-dedupe.js
+// relay/src/push.ts (PushRegistry)
 // Evita duplicados cuando el relay reconecta o reemite eventos.
 // NOTA: en la ruta primaria (bridge-direct) la deduplicacion ocurre a nivel
 // del bridge (un solo push por turn-end), por lo que este codigo solo aplica
@@ -2076,7 +2077,9 @@ function isDuplicate(sessionId, turnId) {
   const key = `${sessionId}:${turnId}`;
   if (deliveredDedupeKeys.has(key)) return true;
   deliveredDedupeKeys.add(key);
-  // Persiste en archivo para sobrevivir reinicios (TODO/FOR-DEV; hoy in-memory)
+  // IMPLEMENTADO: la ventana de dedupe + el registro de tokens se persisten de
+  // forma atomica (temp+rename) a ~/.uxnan/relay-state.json y se recargan al
+  // arranque via PushRegistry.load(). TTL 7d + cap 10k aplicados en memoria.
   return false;
 }
 ```

@@ -30,7 +30,7 @@ curl -X POST http://127.0.0.1:8787/push/register \
   -d '{"sessionId":"s","pushToken":"t","platform":"android"}'
 # -> { "registered": true, "notificationSecret": "..." }
 curl -X POST http://127.0.0.1:8787/push/notify \
-  -d '{"sessionId":"s","notificationSecret":"<secret>","turnId":"u1","title":"hi","body":"x"}'
+  -d '{"sessionId":"s","notificationSecret":"<secret>","threadId":"t1","turnId":"u1","title":"hi","body":"x"}'
 ```
 
 ## End-to-end with the bridge

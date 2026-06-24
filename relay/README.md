@@ -1,8 +1,9 @@
 # uxnan-relay
 
-Stateless WebSocket relay that forwards **opaque E2EE envelopes** between the
-Uxnan mobile app and the bridge. It only ever sees encrypted frames — never
-plaintext, keys, code, or diffs.
+WebSocket relay that forwards **opaque E2EE envelopes** between the Uxnan mobile
+app and the bridge. It only ever sees encrypted frames — never plaintext, keys,
+code, or diffs. The envelope-forwarding path is stateless; the **optional** push
+fallback persists a small token/dedupe file (`~/.uxnan/relay-state.json`).
 
 > **Status: ALPHA-FUNCTIONAL — OPTIONAL / self-hosted.**
 >

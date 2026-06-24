@@ -1,10 +1,12 @@
 # Relay — deployment & hosting
 
-The relay is a small, **stateless** WebSocket server that forwards **opaque E2EE
-envelopes** between the phone and the bridge by `sessionId`. It never sees
-plaintext, keys, code, or diffs — only encrypted frames. You deploy it **once**;
-all phones/bridges point at its URL (baked into the pairing QR / the bridge's
-`relayUrl`).
+The relay is a small WebSocket server that forwards **opaque E2EE envelopes**
+between the phone and the bridge by `sessionId`. It never sees plaintext, keys,
+code, or diffs — only encrypted frames. The envelope-forwarding path is
+stateless; the **optional** push fallback persists a small token/dedupe file
+(`~/.uxnan/relay-state.json`, see *Run & configure*). You deploy it **once**; all
+phones/bridges point at its URL, which is carried in the pairing QR only when the
+bridge has the relay enabled (off by default).
 
 ## Do you even need it?
 
