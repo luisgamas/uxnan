@@ -382,6 +382,44 @@ test('log paginates by cursor and reports hasMore + nextCursor', async () => {
   await rmrf(dir);
 });
 
+test('log pages a merge DAG without dropping any commit', async () => {
+  const dir = await newRepo();
+  await writeFile(join(dir, 'a.txt'), 'a');
+  await git.commit(dir, 'A (root)');
+  await git.createBranch(dir, 'feature');
+  await git.checkout(dir, 'feature');
+  await writeFile(join(dir, 'b.txt'), 'b');
+  await git.commit(dir, 'B (feature)');
+  await git.checkout(dir, 'main');
+  await writeFile(join(dir, 'c.txt'), 'c');
+  await git.commit(dir, 'C (main)');
+  // Merge feature into main, forcing a real merge commit (two parents).
+  await runGit(dir, ['merge', '--no-ff', '-m', 'M (merge feature)', 'feature']);
+
+  // Page through the whole history two at a time and collect every SHA.
+  const seen = new Set<string>();
+  const titles: string[] = [];
+  let cursor: string | undefined;
+  for (let guard = 0; guard < 10; guard++) {
+    const page = await git.log(dir, { limit: 2, ...(cursor ? { cursor } : {}) });
+    for (const c of page.commits) {
+      seen.add(c.sha);
+      titles.push(c.messageTitle);
+    }
+    if (!page.hasMore) break;
+    cursor = page.nextCursor;
+  }
+
+  // All four commits (A, B, C, merge) must appear exactly once — the old
+  // `<cursor>^` paging dropped the merge's second-parent (B) across the page
+  // boundary.
+  assert.equal(seen.size, 4);
+  assert.equal(titles.length, 4);
+  assert.ok(titles.some((t) => t.startsWith('M (merge')));
+  assert.ok(titles.some((t) => t.startsWith('B (feature)')));
+  await rmrf(dir);
+});
+
 test('log returns an empty list on a fresh repo with no commits', async () => {
   const dir = await newRepo();
   const log = await git.log(dir);

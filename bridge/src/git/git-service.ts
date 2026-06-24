@@ -92,6 +92,11 @@ export class GitService {
     options: { limit?: number; cursor?: string; ref?: string } = {},
   ): Promise<GitLogResult> {
     const limit = Math.max(1, Math.min(options.limit ?? 50, 500));
+    // `cursor` is an opaque pagination token: the offset (commit count) to skip.
+    // Offset paging over a *topologically ordered* log is the only correct way
+    // to page a DAG — the previous `<cursor>^` (first-parent) scheme silently
+    // dropped a merge's second-parent history across page boundaries.
+    const offset = Math.max(0, Math.trunc(Number(options.cursor ?? 0)) || 0);
     // Fetch one extra commit so we can tell `hasMore` without a second git
     // invocation (the extra is dropped from the result).
     const fetchLimit = limit + 1;
@@ -110,6 +115,12 @@ export class GitService {
     ].join('%x00');
     const args = [
       'log',
+      options.ref ?? 'HEAD',
+      // Topological order so a commit's parents immediately follow it: the
+      // phone's swimlane graph stays clean (no lanes left dangling across
+      // unrelated commits, which produced phantom lanes) and matches the
+      // VS Code / `git log --graph` layout.
+      '--topo-order',
       `--format=${format}%x1e`,
       // Full ref names so `%D` is unambiguous (refs/heads vs refs/remotes vs
       // refs/tags) — a local branch named `feat/x` won't be mistaken for a
@@ -119,20 +130,27 @@ export class GitService {
       '--shortstat',
       '-n',
       String(fetchLimit),
-      // Cursor: when set, start from the cursor's parent (`<cursor>^`) so
-      // the cursor itself is excluded and we get strictly older commits.
-      // The `^` notation is a shorthand for `~1` and works for both
-      // regular and merge commits.
-      options.cursor ? `${options.cursor}^` : (options.ref ?? 'HEAD'),
+      '--skip',
+      String(offset),
     ];
     try {
       const { stdout } = await runGit(cwd, args);
-      return parseLogOutput(stdout, limit);
+      const { commits, hasMore } = parseLogOutput(stdout, limit);
+      return {
+        commits,
+        hasMore,
+        // Next page = skip everything shown so far. Stable across calls because
+        // topo-order is deterministic for a fixed repo state.
+        ...(hasMore ? { nextCursor: String(offset + limit) } : {}),
+      };
     } catch (err) {
       // A fresh repo (no commits yet) has no HEAD — `git log HEAD` exits
       // non-zero. That's not an error from the caller's perspective: it
       // just means there's nothing to list.
-      if (err instanceof GitCommandError && /unknown revision|bad revision/i.test(err.stderr)) {
+      if (
+        err instanceof GitCommandError &&
+        /unknown revision|bad revision|does not have any commits/i.test(err.stderr)
+      ) {
         return { commits: [], hasMore: false };
       }
       throw err;
@@ -640,22 +658,39 @@ function autoStashLabel(branch: string): string {
  * fields. We pair them by deferring the shortstat attachment by one record.
  */
 function parseLogOutput(stdout: string, limit: number): GitLogResult {
-  // Trim the trailing 0x1E so the last record isn't empty, then split.
-  const records = stdout.replace(/\x1e+$/, '').split('\x1e');
-  // Each entry holds the parsed commit (without stats) and the shortstat
-  // that belongs to it. We populate the shortstat retroactively when the
-  // next record provides it.
+  // Split into records by our 0x1E separator. Layout per commit:
+  //   <commit fields, NUL-separated>\x1e[<this commit's shortstat>]<NUL>...
+  // so after splitting, record 0 is the first commit's fields, and every later
+  // record is `<previous commit's shortstat>\x00<this commit's fields>`. The
+  // shortstat is EMPTY for commits git emits none for — notably merge commits
+  // (and empty commits). The previous parser assumed a `\x00\n<stat>\n` prefix
+  // was always present, so the record right after a merge began with a bare
+  // `\x00`, the field split shifted by one, `sha` came out empty, and that
+  // commit was silently dropped — which lost real commits once `--topo-order`
+  // put merges inline. This parser instead splits at the first NUL.
+  const records = stdout.split('\x1e');
+  // Each entry holds the parsed commit (without stats) and the shortstat that
+  // belongs to it (populated retroactively from the next record's prefix).
   const parsed: { commit: Omit<GitCommit, 'stats'>; shortstat: string }[] = [];
   for (const rawRecord of records) {
-    if (!rawRecord.trim()) continue;
-    // Peel off a leading `\x00\n<shortstat>\n` (present on every record
-    // except the first). The shortstat belongs to the PREVIOUS commit.
-    let shortstat = '';
+    // Layout: each commit is `<fields…>%x1e` then the `-z` NUL terminator, then
+    // (only when git emits one) `\n<shortstat>\n`. So after splitting on %x1e,
+    // record 0 is the first commit's fields, and every later record begins with
+    // the previous commit's NUL terminator, then optionally that commit's
+    // shortstat, then this commit's fields. Merges (and empty commits) emit NO
+    // shortstat — we must still strip the leading NUL, otherwise the field
+    // split shifts and the commit right after a merge is dropped.
     let record = rawRecord;
-    const shortstatMatch = rawRecord.match(/^\x00\n(.*?)\n([\s\S]*)$/);
-    if (shortstatMatch) {
-      shortstat = shortstatMatch[1] ?? '';
-      record = shortstatMatch[2] ?? '';
+    let shortstat = '';
+    if (record.startsWith('\x00')) record = record.slice(1);
+    const statMatch = record.match(/^\n([^\n]*)\n([\s\S]*)$/);
+    if (statMatch) {
+      shortstat = statMatch[1] ?? '';
+      record = statMatch[2] ?? '';
+    }
+    // The shortstat (when present) belongs to the PREVIOUS commit.
+    if (shortstat && parsed.length > 0) {
+      parsed[parsed.length - 1]!.shortstat = shortstat;
     }
     const parts = record.split('\x00');
     const [
@@ -671,12 +706,7 @@ function parseLogOutput(stdout: string, limit: number): GitLogResult {
       decorationRaw,
       messageRaw,
     ] = parts;
-    if (!sha) continue;
-    // Attach the shortstat from THIS record to the PREVIOUS commit (it
-    // appeared after that commit in the git output).
-    if (parsed.length > 0 && shortstat) {
-      parsed[parsed.length - 1]!.shortstat = shortstat;
-    }
+    if (!sha || !sha.trim()) continue;
     const parents = parentsRaw ? parentsRaw.trim().split(/\s+/).filter(Boolean) : [];
     const message = messageRaw ?? '';
     // Message: first line is the title, the rest (after a blank line) is
@@ -728,12 +758,9 @@ function parseLogOutput(stdout: string, limit: number): GitLogResult {
   });
   const hasMore = commits.length > limit;
   const trimmed = hasMore ? commits.slice(0, limit) : commits;
-  const nextCursor = hasMore ? trimmed[trimmed.length - 1]?.sha : undefined;
-  return {
-    commits: trimmed,
-    hasMore,
-    ...(nextCursor ? { nextCursor } : {}),
-  };
+  // `nextCursor` is added by `GitService.log` (offset-based); the parser only
+  // reports the page contents + whether a further page exists.
+  return { commits: trimmed, hasMore };
 }
 
 /**

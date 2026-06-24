@@ -141,14 +141,18 @@ export interface GitCommit {
 }
 
 /**
- * A page of commits for a repository. Cursor-based pagination: when
- * `hasMore` is true the next page starts at `nextCursor` (a commit SHA)
- * — pass it as `GitLogParams.cursor` to fetch the previous page.
+ * A page of commits for a repository, newest-first in topological order.
+ * Pagination is by opaque cursor: when `hasMore` is true, pass `nextCursor`
+ * back as `GitLogParams.cursor` to fetch the next (older) page.
  */
 export interface GitLogResult {
   commits: GitCommit[];
   hasMore: boolean;
-  /** SHA to pass as `cursor` on the next call. Undefined when `hasMore` is false. */
+  /**
+   * Opaque pagination token to pass back as `GitLogParams.cursor` for the next
+   * page. Undefined when `hasMore` is false. (Currently an offset over a
+   * topologically-ordered log — treat it as opaque.)
+   */
   nextCursor?: string;
 }
 
@@ -158,8 +162,9 @@ export interface GitLogParams {
   /** Max commits to return. Defaults to 50 on the bridge. */
   limit?: number;
   /**
-   * Cursor for pagination. When set, returns commits strictly older than
-   * this SHA (exclusive). Omit for the first (newest) page.
+   * Opaque pagination cursor from the previous result's `nextCursor`. Omit for
+   * the first (newest) page. Paging is offset-based over a topologically
+   * ordered log, so no commit is skipped across a merge boundary.
    */
   cursor?: string;
   /**
