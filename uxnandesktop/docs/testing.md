@@ -12,9 +12,13 @@ cargo clippy --all-targets     # lints — must be warning-free
 cargo fmt --check              # formatting — must be clean (run `cargo fmt` to fix)
 ```
 
-Unit tests live in-file under `#[cfg(test)]` (e.g. `model.rs`, `persistence.rs`);
-integration tests go in `src-tauri/tests/`. Phase 0 ships 8 tests covering the
-Serde shape of the model and the persistence round-trip / atomicity / migration.
+Unit tests live in-file under `#[cfg(test)]` (e.g. `model.rs`, `persistence.rs`,
+`git.rs`, `gitfast.rs`, `pty.rs`, `hooks.rs`, `agent_hooks.rs`, `procscan.rs`,
+`which.rs`); integration tests go in `src-tauri/tests/`. ~65 backend tests cover
+the Serde model shape, persistence round-trip / atomicity / migration / backups,
+git + worktree ops, the git2 fast path, the PTY lifecycle, the agent hook server,
+and process detection. **There are no frontend (Vitest) tests yet** — see
+[`../FOR-DEV.md`](../FOR-DEV.md).
 
 ## Frontend (Svelte / TypeScript)
 

@@ -9,22 +9,21 @@ only this checklist and the inline `FOR-HUMAN:` markers describing what's needed
 
 ## Open items
 
-- [ ] **Branded app icons** — the scaffold ships Tauri's default placeholder
-      icons.
-      - **What:** the Uxnan Desktop icon set (PNG + `.ico` + `.icns`).
-      - **Where:** `src-tauri/icons/` (overwrite `32x32.png`, `128x128.png`,
-        `128x128@2x.png`, `icon.ico`, `icon.icns`, and the `Square*Logo.png` /
-        `StoreLogo.png` set).
-      - **Config:** generate with `npm run tauri icon path/to/source.png` (1024²
-        source recommended); paths are already referenced in
-        `src-tauri/tauri.conf.json → bundle.icon`. None beyond that.
+- [ ] **Production app-icon artwork (sign-off)** — a brand mark already ships:
+      `src-tauri/icons/*` were regenerated from `logo.svg` (+ `static/logo*.svg` /
+      `favicon.png`), so these are no longer Tauri's default placeholders. What
+      remains is **final production-quality artwork + sign-off**.
+      - **Where:** `src-tauri/icons/` (`32x32.png`, `128x128.png`,
+        `128x128@2x.png`, `icon.ico`, `icon.icns`, `Square*Logo.png` / `StoreLogo.png`).
+      - **Config:** regenerate with `npm run tauri icon path/to/source.png` (1024²
+        source); paths are already wired in `tauri.conf.json → bundle.icon`.
 
 ## Needed for distributable / signed release builds
 
 > The CI/CD pipeline (see `FOR-DEV.md → "CI/CD — release builds"`) can produce
 > **unsigned** artifacts without these (degraded: OS "unknown publisher"
 > warnings). They're required for a clean, signed, auto-updating release. Supply
-> each as a **GitHub Actions repository secret** consumed by `release.yml`.
+> each as a **GitHub Actions repository secret** consumed by `release-desktop.yml`.
 
 - [ ] **Code-signing identities** (release) — Windows code-signing cert
       (SignTool / `WINDOWS_CERTIFICATE` + password), Apple Developer ID +

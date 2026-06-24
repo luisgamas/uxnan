@@ -34,7 +34,7 @@ Un **Agent Development Environment** es un entorno de escritorio diseñado para 
 
 ### Lo que un ADE NO es
 
-Un ADE **no es un IDE**. No compite con VS Code, IntelliJ ni Neovim. No pretende ser el mejor editor de código ni ofrecer autocompletado inteligente. Su propósito es distinto: es la capa de orquestación, monitoreo y revisión que permite a un desarrollador supervisar N agentes de codificación trabajando en paralelo, cada uno en su propio espacio aislado. El usuario no escribe código en el ADE — los agentes lo hacen. El usuario revisa, aprueba, descarta y coordina.
+Un ADE **no es un IDE**. No compite con VS Code, IntelliJ ni Neovim. No pretende ser el mejor editor de código ni ofrecer autocompletado inteligente. Su propósito es distinto: es la capa de orquestación, monitoreo y revisión que permite a un desarrollador supervisar N agentes de codificación trabajando en paralelo, cada uno en su propio espacio aislado. El usuario, en lo principal, no escribe código en el ADE — los agentes lo hacen; el usuario revisa, aprueba, descarta y coordina. (Nota de implementación: el panel central incluye un **tab editor de revisión** ligero — `FileEditor.svelte` + `fs.rs`, CodeMirror 6 con Ctrl/Cmd+S — para retoques rápidos durante la revisión; es una conveniencia, no un IDE ni el flujo central.)
 
 ### Los Cuatro Pilares
 

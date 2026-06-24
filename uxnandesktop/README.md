@@ -90,15 +90,17 @@ uxnandesktop/
 │       ├── state.rs       # AppState (RwLock<AppData> + PersistenceManager)
 │       ├── commands.rs    # Tauri commands (git, pty, worktree, browse, agent, ...)
 │       ├── pty.rs         # portable-pty manager
-│       ├── git.rs         # git CLI wrapper
+│       ├── git.rs         # git CLI wrapper (worktrees, branches, status, commit)
+│       ├── gitfast.rs     # git2 fast path (status / diff / numstat / log / show)
 │       ├── hooks.rs       # axum HTTP hook server (Layer 1 agent monitoring)
+│       ├── agent_hooks.rs # per-agent hook configs (Claude auto-install + wrappers)
 │       ├── procscan.rs    # process-tree detection (Layer 3)
-│       ├── power.rs       # keep-awake (Win/macOS/Linux)
+│       ├── power.rs       # keep-awake (Win; macOS/Linux untested)
 │       ├── browse.rs      # in-app directory picker
+│       ├── fs.rs          # file read/write for the center editor
+│       ├── fswatch.rs     # filesystem watcher (file-tree auto-refresh)
 │       ├── which.rs       # agent/shell install detection
-│       ├── service-installer.rs # install-service / uninstall-service per OS
-│       ├── error.rs       # AppError / CommandError
-│       └── ...
+│       └── error.rs       # AppError / CommandError
 ├── components.json        # shadcn-svelte config
 └── package.json
 ```
@@ -120,7 +122,7 @@ npm run tauri dev      # run the desktop app (compiles Rust on first run)
 Backend (from `src-tauri/`):
 
 ```bash
-cargo test             # unit tests (8 passing)
+cargo test             # unit tests (65 passing)
 cargo clippy --all-targets
 cargo fmt
 ```
