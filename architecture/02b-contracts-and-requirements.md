@@ -166,7 +166,7 @@ project/resolve         -> resolver proyecto por cwd (sintetiza uno si el cwd no
 **Agentes (2):**
 ```
 agent/list              -> agentes registrados (IAgentAdapter.agentId, displayName, capabilities, available)
-agent/models            -> modelos disponibles del agente activo (AgentModel[] estructurado: id, displayName, description?, version?, isDefault?, options?)
+agent/models            -> modelos disponibles del agente activo (AgentModel[] estructurado: id, displayName, description?, version?, isDefault?, options?, contextWindow?)
 ```
 
 **Auth (3):**
@@ -398,6 +398,7 @@ interface AgentModel {
   version?: string;                           // version concreta para ids no-alias
   isDefault?: boolean;
   options?: AgentModelOption[];               // per-model run-option knobs
+  contextWindow?: number;                     // ventana del modelo cuando el CLI la reporta (p.ej. pi --list-models)
 }
 type AgentModelOption =
   | { key: string; kind: 'enum';   label: string; values: string[]; default?: string }
