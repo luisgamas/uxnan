@@ -11,6 +11,7 @@ import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
+import 'package:uxnan/presentation/widgets/ne_circular_button.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 
 /// Full-screen commit history for the workspace's git repo — a single, clean,
@@ -283,10 +284,10 @@ class _GitHistoryScreenState extends ConsumerState<GitHistoryScreen> {
       scrollController: _scrollController,
       onRefresh: _initialLoading ? null : _refresh,
       floatingActionButton: _showBackToTop
-          ? FloatingActionButton.small(
+          ? NeCircularButton(
+              icon: Icons.keyboard_arrow_up_rounded,
               tooltip: l10n.gitHistoryBackToTop,
-              onPressed: _backToTop,
-              child: const Icon(Icons.keyboard_arrow_up_rounded),
+              onTap: _backToTop,
             )
           : null,
       actions: [

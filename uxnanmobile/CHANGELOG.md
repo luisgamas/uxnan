@@ -7,6 +7,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Changed
+- **Consistent circular floating scroll buttons.** The git history's
+  back-to-top button was M3's default rounded-square `FloatingActionButton`,
+  while the conversation's scroll-to-bottom button is a circle; NE's action
+  language is circular, so both now share one widget
+  (`presentation/widgets/ne_circular_button.dart`, `secondaryContainer`).
 - **Commit detail: per-file expandable diffs.** The commit detail screen no
   longer shows one big combined diff under the file list; each touched file is
   now its own collapsible card (collapsed by default) that reveals **just that
