@@ -940,3 +940,14 @@ The OpenCode adapter is the template for any "one-shot per-turn CLI" agent:
       ("update with `npm i -g uxnan-bridge@latest`"); the user decides. No
       auto-update. Lightweight fetch (dependency-minimal per AGENTS.md), silent
       when offline.
+
+## FOR-DEV — echo-agent E2E tests flaky on Windows CI
+- [ ] The echo-agent E2E tests in `bridge/test/handlers/thread-handlers.test.ts`
+      (end-to-end turn routing + the approval round-trip over stdio)
+      intermittently never report `completed` on **Windows CI runners** — they
+      time out even at a 120s budget, while passing reliably on Linux CI and on
+      local Windows (the approval test runs in ~33 ms locally). They are skipped
+      on Windows CI only via `SKIP_ECHO_E2E_ON_WIN_CI`
+      (`process.platform === 'win32' && process.env.CI === 'true'`). Investigate
+      the Windows stdio approval race (`src/agents/`, `ProcessAgentAdapter`'s
+      stdin write + the approval round-trip) and remove the guard once fixed.
