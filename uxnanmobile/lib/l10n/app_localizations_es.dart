@@ -957,6 +957,59 @@ class AppLocalizationsEs extends AppLocalizations {
   String get gitHistoryViewTooltip => 'Cambiar vista';
 
   @override
+  String get gitHistoryCompact => 'Vista compacta';
+
+  @override
+  String get gitHistoryComfortable => 'Vista cómoda';
+
+  @override
+  String get gitHistoryShowGraph => 'Mostrar líneas del grafo';
+
+  @override
+  String get gitHistoryHideGraph => 'Ocultar líneas del grafo';
+
+  @override
+  String get gitHistoryBackToTop => 'Volver arriba';
+
+  @override
+  String get gitHistoryViewBranch => 'Ver rama o ref';
+
+  @override
+  String get gitHistoryPickBranchTitle => 'Ver historial de…';
+
+  @override
+  String get gitHistoryHeadOption => 'Rama actual (HEAD)';
+
+  @override
+  String get gitHistoryLocalSection => 'Ramas locales';
+
+  @override
+  String get gitHistoryRemoteSection => 'Ramas remotas';
+
+  @override
+  String gitHistoryViewingRef(String ref) {
+    return 'Viendo $ref';
+  }
+
+  @override
+  String get gitHistoryDiffSection => 'Diff';
+
+  @override
+  String get gitHistoryDiffTruncated =>
+      'Diff truncado — demasiado grande para mostrarlo completo.';
+
+  @override
+  String get gitHistoryNoFileChanges => 'Este commit no cambió archivos.';
+
+  @override
+  String gitHistoryRenamedFrom(String oldPath) {
+    return 'desde $oldPath';
+  }
+
+  @override
+  String get gitHistoryDetailLoadFailed => 'No se pudo cargar este commit';
+
+  @override
   String get gitHistoryEmpty => 'Aún no hay commits';
 
   @override
@@ -1620,6 +1673,9 @@ class AppLocalizationsEs extends AppLocalizations {
   String get fileBrowserShowHidden => 'Mostrar archivos ocultos';
 
   @override
+  String get fileBrowserCollapseAll => 'Contraer todas las carpetas';
+
+  @override
   String get fileBrowserCopyPath => 'Copiar ruta del workspace';
 
   @override
@@ -1657,6 +1713,11 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get fileViewerCopyFailed => 'No se pudo copiar este archivo';
+
+  @override
+  String fileViewerLinkCopied(String href) {
+    return 'Enlace copiado: $href';
+  }
 
   @override
   String get fileViewerBinaryTitle => 'Archivo binario';

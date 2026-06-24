@@ -47,60 +47,124 @@ import 'package:uxnan/presentation/theme/typography.dart';
     return (icon: Icons.folder_outlined);
   }
   final lower = name.toLowerCase();
-  if (lower.endsWith('.md') || lower.endsWith('.markdown')) {
+
+  // 1. Well-known filenames (checked before extensions). `readme`/`license`
+  //    keep their distinctive glyphs; the rest get a sensible category icon.
+  if (lower == 'readme' || lower.startsWith('readme.')) {
+    return (icon: Icons.menu_book_outlined);
+  }
+  if (lower == 'license' ||
+      lower == 'licence' ||
+      lower.startsWith('license.') ||
+      lower.startsWith('licence.') ||
+      lower == 'copying') {
+    return (icon: Icons.gavel_outlined);
+  }
+  if (lower == 'dockerfile' || lower.startsWith('dockerfile.')) {
+    return (icon: Icons.inventory_2_outlined);
+  }
+  if (lower == 'makefile' ||
+      lower == 'gnumakefile' ||
+      lower == 'cmakelists.txt') {
+    return (icon: Icons.build_outlined);
+  }
+  if (lower == '.gitignore' ||
+      lower == '.gitattributes' ||
+      lower == '.dockerignore' ||
+      lower == '.editorconfig' ||
+      lower == '.npmignore') {
+    return (icon: Icons.settings_outlined);
+  }
+  if (lower == '.env' || lower.startsWith('.env.')) {
+    return (icon: Icons.key_outlined);
+  }
+
+  // 2. Extension families.
+  if (_hasExt(lower, _markdownExts)) {
     return (icon: Icons.description_outlined);
   }
-  if (lower.endsWith('.dart') ||
-      lower.endsWith('.ts') ||
-      lower.endsWith('.tsx') ||
-      lower.endsWith('.js') ||
-      lower.endsWith('.jsx') ||
-      lower.endsWith('.py') ||
-      lower.endsWith('.swift') ||
-      lower.endsWith('.kt') ||
-      lower.endsWith('.java') ||
-      lower.endsWith('.go') ||
-      lower.endsWith('.rs') ||
-      lower.endsWith('.cpp') ||
-      lower.endsWith('.c') ||
-      lower.endsWith('.h') ||
-      lower.endsWith('.css') ||
-      lower.endsWith('.scss') ||
-      lower.endsWith('.html') ||
-      lower.endsWith('.json') ||
-      lower.endsWith('.yaml') ||
-      lower.endsWith('.yml') ||
-      lower.endsWith('.toml') ||
-      lower.endsWith('.xml') ||
-      lower.endsWith('.sh') ||
-      lower.endsWith('.sql')) {
-    return (icon: Icons.code_rounded);
-  }
-  if (lower.endsWith('.png') ||
-      lower.endsWith('.jpg') ||
-      lower.endsWith('.jpeg') ||
-      lower.endsWith('.gif') ||
-      lower.endsWith('.webp') ||
-      lower.endsWith('.bmp') ||
-      lower.endsWith('.svg')) {
+  if (_hasExt(lower, _imageExts)) {
     return (icon: Icons.image_outlined);
   }
   if (lower.endsWith('.pdf')) {
     return (icon: Icons.picture_as_pdf_outlined);
   }
+  if (_hasExt(lower, _archiveExts)) {
+    return (icon: Icons.folder_zip_outlined);
+  }
+  if (_hasExt(lower, _dataExts)) {
+    return (icon: Icons.data_object_rounded);
+  }
+  if (_hasExt(lower, _sheetExts)) {
+    return (icon: Icons.table_chart_outlined);
+  }
+  if (_hasExt(lower, _shellExts)) {
+    return (icon: Icons.terminal_rounded);
+  }
+  if (_hasExt(lower, _fontExts)) {
+    return (icon: Icons.font_download_outlined);
+  }
+  if (_hasExt(lower, _audioExts)) {
+    return (icon: Icons.audiotrack_outlined);
+  }
+  if (_hasExt(lower, _videoExts)) {
+    return (icon: Icons.movie_outlined);
+  }
   if (lower.endsWith('.lock')) {
     return (icon: Icons.lock_outline);
   }
-  if (lower == 'license' ||
-      lower == 'license.md' ||
-      lower.startsWith('license.')) {
-    return (icon: Icons.gavel_outlined);
+  if (_hasExt(lower, _codeExts)) {
+    return (icon: Icons.code_rounded);
   }
-  if (lower == 'readme.md' || lower.startsWith('readme')) {
-    return (icon: Icons.menu_book_outlined);
+  if (lower.endsWith('.txt') || lower.endsWith('.log')) {
+    return (icon: Icons.notes_rounded);
   }
   return (icon: Icons.insert_drive_file_outlined);
 }
+
+/// True when [lower] (already lower-cased) ends with any extension in [exts].
+bool _hasExt(String lower, List<String> exts) {
+  for (final e in exts) {
+    if (lower.endsWith(e)) return true;
+  }
+  return false;
+}
+
+const _markdownExts = ['.md', '.markdown', '.mdx', '.rst'];
+const _imageExts = [
+  '.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg', '.ico', '.avif',
+  '.heic', //
+];
+const _archiveExts = [
+  '.zip',
+  '.tar',
+  '.gz',
+  '.tgz',
+  '.bz2',
+  '.xz',
+  '.rar',
+  '.7z',
+  '.jar',
+  '.aar',
+];
+const _dataExts = [
+  '.json', '.jsonc', '.json5', '.yaml', '.yml', '.toml', '.xml', '.ini',
+  '.cfg', '.conf', '.properties', '.plist', '.graphql', '.gql', '.proto', //
+];
+const _sheetExts = ['.csv', '.tsv', '.xlsx', '.xls'];
+const _shellExts = ['.sh', '.bash', '.zsh', '.fish', '.ps1', '.bat', '.cmd'];
+const _fontExts = ['.ttf', '.otf', '.woff', '.woff2', '.eot'];
+const _audioExts = ['.mp3', '.wav', '.flac', '.ogg', '.m4a', '.aac'];
+const _videoExts = ['.mp4', '.mov', '.mkv', '.webm', '.avi'];
+const _codeExts = [
+  '.dart', '.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs',
+  '.py', '.pyi', '.rb', '.php', '.swift', '.kt', '.kts', '.java', '.scala',
+  '.groovy', '.gradle', '.go', '.rs', '.ex', '.exs', '.erl', '.hs', '.lua',
+  '.pl', '.pm', '.r', '.cpp', '.cc', '.cxx', '.hpp', '.hh', '.c', '.h', '.m',
+  '.mm', '.cs', '.fs', '.vb', '.css', '.scss', '.sass', '.less', '.vue',
+  '.svelte', '.astro', '.html', '.htm', '.sql', '.diff', '.patch', '.cmake',
+  '.tf', //
+];
 
 /// A single row in the file browser: a leading icon, a name (optionally with
 /// the git status painted as the name color), the path, an optional git

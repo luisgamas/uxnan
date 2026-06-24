@@ -56,6 +56,40 @@ GitActionManager _stubManager({
   return GitActionManager(
     domainEvents: const Stream<DomainEvent>.empty(),
     sendRequest: (method, [params]) async {
+      if (method == 'git/branches') {
+        return RpcMessage.response(
+          id: '1',
+          result: const {
+            'current': 'main',
+            'local': ['main', 'feature/x'],
+            'remote': ['origin/main'],
+          },
+        );
+      }
+      if (method == 'git/commitShow') {
+        final paramsMap = params is Map ? params : null;
+        final sha = paramsMap?['sha'] as String? ?? '';
+        return RpcMessage.response(
+          id: '1',
+          result: {
+            'commit': _commitToJson(
+              commits.firstWhere(
+                (c) => c.sha == sha,
+                orElse: () => commits.first,
+              ),
+            ),
+            'files': const [
+              {
+                'path': 'lib/main.dart',
+                'status': 'modified',
+                'additions': 3,
+                'deletions': 1,
+              },
+            ],
+            'diff': '--- a/lib/main.dart\n+++ b/lib/main.dart\n+new line\n',
+          },
+        );
+      }
       if (method != 'git/log') {
         return RpcMessage.response(id: '1', result: const {});
       }
@@ -174,7 +208,7 @@ void main() {
     expect(find.text('Retry'), findsOneWidget);
   });
 
-  testWidgets('toggles between list and graph views', (tester) async {
+  testWidgets('toggles the graph overlay on and off', (tester) async {
     final manager = _stubManager(commits: _sampleCommits());
     addTearDown(manager.dispose);
 
@@ -186,19 +220,65 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // Default view is list (the toggle button shows the "graph" icon).
-    expect(find.byIcon(Icons.account_tree_rounded), findsOneWidget);
+    // Graph is off by default → the toggle shows the outlined tree icon.
+    expect(find.byIcon(Icons.account_tree_outlined), findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.account_tree_rounded));
+    await tester.tap(find.byIcon(Icons.account_tree_outlined));
     await tester.pumpAndSettle();
 
-    // After tap, the toggle now shows the "list" icon.
-    expect(find.byIcon(Icons.view_list_rounded), findsOneWidget);
-    // The graph rows render CustomPaint widgets for each commit.
-    expect(find.byType(CustomPaint), findsAtLeastNWidgets(2));
+    // Graph is on → the toggle shows the filled tree icon and the commits
+    // still render (now with the lane gutter).
+    expect(find.byIcon(Icons.account_tree_rounded), findsOneWidget);
+    expect(find.text('feat: history view'), findsOneWidget);
   });
 
-  testWidgets('opens the details bottom sheet when a row is tapped',
+  testWidgets('toggles compact density', (tester) async {
+    final manager = _stubManager(commits: _sampleCommits());
+    addTearDown(manager.dispose);
+
+    await tester.pumpWidget(
+      _wrap(
+        manager: manager,
+        child: const GitHistoryScreen(cwd: '/repo'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byIcon(Icons.density_small_rounded), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.density_small_rounded));
+    await tester.pumpAndSettle();
+    expect(find.byIcon(Icons.density_medium_rounded), findsOneWidget);
+  });
+
+  testWidgets('opens the branch picker and switches the viewed ref',
+      (tester) async {
+    final manager = _stubManager(commits: _sampleCommits());
+    addTearDown(manager.dispose);
+
+    await tester.pumpWidget(
+      _wrap(
+        manager: manager,
+        child: const GitHistoryScreen(cwd: '/repo'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.alt_route_rounded));
+    await tester.pumpAndSettle();
+
+    // The picker lists HEAD + the branches.
+    expect(find.text('View history of…'), findsOneWidget);
+    expect(find.text('Current branch (HEAD)'), findsOneWidget);
+    expect(find.text('feature/x'), findsOneWidget);
+
+    await tester.tap(find.text('feature/x'));
+    await tester.pumpAndSettle();
+
+    // The "viewing <ref>" banner appears for the non-default ref.
+    expect(find.textContaining('feature/x'), findsWidgets);
+  });
+
+  testWidgets('opens the full commit detail screen when a row is tapped',
       (tester) async {
     final manager = _stubManager(commits: _sampleCommits());
     addTearDown(manager.dispose);
@@ -214,10 +294,13 @@ void main() {
     await tester.tap(find.text('feat: history view'));
     await tester.pumpAndSettle();
 
+    // Pushed the dedicated detail screen (not a bottom sheet).
     expect(find.text('Commit details'), findsOneWidget);
-    expect(find.text('Full message'), findsOneWidget);
-    expect(find.text('adds the new screen'), findsOneWidget);
     expect(find.byTooltip('Copy SHA'), findsOneWidget);
     expect(find.text('Copy message'), findsOneWidget);
+    // The file list + diff from git/commitShow render (the row shows the
+    // basename; the directory is a separate muted line).
+    expect(find.text('main.dart'), findsOneWidget);
+    expect(find.textContaining('new line'), findsOneWidget);
   });
 }

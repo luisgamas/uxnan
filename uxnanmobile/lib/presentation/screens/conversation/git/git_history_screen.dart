@@ -1,34 +1,32 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uxnan/domain/value_objects/git/git_action_io.dart';
 import 'package:uxnan/domain/value_objects/git/git_log.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
+import 'package:uxnan/presentation/screens/conversation/git/git_commit_detail_screen.dart';
+import 'package:uxnan/presentation/screens/conversation/git/widgets/commit_ref_chip.dart';
+import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
-import 'package:uxnan/presentation/widgets/connected_button_group.dart';
-import 'package:uxnan/presentation/widgets/expressive_card.dart';
+import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
+import 'package:uxnan/presentation/widgets/icon_surface.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 
-/// Full-screen commit history view for the workspace's git repo. Two views
-/// share the same underlying paged data:
+/// Full-screen commit history for the workspace's git repo — a single, clean,
+/// flat list (no card chrome — matches the file browser's surface). The app
+/// bar carries two `IconSurface` toggles:
 ///
-///   - **List** — newest-first chronological list of commits.
-///   - **Graph** — same data rendered as a GitKraken-style graph: each commit
-///     occupies a "lane" based on its parents, lines are drawn with bezier
-///     curves so branches stay readable.
+///   - **Graph** — overlays a continuous, colored VS Code / GitKraken-style
+///     lane graph on the left of each row. Rows are flush (no gaps) so the
+///     lines connect seamlessly across the whole list, with bezier curves at
+///     branch/merge points.
+///   - **Compact** — a denser row layout.
 ///
-/// Both views back onto the `git/log` JSON-RPC method via
-/// `GitActionManager.log(GitLogParams)`. Pagination is cursor-based: each
-/// batch fetches 50 commits; "Load older commits" fetches the next page
-/// using the previous result's `nextCursor`.
-///
-/// Built on the Neural Expressive design system (`docs/neural-expressive-design.md`):
-///   - `ExpressiveCard` (24 dp outer radius, `spatialFast` press spring) for
-///     commit rows (§2.2 / §4.6).
-///   - `ConnectedButtonGroup` for the List ↔ Graph toggle (§4.5).
-///   - `PolygonLoader` for the initial-load spinner (§4.7).
-///   - `UxnanSpacing` + `UxnanRadius` tokens throughout.
+/// Backed by `git/log` (cursor pagination, 50/page) with **infinite scroll**
+/// (a page loads as the user nears the bottom) and a **back-to-top** FAB.
+/// Tapping a commit opens the full [GitCommitDetailScreen] (files + diff via
+/// `git/commitShow`).
 class GitHistoryScreen extends ConsumerStatefulWidget {
   /// Creates a [GitHistoryScreen].
   const GitHistoryScreen({this.cwd, this.ref, super.key});
@@ -57,39 +55,62 @@ class GitHistoryScreen extends ConsumerStatefulWidget {
   ConsumerState<GitHistoryScreen> createState() => _GitHistoryScreenState();
 }
 
-/// Which sub-view is currently rendered.
-enum _HistoryView { list, graph }
-
 class _GitHistoryScreenState extends ConsumerState<GitHistoryScreen> {
-  /// Currently-loaded commits, oldest at the bottom. Never mutated in place
-  /// — we only ever replace the list when a page arrives.
+  /// Page size per `git/log` call.
+  static const int _pageSize = 50;
+
+  /// How close to the bottom (px) triggers the next page load.
+  static const double _loadMoreThreshold = 600;
+
+  /// Scroll offset past which the back-to-top FAB appears.
+  static const double _backToTopThreshold = 800;
+
   List<GitCommit> _commits = const [];
-
-  /// SHA to pass as the next `cursor`. `null` once `hasMore` is false.
   String? _nextCursor;
-
-  /// True when more commits are available past the last fetched page.
   bool _hasMore = false;
-
-  /// True on the initial load (skeleton / spinner).
   bool _initialLoading = true;
-
-  /// True when the user pressed *Load older* and a page is in flight.
   bool _pageLoading = false;
-
-  /// True when the user pulled to refresh or hit retry.
   bool _refreshLoading = false;
-
-  /// Last error message; null when no error. Surfaced as an inline state.
   Object? _error;
 
-  /// Which sub-view the user picked last.
-  _HistoryView _view = _HistoryView.list;
+  bool _showGraph = false;
+  bool _compact = false;
+  bool _showBackToTop = false;
+
+  /// The ref (branch / tag / remote) the history is viewed from. `null` = the
+  /// workspace's current HEAD. Seeded from [widget.ref].
+  String? _viewingRef;
+
+  final ScrollController _scrollController = ScrollController();
 
   @override
   void initState() {
     super.initState();
+    _viewingRef = widget.ref;
+    _scrollController.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadFirstPage());
+  }
+
+  @override
+  void dispose() {
+    _scrollController
+      ..removeListener(_onScroll)
+      ..dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final pos = _scrollController.position;
+    if (_hasMore &&
+        !_pageLoading &&
+        pos.pixels >= pos.maxScrollExtent - _loadMoreThreshold) {
+      _loadMore();
+    }
+    final show = pos.pixels > _backToTopThreshold;
+    if (show != _showBackToTop) {
+      setState(() => _showBackToTop = show);
+    }
   }
 
   Future<void> _loadFirstPage() async {
@@ -107,7 +128,7 @@ class _GitHistoryScreenState extends ConsumerState<GitHistoryScreen> {
     });
     try {
       final result = await ref.read(gitActionManagerProvider).log(
-            GitLogParams(cwd: cwd, limit: 50, ref: widget.ref),
+            GitLogParams(cwd: cwd, limit: _pageSize, ref: _viewingRef),
           );
       if (!mounted) return;
       setState(() {
@@ -134,7 +155,7 @@ class _GitHistoryScreenState extends ConsumerState<GitHistoryScreen> {
     });
     try {
       final result = await ref.read(gitActionManagerProvider).log(
-            GitLogParams(cwd: cwd, limit: 50, ref: widget.ref),
+            GitLogParams(cwd: cwd, limit: _pageSize, ref: _viewingRef),
           );
       if (!mounted) return;
       setState(() {
@@ -156,49 +177,79 @@ class _GitHistoryScreenState extends ConsumerState<GitHistoryScreen> {
     final cwd = widget.cwd;
     final cursor = _nextCursor;
     if (cwd == null || cursor == null || _pageLoading || !_hasMore) return;
-    setState(() {
-      _pageLoading = true;
-      _error = null;
-    });
+    setState(() => _pageLoading = true);
     try {
       final result = await ref.read(gitActionManagerProvider).log(
-            GitLogParams(cwd: cwd, limit: 50, cursor: cursor),
+            GitLogParams(cwd: cwd, limit: _pageSize, cursor: cursor),
           );
       if (!mounted) return;
       setState(() {
-        // Replace the local cache: cursor pagination always returns strictly
-        // older commits, so concatenation is safe.
         _commits = [..._commits, ...result.commits];
         _hasMore = result.hasMore;
         _nextCursor = result.nextCursor;
         _pageLoading = false;
       });
-    } on Exception catch (e) {
+    } on Exception {
       if (!mounted) return;
-      setState(() {
-        _pageLoading = false;
-        _error = e;
-      });
+      setState(() => _pageLoading = false);
     }
   }
 
-  /// Pull-to-refresh handler: refreshes the first page (newest commits).
-  Future<void> _pullToRefresh() => _refresh();
+  void _backToTop() {
+    if (!_scrollController.hasClients) return;
+    _scrollController.animateTo(
+      0,
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeOutCubic,
+    );
+  }
 
   void _openDetails(GitCommit commit) {
-    showModalBottomSheet<void>(
+    final cwd = widget.cwd;
+    if (cwd == null) return;
+    GitCommitDetailScreen.push(
+      context,
+      cwd: cwd,
+      sha: commit.sha,
+      seed: commit,
+    );
+  }
+
+  /// Opens the branch/ref picker and, on selection, reloads the history from
+  /// that ref. `null` returns to the workspace's current HEAD. This is a
+  /// read-only "view from" — it never checks the branch out.
+  Future<void> _pickBranch() async {
+    final cwd = widget.cwd;
+    if (cwd == null) return;
+    GitBranchList branches;
+    try {
+      branches = await ref.read(gitActionManagerProvider).branches(cwd);
+    } on Object {
+      branches = const GitBranchList(current: 'HEAD');
+    }
+    if (!mounted) return;
+    final picked = await showModalBottomSheet<_RefChoice>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
       backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
-      builder: (_) => _CommitDetailsSheet(commit: commit),
+      builder: (_) => _BranchPickerSheet(
+        branches: branches,
+        selectedRef: _viewingRef,
+      ),
     );
+    if (picked == null || !mounted) return;
+    // `_RefChoice(ref: null)` means "back to HEAD".
+    if (picked.ref == _viewingRef) return;
+    setState(() => _viewingRef = picked.ref);
+    await _loadFirstPage();
   }
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final colors = Theme.of(context).colorScheme;
+    final hasContent = !_initialLoading && _commits.isNotEmpty;
 
     Widget sliver;
     if (_initialLoading) {
@@ -209,160 +260,258 @@ class _GitHistoryScreenState extends ConsumerState<GitHistoryScreen> {
     } else if (_error != null && _commits.isEmpty) {
       sliver = SliverFillRemaining(
         hasScrollBody: false,
-        child: _ErrorState(
+        child: _CenteredState(
+          icon: Icons.error_outline_rounded,
+          iconColor: colors.error,
           title: l10n.gitHistoryErrorTitle,
-          retryLabel: l10n.gitHistoryRetry,
-          onRetry: _loadFirstPage,
+          action: FilledButton.tonal(
+            onPressed: _loadFirstPage,
+            child: Text(l10n.gitHistoryRetry),
+          ),
         ),
       );
     } else if (_commits.isEmpty) {
       sliver = SliverFillRemaining(
         hasScrollBody: false,
-        child: _EmptyState(
+        child: _CenteredState(
+          icon: Icons.history_toggle_off_rounded,
+          iconColor: colors.onSurfaceVariant,
           title: l10n.gitHistoryEmpty,
           body: l10n.gitHistoryEmptyBody,
         ),
       );
     } else {
-      switch (_view) {
-        case _HistoryView.list:
-          sliver = SliverList.builder(
-            itemCount: _commits.length + (_hasMore ? 1 : 0),
-            itemBuilder: (context, index) {
-              if (index >= _commits.length) {
-                return _LoadMoreTile(
-                  loading: _pageLoading,
-                  label: _pageLoading
-                      ? l10n.gitHistoryLoadingMore
-                      : l10n.gitHistoryLoadMore,
-                  onTap: _loadMore,
-                );
-              }
-              final commit = _commits[index];
-              return Padding(
-                padding: const EdgeInsets.only(bottom: UxnanSpacing.xs),
-                child: _CommitListTile(
-                  commit: commit,
-                  onTap: () => _openDetails(commit),
-                ),
-              );
-            },
-          );
-        case _HistoryView.graph:
-          final lanes = _assignLanes(_commits);
-          sliver = SliverList.builder(
-            itemCount: lanes.length + (_hasMore ? 1 : 0),
-            itemBuilder: (context, index) {
-              if (index >= lanes.length) {
-                return _LoadMoreTile(
-                  loading: _pageLoading,
-                  label: _pageLoading
-                      ? l10n.gitHistoryLoadingMore
-                      : l10n.gitHistoryLoadMore,
-                  onTap: _loadMore,
-                );
-              }
-              final entry = lanes[index];
-              final next = index + 1 < lanes.length ? lanes[index + 1] : null;
-              return Padding(
-                padding: const EdgeInsets.only(bottom: UxnanSpacing.xs),
-                child: _CommitGraphRow(
-                  entry: entry,
-                  nextEntry: next,
-                  hasMoreBelow: next == null && _hasMore,
-                  onTap: () => _openDetails(entry.commit),
-                ),
-              );
-            },
-          );
-      }
+      sliver = _buildCommitsSliver();
     }
 
     return NeScaffold(
       title: l10n.gitHistoryTitle,
-      onRefresh: _initialLoading ? null : _pullToRefresh,
+      scrollController: _scrollController,
+      onRefresh: _initialLoading ? null : _refresh,
+      floatingActionButton: _showBackToTop
+          ? FloatingActionButton.small(
+              tooltip: l10n.gitHistoryBackToTop,
+              onPressed: _backToTop,
+              child: const Icon(Icons.keyboard_arrow_up_rounded),
+            )
+          : null,
+      actions: [
+        if (widget.cwd != null && !_initialLoading)
+          IconSurface(
+            icon: Icons.alt_route_rounded,
+            tooltip: l10n.gitHistoryViewBranch,
+            selected: _viewingRef != null,
+            onPressed: _pickBranch,
+          ),
+        if (hasContent)
+          IconSurface(
+            icon: _showGraph
+                ? Icons.account_tree_rounded
+                : Icons.account_tree_outlined,
+            tooltip: _showGraph
+                ? l10n.gitHistoryHideGraph
+                : l10n.gitHistoryShowGraph,
+            selected: _showGraph,
+            onPressed: () => setState(() => _showGraph = !_showGraph),
+          ),
+        if (hasContent)
+          IconSurface(
+            icon: _compact
+                ? Icons.density_medium_rounded
+                : Icons.density_small_rounded,
+            tooltip:
+                _compact ? l10n.gitHistoryComfortable : l10n.gitHistoryCompact,
+            selected: _compact,
+            onPressed: () => setState(() => _compact = !_compact),
+          ),
+      ],
       slivers: [
-        if (!_initialLoading && _commits.isNotEmpty)
+        if (_viewingRef != null)
           SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(
-                UxnanSpacing.lg,
-                UxnanSpacing.xs,
-                UxnanSpacing.lg,
-                UxnanSpacing.md,
-              ),
-              child: _ViewToggle(
-                view: _view,
-                onChanged: (v) => setState(() => _view = v),
-              ),
+            child: _ViewingRefBanner(
+              refName: _viewingRef!,
+              onClear: () {
+                setState(() => _viewingRef = null);
+                _loadFirstPage();
+              },
             ),
           ),
-        SliverPadding(
-          padding: const EdgeInsets.fromLTRB(
-            UxnanSpacing.lg,
-            UxnanSpacing.xs,
-            UxnanSpacing.lg,
-            UxnanSpacing.lg,
-          ),
-          sliver: sliver,
-        ),
+        sliver,
       ],
+    );
+  }
+
+  Widget _buildCommitsSliver() {
+    final footer = _hasMore ? 1 : 0;
+
+    if (_showGraph) {
+      final rows = _buildGraph(_commits);
+      final maxLanes = rows.isEmpty
+          ? 1
+          : rows.map((r) => r.laneCount).reduce((a, b) => a > b ? a : b);
+      return SliverList.builder(
+        itemCount: rows.length + footer,
+        itemBuilder: (context, index) {
+          if (index >= rows.length) {
+            return _PageFooter(loading: _pageLoading, onLoadMore: _loadMore);
+          }
+          return _CommitGraphRow(
+            row: rows[index],
+            maxLanes: maxLanes,
+            compact: _compact,
+            onTap: () => _openDetails(rows[index].commit),
+          );
+        },
+      );
+    }
+
+    return SliverList.builder(
+      itemCount: _commits.length + footer,
+      itemBuilder: (context, index) {
+        if (index >= _commits.length) {
+          return _PageFooter(loading: _pageLoading, onLoadMore: _loadMore);
+        }
+        return _CommitRow(
+          commit: _commits[index],
+          compact: _compact,
+          onTap: () => _openDetails(_commits[index]),
+        );
+      },
     );
   }
 }
 
-/// Connected Button Group that toggles between the list and graph views.
-/// Lives above the commits list when at least one commit is loaded.
-class _ViewToggle extends StatelessWidget {
-  /// Creates a [_ViewToggle].
-  const _ViewToggle({required this.view, required this.onChanged});
+/// A flat commit row for the plain (graph-off) list — no card, matching the
+/// file browser's clean surface. Two lines: title + a muted meta line.
+class _CommitRow extends StatelessWidget {
+  const _CommitRow({
+    required this.commit,
+    required this.compact,
+    required this.onTap,
+  });
 
-  /// Currently selected view.
-  final _HistoryView view;
-
-  /// Tap handler — receives the new selected value.
-  final ValueChanged<_HistoryView> onChanged;
+  final GitCommit commit;
+  final bool compact;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    return ConnectedButtonGroup<_HistoryView>(
-      values: _HistoryView.values,
-      selected: view,
-      onChanged: onChanged,
-      labelBuilder: (v, selected) => Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            v == _HistoryView.list
-                ? Icons.view_list_rounded
-                : Icons.account_tree_rounded,
-          ),
-          const SizedBox(width: UxnanSpacing.xs),
-          Text(
-            v == _HistoryView.list
-                ? l10n.gitHistoryListView
-                : l10n.gitHistoryGraphView,
-          ),
-        ],
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: EdgeInsets.symmetric(
+          horizontal: UxnanSpacing.lg,
+          vertical: compact ? UxnanSpacing.sm : UxnanSpacing.md,
+        ),
+        child: _CommitSummary(commit: commit, compact: compact),
       ),
     );
   }
 }
 
-/// A flat list row — title, author + relative date, optional merge badge and
-/// stats summary. Uses [ExpressiveCard] so the press feedback matches the
-/// rest of the app (24 dp outer radius + `spatialFast` scale spring).
-class _CommitListTile extends StatelessWidget {
-  /// Creates a [_CommitListTile].
-  const _CommitListTile({required this.commit, required this.onTap});
+/// A graph row in the VS Code style: a **fixed-height, single-line** row so
+/// dots align into clean horizontal lanes, with the lane gutter on the left
+/// sized to the *full* lane count (the commit text shifts right so the graph
+/// is always fully visible — never hidden under the text). Rows are flush so
+/// the painted lanes connect continuously down the list.
+class _CommitGraphRow extends StatelessWidget {
+  const _CommitGraphRow({
+    required this.row,
+    required this.maxLanes,
+    required this.compact,
+    required this.onTap,
+  });
 
-  /// Commit being rendered.
-  final GitCommit commit;
-
-  /// Tap handler — opens the details bottom sheet.
+  final _GraphRow row;
+  final int maxLanes;
+  final bool compact;
   final VoidCallback onTap;
+
+  /// Width of one lane in logical pixels.
+  static const double _laneWidth = 16;
+
+  /// Generous cap so very deep graphs don't eat the whole screen; the gutter
+  /// otherwise grows with the real lane count so nothing hides under the text.
+  static const int _maxLanes = 12;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final lanes = maxLanes.clamp(1, _maxLanes);
+    final gutterWidth = UxnanSpacing.sm + lanes * _laneWidth;
+    final rowHeight = compact ? 36.0 : 46.0;
+    return InkWell(
+      onTap: onTap,
+      child: SizedBox(
+        height: rowHeight,
+        child: Row(
+          children: [
+            SizedBox(
+              width: gutterWidth,
+              height: rowHeight,
+              child: CustomPaint(
+                painter: _GraphPainter(
+                  row: row,
+                  laneWidth: _laneWidth,
+                  leftPad: UxnanSpacing.sm,
+                  dotSize: compact ? 7 : 9,
+                  palette: _lanePalette(colors),
+                  haloColor: colors.surface,
+                ),
+              ),
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(right: UxnanSpacing.lg),
+                child: Row(
+                  children: [
+                    if (row.commit.isMerge) ...[
+                      Icon(
+                        Icons.merge_rounded,
+                        size: 14,
+                        color: colors.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: UxnanSpacing.xs),
+                    ],
+                    for (final ref in row.commit.refs)
+                      Padding(
+                        padding: const EdgeInsets.only(right: UxnanSpacing.xs),
+                        child: CommitRefChip(refData: ref, dense: true),
+                      ),
+                    Flexible(
+                      child: Text(
+                        row.commit.messageTitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: textTheme.bodyMedium,
+                      ),
+                    ),
+                    const SizedBox(width: UxnanSpacing.sm),
+                    Text(
+                      _relativeDate(row.commit.authorDate),
+                      style: textTheme.bodySmall?.copyWith(
+                        color: colors.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The commit summary: optional ref chips + merge badge, title, then a single
+/// muted meta line (author · short SHA · relative date · ± stats).
+class _CommitSummary extends StatelessWidget {
+  const _CommitSummary({required this.commit, required this.compact});
+
+  final GitCommit commit;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -370,226 +519,105 @@ class _CommitListTile extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final stats = commit.stats;
-    return ExpressiveCard(
-      onTap: onTap,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    final titleStyle = (compact ? textTheme.bodyMedium : textTheme.bodyLarge)
+        ?.copyWith(fontWeight: FontWeight.w600);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (commit.refs.isNotEmpty || commit.isMerge) ...[
+          Wrap(
+            spacing: UxnanSpacing.xs,
+            runSpacing: UxnanSpacing.xs,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              if (commit.isMerge) ...[
-                _MergeBadge(label: l10n.gitHistoryMergeBadge),
-                const SizedBox(width: UxnanSpacing.sm),
-              ],
-              Expanded(
-                child: Text(
-                  commit.messageTitle,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: textTheme.bodyLarge?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
+              if (commit.isMerge) _MergeBadge(label: l10n.gitHistoryMergeBadge),
+              for (final ref in commit.refs)
+                CommitRefChip(refData: ref, dense: compact),
             ],
           ),
-          const SizedBox(height: UxnanSpacing.xs),
-          Row(
-            children: [
-              Flexible(
-                child: Text(
-                  l10n.gitHistoryCommitBy(commit.authorName),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: textTheme.bodySmall?.copyWith(
-                    color: colors.onSurfaceVariant,
-                  ),
-                ),
-              ),
-              Text(
-                ' · ',
-                style: textTheme.bodySmall?.copyWith(
-                  color: colors.onSurfaceVariant,
-                ),
-              ),
-              Text(
-                _relativeDate(commit.authorDate),
+          SizedBox(height: compact ? 2 : UxnanSpacing.xs),
+        ],
+        Text(
+          commit.messageTitle,
+          maxLines: compact ? 1 : 2,
+          overflow: TextOverflow.ellipsis,
+          style: titleStyle,
+        ),
+        SizedBox(height: compact ? 3 : 5),
+        Row(
+          children: [
+            _ShaBadge(shortSha: commit.shortSha),
+            const SizedBox(width: UxnanSpacing.sm),
+            Flexible(
+              child: Text(
+                '${l10n.gitHistoryCommitBy(commit.authorName)} · '
+                '${_relativeDate(commit.authorDate)}',
                 maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: textTheme.bodySmall?.copyWith(
                   color: colors.onSurfaceVariant,
                 ),
               ),
-              if (stats != null) ...[
-                const Spacer(),
+            ),
+            if (stats != null) ...[
+              const SizedBox(width: UxnanSpacing.sm),
+              if (stats.additions > 0)
                 Text(
-                  '+${stats.additions}  -${stats.deletions}',
+                  '+${stats.additions}',
                   style: textTheme.bodySmall?.copyWith(
-                    color: colors.onSurfaceVariant,
+                    color: UxnanColors.gitAdded,
                     fontFeatures: const [FontFeature.tabularFigures()],
                   ),
                 ),
-              ],
+              if (stats.additions > 0 && stats.deletions > 0)
+                const SizedBox(width: UxnanSpacing.xs),
+              if (stats.deletions > 0)
+                Text(
+                  '−${stats.deletions}',
+                  style: textTheme.bodySmall?.copyWith(
+                    color: UxnanColors.gitDeleted,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
             ],
-          ),
-          if (commit.shortSha.isNotEmpty) ...[
-            const SizedBox(height: UxnanSpacing.xs),
-            Text(
-              commit.shortSha,
-              style: textTheme.bodySmall?.copyWith(
-                color: colors.onSurfaceVariant,
-                fontFamily: 'monospace',
-              ),
-            ),
           ],
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
 
-/// A single graph row: a left-side graph lane (lanes, circle, edges) and a
-/// right-side commit summary (title, author, short SHA, stats). The lane
-/// width is fixed so all rows align. Renders bezier curves for merge parents
-/// and parent branches.
-class _CommitGraphRow extends StatelessWidget {
-  /// Creates a [_CommitGraphRow].
-  const _CommitGraphRow({
-    required this.entry,
-    required this.nextEntry,
-    required this.hasMoreBelow,
-    required this.onTap,
-  });
-
-  /// The row being rendered.
-  final _LaneAssignment entry;
-
-  /// The row directly below this one (for line connections). Null when this
-  /// is the bottom-most rendered row.
-  final _LaneAssignment? nextEntry;
-
-  /// True when there's a *Load older* row below (so the outgoing line drops
-  /// off the visible area instead of stopping at the next commit).
-  final bool hasMoreBelow;
-
-  /// Tap handler — opens the details bottom sheet.
-  final VoidCallback onTap;
-
-  /// Width in logical pixels of one graph lane.
-  static const double _laneWidth = UxnanSpacing.md + UxnanSpacing.xs;
-
-  /// Width of the commit circle / dot.
-  static const double _dotSize = UxnanSpacing.md;
-
-  /// Row height — enough to fit the circle + a short tail.
-  static const double _rowHeight = 64;
+/// A subtle monospace badge for a commit's short SHA — a small splash of
+/// identity without breaking the clean, card-less list.
+class _ShaBadge extends StatelessWidget {
+  const _ShaBadge({required this.shortSha});
+  final String shortSha;
 
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
     final colors = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-    final lanes = entry.totalLanes;
-    final graphWidth = lanes * _laneWidth;
-    final stats = entry.commit.stats;
-    return ExpressiveCard(
-      onTap: onTap,
-      padding: EdgeInsets.zero,
-      child: Row(
-        children: [
-          SizedBox(
-            width: graphWidth + _laneWidth,
-            height: _rowHeight,
-            child: CustomPaint(
-              painter: _GraphPainter(
-                lane: entry.lane,
-                totalLanes: lanes,
-                laneWidth: _laneWidth,
-                dotSize: _dotSize,
-                color: colors.primary,
-                trackColor: colors.outlineVariant,
-                parentLanes: entry.parentLanes,
-                nextLane: nextEntry?.lane,
-                parentsContinue: nextEntry?.continuesFrom == entry.commit.sha,
-                hasMoreBelow: hasMoreBelow,
-              ),
-            ),
-          ),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(
-                UxnanSpacing.sm,
-                UxnanSpacing.sm,
-                UxnanSpacing.lg,
-                UxnanSpacing.sm,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      if (entry.commit.isMerge) ...[
-                        _MergeBadge(label: l10n.gitHistoryMergeBadge),
-                        const SizedBox(width: UxnanSpacing.sm),
-                      ],
-                      Expanded(
-                        child: Text(
-                          entry.commit.messageTitle,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: UxnanSpacing.xs),
-                  Row(
-                    children: [
-                      Flexible(
-                        child: Text(
-                          '${l10n.gitHistoryCommitBy(
-                            entry.commit.authorName,
-                          )}'
-                          ' · ${entry.commit.shortSha}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: textTheme.bodySmall?.copyWith(
-                            color: colors.onSurfaceVariant,
-                            fontFamily: 'monospace',
-                          ),
-                        ),
-                      ),
-                      if (stats != null) ...[
-                        const Spacer(),
-                        Text(
-                          '+${stats.additions}  -${stats.deletions}',
-                          style: textTheme.bodySmall?.copyWith(
-                            color: colors.onSurfaceVariant,
-                            fontFeatures: const [
-                              FontFeature.tabularFigures(),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: UxnanSpacing.xs + 1,
+        vertical: 1,
+      ),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerHighest,
+        borderRadius: const BorderRadius.all(UxnanRadius.sm),
+      ),
+      child: Text(
+        shortSha,
+        style:
+            UxnanTypography.codeSmall.copyWith(color: colors.onSurfaceVariant),
       ),
     );
   }
 }
 
-/// "Merge" badge — small pill in `tertiaryContainer` with `labelMedium` text.
+/// "Merge" badge — a small neutral pill.
 class _MergeBadge extends StatelessWidget {
-  /// Creates a [_MergeBadge].
   const _MergeBadge({required this.label});
-
-  /// Badge label.
   final String label;
 
   @override
@@ -597,17 +625,15 @@ class _MergeBadge extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: UxnanSpacing.sm,
-        vertical: UxnanSpacing.xs,
-      ),
+      padding:
+          const EdgeInsets.symmetric(horizontal: UxnanSpacing.sm, vertical: 2),
       decoration: BoxDecoration(
         color: colors.tertiaryContainer,
-        borderRadius: const BorderRadius.all(UxnanRadius.md),
+        borderRadius: const BorderRadius.all(UxnanRadius.sm),
       ),
       child: Text(
         label,
-        style: textTheme.labelMedium?.copyWith(
+        style: textTheme.labelSmall?.copyWith(
           color: colors.onTertiaryContainer,
           fontWeight: FontWeight.w600,
         ),
@@ -616,150 +642,469 @@ class _MergeBadge extends StatelessWidget {
   }
 }
 
-/// Paints the left-side graph for a [_CommitGraphRow].
-///
-///   - A vertical track for every lane (so unfilled lanes stay subtle).
-///   - A solid filled circle at `lane` for the current commit.
-///   - A vertical line dropping from the circle to the next row, if the next
-///     row's first parent is the current commit (so the lane continues).
-///   - Bezier curves from the circle to each lane of any *other* parent (merge
-///     parents, off-screen parents).
-class _GraphPainter extends CustomPainter {
-  /// Creates a [_GraphPainter].
-  const _GraphPainter({
-    required this.lane,
-    required this.totalLanes,
-    required this.laneWidth,
-    required this.dotSize,
-    required this.color,
-    required this.trackColor,
-    required this.parentLanes,
-    required this.nextLane,
-    required this.parentsContinue,
-    required this.hasMoreBelow,
-  });
-
-  /// The lane (column) this commit occupies. Zero-indexed.
-  final int lane;
-
-  /// Total number of lanes in the rendered window — drives the canvas width.
-  final int totalLanes;
-
-  /// Width of a single lane in logical pixels.
-  final double laneWidth;
-
-  /// Diameter of the circle drawn at the commit.
-  final double dotSize;
-
-  /// Color of the commit circle and lines.
-  final Color color;
-
-  /// Color of the "empty" lane track (drawn behind the circle so unfilled
-  /// lanes are still visible).
-  final Color trackColor;
-
-  /// Lanes of every parent commit of this row, in order:
-  ///   - `parentLanes[0]` is the first parent. It always continues this lane
-  ///     (the next row at the same column holds it).
-  ///   - `parentLanes[1..]` are additional parents. They branch off, drawn as
-  ///     bezier curves to the right of the current lane.
-  final List<int> parentLanes;
-
-  /// Lane of the next row (the commit rendered directly below), or null if
-  /// this is the last rendered row.
-  final int? nextLane;
-
-  /// True when the next row continues from this commit (its `continuesFrom`
-  /// is the current commit's SHA). Drives whether the outgoing line goes
-  /// straight down or bends.
-  final bool parentsContinue;
-
-  /// True when the next visible row is the *Load older* footer. The outgoing
-  /// line drops off-screen instead of stopping at the next lane.
-  final bool hasMoreBelow;
+/// Footer shown when more commits are available: a loader while a page is in
+/// flight, otherwise a tappable "Load older commits" affordance (the list also
+/// auto-loads as it nears the bottom — this is the explicit fallback).
+class _PageFooter extends StatelessWidget {
+  const _PageFooter({required this.loading, required this.onLoadMore});
+  final bool loading;
+  final VoidCallback onLoadMore;
 
   @override
-  void paint(Canvas canvas, Size size) {
-    final trackPaint = Paint()
-      ..color = trackColor
-      ..strokeWidth = 2
-      ..strokeCap = StrokeCap.round;
-    final linePaint = Paint()
-      ..color = color
-      ..strokeWidth = 2
-      ..strokeCap = StrokeCap.round;
-
-    // 1. Subtle vertical track behind every lane.
-    for (var i = 0; i < totalLanes; i++) {
-      final x = i * laneWidth + laneWidth / 2;
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), trackPaint);
-    }
-
-    final centerX = lane * laneWidth + laneWidth / 2;
-
-    // 2. Outgoing lines from the circle (downward).
-    if (parentsContinue && !hasMoreBelow && nextLane == lane) {
-      // Straight line down (lane continues).
-      canvas.drawLine(
-        Offset(centerX, size.height / 2 + dotSize / 2),
-        Offset(centerX, size.height),
-        linePaint,
-      );
-    } else if (parentsContinue &&
-        !hasMoreBelow &&
-        nextLane != null &&
-        nextLane != lane) {
-      // First parent continues in a *different* lane (this commit has a child
-      // at lane != current). Bezier curve from current circle to next lane.
-      final nextX = nextLane! * laneWidth + laneWidth / 2;
-      _drawBezier(
-        canvas,
-        linePaint,
-        Offset(centerX, size.height / 2 + dotSize / 2),
-        Offset(nextX, size.height),
-      );
-    } else if (parentsContinue && hasMoreBelow) {
-      // Lane continues off-screen — drop straight down to the bottom.
-      canvas.drawLine(
-        Offset(centerX, size.height / 2 + dotSize / 2),
-        Offset(centerX, size.height),
-        linePaint,
-      );
-    }
-
-    // 3. Branch curves to additional (non-first) parents.
-    for (var i = 1; i < parentLanes.length; i++) {
-      final parentLane = parentLanes[i];
-      final parentX = parentLane * laneWidth + laneWidth / 2;
-      // Curve bends right from the current circle into the parent lane.
-      final midX = (centerX + parentX) / 2;
-      final path = Path()
-        ..moveTo(centerX, size.height / 2)
-        ..cubicTo(
-          centerX,
-          size.height * 0.75,
-          midX,
-          size.height * 0.75,
-          parentX,
-          size.height,
-        );
-      canvas.drawPath(path, linePaint);
-    }
-
-    // 4. The commit circle itself. We draw the stroke + fill in two passes
-    //    so the circle stays visible even when the lane continues through it.
-    final center = Offset(centerX, size.height / 2);
-    final ringPaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2;
-    final dotPaint = Paint()..color = color;
-    canvas
-      ..drawCircle(center, dotSize / 2, ringPaint)
-      ..drawCircle(center, dotSize / 2 - 1, dotPaint);
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: UxnanSpacing.md),
+      child: Center(
+        child: loading
+            ? PolygonLoader(size: 22, color: colors.primary)
+            : TextButton.icon(
+                onPressed: onLoadMore,
+                icon: const Icon(Icons.expand_more_rounded, size: 18),
+                label: Text(l10n.gitHistoryLoadMore),
+              ),
+      ),
+    );
   }
+}
 
-  void _drawBezier(Canvas canvas, Paint paint, Offset from, Offset to) {
+/// A centered icon + title (+ optional body / action) for the empty and error
+/// states. Flat, no card.
+class _CenteredState extends StatelessWidget {
+  const _CenteredState({
+    required this.icon,
+    required this.iconColor,
+    required this.title,
+    this.body,
+    this.action,
+  });
+
+  final IconData icon;
+  final Color iconColor;
+  final String title;
+  final String? body;
+  final Widget? action;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: UxnanSpacing.xl,
+        vertical: UxnanSpacing.xxl,
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 56, color: iconColor),
+          const SizedBox(height: UxnanSpacing.lg),
+          Text(
+            title,
+            style: textTheme.titleMedium,
+            textAlign: TextAlign.center,
+          ),
+          if (body != null) ...[
+            const SizedBox(height: UxnanSpacing.sm),
+            Text(
+              body!,
+              style: textTheme.bodyMedium
+                  ?.copyWith(color: colors.onSurfaceVariant),
+              textAlign: TextAlign.center,
+            ),
+          ],
+          if (action != null) ...[
+            const SizedBox(height: UxnanSpacing.lg),
+            action!,
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Result of the branch picker — `ref == null` means "back to current HEAD".
+class _RefChoice {
+  const _RefChoice(this.ref);
+  final String? ref;
+}
+
+/// A slim banner shown above the list when the history is being viewed from a
+/// non-default ref (a branch/tag), with a quick action to return to HEAD.
+class _ViewingRefBanner extends StatelessWidget {
+  const _ViewingRefBanner({required this.refName, required this.onClear});
+  final String refName;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        UxnanSpacing.lg,
+        UxnanSpacing.xs,
+        UxnanSpacing.lg,
+        UxnanSpacing.xs,
+      ),
+      child: Container(
+        padding: const EdgeInsets.only(
+          left: UxnanSpacing.md,
+          right: UxnanSpacing.xs,
+          top: UxnanSpacing.xs,
+          bottom: UxnanSpacing.xs,
+        ),
+        decoration: BoxDecoration(
+          color: colors.secondaryContainer,
+          borderRadius: const BorderRadius.all(UxnanRadius.lg),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.alt_route_rounded,
+              size: 16,
+              color: colors.onSecondaryContainer,
+            ),
+            const SizedBox(width: UxnanSpacing.sm),
+            Expanded(
+              child: Text(
+                l10n.gitHistoryViewingRef(refName),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: textTheme.bodySmall?.copyWith(
+                  color: colors.onSecondaryContainer,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.close_rounded, size: 18),
+              visualDensity: VisualDensity.compact,
+              color: colors.onSecondaryContainer,
+              tooltip: MaterialLocalizations.of(context).closeButtonTooltip,
+              onPressed: onClear,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Bottom sheet that lists the current HEAD plus the local and remote branches
+/// so the user can view the history from any ref (read-only — no checkout).
+class _BranchPickerSheet extends StatelessWidget {
+  const _BranchPickerSheet({
+    required this.branches,
+    required this.selectedRef,
+  });
+
+  final GitBranchList branches;
+  final String? selectedRef;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    return SafeArea(
+      top: false,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.7,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                UxnanSpacing.lg,
+                0,
+                UxnanSpacing.lg,
+                UxnanSpacing.sm,
+              ),
+              child: Text(
+                l10n.gitHistoryPickBranchTitle,
+                style: textTheme.titleMedium,
+              ),
+            ),
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                padding: const EdgeInsets.only(bottom: UxnanSpacing.lg),
+                children: [
+                  _RefTile(
+                    icon: Icons.my_location_rounded,
+                    label: l10n.gitHistoryHeadOption,
+                    selected: selectedRef == null,
+                    onTap: () =>
+                        Navigator.of(context).pop(const _RefChoice(null)),
+                  ),
+                  if (branches.local.isNotEmpty)
+                    _SectionLabel(label: l10n.gitHistoryLocalSection),
+                  for (final b in branches.local)
+                    _RefTile(
+                      icon: Icons.call_split_rounded,
+                      label: b,
+                      trailing: b == branches.current
+                          ? Text(
+                              'HEAD',
+                              style: textTheme.labelSmall?.copyWith(
+                                color: colors.onSurfaceVariant,
+                              ),
+                            )
+                          : null,
+                      selected: selectedRef == b,
+                      onTap: () => Navigator.of(context).pop(_RefChoice(b)),
+                    ),
+                  if (branches.remote.isNotEmpty)
+                    _SectionLabel(label: l10n.gitHistoryRemoteSection),
+                  for (final b in branches.remote)
+                    _RefTile(
+                      icon: Icons.cloud_outlined,
+                      label: b,
+                      selected: selectedRef == b,
+                      onTap: () => Navigator.of(context).pop(_RefChoice(b)),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A muted section header inside the branch picker.
+class _SectionLabel extends StatelessWidget {
+  const _SectionLabel({required this.label});
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        UxnanSpacing.lg,
+        UxnanSpacing.md,
+        UxnanSpacing.lg,
+        UxnanSpacing.xs,
+      ),
+      child: Text(
+        label,
+        style: textTheme.labelMedium?.copyWith(
+          color: colors.onSurfaceVariant,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
+/// A single selectable ref row in the branch picker.
+class _RefTile extends StatelessWidget {
+  const _RefTile({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    this.trailing,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    return ListTile(
+      leading: Icon(
+        icon,
+        color: selected ? colors.primary : colors.onSurfaceVariant,
+      ),
+      title: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: textTheme.bodyMedium?.copyWith(
+          color: selected ? colors.primary : colors.onSurface,
+          fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+        ),
+      ),
+      trailing: selected
+          ? Icon(Icons.check_rounded, color: colors.primary)
+          : trailing,
+      onTap: onTap,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Graph model + painter (VS Code-style swimlanes)
+// ---------------------------------------------------------------------------
+
+/// One row of the commit graph. [incoming]/[outgoing] hold the SHA each lane
+/// routes toward at the top and bottom edge of the row (null = empty lane), so
+/// adjacent rows' edges line up and the painted lines connect seamlessly.
+/// [incomingColors]/[outgoingColors] carry a **branch-stable color id** per
+/// lane (assigned when a lane is born and kept while it lives) so a branch
+/// keeps its color even as it shifts columns — the VS Code behavior.
+class _GraphRow {
+  _GraphRow({
+    required this.commit,
+    required this.incoming,
+    required this.outgoing,
+    required this.incomingColors,
+    required this.outgoingColors,
+    required this.commitLane,
+    required this.commitColor,
+    required this.parentLanes,
+  });
+
+  final GitCommit commit;
+  final List<String?> incoming;
+  final List<String?> outgoing;
+  final List<int?> incomingColors;
+  final List<int?> outgoingColors;
+  final int commitLane;
+  final int commitColor;
+  final List<int> parentLanes;
+
+  int get laneCount =>
+      incoming.length > outgoing.length ? incoming.length : outgoing.length;
+}
+
+/// Walks the commit list newest-first and assigns swimlanes, carrying the lane
+/// + color state forward so each row's `incoming` equals the previous row's
+/// `outgoing` (the key to continuous lines). The first parent continues the
+/// commit's lane and color; extra (merge) parents open or reuse lanes to the
+/// right, getting a fresh color when a new branch line is born.
+List<_GraphRow> _buildGraph(List<GitCommit> commits) {
+  final rows = <_GraphRow>[];
+  var lanes = <String?>[];
+  var colors = <int?>[];
+  var nextColor = 0;
+
+  for (final commit in commits) {
+    final incoming = List<String?>.from(lanes);
+    final incomingColors = List<int?>.from(colors);
+
+    var commitLane = incoming.indexOf(commit.sha);
+    int commitColor;
+    if (commitLane == -1) {
+      final free = incoming.indexOf(null);
+      commitLane = free == -1 ? incoming.length : free;
+      commitColor = nextColor++; // a brand-new branch tip → new color
+    } else {
+      commitColor = incomingColors[commitLane] ?? nextColor++;
+    }
+
+    final outgoing = List<String?>.from(incoming);
+    final outgoingColors = List<int?>.from(incomingColors);
+    while (outgoing.length <= commitLane) {
+      outgoing.add(null);
+      outgoingColors.add(null);
+    }
+    // Lanes that were waiting for this commit terminate at the dot.
+    for (var i = 0; i < outgoing.length; i++) {
+      if (outgoing[i] == commit.sha) {
+        outgoing[i] = null;
+        outgoingColors[i] = null;
+      }
+    }
+    outgoing[commitLane] = null;
+    outgoingColors[commitLane] = null;
+
+    final parentLanes = <int>[];
+    for (var pi = 0; pi < commit.parents.length; pi++) {
+      final parent = commit.parents[pi];
+      if (pi == 0) {
+        // First parent continues this commit's lane + color.
+        outgoing[commitLane] = parent;
+        outgoingColors[commitLane] = commitColor;
+        parentLanes.add(commitLane);
+      } else {
+        var lane = outgoing.indexOf(parent);
+        if (lane == -1) {
+          final free = outgoing.indexOf(null);
+          if (free == -1) {
+            lane = outgoing.length;
+            outgoing.add(parent);
+            outgoingColors.add(nextColor++);
+          } else {
+            lane = free;
+            outgoing[free] = parent;
+            outgoingColors[free] = nextColor++;
+          }
+        }
+        parentLanes.add(lane);
+      }
+    }
+
+    rows.add(
+      _GraphRow(
+        commit: commit,
+        incoming: incoming,
+        outgoing: outgoing,
+        incomingColors: incomingColors,
+        outgoingColors: outgoingColors,
+        commitLane: commitLane,
+        commitColor: commitColor,
+        parentLanes: parentLanes,
+      ),
+    );
+    lanes = outgoing;
+    colors = outgoingColors;
+  }
+  return rows;
+}
+
+/// Paints one [_GraphRow] in the VS Code style: continuous, branch-colored
+/// lane lines (pass-through lanes drawn full-height so they join the rows
+/// above and below), child lines into the dot, lines out to each parent, and
+/// the commit node on top. Colors come from the row's stable color ids.
+class _GraphPainter extends CustomPainter {
+  _GraphPainter({
+    required this.row,
+    required this.laneWidth,
+    required this.leftPad,
+    required this.dotSize,
+    required this.palette,
+    required this.haloColor,
+  });
+
+  final _GraphRow row;
+  final double laneWidth;
+  final double leftPad;
+  final double dotSize;
+  final List<Color> palette;
+  final Color haloColor;
+
+  Color _color(int? colorId) => palette[(colorId ?? 0) % palette.length];
+  double _laneX(int lane) => leftPad + lane * laneWidth + laneWidth / 2;
+
+  Paint _stroke(int? colorId) => Paint()
+    ..color = _color(colorId)
+    ..strokeWidth = 2
+    ..style = PaintingStyle.stroke
+    ..strokeCap = StrokeCap.round;
+
+  /// A straight vertical when the columns match, otherwise a smooth S-curve
+  /// (vertical tangents at both ends) — the rounded VS Code connector.
+  void _connect(Canvas canvas, Paint paint, Offset from, Offset to) {
+    if ((from.dx - to.dx).abs() < 0.5) {
+      canvas.drawLine(from, to, paint);
+      return;
+    }
     final midY = (from.dy + to.dy) / 2;
     final path = Path()
       ..moveTo(from.dx, from.dy)
@@ -768,538 +1113,94 @@ class _GraphPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_GraphPainter old) {
-    return old.lane != lane ||
-        old.totalLanes != totalLanes ||
-        old.parentLanes.length != parentLanes.length ||
-        old.nextLane != nextLane ||
-        old.parentsContinue != parentsContinue ||
-        old.hasMoreBelow != hasMoreBelow ||
-        old.color != color;
-  }
-}
+  void paint(Canvas canvas, Size size) {
+    final dotY = size.height / 2;
+    final h = size.height;
+    final centerX = _laneX(row.commitLane);
 
-/// Footer tile for *Load older commits*. Plain button, no row chrome.
-class _LoadMoreTile extends StatelessWidget {
-  /// Creates a [_LoadMoreTile].
-  const _LoadMoreTile({
-    required this.loading,
-    required this.label,
-    required this.onTap,
-  });
-
-  /// True when a page is in flight.
-  final bool loading;
-
-  /// Button label.
-  final String label;
-
-  /// Tap handler.
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: UxnanSpacing.sm),
-      child: Center(
-        child: loading
-            ? PolygonLoader(size: 20, color: colors.primary)
-            : TextButton.icon(
-                onPressed: onTap,
-                icon: const Icon(Icons.expand_more_rounded),
-                label: Text(label),
-                style: TextButton.styleFrom(
-                  foregroundColor: colors.primary,
-                  textStyle: textTheme.labelLarge,
-                ),
-              ),
-      ),
-    );
-  }
-}
-
-/// Empty state used when the loaded list is empty (fresh repo).
-class _EmptyState extends StatelessWidget {
-  /// Creates an [_EmptyState].
-  const _EmptyState({required this.title, required this.body});
-
-  /// Headline.
-  final String title;
-
-  /// Supporting body.
-  final String body;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: UxnanSpacing.xl,
-        vertical: UxnanSpacing.xxl,
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.history_toggle_off_rounded,
-            size: 56,
-            color: colors.onSurfaceVariant,
-          ),
-          const SizedBox(height: UxnanSpacing.lg),
-          Text(
-            title,
-            style: textTheme.titleMedium,
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: UxnanSpacing.sm),
-          Text(
-            body,
-            style: textTheme.bodyMedium?.copyWith(
-              color: colors.onSurfaceVariant,
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Error state with a retry button.
-class _ErrorState extends StatelessWidget {
-  /// Creates an [_ErrorState].
-  const _ErrorState({
-    required this.title,
-    required this.retryLabel,
-    required this.onRetry,
-  });
-
-  /// Headline.
-  final String title;
-
-  /// Retry button label.
-  final String retryLabel;
-
-  /// Retry handler.
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: UxnanSpacing.xl,
-        vertical: UxnanSpacing.xxl,
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.error_outline_rounded,
-            size: 56,
-            color: colors.error,
-          ),
-          const SizedBox(height: UxnanSpacing.lg),
-          Text(
-            title,
-            style: textTheme.titleMedium,
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: UxnanSpacing.lg),
-          FilledButton.tonal(
-            onPressed: onRetry,
-            child: Text(retryLabel),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Bottom sheet showing the full commit message, parents, stats, and
-/// copy-SHA / copy-message actions.
-class _CommitDetailsSheet extends StatelessWidget {
-  /// Creates a [_CommitDetailsSheet].
-  const _CommitDetailsSheet({required this.commit});
-
-  /// Commit being shown.
-  final GitCommit commit;
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    final colors = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-    final stats = commit.stats;
-    return SafeArea(
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(
-          UxnanSpacing.lg,
-          0,
-          UxnanSpacing.lg,
-          MediaQuery.of(context).viewInsets.bottom + UxnanSpacing.lg,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              l10n.gitHistoryDetailsTitle,
-              style: textTheme.labelMedium?.copyWith(
-                color: colors.onSurfaceVariant,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 0.4,
-              ),
-            ),
-            const SizedBox(height: UxnanSpacing.xs),
-            SelectableText(
-              commit.messageTitle,
-              style: textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            if (commit.messageBody.trim().isNotEmpty) ...[
-              const SizedBox(height: UxnanSpacing.lg),
-              Text(
-                l10n.gitHistoryDetailsMessage,
-                style: textTheme.labelMedium?.copyWith(
-                  color: colors.onSurfaceVariant,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.3,
-                ),
-              ),
-              const SizedBox(height: UxnanSpacing.xs),
-              SelectableText(
-                commit.messageBody.trim(),
-                style: textTheme.bodyMedium,
-              ),
-            ],
-            const SizedBox(height: UxnanSpacing.lg),
-            _DetailRow(
-              label: l10n.gitHistoryDetailsAuthor,
-              value: '${commit.authorName} <${commit.authorEmail}>',
-            ),
-            _DetailRow(
-              label: l10n.gitHistoryDetailsDate,
-              value: _fullDate(commit.authorDate),
-            ),
-            if (commit.committerName != commit.authorName ||
-                commit.committerEmail != commit.authorEmail)
-              _DetailRow(
-                label: l10n.gitHistoryDetailsCommitter,
-                value: '${commit.committerName} <${commit.committerEmail}>',
-              ),
-            const SizedBox(height: UxnanSpacing.md),
-            Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: UxnanSpacing.md,
-                vertical: UxnanSpacing.sm,
-              ),
-              decoration: BoxDecoration(
-                color: colors.surfaceContainerHighest,
-                borderRadius: const BorderRadius.all(UxnanRadius.md),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      commit.sha,
-                      style: textTheme.bodySmall?.copyWith(
-                        fontFamily: 'monospace',
-                        color: colors.onSurfaceVariant,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: l10n.gitHistoryCopySha,
-                    icon: const Icon(
-                      Icons.content_copy_rounded,
-                      size: 18,
-                    ),
-                    onPressed: () => _copy(
-                      context,
-                      commit.sha,
-                      l10n.gitHistoryCopiedSha,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (commit.parents.isNotEmpty) ...[
-              const SizedBox(height: UxnanSpacing.md),
-              Text(
-                l10n.gitHistoryDetailsParents(commit.parents.length),
-                style: textTheme.labelMedium?.copyWith(
-                  color: colors.onSurfaceVariant,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.3,
-                ),
-              ),
-              const SizedBox(height: UxnanSpacing.xs),
-              Wrap(
-                spacing: UxnanSpacing.xs,
-                runSpacing: UxnanSpacing.xs,
-                children: [
-                  for (final parent in commit.parents)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: UxnanSpacing.sm + UxnanSpacing.xs / 2,
-                        vertical: UxnanSpacing.xs,
-                      ),
-                      decoration: BoxDecoration(
-                        color: colors.surfaceContainerHighest,
-                        borderRadius: const BorderRadius.all(UxnanRadius.md),
-                      ),
-                      child: Text(
-                        parent.substring(
-                          0,
-                          parent.length < 7 ? parent.length : 7,
-                        ),
-                        style: textTheme.bodySmall?.copyWith(
-                          fontFamily: 'monospace',
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ],
-            if (stats != null) ...[
-              const SizedBox(height: UxnanSpacing.lg),
-              Text(
-                l10n.gitHistoryDetailsStats,
-                style: textTheme.labelMedium?.copyWith(
-                  color: colors.onSurfaceVariant,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.3,
-                ),
-              ),
-              const SizedBox(height: UxnanSpacing.xs),
-              Text(
-                l10n.gitHistoryFilesTouched(
-                  stats.additions,
-                  stats.deletions,
-                  stats.changedFileCount,
-                ),
-                style: textTheme.bodyMedium,
-              ),
-            ],
-            const SizedBox(height: UxnanSpacing.lg),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => _copy(
-                      context,
-                      '${commit.messageTitle}\n\n${commit.messageBody}',
-                      l10n.gitHistoryCopiedMessage,
-                    ),
-                    icon: const Icon(
-                      Icons.copy_all_rounded,
-                      size: 18,
-                    ),
-                    label: Text(l10n.gitHistoryCopyMessage),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _copy(BuildContext context, String text, String toastLabel) {
-    Clipboard.setData(ClipboardData(text: text));
-    ScaffoldMessenger.of(context)
-      ..clearSnackBars()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(toastLabel),
-          duration: const Duration(seconds: 2),
-        ),
-      );
-  }
-}
-
-/// A two-column label / value row used in the commit details sheet.
-class _DetailRow extends StatelessWidget {
-  /// Creates a [_DetailRow].
-  const _DetailRow({required this.label, required this.value});
-
-  /// Left-hand label.
-  final String label;
-
-  /// Right-hand value.
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: UxnanSpacing.xs),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 96,
-            child: Text(
-              label,
-              style: textTheme.labelMedium?.copyWith(
-                color: colors.onSurfaceVariant,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          Expanded(
-            child: SelectableText(
-              value,
-              style: textTheme.bodyMedium,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Lane assignment for a single commit.
-class _LaneAssignment {
-  /// Creates a [_LaneAssignment].
-  const _LaneAssignment({
-    required this.commit,
-    required this.lane,
-    required this.totalLanes,
-    required this.parentLanes,
-    required this.continuesFrom,
-  });
-
-  /// Commit being placed.
-  final GitCommit commit;
-
-  /// The lane this commit occupies.
-  final int lane;
-
-  /// Total lane count in the rendered window.
-  final int totalLanes;
-
-  /// Lanes of every parent of this commit, in order. The first entry is the
-  /// first parent (which continues this lane); later entries are the merge
-  /// parents (which branch off).
-  final List<int> parentLanes;
-
-  /// SHA of the commit that *continues into* this commit (i.e., the previous
-  /// commit on the timeline whose first parent is this commit's SHA). Null
-  /// when this commit started a new lane (its previous sibling wasn't a
-  /// direct parent).
-  final String? continuesFrom;
-}
-
-/// Walks the commit list newest-first and assigns each commit a lane. Uses a
-/// simple lane-tracker: for each commit, find the lane that's expecting it
-/// (i.e., a lane whose current "expected SHA" equals this commit), or open a
-/// new lane if none. After placement, the lane's "expected SHA" becomes this
-/// commit's first parent (so the lane continues to it). Merge parents spawn
-/// fresh lanes.
-///
-/// This produces the canonical GitKraken / gitui graph: linear history stays
-/// in one lane, branch points fan out, merges pull two lanes back into one.
-List<_LaneAssignment> _assignLanes(List<GitCommit> commits) {
-  // expectedShaForLane[i] is the SHA the lane i will accept next. Null means
-  // the lane is free.
-  final expectedShaForLane = <String?>[];
-  final bySha = {for (final c in commits) c.sha: c};
-  final assignments = <_LaneAssignment>[];
-
-  int findOrCreateLane(String sha) {
-    final existing = expectedShaForLane.indexOf(sha);
-    if (existing >= 0) return existing;
-    final free = expectedShaForLane.indexOf(null);
-    if (free >= 0) {
-      expectedShaForLane[free] = sha;
-      return free;
-    }
-    expectedShaForLane.add(sha);
-    return expectedShaForLane.length - 1;
-  }
-
-  int? findLaneFor(String sha) {
-    final existing = expectedShaForLane.indexOf(sha);
-    return existing >= 0 ? existing : null;
-  }
-
-  for (final commit in commits) {
-    final contLaneIdx = findLaneFor(commit.sha);
-    String? continuesFrom;
-    if (contLaneIdx != null) {
-      expectedShaForLane[contLaneIdx] = null;
-      continuesFrom = _findContinuation(assignments, contLaneIdx, commit.sha);
-    }
-
-    final lane = contLaneIdx ?? findOrCreateLane(commit.sha);
-    expectedShaForLane[lane] = null;
-
-    final parentLanes = <int>[];
-    for (final parentSha in commit.parents) {
-      if (bySha.containsKey(parentSha)) {
-        final pl = findOrCreateLane(parentSha);
-        parentLanes.add(pl);
+    // 1. Lines from the top: into the dot (a child of this commit, kept in its
+    //    own incoming color) or passing through (full height).
+    for (var j = 0; j < row.incoming.length; j++) {
+      final occ = row.incoming[j];
+      if (occ == null) continue;
+      if (occ == row.commit.sha) {
+        _connect(
+          canvas,
+          _stroke(row.incomingColors[j]),
+          Offset(_laneX(j), 0),
+          Offset(centerX, dotY),
+        );
       } else {
-        expectedShaForLane.add(parentSha);
-        parentLanes.add(expectedShaForLane.length - 1);
+        final k = row.outgoing.indexOf(occ);
+        if (k != -1) {
+          _connect(
+            canvas,
+            _stroke(row.incomingColors[j]),
+            Offset(_laneX(j), 0),
+            Offset(_laneX(k), h),
+          );
+        }
       }
     }
 
-    assignments.add(
-      _LaneAssignment(
-        commit: commit,
-        lane: lane,
-        totalLanes: 0, // patched up below
-        parentLanes: parentLanes,
-        continuesFrom: continuesFrom,
-      ),
-    );
-  }
-
-  final totalLanes = expectedShaForLane.length;
-  return [
-    for (final a in assignments)
-      _LaneAssignment(
-        commit: a.commit,
-        lane: a.lane,
-        totalLanes: totalLanes,
-        parentLanes: a.parentLanes,
-        continuesFrom: a.continuesFrom,
-      ),
-  ];
-}
-
-/// Walk back through the existing assignments and find the SHA that was sitting
-/// in `lane` right before the current commit took it over (i.e., the commit
-/// whose first parent is `currentSha`).
-String? _findContinuation(
-  List<_LaneAssignment> assignments,
-  int lane,
-  String currentSha,
-) {
-  for (var i = assignments.length - 1; i >= 0; i--) {
-    final a = assignments[i];
-    if (a.lane != lane) continue;
-    if (a.commit.parents.isNotEmpty && a.commit.parents.first == currentSha) {
-      return a.commit.sha;
+    // 2. Lines from the dot to each parent at the bottom edge.
+    for (final k in row.parentLanes) {
+      _connect(
+        canvas,
+        _stroke(row.outgoingColors[k]),
+        Offset(centerX, dotY),
+        Offset(_laneX(k), h),
+      );
     }
-    return null;
+
+    // 3. The commit node. Merge commits (2+ parents) get the VS Code treatment:
+    //    a solid inner dot with a *separate* outer ring (a surface gap between
+    //    them), so convergence points read distinctly from ordinary commits.
+    final center = Offset(centerX, dotY);
+    final nodeColor = _color(row.commitColor);
+    final r = dotSize / 2;
+    final isMerge = row.commit.parents.length > 1;
+    final ringR = r + 3;
+    // Clear the node area so crossing lines don't muddy the dot/ring.
+    canvas.drawCircle(
+      center,
+      (isMerge ? ringR : r) + 1.6,
+      Paint()..color = haloColor,
+    );
+    if (isMerge) {
+      canvas.drawCircle(
+        center,
+        ringR,
+        Paint()
+          ..color = nodeColor
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2,
+      );
+    }
+    canvas.drawCircle(center, r, Paint()..color = nodeColor);
   }
-  return null;
+
+  @override
+  bool shouldRepaint(_GraphPainter old) =>
+      old.row != row ||
+      old.laneWidth != laneWidth ||
+      old.dotSize != dotSize ||
+      old.haloColor != haloColor;
 }
 
-/// Compact relative date — "just now", "5 min ago", "2 h", "Mar 4", "2022".
+/// The branch color palette: theme accents first, then fixed git hues. Colors
+/// cycle by branch-stable id, so a branch keeps its hue down the graph.
+List<Color> _lanePalette(ColorScheme colors) => [
+      colors.primary,
+      colors.tertiary,
+      UxnanColors.gitUntracked,
+      colors.secondary,
+      UxnanColors.gitAdded,
+      UxnanColors.warning,
+      UxnanColors.gitDeleted,
+    ];
+
+/// Compact relative date — "just now", "5m", "2h", "3d", "Mar 4", "2022".
 String _relativeDate(DateTime when) {
   final now = DateTime.now();
   final diff = now.difference(when);
@@ -1309,26 +1210,9 @@ String _relativeDate(DateTime when) {
   if (diff.inDays < 7) return '${diff.inDays}d';
   final sameYear = when.year == now.year;
   const months = [
-    'Jan',
-    'Feb',
-    'Mar',
-    'Apr',
-    'May',
-    'Jun',
-    'Jul',
-    'Aug',
-    'Sep',
-    'Oct',
-    'Nov',
-    'Dec',
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', //
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
   ];
   final m = months[when.month - 1];
   return sameYear ? '$m ${when.day}' : '$m ${when.day}, ${when.year}';
-}
-
-/// Full date for the details sheet: "2024-03-04 12:34:56".
-String _fullDate(DateTime when) {
-  String two(int v) => v.toString().padLeft(2, '0');
-  return '${when.year}-${two(when.month)}-${two(when.day)} '
-      '${two(when.hour)}:${two(when.minute)}';
 }

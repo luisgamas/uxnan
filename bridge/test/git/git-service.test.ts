@@ -389,3 +389,58 @@ test('log returns an empty list on a fresh repo with no commits', async () => {
   assert.equal(log.hasMore, false);
   await rmrf(dir);
 });
+
+test('log decorates the tip commit with HEAD, its branch and tags', async () => {
+  const dir = await newRepo();
+  await writeFile(join(dir, 'a.txt'), 'one');
+  await git.commit(dir, 'first');
+  await runGit(dir, ['tag', 'v1.0.0']);
+
+  const log = await git.log(dir, { limit: 5 });
+  const tip = log.commits[0];
+  assert.ok(tip?.refs, 'the tip commit should carry refs');
+  const byType = (t: string) => tip!.refs!.filter((r) => r.type === t).map((r) => r.name);
+  assert.deepEqual(byType('head'), ['HEAD']);
+  assert.deepEqual(byType('branch'), ['main']);
+  assert.deepEqual(byType('tag'), ['v1.0.0']);
+  await rmrf(dir);
+});
+
+test('commitShow returns metadata, per-file stats and the full diff', async () => {
+  const dir = await newRepo();
+  await writeFile(join(dir, 'a.txt'), 'one\n');
+  await git.commit(dir, 'init');
+  await writeFile(join(dir, 'a.txt'), 'one\ntwo\n');
+  await writeFile(join(dir, 'b.txt'), 'fresh\n');
+  const second = await git.commit(dir, 'add b, edit a\n\nbody text');
+
+  const details = await git.commitShow(dir, second.sha);
+  assert.equal(details.commit.sha, second.sha);
+  assert.equal(details.commit.messageTitle, 'add b, edit a');
+  assert.equal(details.commit.messageBody, 'body text');
+  assert.equal(details.diffTruncated ?? false, false);
+  assert.ok(details.diff.includes('+two'));
+  assert.ok(details.diff.includes('+fresh'));
+
+  const a = details.files.find((f) => f.path === 'a.txt');
+  const b = details.files.find((f) => f.path === 'b.txt');
+  assert.equal(a?.status, 'modified');
+  assert.equal(a?.additions, 1);
+  assert.equal(b?.status, 'added');
+  assert.equal(b?.additions, 1);
+  await rmrf(dir);
+});
+
+test('commitShow reports a rename with its old path', async () => {
+  const dir = await newRepo();
+  await writeFile(join(dir, 'old.txt'), 'alpha\nbeta\ngamma\n');
+  await git.commit(dir, 'init');
+  await runGit(dir, ['mv', 'old.txt', 'new.txt']);
+  const renamed = await git.commit(dir, 'rename old to new');
+
+  const details = await git.commitShow(dir, renamed.sha);
+  const file = details.files.find((f) => f.path === 'new.txt');
+  assert.equal(file?.status, 'renamed');
+  assert.equal(file?.oldPath, 'old.txt');
+  await rmrf(dir);
+});

@@ -219,6 +219,48 @@ void main() {
     await manager.dispose();
   });
 
+  test('collapseAll clears expansion but keeps fetched children', () async {
+    final queue = <Map<String, dynamic>>[_listRootResult, _listSrcResult];
+    final manager = _buildManager(
+      onCall: (_, __) {},
+      responder: (m, _) {
+        if (m == 'workspace/list' && queue.isNotEmpty) {
+          return RpcMessage.response(
+            id: '${queue.length}',
+            result: queue.removeAt(0),
+          );
+        }
+        if (m == 'git/status') {
+          return RpcMessage.response(id: 'g', result: _statusResult);
+        }
+        return RpcMessage.response(id: '1', result: const <String, dynamic>{});
+      },
+    );
+
+    await manager.loadRoot(_workspaceRoot);
+    await _settle();
+    await manager.toggleDirectory(_workspaceRoot, 'src');
+    await _settle();
+
+    final expandedSrc = manager
+        .rootFor(_workspaceRoot)!
+        .children
+        .firstWhere((c) => c.basename == 'src');
+    expect(expandedSrc.expanded, isTrue);
+    expect(expandedSrc.children, isNotEmpty);
+
+    manager.collapseAll(_workspaceRoot);
+
+    final collapsedSrc = manager
+        .rootFor(_workspaceRoot)!
+        .children
+        .firstWhere((c) => c.basename == 'src');
+    expect(collapsedSrc.expanded, isFalse);
+    // Children stay cached so re-expanding is instant (no re-list).
+    expect(collapsedSrc.children, isNotEmpty);
+    await manager.dispose();
+  });
+
   test('toggleDirectory marks a non-existent folder with an error', () async {
     var listCalls = 0;
     final failingManager = _buildManager(

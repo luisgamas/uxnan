@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — richer git history (refs + commit detail)
+- **`git/log` now decorates commits with refs.** `GitService.log` runs with
+  `--decorate=full` and a `%D` field, parsed into `GitCommit.refs[]`
+  (HEAD / local branch / remote branch / tag) — powering branch/tag chips and
+  HEAD highlighting in the mobile history graph. `src/git/git-service.ts`
+  (`parseRefs`, log format/args).
+- **New `git/commitShow { cwd, sha }` method.** Returns a commit's full detail:
+  metadata (incl. `refs`), the files it touched joined from `--name-status`
+  (status + rename `oldPath`) and `--numstat` (per-file +/-, `binary`), and the
+  complete unified diff (capped at ~400 KB → `diffTruncated`). Wired through
+  `git-handler.ts` (`requireString` cwd + `requireSafe` sha) and the
+  `GitService.commitShow` / `#commitFiles` helpers (`mapNameStatus`,
+  `renameNewPath`, `parseCommitMeta`). Tests in `test/git/git-service.test.ts`.
+
 ### Fixed — tool approvals no longer auto-reject while the phone is backgrounded
 - **Connection-aware approval timeout.** `AgentManager.requestApproval`'s
   auto-reject countdown (`APPROVAL_TIMEOUT_MS`, 5 min) now only runs while a

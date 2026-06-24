@@ -438,6 +438,34 @@
   "gitHistoryListView": "List",
   "gitHistoryGraphView": "Graph",
   "gitHistoryViewTooltip": "Toggle view",
+  "gitHistoryCompact": "Compact view",
+  "gitHistoryComfortable": "Comfortable view",
+  "gitHistoryShowGraph": "Show graph lines",
+  "gitHistoryHideGraph": "Hide graph lines",
+  "gitHistoryBackToTop": "Back to top",
+  "gitHistoryViewBranch": "View branch or ref",
+  "gitHistoryPickBranchTitle": "View history of…",
+  "gitHistoryHeadOption": "Current branch (HEAD)",
+  "gitHistoryLocalSection": "Local branches",
+  "gitHistoryRemoteSection": "Remote branches",
+  "gitHistoryViewingRef": "Viewing {ref}",
+  "@gitHistoryViewingRef": {
+    "description": "Header chip shown when the history is being viewed from a non-default ref (a branch/tag), not the current HEAD.",
+    "placeholders": {
+      "ref": { "type": "String", "example": "origin/main" }
+    }
+  },
+  "gitHistoryDiffSection": "Diff",
+  "gitHistoryDiffTruncated": "Diff truncated — too large to show in full.",
+  "gitHistoryNoFileChanges": "No file changes in this commit.",
+  "gitHistoryRenamedFrom": "from {oldPath}",
+  "@gitHistoryRenamedFrom": {
+    "description": "Secondary label on a renamed file in the commit detail, showing the previous path.",
+    "placeholders": {
+      "oldPath": { "type": "String", "example": "lib/old_name.dart" }
+    }
+  },
+  "gitHistoryDetailLoadFailed": "Couldn't load this commit",
   "gitHistoryEmpty": "No commits yet",
   "gitHistoryEmptyBody": "Once you commit changes they'll show up here.",
   "gitHistoryLoadMore": "Load older commits",
@@ -759,6 +787,10 @@
   "@fileBrowserShowHidden": {
     "description": "Settings-menu toggle that controls whether dotfiles (names starting with '.') are visible in the file browser list."
   },
+  "fileBrowserCollapseAll": "Collapse all folders",
+  "@fileBrowserCollapseAll": {
+    "description": "App-bar action in the file browser that collapses every expanded folder at once."
+  },
   "fileBrowserCopyPath": "Copy workspace path",
   "@fileBrowserCopyPath": {
     "description": "Tooltip on the button in the file browser's status bar that copies the workspace root path."
@@ -811,6 +843,16 @@
   "fileViewerCopyFailed": "Couldn't copy this file",
   "@fileViewerCopyFailed": {
     "description": "Snackbar shown when the file content cannot be copied (e.g. a binary read returned no payload)."
+  },
+  "fileViewerLinkCopied": "Link copied: {href}",
+  "@fileViewerLinkCopied": {
+    "description": "Snackbar shown when a link tapped in the Markdown preview is copied to the clipboard (the viewer never opens an external browser).",
+    "placeholders": {
+      "href": {
+        "type": "String",
+        "example": "https://example.com"
+      }
+    }
   },
   "fileViewerBinaryTitle": "Binary file",
   "@fileViewerBinaryTitle": {

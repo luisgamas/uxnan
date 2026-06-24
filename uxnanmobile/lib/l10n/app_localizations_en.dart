@@ -955,6 +955,59 @@ class AppLocalizationsEn extends AppLocalizations {
   String get gitHistoryViewTooltip => 'Toggle view';
 
   @override
+  String get gitHistoryCompact => 'Compact view';
+
+  @override
+  String get gitHistoryComfortable => 'Comfortable view';
+
+  @override
+  String get gitHistoryShowGraph => 'Show graph lines';
+
+  @override
+  String get gitHistoryHideGraph => 'Hide graph lines';
+
+  @override
+  String get gitHistoryBackToTop => 'Back to top';
+
+  @override
+  String get gitHistoryViewBranch => 'View branch or ref';
+
+  @override
+  String get gitHistoryPickBranchTitle => 'View history of…';
+
+  @override
+  String get gitHistoryHeadOption => 'Current branch (HEAD)';
+
+  @override
+  String get gitHistoryLocalSection => 'Local branches';
+
+  @override
+  String get gitHistoryRemoteSection => 'Remote branches';
+
+  @override
+  String gitHistoryViewingRef(String ref) {
+    return 'Viewing $ref';
+  }
+
+  @override
+  String get gitHistoryDiffSection => 'Diff';
+
+  @override
+  String get gitHistoryDiffTruncated =>
+      'Diff truncated — too large to show in full.';
+
+  @override
+  String get gitHistoryNoFileChanges => 'No file changes in this commit.';
+
+  @override
+  String gitHistoryRenamedFrom(String oldPath) {
+    return 'from $oldPath';
+  }
+
+  @override
+  String get gitHistoryDetailLoadFailed => 'Couldn\'t load this commit';
+
+  @override
   String get gitHistoryEmpty => 'No commits yet';
 
   @override
@@ -1612,6 +1665,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get fileBrowserShowHidden => 'Show hidden files';
 
   @override
+  String get fileBrowserCollapseAll => 'Collapse all folders';
+
+  @override
   String get fileBrowserCopyPath => 'Copy workspace path';
 
   @override
@@ -1649,6 +1705,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get fileViewerCopyFailed => 'Couldn\'t copy this file';
+
+  @override
+  String fileViewerLinkCopied(String href) {
+    return 'Link copied: $href';
+  }
 
   @override
   String get fileViewerBinaryTitle => 'Binary file';

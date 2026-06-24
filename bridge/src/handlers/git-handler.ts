@@ -104,6 +104,8 @@ export function registerGitHandlers(router: HandlerRouter): void {
         }),
       );
     },
+    'git/commitShow': (p) =>
+      gitOp(() => git.commitShow(requireString(p, 'cwd'), requireSafe(p, 'sha'))),
   };
 
   for (const [method, handler] of Object.entries(handlers)) {

@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 
 ### Added
+- **Git commit refs + a `git/commitShow` method** (`models/git.ts`,
+  `jsonrpc/methods.ts`, `jsonrpc/method-registry.ts`): `GitCommit.refs?:
+  GitRef[]` carries the per-commit decoration (HEAD / local branch / remote
+  branch / tag) for the history graph; a new `GitRef`/`GitRefType` model backs
+  it. New `git/commitShow { cwd, sha } → GitCommitDetails` returns a commit's
+  metadata (incl. `refs`), the `GitCommitFile[]` it touched (status, `oldPath`
+  on renames, per-file additions/deletions, `binary`), and the full unified
+  `diff` (with `diffTruncated` when capped).
 - **`SendTurnOptions.accessMode`** (`agents/agent-adapter.ts`): the per-thread
   access mode is now carried into each turn so adapters can map it to their
   permission posture (Claude wired; others ignore it for now).

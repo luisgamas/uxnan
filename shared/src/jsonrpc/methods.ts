@@ -9,7 +9,9 @@ import type { AccessMode, Thread, ThreadList, Turn, TurnList } from '../models/t
 import type {
   GitBranchList,
   GitBranchResult,
+  GitCommitDetails,
   GitCommitResult,
+  GitCommitShowParams,
   GitDiff,
   GitLogParams,
   GitLogResult,
@@ -312,6 +314,7 @@ export interface JsonRpcMethodRegistry {
   'git/deleteBranch': { params: GitDeleteBranchParams; result: void };
   'git/removeWorktree': { params: GitRemoveWorktreeParams; result: void };
   'git/log': { params: GitLogParams; result: GitLogResult };
+  'git/commitShow': { params: GitCommitShowParams; result: GitCommitDetails };
 
   // Workspace
   'workspace/readFile': { params: { cwd: string; path: string }; result: FileContent };

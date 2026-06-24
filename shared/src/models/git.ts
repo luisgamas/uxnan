@@ -86,6 +86,21 @@ export interface GitPrResult {
   number?: number;
 }
 
+/** Kind of ref pointing at a commit (decoration parsed from `git log %D`). */
+export type GitRefType = 'head' | 'branch' | 'remoteBranch' | 'tag';
+
+/**
+ * A ref (branch / remote branch / tag / HEAD) that points at a commit.
+ * Parsed from `git log`'s `%D` decoration so the phone can render branch
+ * and tag chips and colour HEAD distinctly in the graph.
+ */
+export interface GitRef {
+  /** Display name (e.g. `main`, `origin/main`, `v1.2.0`, `HEAD`). */
+  name: string;
+  /** What the ref is. */
+  type: GitRefType;
+}
+
 /**
  * A single commit in the repository log. The bridge parses `git log` into
  * this shape; the phone renders it in either the flat list view or the
@@ -117,6 +132,12 @@ export interface GitCommit {
   messageBody: string;
   /** Aggregate +/-/file-count stats for the commit (git log --shortstat). */
   stats?: GitDiffTotals;
+  /**
+   * Refs that point at this commit (branches, remote branches, tags, HEAD),
+   * parsed from `git log`'s `%D` decoration. Absent/empty for commits with no
+   * decoration.
+   */
+  refs?: GitRef[];
 }
 
 /**
@@ -146,4 +167,46 @@ export interface GitLogParams {
    ` HEAD. Use `origin/main` etc. for an explicit starting point.
    */
   ref?: string;
+}
+
+/**
+ * A single file touched by a commit (`git show --name-status --numstat`).
+ * Rename/copy entries carry the previous path in `oldPath`.
+ */
+export interface GitCommitFile {
+  /** Repository-relative path after the change (the new path on a rename). */
+  path: string;
+  /** Previous path, set only for renames/copies. */
+  oldPath?: string;
+  /** Per-file change kind. */
+  status: GitFileStatus;
+  /** Lines added in this commit (0 for binary/unknown). */
+  additions: number;
+  /** Lines removed in this commit (0 for binary/unknown). */
+  deletions: number;
+  /** True when git reported the file as binary (no line counts). */
+  binary?: boolean;
+}
+
+/**
+ * Full detail of one commit: its metadata (incl. refs), the list of files it
+ * touched with per-file +/- counts, and the complete unified diff. Powers the
+ * mobile commit-detail view (`git/commitShow`).
+ */
+export interface GitCommitDetails {
+  /** The commit's metadata (same shape as a `git/log` entry). */
+  commit: GitCommit;
+  /** Files touched by the commit, with per-file stats. */
+  files: GitCommitFile[];
+  /** The commit's full unified diff (may be truncated — see `diffTruncated`). */
+  diff: string;
+  /** True when `diff` was capped because the patch exceeded the size budget. */
+  diffTruncated?: boolean;
+}
+
+/** Parameters for `git/commitShow`. */
+export interface GitCommitShowParams {
+  cwd: string;
+  /** The commit to inspect (full or abbreviated SHA, or any rev). */
+  sha: string;
 }

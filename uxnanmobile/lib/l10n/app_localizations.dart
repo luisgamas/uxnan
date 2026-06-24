@@ -1880,6 +1880,102 @@ abstract class AppLocalizations {
   /// **'Toggle view'**
   String get gitHistoryViewTooltip;
 
+  /// No description provided for @gitHistoryCompact.
+  ///
+  /// In en, this message translates to:
+  /// **'Compact view'**
+  String get gitHistoryCompact;
+
+  /// No description provided for @gitHistoryComfortable.
+  ///
+  /// In en, this message translates to:
+  /// **'Comfortable view'**
+  String get gitHistoryComfortable;
+
+  /// No description provided for @gitHistoryShowGraph.
+  ///
+  /// In en, this message translates to:
+  /// **'Show graph lines'**
+  String get gitHistoryShowGraph;
+
+  /// No description provided for @gitHistoryHideGraph.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide graph lines'**
+  String get gitHistoryHideGraph;
+
+  /// No description provided for @gitHistoryBackToTop.
+  ///
+  /// In en, this message translates to:
+  /// **'Back to top'**
+  String get gitHistoryBackToTop;
+
+  /// No description provided for @gitHistoryViewBranch.
+  ///
+  /// In en, this message translates to:
+  /// **'View branch or ref'**
+  String get gitHistoryViewBranch;
+
+  /// No description provided for @gitHistoryPickBranchTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'View history of…'**
+  String get gitHistoryPickBranchTitle;
+
+  /// No description provided for @gitHistoryHeadOption.
+  ///
+  /// In en, this message translates to:
+  /// **'Current branch (HEAD)'**
+  String get gitHistoryHeadOption;
+
+  /// No description provided for @gitHistoryLocalSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Local branches'**
+  String get gitHistoryLocalSection;
+
+  /// No description provided for @gitHistoryRemoteSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Remote branches'**
+  String get gitHistoryRemoteSection;
+
+  /// Header chip shown when the history is being viewed from a non-default ref (a branch/tag), not the current HEAD.
+  ///
+  /// In en, this message translates to:
+  /// **'Viewing {ref}'**
+  String gitHistoryViewingRef(String ref);
+
+  /// No description provided for @gitHistoryDiffSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Diff'**
+  String get gitHistoryDiffSection;
+
+  /// No description provided for @gitHistoryDiffTruncated.
+  ///
+  /// In en, this message translates to:
+  /// **'Diff truncated — too large to show in full.'**
+  String get gitHistoryDiffTruncated;
+
+  /// No description provided for @gitHistoryNoFileChanges.
+  ///
+  /// In en, this message translates to:
+  /// **'No file changes in this commit.'**
+  String get gitHistoryNoFileChanges;
+
+  /// Secondary label on a renamed file in the commit detail, showing the previous path.
+  ///
+  /// In en, this message translates to:
+  /// **'from {oldPath}'**
+  String gitHistoryRenamedFrom(String oldPath);
+
+  /// No description provided for @gitHistoryDetailLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load this commit'**
+  String get gitHistoryDetailLoadFailed;
+
   /// No description provided for @gitHistoryEmpty.
   ///
   /// In en, this message translates to:
@@ -3026,6 +3122,12 @@ abstract class AppLocalizations {
   /// **'Show hidden files'**
   String get fileBrowserShowHidden;
 
+  /// App-bar action in the file browser that collapses every expanded folder at once.
+  ///
+  /// In en, this message translates to:
+  /// **'Collapse all folders'**
+  String get fileBrowserCollapseAll;
+
   /// Tooltip on the button in the file browser's status bar that copies the workspace root path.
   ///
   /// In en, this message translates to:
@@ -3103,6 +3205,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Couldn\'t copy this file'**
   String get fileViewerCopyFailed;
+
+  /// Snackbar shown when a link tapped in the Markdown preview is copied to the clipboard (the viewer never opens an external browser).
+  ///
+  /// In en, this message translates to:
+  /// **'Link copied: {href}'**
+  String fileViewerLinkCopied(String href);
 
   /// Title of the binary-file placeholder shown in the file viewer when the content is base64-encoded.
   ///

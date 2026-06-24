@@ -1,6 +1,51 @@
 import 'package:equatable/equatable.dart';
 import 'package:uxnan/domain/value_objects/git/git_diff_totals.dart';
 
+/// Kind of ref pointing at a commit (parsed from `git log`'s `%D`).
+enum GitRefType {
+  /// The `HEAD` pointer.
+  head,
+
+  /// A local branch.
+  branch,
+
+  /// A remote-tracking branch (e.g. `origin/main`).
+  remoteBranch,
+
+  /// A tag.
+  tag,
+}
+
+/// A ref (branch / remote branch / tag / HEAD) that points at a commit. Drives
+/// the branch/tag chips and the HEAD highlight in the history views.
+class GitRef extends Equatable {
+  /// Creates a [GitRef].
+  const GitRef({required this.name, required this.type});
+
+  /// Reconstructs a [GitRef] from its JSON form. An unknown `type` falls back
+  /// to [GitRefType.branch] (the most common decoration).
+  factory GitRef.fromJson(Map<String, dynamic> json) => GitRef(
+        name: (json['name'] as String?)?.trim() ?? '',
+        type: _type(json['type'] as String?),
+      );
+
+  /// Display name (e.g. `main`, `origin/main`, `v1.2.0`, `HEAD`).
+  final String name;
+
+  /// What the ref is.
+  final GitRefType type;
+
+  static GitRefType _type(String? name) {
+    for (final value in GitRefType.values) {
+      if (value.name == name) return value;
+    }
+    return GitRefType.branch;
+  }
+
+  @override
+  List<Object?> get props => [name, type];
+}
+
 /// A single commit in the repository log (spec 02a §5.8.6 + the git/log RPC).
 ///
 /// Parsed from the bridge's `git/log` payload. `parents` is what powers the
@@ -21,6 +66,7 @@ class GitCommit extends Equatable {
     required this.messageTitle,
     required this.messageBody,
     this.stats,
+    this.refs = const [],
   });
 
   /// Reconstructs a [GitCommit] from its JSON form. Tolerant of missing or
@@ -36,6 +82,14 @@ class GitCommit extends Equatable {
             .toList()
         : const <String>[];
     final statsRaw = json['stats'];
+    final refsRaw = json['refs'];
+    final refs = refsRaw is List
+        ? refsRaw
+            .whereType<Map<dynamic, dynamic>>()
+            .map((m) => GitRef.fromJson(m.cast<String, dynamic>()))
+            .where((r) => r.name.isNotEmpty)
+            .toList()
+        : const <GitRef>[];
     return GitCommit(
       sha: (json['sha'] as String?)?.trim() ?? '',
       shortSha: (json['shortSha'] as String?)?.trim() ??
@@ -53,6 +107,7 @@ class GitCommit extends Equatable {
       stats: statsRaw is Map
           ? GitDiffTotals.fromJson(statsRaw.cast<String, dynamic>())
           : null,
+      refs: refs,
     );
   }
 
@@ -92,6 +147,10 @@ class GitCommit extends Equatable {
   /// Aggregate +/-/file-count stats for the commit (`git log --shortstat`).
   final GitDiffTotals? stats;
 
+  /// Refs pointing at this commit (HEAD / branches / remote branches / tags),
+  /// from the bridge's `%D` decoration. Empty when undecorated.
+  final List<GitRef> refs;
+
   /// The commit's `DateTime` in the local timezone — convenient for the UI.
   DateTime get authorDate =>
       DateTime.fromMillisecondsSinceEpoch(authorTimestamp * 1000);
@@ -113,6 +172,7 @@ class GitCommit extends Equatable {
         messageTitle,
         messageBody,
         stats,
+        refs,
       ];
 }
 
