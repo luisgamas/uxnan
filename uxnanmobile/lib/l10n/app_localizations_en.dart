@@ -955,6 +955,39 @@ class AppLocalizationsEn extends AppLocalizations {
   String get gitHistoryViewTooltip => 'Toggle view';
 
   @override
+  String get gitHistoryCompact => 'Compact view';
+
+  @override
+  String get gitHistoryComfortable => 'Comfortable view';
+
+  @override
+  String get gitHistoryShowGraph => 'Show graph lines';
+
+  @override
+  String get gitHistoryHideGraph => 'Hide graph lines';
+
+  @override
+  String get gitHistoryBackToTop => 'Back to top';
+
+  @override
+  String get gitHistoryDiffSection => 'Diff';
+
+  @override
+  String get gitHistoryDiffTruncated =>
+      'Diff truncated — too large to show in full.';
+
+  @override
+  String get gitHistoryNoFileChanges => 'No file changes in this commit.';
+
+  @override
+  String gitHistoryRenamedFrom(String oldPath) {
+    return 'from $oldPath';
+  }
+
+  @override
+  String get gitHistoryDetailLoadFailed => 'Couldn\'t load this commit';
+
+  @override
   String get gitHistoryEmpty => 'No commits yet';
 
   @override

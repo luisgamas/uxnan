@@ -1880,6 +1880,66 @@ abstract class AppLocalizations {
   /// **'Toggle view'**
   String get gitHistoryViewTooltip;
 
+  /// No description provided for @gitHistoryCompact.
+  ///
+  /// In en, this message translates to:
+  /// **'Compact view'**
+  String get gitHistoryCompact;
+
+  /// No description provided for @gitHistoryComfortable.
+  ///
+  /// In en, this message translates to:
+  /// **'Comfortable view'**
+  String get gitHistoryComfortable;
+
+  /// No description provided for @gitHistoryShowGraph.
+  ///
+  /// In en, this message translates to:
+  /// **'Show graph lines'**
+  String get gitHistoryShowGraph;
+
+  /// No description provided for @gitHistoryHideGraph.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide graph lines'**
+  String get gitHistoryHideGraph;
+
+  /// No description provided for @gitHistoryBackToTop.
+  ///
+  /// In en, this message translates to:
+  /// **'Back to top'**
+  String get gitHistoryBackToTop;
+
+  /// No description provided for @gitHistoryDiffSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Diff'**
+  String get gitHistoryDiffSection;
+
+  /// No description provided for @gitHistoryDiffTruncated.
+  ///
+  /// In en, this message translates to:
+  /// **'Diff truncated — too large to show in full.'**
+  String get gitHistoryDiffTruncated;
+
+  /// No description provided for @gitHistoryNoFileChanges.
+  ///
+  /// In en, this message translates to:
+  /// **'No file changes in this commit.'**
+  String get gitHistoryNoFileChanges;
+
+  /// Secondary label on a renamed file in the commit detail, showing the previous path.
+  ///
+  /// In en, this message translates to:
+  /// **'from {oldPath}'**
+  String gitHistoryRenamedFrom(String oldPath);
+
+  /// No description provided for @gitHistoryDetailLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load this commit'**
+  String get gitHistoryDetailLoadFailed;
+
   /// No description provided for @gitHistoryEmpty.
   ///
   /// In en, this message translates to:

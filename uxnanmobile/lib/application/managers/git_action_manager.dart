@@ -12,6 +12,7 @@ import 'package:uxnan/domain/enums/git_action_kind.dart';
 import 'package:uxnan/domain/repositories/i_git_action_log_repository.dart';
 import 'package:uxnan/domain/value_objects/git/git_action_io.dart';
 import 'package:uxnan/domain/value_objects/git/git_action_progress.dart';
+import 'package:uxnan/domain/value_objects/git/git_commit_details.dart';
 import 'package:uxnan/domain/value_objects/git/git_log.dart';
 import 'package:uxnan/domain/value_objects/git/git_status_change.dart';
 
@@ -316,6 +317,22 @@ class GitActionManager {
     final result = response.result;
     if (result is! Map) return GitLogResult.empty;
     return GitLogResult.fromJson(result.cast<String, dynamic>());
+  }
+
+  /// Fetches the full detail of a single commit (`git/commitShow`): its
+  /// metadata (incl. refs), the files it touched with per-file +/- counts, and
+  /// the complete unified diff. Pure read — like [log], it never refreshes the
+  /// repo status. Used by the history screen's commit-detail sheet.
+  Future<GitCommitDetails> commitShow(String cwd, String sha) async {
+    final response = await _sendRequest('git/commitShow', <String, dynamic>{
+      'cwd': cwd,
+      'sha': sha,
+    });
+    final result = response.result;
+    if (result is! Map) {
+      throw StateError('Invalid git/commitShow response');
+    }
+    return GitCommitDetails.fromJson(result.cast<String, dynamic>());
   }
 
   /// Releases resources.

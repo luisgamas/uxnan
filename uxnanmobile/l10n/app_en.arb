@@ -438,6 +438,22 @@
   "gitHistoryListView": "List",
   "gitHistoryGraphView": "Graph",
   "gitHistoryViewTooltip": "Toggle view",
+  "gitHistoryCompact": "Compact view",
+  "gitHistoryComfortable": "Comfortable view",
+  "gitHistoryShowGraph": "Show graph lines",
+  "gitHistoryHideGraph": "Hide graph lines",
+  "gitHistoryBackToTop": "Back to top",
+  "gitHistoryDiffSection": "Diff",
+  "gitHistoryDiffTruncated": "Diff truncated — too large to show in full.",
+  "gitHistoryNoFileChanges": "No file changes in this commit.",
+  "gitHistoryRenamedFrom": "from {oldPath}",
+  "@gitHistoryRenamedFrom": {
+    "description": "Secondary label on a renamed file in the commit detail, showing the previous path.",
+    "placeholders": {
+      "oldPath": { "type": "String", "example": "lib/old_name.dart" }
+    }
+  },
+  "gitHistoryDetailLoadFailed": "Couldn't load this commit",
   "gitHistoryEmpty": "No commits yet",
   "gitHistoryEmptyBody": "Once you commit changes they'll show up here.",
   "gitHistoryLoadMore": "Load older commits",
