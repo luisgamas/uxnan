@@ -1498,51 +1498,54 @@ El bridge es el componente que corre en la PC del usuario y actua como el plano 
 
 #### 5.8.2 Entrypoint y estructura de archivos del bridge
 
+> NOTA: el bridge está implementado en **TypeScript** (`bridge/src/*.ts`,
+> compilado a `dist/` con `tsc`), no en `.js` planos, y la estructura se
+> reorganizó en subdirectorios por dominio. El árbol real:
+
 ```
-uxnan-bridge/
+bridge/
 ├── package.json
-├── index.js                        # export startBridge() como API publica
 ├── src/
-│   ├── bridge.js                   # entrypoint del daemon, orquestacion
-│   ├── daemon-state.js             # persiste config, pairing, status, logs
-│   ├── secure-transport.js         # handshake E2EE, buffers de catch-up
-│   ├── agent-transport.js          # canal request/response hacia el agente
-│   ├── handler-router.js           # ruteo de metodos JSON-RPC a handlers
-│   ├── bridge-status.js            # heartbeat y snapshots de estado
-│   ├── qr.js                       # generacion de QR de pairing
-│   ├── session-state.js            # estado de sesion relay
-│   ├── secure-device-state.js      # identidad y trust del dispositivo
-│   ├── session-jsonl-history.js    # fallback: leer historial de disco JSONL
-│   ├── apply-patch-changes.js      # aplicar patches al workspace
-│   ├── rollout-live-mirror.js      # espejo en vivo de eventos del runtime
-│   ├── push-notification-tracker.js
-│   ├── push-notification-completion-dedupe.js
-│   ├── ios-app-compatibility.js    # compatibilidad bridge ↔ app movil
-│   ├── package-version-status.js   # version del paquete npm
-│   ├── bootstrap-agent.js          # bootstrap del CLI del agente
-│   ├── agent-home.js               # resuelve rutas del home del agente
-│   ├── account-status.js           # snapshot sanitizado de autenticacion
-│   ├── adapters/
-│   │   ├── codex-adapter.js        # OpenAI Codex CLI
-│   │   ├── opencode-adapter.js     # OpenCode
-│   │   ├── claude-code-adapter.js  # Claude Code CLI
-│   │   ├── gemini-cli-adapter.js   # Gemini CLI
-│   │   ├── pi-agent-adapter.js     # pi-agent
-│   │   └── base-adapter.js         # clase base extensible
-│   └── handlers/
-│       ├── git-handler.js
-│       ├── workspace-handler.js
-│       ├── thread-context-handler.js
-│       ├── project-handler.js
-│       ├── desktop-handler.js
-│       ├── notifications-handler.js
-│       ├── voice-handler.js
-│       └── account-handler.js
-└── scripts/
-    ├── install-service-macos.sh    # instala LaunchAgent en macOS
-    ├── install-service-windows.ps1 # instala Windows Service
-    └── install-service-linux.sh    # instala systemd unit en Linux
+│   ├── index.ts                    # API publica (startBridge, tipos)
+│   ├── bridge.ts                   # entrypoint del daemon, orquestacion
+│   ├── bridge-context.ts           # contenedor de dependencias inyectadas
+│   ├── cli.ts                      # CLI (start/stop/status/qr/code/install-service)
+│   ├── daemon-state.ts             # persiste config, pairing, status
+│   ├── daemon-config.ts            # ~/.uxnan/daemon-config.json
+│   ├── handler-router.ts           # ruteo + validacion Ajv de metodos JSON-RPC
+│   ├── bridge-status.ts            # snapshots de estado / relayConnected
+│   ├── qr.ts                       # QR + pairing code
+│   ├── account-status.ts           # snapshot sanitizado de auth (nunca tokens)
+│   ├── version.ts                  # BRIDGE_VERSION desde package.json
+│   ├── lock-file.ts                # single-instance lock + stop
+│   ├── logger.ts                   # logging a archivo + redaccion de secretos
+│   ├── service-installer.ts        # autostart por OS (sin elevacion)
+│   ├── secret-store.ts / keyring-secret-store.ts  # identidad en keychain del SO
+│   ├── transport/                  # E2EE: relay-client, lan-server, server-handshake,
+│   │                               #   crypto, secure-channel, outbound-log (catch-up),
+│   │                               #   mdns-advertiser, local-hosts, trust-store, ...
+│   ├── pairing/pairing-code-service.ts        # GET /pair/resolve?code=
+│   ├── adapters/                   # un adapter + *-tools.ts por agente:
+│   │                               #   opencode/claude/codex(+app-server,approval)/pi/gemini,
+│   │                               #   echo, process-agent-adapter, content-blocks, run-options,
+│   │                               #   resolve-<agente>, spawn
+│   ├── agents/agent-manager.ts     # orquestacion de turnos/streaming + approvals
+│   ├── agents/attachments.ts       # imagenes inline → archivos en el cwd
+│   ├── conversation/               # thread-store, session-history (fallback JSONL)
+│   ├── git/                        # git-runner, git-service
+│   ├── workspace/                  # workspace-service, browse-service, checkpoint-service, path-guard
+│   ├── push/                       # push-service, push-sender (FCM directo)
+│   ├── hooks/                      # claude-approval-hook, gemini-approval-hook (.cjs en runtime)
+│   └── handlers/                   # git, workspace, thread-context, project, agent,
+│                                   #   account, notifications, bridge-control, desktop (stub)
+└── scripts/                        # install-service-{macos,windows,linux}
 ```
+
+> Nota histórica: el draft original listaba módulos `.js` sueltos (p.ej.
+> `secure-transport.js`, `agent-transport.js`, `voice-handler.js`,
+> `push-notification-completion-dedupe.js`). No existen como tales: la función de
+> voz nunca se implementó (no está en el registry), el dedupe de push vive en
+> `relay/src/push.ts`, y el transporte está en `src/transport/`.
 
 #### 5.8.3 Estado persistido del bridge
 

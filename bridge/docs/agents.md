@@ -12,7 +12,7 @@ process and talks to it over stdio — exactly as you would in a terminal. It do
 - reuse/scrape the CLI's auth token, or proxy/resell access.
 
 Each CLI runs under whatever account/subscription **you** already authenticated it
-with (`claude` login, `codex login`, OpenCode login). The bridge stores no tokens;
+with (`claude`, `codex login`, OpenCode, `pi`, `gemini`). The bridge stores no tokens;
 auth and billing are the CLI's own. This is the supported *headless* use of each
 CLI (`claude -p`, `codex exec`, `opencode run`) — so it does not require a separate
 paid account beyond what that CLI already has, and it is not an unofficial API
@@ -27,7 +27,12 @@ is closed (these CLIs hang on an open stdin pipe).
 |---|---|---|---|---|
 | **OpenCode** (default) | `opencode run --format json` | `--session <id>` | n/a | `opencode models` (real list) |
 | **Claude Code** | `claude -p --output-format stream-json --verbose --include-partial-messages` | `--resume <session_id>` | `permissionMode` → `--permission-mode acceptEdits` / none / `--dangerously-skip-permissions` | `opus`/`sonnet`/`haiku` aliases (latest) **+ `agents.claude-code.models`** |
-| **Codex** | `codex exec --json --skip-git-repo-check` | `exec resume <thread_id>` | `permissionMode` → `-s workspace-write` / `-s read-only` / `--dangerously-bypass-approvals-and-sandbox` | `codex app-server` → `model/list` (account-aware) → `~/.codex/config.toml` fallback |
+| **Codex** | `codex exec --json --skip-git-repo-check` | `exec resume <thread_id>` | `permissionMode` → `-s workspace-write` / `-s read-only` / `--dangerously-bypass-approvals-and-sandbox` (+ `interactive` via `codex app-server`) | `codex app-server` → `model/list` (account-aware) → `~/.codex/config.toml` fallback |
+| **pi** | `pi -p --mode json` | `--session-id <id>` | `permissionMode` → built-in read/bash/edit/write / `--tools read,grep,find,ls` / `--approve` | `pi --list-models` (real list; reasoning knob per model) |
+| **Gemini CLI** | `gemini -p --output-format stream-json --approval-mode <mode> --skip-trust` | `--resume <uuid>` | `permissionMode` → `--approval-mode auto_edit` / `plan` / `yolo` (+ `interactive` via a `BeforeTool` hook) | curated set (the `auto` alias + the CLI's `VALID_GEMINI_MODELS`) |
+
+All five agents are wired; **Aider** is the only remaining planned adapter
+(recipe in [`../FOR-DEV.md`](../FOR-DEV.md)).
 
 Each runs in the thread's `cwd`. Codex's `exec-server`/`mcp-server` modes are
 **not** used for turns — the one-shot `codex exec` entry point drives them — but
@@ -37,10 +42,17 @@ the bridge does spawn `codex app-server` once to enumerate models (`initialize`
 `node <cli.js>`) so `shell:false` always holds.
 
 Per-thread selection: `thread/start { agentId, model, cwd }`; `agent/list` reports
-availability/capabilities; `agent/models` lists models (now `AgentModel[]` with
-`id`/`displayName`/`description?`/`version?`/`isDefault?`); `thread/setModel`
-repoints a thread's model mid-conversation. The id the phone sends back is passed
-verbatim to the CLI's `--model`/`-m` flag.
+availability/capabilities; `agent/models` lists models (`AgentModel[]` with
+`id`/`displayName`/`description?`/`version?`/`isDefault?`/`options?`/`contextWindow?`);
+`thread/setModel` repoints a thread's model mid-conversation. The id the phone
+sends back is passed verbatim to the CLI's `--model`/`-m` flag. Per-model
+**run-option knobs** (reasoning effort) are advertised in `AgentModel.options` and
+the phone renders them generically — Codex discovers them from the app-server
+`model/list` (`supportedReasoningEfforts`), Claude/pi from their own flag sets.
+
+**Interactive approvals** are wired for Echo, Claude Code (`PreToolUse` hook),
+Codex (`app-server` elicitations) and Gemini (`BeforeTool` hook); OpenCode/pi have
+no headless pre-tool channel yet (see [`../FOR-DEV.md`](../FOR-DEV.md)).
 
 ## Claude Code models: latest aliases + pinned versions
 
@@ -87,9 +99,12 @@ resolves to one such id; `claude --model <id>` validates them). The same
 `models` field works for any agent the adapter honors it for; today that's
 Claude Code (OpenCode and Codex enumerate their own models).
 
-## Adding a new agent (e.g. Gemini)
+## Adding a new agent (e.g. Aider)
 
 Follow the recipe in [`../FOR-DEV.md`](../FOR-DEV.md) (Agent adapters): capture the
 real CLI's machine-readable stream once, copy `claude-adapter.ts`/`opencode-adapter.ts`,
-adjust the args builder + line parser, register it in `startBridge`, and test it
-like the existing adapters. Validate per [`testing.md`](./testing.md).
+adjust the args builder + line parser, register it in `startBridge`, then wire it
+into `agent/models` (discovery), the `*-tools.ts` block mapper (structured content),
+`SessionHistoryReader` (on-disk `turn/list` fallback), and approvals if the CLI
+exposes a pre-tool channel. Test it like the existing adapters and validate per
+[`testing.md`](./testing.md).

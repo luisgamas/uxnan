@@ -1,9 +1,9 @@
 /**
- * Bridge-control JSON-RPC handlers (desktop → bridge, and CLI introspection).
- *
- * These are implemented for real in the skeleton; they do not depend on the
- * (still deferred) live transport. Disconnecting an active session's transport
- * and persisting trust changes are wired further as those modules land.
+ * Bridge-control JSON-RPC handlers (desktop → bridge, and CLI introspection):
+ * bridge/status, generatePairingQr, connectedPhones, trustedDevices,
+ * removeTrustedDevice, disconnectPhone. They run against the live transport and
+ * trust store. (disconnectPhone removes the session but does not yet force-close
+ * the live transport — see FOR-DEV.md.)
  *
  * See uxnandesktop/architecture/02e-bridge-integration.md §4.4.
  */

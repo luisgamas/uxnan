@@ -1,8 +1,9 @@
 /**
  * Registers all JSON-RPC handlers on a router.
  *
- * Bridge-control methods are implemented; all other domains are registered as
- * clear "not implemented" stubs in this skeleton increment.
+ * Git, workspace, thread/turn, project, agent, account (auth/status),
+ * notifications and bridge-control handlers are all implemented. Only the
+ * desktop embedded-mode IPC (`desktop/*`) remains a stub (see FOR-DEV.md).
  */
 import type { HandlerRouter } from '../handler-router.js';
 import { registerGitHandlers } from './git-handler.js';

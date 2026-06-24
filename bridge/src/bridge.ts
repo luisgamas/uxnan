@@ -1,8 +1,8 @@
 /**
  * Bridge daemon orchestration: wires daemon state, identity, config, the
- * JSON-RPC router and handlers, and the live E2EE transport (relay + LAN).
- *
- * Agent runtimes and the outbound catch-up buffer remain deferred (see FOR-DEV).
+ * JSON-RPC router and handlers, the agent runtimes (OpenCode/Claude/Codex/pi/
+ * Gemini + echo), the per-device outbound catch-up log, and the live E2EE
+ * transport (relay + direct LAN).
  *
  * Source: architecture/02a-system-architecture.md §5.8.2 (bridge entrypoint).
  */

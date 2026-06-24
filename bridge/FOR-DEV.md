@@ -6,948 +6,152 @@ only a human can provide.)
 
 > **How to run/validate everything** (automated tests, real-mobile E2EE interop,
 > adapter wiring, contract re-checks) is in [`docs/testing.md`](docs/testing.md).
-> Each deferred item below says what to build; that doc says how to test it.
-> Install/config/agents/deploy docs are alongside it in [`docs/`](docs/).
+> The implemented surface is documented in [`README.md`](README.md) +
+> [`docs/`](docs/); this file tracks only what's left to build.
 
-## MVP status — ALPHA-FUNCTIONAL (LAN/Tailscale-direct path)
-> Snapshot 2026-06. The bridge is **functional for an alpha release** on its primary
-> path: it builds clean and the full test suite is green (bridge 263, shared 29,
-> relay 9). Nothing below blocks LAN/Tailscale-direct use.
->
-> **DONE:** E2EE transport (LAN `http+ws` + optional relay); **5 real agents**
-> (OpenCode, Claude Code, Codex, pi, **Gemini**) with per-thread/project agent+model,
-> structured model discovery, per-turn token usage, thinking + structured
-> commands/tools/diffs; git + workspace + checkpoints (true restore + pruning);
-> thread lifecycle; on-disk `turn/list` **history fallback**; sanitized `auth/status`;
-> **push** (direct FCM, persisted, per-phone target + prune-on-untrust); **pairing**
-> (QR + **manual code** + **mDNS discovery**); autostart/`install-service` per OS;
-> file logging.
->
-> **PENDING that matters for a public release (not LAN alpha):**
-> - **Packaging/publish prep** — pin `@uxnan/shared` deps, verify a packed install,
->   `version.ts` stamp (see *Packaging*). Required before `npm publish`.
-> - **Real-device push validation** + iOS APNs key (FOR-HUMAN; needs a device).
->
-> **PENDING optional / blocked-on-mobile (do not block alpha):** seq catch-up on
-> reconnect + key rotation (await a mobile trigger); desktop embedded IPC (desktop
-> Phase 6); per-model run-options *phase 4* (fast-mode/context — little to wire);
-> Aider adapter + Aider in the history reader (no per-session log shipped); log
-> size-rotation.
+## Status
 
-## Mobile ↔ bridge integration — status & roadmap (2026-06-16)
-Single view of the cross-component seams (phone needs bridge/relay and vice
-versa). **Closed this round** (each app half was already wired; the bridge half
-landed now):
-- ☑ **Image attachments** — `turn/send { attachments }` + temp-file delivery
-  (see *Turn image attachments*). On-device verify pending.
-- ◑ **Interactive approval intake** — generic `turn/send { approvalResponse }`
-  routing + the `approval` content block DONE; **Echo demo + Claude Code (opt-in
-  PreToolUse hook) work end-to-end** (validated live). Codex real approvals still
-  need the app-server turn path. See *Interactive approval intake* + roadmap item 7.
-- ☑ **Manual-code pairing (mobile half)** — `ManualCodeScreen` →
-  `GET /pair/resolve?code=` (see *Manual-code pairing* → Mobile linkage).
-
-**Remaining cross-component work (the next dev's roadmap):**
-1. ☑ **`git/revert`** — DONE: `GitService.revert` + `git/revert` handler +
-   shared contract; phone wires `GitActionManager.revert` + a "Revert last
-   commit" action in the git screen.
-2. ☑ **Safe branch/worktree deletion** — DONE bridge-side: `git/deleteBranch`
-   (refuses unmerged unless `force`) + `git/removeWorktree` (refuses dirty unless
-   `force`). Phone `GitActionManager.deleteBranch`/`removeWorktree` wired. ☐ Phone
-   UI: a delete affordance in the branch picker (force-on-unmerged-error) + a
-   worktree-management entry — UX pending review.
-3. ☑ **Vanished-cwd detection (bridge)** — DONE: `workspace/exists`
-   (`{ exists, isGitRepo? }`). ☐ Phone wiring: probe a thread's `cwd` on open and
-   disable the composer + show "folder no longer exists" when gone (the
-   conversation composer's connection-gating is the integration point).
-4. **Agent session-id surfacing** — expose the agent's native `sessionID` via
-   `thread/read` so the phone can show "resume from the CLI" beyond the thread id.
-5. **Approval-mode persistence RPC** — read/persist the per-thread access mode
-   server-side (today it's a local-only phone setting).
-6. **Remote history back-paging** — `turn/list` cursor is forward-only/offset; a
-   newest-first scroll-up needs a reverse cursor or a total-count.
-7. **Real-agent approvals** — Claude DONE (opt-in `PreToolUse` hook → bridge
-   endpoint, validated live). **Codex** DONE — refactored the adapter from
-   `codex exec --json` (one-shot, non-interactive) to the long-lived
-   `codex app-server` turn protocol and routed every elicitation the
-   desktop app uses (`applyPatchApproval`, `execCommandApproval`, the v2
-   `item/commandExecution/requestApproval`, `item/fileChange/requestApproval`,
-   `item/permissions/requestApproval`, `mcpServer/elicitation/request`)
-   through the same `requestApproval` round-trip the Claude hook uses.
-   Validated end-to-end against `codex-cli` 0.139.0. OpenCode/pi/Gemini
-   remain — add per-agent when their headless modes expose a permission
-   channel. See *Interactive approval intake*.
-8. **Transport (optional):** seq-based catch-up on reconnect — **DONE end-to-end**
-   (bridge: retained per-device `OutboundLog` + handshake `resumeState` read +
-   seq-`>`-N replay under the new key; mobile: persists + sends
-   `clientHello.resumeState`). Key rotation / keyEpoch advance still awaits a
-   mobile trigger. See *Seq-based catch-up on reconnect*.
-
-## Plug-and-play "install and use" — remaining sequence
-The goal is: install on the PC, log into the agents you want, point the phone at a
-folder, and go. Tracked items, in order:
-1. **Directory browsing** — DONE (bridge `workspace/browseDirs` **and** the mobile
-   browser UI: a `WorkspaceBrowserSheet` with root picker / breadcrumb / git-repo
-   badges wired into the new-conversation flow → `thread/start { cwd }`). See
-   Handlers → Plug-and-play below.
-2. **Autostart / `install-service`** — DONE (`install-service`/`uninstall-service`
-   run the bridge at logon per platform; see Daemon lifecycle).
-3. **Packaging / publish** — bundle `@uxnan/shared` (or publish it first) and ship
-   the bridge as `npm i -g uxnan-bridge` / a single binary (see Packaging). NEXT.
-Remote access (off-LAN) needs a hosted relay; **LAN-only works today with zero
-hosting** (the phone connects directly to the bridge on the same network).
+The bridge is **alpha-functional** on its primary path (LAN/Tailscale-direct,
+standalone). It builds clean and the suite is green (bridge 342, shared 29, relay
+27). Nothing below blocks LAN/Tailscale-direct use. The only items that gate a
+**public npm release** are the *Packaging* first-publish steps and real-device
+push validation (FOR-HUMAN).
 
 ## Transport & connectivity
-- [x] **Secure transport / E2EE handshake** — `src/transport/` (Phase 2). Relay
-      `mac` client + LAN server, handshake, AES-256-GCM channel; interoperable
-      byte-for-byte with the mobile app.
-- [x] **Relay package** — `relay/` builds and is in the root workspaces (Phase 2).
-- [x] **Bridge → phone notifications** (Phase 2b) — `SessionRegistry` +
-      `bridge.notify()`; outbound is retained per-device in `OutboundLog`
-      (seq + plaintext window) for catch-up (see *Seq-based catch-up*).
-- [x] **Stable pairing session** — the pairing `sessionId` is persisted to
-      `~/.uxnan/pairing-session.json` (`src/bridge.ts`, `daemon-state.ts`) and
-      reused across restarts instead of a fresh UUID each boot.
-- [x] **Relay connection survives phone reconnects** — `connectRelay`
-      (`src/bridge.ts`) runs a background loop: serve one phone session, then
-      immediately re-arm on the relay so trusted-reconnect works without re-scanning.
-- [x] **Direct LAN/Tailscale addressing (relay optional)** —
-      `src/transport/local-hosts.ts` advertises the bridge's non-internal IPv4s
-      (LAN + Tailscale `100.x`) as `hosts` in the pairing QR; `relay` is optional in
-      the contract; `relayEnabled` config skips the relay for a pure direct setup.
-      LAN-direct is the primary path, Tailscale the recommended remote option (no
-      hosting), relay optional. See `docs/connectivity.md`. **Next steps:**
-        - **Mobile (uxnanmobile branch):** consume `hosts` — try the direct
-          addresses first, fall back to `relay`; tolerate a missing `relay` (the
-          current Dart parser requires it). This is the half that makes direct/
-          Tailscale actually used by the app.
-        - **Bind the LAN server to chosen interface(s)** — today it binds all
-          interfaces (good for Tailscale; advertise virtual-NIC IPs too). Optionally
-          let the user restrict which interfaces are served/advertised.
-- [x] **Seq-based catch-up on reconnect** — **DONE & validated end-to-end (both
-      halves).** Bridge: `performServerHandshake` reads
-      `clientHello.resumeState.lastAppliedBridgeOutboundSeq` (tolerant → 0) and
-      `session-handler.ts` replays every retained outbound with a greater `seq`,
-      re-encrypted under the new session key (`BridgeSecureChannel.encryptReplay`),
-      before registering the live sink. Outbound is retained per-device in
-      `OutboundLog` (`src/transport/outbound-log.ts`): a continuous seq counter
-      that survives reconnects + a sliding plaintext window (spec caps). Plaintext
-      (not envelopes) is kept because every reconnect derives a fresh key. The log
-      is dropped on untrust (`SessionRegistry.forget` ← `bridge/removeTrustedDevice`).
-      Tests: `outbound-log.test.ts`, `secure-channel.test.ts`, end-to-end
-      `catch-up.test.ts`. **Mobile half (uxnanmobile — DONE):** the phone
-      persists `TrustedDevice.lastAppliedBridgeOutboundSeq` (new nullable drift
-      column, schema v5) and sends it as
-      `clientHello.resumeState.lastAppliedBridgeOutboundSeq` (omitted when 0);
-      `ClientHello` + `toJson` carry the field, `SecureTransportLayer.
-      performHandshake` forwards it, and `SessionCoordinator` loads it into the
-      handshake and checkpoints the applied seq on every teardown + the
-      heartbeat. Mobile tests: `handshake_messages_test.dart`,
-      `trusted_device_repository_test.dart`, `session_coordinator_test.dart`.
-      Note: after a bridge restart the in-memory log resets (seq restarts at 1)
-      — the phone's stale resume point simply yields no replay and re-syncs via
-      `turn/list`; acceptable and handled.
-- [ ] **Key rotation / keyEpoch advance** — blocked on a mobile trigger.
-- [◑] **Manual-code pairing (bridge-side; relay's `/trusted-session/resolve` reframed
-      for the bridge-first model).** The phone can pair WITHOUT scanning a QR by
-      trading a short code shown on the PC for the pairing payload.
-      **Phase 1 DONE:** `src/pairing/pairing-code-service.ts` issues a short,
-      rotating, expiring (10 min) **pairing code** (8-char Crockford base32, shown by
-      the `qr` CLI alongside the QR; `Bridge.currentPairingCode()`); the LAN server
-      (now an `http.Server` + WS) exposes `GET /pair/resolve?code=<code>` which
-      validates the code (constant-time, per-IP rate-limited) and returns the full
-      `PairingPayload` (identical to the QR), after which the phone runs the normal
-      E2EE handshake. The code is the **consent gate** (same trust posture as the QR
-      — whoever sees the screen can pair; no new secret).
-      **Phase 2 DONE:** `src/transport/mdns-advertiser.ts` advertises the bridge on
-      the LAN via mDNS/DNS-SD (`_uxnan._tcp.local`) so the phone DISCOVERS it without
-      typing the host. **Implemented dependency-free** (hand-rolled over `node:dgram`)
-      rather than pulling `bonjour-service`/`multicast-dns` — keeps the packaged
-      bridge (`npm i -g` / single binary) free of a third-party mDNS stack and avoids
-      a native build. Records: PTR + SRV + TXT (`v`,`port`,`addr`,`id`=deviceId) + A,
-      announced on start, goodbye (TTL 0) on stop, answers browse + DNS-SD meta
-      queries. Best-effort: a failed bind (5353 busy) degrades silently. Toggle via
-      `config.mdnsEnabled` (default true; effective only when `lanEnabled`). Verified
-      by unit tests (fake socket) + a real on-machine multicast smoke (a DNS-SD
-      querier received the full record set).
-      **Mobile linkage (uxnanmobile): manual-host half DONE (2026-06-16).**
-      `ManualCodeScreen` + `ManualPairingService` call
-      `GET http://<host>:<port>/pair/resolve?code=<code>` **on the bridge** (NOT
-      the relay) to synthesize the `PairingPayload`, then reuse the existing
-      pairing handshake — the user types the host the `qr` CLI prints. ☐ Still
-      open on the phone: **browse `_uxnan._tcp` via mDNS** (Android `NsdManager`
-      / iOS `NWBrowser`, e.g. the `nsd`/`multicast_dns` Flutter plugin) to list
-      bridges + read the TXT `addr`/`port` so the host needn't be typed — the
-      bridge already advertises it. Typing the host stays the fallback.
 
-## Identity & security
-- [x] **OS-keychain SecretStore** (Phase 3) — `src/keyring-secret-store.ts` via
-      `@napi-rs/keyring`, with in-memory fallback. NOTE: on headless Linux without
-      a running Secret Service it falls back to in-memory (no persistence) — wire a
-      CI/service alternative there before relying on persistence on Linux.
+- [ ] **Key rotation / keyEpoch advance** — blocked on a mobile trigger. (Seq-based
+      catch-up on reconnect is done end-to-end; only key rotation remains.)
+- [ ] **Bind the LAN server to chosen interface(s)** — today it binds all
+      interfaces (good for Tailscale; advertises virtual-NIC IPs too). Optionally
+      let the user restrict which interfaces are served/advertised.
 
 ## Handlers
-- [x] **Git** (Phase 4) — `src/git/` + `src/handlers/git-handler.ts`.
-- [x] **Workspace** reads/list/applyPatch (Phase 4) — `src/workspace/`.
-- [x] **Workspace checkpoints** (Phase 4b) — `src/workspace/checkpoint-service.ts`
-      (full-tree snapshot via temp index + `commit-tree`, anchored ref + metadata).
-      Follow-ups:
-        - ☑ **True restore** — `apply` now deletes files created after the
-          checkpoint AND restores snapshot contents (recreating deleted, overwriting
-          modified), so the worktree matches the snapshot exactly. Extras are found
-          by snapshotting the current tree into a temp index (HEAD + `add -A`) and
-          diffing snapshot → now; worktree-only, never removes gitignored files.
-          Full parity with the mobile `AiChangeSet` revert. **Mobile linkage:** no
-          uxnanmobile change needed — `workspace/applyCheckpoint` is unchanged on
-          the wire; verify on-device that a revert removes files the agent created.
-        - ☑ **Prune/GC** — each `capture` prunes checkpoints beyond
-          `checkpointMaxPerProject` (default 25, per `cwd`) and/or older than
-          `checkpointTtlDays` (default 0 = off), deleting the `refs/uxnan/checkpoints/*`
-          anchor + the `checkpoints.json` entry. See `docs/configuration.md`.
-        - ☐ checkpoints require at least one commit (no HEAD → `-32003`); consider
-          supporting checkpoints on an unborn branch if a use case appears.
-- [x] **Thread/turn** (Phase 5) — `src/handlers/thread-context-handler.ts` +
-      `src/conversation/thread-store.ts` + `src/agents/agent-manager.ts`.
-- [◑] **Interactive approval intake** — generic plumbing DONE; real per-agent
-      routing partial. `turn/send` accepts a control-only `approvalResponse:
-      { approvalId, decision }` (no new turn) and routes it via
-      `AgentManager.respondApproval` → `IAgentAdapter.respondApproval`. Agents
-      request approval by emitting an `approval` content block
-      (`approvalBlock()`), which the phone already renders interactively.
-        - **Spec note (flagged, not silently changed):** `architecture/02b` lists
-          a dedicated `stream/approval/requested` notification. We satisfy the
-          request side via the **`approval` content block on
-          `stream/content/block`** instead, because that is the form the phone
-          actually renders into its interactive card AND it persists with the
-          turn (so an approval survives a `turn/list` re-sync). Emitting the
-          dedicated `stream/approval/requested` notification too is an optional
-          future alignment if a non-persisted signal is ever wanted.
-        - ☑ **Echo demo (works now):** text `approval-demo` emits a sample
-          approval and pauses until the phone replies — start an `echo` thread,
-          send `approval-demo`, and the mobile card round-trips end-to-end.
-        - ☑ **Claude Code (opt-in) — DONE & validated end-to-end** (`claude`
-          2.1.177). `agents['claude-code'].interactiveApprovals: true` (needs
-          `lanEnabled`) makes the adapter inject a **`PreToolUse` hook** via
-          `--settings … --permission-mode default` (the explicit `default` mode
-          is REQUIRED — without it headless `-p` denies without consulting the
-          hook). The hook (`src/hooks/claude-approval-hook.cjs`, written to
-          `~/.uxnan/hooks/`) reads the tool payload on stdin, POSTs it to
-          `POST /agent-hook/approval` on the LAN `http.Server` (token-guarded;
-          URL+token+threadId injected via per-turn env), the bridge emits the
-          `approval` block and **holds** the response until the phone answers
-          (`AgentManager.requestApproval` ↔ `respondApproval`), then the hook
-          prints the `permissionDecision`. Fail-safe → deny; 5-min timeout → deny.
-          Verified live: an allowed Write runs, a denied Write is blocked.
-          **FOR-DEV follow-ups:** map `approveSession` to a real session-scoped
-          allow (today every tool re-asks); a per-turn allow-list so repeated
-          identical tools aren't re-prompted; the hook URL needs a fixed
-          `lanPort` (a `0`/random port resolves after `startLan`, which the lazy
-          `url()` already handles, but document it).
-        - ☑ **Codex (real, app-server) — DONE & validated end-to-end** (`codex`
-          0.139.0). The Codex adapter is refactored from one-shot
-          `codex exec --json` to a long-lived `codex app-server` JSON-RPC
-          process (`src/adapters/codex-app-server.ts` + `codex-adapter.ts`).
-          The bridge speaks the full turn protocol (`initialize` →
-          `thread/start` → `turn/start`) and routes every elicitation the
-          desktop app surfaces to the bridge's `requestApproval` round-trip:
-            - v2 (current): `item/commandExecution/requestApproval`,
-              `item/fileChange/requestApproval`, `item/permissions/requestApproval`,
-              `mcpServer/elicitation/request`, `item/tool/requestUserInput`.
-            - v1 (legacy): `applyPatchApproval`, `execCommandApproval`.
-          All map to the same `approval` content block on
-          `stream/content/block`; the user's decision becomes a
-          `ReviewDecision` reply (`approve` → `approved`,
-          `approveSession` → `approved_for_session`, `reject` → `denied`).
-          5-min timeout → deny. Unknown elicitations are auto-rejected
-          with a clear `RpcError` so the app-server does not block.
-          `permissionMode` is now `interactive` by default (`on-request` +
-          `workspace-write`); `acceptEdits` is preserved for back-compat
-          and maps to the previous no-prompt behavior. Verified live:
-          an allowed command runs, a denied one is blocked, an
-          `approveSession` decision is remembered for the rest of the
-          session.
-        - ☑ **Gemini CLI (real, BeforeTool hook) — DONE & validated
-          end-to-end** (`gemini` 0.45.2 + the `BeforeTool` hook contract
-          from `google-gemini/gemini-cli/docs/hooks`, the same shape Claude
-          Code uses — the CLI ships a `gemini hooks migrate` command to
-          import Claude hook settings). New `permissionMode: 'interactive'`
-          on the Gemini adapter; the bridge writes
-          `~/.uxnan/hooks/gemini-approval-hook.cjs` and (per turn) a
-          `<cwd>/.gemini/settings.json` with a `BeforeTool` hook
-          (`src/hooks/gemini-approval-hook.ts`). The hook POSTs every tool
-          the CLI wants to run to the bridge's local HTTP endpoint (URL +
-          token + threadId injected via per-turn env), which forwards the
-          request to the phone via the same `AgentManager.requestApproval`
-          round-trip Claude's `PreToolUse` hook uses. `--approval-mode` is
-          set to Gemini's `default` ("prompt for approval" in their
-          vocabulary) — the hook is the gate, NOT a TTY prompt, since
-          `-p` is non-interactive. Without the hook the prompt would
-          block Gemini forever; the bridge only injects it when the LAN
-          endpoint is resolvable (`lanEnabled: true` + LAN port bound),
-          otherwise the turn fails with a clear `agent not running`-style
-          error. Adapter-level:
-            - **`interactive` mode** → `--approval-mode default` + the hook
-              setup (idempotent per cwd; existing user settings are
-              preserved by merging the bridge's `uxnan-approval` entry).
-            - **`default` mode** → unchanged (`plan`, read-only).
-            - **`acceptEdits` / `bypassPermissions`** → unchanged
-              (`auto_edit` / `yolo`).
-          Covered by `test/adapters/gemini-adapter.test.ts` and
-          `test/hooks/gemini-approval-hook.test.ts`. **Validated end-to-end
-          against a real `gemini -p ... --approval-mode default` run with
-          a fake bridge in the loop** — the CLI invoked the hook for both
-          `update_topic` and `list_directory` and waited for the response
-          (the bridge received the POSTs with the right payload shape).
-        - ☐ **OpenCode / pi:** the headless modes the bridge currently
-          drives (`opencode run --format json` and `pi -p --mode json`)
-          DO NOT expose a permission channel — both CLIs run their tools
-          autonomously in headless mode and emit the tool events only
-          AFTER the tool has run, with no way to gate them from outside.
-          Adding real approvals here requires one of:
-            - **OpenCode:** driving the `opencode serve` HTTP server (a
-              full rewrite — the bridge would manage a per-thread
-              server-side session, NOT a one-shot CLI). Not currently
-              in scope; revisit if OpenCode ships a pre-tool protocol on
-              its headless `--run` entry.
-            - **pi:** driving the `--mode rpc` (or its long-lived TUI)
-              instead of the one-shot `--mode json`. The RPC mode is
-              two-way and could support a pre-tool request, but it
-              requires a meaningful refactor of the adapter and the
-              session model. Not currently in scope; revisit when pi
-              ships a stable pre-tool hook.
-          Until then, OpenCode/pi users get a `default` (plan) /
-          `acceptEdits` (auto-approve edits) /
-          `bypassPermissions` (auto-approve all) posture but no
-          per-action gate on the phone.
-- [x] **Turn image attachments** — `turn/send` accepts `attachments:
-      TurnAttachment[]` and an **image-only** message (empty/omitted `text`).
-      `src/agents/attachments.ts` materializes each inline image **inside the
-      thread cwd** (`<cwd>/.uxnan-attachments/<turnId>/`) and `AgentManager.sendTurn`
-      appends a **cwd-relative** reference, so any file/vision-capable CLI can open
-      it **within its sandbox** — **no per-adapter image handling**. (Writing to
-      the OS temp dir was rejected by sandboxed agents — Gemini/Codex/Claude
-      confine reads to the workspace; this was the "file outside safe limits" bug.)
-      The dir is removed when the turn ends. Tolerant parser; best-effort write.
-      **Follow-ups (FOR-DEV):** (1) native per-CLI image input (a dedicated flag /
-      MCP image part) where richer than a file path — `attachments` are already
-      threaded to `adapter.sendTurn` via `SendTurnOptions.attachments`; (2) add
-      `.uxnan-attachments/` to a recommended `.gitignore` (it's cleaned per turn,
-      but a crash mid-turn could leave one);
-      (3) on-device verification that an agent reads the delivered image.
-- [x] **Plug-and-play directory browsing (bridge side)** — `workspace/browseDirs`
-      (`src/workspace/browse-service.ts` + `workspace-handler.ts`) lets the phone
-      browse sub-directories under a configured base root (`config.browseRoots`,
-      falling back to `workspaceRoots` → home), mark which are git repos, and pick
-      ANY directory as a thread's cwd (`thread/start { cwd }`) — no per-project
-      pre-config. Root-confined via `resolveWithinRoot`. `project/list`/`resolve`
-      (the manual `workspaceRoots` list) stay as-is for explicitly configured
-      projects. **Status / next steps:**
-        - **Mobile UI** — DONE (uxnanmobile): `WorkspaceBrowserSheet` calls
-          `workspace/browseDirs`, shows the root picker + git-repo badges, navigates
-          with `parent`/`dirs`, and opens a thread on the chosen `cwd` (resolved to
-          a project via `project/resolve`). Remaining: on-device verification.
-        - **Hard agent confinement** (optional): browseDirs confines the *phone API*,
-          not the agent *process*. True read-confinement of the agent to the chosen
-          subtree needs OS sandboxing (container/chroot) — out of MVP scope; for now
-          writes are bounded by each agent's sandbox posture (Codex `workspace-write`,
-          Claude `acceptEdits`). See FOR-HUMAN.md.
-- [x] **Per-project agent selection from `AgentConfig`** — a `projectAgents:
-      AgentConfig[]` config (keyed by each entry's absolute `cwd`) pins a
-      project's default `agentId`/`model`. `ProjectRegistry` consumes it
-      (`agentConfigFor(cwd)` + the pin surfaced on `Project.agentId`/`model`), and
-      `thread/start` falls back to the pinned agent → global `defaultAgent` when
-      the phone omits `agentId`; the pinned model applies only when the resolved
-      agent matches the pin. **Still not consumed:** `AgentConfig.binaryPath` /
-      `extraArgs` (per-project binary/arg overrides) — wire them into the adapter
-      spawn if a use case appears. **Mobile linkage (no uxnanmobile change
-      required):** `project/list`/`resolve` now return `agentId`/`model` on each
-      `Project`; the phone MAY pre-select them in `NewConversationSheet` (today it
-      lets the user pick) — purely optional UX. Server-side resolution already
-      makes omitting them work.
-- [x] **Thread management** — `thread/rename` / `thread/archive` /
-      `thread/unarchive` / `thread/delete` (`thread-context-handler.ts` +
-      `thread-store.ts`, contracted in `@uxnan/shared`). Rename/archive/unarchive
-      return the updated `Thread`; delete removes the thread + its turns (unknown
-      id → `-32008`). The mobile app already called these best-effort; they now
-      persist on the bridge so the change survives a phone reinstall / second
-      device.
-      **Mobile linkage (no uxnanmobile code change needed):** the phone already
-      calls all four local-first and degrades gracefully, so nothing new is
-      required there. To VALIDATE on-device once a live bridge is reachable: after
-      archive/rename a `thread/list` re-sync should reflect the new status/title,
-      and a deleted thread must not reappear — confirm the mobile `thread/list`
-      parser maps `status: 'archived'`. The bridge now RETURNS the updated
-      `Thread` on rename/archive/unarchive; the phone currently ignores it (keeps
-      its optimistic copy) — optional future reconcile against the returned value.
-- [◑] **Account/auth** — `src/handlers/account-handler.ts` + `src/account-status.ts`.
-      **`auth/status` DONE (sanitized, per-agent):** takes `{ agentId }`, returns a
-      sanitized `AuthStatus` (never tokens — login is detected by auth-file
-      EXISTENCE only, contents never read; unmapped agent → availability; unknown
-      agent → `-32602`). **Still deferred:** `auth/login`/`auth/logout` (driving a
-      CLI's interactive login/logout flow) remain stubs — and an authoritative
-      `requiresLogin` would run the CLI's own `whoami`/auth command instead of the
-      file-existence heuristic (slower, per-CLI). **Mobile linkage:** the spec's
-      `authStatusProvider` already calls `getAuthStatus(agentId)` per the active
-      project's agent; the bridge now answers it. On-device: verify the
-      requires-login banner appears when the agent CLI is logged out on the PC.
-- [x] **Notifications** — `src/handlers/notifications-handler.ts` +
-      `src/push/push-service.ts`. `notifications/register|update|unregister` wired;
-      registers the token with the relay and pushes on turn-end (gated by
-      `config.push*` + Firebase creds on the relay). **Persistence + multi-session
-      DONE:** registrations are keyed by relay `sessionId` and persisted to
-      `~/.uxnan/push-state.json` (atomic), loaded at startup via
-      `PushService.load()`, so background push survives a bridge restart WITHOUT
-      the phone re-registering (the relay keeps its own sessionId→token map; the
-      bridge only needs `sessionId` + `notificationSecret` to call `/push/notify`).
-      A turn-end pushes to **every** registered phone, so multiple paired devices
-      each get background push. Follow-ups **DONE**:
-        - ☑ **Per-request session target** — the secure transport now tags each
-          request with its `RequestSession` (`{ sessionId, deviceId }`), threaded
-          `session-handler → router.dispatch → handler`. `notifications/register|
-          update|unregister` act on **that** session (falling back to the active
-          session for single-phone setups), so when several phones are concurrent
-          each manages its own registration. `PushService.register` takes an
-          explicit `{ sessionId, deviceId? }` instead of reading a single "active"
-          session.
-        - ☑ **Prune on untrust** — `bridge/removeTrustedDevice` now calls
-          `PushService.unregisterDevice(deviceId)`, dropping every registration
-          owned by that device (the registration records its `deviceId`), so a
-          revoked phone stops receiving background push immediately instead of
-          lingering until it re-registers or is overwritten.
-        - **Mobile linkage (no uxnanmobile change needed):** the phone already
-          calls `notifications/register` on connect (per-session target works as-is)
-          and its **"Remove device" action is already DONE** (uxnanmobile
-          `FOR-DEV.md` → *Threads list → Remove device* sends `bridge/removeTrustedDevice`
-          with its own id), so prune-on-untrust is wired end-to-end — no deferred
-          mobile work. **VERIFY (device):** (1) per-session — with
-          `maxConcurrentSessions > 1`, two paired phones each get their own
-          background push; `unregister` on one leaves the other receiving. (2) prune
-          — "Remove device" on a phone → that phone stops receiving background push
-          immediately. Both need the Firebase creds (FOR-HUMAN) + a real device.
-- [x] **Direct FCM from the bridge — the PRIMARY push path (relay optional).**
-      DIRECTION (decided 2026-06-12): background push is sent **by the bridge
-      itself**, so it works on **any** transport — direct LAN, **Tailscale**, or
-      relay — not only when a hosted relay is in the loop. The relay is now
-      **optional and self-hosted** (for those who want hosted off-LAN access); the
-      bridge keeps working — securely, E2EE end-to-end — **with or without it**.
-      **DONE:**
-      - **Build:** `src/push/push-sender.ts` adds `createBridgePushSender` — a lazy
-        `firebase-admin` FCM HTTP v1 `PushSender` (named app `uxnan-bridge`,
-        `android.priority=high` / `apns-priority:10`). It reads
-        `UXNAN_FCM_SERVICE_ACCOUNT`, **falling back to the documented
-        `~/.uxnan/firebase-service-account.json`** so it's plug-and-play (drop the
-        JSON in place, no env var needed). `PushService` now keeps the **real device
-        token + platform** per registration and, on turn-end, delivers **direct via
-        FCM first**, regardless of `relayEnabled`; the `POST /push/notify`→relay path
-        is the **fallback** (used when there's no local credential, or `relayEnabled`).
-        Wired in `bridge.ts`; `register` only hits the relay when it's enabled or
-        there is no direct sender (fixes the old always-forward, which broke push on
-        the relay-off default).
-      - **Guarding:** with no service account and no relay, push is a silent no-op
-        (foreground local notifications still work, relay-free). `firebase-admin` is
-        an `optionalDependency` — a missing module degrades to relay/noop, never a
-        build/start failure.
-      - **Security:** payloads carry title + short turn summary (already truncated,
-        same as the relay path) + thread/turn ids — no further conversation content.
-        The bridge owning the FCM service account is the same trust model as the
-        relay owning it: a local, gitignored credential the user provides (`FOR-HUMAN.md`).
-      - **Mobile:** no change — the phone registers an FCM token via
-        `notifications/register` and the bridge delivers; works whichever side
-        holds the credential.
-      - **Validated:** `bridge/test/push/push-service.test.ts` covers the direct
-        path (relay untouched on the default, FCM delivery, restart persistence,
-        relay-enabled coexistence). A live init smoke against the real `uxnan-app`
-        service account authenticated to FCM (bogus token → `messaging/invalid-argument`,
-        i.e. creds OK). **Remaining:** a real device to confirm an actual token
-        delivers while backgrounded.
-      - **Follow-up (optional):** the payload `body` still carries the truncated turn
-        summary for a useful notification; if a stricter "title + thread id only"
-        policy is wanted, drop `body` in `buildNotification` for the direct path.
-- [ ] **Desktop** — `src/handlers/desktop-handler.ts` (embedded mode IPC).
-- [x] **bridge/removeTrustedDevice** — `src/handlers/bridge-control-handler.ts`.
-      Revokes trust (`ctx.trustStore.remove`) and drops any live session/sink
-      (`sessions.remove` + `sessionRegistry.unregister`) so a removed device is
-      both untrusted and disconnected now. Idempotent (removing an absent device
-      is not an error). `bridge/trustedDevices` now reads through `ctx.trustStore`
-      too. It also now prunes the device's push registration
-      (`pushService.unregisterDevice` — see *Notifications → Prune on untrust*).
-      **Mobile linkage:** the uxnanmobile "Remove device" card action is **DONE**
-      (its `FOR-DEV.md` → *Threads list → Remove device* already calls this method
-      with `{ deviceId }` after deleting the local `TrustedDevice` + threads), so
-      this is wired end-to-end. No further bridge work needed.
-- [x] **bridge/status `relayConnected`** — reflects the real relay connection.
-      `BridgeContext.relayConnected()` reads the live relay-serve state (the
-      `relayState.connected` holder in `src/bridge.ts`, true while a relay
-      connection is serving a phone), so the `bridge/status` handler no longer
-      hard-codes `false`. **Mobile linkage:** the phone's `bridge/status` parser
-      already consumes `relayConnected`; verify on-device that it flips true while
-      a relay session is live and false on LAN-only/idle.
+
+- [ ] **Checkpoints on an unborn branch** — `capture` requires at least one commit
+      (no HEAD → `-32003`). Support checkpoints on an unborn branch if a use case
+      appears. Low priority.
+- [ ] **Interactive approvals — OpenCode / pi gap.** The headless modes the bridge
+      drives (`opencode run --format json`, `pi -p --mode json`) run tools
+      autonomously and emit tool events only **after** the tool ran — no way to gate
+      them. Echo + Claude (`PreToolUse` hook) + Codex (`app-server`) + Gemini
+      (`BeforeTool` hook) have real per-action approvals; OpenCode/pi get only the
+      coarse `default`/`acceptEdits`/`bypassPermissions` posture. Real approvals
+      would need driving `opencode serve` (HTTP, per-thread server session — a
+      rewrite) or pi's `--mode rpc` (two-way, adapter refactor). Revisit when either
+      CLI ships a stable pre-tool channel on its headless entry point.
+- [ ] **Claude/Codex approval follow-ups** — map `approveSession` to a real
+      session-scoped allow on the Claude hook path (today every tool re-asks; Codex's
+      app-server already remembers `approved_for_session`); a per-turn allow-list so
+      repeated identical tools aren't re-prompted; document that the Claude/Gemini
+      hook URL needs the LAN port resolved (handled by the lazy `url()` after
+      `startLan`, but worth a note).
+- [ ] **Image attachments — follow-ups** — native per-CLI image input (a dedicated
+      flag / MCP image part) where richer than a cwd-relative file path; add
+      `.uxnan-attachments/` to a recommended `.gitignore` (cleaned per turn, but a
+      crash mid-turn could leave one); on-device verify an agent actually reads the
+      delivered image.
+- [ ] **`auth/login` / `auth/logout`** — still stubs (driving a CLI's interactive
+      login/logout). `auth/status` is done (sanitized, file-existence heuristic). An
+      authoritative `requiresLogin` would run the CLI's own `whoami`/auth command
+      instead of the heuristic (slower, per-CLI).
+- [ ] **Desktop embedded-mode IPC** — `src/handlers/desktop-handler.ts` is an empty
+      stub; no `desktop/*` contracts exist in `shared/`. This is the bridge half of
+      the desktop's **Phase 6** (embedded sidecar + mobile pairing); see
+      `uxnandesktop/architecture/02e-bridge-integration.md`. Unbuilt on both sides.
+- [ ] **`bridge/disconnectPhone`** — removes the session but does not close the live
+      transport (`FOR-DEV:` in `bridge-control-handler.ts`). Also close the live
+      transport so the phone is dropped immediately.
 
 ## Agent adapters
-- [x] **Framework + reference** (Phase 5) — `ProcessAgentAdapter` (generic CLI
-      stdio driver) + working `EchoAgentAdapter`; `AgentManager` orchestration.
-- [x] **OpenCode** (MVP) — `src/adapters/opencode-adapter.ts`. WIRED and the
-      bridge's default agent. Spawns `opencode run --format json` per turn,
-      parses the NDJSON event stream, keeps the OpenCode `sessionID` per thread
-      for `--session` continuity, runs in the thread's cwd. Picks the model from
-      `service` (per-turn) → thread.model → `config.agents.opencode.model`.
-      Binary resolved by `resolve-opencode.ts` (native `opencode.exe` on Windows).
-- [x] **Per-thread agent selection** — `thread/start { agentId, model, cwd }`
-      persists the choice; `turn/send` drives the thread's agent in its cwd.
-      `agent/list` exposes registered agents + capabilities + availability.
-- [x] **Agent model discovery** — `agent/models` now returns a **structured
-      `AgentModel[]`** (`id`/`displayName`/`description?`/`version?`/`isDefault?`),
-      account-aware per agent: OpenCode runs `opencode models`; **Codex** drives
-      `codex app-server` (`initialize` → `model/list`, the desktop app's source)
-      with a `~/.codex/config.toml` fallback; **Claude Code** exposes the stable
-      `opus`/`sonnet`/`haiku` aliases (labelled "(latest)") plus any concrete
-      versions pinned in `agents.claude-code.models`. The concrete model an alias
-      resolves to is reported per-run via the `stream/model/resolved` notification
-      (`model_resolved` adapter event).
-- [x] **Per-turn token usage** — `stream/turn/completed` now carries
-      `usage { tokens, contextWindow? }`: Claude parses the `result` event's
-      `usage` and maps the tier context window (Opus/Sonnet 1M, Haiku 200K);
-      Codex sums `turn.completed.usage` (no window in exec mode); `AgentManager`
-      forwards it. Lets the phone show a context-usage indicator.
-- [x] **Change a thread's model mid-conversation** — `thread/setModel`
-      (`ThreadStore.setModel` + `thread-context-handler.ts`).
-- [◑] **Per-model run options (reasoning effort / context / fast mode) — advertise
-      + apply, data-driven.** Phases 1–3 DONE (effort wired + per-model option schema
-      + mobile renderer); only phase 4 (fast-mode/context variants) remains, with
-      little to wire today. IMPORTANT (not urgent): this is the next big seam to
-      link with mobile. The phone should let the user pick a model's *run knobs*
-      (reasoning/thinking level, and where it applies a context-window variant or a
-      "fast mode"), but these differ **per agent AND per model**, and some are only
-      knowable at runtime (OpenCode depends on the provider/model). So the phone
-      must NOT hardcode any of it — the bridge advertises the available knobs per
-      model and translates the chosen values into each CLI's real flags.
 
-      **This is bridge-first** (a small `shared/` contract change + the real work
-      in the adapters; mobile is a generic renderer afterwards).
-
-      **Current state (what exists today):**
-        - The contract already carries a flat `effort?: string` on `TurnSendParams`
-          (+ `service?` as a per-turn model override). `agent/models` returns
-          `AgentModel[]` (id/displayName/description/version/isDefault).
-        - **Effort is now wired for all three adapters (phase 1 DONE).** OpenCode
-          maps it to `--variant <effort>`; **Claude** passes `--effort
-          <low|medium|high|xhigh|max>`; **Codex** passes `-c
-          model_reasoning_effort=<low|medium|high>` (each flag verified against the
-          installed CLI's `--help`). The flat `effort` on `TurnSendParams` is still
-          the wire field; phase 2 generalizes it to a per-model option schema.
-        - Context *usage* is already shown as a % (`claudeContextWindow`, Codex/
-          Claude usage). That is DISPLAY, distinct from *choosing* a context window.
-        - `AgentCapabilities` (shared) only declares `planMode/streaming/approvals/
-          forking/images` — there is no schema for run-option knobs.
-
-      **Per-agent reality (verify each flag against the installed CLI — versions
-      differ; follow the "Adding the next agent" capture recipe below):**
-        - **Claude Code**: reasoning = `effort` (low→max) + adaptive thinking;
-          models = `opus/sonnet/haiku` aliases + pinned ids; context window is fixed
-          by the model EXCEPT narrow beta cases (e.g. 1M context); **fast mode** is a
-          Claude-Code-specific toggle. (Confirm the exact CLI flags for effort/fast —
-          they may be config, not argv.)
-        - **Codex**: reasoning = `model_reasoning_effort` low/med/high (via
-          `-c model_reasoning_effort=...`); models via `model/list`; context fixed by
-          model; no fast mode.
-        - **OpenCode**: reasoning/variant already wired (`--variant`); everything is
-          provider/model-dependent and must be enumerated at runtime, never assumed.
-        - **pi**: reasoning = `--thinking` (off/minimal/low/medium/high/xhigh),
-          advertised per model (the `thinking` column of `--list-models`).
-        - **Gemini / aider**: TBD when those adapters land.
-
-      **Proposed design (3 layers):**
-        1. **`shared/`** — extend per-model discovery so each `AgentModel` (or a
-           sibling shape returned by `agent/models`) declares a list of typed
-           **option knobs**: `{ key, kind: 'enum'|'toggle'|'select', label, values?,
-           default? }` (e.g. `enum reasoning [low,medium,high]`, `toggle fastMode`,
-           `select context [200k,1m]`). Plus fields on `turn/send` (and/or a
-           per-thread settings RPC) to carry the chosen values. Keep `effort` working
-           for back-compat, or fold it into the generic options.
-        2. **`bridge/`** — the real work: per adapter, (a) DISCOVER the knobs for a
-           given agent/model (Codex + OpenCode by real CLI enumeration; Claude by a
-           known table) and surface them via `agent/models`; (b) TRANSLATE the chosen
-           values into the right CLI flag at turn time (`-c model_reasoning_effort=…`
-           for Codex, `--variant` for OpenCode, the effort/fast flags for Claude).
-           Start by wiring the `effort` that Codex/Claude currently ignore.
-        3. **`uxnanmobile/`** — a **data-driven** renderer (reuse the existing
-           capability-gated-control pattern): show only the knobs the bridge
-           advertises for the active model, send the chosen values on `turn/send`.
-           Zero per-agent knowledge in the app → future agents work with no app
-           change. **Mobile linkage:** nothing to build on the phone until the
-           contract lands; then it's purely additive UI.
-
-      **Recommendations:**
-        - Model knobs **per (agent, model)**, not per agent — the same agent's
-          models differ (a Codex reasoning model vs a non-reasoning one; OpenCode
-          varies by provider). Returning them on `agent/models` keeps it per-model.
-        - **Do NOT build a generic context-window selector by default** — the window
-          is almost always fixed by the model. Model `context` as an option that
-          appears ONLY on models that genuinely offer a choice (Claude 1M beta).
-          Keep the existing usage-% display as-is.
-        - Make the option schema **tolerant/forward-compatible** (unknown `kind`
-          ignored by the phone) so adding a knob never breaks an older app — same
-          discipline as the tolerant `AgentModel` parser.
-        - Capture each CLI's real flags first (don't trust a flag unseen in the
-          installed CLI's `--help`/stream); some "options" are config-file, not argv.
-        - Phase it: **(1) DONE** — `effort` wired end-to-end for Codex + Claude;
-          **(2) DONE** — generic per-model option schema in `shared/` +
-          `agent/models`; **(3) DONE** — mobile data-driven renderer; **(4)**
-          fast-mode + context-variant as opt-in knobs where the CLI supports them.
-          The advertised levels are the **real per-agent options**: Codex
-          discovers them per model from the app-server `model/list`
-          (`supportedReasoningEfforts`/`defaultReasoningEffort`, incl. `xhigh`);
-          Claude uses its validated `--effort` set (`low/medium/high/xhigh/max`).
-          NOTE (validated): Claude has **no** fast-mode/context argv flag (`claude
-          --help`), `ultrathink`-style keywords are prompt triggers not effort
-          levels, and context variants aren't simple flags — phase 4 has little to
-          wire today; keep the schema forward-compatible and only advertise knobs
-          that map to a real flag.
+- [ ] **Per-model run options — phase 4 (fast-mode / context variants).** Phases 1–3
+      are DONE (reasoning effort wired per agent + the per-model option schema in
+      `shared/` `agent/models` + the mobile data-driven renderer). Phase 4 is fast-
+      mode / context-window variants as opt-in knobs **only where a real CLI flag
+      exists**. Validated: Claude has **no** fast-mode/context argv flag, Codex/pi
+      have no fast mode — so there is little to wire today. Keep the option schema
+      forward-compatible (unknown `kind` ignored by the phone) and only advertise a
+      knob that maps to a real flag.
+- [ ] **pi context-window %** — pi reports raw `totalTokens` (shown as a count like
+      Codex). Map the resolved model's context window (pi `--list-models` exposes it)
+      so the phone can render a `%` ring instead of a count.
 
 ### Adding the next agent (recipe — do these one by one)
+
 The OpenCode adapter is the template for any "one-shot per-turn CLI" agent:
+
 1. Run the real CLI by hand once and capture a turn's machine-readable stream
    (`<cli> ... --json|--format json`). **Watch for stdin:** OpenCode hangs on an
    open stdin pipe — spawn with `stdio:['ignore','pipe','pipe']`.
 2. Copy `opencode-adapter.ts`; adjust the args builder (`run/exec`, model flag,
    session/continue flag, cwd flag) and `parseLine` for that CLI's event shape.
    Keep `shell:false` and pass the prompt as an argv element (no injection).
-3. Register it in `startBridge` with display metadata + availability.
-- [x] **Codex** — `src/adapters/codex-adapter.ts`. WIRED via `codex exec --json`
-      (`exec resume <thread_id>` for continuity, `-m` model, `-C` cwd, always
-      `--skip-git-repo-check`). Parses the JSONL stream (`thread.started` /
-      `item.completed` `agent_message` / `turn.completed` / `turn.failed`), keeps
-      the `thread_id` per thread. Sandbox posture is configurable via
-      `agents['codex'].permissionMode` (default `acceptEdits` → `-s workspace-write`;
-      also `default` → `-s read-only`, `bypassPermissions` →
-      `--dangerously-bypass-approvals-and-sandbox`). Binary resolved by
-      `resolve-codex.ts` (npm `@openai/codex/bin/codex.js` via node → PATH).
-      Turns use the one-shot `codex exec` entry point. **Model discovery (done):**
-      `codex exec` has no enumerate command, so `listModels()` briefly spawns
-      `codex app-server` and runs the `initialize` → `model/list` JSON-RPC
-      handshake (account-aware, the desktop app's source), falling back to
-      `~/.codex/config.toml`. `turn.completed.usage` is parsed for the context
-      indicator.
-- [x] **Claude Code** — `src/adapters/claude-adapter.ts`. WIRED via
-      `claude -p --output-format stream-json --verbose --include-partial-messages`
-      (`--resume <session_id>`, `--model <alias|id>`). Parses the JSONL stream
-      (`system`/`stream_event` `text_delta`/`assistant`/`result`), keeps the
-      `session_id` per thread, runs in the thread's cwd. Headless permission
-      posture is configurable via `agents['claude-code'].permissionMode`
-      (default `acceptEdits`; also `default` / `bypassPermissions`). Binary
-      resolved by `resolve-claude.ts` (native `~/.local/bin/claude[.exe]` → npm
-      `cli.js` via node → PATH). **Model discovery (done):** `listModels()`
-      exposes the `opus`/`sonnet`/`haiku` aliases (labelled "(latest)") plus any
-      concrete versions pinned in `agents.claude-code.models`; the version an
-      alias resolves to is captured from the `system/init` event and emitted as
-      `model_resolved`. `result.usage` is parsed (with the tier context window)
-      for the context indicator.
-- [x] **pi** — `src/adapters/pi-adapter.ts`. WIRED via `pi -p --mode json`
-      (`--session-id <id>` for continuity, `--model <provider/model>`,
-      `--thinking <off|minimal|low|medium|high|xhigh>` for reasoning effort).
-      Parses the newline-JSON stream (`session` → captures the session id;
-      `message_update`/`text_delta` → streamed text; `message_end` assistant →
-      final text + `usage.totalTokens` + `stopReason`/`errorMessage`; `agent_end`
-      → completion). `thinking_*` events are NOT emitted as answer text. Tool
-      posture via `agents['pi-agent'].permissionMode` (default `acceptEdits` →
-      pi's built-in read/bash/edit/write; `default` → `--tools read,grep,find,ls`
-      read-only; `bypassPermissions` → `--approve`). Binary resolved by
-      `resolve-pi.ts` (`node <@earendil-works/pi-coding-agent/dist/cli.js>`).
-      **Model discovery:** `pi --list-models` table → `AgentModel[]`
-      (id `provider/model`; the reasoning knob advertised for models whose
-      `thinking` column is `yes`). Validated live against `pi` 0.79.1.
-      **Auth:** detected by the existence of `~/.pi/agent/auth.json` (per-provider
-      credentials; multi-provider, so no single public provider name).
-      **FOR-DEV follow-ups:** map the resolved model's context window for a `%`
-      context ring (today pi reports raw `totalTokens`, shown as a count like
-      Codex).
-- [x] **Structured content (thinking + commands/tools/diffs) for ALL agents** —
-      DONE & verified live. Adapters emit `thinking` and `block` events that the
-      phone folds into a collapsible "Thinking" section, the Work log and Changed
-      files. Shared `content-blocks.ts` builders + per-agent mappers
-      (`claude-tools.ts`, `codex-tools.ts`, `opencode-tools.ts`, `pi-tools.ts`)
-      translate each CLI's events: Claude `tool_use`+`tool_result` and
-      `thinking_delta`; Codex `reasoning`/`command_execution`/`file_change`/
-      `mcp_tool_call`; OpenCode `reasoning`/`tool_use` parts; pi `thinking_delta`
-      + paired `tool_execution_start`/`_end`. Contracts: `stream/thinking/delta`,
-      `stream/content/block`, `AgentStreamEvent 'thinking'|'block'`,
-      `Message.thinking?`/`blocks?` (persisted, survive `turn/list`). Verified by
-      running real turns (codex-cli 0.139, opencode 1.17.4, pi 0.79.1) and
-      inspecting the JSON. Codex `file_change` now renders a real per-line diff
-      (the adapter runs `git diff HEAD -- <path>`). Richer per-file diff via a
-      dedicated `git/diff` viewer is DONE (maintainer-validated): `git/diff`
-      takes an optional `path` (with untracked-file synthesis) and the phone
-      renders it in `GitDiffView` — test-backed in
-      `bridge/test/git/git-service.test.ts`. The git handler also gained
-      `stage`/`unstage`/`discard`/`createPr`/`undoCommit`/`branches`/
-      `switchBranch` for the mobile source-control screen.
-- [x] **Gemini CLI** — `src/adapters/gemini-adapter.ts`. WIRED via
-      `gemini -p <prompt> --output-format stream-json --approval-mode <mode> --skip-trust`
-      (validated live against gemini-cli 0.45.2 with flash-lite). Parses the NDJSON
-      stream (`init` → captures `session_id` + requested model; `message`
-      `role:assistant` `delta:true` → streamed text; `tool_use`+`tool_result` paired
-      by `tool_id` → structured blocks; `result` → completion with
-      `stats.total_tokens` usage). **Session continuity:** first turn opens a session
-      under a generated UUID (`--session-id <uuid>`); later turns `--resume <uuid>`
-      (verified: a fact set on turn 1 is recalled on turn 2). The native session id
-      is tracked per thread (`nativeSessionId`). **Model discovery:** the CLI has no
-      headless enumerate command (like Claude Code — only Codex via app-server
-      and OpenCode/pi via their list commands can enumerate), so `listModels()`
-      returns a **curated set** sourced from the CLI's own constants
-      (`packages/core/src/config/models.ts` in google-gemini/gemini-cli): the
-      `auto` routing alias *(default)* plus every id in the CLI's
-      `VALID_GEMINI_MODELS` set — Pro (`gemini-3-pro-preview`,
-      `gemini-3.1-pro-preview`, `gemini-3.1-pro-preview-customtools`,
-      `gemini-2.5-pro`), Flash (`gemini-3-flash-preview`, `gemini-3.5-flash`,
-      `gemini-3-flash`, `gemini-2.5-flash`), Flash-Lite
-      (`gemini-3.1-flash-lite`), and the *Experimental* Gemma ids
-      (`gemma-4-31b-it`, `gemma-4-26b-a4b-it`, gated by the CLI's
-      `experimentalGemma` flag — prefixed with "Experimental" in their
-      `displayName`). The CONCRETE model a run resolves to is read from
-      `stats.models` and emitted as `model_resolved`. **Usage:**
-      `stats.total_tokens` + a 1M context
-      window → the context meter. **Diffs/tools:** `gemini-tools.ts` maps
-      `write_file`→write-diff, `replace`→edit-diff, `run_shell_command`→command
-      block, others→generic tool block; the internal `update_topic` tool is filtered.
-      Sandbox posture via `agents['gemini-cli'].permissionMode` (default `acceptEdits`
-      → `--approval-mode auto_edit`; `default` → `plan` read-only; `bypassPermissions`
-      → `yolo`). Binary resolved by `resolve-gemini.ts` (`node <@google/gemini-cli/
-      bundle/gemini.js>`). **Mobile linkage:** none — Gemini is exposed through the
-      generic `agent/list`/`agent/models` contract the phone already renders (model
-      picker, context meter, Work log/diffs); the phone needs no change to show it.
-      To VERIFY on device: pick Gemini for a thread, confirm streaming + the context
-      meter + a write/edit diff render. **Follow-ups (FOR-DEV):** (1) no reasoning
-      knob is advertised — the CLI exposes no `--thinking`/effort flag; revisit if one
-      appears (Gemini 2.5 has thinking budgets but no headless flag in 0.45.2). (2) ✅
-      DONE & validated end-to-end — add Gemini to the `session-jsonl-history` reader
-      (its on-disk session format); covered in `JSONL history fallback` below.
-- [x] **JSONL history fallback** (`session-jsonl-history`) — `turn/list` now falls
-      back to each agent's own on-disk session log when the `ThreadStore` has no
-      turns (bridge missed them / `threads.json` lost / session driven from a
-      terminal). `src/conversation/session-history.ts` (`SessionHistoryReader`)
-      reads the **real** per-agent formats (verified live on this machine, no
-      SQLite dep):
-        - **Claude Code** — `~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl`;
-          lines `{type:'user'|'assistant', message:{role, content:[{type:'text'|
-          'thinking'|…}]}}` (locates by scanning project dirs for the UUID file —
-          no need to reproduce Claude's lossy cwd-encoding).
-        - **Codex** — `~/.codex/sessions/<Y>/<M>/<D>/rollout-<ts>-<sessionId>.jsonl`;
-          `response_item` payloads `{type:'message', role, content:[{type:'input_text'|
-          'output_text', text}]}` (developer/system priming skipped).
-        - **OpenCode** — JSON store (not one file): `…/storage/message/<sessionId>/
-          <msgId>.json` + `…/storage/part/<msgId>/<partId>.json` (`{type:'text',text}`),
-          ordered by `time.created`. No `better-sqlite3` dependency.
-        - **pi** — `~/.pi/agent/sessions/<encoded-cwd>/<ts>_<sessionId>.jsonl`;
-          lines `{type:'message', message:{role, content:[{type:'text',text}]}}`.
-        - **Gemini CLI** — `~/.gemini/tmp/<projectHash>/chats/
-          session-<ts>-<shortId>.json` (verified gemini-cli 0.46.0); the 8-char
-          `<shortId>` is the FIRST 8 HEX CHARS of the full UUID session id with
-          dashes stripped. One JSON object per FILE: `{ sessionId, projectHash,
-          startTime, lastUpdated, messages:[{id, timestamp, type:'user'|'gemini'|
-          'info'|'error', content (string OR [{text}]), thoughts?}] }`. The CLI
-          may write MULTIPLE SNAPSHOTS per session id (each `--resume` / CLI
-          invocation re-snapshots the conversation); the reader collects every
-          `session-*-<shortId>.json` across every `<hash>/chats/` dir, keeps
-          only files whose top-level `sessionId` matches ours (shortId
-          collisions do happen), merges messages **deduplicated by message
-          `id`**, sorts by timestamp, maps `gemini`→assistant (joins
-          `thoughts[].description` into `thinking`), skips `info`/`error`.
-          Multi-file path cache (60s TTL). The native session id was already
-          persisted per thread by `AgentManager.setAgentSession`, so the
-          locator is ready — validated live by parsing a real on-disk
-          gemini-cli session (all turns + thinking extracted).
-      Locating the file needs the agent's **native** session id, so it is now
-      persisted per thread: adapters expose `nativeSessionId(threadId)`,
-      `AgentManager` writes it via `ThreadStore.setAgentSession` on turn end, and
-      the `turn/list` handler reads `getHistorySource` → `SessionHistoryReader`
-      (path cache, 60s TTL; paginated like the store). Best-effort + read-only:
-      tolerant of malformed lines, returns `null` (keeps the empty store result)
-      for unknown/unsupported agents or a missing log. Tested with per-format
-      fixtures **and** smoked against real on-disk logs for all four agents.
-      **Mobile linkage:** none — `turn/list` is unchanged on the wire; the phone
-      just sees history it previously couldn't. **Follow-ups:** Aider when its
-      adapter lands (Gemini already done); richer block/tool reconstruction
-      (DONE & validated end-to-end — the fallback now reconstructs
-      `command_execution` / `diff` / `tool` blocks for every supported agent
-      using the same `*-tools.ts` helpers the live path uses, so history
-      turns render the same Work log / Changed files as live turns; smoke-
-      tested against real on-disk logs: 44 blocks from one Gemini session,
-      26 blocks from one OpenCode session, 4 blocks from one Codex session).
-- [ ] **Antigravity CLI (`agy`) — investigated, NOT integrated yet (decided 2026-06-19).**
-      `agy` is Google's Antigravity CLI — a **distinct binary from Gemini CLI**
-      (different executable `~/AppData/Local/agy/bin/agy.exe` / `~/.local/bin/agy`,
-      different state dir `~/.gemini/antigravity-cli/`, different hook file
-      `~/.gemini/config/hooks.json`). It is **not** the `@google/gemini-cli`
-      `gemini` command and must NOT be wired through `gemini-adapter.ts`. Validated
-      on-machine against `agy` 1.0.3 (the official web docs are largely unreliable /
-      hallucinated — only trust the installed binary).
-      **Why deferred:** `agy`'s headless surface is too thin to map onto the rich
-      agent contract the phone renders (streaming, structured blocks, token usage,
-      model discovery, model selection, reasoning effort, interactive approvals,
-      plan/to-do). The architecture rule (`docs/agents.md`) forbids the SDK/REST
-      path (`antigravity-sdk-python` / the Antigravity REST API use a provider
-      API/keys), so we are limited to the **`agy` CLI over stdio** — which today
-      exposes none of those seams.
-      **Exhaustive flag surface (validated; a trailing bogus flag forces Go's
-      flag parser to reveal definedness with zero quota):** `--print`/`-p`/
-      `--prompt` (one-shot, **plain text only**), `--prompt-interactive`/`-i`,
-      `--continue`/`-c` + `--conversation <id>` (resume), `--add-dir`,
-      `--dangerously-skip-permissions`, `--sandbox`, `--print-timeout`,
-      `--log-file`; subcommands `changelog|help|install|plugin|update`. **Confirmed
-      ABSENT** (parser rejects): `--model`, `--json`, `--output-format`/`--output`,
-      `--stream`, `--reasoning`, `--thinking`, `--approval-mode`, `--list-models`,
-      `--resume`, `--session-id`, `-C`/`--cwd`.
-      **Capability gaps vs the Claude/Gemini adapters:**
-        - **Streaming / structured blocks** — ❌ `agy -p` rejects `--output-format`;
-          prints only the final assistant text (no `stream-json`, no `tool_use`/
-          `tool_result` events → no Work log / Changed-files blocks).
-        - **Token / context usage** — ❌ no machine-readable per-turn usage; only the
-          interactive TUI "Models & Quota" page.
-        - **Model discovery + selection** — ❌ no enumerate command and **no
-          `--model` flag**; the model is chosen in the TUI / settings, so neither the
-          `opencode`-style auto-list nor a per-turn `--model` override is possible.
-          (Per the official launch, Antigravity offers Gemini 3 Pro / Claude Sonnet
-          4.5 / GPT-OSS — but the CLI exposes no way to list or pick them headlessly.)
-        - **Reasoning effort** — ❌ no `--thinking`/`--reasoning`/effort flag.
-        - **Interactive approvals** — ⚠️ likely ❌. There IS a permission engine +
-          hooks (`~/.gemini/config/hooks.json`), but the events observed in use are
-          `PreInvocation` / `PostInvocation` / `Stop` / `PostToolUse` (the last is
-          **after** the tool runs — cannot gate). No **blocking pre-tool** event was
-          seen, and headless `-p` with an "ask" permission would hang (no TTY to
-          answer) → the only headless posture is `--dangerously-skip-permissions`
-          (auto-approve all, like OpenCode/pi), with no per-action gate to the phone.
-          Re-verify whether a blocking `PreToolUse`-style hook exists before relying
-          on this.
-        - **Permission posture** — ⚠️ coarse: only `--sandbox` vs
-          `--dangerously-skip-permissions` (no `plan`/read-only/acceptEdits split).
-        - **Plan / to-do (the uxnanmobile ask)** — ⚠️ the product has `/tasks` +
-          "Artifacts" (structured task lists), but they are **not emitted to stdout**
-          in `-p` mode, so there is nothing to surface to the phone headlessly.
-        - **On-disk history fallback** — ⚠️ `agy` stores history as **protobuf**
-          (`~/.gemini/antigravity-cli/brain/<uuid>/…` + `implicit/*.pb`), NOT the
-          Gemini `~/.gemini/tmp/.../chats/*.json` format, so the existing
-          `SessionHistoryReader` Gemini path does NOT apply; recovering history would
-          need reverse-engineering the `.pb` schema.
-        - **Continuity** — ✅ the one thing that maps cleanly: `--continue` /
-          `--conversation <id>`.
-      **Open blocker (validate before any integration):** `agy -p` produced **no
-      output to a piped (non-TTY) stdout** in repeated runs (90s and 170s timeouts) —
-      it appears to require a TTY or buffer until a long cold-start completes. The
-      bridge captures stdout via pipes (`defaultSpawn`), so even a text-only adapter
-      may need a pseudo-tty harness. Confirm with a pty before assuming `-p` is
-      pipe-drivable.
-      **Unblock conditions (then follow the "Adding the next agent" recipe above):**
-      `agy` ships (a) a machine-readable `--output-format json|stream-json` for
-      `-p`, AND/OR (b) an app-server/JSON-RPC turn protocol (as Codex did), AND/OR
-      (c) a documented blocking pre-tool hook event. Any of these would let a real
-      `antigravity-cli` adapter advertise the same seams the phone already renders.
-      Until then: no adapter, no `'antigravity-cli'` AgentId in `shared/` — adding a
-      degraded text-only agent now would ship something strictly worse than the
-      existing CLIs and miss every feature requested.
-- [ ] Later: Aider.
+3. Register it in `startBridge` with display metadata + availability. Then wire it
+   into `agent/models` (discovery), the `*-tools.ts` block mapper (structured
+   content), `SessionHistoryReader` (on-disk `turn/list` fallback), and approvals if
+   the CLI exposes a pre-tool channel.
+
+- [ ] **Aider** — the only remaining planned agent. Follow the recipe above.
+- [ ] **Antigravity CLI (`agy`) — investigated, deliberately NOT integrated**
+      (decided 2026-06-19; validated against `agy` 1.0.3 — trust the binary, the web
+      docs are unreliable). `agy` is a distinct binary from Gemini CLI (own exe/state
+      dir/hook file) and must NOT be wired through `gemini-adapter.ts`. Deferred
+      because its headless `-p` surface is too thin for the agent contract the phone
+      renders: **confirmed absent** `--model`, `--json`, `--output-format`,
+      `--stream`, `--thinking`, `--approval-mode`, `--list-models`, `--session-id`,
+      `-C/--cwd` → no streaming/structured blocks, no token usage, no model
+      discovery/selection, no reasoning knob, no blocking pre-tool hook (only
+      `Post*`), no headless plan/to-do, protobuf history (not the Gemini JSON
+      format). Only continuity maps (`--continue`/`--conversation`). **Open blocker:**
+      `agy -p` produced no output to a piped (non-TTY) stdout in repeated runs — may
+      need a pty harness. **Unblock when** `agy` ships a machine-readable
+      `--output-format json|stream-json`, and/or an app-server JSON-RPC turn protocol
+      (as Codex did), and/or a documented blocking pre-tool hook. Until then no
+      adapter and no `'antigravity-cli'` AgentId — a degraded text-only agent would be
+      strictly worse than the existing CLIs.
 
 ## Daemon lifecycle & ops
-- [x] **Single-instance lock + `stop`** (Phase 3) — `src/lock-file.ts`,
-      `src/cli.ts` (`bridge.lock` + SIGTERM).
-- [x] **`install-service` / `uninstall-service` autostart** — `src/service-installer.ts`
-      + `src/cli.ts`. Runs the bridge at logon **as the logged-in user, never
-      elevated** (`node <cli.js> start`, works global-install or dev). Per platform:
-        - **Windows:** a **Task Scheduler** logon task (`schtasks /SC ONLOGON /RL
-          LIMITED`); **falls back to a hidden Startup-folder `.vbs`** when Task
-          Scheduler is denied (restricted accounts/policy) — no admin, no console
-          window. Validated end-to-end on Windows.
-        - **macOS:** a per-user **LaunchAgent** (`RunAtLoad` + `KeepAlive`).
-        - **Linux:** a **systemd `--user`** unit (`loginctl enable-linger` tip
-          printed). `buildServicePlan` is pure (unit-tested per platform).
-      Follow-ups (FOR-DEV): **relay autostart** (only needed for remote/off-LAN —
-      LAN-only needs no relay); bind the LAN server to the LAN iface only.
-- [x] **File logging** (Phase 7) — `src/logger.ts` `createFileLogger`
-      (`~/.uxnan/logs/bridge-YYYY-MM-DD.log`, daily rotation + secret redaction).
-      Follow-up: size-based rotation + retention/pruning of old log files.
-- [ ] **Version** — `src/version.ts` (source from package.json at build).
 
-## Packaging (Phase 7 — npm publish readiness)
-- [x] `bin`, `files`, `engines`, `repository`, `prepublishOnly: tsc` set on all
-      three packages.
-- [ ] **Before `npm publish`:** publish `@uxnan/shared` first, then change the
-      bridge/relay dep `"@uxnan/shared": "*"` → the real `"^0.x"` version (the `*`
-      workspace spec does NOT resolve from the public registry). Same for the
-      bridge's `"uxnan-relay": "*"` devDependency (drop it or pin it; it's only
-      used by the e2e test).
-- [ ] Verify a packed install end-to-end: `npm pack` each package, then
-      `npm install -g ./uxnan-bridge-*.tgz` and run `uxnan-bridge qr`.
-- [ ] Ensure the `scripts/*.sh` keep their executable bit when published
-      (npm preserves mode; verify on a packed tarball).
+- [ ] **Log size-rotation + retention** — `createFileLogger` does daily rotation +
+      secret redaction; add size-based rotation + pruning of old log files.
+- [ ] **Relay autostart** — only needed for remote/off-LAN (LAN-only needs no relay).
 
-## CI/CD & release (planned — FOR-DEV; decided 2026-06)
-> Clarification (the recurring "build per platform vs npm packaging?" question):
-> the bridge/relay/shared are **pure Node.js/TypeScript** packages — NOT
-> per-platform compiled binaries. The only native bits (`@napi-rs/keyring`,
-> `firebase-admin`) are `optionalDependencies` with JS fallbacks. So `tsc` output is
-> identical on every OS and the **distribution artifact is the npm package**, not an
-> OS-specific binary. "Build for each platform" in the compiled-binary sense does
-> NOT apply here (that's the Tauri desktop / Flutter mobile world).
->
-> **Recommended GitHub Actions (do these, in order):**
-> 1. **CI — on push / PR.** Matrix `os: [ubuntu, macos, windows] × node: [20, 22]`:
->    `npm ci` → `npm run build` (tsc across workspaces) → `npm run typecheck` →
->    `prettier --check` → `npm test` per package. The **OS matrix is the point** —
->    the bridge has per-OS code (`service-installer`, path handling, mDNS, keyring),
->    so green-on-all-three is the real gate. This is the "verify tests + no errors
->    before build" step you want; a release must not run if this fails.
-> 2. **Release — on tag `v*`.** Re-run the gate (1), then `npm publish` in dependency
->    order: `@uxnan/shared` first, then `uxnan-bridge` + `uxnan-relay` (pin their
->    `"@uxnan/shared": "*"` → the published `^0.x` first — see *Packaging*). Use an
->    `NPM_TOKEN` secret; enable npm provenance.
-> 3. **Optional, later — standalone single binary.** ONLY if a no-Node install is
->    wanted: Node SEA (`--experimental-sea-config`) or an equivalent bundler emits
->    per-OS executables (win/mac/linux) as GitHub Release assets. This is the only
->    part that needs a real per-platform build matrix; it is polish, not required for
->    alpha.
->
-> **Verdict:** the professional baseline for this Node monorepo is **(1) CI matrix +
-> (2) npm release**, not per-OS binaries. Add (3) only if you decide to ship to users
-> without Node installed. Workflows are NOT created yet — this annotation prepares
-> the ground; implement `.github/workflows/{ci,release}.yml` when ready.
+## Packaging — npm publish readiness
 
-## Relay hardening (relay-only; see `relay/FOR-DEV.md` for the authoritative list)
-- [x] **Per-IP rate limiting** (Phase 3) — `relay/src/relay-server.ts`.
-- [x] **Push endpoints** (`/push/*`, FCM) — DONE (Phase 6). Push is now bridge-direct
-      by default; the relay endpoints are the optional hosted fallback.
-- [→bridge] **Pairing-code resolution** — manual-code pairing is now a **bridge**
-      feature (`src/pairing/` + `/pair/resolve` + mDNS); the relay
-      `/trusted-session/resolve` is superseded except for hosted off-LAN pairing.
-- [ ] **Multi-session `mac` registration** — relay-only; deferred unless you host a
-      shared relay (`relay/FOR-DEV.md`).
+`bin`/`files`/`engines`/`repository`/`prepublishOnly` are set on all three packages,
+and `.github/workflows/release-npm.yml` automates the tag-driven publish. What
+remains is the **first actual publish**:
 
-## Contracts verified
-- [x] **Pairing QR encoding** — `@uxnan/shared` now emits Base64 JSON matching the
-      mobile `PairingPayload.fromQrString` (Phase 3).
+- [ ] **Pin `@uxnan/shared` for the registry** — publish `@uxnan/shared` first, then
+      change the bridge/relay dep `"@uxnan/shared": "*"` → `"^0.x"` (the `*` workspace
+      spec does NOT resolve from npm). The release workflow does this pin at publish
+      time; verify it. Same for the bridge's `"uxnan-relay": "*"` devDependency (drop
+      or pin; only the e2e test uses it).
+- [ ] **Packed-install smoke** — `npm pack` each package, `npm install -g
+      ./uxnan-bridge-*.tgz`, run `uxnan-bridge qr`.
+- [ ] **Executable bit** — ensure `scripts/*.sh` keep their executable bit on the
+      packed tarball.
+- [ ] **OIDC publishing** — migrate from `NPM_TOKEN` to npm Trusted Publishing after
+      the first publish; enable provenance.
 
-## CI/CD status (2026-06-21) + deferred
-- ✅ **Verify workflow DONE** — `.github/workflows/ci-node.yml` runs
-  format/build/typecheck/test for shared+bridge+relay on `{ubuntu, windows}` ×
-  node `{20, 22}` (263 bridge tests green locally).
-- ✅ **version.ts stamped** — `BRIDGE_VERSION` now reads `package.json` at
-  runtime (the old FOR-DEV drift note is closed).
-- [ ] **npm release workflow** — publish `@uxnan/shared` first, pin
-      `@uxnan/shared` in bridge/relay, then publish `uxnan-bridge`/`uxnan-relay`
-      with `--tag alpha`; migrate from `NPM_TOKEN` to Trusted Publishing (OIDC)
-      after the first publish.
-- [ ] **CLI version-update notice** — DEFERRED. On startup, compare
-      `BRIDGE_VERSION` against the npm registry
-      (`https://registry.npmjs.org/uxnan-bridge`) and print a notice when newer
-      ("update with `npm i -g uxnan-bridge@latest`"); the user decides. No
-      auto-update. Lightweight fetch (dependency-minimal per AGENTS.md), silent
-      when offline.
+## Ops / nice-to-haves
 
-## FOR-DEV — echo-agent E2E tests flaky on Windows CI
-- [ ] The echo-agent E2E tests in `bridge/test/handlers/thread-handlers.test.ts`
-      (end-to-end turn routing + the approval round-trip over stdio)
-      intermittently never report `completed` on **Windows CI runners** — they
-      time out even at a 120s budget, while passing reliably on Linux CI and on
-      local Windows (the approval test runs in ~33 ms locally). They are skipped
-      on Windows CI only via `SKIP_ECHO_E2E_ON_WIN_CI`
-      (`process.platform === 'win32' && process.env.CI === 'true'`). Investigate
-      the Windows stdio approval race (`src/agents/`, `ProcessAgentAdapter`'s
-      stdin write + the approval round-trip) and remove the guard once fixed.
+- [ ] **CLI version-update notice** — on startup compare `BRIDGE_VERSION` against the
+      npm registry and print an upgrade hint (no auto-update; silent when offline).
+
+## Known issues
+
+- [ ] **Echo-agent E2E flaky on Windows CI** — the end-to-end turn-routing + approval
+      round-trip tests in `bridge/test/handlers/thread-handlers.test.ts` intermittently
+      never report `completed` on **Windows CI runners** (time out even at 120s), while
+      passing reliably on Linux CI and on local Windows (the approval test runs in
+      ~33 ms locally). Skipped on Windows CI only via `SKIP_ECHO_E2E_ON_WIN_CI`.
+      Investigate the Windows stdio approval race (`src/agents/`,
+      `ProcessAgentAdapter`'s stdin write + the approval round-trip) and remove the
+      guard once fixed.
+
+## Relay hardening (relay-only)
+
+Multi-session `mac` registration + auth-on-forwarding are relay-only and tracked in
+[`relay/FOR-DEV.md`](../relay/FOR-DEV.md) (the authoritative list). They do not block
+the bridge.
