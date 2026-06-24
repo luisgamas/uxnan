@@ -17,10 +17,10 @@ import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 /// flat list (no card chrome — matches the file browser's surface). The app
 /// bar carries two `IconSurface` toggles:
 ///
-///   - **Graph** — overlays a continuous, colored VS Code / GitKraken-style
-///     lane graph on the left of each row. Rows are flush (no gaps) so the
-///     lines connect seamlessly across the whole list, with bezier curves at
-///     branch/merge points.
+///   - **Graph** — overlays a continuous, colored VS Code-style swimlane graph
+///     on the left of each row. Fixed-height rows keep the dots aligned in
+///     lanes; lines connect across rows with rounded-step connectors and a
+///     branch-stable color per lane; merge nodes get a separate outer ring.
 ///   - **Compact** — a denser row layout.
 ///
 /// Backed by `git/log` (cursor pagination, 50/page) with **infinite scroll**
@@ -39,11 +39,7 @@ class GitHistoryScreen extends ConsumerStatefulWidget {
   final String? ref;
 
   /// Pushes the screen onto the navigator.
-  static Future<void> push(
-    BuildContext context, {
-    String? cwd,
-    String? ref,
-  }) {
+  static Future<void> push(BuildContext context, {String? cwd, String? ref}) {
     return Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => GitHistoryScreen(cwd: cwd, ref: ref),
@@ -127,9 +123,9 @@ class _GitHistoryScreenState extends ConsumerState<GitHistoryScreen> {
       _error = null;
     });
     try {
-      final result = await ref.read(gitActionManagerProvider).log(
-            GitLogParams(cwd: cwd, limit: _pageSize, ref: _viewingRef),
-          );
+      final result = await ref
+          .read(gitActionManagerProvider)
+          .log(GitLogParams(cwd: cwd, limit: _pageSize, ref: _viewingRef));
       if (!mounted) return;
       setState(() {
         _commits = result.commits;
@@ -154,9 +150,9 @@ class _GitHistoryScreenState extends ConsumerState<GitHistoryScreen> {
       _error = null;
     });
     try {
-      final result = await ref.read(gitActionManagerProvider).log(
-            GitLogParams(cwd: cwd, limit: _pageSize, ref: _viewingRef),
-          );
+      final result = await ref
+          .read(gitActionManagerProvider)
+          .log(GitLogParams(cwd: cwd, limit: _pageSize, ref: _viewingRef));
       if (!mounted) return;
       setState(() {
         _commits = result.commits;
@@ -179,9 +175,9 @@ class _GitHistoryScreenState extends ConsumerState<GitHistoryScreen> {
     if (cwd == null || cursor == null || _pageLoading || !_hasMore) return;
     setState(() => _pageLoading = true);
     try {
-      final result = await ref.read(gitActionManagerProvider).log(
-            GitLogParams(cwd: cwd, limit: _pageSize, cursor: cursor),
-          );
+      final result = await ref
+          .read(gitActionManagerProvider)
+          .log(GitLogParams(cwd: cwd, limit: _pageSize, cursor: cursor));
       if (!mounted) return;
       setState(() {
         _commits = [..._commits, ...result.commits];
@@ -233,10 +229,8 @@ class _GitHistoryScreenState extends ConsumerState<GitHistoryScreen> {
       isScrollControlled: true,
       showDragHandle: true,
       backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
-      builder: (_) => _BranchPickerSheet(
-        branches: branches,
-        selectedRef: _viewingRef,
-      ),
+      builder: (_) =>
+          _BranchPickerSheet(branches: branches, selectedRef: _viewingRef),
     );
     if (picked == null || !mounted) return;
     // `_RefChoice(ref: null)` means "back to HEAD".
@@ -474,12 +468,34 @@ class _CommitGraphRow extends StatelessWidget {
                       ),
                       const SizedBox(width: UxnanSpacing.xs),
                     ],
-                    for (final ref in row.commit.refs)
-                      Padding(
-                        padding: const EdgeInsets.only(right: UxnanSpacing.xs),
-                        child: CommitRefChip(refData: ref, dense: true),
+                    // A single, width-capped primary ref chip (+ "+N" when
+                    // there are more) so a tip with several refs can't overflow
+                    // the row. The full set shows in the list view and detail.
+                    if (row.commit.refs.isNotEmpty) ...[
+                      Flexible(
+                        flex: 0,
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxWidth: compact ? 100 : 130,
+                          ),
+                          child: CommitRefChip(
+                            refData: _primaryRef(row.commit.refs),
+                            dense: true,
+                          ),
+                        ),
                       ),
-                    Flexible(
+                      if (row.commit.refs.length > 1) ...[
+                        const SizedBox(width: UxnanSpacing.xs),
+                        Text(
+                          '+${row.commit.refs.length - 1}',
+                          style: textTheme.labelSmall?.copyWith(
+                            color: colors.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(width: UxnanSpacing.xs),
+                    ],
+                    Expanded(
                       child: Text(
                         row.commit.messageTitle,
                         maxLines: 1,
@@ -608,8 +624,9 @@ class _ShaBadge extends StatelessWidget {
       ),
       child: Text(
         shortSha,
-        style:
-            UxnanTypography.codeSmall.copyWith(color: colors.onSurfaceVariant),
+        style: UxnanTypography.codeSmall.copyWith(
+          color: colors.onSurfaceVariant,
+        ),
       ),
     );
   }
@@ -625,8 +642,10 @@ class _MergeBadge extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     return Container(
-      padding:
-          const EdgeInsets.symmetric(horizontal: UxnanSpacing.sm, vertical: 2),
+      padding: const EdgeInsets.symmetric(
+        horizontal: UxnanSpacing.sm,
+        vertical: 2,
+      ),
       decoration: BoxDecoration(
         color: colors.tertiaryContainer,
         borderRadius: const BorderRadius.all(UxnanRadius.sm),
@@ -709,8 +728,9 @@ class _CenteredState extends StatelessWidget {
             const SizedBox(height: UxnanSpacing.sm),
             Text(
               body!,
-              style: textTheme.bodyMedium
-                  ?.copyWith(color: colors.onSurfaceVariant),
+              style: textTheme.bodyMedium?.copyWith(
+                color: colors.onSurfaceVariant,
+              ),
               textAlign: TextAlign.center,
             ),
           ],
@@ -796,10 +816,7 @@ class _ViewingRefBanner extends StatelessWidget {
 /// Bottom sheet that lists the current HEAD plus the local and remote branches
 /// so the user can view the history from any ref (read-only — no checkout).
 class _BranchPickerSheet extends StatelessWidget {
-  const _BranchPickerSheet({
-    required this.branches,
-    required this.selectedRef,
-  });
+  const _BranchPickerSheet({required this.branches, required this.selectedRef});
 
   final GitBranchList branches;
   final String? selectedRef;
@@ -1098,17 +1115,29 @@ class _GraphPainter extends CustomPainter {
     ..style = PaintingStyle.stroke
     ..strokeCap = StrokeCap.round;
 
-  /// A straight vertical when the columns match, otherwise a smooth S-curve
-  /// (vertical tangents at both ends) — the rounded VS Code connector.
+  /// VS Code-style connector: a straight vertical when the columns match,
+  /// otherwise vertical → quarter-arc → short horizontal → quarter-arc →
+  /// vertical (the crisp rounded "step" at the row midpoint). Assumes
+  /// `from.dy <= to.dy` (all connectors run top→down in a row).
   void _connect(Canvas canvas, Paint paint, Offset from, Offset to) {
     if ((from.dx - to.dx).abs() < 0.5) {
       canvas.drawLine(from, to, paint);
       return;
     }
+    final dir = to.dx > from.dx ? 1.0 : -1.0;
     final midY = (from.dy + to.dy) / 2;
+    final r = [
+      5.0,
+      (to.dx - from.dx).abs() / 2,
+      (to.dy - from.dy).abs() / 2,
+    ].reduce((a, b) => a < b ? a : b);
     final path = Path()
       ..moveTo(from.dx, from.dy)
-      ..cubicTo(from.dx, midY, to.dx, midY, to.dx, to.dy);
+      ..lineTo(from.dx, midY - r)
+      ..quadraticBezierTo(from.dx, midY, from.dx + dir * r, midY)
+      ..lineTo(to.dx - dir * r, midY)
+      ..quadraticBezierTo(to.dx, midY, to.dx, midY + r)
+      ..lineTo(to.dx, to.dy);
     canvas.drawPath(path, paint);
   }
 
@@ -1199,6 +1228,23 @@ List<Color> _lanePalette(ColorScheme colors) => [
       UxnanColors.warning,
       UxnanColors.gitDeleted,
     ];
+
+/// Picks the most useful ref to show in the dense graph row: a local branch
+/// first, then a tag, then HEAD, then a remote branch.
+GitRef _primaryRef(List<GitRef> refs) {
+  const order = [
+    GitRefType.branch,
+    GitRefType.tag,
+    GitRefType.head,
+    GitRefType.remoteBranch,
+  ];
+  for (final type in order) {
+    for (final ref in refs) {
+      if (ref.type == type) return ref;
+    }
+  }
+  return refs.first;
+}
 
 /// Compact relative date — "just now", "5m", "2h", "3d", "Mar 4", "2022".
 String _relativeDate(DateTime when) {

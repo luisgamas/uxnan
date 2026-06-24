@@ -129,7 +129,47 @@ Map<String, dynamic> _commitToJson(GitCommit c) => {
       'committerTimestamp': c.committerTimestamp,
       'messageTitle': c.messageTitle,
       'messageBody': c.messageBody,
+      if (c.refs.isNotEmpty)
+        'refs': [
+          for (final r in c.refs) {'name': r.name, 'type': r.type.name},
+        ],
     };
+
+/// A commit decorated with several refs (HEAD + branch + remote) — used to
+/// check the graph row doesn't overflow on a narrow screen.
+List<GitCommit> _decoratedCommits() => [
+      const GitCommit(
+        sha: 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2',
+        shortSha: 'a1b2c3d',
+        parents: ['0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f'],
+        authorName: 'Luis',
+        authorEmail: 'luis@example.com',
+        authorTimestamp: 1735689600,
+        committerName: 'Luis',
+        committerEmail: 'luis@example.com',
+        committerTimestamp: 1735689600,
+        messageTitle: 'feat: a commit with a long title that should ellipsize',
+        messageBody: '',
+        refs: [
+          GitRef(name: 'HEAD', type: GitRefType.head),
+          GitRef(name: 'main', type: GitRefType.branch),
+          GitRef(name: 'origin/main', type: GitRefType.remoteBranch),
+        ],
+      ),
+      const GitCommit(
+        sha: '0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f',
+        shortSha: '0f0f0f0',
+        parents: [],
+        authorName: 'Luis',
+        authorEmail: 'luis@example.com',
+        authorTimestamp: 1735603200,
+        committerName: 'Luis',
+        committerEmail: 'luis@example.com',
+        committerTimestamp: 1735603200,
+        messageTitle: 'chore: initial commit',
+        messageBody: '',
+      ),
+    ];
 
 /// Wraps [child] in a [ProviderScope] that overrides the git providers with
 /// the supplied stubs.
@@ -230,6 +270,35 @@ void main() {
     // still render (now with the lane gutter).
     expect(find.byIcon(Icons.account_tree_rounded), findsOneWidget);
     expect(find.text('feat: history view'), findsOneWidget);
+  });
+
+  testWidgets('graph rows with several refs do not overflow when narrow',
+      (tester) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final manager = _stubManager(commits: _decoratedCommits());
+    addTearDown(manager.dispose);
+
+    await tester.pumpWidget(
+      _wrap(
+        manager: manager,
+        child: const GitHistoryScreen(cwd: '/repo'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Enable the graph overlay (gutter + ref chips compete for width here).
+    await tester.tap(find.byIcon(Icons.account_tree_outlined));
+    await tester.pumpAndSettle();
+
+    // No RenderFlex overflow was thrown during layout/paint.
+    expect(tester.takeException(), isNull);
+    // The primary ref ("main") chip renders, with a "+2" overflow marker.
+    expect(find.text('main'), findsOneWidget);
+    expect(find.text('+2'), findsOneWidget);
   });
 
   testWidgets('toggles compact density', (tester) async {

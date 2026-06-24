@@ -6,6 +6,19 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- **Git history graph: no more ref-chip overflow, cleaner lanes.** In graph
+  mode each row now shows a single width-capped primary ref chip (branch > tag
+  > HEAD > remote) plus a `+N` marker instead of every chip inline, so a tip
+  with several refs (e.g. `HEAD`/`main`/`origin/main`) can no longer overflow
+  the row; `CommitRefChip` ellipsizes when width-capped. The graph connectors
+  are now VS Code-style rounded steps (vertical → arc → vertical) instead of
+  swoopy S-curves. (The missing-commits / phantom-lane problem itself is fixed
+  bridge-side — `git/log` now uses topological order + offset pagination + a
+  merge-safe parser; this page just consumes the corrected, opaque cursor.)
+  - `presentation/screens/conversation/git/git_history_screen.dart`,
+    `widgets/commit_ref_chip.dart`; regression widget test for the overflow.
+
 ### Added
 - **Redesigned git history + full commit detail.** The history screen is now a
   single clean, flat list (no card chrome — matches the file browser) with two

@@ -34,10 +34,16 @@ class CommitRefChip extends StatelessWidget {
         children: [
           Icon(icon, size: dense ? 11 : 13, color: fg),
           const SizedBox(width: UxnanSpacing.xs),
-          Text(
-            refData.name,
-            style: (dense ? textTheme.labelSmall : textTheme.labelMedium)
-                ?.copyWith(color: fg, fontWeight: FontWeight.w600),
+          // Flexible + ellipsis so the chip truncates inside a width-capped
+          // slot (e.g. the dense graph row) instead of overflowing its row.
+          Flexible(
+            child: Text(
+              refData.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: (dense ? textTheme.labelSmall : textTheme.labelMedium)
+                  ?.copyWith(color: fg, fontWeight: FontWeight.w600),
+            ),
           ),
         ],
       ),
