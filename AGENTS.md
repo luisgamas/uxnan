@@ -465,6 +465,40 @@ If the documentation says one thing but the existing code does another:
 
 ---
 
+## Releases & versioning
+
+Components version **independently** via per-component git tags (`shared-v*`,
+`bridge-v*`, `relay-v*`, `desktop-v*`, `mobile-v*`). Pushing a component tag runs
+that component's `release-*.yml` workflow. The version convention, the release
+matrix, and the full step-by-step are in **[`VERSIONS.md`](VERSIONS.md)**
+(maintainer-only operational detail lives in the local, git-ignored
+`CI_CD_MONOREPOS.md`); the contributor-facing summary is in
+[`CONTRIBUTING.md`](CONTRIBUTING.md) → *Releases*.
+
+**Non-negotiable rules when cutting a release:**
+
+1. **The release version comes from the tag** (e.g.
+   `mobile-v0.0.1-alpha.20260621+5`). Tag a commit that is already green on CI.
+2. **Update `VERSIONS.md` and validate the deploy** — in the same change set, add or
+   refresh the component's row in the history table, **and confirm the release
+   actually shipped**: the `release-*.yml` run is green and the artifact landed (npm
+   published under the `alpha` dist-tag / the Play **internal** build uploaded / the
+   desktop GitHub **Release** draft exists). A red or half-finished release run is
+   **not** a release — fix it before recording the row.
+3. **Mobile — `pubspec.yaml` MUST match the tag (NON-NEGOTIABLE).** Before tagging
+   `mobile-v<name>+<build>`, bump `uxnanmobile/pubspec.yaml` `version:` to the same
+   `<name>+<build>`, then **commit AND push it** so the **tagged commit** carries the
+   matching version — the Flutter source never lags behind a released tag.
+   `release-mobile.yml` enforces this and **fails the release on a mismatch**.
+4. **Mobile — user-facing release notes.** `.github/whatsnew/whatsnew-en-US` and
+   `whatsnew-es-ES` must hold a short, **non-technical**, user-facing summary of the
+   new version's `CHANGELOG.md` (what changed, in plain language for end users),
+   **≤ 500 characters each** (Google Play's limit). `release-mobile.yml` validates
+   this and fails if a file is missing, empty, a leftover placeholder, or over the
+   limit. Update both before tagging.
+
+---
+
 ## Quick reference
 
 | I need to understand... | Document |
