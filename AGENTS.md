@@ -41,8 +41,9 @@ uxnan/
 ├── bridge/                        # Node.js daemon for PC
 ├── relay/                         # Node.js relay server
 ├── shared/                        # Shared contracts (types, JSON-RPC schemas)
-├── AGENTS.md                      # This file
+├── AGENTS.md                      # This file — the single source of truth
 ├── CLAUDE.md                      # Claude Code entry point — imports this file via `@AGENTS.md`
+├── GEMINI.md                      # Gemini CLI entry point — imports this file via `@AGENTS.md`
 └── README.md
 ```
 
@@ -252,8 +253,9 @@ Whenever the implementation references such a file that the **human** must provi
 3. **Config** — any wiring needed for it to work (e.g. uncomment a `pubspec.yaml` section then run `flutter pub get`, apply a gradle plugin, add an Xcode capability), or state "none".
 
 Rules:
-- Aggregate every open item in a `FOR-HUMAN.md` checklist at the component root (e.g. `uxnanmobile/FOR-HUMAN.md`).
+- Aggregate every **open** item in a `FOR-HUMAN.md` checklist at the component root (e.g. `uxnanmobile/FOR-HUMAN.md`).
 - Also place an inline comment with the `FOR-HUMAN:` token at the exact code/config location that needs the asset (e.g. a `# FOR-HUMAN:` comment in `pubspec.yaml`).
+- **Remove on completion:** once the asset is provided AND the feature works with it, delete the item from `FOR-HUMAN.md` and its inline marker in the same commit (see §2 → *completion lifecycle*). The file lists only what's still missing.
 - The whole project must always compile and run without these assets (use graceful fallbacks); a missing `FOR-HUMAN` asset may degrade a feature but must never break startup or the build.
 - **Never** commit real secrets, credentials, or keys — only the annotation describing what is needed and where.
 
@@ -267,7 +269,8 @@ When you intentionally defer implementation work that a developer/agent must do 
 
 Rules:
 - This is distinct from `FOR-HUMAN:` (which is for assets/secrets only a human can provide). `FOR-DEV:` is for code work the team will do.
-- Aggregate open items in a `FOR-DEV.md` checklist at the component root (e.g. `uxnanmobile/FOR-DEV.md`), and place an inline `// FOR-DEV:` comment at the exact deferral site.
+- Aggregate **open** items in a `FOR-DEV.md` checklist at the component root (e.g. `uxnanmobile/FOR-DEV.md`), and place an inline `// FOR-DEV:` comment at the exact deferral site.
+- **Remove on completion:** the moment an item is 100% implemented AND validated, delete it from `FOR-DEV.md` and remove its inline `// FOR-DEV:` marker in the same commit (see §2 → *completion lifecycle*). Don't accumulate `[x] DONE` items — the commit history is the record. Keep only what's genuinely still pending; a partial / unvalidated item stays with an honest status.
 - A `FOR-DEV:` marker is the only acceptable form of a deferred-work `TODO`/`FIXME` (see "Code quality"); plain `TODO`/`FIXME` without it are still not allowed.
 - Deferring must not break the build or tests: stubs either throw a clear `UnimplementedError`/`StateError` or are simply not wired yet.
 
@@ -295,13 +298,75 @@ Do not report a change as done without verifying:
 - If it's UI: did you test the full flow in a browser/emulator/device? Type checking and tests verify code correctness, not feature correctness.
 - If it's a contract change (`shared/`): do all consumers still compile?
 
-### 2. Update documentation
+### 2. Update documentation (in the same change set)
 
-Every change that modifies behavior, API, structure, or configuration must be reflected in documentation:
+Documentation lagging the code is the single biggest source of drift in this repo —
+treat a stale doc as a bug. **Every change that touches behavior, API, contracts,
+structure, configuration, build, status, or anything else that depends on the
+project MUST update the affected documentation in the SAME change set that lands
+the change** — never "later", never "in a follow-up someday". This applies to every
+kind of work: a feature, a fix, a refactor, a deferred-item completion, even a
+spec-only decision with no code.
 
-- **CHANGELOG.md** of the affected component — always, without exception. Format: [Keep a Changelog](https://keepachangelog.com/). Under the `[Unreleased]` section.
-- **Architecture documentation** — if the change contradicts or extends what's documented in `architecture/` or `uxnandesktop/architecture/`, update the corresponding document.
-- **Component README** — if the change affects how the component is installed, configured, or used.
+Match the change to the docs it touches (a single change often hits several rows):
+
+| What you changed | Update… |
+|---|---|
+| Behavior / API / a feature in one component | that component's **`CHANGELOG.md`** (`[Unreleased]`, [Keep a Changelog](https://keepachangelog.com/)) — **always, without exception** — plus its **`README.md`** and **`docs/`** if how it's installed / configured / used / run / tested / connected changed |
+| A cross-component contract (a `shared/` JSON-RPC method, E2EE message, notification, or model field) | the **`shared/`** types + validators, **`architecture/02a`/`02b`**, and the **`CHANGELOG.md` of every consumer** you touched this cycle (see *Cross-monorepo* below) |
+| Direction / an architecture decision (even spec-only, no code) | the affected **`architecture/`** page(s) **and** the executive summary at the top of that doc — see **§4 Spec drift control** |
+| Implementation state (a phase / feature flips planned → done, or done → reworked) | the matching **`architecture/00-index.md`** / **`04-technical-reference.md`** status table |
+| Finished a deferred item (100% + validated) | **remove** it from `FOR-DEV.md` / `FOR-HUMAN.md` — see *completion lifecycle* below |
+| Deferred new work / left a stub / found a missing human asset | **add** a `FOR-DEV.md` / `FOR-HUMAN.md` entry **and** the inline `FOR-DEV:` / `FOR-HUMAN:` marker at its site |
+
+Verify the docs the same way you verify code: re-read what you wrote against the
+real current state (counts, file names, flags, agent lists, paths). A doc that
+cites a number, a file, or a flag that no longer matches the code is drift.
+
+#### Cross-monorepo functionality (read this twice)
+
+Many features span monorepos — a bridge method the mobile app renders, an E2EE step
+both sides implement, push that lives in the bridge with a relay fallback, a desktop
+feature that will drive the embedded bridge. When you change one side of a shared
+feature:
+
+- update **`shared/`** (the contract source of truth) **and** the cross-component
+  spec (`architecture/02a` system architecture, `02b` contracts, `02e` bridge
+  integration), so the wire contract and the prose never disagree;
+- update the **`CHANGELOG.md` + `README.md`/`docs/` of *every* component the change
+  reaches** in the same cycle — a `shared/` change that bridge, relay, mobile and
+  desktop all consume must leave **none** of them stale;
+- if you can only land one side now, record the owed other-side work as a
+  **`FOR-DEV.md`** item on the component that still needs it, and link the two so the
+  next agent can close the loop.
+
+When in doubt about which monorepos a feature touches, trace it through `shared/`:
+whatever consumes the contract you changed has docs that may need updating too.
+
+#### FOR-DEV / FOR-HUMAN completion lifecycle (non-negotiable)
+
+`FOR-DEV.md` and `FOR-HUMAN.md` track **only open work**. They are not a changelog
+and must not accumulate a growing list of `[x] DONE` items.
+
+The moment an item is **100% implemented AND validated** (for `FOR-HUMAN`: the asset
+is provided and the feature works with it):
+
+1. land the code + all its doc updates (CHANGELOG / README / docs / architecture per
+   the table above), then
+2. in the **same commit**, **delete the item from `FOR-DEV.md` / `FOR-HUMAN.md`** and
+   remove the inline `FOR-DEV:` / `FOR-HUMAN:` marker at its code site.
+
+The commit history (the CHANGELOG entry + the deletion diff) is the permanent record
+that the item was completed and removed — that is intentional and sufficient; do not
+keep it listed "for posterity". A reader of `FOR-DEV.md` / `FOR-HUMAN.md` must see
+**only what is genuinely still pending**.
+
+Before deleting, re-confirm each *remaining* item is truly still open: a partial,
+happy-path-only, or not-yet-device-verified item **stays**, with an honest status —
+don't delete work that only looks done. Conversely, don't leave a fully-done item
+sitting in the file because removing it feels like losing information; the history
+holds it. (Division of labor: `architecture/` + `CHANGELOG.md` record *what shipped*;
+`FOR-DEV.md` / `FOR-HUMAN.md` record only *what's left*.)
 
 ### 3. Do not commit or push
 
@@ -321,12 +386,13 @@ This applies always, regardless of the change's size. A typo fix requires the sa
 The architecture/ folders are the **source of truth** for cross-component
 concerns (E2EE protocol, JSON-RPC contracts, the bridge spec §5.8, the relay
 spec §5.10, the desktop three-panel ADE, the Flutter Clean Architecture, etc.).
-The CHANGELOG.md and FOR-DEV.md files in each monorepo record what actually
-happened. The two MUST stay in sync.
+The `CHANGELOG.md` of each monorepo records what shipped; `FOR-DEV.md` /
+`FOR-HUMAN.md` track only what's left (see §2 → *completion lifecycle*). The spec
+and the code MUST stay in sync.
 
-**Rule (non-negotiable):** every time a `FOR-DEV.md` item is closed with a
-`DONE` / `DONE & validated end-to-end` marker (or any equivalent: "landed",
-"wired", "implemented"), the same change MUST be reflected in the relevant
+**Rule (non-negotiable):** every time a `FOR-DEV.md` item is **completed** (and
+therefore removed per §2's completion lifecycle — "landed", "wired", "implemented",
+"done & validated"), the same change MUST be reflected in the relevant
 `architecture/` document in the same change set — **not only in the CHANGELOG**.
 The CHANGELOG entry is not a substitute for the spec.
 
@@ -378,8 +444,8 @@ If the documentation says one thing but the existing code does another:
 3. Do not silently "fix" discrepancies — communicate them.
 
 **Ongoing drift control** (spec must not lag the code): see
-*"Spec drift control (non-negotiable)"* below — every `FOR-DEV.md → DONE`
-MUST be reflected in `architecture/` in the same change set.
+*"Spec drift control (non-negotiable)"* below — every completed-and-removed
+`FOR-DEV.md` item MUST be reflected in `architecture/` in the same change set.
 
 ---
 
