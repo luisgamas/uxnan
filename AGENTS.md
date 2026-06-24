@@ -42,7 +42,7 @@ uxnan/
 ├── relay/                         # Node.js relay server
 ├── shared/                        # Shared contracts (types, JSON-RPC schemas)
 ├── AGENTS.md                      # This file
-├── CLAUDE.md                      # Points to AGENTS.md
+├── CLAUDE.md                      # Claude Code entry point — imports this file via `@AGENTS.md`
 └── README.md
 ```
 
