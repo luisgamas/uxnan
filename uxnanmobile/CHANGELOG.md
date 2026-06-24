@@ -7,6 +7,21 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Redesigned git history + full commit detail.** The history screen is now a
+  single clean, flat list (no card chrome — matches the file browser) with two
+  app-bar `IconSurface` toggles: **graph** (a VS Code-style swimlane overlay —
+  fixed-height rows so dots align, branch-stable colors that follow a branch
+  across columns, smooth branch/merge curves, and a distinct merge node = solid
+  dot + separate outer ring) and **compact** density. Branch/tag/HEAD chips
+  (from the new `GitCommit.refs`), a colored short-SHA badge + green/red `+/−`
+  on each row, **infinite scroll** + a **back-to-top** FAB, and a *Load older
+  commits* footer. Tapping a commit opens a new full-screen
+  **`GitCommitDetailScreen`** (via `git/commitShow`): full message, ref chips,
+  author/committer/date, copyable SHA, parents, stats, the **file list**
+  (status + per-file `+/-` + rename `from <old>`), and the **complete unified
+  diff** (colored, horizontally scrollable, truncation notice).
+  - `presentation/screens/conversation/git/git_history_screen.dart` (rewrite),
+    `git_commit_detail_screen.dart` (new), `widgets/commit_ref_chip.dart` (new).
 - **File browser: "Collapse all folders" action.** A new `IconSurface`
   (`unfold_less`) in the file browser app bar collapses every expanded
   directory in one tap; it only appears when at least one folder is open.
