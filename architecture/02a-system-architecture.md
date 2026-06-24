@@ -1601,19 +1601,28 @@ async function handleGitCreateBranch({ cwd, name }) { ... }
 async function handleGitCreateWorktree({ cwd, branch, path, managed }) { ... }
 async function handleGitStackedPublish({ cwd, message, remote, branch }) { ... }
 async function handleGitLog({ cwd, limit, cursor, ref }) {
-  // git log --format=...%x1e -z --shortstat -n (limit+1) [cursor^|ref]
+  // git log --format=...%x1e --decorate=full -z --shortstat -n (limit+1) [cursor^|ref]
   // Paginación por cursor: cursor^ excluye el cursor y devuelve los commits
   // estrictamente más antiguos. Devuelve {commits, hasMore, nextCursor}.
+  // %D (--decorate=full) → refs[] por commit (HEAD/ramas/remotas/tags).
   // Repo fresco (sin HEAD) → {commits:[], hasMore:false} (no error).
+}
+async function handleGitCommitShow({ cwd, sha }) {
+  // git show -s --decorate=full --format=...  → metadata (incl. refs[])
+  // git show --name-status --numstat -M       → files[] (status + oldPath en
+  //   renames + additions/deletions por archivo)
+  // git show --format= -M                      → diff unificado completo
+  // Devuelve { commit, files, diff, diffTruncated? } (diff capado ~400 KB).
 }
 ```
 
 El método `git/log` es la fuente de la pantalla de historial de commits
 (`GitHistoryScreen` en `presentation/screens/conversation/git/`): la app
-lo llama al abrir y en cada `loadMoreHistory`, pasando el `nextCursor`
-de la página anterior como `cursor`. `parents[]` es lo que alimenta la
-vista gráfico (GitKraken-style) — cada parent es un "lane" donde se
-dibuja la línea.
+lo llama al abrir y al acercarse al final del scroll (paginación incremental),
+pasando el `nextCursor` de la página anterior como `cursor`. `parents[]`
+alimenta la vista gráfico (cada parent es un "lane") y `refs[]` aporta los
+chips de rama/tag y el resaltado de HEAD. `git/commitShow` alimenta el detalle
+de un commit (archivos tocados con +/- y diff completo).
 
 **UI:** `GitHistoryScreen` se abre desde un `IconSurface` `history_rounded`
 en la app-bar de `GitScreen` (solo visible cuando hay un repositorio
@@ -1621,17 +1630,22 @@ abierto). La pantalla tiene dos vistas conmutables por un
 `ConnectedButtonGroup` (spec §4.5, reemplazo de segmented buttons):
 
 - **List** — lista cronológica de commits (mensaje, autor, fecha
-  relativa, badge "Merge" si tiene más de un padre, +/- stats).
+  relativa, chips de rama/tag desde `refs[]`, badge "Merge" si tiene más de
+  un padre, +/- stats).
 - **Graph** — GitKraken-style con lanes asignadas por algoritmo
   (cada commit ocupa la lane del parent que continúa; los merge parents
-  abren nuevas lanes) y curvas Bézier que conectan padres con hijos.
+  abren nuevas lanes), líneas continuas coloreadas por lane (segmentos
+  superior+inferior que conectan filas, incl. lanes de paso) y curvas en
+  branch/merge.
 
-Ambas vistas comparten los mismos datos y la misma paginación cursor-based
-(50 commits por página, botón *Load older commits*). Tocar un commit abre
-un bottom sheet con el mensaje completo, padres, stats, y las acciones
-**Copy SHA** + **Copy message** (con SnackBar de confirmación).
-Pull-to-refresh recarga la primera página. Sin estado intermedio
-riesgoso: el `git/log` es lectura pura, no toca `git/status`.
+Ambas vistas comparten los mismos datos y paginación cursor-based con **scroll
+infinito** (carga al acercarse al final) + un FAB **volver-arriba** tras
+desplazarse. La app-bar ofrece **vista compacta** (densidad) y **mostrar/ocultar
+grafo**. Tocar un commit abre un bottom sheet con el mensaje completo, refs,
+padres, stats, **la lista de archivos (status + +/- por archivo) y el diff
+completo** (vía `git/commitShow`), más **Copy SHA** + **Copy message**.
+Pull-to-refresh recarga la primera página. `git/log` y `git/commitShow` son
+lectura pura: no tocan `git/status`.
 
 La implementación sigue el sistema Neural Expressive
 (`docs/neural-expressive-design.md`): `ExpressiveCard` (24 dp outer,

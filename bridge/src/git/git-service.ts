@@ -11,6 +11,8 @@ import type {
   GitBranchResult,
   GitChangedFile,
   GitCommit,
+  GitCommitDetails,
+  GitCommitFile,
   GitCommitResult,
   GitDiff,
   GitDiffTotals,
@@ -19,6 +21,7 @@ import type {
   GitPrResult,
   GitPullResult,
   GitPushResult,
+  GitRef,
   GitRepoStatus,
   GitWorktreeResult,
 } from '@uxnan/shared';
@@ -102,11 +105,16 @@ export class GitService {
       '%cn', // committer name
       '%ce', // committer email
       '%ct', // committer date (unix seconds)
+      '%D', // ref decoration (branches, tags, HEAD) — comma-separated
       '%B', // raw message (title + body, separated by a blank line)
     ].join('%x00');
     const args = [
       'log',
       `--format=${format}%x1e`,
+      // Full ref names so `%D` is unambiguous (refs/heads vs refs/remotes vs
+      // refs/tags) — a local branch named `feat/x` won't be mistaken for a
+      // remote branch.
+      '--decorate=full',
       '-z',
       '--shortstat',
       '-n',
@@ -129,6 +137,96 @@ export class GitService {
       }
       throw err;
     }
+  }
+
+  /**
+   * Returns the full detail of a single commit: its metadata (incl. refs), the
+   * files it touched with per-file +/- counts, and the complete unified diff
+   * (capped at ~400 KB so a huge commit can't overwhelm the transport). Powers
+   * the mobile commit-detail view (`git/commitShow`).
+   */
+  async commitShow(cwd: string, sha: string): Promise<GitCommitDetails> {
+    const metaFormat = [
+      '%H',
+      '%h',
+      '%P',
+      '%an',
+      '%ae',
+      '%at',
+      '%cn',
+      '%ce',
+      '%ct',
+      '%D',
+      '%B',
+    ].join('%x00');
+    const { stdout: metaOut } = await runGit(cwd, [
+      'show',
+      '-s',
+      '--decorate=full',
+      `--format=${metaFormat}%x1e`,
+      sha,
+    ]);
+    const commit = parseCommitMeta(metaOut);
+    if (!commit) {
+      throw new GitCommandError('git show failed', `no commit found for '${sha}'`, null);
+    }
+    const files = await this.#commitFiles(cwd, sha);
+    const { stdout: diffOut } = await runGit(cwd, ['show', '--no-color', '--format=', '-M', sha]);
+    const diffCap = 400_000;
+    const diffTruncated = diffOut.length > diffCap;
+    const diff = diffTruncated ? diffOut.slice(0, diffCap) : diffOut;
+    return { commit, files, diff, ...(diffTruncated ? { diffTruncated: true } : {}) };
+  }
+
+  /**
+   * Files touched by [sha], joining `--name-status` (status + path, with
+   * rename detection) with `--numstat` (+/- counts), keyed by the new path.
+   */
+  async #commitFiles(cwd: string, sha: string): Promise<GitCommitFile[]> {
+    const [{ stdout: nameStatus }, { stdout: numstat }] = await Promise.all([
+      runGit(cwd, ['show', '--name-status', '--format=', '-M', sha]),
+      runGit(cwd, ['show', '--numstat', '--format=', '-M', sha]),
+    ]);
+    const counts = new Map<string, { additions: number; deletions: number; binary: boolean }>();
+    for (const line of numstat.split('\n')) {
+      if (!line.trim()) continue;
+      const cols = line.split('\t');
+      if (cols.length < 3) continue;
+      const add = cols[0] ?? '';
+      const del = cols[1] ?? '';
+      const path = renameNewPath(cols.slice(2).join('\t'));
+      counts.set(path, {
+        additions: add === '-' ? 0 : Number(add) || 0,
+        deletions: del === '-' ? 0 : Number(del) || 0,
+        binary: add === '-' && del === '-',
+      });
+    }
+    const files: GitCommitFile[] = [];
+    for (const line of nameStatus.split('\n')) {
+      if (!line.trim()) continue;
+      const cols = line.split('\t');
+      const code = cols[0] ?? '';
+      const status = mapNameStatus(code);
+      let path: string;
+      let oldPath: string | undefined;
+      if ((code.startsWith('R') || code.startsWith('C')) && cols.length >= 3) {
+        oldPath = cols[1];
+        path = cols[2] ?? '';
+      } else {
+        path = cols[1] ?? '';
+      }
+      if (!path) continue;
+      const c = counts.get(path) ?? { additions: 0, deletions: 0, binary: false };
+      files.push({
+        path,
+        ...(oldPath ? { oldPath } : {}),
+        status,
+        additions: c.additions,
+        deletions: c.deletions,
+        ...(c.binary ? { binary: true } : {}),
+      });
+    }
+    return files;
   }
 
   async commit(cwd: string, message: string, paths?: string[]): Promise<GitCommitResult> {
@@ -570,6 +668,7 @@ function parseLogOutput(stdout: string, limit: number): GitLogResult {
       committerName,
       committerEmail,
       committerTs,
+      decorationRaw,
       messageRaw,
     ] = parts;
     if (!sha) continue;
@@ -594,6 +693,7 @@ function parseLogOutput(stdout: string, limit: number): GitLogResult {
         break;
       }
     }
+    const refs = parseRefs(decorationRaw ?? '');
     const commit: Omit<GitCommit, 'stats'> = {
       sha: sha.trim(),
       shortSha: shortSha?.trim() ?? sha.trim().slice(0, 7),
@@ -606,6 +706,7 @@ function parseLogOutput(stdout: string, limit: number): GitLogResult {
       committerTimestamp: Number(committerTs) || Number(authorTs) || 0,
       messageTitle,
       messageBody,
+      ...(refs.length > 0 ? { refs } : {}),
     };
     parsed.push({ commit, shortstat: '' });
   }
@@ -633,6 +734,131 @@ function parseLogOutput(stdout: string, limit: number): GitLogResult {
     hasMore,
     ...(nextCursor ? { nextCursor } : {}),
   };
+}
+
+/**
+ * Parses a single `git show -s --format=...%x1e` record (the same field
+ * layout as {@link GitService.log}, including the `%D` decoration) into commit
+ * metadata. Returns undefined for an empty payload.
+ */
+function parseCommitMeta(stdout: string): Omit<GitCommit, 'stats'> | undefined {
+  const record = stdout.replace(/\x1e[\s\S]*$/, '');
+  if (!record.trim()) return undefined;
+  const parts = record.split('\x00');
+  const [sha, shortSha, parentsRaw, an, ae, at, cn, ce, ct, decorationRaw, messageRaw] = parts;
+  if (!sha) return undefined;
+  const parents = parentsRaw ? parentsRaw.trim().split(/\s+/).filter(Boolean) : [];
+  const message = (messageRaw ?? '').replace(/\n$/, '');
+  const messageLines = message.split('\n');
+  const messageTitle = messageLines[0] ?? '';
+  let messageBody = '';
+  for (let i = 1; i < messageLines.length; i++) {
+    if (messageLines[i] === '' && i + 1 < messageLines.length) {
+      messageBody = messageLines
+        .slice(i + 1)
+        .join('\n')
+        .trim();
+      break;
+    }
+  }
+  const refs = parseRefs(decorationRaw ?? '');
+  return {
+    sha: sha.trim(),
+    shortSha: shortSha?.trim() ?? sha.trim().slice(0, 7),
+    parents,
+    authorName: an ?? '',
+    authorEmail: ae ?? '',
+    authorTimestamp: Number(at) || 0,
+    committerName: cn ?? an ?? '',
+    committerEmail: ce ?? ae ?? '',
+    committerTimestamp: Number(ct) || Number(at) || 0,
+    messageTitle,
+    messageBody,
+    ...(refs.length > 0 ? { refs } : {}),
+  };
+}
+
+/**
+ * Parses git's `%D` decoration into structured refs. Handles the full-ref form
+ * (`HEAD -> refs/heads/main, refs/remotes/origin/main, refs/tags/v1`) produced
+ * by `--decorate=full`, and degrades gracefully to short names.
+ */
+function parseRefs(decoration: string): GitRef[] {
+  const trimmed = decoration.trim();
+  if (!trimmed) return [];
+  const refs: GitRef[] = [];
+  const seen = new Set<string>();
+  const add = (name: string, type: GitRef['type']): void => {
+    const key = `${type}:${name}`;
+    if (name && !seen.has(key)) {
+      seen.add(key);
+      refs.push({ name, type });
+    }
+  };
+  for (const rawToken of trimmed.split(',')) {
+    let token = rawToken.trim();
+    if (!token) continue;
+    const arrow = token.indexOf(' -> ');
+    if (arrow !== -1) {
+      add('HEAD', 'head');
+      token = token.slice(arrow + 4).trim();
+    }
+    if (token === 'HEAD') {
+      add('HEAD', 'head');
+    } else if (token.startsWith('refs/heads/')) {
+      add(token.slice('refs/heads/'.length), 'branch');
+    } else if (token.startsWith('refs/remotes/')) {
+      const name = token.slice('refs/remotes/'.length);
+      if (!name.endsWith('/HEAD')) add(name, 'remoteBranch');
+    } else if (token.startsWith('refs/tags/')) {
+      add(token.slice('refs/tags/'.length), 'tag');
+    } else if (token.startsWith('tag: ')) {
+      // `--decorate=full` emits `tag: refs/tags/<name>`; strip both prefixes.
+      let name = token.slice(5).trim();
+      if (name.startsWith('refs/tags/')) name = name.slice('refs/tags/'.length);
+      add(name, 'tag');
+    } else {
+      add(token, token.includes('/') ? 'remoteBranch' : 'branch');
+    }
+  }
+  return refs;
+}
+
+/** Maps a `git --name-status` code (`A`, `M`, `R100`, …) to a {@link GitFileStatus}. */
+function mapNameStatus(code: string): GitFileStatus {
+  switch (code[0]) {
+    case 'A':
+      return 'added';
+    case 'D':
+      return 'deleted';
+    case 'R':
+    case 'C':
+      return 'renamed';
+    case 'U':
+      return 'conflicted';
+    case 'M':
+    case 'T':
+    default:
+      return 'modified';
+  }
+}
+
+/**
+ * Resolves git's numstat rename path notation to the new path:
+ * `old => new` → `new`, and `pre/{old => new}/post` → `pre/new/post`.
+ */
+function renameNewPath(raw: string): string {
+  const path = raw.trim();
+  if (!path.includes('=>')) return path;
+  const brace = path.match(/^(.*)\{(.*) => (.*)\}(.*)$/);
+  if (brace) {
+    const pre = brace[1] ?? '';
+    const newMid = brace[3] ?? '';
+    const post = brace[4] ?? '';
+    return `${pre}${newMid}${post}`.replace(/\/{2,}/g, '/');
+  }
+  const plain = path.split(' => ');
+  return (plain[1] ?? path).trim();
 }
 
 function mapStatus(xy: string): GitFileStatus {

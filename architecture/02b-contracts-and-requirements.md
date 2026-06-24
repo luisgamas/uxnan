@@ -141,7 +141,8 @@ git/switchBranch        -> cambiar de rama (con auto-stash)
 git/revert              -> revertir el ultimo commit (git revert, preserva historia)
 git/deleteBranch        -> eliminar rama (refusa unmerged salvo force)
 git/removeWorktree      -> eliminar worktree (refusa dirty salvo force)
-git/log                -> historial de commits (paginado por cursor; parents[] para la vista gráfico)
+git/log                -> historial de commits (paginado por cursor; parents[] para la vista gráfico; refs[] = decoración HEAD/ramas/tags por commit, vía `--decorate=full`)
+git/commitShow         -> detalle completo de un commit { sha }: metadata (incl. refs[]), files[] (status + oldPath en renames + additions/deletions por archivo) y diff unificado completo (capado ~400 KB → diffTruncated)
 ```
 
 **Workspace (9):**
