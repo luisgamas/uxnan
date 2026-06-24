@@ -1,0 +1,10 @@
+# Force contributors to pick a structured template (no blank issues), and route
+# security + questions away from public bug/feature issues.
+blank_issues_enabled: false
+contact_links:
+  - name: 🔒 Report a security vulnerability
+    url: https://github.com/luisgamas/uxnan/security/advisories/new
+    about: Do NOT open a public issue for security problems. Report privately (see SECURITY.md).
+  - name: 💬 Questions & ideas (Discussions)
+    url: https://github.com/luisgamas/uxnan/discussions
+    about: For questions, help, or open-ended ideas, use Discussions instead of an issue.

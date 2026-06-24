@@ -1,0 +1,62 @@
+name: ✨ Feature request
+description: Suggest a feature or improvement for one or more components.
+title: "[feat]: "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the idea. Focus on the **problem** first, then the proposal —
+        it helps us find the best solution, which may differ from the first one.
+
+  - type: dropdown
+    id: components
+    attributes:
+      label: Target component(s)
+      description: Which monorepo project(s) would this touch? Select all that apply.
+      multiple: true
+      options:
+        - "shared — contracts / JSON-RPC / E2EE schemas"
+        - "bridge — PC daemon (uxnan-bridge)"
+        - "relay — E2EE relay server (uxnan-relay)"
+        - "uxnandesktop — Tauri desktop app"
+        - "uxnanmobile — Flutter mobile app"
+        - "Cross-cutting / tooling / new component"
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / motivation
+      description: What problem does this solve? Who is affected and when? Avoid jumping to a solution here.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What you'd like to happen. Be as concrete as you can.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches you thought about and why you discarded them.
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Mockups, links, prior art, related issues.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and discussions and this is not a duplicate.
+          required: true
