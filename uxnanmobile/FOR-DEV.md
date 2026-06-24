@@ -69,10 +69,6 @@ shipping.
 
 - [ ] **Project drift repository** — the `projects` table exists; the repository +
       `AgentConfig` wiring lands with the projects module.
-- [ ] **Enable project-level thread scoping** — chips + filter + bridge are
-      implemented but the UI is **disabled** (`_projectFilterEnabled = false` in
-      `threads_screen.dart`, with a `FOR-DEV:` note). Flip it on once an
-      advanced-filters surface exists; no other change needed.
 - [ ] **Work-log auto-expand while streaming; tap Last-edits strip to jump.** Low.
 - [ ] **Arbitrary (non-image) file attach** — deferred; no bridge contract/model
       exists for it yet.

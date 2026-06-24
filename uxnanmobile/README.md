@@ -136,8 +136,8 @@ connected to live bridge data, validated on-device against a real bridge:
 - **i18n** — full app translated (EN + ES) via `flutter gen-l10n`.
 
 Remaining/deferred work (Bug A relink latency, OpenCode/pi interactive approvals
-— a bridge-side gap, project-level thread scoping, automated integration test,
-and all iOS work) is tracked in [`FOR-DEV.md`](FOR-DEV.md); the pending iOS/Apple
+— a bridge-side gap, automated integration test, and all iOS work) is tracked in
+[`FOR-DEV.md`](FOR-DEV.md); the pending iOS/Apple
 assets are in [`FOR-HUMAN.md`](FOR-HUMAN.md). See [`CHANGELOG.md`](CHANGELOG.md)
 for the full history.
 
