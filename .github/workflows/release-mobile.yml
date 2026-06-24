@@ -36,6 +36,36 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Non-negotiable release rule: every uxnanmobile tag MUST ship short,
+      # user-facing "What's new" notes for en-US and es-ES (≤ 500 chars each,
+      # Google Play's limit). These are for END USERS — keep them non-technical;
+      # the technical detail belongs in CHANGELOG.md. See CONTRIBUTING.md.
+      - name: Validate Play release notes (en-US + es-ES)
+        working-directory: ${{ github.workspace }}
+        run: |
+          fail=0
+          for lang in en-US es-ES; do
+            f=".github/whatsnew/whatsnew-$lang"
+            if [ ! -s "$f" ]; then
+              echo "::error::Missing or empty $f — a uxnanmobile release MUST include user-facing notes for en-US and es-ES."
+              fail=1; continue
+            fi
+            chars=$(wc -m < "$f")
+            if [ "$chars" -gt 500 ]; then
+              echo "::error::$f has $chars chars; Google Play allows at most 500. Shorten it."
+              fail=1
+            fi
+            if grep -qiE '^[[:space:]]*(english|español|todo|tbd|placeholder|xxx)[[:space:]]*$' "$f"; then
+              echo "::error::$f still looks like a placeholder. Write real, non-technical notes for users before tagging."
+              fail=1
+            fi
+          done
+          if [ "$fail" -ne 0 ]; then
+            echo "::error::Release-notes check failed. Update .github/whatsnew/whatsnew-{en-US,es-ES} (see CONTRIBUTING.md) and re-tag."
+            exit 1
+          fi
+          echo "Release notes present and within Google Play's 500-char limit."
+
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
@@ -93,3 +123,4 @@ jobs:
           releaseFiles: uxnanmobile/build/app/outputs/bundle/release/app-release.aab
           track: internal
           status: completed
+          whatsNewDirectory: .github/whatsnew
