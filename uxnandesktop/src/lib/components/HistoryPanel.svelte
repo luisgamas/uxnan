@@ -31,7 +31,31 @@
   // Graph geometry (kept in lockstep with the row height below).
   const ROW_H = 44;
   const LANE_W = 14;
+  const CURVE_R = 5; // rounded-corner radius for branch/merge bends (VS Code-ish)
   const laneX = (lane: number) => lane * LANE_W + LANE_W / 2;
+
+  // VS Code-style rounded-step connectors (vertical → quarter-arc → horizontal),
+  // instead of straight diagonals. `edgeIn` runs a merging branch down its lane
+  // and bends into the node; `edgeOut` leaves the node and bends down into a
+  // parent lane. A same-lane edge is a plain vertical line.
+  function edgeIn(fromLane: number, toLane: number): string {
+    const x1 = laneX(fromLane);
+    const x2 = laneX(toLane);
+    const my = ROW_H / 2;
+    if (x1 === x2) return `M ${x1} 0 L ${x2} ${my}`;
+    const dir = x2 > x1 ? 1 : -1;
+    const r = Math.min(CURVE_R, Math.abs(x2 - x1), my);
+    return `M ${x1} 0 V ${my - r} Q ${x1} ${my} ${x1 + dir * r} ${my} H ${x2}`;
+  }
+  function edgeOut(fromLane: number, toLane: number): string {
+    const x1 = laneX(fromLane);
+    const x2 = laneX(toLane);
+    const my = ROW_H / 2;
+    if (x1 === x2) return `M ${x1} ${my} L ${x2} ${ROW_H}`;
+    const dir = x2 > x1 ? 1 : -1;
+    const r = Math.min(CURVE_R, Math.abs(x2 - x1), my);
+    return `M ${x1} ${my} H ${x2 - dir * r} Q ${x2} ${my} ${x2} ${my + r} V ${ROW_H}`;
+  }
 
   // The graph is only meaningful over the full, unfiltered log (a filter breaks
   // parent chains), so it's drawn when graph view is on AND no filter is active.
@@ -106,33 +130,52 @@
           stroke-width="1.5"
         />
       {:else if seg.kind === "in"}
-        <line
-          x1={laneX(seg.fromLane)}
-          y1="0"
-          x2={laneX(seg.toLane)}
-          y2={ROW_H / 2}
+        <path
+          d={edgeIn(seg.fromLane, seg.toLane)}
+          fill="none"
           stroke={seg.color}
           stroke-width="1.5"
         />
       {:else}
-        <line
-          x1={laneX(seg.fromLane)}
-          y1={ROW_H / 2}
-          x2={laneX(seg.toLane)}
-          y2={ROW_H}
+        <path
+          d={edgeOut(seg.fromLane, seg.toLane)}
+          fill="none"
           stroke={seg.color}
           stroke-width="1.5"
         />
       {/if}
     {/each}
+    <!-- Node: a halo clears crossing lines; merge commits get a separate outer
+         ring around a solid dot (a gap between them), like VS Code. -->
     <circle
       cx={laneX(rowLayout.nodeLane)}
       cy={ROW_H / 2}
-      r={rowLayout.isMerge ? 4 : 3.5}
-      fill={rowLayout.isMerge ? "var(--background)" : rowLayout.nodeColor}
-      stroke={rowLayout.nodeColor}
-      stroke-width="1.5"
+      r={(rowLayout.isMerge ? 5 : 3.5) + 1.5}
+      fill="var(--background)"
     />
+    {#if rowLayout.isMerge}
+      <circle
+        cx={laneX(rowLayout.nodeLane)}
+        cy={ROW_H / 2}
+        r="5"
+        fill="none"
+        stroke={rowLayout.nodeColor}
+        stroke-width="1.5"
+      />
+      <circle
+        cx={laneX(rowLayout.nodeLane)}
+        cy={ROW_H / 2}
+        r="2.5"
+        fill={rowLayout.nodeColor}
+      />
+    {:else}
+      <circle
+        cx={laneX(rowLayout.nodeLane)}
+        cy={ROW_H / 2}
+        r="3.5"
+        fill={rowLayout.nodeColor}
+      />
+    {/if}
   </svg>
 {/snippet}
 

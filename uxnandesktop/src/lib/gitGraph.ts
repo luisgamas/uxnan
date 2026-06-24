@@ -72,16 +72,25 @@ interface GraphCommit {
 export function computeGraph(commits: GraphCommit[], cap = 8): GraphLayout {
   /** Pending parent hash per lane (null = free). Top-of-row state. */
   const lanes: (string | null)[] = [];
+  /** Branch-stable color id per lane (null = free). A lane keeps its color id
+   *  for its whole life and a reused lane gets a fresh one — so a branch keeps
+   *  one color even when it shifts columns, the way VS Code colors the graph
+   *  (instead of coloring by column index, where unrelated branches sharing a
+   *  column would look like the same branch). */
+  const laneColors: (number | null)[] = [];
   const rows: GraphRow[] = [];
   let maxLanes = 1;
+  let nextColor = 0;
 
-  const color = (lane: number) => GRAPH_COLORS[lane % GRAPH_COLORS.length];
+  const colorOf = (id: number | null) =>
+    GRAPH_COLORS[(id ?? 0) % GRAPH_COLORS.length];
 
   /** First free lane (reused in place), else a new one, else the capped last. */
   const firstFree = (): number => {
     for (let i = 0; i < lanes.length; i++) if (lanes[i] === null) return i;
     if (lanes.length < cap) {
       lanes.push(null);
+      laneColors.push(null);
       return lanes.length - 1;
     }
     return cap - 1;
@@ -94,48 +103,90 @@ export function computeGraph(commits: GraphCommit[], cap = 8): GraphLayout {
 
     const nodeLane = incoming.length > 0 ? incoming[0] : firstFree();
 
-    // Snapshot the top-of-row state before mutating (used to draw passing lanes).
+    // Snapshot the top-of-row state before mutating (used to draw passing lanes
+    // in their own colors).
     const topLanes = lanes.slice();
+    const topColors = laneColors.slice();
+
+    // The node's color: continue the incoming branch's color if a child was
+    // waiting for it, otherwise a brand-new branch tip → a fresh color.
+    let nodeColorId = laneColors[nodeLane];
+    if (nodeColorId == null) nodeColorId = nextColor++;
 
     // The node consumes every lane that was waiting for it.
-    for (const idx of incoming) lanes[idx] = null;
+    for (const idx of incoming) {
+      lanes[idx] = null;
+      laneColors[idx] = null;
+    }
 
-    // First parent continues straight down in the node's lane; no parent (a root
-    // commit) frees the lane.
+    // First parent continues straight down in the node's lane, keeping the
+    // node's color; a root commit (no parents) frees the lane.
     const parents = c.parents;
-    lanes[nodeLane] = parents.length > 0 ? parents[0] : null;
+    if (parents.length > 0) {
+      lanes[nodeLane] = parents[0];
+      laneColors[nodeLane] = nodeColorId;
+    } else {
+      lanes[nodeLane] = null;
+      laneColors[nodeLane] = null;
+    }
 
-    // Each extra parent (a merge) reuses a lane already waiting for it, or opens
-    // a new one.
-    const extraParentLanes: number[] = [];
+    // Each extra parent (a merge) reuses a lane already waiting for it (keeping
+    // that branch's color), or opens a new lane with a fresh color.
+    const extraParents: { lane: number; colorId: number }[] = [];
     for (let p = 1; p < parents.length; p++) {
       const ph = parents[p];
       let lane = lanes.findIndex((h) => h === ph);
+      let colorId: number;
       if (lane === -1) {
         lane = firstFree();
         lanes[lane] = ph;
+        colorId = nextColor++;
+        laneColors[lane] = colorId;
+      } else {
+        colorId = laneColors[lane] ?? nextColor++;
+        laneColors[lane] = colorId;
       }
-      extraParentLanes.push(lane);
+      extraParents.push({ lane, colorId });
     }
 
-    // --- Build the row's drawn segments. ---
+    // --- Build the row's drawn segments (each in its branch's color). ---
     const segments: GraphSegment[] = [];
     // Top-half edges: each lane active above either arrives at the node (it was
     // waiting for this commit) or passes straight through.
     for (let i = 0; i < topLanes.length; i++) {
       if (topLanes[i] === null) continue;
       if (incoming.includes(i)) {
-        segments.push({ fromLane: i, toLane: nodeLane, color: color(i), kind: "in" });
+        segments.push({
+          fromLane: i,
+          toLane: nodeLane,
+          color: colorOf(topColors[i]),
+          kind: "in",
+        });
       } else {
-        segments.push({ fromLane: i, toLane: i, color: color(i), kind: "through" });
+        segments.push({
+          fromLane: i,
+          toLane: i,
+          color: colorOf(topColors[i]),
+          kind: "through",
+        });
       }
     }
     // Bottom-half edges leaving the node toward its parents.
     if (parents.length > 0) {
-      segments.push({ fromLane: nodeLane, toLane: nodeLane, color: color(nodeLane), kind: "out" });
+      segments.push({
+        fromLane: nodeLane,
+        toLane: nodeLane,
+        color: colorOf(nodeColorId),
+        kind: "out",
+      });
     }
-    for (const lane of extraParentLanes) {
-      segments.push({ fromLane: nodeLane, toLane: lane, color: color(lane), kind: "out" });
+    for (const { lane, colorId } of extraParents) {
+      segments.push({
+        fromLane: nodeLane,
+        toLane: lane,
+        color: colorOf(colorId),
+        kind: "out",
+      });
     }
 
     const activeNow = lanes.reduce((m, h, i) => (h !== null ? i + 1 : m), 0);
@@ -144,7 +195,7 @@ export function computeGraph(commits: GraphCommit[], cap = 8): GraphLayout {
 
     rows.push({
       nodeLane,
-      nodeColor: color(nodeLane),
+      nodeColor: colorOf(nodeColorId),
       segments,
       lanes: laneCount,
       isMerge: parents.length > 1,
