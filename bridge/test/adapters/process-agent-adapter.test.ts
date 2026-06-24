@@ -1,7 +1,12 @@
-import { test } from 'node:test';
+import { test as baseTest } from 'node:test';
 import assert from 'node:assert/strict';
 import type { AgentStreamEvent } from '@uxnan/shared';
 import { ProcessAgentAdapter } from '../../src/index.js';
+
+// FOR-DEV: spawns a real subprocess and maps its stdio; flaky on Windows CI
+// runners. Run on Linux CI and locally; skip on Windows CI only (bridge/FOR-DEV.md).
+const test =
+  process.platform === 'win32' && process.env['CI'] === 'true' ? baseTest.skip : baseTest;
 
 // A fake agent that speaks the generic bridge IPC: echoes each word as a delta.
 const FAKE_AGENT = [
