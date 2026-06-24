@@ -970,6 +970,26 @@ class AppLocalizationsEn extends AppLocalizations {
   String get gitHistoryBackToTop => 'Back to top';
 
   @override
+  String get gitHistoryViewBranch => 'View branch or ref';
+
+  @override
+  String get gitHistoryPickBranchTitle => 'View history of…';
+
+  @override
+  String get gitHistoryHeadOption => 'Current branch (HEAD)';
+
+  @override
+  String get gitHistoryLocalSection => 'Local branches';
+
+  @override
+  String get gitHistoryRemoteSection => 'Remote branches';
+
+  @override
+  String gitHistoryViewingRef(String ref) {
+    return 'Viewing $ref';
+  }
+
+  @override
   String get gitHistoryDiffSection => 'Diff';
 
   @override

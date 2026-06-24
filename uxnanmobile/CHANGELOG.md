@@ -19,7 +19,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   **`GitCommitDetailScreen`** (via `git/commitShow`): full message, ref chips,
   author/committer/date, copyable SHA, parents, stats, the **file list**
   (status + per-file `+/-` + rename `from <old>`), and the **complete unified
-  diff** (colored, horizontally scrollable, truncation notice).
+  diff** (colored, horizontally scrollable, truncation notice). An app-bar
+  **branch/ref picker** (`git/branches`) views any branch's/remote's history
+  read-only (no checkout), with a "Viewing <ref>" banner + one-tap return to
+  HEAD.
   - `presentation/screens/conversation/git/git_history_screen.dart` (rewrite),
     `git_commit_detail_screen.dart` (new), `widgets/commit_ref_chip.dart` (new).
 - **File browser: "Collapse all folders" action.** A new `IconSurface`

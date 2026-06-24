@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uxnan/domain/value_objects/git/git_action_io.dart';
 import 'package:uxnan/domain/value_objects/git/git_log.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
@@ -76,11 +77,16 @@ class _GitHistoryScreenState extends ConsumerState<GitHistoryScreen> {
   bool _compact = false;
   bool _showBackToTop = false;
 
+  /// The ref (branch / tag / remote) the history is viewed from. `null` = the
+  /// workspace's current HEAD. Seeded from [widget.ref].
+  String? _viewingRef;
+
   final ScrollController _scrollController = ScrollController();
 
   @override
   void initState() {
     super.initState();
+    _viewingRef = widget.ref;
     _scrollController.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadFirstPage());
   }
@@ -122,7 +128,7 @@ class _GitHistoryScreenState extends ConsumerState<GitHistoryScreen> {
     });
     try {
       final result = await ref.read(gitActionManagerProvider).log(
-            GitLogParams(cwd: cwd, limit: _pageSize, ref: widget.ref),
+            GitLogParams(cwd: cwd, limit: _pageSize, ref: _viewingRef),
           );
       if (!mounted) return;
       setState(() {
@@ -149,7 +155,7 @@ class _GitHistoryScreenState extends ConsumerState<GitHistoryScreen> {
     });
     try {
       final result = await ref.read(gitActionManagerProvider).log(
-            GitLogParams(cwd: cwd, limit: _pageSize, ref: widget.ref),
+            GitLogParams(cwd: cwd, limit: _pageSize, ref: _viewingRef),
           );
       if (!mounted) return;
       setState(() {
@@ -209,6 +215,36 @@ class _GitHistoryScreenState extends ConsumerState<GitHistoryScreen> {
     );
   }
 
+  /// Opens the branch/ref picker and, on selection, reloads the history from
+  /// that ref. `null` returns to the workspace's current HEAD. This is a
+  /// read-only "view from" — it never checks the branch out.
+  Future<void> _pickBranch() async {
+    final cwd = widget.cwd;
+    if (cwd == null) return;
+    GitBranchList branches;
+    try {
+      branches = await ref.read(gitActionManagerProvider).branches(cwd);
+    } on Object {
+      branches = const GitBranchList(current: 'HEAD');
+    }
+    if (!mounted) return;
+    final picked = await showModalBottomSheet<_RefChoice>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
+      builder: (_) => _BranchPickerSheet(
+        branches: branches,
+        selectedRef: _viewingRef,
+      ),
+    );
+    if (picked == null || !mounted) return;
+    // `_RefChoice(ref: null)` means "back to HEAD".
+    if (picked.ref == _viewingRef) return;
+    setState(() => _viewingRef = picked.ref);
+    await _loadFirstPage();
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -260,6 +296,13 @@ class _GitHistoryScreenState extends ConsumerState<GitHistoryScreen> {
             )
           : null,
       actions: [
+        if (widget.cwd != null && !_initialLoading)
+          IconSurface(
+            icon: Icons.alt_route_rounded,
+            tooltip: l10n.gitHistoryViewBranch,
+            selected: _viewingRef != null,
+            onPressed: _pickBranch,
+          ),
         if (hasContent)
           IconSurface(
             icon: _showGraph
@@ -282,7 +325,19 @@ class _GitHistoryScreenState extends ConsumerState<GitHistoryScreen> {
             onPressed: () => setState(() => _compact = !_compact),
           ),
       ],
-      slivers: [sliver],
+      slivers: [
+        if (_viewingRef != null)
+          SliverToBoxAdapter(
+            child: _ViewingRefBanner(
+              refName: _viewingRef!,
+              onClear: () {
+                setState(() => _viewingRef = null);
+                _loadFirstPage();
+              },
+            ),
+          ),
+        sliver,
+      ],
     );
   }
 
@@ -665,6 +720,230 @@ class _CenteredState extends StatelessWidget {
           ],
         ],
       ),
+    );
+  }
+}
+
+/// Result of the branch picker — `ref == null` means "back to current HEAD".
+class _RefChoice {
+  const _RefChoice(this.ref);
+  final String? ref;
+}
+
+/// A slim banner shown above the list when the history is being viewed from a
+/// non-default ref (a branch/tag), with a quick action to return to HEAD.
+class _ViewingRefBanner extends StatelessWidget {
+  const _ViewingRefBanner({required this.refName, required this.onClear});
+  final String refName;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        UxnanSpacing.lg,
+        UxnanSpacing.xs,
+        UxnanSpacing.lg,
+        UxnanSpacing.xs,
+      ),
+      child: Container(
+        padding: const EdgeInsets.only(
+          left: UxnanSpacing.md,
+          right: UxnanSpacing.xs,
+          top: UxnanSpacing.xs,
+          bottom: UxnanSpacing.xs,
+        ),
+        decoration: BoxDecoration(
+          color: colors.secondaryContainer,
+          borderRadius: const BorderRadius.all(UxnanRadius.lg),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.alt_route_rounded,
+              size: 16,
+              color: colors.onSecondaryContainer,
+            ),
+            const SizedBox(width: UxnanSpacing.sm),
+            Expanded(
+              child: Text(
+                l10n.gitHistoryViewingRef(refName),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: textTheme.bodySmall?.copyWith(
+                  color: colors.onSecondaryContainer,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.close_rounded, size: 18),
+              visualDensity: VisualDensity.compact,
+              color: colors.onSecondaryContainer,
+              tooltip: MaterialLocalizations.of(context).closeButtonTooltip,
+              onPressed: onClear,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Bottom sheet that lists the current HEAD plus the local and remote branches
+/// so the user can view the history from any ref (read-only — no checkout).
+class _BranchPickerSheet extends StatelessWidget {
+  const _BranchPickerSheet({
+    required this.branches,
+    required this.selectedRef,
+  });
+
+  final GitBranchList branches;
+  final String? selectedRef;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    return SafeArea(
+      top: false,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.7,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                UxnanSpacing.lg,
+                0,
+                UxnanSpacing.lg,
+                UxnanSpacing.sm,
+              ),
+              child: Text(
+                l10n.gitHistoryPickBranchTitle,
+                style: textTheme.titleMedium,
+              ),
+            ),
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                padding: const EdgeInsets.only(bottom: UxnanSpacing.lg),
+                children: [
+                  _RefTile(
+                    icon: Icons.my_location_rounded,
+                    label: l10n.gitHistoryHeadOption,
+                    selected: selectedRef == null,
+                    onTap: () =>
+                        Navigator.of(context).pop(const _RefChoice(null)),
+                  ),
+                  if (branches.local.isNotEmpty)
+                    _SectionLabel(label: l10n.gitHistoryLocalSection),
+                  for (final b in branches.local)
+                    _RefTile(
+                      icon: Icons.call_split_rounded,
+                      label: b,
+                      trailing: b == branches.current
+                          ? Text(
+                              'HEAD',
+                              style: textTheme.labelSmall?.copyWith(
+                                color: colors.onSurfaceVariant,
+                              ),
+                            )
+                          : null,
+                      selected: selectedRef == b,
+                      onTap: () => Navigator.of(context).pop(_RefChoice(b)),
+                    ),
+                  if (branches.remote.isNotEmpty)
+                    _SectionLabel(label: l10n.gitHistoryRemoteSection),
+                  for (final b in branches.remote)
+                    _RefTile(
+                      icon: Icons.cloud_outlined,
+                      label: b,
+                      selected: selectedRef == b,
+                      onTap: () => Navigator.of(context).pop(_RefChoice(b)),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A muted section header inside the branch picker.
+class _SectionLabel extends StatelessWidget {
+  const _SectionLabel({required this.label});
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        UxnanSpacing.lg,
+        UxnanSpacing.md,
+        UxnanSpacing.lg,
+        UxnanSpacing.xs,
+      ),
+      child: Text(
+        label,
+        style: textTheme.labelMedium?.copyWith(
+          color: colors.onSurfaceVariant,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
+/// A single selectable ref row in the branch picker.
+class _RefTile extends StatelessWidget {
+  const _RefTile({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    this.trailing,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    return ListTile(
+      leading: Icon(
+        icon,
+        color: selected ? colors.primary : colors.onSurfaceVariant,
+      ),
+      title: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: textTheme.bodyMedium?.copyWith(
+          color: selected ? colors.primary : colors.onSurface,
+          fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+        ),
+      ),
+      trailing: selected
+          ? Icon(Icons.check_rounded, color: colors.primary)
+          : trailing,
+      onTap: onTap,
     );
   }
 }

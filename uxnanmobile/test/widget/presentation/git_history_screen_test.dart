@@ -56,6 +56,16 @@ GitActionManager _stubManager({
   return GitActionManager(
     domainEvents: const Stream<DomainEvent>.empty(),
     sendRequest: (method, [params]) async {
+      if (method == 'git/branches') {
+        return RpcMessage.response(
+          id: '1',
+          result: const {
+            'current': 'main',
+            'local': ['main', 'feature/x'],
+            'remote': ['origin/main'],
+          },
+        );
+      }
       if (method == 'git/commitShow') {
         final paramsMap = params is Map ? params : null;
         final sha = paramsMap?['sha'] as String? ?? '';
@@ -238,6 +248,34 @@ void main() {
     await tester.tap(find.byIcon(Icons.density_small_rounded));
     await tester.pumpAndSettle();
     expect(find.byIcon(Icons.density_medium_rounded), findsOneWidget);
+  });
+
+  testWidgets('opens the branch picker and switches the viewed ref',
+      (tester) async {
+    final manager = _stubManager(commits: _sampleCommits());
+    addTearDown(manager.dispose);
+
+    await tester.pumpWidget(
+      _wrap(
+        manager: manager,
+        child: const GitHistoryScreen(cwd: '/repo'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.alt_route_rounded));
+    await tester.pumpAndSettle();
+
+    // The picker lists HEAD + the branches.
+    expect(find.text('View history of…'), findsOneWidget);
+    expect(find.text('Current branch (HEAD)'), findsOneWidget);
+    expect(find.text('feature/x'), findsOneWidget);
+
+    await tester.tap(find.text('feature/x'));
+    await tester.pumpAndSettle();
+
+    // The "viewing <ref>" banner appears for the non-default ref.
+    expect(find.textContaining('feature/x'), findsWidgets);
   });
 
   testWidgets('opens the full commit detail screen when a row is tapped',

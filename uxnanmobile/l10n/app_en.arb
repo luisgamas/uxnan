@@ -443,6 +443,18 @@
   "gitHistoryShowGraph": "Show graph lines",
   "gitHistoryHideGraph": "Hide graph lines",
   "gitHistoryBackToTop": "Back to top",
+  "gitHistoryViewBranch": "View branch or ref",
+  "gitHistoryPickBranchTitle": "View history of…",
+  "gitHistoryHeadOption": "Current branch (HEAD)",
+  "gitHistoryLocalSection": "Local branches",
+  "gitHistoryRemoteSection": "Remote branches",
+  "gitHistoryViewingRef": "Viewing {ref}",
+  "@gitHistoryViewingRef": {
+    "description": "Header chip shown when the history is being viewed from a non-default ref (a branch/tag), not the current HEAD.",
+    "placeholders": {
+      "ref": { "type": "String", "example": "origin/main" }
+    }
+  },
   "gitHistoryDiffSection": "Diff",
   "gitHistoryDiffTruncated": "Diff truncated — too large to show in full.",
   "gitHistoryNoFileChanges": "No file changes in this commit.",

@@ -1626,34 +1626,36 @@ de un commit (archivos tocados con +/- y diff completo).
 
 **UI:** `GitHistoryScreen` se abre desde un `IconSurface` `history_rounded`
 en la app-bar de `GitScreen` (solo visible cuando hay un repositorio
-abierto). La pantalla tiene dos vistas conmutables por un
-`ConnectedButtonGroup` (spec §4.5, reemplazo de segmented buttons):
+abierto). Es **una sola lista plana** (sin chrome de tarjeta — el mismo
+lenguaje limpio del file browser): cada fila muestra los chips de
+rama/tag/HEAD (`refs[]`), un badge del short-SHA y `+/-` coloreados. La
+app-bar ofrece tres `IconSurface`:
 
-- **List** — lista cronológica de commits (mensaje, autor, fecha
-  relativa, chips de rama/tag desde `refs[]`, badge "Merge" si tiene más de
-  un padre, +/- stats).
-- **Graph** — GitKraken-style con lanes asignadas por algoritmo
-  (cada commit ocupa la lane del parent que continúa; los merge parents
-  abren nuevas lanes), líneas continuas coloreadas por lane (segmentos
-  superior+inferior que conectan filas, incl. lanes de paso) y curvas en
-  branch/merge.
+- **Grafo** (`account_tree`) — superpone un grafo estilo VS Code (swimlanes):
+  filas de **altura fija** para que los puntos se alineen en carriles, **color
+  estable por rama** (el color sigue a la rama aunque cambie de columna),
+  curvas suaves en branch/merge, y un **nodo de merge** distinto (punto sólido
+  + anillo de contorno separado). El gutter ocupa el ancho real de los carriles
+  (el texto se recorre a la derecha para que el grafo se vea completo).
+- **Compacto** — densidad de fila más alta.
+- **Selector de rama/ref** (`alt_route`, vía `git/branches`) — ver el historial
+  de cualquier rama/remota en modo **solo lectura** (no hace checkout); muestra
+  un banner "Viewing <ref>" con retorno a HEAD en un toque.
 
-Ambas vistas comparten los mismos datos y paginación cursor-based con **scroll
-infinito** (carga al acercarse al final) + un FAB **volver-arriba** tras
-desplazarse. La app-bar ofrece **vista compacta** (densidad) y **mostrar/ocultar
-grafo**. Tocar un commit abre un bottom sheet con el mensaje completo, refs,
-padres, stats, **la lista de archivos (status + +/- por archivo) y el diff
-completo** (vía `git/commitShow`), más **Copy SHA** + **Copy message**.
+Paginación cursor-based con **scroll infinito** (carga al acercarse al final) +
+botón *Load older commits* + un FAB **volver-arriba**. Tocar un commit abre la
+pantalla completa `GitCommitDetailScreen` (vía `git/commitShow`): mensaje
+completo, refs, autor/committer/fecha, SHA copiable, padres, stats, **la lista
+de archivos (status + +/- por archivo + `from <old>` en renames) y el diff
+unificado completo** (coloreado, scroll horizontal, aviso de truncado).
 Pull-to-refresh recarga la primera página. `git/log` y `git/commitShow` son
 lectura pura: no tocan `git/status`.
 
 La implementación sigue el sistema Neural Expressive
-(`docs/neural-expressive-design.md`): `ExpressiveCard` (24 dp outer,
-`spatialFast` press spring) para las filas, `PolygonLoader`
-(shape-morphing §4.7) para el spinner, `UxnanSpacing` / `UxnanRadius`
-tokens, y `ConnectedButtonGroup` (widget nuevo en
-`presentation/widgets/connected_button_group.dart`, implementación de
-referencia de §4.5 con efecto neighbour-squish vía `spatialFast`).
+(`docs/neural-expressive-design.md`): filas planas tipo file browser
+(`InkWell`, sin tarjeta), `CustomPainter` para el grafo de swimlanes,
+`PolygonLoader` (shape-morphing §4.7) para el spinner y los tokens
+`UxnanSpacing` / `UxnanRadius`.
 
 #### 5.8.7 Workspace handler (bridge)
 

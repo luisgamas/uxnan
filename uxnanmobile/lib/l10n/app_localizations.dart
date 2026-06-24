@@ -1910,6 +1910,42 @@ abstract class AppLocalizations {
   /// **'Back to top'**
   String get gitHistoryBackToTop;
 
+  /// No description provided for @gitHistoryViewBranch.
+  ///
+  /// In en, this message translates to:
+  /// **'View branch or ref'**
+  String get gitHistoryViewBranch;
+
+  /// No description provided for @gitHistoryPickBranchTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'View history of…'**
+  String get gitHistoryPickBranchTitle;
+
+  /// No description provided for @gitHistoryHeadOption.
+  ///
+  /// In en, this message translates to:
+  /// **'Current branch (HEAD)'**
+  String get gitHistoryHeadOption;
+
+  /// No description provided for @gitHistoryLocalSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Local branches'**
+  String get gitHistoryLocalSection;
+
+  /// No description provided for @gitHistoryRemoteSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Remote branches'**
+  String get gitHistoryRemoteSection;
+
+  /// Header chip shown when the history is being viewed from a non-default ref (a branch/tag), not the current HEAD.
+  ///
+  /// In en, this message translates to:
+  /// **'Viewing {ref}'**
+  String gitHistoryViewingRef(String ref);
+
   /// No description provided for @gitHistoryDiffSection.
   ///
   /// In en, this message translates to:

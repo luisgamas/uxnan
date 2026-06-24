@@ -972,6 +972,26 @@ class AppLocalizationsEs extends AppLocalizations {
   String get gitHistoryBackToTop => 'Volver arriba';
 
   @override
+  String get gitHistoryViewBranch => 'Ver rama o ref';
+
+  @override
+  String get gitHistoryPickBranchTitle => 'Ver historial de…';
+
+  @override
+  String get gitHistoryHeadOption => 'Rama actual (HEAD)';
+
+  @override
+  String get gitHistoryLocalSection => 'Ramas locales';
+
+  @override
+  String get gitHistoryRemoteSection => 'Ramas remotas';
+
+  @override
+  String gitHistoryViewingRef(String ref) {
+    return 'Viendo $ref';
+  }
+
+  @override
   String get gitHistoryDiffSection => 'Diff';
 
   @override
