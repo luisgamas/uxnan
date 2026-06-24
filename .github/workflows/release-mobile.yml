@@ -66,6 +66,31 @@ jobs:
           fi
           echo "Release notes present and within Google Play's 500-char limit."
 
+      # Non-negotiable release rule: the Flutter project's version MUST be bumped to
+      # the release version and committed+pushed BEFORE tagging, so uxnanmobile/
+      # pubspec.yaml (the tagged commit) reflects the released version and never lags
+      # behind a tag. Fail the release on a mismatch.
+      - name: Validate pubspec.yaml version matches the tag
+        run: |
+          FULL="${GITHUB_REF_NAME#mobile-v}"          # 0.0.1-alpha.20260621+5
+          TAG_NAME="${FULL%%+*}"                       # 0.0.1-alpha.20260621
+          VER=$(grep -E '^version:' pubspec.yaml | head -1 | sed -E 's/^version:[[:space:]]*//')
+          PUB_NAME="${VER%%+*}"
+          if [ "$PUB_NAME" != "$TAG_NAME" ]; then
+            echo "::error::uxnanmobile/pubspec.yaml build-name '$PUB_NAME' != tag '$TAG_NAME'. Bump pubspec.yaml 'version:' to the release version, commit AND push it BEFORE tagging mobile-v$FULL."
+            exit 1
+          fi
+          # When the tag pins an explicit +build, pubspec must carry the same number.
+          if [ "$FULL" != "$TAG_NAME" ]; then
+            TAG_BUILD="${FULL#*+}"
+            PUB_BUILD="${VER#*+}"
+            if [ "$PUB_BUILD" = "$VER" ] || [ "$PUB_BUILD" != "$TAG_BUILD" ]; then
+              echo "::error::pubspec.yaml build-number '$PUB_BUILD' != tag '+$TAG_BUILD'. Set pubspec.yaml 'version: $FULL' (commit + push) before tagging."
+              exit 1
+            fi
+          fi
+          echo "pubspec.yaml version '$VER' matches tag 'mobile-v$FULL'."
+
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
