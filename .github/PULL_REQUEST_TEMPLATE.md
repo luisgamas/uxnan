@@ -1,18 +1,21 @@
 <!--
   Thanks for contributing to Uxnan! Keep PRs focused — one logical change per PR.
-  Fill in every section; it tells reviewers exactly what you're proposing and
-  which monorepo project(s) it touches.
+  Replace the italic prompts and the "Example" blocks with your own content.
 -->
 
 ## Summary
 
-<!-- What does this PR do, and why? -->
+_What does this PR change, and why? 1–3 sentences._
 
-Closes #<!-- issue number, or remove this line if none -->
+> **Example:** Fixes the QR scanner crashing in release builds. R8 full-mode was
+> stripping ML Kit's `BarcodeRegistrar` no-arg constructor; added a keep rule so
+> the scanner works in `--release` again.
+
+Closes #<!-- issue number, or delete this line if there's no issue -->
 
 ## Affected component(s)
 
-<!-- Mark all that apply (x inside the brackets). -->
+<!-- Put an "x" inside the brackets: [x] -->
 
 - [ ] `shared` — contracts / JSON-RPC / E2EE schemas
 - [ ] `bridge` — PC daemon (uxnan-bridge)
@@ -32,7 +35,17 @@ Closes #<!-- issue number, or remove this line if none -->
 
 ## How was it tested?
 
-<!-- Commands run, platforms/OS, manual steps, screenshots for UI. -->
+_List the actual checks you ran: the commands, the OS/device, and the result.
+Include manual steps for anything CI can't cover (UI, pairing, on-device), and a
+screenshot/video for UI changes. "It builds" is not enough._
+
+> **Example:**
+>
+> 1. `cd bridge && npm test` → 263 tests pass (Ubuntu + Windows).
+> 2. Manual, on Windows: started the bridge, paired my phone, sent a turn to the
+>    echo agent — the reply arrived and the turn showed `completed`.
+> 3. Built `flutter build apk --release` and confirmed the QR scanner opens and
+>    scans without crashing (screenshot below).
 
 ## Checklist
 
