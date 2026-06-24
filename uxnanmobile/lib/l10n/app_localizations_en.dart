@@ -1612,6 +1612,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get fileBrowserShowHidden => 'Show hidden files';
 
   @override
+  String get fileBrowserCollapseAll => 'Collapse all folders';
+
+  @override
   String get fileBrowserCopyPath => 'Copy workspace path';
 
   @override
@@ -1649,6 +1652,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get fileViewerCopyFailed => 'Couldn\'t copy this file';
+
+  @override
+  String fileViewerLinkCopied(String href) {
+    return 'Link copied: $href';
+  }
 
   @override
   String get fileViewerBinaryTitle => 'Binary file';

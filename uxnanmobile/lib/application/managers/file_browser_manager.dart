@@ -209,6 +209,36 @@ class FileBrowserManager {
     _subject(cwd).add(next);
   }
 
+  /// Collapses every expanded directory under [cwd] in one shot. The fetched
+  /// children are kept in the tree (so re-expanding is instant) — only the
+  /// `expanded` flag is cleared. No-op when nothing is expanded.
+  void collapseAll(String cwd) {
+    final current = _roots[cwd];
+    if (current == null) return;
+    final next = _collapse(current);
+    if (identical(next, current)) return;
+    _roots[cwd] = next;
+    _subject(cwd).add(next);
+  }
+
+  /// Recursively clears `expanded` on every directory in the subtree. Returns
+  /// the same instance when nothing changed so the stream doesn't churn.
+  FileTreeNode _collapse(FileTreeNode node) {
+    var childrenChanged = false;
+    final newChildren = <FileTreeNode>[];
+    for (final child in node.children) {
+      final updated = _collapse(child);
+      if (!identical(updated, child)) childrenChanged = true;
+      newChildren.add(updated);
+    }
+    final mustCollapse = node.expanded && node.path != '.';
+    if (!mustCollapse && !childrenChanged) return node;
+    return node.copyWith(
+      expanded: mustCollapse ? false : null,
+      children: childrenChanged ? newChildren : null,
+    );
+  }
+
   /// Reads a file's text content (UTF-8 or base64). Caller decides which path
   /// to render — for binary files the base64 form is returned and the viewer
   /// should fall back to a "binary preview" placeholder.

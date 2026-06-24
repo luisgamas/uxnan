@@ -3026,6 +3026,12 @@ abstract class AppLocalizations {
   /// **'Show hidden files'**
   String get fileBrowserShowHidden;
 
+  /// App-bar action in the file browser that collapses every expanded folder at once.
+  ///
+  /// In en, this message translates to:
+  /// **'Collapse all folders'**
+  String get fileBrowserCollapseAll;
+
   /// Tooltip on the button in the file browser's status bar that copies the workspace root path.
   ///
   /// In en, this message translates to:
@@ -3103,6 +3109,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Couldn\'t copy this file'**
   String get fileViewerCopyFailed;
+
+  /// Snackbar shown when a link tapped in the Markdown preview is copied to the clipboard (the viewer never opens an external browser).
+  ///
+  /// In en, this message translates to:
+  /// **'Link copied: {href}'**
+  String fileViewerLinkCopied(String href);
 
   /// Title of the binary-file placeholder shown in the file viewer when the content is base64-encoded.
   ///

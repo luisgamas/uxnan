@@ -7,6 +7,23 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **File browser: "Collapse all folders" action.** A new `IconSurface`
+  (`unfold_less`) in the file browser app bar collapses every expanded
+  directory in one tap; it only appears when at least one folder is open.
+  Fetched children are kept in the tree so re-expanding is instant
+  (`FileBrowserManager.collapseAll`).
+  - `application/managers/file_browser_manager.dart`,
+    `presentation/screens/conversation/files/file_browser_screen.dart`.
+- **Much broader file-type recognition in the browser + viewer.** Syntax
+  highlighting now resolves ~70 extensions and well-known extensionless files
+  (`Dockerfile`, `Makefile`, `CMakeLists.txt`, `.env`) instead of ~20; the
+  file-tree icons gained categories (data/config, archives, spreadsheets,
+  shell, fonts, audio, video, text). Unknown grammars fall back to plaintext
+  safely (never throw).
+  - `presentation/screens/conversation/files/file_viewer_screen.dart`
+    (`_languageForPath` + `_languageByExtension`),
+    `presentation/screens/conversation/files/widgets/file_tree_tile.dart`
+    (`fileTypeVisuals`).
 - **Dedicated Theme Manager screen (`ThemeManagerScreen`).** The custom-themes
   library moved out of the Personalization list into its own M3 Expressive +
   Neural Expressive screen: a responsive grid (`SliverGrid`, max-extent tiles)
@@ -69,6 +86,16 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   for the slim screen. Full suite green; `flutter analyze` clean.
 
 ### Fixed
+- **Markdown preview no longer stretches tables vertically.** The file viewer's
+  Markdown body now uses `IntrinsicColumnWidth` (was the framework default
+  `FlexColumnWidth`, which squeezed every column to fit the viewport and wrapped
+  each cell into a tall stack); wide tables get `flutter_markdown_plus`'
+  built-in horizontal scroll with a visible scrollbar. The style sheet was also
+  filled out — `h4`–`h6`, list bullets, padded/decorated blockquotes, a real
+  horizontal rule, table borders/padding, and tapped links copy their URL to
+  the clipboard (no `url_launcher` dependency).
+  - `presentation/screens/conversation/files/file_viewer_screen.dart`
+    (`_MarkdownBody`), new l10n `fileViewerLinkCopied`.
 - **Imported themes persist (incl. multi-theme JSON), and the import bar copy
   is clearer.** A late-finishing library hydrate could re-seed the built-ins
   over a freshly-imported theme on a fast first run, losing it on the next

@@ -591,8 +591,6 @@ class _MarkdownBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(
         parent: AlwaysScrollableScrollPhysics(),
@@ -606,31 +604,92 @@ class _MarkdownBody extends StatelessWidget {
       child: MarkdownBody(
         data: text,
         selectable: true,
-        styleSheet: MarkdownStyleSheet(
-          p: Theme.of(context).textTheme.bodyMedium,
-          h1: Theme.of(context).textTheme.headlineMedium,
-          h2: Theme.of(context).textTheme.titleLarge,
-          h3: Theme.of(context).textTheme.titleMedium,
-          code: UxnanTypography.codeBody.copyWith(
-            backgroundColor: colors.surfaceContainerHigh,
-          ),
-          // Codeblocks use the same surface tone as elevated surfaces
-          // (surfaceContainerHighest in dark, surfaceContainerHigh in
-          // light) — never raw hex literals. Keeps the M3 surface
-          // hierarchy intact.
-          codeblockDecoration: BoxDecoration(
-            color: isDark
-                ? colors.surfaceContainerHighest
-                : colors.surfaceContainerHigh,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          blockquoteDecoration: BoxDecoration(
-            border: Border(
-              left: BorderSide(color: colors.outline, width: 3),
-            ),
-          ),
+        styleSheet: _styleSheet(context),
+        onTapLink: (linkText, href, title) => _onTapLink(context, href),
+      ),
+    );
+  }
+
+  /// Copies a tapped link's target to the clipboard (no `url_launcher`
+  /// dependency — the viewer never opens an external browser on its own).
+  void _onTapLink(BuildContext context, String? href) {
+    if (href == null || href.isEmpty) return;
+    final l10n = AppLocalizations.of(context);
+    Clipboard.setData(ClipboardData(text: href));
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(SnackBar(content: Text(l10n.fileViewerLinkCopied(href))));
+  }
+
+  /// The Markdown style sheet, built from the app's M3 text theme + surface
+  /// tokens. The key fix over the framework default is
+  /// `tableColumnWidth: IntrinsicColumnWidth()`: it sizes columns to their
+  /// content and triggers `flutter_markdown_plus`' built-in horizontal scroll
+  /// for wide tables (the default `FlexColumnWidth` squeezes columns to fit
+  /// the viewport, which wraps every cell and stretches the table vertically).
+  MarkdownStyleSheet _styleSheet(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final codeSurface =
+        isDark ? colors.surfaceContainerHighest : colors.surfaceContainerHigh;
+    return MarkdownStyleSheet(
+      p: textTheme.bodyMedium,
+      h1: textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
+      h2: textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+      h3: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+      h4: textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+      h5: textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
+      h6: textTheme.labelMedium?.copyWith(
+        color: colors.onSurfaceVariant,
+        fontWeight: FontWeight.w600,
+      ),
+      a: textTheme.bodyMedium?.copyWith(
+        color: colors.primary,
+        decoration: TextDecoration.underline,
+        decorationColor: colors.primary,
+      ),
+      listBullet: textTheme.bodyMedium,
+      code: UxnanTypography.codeBody.copyWith(
+        backgroundColor: codeSurface,
+      ),
+      // Codeblocks use the same surface tone as elevated surfaces — never raw
+      // hex literals — so the M3 surface hierarchy stays intact. The builder
+      // already wraps code blocks in a horizontal scroll view, so long lines
+      // scroll instead of wrapping.
+      codeblockPadding: const EdgeInsets.all(UxnanSpacing.md),
+      codeblockDecoration: BoxDecoration(
+        color: codeSurface,
+        borderRadius: const BorderRadius.all(UxnanRadius.md),
+      ),
+      blockquotePadding: const EdgeInsets.symmetric(
+        horizontal: UxnanSpacing.md,
+        vertical: UxnanSpacing.sm,
+      ),
+      blockquoteDecoration: BoxDecoration(
+        color: colors.surfaceContainerHigh.withValues(alpha: 0.5),
+        border: Border(
+          left: BorderSide(color: colors.primary, width: 3),
+        ),
+        borderRadius: const BorderRadius.horizontal(right: UxnanRadius.md),
+      ),
+      horizontalRuleDecoration: BoxDecoration(
+        border: Border(
+          top: BorderSide(color: colors.outlineVariant),
         ),
       ),
+      // Intrinsic columns + a visible scrollbar give wide tables a proper
+      // horizontal scroll instead of vertically-stretched, wrapped cells.
+      tableColumnWidth: const IntrinsicColumnWidth(),
+      tableScrollbarThumbVisibility: true,
+      tablePadding: const EdgeInsets.only(bottom: UxnanSpacing.sm),
+      tableCellsPadding: const EdgeInsets.symmetric(
+        horizontal: UxnanSpacing.sm,
+        vertical: UxnanSpacing.xs,
+      ),
+      tableHead: textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+      tableBody: textTheme.bodySmall,
+      tableBorder: TableBorder.all(color: colors.outlineVariant),
     );
   }
 }
@@ -833,34 +892,115 @@ bool _isMarkdownPath(String path) {
   return lower.endsWith('.md') || lower.endsWith('.markdown');
 }
 
+/// Maps a file path to a `highlight`-package language id for syntax
+/// highlighting. Resolves a handful of well-known *extensionless* filenames
+/// first (Dockerfile, Makefile, …), then by extension. Unknown ids are safe:
+/// the `highlight` package falls back to `plaintext` for any grammar it has
+/// not registered, so a wrong/missing id never throws.
 String _languageForPath(String path) {
   final lower = path.toLowerCase();
-  if (lower.endsWith('.dart')) return 'dart';
-  if (lower.endsWith('.ts') || lower.endsWith('.tsx')) return 'typescript';
-  if (lower.endsWith('.js') || lower.endsWith('.jsx')) return 'javascript';
-  if (lower.endsWith('.py')) return 'python';
-  if (lower.endsWith('.swift')) return 'swift';
-  if (lower.endsWith('.kt')) return 'kotlin';
-  if (lower.endsWith('.java')) return 'java';
-  if (lower.endsWith('.go')) return 'go';
-  if (lower.endsWith('.rs')) return 'rust';
-  if (lower.endsWith('.cpp') ||
-      lower.endsWith('.cc') ||
-      lower.endsWith('.cxx')) {
-    return 'cpp';
+  final base = lower.split('/').last;
+
+  // Extensionless / fixed-name files.
+  if (base == 'dockerfile' || base.startsWith('dockerfile.')) {
+    return 'dockerfile';
   }
-  if (lower.endsWith('.c')) return 'c';
-  if (lower.endsWith('.h')) return 'objectivec';
-  if (lower.endsWith('.css')) return 'css';
-  if (lower.endsWith('.scss')) return 'scss';
-  if (lower.endsWith('.html') || lower.endsWith('.htm')) return 'xml';
-  if (lower.endsWith('.json')) return 'json';
-  if (lower.endsWith('.yaml') || lower.endsWith('.yml')) return 'yaml';
-  if (lower.endsWith('.toml')) return 'ini';
-  if (lower.endsWith('.xml')) return 'xml';
-  if (lower.endsWith('.sh') || lower.endsWith('.bash')) return 'bash';
-  if (lower.endsWith('.sql')) return 'sql';
-  if (lower.endsWith('.md') || lower.endsWith('.markdown')) return 'markdown';
+  if (base == 'makefile' || base == 'gnumakefile') return 'makefile';
+  if (base == 'cmakelists.txt') return 'cmake';
+  if (base == '.env' || base.startsWith('.env.')) return 'bash';
+
+  for (final entry in _languageByExtension.entries) {
+    if (lower.endsWith(entry.key)) return entry.value;
+  }
+  // `.lock` is ambiguous (pubspec.lock is YAML, Cargo.lock is TOML→ini); YAML
+  // renders both acceptably.
   if (lower.endsWith('.lock')) return 'yaml';
   return 'plaintext';
 }
+
+/// Extension → `highlight` language id. Only ids registered in the `highlight`
+/// package are used; families it lacks map to a safe relative (C → `cpp`,
+/// Vue/Svelte/Astro → `xml`, TOML → `ini`).
+const Map<String, String> _languageByExtension = {
+  '.dart': 'dart',
+  '.tsx': 'typescript',
+  '.ts': 'typescript',
+  '.mts': 'typescript',
+  '.cts': 'typescript',
+  '.jsx': 'javascript',
+  '.mjs': 'javascript',
+  '.cjs': 'javascript',
+  '.js': 'javascript',
+  '.py': 'python',
+  '.pyi': 'python',
+  '.rb': 'ruby',
+  '.php': 'php',
+  '.swift': 'swift',
+  '.kt': 'kotlin',
+  '.kts': 'kotlin',
+  '.java': 'java',
+  '.scala': 'scala',
+  '.groovy': 'groovy',
+  '.gradle': 'gradle',
+  '.go': 'go',
+  '.rs': 'rust',
+  '.ex': 'elixir',
+  '.exs': 'elixir',
+  '.erl': 'erlang',
+  '.hs': 'haskell',
+  '.lua': 'lua',
+  '.pl': 'perl',
+  '.pm': 'perl',
+  '.r': 'r',
+  '.cpp': 'cpp',
+  '.cc': 'cpp',
+  '.cxx': 'cpp',
+  '.hpp': 'cpp',
+  '.hh': 'cpp',
+  '.c': 'cpp',
+  '.h': 'cpp',
+  '.m': 'objectivec',
+  '.mm': 'objectivec',
+  '.cs': 'cs',
+  '.fs': 'fsharp',
+  '.vb': 'vbnet',
+  '.css': 'css',
+  '.scss': 'scss',
+  '.sass': 'scss',
+  '.less': 'less',
+  '.vue': 'xml',
+  '.svelte': 'xml',
+  '.astro': 'xml',
+  '.html': 'xml',
+  '.htm': 'xml',
+  '.xml': 'xml',
+  '.xaml': 'xml',
+  '.svg': 'xml',
+  '.plist': 'xml',
+  '.json': 'json',
+  '.jsonc': 'json',
+  '.json5': 'json',
+  '.yaml': 'yaml',
+  '.yml': 'yaml',
+  '.toml': 'ini',
+  '.ini': 'ini',
+  '.cfg': 'ini',
+  '.conf': 'ini',
+  '.properties': 'properties',
+  '.sh': 'bash',
+  '.bash': 'bash',
+  '.zsh': 'bash',
+  '.fish': 'bash',
+  '.ps1': 'powershell',
+  '.bat': 'dos',
+  '.cmd': 'dos',
+  '.sql': 'sql',
+  '.graphql': 'graphql',
+  '.gql': 'graphql',
+  '.proto': 'protobuf',
+  '.diff': 'diff',
+  '.patch': 'diff',
+  '.cmake': 'cmake',
+  '.md': 'markdown',
+  '.markdown': 'markdown',
+};

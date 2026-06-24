@@ -83,6 +83,9 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
     // The stream-based tree is the canonical state: the manager owns the
     // mutation, the UI just renders whatever was last emitted.
     final rootAsync = ref.watch(_fileTreeStreamProvider(widget.cwd));
+    // Whether any directory is currently expanded — gates the collapse-all
+    // action so it only appears when there's something to collapse.
+    final anyExpanded = _anyExpanded(rootAsync.value);
 
     return Scaffold(
       body: Stack(
@@ -165,6 +168,16 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
                     ?.copyWith(fontSize: 20),
               ),
               actions: [
+                // Collapse-all: only shown when at least one directory is
+                // expanded, so the bar stays clean on a fresh (flat) listing.
+                if (anyExpanded)
+                  IconSurface(
+                    icon: Icons.unfold_less_rounded,
+                    tooltip: l10n.fileBrowserCollapseAll,
+                    onPressed: () => ref
+                        .read(fileBrowserManagerProvider)
+                        .collapseAll(widget.cwd),
+                  ),
                 // The view toggles (extensions, hidden files) live in a popup
                 // menu on the right so the bar stays under the M3 ≤3-actions
                 // guideline and the same chrome as every other NE screen
@@ -325,6 +338,17 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
   }
 
   bool _isHidden(String name) => name.startsWith('.');
+}
+
+/// Whether any directory in [node]'s subtree is currently expanded. Drives
+/// the visibility of the collapse-all action. Cheap: stops at the first
+/// expanded directory.
+bool _anyExpanded(FileTreeNode? node) {
+  if (node == null) return false;
+  for (final child in node.children) {
+    if (child.isDir && (child.expanded || _anyExpanded(child))) return true;
+  }
+  return false;
 }
 
 /// Adapts the manager's per-cwd stream into a [StreamProvider] the UI can

@@ -759,6 +759,10 @@
   "@fileBrowserShowHidden": {
     "description": "Settings-menu toggle that controls whether dotfiles (names starting with '.') are visible in the file browser list."
   },
+  "fileBrowserCollapseAll": "Collapse all folders",
+  "@fileBrowserCollapseAll": {
+    "description": "App-bar action in the file browser that collapses every expanded folder at once."
+  },
   "fileBrowserCopyPath": "Copy workspace path",
   "@fileBrowserCopyPath": {
     "description": "Tooltip on the button in the file browser's status bar that copies the workspace root path."
@@ -811,6 +815,16 @@
   "fileViewerCopyFailed": "Couldn't copy this file",
   "@fileViewerCopyFailed": {
     "description": "Snackbar shown when the file content cannot be copied (e.g. a binary read returned no payload)."
+  },
+  "fileViewerLinkCopied": "Link copied: {href}",
+  "@fileViewerLinkCopied": {
+    "description": "Snackbar shown when a link tapped in the Markdown preview is copied to the clipboard (the viewer never opens an external browser).",
+    "placeholders": {
+      "href": {
+        "type": "String",
+        "example": "https://example.com"
+      }
+    }
   },
   "fileViewerBinaryTitle": "Binary file",
   "@fileViewerBinaryTitle": {
