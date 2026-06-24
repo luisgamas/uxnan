@@ -6,192 +6,54 @@ fallbacks); each item only unlocks or polishes a feature. Search the codebase fo
 `FOR-HUMAN:` to find the exact in-code locations.
 
 > Convention defined in the root `AGENTS.md` → "Human-required assets".
+>
+> **Done (kept out of this list):** app fonts (Inter / JetBrains Mono), the Android
+> Firebase app + `google-services.json` (Android push live), brand launcher icons +
+> splash, the Android signing keystore + CI secrets (`ANDROID_KEYSTORE_B64`,
+> key password/alias, `GOOGLE_SERVICES_JSON`, `PLAY_SERVICE_ACCOUNT_JSON_BASE64`).
+
+Everything still pending is **iOS / Apple-gated** and cannot be finished from the
+Windows dev PC — it needs a paid Apple Developer account and a first macOS build
+(the `ios/Runner/Info.plist` + Podfile are generated then).
 
 ---
 
-## ☑ 1. App fonts — Inter & JetBrains Mono — DONE (2026-06-05)
+## iOS Firebase / APNs push
 
-**Done:** the six `.ttf` files below were added to `assets/fonts/`, the
-`fonts:` block in `pubspec.yaml` is enabled, and the app was verified rendering
-with them. Kept here for reference / re-provisioning.
+The iOS app is registered in the `uxnan-app` Firebase project and
+`GoogleService-Info.plist` is fetched (gitignored, `BUNDLE_ID =
+dev.luisgamas.uxnanmobile`). Remaining, all macOS-only:
 
-**What:** the UI font (Inter) and the monospaced/code font (JetBrains Mono). The
-theme (`lib/presentation/theme/typography.dart`) names these families.
+- [ ] **Apple Developer Program** enrollment ($99/yr) — required for any APNs key.
+- [ ] Apple Developer portal → Certificates, Identifiers & Profiles → **Keys → +** →
+      enable **APNs** → download `AuthKey_XXXXXXXXXX.p8` (once). Record Key ID + Team ID.
+- [ ] Firebase Console → Project settings → **Cloud Messaging → Apple app
+      configuration → APNs Authentication Key → Upload** the `.p8` (Key ID + Team ID).
+      This is what lets FCM reach iOS.
+- [ ] **Xcode** → Runner target → Signing & Capabilities → **+ Push Notifications**
+      and **+ Background Modes → Remote notifications**; confirm
+      `GoogleService-Info.plist` is a member of the Runner target.
 
-**Files needed** (exact names — the `pubspec.yaml` font block expects these):
+No relay/app code changes are needed for iOS — once the APNs key is uploaded the
+existing FCM path delivers to iOS automatically.
 
-| File | Weight | Family |
-|---|---|---|
-| `Inter-Regular.ttf` | 400 | Inter |
-| `Inter-Medium.ttf` | 500 | Inter |
-| `Inter-SemiBold.ttf` | 600 | Inter |
-| `Inter-Bold.ttf` | 700 | Inter |
-| `JetBrainsMono-Regular.ttf` | 400 | JetBrainsMono |
-| `JetBrainsMono-Medium.ttf` | 500 | JetBrainsMono |
+## iOS Info.plist usage strings (generated on the first macOS build)
 
-**Where to get them (both are free, OFL-licensed):**
-- Inter — https://rsms.me/inter/ (download → use the **static** `.ttf` files, not the variable font) or Google Fonts.
-- JetBrains Mono — https://www.jetbrains.com/lp/mono/ or Google Fonts.
+Android equivalents are already wired; iOS needs these or the matching feature
+reports "not available":
 
-**Where they go:** `uxnanmobile/assets/fonts/`
+- [ ] `NSMicrophoneUsageDescription` + `NSSpeechRecognitionUsageDescription` — voice
+      dictation (`speech_to_text`).
+- [ ] `NSCameraUsageDescription` — the QR pairing scanner (`mobile_scanner`). Also
+      add the `PERMISSION_CAMERA=1` macro to the Podfile `post_install`, or
+      `Permission.camera` is compiled out on iOS.
+- [ ] `NSPhotoLibraryUsageDescription` — image attach.
+- [x] `NSLocalNetworkUsageDescription` + `NSBonjourServices` — already added for mDNS
+      "browse nearby bridges" (`_uxnan._tcp`) + the direct LAN socket. **Review the
+      user-facing copy** before App Store submission.
 
-**Config to enable:**
-1. Drop the six `.ttf` files into `assets/fonts/` with the exact names above.
-2. In `pubspec.yaml`, **uncomment** the `fonts:` block (marked with `FOR-HUMAN:`).
-3. Run `flutter pub get`.
-4. Hot-restart / rebuild. No code changes are needed — the theme already
-   references the `Inter` and `JetBrainsMono` families.
+## iOS signing (for a store / signed `.ipa`)
 
----
-
-## ☑ 2. Firebase / FCM config — push notifications
-
-Firebase project **`uxnan-app`** (project number `97810225919`) hosts both the
-Android and iOS apps and the relay's service account. The same project is used
-end-to-end (mobile token ⇄ relay delivery). Path chosen: **FCM-for-both**
-(Android direct; iOS routed through FCM once the APNs key is uploaded).
-
-The push module is implemented and **fully guarded**: the app still builds and
-runs without the config files below — push just stays disabled until they exist.
-
-### ☑ Android — RE-REGISTERED (bundle id renamed 2026-06-20) — DONE (2026-06-20)
-
-The mobile bundle id changed from `com.uxnan.mobile` to
-**`dev.luisgamas.uxnanmobile`**. A new Android app was registered in the same
-`uxnan-app` Firebase project and its `google-services.json` was re-fetched —
-**Android push is unblocked again.**
-
-> Correction to the old note here: Firebase does **not** let you change the
-> package name of an existing app (it is immutable). The only path is to
-> **register a new app** under the new package name (the old
-> `com.uxnan.mobile` app stays as an orphan and can be deleted in the Console).
-
-**Done via the Firebase CLI (already authenticated):**
-```bash
-firebase apps:create ANDROID "Uxnan Mobile" \
-  --package-name dev.luisgamas.uxnanmobile --project uxnan-app
-firebase apps:sdkconfig ANDROID 1:97810225919:android:401c579528716a685f0aca \
-  --project uxnan-app --out uxnanmobile/android/app/google-services.json
-```
-- New Android App ID: `1:97810225919:android:401c579528716a685f0aca`.
-- `google-services.json` is present (gitignored) and contains the
-  `dev.luisgamas.uxnanmobile` client; `Firebase.initializeApp()` now accepts
-  the package name.
-- The Gradle wiring is already conditional (the file just needs to exist):
-  - `android/settings.gradle.kts` → `id("com.google.gms.google-services")
-    version "4.4.2" apply false` (on the classpath).
-  - `android/app/build.gradle.kts` → applied only `if
-    (file("google-services.json").exists())`.
-  - (Core-library desugaring already enabled for `flutter_local_notifications`.)
-- To build with push live: `flutter clean && flutter pub get && flutter run`.
-
-### ◐ iOS — RE-REGISTER (bundle id renamed 2026-06-20) — config fetched; macOS steps pending
-
-The mobile bundle id changed from `com.uxnan.mobile` to
-**`dev.luisgamas.uxnanmobile`**. A new iOS app was registered in the same
-`uxnan-app` Firebase project and its `GoogleService-Info.plist` was re-fetched.
-The remaining iOS work is **macOS-only** (Apple Developer + Xcode), so it cannot
-be finished from this Windows PC.
-
-> Same correction as Android: the iOS app's Bundle ID is immutable — a new app
-> must be registered (the old `com.uxnan.mobile` iOS app stays as an orphan).
-
-**Done via the Firebase CLI:**
-```bash
-firebase apps:create IOS "Uxnan Mobile" \
-  --bundle-id dev.luisgamas.uxnanmobile --project uxnan-app
-firebase apps:sdkconfig IOS 1:97810225919:ios:36cd3cd7181cb1325f0aca \
-  --project uxnan-app --out uxnanmobile/ios/Runner/GoogleService-Info.plist
-```
-- New iOS App ID: `1:97810225919:ios:36cd3cd7181cb1325f0aca`.
-- `GoogleService-Info.plist` (gitignored) is present with
-  `BUNDLE_ID = dev.luisgamas.uxnanmobile`. It still needs to be **added to the
-  Runner target in Xcode** after macOS setup.
-
-What only a human on macOS can finish (cannot be done from this Windows PC):
-1. **Apple Developer Program** enrollment ($99/yr) — required for any APNs key.
-2. Apple Developer portal → Certificates, Identifiers & Profiles → **Keys → +** →
-   enable **Apple Push Notifications service (APNs)** → download
-   `AuthKey_XXXXXXXXXX.p8` (downloadable once). Record the **Key ID** + **Team ID**.
-3. Firebase Console → Project settings → **Cloud Messaging → Apple app
-   configuration → APNs Authentication Key → Upload** the `.p8` (Key ID + Team ID).
-   This is what lets FCM reach iOS — see `relay/FOR-HUMAN.md`.
-4. **Xcode** (macOS) → Runner target → Signing & Capabilities →
-   **+ Push Notifications** and **+ Background Modes → Remote notifications**, and
-   confirm `GoogleService-Info.plist` is a member of the Runner target.
-
-No relay or app code changes are needed for iOS — once the APNs key is uploaded
-the existing FCM path delivers to iOS automatically.
-
-**Never commit** the Firebase config files (covered by `.gitignore` on this
-branch). Without them `Firebase.initializeApp()` fails silently and push is
-disabled — by design.
-
----
-
-## ☐ 3. iOS voice-dictation permissions (Info.plist)
-
-The composer mic uses `speech_to_text` for on-device dictation. **Android is
-done** (the `RECORD_AUDIO` permission is in `AndroidManifest.xml`). **iOS** needs
-two usage-description strings in `ios/Runner/Info.plist` (the file is generated
-on the first macOS build), or the mic button reports "not available":
-
-- `NSMicrophoneUsageDescription` — e.g. *"Uxnan uses the microphone to dictate
-  messages to your coding agent."*
-- `NSSpeechRecognitionUsageDescription` — e.g. *"Uxnan transcribes your speech
-  into the message composer."*
-
-Speech recognition on iOS may route audio to Apple's servers depending on the
-locale; no app/relay code changes are needed.
-
----
-
-## ☐ 4. iOS Info.plist — camera & local network
-
-Other iOS usage strings the app needs once `ios/Runner/Info.plist` exists
-(generated on the first macOS build). Android equivalents are already wired:
-
-- `NSCameraUsageDescription` — the QR pairing scanner (`mobile_scanner`). Also
-  add the `PERMISSION_CAMERA=1` macro to the Podfile `post_install` (see
-  `FOR-DEV.md` → Pairing module) or `Permission.camera` is compiled out on iOS.
-- `NSLocalNetworkUsageDescription` + `NSBonjourServices` — **already added** to
-  `ios/Runner/Info.plist` for the mDNS **Browse nearby bridges** feature
-  (`_uxnan._tcp`) and the direct LAN socket (both prompt for local-network
-  access on iOS; Tailscale/relay are unaffected). **Review the user-facing
-  usage-description copy** before App Store submission. No multicast entitlement
-  is needed — `nsd` uses the system Bonjour resolver, not raw multicast.
-- `NSPhotoLibraryUsageDescription` — only once the **Attach** picker is enabled
-  for image attachments (added with that feature).
-
----
-
-## ☐ 5. CI/CD secrets (GitHub Actions)
-
-When we author `.github/workflows/` (the pipeline is specced in `FOR-DEV.md` →
-*Alpha release readiness & CI/CD*), these repository **secrets** must be added
-under Settings → Secrets and variables → Actions. None are needed for the
-`verify` job (format/analyze/test) or for an unsigned iOS compile — only for
-signed/store builds:
-
-- **Android signed build:** `ANDROID_KEYSTORE_B64` (base64 of the `.jks`),
-  `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD` (the
-  workflow decodes the keystore and writes `android/key.properties` at runtime).
-- **Firebase (if building with push live in CI):** `GOOGLE_SERVICES_JSON`
-  (Android) / `GOOGLE_SERVICE_INFO_PLIST` (iOS), base64-encoded — both are
-  gitignored and machine-local today.
-- **iOS signed build / `.ipa` export:** Apple signing certificate (`.p12` +
-  password), provisioning profile, and the APNs key from §2 — all gated on a
-  paid Apple Developer account.
-
-The keystore/`.jks`, `.p12`, provisioning profile and `.p8` are themselves
-human-provided assets (see §2 and Future items); this section only tracks how
-they surface to CI as secrets.
-
-## Future items (added when their module lands)
-
-These are **not needed yet** — they are listed so you know what is coming:
-
-- ☐ **Release signing** (store builds): Android keystore + `key.properties`,
-  iOS signing certificate / provisioning profile.
-- ☐ **App icons / launch images** (branding pass): replace the default Flutter
-  launcher icons.
+- [ ] Apple signing certificate (`.p12` + password) + provisioning profile (gated on
+      the paid Apple Developer account). These surface to CI as secrets when the iOS
+      release path is wired; the Android signed-release path already works.

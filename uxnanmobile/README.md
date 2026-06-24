@@ -73,7 +73,7 @@ Configuration is injected at compile time with `--dart-define` (spec 03 §3.3):
 ```bash
 dart format lib test
 flutter analyze            # must report 0 issues (no warnings)
-flutter test               # unit + widget tests (265 passing)
+flutter test               # unit + widget tests (415 passing)
 ```
 
 ## Status
@@ -112,8 +112,9 @@ connected to live bridge data, validated on-device against a real bridge:
   red dot in the threads list, "Check sign-in" in new-conversation card,
   auto-refresh on app resume.
 - **Interactive approval** (Approve / Reject / "always allow this session")
-  with a spring `AnimatedSize` morph; works against the Echo demo and
-  Claude Code's opt-in `PreToolUse` hook.
+  with a spring `AnimatedSize` morph; validated end-to-end against Echo,
+  Claude Code (`PreToolUse` hook), Codex (`app-server`) and Gemini
+  (`BeforeTool` hook). OpenCode/pi have no headless pre-tool channel yet.
 - **Composer** — bottom-anchored bar; **stop-the-turn** mid-run; **voice
   → text** (`speech_to_text`); **image attachments** (photo library /
   camera, downscaled to 2048 px / q85, image-only message allowed,
@@ -128,16 +129,17 @@ connected to live bridge data, validated on-device against a real bridge:
 - **FCM push** (gated) — Android LIVE; deep-link to conversation;
   **personalized copy** + foreground suppression; per-channel
   notification preferences (Replies / Errors).
-- **Settings** — theme (System/Light/Dark), language (EN/ES, follows
-  device or picker), notification preferences.
+- **Settings** — theme mode (System/Light/Dark) + a **custom-theme library**
+  with a dedicated Theme Manager (single/dual-brightness themes, live-preview
+  grid, multi-select bulk delete/export, JSON import/export); language (EN/ES,
+  follows device or picker); notification preferences.
 - **i18n** — full app translated (EN + ES) via `flutter gen-l10n`.
 
-Remaining/deferred work (interactive approval Claude-only is wired but needs
-a live bridge to verify end-to-end, on-device iOS verification, custom
-accent colors, project-level thread scoping, …) is tracked in
-[`FOR-DEV.md`](FOR-DEV.md); native Firebase / signing assets are in
-[`FOR-HUMAN.md`](FOR-HUMAN.md). See [`CHANGELOG.md`](CHANGELOG.md) for the
-full history.
+Remaining/deferred work (Bug A relink latency, OpenCode/pi interactive approvals
+— a bridge-side gap, project-level thread scoping, automated integration test,
+and all iOS work) is tracked in [`FOR-DEV.md`](FOR-DEV.md); the pending iOS/Apple
+assets are in [`FOR-HUMAN.md`](FOR-HUMAN.md). See [`CHANGELOG.md`](CHANGELOG.md)
+for the full history.
 
 ## Documentation
 
