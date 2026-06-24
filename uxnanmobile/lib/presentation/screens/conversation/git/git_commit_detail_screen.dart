@@ -11,6 +11,7 @@ import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
+import 'package:uxnan/presentation/widgets/ne_surface.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 
 /// Full-screen detail for a single commit, backed by `git/commitShow`.
@@ -145,26 +146,22 @@ class _GitCommitDetailScreenState extends ConsumerState<GitCommitDetailScreen> {
         ),
       );
     } else if (details != null) {
-      slivers
-        ..add(SliverToBoxAdapter(child: _FilesSection(files: details.files)))
-        ..add(
-          SliverToBoxAdapter(
-            child: _DiffSection(
-              diff: details.diff,
-              truncated: details.diffTruncated,
-            ),
+      slivers.add(
+        SliverToBoxAdapter(
+          child: _FilesSection(
+            files: details.files,
+            diffByPath: _splitDiffByPath(details.diff),
+            diffTruncated: details.diffTruncated,
           ),
-        );
+        ),
+      );
     }
 
     slivers.add(
       const SliverToBoxAdapter(child: SizedBox(height: UxnanSpacing.xxl)),
     );
 
-    return NeScaffold(
-      title: l10n.gitHistoryDetailsTitle,
-      slivers: slivers,
-    );
+    return NeScaffold(title: l10n.gitHistoryDetailsTitle, slivers: slivers);
   }
 }
 
@@ -257,8 +254,9 @@ class _Header extends StatelessWidget {
                 Expanded(
                   child: Text(
                     commit.sha,
-                    style: UxnanTypography.codeSmall
-                        .copyWith(color: colors.onSurfaceVariant),
+                    style: UxnanTypography.codeSmall.copyWith(
+                      color: colors.onSurfaceVariant,
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -276,8 +274,9 @@ class _Header extends StatelessWidget {
             const SizedBox(height: UxnanSpacing.md),
             Text(
               l10n.gitHistoryDetailsParents(commit.parents.length),
-              style: textTheme.labelMedium
-                  ?.copyWith(color: colors.onSurfaceVariant),
+              style: textTheme.labelMedium?.copyWith(
+                color: colors.onSurfaceVariant,
+              ),
             ),
             const SizedBox(height: UxnanSpacing.xs),
             Wrap(
@@ -328,10 +327,22 @@ class _Header extends StatelessWidget {
   }
 }
 
-/// The "N files changed" section: one row per file with status + per-file +/-.
+/// The "N files changed" section: one expandable card per file (collapsed by
+/// default), each revealing that file's own diff — mirroring the clean,
+/// per-file cards of the version-control (`GitScreen`) screen.
 class _FilesSection extends StatelessWidget {
-  const _FilesSection({required this.files});
+  const _FilesSection({
+    required this.files,
+    required this.diffByPath,
+    required this.diffTruncated,
+  });
   final List<GitCommitFile> files;
+
+  /// The commit's unified diff split per file, keyed by path (new and old).
+  final Map<String, String> diffByPath;
+
+  /// Whether the commit's overall diff was capped by the bridge.
+  final bool diffTruncated;
 
   @override
   Widget build(BuildContext context) {
@@ -358,176 +369,233 @@ class _FilesSection extends StatelessWidget {
             ),
           ),
           const SizedBox(height: UxnanSpacing.xs),
-          for (final file in files) _CommitFileRow(file: file),
+          for (final file in files)
+            Padding(
+              padding: const EdgeInsets.only(bottom: UxnanSpacing.xs),
+              child: _CommitFileCard(
+                file: file,
+                diff: diffByPath[file.path] ??
+                    (file.oldPath != null ? diffByPath[file.oldPath!] : null),
+              ),
+            ),
+          if (diffTruncated) ...[
+            const SizedBox(height: UxnanSpacing.xs),
+            Text(
+              l10n.gitHistoryDiffTruncated,
+              style: textTheme.bodySmall?.copyWith(
+                color: colors.onSurfaceVariant,
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
 }
 
-/// A single file row in the commit detail.
-class _CommitFileRow extends StatelessWidget {
-  const _CommitFileRow({required this.file});
+/// A collapsible card for one file touched by the commit: a tappable header
+/// (status icon, name, rename/dir, per-file +/-, chevron) that reveals that
+/// file's own colored diff. Collapsed by default — mirrors the version-control
+/// screen's file cards.
+class _CommitFileCard extends StatefulWidget {
+  const _CommitFileCard({required this.file, this.diff});
   final GitCommitFile file;
+  final String? diff;
+
+  @override
+  State<_CommitFileCard> createState() => _CommitFileCardState();
+}
+
+class _CommitFileCardState extends State<_CommitFileCard> {
+  bool _expanded = false;
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
+    final file = widget.file;
     final (icon, color) = _statusVisual(file.status);
     final segments = file.path.split('/');
     final name = segments.isEmpty ? file.path : segments.last;
     final dir = segments.length > 1
         ? segments.sublist(0, segments.length - 1).join('/')
         : null;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: UxnanSpacing.xs),
-      child: Row(
+    final subtitle =
+        file.oldPath != null ? l10n.gitHistoryRenamedFrom(file.oldPath!) : dir;
+
+    return NeSurface(
+      outlined: true,
+      padding: EdgeInsets.zero,
+      child: Column(
         children: [
-          Icon(icon, size: 18, color: color),
-          const SizedBox(width: UxnanSpacing.sm),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  name,
-                  style: textTheme.bodyMedium?.copyWith(color: color),
-                  overflow: TextOverflow.ellipsis,
-                ),
-                if (file.oldPath != null)
-                  Text(
-                    l10n.gitHistoryRenamedFrom(file.oldPath!),
-                    style: UxnanTypography.codeSmall
-                        .copyWith(color: colors.onSurfaceVariant),
-                    overflow: TextOverflow.ellipsis,
-                  )
-                else if (dir != null)
-                  Text(
-                    dir,
-                    style: UxnanTypography.codeSmall
-                        .copyWith(color: colors.onSurfaceVariant),
-                    overflow: TextOverflow.ellipsis,
+          InkWell(
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: UxnanSpacing.md,
+                vertical: UxnanSpacing.sm,
+              ),
+              child: Row(
+                children: [
+                  Icon(icon, size: 18, color: color),
+                  const SizedBox(width: UxnanSpacing.sm),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          name,
+                          style: textTheme.titleSmall?.copyWith(
+                            color: color,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (subtitle != null)
+                          Text(
+                            subtitle,
+                            style: UxnanTypography.codeSmall.copyWith(
+                              color: colors.onSurfaceVariant,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                      ],
+                    ),
                   ),
-              ],
+                  const SizedBox(width: UxnanSpacing.sm),
+                  if (file.binary)
+                    Text(
+                      'bin',
+                      style: UxnanTypography.codeSmall.copyWith(
+                        color: colors.onSurfaceVariant,
+                      ),
+                    )
+                  else ...[
+                    if (file.additions > 0)
+                      Text(
+                        '+${file.additions}',
+                        style: UxnanTypography.codeSmall.copyWith(
+                          color: UxnanColors.gitAdded,
+                        ),
+                      ),
+                    if (file.deletions > 0) ...[
+                      const SizedBox(width: UxnanSpacing.xs),
+                      Text(
+                        '−${file.deletions}',
+                        style: UxnanTypography.codeSmall.copyWith(
+                          color: UxnanColors.gitDeleted,
+                        ),
+                      ),
+                    ],
+                  ],
+                  const SizedBox(width: UxnanSpacing.xs),
+                  Icon(
+                    _expanded
+                        ? Icons.expand_less_rounded
+                        : Icons.expand_more_rounded,
+                    size: 20,
+                    color: colors.onSurfaceVariant,
+                  ),
+                ],
+              ),
             ),
           ),
-          const SizedBox(width: UxnanSpacing.sm),
-          if (file.binary)
-            Text(
-              'bin',
-              style: UxnanTypography.codeSmall
-                  .copyWith(color: colors.onSurfaceVariant),
-            )
-          else ...[
-            if (file.additions > 0)
-              Text(
-                '+${file.additions}',
-                style: UxnanTypography.codeSmall
-                    .copyWith(color: UxnanColors.gitAdded),
-              ),
-            if (file.deletions > 0) ...[
-              const SizedBox(width: UxnanSpacing.xs),
-              Text(
-                '−${file.deletions}',
-                style: UxnanTypography.codeSmall
-                    .copyWith(color: UxnanColors.gitDeleted),
-              ),
-            ],
-          ],
+          if (_expanded) _DiffLines(diff: widget.diff, binary: file.binary),
         ],
       ),
     );
   }
 }
 
-/// The full unified diff for the commit, colored and horizontally scrollable.
-class _DiffSection extends StatelessWidget {
-  const _DiffSection({required this.diff, required this.truncated});
-  final String diff;
-  final bool truncated;
+/// The colored, horizontally-scrollable diff body for one file. Drops the noisy
+/// per-file header lines (the filename is already the card title) and keeps the
+/// hunks + +/- content.
+class _DiffLines extends StatelessWidget {
+  const _DiffLines({required this.diff, required this.binary});
+  final String? diff;
+  final bool binary;
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-    final lines = diff.split('\n');
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        UxnanSpacing.lg,
-        UxnanSpacing.md,
-        UxnanSpacing.lg,
-        UxnanSpacing.lg,
+    final lines = _renderableLines(diff ?? '');
+    final empty = lines.isEmpty;
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerHighest,
+        border: Border(top: BorderSide(color: colors.outlineVariant)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            l10n.gitHistoryDiffSection,
-            style: textTheme.labelLarge?.copyWith(
-              color: colors.onSurfaceVariant,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: UxnanSpacing.xs),
-          ClipRRect(
-            borderRadius: const BorderRadius.all(UxnanRadius.md),
-            child: ColoredBox(
-              color: colors.surfaceContainerHigh,
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: IntrinsicWidth(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      for (final line in lines)
-                        ColoredBox(
-                          color: _lineColor(line),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: UxnanSpacing.md,
-                              vertical: 1,
-                            ),
-                            child: Text(
-                              line.isEmpty ? ' ' : line,
-                              style: UxnanTypography.codeBody.copyWith(
-                                color: _isMeta(line)
-                                    ? colors.onSurfaceVariant
-                                    : null,
-                              ),
+      child: empty
+          ? Padding(
+              padding: const EdgeInsets.all(UxnanSpacing.md),
+              child: Text(
+                binary ? l10n.gitHistoryBinaryDiff : l10n.gitHistoryNoTextDiff,
+                style: textTheme.bodySmall?.copyWith(
+                  color: colors.onSurfaceVariant,
+                ),
+              ),
+            )
+          : SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: IntrinsicWidth(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (final line in lines)
+                      ColoredBox(
+                        color: _lineColor(line),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: UxnanSpacing.md,
+                            vertical: 1,
+                          ),
+                          child: Text(
+                            line.isEmpty ? ' ' : line,
+                            style: UxnanTypography.codeBody.copyWith(
+                              color: line.startsWith('@@')
+                                  ? colors.onSurfaceVariant
+                                  : null,
                             ),
                           ),
                         ),
-                    ],
-                  ),
+                      ),
+                  ],
                 ),
               ),
             ),
-          ),
-          if (truncated) ...[
-            const SizedBox(height: UxnanSpacing.sm),
-            Text(
-              l10n.gitHistoryDiffTruncated,
-              style:
-                  textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant),
-            ),
-          ],
-        ],
-      ),
     );
   }
 
-  bool _isMeta(String line) =>
-      line.startsWith('diff --git ') ||
-      line.startsWith('index ') ||
-      line.startsWith('--- ') ||
-      line.startsWith('+++ ') ||
-      line.startsWith('new file mode ') ||
-      line.startsWith('deleted file mode ') ||
-      line.startsWith('rename ') ||
-      line.startsWith('similarity index ');
+  /// Keeps hunk headers + content; drops `diff --git`, `index`, `---`/`+++`,
+  /// mode and rename metadata (redundant with the card title).
+  List<String> _renderableLines(String diff) {
+    final result = <String>[];
+    for (final line in diff.split('\n')) {
+      if (line.startsWith('diff --git ') ||
+          line.startsWith('index ') ||
+          line.startsWith('--- ') ||
+          line.startsWith('+++ ') ||
+          line.startsWith('new file mode ') ||
+          line.startsWith('deleted file mode ') ||
+          line.startsWith('old mode ') ||
+          line.startsWith('new mode ') ||
+          line.startsWith('rename from ') ||
+          line.startsWith('rename to ') ||
+          line.startsWith('similarity index ') ||
+          line.startsWith('Binary files ')) {
+        continue;
+      }
+      result.add(line);
+    }
+    while (result.isNotEmpty && result.last.trim().isEmpty) {
+      result.removeLast();
+    }
+    return result;
+  }
 
   Color _lineColor(String line) {
     if (line.startsWith('@@')) {
@@ -541,6 +609,39 @@ class _DiffSection extends StatelessWidget {
     }
     return Colors.transparent;
   }
+}
+
+/// Splits a commit's combined unified diff into per-file chunks, keyed by both
+/// the new and old path (so renames/deletes resolve). Each chunk starts at a
+/// `diff --git a/<old> b/<new>` line.
+Map<String, String> _splitDiffByPath(String diff) {
+  final map = <String, String>{};
+  final lines = diff.split('\n');
+  final header = RegExp(r'^diff --git a/(.*) b/(.*)$');
+  var start = -1;
+  String? aPath;
+  String? bPath;
+  void flush(int end) {
+    if (start < 0) return;
+    final chunk = lines.sublist(start, end).join('\n');
+    final a = aPath;
+    final b = bPath;
+    if (b != null && b.isNotEmpty) map[b] = chunk;
+    if (a != null && a.isNotEmpty) map[a] = chunk;
+  }
+
+  for (var i = 0; i < lines.length; i++) {
+    final line = lines[i];
+    if (line.startsWith('diff --git ')) {
+      flush(i);
+      start = i;
+      final m = header.firstMatch(line);
+      aPath = m?.group(1);
+      bPath = m?.group(2);
+    }
+  }
+  flush(lines.length);
+  return map;
 }
 
 /// A label/value metadata row.
@@ -568,9 +669,7 @@ class _MetaRow extends StatelessWidget {
               ),
             ),
           ),
-          Expanded(
-            child: SelectableText(value, style: textTheme.bodyMedium),
-          ),
+          Expanded(child: SelectableText(value, style: textTheme.bodyMedium)),
         ],
       ),
     );
@@ -617,15 +716,15 @@ class _InlineError extends StatelessWidget {
     GitFileStatus.modified => (Icons.edit_outlined, UxnanColors.gitModified),
     GitFileStatus.deleted => (
         Icons.remove_circle_outline,
-        UxnanColors.gitDeleted
+        UxnanColors.gitDeleted,
       ),
     GitFileStatus.renamed => (
         Icons.drive_file_move_outline,
-        UxnanColors.gitModified
+        UxnanColors.gitModified,
       ),
     GitFileStatus.untracked => (
         Icons.fiber_new_outlined,
-        UxnanColors.gitUntracked
+        UxnanColors.gitUntracked,
       ),
   };
 }

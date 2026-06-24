@@ -6,6 +6,18 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- **Commit detail: per-file expandable diffs.** The commit detail screen no
+  longer shows one big combined diff under the file list; each touched file is
+  now its own collapsible card (collapsed by default) that reveals **just that
+  file's diff** when tapped — mirroring the clean per-file cards of the
+  version-control screen. The combined `git/commitShow` diff is split per file
+  client-side (keyed by new/old path). `NeSurface` was hoisted from
+  `git_screen.dart` into `presentation/widgets/ne_surface.dart` for reuse.
+  - `presentation/screens/conversation/git/git_commit_detail_screen.dart`,
+    `presentation/widgets/ne_surface.dart` (new), new l10n
+    `gitHistoryNoTextDiff` / `gitHistoryBinaryDiff`.
+
 ### Fixed
 - **Git history graph: no more ref-chip overflow, cleaner lanes.** In graph
   mode each row now shows a single width-capped primary ref chip (branch > tag

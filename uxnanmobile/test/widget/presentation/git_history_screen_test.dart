@@ -86,7 +86,13 @@ GitActionManager _stubManager({
                 'deletions': 1,
               },
             ],
-            'diff': '--- a/lib/main.dart\n+++ b/lib/main.dart\n+new line\n',
+            'diff': 'diff --git a/lib/main.dart b/lib/main.dart\n'
+                'index 1111111..2222222 100644\n'
+                '--- a/lib/main.dart\n'
+                '+++ b/lib/main.dart\n'
+                '@@ -1,1 +1,2 @@\n'
+                ' context\n'
+                '+new line\n',
           },
         );
       }
@@ -367,9 +373,14 @@ void main() {
     expect(find.text('Commit details'), findsOneWidget);
     expect(find.byTooltip('Copy SHA'), findsOneWidget);
     expect(find.text('Copy message'), findsOneWidget);
-    // The file list + diff from git/commitShow render (the row shows the
-    // basename; the directory is a separate muted line).
+    // The file card from git/commitShow renders (basename as the card title);
+    // its diff is collapsed by default…
     expect(find.text('main.dart'), findsOneWidget);
+    expect(find.textContaining('new line'), findsNothing);
+
+    // …and reveals that file's own diff when the card is expanded.
+    await tester.tap(find.text('main.dart'));
+    await tester.pumpAndSettle();
     expect(find.textContaining('new line'), findsOneWidget);
   });
 }
