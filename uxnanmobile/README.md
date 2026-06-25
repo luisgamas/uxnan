@@ -73,7 +73,7 @@ Configuration is injected at compile time with `--dart-define` (spec 03 §3.3):
 ```bash
 dart format lib test
 flutter analyze            # must report 0 issues (no warnings)
-flutter test               # unit + widget tests (428 passing)
+flutter test               # unit + widget tests (432 passing)
 ```
 
 ## Status

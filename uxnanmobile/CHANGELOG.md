@@ -6,6 +6,21 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — dial direct hosts in parallel so a dead host can't stall reconnection (Bug A)
+- **`DirectTransportSelector` now connects to every advertised direct host
+  concurrently** instead of one-at-a-time, and keeps the first that connects
+  within the per-host timeout (the rest are disconnected). Serial dialing made
+  reconnection pay one **full** per-host timeout for every unreachable address
+  ahead of a live one — the `[reconn]` capture showed a resume burning 2 s on a
+  dead virtual NIC (`172.27.192.1`) **and** 2 s on a Tailscale host still waking
+  from OS suspension before it could even try the next candidate. Parallel
+  dialing returns as soon as *any* host answers, so a single slow/dead address no
+  longer adds to the relink latency. The relay fallback (when every direct host
+  fails) is unchanged. Pairs with the bridge-side fix that stops advertising
+  unreachable virtual-NIC addresses in the first place (see `bridge/CHANGELOG.md`).
+  Tests: +1 (`transport_selector_test.dart`: a hanging host no longer blocks a
+  reachable one) → **432** unit + widget tests, all green.
+
 ### Fixed — a turn no longer "dies" on the phone after reconnecting mid-stream
 - **The phone re-attaches to a turn still in flight on the bridge.** Before, the
   "responding…" indicator + composer Stop button were driven only by the

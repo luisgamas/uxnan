@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:uxnan/core/errors/transport_exception.dart';
 import 'package:uxnan/core/utils/logger.dart';
 import 'package:uxnan/domain/entities/trusted_device.dart';
@@ -39,29 +41,17 @@ class DirectTransportSelector implements TransportSelector {
 
   @override
   Future<WebSocketTransport> select(TrustedDevice device) async {
-    // 1. Direct LAN/Tailscale hosts (no relay headers; short per-host timeout
-    //    so an unreachable address — e.g. a virtual NIC — doesn't stall us).
-    for (final host in device.hosts) {
-      final transport = _createTransport();
-      // FOR-DEV: Bug A diagnostic — time each transport attempt so we can see
-      // where post-resume relink latency goes (see uxnanmobile/FOR-DEV.md).
-      final sw = Stopwatch()..start();
-      try {
-        await transport.connect(_directUrl(host)).timeout(_directTimeout);
-        AppLogger.info(
-          '[reconn] direct "$host" connected in '
-          '${sw.elapsedMilliseconds}ms',
-        );
-        return transport;
-      } on Object catch (error) {
-        AppLogger.info(
-          '[reconn] direct "$host" unreachable in '
-          '${sw.elapsedMilliseconds}ms: $error',
-        );
-        await transport.disconnect().catchError((_) {});
-      }
+    // 1. Direct LAN/Tailscale hosts (no relay headers). Dialed CONCURRENTLY so a
+    //    dead or slow host — an unreachable virtual NIC, or a Tailscale tunnel
+    //    still waking after the OS suspended the app — can't stall a reachable
+    //    host queued behind it. The first host to connect within the per-host
+    //    timeout wins; the rest are dropped. This is the relink-latency half of
+    //    Bug A: serial dialing stacked one full timeout per dead host.
+    if (device.hosts.isNotEmpty) {
+      final winner = await _dialDirectHosts(device.hosts);
+      if (winner != null) return winner;
+      AppLogger.info('[reconn] all direct hosts failed → relay fallback');
     }
-    AppLogger.info('[reconn] all direct hosts failed → relay fallback');
 
     // 2. Relay fallback (WAN), routed with the session headers. Bounded by
     //    [_relayTimeout] so an unreachable relay never hangs the caller.
@@ -94,6 +84,59 @@ class DirectTransportSelector implements TransportSelector {
         'Relay unreachable after ${_relayTimeout.inSeconds}s: $error',
       );
     }
+  }
+
+  /// Dials every [hosts] entry concurrently and resolves with the first
+  /// transport that connects within [_directTimeout], or `null` if they all
+  /// fail/time out. Every non-winning transport (failed, timed out, or a slower
+  /// success) is disconnected, so exactly one live transport is ever returned.
+  ///
+  /// FOR-DEV: Bug A diagnostic — each attempt is timed under `[reconn]` so
+  /// post-resume relink latency stays visible (see uxnanmobile/FOR-DEV.md).
+  /// Remove the logs once Bug A is validated on-device.
+  Future<WebSocketTransport?> _dialDirectHosts(List<String> hosts) {
+    final decided = Completer<WebSocketTransport?>();
+    final transports = <WebSocketTransport>[];
+    var pending = hosts.length;
+
+    for (final host in hosts) {
+      final transport = _createTransport();
+      transports.add(transport);
+      final sw = Stopwatch()..start();
+      transport.connect(_directUrl(host)).timeout(_directTimeout).then((_) {
+        if (decided.isCompleted) {
+          // Another host already won this race — drop this late success.
+          unawaited(transport.disconnect().catchError((_) {}));
+          return;
+        }
+        AppLogger.info(
+          '[reconn] direct "$host" connected in ${sw.elapsedMilliseconds}ms',
+        );
+        decided.complete(transport);
+      }).catchError((Object error) {
+        AppLogger.info(
+          '[reconn] direct "$host" unreachable in '
+          '${sw.elapsedMilliseconds}ms: $error',
+        );
+        unawaited(transport.disconnect().catchError((_) {}));
+      }).whenComplete(() {
+        pending--;
+        if (pending == 0 && !decided.isCompleted) decided.complete(null);
+      });
+    }
+
+    // Once a winner is chosen, disconnect every other transport (the losers and
+    // any still-in-flight attempts) so only the winner stays open.
+    return decided.future.then((winner) {
+      if (winner != null) {
+        for (final transport in transports) {
+          if (!identical(transport, winner)) {
+            unawaited(transport.disconnect().catchError((_) {}));
+          }
+        }
+      }
+      return winner;
+    });
   }
 
   /// Builds a `ws://` URL from a bare `host:port`, leaving an explicit
