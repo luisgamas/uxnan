@@ -39,13 +39,13 @@ jobs:
             const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const body = [
               marker,
-              '### ❌ CI (Desktop) falló',
-              'La verificación de `uxnandesktop` (svelte-check / vite / cargo fmt·clippy·test) no pasó en `' + context.sha.slice(0, 7) + '`.',
+              '### ❌ CI (Desktop) failed',
+              'Verification of `uxnandesktop` (svelte-check / vite / cargo fmt·clippy·test) did not pass on `' + context.sha.slice(0, 7) + '`.',
               '',
-              '- Detalle del error: ' + run,
-              '- Reproduce local (en `uxnandesktop/`): `npm ci && npm run check && cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings && cargo test --manifest-path src-tauri/Cargo.toml`',
+              '- Failure details: ' + run,
+              '- Reproduce locally (in `uxnandesktop/`): `npm ci && npm run check && cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings && cargo test --manifest-path src-tauri/Cargo.toml`',
               '',
-              '_Comentario automático; se actualiza cuando cambia el resultado._',
+              '_Automated comment; it updates when the result changes._',
             ].join('\n');
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number,

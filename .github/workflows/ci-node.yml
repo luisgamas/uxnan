@@ -52,13 +52,13 @@ jobs:
             const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const body = [
               marker,
-              '### ❌ CI (Node) falló',
-              'La verificación de `shared` / `bridge` / `relay` no pasó en `' + context.sha.slice(0, 7) + '`.',
+              '### ❌ CI (Node) failed',
+              'Verification of `shared` / `bridge` / `relay` did not pass on `' + context.sha.slice(0, 7) + '`.',
               '',
-              '- Detalle del error: ' + run,
-              '- Reproduce local: `npm ci && npm test`',
+              '- Failure details: ' + run,
+              '- Reproduce locally: `npm ci && npm test`',
               '',
-              '_Comentario automático; se actualiza cuando cambia el resultado._',
+              '_Automated comment; it updates when the result changes._',
             ].join('\n');
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number,
