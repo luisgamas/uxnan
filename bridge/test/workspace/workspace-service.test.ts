@@ -49,6 +49,14 @@ test('list excludes .git and sensitive files and sorts dirs first', async () => 
   assert.ok(!names.includes('.git'));
   assert.ok(!names.includes('.env'));
   assert.deepEqual(names, ['src', 'readme.md']);
+  // Files carry size + last-modified (one stat); directories carry neither.
+  const file = listing.entries.find((e) => e.name === 'readme.md');
+  const dir = listing.entries.find((e) => e.name === 'src');
+  assert.equal(file?.size, 4); // '# hi'
+  assert.equal(typeof file?.mtime, 'number');
+  assert.ok((file?.mtime ?? 0) > 0);
+  assert.equal(dir?.size, undefined);
+  assert.equal(dir?.mtime, undefined);
   await rm(root, { recursive: true, force: true });
 });
 

@@ -13,6 +13,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   merge boundaries. Wire shape is unchanged (still a `string`).
 
 ### Added
+- **`WorkspaceEntry.mtime`** (`models/workspace.ts`): optional last-modified
+  time as epoch milliseconds on `workspace/list` entries (files only; absent for
+  directories / unreadable entries), so the mobile file browser can show a
+  "modified" timestamp on each file. The bridge fills it from the same `stat` it
+  already runs for `size`. Backwards-compatible — a new optional field, no method
+  added, no wire break.
 - **Git commit refs + a `git/commitShow` method** (`models/git.ts`,
   `jsonrpc/methods.ts`, `jsonrpc/method-registry.ts`): `GitCommit.refs?:
   GitRef[]` carries the per-commit decoration (HEAD / local branch / remote

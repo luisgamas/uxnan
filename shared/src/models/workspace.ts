@@ -54,7 +54,14 @@ export type WorkspaceEntryType = 'file' | 'dir';
 export interface WorkspaceEntry {
   name: string;
   type: WorkspaceEntryType;
+  /** Size in bytes (files only; absent for directories or unreadable entries). */
   size?: number;
+  /**
+   * Last-modified time as epoch milliseconds (files only; absent for
+   * directories or unreadable entries). Lets the file browser show a "modified"
+   * timestamp without a second stat round-trip.
+   */
+  mtime?: number;
 }
 
 export interface WorkspaceListing {

@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — `workspace/list` entries carry a last-modified time
+- **`workspace/list` now returns `mtime` (epoch ms) on file entries**
+  (`src/workspace/workspace-service.ts`). It reuses the same `stat` call that
+  already produced `size`, so there's no extra I/O; directories carry neither
+  `size` nor `mtime`. Lets the mobile file browser show a per-file "modified"
+  line. Test: `workspace-service.test.ts` now asserts file entries carry
+  `size` + `mtime` and directory entries carry neither.
+
 ### Fixed — git/log dropped commits & produced a tangled graph
 - **`git/log` no longer loses commits or invents lanes on a branchy history.**
   Three coupled fixes in `src/git/git-service.ts`:
