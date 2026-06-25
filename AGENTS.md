@@ -323,6 +323,23 @@ Verify the docs the same way you verify code: re-read what you wrote against the
 real current state (counts, file names, flags, agent lists, paths). A doc that
 cites a number, a file, or a flag that no longer matches the code is drift.
 
+#### Counts, enumerations & links (easy to miss)
+
+- **Cited numbers MUST be updated when the thing they count changes.** Whenever you
+  add or remove something the docs count or enumerate — a **test**, a **JSON-RPC
+  method**, a **streaming notification**, an **agent**, a **module/file** — grep
+  **every** doc for the affected number/list and update **all** occurrences in the
+  same change set. Examples (these have bitten us): a new method bumps the
+  `N methods` count in `shared/README.md`, `bridge/README.md`, the root
+  `README.md` / `README.es.md`, **and** `architecture/02b` (the `METHOD_NAMES`
+  count *and* the method list); new tests bump the `N passing` / `N bridge + …`
+  counts in the affected README(s). Re-derive the number from the code (`grep -c`
+  the registry / `test(`), don't trust the old one.
+- **Never reference a git-ignored / local-only file from a tracked file.** Anything
+  in `.git/info/exclude` (e.g. the local `*_MVP.md` snapshots, scratch/runbook
+  notes) is the maintainer's local context and won't exist on a fresh clone —
+  tracked docs, workflows and config must stand on their own without pointing at it.
+
 #### Cross-monorepo functionality (read this twice)
 
 Many features span monorepos — a bridge method the mobile app renders, an E2EE step
@@ -470,10 +487,8 @@ If the documentation says one thing but the existing code does another:
 Components version **independently** via per-component git tags (`shared-v*`,
 `bridge-v*`, `relay-v*`, `desktop-v*`, `mobile-v*`). Pushing a component tag runs
 that component's `release-*.yml` workflow. The version convention, the release
-matrix, and the full step-by-step are in **[`VERSIONS.md`](VERSIONS.md)**
-(maintainer-only operational detail lives in the local, git-ignored
-`CI_CD_MONOREPOS.md`); the contributor-facing summary is in
-[`CONTRIBUTING.md`](CONTRIBUTING.md) → *Releases*.
+matrix, and the full step-by-step are in **[`VERSIONS.md`](VERSIONS.md)**; the
+contributor-facing summary is in [`CONTRIBUTING.md`](CONTRIBUTING.md) → *Releases*.
 
 **Non-negotiable rules when cutting a release:**
 
