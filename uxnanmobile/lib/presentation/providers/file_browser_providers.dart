@@ -56,6 +56,42 @@ class ShowHiddenFiles extends Notifier<bool> {
 final showHiddenFilesProvider =
     NotifierProvider<ShowHiddenFiles, bool>(ShowHiddenFiles.new);
 
+/// Whether each file row shows a details line (size + last-modified) under its
+/// name. Defaults to `true` — the second line is useful metadata rather than a
+/// redundant repeat of the name. Files only; directories never show details.
+class ShowFileDetails extends Notifier<bool> {
+  @override
+  bool build() => true;
+
+  /// Toggles the per-file details line in the browser.
+  void set({required bool value}) {
+    if (state == value) return;
+    state = value;
+  }
+}
+
+/// Whether file rows show the size + modified details line.
+final showFileDetailsProvider =
+    NotifierProvider<ShowFileDetails, bool>(ShowFileDetails.new);
+
+/// Whether the file browser uses compact (denser, shorter) rows. Defaults to
+/// `false` — rows are comfortable by default so names + details breathe; the
+/// compact mode restores the tighter, single-line-height spacing.
+class CompactFileRows extends Notifier<bool> {
+  @override
+  bool build() => false;
+
+  /// Toggles compact row density in the browser.
+  void set({required bool value}) {
+    if (state == value) return;
+    state = value;
+  }
+}
+
+/// Whether the file browser renders compact (denser) rows.
+final compactFileRowsProvider =
+    NotifierProvider<CompactFileRows, bool>(CompactFileRows.new);
+
 /// Whether the file viewer should render markdown as a styled preview. When
 /// `false`, the raw markdown source is shown (preserving indent / escape
 /// sequences) — useful for verifying what the agent actually wrote.

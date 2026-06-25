@@ -1679,6 +1679,12 @@ class AppLocalizationsEs extends AppLocalizations {
   String get fileBrowserShowHidden => 'Mostrar archivos ocultos';
 
   @override
+  String get fileBrowserShowDetails => 'Mostrar detalles del archivo';
+
+  @override
+  String get fileBrowserCompactRows => 'Filas compactas';
+
+  @override
   String get fileBrowserCollapseAll => 'Contraer todas las carpetas';
 
   @override

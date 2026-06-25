@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — `workspace/list` entries carry a last-modified time
+- **`workspace/list` now returns `mtime` (epoch ms) on file entries**
+  (`src/workspace/workspace-service.ts`). It reuses the same `stat` call that
+  already produced `size`, so there's no extra I/O; directories carry neither
+  `size` nor `mtime`. Lets the mobile file browser show a per-file "modified"
+  line. Test: `workspace-service.test.ts` now asserts file entries carry
+  `size` + `mtime` and directory entries carry neither.
+
 ### Fixed — stop advertising unreachable virtual-NIC addresses (Bug A relink latency)
 - **`src/transport/local-hosts.ts` now excludes host-only virtual adapters** from
   the directly-reachable hosts advertised in the pairing QR / mDNS. Hyper-V and WSL

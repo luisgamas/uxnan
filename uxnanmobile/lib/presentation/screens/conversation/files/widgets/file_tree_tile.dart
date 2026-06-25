@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:uxnan/domain/entities/file_browser.dart';
 import 'package:uxnan/domain/enums/git_file_status.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
@@ -7,11 +8,14 @@ import 'package:uxnan/presentation/theme/typography.dart';
 
 /// The name/icon color for a file or folder by its [GitFileStatus].
 ///
-/// Communicates git state through colour, not extra glyphs:
+/// Communicates git state through colour, not extra glyphs — each git state
+/// gets its own tone, reinforced by weight + style (see [FileTreeTile]) so
+/// "tracked", "untracked" and "changed" are told apart at a glance:
 /// - tracked, unchanged (`null`) → [ColorScheme.onSurface] (the regular,
-///   confident text tone);
-/// - **untracked** → [ColorScheme.onSurfaceVariant] — a distinguishable muted
-///   grey so files git isn't tracking read as clearly de-emphasised;
+///   confident text tone — a file git already knows about, with no changes);
+/// - **untracked** → [ColorScheme.onSurfaceVariant] (a muted tone), set in
+///   *italic* by the tile so files git isn't tracking read as clearly distinct
+///   from the heavier, solid tracked rows;
 /// - added/modified/renamed/deleted → the matching `UxnanColors` git token
 ///   (same palette as the diff view in `GitScreen`).
 Color gitStatusColor(GitFileStatus? status, ColorScheme colors) {
@@ -155,12 +159,13 @@ const _codeExts = [
   '.tf', //
 ];
 
-/// A single row in the file browser: a leading file-type icon, the name, its
-/// path, and a trailing chevron for directories. Git state is conveyed purely
-/// through the name + icon colour (see [gitStatusColor]) — tracked-unchanged
-/// files read as [ColorScheme.onSurface], untracked ones as a muted grey, and
-/// changed files in their git colour — so the row stays uncluttered (no extra
-/// status dots or pills).
+/// A single row in the file browser: a leading file-type icon, the name, an
+/// optional details line (size · modified), and a trailing chevron for
+/// directories. Git state is conveyed through the name + icon colour (see
+/// [gitStatusColor]) plus weight and style — every tracked row (unchanged or
+/// changed) carries a medium weight, while untracked rows stay regular weight
+/// and *italic* in a muted tone — so tracked vs untracked reads at a glance
+/// without extra status dots or pills.
 ///
 /// Stateless — the parent owns expansion / selection state and passes the
 /// derived booleans. Tap fires [onTap], long-press [onLongPress] when given.
@@ -171,6 +176,8 @@ class FileTreeTile extends StatelessWidget {
     required this.depth,
     required this.showExtension,
     required this.onTap,
+    this.showDetails = true,
+    this.compact = false,
     this.onLongPress,
     super.key,
   });
@@ -186,6 +193,14 @@ class FileTreeTile extends StatelessWidget {
   /// strips the trailing `.ext` for display but keeps the full name in the
   /// semantics label so screen readers still announce it.
   final bool showExtension;
+
+  /// Whether to show the per-file details line (size + last-modified) under the
+  /// name. Files only — directories never carry a details line.
+  final bool showDetails;
+
+  /// Whether the row uses compact (denser) vertical spacing. When `false`
+  /// (default) the row is a little taller so the name + details breathe.
+  final bool compact;
 
   /// Tap callback — the parent decides what to do (expand a directory, open a
   /// file, …).
@@ -205,22 +220,32 @@ class FileTreeTile extends StatelessWidget {
     final indent = depth * 16.0;
 
     // Git state is carried by colour: tracked-unchanged → onSurface, untracked
-    // → a muted grey, changed → the git colour. The name takes that colour
-    // directly; the leading file-type icon takes it too, except a neutral
-    // (unchanged) file keeps a slightly softer icon tone than its name.
+    // → a muted onSurfaceVariant, changed → the git colour. The name takes that
+    // colour directly; the leading file-type icon takes it too, except a
+    // neutral (unchanged) file keeps a slightly softer icon tone than its name.
     final statusColor = gitStatusColor(status, colors);
     final iconColor = status == null ? colors.onSurfaceVariant : statusColor;
-    // Only an actual git *change* (added/modified/deleted/renamed) bumps the
-    // weight; untracked stays at the normal weight so it reads as quiet grey.
-    final emphasised = status != null && status != GitFileStatus.untracked;
+    // Every *tracked* row — unchanged (`null`) or changed — carries the medium
+    // weight; only *untracked* files stay at regular weight and go italic, so
+    // the tracked/untracked split is legible by weight + style, not just hue.
+    final isUntracked = status == GitFileStatus.untracked;
+    final emphasised = !isUntracked;
+
+    // The details line (size · modified) replaces the old redundant "name with
+    // extension" second line. Files only, and only when enabled and the bridge
+    // actually reported metadata.
+    final details =
+        (!isDir && showDetails) ? _detailsLine(context, node) : null;
 
     return InkWell(
       onTap: onTap,
       onLongPress: onLongPress,
       child: Padding(
-        padding: const EdgeInsets.symmetric(
+        // Comfortable by default (taller rows); compact restores the tighter
+        // single-line spacing.
+        padding: EdgeInsets.symmetric(
           horizontal: UxnanSpacing.lg,
-          vertical: UxnanSpacing.xs,
+          vertical: compact ? UxnanSpacing.xs : UxnanSpacing.sm,
         ),
         child: Row(
           children: [
@@ -245,16 +270,21 @@ class FileTreeTile extends StatelessWidget {
                       color: statusColor,
                       fontWeight:
                           emphasised ? FontWeight.w500 : FontWeight.w400,
+                      fontStyle:
+                          isUntracked ? FontStyle.italic : FontStyle.normal,
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
-                  if (node.path != displayName)
-                    Text(
-                      node.path,
-                      style: UxnanTypography.codeSmall.copyWith(
-                        color: colors.onSurfaceVariant,
+                  if (details != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        details,
+                        style: UxnanTypography.codeSmall.copyWith(
+                          color: colors.onSurfaceVariant,
+                        ),
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      overflow: TextOverflow.ellipsis,
                     ),
                 ],
               ),
@@ -278,4 +308,37 @@ class FileTreeTile extends StatelessWidget {
       ),
     );
   }
+
+  /// Builds the file's details line — `size · modified` — or `null` when the
+  /// bridge reported neither (older bridge / unreadable entry), so the line is
+  /// omitted rather than rendered empty. The date is localised via `intl`.
+  String? _detailsLine(BuildContext context, FileTreeNode node) {
+    final parts = <String>[];
+    final size = node.size;
+    if (size != null) parts.add(_formatSize(size));
+    final mtime = node.mtime;
+    if (mtime != null) {
+      final locale = Localizations.localeOf(context).toString();
+      final when = DateTime.fromMillisecondsSinceEpoch(mtime);
+      parts.add(DateFormat.yMMMd(locale).format(when));
+    }
+    return parts.isEmpty ? null : parts.join('  ·  ');
+  }
+}
+
+/// Formats a byte count as a short human string (`512 B`, `12.3 KB`, `4 MB`):
+/// no decimals under 1 KB or for whole values, one decimal otherwise.
+String _formatSize(int size) {
+  if (size < 1024) return '$size B';
+  const units = ['KB', 'MB', 'GB', 'TB'];
+  var value = size / 1024;
+  var unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  final text = value >= 100 || value == value.roundToDouble()
+      ? value.toStringAsFixed(0)
+      : value.toStringAsFixed(1);
+  return '$text ${units[unit]}';
 }

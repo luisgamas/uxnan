@@ -11,6 +11,7 @@ class FileEntry extends Equatable {
     required this.name,
     required this.type,
     this.size,
+    this.mtime,
   });
 
   /// Reconstructs a [FileEntry] from its JSON form. An unknown `type` falls
@@ -20,6 +21,7 @@ class FileEntry extends Equatable {
         name: json['name'] as String? ?? '',
         type: _type(json['type'] as String?),
         size: json['size'] is num ? (json['size'] as num).toInt() : null,
+        mtime: json['mtime'] is num ? (json['mtime'] as num).toInt() : null,
       );
 
   /// Entry's base name (no path).
@@ -31,6 +33,10 @@ class FileEntry extends Equatable {
   /// Size in bytes (files only; absent for directories).
   final int? size;
 
+  /// Last-modified time as epoch milliseconds (files only; absent for
+  /// directories or unreadable entries).
+  final int? mtime;
+
   static FileEntryType _type(String? name) {
     for (final value in FileEntryType.values) {
       if (value.name == name) return value;
@@ -39,7 +45,7 @@ class FileEntry extends Equatable {
   }
 
   @override
-  List<Object?> get props => [name, type, size];
+  List<Object?> get props => [name, type, size, mtime];
 }
 
 /// Whether an entry is a directory or a file.
@@ -93,6 +99,7 @@ class FileTreeNode extends Equatable {
     required this.path,
     required this.type,
     this.size,
+    this.mtime,
     this.children = const [],
     this.expanded = false,
     this.loading = false,
@@ -120,18 +127,25 @@ class FileTreeNode extends Equatable {
     bool? expanded,
     bool? loading,
     Object? error = _sentinel,
-    GitFileStatus? gitStatus,
+    Object? gitStatus = _sentinel,
   }) =>
       FileTreeNode(
         name: name,
         path: path,
         type: type,
         size: size,
+        mtime: mtime,
         children: children ?? this.children,
         expanded: expanded ?? this.expanded,
         loading: loading ?? this.loading,
         error: identical(error, _sentinel) ? this.error : error as String?,
-        gitStatus: gitStatus ?? this.gitStatus,
+        // Sentinel-guarded like `error`: passing `gitStatus: null` *clears* the
+        // status (a file/folder that went clean after a commit), while omitting
+        // it preserves the current value. Without this, a node could never lose
+        // its colour once painted.
+        gitStatus: identical(gitStatus, _sentinel)
+            ? this.gitStatus
+            : gitStatus as GitFileStatus?,
       );
 
   /// Display name for this node — strips the extension when [showExtension]
@@ -158,6 +172,10 @@ class FileTreeNode extends Equatable {
   /// File size in bytes (files only).
   final int? size;
 
+  /// Last-modified time as epoch milliseconds (files only; `null` for
+  /// directories or when the bridge couldn't stat the entry).
+  final int? mtime;
+
   /// Lazily-loaded children (directories only; files always empty).
   final List<FileTreeNode> children;
 
@@ -181,6 +199,7 @@ class FileTreeNode extends Equatable {
         path,
         type,
         size,
+        mtime,
         children,
         expanded,
         loading,

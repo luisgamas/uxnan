@@ -69,9 +69,13 @@ export class WorkspaceService {
       const entry: WorkspaceEntry = { name: dirent.name, type: isDir ? 'dir' : 'file' };
       if (!isDir) {
         try {
-          entry.size = (await stat(resolve(resolvedRoot, dirent.name))).size;
+          // One stat call yields both size and last-modified (the file browser
+          // shows them on the entry's detail line).
+          const info = await stat(resolve(resolvedRoot, dirent.name));
+          entry.size = info.size;
+          entry.mtime = Math.round(info.mtimeMs);
         } catch {
-          // ignore unreadable entries' size
+          // ignore unreadable entries' size/mtime
         }
       }
       entries.push(entry);

@@ -789,6 +789,14 @@
   "@fileBrowserShowHidden": {
     "description": "Settings-menu toggle that controls whether dotfiles (names starting with '.') are visible in the file browser list."
   },
+  "fileBrowserShowDetails": "Show file details",
+  "@fileBrowserShowDetails": {
+    "description": "Settings-menu toggle that controls whether each file row shows a details line (size and last-modified date) under its name."
+  },
+  "fileBrowserCompactRows": "Compact rows",
+  "@fileBrowserCompactRows": {
+    "description": "Settings-menu toggle that switches the file browser to denser, shorter rows (off by default, where rows are taller)."
+  },
   "fileBrowserCollapseAll": "Collapse all folders",
   "@fileBrowserCollapseAll": {
     "description": "App-bar action in the file browser that collapses every expanded folder at once."

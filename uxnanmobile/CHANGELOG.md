@@ -85,6 +85,35 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
     reconnect-loop half is still tracked in `FOR-DEV.md` (Bug A).
 
 ### Changed
+- **File browser: file rows show details + are comfortable by default, with a
+  compact option.** Two changes to the in-conversation file browser rows:
+  - **Details line replaces the redundant name.** With extensions hidden, each
+    row showed a second line that just repeated the file's path/name *with* the
+    extension — noise. That line is gone; in its place, files now show a details
+    line — **size · modified date** (the modified date comes from the new
+    `WorkspaceEntry.mtime`, localised via `intl`) — toggleable from the 3-dot
+    menu (*Show file details*, on by default). Directories never show details.
+  - **Taller rows by default + a compact mode.** Rows were cramped at a single
+    line's height; they're now a little taller by default so the name + details
+    breathe (`UxnanSpacing.sm` vertical), with a *Compact rows* toggle in the
+    3-dot menu that restores the previous tight spacing (`UxnanSpacing.xs`).
+  - `presentation/screens/conversation/files/widgets/file_tree_tile.dart`,
+    `file_browser_screen.dart`, `providers/file_browser_providers.dart`
+    (`showFileDetailsProvider`, `compactFileRowsProvider`), `FileEntry`/
+    `FileTreeNode.mtime`, new l10n `fileBrowserShowDetails` /
+    `fileBrowserCompactRows`.
+- **File browser: untracked files now clearly distinct from tracked ones.** In
+  the in-conversation file browser, untracked files were painted in
+  `onSurfaceVariant` — a muted grey barely distinguishable from the
+  tracked-unchanged `onSurface` tone, so you couldn't tell at a glance which
+  files git is and isn't tracking. The split is now carried by weight + style,
+  not just hue: every *tracked* row (unchanged or changed) uses a medium weight,
+  while *untracked* rows stay regular weight and **italic** in the muted
+  `onSurfaceVariant` tone. Each git state keeps its own colour
+  (tracked-unchanged neutral, untracked muted, added/modified/deleted/renamed in
+  their diff colours).
+  - `presentation/screens/conversation/files/widgets/file_tree_tile.dart`
+    (`gitStatusColor`, `FileTreeTile`).
 - **Consistent circular floating scroll buttons.** The git history's
   back-to-top button was M3's default rounded-square `FloatingActionButton`,
   while the conversation's scroll-to-bottom button is a circle; NE's action
@@ -102,6 +131,21 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
     `gitHistoryNoTextDiff` / `gitHistoryBinaryDiff`.
 
 ### Fixed
+- **File browser: folders/files no longer keep a stale git colour after a
+  commit.** Once a file or its parent folder was painted as changed, the colour
+  could never be cleared: `FileTreeNode.copyWith` read `gitStatus: gitStatus ??
+  this.gitStatus`, so passing `null` (a node gone clean) preserved the old
+  status, and `_applyGitStatus` early-returned the node unchanged whenever its
+  new status was `null`. After committing through the git screen (or an external
+  CLI commit on the same PC), the browser kept showing the change. `copyWith`
+  now sentinel-guards `gitStatus` (passing `null` *clears* it, like `error`),
+  and the repaint walk rebuilds a node whenever its status actually changed —
+  including a non-null → null transition — so committed changes drop their
+  colour immediately. Added a regression test covering the modified → clean
+  path.
+  - `domain/entities/file_browser.dart` (`copyWith`),
+    `application/managers/file_browser_manager.dart` (`_applyGitStatus`),
+    `test/unit/application/file_browser_manager_test.dart`.
 - **Git history graph: pass-through lanes no longer draw diagonal "hooks".** A
   lane just crossing a row was routed to `outgoing.indexOf(occupant)`, which —
   when the same parent occupied two lanes (a commit with multiple children,
