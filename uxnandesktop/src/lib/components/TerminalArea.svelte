@@ -211,12 +211,68 @@
     openMenu(e, [...splitItems(groupId), { separator: true }, ...regionItems(groupId, tabId)]);
   }
 
+  // --- Tab drag & drop (reorder within a region + move across regions) -----
+  // The dragged tab and the live drop slot (region + insertion index). The slot
+  // drives the insertion marker; on drop `moveTab` reorders or moves the tab.
+  let tabDrag = $state<{ tabId: string; fromGroupId: string } | null>(null);
+  let dropSlot = $state<{ groupId: string; index: number } | null>(null);
+
+  function onTabDragStart(e: DragEvent, groupId: string, tabId: string) {
+    tabDrag = { tabId, fromGroupId: groupId };
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", tabId); // some webviews need a payload
+    }
+  }
+  function onTabDragEnd() {
+    tabDrag = null;
+    dropSlot = null;
+  }
+  /** Over a chip: pick the slot before/after it by pointer side. */
+  function onChipDragOver(e: DragEvent, groupId: string, index: number) {
+    if (!tabDrag) return;
+    e.preventDefault();
+    e.stopPropagation(); // don't let the strip override with an append slot
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const after = e.clientX > r.left + r.width / 2;
+    dropSlot = { groupId, index: after ? index + 1 : index };
+  }
+  /** Over the strip's empty area: append to the end of that region. */
+  function onStripDragOver(e: DragEvent, groupId: string, tabCount: number) {
+    if (!tabDrag) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+    dropSlot = { groupId, index: tabCount };
+  }
+  function onStripDrop(e: DragEvent, groupId: string) {
+    if (!tabDrag) return;
+    e.preventDefault();
+    const index =
+      dropSlot && dropSlot.groupId === groupId ? dropSlot.index : undefined;
+    terminals.moveTab(tabDrag.tabId, groupId, index);
+    tabDrag = null;
+    dropSlot = null;
+  }
+  /** Whether the insertion marker sits at slot `index` of `groupId`. */
+  function isDropAt(groupId: string, index: number): boolean {
+    return !!tabDrag && dropSlot?.groupId === groupId && dropSlot.index === index;
+  }
+
+  // --- Keyboard: MRU tab cycling (Ctrl+Tab / Ctrl+Shift+Tab) ----------------
+  function onWindowKeydown(e: KeyboardEvent) {
+    if (e.key === "Escape") menu = null;
+    // Cycle the active region's tabs by recency. Suppressed inside xterm too
+    // (Terminal.svelte) so it never reaches the PTY as a literal tab.
+    if (e.key === "Tab" && e.ctrlKey && !e.altKey && !e.metaKey) {
+      e.preventDefault();
+      terminals.cycleTab(!e.shiftKey);
+    }
+  }
+
 </script>
 
-<svelte:window
-  onpointerdown={() => (menu = null)}
-  onkeydown={(e) => e.key === "Escape" && (menu = null)}
-/>
+<svelte:window onpointerdown={() => (menu = null)} onkeydown={onWindowKeydown} />
 
 <div class="flex h-full flex-col">
   <!-- Slim strip: new-terminal action, workspace switcher, right-panel toggle -->
@@ -291,17 +347,34 @@
                   role="group"
                   onpointerdown={() => terminals.setActiveGroup(g.group.id)}
                 >
-                  <!-- Region tab strip -->
+                  <!-- Region tab strip (drop target for tab drag & drop) -->
                   <div
                     class="uxnan-scroll flex h-8 shrink-0 items-center gap-1 overflow-x-auto border-b border-border bg-card px-1"
+                    ondragover={(e) => onStripDragOver(e, g.group.id, g.group.tabs.length)}
+                    ondrop={(e) => onStripDrop(e, g.group.id)}
+                    role="group"
                   >
-                    {#each g.group.tabs as t (t.id)}
+                    {#each g.group.tabs as t, ti (t.id)}
                       {@const activeChip = g.group.activeTabId === t.id}
+                      <!-- Insertion marker before this tab -->
+                      <div
+                        class="h-5 w-0.5 shrink-0 rounded-full {isDropAt(g.group.id, ti)
+                          ? 'bg-ring'
+                          : 'bg-transparent'}"
+                        aria-hidden="true"
+                      ></div>
                       <div
                         class="flex shrink-0 items-center gap-1 rounded px-2 py-0.5 text-xs {activeChip
                           ? 'bg-background text-foreground'
-                          : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'}"
+                          : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'} {tabDrag?.tabId ===
+                        t.id
+                          ? 'opacity-40'
+                          : ''}"
                         role="group"
+                        draggable="true"
+                        ondragstart={(e) => onTabDragStart(e, g.group.id, t.id)}
+                        ondragend={onTabDragEnd}
+                        ondragover={(e) => onChipDragOver(e, g.group.id, ti)}
                         oncontextmenu={t.kind === "terminal"
                           ? (e) => tabMenu(e, g.group.id, t.id)
                           : undefined}
@@ -362,6 +435,16 @@
                         </button>
                       </div>
                     {/each}
+                    <!-- Insertion marker after the last tab (append slot) -->
+                    <div
+                      class="h-5 w-0.5 shrink-0 rounded-full {isDropAt(
+                        g.group.id,
+                        g.group.tabs.length,
+                      )
+                        ? 'bg-ring'
+                        : 'bg-transparent'}"
+                      aria-hidden="true"
+                    ></div>
                     <button
                       class="ml-0.5 shrink-0 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                       title={i18n.t("terminal.newInRegion")}
