@@ -27,6 +27,7 @@
   import { agentMonitor } from "$lib/state/agentMonitor.svelte";
   import { app } from "$lib/state/app.svelte";
   import { KeyboardProtocol } from "$lib/terminal/keyboardProtocol";
+  import { matchAction } from "$lib/keybindings";
 
   // Effective terminal appearance (general theme base + per-terminal overrides:
   // font, size, line height, spacing, weight, ligatures, cursor, ANSI colors).
@@ -138,8 +139,9 @@
 
     // Custom key handling (everything else — Ctrl+←/→ word nav, Home/End, … —
     // falls through to xterm's defaults and on to the PTY):
-    //  - Ctrl+Tab / Ctrl+Shift+Tab are swallowed (the window cycles tabs).
-    //  - Cmd+W / Ctrl+Shift+W close the terminal.
+    //  - Configurable app shortcuts (close tab, tab cycle, split focus) win even
+    //    while a terminal is focused — the global +page handler ignores keys
+    //    inside xterm, so they're matched here against the user's chords.
     //  - Ctrl+C copies when there's a selection, else passes through as SIGINT.
     //  - Ctrl+V pastes once (preventDefault stops a duplicate native paste).
     //  - When an app negotiates the Kitty/CSI-u keyboard protocol, keys are
@@ -159,20 +161,34 @@
       }
       if (e.type !== "keydown") return true;
 
-      // App shortcuts that always win, even under the keyboard protocol:
-      // Ctrl+Tab / Ctrl+Shift+Tab cycle tabs (handled at the window level);
-      // swallow them so xterm never forwards a literal tab to the PTY.
-      if (e.key === "Tab" && e.ctrlKey && !e.altKey && !e.metaKey) {
-        e.preventDefault();
-        return false;
+      // Configurable app shortcuts that always win, even under the keyboard
+      // protocol. `closeCenter` (default Ctrl/⌘+W) closes this tab with the
+      // usual unsaved-file prompt; the others cycle tabs / move split focus.
+      // Anything else (Ctrl+W rebound away, other actions) falls through to the
+      // shell as before.
+      switch (matchAction(e)) {
+        case "closeCenter":
+          void terminals.closeTabAnywhere(id);
+          e.preventDefault();
+          return false;
+        case "cycleTabNext":
+          terminals.cycleTab(true);
+          e.preventDefault();
+          return false;
+        case "cycleTabPrev":
+          terminals.cycleTab(false);
+          e.preventDefault();
+          return false;
+        case "focusSplitNext":
+          terminals.focusSplit(1);
+          e.preventDefault();
+          return false;
+        case "focusSplitPrev":
+          terminals.focusSplit(-1);
+          e.preventDefault();
+          return false;
       }
-      // Close this terminal: Cmd+W (mac) or Ctrl+Shift+W. Plain Ctrl+W is left
-      // for the shell's delete-word-backward.
-      if (e.key.toLowerCase() === "w" && (e.metaKey || (e.ctrlKey && e.shiftKey))) {
-        void terminals.closeTabAnywhere(id);
-        e.preventDefault();
-        return false;
-      }
+
       if (e.ctrlKey && !e.altKey && !e.shiftKey) {
         const key = e.key.toLowerCase();
         if (key === "c" && term?.hasSelection()) {

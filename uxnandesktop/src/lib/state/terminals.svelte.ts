@@ -963,6 +963,24 @@ class TerminalStore {
     }, CYCLE_COMMIT_MS);
   }
 
+  /** Move keyboard focus to the next/previous split region of the active
+   *  workspace (in visual layout order), focusing that region's active terminal.
+   *  No-op when there's one region or none. */
+  focusSplit(dir: 1 | -1): void {
+    if (!this.root) return;
+    const ids = computeAreaLayout(this.root).groups.map((g) => g.group.id);
+    if (ids.length < 2) return;
+    const cur = Math.max(0, ids.indexOf(this.activeGroupId));
+    const next = ids[(cur + dir + ids.length) % ids.length];
+    this.activeGroupId = next;
+    const group = findGroup(this.root, next);
+    const tab = group?.tabs.find((t) => t.id === group.activeTabId);
+    if (tab) {
+      this.noteActivation(tab.id);
+      if (tab.kind === "terminal") this.controller(tab.id)?.focus();
+    }
+  }
+
   /** Move a tab to a position in a (possibly different) region — the tab-strip
    *  drag & drop. `toIndex` is the insertion slot in the target region (clamped;
    *  omitted = append). Within a region this just reorders (no remount). Across
