@@ -791,6 +791,33 @@ void main() {
     expect(sentMethods, contains('turn/list'));
   });
 
+  test('resync over a half-open socket fails fast (kept local), not after 30 s',
+      () async {
+    // Simulates the Bug A case: on resume the socket is silently half-open, so
+    // the resync `turn/list` never gets a reply. With the correlator's 30 s
+    // default this hangs the thread view; the tight resync timeout makes it
+    // give up fast and keep local state (the live re-attach restores the turn
+    // from the stream). The 2 s guard fails if the tight timeout isn't applied.
+    final stalled = ThreadManager(
+      threadRepository: threadRepo,
+      messageRepository: messageRepo,
+      domainEvents: events.stream,
+      resyncTimeout: const Duration(milliseconds: 50),
+      sendRequest: (method, [params]) async {
+        if (method == 'turn/list') {
+          return Completer<RpcMessage>().future; // never completes
+        }
+        return RpcMessage.response(id: '1', result: const <String, dynamic>{});
+      },
+    );
+    await stalled.selectThread('th1');
+    await _settle();
+
+    await stalled.resyncActive().timeout(const Duration(seconds: 2));
+
+    await stalled.dispose();
+  });
+
   test('respondApproval sends turn/send with the approvalResponse', () async {
     final ok = await manager.respondApproval(
       threadId: 'th1',

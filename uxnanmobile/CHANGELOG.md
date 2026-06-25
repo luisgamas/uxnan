@@ -6,6 +6,20 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — a resume resync no longer hangs the thread view for 30 s (Bug A)
+- **The resume/reconnect `turn/list` resync now uses an 8 s timeout** instead of
+  the request correlator's 30 s default. When the app returns from the background
+  the socket can be silently half-open, so the resync round-trip gets no reply;
+  the `[reconn]` capture showed it stall the full 30 s (`turn/list resync failed
+  (kept local)`) while the thread sat un-refreshed. With the tighter bound it
+  gives up fast and keeps local state — and the already-shipped live re-attach
+  (`activeTurnId` + the `_ensureLive` self-heal) restores any in-flight turn from
+  the stream — so the view recovers quickly. Only the resync (newest-page) pull is
+  bounded; user-driven older-page paging keeps the default timeout. The bound is
+  injectable (`ThreadManager.resyncTimeout`) so tests don't wait it out. Tests:
+  +1 (`thread_manager_test.dart`: a resync over a half-open socket fails fast,
+  not after 30 s) → **433** unit + widget tests, all green.
+
 ### Fixed — dial direct hosts in parallel so a dead host can't stall reconnection (Bug A)
 - **`DirectTransportSelector` now connects to every advertised direct host
   concurrently** instead of one-at-a-time, and keeps the first that connects

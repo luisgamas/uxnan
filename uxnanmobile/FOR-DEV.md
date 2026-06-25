@@ -10,8 +10,10 @@ Deferred implementation work (code the team/agent will do later). Distinct from
 
 ## FOR-DEV: Bug A — relink latency after returning from "recents" (URGENT)
 
-**Status:** open. Diagnostic instrumentation is in place (Option 1); the actual
-fix is pending the captured logs. The `[reconn]` logs must be removed once fixed.
+**Status:** open (mitigations landed, pending on-device validation). Three
+targeted fixes have landed from the captured `[reconn]` logs (see *Mitigations
+landed* below); the `[reconn]` instrumentation on both sides stays in place until
+the reproduction is confirmed clean on-device, then is removed.
 
 **Symptom (user-reported, remote/Tailscale LAN-direct setup,
 `relayEnabled:false` on the bridge):** a full app kill → reopen reconnects fast,
@@ -20,10 +22,33 @@ phone↔bridge session for a long time (feels like it never relinks), so the use
 force-kills to get an instant reconnect. The bridge log shows LAN reconnects DO
 happen repeatedly, so this is **relink latency**, not a hard "never reconnects".
 
-**Captured-log finding (2026-06-25):** the transport CONNECTS fast (40–194 ms)
-but the post-handshake `bridge/status` heartbeat times out at 8 s → `drop live
-session (apparently dead) → reconnect`, **in a loop**; a full app-kill clears it
-instantly. Contributing factors seen: a virtual NIC (`172.27.192.1`) advertised
+**Mitigations landed (2026-06-25, both sides instrumented + captured):** the
+reproduction was caught from both sides at once (bridge `[reconn]` log +
+`adb logcat`). On resume both advertised hosts timed out at the 2 s probe — the
+real Tailscale host (`100.67.147.68`, tunnel still waking from OS suspension)
+**and** the dead virtual NIC (`172.27.192.1`) — dialed serially (2 s + 2 s), and
+a `turn/list` resync hung the full 30 s. Three fixes:
+1. **Bridge — stop advertising virtual NICs** (`bridge` `local-hosts.ts`
+   `isVirtualInterfaceName`): the unreachable `172.x` host is no longer in the
+   QR/mDNS, so the phone never burns a probe on it. (Removes the bridge FOR-DEV
+   "advertises virtual-NIC IPs" half.)
+2. **Mobile — parallel direct-host dial** (`transport_selector.dart`): all hosts
+   are dialed concurrently, first to connect wins, so a slow/dead host no longer
+   stacks its full timeout ahead of a live one.
+3. **Mobile — tight resync timeout** (`thread_manager.dart` `resyncTimeout` 8 s):
+   a resync over a half-open socket gives up fast and keeps local (the live
+   re-attach restores the in-flight turn) instead of hanging 30 s.
+
+**To validate:** reproduce background → wait → reopen and confirm the relink is
+prompt (no force-kill needed) with the `[reconn]` logs; then remove the
+instrumentation on both sides. Still-open candidates if latency persists:
+bridge-side keepalive (no keepalive today; relies on TCP close), and letting the
+user restrict which interfaces are *served*/advertised.
+
+**Earlier captured-log finding (2026-06-25):** the transport CONNECTS fast
+(40–194 ms) but the post-handshake `bridge/status` heartbeat times out at 8 s →
+`drop live session (apparently dead) → reconnect`, **in a loop**; a full app-kill
+clears it instantly. Contributing factors seen: a virtual NIC (`172.27.192.1`) advertised
 by the bridge but unreachable wastes 2 s per attempt (bridge FOR-DEV "bind LAN to
 chosen interface(s)"); no bridge-side keepalive (relies on TCP close, minutes on
 mobile). Candidates to confirm with **bridge-side** logs: the catch-up replay

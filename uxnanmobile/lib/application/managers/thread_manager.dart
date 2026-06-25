@@ -45,17 +45,28 @@ class ThreadManager {
     required RpcSend sendRequest,
     String? Function()? foregroundThreadId,
     Uuid? uuid,
+    Duration resyncTimeout = const Duration(seconds: 8),
   })  : _threadRepository = threadRepository,
         _messageRepository = messageRepository,
         _sendRequest = sendRequest,
         _foregroundThreadId = foregroundThreadId,
-        _uuid = uuid ?? const Uuid() {
+        _uuid = uuid ?? const Uuid(),
+        _resyncTimeout = resyncTimeout {
     _eventsSub = domainEvents.listen(_applyEvent);
   }
 
   final IThreadRepository _threadRepository;
   final IMessageRepository _messageRepository;
   final RpcSend _sendRequest;
+
+  /// Upper bound on the **resync** `turn/list` round-trip (the newest-page pull
+  /// run on resume/reconnect). Tighter than the correlator's 30 s default so a
+  /// resync issued over a socket that went half-open while backgrounded fails
+  /// fast and "keeps local" — the live re-attach (`activeTurnId` + the
+  /// `_ensureLive` self-heal) then restores the in-flight turn from the
+  /// stream — instead of hanging the thread view for 30 s (Bug A). Injectable
+  /// so tests don't wait it out; older-page paging keeps the default timeout.
+  final Duration _resyncTimeout;
 
   /// Returns the threadId of the conversation the user is currently viewing in
   /// the foreground (null when none). A reply that lands in a thread the user
@@ -607,8 +618,12 @@ class ThreadManager {
   /// [loadMoreHistory]. User messages are authored locally and persisted on
   /// send, so they are never re-synced (which would duplicate them).
   Future<void> _resyncThread(String threadId) async {
-    final page =
-        await _fetchTurns(threadId, limit: _turnPageSize, fromEnd: true);
+    final page = await _fetchTurns(
+      threadId,
+      limit: _turnPageSize,
+      fromEnd: true,
+      timeout: _resyncTimeout,
+    );
     if (page == null) return;
     // Re-attach to a turn still in flight on the bridge BEFORE persisting, so a
     // turn we stopped tracking (reconnected/reopened mid-turn) keeps its live
@@ -646,6 +661,7 @@ class ThreadManager {
     String? cursor,
     int? limit,
     bool fromEnd = false,
+    Duration? timeout,
   }) async {
     final params = <String, dynamic>{'threadId': threadId};
     if (cursor != null) params['cursor'] = cursor;
@@ -653,7 +669,8 @@ class ThreadManager {
     if (fromEnd) params['fromEnd'] = true;
     final RpcMessage response;
     try {
-      response = await _sendRequest('turn/list', params);
+      final pending = _sendRequest('turn/list', params);
+      response = await (timeout == null ? pending : pending.timeout(timeout));
     } on Object catch (error, stackTrace) {
       AppLogger.warn('turn/list resync failed (kept local)', error, stackTrace);
       return null;
