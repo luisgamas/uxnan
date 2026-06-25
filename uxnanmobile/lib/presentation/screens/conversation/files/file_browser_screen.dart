@@ -80,6 +80,8 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
     final colors = Theme.of(context).colorScheme;
     final showExtension = ref.watch(showFileExtensionsProvider);
     final showHidden = ref.watch(showHiddenFilesProvider);
+    final showDetails = ref.watch(showFileDetailsProvider);
+    final compact = ref.watch(compactFileRowsProvider);
     // The stream-based tree is the canonical state: the manager owns the
     // mutation, the UI just renders whatever was last emitted.
     final rootAsync = ref.watch(_fileTreeStreamProvider(widget.cwd));
@@ -116,8 +118,10 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
                         data: (FileTreeNode? root) => _buildList(
                           context,
                           root,
-                          showExtension,
-                          showHidden,
+                          showExtension: showExtension,
+                          showHidden: showHidden,
+                          showDetails: showDetails,
+                          compact: compact,
                         ),
                         loading: () => const Center(
                           child: CircularProgressIndicator(),
@@ -222,6 +226,32 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
                         ],
                       ),
                     ),
+                    CheckedPopupMenuItem<void>(
+                      checked: showDetails,
+                      onTap: () => ref
+                          .read(showFileDetailsProvider.notifier)
+                          .set(value: !showDetails),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.info_outline_rounded, size: 18),
+                          const SizedBox(width: UxnanSpacing.sm),
+                          Text(l10n.fileBrowserShowDetails),
+                        ],
+                      ),
+                    ),
+                    CheckedPopupMenuItem<void>(
+                      checked: compact,
+                      onTap: () => ref
+                          .read(compactFileRowsProvider.notifier)
+                          .set(value: !compact),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.density_small_rounded, size: 18),
+                          const SizedBox(width: UxnanSpacing.sm),
+                          Text(l10n.fileBrowserCompactRows),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
               ],
@@ -236,10 +266,12 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
   /// handled by the caller; this method assumes the tree is ready to display.
   Widget _buildList(
     BuildContext context,
-    FileTreeNode? root,
-    bool showExtension,
-    bool showHidden,
-  ) {
+    FileTreeNode? root, {
+    required bool showExtension,
+    required bool showHidden,
+    required bool showDetails,
+    required bool compact,
+  }) {
     final l10n = AppLocalizations.of(context);
     final topInset = NeTopBar.preferredHeight(context);
     final manager = ref.read(fileBrowserManagerProvider);
@@ -294,6 +326,8 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
                   node: entry.node,
                   depth: entry.depth,
                   showExtension: showExtension,
+                  showDetails: showDetails,
+                  compact: compact,
                   onTap: () async {
                     if (entry.node.isDir) {
                       unawaited(

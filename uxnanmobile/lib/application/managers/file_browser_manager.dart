@@ -399,6 +399,7 @@ class FileBrowserManager {
       path: path,
       type: entry.type,
       size: entry.size,
+      mtime: entry.mtime,
       // Files inherit their git status from the cached `git/status` map so
       // they're coloured as soon as the listing arrives (no second rebuild).
       // Directories aggregate the status of their (possibly still-collapsed)

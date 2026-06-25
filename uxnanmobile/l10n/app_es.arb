@@ -564,6 +564,8 @@
   "fileBrowserTitle": "Archivos",
   "fileBrowserShowExtensions": "Mostrar extensiones de archivo",
   "fileBrowserShowHidden": "Mostrar archivos ocultos",
+  "fileBrowserShowDetails": "Mostrar detalles del archivo",
+  "fileBrowserCompactRows": "Filas compactas",
   "fileBrowserCollapseAll": "Contraer todas las carpetas",
   "fileBrowserCopyPath": "Copiar ruta del workspace",
   "fileBrowserPathCopied": "Ruta del workspace copiada",

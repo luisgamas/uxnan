@@ -7,6 +7,23 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Changed
+- **File browser: file rows show details + are comfortable by default, with a
+  compact option.** Two changes to the in-conversation file browser rows:
+  - **Details line replaces the redundant name.** With extensions hidden, each
+    row showed a second line that just repeated the file's path/name *with* the
+    extension — noise. That line is gone; in its place, files now show a details
+    line — **size · modified date** (the modified date comes from the new
+    `WorkspaceEntry.mtime`, localised via `intl`) — toggleable from the 3-dot
+    menu (*Show file details*, on by default). Directories never show details.
+  - **Taller rows by default + a compact mode.** Rows were cramped at a single
+    line's height; they're now a little taller by default so the name + details
+    breathe (`UxnanSpacing.sm` vertical), with a *Compact rows* toggle in the
+    3-dot menu that restores the previous tight spacing (`UxnanSpacing.xs`).
+  - `presentation/screens/conversation/files/widgets/file_tree_tile.dart`,
+    `file_browser_screen.dart`, `providers/file_browser_providers.dart`
+    (`showFileDetailsProvider`, `compactFileRowsProvider`), `FileEntry`/
+    `FileTreeNode.mtime`, new l10n `fileBrowserShowDetails` /
+    `fileBrowserCompactRows`.
 - **File browser: untracked files now clearly distinct from tracked ones.** In
   the in-conversation file browser, untracked files were painted in
   `onSurfaceVariant` — a muted grey barely distinguishable from the

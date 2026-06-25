@@ -105,6 +105,38 @@ void main() {
     await manager.dispose();
   });
 
+  test('loadRoot surfaces each file entry size and mtime', () async {
+    const listWithMeta = <String, dynamic>{
+      'cwd': '.',
+      'entries': [
+        {'name': 'a.dart', 'type': 'file', 'size': 12, 'mtime': 1700000000000},
+        {'name': 'sub', 'type': 'dir'},
+      ],
+    };
+    final manager = _buildManager(
+      onCall: (_, __) {},
+      responder: (m, _) {
+        if (m == 'workspace/list') {
+          return RpcMessage.response(id: '1', result: listWithMeta);
+        }
+        return RpcMessage.response(id: '1', result: const <String, dynamic>{});
+      },
+    );
+
+    await manager.loadRoot(_workspaceRoot);
+    await _settle();
+
+    final children = manager.rootFor(_workspaceRoot)!.children;
+    final file = children.firstWhere((c) => c.basename == 'a.dart');
+    final dir = children.firstWhere((c) => c.basename == 'sub');
+    // The file carries the bridge's size + mtime; the directory carries neither.
+    expect(file.size, 12);
+    expect(file.mtime, 1700000000000);
+    expect(dir.size, isNull);
+    expect(dir.mtime, isNull);
+    await manager.dispose();
+  });
+
   test('directories aggregate descendant git status', () async {
     const statusResult = <String, dynamic>{
       'branch': 'main',

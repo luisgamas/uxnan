@@ -3134,6 +3134,18 @@ abstract class AppLocalizations {
   /// **'Show hidden files'**
   String get fileBrowserShowHidden;
 
+  /// Settings-menu toggle that controls whether each file row shows a details line (size and last-modified date) under its name.
+  ///
+  /// In en, this message translates to:
+  /// **'Show file details'**
+  String get fileBrowserShowDetails;
+
+  /// Settings-menu toggle that switches the file browser to denser, shorter rows (off by default, where rows are taller).
+  ///
+  /// In en, this message translates to:
+  /// **'Compact rows'**
+  String get fileBrowserCompactRows;
+
   /// App-bar action in the file browser that collapses every expanded folder at once.
   ///
   /// In en, this message translates to:
