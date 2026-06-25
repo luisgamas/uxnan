@@ -515,7 +515,12 @@ class FileBrowserManager {
       if (!identical(updated, child)) childrenChanged = true;
       newChildren.add(updated);
     }
-    if (ownStatus == null && !childrenChanged) return node;
+    // Rebuild only when this node's own status actually changed (this includes
+    // a non-null → null transition: a file/folder that went clean after a
+    // commit) or a descendant changed. Comparing against the *new* status — not
+    // just `ownStatus == null` — is what clears a stale colour once the change
+    // is committed; `copyWith` now propagates the `null` through.
+    if (node.gitStatus == ownStatus && !childrenChanged) return node;
     return node.copyWith(
       gitStatus: ownStatus,
       children: childrenChanged ? newChildren : null,

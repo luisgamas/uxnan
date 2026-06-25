@@ -7,11 +7,14 @@ import 'package:uxnan/presentation/theme/typography.dart';
 
 /// The name/icon color for a file or folder by its [GitFileStatus].
 ///
-/// Communicates git state through colour, not extra glyphs:
+/// Communicates git state through colour, not extra glyphs — each git state
+/// gets its own tone, reinforced by weight + style (see [FileTreeTile]) so
+/// "tracked", "untracked" and "changed" are told apart at a glance:
 /// - tracked, unchanged (`null`) → [ColorScheme.onSurface] (the regular,
-///   confident text tone);
-/// - **untracked** → [ColorScheme.onSurfaceVariant] — a distinguishable muted
-///   grey so files git isn't tracking read as clearly de-emphasised;
+///   confident text tone — a file git already knows about, with no changes);
+/// - **untracked** → [ColorScheme.onSurfaceVariant] (a muted tone), set in
+///   *italic* by the tile so files git isn't tracking read as clearly distinct
+///   from the heavier, solid tracked rows;
 /// - added/modified/renamed/deleted → the matching `UxnanColors` git token
 ///   (same palette as the diff view in `GitScreen`).
 Color gitStatusColor(GitFileStatus? status, ColorScheme colors) {
@@ -156,11 +159,11 @@ const _codeExts = [
 ];
 
 /// A single row in the file browser: a leading file-type icon, the name, its
-/// path, and a trailing chevron for directories. Git state is conveyed purely
-/// through the name + icon colour (see [gitStatusColor]) — tracked-unchanged
-/// files read as [ColorScheme.onSurface], untracked ones as a muted grey, and
-/// changed files in their git colour — so the row stays uncluttered (no extra
-/// status dots or pills).
+/// path, and a trailing chevron for directories. Git state is conveyed through
+/// the name + icon colour (see [gitStatusColor]) plus weight and style — every
+/// tracked row (unchanged or changed) carries a medium weight, while untracked
+/// rows stay regular weight and *italic* in a muted tone — so tracked vs
+/// untracked reads at a glance without extra status dots or pills.
 ///
 /// Stateless — the parent owns expansion / selection state and passes the
 /// derived booleans. Tap fires [onTap], long-press [onLongPress] when given.
@@ -205,14 +208,16 @@ class FileTreeTile extends StatelessWidget {
     final indent = depth * 16.0;
 
     // Git state is carried by colour: tracked-unchanged → onSurface, untracked
-    // → a muted grey, changed → the git colour. The name takes that colour
-    // directly; the leading file-type icon takes it too, except a neutral
-    // (unchanged) file keeps a slightly softer icon tone than its name.
+    // → a muted onSurfaceVariant, changed → the git colour. The name takes that
+    // colour directly; the leading file-type icon takes it too, except a
+    // neutral (unchanged) file keeps a slightly softer icon tone than its name.
     final statusColor = gitStatusColor(status, colors);
     final iconColor = status == null ? colors.onSurfaceVariant : statusColor;
-    // Only an actual git *change* (added/modified/deleted/renamed) bumps the
-    // weight; untracked stays at the normal weight so it reads as quiet grey.
-    final emphasised = status != null && status != GitFileStatus.untracked;
+    // Every *tracked* row — unchanged (`null`) or changed — carries the medium
+    // weight; only *untracked* files stay at regular weight and go italic, so
+    // the tracked/untracked split is legible by weight + style, not just hue.
+    final isUntracked = status == GitFileStatus.untracked;
+    final emphasised = !isUntracked;
 
     return InkWell(
       onTap: onTap,
@@ -245,6 +250,8 @@ class FileTreeTile extends StatelessWidget {
                       color: statusColor,
                       fontWeight:
                           emphasised ? FontWeight.w500 : FontWeight.w400,
+                      fontStyle:
+                          isUntracked ? FontStyle.italic : FontStyle.normal,
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),

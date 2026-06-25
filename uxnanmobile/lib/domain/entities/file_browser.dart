@@ -120,7 +120,7 @@ class FileTreeNode extends Equatable {
     bool? expanded,
     bool? loading,
     Object? error = _sentinel,
-    GitFileStatus? gitStatus,
+    Object? gitStatus = _sentinel,
   }) =>
       FileTreeNode(
         name: name,
@@ -131,7 +131,13 @@ class FileTreeNode extends Equatable {
         expanded: expanded ?? this.expanded,
         loading: loading ?? this.loading,
         error: identical(error, _sentinel) ? this.error : error as String?,
-        gitStatus: gitStatus ?? this.gitStatus,
+        // Sentinel-guarded like `error`: passing `gitStatus: null` *clears* the
+        // status (a file/folder that went clean after a commit), while omitting
+        // it preserves the current value. Without this, a node could never lose
+        // its colour once painted.
+        gitStatus: identical(gitStatus, _sentinel)
+            ? this.gitStatus
+            : gitStatus as GitFileStatus?,
       );
 
   /// Display name for this node — strips the extension when [showExtension]
