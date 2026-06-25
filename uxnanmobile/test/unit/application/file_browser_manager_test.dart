@@ -129,7 +129,8 @@ void main() {
     final children = manager.rootFor(_workspaceRoot)!.children;
     final file = children.firstWhere((c) => c.basename == 'a.dart');
     final dir = children.firstWhere((c) => c.basename == 'sub');
-    // The file carries the bridge's size + mtime; the directory carries neither.
+    // The file carries the bridge's size + mtime; the directory carries
+    // neither.
     expect(file.size, 12);
     expect(file.mtime, 1700000000000);
     expect(dir.size, isNull);
