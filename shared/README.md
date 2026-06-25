@@ -6,7 +6,7 @@ manually-synced Dart equivalents (see
 [`architecture/02b-contracts-and-requirements.md`](../architecture/02b-contracts-and-requirements.md)
 §1 for the canonical contract list).
 
-> **Status:** implemented. **59 JSON-RPC methods** + **8 streaming
+> **Status:** implemented. **60 JSON-RPC methods** + **8 streaming
 > notifications**, lock-step in build-time with the `METHOD_NAMES` array and
 > the `StreamNotification` enum (a compile-time assertion in
 > `src/jsonrpc/method-registry.ts` fails the build on any drift).

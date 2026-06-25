@@ -116,7 +116,7 @@ across restarts).
 ## Architecture
 
 - **Contracts:** consumes [`@uxnan/shared`](../shared) for JSON-RPC and E2EE
-  types and runtime validators. The bridge exposes **59 JSON-RPC methods +
+  types and runtime validators. The bridge exposes **60 JSON-RPC methods +
   8 streaming notifications** (see `shared/src/jsonrpc/`). The mobile app
   keeps manually-synced Dart equivalents of the same shapes.
 - **State:** non-secret JSON under `~/.uxnan/` (atomic writes): `daemon-config.json`,
@@ -141,7 +141,7 @@ See `architecture/02a-system-architecture.md` §5.8 and
 ```bash
 # from the repo root (workspaces):
 npm run build      # build @uxnan/shared then uxnan-bridge
-npm test           # build + run all node:test suites (342 bridge + 29 shared + 27 relay)
+npm test           # build + run all node:test suites (346 bridge + 29 shared + 27 relay)
 npm run typecheck  # tsc --noEmit across packages
 npm run format     # prettier --write
 ```
