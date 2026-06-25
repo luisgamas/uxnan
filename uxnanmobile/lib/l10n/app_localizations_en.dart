@@ -1000,6 +1000,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get gitHistoryNoFileChanges => 'No file changes in this commit.';
 
   @override
+  String get gitHistoryNoTextDiff => 'No textual changes.';
+
+  @override
+  String get gitHistoryBinaryDiff => 'Binary file — no text diff.';
+
+  @override
   String gitHistoryRenamedFrom(String oldPath) {
     return 'from $oldPath';
   }

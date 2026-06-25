@@ -33,6 +33,7 @@ import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/agent_visuals.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
 import 'package:uxnan/presentation/widgets/measure_size.dart';
+import 'package:uxnan/presentation/widgets/ne_circular_button.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 
 /// The active conversation: a Neural Expressive layout — a transparent top bar
@@ -1227,7 +1228,6 @@ class _JumpToBottomButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
     final l10n = AppLocalizations.of(context);
     return IgnorePointer(
       ignoring: !visible,
@@ -1238,27 +1238,10 @@ class _JumpToBottomButton extends StatelessWidget {
         child: AnimatedOpacity(
           opacity: visible ? 1 : 0,
           duration: const Duration(milliseconds: 140),
-          child: Tooltip(
-            message: l10n.conversationScrollToBottom,
-            child: Material(
-              color: colors.secondaryContainer,
-              shape: const CircleBorder(),
-              elevation: 3,
-              shadowColor: colors.shadow,
-              clipBehavior: Clip.antiAlias,
-              child: InkWell(
-                onTap: onTap,
-                child: SizedBox(
-                  width: 44,
-                  height: 44,
-                  child: Icon(
-                    Icons.keyboard_arrow_down_rounded,
-                    color: colors.onSecondaryContainer,
-                    size: 26,
-                  ),
-                ),
-              ),
-            ),
+          child: NeCircularButton(
+            icon: Icons.keyboard_arrow_down_rounded,
+            tooltip: l10n.conversationScrollToBottom,
+            onTap: onTap,
           ),
         ),
       ),

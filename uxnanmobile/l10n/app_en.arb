@@ -458,6 +458,8 @@
   "gitHistoryDiffSection": "Diff",
   "gitHistoryDiffTruncated": "Diff truncated — too large to show in full.",
   "gitHistoryNoFileChanges": "No file changes in this commit.",
+  "gitHistoryNoTextDiff": "No textual changes.",
+  "gitHistoryBinaryDiff": "Binary file — no text diff.",
   "gitHistoryRenamedFrom": "from {oldPath}",
   "@gitHistoryRenamedFrom": {
     "description": "Secondary label on a renamed file in the commit detail, showing the previous path.",

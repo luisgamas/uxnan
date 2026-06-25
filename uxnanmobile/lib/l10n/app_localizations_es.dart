@@ -1002,6 +1002,12 @@ class AppLocalizationsEs extends AppLocalizations {
   String get gitHistoryNoFileChanges => 'Este commit no cambió archivos.';
 
   @override
+  String get gitHistoryNoTextDiff => 'Sin cambios de texto.';
+
+  @override
+  String get gitHistoryBinaryDiff => 'Archivo binario — sin diff de texto.';
+
+  @override
   String gitHistoryRenamedFrom(String oldPath) {
     return 'desde $oldPath';
   }

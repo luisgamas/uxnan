@@ -1964,6 +1964,18 @@ abstract class AppLocalizations {
   /// **'No file changes in this commit.'**
   String get gitHistoryNoFileChanges;
 
+  /// No description provided for @gitHistoryNoTextDiff.
+  ///
+  /// In en, this message translates to:
+  /// **'No textual changes.'**
+  String get gitHistoryNoTextDiff;
+
+  /// No description provided for @gitHistoryBinaryDiff.
+  ///
+  /// In en, this message translates to:
+  /// **'Binary file — no text diff.'**
+  String get gitHistoryBinaryDiff;
+
   /// Secondary label on a renamed file in the commit detail, showing the previous path.
   ///
   /// In en, this message translates to:

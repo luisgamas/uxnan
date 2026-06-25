@@ -1601,10 +1601,16 @@ async function handleGitCreateBranch({ cwd, name }) { ... }
 async function handleGitCreateWorktree({ cwd, branch, path, managed }) { ... }
 async function handleGitStackedPublish({ cwd, message, remote, branch }) { ... }
 async function handleGitLog({ cwd, limit, cursor, ref }) {
-  // git log --format=...%x1e --decorate=full -z --shortstat -n (limit+1) [cursor^|ref]
-  // Paginación por cursor: cursor^ excluye el cursor y devuelve los commits
-  // estrictamente más antiguos. Devuelve {commits, hasMore, nextCursor}.
+  // git log <ref|HEAD> --topo-order --format=...%x1e --decorate=full -z
+  //   --shortstat -n (limit+1) --skip <offset>
+  // Orden TOPOLÓGICO (no por fecha) → grafo limpio, padres justo tras el hijo.
+  // Paginación por OFFSET: `cursor` es un token opaco (= nº de commits a saltar);
+  //   nextCursor = offset+limit. (El antiguo `cursor^` saltaba el 2º padre de un
+  //   merge y PERDÍA commits en un DAG.) Devuelve {commits, hasMore, nextCursor}.
   // %D (--decorate=full) → refs[] por commit (HEAD/ramas/remotas/tags).
+  // Parser robusto: un merge no emite --shortstat, así que el record siguiente
+  //   empieza con el terminador -z sin stat — se quita el NUL líder antes de
+  //   separar campos (si no, se descartaba el commit posterior a un merge).
   // Repo fresco (sin HEAD) → {commits:[], hasMore:false} (no error).
 }
 async function handleGitCommitShow({ cwd, sha }) {

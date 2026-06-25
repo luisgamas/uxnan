@@ -346,6 +346,8 @@
   "gitHistoryDiffSection": "Diff",
   "gitHistoryDiffTruncated": "Diff truncado — demasiado grande para mostrarlo completo.",
   "gitHistoryNoFileChanges": "Este commit no cambió archivos.",
+  "gitHistoryNoTextDiff": "Sin cambios de texto.",
+  "gitHistoryBinaryDiff": "Archivo binario — sin diff de texto.",
   "gitHistoryRenamedFrom": "desde {oldPath}",
   "gitHistoryDetailLoadFailed": "No se pudo cargar este commit",
   "gitHistoryEmpty": "Aún no hay commits",

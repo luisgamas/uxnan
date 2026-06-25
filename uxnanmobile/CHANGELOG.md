@@ -6,6 +6,44 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- **Consistent circular floating scroll buttons.** The git history's
+  back-to-top button was M3's default rounded-square `FloatingActionButton`,
+  while the conversation's scroll-to-bottom button is a circle; NE's action
+  language is circular, so both now share one widget
+  (`presentation/widgets/ne_circular_button.dart`, `secondaryContainer`).
+- **Commit detail: per-file expandable diffs.** The commit detail screen no
+  longer shows one big combined diff under the file list; each touched file is
+  now its own collapsible card (collapsed by default) that reveals **just that
+  file's diff** when tapped — mirroring the clean per-file cards of the
+  version-control screen. The combined `git/commitShow` diff is split per file
+  client-side (keyed by new/old path). `NeSurface` was hoisted from
+  `git_screen.dart` into `presentation/widgets/ne_surface.dart` for reuse.
+  - `presentation/screens/conversation/git/git_commit_detail_screen.dart`,
+    `presentation/widgets/ne_surface.dart` (new), new l10n
+    `gitHistoryNoTextDiff` / `gitHistoryBinaryDiff`.
+
+### Fixed
+- **Git history graph: pass-through lanes no longer draw diagonal "hooks".** A
+  lane just crossing a row was routed to `outgoing.indexOf(occupant)`, which —
+  when the same parent occupied two lanes (a commit with multiple children,
+  common around merges) — returned the *first* lane, so the other lane bent
+  sideways every row. Pass-through lanes now draw a straight vertical in their
+  own column (lanes are never compacted), matching VS Code / the desktop graph.
+  - `presentation/screens/conversation/git/git_history_screen.dart`
+    (`_GraphPainter`).
+- **Git history graph: no more ref-chip overflow, cleaner lanes.** In graph
+  mode each row now shows a single width-capped primary ref chip (branch > tag
+  > HEAD > remote) plus a `+N` marker instead of every chip inline, so a tip
+  with several refs (e.g. `HEAD`/`main`/`origin/main`) can no longer overflow
+  the row; `CommitRefChip` ellipsizes when width-capped. The graph connectors
+  are now VS Code-style rounded steps (vertical → arc → vertical) instead of
+  swoopy S-curves. (The missing-commits / phantom-lane problem itself is fixed
+  bridge-side — `git/log` now uses topological order + offset pagination + a
+  merge-safe parser; this page just consumes the corrected, opaque cursor.)
+  - `presentation/screens/conversation/git/git_history_screen.dart`,
+    `widgets/commit_ref_chip.dart`; regression widget test for the overflow.
+
 ### Added
 - **Redesigned git history + full commit detail.** The history screen is now a
   single clean, flat list (no card chrome — matches the file browser) with two

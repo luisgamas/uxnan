@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed
+- **`git/log` pagination is now an opaque offset cursor** (`models/git.ts`):
+  `GitLogParams.cursor` / `GitLogResult.nextCursor` are documented as an opaque
+  token (an offset over a topologically-ordered log) instead of a commit SHA —
+  the bridge switched off the `<cursor>^` scheme that dropped commits across
+  merge boundaries. Wire shape is unchanged (still a `string`).
+
 ### Added
 - **Git commit refs + a `git/commitShow` method** (`models/git.ts`,
   `jsonrpc/methods.ts`, `jsonrpc/method-registry.ts`): `GitCommit.refs?:

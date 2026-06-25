@@ -5,6 +5,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — git/log dropped commits & produced a tangled graph
+- **`git/log` no longer loses commits or invents lanes on a branchy history.**
+  Three coupled fixes in `src/git/git-service.ts`:
+  - **Topological order** (`--topo-order`) instead of git's default date order,
+    so a commit's parents immediately follow it — the phone's swimlane graph
+    stays clean (no lanes dangling across unrelated commits → no phantom lanes)
+    and matches `git log --graph` / VS Code.
+  - **Offset pagination** (`--skip <n>`, `cursor` = an opaque offset token)
+    replacing the previous `<cursor>^` (first-parent) scheme, which skipped a
+    merge's second-parent history across page boundaries and silently dropped
+    real commits.
+  - **Merge-safe shortstat parsing.** Merge (and empty) commits emit no
+    `--shortstat`, so the record after a merge began with a bare `-z` NUL
+    terminator; the parser assumed a `\n<stat>\n` prefix, mis-split the fields
+    and dropped that commit. It now strips the leading NUL before splitting.
+  - Tests: a merge-DAG pagination test asserting no commit is dropped.
+
 ### Added — richer git history (refs + commit detail)
 - **`git/log` now decorates commits with refs.** `GitService.log` runs with
   `--decorate=full` and a `%D` field, parsed into `GitCommit.refs[]`

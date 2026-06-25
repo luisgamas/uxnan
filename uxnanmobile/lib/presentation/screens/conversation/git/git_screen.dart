@@ -14,6 +14,7 @@ import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
 import 'package:uxnan/presentation/widgets/measure_size.dart';
+import 'package:uxnan/presentation/widgets/ne_surface.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 
 /// Full-screen Material 3 source-control surface for a thread's workspace.
@@ -541,11 +542,7 @@ class _GitScreenState extends ConsumerState<GitScreen> {
     if (confirmed != true || !mounted) return;
     await _guard(
       () => ref.read(gitActionManagerProvider).discard(
-            GitDiscardParams(
-              cwd: cwd,
-              paths: paths,
-              threadId: widget.threadId,
-            ),
+            GitDiscardParams(cwd: cwd, paths: paths, threadId: widget.threadId),
           ),
       l10n.gitDiscardSuccess,
       cwd,
@@ -660,9 +657,9 @@ class _GitScreenState extends ConsumerState<GitScreen> {
     final l10n = AppLocalizations.of(context);
     if (cwd == null) return;
     await _guard(
-      () => ref.read(gitActionManagerProvider).pull(
-            GitPullParams(cwd: cwd, threadId: widget.threadId),
-          ),
+      () => ref
+          .read(gitActionManagerProvider)
+          .pull(GitPullParams(cwd: cwd, threadId: widget.threadId)),
       l10n.gitPullSuccess,
       cwd,
     );
@@ -940,10 +937,7 @@ class _GitScreenState extends ConsumerState<GitScreen> {
                     tooltip: l10n.gitHistoryButton,
                     onPressed: _busy
                         ? null
-                        : () => GitHistoryScreen.push(
-                              context,
-                              cwd: widget.cwd,
-                            ),
+                        : () => GitHistoryScreen.push(context, cwd: widget.cwd),
                   ),
                 if (state != null)
                   _OverflowMenu(
@@ -1034,18 +1028,12 @@ class _OverflowMenu extends StatelessWidget {
         PopupMenuItem(
           enabled: !busy,
           onTap: onNewBranch,
-          child: _MenuRow(
-            icon: Icons.add_rounded,
-            label: l10n.gitNewBranch,
-          ),
+          child: _MenuRow(icon: Icons.add_rounded, label: l10n.gitNewBranch),
         ),
         PopupMenuItem(
           enabled: !busy,
           onTap: onCreatePr,
-          child: _MenuRow(
-            icon: Icons.merge_rounded,
-            label: l10n.gitCreatePr,
-          ),
+          child: _MenuRow(icon: Icons.merge_rounded, label: l10n.gitCreatePr),
         ),
         PopupMenuItem(
           enabled: !busy,
@@ -1634,9 +1622,7 @@ class _BorderlessField extends StatelessWidget {
         border: InputBorder.none,
         enabledBorder: InputBorder.none,
         focusedBorder: InputBorder.none,
-        contentPadding: const EdgeInsets.symmetric(
-          vertical: UxnanSpacing.sm,
-        ),
+        contentPadding: const EdgeInsets.symmetric(vertical: UxnanSpacing.sm),
         hintText: hint,
         hintStyle: TextStyle(color: colors.onSurfaceVariant),
       ),
@@ -1693,11 +1679,7 @@ class _NoRepository extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.source_outlined,
-            size: 40,
-            color: colors.onSurfaceVariant,
-          ),
+          Icon(Icons.source_outlined, size: 40, color: colors.onSurfaceVariant),
           const SizedBox(height: UxnanSpacing.md),
           Text(l10n.gitNoRepository, style: textTheme.titleSmall),
           const SizedBox(height: UxnanSpacing.xs),
@@ -1979,8 +1961,9 @@ class _PrDialog extends StatefulWidget {
 }
 
 class _PrDialogState extends State<_PrDialog> {
-  late final TextEditingController _title =
-      TextEditingController(text: widget.initialTitle);
+  late final TextEditingController _title = TextEditingController(
+    text: widget.initialTitle,
+  );
   final TextEditingController _body = TextEditingController();
   String? _error;
   late String? _head = _headOptions.isEmpty ? null : _headOptions.first;
@@ -2217,46 +2200,6 @@ class _BranchField extends StatelessWidget {
 // `presentation/widgets/` tree.
 // ---------------------------------------------------------------------------
 
-/// A rounded NE surface used in place of M3's `Card.filled` / `Card.outlined`.
-/// Filled by default on `surfaceContainerHigh`; the `outlined` flag adds a thin
-/// `outlineVariant` border so cards nested inside other surfaces remain
-/// legible. No drop shadow — NE is flat by design.
-class NeSurface extends StatelessWidget {
-  /// Creates a [NeSurface].
-  const NeSurface({
-    required this.child,
-    this.outlined = false,
-    this.padding = const EdgeInsets.all(UxnanSpacing.md),
-    super.key,
-  });
-
-  /// The widget this surface wraps.
-  final Widget child;
-
-  /// Whether to draw a thin `outlineVariant` border (use when the card sits
-  /// on a background that matches `surfaceContainerHigh`).
-  final bool outlined;
-
-  /// Padding applied to [child].
-  final EdgeInsetsGeometry padding;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return Material(
-      color: colors.surfaceContainerHigh,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-        side: outlined
-            ? BorderSide(color: colors.outlineVariant)
-            : BorderSide.none,
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Padding(padding: padding, child: child),
-    );
-  }
-}
-
 /// An M3-style checkbox rendered as a circular NE surface so the gesture
 /// ripple matches the rest of the screen. `null` renders an indeterminate
 /// (mixed) state — partial selection across the list.
@@ -2330,12 +2273,7 @@ class _NeSelectionSurface extends StatelessWidget {
               width: 24,
               height: 24,
               child: Center(
-                child: Icon(
-                  icon,
-                  size: 18,
-                  color: fg,
-                  semanticLabel: tooltip,
-                ),
+                child: Icon(icon, size: 18, color: fg, semanticLabel: tooltip),
               ),
             ),
           ),
