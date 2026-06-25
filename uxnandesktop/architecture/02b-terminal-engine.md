@@ -351,7 +351,7 @@ El siguiente diagrama muestra cómo se conectan los módulos internos del motor 
 |--------|------|-----------------|
 | **Motor de Layout** | Frontend (Svelte) | Almacena y renderiza el árbol binario de splits con ratios ajustables. Usa estado reactivo de Svelte 5 (`$state`, `$derived`) para mantener la estructura del layout. Los drag handles permiten al usuario ajustar las proporciones entre regiones. |
 | **Árbol de Splits/TabGroups** | Frontend (Svelte) | Estructura de datos del árbol binario recursivo. Cada nodo es un split (horizontal/vertical con ratio) o una hoja (TabGroup). Soporta operaciones de inserción, eliminación y reestructuración. |
-| **Gestor de Tabs** | Frontend (Svelte) | Maneja la barra de tabs por cada TabGroup: crear nuevos tabs, cerrar tabs existentes, reordenar tabs con drag & drop, mantener el orden MRU (Most Recently Used) para navegación rápida. |
+| **Gestor de Tabs** | Frontend (Svelte) | Maneja la barra de tabs por cada TabGroup: crear nuevos tabs, cerrar tabs existentes, reordenar/mover tabs entre regiones con arrastre por **pointer events** (`elementFromPoint`), mantener el orden MRU (Most Recently Used) para el ciclo `Ctrl+Tab`. |
 | **Gestor de Panes** | Frontend (Svelte) | Maneja los splits de nivel bajo (dentro de un tab). Crea y destruye panes, gestiona el árbol binario interno de cada tab de terminal, y comunica cambios de tamaño al backend para el resize del PTY. |
 | **Fábrica de Contenido** | Frontend (Svelte) | Instancia el componente correcto según el tipo de tab: componente xterm.js para terminales, CodeMirror 6 para editores, componente de diff para visores, o webview para navegador embebido. |
 | **Conexión PTY ↔ xterm** | Frontend + Backend | Establece el flujo bidireccional entre xterm.js (webview) y el PTY (backend Rust) vía Tauri commands (`invoke('pty_write')`) y Tauri events (`listen('pty:output:{id}')`). |
@@ -366,7 +366,7 @@ El siguiente diagrama muestra cómo se conectan los módulos internos del motor 
 
 3. **Tab se oculta** → Backend Rust continúa leyendo PTY stdout → el hilo lector anexa cada chunk al ring buffer acotado (256 KiB) → si excede el tope se marca stale → el xterm sigue montado para el output en vivo; si un pane recrea su xterm (p. ej. al mover el tab a otra región) invoca `pty_snapshot` y reproduce los bytes retenidos.
 
-   - **Mover/reordenar tab** → `terminals.moveTab(tabId, toGroupId, toIndex?)` → dentro de la misma región solo reordena (sin remontar); cruzando regiones el pane se remonta y restaura desde `pty_snapshot`.
-   - **Ctrl+Tab / Ctrl+Shift+Tab** → `terminals.cycleTab()` recorre los tabs de la región activa en orden MRU.
+   - **Mover/reordenar tab** → arrastre con **pointer events** (no HTML5 drag-and-drop: el drag-drop nativo de Tauri, usado para soltar archivos en la terminal, lo bloquea dentro del WebView) → `terminals.moveTab(tabId, toGroupId, toIndex?)`. Dentro de la misma región solo reordena (sin remontar); cruzando regiones el pane se remonta y restaura desde `pty_snapshot`.
+   - **Atajos configurables** (Settings → Keyboard shortcuts, grupo "Terminal tabs & splits"): `cycleTabNext/Prev` → `terminals.cycleTab()` recorre los tabs de la región activa en orden MRU; `focusSplitNext/Prev` → `terminals.focusSplit()` mueve el foco entre regiones de split; `closeCenter` (Ctrl/⌘+W) cierra la pestaña activa (cualquier tipo) con confirmación de cambios sin guardar. Con una terminal enfocada los resuelve `Terminal.svelte` vía `matchAction` para que no lleguen al PTY.
 
 4. **Tab se cierra** → Gestor de Tabs notifica → Conexión PTY invoca `pty_close` → Backend Rust envía SIGTERM → espera timeout → SIGKILL si necesario → recursos liberados (Rust drop) → store Svelte actualizado → scrollback guardado opcionalmente.

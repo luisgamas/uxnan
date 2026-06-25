@@ -6,18 +6,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 
 ### Added — terminal: tab reorder/MRU, backend ring buffer, CSI-u keyboard protocol
-- **Tab reorder + drag between regions.** Tab chips are now draggable: drop one
+- **Tab reorder + drag between regions.** Tab chips can be dragged: drop one
   elsewhere in its strip to reorder it, or onto another region's strip to move
-  it there (an insertion marker shows where it'll land; a region emptied by a
-  move collapses). New `terminals.moveTab()` plus the drag handlers + markers in
+  it there (an insertion marker shows where it'll land, a label follows the
+  pointer, and a region emptied by a move collapses). Implemented with **pointer
+  events** (`pointerdown`/`move`/`up` + `elementFromPoint` hit-testing, like the
+  split dividers) — **not** HTML5 drag-and-drop, which Tauri's native OS
+  drag-drop (the file-drop-into-terminal feature) suppresses inside the WebView,
+  so dragging didn't work at all. New `terminals.moveTab()` + the handlers in
   `TerminalArea.svelte`. Reordering within a region never remounts xterm;
   crossing regions remounts the pane, which transparently restores from the new
   backend snapshot (below). `src/lib/state/terminals.svelte.ts`.
-- **MRU tab cycling.** `Ctrl+Tab` / `Ctrl+Shift+Tab` cycle the active region's
-  tabs in most-recently-used order (a frozen order while you keep pressing; the
-  landed tab becomes most-recent once the cycle settles). Handled at the window
-  level (`TerminalArea.svelte`) and swallowed inside xterm so no literal tab
-  reaches the PTY. `terminals.cycleTab()` + the per-tab MRU list in the store.
+- **MRU tab cycling + split focus, as configurable shortcuts.** `Ctrl+Tab` /
+  `Ctrl+Shift+Tab` cycle the active region's tabs in most-recently-used order (a
+  frozen order while you keep pressing; the landed tab becomes most-recent once
+  the cycle settles), and `Ctrl+Alt+→` / `Ctrl+Alt+←` move focus between split
+  regions. Both are **rebindable in Settings → Keyboard shortcuts** (new
+  "Terminal tabs & splits" group: `cycleTabNext/Prev`, `focusSplitNext/Prev`),
+  dispatched by the global handler and, while a terminal is focused, by
+  `Terminal.svelte` via `matchAction` so they never reach the PTY.
+  `terminals.cycleTab()` / `focusSplit()` + the per-tab MRU list in the store.
+- **`Close tab` (Ctrl/⌘+W) now closes any tab — including a terminal —** with
+  the usual save/discard/cancel prompt for an unsaved file (it previously only
+  closed file/diff tabs and left Ctrl+W to the shell). Rebindable like the rest;
+  rebinding it away restores the shell's `Ctrl+W` (delete-word).
 - **Backend hidden-tab ring buffer.** Each PTY now keeps a bounded (256 KiB)
   ring of its most recent output in Rust (`OutputBuffer` in `pty.rs`), marked
   *stale* once it overflows. New `pty_snapshot` command returns it, and
@@ -38,7 +50,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 - **Tests:** +4 Rust unit tests for the ring buffer (now **69** backend tests);
   the CSI-u encoder was validated against known Kitty values during development.
 - **Spec/docs:** `architecture/02b-terminal-engine.md` (PTY buffer §2, tab/MRU,
-  keyboard protocol), `README.md` (test count), `FOR-DEV.md` (items removed).
+  keyboard protocol), `README.md` (test count), `FOR-DEV.md` (items removed),
+  `keybindings.ts` + en/es shortcut strings (new "Terminal tabs & splits" group).
 
 ### Changed — history branch graph looks like VS Code
 - **Branch-stable lane colors.** The history graph colored lanes by *column
