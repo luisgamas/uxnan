@@ -3,6 +3,14 @@
   // scope (shared across mounts) so a remount never re-types the command into an
   // already-running agent.
   const launchedIds = new Set<string>();
+
+  /** Read CSI parameter `i` as a non-negative integer, or `def` when absent.
+   *  (xterm hands sub-parameters as `number[]`; the keyboard sequences here
+   *  never use them, so those are treated as absent.) */
+  function numParam(params: (number | number[])[], i: number, def: number): number {
+    const v = params[i];
+    return typeof v === "number" && v >= 0 ? v : def;
+  }
 </script>
 
 <script lang="ts">
@@ -18,6 +26,7 @@
   import { terminals } from "$lib/state/terminals.svelte";
   import { agentMonitor } from "$lib/state/agentMonitor.svelte";
   import { app } from "$lib/state/app.svelte";
+  import { KeyboardProtocol } from "$lib/terminal/keyboardProtocol";
 
   // Effective terminal appearance (general theme base + per-terminal overrides:
   // font, size, line height, spacing, weight, ligatures, cursor, ANSI colors).
@@ -48,6 +57,9 @@
   let el: HTMLDivElement;
   let term: Terminal | undefined;
   let fit: FitAddon | undefined;
+  // Kitty/CSI-u keyboard protocol state for this terminal. Dormant until an app
+  // running in the PTY negotiates it; see `keyboardProtocol.ts`.
+  const kbd = new KeyboardProtocol();
   let unlisteners: UnlistenFn[] = [];
   let resizeObserver: ResizeObserver | undefined;
   let fitTimer: ReturnType<typeof setTimeout> | undefined;
@@ -122,23 +134,42 @@
     // their state in it ("thinking…", "waiting for input", "done"); map it.
     term.onTitleChange((title) => agentMonitor.noteTitle(id, title));
 
+    const ptyWrite = (data: string) => invoke("pty_write", { id, data }).catch(() => {});
+
     // Custom key handling (everything else — Ctrl+←/→ word nav, Home/End, … —
     // falls through to xterm's defaults and on to the PTY):
-    //  - Shift+Enter / Alt+Enter insert a newline (xterm otherwise collapses
-    //    them to a plain Enter, so agents can't get a multi-line prompt).
+    //  - Ctrl+Tab / Ctrl+Shift+Tab are swallowed (the window cycles tabs).
+    //  - Cmd+W / Ctrl+Shift+W close the terminal.
     //  - Ctrl+C copies when there's a selection, else passes through as SIGINT.
     //  - Ctrl+V pastes once (preventDefault stops a duplicate native paste).
+    //  - When an app negotiates the Kitty/CSI-u keyboard protocol, keys are
+    //    encoded for it (dormant otherwise — existing behaviour is unchanged).
+    //  - Shift+Enter / Alt+Enter insert a newline (xterm otherwise collapses
+    //    them to a plain Enter, so agents can't get a multi-line prompt).
     term.attachCustomKeyEventHandler((e) => {
+      // Key release matters only to the protocol's event-type reporting.
+      if (e.type === "keyup") {
+        const seq = kbd.encodeKeyUp(e);
+        if (seq !== null) {
+          ptyWrite(seq);
+          e.preventDefault();
+          return false;
+        }
+        return true;
+      }
       if (e.type !== "keydown") return true;
+
+      // App shortcuts that always win, even under the keyboard protocol:
+      // Ctrl+Tab / Ctrl+Shift+Tab cycle tabs (handled at the window level);
+      // swallow them so xterm never forwards a literal tab to the PTY.
+      if (e.key === "Tab" && e.ctrlKey && !e.altKey && !e.metaKey) {
+        e.preventDefault();
+        return false;
+      }
       // Close this terminal: Cmd+W (mac) or Ctrl+Shift+W. Plain Ctrl+W is left
       // for the shell's delete-word-backward.
       if (e.key.toLowerCase() === "w" && (e.metaKey || (e.ctrlKey && e.shiftKey))) {
         void terminals.closeTabAnywhere(id);
-        e.preventDefault();
-        return false;
-      }
-      if (e.key === "Enter" && (e.shiftKey || e.altKey) && !e.ctrlKey) {
-        invoke("pty_write", { id, data: "\n" }).catch(() => {});
         e.preventDefault();
         return false;
       }
@@ -156,8 +187,48 @@
           return false;
         }
       }
+
+      // Modern keyboard protocol: encode the key when an app has enabled it.
+      const seq = kbd.encodeKeyDown(e);
+      if (seq !== null) {
+        ptyWrite(seq);
+        e.preventDefault();
+        return false;
+      }
+
+      // Multi-line prompt convenience (when the protocol isn't driving keys).
+      if (e.key === "Enter" && (e.shiftKey || e.altKey) && !e.ctrlKey) {
+        ptyWrite("\n");
+        e.preventDefault();
+        return false;
+      }
       return true;
     });
+
+    // Kitty/CSI-u protocol negotiation: an app enables/queries it via these
+    // prefixed `… u` sequences. The handlers update `kbd`'s flag stack; a query
+    // is answered straight back to the PTY. Registered only on this terminal's
+    // parser, disposed with it.
+    for (const handler of [
+      term.parser.registerCsiHandler({ prefix: "?", final: "u" }, () => {
+        ptyWrite(kbd.queryReply());
+        return true;
+      }),
+      term.parser.registerCsiHandler({ prefix: ">", final: "u" }, (params) => {
+        kbd.push(numParam(params, 0, 0));
+        return true;
+      }),
+      term.parser.registerCsiHandler({ prefix: "<", final: "u" }, (params) => {
+        kbd.pop(numParam(params, 0, 1));
+        return true;
+      }),
+      term.parser.registerCsiHandler({ prefix: "=", final: "u" }, (params) => {
+        kbd.set(numParam(params, 0, 0), numParam(params, 1, 1));
+        return true;
+      }),
+    ]) {
+      unlisteners.push(() => handler.dispose());
+    }
 
     // Subscribe BEFORE spawning so no early output is missed.
     unlisteners.push(
@@ -176,14 +247,32 @@
     await tick();
     fitToPane();
 
-    await invoke("pty_create", {
+    // `created` is false when the PTY already existed — i.e. this xterm is a
+    // *remount* onto a live session (e.g. the tab was dragged to another region,
+    // which recreates its Svelte component). Default to true on failure (web
+    // preview) so we don't chase a snapshot that can't exist.
+    const created = await invoke<boolean>("pty_create", {
       id,
       cwd,
       shell,
       args,
       cols: term.cols || 80,
       rows: term.rows || 24,
-    }).catch(() => {});
+    }).catch(() => true);
+
+    // Remount: replay the backend's retained output so the fresh xterm shows the
+    // scrollback it had before, instead of an empty screen until the next byte.
+    if (created === false) {
+      try {
+        const snap = await invoke<{ data: number[]; stale: boolean }>("pty_snapshot", { id });
+        if (snap.data.length) {
+          term?.reset();
+          term?.write(new Uint8Array(snap.data));
+        }
+      } catch {
+        // No snapshot (unknown id / not in Tauri) — keep the live stream only.
+      }
+    }
 
     // Agent launch: type the command into the freshly-started shell. Running it
     // inside the shell (rather than as the PTY process) lets PATH/PATHEXT shims
