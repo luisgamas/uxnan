@@ -12,7 +12,7 @@ only a human can provide.)
 ## Status
 
 The bridge is **alpha-functional** on its primary path (LAN/Tailscale-direct,
-standalone). It builds clean and the suite is green (bridge 353, shared 29, relay
+standalone). It builds clean and the suite is green (bridge 355, shared 29, relay
 27). Nothing below blocks LAN/Tailscale-direct use. The only items that gate a
 **public npm release** are the *Packaging* first-publish steps and real-device
 push validation (FOR-HUMAN).
@@ -22,8 +22,12 @@ push validation (FOR-HUMAN).
 - [ ] **Key rotation / keyEpoch advance** — blocked on a mobile trigger. (Seq-based
       catch-up on reconnect is done end-to-end; only key rotation remains.)
 - [ ] **Bind the LAN server to chosen interface(s)** — today it binds all
-      interfaces (good for Tailscale; advertises virtual-NIC IPs too). Optionally
-      let the user restrict which interfaces are served/advertised.
+      interfaces (good for Tailscale). Advertised hosts already EXCLUDE host-only
+      virtual adapters (Hyper-V/WSL/Docker/VirtualBox/VMware) via
+      `isVirtualInterfaceName` in `local-hosts.ts`, so the phone no longer burns a
+      connect timeout on a dead `172.x` virtual-NIC address. Remaining (optional):
+      let the user restrict which interfaces are *served* (bound), and let them
+      whitelist an unusual advertised address the name-based filter would skip.
 
 ## Handlers
 

@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — stop advertising unreachable virtual-NIC addresses (Bug A relink latency)
+- **`src/transport/local-hosts.ts` now excludes host-only virtual adapters** from
+  the directly-reachable hosts advertised in the pairing QR / mDNS. Hyper-V and WSL
+  virtual switches (`vEthernet (…)`), the Hyper-V "Default Switch", Docker bridges
+  (`docker0`, `br-…`), VirtualBox and VMware host-only nets all report a
+  non-internal IPv4 (e.g. `172.27.192.1`) that is **not reachable from a phone**, so
+  the phone wasted a full connect timeout (~2 s) on each dead address on every
+  (re)connect — a confirmed contributor to the post-resume relink latency captured
+  in the `[reconn]` logs. The new `isVirtualInterfaceName` name filter is
+  deliberately conservative: it never matches a real LAN NIC (`Ethernet`, `Wi-Fi`)
+  or Tailscale (`Tailscale` / `tailscale0` / `utunN`), so direct LAN + Tailscale
+  keep working. Tests: +2 (`test/transport/local-hosts.test.ts`) → **355 bridge**.
+
 ### Added — bridge-side `[reconn]` diagnostics for the relink-loop investigation (temporary)
 - **`src/transport/session-handler.ts` now logs the reconnect path** so the
   remaining open half of Bug A (the post-reconnect `bridge/status` heartbeat
