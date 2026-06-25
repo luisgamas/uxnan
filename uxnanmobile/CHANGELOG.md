@@ -24,6 +24,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
     `gitHistoryNoTextDiff` / `gitHistoryBinaryDiff`.
 
 ### Fixed
+- **Git history graph: pass-through lanes no longer draw diagonal "hooks".** A
+  lane just crossing a row was routed to `outgoing.indexOf(occupant)`, which —
+  when the same parent occupied two lanes (a commit with multiple children,
+  common around merges) — returned the *first* lane, so the other lane bent
+  sideways every row. Pass-through lanes now draw a straight vertical in their
+  own column (lanes are never compacted), matching VS Code / the desktop graph.
+  - `presentation/screens/conversation/git/git_history_screen.dart`
+    (`_GraphPainter`).
 - **Git history graph: no more ref-chip overflow, cleaner lanes.** In graph
   mode each row now shows a single width-capped primary ref chip (branch > tag
   > HEAD > remote) plus a `+N` marker instead of every chip inline, so a tip

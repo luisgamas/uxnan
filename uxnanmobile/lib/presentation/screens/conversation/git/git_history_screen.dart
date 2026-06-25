@@ -1161,15 +1161,18 @@ class _GraphPainter extends CustomPainter {
           Offset(centerX, dotY),
         );
       } else {
-        final k = row.outgoing.indexOf(occ);
-        if (k != -1) {
-          _connect(
-            canvas,
-            _stroke(row.incomingColors[j]),
-            Offset(_laneX(j), 0),
-            Offset(_laneX(k), h),
-          );
-        }
+        // A pass-through lane continues in its *own* column (lanes are never
+        // compacted, so `outgoing[j]` is still this occupant) — draw a straight
+        // vertical. Using `outgoing.indexOf(occ)` was wrong: when the same
+        // parent occupies two lanes (a commit with multiple children, common
+        // around merges) it returned the *first* lane, so the other lane drew a
+        // diagonal "hook" every row instead of a clean vertical.
+        _connect(
+          canvas,
+          _stroke(row.incomingColors[j]),
+          Offset(_laneX(j), 0),
+          Offset(_laneX(j), h),
+        );
       }
     }
 
