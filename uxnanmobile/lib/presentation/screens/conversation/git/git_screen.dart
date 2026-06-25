@@ -13,6 +13,7 @@ import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
+import 'package:uxnan/presentation/widgets/measure_size.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 
 /// Full-screen Material 3 source-control surface for a thread's workspace.
@@ -72,6 +73,11 @@ class _GitScreenState extends ConsumerState<GitScreen> {
   bool _showDetails = false;
   bool _busy = false;
 
+  /// Measured height of the floating commit composer so the file list reserves
+  /// a matching bottom spacer and the last card rests just above it while
+  /// content scrolls under its translucent veil.
+  double _bottomChromeHeight = 0;
+
   @override
   void initState() {
     super.initState();
@@ -110,6 +116,14 @@ class _GitScreenState extends ConsumerState<GitScreen> {
     _diffs.clear();
     await ref.read(gitActionManagerProvider).refreshStatus(cwd);
     if (mounted) setState(() {});
+  }
+
+  /// Records the measured height of the floating commit composer so the file
+  /// list reserves matching bottom padding. Ignores sub-pixel jitter to avoid a
+  /// rebuild loop.
+  void _onBottomChromeHeight(double height) {
+    if (!mounted || (height - _bottomChromeHeight).abs() < 0.5) return;
+    setState(() => _bottomChromeHeight = height);
   }
 
   /// Pull-to-refresh handler: forwards to [_refresh] with the screen's `cwd`.
@@ -754,7 +768,6 @@ class _GitScreenState extends ConsumerState<GitScreen> {
         ? null
         : ref.watch(threadByIdProvider(threadId))?.worktreePath;
 
-    final colors = Theme.of(context).colorScheme;
     final topInset = NeTopBar.preferredHeight(context);
     return Scaffold(
       body: Stack(
@@ -766,140 +779,116 @@ class _GitScreenState extends ConsumerState<GitScreen> {
         // bar's Row.
         fit: StackFit.expand,
         children: [
-          Column(
-            children: [
-              Expanded(
-                child: Stack(
-                  children: [
-                    GestureDetector(
-                      behavior: HitTestBehavior.translucent,
-                      onTap: () => FocusScope.of(context).unfocus(),
-                      child: RefreshIndicator(
-                        onRefresh: _pullToRefresh,
-                        child: CustomScrollView(
-                          // Bouncing + always-scrollable matches `NeScaffold`
-                          // and the file browser so the screen feels native
-                          // on iOS and the user can drag-to-refresh even when
-                          // the content fits the viewport.
-                          physics: const BouncingScrollPhysics(
-                            parent: AlwaysScrollableScrollPhysics(),
+          // The changed-files list fills the screen and scrolls *under* the
+          // floating commit composer (reserved for by a bottom spacer of its
+          // measured height) and the transparent top bar.
+          GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onTap: () => FocusScope.of(context).unfocus(),
+            child: RefreshIndicator(
+              onRefresh: _pullToRefresh,
+              child: CustomScrollView(
+                // Bouncing + always-scrollable matches `NeScaffold` and the
+                // file browser so the screen feels native on iOS and the user
+                // can drag-to-refresh even when the content fits the viewport.
+                physics: const BouncingScrollPhysics(
+                  parent: AlwaysScrollableScrollPhysics(),
+                ),
+                slivers: [
+                  // Spacer so first content clears the overlaid bar.
+                  SliverToBoxAdapter(child: SizedBox(height: topInset)),
+                  if (state == null)
+                    SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: _NoRepository(connecting: widget.cwd != null),
+                    )
+                  else ...[
+                    SliverToBoxAdapter(child: _BranchSummary(state: state)),
+                    if (files.isEmpty)
+                      const SliverToBoxAdapter(child: _CleanState())
+                    else ...[
+                      SliverToBoxAdapter(
+                        child: _SelectionBar(
+                          total: files.length,
+                          selected: _selectedPaths(files).length,
+                          onSelectAll: () => setState(_deselected.clear),
+                          onDeselectAll: () => setState(
+                            () => _deselected.addAll(files.map((f) => f.path)),
                           ),
-                          slivers: [
-                            // Spacer so first content clears the overlaid bar.
-                            SliverToBoxAdapter(
-                              child: SizedBox(height: topInset),
-                            ),
-                            if (state == null)
-                              SliverFillRemaining(
-                                hasScrollBody: false,
-                                child: _NoRepository(
-                                  connecting: widget.cwd != null,
-                                ),
-                              )
-                            else ...[
-                              SliverToBoxAdapter(
-                                child: _BranchSummary(state: state),
-                              ),
-                              if (files.isEmpty)
-                                const SliverToBoxAdapter(child: _CleanState())
-                              else ...[
-                                SliverToBoxAdapter(
-                                  child: _SelectionBar(
-                                    total: files.length,
-                                    selected: _selectedPaths(files).length,
-                                    onSelectAll: () =>
-                                        setState(_deselected.clear),
-                                    onDeselectAll: () => setState(
-                                      () => _deselected
-                                          .addAll(files.map((f) => f.path)),
-                                    ),
-                                    onDiscardSelected: _busy
-                                        ? null
-                                        : () => _discard(state, all: false),
-                                  ),
-                                ),
-                                SliverList.builder(
-                                  itemCount: files.length,
-                                  itemBuilder: (context, index) {
-                                    final file = files[index];
-                                    return _FileCard(
-                                      file: file,
-                                      selected: _isSelected(file.path),
-                                      expanded: _isExpanded(file.path),
-                                      onSelectedChanged: (value) =>
-                                          setState(() {
-                                        if (value) {
-                                          _deselected.remove(file.path);
-                                        } else {
-                                          _deselected.add(file.path);
-                                        }
-                                      }),
-                                      onExpandedChanged: (value) =>
-                                          setState(() {
-                                        if (value) {
-                                          _expanded.add(file.path);
-                                        } else {
-                                          _expanded.remove(file.path);
-                                        }
-                                      }),
-                                      onDiscard: _busy
-                                          ? null
-                                          : () => _discardOne(state, file.path),
-                                      diff: widget.cwd == null ||
-                                              !_isExpanded(file.path)
-                                          ? null
-                                          : _diffFor(widget.cwd!, file.path),
-                                    );
-                                  },
-                                ),
-                                const SliverToBoxAdapter(
-                                  child: SizedBox(height: UxnanSpacing.lg),
-                                ),
-                              ],
-                            ],
-                          ],
+                          onDiscardSelected:
+                              _busy ? null : () => _discard(state, all: false),
                         ),
                       ),
-                    ),
-                    Positioned(
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      child: IgnorePointer(
-                        child: Container(
-                          height: UxnanSpacing.xl,
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [
-                                colors.surface.withValues(alpha: 0),
-                                colors.surface,
-                              ],
-                            ),
-                          ),
-                        ),
+                      SliverList.builder(
+                        itemCount: files.length,
+                        itemBuilder: (context, index) {
+                          final file = files[index];
+                          return _FileCard(
+                            file: file,
+                            selected: _isSelected(file.path),
+                            expanded: _isExpanded(file.path),
+                            onSelectedChanged: (value) => setState(() {
+                              if (value) {
+                                _deselected.remove(file.path);
+                              } else {
+                                _deselected.add(file.path);
+                              }
+                            }),
+                            onExpandedChanged: (value) => setState(() {
+                              if (value) {
+                                _expanded.add(file.path);
+                              } else {
+                                _expanded.remove(file.path);
+                              }
+                            }),
+                            onDiscard: _busy
+                                ? null
+                                : () => _discardOne(state, file.path),
+                            diff: widget.cwd == null || !_isExpanded(file.path)
+                                ? null
+                                : _diffFor(widget.cwd!, file.path),
+                          );
+                        },
                       ),
-                    ),
+                    ],
                   ],
+                  // Reserve room for the floating commit composer so the last
+                  // card rests just above it instead of behind it.
+                  SliverToBoxAdapter(
+                    child: SizedBox(height: _bottomChromeHeight),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          // The floating commit composer over a gradient veil — transparent at
+          // the top so the file list shows through as it scrolls under it,
+          // solid at the very bottom. Its measured height feeds the scroll
+          // spacer above so the last card never hides behind it.
+          if (state != null)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: MeasureHeight(
+                onChange: _onBottomChromeHeight,
+                child: NeComposerVeil(
+                  child: _CommitBar(
+                    state: state,
+                    title: _title,
+                    description: _description,
+                    coAuthor: _coAuthor,
+                    showDetails: _showDetails,
+                    busy: _busy,
+                    onToggleDetails: () =>
+                        setState(() => _showDetails = !_showDetails),
+                    onCommit: () => _commit(state),
+                    onPush: () => _push(state),
+                    onUndoCommit: () => _undoCommit(state),
+                  ),
                 ),
               ),
-              if (state != null)
-                _CommitBar(
-                  state: state,
-                  title: _title,
-                  description: _description,
-                  coAuthor: _coAuthor,
-                  showDetails: _showDetails,
-                  busy: _busy,
-                  onToggleDetails: () =>
-                      setState(() => _showDetails = !_showDetails),
-                  onCommit: () => _commit(state),
-                  onPush: () => _push(state),
-                  onUndoCommit: () => _undoCommit(state),
-                ),
-            ],
-          ),
+            ),
           Positioned(
             top: 0,
             left: 0,
