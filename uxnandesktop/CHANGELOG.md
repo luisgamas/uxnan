@@ -5,6 +5,41 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — terminal: tab reorder/MRU, backend ring buffer, CSI-u keyboard protocol
+- **Tab reorder + drag between regions.** Tab chips are now draggable: drop one
+  elsewhere in its strip to reorder it, or onto another region's strip to move
+  it there (an insertion marker shows where it'll land; a region emptied by a
+  move collapses). New `terminals.moveTab()` plus the drag handlers + markers in
+  `TerminalArea.svelte`. Reordering within a region never remounts xterm;
+  crossing regions remounts the pane, which transparently restores from the new
+  backend snapshot (below). `src/lib/state/terminals.svelte.ts`.
+- **MRU tab cycling.** `Ctrl+Tab` / `Ctrl+Shift+Tab` cycle the active region's
+  tabs in most-recently-used order (a frozen order while you keep pressing; the
+  landed tab becomes most-recent once the cycle settles). Handled at the window
+  level (`TerminalArea.svelte`) and swallowed inside xterm so no literal tab
+  reaches the PTY. `terminals.cycleTab()` + the per-tab MRU list in the store.
+- **Backend hidden-tab ring buffer.** Each PTY now keeps a bounded (256 KiB)
+  ring of its most recent output in Rust (`OutputBuffer` in `pty.rs`), marked
+  *stale* once it overflows. New `pty_snapshot` command returns it, and
+  `pty_create` now reports whether the session was freshly spawned (`created`).
+  A pane whose xterm is recreated (e.g. a tab dragged to another region) replays
+  the snapshot so its scrollback isn't lost (`Terminal.svelte`). Supersedes the
+  client-only `scrollback: 5000` reliance for the remount case.
+- **Modern keyboard protocol (Kitty / CSI-u).** New `keyboardProtocol.ts`
+  implements the terminal half of the progressive keyboard-enhancement protocol
+  (flag stack, query/push/pop/set negotiation via `registerCsiHandler`, and a
+  validated `CSI <code> ; <mods> [: <event>] u` encoder). It is **dormant until
+  an app enables it**, so existing key handling is unchanged; when active it
+  disambiguates `Ctrl+I`/Tab, `Esc`, modified specials and `Ctrl`/`Alt`+letter
+  combos, and supports report-event-types / report-all-keys. Functional/nav keys
+  fall through to xterm's legacy encoding (see `FOR-DEV.md`).
+- **Alt-screen wheel scrolling** is provided by xterm.js (wheel → arrow keys in
+  the alternate buffer); verified, no override added that would defeat it.
+- **Tests:** +4 Rust unit tests for the ring buffer (now **69** backend tests);
+  the CSI-u encoder was validated against known Kitty values during development.
+- **Spec/docs:** `architecture/02b-terminal-engine.md` (PTY buffer §2, tab/MRU,
+  keyboard protocol), `README.md` (test count), `FOR-DEV.md` (items removed).
+
 ### Changed — history branch graph looks like VS Code
 - **Branch-stable lane colors.** The history graph colored lanes by *column
   index*, so two unrelated branches that happened to share a column looked like
