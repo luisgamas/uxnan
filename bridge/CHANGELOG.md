@@ -18,21 +18,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   or Tailscale (`Tailscale` / `tailscale0` / `utunN`), so direct LAN + Tailscale
   keep working. Tests: +2 (`test/transport/local-hosts.test.ts`) → **355 bridge**.
 
-### Added — bridge-side `[reconn]` diagnostics for the relink-loop investigation (temporary)
-- **`src/transport/session-handler.ts` now logs the reconnect path** so the
-  remaining open half of Bug A (the post-reconnect `bridge/status` heartbeat
-  timing out at 8 s in a loop) can be root-caused from the bridge, mirroring the
-  mobile-side `[reconn]` instrumentation. Each connection logs: handshake done
-  (mode, device, advertised `lastApplied`, whether it supersedes a still-live
-  connection); the catch-up replay (message count, bytes, seq range, elapsed ms —
-  to catch a backlog flood that could starve the heartbeat reply) or "no backlog";
-  sink registered (next outbound seq); every inbound envelope rejected as a replay
-  (with the channel's `lastInbound`); each inbound `bridge/status` (seq) it
-  dispatches+replies; and teardown (`stillCurrent`, i.e. whether a newer
-  connection had already superseded this one). **Temporary** — to be removed with
-  the mobile `[reconn]` logs once the loop is root-caused. No behavior change.
-  See `uxnanmobile/FOR-DEV.md` → "Bug A".
-
 ### Added — surface the in-flight turn on `turn/list` (phone re-attach)
 - **`turn/list` now returns `activeTurnId`** when a turn is in flight for the
   thread. New `AgentManager.activeTurnId(threadId)` exposes the live

@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:uxnan/core/errors/transport_exception.dart';
-import 'package:uxnan/core/utils/logger.dart';
 import 'package:uxnan/domain/entities/trusted_device.dart';
 import 'package:uxnan/infrastructure/transport/websocket_transport.dart';
 
@@ -45,12 +44,11 @@ class DirectTransportSelector implements TransportSelector {
     //    dead or slow host — an unreachable virtual NIC, or a Tailscale tunnel
     //    still waking after the OS suspended the app — can't stall a reachable
     //    host queued behind it. The first host to connect within the per-host
-    //    timeout wins; the rest are dropped. This is the relink-latency half of
-    //    Bug A: serial dialing stacked one full timeout per dead host.
+    //    timeout wins; the rest are dropped. (Serial dialing would stack one
+    //    full timeout per dead host ahead of a live one.)
     if (device.hosts.isNotEmpty) {
       final winner = await _dialDirectHosts(device.hosts);
       if (winner != null) return winner;
-      AppLogger.info('[reconn] all direct hosts failed → relay fallback');
     }
 
     // 2. Relay fallback (WAN), routed with the session headers. Bounded by
@@ -62,7 +60,6 @@ class DirectTransportSelector implements TransportSelector {
       );
     }
     final transport = _createTransport();
-    final sw = Stopwatch()..start();
     try {
       await transport.connect(
         device.relayUrl,
@@ -71,13 +68,8 @@ class DirectTransportSelector implements TransportSelector {
           'x-session-id': device.sessionId,
         },
       ).timeout(_relayTimeout);
-      AppLogger.info('[reconn] relay connected in ${sw.elapsedMilliseconds}ms');
       return transport;
     } on Object catch (error) {
-      AppLogger.info(
-        '[reconn] relay fallback failed in '
-        '${sw.elapsedMilliseconds}ms: $error',
-      );
       await transport.disconnect().catchError((_) {});
       throw TransportException(
         TransportErrorKind.connection,
@@ -90,10 +82,6 @@ class DirectTransportSelector implements TransportSelector {
   /// transport that connects within [_directTimeout], or `null` if they all
   /// fail/time out. Every non-winning transport (failed, timed out, or a slower
   /// success) is disconnected, so exactly one live transport is ever returned.
-  ///
-  /// FOR-DEV: Bug A diagnostic — each attempt is timed under `[reconn]` so
-  /// post-resume relink latency stays visible (see uxnanmobile/FOR-DEV.md).
-  /// Remove the logs once Bug A is validated on-device.
   Future<WebSocketTransport?> _dialDirectHosts(List<String> hosts) {
     final decided = Completer<WebSocketTransport?>();
     final transports = <WebSocketTransport>[];
@@ -102,22 +90,14 @@ class DirectTransportSelector implements TransportSelector {
     for (final host in hosts) {
       final transport = _createTransport();
       transports.add(transport);
-      final sw = Stopwatch()..start();
       transport.connect(_directUrl(host)).timeout(_directTimeout).then((_) {
         if (decided.isCompleted) {
           // Another host already won this race — drop this late success.
           unawaited(transport.disconnect().catchError((_) {}));
           return;
         }
-        AppLogger.info(
-          '[reconn] direct "$host" connected in ${sw.elapsedMilliseconds}ms',
-        );
         decided.complete(transport);
-      }).catchError((Object error) {
-        AppLogger.info(
-          '[reconn] direct "$host" unreachable in '
-          '${sw.elapsedMilliseconds}ms: $error',
-        );
+      }).catchError((Object _) {
         unawaited(transport.disconnect().catchError((_) {}));
       }).whenComplete(() {
         pending--;
