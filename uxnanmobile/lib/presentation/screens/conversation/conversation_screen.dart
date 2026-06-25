@@ -575,9 +575,8 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                           vertical: UxnanSpacing.sm,
                         ),
                         child: TextButton.icon(
-                          onPressed: () => ref
-                              .read(threadManagerProvider)
-                              .loadMoreHistory(),
+                          onPressed: () =>
+                              ref.read(threadManagerProvider).loadMoreHistory(),
                           icon: const Icon(Icons.history_rounded, size: 18),
                           label: Text(l10n.conversationLoadEarlier),
                         ),
@@ -690,8 +689,8 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                         if (ref.read(scrollToBottomOnSendProvider)) {
                           _forceScrollOnSend = true;
                         }
-                        final options = ref
-                            .read(threadRunOptionsProvider(widget.threadId));
+                        final options =
+                            ref.read(threadRunOptionsProvider(widget.threadId));
                         final attachments = List<ImageContent>.of(_attachments);
                         ref.read(threadManagerProvider).sendUserMessage(
                               widget.threadId,

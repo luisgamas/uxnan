@@ -212,8 +212,7 @@ class FileTreeTile extends StatelessWidget {
     final iconColor = status == null ? colors.onSurfaceVariant : statusColor;
     // Only an actual git *change* (added/modified/deleted/renamed) bumps the
     // weight; untracked stays at the normal weight so it reads as quiet grey.
-    final emphasised =
-        status != null && status != GitFileStatus.untracked;
+    final emphasised = status != null && status != GitFileStatus.untracked;
 
     return InkWell(
       onTap: onTap,
