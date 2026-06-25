@@ -314,6 +314,35 @@ export class CodexAdapter extends BaseAgentAdapter {
     return this.#defaultModel;
   }
 
+  /**
+   * Resolve the Codex permission posture for a turn: the thread's `accessMode`
+   * (from the phone) wins when set, else the configured `permissionMode`.
+   *  - `requestApproval` → `interactive` (the app-server forwards each approval
+   *    elicitation to the phone);
+   *  - `approveForMe`    → `acceptEdits` (workspace writes, no prompts);
+   *  - `fullAccess`      → `bypassPermissions` (danger-full-access, no prompts).
+   * Absent → the configured posture (no behaviour change).
+   *
+   * FOR-DEV: the resulting `(approvalPolicy, sandbox)` is sent on `thread/start`,
+   * which runs only on a thread's FIRST turn — so the posture governs the thread
+   * from creation but a mid-thread access-mode change does NOT re-issue
+   * `thread/start` and only takes effect on threads started after the change.
+   * A true per-turn re-apply needs confirming whether the app-server `turn/start`
+   * accepts an approval/sandbox override (see bridge/FOR-DEV.md).
+   */
+  #effectiveMode(accessMode: SendTurnOptions['accessMode']): CodexPermissionMode {
+    switch (accessMode) {
+      case 'approveForMe':
+        return 'acceptEdits';
+      case 'fullAccess':
+        return 'bypassPermissions';
+      case 'requestApproval':
+        return 'interactive';
+      default:
+        return this.#permissionMode;
+    }
+  }
+
   start(config: AgentConfig): Promise<void> {
     if (config.cwd) this.#defaultCwd = config.cwd;
     return Promise.resolve();
@@ -340,7 +369,12 @@ export class CodexAdapter extends BaseAgentAdapter {
     const cwd = options.cwd ?? this.#defaultCwd;
     const model = options.service ?? this.#defaultModel;
     const effort = reasoningValue(options);
-    const { approvalPolicy, sandbox } = permissionToPolicies(this.#permissionMode);
+    // The thread's persisted access mode (chosen on the phone) overrides the
+    // configured posture. NOTE: the policy is applied at `thread/start` below,
+    // so it governs a thread from its FIRST turn; see `#effectiveMode`.
+    const { approvalPolicy, sandbox } = permissionToPolicies(
+      this.#effectiveMode(options.accessMode),
+    );
 
     // Spawn or reuse the app-server. We await the initialization so a slow
     // first turn surfaces a clear error rather than racing the `turn/start`.

@@ -45,17 +45,28 @@ class ThreadManager {
     required RpcSend sendRequest,
     String? Function()? foregroundThreadId,
     Uuid? uuid,
+    Duration resyncTimeout = const Duration(seconds: 8),
   })  : _threadRepository = threadRepository,
         _messageRepository = messageRepository,
         _sendRequest = sendRequest,
         _foregroundThreadId = foregroundThreadId,
-        _uuid = uuid ?? const Uuid() {
+        _uuid = uuid ?? const Uuid(),
+        _resyncTimeout = resyncTimeout {
     _eventsSub = domainEvents.listen(_applyEvent);
   }
 
   final IThreadRepository _threadRepository;
   final IMessageRepository _messageRepository;
   final RpcSend _sendRequest;
+
+  /// Upper bound on the **resync** `turn/list` round-trip (the newest-page pull
+  /// run on resume/reconnect). Tighter than the correlator's 30 s default so a
+  /// resync issued over a socket that went half-open while backgrounded fails
+  /// fast and "keeps local" — the live re-attach (`activeTurnId` + the
+  /// `_ensureLive` self-heal) then restores the in-flight turn from the
+  /// stream — instead of hanging the thread view for 30 s (Bug A). Injectable
+  /// so tests don't wait it out; older-page paging keeps the default timeout.
+  final Duration _resyncTimeout;
 
   /// Returns the threadId of the conversation the user is currently viewing in
   /// the foreground (null when none). A reply that lands in a thread the user
@@ -607,9 +618,31 @@ class ThreadManager {
   /// [loadMoreHistory]. User messages are authored locally and persisted on
   /// send, so they are never re-synced (which would duplicate them).
   Future<void> _resyncThread(String threadId) async {
-    final page =
-        await _fetchTurns(threadId, limit: _turnPageSize, fromEnd: true);
+    final page = await _fetchTurns(
+      threadId,
+      limit: _turnPageSize,
+      fromEnd: true,
+      timeout: _resyncTimeout,
+    );
     if (page == null) return;
+    // Re-attach to a turn still in flight on the bridge BEFORE persisting, so a
+    // turn we stopped tracking (reconnected/reopened mid-turn) keeps its live
+    // view — the indicator + Stop reappear and `_persistTurns` treats it as
+    // live (it skips the tracked turn) instead of writing it as a finished
+    // message. `activeTurnId` is the bridge's authoritative in-flight state
+    // (absent after a bridge restart), so it never resurrects an ended turn.
+    final activeTurnId = page.activeTurnId;
+    if (activeTurnId != null && _live[threadId]?.turnId != activeTurnId) {
+      // Seed the live buffer with the partial assistant output the bridge has
+      // already accumulated for this in-flight turn (it stores deltas as they
+      // stream — see AgentManager.#onEvent `appendDelta`), so the text the
+      // agent produced *before* we reconnected isn't lost. Without seeding, the
+      // buffer starts empty and only output that streams *after* the reconnect
+      // shows up — the earlier reply (e.g. "on it, let me check…") silently
+      // vanishes from the bubble even though the bridge still has it.
+      _live[threadId] = _seedLiveTurn(activeTurnId, page.turns);
+      _setActivity(threadId, ThreadActivity.running);
+    }
     await _persistTurns(threadId, page.turns, trackLatestUsage: true);
     if (threadId != _activeThreadId) return;
     final total = page.total;
@@ -626,14 +659,46 @@ class ThreadManager {
     _rebuildActiveTimeline();
   }
 
+  /// Builds a [_LiveTurn] for [turnId] pre-filled with the partial assistant
+  /// content the bridge already streamed for it, recovered from the `turn/list`
+  /// [turns] page. Mirrors the history ordering used by [_assistantContents]
+  /// (any structured blocks first, then the accumulated text run), and keeps
+  /// the text run **last** so the next streamed delta extends it in place via
+  /// [_LiveTurn.appendText] instead of starting a detached run. Returns an
+  /// empty buffer when the active turn isn't found in the page (older bridge,
+  /// or the turn carries no assistant output yet).
+  _LiveTurn _seedLiveTurn(String turnId, List<Object?> turns) {
+    final live = _LiveTurn(turnId: turnId);
+    for (final rawTurn in turns) {
+      if (rawTurn is! Map || rawTurn['id'] != turnId) continue;
+      final messages = rawTurn['messages'];
+      if (messages is! List) continue;
+      for (final rawMsg in messages) {
+        if (rawMsg is! Map || rawMsg['role'] != 'assistant') continue;
+        final thinking = rawMsg['thinking'];
+        if (thinking is String && thinking.isNotEmpty) {
+          live.thinking += thinking;
+        }
+        live.segments.addAll(_decodeBlocks(rawMsg['blocks']));
+        final content = rawMsg['content'];
+        if (content is String && content.isNotEmpty) {
+          live.segments.add(TextContent(content));
+        }
+      }
+    }
+    return live;
+  }
+
   /// Sends `turn/list` for one page and returns its turns + reported `total`
   /// (null on failure or an older bridge). [fromEnd] asks for the newest page;
   /// otherwise [cursor] is an explicit offset.
-  Future<({List<Object?> turns, int? total})?> _fetchTurns(
+  Future<({List<Object?> turns, int? total, String? activeTurnId})?>
+      _fetchTurns(
     String threadId, {
     String? cursor,
     int? limit,
     bool fromEnd = false,
+    Duration? timeout,
   }) async {
     final params = <String, dynamic>{'threadId': threadId};
     if (cursor != null) params['cursor'] = cursor;
@@ -641,7 +706,8 @@ class ThreadManager {
     if (fromEnd) params['fromEnd'] = true;
     final RpcMessage response;
     try {
-      response = await _sendRequest('turn/list', params);
+      final pending = _sendRequest('turn/list', params);
+      response = await (timeout == null ? pending : pending.timeout(timeout));
     } on Object catch (error, stackTrace) {
       AppLogger.warn('turn/list resync failed (kept local)', error, stackTrace);
       return null;
@@ -651,7 +717,12 @@ class ThreadManager {
     final turns = result['turns'];
     if (turns is! List) return null;
     final total = result['total'];
-    return (turns: turns, total: total is int ? total : null);
+    final activeTurnId = result['activeTurnId'];
+    return (
+      turns: turns,
+      total: total is int ? total : null,
+      activeTurnId: activeTurnId is String ? activeTurnId : null,
+    );
   }
 
   /// Persists the assistant answers from a fetched page of [turns] into the
@@ -917,25 +988,17 @@ class ThreadManager {
         _setActivity(threadId, ThreadActivity.running);
         if (threadId == _activeThreadId) _rebuildActiveTimeline();
       case MessageDeltaEvent(:final turnId, :final delta):
-        final live = _live[threadId];
-        if (live != null && live.turnId == turnId) {
-          live.appendText(delta);
-          if (threadId == _activeThreadId) _rebuildActiveTimeline();
-        }
+        _ensureLive(threadId, turnId).appendText(delta);
+        if (threadId == _activeThreadId) _rebuildActiveTimeline();
       case ThinkingDeltaEvent(:final turnId, :final delta):
-        final live = _live[threadId];
-        if (live != null && live.turnId == turnId) {
-          live.thinking += delta;
-          if (threadId == _activeThreadId) _rebuildActiveTimeline();
-        }
+        _ensureLive(threadId, turnId).thinking += delta;
+        if (threadId == _activeThreadId) _rebuildActiveTimeline();
       case ContentBlockEvent(:final turnId, :final content):
-        final live = _live[threadId];
-        if (live != null && live.turnId == turnId) {
-          live.segments.add(content);
-          if (threadId == _activeThreadId) _rebuildActiveTimeline();
-        }
+        _ensureLive(threadId, turnId).segments.add(content);
+        if (threadId == _activeThreadId) _rebuildActiveTimeline();
       case TurnCompletedEvent(
           :final turnId,
+          :final text,
           :final tokens,
           :final contextWindow,
         ):
@@ -948,7 +1011,9 @@ class ThreadManager {
         }
         // A reply landing in a thread the user isn't viewing is unread.
         if (threadId != _foregroundThreadId?.call()) _markUnread(threadId);
-        unawaited(_finishTurn(threadId, turnId, failed: false));
+        unawaited(
+          _finishTurn(threadId, turnId, failed: false, finalText: text),
+        );
       case TurnErrorEvent(:final turnId):
         unawaited(_finishTurn(threadId, turnId, failed: true));
       case TurnAbortedEvent(:final turnId):
@@ -958,6 +1023,26 @@ class ThreadManager {
     }
   }
 
+  /// Returns the live buffer for [threadId], creating (or replacing) it when a
+  /// stream event arrives for a turn we are not currently tracking.
+  ///
+  /// This makes the phone **self-heal**: if it lost the `turn_started` (e.g. it
+  /// reconnected mid-turn, or was killed and reopened while the agent kept
+  /// running on the PC), any further streamed output re-attaches the live view
+  /// and re-lights the "responding…" indicator + Stop button — instead of the
+  /// event being silently dropped and the turn looking dead forever. The bridge
+  /// serializes one in-flight turn per thread and never streams after a turn
+  /// ends, so a delta for a different `turnId` means the tracked one is stale
+  /// and is correctly replaced.
+  _LiveTurn _ensureLive(String threadId, String turnId) {
+    final existing = _live[threadId];
+    if (existing != null && existing.turnId == turnId) return existing;
+    final live = _LiveTurn(turnId: turnId);
+    _live[threadId] = live;
+    _setActivity(threadId, ThreadActivity.running);
+    return live;
+  }
+
   /// Finalizes a turn for [threadId]: persists the buffered assistant text
   /// (keyed by the deterministic id so it reconciles with a later re-sync),
   /// clears the live buffer and updates the thread's activity.
@@ -965,20 +1050,36 @@ class ThreadManager {
     String threadId,
     String turnId, {
     required bool failed,
+    String? finalText,
   }) async {
     final live = _live.remove(threadId);
     _setActivity(threadId, failed ? ThreadActivity.error : ThreadActivity.idle);
     if (live == null) return;
+    // Normally the finalized message is the live buffer's interleaved text +
+    // work-log blocks. But if we re-attached to a turn already in flight
+    // (after reconnecting while backgrounded) the buffer may hold no streamed
+    // text — in that case fall back to the bridge's authoritative final
+    // [finalText] so the bubble is never empty/partial, keeping live blocks.
+    final liveHasText =
+        live.segments.any((c) => c is TextContent && c.text.isNotEmpty);
+    final contents = (!liveHasText && finalText != null && finalText.isNotEmpty)
+        ? _assistantContents(
+            finalText,
+            live.thinking,
+            live.segments.where((c) => c is! TextContent).toList(),
+            streaming: false,
+          )
+        : _assistantContentsOrdered(
+            live.thinking,
+            live.segments,
+            streaming: false,
+          );
     final finalized = Message(
       id: _streamId(turnId),
       threadId: threadId,
       turnId: turnId,
       role: MessageRole.assistant,
-      contents: _assistantContentsOrdered(
-        live.thinking,
-        live.segments,
-        streaming: false,
-      ),
+      contents: contents,
       deliveryState:
           failed ? MessageDeliveryState.failed : MessageDeliveryState.delivered,
       orderIndex: await _orderIndexFor(threadId),

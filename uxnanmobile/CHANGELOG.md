@@ -6,6 +6,84 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — a mid-stream turn's earlier reply is no longer lost on reconnect (Bug A)
+- **The live re-attach now seeds the streaming buffer with the in-flight turn's
+  partial output.** When the app was killed and reopened while the agent was
+  mid-turn, the re-attach (`activeTurnId`) recreated the `_live` buffer **empty**,
+  so the text the agent had already streamed before the close (e.g. "on it, let
+  me check…") vanished from the bubble — only output produced *after* the
+  reconnect showed, and because new deltas made the buffer non-empty, the
+  finalized message also dropped the earlier part. The bridge already persists
+  deltas as they stream and returns the accumulated text/thinking/blocks for the
+  active turn in `turn/list`, so `_resyncThread` now pre-fills the re-attached
+  `_LiveTurn` from that partial content (blocks first, then the text run kept
+  last so the next delta extends it in place). No bridge/contract change — it
+  consumes the partial content `turn/list` already reports. Confirmed against the
+  fresh `[reconn]` capture: a full close/reopen handshakes as `trusted_reconnect`
+  with "no catch-up backlog to replay", i.e. `_live` is genuinely empty at resync
+  time. Tests: +1 (`thread_manager_test.dart`: a resync seeds the live buffer
+  with the in-flight turn's partial text).
+  - `application/managers/thread_manager.dart` (`_resyncThread`, `_seedLiveTurn`).
+
+### Fixed — a resume resync no longer hangs the thread view for 30 s (Bug A)
+- **The resume/reconnect `turn/list` resync now uses an 8 s timeout** instead of
+  the request correlator's 30 s default. When the app returns from the background
+  the socket can be silently half-open, so the resync round-trip gets no reply;
+  the `[reconn]` capture showed it stall the full 30 s (`turn/list resync failed
+  (kept local)`) while the thread sat un-refreshed. With the tighter bound it
+  gives up fast and keeps local state — and the already-shipped live re-attach
+  (`activeTurnId` + the `_ensureLive` self-heal) restores any in-flight turn from
+  the stream — so the view recovers quickly. Only the resync (newest-page) pull is
+  bounded; user-driven older-page paging keeps the default timeout. The bound is
+  injectable (`ThreadManager.resyncTimeout`) so tests don't wait it out. Tests:
+  +1 (`thread_manager_test.dart`: a resync over a half-open socket fails fast,
+  not after 30 s) → **433** unit + widget tests, all green.
+
+### Fixed — dial direct hosts in parallel so a dead host can't stall reconnection (Bug A)
+- **`DirectTransportSelector` now connects to every advertised direct host
+  concurrently** instead of one-at-a-time, and keeps the first that connects
+  within the per-host timeout (the rest are disconnected). Serial dialing made
+  reconnection pay one **full** per-host timeout for every unreachable address
+  ahead of a live one — the `[reconn]` capture showed a resume burning 2 s on a
+  dead virtual NIC (`172.27.192.1`) **and** 2 s on a Tailscale host still waking
+  from OS suspension before it could even try the next candidate. Parallel
+  dialing returns as soon as *any* host answers, so a single slow/dead address no
+  longer adds to the relink latency. The relay fallback (when every direct host
+  fails) is unchanged. Pairs with the bridge-side fix that stops advertising
+  unreachable virtual-NIC addresses in the first place (see `bridge/CHANGELOG.md`).
+  Tests: +1 (`transport_selector_test.dart`: a hanging host no longer blocks a
+  reachable one) → **432** unit + widget tests, all green.
+
+### Fixed — a turn no longer "dies" on the phone after reconnecting mid-stream
+- **The phone re-attaches to a turn still in flight on the bridge.** Before, the
+  "responding…" indicator + composer Stop button were driven only by the
+  in-memory `_live` buffer, created **only** on `turn_started`. If the app
+  missed that event (reconnected mid-turn, or was killed and reopened while the
+  agent kept running on the PC), every later `delta`/`thinking`/`block` was
+  silently **dropped** — the turn looked ended, the app waited for nothing, and
+  the only way forward was to type again. Three coupled fixes in
+  `application/managers/thread_manager.dart`:
+  - **Self-heal (`_ensureLive`).** A stream event for a turn we aren't tracking
+    now lazily (re)creates the live buffer and re-lights the activity indicator
+    instead of being dropped — any further agent output revives the view. The
+    bridge serializes one in-flight turn per thread, so a delta for a different
+    `turnId` correctly replaces a stale one.
+  - **Proactive re-attach on resync.** `resyncActive`/`_resyncThread` reads the
+    new `turn/list` → `activeTurnId` (the bridge's authoritative in-flight turn,
+    absent after a bridge restart) and recreates `_live` before persisting, so
+    the indicator + Stop reappear immediately on resume — without resurrecting a
+    turn that already ended.
+  - **Authoritative completion text.** `TurnCompletedEvent` now carries the
+    bridge's full final `text` (`processors/incoming_message_processor.dart`,
+    `processors/domain_event.dart`); `_finishTurn` uses it when the live buffer
+    captured no streamed text (re-attached mid-turn), so the finalized bubble is
+    never left empty/partial — while preserving the interleaved live text+blocks
+    in the normal case.
+  - Tests: `test/unit/application/thread_manager_test.dart` (+3: self-heal,
+    resync re-attach, authoritative-text completion). NOTE: this is the
+    "active-turn loss" half of the remote-connection work; the relink-latency /
+    reconnect-loop half is still tracked in `FOR-DEV.md` (Bug A).
+
 ### Changed
 - **Consistent circular floating scroll buttons.** The git history's
   back-to-top button was M3's default rounded-square `FloatingActionButton`,

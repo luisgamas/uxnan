@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added
+- **`TurnList.activeTurnId?`** (`models/thread.ts`): the `turn/list` result now
+  carries the turn currently in-flight for the thread (the bridge's live
+  AgentManager state), when one exists. Distinct from a stored turn's
+  `streaming` status — which can dangle after a bridge restart — so the phone
+  uses it to re-attach its streaming view to a turn it stopped tracking while
+  backgrounded (instead of treating the turn as ended). Wire-additive; older
+  clients ignore it. Consumed by bridge (`turn/list` handler) and mobile
+  (resync re-attach).
+
 ### Changed
 - **`git/log` pagination is now an opaque offset cursor** (`models/git.ts`):
   `GitLogParams.cursor` / `GitLogResult.nextCursor` are documented as an opaque

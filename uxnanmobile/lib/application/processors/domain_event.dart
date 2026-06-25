@@ -101,6 +101,7 @@ class TurnCompletedEvent extends DomainEvent {
   const TurnCompletedEvent({
     required this.turnId,
     this.threadId,
+    this.text,
     this.tokens,
     this.contextWindow,
   });
@@ -111,6 +112,13 @@ class TurnCompletedEvent extends DomainEvent {
   /// The owning thread, if provided.
   final String? threadId;
 
+  /// The agent's full final answer text for the turn (authoritative). Used to
+  /// finalize the message even when the live delta buffer is empty or partial —
+  /// e.g. the app re-attached to a turn already in flight (after reconnecting
+  /// while backgrounded) and never received its earlier deltas. Null on agents
+  /// that don't report a final text.
+  final String? text;
+
   /// Context-occupying token count for the turn, when the agent reported it.
   final int? tokens;
 
@@ -118,7 +126,7 @@ class TurnCompletedEvent extends DomainEvent {
   final int? contextWindow;
 
   @override
-  List<Object?> get props => [turnId, threadId, tokens, contextWindow];
+  List<Object?> get props => [turnId, threadId, text, tokens, contextWindow];
 }
 
 /// A turn ended in an error.

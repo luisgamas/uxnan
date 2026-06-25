@@ -82,4 +82,15 @@ export interface TurnList {
    * offsets without first pulling the whole thread.
    */
   total?: number;
+  /**
+   * The turn currently in-flight for this thread (an agent is actively
+   * producing it RIGHT NOW in the bridge process), when one exists. This is the
+   * LIVE AgentManager state, NOT a stored turn's `streaming` status — the latter
+   * can be left dangling after a bridge restart (the agent child process died),
+   * whereas this is cleared the moment the turn completes/errors/aborts and is
+   * absent after a restart. The phone uses it on resync/reconnect to re-attach
+   * its streaming view (the "responding…" indicator + Stop button) to a turn it
+   * stopped tracking while backgrounded, instead of treating the turn as ended.
+   */
+  activeTurnId?: string;
 }

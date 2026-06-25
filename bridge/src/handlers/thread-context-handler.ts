@@ -99,15 +99,22 @@ export function registerThreadHandlers(router: HandlerRouter): void {
     const cursor = optionalString(p, 'cursor');
     const limit = optionalNumber(p, 'limit');
     const fromEnd = optionalBoolean(p, 'fromEnd') ?? false;
+    // Surface the LIVE in-flight turn (if any) so a phone reconnecting mid-turn
+    // re-attaches its streaming view instead of treating the turn as ended.
+    // This is the AgentManager's authoritative state, not a stored `streaming`
+    // status (which can dangle after a restart) — see TurnList.activeTurnId.
+    const activeTurnId = ctx.agentManager.activeTurnId(threadId);
+    const withActive = (list: TurnList): TurnList =>
+      activeTurnId !== undefined ? { ...list, activeTurnId } : list;
     const stored = await ctx.threadStore.listTurns(threadId, cursor, limit, fromEnd);
     // Fallback (§5.8.8): when the store has nothing for this thread, read the
     // agent's own on-disk session log so the phone can still show history (e.g.
     // after the bridge missed the turns, or threads.json was lost).
-    if (stored.turns.length > 0 || stored.nextCursor) return stored;
+    if (stored.turns.length > 0 || stored.nextCursor) return withActive(stored);
     const source = await ctx.threadStore.getHistorySource(threadId);
     const turns = await ctx.sessionHistory.readTurns(source, threadId);
-    if (!turns || turns.length === 0) return stored;
-    return paginateTurns(turns, cursor, limit, fromEnd);
+    if (!turns || turns.length === 0) return withActive(stored);
+    return withActive(paginateTurns(turns, cursor, limit, fromEnd));
   });
   router.register('turn/read', (p, ctx: BridgeContext) =>
     ctx.threadStore.getTurn(requireString(p, 'turnId')),

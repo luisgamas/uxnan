@@ -287,6 +287,86 @@ test('interactive mode maps to Gemini --approval-mode default and injects the en
   assert.equal(last().env?.UXNAN_HOOK_URL, 'http://127.0.0.1:19850/agent-hook/approval');
 });
 
+test('accessMode approveForMe forces --approval-mode auto_edit (overrides configured plan)', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new GeminiAdapter({ binaryPath: 'gemini', spawnFn, permissionMode: 'default' });
+  const { done } = collect(adapter);
+  await adapter.sendTurn({ threadId: 'th', turnId: 'u1', text: 'go', accessMode: 'approveForMe' });
+  last().feed(['{"type":"result","status":"success","stats":{"total_tokens":1}}']);
+  await done;
+  const ai = last().args.indexOf('--approval-mode');
+  assert.equal(last().args[ai + 1], 'auto_edit');
+  // No hook env (the access mode bypasses interactive approvals).
+  assert.equal(last().env, undefined);
+});
+
+test('accessMode fullAccess forces --approval-mode yolo', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new GeminiAdapter({ binaryPath: 'gemini', spawnFn, permissionMode: 'default' });
+  const { done } = collect(adapter);
+  await adapter.sendTurn({ threadId: 'th', turnId: 'u1', text: 'go', accessMode: 'fullAccess' });
+  last().feed(['{"type":"result","status":"success","stats":{"total_tokens":1}}']);
+  await done;
+  const ai = last().args.indexOf('--approval-mode');
+  assert.equal(last().args[ai + 1], 'yolo');
+});
+
+test('accessMode requestApproval flips to interactive when the hook is resolvable (even if configured non-interactive)', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new GeminiAdapter({
+    binaryPath: 'gemini',
+    spawnFn,
+    // Configured posture is NON-interactive; the phone's requestApproval must
+    // still turn the hook on because the bridge endpoint is resolvable.
+    permissionMode: 'acceptEdits',
+    approvalHook: {
+      token: 'tok-xyz',
+      scriptPath: 'C:/hook.cjs',
+      url: () => 'http://127.0.0.1:19850/agent-hook/approval',
+    },
+  });
+  const { done } = collect(adapter);
+  await adapter.sendTurn({
+    threadId: 'thread-g',
+    turnId: 'u1',
+    text: 'go',
+    accessMode: 'requestApproval',
+  });
+  last().feed(['{"type":"result","status":"success","stats":{"total_tokens":1}}']);
+  await done;
+  const ai = last().args.indexOf('--approval-mode');
+  assert.equal(last().args[ai + 1], 'default'); // Gemini "default" == prompt → hook gates
+  assert.equal(last().env?.UXNAN_HOOK_THREAD_ID, 'thread-g');
+  assert.equal(last().env?.UXNAN_HOOK_TOKEN, 'tok-xyz');
+});
+
+test('accessMode requestApproval falls back to the configured posture when no hook is resolvable', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  // No approvalHook → requestApproval can't route interactively; it must fall
+  // back to the configured posture (acceptEdits → auto_edit), NOT error the turn.
+  const adapter = new GeminiAdapter({
+    binaryPath: 'gemini',
+    spawnFn,
+    permissionMode: 'acceptEdits',
+  });
+  const { done } = collect(adapter);
+  await adapter.sendTurn({
+    threadId: 'th',
+    turnId: 'u1',
+    text: 'go',
+    accessMode: 'requestApproval',
+  });
+  last().feed(['{"type":"result","status":"success","stats":{"total_tokens":1}}']);
+  const events = await done;
+  // It must NOT be a turn_error and must spawn with the configured posture.
+  assert.equal(
+    events.some((e) => e.type === 'turn_error'),
+    false,
+  );
+  const ai = last().args.indexOf('--approval-mode');
+  assert.equal(last().args[ai + 1], 'auto_edit');
+});
+
 test('interactive mode without a resolvable hook URL fails the turn (no silent plan fallback)', async () => {
   const { spawnFn } = fakeSpawner();
   const adapter = new GeminiAdapter({

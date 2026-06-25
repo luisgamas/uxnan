@@ -57,8 +57,7 @@ TrustedDevice _device({
 
 void main() {
   group('DirectTransportSelector', () {
-    test('connects to the first reachable direct host (no relay headers)',
-        () async {
+    test('connects to a reachable direct host without relay headers', () async {
       final created = <_FakeTransport>[];
       final selector = DirectTransportSelector(() {
         final t = _FakeTransport((_) async {});
@@ -70,10 +69,41 @@ void main() {
         _device(hosts: const ['192.168.1.5:8765', '100.64.0.2:8765']),
       ) as _FakeTransport;
 
-      expect(transport.connectedUrl, 'ws://192.168.1.5:8765');
+      // A direct ws:// host won (never the relay), with no relay headers.
+      expect(
+        transport.connectedUrl,
+        anyOf('ws://192.168.1.5:8765', 'ws://100.64.0.2:8765'),
+      );
       expect(transport.connectedHeaders, isNull);
-      expect(created, hasLength(1)); // stopped at the first success
+      // Both hosts were dialed concurrently; the loser was disconnected so only
+      // the winner stays open.
+      expect(created, hasLength(2));
+      expect(created.where((t) => !t.disconnected), hasLength(1));
     });
+
+    test(
+      'a hanging host does not block a reachable one (parallel dial)',
+      () async {
+        // host[0] never completes; host[1] connects. Serial dialing would wait
+        // out host[0]'s full 30 s timeout first (hanging the test past its own
+        // 5 s budget); parallel dialing returns host[1] at once.
+        final selector = DirectTransportSelector(
+          () => _FakeTransport((url) async {
+            if (url.contains('192.168.1.5')) {
+              return Completer<void>().future; // never completes
+            }
+          }),
+          directTimeout: const Duration(seconds: 30),
+        );
+
+        final transport = await selector.select(
+          _device(hosts: const ['192.168.1.5:8765', '10.0.0.9:8765']),
+        ) as _FakeTransport;
+
+        expect(transport.connectedUrl, 'ws://10.0.0.9:8765');
+      },
+      timeout: const Timeout(Duration(seconds: 5)),
+    );
 
     test('falls back to the next host, then the relay', () async {
       final created = <_FakeTransport>[];
