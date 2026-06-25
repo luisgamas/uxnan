@@ -77,10 +77,14 @@ shipping.
 
 ## App+bridge seams (need a live bridge to finish/verify)
 
-- [ ] **Access-mode enforcement for non-Claude agents** — persistence + seeding are
-      done both sides; only Claude currently *enforces* the per-turn access mode.
-      Map `accessMode` for the other agents that gate tools (Codex/Gemini) so the
-      mobile setting actually changes their posture.
+- [ ] **Access-mode enforcement for non-Claude agents** — Claude, **Gemini and
+      Codex** now enforce the per-turn access mode (see `bridge/CHANGELOG.md`
+      "per-turn access-mode enforcement"). Remaining: **Codex mid-thread re-apply**
+      — the posture is set at `thread/start`, so changing the access mode partway
+      through an existing Codex thread only affects threads started afterward
+      (tracked in `bridge/FOR-DEV.md`). pi/OpenCode can't gate tools (no headless
+      pre-tool channel), so they don't map `accessMode`. Verify the live behavior
+      per agent.
 - [ ] **Plan/to-do block per-agent on-device validation** — decode + render are
       done; the tool names/shapes are still ASSUMED for Codex/OpenCode/pi. Verify
       against a real turn per agent and adjust the mappers.

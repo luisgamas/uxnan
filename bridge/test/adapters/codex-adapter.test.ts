@@ -810,6 +810,59 @@ test('CodexAdapter maps the permission posture to the right (approvalPolicy, san
   }
 });
 
+test('CodexAdapter: the thread access mode overrides the configured posture on thread/start', async () => {
+  // Configured posture is `default` (untrusted/read-only); the per-thread
+  // accessMode chosen on the phone must win for that thread's first turn.
+  const cases = [
+    {
+      accessMode: 'requestApproval' as const,
+      approvalPolicy: 'on-request',
+      sandbox: 'workspace-write',
+    },
+    { accessMode: 'approveForMe' as const, approvalPolicy: 'never', sandbox: 'workspace-write' },
+    {
+      accessMode: 'fullAccess' as const,
+      approvalPolicy: 'never',
+      sandbox: 'danger-full-access',
+    },
+  ];
+  for (const { accessMode, approvalPolicy, sandbox } of cases) {
+    const { adapter, server } = setup({ permissionMode: 'default' });
+    const { done, until } = collect(adapter);
+    void adapter.sendTurn({ threadId: 't', turnId: 'u', text: 'hi', accessMode });
+    await waitForTurnStarted(until);
+    const threadStart = server.sent.find((m: any) => m.method === 'thread/start') as any;
+    assert.equal(threadStart?.params.approvalPolicy, approvalPolicy, `accessMode=${accessMode}`);
+    assert.equal(threadStart?.params.sandbox, sandbox, `accessMode=${accessMode}`);
+    server.feed([
+      JSON.stringify({
+        jsonrpc: '2.0',
+        method: 'turn/completed',
+        params: { turn: { status: 'completed' } },
+      }),
+    ]);
+    await done;
+  }
+});
+
+test('CodexAdapter: no accessMode keeps the configured posture on thread/start', async () => {
+  const { adapter, server } = setup({ permissionMode: 'default' });
+  const { done, until } = collect(adapter);
+  void adapter.sendTurn({ threadId: 't', turnId: 'u', text: 'hi' });
+  await waitForTurnStarted(until);
+  const threadStart = server.sent.find((m: any) => m.method === 'thread/start') as any;
+  assert.equal(threadStart?.params.approvalPolicy, 'untrusted');
+  assert.equal(threadStart?.params.sandbox, 'read-only');
+  server.feed([
+    JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'turn/completed',
+      params: { turn: { status: 'completed' } },
+    }),
+  ]);
+  await done;
+});
+
 test('CodexAdapter emits turn_error when the app-server process dies mid-turn', async () => {
   const { adapter, server } = setup();
   const { done, until } = collect(adapter);

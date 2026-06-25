@@ -5,6 +5,32 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — per-turn access-mode enforcement for Gemini & Codex
+- **Gemini and Codex now honor the thread's `accessMode`** (the per-thread
+  approval mode chosen on the phone), not just Claude. Each maps
+  `SendTurnOptions.accessMode` to its own per-turn permission posture, with the
+  configured `permissionMode` as the fallback when no mode is set:
+  - **Gemini** (`src/adapters/gemini-adapter.ts`, new `#effectiveMode`):
+    `approveForMe` → `--approval-mode auto_edit`, `fullAccess` →
+    `--approval-mode yolo`, `requestApproval` → interactive `BeforeTool` hook
+    (`--approval-mode default`) when the bridge endpoint is resolvable, else a
+    fallback to the configured posture (so a bridge without a wired hook never
+    fails the turn). Gemini spawns one CLI per turn, so the mode applies
+    per-turn with no continuity caveat.
+  - **Codex** (`src/adapters/codex-adapter.ts`, new `#effectiveMode`):
+    `requestApproval` → `(on-request, workspace-write)`, `approveForMe` →
+    `(never, workspace-write)`, `fullAccess` → `(never, danger-full-access)`.
+    Applied at `thread/start`, so it governs a thread from its first turn; a
+    mid-thread access-mode change does not re-issue `thread/start` and only
+    affects threads started afterward (FOR-DEV: per-turn re-apply on an existing
+    app-server thread).
+  - Closes the bridge side of "Access-mode enforcement for non-Claude agents"
+    (see `uxnanmobile/FOR-DEV.md`). pi/OpenCode still can't gate tools (headless
+    modes have no pre-tool channel), so they don't map `accessMode`.
+  - Spec: `architecture/02b-contracts-and-requirements.md`
+    (`thread/setAccessMode` → *Enforcement*). Tests: `test/adapters/gemini-adapter.test.ts`
+    (4 cases) + `test/adapters/codex-adapter.test.ts` (2 cases). Suite: 351 bridge.
+
 ### Fixed — git/log dropped commits & produced a tangled graph
 - **`git/log` no longer loses commits or invents lanes on a branchy history.**
   Three coupled fixes in `src/git/git-service.ts`:

@@ -350,6 +350,30 @@ export class GeminiAdapter extends BaseAgentAdapter {
     return this.#defaultModel;
   }
 
+  /**
+   * Resolve the permission posture for a turn: the thread's `accessMode` (from
+   * the phone) wins when set, else the adapter's configured `permissionMode`.
+   *  - `approveForMe`    → `acceptEdits` (auto-approve edit tools);
+   *  - `fullAccess`      → `bypassPermissions` (yolo);
+   *  - `requestApproval` → `interactive` ONLY when the approval hook is
+   *    resolvable — otherwise it falls back to the configured posture so a
+   *    bridge without a wired hook doesn't fail the turn (mirrors the Claude
+   *    adapter's fallback).
+   * Absent → the configured posture (no behaviour change).
+   */
+  #effectiveMode(accessMode: SendTurnOptions['accessMode']): GeminiPermissionMode {
+    switch (accessMode) {
+      case 'approveForMe':
+        return 'acceptEdits';
+      case 'fullAccess':
+        return 'bypassPermissions';
+      case 'requestApproval':
+        return this.#approvalHook?.url() !== undefined ? 'interactive' : this.#permissionMode;
+      default:
+        return this.#permissionMode;
+    }
+  }
+
   start(config: AgentConfig): Promise<void> {
     if (config.cwd) this.#defaultCwd = config.cwd;
     return Promise.resolve();
@@ -369,6 +393,12 @@ export class GeminiAdapter extends BaseAgentAdapter {
     // First turn: create a session under a UUID we own; later turns resume it.
     const newSessionId = resumeId ? undefined : randomUUID();
 
+    // The thread's persisted access mode (chosen on the phone) overrides the
+    // adapter's configured posture for THIS turn (mirrors the Claude adapter).
+    // Gemini spawns a fresh CLI per turn, so the mapping applies per-turn with
+    // no continuity caveat.
+    const effectiveMode = this.#effectiveMode(options.accessMode);
+
     // Interactive approvals: when `permissionMode === 'interactive'` and the
     // bridge has a resolvable hook endpoint, write `<cwd>/.gemini/settings.json`
     // with a `BeforeTool` hook that round-trips every tool to the phone. The
@@ -382,7 +412,7 @@ export class GeminiAdapter extends BaseAgentAdapter {
     // A failure to write the settings fails the turn (no fallback) so the
     // phone sees a clear "hook not installed" error instead of a CLI that
     // blocks on a non-existent prompt gate.
-    const useHook = needsApprovalHook(this.#permissionMode, this.#approvalHook);
+    const useHook = needsApprovalHook(effectiveMode, this.#approvalHook);
     if (useHook) {
       try {
         await this.#installHook(cwd);
@@ -397,7 +427,7 @@ export class GeminiAdapter extends BaseAgentAdapter {
         });
         return;
       }
-    } else if (this.#permissionMode === 'interactive') {
+    } else if (effectiveMode === 'interactive') {
       // The user opted into interactive approvals but the bridge can't wire
       // the hook (LAN server not started, no token, etc.). Fail the turn so
       // the phone knows why the approval is not interactive.
@@ -416,7 +446,7 @@ export class GeminiAdapter extends BaseAgentAdapter {
       '--output-format',
       'stream-json',
       '--approval-mode',
-      approvalModeFor(this.#permissionMode),
+      approvalModeFor(effectiveMode),
       // Trust the workspace for this session so a headless run never blocks on a
       // trust prompt in an arbitrary project directory.
       '--skip-trust',

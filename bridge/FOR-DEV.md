@@ -12,7 +12,7 @@ only a human can provide.)
 ## Status
 
 The bridge is **alpha-functional** on its primary path (LAN/Tailscale-direct,
-standalone). It builds clean and the suite is green (bridge 346, shared 29, relay
+standalone). It builds clean and the suite is green (bridge 351, shared 29, relay
 27). Nothing below blocks LAN/Tailscale-direct use. The only items that gate a
 **public npm release** are the *Packaging* first-publish steps and real-device
 push validation (FOR-HUMAN).
@@ -39,6 +39,15 @@ push validation (FOR-HUMAN).
       would need driving `opencode serve` (HTTP, per-thread server session — a
       rewrite) or pi's `--mode rpc` (two-way, adapter refactor). Revisit when either
       CLI ships a stable pre-tool channel on its headless entry point.
+- [ ] **Codex access-mode — mid-thread per-turn re-apply.** The thread's
+      `accessMode` is mapped to `(approvalPolicy, sandbox)` and sent on
+      `thread/start` (`codex-adapter.ts` `#effectiveMode`), so it governs a Codex
+      thread from its first turn. A mid-thread access-mode change does NOT re-issue
+      `thread/start`, so the new posture only applies to threads started after the
+      change. Resolve by confirming (against a live `codex app-server`) whether
+      `turn/start` accepts an approval/sandbox override per turn, or restart the
+      app-server thread when the mode changes. (Gemini has no such caveat — it
+      spawns one CLI per turn.)
 - [ ] **Claude/Codex approval follow-ups** — map `approveSession` to a real
       session-scoped allow on the Claude hook path (today every tool re-asks; Codex's
       app-server already remembers `approved_for_session`); a per-turn allow-list so
