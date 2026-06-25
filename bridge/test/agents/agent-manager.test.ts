@@ -93,7 +93,13 @@ test('sendTurn drives the echo agent: persists the reply and broadcasts stream e
   const thread = await store.startThread({ projectId: 'p' }, 1);
   const { turnId } = await manager.sendTurn(thread.id, 'hello world');
 
-  await waitFor(async () => (await store.getTurn(turnId)).status === 'completed');
+  // Wait for the TurnCompleted *notification*, not just the stored status:
+  // `#onEvent` persists `status = completed` BEFORE it emits the notification,
+  // so polling the store status can resolve while the notification is still
+  // pending, making the `methods.includes(TurnCompleted)` assertion flaky.
+  await waitFor(async () =>
+    notifications.some((n) => n.method === StreamNotification.TurnCompleted),
+  );
 
   const turn = await store.getTurn(turnId);
   const assistant = turn.messages.find((m) => m.role === 'assistant');
