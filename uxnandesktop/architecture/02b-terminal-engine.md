@@ -31,6 +31,7 @@ xterm.js renderiza la salida del proceso PTY en un **canvas/WebGL** dentro del w
 - **Scrollback**: Buffer de historial desplazable con scroll virtual para no degradar rendimiento en sesiones largas.
 - **Selección y copiar/pegar**: Selección de texto con mouse, integración con el portapapeles del sistema operativo.
 - **Secuencias de escape**: Soporte completo de secuencias VT100/VT220, xterm, y secuencias OSC (Operating System Command) que los agentes pueden emitir para reportar estado.
+- **Protocolo de teclado moderno (Kitty / "CSI u")**: xterm.js no lo trae de fábrica, así que el ADE implementa la mitad del terminal en `src/lib/terminal/keyboardProtocol.ts`. Está **inactivo hasta que una app lo negocia** (vía `CSI ? u` / `CSI > u` / `CSI < u` / `CSI = u`, registradas con `registerCsiHandler`), de modo que el manejo de teclas existente no cambia. Activo, codifica las teclas como `CSI <code> ; <mods> [: <event>] u` y desambigua `Ctrl+I`/Tab, `Esc` y combinaciones `Ctrl`/`Alt`+letra; las teclas funcionales/de navegación caen a la codificación legacy de xterm (pendientes en `FOR-DEV.md`). El scroll en pantalla alterna (rueda → flechas) lo provee xterm.js de forma nativa.
 
 ### Flujo Bidireccional
 
@@ -90,14 +91,27 @@ El módulo PTY Manager en el backend Rust es responsable de:
 
 Cada pane visible en la interfaz mantiene su propio proceso PTY. Esto garantiza aislamiento total: 5 agentes en 5 panes corren literalmente en paralelo, sin interferencia. Cada pane tiene su propio scrollback y su propio historial.
 
-### Gestión de Buffers Async
+### Gestión de Buffers (ring buffer + snapshot)
 
-Los terminales ocultos (en tabs no activos o worktrees no visibles) siguen ejecutándose en background. Para manejar su output sin consumir recursos infinitos, el PTY Manager implementa un sistema de buffers asíncronos:
+Cada PTY sigue ejecutándose en background aunque su tab esté oculto. Para
+retener su output sin consumir recursos infinitos, el PTY Manager mantiene un
+**ring buffer acotado por sesión** (`OutputBuffer` en `pty.rs`):
 
-- **Canal async**: Se usa `tokio::sync::mpsc` para encolar el output de cada PTY de forma no-bloqueante.
-- **Límite de buffer**: Cada terminal oculto tiene un límite de buffer configurable (por ejemplo, **2 MB** por terminal oculto). Esto previene que un agente que produce output masivo consuma toda la RAM.
-- **Marcado como stale**: Cuando el buffer de un terminal oculto se desborda (supera el límite), se marca como **"stale"**. El output más antiguo se descarta para mantener el buffer dentro del límite.
-- **Recuperación al volver visible**: Cuando el usuario regresa a un tab que estaba oculto, el backend envía un **snapshot del buffer** acumulado al frontend para sincronizar xterm.js con el estado actual del terminal.
+- **Ring acotado**: el hilo lector (el mismo que emite el output) anexa cada
+  chunk a un `VecDeque<u8>` con tope de **256 KiB** por terminal. Suficiente para
+  repintar la pantalla visible más varios miles de líneas recientes, acotando la
+  memoria por terminal sin importar cuánto imprima un agente.
+- **Marcado como stale**: cuando el tope obliga a descartar los bytes más
+  antiguos, el buffer se marca **"stale"** (el snapshot ya no contiene toda la
+  historia). Recortar por el frente puede cortar a mitad de una secuencia de
+  escape; xterm se re-sincroniza en el siguiente repintado completo.
+- **Snapshot / restauración**: `pty_snapshot` devuelve los bytes retenidos + el
+  flag `stale`. El frontend lo reproduce cuando un pane recrea su xterm —p. ej.
+  al **arrastrar un tab a otra región**, lo que remonta su componente Svelte— de
+  modo que no se pierde el scrollback. El webview sigue manteniendo cada xterm
+  montado para el output en vivo; el buffer cubre el caso de remontaje (eliminar
+  los xterm ocultos y depender solo del buffer queda como follow-up en
+  `FOR-DEV.md`).
 
 ### Tauri Commands Registrados
 
@@ -105,10 +119,11 @@ El PTY Manager expone las siguientes operaciones como Tauri commands que el fron
 
 | Command | Descripción |
 |---------|-------------|
-| `pty_create` | Crea un nuevo pseudoterminal con shell configurado en un directorio específico |
+| `pty_create` | Crea un nuevo pseudoterminal con shell configurado en un directorio específico. Devuelve `created` (`true` = sesión nueva, `false` = ya existía: el frontend reproduce el snapshot) |
 | `pty_write` | Escribe datos (input del usuario) al stdin del PTY |
 | `pty_resize` | Ajusta las dimensiones (filas, columnas) del PTY |
 | `pty_close` | Cierra el PTY de forma ordenada, matando el proceso asociado |
+| `pty_snapshot` | Devuelve el output retenido en el ring buffer (`data` + `stale`) para repintar un xterm recreado |
 
 ### Tauri Events Emitidos
 
@@ -336,11 +351,11 @@ El siguiente diagrama muestra cómo se conectan los módulos internos del motor 
 |--------|------|-----------------|
 | **Motor de Layout** | Frontend (Svelte) | Almacena y renderiza el árbol binario de splits con ratios ajustables. Usa estado reactivo de Svelte 5 (`$state`, `$derived`) para mantener la estructura del layout. Los drag handles permiten al usuario ajustar las proporciones entre regiones. |
 | **Árbol de Splits/TabGroups** | Frontend (Svelte) | Estructura de datos del árbol binario recursivo. Cada nodo es un split (horizontal/vertical con ratio) o una hoja (TabGroup). Soporta operaciones de inserción, eliminación y reestructuración. |
-| **Gestor de Tabs** | Frontend (Svelte) | Maneja la barra de tabs por cada TabGroup: crear nuevos tabs, cerrar tabs existentes, reordenar tabs con drag & drop, mantener el orden MRU (Most Recently Used) para navegación rápida. |
+| **Gestor de Tabs** | Frontend (Svelte) | Maneja la barra de tabs por cada TabGroup: crear nuevos tabs, cerrar tabs existentes, reordenar/mover tabs entre regiones con arrastre por **pointer events** (`elementFromPoint`), mantener el orden MRU (Most Recently Used) para el ciclo `Ctrl+Tab`. |
 | **Gestor de Panes** | Frontend (Svelte) | Maneja los splits de nivel bajo (dentro de un tab). Crea y destruye panes, gestiona el árbol binario interno de cada tab de terminal, y comunica cambios de tamaño al backend para el resize del PTY. |
 | **Fábrica de Contenido** | Frontend (Svelte) | Instancia el componente correcto según el tipo de tab: componente xterm.js para terminales, CodeMirror 6 para editores, componente de diff para visores, o webview para navegador embebido. |
 | **Conexión PTY ↔ xterm** | Frontend + Backend | Establece el flujo bidireccional entre xterm.js (webview) y el PTY (backend Rust) vía Tauri commands (`invoke('pty_write')`) y Tauri events (`listen('pty:output:{id}')`). |
-| **Backend Rust: PTY Manager** | Backend (Rust) | Vive en el backend Rust. Crea y destruye pseudoterminales con `portable-pty`. Gestiona buffers async con `tokio::sync::mpsc` para tabs ocultos. Emite output vía Tauri events. Maneja el ciclo de vida completo de cada PTY (spawn, write, resize, close, kill). |
+| **Backend Rust: PTY Manager** | Backend (Rust) | Vive en el backend Rust. Crea y destruye pseudoterminales con `portable-pty`. Mantiene un ring buffer acotado por sesión (256 KiB) para snapshot/restauración (`pty_snapshot`). Emite output vía Tauri events. Maneja el ciclo de vida completo de cada PTY (spawn, write, resize, close, kill). |
 | **Shell/Agente CLI** | Proceso Externo | El proceso final que corre dentro del PTY: un shell interactivo (bash, zsh, PowerShell) o un agente CLI (Claude Code, Codex CLI, Aider, etc.) que el usuario o el ADE lanzó. |
 
 ### Flujos de Datos Críticos
@@ -349,6 +364,9 @@ El siguiente diagrama muestra cómo se conectan los módulos internos del motor 
 
 2. **Usuario crea split** → Motor de Layout inserta nodo en árbol → Gestor de Panes crea nuevo pane → Fábrica de Contenido instancia xterm.js → Conexión PTY solicita `pty_create` al backend → PTY Manager spawns nuevo PTY → flujo bidireccional establecido.
 
-3. **Tab se oculta** → Backend Rust continúa leyendo PTY stdout → buffer async (`tokio::sync::mpsc`) acumula output → si excede 2 MB se marca stale → al volver visible, se envía snapshot → xterm.js se sincroniza.
+3. **Tab se oculta** → Backend Rust continúa leyendo PTY stdout → el hilo lector anexa cada chunk al ring buffer acotado (256 KiB) → si excede el tope se marca stale → el xterm sigue montado para el output en vivo; si un pane recrea su xterm (p. ej. al mover el tab a otra región) invoca `pty_snapshot` y reproduce los bytes retenidos.
+
+   - **Mover/reordenar tab** → arrastre con **pointer events** (no HTML5 drag-and-drop: el drag-drop nativo de Tauri, usado para soltar archivos en la terminal, lo bloquea dentro del WebView) → `terminals.moveTab(tabId, toGroupId, toIndex?)`. Dentro de la misma región solo reordena (sin remontar); cruzando regiones el pane se remonta y restaura desde `pty_snapshot`.
+   - **Atajos configurables** (Settings → Keyboard shortcuts, grupo "Terminal tabs & splits"): `cycleTabNext/Prev` → `terminals.cycleTab()` recorre los tabs de la región activa en orden MRU; `focusSplitNext/Prev` → `terminals.focusSplit()` mueve el foco entre regiones de split; `closeCenter` (Ctrl/⌘+W) cierra la pestaña activa (cualquier tipo) con confirmación de cambios sin guardar. Con una terminal enfocada los resuelve `Terminal.svelte` vía `matchAction` para que no lleguen al PTY.
 
 4. **Tab se cierra** → Gestor de Tabs notifica → Conexión PTY invoca `pty_close` → Backend Rust envía SIGTERM → espera timeout → SIGKILL si necesario → recursos liberados (Rust drop) → store Svelte actualizado → scrollback guardado opcionalmente.

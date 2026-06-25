@@ -14,7 +14,7 @@ which tracks assets only a human can provide.)
 **Phases 0–5 + cross-cutting (S) are DONE — the ADE is alpha-functional as a
 standalone app** (three-panel shell, PTY terminals + splits, git worktrees, git
 status/diff/stage/commit/history, agent monitoring with the axum hook server +
-OSC/process layers, settings/themes/i18n). 65 Rust backend tests; **no frontend
+OSC/process layers, settings/themes/i18n). 69 Rust backend tests; **no frontend
 tests yet**. macOS is **unvalidated** (developed on Windows; CI is `{ubuntu,
 windows}`). **Phase 6 (embedded bridge / mobile pairing) is NOT started.**
 
@@ -41,9 +41,17 @@ yet on either side** — the bridge's `desktop/*` handler is also an empty stub
 ## Deferred follow-ups (non-blocking) — by area
 
 **Terminal**
-- [ ] Tab/region reorder + drag tabs between regions + MRU.
-- [ ] Backend hidden-tab ring buffer (today: xterm `scrollback:5000`).
-- [ ] Modern keyboard protocol (CSI-u); alt-screen scrolling capture.
+- [ ] Keyboard protocol — extend the Kitty/CSI-u surface beyond the current
+      encoder: functional/navigation keys as CSI-u (arrows, F-keys, Home/End,
+      keypad — they fall through to xterm's legacy encoding today), the
+      alternate-keys (4) and associated-text (16) flags, and super/hyper/meta
+      modifiers. Needs validation against a real Kitty-protocol TUI. The base
+      protocol (negotiation + disambiguate / event-types / all-keys) is
+      implemented in `src/lib/terminal/keyboardProtocol.ts`.
+- [ ] Dispose hidden xterm renderers and rely solely on the backend ring buffer
+      (today both coexist: the buffer restores recreated panes, but hidden tabs
+      keep their xterm mounted). Would cut memory for many background terminals
+      at the cost of a replay on every show.
 
 **Git & worktrees**
 - [ ] WSL path detection (`\\wsl.localhost\…`) → route through `wsl.exe`.
@@ -87,7 +95,7 @@ yet on either side** — the bridge's `desktop/*` handler is also an empty stub
 ## CI/CD — release
 
 - ✅ **Verify** — `.github/workflows/ci-desktop.yml` runs svelte-check + vite build +
-  cargo fmt/clippy/test on `{ubuntu, windows}` (macOS deferred with Apple). 65 tests.
+  cargo fmt/clippy/test on `{ubuntu, windows}` (macOS deferred with Apple). 69 tests.
 - ✅ **`release-desktop.yml`** — exists: `tauri-action` bundles on a `desktop-v*` tag
   → draft GitHub Release. **Windows ships unsigned for now; macOS deferred.**
 - [ ] **Code-signing** — Windows Authenticode + macOS Developer ID + notarization

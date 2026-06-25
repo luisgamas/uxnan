@@ -119,6 +119,30 @@
           terminals.closeActiveTab();
         }
         return;
+      case "cycleTabNext":
+        if (terminals.root) {
+          e.preventDefault();
+          terminals.cycleTab(true);
+        }
+        return;
+      case "cycleTabPrev":
+        if (terminals.root) {
+          e.preventDefault();
+          terminals.cycleTab(false);
+        }
+        return;
+      case "focusSplitNext":
+        if (terminals.root) {
+          e.preventDefault();
+          terminals.focusSplit(1);
+        }
+        return;
+      case "focusSplitPrev":
+        if (terminals.root) {
+          e.preventDefault();
+          terminals.focusSplit(-1);
+        }
+        return;
       case "saveFile":
         return; // handled by the editor's own keymap when focused
       case "worktreePalette":

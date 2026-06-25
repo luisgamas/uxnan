@@ -389,6 +389,19 @@ export class AgentManager {
     return { turnId: this.#activeTurnByThread.get(threadId) ?? '' };
   }
 
+  /**
+   * The turn currently in-flight for [threadId] (an agent is actively producing
+   * it in THIS bridge process), or `undefined` when the thread is idle. Reflects
+   * LIVE state: set on `sendTurn`, cleared on turn completion/error/abort, and
+   * never persisted — so after a bridge restart it is `undefined` even though a
+   * turn's stored `status` may still read `streaming`. Authoritative for "is a
+   * turn running now?"; the phone re-attaches its streaming view to it on
+   * resync (surfaced via `turn/list` → `activeTurnId`).
+   */
+  activeTurnId(threadId: string): string | undefined {
+    return this.#activeTurnByThread.get(threadId);
+  }
+
   async cancelTurn(threadId: string, turnId: string, agentId?: AgentId): Promise<void> {
     const adapter = this.#adapters.get(agentId ?? this.#options.defaultAgent);
     if (adapter) {

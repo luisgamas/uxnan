@@ -65,7 +65,8 @@ export async function handleSecureConnection(options: SecureConnectionOptions): 
     // re-encrypted under the new session key, BEFORE registering the live sink so
     // the replayed backlog precedes any new traffic and ordering is preserved.
     const outboundLog = ctx.sessionRegistry.logFor(result.phoneDeviceId);
-    for (const entry of outboundLog.entriesAfter(result.lastAppliedBridgeOutboundSeq)) {
+    const replayEntries = outboundLog.entriesAfter(result.lastAppliedBridgeOutboundSeq);
+    for (const entry of replayEntries) {
       io.send(
         Buffer.from(
           JSON.stringify(result.channel.encryptReplay(entry.seq, entry.plaintext)),
@@ -107,8 +108,9 @@ export async function handleSecureConnection(options: SecureConnectionOptions): 
       let plaintext: Buffer;
       try {
         plaintext = result.channel.decrypt(validation.data as SecureEnvelope);
-      } catch (err) {
-        ctx.logger.warn(`envelope rejected: ${errorMessage(err)}`);
+      } catch {
+        // A replayed/out-of-order envelope fails the strictly-increasing seq
+        // check; drop it silently and wait for the next valid frame.
         continue;
       }
 

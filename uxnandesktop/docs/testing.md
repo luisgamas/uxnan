@@ -14,7 +14,7 @@ cargo fmt --check              # formatting — must be clean (run `cargo fmt` t
 
 Unit tests live in-file under `#[cfg(test)]` (e.g. `model.rs`, `persistence.rs`,
 `git.rs`, `gitfast.rs`, `pty.rs`, `hooks.rs`, `agent_hooks.rs`, `procscan.rs`,
-`which.rs`); integration tests go in `src-tauri/tests/`. ~65 backend tests cover
+`which.rs`); integration tests go in `src-tauri/tests/`. ~69 backend tests cover
 the Serde model shape, persistence round-trip / atomicity / migration / backups,
 git + worktree ops, the git2 fast path, the PTY lifecycle, the agent hook server,
 and process detection. **There are no frontend (Vitest) tests yet** — see

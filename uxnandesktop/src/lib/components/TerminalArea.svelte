@@ -211,6 +211,93 @@
     openMenu(e, [...splitItems(groupId), { separator: true }, ...regionItems(groupId, tabId)]);
   }
 
+  // --- Tab drag (reorder within a region + move across regions) ------------
+  // Implemented with pointer events, not HTML5 drag-and-drop: Tauri's native
+  // OS drag-drop (used for dropping files into a terminal) suppresses HTML5
+  // dnd inside the WebView, so a tab couldn't be dragged at all. Pointer events
+  // mirror how the split dividers already work.
+  //
+  // `tabDrag` tracks the gesture (a click promotes to a drag only past a small
+  // threshold, so taps still select). `dropSlot` is the live target (region +
+  // insertion index), resolved by hit-testing the element under the pointer; it
+  // drives both the insertion marker and the floating drag label.
+  let tabDrag = $state<{
+    tabId: string;
+    title: string;
+    pointerId: number;
+    startX: number;
+    startY: number;
+    x: number;
+    y: number;
+    dragging: boolean;
+  } | null>(null);
+  let dropSlot = $state<{ groupId: string; index: number } | null>(null);
+
+  const DRAG_THRESHOLD_PX = 5;
+
+  function onChipPointerDown(e: PointerEvent, tabId: string, title: string) {
+    if (e.button !== 0) return; // left button only
+    if ((e.target as HTMLElement).closest("[data-tab-close]")) return; // the × button
+    tabDrag = {
+      tabId,
+      title,
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      x: e.clientX,
+      y: e.clientY,
+      dragging: false,
+    };
+  }
+  function onChipPointerMove(e: PointerEvent) {
+    if (!tabDrag || e.pointerId !== tabDrag.pointerId) return;
+    tabDrag.x = e.clientX;
+    tabDrag.y = e.clientY;
+    if (!tabDrag.dragging) {
+      const moved = Math.hypot(e.clientX - tabDrag.startX, e.clientY - tabDrag.startY);
+      if (moved < DRAG_THRESHOLD_PX) return;
+      tabDrag.dragging = true;
+      (e.currentTarget as HTMLElement).setPointerCapture(tabDrag.pointerId);
+    }
+    resolveDropSlot(e.clientX, e.clientY);
+  }
+  function onChipPointerUp(e: PointerEvent) {
+    if (!tabDrag || e.pointerId !== tabDrag.pointerId) return;
+    (e.currentTarget as HTMLElement).releasePointerCapture?.(tabDrag.pointerId);
+    const wasDragging = tabDrag.dragging;
+    const tabId = tabDrag.tabId;
+    const slot = dropSlot;
+    tabDrag = null;
+    dropSlot = null;
+    if (wasDragging && slot) terminals.moveTab(tabId, slot.groupId, slot.index);
+  }
+  /** Resolve the drop slot from the element under the pointer: over a chip, the
+   *  slot is before/after it by pointer side; over a strip's empty area, append;
+   *  otherwise clear it. */
+  function resolveDropSlot(x: number, y: number) {
+    const el = document.elementFromPoint(x, y) as HTMLElement | null;
+    const chip = el?.closest("[data-tab-id]") as HTMLElement | null;
+    if (chip) {
+      const r = chip.getBoundingClientRect();
+      const after = x > r.left + r.width / 2;
+      dropSlot = {
+        groupId: chip.dataset.groupId ?? "",
+        index: Number(chip.dataset.tabIndex) + (after ? 1 : 0),
+      };
+      return;
+    }
+    const strip = el?.closest("[data-tab-strip]") as HTMLElement | null;
+    if (strip) {
+      dropSlot = { groupId: strip.dataset.groupId ?? "", index: Number(strip.dataset.tabCount) };
+      return;
+    }
+    dropSlot = null;
+  }
+  /** Whether the insertion marker sits at slot `index` of `groupId`. */
+  function isDropAt(groupId: string, index: number): boolean {
+    return !!tabDrag?.dragging && dropSlot?.groupId === groupId && dropSlot.index === index;
+  }
+
 </script>
 
 <svelte:window
@@ -291,17 +378,37 @@
                   role="group"
                   onpointerdown={() => terminals.setActiveGroup(g.group.id)}
                 >
-                  <!-- Region tab strip -->
+                  <!-- Region tab strip (pointer-driven tab drag target) -->
                   <div
                     class="uxnan-scroll flex h-8 shrink-0 items-center gap-1 overflow-x-auto border-b border-border bg-card px-1"
+                    data-tab-strip
+                    data-group-id={g.group.id}
+                    data-tab-count={g.group.tabs.length}
                   >
-                    {#each g.group.tabs as t (t.id)}
+                    {#each g.group.tabs as t, ti (t.id)}
                       {@const activeChip = g.group.activeTabId === t.id}
+                      <!-- Insertion marker before this tab -->
+                      <div
+                        class="h-5 w-0.5 shrink-0 rounded-full {isDropAt(g.group.id, ti)
+                          ? 'bg-ring'
+                          : 'bg-transparent'}"
+                        aria-hidden="true"
+                      ></div>
                       <div
                         class="flex shrink-0 items-center gap-1 rounded px-2 py-0.5 text-xs {activeChip
                           ? 'bg-background text-foreground'
-                          : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'}"
+                          : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'} {tabDrag?.dragging &&
+                        tabDrag.tabId === t.id
+                          ? 'opacity-40'
+                          : ''}"
                         role="group"
+                        data-tab-id={t.id}
+                        data-group-id={g.group.id}
+                        data-tab-index={ti}
+                        onpointerdown={(e) =>
+                          onChipPointerDown(e, t.id, t.kind === "terminal" ? (t.agentName ?? t.title) : t.title)}
+                        onpointermove={onChipPointerMove}
+                        onpointerup={onChipPointerUp}
                         oncontextmenu={t.kind === "terminal"
                           ? (e) => tabMenu(e, g.group.id, t.id)
                           : undefined}
@@ -356,12 +463,23 @@
                           class="rounded px-0.5 text-muted-foreground opacity-60 hover:bg-destructive/20 hover:text-foreground hover:opacity-100"
                           title={i18n.t("terminal.closeTab")}
                           aria-label={i18n.t("terminal.closeTab")}
+                          data-tab-close
                           onclick={() => terminals.closeTab(g.group.id, t.id)}
                         >
                           ×
                         </button>
                       </div>
                     {/each}
+                    <!-- Insertion marker after the last tab (append slot) -->
+                    <div
+                      class="h-5 w-0.5 shrink-0 rounded-full {isDropAt(
+                        g.group.id,
+                        g.group.tabs.length,
+                      )
+                        ? 'bg-ring'
+                        : 'bg-transparent'}"
+                      aria-hidden="true"
+                    ></div>
                     <button
                       class="ml-0.5 shrink-0 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                       title={i18n.t("terminal.newInRegion")}
@@ -538,6 +656,16 @@
      user clicks the empty-state's "New worktree" button. -->
 {#if activeRepo}
   <NewWorktreeDialog repo={activeRepo} bind:open={newWorktreeOpen} />
+{/if}
+
+<!-- Floating label that follows the pointer while dragging a tab. -->
+{#if tabDrag?.dragging}
+  <div
+    class="pointer-events-none fixed z-50 max-w-[160px] truncate rounded border border-border bg-popover px-2 py-0.5 text-xs text-popover-foreground shadow-md"
+    style="left:{tabDrag.x + 12}px; top:{tabDrag.y + 12}px"
+  >
+    {tabDrag.title}
+  </div>
 {/if}
 
 <!-- Floating context menu -->

@@ -13,6 +13,61 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   line. Test: `workspace-service.test.ts` now asserts file entries carry
   `size` + `mtime` and directory entries carry neither.
 
+### Fixed — stop advertising unreachable virtual-NIC addresses (Bug A relink latency)
+- **`src/transport/local-hosts.ts` now excludes host-only virtual adapters** from
+  the directly-reachable hosts advertised in the pairing QR / mDNS. Hyper-V and WSL
+  virtual switches (`vEthernet (…)`), the Hyper-V "Default Switch", Docker bridges
+  (`docker0`, `br-…`), VirtualBox and VMware host-only nets all report a
+  non-internal IPv4 (e.g. `172.27.192.1`) that is **not reachable from a phone**, so
+  the phone wasted a full connect timeout (~2 s) on each dead address on every
+  (re)connect — a confirmed contributor to the post-resume relink latency captured
+  in the `[reconn]` logs. The new `isVirtualInterfaceName` name filter is
+  deliberately conservative: it never matches a real LAN NIC (`Ethernet`, `Wi-Fi`)
+  or Tailscale (`Tailscale` / `tailscale0` / `utunN`), so direct LAN + Tailscale
+  keep working. Tests: +2 (`test/transport/local-hosts.test.ts`) → **355 bridge**.
+
+### Added — surface the in-flight turn on `turn/list` (phone re-attach)
+- **`turn/list` now returns `activeTurnId`** when a turn is in flight for the
+  thread. New `AgentManager.activeTurnId(threadId)` exposes the live
+  `#activeTurnByThread` state (set on `sendTurn`, cleared on
+  completion/error/abort), and the `turn/list` handler attaches it to the
+  result (`src/agents/agent-manager.ts`, `src/handlers/thread-context-handler.ts`).
+  This is authoritative "is a turn running NOW?" state — unlike a stored turn's
+  `streaming` status it is absent after a bridge restart (the agent child died),
+  so the phone never re-attaches to a turn that already ended. Lets a phone that
+  reconnected mid-turn restore its "responding…" indicator + Stop button instead
+  of treating the turn as dead (the mobile companion fix; see
+  `uxnanmobile/CHANGELOG.md`). Spec: `architecture/02b` (`TurnList` + `turn/list`).
+  Tests: `test/agents/agent-manager.test.ts` (getter set/clear) +
+  `test/handlers/thread-handlers.test.ts` (turn/list in-flight → activeTurnId).
+  Suite: 353 bridge.
+
+### Added — per-turn access-mode enforcement for Gemini & Codex
+- **Gemini and Codex now honor the thread's `accessMode`** (the per-thread
+  approval mode chosen on the phone), not just Claude. Each maps
+  `SendTurnOptions.accessMode` to its own per-turn permission posture, with the
+  configured `permissionMode` as the fallback when no mode is set:
+  - **Gemini** (`src/adapters/gemini-adapter.ts`, new `#effectiveMode`):
+    `approveForMe` → `--approval-mode auto_edit`, `fullAccess` →
+    `--approval-mode yolo`, `requestApproval` → interactive `BeforeTool` hook
+    (`--approval-mode default`) when the bridge endpoint is resolvable, else a
+    fallback to the configured posture (so a bridge without a wired hook never
+    fails the turn). Gemini spawns one CLI per turn, so the mode applies
+    per-turn with no continuity caveat.
+  - **Codex** (`src/adapters/codex-adapter.ts`, new `#effectiveMode`):
+    `requestApproval` → `(on-request, workspace-write)`, `approveForMe` →
+    `(never, workspace-write)`, `fullAccess` → `(never, danger-full-access)`.
+    Applied at `thread/start`, so it governs a thread from its first turn; a
+    mid-thread access-mode change does not re-issue `thread/start` and only
+    affects threads started afterward (FOR-DEV: per-turn re-apply on an existing
+    app-server thread).
+  - Closes the bridge side of "Access-mode enforcement for non-Claude agents"
+    (see `uxnanmobile/FOR-DEV.md`). pi/OpenCode still can't gate tools (headless
+    modes have no pre-tool channel), so they don't map `accessMode`.
+  - Spec: `architecture/02b-contracts-and-requirements.md`
+    (`thread/setAccessMode` → *Enforcement*). Tests: `test/adapters/gemini-adapter.test.ts`
+    (4 cases) + `test/adapters/codex-adapter.test.ts` (2 cases). Adds 6 bridge tests.
+
 ### Fixed — git/log dropped commits & produced a tangled graph
 - **`git/log` no longer loses commits or invents lanes on a branchy history.**
   Three coupled fixes in `src/git/git-service.ts`:

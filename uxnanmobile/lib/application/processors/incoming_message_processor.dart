@@ -38,6 +38,7 @@ class IncomingMessageProcessor {
       'stream/turn/completed' => TurnCompletedEvent(
           turnId: turnId,
           threadId: threadId,
+          text: params['text'] is String ? params['text'] as String : null,
           tokens: _usageInt(params['usage'], 'tokens'),
           contextWindow: _usageInt(params['usage'], 'contextWindow'),
         ),

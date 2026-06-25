@@ -27,7 +27,9 @@ Highlights of what ships today:
 - Three-panel resizable shell with atomic JSON persistence (5 rotating
   backups + sequential schema migrations).
 - PTY terminals (`portable-pty 0.9`, xterm WebGL + DOM fallback) with tabs
-  + nested splits that never remount on split.
+  + nested splits that never remount on split, drag-to-reorder / move tabs
+  across regions, `Ctrl+Tab` MRU cycling, a backend output ring buffer that
+  restores a recreated pane's scrollback, and the Kitty/CSI-u keyboard protocol.
 - Git worktrees with per-worktree terminal workspaces, hierarchical
   Projects tree, in-app directory picker, worktree palette
   (Ctrl/Cmd+P).
@@ -121,7 +123,7 @@ npm run tauri dev      # run the desktop app (compiles Rust on first run)
 Backend (from `src-tauri/`):
 
 ```bash
-cargo test             # unit tests (65 passing)
+cargo test             # unit tests (69 passing)
 cargo clippy --all-targets
 cargo fmt
 ```

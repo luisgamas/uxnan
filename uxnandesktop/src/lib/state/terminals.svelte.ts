@@ -110,6 +110,11 @@ export type AreaNode = TabGroup | AreaSplit;
 
 let termCount = 0;
 
+/** A `Ctrl+Tab` cycle settles this long after the last press: the landed tab is
+ *  then promoted to the front of the MRU list. (No key-up tracking — robust
+ *  across focus changes between xterm and the window.) */
+const CYCLE_COMMIT_MS = 1500;
+
 /** Options for opening a new terminal tab/region. */
 export interface NewTabOptions {
   cwd?: string;
@@ -392,6 +397,17 @@ class TerminalStore {
   private commitStates = new Map<string, CommitViewerState>();
   private fsListening = false;
 
+  /** Most-recently-used tab ids, most-recent first (across all workspaces). Plain
+   *  (non-reactive) — it only orders the `Ctrl+Tab` quick-switch, never renders. */
+  private mru: string[] = [];
+  /** Frozen MRU order for an in-progress `Ctrl+Tab` cycle (null = not cycling).
+   *  Freezing keeps repeated presses walking a stable list instead of reshuffling
+   *  under their own feet; the landed tab is promoted to MRU-front when the cycle
+   *  settles (`CYCLE_COMMIT_MS` after the last press). */
+  private cycleOrder: string[] | null = null;
+  private cycleIndex = 0;
+  private cycleTimer: ReturnType<typeof setTimeout> | undefined;
+
   // The active workspace's tree / active region, proxied so all the per-tree
   // methods below operate on the visible workspace without change.
   get root(): AreaNode | null {
@@ -525,6 +541,8 @@ class TerminalStore {
     const group = findGroup(this.root, groupId);
     if (group) group.activeTabId = tabId;
     this.activeGroupId = groupId;
+    this.endCycle();
+    this.noteActivation(tabId);
   }
   /** PTY id of the active tab of the active region — only when that tab is a
    *  terminal (a file/diff active tab yields null, so file-drop and the agent
@@ -561,12 +579,14 @@ class TerminalStore {
       };
       this.root = group;
       this.activeGroupId = group.id;
+      this.noteActivation(tab.id);
       return;
     }
     const group = findGroup(this.root, groupId ?? this.activeGroupId) ?? firstGroup(this.root);
     group.tabs.push(tab);
     group.activeTabId = tab.id;
     this.activeGroupId = group.id;
+    this.noteActivation(tab.id);
   }
 
   /** Open `absPath` as a file-editor tab (or focus it if already open). The file
@@ -673,6 +693,7 @@ class TerminalStore {
     this.fileStates.delete(id);
     this.diffStates.delete(id);
     this.commitStates.delete(id);
+    this.removeFromMru(id);
   }
 
   private findFileTab(path: string): { tab: FileTab; workspace: string } | undefined {
@@ -883,6 +904,110 @@ class TerminalStore {
         }
       }
       return;
+    }
+  }
+
+  // --- MRU quick-switch + tab move (reorder / cross-region drag) -----------
+
+  /** Promote a tab to the front of the MRU list (most-recently-used). */
+  private noteActivation(tabId: string): void {
+    const i = this.mru.indexOf(tabId);
+    if (i !== -1) this.mru.splice(i, 1);
+    this.mru.unshift(tabId);
+  }
+  /** Forget a tab that's leaving the tree (called from every close path via
+   *  `disposeTab`), and drop it from any in-progress cycle. */
+  private removeFromMru(tabId: string): void {
+    const i = this.mru.indexOf(tabId);
+    if (i !== -1) this.mru.splice(i, 1);
+    const j = this.cycleOrder?.indexOf(tabId) ?? -1;
+    if (j !== -1) this.cycleOrder!.splice(j, 1);
+  }
+  /** End an in-progress `Ctrl+Tab` cycle (the next activation reseeds it). */
+  private endCycle(): void {
+    clearTimeout(this.cycleTimer);
+    this.cycleTimer = undefined;
+    this.cycleOrder = null;
+  }
+
+  /** Cycle the active region's tabs in MRU order: `Ctrl+Tab` (forward = toward
+   *  less-recently-used), `Ctrl+Shift+Tab` (backward). Repeated presses walk a
+   *  frozen order; the landed tab becomes most-recently-used once the cycle
+   *  settles (`CYCLE_COMMIT_MS`). No-op for a region with fewer than two tabs. */
+  cycleTab(forward: boolean): void {
+    if (!this.root) return;
+    const group = findGroup(this.root, this.activeGroupId) ?? firstGroup(this.root);
+    if (!group || group.tabs.length < 2) return;
+    if (!this.cycleOrder) {
+      // Freeze the order from MRU, appending any region tabs not yet seen (e.g.
+      // freshly restored) in tab order; start the cursor at the active tab.
+      const ids = new Set(group.tabs.map((t) => t.id));
+      const order = this.mru.filter((id) => ids.has(id));
+      for (const t of group.tabs) if (!order.includes(t.id)) order.push(t.id);
+      this.cycleOrder = order;
+      this.cycleIndex = Math.max(0, order.indexOf(group.activeTabId));
+    }
+    const n = this.cycleOrder.length;
+    if (n < 2) return;
+    this.cycleIndex = (this.cycleIndex + (forward ? 1 : -1) + n) % n;
+    const target = this.cycleOrder[this.cycleIndex];
+    // Activate without reshuffling MRU so the frozen order stays stable.
+    group.activeTabId = target;
+    this.activeGroupId = group.id;
+    this.controller(target)?.focus();
+    clearTimeout(this.cycleTimer);
+    this.cycleTimer = setTimeout(() => {
+      this.cycleOrder = null;
+      this.cycleTimer = undefined;
+      this.noteActivation(target);
+    }, CYCLE_COMMIT_MS);
+  }
+
+  /** Move keyboard focus to the next/previous split region of the active
+   *  workspace (in visual layout order), focusing that region's active terminal.
+   *  No-op when there's one region or none. */
+  focusSplit(dir: 1 | -1): void {
+    if (!this.root) return;
+    const ids = computeAreaLayout(this.root).groups.map((g) => g.group.id);
+    if (ids.length < 2) return;
+    const cur = Math.max(0, ids.indexOf(this.activeGroupId));
+    const next = ids[(cur + dir + ids.length) % ids.length];
+    this.activeGroupId = next;
+    const group = findGroup(this.root, next);
+    const tab = group?.tabs.find((t) => t.id === group.activeTabId);
+    if (tab) {
+      this.noteActivation(tab.id);
+      if (tab.kind === "terminal") this.controller(tab.id)?.focus();
+    }
+  }
+
+  /** Move a tab to a position in a (possibly different) region — the tab-strip
+   *  drag & drop. `toIndex` is the insertion slot in the target region (clamped;
+   *  omitted = append). Within a region this just reorders (no remount). Across
+   *  regions the tab's component remounts, transparently restoring from the
+   *  backend snapshot (terminals) or reopening by path (files); a region left
+   *  empty by the move collapses. */
+  moveTab(tabId: string, toGroupId: string, toIndex?: number): void {
+    if (!this.root) return;
+    const fromGroup = groupOfTab(this.root, tabId);
+    const toGroup = findGroup(this.root, toGroupId);
+    if (!fromGroup || !toGroup) return;
+    const from = fromGroup.tabs.findIndex((t) => t.id === tabId);
+    if (from === -1) return;
+    let insertAt = toIndex ?? toGroup.tabs.length;
+    // Removing an earlier slot in the same region shifts later indices left.
+    if (fromGroup === toGroup && from < insertAt) insertAt -= 1;
+    const [tab] = fromGroup.tabs.splice(from, 1);
+    insertAt = Math.max(0, Math.min(insertAt, toGroup.tabs.length));
+    toGroup.tabs.splice(insertAt, 0, tab);
+    toGroup.activeTabId = tab.id;
+    this.activeGroupId = toGroup.id;
+    this.noteActivation(tab.id);
+    if (fromGroup !== toGroup && fromGroup.tabs.length === 0) {
+      // Cross-region move took the region's last tab → drop the empty region.
+      this.collapseGroup(fromGroup.id);
+    } else if (fromGroup !== toGroup && fromGroup.activeTabId === tabId) {
+      fromGroup.activeTabId = fromGroup.tabs[fromGroup.tabs.length - 1].id;
     }
   }
 

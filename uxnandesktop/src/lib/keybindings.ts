@@ -17,6 +17,7 @@ export type ShortcutCategory =
   | "general"
   | "navigation"
   | "panels"
+  | "terminal"
   | "editor";
 
 /** Section titles, in display order (Settings → Keyboard shortcuts). */
@@ -24,6 +25,7 @@ export const SHORTCUT_CATEGORIES: { id: ShortcutCategory; titleKey: MessageKey }
   { id: "general", titleKey: "shortcuts.catGeneral" },
   { id: "navigation", titleKey: "shortcuts.catNavigation" },
   { id: "panels", titleKey: "shortcuts.catPanels" },
+  { id: "terminal", titleKey: "shortcuts.catTerminal" },
   { id: "editor", titleKey: "shortcuts.catEditor" },
 ];
 
@@ -75,10 +77,38 @@ export const KEY_ACTIONS: KeyAction[] = [
     default: "Mod+J",
   },
   {
+    id: "cycleTabNext",
+    labelKey: "shortcuts.cycleTabNext",
+    descKey: "shortcuts.cycleTabNextDesc",
+    category: "terminal",
+    default: "Mod+Tab",
+  },
+  {
+    id: "cycleTabPrev",
+    labelKey: "shortcuts.cycleTabPrev",
+    descKey: "shortcuts.cycleTabPrevDesc",
+    category: "terminal",
+    default: "Mod+Shift+Tab",
+  },
+  {
+    id: "focusSplitNext",
+    labelKey: "shortcuts.focusSplitNext",
+    descKey: "shortcuts.focusSplitNextDesc",
+    category: "terminal",
+    default: "Mod+Alt+ArrowRight",
+  },
+  {
+    id: "focusSplitPrev",
+    labelKey: "shortcuts.focusSplitPrev",
+    descKey: "shortcuts.focusSplitPrevDesc",
+    category: "terminal",
+    default: "Mod+Alt+ArrowLeft",
+  },
+  {
     id: "closeCenter",
     labelKey: "shortcuts.closeCenter",
     descKey: "shortcuts.closeCenterDesc",
-    category: "editor",
+    category: "terminal",
     default: "Mod+W",
   },
   {

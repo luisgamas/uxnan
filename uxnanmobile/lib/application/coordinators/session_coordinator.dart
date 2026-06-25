@@ -280,23 +280,15 @@ class SessionCoordinator {
     if (disconnected || _channel == null) {
       // Not connected: kick a reconnect attempt instead of doing nothing, so
       // the action also serves as a manual "try to reconnect now".
-      AppLogger.info(
-        '[reconn] verify: not connected '
-        '(phase=${_connectionPhase.value.name} channel=${_channel != null}) '
-        '→ reconnect',
-      );
       if (!_intentionalDisconnect && _activeMac.value != null) {
         unawaited(handleReconnect());
       }
       return false;
     }
     try {
-      final sw = Stopwatch()..start();
       await _probeBridgeStatus(timeout);
-      AppLogger.info('[reconn] verify ok ${sw.elapsedMilliseconds}ms');
       return true;
-    } on Object catch (error) {
-      AppLogger.info('[reconn] verify: probe failed ($error) → drop+reconnect');
+    } on Object {
       await _dropAndReconnect();
       return false;
     }
@@ -335,8 +327,7 @@ class SessionCoordinator {
       // Checkpoint the applied seq periodically so a hard app-kill mid-session
       // still resumes from a recent point (not just from the last disconnect).
       _persistBridgeSeq();
-    } on Object catch (error) {
-      AppLogger.info('[reconn] heartbeat failed → reconnect: $error');
+    } on Object {
       await _dropAndReconnect();
     }
   }
@@ -390,7 +381,6 @@ class SessionCoordinator {
 
   /// Drops the (apparently dead) session and starts the reconnection loop.
   Future<void> _dropAndReconnect() async {
-    AppLogger.info('[reconn] drop live session (apparently dead) → reconnect');
     _persistBridgeSeq();
     _stopHeartbeat();
     await _rxSubscription?.cancel();
@@ -483,29 +473,13 @@ class SessionCoordinator {
   ///
   /// No-op after an intentional disconnect or once disposed.
   Future<void> resume() async {
-    // FOR-DEV: Bug A (relink latency after returning from "recents"). The
-    // `[reconn]` diagnostic logs below (and in verifyConnection / the reconnect
-    // loop / DirectTransportSelector) are TEMPORARY instrumentation to pin where
-    // the post-resume relink spends its time before we change reconnect logic.
-    // Build with `--dart-define=ENABLE_LOGGING=true` and capture `adb logcat`.
-    // Remove once root-caused. See uxnanmobile/FOR-DEV.md → "Bug A".
     if (_intentionalDisconnect || _disposed || _activeMac.value == null) {
-      AppLogger.info(
-        '[reconn] resume ignored '
-        '(intentional=$_intentionalDisconnect disposed=$_disposed '
-        'activeMac=${_activeMac.value != null})',
-      );
       return;
     }
     if (_reconnecting) {
-      AppLogger.info('[reconn] resume while reconnecting → wake backoff');
       _wakeReconnect();
       return;
     }
-    AppLogger.info(
-      '[reconn] resume: phase=${_connectionPhase.value.name} '
-      'hasChannel=${_channel != null} → verify',
-    );
     // Hold user traffic until the probe confirms the socket is actually alive.
     _verifyingAfterResume = true;
     try {
@@ -556,31 +530,18 @@ class SessionCoordinator {
           lastConnectedAt: _recoveryState.value.lastConnectedAt,
         ),
       );
-      AppLogger.info(
-        '[reconn] attempt $attempt/$_maxReconnectAttempts: waiting ${wait.inMilliseconds}ms',
-      );
       await _waitForRetry(wait);
       if (_intentionalDisconnect || _disposed) return;
-      final sw = Stopwatch()..start();
       try {
         await _establish(device, HandshakeMode.trustedReconnect);
-        AppLogger.info('[reconn] connected in ${sw.elapsedMilliseconds}ms');
         return;
       } on Object catch (error) {
-        AppLogger.info(
-          '[reconn] attempt $attempt failed in '
-          '${sw.elapsedMilliseconds}ms: $error',
-        );
         _recoveryState.add(
           _recoveryState.value.copyWith(lastErrorMessage: error.toString()),
         );
       }
     }
 
-    AppLogger.warn(
-      '[reconn] exhausted $_maxReconnectAttempts attempts '
-      '→ manual intervention',
-    );
     _connectionPhase.add(ConnectionPhase.error);
     _recoveryState.add(
       _recoveryState.value.copyWith(
