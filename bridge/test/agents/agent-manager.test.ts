@@ -5,14 +5,52 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { mkdir, rm } from 'node:fs/promises';
+import type { AgentCapabilities, AgentId, SendTurnOptions } from '@uxnan/shared';
 import { StreamNotification } from '@uxnan/shared';
 import {
   AgentManager,
+  BaseAgentAdapter,
   DaemonState,
   EchoAgentAdapter,
   ThreadStore,
   createLogger,
 } from '../../src/index.js';
+
+/** Caps for the controllable test adapter (streaming, no approvals/images). */
+const CONTROLLED_CAPS: AgentCapabilities = {
+  planMode: false,
+  streaming: true,
+  approvals: false,
+  forking: false,
+  images: false,
+  reportsContextUsage: false,
+};
+
+/**
+ * A controllable in-process adapter (no subprocess → deterministic, never the
+ * Windows-CI stdio flake). `sendTurn` opens a turn (emits `turn_started`) but
+ * never finishes on its own; the test ends it explicitly via `complete`.
+ */
+class ControlledAdapter extends BaseAgentAdapter {
+  readonly agentId: AgentId = 'echo';
+  readonly capabilities = CONTROLLED_CAPS;
+  start(): Promise<void> {
+    return Promise.resolve();
+  }
+  stop(): Promise<void> {
+    return Promise.resolve();
+  }
+  sendTurn(options: SendTurnOptions): Promise<void> {
+    this.emit({ type: 'turn_started', threadId: options.threadId, turnId: options.turnId });
+    return Promise.resolve();
+  }
+  cancelTurn(): Promise<void> {
+    return Promise.resolve();
+  }
+  complete(threadId: string, turnId: string, text: string): void {
+    this.emit({ type: 'turn_completed', threadId, turnId, data: { text } });
+  }
+}
 
 // FOR-DEV: this whole suite drives the echo agent over a real subprocess + an
 // approval round-trip over stdio, which is flaky on Windows CI runners (the turn
@@ -65,6 +103,35 @@ test('sendTurn drives the echo agent: persists the reply and broadcasts stream e
   assert.ok(methods.includes(StreamNotification.TurnStarted));
   assert.ok(methods.includes(StreamNotification.MessageDelta));
   assert.ok(methods.includes(StreamNotification.TurnCompleted));
+  await rm(baseDir, { recursive: true, force: true });
+});
+
+baseTest('activeTurnId reflects the in-flight turn and clears when it ends', async () => {
+  const baseDir = join(tmpdir(), `uxnan-am-active-${randomUUID()}`);
+  const store = new ThreadStore(new DaemonState(baseDir));
+  const manager = new AgentManager({
+    store,
+    notify: () => {},
+    now: () => 1000,
+    logger: createLogger('test', 'error'),
+    defaultAgent: 'echo',
+  });
+  const adapter = new ControlledAdapter();
+  manager.register(adapter);
+
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  // Idle: nothing in flight.
+  assert.equal(manager.activeTurnId(thread.id), undefined);
+
+  const { turnId } = await manager.sendTurn(thread.id, 'hi');
+  // In flight: the getter names the running turn.
+  assert.equal(manager.activeTurnId(thread.id), turnId);
+
+  adapter.complete(thread.id, turnId, 'done');
+  await waitFor(async () => (await store.getTurn(turnId)).status === 'completed');
+  // Cleared on completion — authoritative "nothing is running now".
+  assert.equal(manager.activeTurnId(thread.id), undefined);
+
   await rm(baseDir, { recursive: true, force: true });
 });
 

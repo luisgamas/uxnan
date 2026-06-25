@@ -12,7 +12,7 @@ only a human can provide.)
 ## Status
 
 The bridge is **alpha-functional** on its primary path (LAN/Tailscale-direct,
-standalone). It builds clean and the suite is green (bridge 351, shared 29, relay
+standalone). It builds clean and the suite is green (bridge 353, shared 29, relay
 27). Nothing below blocks LAN/Tailscale-direct use. The only items that gate a
 **public npm release** are the *Packaging* first-publish steps and real-device
 push validation (FOR-HUMAN).

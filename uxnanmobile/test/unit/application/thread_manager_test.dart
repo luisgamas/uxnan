@@ -49,6 +49,8 @@ void main() {
   late StreamController<DomainEvent> events;
   late List<String> sentMethods;
   Map<String, dynamic>? turnSendParams;
+  // Test-settable `turn/list` result (null → empty, the no-op resync default).
+  Object? turnListResult;
   late ThreadManager manager;
 
   setUp(() {
@@ -58,6 +60,7 @@ void main() {
     events = StreamController<DomainEvent>.broadcast();
     sentMethods = [];
     turnSendParams = null;
+    turnListResult = null;
     manager = ThreadManager(
       threadRepository: threadRepo,
       messageRepository: messageRepo,
@@ -66,6 +69,7 @@ void main() {
         sentMethods.add(method);
         if (method == 'turn/send') turnSendParams = params;
         final result = switch (method) {
+          'turn/list' => turnListResult ?? <String, dynamic>{},
           'thread/list' => [
               {
                 'id': 'th1',
@@ -162,6 +166,118 @@ void main() {
     // The finalized message is persisted.
     final persisted = await messageRepo.getMessages('th1');
     expect(persisted.any((m) => m.id == 'stream-turn1'), isTrue);
+  });
+
+  test('self-heals: a delta for an untracked turn re-attaches the live view',
+      () async {
+    await manager.selectThread('th1');
+    await _settle();
+    // No TurnStartedEvent first: the app missed it (reconnected mid-turn while
+    // the agent kept running on the PC). Before the fix this delta was dropped.
+    expect(manager.timeline.isStreaming, isFalse);
+
+    events.add(
+      const MessageDeltaEvent(
+        turnId: 'turnX',
+        threadId: 'th1',
+        delta: 'resumed',
+      ),
+    );
+    await _settle();
+
+    // The live view re-attaches: "responding…" lights up and the text renders.
+    expect(manager.timeline.isStreaming, isTrue);
+    expect((await manager.activityStream.first)['th1'], ThreadActivity.running);
+    final streaming = manager.timeline.messages
+        .firstWhereOrNull((m) => m.id == 'stream-turnX');
+    expect(streaming, isNotNull);
+    expect(_text(streaming!), 'resumed');
+
+    // It then completes normally and stops "responding".
+    events.add(
+      const TurnCompletedEvent(
+        turnId: 'turnX',
+        threadId: 'th1',
+        text: 'resumed',
+      ),
+    );
+    await _settle();
+    expect(manager.timeline.isStreaming, isFalse);
+    expect((await manager.activityStream.first).containsKey('th1'), isFalse);
+  });
+
+  test('resyncActive re-attaches to an in-flight turn reported by the bridge',
+      () async {
+    await manager.selectThread('th1');
+    await _settle();
+    expect(manager.timeline.isStreaming, isFalse);
+
+    // The bridge reports a turn still in flight (authoritative activeTurnId).
+    turnListResult = {
+      'turns': [
+        {'id': 'turnZ', 'messages': <dynamic>[]},
+      ],
+      'total': 1,
+      'activeTurnId': 'turnZ',
+    };
+    await manager.resyncActive();
+    await _settle();
+
+    // Re-attached immediately (before any further delta): indicator + Stop.
+    expect(manager.timeline.isStreaming, isTrue);
+    expect((await manager.activityStream.first)['th1'], ThreadActivity.running);
+
+    // A subsequent delta for that turn now lands (it would have been dropped).
+    events.add(
+      const MessageDeltaEvent(turnId: 'turnZ', threadId: 'th1', delta: 'late'),
+    );
+    await _settle();
+    final streaming = manager.timeline.messages
+        .firstWhereOrNull((m) => m.id == 'stream-turnZ');
+    expect(streaming, isNotNull);
+    expect(_text(streaming!), 'late');
+  });
+
+  test('finalizes with the bridge text when re-attached without streamed text',
+      () async {
+    await manager.selectThread('th1');
+    await _settle();
+    // Re-attach via a block only (no text delta) — the early deltas were lost.
+    events.add(
+      const ContentBlockEvent(
+        turnId: 'turnY',
+        threadId: 'th1',
+        content: CommandExecutionContent(
+          command: 'ls',
+          status: CommandStatus.completed,
+        ),
+      ),
+    );
+    await _settle();
+    expect(manager.timeline.isStreaming, isTrue);
+
+    // Completion carries the bridge's authoritative full text.
+    events.add(
+      const TurnCompletedEvent(
+        turnId: 'turnY',
+        threadId: 'th1',
+        text: 'the full answer',
+      ),
+    );
+    await _settle();
+
+    final finalized =
+        manager.timeline.messages.firstWhere((m) => m.id == 'stream-turnY');
+    // The authoritative text shows (the live buffer had no streamed text)...
+    expect(
+      finalized.contents.whereType<TextContent>().map((t) => t.text).join(),
+      'the full answer',
+    );
+    // ...and the block captured live is preserved.
+    expect(
+      finalized.contents.whereType<CommandExecutionContent>(),
+      hasLength(1),
+    );
   });
 
   test('folds a streaming content block (command) into the turn', () async {

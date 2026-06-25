@@ -20,13 +20,18 @@ phone↔bridge session for a long time (feels like it never relinks), so the use
 force-kills to get an instant reconnect. The bridge log shows LAN reconnects DO
 happen repeatedly, so this is **relink latency**, not a hard "never reconnects".
 
-**Suspected cause (to confirm with logs):** on resume, `SessionCoordinator.resume`
-runs a 6 s `bridge/status` probe; on a half-open socket it times out → reconnect
-loop with backoff (up to 60 s). Each attempt may also waste time on the
-`DirectTransportSelector` **relay fallback** (`relay.uxnan.io`, 10 s connect +
-15 s handshake) which has no bridge behind it (relay disabled), and/or sit in a
-slow handshake step (15 s) while `resume`'s `_reconnecting` early-return only
-wakes the backoff (a no-op mid-`_establish`).
+**Captured-log finding (2026-06-25):** the transport CONNECTS fast (40–194 ms)
+but the post-handshake `bridge/status` heartbeat times out at 8 s → `drop live
+session (apparently dead) → reconnect`, **in a loop**; a full app-kill clears it
+instantly. Contributing factors seen: a virtual NIC (`172.27.192.1`) advertised
+by the bridge but unreachable wastes 2 s per attempt (bridge FOR-DEV "bind LAN to
+chosen interface(s)"); no bridge-side keepalive (relies on TCP close, minutes on
+mobile). Candidates to confirm with **bridge-side** logs: the catch-up replay
+backlog floods the new channel so the heartbeat reply lands >8 s late (or the
+phone drops before applying → `lastAppliedBridgeOutboundSeq` never advances →
+loop), and/or a race where the bridge emits the catch-up replay before the phone
+re-subscribes RX in `_commitSession`. The relay fallback is NOT in the captured
+path (relay disabled; only the direct hosts are tried).
 
 **Where (deferral sites, all `// FOR-DEV` tagged):**
 - `lib/application/coordinators/session_coordinator.dart` — `resume`,
@@ -51,6 +56,13 @@ while reproducing (background → wait → reopen). Then pin the dominant cost a
 - The companion bug (tool approvals auto-rejecting while backgrounded) is already
   FIXED — see `bridge/CHANGELOG.md` "keep tool approvals pending while the phone is
   offline".
+- The other companion — **the turn "dying" on the phone after reconnecting
+  mid-stream** (no "responding…", no Stop, stream silently dropped) — is now
+  FIXED (self-heal `_ensureLive` + `turn/list` `activeTurnId` re-attach +
+  authoritative completion text). See `uxnanmobile/CHANGELOG.md` "a turn no
+  longer 'dies' on the phone after reconnecting mid-stream" and
+  `bridge/CHANGELOG.md` "surface the in-flight turn on `turn/list`". This item
+  (relink latency / the 8 s heartbeat loop) is the remaining open half.
 
 ## FOR-DEV: keep the R8 keep rules complete (release minification is ON)
 

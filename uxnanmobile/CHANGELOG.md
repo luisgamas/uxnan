@@ -6,6 +6,36 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — a turn no longer "dies" on the phone after reconnecting mid-stream
+- **The phone re-attaches to a turn still in flight on the bridge.** Before, the
+  "responding…" indicator + composer Stop button were driven only by the
+  in-memory `_live` buffer, created **only** on `turn_started`. If the app
+  missed that event (reconnected mid-turn, or was killed and reopened while the
+  agent kept running on the PC), every later `delta`/`thinking`/`block` was
+  silently **dropped** — the turn looked ended, the app waited for nothing, and
+  the only way forward was to type again. Three coupled fixes in
+  `application/managers/thread_manager.dart`:
+  - **Self-heal (`_ensureLive`).** A stream event for a turn we aren't tracking
+    now lazily (re)creates the live buffer and re-lights the activity indicator
+    instead of being dropped — any further agent output revives the view. The
+    bridge serializes one in-flight turn per thread, so a delta for a different
+    `turnId` correctly replaces a stale one.
+  - **Proactive re-attach on resync.** `resyncActive`/`_resyncThread` reads the
+    new `turn/list` → `activeTurnId` (the bridge's authoritative in-flight turn,
+    absent after a bridge restart) and recreates `_live` before persisting, so
+    the indicator + Stop reappear immediately on resume — without resurrecting a
+    turn that already ended.
+  - **Authoritative completion text.** `TurnCompletedEvent` now carries the
+    bridge's full final `text` (`processors/incoming_message_processor.dart`,
+    `processors/domain_event.dart`); `_finishTurn` uses it when the live buffer
+    captured no streamed text (re-attached mid-turn), so the finalized bubble is
+    never left empty/partial — while preserving the interleaved live text+blocks
+    in the normal case.
+  - Tests: `test/unit/application/thread_manager_test.dart` (+3: self-heal,
+    resync re-attach, authoritative-text completion). NOTE: this is the
+    "active-turn loss" half of the remote-connection work; the relink-latency /
+    reconnect-loop half is still tracked in `FOR-DEV.md` (Bug A).
+
 ### Changed
 - **Consistent circular floating scroll buttons.** The git history's
   back-to-top button was M3's default rounded-square `FloatingActionButton`,

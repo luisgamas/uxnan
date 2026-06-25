@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — surface the in-flight turn on `turn/list` (phone re-attach)
+- **`turn/list` now returns `activeTurnId`** when a turn is in flight for the
+  thread. New `AgentManager.activeTurnId(threadId)` exposes the live
+  `#activeTurnByThread` state (set on `sendTurn`, cleared on
+  completion/error/abort), and the `turn/list` handler attaches it to the
+  result (`src/agents/agent-manager.ts`, `src/handlers/thread-context-handler.ts`).
+  This is authoritative "is a turn running NOW?" state — unlike a stored turn's
+  `streaming` status it is absent after a bridge restart (the agent child died),
+  so the phone never re-attaches to a turn that already ended. Lets a phone that
+  reconnected mid-turn restore its "responding…" indicator + Stop button instead
+  of treating the turn as dead (the mobile companion fix; see
+  `uxnanmobile/CHANGELOG.md`). Spec: `architecture/02b` (`TurnList` + `turn/list`).
+  Tests: `test/agents/agent-manager.test.ts` (getter set/clear) +
+  `test/handlers/thread-handlers.test.ts` (turn/list in-flight → activeTurnId).
+  Suite: 353 bridge.
+
 ### Added — per-turn access-mode enforcement for Gemini & Codex
 - **Gemini and Codex now honor the thread's `accessMode`** (the per-thread
   approval mode chosen on the phone), not just Claude. Each maps
@@ -29,7 +45,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
     modes have no pre-tool channel), so they don't map `accessMode`.
   - Spec: `architecture/02b-contracts-and-requirements.md`
     (`thread/setAccessMode` → *Enforcement*). Tests: `test/adapters/gemini-adapter.test.ts`
-    (4 cases) + `test/adapters/codex-adapter.test.ts` (2 cases). Suite: 351 bridge.
+    (4 cases) + `test/adapters/codex-adapter.test.ts` (2 cases). Adds 6 bridge tests.
 
 ### Fixed — git/log dropped commits & produced a tangled graph
 - **`git/log` no longer loses commits or invents lanes on a branchy history.**

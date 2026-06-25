@@ -610,6 +610,17 @@ class ThreadManager {
     final page =
         await _fetchTurns(threadId, limit: _turnPageSize, fromEnd: true);
     if (page == null) return;
+    // Re-attach to a turn still in flight on the bridge BEFORE persisting, so a
+    // turn we stopped tracking (reconnected/reopened mid-turn) keeps its live
+    // view — the indicator + Stop reappear and `_persistTurns` treats it as
+    // live (it skips the tracked turn) instead of writing it as a finished
+    // message. `activeTurnId` is the bridge's authoritative in-flight state
+    // (absent after a bridge restart), so it never resurrects an ended turn.
+    final activeTurnId = page.activeTurnId;
+    if (activeTurnId != null && _live[threadId]?.turnId != activeTurnId) {
+      _live[threadId] = _LiveTurn(turnId: activeTurnId);
+      _setActivity(threadId, ThreadActivity.running);
+    }
     await _persistTurns(threadId, page.turns, trackLatestUsage: true);
     if (threadId != _activeThreadId) return;
     final total = page.total;
@@ -629,7 +640,8 @@ class ThreadManager {
   /// Sends `turn/list` for one page and returns its turns + reported `total`
   /// (null on failure or an older bridge). [fromEnd] asks for the newest page;
   /// otherwise [cursor] is an explicit offset.
-  Future<({List<Object?> turns, int? total})?> _fetchTurns(
+  Future<({List<Object?> turns, int? total, String? activeTurnId})?>
+      _fetchTurns(
     String threadId, {
     String? cursor,
     int? limit,
@@ -651,7 +663,12 @@ class ThreadManager {
     final turns = result['turns'];
     if (turns is! List) return null;
     final total = result['total'];
-    return (turns: turns, total: total is int ? total : null);
+    final activeTurnId = result['activeTurnId'];
+    return (
+      turns: turns,
+      total: total is int ? total : null,
+      activeTurnId: activeTurnId is String ? activeTurnId : null,
+    );
   }
 
   /// Persists the assistant answers from a fetched page of [turns] into the
@@ -917,25 +934,17 @@ class ThreadManager {
         _setActivity(threadId, ThreadActivity.running);
         if (threadId == _activeThreadId) _rebuildActiveTimeline();
       case MessageDeltaEvent(:final turnId, :final delta):
-        final live = _live[threadId];
-        if (live != null && live.turnId == turnId) {
-          live.appendText(delta);
-          if (threadId == _activeThreadId) _rebuildActiveTimeline();
-        }
+        _ensureLive(threadId, turnId).appendText(delta);
+        if (threadId == _activeThreadId) _rebuildActiveTimeline();
       case ThinkingDeltaEvent(:final turnId, :final delta):
-        final live = _live[threadId];
-        if (live != null && live.turnId == turnId) {
-          live.thinking += delta;
-          if (threadId == _activeThreadId) _rebuildActiveTimeline();
-        }
+        _ensureLive(threadId, turnId).thinking += delta;
+        if (threadId == _activeThreadId) _rebuildActiveTimeline();
       case ContentBlockEvent(:final turnId, :final content):
-        final live = _live[threadId];
-        if (live != null && live.turnId == turnId) {
-          live.segments.add(content);
-          if (threadId == _activeThreadId) _rebuildActiveTimeline();
-        }
+        _ensureLive(threadId, turnId).segments.add(content);
+        if (threadId == _activeThreadId) _rebuildActiveTimeline();
       case TurnCompletedEvent(
           :final turnId,
+          :final text,
           :final tokens,
           :final contextWindow,
         ):
@@ -948,7 +957,9 @@ class ThreadManager {
         }
         // A reply landing in a thread the user isn't viewing is unread.
         if (threadId != _foregroundThreadId?.call()) _markUnread(threadId);
-        unawaited(_finishTurn(threadId, turnId, failed: false));
+        unawaited(
+          _finishTurn(threadId, turnId, failed: false, finalText: text),
+        );
       case TurnErrorEvent(:final turnId):
         unawaited(_finishTurn(threadId, turnId, failed: true));
       case TurnAbortedEvent(:final turnId):
@@ -958,6 +969,26 @@ class ThreadManager {
     }
   }
 
+  /// Returns the live buffer for [threadId], creating (or replacing) it when a
+  /// stream event arrives for a turn we are not currently tracking.
+  ///
+  /// This makes the phone **self-heal**: if it lost the `turn_started` (e.g. it
+  /// reconnected mid-turn, or was killed and reopened while the agent kept
+  /// running on the PC), any further streamed output re-attaches the live view
+  /// and re-lights the "responding…" indicator + Stop button — instead of the
+  /// event being silently dropped and the turn looking dead forever. The bridge
+  /// serializes one in-flight turn per thread and never streams after a turn
+  /// ends, so a delta for a different `turnId` means the tracked one is stale
+  /// and is correctly replaced.
+  _LiveTurn _ensureLive(String threadId, String turnId) {
+    final existing = _live[threadId];
+    if (existing != null && existing.turnId == turnId) return existing;
+    final live = _LiveTurn(turnId: turnId);
+    _live[threadId] = live;
+    _setActivity(threadId, ThreadActivity.running);
+    return live;
+  }
+
   /// Finalizes a turn for [threadId]: persists the buffered assistant text
   /// (keyed by the deterministic id so it reconciles with a later re-sync),
   /// clears the live buffer and updates the thread's activity.
@@ -965,20 +996,36 @@ class ThreadManager {
     String threadId,
     String turnId, {
     required bool failed,
+    String? finalText,
   }) async {
     final live = _live.remove(threadId);
     _setActivity(threadId, failed ? ThreadActivity.error : ThreadActivity.idle);
     if (live == null) return;
+    // Normally the finalized message is the live buffer's interleaved text +
+    // work-log blocks. But if we re-attached to a turn already in flight
+    // (after reconnecting while backgrounded) the buffer may hold no streamed
+    // text — in that case fall back to the bridge's authoritative final
+    // [finalText] so the bubble is never empty/partial, keeping live blocks.
+    final liveHasText =
+        live.segments.any((c) => c is TextContent && c.text.isNotEmpty);
+    final contents = (!liveHasText && finalText != null && finalText.isNotEmpty)
+        ? _assistantContents(
+            finalText,
+            live.thinking,
+            live.segments.where((c) => c is! TextContent).toList(),
+            streaming: false,
+          )
+        : _assistantContentsOrdered(
+            live.thinking,
+            live.segments,
+            streaming: false,
+          );
     final finalized = Message(
       id: _streamId(turnId),
       threadId: threadId,
       turnId: turnId,
       role: MessageRole.assistant,
-      contents: _assistantContentsOrdered(
-        live.thinking,
-        live.segments,
-        streaming: false,
-      ),
+      contents: contents,
       deliveryState:
           failed ? MessageDeliveryState.failed : MessageDeliveryState.delivered,
       orderIndex: await _orderIndexFor(threadId),

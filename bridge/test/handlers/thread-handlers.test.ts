@@ -4,14 +4,50 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { rm } from 'node:fs/promises';
+import type { AgentCapabilities, AgentId, SendTurnOptions, TurnList } from '@uxnan/shared';
 import { makeRequest, type Project } from '@uxnan/shared';
 import {
+  BaseAgentAdapter,
   DaemonState,
   DAEMON_FILES,
   InMemorySecretStore,
   startBridge,
   type Bridge,
 } from '../../src/index.js';
+
+/**
+ * A controllable in-process agent (no subprocess): `sendTurn` opens a turn but
+ * never finishes on its own, so a test can observe the in-flight state, then
+ * end it with `complete`. Registered over `echo` so `thread/start { agentId:
+ * 'echo' }` drives it. Deterministic — never the Windows-CI stdio flake.
+ */
+class ControlledAdapter extends BaseAgentAdapter {
+  readonly agentId: AgentId = 'echo';
+  readonly capabilities: AgentCapabilities = {
+    planMode: false,
+    streaming: true,
+    approvals: false,
+    forking: false,
+    images: false,
+    reportsContextUsage: false,
+  };
+  start(): Promise<void> {
+    return Promise.resolve();
+  }
+  stop(): Promise<void> {
+    return Promise.resolve();
+  }
+  sendTurn(options: SendTurnOptions): Promise<void> {
+    this.emit({ type: 'turn_started', threadId: options.threadId, turnId: options.turnId });
+    return Promise.resolve();
+  }
+  cancelTurn(): Promise<void> {
+    return Promise.resolve();
+  }
+  complete(threadId: string, turnId: string, text: string): void {
+    this.emit({ type: 'turn_completed', threadId, turnId, data: { text } });
+  }
+}
 
 async function boot(): Promise<{ bridge: Bridge; baseDir: string }> {
   const baseDir = join(tmpdir(), `uxnan-th-${randomUUID()}`);
@@ -124,6 +160,51 @@ test(
     await rm(baseDir, { recursive: true, force: true });
   },
 );
+
+test('turn/list reports the in-flight turn as activeTurnId and clears it on completion', async () => {
+  const { bridge, baseDir } = await boot();
+  // Drive a controllable agent (over `echo`) so the turn stays in flight until
+  // we end it — the real echo agent would complete before we could observe it.
+  const adapter = new ControlledAdapter();
+  bridge.context.agentManager.register(adapter);
+
+  const projectsRes = await bridge.router.dispatch(makeRequest('0', 'project/list', {}));
+  assert.ok('result' in projectsRes);
+  const projectId = (projectsRes.result as Project[])[0]!.id;
+
+  const startRes = await bridge.router.dispatch(
+    makeRequest('1', 'thread/start', { projectId, title: 'Chat', agentId: 'echo' }),
+  );
+  assert.ok('result' in startRes);
+  const threadId = (startRes.result as { id: string }).id;
+
+  const sendRes = await bridge.router.dispatch(
+    makeRequest('2', 'turn/send', { threadId, text: 'work for a while' }),
+  );
+  assert.ok('result' in sendRes);
+  const turnId = (sendRes.result as { turnId: string }).turnId;
+
+  // In flight: turn/list surfaces the live turn so the phone can re-attach.
+  const listRes = await bridge.router.dispatch(
+    makeRequest('3', 'turn/list', { threadId, fromEnd: true }),
+  );
+  assert.ok('result' in listRes);
+  assert.equal((listRes.result as TurnList).activeTurnId, turnId);
+
+  // Once it ends the field is gone (idle thread → phone stops "responding…").
+  adapter.complete(threadId, turnId, 'all done');
+  await waitFor(
+    async () => (await bridge.context.threadStore.getTurn(turnId)).status === 'completed',
+  );
+  const listRes2 = await bridge.router.dispatch(
+    makeRequest('4', 'turn/list', { threadId, fromEnd: true }),
+  );
+  assert.ok('result' in listRes2);
+  assert.equal((listRes2.result as TurnList).activeTurnId, undefined);
+
+  await bridge.stop();
+  await rm(baseDir, { recursive: true, force: true });
+});
 
 test('turn/send rejects a message with neither text nor attachments', async () => {
   const { bridge, baseDir } = await boot();
