@@ -61,6 +61,32 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
     `AlertDialog`s. Reused by the editor.
 
 ### Changed
+- **Floating composer over a scroll veil (conversation + git screens).** The
+  message composer and the git commit bar no longer sit on a solid surface
+  band. They now float over the timeline / file list — which scrolls *under*
+  them — backed by a `NeComposerVeil`: a vertical surface gradient that is
+  transparent at the top (so content shows through as it scrolls past) and
+  solid at the very bottom, mirroring the top bar's veil. The scroll reserves a
+  bottom spacer equal to the composer's live height (measured via a new
+  `MeasureHeight` widget) so the last message/card still rests just above the
+  pill, and the conversation's jump-to-latest button is lifted by the same
+  amount.
+  - `presentation/widgets/measure_size.dart` (new), `widgets/ne_top_bar.dart`
+    (`NeComposerVeil`), `screens/conversation/conversation_screen.dart`,
+    `screens/conversation/git/git_screen.dart`.
+- **Stronger Neural Expressive app-bar scroll veil.** The transparent top bar's
+  gradient is more present (top alpha `0.75 → 0.92`, mid `0.45 → 0.62`) so the
+  back/actions read confidently against busy content, while still dissolving to
+  fully transparent at the lower edge (never a solid band).
+  - `presentation/widgets/ne_top_bar.dart`.
+- **File browser conveys git state by name colour, not status dots.** The small
+  decorative grey type-dots are gone; each row's leading glyph is now the
+  file-type icon and the **name + icon colour** carries the git state —
+  tracked-unchanged files read as `onSurface`, **untracked** ones as a muted
+  grey (`onSurfaceVariant`, previously the untracked blue), and
+  added/modified/deleted/renamed in their git colour (only an actual change
+  bumps the weight). New shared `gitStatusColor` helper.
+  - `presentation/screens/conversation/files/widgets/file_tree_tile.dart`.
 - **Custom themes can now be single-brightness (light-only / dark-only) or
   dual.** A `CustomTheme` authors at least one side; the other, when needed for
   rendering, is derived from the authored side's key colors
@@ -104,6 +130,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   for the slim screen. Full suite green; `flutter analyze` clean.
 
 ### Fixed
+- **File browser path bar no longer rises like a composer when a keyboard
+  shows.** The browser pins its body (`resizeToAvoidBottomInset: false`) so the
+  read-only bottom path bar stays anchored, and it drops focus when returning
+  from the file viewer so any soft keyboard left over from the viewer's inline
+  editor dismisses instead of shoving the path bar upward.
+  - `presentation/screens/conversation/files/file_browser_screen.dart`.
 - **Markdown preview no longer stretches tables vertically.** The file viewer's
   Markdown body now uses `IntrinsicColumnWidth` (was the framework default
   `FlexColumnWidth`, which squeezed every column to fit the viewport and wrapped

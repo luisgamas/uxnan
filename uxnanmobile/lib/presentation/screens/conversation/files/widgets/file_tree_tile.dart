@@ -5,40 +5,29 @@ import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
 
-/// Visual treatment for a tree tile (icon + accent color) by [GitFileStatus].
+/// The name/icon color for a file or folder by its [GitFileStatus].
 ///
-/// The color follows the rest of the app's git chrome: added/modified/
-/// renamed/unstaged use the same `UxnanColors` tokens as the diff view in
-/// `GitScreen`; untracked gets the untracked blue; tracked (no change) is the
-/// neutral on-surface-variant tone. Untracked files share the untracked color
-/// so the eye picks them up immediately.
-({IconData icon, Color color}) gitFileStatusVisuals(GitFileStatus? status) {
-  switch (status) {
-    case GitFileStatus.added:
-      return (icon: Icons.add_circle_outline, color: UxnanColors.gitAdded);
-    case GitFileStatus.modified:
-      return (icon: Icons.edit_outlined, color: UxnanColors.gitModified);
-    case GitFileStatus.deleted:
-      return (icon: Icons.remove_circle_outline, color: UxnanColors.gitDeleted);
-    case GitFileStatus.renamed:
-      return (
-        icon: Icons.drive_file_move_outline,
-        color: UxnanColors.gitModified
-      );
-    case GitFileStatus.untracked:
-      return (icon: Icons.fiber_new_outlined, color: UxnanColors.gitUntracked);
-    case null:
-      return (
-        icon: Icons.insert_drive_file_outlined,
-        color: UxnanColors.onSurfaceMuted
-      );
-  }
+/// Communicates git state through colour, not extra glyphs:
+/// - tracked, unchanged (`null`) → [ColorScheme.onSurface] (the regular,
+///   confident text tone);
+/// - **untracked** → [ColorScheme.onSurfaceVariant] — a distinguishable muted
+///   grey so files git isn't tracking read as clearly de-emphasised;
+/// - added/modified/renamed/deleted → the matching `UxnanColors` git token
+///   (same palette as the diff view in `GitScreen`).
+Color gitStatusColor(GitFileStatus? status, ColorScheme colors) {
+  return switch (status) {
+    GitFileStatus.added => UxnanColors.gitAdded,
+    GitFileStatus.modified => UxnanColors.gitModified,
+    GitFileStatus.renamed => UxnanColors.gitModified,
+    GitFileStatus.deleted => UxnanColors.gitDeleted,
+    GitFileStatus.untracked => colors.onSurfaceVariant,
+    null => colors.onSurface,
+  };
 }
 
-/// Returns the icon for a directory or file extension (best-effort). The icon
-/// is purely decorative — the file's git status is painted separately as a
-/// leading dot — so the file type is communicated by glyph and the git state
-/// by color.
+/// Returns the icon for a directory or file extension (best-effort). The file
+/// type is communicated by the glyph; the git state is communicated by the
+/// glyph + name colour (see [gitStatusColor]).
 ({IconData icon}) fileTypeVisuals({
   required String name,
   required FileEntryType type,
@@ -166,9 +155,12 @@ const _codeExts = [
   '.tf', //
 ];
 
-/// A single row in the file browser: a leading icon, a name (optionally with
-/// the git status painted as the name color), the path, an optional git
-/// status pill on the right, and a trailing chevron for directories.
+/// A single row in the file browser: a leading file-type icon, the name, its
+/// path, and a trailing chevron for directories. Git state is conveyed purely
+/// through the name + icon colour (see [gitStatusColor]) — tracked-unchanged
+/// files read as [ColorScheme.onSurface], untracked ones as a muted grey, and
+/// changed files in their git colour — so the row stays uncluttered (no extra
+/// status dots or pills).
 ///
 /// Stateless — the parent owns expansion / selection state and passes the
 /// derived booleans. Tap fires [onTap], long-press [onLongPress] when given.
@@ -208,29 +200,19 @@ class FileTreeTile extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
     final isDir = node.isDir;
     final status = node.gitStatus;
-    final visuals = gitFileStatusVisuals(status);
     final typeVisuals = fileTypeVisuals(name: node.basename, type: node.type);
     final displayName = node.displayName(showExtension: showExtension);
     final indent = depth * 16.0;
 
-    // Name color reflects git status when set; otherwise the regular text
-    // color. Untracked files get the untracked color so they pop without a
-    // bold weight change.
-    final nameColor = switch (status) {
-      GitFileStatus.added => UxnanColors.gitAdded,
-      GitFileStatus.modified => UxnanColors.gitModified,
-      GitFileStatus.deleted => UxnanColors.gitDeleted,
-      GitFileStatus.renamed => UxnanColors.gitModified,
-      GitFileStatus.untracked => UxnanColors.gitUntracked,
-      null => colors.onSurface,
-    };
-
-    // The leading icon mirrors the git status (added/edited/removed/) for
-    // files; for directories we keep the folder icon regardless of status.
-    final leadingIcon = isDir ? Icons.folder_outlined : visuals.icon;
-    final leadingColor = isDir
-        ? (status == null ? colors.onSurfaceVariant : visuals.color)
-        : visuals.color;
+    // Git state is carried by colour: tracked-unchanged → onSurface, untracked
+    // → a muted grey, changed → the git colour. The name takes that colour
+    // directly; the leading file-type icon takes it too, except a neutral
+    // (unchanged) file keeps a slightly softer icon tone than its name.
+    final statusColor = gitStatusColor(status, colors);
+    final iconColor = status == null ? colors.onSurfaceVariant : statusColor;
+    // Only an actual git *change* (added/modified/deleted/renamed) bumps the
+    // weight; untracked stays at the normal weight so it reads as quiet grey.
+    final emphasised = status != null && status != GitFileStatus.untracked;
 
     return InkWell(
       onTap: onTap,
@@ -243,28 +225,13 @@ class FileTreeTile extends StatelessWidget {
         child: Row(
           children: [
             SizedBox(width: indent),
+            // The leading glyph communicates the file *type*; its colour
+            // communicates the git state.
             Icon(
-              leadingIcon,
+              typeVisuals.icon,
               size: 20,
-              color: leadingColor,
+              color: iconColor,
               semanticLabel: isDir ? 'Folder' : status?.name ?? 'File',
-            ),
-            const SizedBox(width: UxnanSpacing.sm),
-            // The leading dot: a small filled circle in the file-type color.
-            // Decorative — it groups similar files at a glance and gives the
-            // git status icon extra prominence.
-            Container(
-              width: 6,
-              height: 6,
-              decoration: BoxDecoration(
-                color: typeVisuals == const (icon: Icons.image_outlined) ||
-                        typeVisuals ==
-                            const (icon: Icons.description_outlined) ||
-                        typeVisuals == const (icon: Icons.menu_book_outlined)
-                    ? colors.onSurfaceVariant.withValues(alpha: 0.5)
-                    : colors.onSurfaceVariant.withValues(alpha: 0.25),
-                shape: BoxShape.circle,
-              ),
             ),
             const SizedBox(width: UxnanSpacing.sm),
             Expanded(
@@ -275,9 +242,9 @@ class FileTreeTile extends StatelessWidget {
                   Text(
                     displayName,
                     style: textTheme.bodyMedium?.copyWith(
-                      color: nameColor,
+                      color: statusColor,
                       fontWeight:
-                          status == null ? FontWeight.w400 : FontWeight.w500,
+                          emphasised ? FontWeight.w500 : FontWeight.w400,
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),

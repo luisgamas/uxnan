@@ -32,6 +32,7 @@ import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/agent_visuals.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
+import 'package:uxnan/presentation/widgets/measure_size.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 
 /// The active conversation: a Neural Expressive layout — a transparent top bar
@@ -71,6 +72,13 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   /// Whether the "jump to latest" button is shown — true once the user has
   /// scrolled up far enough that the newest messages are off-screen.
   bool _showJumpToBottom = false;
+
+  /// Measured height of the floating bottom chrome (sign-in/cwd banners, the
+  /// diff+context info bar, attachments and the composer pill). The timeline
+  /// reserves a matching bottom spacer so the last message rests just above the
+  /// pill while content scrolls under its translucent veil; the jump-to-latest
+  /// button is lifted by the same amount.
+  double _bottomChromeHeight = 0;
 
   /// Whether the initial scroll position has been restored for this open.
   /// Guards the one-time restore so later timeline updates don't re-yank the
@@ -251,6 +259,14 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
       final max = _scroll.position.maxScrollExtent;
       if (max - _scroll.offset > 1) _scroll.jumpTo(max);
     });
+  }
+
+  /// Records the measured height of the floating bottom chrome so the timeline
+  /// reserves matching bottom padding (and the jump button clears the pill).
+  /// Ignores sub-pixel jitter to avoid a rebuild loop.
+  void _onBottomChromeHeight(double height) {
+    if (!mounted || (height - _bottomChromeHeight).abs() < 0.5) return;
+    setState(() => _bottomChromeHeight = height);
   }
 
   /// Opens the git actions screen (branch state, changed files, commit/push)
@@ -441,7 +457,6 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final colors = Theme.of(context).colorScheme;
     final timelineAsync = ref.watch(activeTimelineProvider);
     final thread = ref.watch(threadByIdProvider(widget.threadId));
     // This thread lives on a specific PC; live actions (send, git) only work
@@ -528,174 +543,170 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
 
     return Scaffold(
       body: Stack(
+        // Expand so the timeline gets tight full-screen constraints and the
+        // top bar / composer overlays keep the full row width.
+        fit: StackFit.expand,
         children: [
-          Column(
-            children: [
-              Expanded(
-                child: Stack(
+          // The streaming timeline fills the whole screen and scrolls *under*
+          // both the transparent top bar and the floating composer (reserved
+          // for by a bottom spacer of the composer's measured height).
+          // Tapping the message area dismisses the keyboard; dragging scrolls.
+          GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onTap: () => FocusScope.of(context).unfocus(),
+            child: CustomScrollView(
+              controller: _scroll,
+              physics: const BouncingScrollPhysics(
+                parent: AlwaysScrollableScrollPhysics(),
+              ),
+              slivers: [
+                // Spacer so the first content sits below the transparent top
+                // bar (it overlays the scroll).
+                SliverToBoxAdapter(child: SizedBox(height: topInset)),
+                // "Load earlier" header when the rendered window does not yet
+                // cover the whole local history.
+                if (snapshot != null &&
+                    snapshot.messages.isNotEmpty &&
+                    snapshot.hasMore)
+                  SliverToBoxAdapter(
+                    child: Center(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          vertical: UxnanSpacing.sm,
+                        ),
+                        child: TextButton.icon(
+                          onPressed: () =>
+                              ref.read(threadManagerProvider).loadMoreHistory(),
+                          icon: const Icon(Icons.history_rounded, size: 18),
+                          label: Text(l10n.conversationLoadEarlier),
+                        ),
+                      ),
+                    ),
+                  ),
+                if (snapshot == null)
+                  const SliverFillRemaining(
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                else if (snapshot.messages.isEmpty)
+                  const SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: _EmptyState(),
+                  )
+                else
+                  SliverPadding(
+                    padding: EdgeInsets.fromLTRB(
+                      contentInset,
+                      UxnanSpacing.sm,
+                      contentInset,
+                      UxnanSpacing.lg,
+                    ),
+                    sliver: SliverList.builder(
+                      itemCount: snapshot.messages.length,
+                      itemBuilder: (context, index) => MessageBubble(
+                        message: snapshot.messages[index],
+                      ),
+                    ),
+                  ),
+                // Reserve room for the floating composer + its banners so the
+                // last message rests just above the pill instead of behind it.
+                SliverToBoxAdapter(
+                  child: SizedBox(height: _bottomChromeHeight),
+                ),
+              ],
+            ),
+          ),
+          // Jump-to-latest button: appears (with a small spring) when the user
+          // has scrolled up, sitting just above the floating composer chrome.
+          Positioned(
+            right: UxnanSpacing.lg,
+            bottom: _bottomChromeHeight + UxnanSpacing.md,
+            child: _JumpToBottomButton(
+              visible: _showJumpToBottom,
+              onTap: _scrollToBottom,
+            ),
+          ),
+          // The floating bottom chrome — sign-in / cwd banners, the diff+context
+          // info bar, attachments, and the composer pill — painted over a
+          // gradient veil (transparent at the top, so the timeline shows
+          // through as it scrolls under it; solid at the very bottom). Its
+          // measured height feeds the scroll's bottom spacer above.
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: MeasureHeight(
+              onChange: _onBottomChromeHeight,
+              child: NeComposerVeil(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Tapping the message area dismisses the keyboard (unfocus
-                    // the composer); dragging still scrolls.
-                    GestureDetector(
-                      behavior: HitTestBehavior.translucent,
-                      onTap: () => FocusScope.of(context).unfocus(),
-                      child: CustomScrollView(
-                        controller: _scroll,
-                        physics: const BouncingScrollPhysics(
-                          parent: AlwaysScrollableScrollPhysics(),
-                        ),
-                        slivers: [
-                          // Spacer so the first content sits below the
-                          // transparent top bar (it overlays the scroll).
-                          SliverToBoxAdapter(child: SizedBox(height: topInset)),
-                          // "Load earlier" header when the rendered window does
-                          // not yet cover the whole local history.
-                          if (snapshot != null &&
-                              snapshot.messages.isNotEmpty &&
-                              snapshot.hasMore)
-                            SliverToBoxAdapter(
-                              child: Center(
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: UxnanSpacing.sm,
-                                  ),
-                                  child: TextButton.icon(
-                                    onPressed: () => ref
-                                        .read(threadManagerProvider)
-                                        .loadMoreHistory(),
-                                    icon: const Icon(
-                                      Icons.history_rounded,
-                                      size: 18,
-                                    ),
-                                    label: Text(l10n.conversationLoadEarlier),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          if (snapshot == null)
-                            const SliverFillRemaining(
-                              child: Center(child: CircularProgressIndicator()),
-                            )
-                          else if (snapshot.messages.isEmpty)
-                            const SliverFillRemaining(
-                              hasScrollBody: false,
-                              child: _EmptyState(),
-                            )
-                          else
-                            SliverPadding(
-                              padding: EdgeInsets.fromLTRB(
-                                contentInset,
-                                UxnanSpacing.sm,
-                                contentInset,
-                                UxnanSpacing.lg,
-                              ),
-                              sliver: SliverList.builder(
-                                itemCount: snapshot.messages.length,
-                                itemBuilder: (context, index) => MessageBubble(
-                                  message: snapshot.messages[index],
-                                ),
-                              ),
-                            ),
-                        ],
+                    // Sign-in / vanished-cwd warnings stay above the composer
+                    // (not in the scrolling list) so they remain visible.
+                    if (_cwdMissing)
+                      const _Centered(child: _CwdMissingBanner()),
+                    if (requiresLogin && thread != null)
+                      _Centered(
+                        child: _LoginRequiredBanner(agentId: thread.agentId),
                       ),
-                    ),
-                    // Bottom scroll veil mirroring the top bar's: the last
-                    // messages fade into the surface just above the composer.
-                    Positioned(
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      child: IgnorePointer(
-                        child: Container(
-                          height: UxnanSpacing.xl,
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [
-                                colors.surface.withValues(alpha: 0),
-                                colors.surface,
-                              ],
-                            ),
-                          ),
+                    if (lastEdits != null || environment.showContext)
+                      _Centered(
+                        child: _ComposerInfoBar(
+                          edits: lastEdits,
+                          showContext: environment.showContext,
+                          hasContext: environment.hasContext,
+                          percent: environment.contextPercent,
+                          tokenLabel: environment.contextTokensLabel,
+                          mode: contextMode,
                         ),
                       ),
-                    ),
-                    // Jump-to-latest button: appears (with a small spring) over
-                    // the last messages when the user has scrolled up, so the
-                    // bottom of a long/streaming conversation is one tap away.
-                    Positioned(
-                      right: UxnanSpacing.lg,
-                      bottom: UxnanSpacing.md,
-                      child: _JumpToBottomButton(
-                        visible: _showJumpToBottom,
-                        onTap: _scrollToBottom,
+                    if (_attachments.isNotEmpty)
+                      _Centered(
+                        child: _AttachmentStrip(
+                          attachments: _attachments,
+                          onRemove: _removeAttachment,
+                        ),
                       ),
+                    ComposerBar(
+                      enabled: connectedHere && !_cwdMissing,
+                      hasAttachments: _attachments.isNotEmpty,
+                      // While the agent is producing a turn, Send becomes
+                      // Stop — cancels the turn (without closing the thread).
+                      running: running,
+                      onStop: () => ref
+                          .read(threadManagerProvider)
+                          .cancelTurn(widget.threadId),
+                      onPlus: hasTurnTools
+                          ? () => _openTurnTools(
+                                runOptions,
+                                showAttach: showAttach,
+                                showApproval: showApproval,
+                              )
+                          : null,
+                      onSend: (text) {
+                        // Honor the scroll-to-latest-on-send setting: arm a
+                        // forced scroll so the user sees their message even if
+                        // scrolled up.
+                        if (ref.read(scrollToBottomOnSendProvider)) {
+                          _forceScrollOnSend = true;
+                        }
+                        final options =
+                            ref.read(threadRunOptionsProvider(widget.threadId));
+                        final attachments = List<ImageContent>.of(_attachments);
+                        ref.read(threadManagerProvider).sendUserMessage(
+                              widget.threadId,
+                              text,
+                              options: options,
+                              attachments: attachments,
+                            );
+                        if (_attachments.isNotEmpty) {
+                          setState(_attachments.clear);
+                        }
+                      },
                     ),
                   ],
                 ),
               ),
-              // Sign-in warning: the agent isn't logged in on this PC, so
-              // turns won't run until the user signs into its CLI there. Kept
-              // above the composer (not in the scrolling list) so it stays
-              // visible.
-              if (_cwdMissing) const _Centered(child: _CwdMissingBanner()),
-              if (requiresLogin && thread != null)
-                _Centered(child: _LoginRequiredBanner(agentId: thread.agentId)),
-              if (lastEdits != null || environment.showContext)
-                _Centered(
-                  child: _ComposerInfoBar(
-                    edits: lastEdits,
-                    showContext: environment.showContext,
-                    hasContext: environment.hasContext,
-                    percent: environment.contextPercent,
-                    tokenLabel: environment.contextTokensLabel,
-                    mode: contextMode,
-                  ),
-                ),
-              if (_attachments.isNotEmpty)
-                _Centered(
-                  child: _AttachmentStrip(
-                    attachments: _attachments,
-                    onRemove: _removeAttachment,
-                  ),
-                ),
-              ComposerBar(
-                enabled: connectedHere && !_cwdMissing,
-                hasAttachments: _attachments.isNotEmpty,
-                // While the agent is producing a turn, Send becomes Stop —
-                // cancels the turn (without closing the thread).
-                running: running,
-                onStop: () =>
-                    ref.read(threadManagerProvider).cancelTurn(widget.threadId),
-                onPlus: hasTurnTools
-                    ? () => _openTurnTools(
-                          runOptions,
-                          showAttach: showAttach,
-                          showApproval: showApproval,
-                        )
-                    : null,
-                onSend: (text) {
-                  // Honor the scroll-to-latest-on-send setting: arm a forced
-                  // scroll so the user sees their message even if scrolled up.
-                  if (ref.read(scrollToBottomOnSendProvider)) {
-                    _forceScrollOnSend = true;
-                  }
-                  final options =
-                      ref.read(threadRunOptionsProvider(widget.threadId));
-                  final attachments = List<ImageContent>.of(_attachments);
-                  ref.read(threadManagerProvider).sendUserMessage(
-                        widget.threadId,
-                        text,
-                        options: options,
-                        attachments: attachments,
-                      );
-                  if (_attachments.isNotEmpty) {
-                    setState(_attachments.clear);
-                  }
-                },
-              ),
-            ],
+            ),
           ),
           // Transparent NE top bar overlaid above the scrolling content.
           Positioned(

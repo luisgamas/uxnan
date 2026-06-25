@@ -88,6 +88,13 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
     final anyExpanded = _anyExpanded(rootAsync.value);
 
     return Scaffold(
+      // The browser has no text input of its own — the persistent path bar at
+      // the bottom is read-only chrome, not a composer. If a stray soft
+      // keyboard lingers (e.g. when returning from the file viewer), it must
+      // NOT shove the path bar upward as if it were an input. Pinning the body
+      // (no bottom-inset resize) keeps the path bar anchored; we also drop
+      // focus when returning from the viewer so the keyboard dismisses.
+      resizeToAvoidBottomInset: false,
       body: Stack(
         // StackFit.expand keeps the bar at the full row width — the
         // default loose fit sizes the stack to its non-Positioned child
@@ -287,20 +294,25 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
                   node: entry.node,
                   depth: entry.depth,
                   showExtension: showExtension,
-                  onTap: () {
+                  onTap: () async {
                     if (entry.node.isDir) {
                       unawaited(
                         manager.toggleDirectory(widget.cwd, entry.node.path),
                       );
                     } else {
-                      unawaited(
-                        FileViewerScreen.push(
-                          context,
-                          cwd: widget.cwd,
-                          path: entry.node.path,
-                          node: entry.node,
-                        ),
+                      await FileViewerScreen.push(
+                        context,
+                        cwd: widget.cwd,
+                        path: entry.node.path,
+                        node: entry.node,
                       );
+                      // Returning from the viewer can leave a soft keyboard up
+                      // (e.g. after using its inline editor); drop focus so it
+                      // dismisses and the read-only path bar never reads as a
+                      // composer.
+                      if (context.mounted) {
+                        FocusManager.instance.primaryFocus?.unfocus();
+                      }
                     }
                   },
                 );

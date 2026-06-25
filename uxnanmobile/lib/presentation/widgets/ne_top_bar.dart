@@ -43,23 +43,22 @@ class NeTopBar extends StatelessWidget {
     return Container(
       padding: EdgeInsets.only(top: topInset),
       decoration: BoxDecoration(
-        // A subtle scroll veil: the surface is mostly transparent
-        // (peaks at 0.75 alpha) so the content underneath reads through
-        // the bar instead of looking like a solid app-bar band. The top
-        // is just opaque enough to give the back / actions a stable
-        // background; the bottom dissolves quickly into the surface.
-        // Matches the conversation + file browser + git screen chrome
-        // exactly — same alpha curve everywhere so no screen reads as a
-        // solid app-bar band over its content.
+        // A scroll veil: a vertical surface gradient so the content
+        // underneath reads through the bar instead of looking like a solid
+        // app-bar band. The top is strong enough to give the back / actions
+        // a confident, legible background (peaks at 0.92 alpha — noticeably
+        // more present than a faint veil, but never a fully solid band); the
+        // bottom dissolves into the surface so scrolling content shows
+        // through the lower edge.
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            colors.surface.withValues(alpha: 0.75),
-            colors.surface.withValues(alpha: 0.45),
+            colors.surface.withValues(alpha: 0.92),
+            colors.surface.withValues(alpha: 0.62),
             colors.surface.withValues(alpha: 0),
           ],
-          stops: const [0, 0.5, 1],
+          stops: const [0, 0.55, 1],
         ),
       ),
       child: SizedBox(
@@ -75,6 +74,41 @@ class NeTopBar extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// A bottom "scroll veil" that backs a **floating composer** (the conversation
+/// composer pill, the git commit bar): a vertical surface gradient — fully
+/// transparent at the top, fading to the solid surface at the bottom — that
+/// mirrors the [NeTopBar]'s top veil. Overlay it at the bottom of the screen
+/// over a full-height scroll view (padded by its measured height) so the
+/// timeline scrolls *under* the translucent upper edge and the composer reads
+/// as a floating pill instead of a solid app-bar-style band.
+class NeComposerVeil extends StatelessWidget {
+  /// Creates a [NeComposerVeil] wrapping the floating chrome [child].
+  const NeComposerVeil({required this.child, super.key});
+
+  /// The floating chrome (banners + composer pill) painted over the veil.
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            colors.surface.withValues(alpha: 0),
+            colors.surface.withValues(alpha: 0.7),
+            colors.surface,
+          ],
+          stops: const [0, 0.45, 1],
+        ),
+      ),
+      child: child,
     );
   }
 }
