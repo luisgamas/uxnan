@@ -58,8 +58,9 @@ against a live bridge. Verify and tick off:
 
 - Manual-code pairing (type host + code) and mDNS "browse nearby bridges"
   (discovery lists a real bridge).
-- Background→resume reconnection (minimize+reopen connected, not stuck) and
-  the Relay-vs-Direct indicator reading over a hosted-relay session.
+- The Relay-vs-Direct transport indicator reading over a hosted-relay session
+  (background→resume reconnection is verified — see the Bug A fixes in
+  `CHANGELOG.md`).
 - Remote history scroll-up paging on a long real thread; scroll-position landing
   on repeated opens; *Jump to latest* after a restore.
 - Reasoning-effort knobs changing a real turn; per-agent auth-status banners
