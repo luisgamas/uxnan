@@ -62,7 +62,9 @@ pub async fn set_terminal_layout(
 // the process produces any output), then calls `pty_create`. Output streams via
 // `pty:output:{id}` events; `pty:exit:{id}` fires once the process ends.
 
-/// Spawn a shell in a new pseudoterminal sized `cols`×`rows`.
+/// Spawn a shell in a new pseudoterminal sized `cols`×`rows`. Returns `true`
+/// when a fresh session was spawned, `false` when one already existed for `id`
+/// (a remount onto a live PTY — the frontend then replays `pty_snapshot`).
 #[tauri::command]
 #[allow(clippy::too_many_arguments)] // Tauri command surface: flat params over the IPC boundary.
 pub async fn pty_create(
@@ -74,7 +76,7 @@ pub async fn pty_create(
     args: Option<Vec<String>>,
     cols: u16,
     rows: u16,
-) -> Result<(), CommandError> {
+) -> Result<bool, CommandError> {
     let out_app = app.clone();
     let out_id = id.clone();
     let on_output = move |bytes: &[u8]| {
@@ -151,6 +153,28 @@ pub async fn pty_resize(
 #[tauri::command]
 pub async fn pty_close(state: State<'_, AppState>, id: String) -> Result<(), CommandError> {
     state.pty.close(&id).map_err(CommandError::from)
+}
+
+/// A PTY's retained recent output, for repainting a recreated xterm.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PtySnapshot {
+    /// Raw bytes (same wire shape as a `pty:output:{id}` payload).
+    data: Vec<u8>,
+    /// True when older history was dropped to stay within the buffer cap.
+    stale: bool,
+}
+
+/// Return a PTY's buffered recent output so a remounted pane can restore its
+/// scrollback without a live PTY. Unknown ids yield an empty, non-stale
+/// snapshot (the caller simply has nothing to replay).
+#[tauri::command]
+pub async fn pty_snapshot(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<PtySnapshot, CommandError> {
+    let (data, stale) = state.pty.snapshot(&id).unwrap_or_default();
+    Ok(PtySnapshot { data, stale })
 }
 
 // --- Repositories ----------------------------------------------------------
