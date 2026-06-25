@@ -33,10 +33,21 @@ loop), and/or a race where the bridge emits the catch-up replay before the phone
 re-subscribes RX in `_commitSession`. The relay fallback is NOT in the captured
 path (relay disabled; only the direct hosts are tried).
 
-**Where (deferral sites, all `// FOR-DEV` tagged):**
+**Where (deferral sites, all `// FOR-DEV` / `[reconn]` tagged):**
 - `lib/application/coordinators/session_coordinator.dart` — `resume`,
   `verifyConnection`, `_runReconnectLoop`, `_dropAndReconnect`, `_heartbeatTick`.
 - `lib/infrastructure/transport/transport_selector.dart` — `DirectTransportSelector.select`.
+- **Bridge side (added 2026-06-25):** `bridge/src/transport/session-handler.ts`
+  now logs the matching `[reconn]` trace so the loop can be pinned from the PC:
+  handshake done (mode / device / advertised `lastApplied` / `superseding`),
+  catch-up replay (count / bytes / seq range / elapsed ms — a flood that could
+  starve the heartbeat reply) or "no backlog", sink registered (`nextOutboundSeq`),
+  every inbound envelope rejected as a replay (with channel `lastInbound`), each
+  inbound `bridge/status` (seq) dispatched, and teardown (`stillCurrent` — whether
+  a newer connection superseded this one). **To capture:** run the bridge and read
+  `~/.uxnan/logs/bridge-<date>.log` (or stderr) while reproducing background →
+  wait → reopen, alongside the mobile `adb logcat`. Remove these with the mobile
+  `[reconn]` logs once root-caused.
 
 **Option 1 (in place):** temporary `[reconn]` diagnostic logs time every step
 (probe, each reconnect attempt, each transport attempt + relay fallback).

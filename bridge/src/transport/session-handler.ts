@@ -60,18 +60,44 @@ export async function handleSecureConnection(options: SecureConnectionOptions): 
     // (and later turn-end pushes) target the right relay session.
     ctx.pushService.setActiveSession(result.sessionId);
 
+    // FOR-DEV: Bug A (relink latency / the 8 s post-reconnect `bridge/status`
+    // heartbeat loop). The `[reconn]` logs in this handler are TEMPORARY
+    // diagnostics — the bridge-side counterpart to the mobile ones — to pin where
+    // a reconnected link breaks: the catch-up backlog size/time (a flood that
+    // starves the heartbeat reply), a superseded half-open connection, or inbound
+    // envelopes rejected as replays. Remove once root-caused. See
+    // uxnanmobile/FOR-DEV.md → "Bug A".
+    const supersedingOnConnect = ctx.sessionRegistry.isActive(result.phoneDeviceId);
+    ctx.logger.info(
+      `[reconn] handshake done mode=${result.mode} device=${result.phoneDeviceId} ` +
+        `lastApplied=${result.lastAppliedBridgeOutboundSeq} superseding=${supersedingOnConnect}`,
+    );
+
     // Catch-up (architecture/02a §5.9.2): replay every retained outbound message
     // the phone hasn't applied yet (seq > resumeState.lastAppliedBridgeOutboundSeq),
     // re-encrypted under the new session key, BEFORE registering the live sink so
     // the replayed backlog precedes any new traffic and ordering is preserved.
     const outboundLog = ctx.sessionRegistry.logFor(result.phoneDeviceId);
-    for (const entry of outboundLog.entriesAfter(result.lastAppliedBridgeOutboundSeq)) {
+    const replayEntries = outboundLog.entriesAfter(result.lastAppliedBridgeOutboundSeq);
+    const replayStartedAt = Date.now();
+    let replayBytes = 0;
+    for (const entry of replayEntries) {
       io.send(
         Buffer.from(
           JSON.stringify(result.channel.encryptReplay(entry.seq, entry.plaintext)),
           'utf-8',
         ),
       );
+      replayBytes += entry.plaintext.byteLength;
+    }
+    if (replayEntries.length > 0) {
+      ctx.logger.info(
+        `[reconn] replayed ${replayEntries.length} msg(s) ${replayBytes}B ` +
+          `seq ${replayEntries[0]?.seq}..${replayEntries[replayEntries.length - 1]?.seq} ` +
+          `in ${Date.now() - replayStartedAt}ms`,
+      );
+    } else {
+      ctx.logger.info('[reconn] no catch-up backlog to replay');
     }
 
     // Register the encrypted sink synchronously (before any further await) so the
@@ -84,6 +110,9 @@ export async function handleSecureConnection(options: SecureConnectionOptions): 
         io.send(Buffer.from(JSON.stringify(result.channel.encrypt(toBytes(message))), 'utf-8')),
     };
     ctx.sessionRegistry.register(result.phoneDeviceId, sink);
+    ctx.logger.info(
+      `[reconn] sink registered device=${result.phoneDeviceId} nextOutboundSeq=${outboundLog.nextSeq}`,
+    );
     // A phone is now connected: grant a fresh window to any approval that was
     // waiting (its card replays via the catch-up above) so the user can answer
     // it instead of it auto-rejecting while they were away.
@@ -108,11 +137,20 @@ export async function handleSecureConnection(options: SecureConnectionOptions): 
       try {
         plaintext = result.channel.decrypt(validation.data as SecureEnvelope);
       } catch (err) {
-        ctx.logger.warn(`envelope rejected: ${errorMessage(err)}`);
+        ctx.logger.warn(
+          `[reconn] envelope rejected: ${errorMessage(err)} ` +
+            `(channel lastInbound=${result.channel.lastInboundSeq})`,
+        );
         continue;
       }
 
       const request = tryParse(plaintext);
+      if (methodOf(request) === 'bridge/status') {
+        ctx.logger.info(
+          `[reconn] bridge/status received seq=${(validation.data as SecureEnvelope).seq} ` +
+            `→ dispatch+reply`,
+        );
+      }
       // Tag the request with this connection's session identity so per-phone
       // handlers (notifications/*) target the right session when several phones
       // are connected concurrently.
@@ -137,6 +175,9 @@ export async function handleSecureConnection(options: SecureConnectionOptions): 
       // delivery. `unregister` returns false when we were superseded.
       const stillCurrent =
         sink === undefined || ctx.sessionRegistry.unregister(phoneDeviceId, sink);
+      ctx.logger.info(
+        `[reconn] connection teardown device=${phoneDeviceId} stillCurrent=${stillCurrent}`,
+      );
       if (stillCurrent) {
         ctx.sessions.remove(phoneDeviceId);
         if (sessionId !== undefined) ctx.pushService.clearActiveSession(sessionId);
@@ -153,6 +194,15 @@ export async function handleSecureConnection(options: SecureConnectionOptions): 
 
 function toBytes(message: unknown): Buffer {
   return Buffer.from(JSON.stringify(message), 'utf-8');
+}
+
+/** The JSON-RPC `method` of a parsed request, if present (for `[reconn]` logs). */
+function methodOf(value: unknown): string | undefined {
+  if (value !== null && typeof value === 'object' && 'method' in value) {
+    const method = (value as { method?: unknown }).method;
+    return typeof method === 'string' ? method : undefined;
+  }
+  return undefined;
 }
 
 function tryParse(bytes: Buffer): unknown {
