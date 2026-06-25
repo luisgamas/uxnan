@@ -47,8 +47,7 @@ Highlights of what ships today:
 
 Pre-release gaps before distributing builds: branded icons + signing/
 updater keys (`FOR-HUMAN.md`) and a CI/CD pipeline (see `FOR-DEV.md` →
-*CI/CD — release builds*). Per-component `*_MVP.md` snapshots (kept local
-in the working tree, see `.git/info/exclude`) summarize the state.
+*CI/CD — release builds*).
 
 ## Docs
 

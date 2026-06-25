@@ -10,7 +10,7 @@ name: Release — npm (shared, bridge, relay)
 # @uxnan/shared to the exact alpha version already on npm before publishing.
 #
 # First publish uses NPM_TOKEN. After each package exists, configure Trusted
-# Publishing (OIDC) in npm and drop the token — see CI_CD_MONOREPOS.md §3.7.
+# Publishing (OIDC) in npm and drop the token after the first publish.
 
 on:
   push:

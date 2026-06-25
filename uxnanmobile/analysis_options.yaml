@@ -25,7 +25,6 @@ linter:
   rules:
     # Disabled: these are meant for published libraries, not an application.
     # They produced ~80 doc-only "issues" with no real quality value here.
-    # Decision recorded in CI_CD_MONOREPOS.md §8 (CI/CD setup).
     public_member_api_docs: false # would require a /// on every public member
     comment_references: false # resolves type refs inside doc comments
     # Style rules (enabled).

@@ -9,7 +9,7 @@ which versions "go together".
 
 - Base SemVer starts at `0.0.1` (pre-1.0 = unstable; breaking changes allowed).
 - Alpha builds use `0.0.PATCH-alpha.YYYYMMDD`. The `YYYYMMDD` date orders
-  correctly under SemVer/npm (see `CI_CD_MONOREPOS.md` §4).
+  correctly under SemVer/npm.
 - Per-component git tags drive releases:
   `shared-v*`, `bridge-v*`, `relay-v*`, `desktop-v*`, `mobile-v*`
   (mobile may append `+<buildNumber>`, e.g. `mobile-v0.0.1-alpha.20260621+5`).

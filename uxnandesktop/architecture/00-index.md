@@ -117,9 +117,7 @@ Esto es lo que hace posible el paralelismo real. Sin worktrees, multiples agente
 
 > Esta seccion registra el avance de implementacion frente a la especificacion;
 > se actualiza con cada incremento (ver `uxnandesktop/CHANGELOG.md`). El detalle
-> de lo que falta y por que vive en `uxnandesktop/FOR-DEV.md`. Snapshot vivo de
-> "donde estamos vs. donde queriamos estar" en
-> `UXNANDESKTOP_MVP.md` (archivo local, ver `.git/info/exclude`).
+> de lo que falta y por que vive en `uxnandesktop/FOR-DEV.md`.
 
 **uxnandesktop (Tauri 2 ADE) — rama `uxnandesktop`:**
 
