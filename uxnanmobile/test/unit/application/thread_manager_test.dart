@@ -238,6 +238,60 @@ void main() {
     expect(_text(streaming!), 'late');
   });
 
+  test('resync seeds the live buffer with the in-flight turn partial text',
+      () async {
+    await manager.selectThread('th1');
+    await _settle();
+
+    // The bridge reports the turn still in flight AND the partial assistant
+    // output it already streamed before we reconnected (it persists deltas as
+    // they arrive). The re-attach must recover that text, not start empty.
+    turnListResult = {
+      'turns': [
+        {
+          'id': 'turnZ',
+          'messages': [
+            {'role': 'assistant', 'content': 'on it, let me check'},
+          ],
+        },
+      ],
+      'total': 1,
+      'activeTurnId': 'turnZ',
+    };
+    await manager.resyncActive();
+    await _settle();
+
+    // The pre-reconnect text is restored immediately (not lost).
+    expect(manager.timeline.isStreaming, isTrue);
+    final reattached =
+        manager.timeline.messages.firstWhere((m) => m.id == 'stream-turnZ');
+    expect(_text(reattached), 'on it, let me check');
+
+    // A delta that streams after the reconnect extends the seeded run in place
+    // (no gap, no duplication) — the early text stays.
+    events.add(
+      const MessageDeltaEvent(turnId: 'turnZ', threadId: 'th1', delta: ' now'),
+    );
+    await _settle();
+    final streamed =
+        manager.timeline.messages.firstWhere((m) => m.id == 'stream-turnZ');
+    expect(_text(streamed), 'on it, let me check now');
+
+    // On completion the finalized bubble keeps the full text, early part too.
+    events.add(
+      const TurnCompletedEvent(
+        turnId: 'turnZ',
+        threadId: 'th1',
+        text: 'on it, let me check now',
+      ),
+    );
+    await _settle();
+    expect(manager.timeline.isStreaming, isFalse);
+    final finalized =
+        manager.timeline.messages.firstWhere((m) => m.id == 'stream-turnZ');
+    expect(_text(finalized), 'on it, let me check now');
+  });
+
   test('finalizes with the bridge text when re-attached without streamed text',
       () async {
     await manager.selectThread('th1');

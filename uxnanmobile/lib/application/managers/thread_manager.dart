@@ -633,7 +633,14 @@ class ThreadManager {
     // (absent after a bridge restart), so it never resurrects an ended turn.
     final activeTurnId = page.activeTurnId;
     if (activeTurnId != null && _live[threadId]?.turnId != activeTurnId) {
-      _live[threadId] = _LiveTurn(turnId: activeTurnId);
+      // Seed the live buffer with the partial assistant output the bridge has
+      // already accumulated for this in-flight turn (it stores deltas as they
+      // stream — see AgentManager.#onEvent `appendDelta`), so the text the
+      // agent produced *before* we reconnected isn't lost. Without seeding, the
+      // buffer starts empty and only output that streams *after* the reconnect
+      // shows up — the earlier reply (e.g. "on it, let me check…") silently
+      // vanishes from the bubble even though the bridge still has it.
+      _live[threadId] = _seedLiveTurn(activeTurnId, page.turns);
       _setActivity(threadId, ThreadActivity.running);
     }
     await _persistTurns(threadId, page.turns, trackLatestUsage: true);
@@ -650,6 +657,36 @@ class ThreadManager {
       _remoteOldestOffset = offset < 0 ? 0 : offset;
     }
     _rebuildActiveTimeline();
+  }
+
+  /// Builds a [_LiveTurn] for [turnId] pre-filled with the partial assistant
+  /// content the bridge already streamed for it, recovered from the `turn/list`
+  /// [turns] page. Mirrors the history ordering used by [_assistantContents]
+  /// (any structured blocks first, then the accumulated text run), and keeps
+  /// the text run **last** so the next streamed delta extends it in place via
+  /// [_LiveTurn.appendText] instead of starting a detached run. Returns an
+  /// empty buffer when the active turn isn't found in the page (older bridge,
+  /// or the turn carries no assistant output yet).
+  _LiveTurn _seedLiveTurn(String turnId, List<Object?> turns) {
+    final live = _LiveTurn(turnId: turnId);
+    for (final rawTurn in turns) {
+      if (rawTurn is! Map || rawTurn['id'] != turnId) continue;
+      final messages = rawTurn['messages'];
+      if (messages is! List) continue;
+      for (final rawMsg in messages) {
+        if (rawMsg is! Map || rawMsg['role'] != 'assistant') continue;
+        final thinking = rawMsg['thinking'];
+        if (thinking is String && thinking.isNotEmpty) {
+          live.thinking += thinking;
+        }
+        live.segments.addAll(_decodeBlocks(rawMsg['blocks']));
+        final content = rawMsg['content'];
+        if (content is String && content.isNotEmpty) {
+          live.segments.add(TextContent(content));
+        }
+      }
+    }
+    return live;
   }
 
   /// Sends `turn/list` for one page and returns its turns + reported `total`

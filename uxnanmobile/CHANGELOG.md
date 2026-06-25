@@ -6,6 +6,25 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — a mid-stream turn's earlier reply is no longer lost on reconnect (Bug A)
+- **The live re-attach now seeds the streaming buffer with the in-flight turn's
+  partial output.** When the app was killed and reopened while the agent was
+  mid-turn, the re-attach (`activeTurnId`) recreated the `_live` buffer **empty**,
+  so the text the agent had already streamed before the close (e.g. "on it, let
+  me check…") vanished from the bubble — only output produced *after* the
+  reconnect showed, and because new deltas made the buffer non-empty, the
+  finalized message also dropped the earlier part. The bridge already persists
+  deltas as they stream and returns the accumulated text/thinking/blocks for the
+  active turn in `turn/list`, so `_resyncThread` now pre-fills the re-attached
+  `_LiveTurn` from that partial content (blocks first, then the text run kept
+  last so the next delta extends it in place). No bridge/contract change — it
+  consumes the partial content `turn/list` already reports. Confirmed against the
+  fresh `[reconn]` capture: a full close/reopen handshakes as `trusted_reconnect`
+  with "no catch-up backlog to replay", i.e. `_live` is genuinely empty at resync
+  time. Tests: +1 (`thread_manager_test.dart`: a resync seeds the live buffer
+  with the in-flight turn's partial text).
+  - `application/managers/thread_manager.dart` (`_resyncThread`, `_seedLiveTurn`).
+
 ### Fixed — a resume resync no longer hangs the thread view for 30 s (Bug A)
 - **The resume/reconnect `turn/list` resync now uses an 8 s timeout** instead of
   the request correlator's 30 s default. When the app returns from the background
