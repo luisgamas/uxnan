@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — history branch graph looks like VS Code
+- **Branch-stable lane colors.** The history graph colored lanes by *column
+  index*, so two unrelated branches that happened to share a column looked like
+  the same branch. Each lane now carries a color id assigned when it's born and
+  kept for its whole life (a reused lane gets a fresh one), so a branch keeps
+  its color even as it shifts columns — matching VS Code. `src/lib/gitGraph.ts`.
+- **Rounded-step connectors + ringed merge nodes.** Branch/merge edges are now
+  drawn as VS Code-style rounded steps (vertical → quarter-arc → horizontal)
+  instead of straight diagonals, and merge commits render as a solid dot with a
+  separate outer ring. `src/lib/components/HistoryPanel.svelte`.
+- The log itself was already correct (git2 `Sort::TOPOLOGICAL | TIME` / CLI
+  `--topo-order`, offset paging, no merge-shortstat parsing) — only the graph's
+  visuals changed. Docs: `architecture/02c-git-worktrees.md` §6.4.
+
 ### Changed — agent notifications: precise, hook-driven, enriched
 - **No more "agent is idle" notifications.** The coarse output-activity inference
   no longer raises any notification or unread badge — it only drives the visual

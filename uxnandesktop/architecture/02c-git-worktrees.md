@@ -351,8 +351,15 @@ worktree activo. Características:
   espera a continuación; el commit ocupa el/los carriles que lo esperaban (el más
   a la izquierda es su nodo, el resto son aristas de merge que colapsan en él), su
   primer padre continúa en el mismo carril y cada padre extra abre/reutiliza otro.
-  Color fijo por índice de carril. El grafo solo se muestra sobre el log sin
-  filtrar (un filtro rompería las cadenas de padres).
+  **Color estable por rama** (estilo VS Code): a cada carril se le asigna un id
+  de color al nacer que conserva toda su vida (un carril reutilizado recibe uno
+  nuevo), de modo que una rama mantiene su color aunque cambie de columna — en
+  vez de colorear por índice de columna, donde ramas distintas que comparten
+  columna se verían iguales. Las aristas de branch/merge se dibujan con
+  **conectores de esquina redondeada** (vertical → arco → horizontal, como VS
+  Code) en lugar de diagonales rectas, y los **merge commits** llevan un punto
+  sólido con un **anillo de contorno separado**. El grafo solo se muestra sobre
+  el log sin filtrar (un filtro rompería las cadenas de padres).
 
 #### Comandos Tauri (historial)
 
