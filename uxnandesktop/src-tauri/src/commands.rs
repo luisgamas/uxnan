@@ -301,7 +301,9 @@ pub async fn worktree_create(
 
 /// Remove a worktree (spec §2.3). With `force = false` the backend refuses when
 /// the worktree has uncommitted changes; the frontend surfaces this so the user
-/// can confirm a forced removal. A safe branch delete is attempted afterwards.
+/// can confirm a forced removal. Afterwards the branch is cleaned up: a safe
+/// delete for merged work, a force-delete for a confirmed squash merge, or kept
+/// otherwise. The returned [`git::RemoveOutcome`] tells the UI which happened.
 #[tauri::command]
 pub async fn worktree_remove(
     state: State<'_, AppState>,
@@ -309,7 +311,7 @@ pub async fn worktree_remove(
     path: String,
     branch: Option<String>,
     force: bool,
-) -> Result<(), CommandError> {
+) -> Result<git::RemoveOutcome, CommandError> {
     let repo_path = repo_path_of(&state, &repo_id).await?;
     git::remove_worktree(&repo_path, &path, branch.as_deref(), force)
         .await

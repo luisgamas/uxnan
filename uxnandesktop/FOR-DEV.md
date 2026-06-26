@@ -55,7 +55,6 @@ yet on either side** — the bridge's `desktop/*` handler is also an empty stub
 
 **Git & worktrees**
 - [ ] WSL path detection (`\\wsl.localhost\…`) → route through `wsl.exe`.
-- [ ] Aggressive cleanup for squash-merged branches (patch-equivalence).
 - [ ] AI commit message + image diffs (need an agent/bridge).
 
 **Agents**

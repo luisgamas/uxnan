@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — git: squash-merged branch cleanup on worktree removal
+- **Removing a worktree now cleans up a squash-merged branch.** After the safe
+  `git branch -d` (which only deletes truly merged work), the backend now detects
+  **patch-equivalence** for a squash merge — it synthesizes a dangling commit
+  with the branch's tree on top of `merge-base(base, branch)` and asks
+  `git cherry` whether the base already contains an equivalent patch — and, when
+  confirmed, force-deletes the branch (`-D`); otherwise the branch is **kept** so
+  no work is ever lost (`src-tauri/src/git.rs` `is_squash_merged` +
+  `RemoveOutcome`; 2 new integration tests). `worktree_remove` now returns a
+  `RemoveOutcome` (`branchDeleted` / `branchPreserved` / `squashMerged`), and the
+  removal toast reflects what happened to the branch
+  (`src/lib/state/projects.svelte.ts`, new `toast.worktreeRemoved*` strings).
+
 ### Changed — git & worktrees follow-ups
 - **Commit composer fields use shadcn components.** The commit **summary** and
   **extended description** are now `shadcn-svelte` `Textarea`s, and each

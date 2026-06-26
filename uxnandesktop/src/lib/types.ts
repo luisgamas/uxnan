@@ -117,6 +117,18 @@ export interface WorktreeEntry {
   isMain: boolean;
 }
 
+/** What `worktree_remove` did with the branch (mirror of Rust `RemoveOutcome`).
+ *  The worktree itself is always removed on success; these flags describe only
+ *  the branch cleanup so the UI can tell the user. */
+export interface RemoveOutcome {
+  /** The branch was deleted (safe `-d`, or `-D` after a confirmed squash merge). */
+  branchDeleted: boolean;
+  /** The branch was kept because its changes couldn't be confirmed as merged. */
+  branchPreserved: boolean;
+  /** The delete relied on squash-merge (patch-equivalence) detection. */
+  squashMerged: boolean;
+}
+
 /** A repo's local branches + the resolved default base for the new-worktree
  *  dialog (mirror of the Rust `BranchList` command DTO). */
 export interface BranchList {

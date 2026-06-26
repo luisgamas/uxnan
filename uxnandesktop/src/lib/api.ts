@@ -18,6 +18,7 @@ import type {
   HookInstall,
   HookScripts,
   HookServerInfo,
+  RemoveOutcome,
   RepoData,
   SavedTerminalLayout,
   WorktreeEntry,
@@ -149,14 +150,20 @@ export function worktreeCreate(
 }
 
 /** Remove a worktree. Without `force`, the backend refuses when the worktree has
- *  uncommitted changes (surface the error and offer a forced retry). */
+ *  uncommitted changes (surface the error and offer a forced retry). Resolves to
+ *  the branch-cleanup outcome (deleted / squash-merged / preserved). */
 export function worktreeRemove(
   repoId: string,
   path: string,
   branch: string | null,
   force: boolean,
-): Promise<void> {
-  return invoke("worktree_remove", { repoId, path, branch: branch ?? null, force });
+): Promise<RemoveOutcome> {
+  return invoke<RemoveOutcome>("worktree_remove", {
+    repoId,
+    path,
+    branch: branch ?? null,
+    force,
+  });
 }
 
 /** List a repo's worktrees (ADE- and agent-created). */

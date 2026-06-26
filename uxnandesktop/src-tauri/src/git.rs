@@ -27,6 +27,25 @@ pub struct WorktreeEntry {
     pub is_main: bool,
 }
 
+/// Outcome of [`remove_worktree`], so the frontend can tell the user what
+/// happened to the branch. The worktree itself is always removed on success;
+/// these flags only describe the *branch* cleanup (spec §2.3).
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoveOutcome {
+    /// The branch was deleted (either a safe `-d` delete of merged work, or a
+    /// forced `-D` of a branch whose changes are already squash-merged).
+    pub branch_deleted: bool,
+    /// The branch was kept because its changes couldn't be confirmed as merged
+    /// (so no work is lost); the user can delete it by hand later.
+    pub branch_preserved: bool,
+    /// The deletion relied on squash-merge (patch-equivalence) detection — the
+    /// branch's commits aren't ancestors of the base, but its net diff already
+    /// is. Surfaced so the toast can say the branch was cleaned up, not just
+    /// "removed".
+    pub squash_merged: bool,
+}
+
 /// Working-tree status summary for a worktree card badge.
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "camelCase")]
@@ -262,16 +281,18 @@ pub fn parse_status_porcelain(input: &str) -> WorktreeStatus {
 
 /// Remove a worktree with safeguards (spec §2.3). With `force = false`, refuses
 /// when the worktree has uncommitted changes. After removal it prunes the
-/// administrative files and attempts a *safe* branch delete (`git branch -d`,
-/// which fails — and is ignored — when the branch has unmerged commits, so work
-/// is never lost). Patch-equivalence detection for squash-merged branches is
-/// deferred (FOR-DEV: aggressive branch cleanup).
+/// administrative files and cleans up the branch: a *safe* delete (`git branch
+/// -d`) for merged work, then — if that's refused — squash-merge detection
+/// ([`is_squash_merged`]) which force-deletes (`git branch -D`) a branch whose
+/// net diff is already in the base, otherwise the branch is **kept** so work is
+/// never lost. The [`RemoveOutcome`] reports which path was taken so the UI can
+/// tell the user.
 pub async fn remove_worktree(
     repo_path: &str,
     worktree_path: &str,
     branch: Option<&str>,
     force: bool,
-) -> Result<(), AppError> {
+) -> Result<RemoveOutcome, AppError> {
     // Only block on uncommitted changes when the worktree is still a valid,
     // intact checkout. If `status` errors (a half-removed / broken worktree),
     // fall through so this call can finish cleaning it up.
@@ -301,10 +322,78 @@ pub async fn remove_worktree(
     // frontend kills the worktree's terminals first, and we retry briefly).
     let _ = git(repo_path, &["worktree", "prune"]).await;
     remove_dir_with_retry(worktree_path).await;
+
+    let mut outcome = RemoveOutcome::default();
     if let Some(branch) = branch {
-        let _ = git(repo_path, &["branch", "-d", branch]).await;
+        // Safe delete first: succeeds only when the branch's commits are an
+        // ancestor of some ref (truly merged), so it can never lose work.
+        if git(repo_path, &["branch", "-d", branch]).await.is_ok() {
+            outcome.branch_deleted = true;
+        } else {
+            // `-d` was refused (unmerged commits). The work may still have landed
+            // as a *squash* merge — a single commit on the base carrying the same
+            // net diff. If we can confirm that patch-equivalence, force-delete is
+            // safe; otherwise keep the branch.
+            let base = default_base(repo_path).await;
+            if base != branch && is_squash_merged(repo_path, branch, &base).await {
+                if git(repo_path, &["branch", "-D", branch]).await.is_ok() {
+                    outcome.branch_deleted = true;
+                    outcome.squash_merged = true;
+                } else {
+                    outcome.branch_preserved = true;
+                }
+            } else {
+                outcome.branch_preserved = true;
+            }
+        }
     }
-    Ok(())
+    Ok(outcome)
+}
+
+/// Whether `branch`'s net changes are already present in `base` as a squash
+/// merge (patch-equivalence), even though its commits aren't ancestors of `base`
+/// (so `git branch -d` refuses it). We synthesize a dangling commit holding the
+/// branch's tree on top of `merge-base(base, branch)`, then ask `git cherry`
+/// whether `base` already contains an equivalent patch — a `-`-prefixed line.
+/// This is the canonical squash-merge check (used by e.g. git-delete-squashed).
+/// Best-effort: any git error yields `false`, so the branch is kept rather than
+/// risk deleting unmerged work.
+async fn is_squash_merged(repo_path: &str, branch: &str, base: &str) -> bool {
+    let Ok(merge_base) = git(repo_path, &["merge-base", base, branch]).await else {
+        return false;
+    };
+    let merge_base = merge_base.trim();
+    if merge_base.is_empty() {
+        return false;
+    }
+    let tree_ref = format!("{branch}^{{tree}}");
+    let Ok(tree) = git(repo_path, &["rev-parse", &tree_ref]).await else {
+        return false;
+    };
+    let tree = tree.trim();
+    if tree.is_empty() {
+        return false;
+    }
+    // A commit with the branch's full tree, parented on the merge base, so its
+    // single patch equals the branch's whole contribution since it diverged.
+    let Ok(dangling) = git(
+        repo_path,
+        &["commit-tree", tree, "-p", merge_base, "-m", "_"],
+    )
+    .await
+    else {
+        return false;
+    };
+    let dangling = dangling.trim();
+    if dangling.is_empty() {
+        return false;
+    }
+    // `git cherry <upstream> <head>` marks each commit `+` (not in upstream) or
+    // `-` (an equivalent patch already in upstream). A `-` means squash-merged.
+    match git(repo_path, &["cherry", base, dangling]).await {
+        Ok(out) => out.lines().any(|l| l.trim_start().starts_with('-')),
+        Err(_) => false,
+    }
 }
 
 /// Delete `path` if it still exists, retrying a few times so a just-released
@@ -939,5 +1028,82 @@ mod tests {
             vec!["HEAD", "main", "origin/main", "tag: v1.0"]
         );
         assert!(parse_refs("").is_empty());
+    }
+
+    // --- Squash-merge branch cleanup (integration; needs the git CLI) ---------
+
+    /// Run a git command in `dir`, panicking with context on failure.
+    async fn run_git(dir: &str, args: &[&str]) {
+        git(dir, args)
+            .await
+            .unwrap_or_else(|e| panic!("git {args:?} in {dir} failed: {e:?}"));
+    }
+
+    /// Init a repo on `main` with a deterministic identity and signing off, plus
+    /// one initial commit so branches have a shared base.
+    async fn init_repo(dir: &str) {
+        run_git(dir, &["init", "-b", "main"]).await;
+        run_git(dir, &["config", "user.email", "test@uxnan.dev"]).await;
+        run_git(dir, &["config", "user.name", "Uxnan Test"]).await;
+        run_git(dir, &["config", "commit.gpgsign", "false"]).await;
+        std::fs::write(format!("{dir}/README.md"), "base\n").unwrap();
+        run_git(dir, &["add", "-A"]).await;
+        run_git(dir, &["commit", "-m", "initial"]).await;
+    }
+
+    #[tokio::test]
+    async fn remove_worktree_force_deletes_squash_merged_branch() {
+        let repo = tempfile::tempdir().unwrap();
+        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        init_repo(&repo_path).await;
+
+        // A feature worktree with its own commit.
+        let wt = worktree_path_for(&repo_path, "feature");
+        add_worktree(&repo_path, "feature", &wt, Some("main"))
+            .await
+            .unwrap();
+        std::fs::write(format!("{wt}/feature.txt"), "hello\n").unwrap();
+        run_git(&wt, &["add", "-A"]).await;
+        run_git(&wt, &["commit", "-m", "add feature"]).await;
+
+        // Squash-merge it into main: the same net diff, a different commit — so
+        // `git branch -d feature` would refuse it.
+        run_git(&repo_path, &["merge", "--squash", "feature"]).await;
+        run_git(&repo_path, &["commit", "-m", "squash feature"]).await;
+
+        let outcome = remove_worktree(&repo_path, &wt, Some("feature"), false)
+            .await
+            .unwrap();
+        assert!(outcome.branch_deleted, "branch should be deleted");
+        assert!(outcome.squash_merged, "via squash-merge detection");
+        assert!(!outcome.branch_preserved);
+        // The branch is really gone.
+        let branches = list_branches(&repo_path).await.unwrap();
+        assert!(!branches.iter().any(|b| b == "feature"));
+    }
+
+    #[tokio::test]
+    async fn remove_worktree_keeps_genuinely_unmerged_branch() {
+        let repo = tempfile::tempdir().unwrap();
+        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        init_repo(&repo_path).await;
+
+        let wt = worktree_path_for(&repo_path, "wip");
+        add_worktree(&repo_path, "wip", &wt, Some("main"))
+            .await
+            .unwrap();
+        std::fs::write(format!("{wt}/wip.txt"), "unmerged\n").unwrap();
+        run_git(&wt, &["add", "-A"]).await;
+        run_git(&wt, &["commit", "-m", "wip work"]).await;
+
+        // Never merged anywhere → the branch must be preserved (no work lost).
+        let outcome = remove_worktree(&repo_path, &wt, Some("wip"), false)
+            .await
+            .unwrap();
+        assert!(outcome.branch_preserved, "unmerged branch is kept");
+        assert!(!outcome.branch_deleted);
+        assert!(!outcome.squash_merged);
+        let branches = list_branches(&repo_path).await.unwrap();
+        assert!(branches.iter().any(|b| b == "wip"));
     }
 }

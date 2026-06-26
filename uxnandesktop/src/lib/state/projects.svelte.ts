@@ -268,9 +268,17 @@ class ProjectsStore {
       if (this.activeWorktreePath === row.path) this.activeWorktreePath = null;
       // Let the OS release the just-killed processes' directory handles.
       await new Promise((resolve) => setTimeout(resolve, 200));
-      await worktreeRemove(row.repoId, row.path, row.branch, force);
+      const outcome = await worktreeRemove(row.repoId, row.path, row.branch, force);
       await this.loadWorktrees(row.repoId);
-      toast.success(i18n.t("toast.worktreeRemoved"));
+      // The worktree is gone either way; the message depends on what happened to
+      // the branch (kept because unmerged / cleaned up after a squash merge).
+      if (outcome?.branchPreserved) {
+        toast.success(i18n.t("toast.worktreeRemovedBranchKept"));
+      } else if (outcome?.squashMerged) {
+        toast.success(i18n.t("toast.worktreeRemovedSquash"));
+      } else {
+        toast.success(i18n.t("toast.worktreeRemoved"));
+      }
       return true;
     } catch (e) {
       this.error = msg(e);

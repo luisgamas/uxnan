@@ -11,6 +11,8 @@ export const en = {
   "toast.pushed": "Pushed",
   "toast.pulled": "Pulled",
   "toast.worktreeRemoved": "Worktree removed",
+  "toast.worktreeRemovedBranchKept": "Worktree removed · branch kept (unmerged)",
+  "toast.worktreeRemovedSquash": "Worktree removed · squash-merged branch cleaned up",
   "toast.projectRemoved": "Project removed",
   "toast.agent": "Agent",
   "toast.agentDone": "{name} finished",

@@ -8,6 +8,8 @@ export const es: Record<MessageKey, string> = {
   "toast.pushed": "Push realizado",
   "toast.pulled": "Pull realizado",
   "toast.worktreeRemoved": "Worktree eliminado",
+  "toast.worktreeRemovedBranchKept": "Worktree eliminado · rama conservada (sin fusionar)",
+  "toast.worktreeRemovedSquash": "Worktree eliminado · rama squash-merged depurada",
   "toast.projectRemoved": "Proyecto eliminado",
   "toast.agent": "Agente",
   "toast.agentDone": "{name} terminó",
