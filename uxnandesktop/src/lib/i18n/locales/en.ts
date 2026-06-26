@@ -437,7 +437,7 @@ export const en = {
   "settings.defaultAgentDesc":
     "Auto-launched in a worktree right after you create it. Leave on “None” to never start an agent automatically.",
   "settings.agentShell": "Agent launch shell",
-  "settings.agentShellSmart": "Smart default (Command Prompt on Windows)",
+  "settings.agentShellSmart": "Smart default (Command Prompt)",
   "settings.agentShellDesc":
     "The shell agents launch in when they don’t pin their own. Command Prompt starts agent CLIs faster and quotes more predictably than PowerShell on Windows; pick another shell if you prefer.",
 

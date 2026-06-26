@@ -452,7 +452,9 @@
                   persistNow();
                 }}
               >
-                <Select.Trigger class="w-56">{agentShellLabel}</Select.Trigger>
+                <Select.Trigger class="w-72 max-w-full">
+                  <span class="min-w-0 flex-1 truncate text-left">{agentShellLabel}</span>
+                </Select.Trigger>
                 <Select.Content>
                   <Select.Item value={AGENT_SHELL_DEFAULT} label={i18n.t("settings.agentShellSmart")}>
                     {i18n.t("settings.agentShellSmart")}

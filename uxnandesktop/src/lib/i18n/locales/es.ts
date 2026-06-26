@@ -435,7 +435,7 @@ export const es: Record<MessageKey, string> = {
   "settings.defaultAgentDesc":
     "Se lanza automáticamente en un worktree justo después de crearlo. Déjalo en “Ninguno” para no iniciar ningún agente automáticamente.",
   "settings.agentShell": "Shell de lanzamiento de agentes",
-  "settings.agentShellSmart": "Predeterminado inteligente (Símbolo del sistema en Windows)",
+  "settings.agentShellSmart": "Predeterminado (Símbolo del sistema)",
   "settings.agentShellDesc":
     "El shell en el que se lanzan los agentes cuando no fijan el suyo. En Windows, el Símbolo del sistema inicia los CLI de agente más rápido y entrecomilla de forma más predecible que PowerShell; elige otro shell si lo prefieres.",
 
