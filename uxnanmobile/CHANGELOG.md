@@ -12,8 +12,9 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   files in a muted italic tone — but that's the universal "git ignores this"
   affordance, and it diverged from the rest of the app, where untracked is the
   `gitUntracked` blue (the Git screen, commit detail, diff views). The browser
-  now matches that convention: untracked → blue (upright, medium weight), like
-  added/modified/deleted in their tokens. The muted-italic *dimmed* treatment is
+  now matches that convention: untracked → blue, like added/modified/deleted in
+  their tokens. Rows no longer carry a medium weight at all — colour alone (plus
+  italic for ignored) conveys the state. The muted-italic *dimmed* treatment is
   reserved for **ignored** entries, a distinct concept (a file type vs a git
   state), surfaced by the bridge's new `WorkspaceEntry.ignored` flag and carried
   on `FileEntry` / `FileTreeNode`. Ignored is independent of `gitStatus`

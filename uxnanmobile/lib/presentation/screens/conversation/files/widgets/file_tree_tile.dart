@@ -163,11 +163,11 @@ const _codeExts = [
 
 /// A single row in the file browser: a leading file-type icon, the name, an
 /// optional details line (size · modified), and a trailing chevron for
-/// directories. Git *state* is conveyed through the name + icon colour (see
-/// [gitStatusColor], the conventional git palette) plus a medium weight on
-/// changed/untracked rows. Git-*ignored* entries are dimmed instead — a muted
-/// tone in *italic* — so "git ignores this" reads at a glance, clearly apart
-/// from the solid tracked/untracked rows, without extra status dots or pills.
+/// directories. Git *state* is conveyed purely through the name + icon colour
+/// (see [gitStatusColor], the conventional git palette) — every row uses the
+/// regular weight. Git-*ignored* entries are dimmed instead — a muted tone in
+/// *italic* — so "git ignores this" reads at a glance, clearly apart from the
+/// coloured tracked/untracked rows, without extra status dots or pills.
 ///
 /// Stateless — the parent owns expansion / selection state and passes the
 /// derived booleans. Tap fires [onTap], long-press [onLongPress] when given.
@@ -227,15 +227,13 @@ class FileTreeTile extends StatelessWidget {
     // the name is coloured by git state: tracked-unchanged → onSurface,
     // changed / untracked → the conventional git colour. The leading file-type
     // icon takes the same colour, except a neutral (unchanged) file keeps a
-    // slightly softer icon tone than its name.
+    // slightly softer icon tone than its name. Every row uses the regular
+    // weight — colour (and italic for ignored) carries the state.
     final statusColor =
         isIgnored ? colors.onSurfaceVariant : gitStatusColor(status, colors);
     final iconColor =
         (isIgnored || status == null) ? colors.onSurfaceVariant : statusColor;
-    // Changed / untracked rows carry the medium weight so they stand out;
-    // clean and ignored rows stay regular. Only ignored rows go *italic* —
-    // the single visual cue reserved for "git ignores this".
-    final emphasised = !isIgnored && status != null;
+    // Italic is the single visual cue reserved for "git ignores this".
     final isItalic = isIgnored;
 
     // The details line (size · modified) replaces the old redundant "name with
@@ -279,8 +277,6 @@ class FileTreeTile extends StatelessWidget {
                     displayName,
                     style: textTheme.bodyMedium?.copyWith(
                       color: statusColor,
-                      fontWeight:
-                          emphasised ? FontWeight.w500 : FontWeight.w400,
                       fontStyle: isItalic ? FontStyle.italic : FontStyle.normal,
                     ),
                     overflow: TextOverflow.ellipsis,

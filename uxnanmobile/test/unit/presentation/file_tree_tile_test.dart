@@ -56,7 +56,6 @@ void main() {
       // never italic; italic is reserved for ignored entries.
       expect(r.style.color, UxnanColors.gitUntracked);
       expect(r.style.fontStyle, isNot(FontStyle.italic));
-      expect(r.style.fontWeight, FontWeight.w500);
     });
 
     testWidgets('modified uses the amber git token', (tester) async {
@@ -87,8 +86,6 @@ void main() {
       );
       expect(r.style.fontStyle, FontStyle.italic);
       expect(r.style.color, r.scheme.onSurfaceVariant);
-      // Dimmed rows stay at regular weight (only changed/untracked emphasise).
-      expect(r.style.fontWeight, FontWeight.w400);
     });
 
     testWidgets('a clean tracked file is upright in the regular tone', (
@@ -104,7 +101,6 @@ void main() {
       );
       expect(r.style.color, r.scheme.onSurface);
       expect(r.style.fontStyle, isNot(FontStyle.italic));
-      expect(r.style.fontWeight, FontWeight.w400);
     });
   });
 
