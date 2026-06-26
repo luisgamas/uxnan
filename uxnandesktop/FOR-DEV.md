@@ -59,12 +59,21 @@ yet on either side** — the bridge's `desktop/*` handler is also an empty stub
 - [ ] AI commit message + image diffs (need an agent/bridge).
 - [ ] Commit composer textarea → a shadcn `Textarea`/`Field`.
 
-**Agents**
-- [ ] Env vars per agent; better arg quoting/escaping for the injected command.
-- [ ] Prefer CMD over PowerShell for agent launch on Windows.
-- [ ] Agent auto-launch on worktree create (per-worktree agent default).
-- [ ] **Multi-agent orchestration** (task graph, @type routing, fan-out; spec
-      `02d` §3).
+**Agents** — env vars per agent, shell-aware quoting, the configurable Windows
+launch shell (cmd by default), auto-launch on worktree create, and multi-agent
+orchestration (in-memory task graph, @type/@all routing, fan-out, backpressure)
+are **done** (see `CHANGELOG.md` + `architecture/02d` §3). Remaining follow-ups:
+- [ ] **Orchestration lineage in the *main* sidebar.** The coordinator→workers
+      task graph is surfaced in the orchestration console today (spec `02d` §3.4
+      updated to match). Moving the nested lineage into the left project tree is
+      a larger sidebar-tree refactor, deferred.
+- [ ] **Agent-driven worker creation.** §3.1's "a coordinator *creates* worker
+      agents in their own worktrees" needs an agent→ADE control channel that
+      doesn't exist yet (agents are opaque CLIs). Today the user creates the
+      worktrees/agents and designates the coordinator/workers. Unblocks with the
+      embedded bridge / a local control API.
+- [ ] Persist the per-worktree launch agent onto `WorktreeData.agentId` (today
+      the choice drives the one-shot launch but isn't recorded on the worktree).
 
 **File tree / mixed tabs**
 - [ ] Tree virtualization (TanStack Virtual) for very large folders.

@@ -41,9 +41,15 @@ Highlights of what ships today:
   cache) + Layer 2 terminal-title (OSC) + Layer 3 process-tree detection.
   Colored status dots, unread/done badges, custom agent logos, per-worktree
   agent override.
+- **Multi-agent orchestration** (spec `02d` §3) — a console (status bar, shown
+  with ≥2 live agents) that routes a message to all agents, to one type
+  (fan-out), or to a coordinator's workers, with **backpressure** (each agent
+  gets its next message only once it's free) and an in-memory coordinator→workers
+  task graph.
 - Cross-cutting (S): Settings (theme + terminal profiles w/ OS templates),
   design tokens, full **i18n (EN/ES)** + Language picker, agents
-  registry + install detection + manual + auto-launch.
+  registry + install detection + manual + auto-launch, **per-agent env vars** and
+  a **configurable agent launch shell** (Command Prompt by default on Windows).
 - Virtualized lists (`@tanstack/svelte-virtual`), opt-in keep-awake
   (Windows).
 
@@ -116,6 +122,7 @@ makes `pnpm install` no-op here).
 cd uxnandesktop
 npm install            # frontend deps
 npm run check          # svelte-check (type check)
+npm test               # Vitest unit tests (pure logic — 19 passing)
 npm run build          # build the SPA → build/  (required by `cargo build`'s generate_context!)
 npm run tauri dev      # run the desktop app (compiles Rust on first run)
 ```
