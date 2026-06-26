@@ -74,6 +74,10 @@ pub async fn pty_create(
     cwd: Option<String>,
     shell: Option<String>,
     args: Option<Vec<String>>,
+    // Extra environment variables for the spawned shell, as `[key, value]` pairs
+    // (e.g. an agent's configured env). Applied *before* the ADE's own `UXNAN_*`
+    // hook vars so those always win on a key clash.
+    env: Option<Vec<(String, String)>>,
     cols: u16,
     rows: u16,
 ) -> Result<bool, CommandError> {
@@ -88,9 +92,13 @@ pub async fn pty_create(
         let _ = exit_app.emit(&format!("pty:exit:{exit_id}"), ());
     };
 
-    // Inject the hook-server coordinates + this terminal's agent id, so an agent
-    // run inside the shell can report precise state back to the local server.
-    let mut env: Vec<(String, String)> = vec![("UXNAN_AGENT_ID".to_string(), id.clone())];
+    // User/agent-supplied env first (e.g. an agent's configured vars), then the
+    // hook-server coordinates + this terminal's agent id so an agent run inside
+    // the shell can report precise state back. The `UXNAN_*` keys are pushed last
+    // and thus win over any user key of the same name (later sets override).
+    let mut env: Vec<(String, String)> = env.unwrap_or_default();
+    env.retain(|(k, _)| !k.trim().is_empty());
+    env.push(("UXNAN_AGENT_ID".to_string(), id.clone()));
     if let Some(hook) = state.hook.read().await.clone() {
         env.push(("UXNAN_HOOK_URL".to_string(), hook.url));
         env.push(("UXNAN_HOOK_TOKEN".to_string(), hook.token));

@@ -23,6 +23,13 @@ export interface TerminalProfile {
   args: string[];
 }
 
+/** An environment variable attached to an agent (mirror of the Rust `EnvVar`).
+ *  Set on the agent's shell at launch and inherited by the agent process. */
+export interface EnvVar {
+  key: string;
+  value: string;
+}
+
 /** A registered CLI coding agent (mirror of the Rust `AgentProfile`). Launching
  *  it spawns a terminal running `command` + `args` in a worktree. */
 export interface AgentProfile {
@@ -32,8 +39,12 @@ export interface AgentProfile {
   command: string;
   /** Arguments passed to the command (e.g. `["--model", "opus"]`). */
   args: string[];
-  /** Terminal profile (shell) to launch the agent in; null → default profile. */
+  /** Terminal profile (shell) to launch the agent in; null → the configured
+   *  default agent shell (`agentShellProfileId`). */
   terminalProfileId?: string | null;
+  /** Environment variables set on the agent's shell at launch (inherited by the
+   *  agent). `UXNAN_*` hook vars win over a user key of the same name. */
+  env?: EnvVar[];
   /** Logo key for the UI (a catalog id, e.g. `claudecode`); null → generic. */
   icon?: string | null;
 }
@@ -52,6 +63,10 @@ export interface AppSettings {
   agentProfiles: AgentProfile[];
   /** Agent auto-launched when a worktree is created; null = off (default). */
   defaultAgentId?: string | null;
+  /** Terminal profile agents launch in when they don't pin their own. null
+   *  resolves to a smart default: Command Prompt on Windows, else the default
+   *  terminal profile. */
+  agentShellProfileId?: string | null;
   /** Notify when an agent goes idle while you're in another space. Default on. */
   agentNotifications?: boolean;
   /** Keep the system awake while an agent is working (opt-in). Default off. */
@@ -333,6 +348,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   defaultProfileId: null,
   agentProfiles: [],
   defaultAgentId: null,
+  agentShellProfileId: null,
   agentNotifications: true,
   preventSleep: false,
   autoInstallHooks: true,
