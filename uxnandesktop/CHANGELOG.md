@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — history log CLI fallback order
+- The `git log` CLI fallback now uses `--date-order` (was `--topo-order`) so it
+  matches the primary git2 path (`Sort::TOPOLOGICAL | TIME`). The fast path was
+  already correct, so this only affects repos `git2` can't open. `src-tauri/src/git.rs`.
+
 ### Changed — history branch graph: VS Code swimlane curves
 - **The History graph now uses the VS Code swimlane model + true arc
   connectors.** Lanes *compact* — when a branch merges, the extra lanes waiting
