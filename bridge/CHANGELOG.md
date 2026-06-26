@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — `workspace/list` flags git-ignored entries
+- **`workspace/list` now reports `ignored: true` on entries git ignores**
+  (`src/workspace/workspace-service.ts`). A single `git check-ignore -z --stdin`
+  per listing classifies the directory's names; a non-repo (or any git error)
+  just leaves every entry un-flagged, so the file browser keeps working outside a
+  repository. Tracked files matching an ignore rule are *not* flagged (git knows
+  they're tracked). Lets the mobile file browser dim ignored entries (muted +
+  italic). It is **not** a `git/status` field — ignored entries never appear in
+  the changed-file list, so the flag rides on the listing and the Git screen's
+  change counts are untouched.
+- **`runGit` accepts an `input` option** (`src/git/git-runner.ts`) to feed a
+  command's stdin (used for `check-ignore --stdin`); the write is guarded against
+  a closed pipe. Tests: +2 (`workspace-service.test.ts`: a listing flags an
+  ignored file + directory and leaves tracked/clean ones alone; a non-repo
+  listing flags nothing) → **357 bridge**.
+
 ### Added — `workspace/list` entries carry a last-modified time
 - **`workspace/list` now returns `mtime` (epoch ms) on file entries**
   (`src/workspace/workspace-service.ts`). It reuses the same `stat` call that

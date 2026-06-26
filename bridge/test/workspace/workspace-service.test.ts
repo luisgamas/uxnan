@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { JsonRpcErrorCode, RpcError } from '@uxnan/shared';
 import { WorkspaceService } from '../../src/index.js';
+import { runGit } from '../../src/git/git-runner.js';
 
 const ws = new WorkspaceService();
 
@@ -57,6 +58,32 @@ test('list excludes .git and sensitive files and sorts dirs first', async () => 
   assert.ok((file?.mtime ?? 0) > 0);
   assert.equal(dir?.size, undefined);
   assert.equal(dir?.mtime, undefined);
+  await rm(root, { recursive: true, force: true });
+});
+
+test('list flags git-ignored entries and leaves tracked/clean ones un-flagged', async () => {
+  const root = await newRoot();
+  await runGit(root, ['init', '-b', 'main']);
+  await writeFile(join(root, '.gitignore'), 'ignored.txt\nbuild/\n');
+  await writeFile(join(root, 'ignored.txt'), 'x');
+  await writeFile(join(root, 'kept.txt'), 'x');
+  await mkdir(join(root, 'build'));
+  const listing = await ws.list(root);
+  const byName = new Map(listing.entries.map((e) => [e.name, e]));
+  // A matched file and a matched directory are both flagged.
+  assert.equal(byName.get('ignored.txt')?.ignored, true);
+  assert.equal(byName.get('build')?.ignored, true);
+  // A normal file and the `.gitignore` itself are not flagged (absent/false).
+  assert.ok(!byName.get('kept.txt')?.ignored);
+  assert.ok(!byName.get('.gitignore')?.ignored);
+  await rm(root, { recursive: true, force: true });
+});
+
+test('list leaves entries un-flagged outside a git repository', async () => {
+  const root = await newRoot();
+  await writeFile(join(root, 'a.txt'), 'x');
+  const listing = await ws.list(root);
+  assert.ok(!listing.entries.find((e) => e.name === 'a.txt')?.ignored);
   await rm(root, { recursive: true, force: true });
 });
 
