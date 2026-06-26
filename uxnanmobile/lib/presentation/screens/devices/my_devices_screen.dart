@@ -644,9 +644,9 @@ class _BrandingFooter extends StatelessWidget {
             const Spacer(),
             SvgPicture.asset(
               markAsset,
-              height: 28,
+              height: 44,
             ),
-            const SizedBox(height: UxnanSpacing.sm),
+            const SizedBox(height: UxnanSpacing.xs),
             // Release-stage indicator. A neutral, non-interactive label pill
             // modeled on the project's existing `_RiskBadge` / `_TokenChip`
             // pattern: a `Container` with an M3 surface-container background
@@ -666,7 +666,7 @@ class _BrandingFooter extends StatelessWidget {
               ),
               child: Text(
                 l10n.appVersionStage,
-                style: textTheme.bodySmall?.copyWith(
+                style: textTheme.labelSmall?.copyWith(
                   color: colors.onSurfaceVariant,
                   fontWeight: FontWeight.w700,
                 ),
