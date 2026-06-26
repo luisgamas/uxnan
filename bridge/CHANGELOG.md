@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — `git/log` commit order matches the desktop ADE and GitHub
+- **`git/log` now uses `--date-order` instead of `--topo-order`**
+  (`src/git/git-service.ts`). `--topo-order` groups each branch's commits
+  together regardless of commit date, so on the phone some commits appeared far
+  above/below others made around the same time. `--date-order` orders by commit
+  time while still never showing a parent before its children — matching the
+  desktop ADE (git2 `Sort::TOPOLOGICAL | TIME`) and GitHub's commit list. It is
+  still a valid topological order, so the swimlane graph stays clean. Spec:
+  `architecture/02a` `handleGitLog`.
+
 ### Added — `workspace/list` flags git-ignored entries
 - **`workspace/list` now reports `ignored: true` on entries git ignores**
   (`src/workspace/workspace-service.ts`). A single `git check-ignore -z --stdin`

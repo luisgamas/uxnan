@@ -93,9 +93,10 @@ export class GitService {
   ): Promise<GitLogResult> {
     const limit = Math.max(1, Math.min(options.limit ?? 50, 500));
     // `cursor` is an opaque pagination token: the offset (commit count) to skip.
-    // Offset paging over a *topologically ordered* log is the only correct way
-    // to page a DAG — the previous `<cursor>^` (first-parent) scheme silently
-    // dropped a merge's second-parent history across page boundaries.
+    // Offset paging over a stably-ordered log (here `--date-order`, see below)
+    // is the only correct way to page a DAG — the previous `<cursor>^`
+    // (first-parent) scheme silently dropped a merge's second-parent history
+    // across page boundaries.
     const offset = Math.max(0, Math.trunc(Number(options.cursor ?? 0)) || 0);
     // Fetch one extra commit so we can tell `hasMore` without a second git
     // invocation (the extra is dropped from the result).
@@ -116,11 +117,15 @@ export class GitService {
     const args = [
       'log',
       options.ref ?? 'HEAD',
-      // Topological order so a commit's parents immediately follow it: the
-      // phone's swimlane graph stays clean (no lanes left dangling across
-      // unrelated commits, which produced phantom lanes) and matches the
-      // VS Code / `git log --graph` layout.
-      '--topo-order',
+      // Date order (commit-time, newest first) while never showing a parent
+      // before its children — i.e. `git log --date-order`. This matches the
+      // desktop ADE (git2 `Sort::TOPOLOGICAL | TIME`) and GitHub's commit list,
+      // so the phone shows commits in the same chronological order. (`--topo-order`
+      // would group each branch's commits together regardless of date, which
+      // interleaved branches out of time order on the phone.) It's still a valid
+      // topological order, so the swimlane graph stays clean (no parent row
+      // before its children → no dangling/phantom lanes).
+      '--date-order',
       `--format=${format}%x1e`,
       // Full ref names so `%D` is unambiguous (refs/heads vs refs/remotes vs
       // refs/tags) — a local branch named `feat/x` won't be mistaken for a
@@ -140,7 +145,7 @@ export class GitService {
         commits,
         hasMore,
         // Next page = skip everything shown so far. Stable across calls because
-        // topo-order is deterministic for a fixed repo state.
+        // date-order is deterministic for a fixed repo state.
         ...(hasMore ? { nextCursor: String(offset + limit) } : {}),
       };
     } catch (err) {

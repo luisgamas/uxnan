@@ -1601,9 +1601,14 @@ async function handleGitCreateBranch({ cwd, name }) { ... }
 async function handleGitCreateWorktree({ cwd, branch, path, managed }) { ... }
 async function handleGitStackedPublish({ cwd, message, remote, branch }) { ... }
 async function handleGitLog({ cwd, limit, cursor, ref }) {
-  // git log <ref|HEAD> --topo-order --format=...%x1e --decorate=full -z
+  // git log <ref|HEAD> --date-order --format=...%x1e --decorate=full -z
   //   --shortstat -n (limit+1) --skip <offset>
-  // Orden TOPOLÓGICO (no por fecha) → grafo limpio, padres justo tras el hijo.
+  // Orden por FECHA respetando topología (`--date-order`: nunca un padre antes
+  //   que sus hijos, por lo demás por commit-time, más reciente primero) →
+  //   coincide con el ADE de escritorio (git2 `Sort::TOPOLOGICAL | TIME`) y con
+  //   la lista de GitHub. (`--topo-order` agrupaba cada rama y desordenaba los
+  //   commits por fecha en el teléfono.) Sigue siendo orden topológico válido →
+  //   el grafo swimlane queda limpio (sin lanes colgando/fantasma).
   // Paginación por OFFSET: `cursor` es un token opaco (= nº de commits a saltar);
   //   nextCursor = offset+limit. (El antiguo `cursor^` saltaba el 2º padre de un
   //   merge y PERDÍA commits en un DAG.) Devuelve {commits, hasMore, nextCursor}.

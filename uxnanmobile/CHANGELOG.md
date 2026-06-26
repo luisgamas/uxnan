@@ -6,6 +6,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — commit history is now in correct chronological order
+- The History screen's commits were sometimes out of time order (a branch's
+  commits grouped together, so some commits made around the same time showed far
+  apart). Fixed in the bridge — `git/log` switched from `--topo-order` to
+  `--date-order` — so the phone now matches the desktop ADE and GitHub. No
+  mobile code change; it consumes the bridge fix.
+
 ### Changed — history branch graph: VS Code swimlane curves
 - **The History graph now uses the VS Code swimlane model + true arc
   connectors.** Lanes *compact* — when a branch merges, the extra lanes waiting
