@@ -219,6 +219,10 @@ El usuario puede agrupar los worktrees de varias formas:
 - Worktrees hijos agrupados visualmente bajo su worktree padre.
 - Util cuando un agente coordinador genera sub-tareas en worktrees independientes.
 - Muestra la relacion padre-hijo del modelo de datos.
+- **Estado:** la relacion coordinador→workers ya existe (en memoria) y se
+  visualiza hoy en la **consola de orquestacion** (`02d` §3.4), no anidada en este
+  arbol de la sidebar. Llevar el linaje a este modo de agrupacion del sidebar
+  queda como follow-up (`FOR-DEV.md`).
 
 **Por estado de trabajo** (tipo Kanban):
 - **Por hacer (Todo)**: Worktrees creados pero sin agente activo.

@@ -2,6 +2,7 @@
   import { app } from "$lib/state/app.svelte";
   import { terminals } from "$lib/state/terminals.svelte";
   import { projects } from "$lib/state/projects.svelte";
+  import { orchestration } from "$lib/state/orchestration.svelte";
   import { fsSetWatch } from "$lib/api";
   import { i18n } from "$lib/i18n";
   import { matchAction } from "$lib/keybindings";
@@ -13,12 +14,14 @@
   import PanelLeftIcon from "@lucide/svelte/icons/panel-left";
   import PanelRightIcon from "@lucide/svelte/icons/panel-right";
   import LayersIcon from "@lucide/svelte/icons/layers";
+  import WorkflowIcon from "@lucide/svelte/icons/workflow";
   import TerminalArea from "$lib/components/TerminalArea.svelte";
   import SaveDiscardDialog from "$lib/components/SaveDiscardDialog.svelte";
   import TitleBar from "$lib/components/TitleBar.svelte";
   import LeftSidebar from "$lib/components/LeftSidebar.svelte";
   import RightPanel from "$lib/components/RightPanel.svelte";
   import Settings from "$lib/components/Settings.svelte";
+  import OrchestrationConsole from "$lib/components/OrchestrationConsole.svelte";
   import WorktreeSearch from "$lib/components/WorktreeSearch.svelte";
   import DirectoryPicker from "$lib/components/DirectoryPicker.svelte";
   import BackendStatus from "$lib/components/BackendStatus.svelte";
@@ -73,6 +76,11 @@
 
   // Active workspace breadcrumb (repo / branch), shown at the left of the status bar.
   const ctx = $derived(projects.activeContext);
+
+  // Live agents drive the orchestration entry point (hidden until ≥2 agents run,
+  // since routing/fan-out only makes sense across multiple agents).
+  const liveAgents = $derived(orchestration.agents);
+  const orchestratable = $derived(liveAgents.length >= 2);
 
   function toggleLeftSidebar() {
     app.settings.leftSidebarOpen = !app.settings.leftSidebarOpen;
@@ -275,6 +283,23 @@
         </button>
       {/if}
 
+      <!-- Multi-agent orchestration: route messages across running agents. Shown
+           only when ≥2 agents are live (fan-out needs more than one). -->
+      {#if orchestratable}
+        <button
+          class="inline-flex items-center gap-1 rounded px-1 text-muted-foreground hover:text-foreground"
+          title={i18n.t("orchestration.open")}
+          aria-label={i18n.t("orchestration.open")}
+          onclick={() => (app.orchestrationOpen = true)}
+        >
+          <WorkflowIcon class="size-3.5" />
+          {liveAgents.length}
+          {#if orchestration.pendingTotal > 0}
+            <span class="size-1.5 shrink-0 rounded-full bg-primary"></span>
+          {/if}
+        </button>
+      {/if}
+
       <!-- Backend status (icon + live popover) -->
       <BackendStatus />
 
@@ -317,3 +342,6 @@
     {/if}
   </div>
 </div>
+
+<!-- Multi-agent orchestration console (modal; binds app.orchestrationOpen). -->
+<OrchestrationConsole />

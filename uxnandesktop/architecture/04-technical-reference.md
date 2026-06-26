@@ -107,11 +107,16 @@ Estas son las funcionalidades **estrictamente necesarias** para un ADE ligero qu
 
 ### Tier 3: Nice to Have (Diferenciadores)
 
-#### T3.1 - Orquestacion Multi-Agente
+#### T3.1 - Orquestacion Multi-Agente — ✅ Hecho (consola de orquestacion, `02d` §3)
 
-- [ ] Grafo de relaciones padre-hijo entre worktrees/agentes.
-- [ ] Routing de mensajes entre agentes coordinados.
-- [ ] Visualizacion de linaje en la sidebar.
+- [x] Grafo de relaciones coordinador→workers (en memoria; el usuario designa el
+      coordinador). La creacion *automatica* de workers por el coordinador queda
+      como follow-up (necesita un canal agente→ADE; `FOR-DEV.md`).
+- [x] Routing de mensajes entre agentes coordinados (por tipo / todos / workers,
+      con fan-out y backpressure por agente).
+- [~] Visualizacion de linaje: se muestra en la **consola de orquestacion**, no
+      anidada en la sidebar izquierda (`02d` §3.4; mover al arbol del proyecto es
+      el follow-up de `FOR-DEV.md`).
 
 #### T3.2 - Revision Avanzada
 

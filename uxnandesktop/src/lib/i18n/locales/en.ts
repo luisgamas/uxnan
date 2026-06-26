@@ -436,6 +436,10 @@ export const en = {
   "settings.defaultAgentNone": "None",
   "settings.defaultAgentDesc":
     "Auto-launched in a worktree right after you create it. Leave on “None” to never start an agent automatically.",
+  "settings.agentShell": "Agent launch shell",
+  "settings.agentShellSmart": "Smart default (Command Prompt)",
+  "settings.agentShellDesc":
+    "The shell agents launch in when they don’t pin their own. Command Prompt starts agent CLIs faster and quotes more predictably than PowerShell on Windows; pick another shell if you prefer.",
 
   // Settings → Agents → Hooks (ready-made hook configs)
   "hooks.title": "Hooks",
@@ -473,6 +477,12 @@ export const en = {
   "agentEditor.argsPlaceholder": "arguments (space-separated)",
   "agentEditor.launchIn": "Launch in",
   "agentEditor.defaultTerminal": "Default terminal",
+  "agentEditor.defaultShell": "Default agent shell",
+  "agentEditor.envTitle": "Environment variables",
+  "agentEditor.addEnvVar": "Add variable",
+  "agentEditor.removeEnvVar": "Remove variable",
+  "agentEditor.envKeyPlaceholder": "NAME",
+  "agentEditor.envValuePlaceholder": "value",
   "agentEditor.logo": "Logo",
   "agentEditor.chooseLogo": "Choose a custom logo image",
   "agentEditor.resetLogo": "Reset to the default logo",
@@ -482,6 +492,27 @@ export const en = {
   "agent.launchIn": "Launch an agent in {name}",
   "agent.none": "No agents configured",
   "agent.configure": "Configure agents…",
+
+  // Multi-agent orchestration console
+  "orchestration.title": "Orchestration",
+  "orchestration.desc":
+    "Route a message to your running agents — to everyone, to one type (fan-out), or to the coordinator’s workers. Each agent gets its next message only once it’s free.",
+  "orchestration.open": "Orchestrate running agents",
+  "orchestration.queued": "{n} queued",
+  "orchestration.emptyTitle": "No running agents",
+  "orchestration.emptyDesc": "Launch agents into your worktrees, then route messages to them from here.",
+  "orchestration.setCoordinator": "Make coordinator",
+  "orchestration.unsetCoordinator": "Unset coordinator",
+  "orchestration.clearQueue": "Clear queued messages",
+  "orchestration.reveal": "Go to terminal",
+  "orchestration.messagePlaceholder": "Message to route to agents… (Ctrl+Enter to send)",
+  "orchestration.targetAll": "All agents",
+  "orchestration.targetWorkers": "Coordinator’s workers",
+  "orchestration.targetType": "All {type}",
+  "orchestration.send": "Send",
+  "orchestration.sendN": "Send to {n}",
+  "orchestration.backpressureHint":
+    "Messages are delivered one at a time per agent; the next waits until that agent reports idle.",
 } as const;
 
 /** Union of every message key (drives `t()` and the locale type). */

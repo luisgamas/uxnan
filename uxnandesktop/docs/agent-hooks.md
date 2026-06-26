@@ -381,8 +381,12 @@ generated on every launch.
 
 - **UI:** Settings → Agents → Hooks (install / uninstall Claude Code,
   inspect the rendered JSON, copy the wrapper script for your platform).
+- [Agent launch & configuration](./agent-launch.md) — register agents, env vars,
+  the launch shell, auto-launch.
+- [Multi-agent orchestration](./orchestration.md) — precise hook states make its
+  backpressure exact instead of best-effort.
 - **Spec:** [`architecture/02d-agent-monitoring.md`](../architecture/02d-agent-monitoring.md)
   §1 (the three monitoring layers), §2 (notifications), §3 (multi-agent
-  orchestration — separate feature).
+  orchestration).
 - **Reference implementations:** `static/hooks/` — bundled into the binary
   at compile time and written to `<app-data>/hooks/` on every startup.

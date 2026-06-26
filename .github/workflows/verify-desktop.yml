@@ -57,6 +57,9 @@ jobs:
       - name: Svelte type-check
         run: npm run check
 
+      - name: Frontend unit tests (Vitest)
+        run: npm test
+
       - name: Frontend build (Vite)
         run: npm run build
 

@@ -9,10 +9,11 @@
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
   import { icon, text } from "$lib/design";
-  import type { AgentProfile } from "$lib/types";
+  import type { AgentProfile, EnvVar } from "$lib/types";
   import AgentLogo from "./AgentLogo.svelte";
   import Trash2Icon from "@lucide/svelte/icons/trash-2";
   import XIcon from "@lucide/svelte/icons/x";
+  import PlusIcon from "@lucide/svelte/icons/plus";
 
   let {
     agent,
@@ -36,10 +37,23 @@
   const DEFAULT = "__default__";
   const shellLabel = $derived.by(() => {
     const id = agent.terminalProfileId;
-    if (!id) return i18n.t("agentEditor.defaultTerminal");
+    if (!id) return i18n.t("agentEditor.defaultShell");
     const p = app.terminalProfiles.find((x) => x.id === id);
     return p?.name.trim() || i18n.t("terminal.unnamedProfile");
   });
+
+  // Environment variables: a live list bound to `agent.env`. Rows are mutated in
+  // place so deep-reactive persistence fires on every keystroke via `onchange`.
+  const envVars = $derived<EnvVar[]>(agent.env ?? []);
+  function addEnvVar() {
+    if (!agent.env) agent.env = [];
+    agent.env.push({ key: "", value: "" });
+    onchange();
+  }
+  function removeEnvVar(index: number) {
+    agent.env?.splice(index, 1);
+    onchange();
+  }
 
   // Custom logo: pick an image, store it inline (data URL) on `agent.icon`.
   let fileInput = $state<HTMLInputElement>();
@@ -137,8 +151,8 @@
     >
       <Select.Trigger class="h-8 flex-1 text-xs">{shellLabel}</Select.Trigger>
       <Select.Content>
-        <Select.Item value={DEFAULT} label={i18n.t("agentEditor.defaultTerminal")}>
-          {i18n.t("agentEditor.defaultTerminal")}
+        <Select.Item value={DEFAULT} label={i18n.t("agentEditor.defaultShell")}>
+          {i18n.t("agentEditor.defaultShell")}
         </Select.Item>
         {#each app.terminalProfiles as p (p.id)}
           {@const label = p.name.trim() || i18n.t("terminal.unnamedProfile")}
@@ -146,5 +160,47 @@
         {/each}
       </Select.Content>
     </Select.Root>
+  </div>
+
+  <!-- Environment variables: set on the agent's shell at launch. -->
+  <div class="flex flex-col gap-1.5">
+    <div class="flex items-center justify-between">
+      <span class={cn("shrink-0", text.meta)}>{i18n.t("agentEditor.envTitle")}</span>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        title={i18n.t("agentEditor.addEnvVar")}
+        aria-label={i18n.t("agentEditor.addEnvVar")}
+        onclick={addEnvVar}
+      >
+        <PlusIcon class={icon.button} />
+      </Button>
+    </div>
+    {#each envVars as envVar, i (i)}
+      <div class="flex items-center gap-1.5">
+        <Input
+          class="h-8 flex-1 font-mono text-xs"
+          placeholder={i18n.t("agentEditor.envKeyPlaceholder")}
+          bind:value={envVar.key}
+          oninput={onchange}
+        />
+        <span class={text.meta}>=</span>
+        <Input
+          class="h-8 flex-1 font-mono text-xs"
+          placeholder={i18n.t("agentEditor.envValuePlaceholder")}
+          bind:value={envVar.value}
+          oninput={onchange}
+        />
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          title={i18n.t("agentEditor.removeEnvVar")}
+          aria-label={i18n.t("agentEditor.removeEnvVar")}
+          onclick={() => removeEnvVar(i)}
+        >
+          <XIcon class={icon.button} />
+        </Button>
+      </div>
+    {/each}
   </div>
 </div>
