@@ -8,23 +8,25 @@ import 'package:uxnan/presentation/theme/typography.dart';
 
 /// The name/icon color for a file or folder by its [GitFileStatus].
 ///
-/// Communicates git state through colour, not extra glyphs — each git state
-/// gets its own tone, reinforced by weight + style (see [FileTreeTile]) so
-/// "tracked", "untracked" and "changed" are told apart at a glance:
+/// Communicates git *state* through colour using the conventional git palette —
+/// the same `UxnanColors` tokens the rest of the app uses (the diff view in
+/// `GitScreen`, the commit detail), so a file reads the same here as there:
 /// - tracked, unchanged (`null`) → [ColorScheme.onSurface] (the regular,
 ///   confident text tone — a file git already knows about, with no changes);
-/// - **untracked** → [ColorScheme.onSurfaceVariant] (a muted tone), set in
-///   *italic* by the tile so files git isn't tracking read as clearly distinct
-///   from the heavier, solid tracked rows;
-/// - added/modified/renamed/deleted → the matching `UxnanColors` git token
-///   (same palette as the diff view in `GitScreen`).
+/// - **untracked** → `UxnanColors.gitUntracked` (blue) — a real git state, so
+///   it gets a colour, not the dimmed treatment;
+/// - added/modified/renamed/deleted → the matching `UxnanColors` git token.
+///
+/// Ignored entries are *not* a [GitFileStatus] (they never appear in
+/// `git/status`); the tile dims them separately — muted + italic — from
+/// [FileTreeNode.ignored].
 Color gitStatusColor(GitFileStatus? status, ColorScheme colors) {
   return switch (status) {
     GitFileStatus.added => UxnanColors.gitAdded,
     GitFileStatus.modified => UxnanColors.gitModified,
     GitFileStatus.renamed => UxnanColors.gitModified,
     GitFileStatus.deleted => UxnanColors.gitDeleted,
-    GitFileStatus.untracked => colors.onSurfaceVariant,
+    GitFileStatus.untracked => UxnanColors.gitUntracked,
     null => colors.onSurface,
   };
 }
@@ -161,11 +163,11 @@ const _codeExts = [
 
 /// A single row in the file browser: a leading file-type icon, the name, an
 /// optional details line (size · modified), and a trailing chevron for
-/// directories. Git state is conveyed through the name + icon colour (see
-/// [gitStatusColor]) plus weight and style — every tracked row (unchanged or
-/// changed) carries a medium weight, while untracked rows stay regular weight
-/// and *italic* in a muted tone — so tracked vs untracked reads at a glance
-/// without extra status dots or pills.
+/// directories. Git *state* is conveyed through the name + icon colour (see
+/// [gitStatusColor], the conventional git palette) plus a medium weight on
+/// changed/untracked rows. Git-*ignored* entries are dimmed instead — a muted
+/// tone in *italic* — so "git ignores this" reads at a glance, clearly apart
+/// from the solid tracked/untracked rows, without extra status dots or pills.
 ///
 /// Stateless — the parent owns expansion / selection state and passes the
 /// derived booleans. Tap fires [onTap], long-press [onLongPress] when given.
@@ -215,21 +217,26 @@ class FileTreeTile extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
     final isDir = node.isDir;
     final status = node.gitStatus;
+    final isIgnored = node.ignored;
     final typeVisuals = fileTypeVisuals(name: node.basename, type: node.type);
     final displayName = node.displayName(showExtension: showExtension);
     final indent = depth * 16.0;
 
-    // Git state is carried by colour: tracked-unchanged → onSurface, untracked
-    // → a muted onSurfaceVariant, changed → the git colour. The name takes that
-    // colour directly; the leading file-type icon takes it too, except a
-    // neutral (unchanged) file keeps a slightly softer icon tone than its name.
-    final statusColor = gitStatusColor(status, colors);
-    final iconColor = status == null ? colors.onSurfaceVariant : statusColor;
-    // Every *tracked* row — unchanged (`null`) or changed — carries the medium
-    // weight; only *untracked* files stay at regular weight and go italic, so
-    // the tracked/untracked split is legible by weight + style, not just hue.
-    final isUntracked = status == GitFileStatus.untracked;
-    final emphasised = !isUntracked;
+    // Ignored entries are *dimmed* — a muted tone + italic — and win over any
+    // git colour (an ignored entry never has a git status anyway). Otherwise
+    // the name is coloured by git state: tracked-unchanged → onSurface,
+    // changed / untracked → the conventional git colour. The leading file-type
+    // icon takes the same colour, except a neutral (unchanged) file keeps a
+    // slightly softer icon tone than its name.
+    final statusColor =
+        isIgnored ? colors.onSurfaceVariant : gitStatusColor(status, colors);
+    final iconColor =
+        (isIgnored || status == null) ? colors.onSurfaceVariant : statusColor;
+    // Changed / untracked rows carry the medium weight so they stand out;
+    // clean and ignored rows stay regular. Only ignored rows go *italic* —
+    // the single visual cue reserved for "git ignores this".
+    final emphasised = !isIgnored && status != null;
+    final isItalic = isIgnored;
 
     // The details line (size · modified) replaces the old redundant "name with
     // extension" second line. Files only, and only when enabled and the bridge
@@ -256,7 +263,11 @@ class FileTreeTile extends StatelessWidget {
               typeVisuals.icon,
               size: 20,
               color: iconColor,
-              semanticLabel: isDir ? 'Folder' : status?.name ?? 'File',
+              semanticLabel: isDir
+                  ? 'Folder'
+                  : isIgnored
+                      ? 'Ignored file'
+                      : status?.name ?? 'File',
             ),
             const SizedBox(width: UxnanSpacing.sm),
             Expanded(
@@ -270,8 +281,7 @@ class FileTreeTile extends StatelessWidget {
                       color: statusColor,
                       fontWeight:
                           emphasised ? FontWeight.w500 : FontWeight.w400,
-                      fontStyle:
-                          isUntracked ? FontStyle.italic : FontStyle.normal,
+                      fontStyle: isItalic ? FontStyle.italic : FontStyle.normal,
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),

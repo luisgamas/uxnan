@@ -6,6 +6,27 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — file browser: git-conventional colours + dimmed ignored entries
+- **Untracked files use the conventional git colour again, and git-ignored
+  entries are now dimmed (muted + italic).** PR #25 had coloured *untracked*
+  files in a muted italic tone — but that's the universal "git ignores this"
+  affordance, and it diverged from the rest of the app, where untracked is the
+  `gitUntracked` blue (the Git screen, commit detail, diff views). The browser
+  now matches that convention: untracked → blue (upright, medium weight), like
+  added/modified/deleted in their tokens. The muted-italic *dimmed* treatment is
+  reserved for **ignored** entries, a distinct concept (a file type vs a git
+  state), surfaced by the bridge's new `WorkspaceEntry.ignored` flag and carried
+  on `FileEntry` / `FileTreeNode`. Ignored is independent of `gitStatus`
+  (ignored entries never appear in `git/status`), so an ignored folder dims even
+  while collapsed and its children dim when expanded.
+  - `domain/entities/file_browser.dart` (`FileEntry.ignored`,
+    `FileTreeNode.ignored`), `application/managers/file_browser_manager.dart`
+    (carries the flag through), `presentation/.../widgets/file_tree_tile.dart`
+    (untracked → `gitUntracked`; ignored → muted + italic).
+  - Tests: +5 (`file_tree_tile_test.dart`: untracked/modified/ignored/clean
+    visuals; `file_browser_manager_test.dart`: the ignored flag flows through and
+    survives a git-status repaint).
+
 ### Fixed — a mid-stream turn's earlier reply is no longer lost on reconnect (Bug A)
 - **The live re-attach now seeds the streaming buffer with the in-flight turn's
   partial output.** When the app was killed and reopened while the agent was

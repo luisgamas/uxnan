@@ -400,6 +400,10 @@ class FileBrowserManager {
       type: entry.type,
       size: entry.size,
       mtime: entry.mtime,
+      // Git ignores this entry (computed by the bridge per-listing). Carried
+      // straight through so the tile can dim it; it's orthogonal to `gitStatus`
+      // (ignored entries are never in `git/status`).
+      ignored: entry.ignored,
       // Files inherit their git status from the cached `git/status` map so
       // they're coloured as soon as the listing arrives (no second rebuild).
       // Directories aggregate the status of their (possibly still-collapsed)
