@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — history branch graph: VS Code swimlane curves
+- **The History graph now uses the VS Code swimlane model + true arc
+  connectors.** Lanes *compact* — when a branch merges, the extra lanes waiting
+  for the commit collapse into the node and the lanes to their right shift one
+  column left — so the graph narrows with flowing curves instead of leaving
+  parallel gaps. Connectors are real circular arcs: a quarter-circle (radius ≈
+  one lane) into/out of a node, and a gentle S when a passing lane shifts
+  column — replacing the previous stable-lane layout and tiny rounded-step
+  "L" connectors. Node dots are unchanged (solid dot, with a separate outer
+  ring on merges). `src/lib/gitGraph.ts` (swimlane layout → per-row `GraphEdge`
+  list) + `src/lib/components/HistoryPanel.svelte` (arc path geometry).
+
 ### Changed — file tree: dim git-ignored entries
 - **The Files tab now dims git-ignored entries (muted + italic),** so files and
   folders git ignores (`node_modules`, `build`, `.env`, …) read as clearly apart

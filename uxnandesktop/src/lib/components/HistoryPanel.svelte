@@ -12,7 +12,7 @@
   import { icon, text } from "$lib/design";
   import { clipboardWrite } from "$lib/clipboard";
   import { toast } from "$lib/toast";
-  import { computeGraph, type GraphRow } from "$lib/gitGraph";
+  import { computeGraph, type GraphRow, type GraphEdge } from "$lib/gitGraph";
   import type { CommitInfo } from "$lib/types";
   import VirtualList from "./VirtualList.svelte";
   import { Button } from "$lib/components/ui/button";
@@ -28,33 +28,47 @@
     history.ensure(projects.activeWorktreePath);
   });
 
-  // Graph geometry (kept in lockstep with the row height below).
+  // Graph geometry (kept in lockstep with the row height below). The connectors
+  // are the VS Code style: true circular arcs (not tiny rounded steps),
+  // with the into/out-of-node bends a full quarter-circle of radius `NODE_R`
+  // (≈ one lane → a smooth sweep), and passing lanes that shift column a gentle
+  // S of radius `SHIFT_R`. The horizontal run, when any, sits at mid-row.
   const ROW_H = 44;
   const LANE_W = 14;
-  const CURVE_R = 5; // rounded-corner radius for branch/merge bends (VS Code-ish)
+  const MID = ROW_H / 2;
+  const NODE_R = Math.min(LANE_W, MID); // quarter-arc radius for node bends
+  const SHIFT_R = 6; // gentle S radius for a passing lane shifting column
   const laneX = (lane: number) => lane * LANE_W + LANE_W / 2;
 
-  // VS Code-style rounded-step connectors (vertical → quarter-arc → horizontal),
-  // instead of straight diagonals. `edgeIn` runs a merging branch down its lane
-  // and bends into the node; `edgeOut` leaves the node and bends down into a
-  // parent lane. A same-lane edge is a plain vertical line.
-  function edgeIn(fromLane: number, toLane: number): string {
-    const x1 = laneX(fromLane);
-    const x2 = laneX(toLane);
-    const my = ROW_H / 2;
-    if (x1 === x2) return `M ${x1} 0 L ${x2} ${my}`;
-    const dir = x2 > x1 ? 1 : -1;
-    const r = Math.min(CURVE_R, Math.abs(x2 - x1), my);
-    return `M ${x1} 0 V ${my - r} Q ${x1} ${my} ${x1 + dir * r} ${my} H ${x2}`;
-  }
-  function edgeOut(fromLane: number, toLane: number): string {
-    const x1 = laneX(fromLane);
-    const x2 = laneX(toLane);
-    const my = ROW_H / 2;
-    if (x1 === x2) return `M ${x1} ${my} L ${x2} ${ROW_H}`;
-    const dir = x2 > x1 ? 1 : -1;
-    const r = Math.min(CURVE_R, Math.abs(x2 - x1), my);
-    return `M ${x1} ${my} H ${x2 - dir * r} Q ${x2} ${my} ${x2} ${my + r} V ${ROW_H}`;
+  // SVG path for one edge by kind (see `GraphEdge`). All arcs are circular (`A`);
+  // a converging child sweeps left into the node, a merge parent sweeps right out
+  // of it, and a shifting passing lane makes a symmetric S at mid-row.
+  function edgePath(e: GraphEdge): string {
+    const x1 = laneX(e.fromLane);
+    const x2 = laneX(e.toLane);
+    switch (e.kind) {
+      case "inNode":
+        return `M ${x1} 0 V ${MID}`;
+      case "outNode":
+        return `M ${x1} ${MID} V ${ROW_H}`;
+      case "mergeIn":
+        // Down the child lane, a quarter-arc left into mid, then across to node.
+        return `M ${x1} 0 V ${MID - NODE_R} A ${NODE_R} ${NODE_R} 0 0 1 ${x1 - NODE_R} ${MID} H ${x2}`;
+      case "mergeOut":
+        // Across from the node at mid, a quarter-arc right-down into the parent.
+        return `M ${x1} ${MID} H ${x2 - NODE_R} A ${NODE_R} ${NODE_R} 0 0 1 ${x2} ${MID + NODE_R} V ${ROW_H}`;
+      case "through":
+      default:
+        if (Math.abs(x1 - x2) < 0.5) return `M ${x1} 0 V ${ROW_H}`;
+        // Compaction always shifts a passing lane LEFT (x2 < x1): an S of two
+        // SHIFT_R arcs around the mid-row horizontal.
+        return (
+          `M ${x1} 0 V ${MID - SHIFT_R} ` +
+          `A ${SHIFT_R} ${SHIFT_R} 0 0 1 ${x1 - SHIFT_R} ${MID} ` +
+          `H ${x2 + SHIFT_R} ` +
+          `A ${SHIFT_R} ${SHIFT_R} 0 0 0 ${x2} ${MID + SHIFT_R} V ${ROW_H}`
+        );
+    }
   }
 
   // The graph is only meaningful over the full, unfiltered log (a filter breaks
@@ -119,31 +133,14 @@
     class="shrink-0"
     aria-hidden="true"
   >
-    {#each rowLayout.segments as seg, i (i)}
-      {#if seg.kind === "through"}
-        <line
-          x1={laneX(seg.fromLane)}
-          y1="0"
-          x2={laneX(seg.fromLane)}
-          y2={ROW_H}
-          stroke={seg.color}
-          stroke-width="1.5"
-        />
-      {:else if seg.kind === "in"}
-        <path
-          d={edgeIn(seg.fromLane, seg.toLane)}
-          fill="none"
-          stroke={seg.color}
-          stroke-width="1.5"
-        />
-      {:else}
-        <path
-          d={edgeOut(seg.fromLane, seg.toLane)}
-          fill="none"
-          stroke={seg.color}
-          stroke-width="1.5"
-        />
-      {/if}
+    {#each rowLayout.edges as edge, i (i)}
+      <path
+        d={edgePath(edge)}
+        fill="none"
+        stroke={edge.color}
+        stroke-width="1.5"
+        stroke-linecap="round"
+      />
     {/each}
     <!-- Node: a halo clears crossing lines; merge commits get a separate outer
          ring around a solid dot (a gap between them), like VS Code. -->
