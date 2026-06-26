@@ -21,10 +21,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 - **Draft commit messages from the staged diff with a local agent (opt-in).** A
   new **Settings → AI commit** section turns it on and keeps it
   non-technical: pick an **agent** (only the installed ones of Claude Code,
-  Codex, Gemini, OpenCode, Pi are selectable) and a **model** (the agent's own
-  models — "Default" plus a live `opencode models` / `pi --list-models` /
-  `codex app-server` `model/list` query, or Claude's aliases / Gemini's curated
-  set), the message **language** (Automatic / English / Spanish), **Conventional
+  Codex, Gemini, OpenCode, Pi are selectable) and a **model** from a
+  **searchable, scrollable** picker (some agents list hundreds): "Default" plus a
+  live `opencode models` / `pi --list-models` / `codex app-server` `model/list`
+  query, or Claude's exact concrete versions (`claude-opus-4-8`, …, maintained in
+  `agentcli.rs::CLAUDE_MODELS` with a how-to-update guide) / Gemini's curated
+  set, the message **language** (Automatic / English / Spanish), **Conventional
   Commits** subject on/off, **extended body** on/off, and free-form **extra
   instructions** — no command/flags to configure. When enabled, a **Generate**
   button appears in the commit composer; it runs the agent non-interactively (a

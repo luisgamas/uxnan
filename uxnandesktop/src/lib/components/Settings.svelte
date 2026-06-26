@@ -22,6 +22,7 @@
   import { detectAgents } from "$lib/api";
   import TerminalProfileEditor from "./TerminalProfileEditor.svelte";
   import AgentProfileEditor from "./AgentProfileEditor.svelte";
+  import AiModelPicker from "./AiModelPicker.svelte";
   import AgentLogo from "./AgentLogo.svelte";
   import AgentHooksPanel from "./AgentHooksPanel.svelte";
   import ThemeSettings from "./ThemeSettings.svelte";
@@ -307,14 +308,6 @@
     persistNow();
     void loadAiModels(id);
   }
-  // "" model = let the CLI use its own default; a sentinel keeps Select happy.
-  const AI_MODEL_DEFAULT = "__default__";
-  const aiModelLabel = $derived(
-    ai.model
-      ? (aiModels.find((m) => m.id === ai.model)?.displayName ?? ai.model)
-      : i18n.t("settings.aiCommitModelDefault"),
-  );
-
   // On opening the pane: detect installed agents, then load the current agent's
   // models once (the load stamps aiModelsFor, so this doesn't loop).
   $effect(() => {
@@ -710,30 +703,20 @@
               {/if}
             </div>
 
-            <!-- Model: the CLI's default, plus whatever models it reports. -->
+            <!-- Model: the CLI's default, plus whatever models it reports
+                 (searchable + scrollable — some agents list hundreds). -->
             {#if ai.agentId && aiAgentInstalled(ai.agentId)}
               <div class="flex flex-col gap-1.5">
                 <span class={cn("font-medium", text.body)}>{i18n.t("settings.aiCommitModel")}</span>
-                <Select.Root
-                  type="single"
-                  value={ai.model || AI_MODEL_DEFAULT}
-                  onValueChange={(v) => {
-                    setAi({ model: v === AI_MODEL_DEFAULT ? "" : (v ?? "") });
+                <AiModelPicker
+                  models={aiModels}
+                  value={ai.model}
+                  loading={aiModelsLoading}
+                  onSelect={(id) => {
+                    setAi({ model: id });
                     persistNow();
                   }}
-                >
-                  <Select.Trigger class="w-56">
-                    {aiModelsLoading ? i18n.t("settings.aiCommitModelLoading") : aiModelLabel}
-                  </Select.Trigger>
-                  <Select.Content>
-                    <Select.Item value={AI_MODEL_DEFAULT} label={i18n.t("settings.aiCommitModelDefault")}>
-                      {i18n.t("settings.aiCommitModelDefault")}
-                    </Select.Item>
-                    {#each aiModels as m (m.id)}
-                      <Select.Item value={m.id} label={m.displayName}>{m.displayName}</Select.Item>
-                    {/each}
-                  </Select.Content>
-                </Select.Root>
+                />
                 <p class={text.meta}>{i18n.t("settings.aiCommitModelDesc")}</p>
               </div>
             {/if}

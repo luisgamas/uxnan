@@ -193,9 +193,13 @@ Integrada en el panel de cambios (`ChangesPanel.svelte`):
   Windows sin shell) y lo ejecuta de forma **no interactiva** (subproceso de una
   sola pasada — no un PTY — con stdin cerrado, timeout de 120 s y `kill_on_drop`;
   sin API/SDK/keys de proveedor). Los modelos se descubren por agente: estáticos
-  para Claude (alias) y Gemini (lista curada), o en vivo para OpenCode
-  (`opencode models`), Pi (`pi --list-models`) y Codex (`codex app-server`
-  `model/list`); siempre con una opción **Predeterminado** (sin flag de modelo).
+  para Claude (versiones concretas exactas, p. ej. `claude-opus-4-8`, mantenidas
+  en `agentcli.rs::CLAUDE_MODELS` con una guía de actualización — sin alias
+  "latest") y Gemini (lista curada), o en vivo para OpenCode (`opencode models`),
+  Pi (`pi --list-models`) y Codex (`codex app-server` `model/list`); siempre con
+  una opción **Predeterminado** (sin flag de modelo). El selector de modelo es
+  **buscable y con scroll** (`AiModelPicker.svelte`) porque algunos agentes
+  listan cientos de modelos.
   Comandos: `git_generate_commit_message`, `ai_commit_agents`, `ai_commit_models`
   (`src-tauri/src/aicommit.rs`). La configuración vive en `AppSettings.aiCommit`
   (`AiCommitSettings`: `agentId`, `model`, idioma, Conventional Commits, cuerpo

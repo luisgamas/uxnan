@@ -250,15 +250,14 @@ pub fn build_args(agent_id: &str, model: &str, prompt: &str) -> Option<Vec<Strin
 }
 
 /// Statically-known models for agents whose CLI exposes no list command
-/// (Claude's stable aliases; Gemini's curated set, mirrored from the bridge).
-/// Empty for agents discovered live (OpenCode, Pi, Codex).
+/// (Claude and Gemini — both curated tables below). Empty for agents discovered
+/// live (OpenCode, Pi, Codex).
 pub fn static_models(agent_id: &str) -> Vec<AgentModel> {
     match agent_id {
-        "claude" => vec![
-            AgentModel::new("opus", "Opus (latest)"),
-            AgentModel::new("sonnet", "Sonnet (latest)"),
-            AgentModel::new("haiku", "Haiku (latest)"),
-        ],
+        "claude" => CLAUDE_MODELS
+            .iter()
+            .map(|(id, name)| AgentModel::new(id, name))
+            .collect(),
         "gemini" => GEMINI_MODELS
             .iter()
             .map(|(id, name)| AgentModel::new(id, name))
@@ -266,6 +265,30 @@ pub fn static_models(agent_id: &str) -> Vec<AgentModel> {
         _ => vec![],
     }
 }
+
+/// Curated Claude model ids + display names. Claude Code's CLI has **no**
+/// list-models command, so we ship this hand-kept table of **exact** model ids
+/// (the concrete versions Claude Code's `--model` flag accepts — *not* the
+/// `opus`/`sonnet`/`haiku` "latest" aliases, so the message is reproducible).
+///
+/// ## How to maintain this list
+/// When Anthropic ships or retires a model, edit this array:
+/// - **id** (left): the exact `--model` string, e.g. `claude-opus-4-8`. These are
+///   the canonical model ids — never append a date suffix to a concrete id, and
+///   don't use the bare aliases here.
+/// - **display name** (right): what the picker shows, e.g. `Opus 4.8`.
+///
+/// Keep newest/most-capable first (that's the picker order). The user can always
+/// pick "Default" in the UI to let the CLI choose its own configured model.
+/// Source of truth for current ids: the Claude API model catalog.
+const CLAUDE_MODELS: [(&str, &str); 6] = [
+    ("claude-opus-4-8", "Opus 4.8"),
+    ("claude-opus-4-7", "Opus 4.7"),
+    ("claude-opus-4-6", "Opus 4.6"),
+    ("claude-sonnet-4-6", "Sonnet 4.6"),
+    ("claude-haiku-4-5", "Haiku 4.5"),
+    ("claude-fable-5", "Fable 5"),
+];
 
 /// Curated Gemini model ids + display names (the CLI has no enumerate command),
 /// mirrored from the bridge's hand-kept table.
@@ -423,10 +446,10 @@ mod tests {
     #[test]
     fn static_models_for_claude_and_gemini() {
         let claude = static_models("claude");
-        assert_eq!(
-            claude.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
-            ["opus", "sonnet", "haiku"]
-        );
+        // Exact concrete model ids (no "latest" aliases), newest first.
+        assert_eq!(claude.first().unwrap().id, "claude-opus-4-8");
+        assert!(claude.iter().any(|m| m.id == "claude-fable-5"));
+        assert!(claude.iter().all(|m| m.id.starts_with("claude-")));
         assert!(static_models("gemini").iter().any(|m| m.id == "auto"));
         // Live-discovered agents have no static list.
         assert!(static_models("opencode").is_empty());

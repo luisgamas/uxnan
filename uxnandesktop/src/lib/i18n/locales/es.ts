@@ -149,6 +149,8 @@ export const es: Record<MessageKey, string> = {
   "settings.aiCommitModel": "Modelo",
   "settings.aiCommitModelDefault": "Predeterminado",
   "settings.aiCommitModelLoading": "Cargando modelos…",
+  "settings.aiCommitModelSearch": "Buscar modelos…",
+  "settings.aiCommitModelNoMatch": "Ningún modelo coincide.",
   "settings.aiCommitModelDesc":
     "Qué modelo usa el agente. «Predeterminado» deja que la CLI elija su modelo configurado.",
   "settings.aiCommitLanguage": "Idioma",

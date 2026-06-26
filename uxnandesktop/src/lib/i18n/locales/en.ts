@@ -152,6 +152,8 @@ export const en = {
   "settings.aiCommitModel": "Model",
   "settings.aiCommitModelDefault": "Default",
   "settings.aiCommitModelLoading": "Loading models…",
+  "settings.aiCommitModelSearch": "Search models…",
+  "settings.aiCommitModelNoMatch": "No models match.",
   "settings.aiCommitModelDesc":
     "Which model the agent uses. “Default” lets the CLI pick its configured model.",
   "settings.aiCommitLanguage": "Language",
