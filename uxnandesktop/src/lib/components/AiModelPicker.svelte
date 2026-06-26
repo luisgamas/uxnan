@@ -30,9 +30,23 @@
   const DEFAULT = "__default__";
   let open = $state(false);
 
+  // Many CLIs report `provider/model` (or `provider/group/model`) ids where the
+  // shared provider prefix is the *least* distinguishing part — truncating from
+  // the right hides the model name. Split it: the last `/` segment is the model
+  // (shown prominently), the rest is the provider (shown muted). Ids without a
+  // `/` (Claude/Gemini friendly names) stay as-is with no provider line.
+  const modelName = (s: string) => {
+    const i = s.lastIndexOf("/");
+    return i >= 0 ? s.slice(i + 1) : s;
+  };
+  const modelProvider = (s: string) => {
+    const i = s.lastIndexOf("/");
+    return i >= 0 ? s.slice(0, i) : "";
+  };
+
   const label = $derived(
     value
-      ? (models.find((m) => m.id === value)?.displayName ?? value)
+      ? modelName(models.find((m) => m.id === value)?.displayName ?? value)
       : i18n.t("settings.aiCommitModelDefault"),
   );
 
@@ -61,7 +75,7 @@
       </Button>
     {/snippet}
   </Popover.Trigger>
-  <Popover.Content class="w-56 p-0" align="start">
+  <Popover.Content class="w-80 p-0" align="start">
     <Command.Root value={value || DEFAULT}>
       <Command.Input placeholder={i18n.t("settings.aiCommitModelSearch")} />
       <!-- `uxnan-scroll` = the app's thin scrollbar (the registry's `no-scrollbar`
@@ -79,9 +93,14 @@
               keywords={[m.displayName]}
               onSelect={() => choose(m.id)}
             >
-              <span class="min-w-0 flex-1 truncate" title={m.id}>
-                {m.displayName}
-              </span>
+              <div class="flex min-w-0 flex-1 flex-col" title={m.id}>
+                <span class="truncate">{modelName(m.displayName)}</span>
+                {#if modelProvider(m.displayName)}
+                  <span class="truncate text-xs text-muted-foreground">
+                    {modelProvider(m.displayName)}
+                  </span>
+                {/if}
+              </div>
             </Command.Item>
           {/each}
         </Command.Group>
