@@ -64,7 +64,10 @@
   <Popover.Content class="w-56 p-0" align="start">
     <Command.Root value={value || DEFAULT}>
       <Command.Input placeholder={i18n.t("settings.aiCommitModelSearch")} />
-      <Command.List>
+      <!-- `uxnan-scroll` = the app's thin scrollbar (the registry's `no-scrollbar`
+           utility isn't defined in this project, so the list would otherwise show
+           the native one). -->
+      <Command.List class="uxnan-scroll">
         <Command.Empty>{i18n.t("settings.aiCommitModelNoMatch")}</Command.Empty>
         <Command.Group>
           <Command.Item value={DEFAULT} onSelect={() => choose("")}>
