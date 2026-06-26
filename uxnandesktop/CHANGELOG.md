@@ -5,6 +5,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — git: optional AI commit-message generation
+- **Draft commit messages from the staged diff with a local CLI agent (opt-in).**
+  A new **Settings → AI commit** section turns it on and configures it: which
+  agent to run (presets for `claude -p`, `codex exec`, `gemini -p`,
+  `opencode run`, or a custom command + args), the message **language**
+  (Automatic / English / Spanish), **Conventional Commits** subject on/off,
+  **extended body** on/off, and free-form **extra instructions**. When enabled, a
+  **Generate** button appears in the commit composer; it runs the agent
+  non-interactively (a one-shot subprocess — *not* a PTY — with stdin closed, a
+  120 s timeout and `kill_on_drop`; no provider API/SDK/keys, just the local CLI),
+  feeds it the staged diff (capped at 24 KB) and fills the summary + body. New
+  backend `src-tauri/src/aicommit.rs` + `git_generate_commit_message` command +
+  `git::staged_diff`; new `AiCommitSettings` on `AppSettings` (off by default,
+  back-compat defaulted); `AppError::Agent` variant. Frontend: the settings
+  section, the composer button (`git.generateMessage`), `aiCommitPresets.ts`, and
+  EN/ES strings. 6 new backend tests (prompt building / diff truncation / output
+  sanitizing + settings round-trip).
+
 ### Added — git: WSL repos run through `wsl.exe`
 - **Repos opened from a WSL distro now use the distro's own git.** When a repo
   path is a WSL UNC path (`\\wsl.localhost\<distro>\…` or the legacy `\\wsl$\…`,

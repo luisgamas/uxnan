@@ -182,8 +182,20 @@ Integrada en el panel de cambios (`ChangesPanel.svelte`):
   configurada. El comando backend `git_commit(path, message, amend, signOff)`.
 - **Botón de acción primaria** contextual: Commit / Amend commit según el estado
   del composer; Push / Pull aparecen cuando hay ahead/behind.
-- **Generación AI del mensaje** (pendiente): un botón para que el agente genere
-  el mensaje a partir de los cambios staged.
+- **Generación AI del mensaje** (opcional, opt-in): cuando se activa en
+  **Configuración → Mensaje de commit con IA**, aparece un botón **Generar** en el
+  composer que redacta el mensaje a partir del diff staged. El backend
+  (`src-tauri/src/aicommit.rs`, comando `git_generate_commit_message`) ejecuta el
+  CLI configurado por el usuario de forma **no interactiva** (un subproceso de una
+  sola pasada — no un PTY — con stdin cerrado, timeout de 120 s y `kill_on_drop`;
+  sin API/SDK/keys de proveedor, solo el CLI local que el usuario ya usa), le pasa
+  el diff staged (`git diff --staged`, recortado a 24 KB) y devuelve el mensaje
+  (asunto en la primera línea, cuerpo opcional tras una línea en blanco). La
+  configuración vive en `AppSettings.aiCommit` (`AiCommitSettings`: agente
+  `command`+`args`, idioma, Conventional Commits, cuerpo extendido, instrucciones
+  extra), **desactivada por defecto**. Presets de invocación en modo impresión
+  para `claude -p`, `codex exec`, `gemini -p` y `opencode run`
+  (`src/lib/aiCommitPresets.ts`).
 
 ### 4.6 Fuentes de Diff
 

@@ -59,6 +59,7 @@ export type SettingsSection =
   | "language"
   | "shortcuts"
   | "agents"
+  | "aicommit"
   | "hooks"
   | "terminal";
 

@@ -7,6 +7,7 @@
 
 import { listen } from "@tauri-apps/api/event";
 import {
+  generateCommitMessage,
   gitApply,
   gitCommit,
   gitDiff,
@@ -70,6 +71,8 @@ class GitStore {
   /** Append a `Signed-off-by:` trailer (git `-s`). */
   signOff = $state(false);
   committing = $state(false);
+  /** An AI commit-message draft is in flight (disables the Generate button). */
+  aiGenerating = $state(false);
   /** Commits ahead / behind the upstream (for the push/pull bar). */
   ahead = $state(0);
   behind = $state(0);
@@ -222,6 +225,33 @@ class GitStore {
     this.coAuthors = [];
     this.amend = false;
     this.signOff = false;
+  }
+
+  /** Draft the commit message with the configured AI agent (Settings → AI
+   *  commit) from the staged diff. Fills the subject (first line) and, when the
+   *  agent returns one, the body (the rest), overwriting whatever is there. */
+  async generateMessage(): Promise<void> {
+    const path = this.path;
+    if (!path || this.aiGenerating) return;
+    this.aiGenerating = true;
+    this.error = null;
+    try {
+      const raw = (await generateCommitMessage(path)).trim();
+      const nl = raw.indexOf("\n");
+      if (nl === -1) {
+        this.message = raw;
+      } else {
+        this.message = raw.slice(0, nl).trim();
+        const body = raw.slice(nl + 1).trim();
+        if (body) this.body = body;
+      }
+      toast.success(i18n.t("toast.aiCommitGenerated"));
+    } catch (e) {
+      this.error = msg(e);
+      toastError(e);
+    } finally {
+      this.aiGenerating = false;
+    }
   }
 
   /** Commit the staged changes (or amend HEAD); clears the composer and refreshes

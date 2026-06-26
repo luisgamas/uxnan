@@ -6,6 +6,7 @@
 //! `architecture/02a-system-architecture.md`.
 
 mod agent_hooks;
+mod aicommit;
 mod browse;
 mod commands;
 mod error;
@@ -232,6 +233,7 @@ pub fn run() {
             commands::git_set_watch,
             commands::git_push,
             commands::git_pull,
+            commands::git_generate_commit_message,
             commands::set_agent_commands,
             commands::get_hook_info,
             commands::agent_states,

@@ -572,6 +572,21 @@ pub async fn git_pull(path: String) -> Result<(), CommandError> {
     git::pull(&path).await.map_err(CommandError::from)
 }
 
+/// Draft a commit message for `path`'s **staged** changes using the configured
+/// AI agent (Settings → AI commit). Opt-in: errors when disabled/unconfigured,
+/// when nothing is staged, or when the agent fails / times out. Returns the
+/// message (subject on the first line, optional body after a blank line).
+#[tauri::command]
+pub async fn git_generate_commit_message(
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<String, CommandError> {
+    let cfg = state.data.read().await.settings.ai_commit.clone();
+    crate::aicommit::generate(&path, &cfg)
+        .await
+        .map_err(CommandError::from)
+}
+
 /// Payload of the `agent:detected` event: which agent command (if any) the
 /// background process scan found running in a terminal.
 #[derive(Debug, Clone, Serialize)]

@@ -313,3 +313,10 @@ export function gitPush(path: string): Promise<void> {
 export function gitPull(path: string): Promise<void> {
   return invoke("git_pull", { path });
 }
+
+/** Draft a commit message for the worktree's staged changes using the configured
+ *  AI agent (Settings → AI commit). Rejects when disabled/unconfigured, nothing
+ *  is staged, or the agent fails/times out. */
+export function generateCommitMessage(path: string): Promise<string> {
+  return invoke<string>("git_generate_commit_message", { path });
+}

@@ -807,6 +807,13 @@ pub async fn commit(
     git(worktree_path, &args).await.map(|_| ())
 }
 
+/// The full staged diff (`git diff --staged`), used to feed the AI
+/// commit-message generator (spec `02c` §4.5). Routes through `wsl.exe` for WSL
+/// repos like every other command here.
+pub async fn staged_diff(worktree_path: &str) -> Result<String, AppError> {
+    git(worktree_path, &["diff", "--staged"]).await
+}
+
 /// Push the current branch (`git push`). Never retried (not idempotent).
 pub async fn push(worktree_path: &str) -> Result<(), AppError> {
     git(worktree_path, &["push"]).await.map(|_| ())

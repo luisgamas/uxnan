@@ -10,6 +10,7 @@ export const es: Record<MessageKey, string> = {
   "toast.worktreeRemoved": "Worktree eliminado",
   "toast.worktreeRemovedBranchKept": "Worktree eliminado · rama conservada (sin fusionar)",
   "toast.worktreeRemovedSquash": "Worktree eliminado · rama squash-merged depurada",
+  "toast.aiCommitGenerated": "Mensaje de commit redactado",
   "toast.projectRemoved": "Proyecto eliminado",
   "toast.agent": "Agente",
   "toast.agentDone": "{name} terminó",
@@ -134,6 +135,35 @@ export const es: Record<MessageKey, string> = {
   "settings.hooks": "Hooks",
   "settings.hooksDesc":
     "Configuraciones de hooks listas para usar para que los agentes reporten su estado preciso de fábrica.",
+  "settings.aiCommit": "Mensaje de commit con IA",
+  "settings.aiCommitDesc":
+    "Redacta opcionalmente mensajes de commit a partir de tus cambios preparados con un agente CLI local. Desactivado por defecto; no se ejecuta nada hasta que lo actives y elijas un agente.",
+  "settings.aiCommitEnabled": "Activar",
+  "settings.aiCommitEnabledDesc":
+    "Muestra un botón «Generar» en el compositor de commits que redacta un mensaje a partir del diff preparado.",
+  "settings.aiCommitAgent": "Agente",
+  "settings.aiCommitAgentDesc":
+    "Qué CLI local ejecutar en modo de impresión. Al elegir uno se rellenan el comando y los argumentos de abajo.",
+  "settings.aiCommitAgentCustom": "Personalizado",
+  "settings.aiCommitCommand": "Comando",
+  "settings.aiCommitArgs": "Argumentos",
+  "settings.aiCommitCommandDesc":
+    "El ejecutable y las banderas que lo ponen en modo de impresión de una sola pasada. El prompt (con tu diff preparado) se añade como último argumento.",
+  "settings.aiCommitLanguage": "Idioma",
+  "settings.aiCommitLanguageDesc": "Idioma en que se escribe el mensaje generado.",
+  "settings.aiCommitLanguageAuto": "Automático",
+  "settings.aiCommitLanguageEn": "Inglés",
+  "settings.aiCommitLanguageEs": "Español",
+  "settings.aiCommitConventional": "Conventional Commits",
+  "settings.aiCommitConventionalDesc":
+    "Pide una línea de asunto con formato Conventional Commits (p. ej. feat(scope): resumen).",
+  "settings.aiCommitBody": "Cuerpo extendido",
+  "settings.aiCommitBodyDesc":
+    "Genera también un cuerpo que explique qué cambió y por qué (si no, solo el asunto).",
+  "settings.aiCommitInstructions": "Instrucciones extra",
+  "settings.aiCommitInstructionsDesc":
+    "Guía opcional añadida al prompt (p. ej. mencionar el id del ticket, modo imperativo).",
+  "settings.aiCommitInstructionsPlaceholder": "p. ej. Referencia el ticket de Jira en el cuerpo",
   "settings.appearance": "Apariencia",
   "settings.appearanceDesc":
     "Temas y fuentes para toda la app. Elige uno integrado, crea el tuyo, o importa/exporta como JSON.",
@@ -171,6 +201,9 @@ export const es: Record<MessageKey, string> = {
   "rightPanel.commitPlaceholder": "Mensaje del commit",
   "rightPanel.commit": "Confirmar",
   "rightPanel.committing": "Confirmando…",
+  "rightPanel.generateAi": "Generar",
+  "rightPanel.generateAiDesc": "Redacta un mensaje de commit a partir de los cambios preparados con IA",
+  "rightPanel.generating": "Redactando…",
   "rightPanel.diffEmpty": "No hay nada que mostrar para este archivo.",
   "rightPanel.diffStaged": "Preparado",
   "rightPanel.diffUnstaged": "Árbol de trabajo",

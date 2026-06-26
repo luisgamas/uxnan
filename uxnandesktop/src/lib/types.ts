@@ -83,6 +83,28 @@ export interface AppSettings {
   terminalThemeLightId?: string;
   /** Terminal theme when the app theme is dark ("scheme" mode; "inherit" ok). */
   terminalThemeDarkId?: string;
+  /** AI commit-message generation (opt-in; configured in Settings → AI commit). */
+  aiCommit?: AiCommitSettings;
+}
+
+/** Config for the optional AI commit-message generator (mirror of Rust
+ *  `AiCommitSettings`). Runs `command` + `args` + the built prompt as a one-shot
+ *  subprocess in the worktree and returns its drafted message. */
+export interface AiCommitSettings {
+  /** Master switch (off by default — the Generate button stays hidden). */
+  enabled: boolean;
+  /** Executable to run (e.g. `claude`, `codex`); empty = unconfigured. */
+  command: string;
+  /** Args before the prompt (e.g. `["-p"]`, `["exec"]`); the prompt is appended. */
+  args: string[];
+  /** Preferred message language: `auto` or a language name (e.g. `English`). */
+  language: string;
+  /** Ask for a Conventional Commits subject line. */
+  conventional: boolean;
+  /** Also generate an extended body (vs. subject only). */
+  includeBody: boolean;
+  /** Extra free-form instructions appended to the prompt. */
+  instructions: string;
 }
 
 export interface WorktreeData {
@@ -359,4 +381,13 @@ export const DEFAULT_SETTINGS: AppSettings = {
   activeTerminalThemeId: "inherit",
   terminalThemeLightId: "inherit",
   terminalThemeDarkId: "inherit",
+  aiCommit: {
+    enabled: false,
+    command: "",
+    args: [],
+    language: "auto",
+    conventional: true,
+    includeBody: true,
+    instructions: "",
+  },
 };

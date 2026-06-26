@@ -13,6 +13,7 @@ export const en = {
   "toast.worktreeRemoved": "Worktree removed",
   "toast.worktreeRemovedBranchKept": "Worktree removed · branch kept (unmerged)",
   "toast.worktreeRemovedSquash": "Worktree removed · squash-merged branch cleaned up",
+  "toast.aiCommitGenerated": "Commit message drafted",
   "toast.projectRemoved": "Project removed",
   "toast.agent": "Agent",
   "toast.agentDone": "{name} finished",
@@ -137,6 +138,35 @@ export const en = {
   "settings.hooks": "Hooks",
   "settings.hooksDesc":
     "Ready-made hook configs so agents report precise state out-of-the-box.",
+  "settings.aiCommit": "AI commit message",
+  "settings.aiCommitDesc":
+    "Optionally draft commit messages from your staged changes with a local CLI agent. Off by default; nothing runs until you enable it and pick an agent.",
+  "settings.aiCommitEnabled": "Enable",
+  "settings.aiCommitEnabledDesc":
+    "Show a “Generate” button in the commit composer that drafts a message from the staged diff.",
+  "settings.aiCommitAgent": "Agent",
+  "settings.aiCommitAgentDesc":
+    "Which local CLI to run in print mode. Picking one fills the command and arguments below.",
+  "settings.aiCommitAgentCustom": "Custom",
+  "settings.aiCommitCommand": "Command",
+  "settings.aiCommitArgs": "Arguments",
+  "settings.aiCommitCommandDesc":
+    "The executable and the flags that put it in one-shot print mode. The prompt (with your staged diff) is appended as the last argument.",
+  "settings.aiCommitLanguage": "Language",
+  "settings.aiCommitLanguageDesc": "Language the generated message is written in.",
+  "settings.aiCommitLanguageAuto": "Automatic",
+  "settings.aiCommitLanguageEn": "English",
+  "settings.aiCommitLanguageEs": "Spanish",
+  "settings.aiCommitConventional": "Conventional Commits",
+  "settings.aiCommitConventionalDesc":
+    "Ask for a Conventional Commits subject line (e.g. feat(scope): summary).",
+  "settings.aiCommitBody": "Extended body",
+  "settings.aiCommitBodyDesc":
+    "Also generate a body explaining what changed and why (otherwise just the subject).",
+  "settings.aiCommitInstructions": "Extra instructions",
+  "settings.aiCommitInstructionsDesc":
+    "Optional guidance added to the prompt (e.g. mention the ticket id, imperative mood).",
+  "settings.aiCommitInstructionsPlaceholder": "e.g. Reference the Jira ticket in the body",
   "settings.appearance": "Appearance",
   "settings.appearanceDesc":
     "Themes and fonts for the whole app. Pick a built-in, create your own, or import/export as JSON.",
@@ -174,6 +204,9 @@ export const en = {
   "rightPanel.commitPlaceholder": "Commit message",
   "rightPanel.commit": "Commit",
   "rightPanel.committing": "Committing…",
+  "rightPanel.generateAi": "Generate",
+  "rightPanel.generateAiDesc": "Draft a commit message from the staged changes with AI",
+  "rightPanel.generating": "Drafting…",
   "rightPanel.diffEmpty": "Nothing to show for this file.",
   "rightPanel.diffStaged": "Staged",
   "rightPanel.diffUnstaged": "Working tree",
