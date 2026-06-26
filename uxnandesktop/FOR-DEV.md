@@ -14,9 +14,10 @@ which tracks assets only a human can provide.)
 **Phases 0–5 + cross-cutting (S) are DONE — the ADE is alpha-functional as a
 standalone app** (three-panel shell, PTY terminals + splits, git worktrees, git
 status/diff/stage/commit/history, agent monitoring with the axum hook server +
-OSC/process layers, settings/themes/i18n). 69 Rust backend tests; **no frontend
-tests yet**. macOS is **unvalidated** (developed on Windows; CI is `{ubuntu,
-windows}`). **Phase 6 (embedded bridge / mobile pairing) is NOT started.**
+OSC/process layers, settings/themes/i18n, multi-agent orchestration). 69 Rust
+backend tests + 19 frontend Vitest unit tests (pure logic); **no Svelte component
+or E2E tests yet**. macOS is **unvalidated** (developed on Windows; CI is
+`{ubuntu, windows}`). **Phase 6 (embedded bridge / mobile pairing) is NOT started.**
 
 ## Phase 6 — Bridge integration (embedded bridge / mobile pairing) ☐
 
@@ -92,8 +93,9 @@ are **done** (see `CHANGELOG.md` + `architecture/02d` §3). Remaining follow-ups
 **Polish / quality**
 - [ ] Sidebar project-tree virtualization (worktree lists already virtualized).
 - [ ] Stronghold/keyring for any secret (never plaintext JSON) — needed with Phase 6.
-- [ ] E2E tests (Playwright / WebdriverIO + tauri-driver) **and** frontend (Vitest)
-      component tests — there are none yet.
+- [ ] E2E tests (Playwright / WebdriverIO + tauri-driver) **and** Svelte
+      **component** tests (Vitest + jsdom). The Vitest harness + **unit** tests
+      for pure logic now exist (`src/lib/*.test.ts`); component/E2E are still TODO.
 
 ## Platform validation
 
@@ -103,8 +105,9 @@ are **done** (see `CHANGELOG.md` + `architecture/02d` §3). Remaining follow-ups
 
 ## CI/CD — release
 
-- ✅ **Verify** — `.github/workflows/ci-desktop.yml` runs svelte-check + vite build +
-  cargo fmt/clippy/test on `{ubuntu, windows}` (macOS deferred with Apple). 69 tests.
+- ✅ **Verify** — `.github/workflows/ci-desktop.yml` runs svelte-check + `npm test`
+  (Vitest) + vite build + cargo fmt/clippy/test on `{ubuntu, windows}` (macOS
+  deferred with Apple). 69 Rust + 19 Vitest tests.
 - ✅ **`release-desktop.yml`** — exists: `tauri-action` bundles on a `desktop-v*` tag
   → draft GitHub Release. **Windows ships unsigned for now; macOS deferred.**
 - [ ] **Code-signing** — Windows Authenticode + macOS Developer ID + notarization
@@ -118,8 +121,9 @@ are **done** (see `CHANGELOG.md` + `architecture/02d` §3). Remaining follow-ups
 
 ## Cross-cutting / standing rules
 
-- [ ] Tests for every public function (AGENTS.md, ALPHA) — Rust done; **add Svelte
-      Vitest component tests**.
-- [ ] Lint/format gate before "done": `cargo clippy` + `cargo fmt` + `npm run check`.
+- [ ] Tests for every public function (AGENTS.md, ALPHA) — Rust done; pure-logic
+      frontend modules covered by Vitest; **still add Svelte component tests**.
+- [ ] Lint/format gate before "done": `cargo clippy` + `cargo fmt` + `npm run check`
+      + `npm test`.
 - [ ] Tauri capabilities: expose only the commands a window needs; no arbitrary
       FS/network from the frontend (spec §4.2). **Not yet audited.**
