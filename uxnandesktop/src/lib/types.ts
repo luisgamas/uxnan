@@ -201,6 +201,11 @@ export interface FsEntry {
   name: string;
   path: string;
   isDir: boolean;
+  /** Whether git ignores this entry (a `.gitignore` / exclude match), computed
+   *  per-listing. `false` outside a git repo. The file tree dims ignored entries
+   *  (muted + italic) — independent of git *status* (ignored entries never show
+   *  in the review panel). */
+  ignored: boolean;
 }
 
 /** A file opened in the center editor (mirror of Rust `FileContent`). `content`

@@ -62,6 +62,15 @@ export interface WorkspaceEntry {
    * timestamp without a second stat round-trip.
    */
   mtime?: number;
+  /**
+   * Whether git ignores this entry (matches a `.gitignore` / exclude rule),
+   * computed per-listing via `git check-ignore`. The file browser dims ignored
+   * entries (muted + italic) to set them apart from tracked/untracked files.
+   * `undefined`/`false` when the entry isn't ignored or the directory isn't a
+   * git repository. This is *not* a `GitFileStatus` — ignored entries never
+   * appear in `git/status`, so the flag rides on the listing instead.
+   */
+  ignored?: boolean;
 }
 
 export interface WorkspaceListing {

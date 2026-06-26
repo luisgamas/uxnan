@@ -6,6 +6,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 
 ### Added
+- **`WorkspaceEntry.ignored?`** (`models/workspace.ts`): optional boolean on
+  `workspace/list` entries marking the ones git ignores (a `.gitignore` /
+  exclude match), computed by the bridge per-listing via `git check-ignore`.
+  Lets the mobile file browser *dim* ignored entries (muted + italic) apart from
+  tracked/untracked files. Deliberately **not** a `GitFileStatus` — ignored
+  entries never appear in `git/status`, so the flag rides on the listing.
+  Backwards-compatible (new optional field, no method change); consumed by the
+  bridge (`workspace/list`) and mobile (file browser). Mirrors the desktop ADE's
+  own file-tree dimming (its `FsEntry.ignored`, a desktop-local type).
 - **`TurnList.activeTurnId?`** (`models/thread.ts`): the `turn/list` result now
   carries the turn currently in-flight for the thread (the bridge's live
   AgentManager state), when one exists. Distinct from a stored turn's

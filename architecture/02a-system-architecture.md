@@ -1601,9 +1601,14 @@ async function handleGitCreateBranch({ cwd, name }) { ... }
 async function handleGitCreateWorktree({ cwd, branch, path, managed }) { ... }
 async function handleGitStackedPublish({ cwd, message, remote, branch }) { ... }
 async function handleGitLog({ cwd, limit, cursor, ref }) {
-  // git log <ref|HEAD> --topo-order --format=...%x1e --decorate=full -z
+  // git log <ref|HEAD> --date-order --format=...%x1e --decorate=full -z
   //   --shortstat -n (limit+1) --skip <offset>
-  // Orden TOPOLÓGICO (no por fecha) → grafo limpio, padres justo tras el hijo.
+  // Orden por FECHA respetando topología (`--date-order`: nunca un padre antes
+  //   que sus hijos, por lo demás por commit-time, más reciente primero) →
+  //   coincide con el ADE de escritorio (git2 `Sort::TOPOLOGICAL | TIME`) y con
+  //   la lista de GitHub. (`--topo-order` agrupaba cada rama y desordenaba los
+  //   commits por fecha en el teléfono.) Sigue siendo orden topológico válido →
+  //   el grafo swimlane queda limpio (sin lanes colgando/fantasma).
   // Paginación por OFFSET: `cursor` es un token opaco (= nº de commits a saltar);
   //   nextCursor = offset+limit. (El antiguo `cursor^` saltaba el 2º padre de un
   //   merge y PERDÍA commits en un DAG.) Devuelve {commits, hasMore, nextCursor}.
@@ -1691,6 +1696,19 @@ son consumidas hoy por:
   rutas se validan en el bridge por `path-guard`
   (§5.8.9/infra) que confina los reads al root del workspace y
   excluye archivos sensibles.
+
+Cada entrada de `workspace/list` (`WorkspaceEntry` en `shared/`) lleva
+`name` + `type` (`file`/`dir`) y, en archivos, `size` y `mtime` (epoch ms,
+del mismo `stat`). Además expone `ignored?: boolean`: el bridge marca por
+listado qué entradas ignora git (un match de `.gitignore`/exclude) con un
+único `git check-ignore -z --stdin`; un directorio no-repo (o cualquier
+error de git) deja todo sin marcar. Es **independiente** de `GitFileStatus`
+(las entradas ignoradas nunca aparecen en `git/status`, así que no inflan
+los contadores del Git screen): el visor de archivos las atenúa (tono
+apagado + cursiva) para distinguirlas de las trackeadas/untracked, mientras
+los estados git (added/modified/deleted/untracked) conservan su color
+convencional. El ADE de escritorio replica el atenuado con su propio
+`FsEntry.ignored` (tipo local, vía git2 `is_path_ignored`).
 
 #### 5.8.8 Fallback JSONL (session-jsonl-history)
 

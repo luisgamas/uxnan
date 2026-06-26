@@ -6,6 +6,47 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — commit history is now in correct chronological order
+- The History screen's commits were sometimes out of time order (a branch's
+  commits grouped together, so some commits made around the same time showed far
+  apart). Fixed in the bridge — `git/log` switched from `--topo-order` to
+  `--date-order` — so the phone now matches the desktop ADE and GitHub. No
+  mobile code change; it consumes the bridge fix.
+
+### Changed — history branch graph: VS Code swimlane curves
+- **The History graph now uses the VS Code swimlane model + true arc
+  connectors.** Lanes *compact* — when a branch merges, the extra lanes waiting
+  for the commit collapse into the node and the lanes to their right shift one
+  column left — so the graph narrows with flowing curves instead of leaving
+  parallel gaps. Connectors are real circular arcs (`Path.arcToPoint`): a
+  quarter-circle (radius ≈ one lane) into/out of a node, and a gentle S when a
+  passing lane shifts column — replacing the previous stable-lane layout and
+  tiny rounded-step connectors. Node dots are unchanged (solid dot, with a
+  separate outer ring on merges). `git_history_screen.dart` (`_buildGraph`
+  swimlane layout → per-row `_GraphEdge` list, `_GraphPainter` arc geometry).
+
+### Changed — file browser: git-conventional colours + dimmed ignored entries
+- **Untracked files use the conventional git colour again, and git-ignored
+  entries are now dimmed (muted + italic).** PR #25 had coloured *untracked*
+  files in a muted italic tone — but that's the universal "git ignores this"
+  affordance, and it diverged from the rest of the app, where untracked is the
+  `gitUntracked` blue (the Git screen, commit detail, diff views). The browser
+  now matches that convention: untracked → blue, like added/modified/deleted in
+  their tokens. Rows no longer carry a medium weight at all — colour alone (plus
+  italic for ignored) conveys the state. The muted-italic *dimmed* treatment is
+  reserved for **ignored** entries, a distinct concept (a file type vs a git
+  state), surfaced by the bridge's new `WorkspaceEntry.ignored` flag and carried
+  on `FileEntry` / `FileTreeNode`. Ignored is independent of `gitStatus`
+  (ignored entries never appear in `git/status`), so an ignored folder dims even
+  while collapsed and its children dim when expanded.
+  - `domain/entities/file_browser.dart` (`FileEntry.ignored`,
+    `FileTreeNode.ignored`), `application/managers/file_browser_manager.dart`
+    (carries the flag through), `presentation/.../widgets/file_tree_tile.dart`
+    (untracked → `gitUntracked`; ignored → muted + italic).
+  - Tests: +5 (`file_tree_tile_test.dart`: untracked/modified/ignored/clean
+    visuals; `file_browser_manager_test.dart`: the ignored flag flows through and
+    survives a git-status repaint).
+
 ### Fixed — a mid-stream turn's earlier reply is no longer lost on reconnect (Bug A)
 - **The live re-attach now seeds the streaming buffer with the in-flight turn's
   partial output.** When the app was killed and reopened while the agent was

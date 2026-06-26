@@ -31,7 +31,7 @@ export interface RunGitResult {
 export function runGit(
   cwd: string,
   args: string[],
-  options: { timeoutMs?: number; env?: NodeJS.ProcessEnv } = {},
+  options: { timeoutMs?: number; env?: NodeJS.ProcessEnv; input?: string } = {},
 ): Promise<RunGitResult> {
   return runFile('git', cwd, args, options);
 }
@@ -53,10 +53,10 @@ function runFile(
   file: string,
   cwd: string,
   args: string[],
-  options: { timeoutMs?: number; env?: NodeJS.ProcessEnv } = {},
+  options: { timeoutMs?: number; env?: NodeJS.ProcessEnv; input?: string } = {},
 ): Promise<RunGitResult> {
   return new Promise((resolve, reject) => {
-    execFile(
+    const child = execFile(
       file,
       args,
       {
@@ -77,6 +77,12 @@ function runFile(
         resolve({ stdout, stderr });
       },
     );
+    // Feed `input` over stdin (e.g. `git check-ignore --stdin`). Guard the write
+    // so a closed pipe (process already exited) can't crash the daemon.
+    if (options.input !== undefined && child.stdin) {
+      child.stdin.on('error', () => {});
+      child.stdin.end(options.input);
+    }
   });
 }
 

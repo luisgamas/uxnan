@@ -20,8 +20,9 @@ import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 ///
 ///   - **Graph** — overlays a continuous, colored VS Code-style swimlane graph
 ///     on the left of each row. Fixed-height rows keep the dots aligned in
-///     lanes; lines connect across rows with rounded-step connectors and a
-///     branch-stable color per lane; merge nodes get a separate outer ring.
+///     lanes; lines connect across rows with smooth circular-arc connectors
+///     (lanes compact toward the left) and a branch-stable color per lane;
+///     merge nodes get a separate outer ring.
 ///   - **Compact** — a denser row layout.
 ///
 /// Backed by `git/log` (cursor pagination, 50/page) with **infinite scroll**
@@ -973,123 +974,147 @@ class _RefTile extends StatelessWidget {
 /// One row of the commit graph. [incoming]/[outgoing] hold the SHA each lane
 /// routes toward at the top and bottom edge of the row (null = empty lane), so
 /// adjacent rows' edges line up and the painted lines connect seamlessly.
-/// [incomingColors]/[outgoingColors] carry a **branch-stable color id** per
-/// lane (assigned when a lane is born and kept while it lives) so a branch
-/// keeps its color even as it shifts columns — the VS Code behavior.
+/// Colors are a **branch-stable color id** per lane (assigned when a lane is
+/// born and carried while it lives) so a branch keeps its color even as it
+/// shifts columns — the VS Code behavior.
+
+/// The shape of one drawn edge in a row (see [_GraphEdge]).
+enum _EdgeKind { through, mergeIn, inNode, outNode, mergeOut }
+
+/// One drawn edge within a row. Lanes are column indices; the painter maps
+/// them to x positions. `through` is a passing lane (vertical, or a gentle
+/// left S when it shifts column); `mergeIn` is a converging child arcing into
+/// the node; `inNode`/`outNode` are the node's own lane halves; `mergeOut` is
+/// the node arcing out to an extra (merge) parent's lane.
+class _GraphEdge {
+  const _GraphEdge(this.kind, this.fromLane, this.toLane, this.colorId);
+
+  final _EdgeKind kind;
+  final int fromLane;
+  final int toLane;
+  final int colorId;
+}
+
 class _GraphRow {
   _GraphRow({
     required this.commit,
-    required this.incoming,
-    required this.outgoing,
-    required this.incomingColors,
-    required this.outgoingColors,
-    required this.commitLane,
-    required this.commitColor,
-    required this.parentLanes,
+    required this.edges,
+    required this.nodeLane,
+    required this.nodeColor,
+    required this.isMerge,
+    required this.laneCount,
   });
 
   final GitCommit commit;
-  final List<String?> incoming;
-  final List<String?> outgoing;
-  final List<int?> incomingColors;
-  final List<int?> outgoingColors;
-  final int commitLane;
-  final int commitColor;
-  final List<int> parentLanes;
-
-  int get laneCount =>
-      incoming.length > outgoing.length ? incoming.length : outgoing.length;
+  final List<_GraphEdge> edges;
+  final int nodeLane;
+  final int nodeColor;
+  final bool isMerge;
+  final int laneCount;
 }
 
-/// Walks the commit list newest-first and assigns swimlanes, carrying the lane
-/// + color state forward so each row's `incoming` equals the previous row's
-/// `outgoing` (the key to continuous lines). The first parent continues the
-/// commit's lane and color; extra (merge) parents open or reuse lanes to the
-/// right, getting a fresh color when a new branch line is born.
+/// A live swimlane: the hash it waits to reach + its branch-stable color id.
+class _Lane {
+  _Lane(this.id, this.color);
+  final String id;
+  final int color;
+}
+
+/// Walks the commit list newest-first and assigns swimlanes (the VS Code
+/// model), carrying lane state forward so each row's inputs equal the previous
+/// row's outputs (the key to continuous lines). The leftmost lane waiting for a
+/// commit is its node; the first parent continues that lane and color; every
+/// *other* lane waiting for it collapses into the node (dropped from the
+/// outputs, so lanes to its right shift left — the compaction that makes the
+/// graph narrow with flowing curves). Each extra (merge) parent opens a new
+/// lane at the right with a fresh color. The per-row [_GraphEdge] list is what
+/// the painter strokes.
 List<_GraphRow> _buildGraph(List<GitCommit> commits) {
   final rows = <_GraphRow>[];
-  var lanes = <String?>[];
-  var colors = <int?>[];
+  var inputs = <_Lane>[];
   var nextColor = 0;
 
   for (final commit in commits) {
-    final incoming = List<String?>.from(lanes);
-    final incomingColors = List<int?>.from(colors);
+    final inputIndex = inputs.indexWhere((l) => l.id == commit.sha);
+    final nodeLane = inputIndex != -1 ? inputIndex : inputs.length;
+    final nodeColor = inputIndex != -1 ? inputs[inputIndex].color : nextColor++;
 
-    var commitLane = incoming.indexOf(commit.sha);
-    int commitColor;
-    if (commitLane == -1) {
-      final free = incoming.indexOf(null);
-      commitLane = free == -1 ? incoming.length : free;
-      commitColor = nextColor++; // a brand-new branch tip → new color
-    } else {
-      commitColor = incomingColors[commitLane] ?? nextColor++;
-    }
+    final outputs = <_Lane>[];
+    final edges = <_GraphEdge>[];
+    var firstParentAdded = false;
 
-    final outgoing = List<String?>.from(incoming);
-    final outgoingColors = List<int?>.from(incomingColors);
-    while (outgoing.length <= commitLane) {
-      outgoing.add(null);
-      outgoingColors.add(null);
-    }
-    // Lanes that were waiting for this commit terminate at the dot.
-    for (var i = 0; i < outgoing.length; i++) {
-      if (outgoing[i] == commit.sha) {
-        outgoing[i] = null;
-        outgoingColors[i] = null;
-      }
-    }
-    outgoing[commitLane] = null;
-    outgoingColors[commitLane] = null;
-
-    final parentLanes = <int>[];
-    for (var pi = 0; pi < commit.parents.length; pi++) {
-      final parent = commit.parents[pi];
-      if (pi == 0) {
-        // First parent continues this commit's lane + color.
-        outgoing[commitLane] = parent;
-        outgoingColors[commitLane] = commitColor;
-        parentLanes.add(commitLane);
-      } else {
-        var lane = outgoing.indexOf(parent);
-        if (lane == -1) {
-          final free = outgoing.indexOf(null);
-          if (free == -1) {
-            lane = outgoing.length;
-            outgoing.add(parent);
-            outgoingColors.add(nextColor++);
-          } else {
-            lane = free;
-            outgoing[free] = parent;
-            outgoingColors[free] = nextColor++;
+    // Walk input lanes: the node lane continues with the first parent; other
+    // lanes waiting for this commit converge in (and drop); the rest pass
+    // through (shifting left if earlier lanes collapsed).
+    for (var i = 0; i < inputs.length; i++) {
+      final lane = inputs[i];
+      if (lane.id == commit.sha) {
+        if (i == nodeLane) {
+          if (commit.parents.isNotEmpty && !firstParentAdded) {
+            outputs.add(_Lane(commit.parents[0], nodeColor));
+            firstParentAdded = true;
           }
+        } else {
+          edges.add(_GraphEdge(_EdgeKind.mergeIn, i, nodeLane, lane.color));
         }
-        parentLanes.add(lane);
+        continue;
       }
+      final outLane = outputs.length;
+      outputs.add(_Lane(lane.id, lane.color));
+      edges.add(_GraphEdge(_EdgeKind.through, i, outLane, lane.color));
     }
+
+    // Tip commit (no incoming lane): the first parent still continues the
+    // node's lane — append it so it lands at nodeLane (= outputs.length here)
+    // and is drawn as the straight out-of-node vertical, never a curve.
+    if (!firstParentAdded && commit.parents.isNotEmpty) {
+      outputs.add(_Lane(commit.parents[0], nodeColor));
+      firstParentAdded = true;
+    }
+
+    // Extra (merge) parents — only parents[1..] — open new lanes at the right.
+    for (var p = 1; p < commit.parents.length; p++) {
+      final colorId = nextColor++;
+      final k = outputs.length;
+      outputs.add(_Lane(commit.parents[p], colorId));
+      edges.add(_GraphEdge(_EdgeKind.mergeOut, nodeLane, k, colorId));
+    }
+
+    // The node's own lane: a vertical into the dot from above (if a child was
+    // waiting) and out of it toward the first parent (if it has parents).
+    if (inputIndex != -1) {
+      edges.add(_GraphEdge(_EdgeKind.inNode, nodeLane, nodeLane, nodeColor));
+    }
+    if (firstParentAdded) {
+      edges.add(_GraphEdge(_EdgeKind.outNode, nodeLane, nodeLane, nodeColor));
+    }
+
+    final laneCount = [
+      inputs.length,
+      outputs.length,
+      nodeLane + 1,
+    ].reduce((a, b) => a > b ? a : b);
 
     rows.add(
       _GraphRow(
         commit: commit,
-        incoming: incoming,
-        outgoing: outgoing,
-        incomingColors: incomingColors,
-        outgoingColors: outgoingColors,
-        commitLane: commitLane,
-        commitColor: commitColor,
-        parentLanes: parentLanes,
+        edges: edges,
+        nodeLane: nodeLane,
+        nodeColor: nodeColor,
+        isMerge: commit.parents.length > 1,
+        laneCount: laneCount,
       ),
     );
-    lanes = outgoing;
-    colors = outgoingColors;
+    inputs = outputs;
   }
   return rows;
 }
 
-/// Paints one [_GraphRow] in the VS Code style: continuous, branch-colored
-/// lane lines (pass-through lanes drawn full-height so they join the rows
-/// above and below), child lines into the dot, lines out to each parent, and
-/// the commit node on top. Colors come from the row's stable color ids.
+/// Paints one [_GraphRow] in the VS Code style: continuous, branch-colored lane
+/// lines with smooth circular-arc connectors (the into/out-of-node bends are a
+/// full quarter-circle of radius ≈ one lane; a passing lane that shifts column
+/// makes a gentle S), plus the commit node on top. Colors come from the row's
+/// stable color ids.
 class _GraphPainter extends CustomPainter {
   _GraphPainter({
     required this.row,
@@ -1110,89 +1135,90 @@ class _GraphPainter extends CustomPainter {
   Color _color(int? colorId) => palette[(colorId ?? 0) % palette.length];
   double _laneX(int lane) => leftPad + lane * laneWidth + laneWidth / 2;
 
-  Paint _stroke(int? colorId) => Paint()
+  Paint _stroke(int colorId) => Paint()
     ..color = _color(colorId)
     ..strokeWidth = 2
     ..style = PaintingStyle.stroke
     ..strokeCap = StrokeCap.round;
 
-  /// VS Code-style connector: a straight vertical when the columns match,
-  /// otherwise vertical → quarter-arc → short horizontal → quarter-arc →
-  /// vertical (the crisp rounded "step" at the row midpoint). Assumes
-  /// `from.dy <= to.dy` (all connectors run top→down in a row).
-  void _connect(Canvas canvas, Paint paint, Offset from, Offset to) {
-    if ((from.dx - to.dx).abs() < 0.5) {
-      canvas.drawLine(from, to, paint);
-      return;
-    }
-    final dir = to.dx > from.dx ? 1.0 : -1.0;
-    final midY = (from.dy + to.dy) / 2;
-    final r = [
-      5.0,
-      (to.dx - from.dx).abs() / 2,
-      (to.dy - from.dy).abs() / 2,
-    ].reduce((a, b) => a < b ? a : b);
-    final path = Path()
-      ..moveTo(from.dx, from.dy)
-      ..lineTo(from.dx, midY - r)
-      ..quadraticBezierTo(from.dx, midY, from.dx + dir * r, midY)
-      ..lineTo(to.dx - dir * r, midY)
-      ..quadraticBezierTo(to.dx, midY, to.dx, midY + r)
-      ..lineTo(to.dx, to.dy);
-    canvas.drawPath(path, paint);
-  }
-
   @override
   void paint(Canvas canvas, Size size) {
-    final dotY = size.height / 2;
     final h = size.height;
-    final centerX = _laneX(row.commitLane);
+    final mid = h / 2;
+    // Quarter-arc radius for node bends (a smooth sweep ≈ one lane); a gentler
+    // radius for a passing lane that shifts column.
+    final nodeR = laneWidth < mid ? laneWidth : mid;
+    const shiftR = 6.0;
 
-    // 1. Lines from the top: into the dot (a child of this commit, kept in its
-    //    own incoming color) or passing through (full height).
-    for (var j = 0; j < row.incoming.length; j++) {
-      final occ = row.incoming[j];
-      if (occ == null) continue;
-      if (occ == row.commit.sha) {
-        _connect(
-          canvas,
-          _stroke(row.incomingColors[j]),
-          Offset(_laneX(j), 0),
-          Offset(centerX, dotY),
-        );
-      } else {
-        // A pass-through lane continues in its *own* column (lanes are never
-        // compacted, so `outgoing[j]` is still this occupant) — draw a straight
-        // vertical. Using `outgoing.indexOf(occ)` was wrong: when the same
-        // parent occupies two lanes (a commit with multiple children, common
-        // around merges) it returned the *first* lane, so the other lane drew a
-        // diagonal "hook" every row instead of a clean vertical.
-        _connect(
-          canvas,
-          _stroke(row.incomingColors[j]),
-          Offset(_laneX(j), 0),
-          Offset(_laneX(j), h),
-        );
+    for (final e in row.edges) {
+      final x1 = _laneX(e.fromLane);
+      final x2 = _laneX(e.toLane);
+      final paint = _stroke(e.colorId);
+      switch (e.kind) {
+        case _EdgeKind.inNode:
+          canvas.drawLine(Offset(x1, 0), Offset(x1, mid), paint);
+        case _EdgeKind.outNode:
+          canvas.drawLine(Offset(x1, mid), Offset(x1, h), paint);
+        case _EdgeKind.mergeIn:
+          // Down the child lane, a quarter-arc left into mid, then to the node.
+          canvas.drawPath(
+            Path()
+              ..moveTo(x1, 0)
+              ..lineTo(x1, mid - nodeR)
+              ..arcToPoint(
+                Offset(x1 - nodeR, mid),
+                radius: Radius.circular(nodeR),
+              )
+              ..lineTo(x2, mid),
+            paint,
+          );
+        case _EdgeKind.mergeOut:
+          // From the node at mid, a quarter-arc right-down into the parent.
+          canvas.drawPath(
+            Path()
+              ..moveTo(x1, mid)
+              ..lineTo(x2 - nodeR, mid)
+              ..arcToPoint(
+                Offset(x2, mid + nodeR),
+                radius: Radius.circular(nodeR),
+              )
+              ..lineTo(x2, h),
+            paint,
+          );
+        case _EdgeKind.through:
+          if ((x1 - x2).abs() < 0.5) {
+            canvas.drawLine(Offset(x1, 0), Offset(x1, h), paint);
+          } else {
+            // Compaction always shifts a passing lane LEFT: a symmetric S of
+            // two shiftR arcs around the mid-row horizontal.
+            canvas.drawPath(
+              Path()
+                ..moveTo(x1, 0)
+                ..lineTo(x1, mid - shiftR)
+                ..arcToPoint(
+                  Offset(x1 - shiftR, mid),
+                  radius: const Radius.circular(shiftR),
+                )
+                ..lineTo(x2 + shiftR, mid)
+                ..arcToPoint(
+                  Offset(x2, mid + shiftR),
+                  radius: const Radius.circular(shiftR),
+                  clockwise: false,
+                )
+                ..lineTo(x2, h),
+              paint,
+            );
+          }
       }
     }
 
-    // 2. Lines from the dot to each parent at the bottom edge.
-    for (final k in row.parentLanes) {
-      _connect(
-        canvas,
-        _stroke(row.outgoingColors[k]),
-        Offset(centerX, dotY),
-        Offset(_laneX(k), h),
-      );
-    }
-
-    // 3. The commit node. Merge commits (2+ parents) get the VS Code treatment:
-    //    a solid inner dot with a *separate* outer ring (a surface gap between
-    //    them), so convergence points read distinctly from ordinary commits.
-    final center = Offset(centerX, dotY);
-    final nodeColor = _color(row.commitColor);
+    // The commit node. Merge commits (2+ parents) get the VS Code treatment: a
+    // solid inner dot with a *separate* outer ring (a surface gap between
+    // them), so convergence points read distinctly from ordinary commits.
+    final center = Offset(_laneX(row.nodeLane), mid);
+    final nodeColor = _color(row.nodeColor);
     final r = dotSize / 2;
-    final isMerge = row.commit.parents.length > 1;
+    final isMerge = row.isMerge;
     final ringR = r + 3;
     // Clear the node area so crossing lines don't muddy the dot/ring.
     canvas.drawCircle(

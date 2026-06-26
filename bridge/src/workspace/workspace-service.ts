@@ -17,6 +17,7 @@ import type {
   WorkspaceListing,
 } from '@uxnan/shared';
 import { isSensitiveName, resolveWithinRoot } from './path-guard.js';
+import { runGit } from '../git/git-runner.js';
 
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
@@ -80,10 +81,45 @@ export class WorkspaceService {
       }
       entries.push(entry);
     }
+    // Flag entries git ignores (muted/italic in the file browser). Best-effort:
+    // a single `git check-ignore` over this directory's names; a non-repo (or any
+    // git error) just leaves every entry un-flagged.
+    const ignored = await this.#ignoredNames(
+      resolvedRoot,
+      entries.map((e) => e.name),
+    );
+    if (ignored.size > 0) {
+      for (const entry of entries) {
+        if (ignored.has(entry.name)) entry.ignored = true;
+      }
+    }
     entries.sort((a, b) =>
       a.type === b.type ? a.name.localeCompare(b.name) : a.type === 'dir' ? -1 : 1,
     );
     return { cwd: '.', entries };
+  }
+
+  /**
+   * The subset of [names] (basenames in [dir]) that git ignores, via a single
+   * `git check-ignore -z`. Tracked files matching an ignore rule are *not*
+   * reported (git knows they're tracked), so force-added files stay un-dimmed.
+   * Returns an empty set when [dir] isn't a git repo or git errors — the file
+   * browser must keep working outside a repository.
+   */
+  async #ignoredNames(dir: string, names: string[]): Promise<Set<string>> {
+    if (names.length === 0) return new Set();
+    try {
+      // `--stdin -z`: names in on stdin, ignored ones out, both NUL-delimited so
+      // names with spaces/newlines round-trip safely and `-` is never a flag.
+      const { stdout } = await runGit(dir, ['check-ignore', '-z', '--stdin'], {
+        input: names.join('\0'),
+      });
+      return new Set(stdout.split('\0').filter((n) => n.length > 0));
+    } catch {
+      // Exit 1 (nothing ignored) and exit 128 (not a repo) both reject here;
+      // either way there's nothing to flag.
+      return new Set();
+    }
   }
 
   async applyPatch(root: string, changes: PatchChange[]): Promise<ApplyResult> {

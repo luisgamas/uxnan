@@ -2,7 +2,8 @@
   // File-tree tab: the active worktree/project's full working tree, lazily
   // expanded one folder at a time (state lives in the `fileTree` store so it
   // survives tab switches). Files — and the folders that contain them — with a
-  // git-tracked change are colored, mirroring the right-panel review. Clicking a
+  // git-tracked change are colored, mirroring the right-panel review; git-ignored
+  // entries are dimmed (muted + italic). Clicking a
   // file opens it in the center editor. Toolbar: search, collapse/expand all,
   // reveal the worktree in the OS file manager, refresh.
   import type { FsEntry } from "$lib/types";
@@ -173,6 +174,7 @@
           {@const rel = relOf(r.entry.path)}
           {@const isOpen = terminals.isFileOpen(r.entry.path)}
           {@const isExpanded = fileTree.expanded.has(r.entry.path)}
+          {@const ignored = r.entry.ignored}
           {@const changed = r.entry.isDir
             ? changes.dirs.has(rel)
             : changes.fileMap.has(rel)}
@@ -204,7 +206,16 @@
               <span class="w-3 shrink-0"></span>
               <FileIcon class={cn(icon.decorative, "shrink-0", color || "text-muted-foreground")} />
             {/if}
-            <span class={cn("min-w-0 flex-1 truncate", text.body, color, (changed || isOpen) && "font-medium")}>
+            <!-- Ignored entries are dimmed (muted + italic), winning over any git
+                 colour — an ignored entry never has a git change anyway. -->
+            <span
+              class={cn(
+                "min-w-0 flex-1 truncate",
+                text.body,
+                ignored ? "italic text-muted-foreground" : color,
+                (changed || isOpen) && "font-medium",
+              )}
+            >
               {r.entry.name}
             </span>
           </button>

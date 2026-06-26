@@ -141,7 +141,7 @@ See `architecture/02a-system-architecture.md` §5.8 and
 ```bash
 # from the repo root (workspaces):
 npm run build      # build @uxnan/shared then uxnan-bridge
-npm test           # build + run all node:test suites (355 bridge + 29 shared + 27 relay)
+npm test           # build + run all node:test suites (357 bridge + 29 shared + 27 relay)
 npm run typecheck  # tsc --noEmit across packages
 npm run format     # prettier --write
 ```

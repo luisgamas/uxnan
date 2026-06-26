@@ -842,10 +842,11 @@ const LOG_RECORD_SEP: char = '\u{1e}';
 /// body), terminated by the record separator.
 const LOG_FORMAT: &str = "format:%H%x1f%h%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%D%x1f%s%x1f%b%x1e";
 
-/// List the worktree's commit history (newest first, topological), `limit`
-/// commits starting `skip` from `HEAD`. Fast path: `git2` revwalk; CLI fallback
-/// (`git log --topo-order`). An unborn `HEAD` (a repo with no commits) yields an
-/// empty list rather than an error.
+/// List the worktree's commit history (newest first, date order while keeping
+/// children before parents), `limit` commits starting `skip` from `HEAD`. Fast
+/// path: `git2` revwalk (`Sort::TOPOLOGICAL | TIME`); CLI fallback (`git log
+/// --date-order`, the CLI equivalent). An unborn `HEAD` (a repo with no commits)
+/// yields an empty list rather than an error.
 pub async fn log(
     worktree_path: &str,
     limit: usize,
@@ -876,7 +877,7 @@ async fn log_cli(
         worktree_path,
         &[
             "log",
-            "--topo-order",
+            "--date-order",
             &skip_s,
             "-n",
             &limit_s,

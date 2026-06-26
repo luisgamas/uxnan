@@ -14,7 +14,7 @@ which tracks assets only a human can provide.)
 **Phases 0–5 + cross-cutting (S) are DONE — the ADE is alpha-functional as a
 standalone app** (three-panel shell, PTY terminals + splits, git worktrees, git
 status/diff/stage/commit/history, agent monitoring with the axum hook server +
-OSC/process layers, settings/themes/i18n, multi-agent orchestration). 96 Rust
+OSC/process layers, settings/themes/i18n, multi-agent orchestration). 98 Rust
 backend tests + 19 frontend Vitest unit tests (pure logic); **no Svelte component
 or E2E tests yet**. macOS is **unvalidated** (developed on Windows; CI is
 `{ubuntu, windows}`). **Phase 6 (embedded bridge / mobile pairing) is NOT started.**
@@ -101,7 +101,7 @@ are **done** (see `CHANGELOG.md` + `architecture/02d` §3). Remaining follow-ups
 
 - ✅ **Verify** — `.github/workflows/ci-desktop.yml` runs svelte-check + `npm test`
   (Vitest) + vite build + cargo fmt/clippy/test on `{ubuntu, windows}` (macOS
-  deferred with Apple). 96 Rust + 19 Vitest tests.
+  deferred with Apple). 98 Rust + 19 Vitest tests.
 - ✅ **`release-desktop.yml`** — exists: `tauri-action` bundles on a `desktop-v*` tag
   → draft GitHub Release. **Windows ships unsigned for now; macOS deferred.**
 - [ ] **Code-signing** — Windows Authenticode + macOS Developer ID + notarization

@@ -138,6 +138,52 @@ void main() {
     await manager.dispose();
   });
 
+  test('loadRoot carries the ignored flag through from workspace/list entries',
+      () async {
+    const listWithIgnored = <String, dynamic>{
+      'cwd': '.',
+      'entries': [
+        {'name': 'build', 'type': 'dir', 'ignored': true},
+        {'name': 'lib', 'type': 'dir'},
+        {'name': '.env', 'type': 'file', 'size': 10, 'ignored': true},
+        {'name': 'main.dart', 'type': 'file', 'size': 20},
+      ],
+    };
+    final manager = _buildManager(
+      onCall: (_, __) {},
+      responder: (m, _) {
+        if (m == 'workspace/list') {
+          return RpcMessage.response(id: '1', result: listWithIgnored);
+        }
+        // An (empty) git/status fetch runs after load → exercises the repaint
+        // path; the ignored flag must survive the copyWith repaint.
+        if (m == 'git/status') {
+          return RpcMessage.response(
+            id: '2',
+            result: const <String, dynamic>{
+              'branch': 'main',
+              'files': <dynamic>[],
+            },
+          );
+        }
+        return RpcMessage.response(id: '1', result: const <String, dynamic>{});
+      },
+    );
+
+    await manager.loadRoot(_workspaceRoot);
+    await _settle();
+
+    final children = manager.rootFor(_workspaceRoot)!.children;
+    expect(children.firstWhere((c) => c.basename == 'build').ignored, isTrue);
+    expect(children.firstWhere((c) => c.basename == '.env').ignored, isTrue);
+    expect(children.firstWhere((c) => c.basename == 'lib').ignored, isFalse);
+    expect(
+      children.firstWhere((c) => c.basename == 'main.dart').ignored,
+      isFalse,
+    );
+    await manager.dispose();
+  });
+
   test('directories aggregate descendant git status', () async {
     const statusResult = <String, dynamic>{
       'branch': 'main',

@@ -12,6 +12,7 @@ class FileEntry extends Equatable {
     required this.type,
     this.size,
     this.mtime,
+    this.ignored = false,
   });
 
   /// Reconstructs a [FileEntry] from its JSON form. An unknown `type` falls
@@ -22,6 +23,7 @@ class FileEntry extends Equatable {
         type: _type(json['type'] as String?),
         size: json['size'] is num ? (json['size'] as num).toInt() : null,
         mtime: json['mtime'] is num ? (json['mtime'] as num).toInt() : null,
+        ignored: json['ignored'] == true,
       );
 
   /// Entry's base name (no path).
@@ -37,6 +39,12 @@ class FileEntry extends Equatable {
   /// directories or unreadable entries).
   final int? mtime;
 
+  /// Whether git ignores this entry (a `.gitignore` / exclude match), computed
+  /// by the bridge per-listing. Independent of [GitFileStatus]: ignored entries
+  /// never appear in `git/status`, so the browser dims them (muted + italic)
+  /// using this flag instead. `false` outside a git repository.
+  final bool ignored;
+
   static FileEntryType _type(String? name) {
     for (final value in FileEntryType.values) {
       if (value.name == name) return value;
@@ -45,7 +53,7 @@ class FileEntry extends Equatable {
   }
 
   @override
-  List<Object?> get props => [name, type, size, mtime];
+  List<Object?> get props => [name, type, size, mtime, ignored];
 }
 
 /// Whether an entry is a directory or a file.
@@ -105,6 +113,7 @@ class FileTreeNode extends Equatable {
     this.loading = false,
     this.error,
     this.gitStatus,
+    this.ignored = false,
   });
 
   /// Whether this node is a directory.
@@ -128,6 +137,7 @@ class FileTreeNode extends Equatable {
     bool? loading,
     Object? error = _sentinel,
     Object? gitStatus = _sentinel,
+    bool? ignored,
   }) =>
       FileTreeNode(
         name: name,
@@ -146,6 +156,7 @@ class FileTreeNode extends Equatable {
         gitStatus: identical(gitStatus, _sentinel)
             ? this.gitStatus
             : gitStatus as GitFileStatus?,
+        ignored: ignored ?? this.ignored,
       );
 
   /// Display name for this node — strips the extension when [showExtension]
@@ -193,6 +204,12 @@ class FileTreeNode extends Equatable {
   /// Per-file git status (only meaningful for files; `null` = no change).
   final GitFileStatus? gitStatus;
 
+  /// Whether git ignores this entry (a `.gitignore` / exclude match). Carried
+  /// straight from the `workspace/list` entry; independent of [gitStatus]
+  /// (ignored entries never appear in `git/status`). Drives the muted + italic
+  /// "dimmed" treatment in the file browser.
+  final bool ignored;
+
   @override
   List<Object?> get props => [
         name,
@@ -205,6 +222,7 @@ class FileTreeNode extends Equatable {
         loading,
         error,
         gitStatus,
+        ignored,
       ];
 }
 

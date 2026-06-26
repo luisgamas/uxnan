@@ -5,6 +5,43 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — history log CLI fallback order
+- The `git log` CLI fallback now uses `--date-order` (was `--topo-order`) so it
+  matches the primary git2 path (`Sort::TOPOLOGICAL | TIME`). The fast path was
+  already correct, so this only affects repos `git2` can't open. `src-tauri/src/git.rs`.
+
+### Changed — history branch graph: VS Code swimlane curves
+- **The History graph now uses the VS Code swimlane model + true arc
+  connectors.** Lanes *compact* — when a branch merges, the extra lanes waiting
+  for the commit collapse into the node and the lanes to their right shift one
+  column left — so the graph narrows with flowing curves instead of leaving
+  parallel gaps. Connectors are real circular arcs: a quarter-circle (radius ≈
+  one lane) into/out of a node, and a gentle S when a passing lane shifts
+  column — replacing the previous stable-lane layout and tiny rounded-step
+  "L" connectors. Node dots are unchanged (solid dot, with a separate outer
+  ring on merges). `src/lib/gitGraph.ts` (swimlane layout → per-row `GraphEdge`
+  list) + `src/lib/components/HistoryPanel.svelte` (arc path geometry).
+
+### Changed — file tree: dim git-ignored entries
+- **The Files tab now dims git-ignored entries (muted + italic),** so files and
+  folders git ignores (`node_modules`, `build`, `.env`, …) read as clearly apart
+  from tracked/untracked ones — matching the convention an IDE file tree uses and
+  the mobile app's file browser. The git *change* colours (untracked green,
+  deleted red, modified/staged amber) are unchanged; "ignored" is a distinct
+  concept layered on top, and it wins over a change colour (an ignored entry
+  never has a git change anyway).
+- **Backend (`fs.rs` + `gitfast.rs`).** `FsEntry` gained an `ignored: bool`;
+  `list_dir` fills it per-listing via the new `gitfast::ignored_flags` (git2
+  `is_path_ignored`, run on the blocking pool, best-effort so a non-repo
+  directory just leaves every entry un-flagged). Mirrors `git check-ignore`:
+  tracked files matching a rule are not flagged. Because the check is per-listing,
+  an ignored directory's children are each flagged when it's expanded — no
+  frontend ancestor-propagation needed. `git status` / the Changes panel are
+  untouched (ignored entries never appear there).
+- **Frontend** (`FileTreePanel.svelte`, `types.ts` `FsEntry.ignored`): ignored
+  rows render muted + italic. Tests: +2 Rust (`gitfast`: `ignored_flags` matches a
+  `.gitignore` for files + dirs; all-false outside a repo) → **98** backend tests.
+
 ### Added — git: visual image diffs
 - **Image files now diff visually (before/after) instead of as binary text.**
   Opening the diff of a `.png`/`.jpg`/`.jpeg`/`.gif`/`.webp`/`.bmp`/`.ico`/
