@@ -1692,6 +1692,19 @@ son consumidas hoy por:
   (§5.8.9/infra) que confina los reads al root del workspace y
   excluye archivos sensibles.
 
+Cada entrada de `workspace/list` (`WorkspaceEntry` en `shared/`) lleva
+`name` + `type` (`file`/`dir`) y, en archivos, `size` y `mtime` (epoch ms,
+del mismo `stat`). Además expone `ignored?: boolean`: el bridge marca por
+listado qué entradas ignora git (un match de `.gitignore`/exclude) con un
+único `git check-ignore -z --stdin`; un directorio no-repo (o cualquier
+error de git) deja todo sin marcar. Es **independiente** de `GitFileStatus`
+(las entradas ignoradas nunca aparecen en `git/status`, así que no inflan
+los contadores del Git screen): el visor de archivos las atenúa (tono
+apagado + cursiva) para distinguirlas de las trackeadas/untracked, mientras
+los estados git (added/modified/deleted/untracked) conservan su color
+convencional. El ADE de escritorio replica el atenuado con su propio
+`FsEntry.ignored` (tipo local, vía git2 `is_path_ignored`).
+
 #### 5.8.8 Fallback JSONL (session-jsonl-history)
 
 Cuando el runtime del agente no tiene datos frescos de `thread/turns/list`, el bridge lee directamente de los archivos de sesion en disco de cada agente:
