@@ -57,7 +57,6 @@ yet on either side** — the bridge's `desktop/*` handler is also an empty stub
 - [ ] WSL path detection (`\\wsl.localhost\…`) → route through `wsl.exe`.
 - [ ] Aggressive cleanup for squash-merged branches (patch-equivalence).
 - [ ] AI commit message + image diffs (need an agent/bridge).
-- [ ] Commit composer textarea → a shadcn `Textarea`/`Field`.
 
 **Agents**
 - [ ] Env vars per agent; better arg quoting/escaping for the injected command.

@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — git & worktrees follow-ups
+- **Commit composer fields use shadcn components.** The commit **summary** and
+  **extended description** are now `shadcn-svelte` `Textarea`s, and each
+  co-author row is a `shadcn-svelte` `Input`, replacing the hand-rolled
+  `<textarea>`/`<input>` markup so the composer inherits the design-system
+  focus ring, sizing and dark-mode tokens like the rest of the UI
+  (`src/lib/components/ChangesPanel.svelte`).
+
 ### Added — terminal: tab reorder/MRU, backend ring buffer, CSI-u keyboard protocol
 - **Tab reorder + drag between regions.** Tab chips can be dragged: drop one
   elsewhere in its strip to reorder it, or onto another region's strip to move

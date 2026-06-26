@@ -4,6 +4,8 @@
   // viewer. Status updates live via the backend `git:status-changed` event.
   import { Button } from "$lib/components/ui/button";
   import { Switch } from "$lib/components/ui/switch";
+  import { Textarea } from "$lib/components/ui/textarea";
+  import { Input } from "$lib/components/ui/input";
   import * as Collapsible from "$lib/components/ui/collapsible";
   import { git, type FileEntry } from "$lib/state/git.svelte";
   import { terminals } from "$lib/state/terminals.svelte";
@@ -293,12 +295,12 @@
 
     <!-- Commit composer + sync -->
     <div class="shrink-0 border-t border-sidebar-border p-2">
-      <textarea
-        class="uxnan-scroll w-full resize-none rounded-md border border-input bg-transparent px-2 py-1.5 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        rows="2"
+      <Textarea
+        class="uxnan-scroll min-h-0 resize-none text-xs"
+        rows={2}
         placeholder={i18n.t("rightPanel.summaryPlaceholder")}
         bind:value={git.message}
-      ></textarea>
+      />
 
       <!-- Optional fields (body / co-authors / amend / sign-off), collapsed. -->
       <Collapsible.Root bind:open={optionsOpen} class="mt-1.5">
@@ -318,12 +320,12 @@
         </Collapsible.Trigger>
         <Collapsible.Content class="mt-1.5 flex flex-col gap-2">
           <!-- Extended description (body). -->
-          <textarea
-            class="uxnan-scroll w-full resize-none rounded-md border border-input bg-transparent px-2 py-1.5 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            rows="3"
+          <Textarea
+            class="uxnan-scroll min-h-0 resize-none text-xs"
+            rows={3}
             placeholder={i18n.t("rightPanel.descriptionPlaceholder")}
             bind:value={git.body}
-          ></textarea>
+          />
 
           <!-- Co-authors → Co-authored-by trailers. -->
           <div class="flex flex-col gap-1">
@@ -333,9 +335,9 @@
             </span>
             {#each git.coAuthors as coAuthor, i (i)}
               <div class="flex items-center gap-1">
-                <input
+                <Input
                   type="text"
-                  class="min-w-0 flex-1 rounded-md border border-input bg-transparent px-2 py-1 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  class="h-7 min-w-0 flex-1 text-xs"
                   placeholder={i18n.t("rightPanel.coAuthorPlaceholder")}
                   value={coAuthor}
                   oninput={(e) => setCoAuthor(i, e.currentTarget.value)}
