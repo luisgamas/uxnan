@@ -18,12 +18,6 @@
 
 /// A parsed WSL UNC path: the share host token, the distro, and the absolute
 /// Linux path inside it (always starting with `/`).
-///
-/// Only consumed by the Windows-only routing in `git.rs` (plus the
-/// platform-independent unit tests below), so off Windows it's dead in the
-/// non-test build — allowed rather than `#[cfg(windows)]`-gated so the parser
-/// stays compiled and tested on every CI platform.
-#[cfg_attr(not(windows), allow(dead_code))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WslPath {
     /// The UNC host token as written: `wsl.localhost` or `wsl$`.
@@ -36,7 +30,6 @@ pub struct WslPath {
 
 /// Parse a `\\wsl.localhost\<distro>\…` / `\\wsl$\…` UNC path (in either slash
 /// form, any host-token casing) into its parts, or `None` if it isn't a WSL path.
-#[cfg_attr(not(windows), allow(dead_code))]
 pub fn parse(path: &str) -> Option<WslPath> {
     // Accept both slash forms by normalizing to '/'.
     let norm = path.replace('\\', "/");
@@ -66,7 +59,6 @@ pub fn parse(path: &str) -> Option<WslPath> {
 /// `//wsl.localhost/Ubuntu/home/u/repo--x`. Used to translate a Linux path that
 /// the in-distro git reported (e.g. a new worktree) back to the form the app
 /// registered, so per-worktree workspace keys line up.
-#[cfg_attr(not(windows), allow(dead_code))]
 pub fn to_unc(host: &str, distro: &str, linux: &str) -> String {
     let tail = linux.trim_start_matches('/');
     if tail.is_empty() {
@@ -77,16 +69,11 @@ pub fn to_unc(host: &str, distro: &str, linux: &str) -> String {
 }
 
 /// Whether `path` is a WSL UNC path that should be routed through `wsl.exe`.
-/// Always `false` off Windows, where such paths can't occur.
-#[cfg(windows)]
+/// Always `false` off Windows, where such paths can't occur — written with a
+/// runtime `cfg!(windows)` (not `#[cfg]`) so `parse` stays referenced, and thus
+/// compiled and lint-clean, identically on every platform.
 pub fn is_wsl_path(path: &str) -> bool {
-    parse(path).is_some()
-}
-
-/// Off Windows there is no WSL, so no path is ever WSL-routed.
-#[cfg(not(windows))]
-pub fn is_wsl_path(_path: &str) -> bool {
-    false
+    cfg!(windows) && parse(path).is_some()
 }
 
 #[cfg(test)]

@@ -105,8 +105,9 @@ pub struct CommitInfo {
 /// everything else (subcommands, flags, relative file paths) passes through
 /// untouched. Off Windows the WSL branch compiles out.
 fn git_command(repo_path: &str, args: &[&str]) -> Command {
-    #[cfg(windows)]
-    {
+    // Runtime `cfg!(windows)` (not `#[cfg]`) so the WSL branch compiles — and
+    // lints — identically on every platform; it's simply never taken off Windows.
+    if cfg!(windows) {
         if let Some(w) = crate::wsl::parse(repo_path) {
             let mut cmd = Command::new("wsl.exe");
             cmd.arg("-d")
@@ -462,13 +463,15 @@ pub async fn list_worktrees(repo_path: &str) -> Result<Vec<WorktreeEntry>, AppEr
     let mut entries = parse_worktree_porcelain(&out);
     // When routed through WSL, git reports Linux paths (`/home/u/repo`); map them
     // back to the UNC form the app registered so per-worktree workspace keys line
-    // up (the frontend matches worktrees to projects by path). Off Windows /
-    // non-WSL repos this is a no-op.
-    #[cfg(windows)]
-    if let Some(w) = crate::wsl::parse(repo_path) {
-        for entry in &mut entries {
-            if entry.path.starts_with('/') {
-                entry.path = crate::wsl::to_unc(&w.host, &w.distro, &entry.path);
+    // up (the frontend matches worktrees to projects by path). Runtime
+    // `cfg!(windows)` so this compiles identically everywhere; it's a no-op off
+    // Windows (and for non-WSL repos `parse` returns `None`).
+    if cfg!(windows) {
+        if let Some(w) = crate::wsl::parse(repo_path) {
+            for entry in &mut entries {
+                if entry.path.starts_with('/') {
+                    entry.path = crate::wsl::to_unc(&w.host, &w.distro, &entry.path);
+                }
             }
         }
     }
