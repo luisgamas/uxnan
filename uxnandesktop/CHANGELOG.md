@@ -22,8 +22,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   new **Settings → AI commit** section turns it on and keeps it
   non-technical: pick an **agent** (only the installed ones of Claude Code,
   Codex, Gemini, OpenCode, Pi are selectable) and a **model** from a
-  **searchable, scrollable** picker (some agents list hundreds): "Default" plus a
-  live `opencode models` / `pi --list-models` / `codex app-server` `model/list`
+  **searchable shadcn-svelte Combobox** (`AiModelPicker.svelte`, Popover +
+  Command — added the `command` + `input-group` ui primitives) with a fixed-width
+  trigger, so the hundreds of models OpenCode/Pi can report stay filterable
+  instead of overflowing: "Default" plus a live `opencode models` /
+  `pi --list-models` / `codex app-server` `model/list`
   query, or Claude's exact concrete versions (`claude-opus-4-8`, …, maintained in
   `agentcli.rs::CLAUDE_MODELS` with a how-to-update guide) / Gemini's curated
   set, the message **language** (Automatic / English / Spanish), **Conventional
