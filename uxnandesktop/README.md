@@ -123,7 +123,7 @@ npm run tauri dev      # run the desktop app (compiles Rust on first run)
 Backend (from `src-tauri/`):
 
 ```bash
-cargo test             # unit tests (85 passing)
+cargo test             # unit tests (88 passing)
 cargo clippy --all-targets
 cargo fmt
 ```

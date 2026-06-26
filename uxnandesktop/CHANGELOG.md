@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — git: visual image diffs
+- **Image files now diff visually (before/after) instead of as binary text.**
+  Opening the diff of a `.png`/`.jpg`/`.jpeg`/`.gif`/`.webp`/`.bmp`/`.ico`/
+  `.svg`/`.avif`/`.tif(f)` change shows the two versions side by side on a
+  checkerboard backing, with an "Added (new file)" / "Removed" placeholder for a
+  one-sided change. New backend `git::image_diff` + `git_image_diff` command
+  (base64-encoded blobs via the new `base64` dep; `HEAD`→index for the staged
+  view, index→working-tree otherwise; routes through `wsl.exe` for WSL repos) and
+  `image_mime`. Frontend: `isImagePath` (`src/lib/diff.ts`), `DiffViewerState`
+  loads the image versions, and the new `ImageDiffView.svelte` renders them
+  (DiffPane picks it for image files). 3 new backend tests + EN/ES strings.
+
 ### Added — git: optional AI commit-message generation
 - **Draft commit messages from the staged diff with a local CLI agent (opt-in).**
   A new **Settings → AI commit** section turns it on and configures it: which

@@ -200,6 +200,21 @@ export interface FileChange {
   worktree: string;
 }
 
+/** One side of an image diff (mirror of Rust `ImageData`): the bytes as base64
+ *  plus the MIME type, ready to render as `data:<mime>;base64,<base64>`. */
+export interface ImageData {
+  mime: string;
+  base64: string;
+}
+
+/** Before/after image versions for a changed image file (mirror of Rust
+ *  `ImageDiff`). A side is `null` when it doesn't exist (added → no `old`,
+ *  deleted → no `new`). */
+export interface ImageDiff {
+  old: ImageData | null;
+  new: ImageData | null;
+}
+
 /** Per-file added/deleted line counts vs HEAD (mirror of Rust `FileNumstat`). */
 export interface FileNumstat {
   path: string;

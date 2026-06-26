@@ -9,6 +9,7 @@
   import { icon, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
   import DiffView from "./DiffView.svelte";
+  import ImageDiffView from "./ImageDiffView.svelte";
   import FileDiffIcon from "@lucide/svelte/icons/file-diff";
 
   let { state }: { state: DiffViewerState } = $props();
@@ -26,6 +27,12 @@
   <div class="min-h-0 flex-1 overflow-hidden p-2">
     {#if state.diffLoading}
       <p class={cn("p-4", text.meta)}>{i18n.t("common.loading")}</p>
+    {:else if state.isImage}
+      {#if !state.imageOld && !state.imageNew}
+        <p class={cn("p-4", text.meta)}>{i18n.t("rightPanel.diffEmpty")}</p>
+      {:else}
+        <ImageDiffView old={state.imageOld} new={state.imageNew} />
+      {/if}
     {:else if state.diff.trim().length === 0}
       <p class={cn("p-4", text.meta)}>{i18n.t("rightPanel.diffEmpty")}</p>
     {:else}

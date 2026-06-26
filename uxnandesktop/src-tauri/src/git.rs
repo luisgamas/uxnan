@@ -10,6 +10,7 @@
 
 use std::path::Path;
 
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use serde::Serialize;
 use tokio::process::Command;
 
@@ -952,6 +953,111 @@ pub async fn show(worktree_path: &str, hash: &str) -> Result<String, AppError> {
     git(worktree_path, &["show", "--format=", "-p", hash]).await
 }
 
+// --- Image diffs (visual before/after, spec `02c` §4.2) --------------------
+
+/// One side of an image diff: the image bytes as a base64 data-URL payload plus
+/// its MIME type, ready for the frontend to render as `data:<mime>;base64,<…>`.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ImageData {
+    pub mime: String,
+    pub base64: String,
+}
+
+/// Before/after image versions for a changed image file. Either side is `None`
+/// when it doesn't exist (an added file has no `old`; a deleted file has no
+/// `new`), so the frontend can render an "added"/"removed" state.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ImageDiff {
+    pub old: Option<ImageData>,
+    pub new: Option<ImageData>,
+}
+
+/// MIME type for a file with a known image extension, else `None` (the frontend
+/// only requests image diffs for recognised extensions, but we double-check).
+pub fn image_mime(file: &str) -> Option<&'static str> {
+    let ext = file.rsplit('.').next()?.to_ascii_lowercase();
+    Some(match ext.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "bmp" => "image/bmp",
+        "ico" => "image/x-icon",
+        "svg" => "image/svg+xml",
+        "avif" => "image/avif",
+        "tif" | "tiff" => "image/tiff",
+        _ => return None,
+    })
+}
+
+/// Raw stdout bytes of a git command (no UTF-8 lossy conversion), for reading
+/// binary blobs. Routes through `wsl.exe` for WSL repos like [`git`].
+async fn git_bytes(repo_path: &str, args: &[&str]) -> Result<Vec<u8>, AppError> {
+    let output = git_command(repo_path, args)
+        .output()
+        .await
+        .map_err(|e| AppError::Git(e.to_string()))?;
+    if !output.status.success() {
+        return Err(AppError::Git(
+            String::from_utf8_lossy(&output.stderr).trim().to_string(),
+        ));
+    }
+    Ok(output.stdout)
+}
+
+/// The bytes of `rev_spec` (e.g. `HEAD:img/logo.png` or `:img/logo.png` for the
+/// index), or `None` when the blob doesn't exist there (added/deleted side).
+async fn blob_bytes(repo_path: &str, rev_spec: &str) -> Option<Vec<u8>> {
+    git_bytes(repo_path, &["show", rev_spec])
+        .await
+        .ok()
+        .filter(|b| !b.is_empty())
+}
+
+/// Before/after versions of an image `file` for the visual diff viewer. `staged`
+/// mirrors [`diff_file`]: the staged view compares `HEAD` → index, the working
+/// view compares index → the file on disk. Bytes are base64-encoded for the
+/// frontend to render inline; a missing side (added/deleted) is `None`.
+pub async fn image_diff(
+    worktree_path: &str,
+    file: &str,
+    staged: bool,
+) -> Result<ImageDiff, AppError> {
+    let mime = image_mime(file)
+        .unwrap_or("application/octet-stream")
+        .to_string();
+    let encode = |bytes: Vec<u8>| ImageData {
+        mime: mime.clone(),
+        base64: BASE64.encode(&bytes),
+    };
+
+    // Old side: HEAD for the staged view, the index for the working view.
+    let old_rev = if staged {
+        format!("HEAD:{file}")
+    } else {
+        format!(":{file}")
+    };
+    let old = blob_bytes(worktree_path, &old_rev).await.map(&encode);
+
+    // New side: the index for the staged view, the working-tree file otherwise.
+    let new = if staged {
+        blob_bytes(worktree_path, &format!(":{file}"))
+            .await
+            .map(&encode)
+    } else {
+        let full = format!("{}/{}", worktree_path.trim_end_matches('/'), file);
+        tokio::fs::read(&full)
+            .await
+            .ok()
+            .filter(|b| !b.is_empty())
+            .map(&encode)
+    };
+
+    Ok(ImageDiff { old, new })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1194,5 +1300,51 @@ mod tests {
         assert!(!outcome.squash_merged);
         let branches = list_branches(&repo_path).await.unwrap();
         assert!(branches.iter().any(|b| b == "wip"));
+    }
+
+    #[test]
+    fn image_mime_maps_known_extensions() {
+        assert_eq!(image_mime("a/b/logo.png"), Some("image/png"));
+        assert_eq!(image_mime("photo.JPG"), Some("image/jpeg"));
+        assert_eq!(image_mime("icon.svg"), Some("image/svg+xml"));
+        assert_eq!(image_mime("anim.webp"), Some("image/webp"));
+        assert_eq!(image_mime("notes.txt"), None);
+        assert_eq!(image_mime("no_extension"), None);
+    }
+
+    #[tokio::test]
+    async fn image_diff_reports_old_and_new_for_working_change() {
+        let repo = tempfile::tempdir().unwrap();
+        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        init_repo(&repo_path).await;
+
+        // Commit an "image" file (arbitrary bytes — image_diff treats it opaquely).
+        std::fs::write(format!("{repo_path}/logo.png"), [0u8, 1, 2, 3]).unwrap();
+        run_git(&repo_path, &["add", "-A"]).await;
+        run_git(&repo_path, &["commit", "-m", "add logo"]).await;
+        // Modify the working tree only (unstaged).
+        std::fs::write(format!("{repo_path}/logo.png"), [9u8, 9, 9, 9, 9]).unwrap();
+
+        let diff = image_diff(&repo_path, "logo.png", false).await.unwrap();
+        let old = diff.old.expect("committed/index version exists");
+        let new = diff.new.expect("working-tree version exists");
+        assert_eq!(old.mime, "image/png");
+        assert_eq!(new.mime, "image/png");
+        // Old = index bytes [0,1,2,3]; new = working-tree bytes [9,9,9,9,9].
+        assert_eq!(old.base64, BASE64.encode([0u8, 1, 2, 3]));
+        assert_eq!(new.base64, BASE64.encode([9u8, 9, 9, 9, 9]));
+    }
+
+    #[tokio::test]
+    async fn image_diff_has_no_old_for_untracked_added_file() {
+        let repo = tempfile::tempdir().unwrap();
+        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        init_repo(&repo_path).await;
+        // A brand-new, never-committed image → no old side, new from disk.
+        std::fs::write(format!("{repo_path}/new.png"), [7u8, 7, 7]).unwrap();
+
+        let diff = image_diff(&repo_path, "new.png", false).await.unwrap();
+        assert!(diff.old.is_none(), "added file has no baseline");
+        assert_eq!(diff.new.unwrap().base64, BASE64.encode([7u8, 7, 7]));
     }
 }

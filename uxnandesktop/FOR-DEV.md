@@ -14,7 +14,7 @@ which tracks assets only a human can provide.)
 **Phases 0–5 + cross-cutting (S) are DONE — the ADE is alpha-functional as a
 standalone app** (three-panel shell, PTY terminals + splits, git worktrees, git
 status/diff/stage/commit/history, agent monitoring with the axum hook server +
-OSC/process layers, settings/themes/i18n). 85 Rust backend tests; **no frontend
+OSC/process layers, settings/themes/i18n). 88 Rust backend tests; **no frontend
 tests yet**. macOS is **unvalidated** (developed on Windows; CI is `{ubuntu,
 windows}`). **Phase 6 (embedded bridge / mobile pairing) is NOT started.**
 
@@ -53,9 +53,6 @@ yet on either side** — the bridge's `desktop/*` handler is also an empty stub
       keep their xterm mounted). Would cut memory for many background terminals
       at the cost of a replay on every show.
 
-**Git & worktrees**
-- [ ] Image diffs in the diff viewer (visual before/after for image files).
-
 **Agents**
 - [ ] Env vars per agent; better arg quoting/escaping for the injected command.
 - [ ] Prefer CMD over PowerShell for agent launch on Windows.
@@ -92,7 +89,7 @@ yet on either side** — the bridge's `desktop/*` handler is also an empty stub
 ## CI/CD — release
 
 - ✅ **Verify** — `.github/workflows/ci-desktop.yml` runs svelte-check + vite build +
-  cargo fmt/clippy/test on `{ubuntu, windows}` (macOS deferred with Apple). 85 tests.
+  cargo fmt/clippy/test on `{ubuntu, windows}` (macOS deferred with Apple). 88 tests.
 - ✅ **`release-desktop.yml`** — exists: `tauri-action` bundles on a `desktop-v*` tag
   → draft GitHub Release. **Windows ships unsigned for now; macOS deferred.**
 - [ ] **Code-signing** — Windows Authenticode + macOS Developer ID + notarization

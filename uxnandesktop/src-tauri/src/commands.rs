@@ -447,6 +447,20 @@ pub async fn git_diff(path: String, file: String, staged: bool) -> Result<String
         .map_err(CommandError::from)
 }
 
+/// Before/after image versions for a changed **image** file, base64-encoded for
+/// the visual diff viewer. `staged` selects HEAD→index vs index→working-tree,
+/// mirroring `git_diff`. A missing side (added/deleted) comes back as `null`.
+#[tauri::command]
+pub async fn git_image_diff(
+    path: String,
+    file: String,
+    staged: bool,
+) -> Result<git::ImageDiff, CommandError> {
+    git::image_diff(&path, &file, staged)
+        .await
+        .map_err(CommandError::from)
+}
+
 /// Stage one file.
 #[tauri::command]
 pub async fn git_stage(path: String, file: String) -> Result<(), CommandError> {

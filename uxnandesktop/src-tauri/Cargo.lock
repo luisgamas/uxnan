@@ -4841,6 +4841,7 @@ name = "uxnan-desktop"
 version = "0.0.1"
 dependencies = [
  "axum",
+ "base64 0.22.1",
  "git2",
  "notify",
  "notify-debouncer-full",

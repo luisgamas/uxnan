@@ -18,6 +18,7 @@ import type {
   HookInstall,
   HookScripts,
   HookServerInfo,
+  ImageDiff,
   RemoveOutcome,
   RepoData,
   SavedTerminalLayout,
@@ -230,6 +231,16 @@ export function gitDiff(
   staged: boolean,
 ): Promise<string> {
   return invoke<string>("git_diff", { path, file, staged });
+}
+
+/** Before/after image versions for a changed image file (base64), for the visual
+ *  diff viewer. `staged` mirrors `gitDiff`. */
+export function gitImageDiff(
+  path: string,
+  file: string,
+  staged: boolean,
+): Promise<ImageDiff> {
+  return invoke<ImageDiff>("git_image_diff", { path, file, staged });
 }
 
 /** Stage one file. */
