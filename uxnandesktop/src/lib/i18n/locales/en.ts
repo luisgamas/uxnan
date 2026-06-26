@@ -145,13 +145,15 @@ export const en = {
   "settings.aiCommitEnabledDesc":
     "Show a “Generate” button in the commit composer that drafts a message from the staged diff.",
   "settings.aiCommitAgent": "Agent",
-  "settings.aiCommitAgentDesc":
-    "Which local CLI to run in print mode. Picking one fills the command and arguments below.",
-  "settings.aiCommitAgentCustom": "Custom",
-  "settings.aiCommitCommand": "Command",
-  "settings.aiCommitArgs": "Arguments",
-  "settings.aiCommitCommandDesc":
-    "The executable and the flags that put it in one-shot print mode. The prompt (with your staged diff) is appended as the last argument.",
+  "settings.aiCommitAgentDesc": "Which installed coding-agent CLI drafts the message.",
+  "settings.aiCommitAgentNone": "Choose an agent",
+  "settings.aiCommitNoAgents":
+    "None of the supported agents (Claude Code, Codex, Gemini, OpenCode, Pi) were found installed.",
+  "settings.aiCommitModel": "Model",
+  "settings.aiCommitModelDefault": "Default",
+  "settings.aiCommitModelLoading": "Loading models…",
+  "settings.aiCommitModelDesc":
+    "Which model the agent uses. “Default” lets the CLI pick its configured model.",
   "settings.aiCommitLanguage": "Language",
   "settings.aiCommitLanguageDesc": "Language the generated message is written in.",
   "settings.aiCommitLanguageAuto": "Automatic",

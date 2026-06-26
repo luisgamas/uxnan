@@ -1,30 +1,21 @@
-// Non-interactive ("print mode") invocations for known CLI agents, used by the
-// AI commit-message generator. These differ from the agent *launch* profiles
-// (which start an interactive session): here we need the one-shot flag that
-// makes the CLI emit a single response for the prompt and exit. The built prompt
-// is always appended by the backend as the final argument.
+// The coding-agent CLIs the AI commit-message generator supports. The user picks
+// one of these (filtered to the ones actually installed) plus a model; the
+// backend (`agentcli.rs`) resolves and runs the CLI — no command/flags to set.
+// Ids match the Rust `agentcli::SUPPORTED` and the agent-catalog logo keys.
 
-export interface AiCommitPreset {
-  /** Stable id (also the agent-catalog logo key where they line up). */
+export interface AiCommitAgent {
+  /** Stable id (matches the Rust backend + the logo key). */
   id: string;
   /** Display name with correct casing. */
   name: string;
-  /** Executable on PATH. */
-  command: string;
-  /** Args inserted before the prompt to select the CLI's headless print mode. */
-  args: string[];
+  /** Logo basename under `static/agents/`. */
+  logo: string;
 }
 
-export const AI_COMMIT_PRESETS: AiCommitPreset[] = [
-  { id: "claudecode", name: "Claude Code", command: "claude", args: ["-p"] },
-  { id: "codex", name: "Codex", command: "codex", args: ["exec"] },
-  { id: "gemini", name: "Gemini CLI", command: "gemini", args: ["-p"] },
-  { id: "opencode", name: "OpenCode", command: "opencode", args: ["run"] },
+export const AI_COMMIT_AGENTS: AiCommitAgent[] = [
+  { id: "claude", name: "Claude Code", logo: "claudecode" },
+  { id: "codex", name: "Codex", logo: "codex" },
+  { id: "gemini", name: "Gemini CLI", logo: "gemini" },
+  { id: "opencode", name: "OpenCode", logo: "opencode" },
+  { id: "pi", name: "Pi", logo: "pi" },
 ];
-
-/** Which preset (if any) a command + args pair matches, else null (= "Custom"). */
-export function matchPreset(command: string, args: string[]): AiCommitPreset | null {
-  const c = command.trim();
-  const a = args.join(" ");
-  return AI_COMMIT_PRESETS.find((p) => p.command === c && p.args.join(" ") === a) ?? null;
-}

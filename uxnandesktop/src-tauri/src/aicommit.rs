@@ -1,21 +1,23 @@
 //! Optional AI commit-message generation (spec `02c` §4.5).
 //!
-//! Spawns the user-configured CLI agent **non-interactively** (a one-shot
-//! subprocess, *not* a PTY) with the worktree's staged diff and returns the
-//! drafted message. The agent is whatever the user picked in Settings → AI
-//! commit (e.g. `claude -p`, `codex exec`, `gemini -p`, `opencode run`): the
-//! built prompt is appended as the final argument. No provider API/SDK/keys are
-//! used — it drives the same local CLI the user already runs interactively.
+//! Drives one of the supported coding-agent CLIs (Claude Code, Codex, Gemini,
+//! OpenCode, Pi — resolved by [`crate::agentcli`]) **non-interactively** (a
+//! one-shot subprocess, *not* a PTY) with the worktree's staged diff, and returns
+//! the drafted message. The user only picks an **agent** and a **model** in
+//! Settings → AI commit; no command/flags to configure. No provider API/SDK/keys
+//! — it runs the same local CLI the user already uses interactively.
 //!
-//! Guardrails: disabled by default; refuses when nothing is staged; caps the diff
-//! fed to the agent; runs with stdin closed and a hard timeout (and
-//! `kill_on_drop`) so a hung or prompt-blocked CLI can never wedge the app.
+//! Guardrails: disabled by default; refuses when the agent isn't installed or
+//! nothing is staged; caps the diff fed to the agent; runs with stdin closed and
+//! a hard timeout (and `kill_on_drop`) so a hung CLI can never wedge the app.
 
 use std::process::Stdio;
 use std::time::Duration;
 
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
 
+use crate::agentcli::{self, AgentModel};
 use crate::error::AppError;
 use crate::model::AiCommitSettings;
 
@@ -23,8 +25,51 @@ use crate::model::AiCommitSettings;
 /// limits and avoids paying for a huge context on a sprawling changeset.
 const MAX_DIFF_BYTES: usize = 24_000;
 
-/// How long to wait for the agent before giving up.
-const TIMEOUT: Duration = Duration::from_secs(120);
+/// How long to wait for a generation run before giving up.
+const GENERATE_TIMEOUT: Duration = Duration::from_secs(120);
+
+/// How long to wait for a model-list query before giving up.
+const LIST_TIMEOUT: Duration = Duration::from_secs(15);
+
+/// Which of the supported agents are installed in a runnable shape right now.
+pub fn available_agents() -> Vec<String> {
+    agentcli::SUPPORTED
+        .iter()
+        .filter(|id| agentcli::resolve(id).is_some())
+        .map(|id| id.to_string())
+        .collect()
+}
+
+/// The models offered by `agent_id`: a static set for Claude/Gemini, or a live
+/// query for OpenCode (`opencode models`), Pi (`pi --list-models`) and Codex
+/// (`codex app-server` `model/list`). Best-effort — discovery failures yield an
+/// empty list (the frontend still offers the CLI's "Default" model).
+pub async fn list_models(agent_id: &str) -> Result<Vec<AgentModel>, AppError> {
+    let Some(resolved) = agentcli::resolve(agent_id) else {
+        return Err(AppError::Agent(format!(
+            "agent '{agent_id}' is not installed"
+        )));
+    };
+    let models = match agent_id {
+        "claude" | "gemini" => agentcli::static_models(agent_id),
+        "opencode" => {
+            let out = run_list(&resolved, &["models"], false)
+                .await
+                .unwrap_or_default();
+            agentcli::parse_opencode_models(&out)
+        }
+        "pi" => {
+            // pi prints the model table to stderr, so include it.
+            let out = run_list(&resolved, &["--list-models"], true)
+                .await
+                .unwrap_or_default();
+            agentcli::parse_pi_models(&out)
+        }
+        "codex" => codex_models(&resolved).await,
+        _ => vec![],
+    };
+    Ok(models)
+}
 
 /// Generate a commit message for `worktree_path` using `cfg`. Reads the staged
 /// diff, builds the prompt, runs the configured agent, and returns the sanitized
@@ -35,12 +80,12 @@ pub async fn generate(worktree_path: &str, cfg: &AiCommitSettings) -> Result<Str
             "AI commit-message generation is disabled".to_string(),
         ));
     }
-    let command = cfg.command.trim();
-    if command.is_empty() {
-        return Err(AppError::Invalid(
-            "no AI agent is configured for commit messages".to_string(),
-        ));
-    }
+    let agent = cfg.agent_id.trim();
+    let Some(resolved) = agentcli::resolve(agent) else {
+        return Err(AppError::Agent(format!(
+            "the selected agent ('{agent}') isn't installed"
+        )));
+    };
 
     let diff = crate::git::staged_diff(worktree_path).await?;
     if diff.trim().is_empty() {
@@ -50,7 +95,10 @@ pub async fn generate(worktree_path: &str, cfg: &AiCommitSettings) -> Result<Str
     }
 
     let prompt = build_prompt(cfg, &diff);
-    let raw = run_agent(command, &cfg.args, worktree_path, &prompt).await?;
+    let args = agentcli::build_args(agent, &cfg.model, &prompt)
+        .ok_or_else(|| AppError::Agent(format!("unsupported agent '{agent}'")))?;
+
+    let raw = run_generate(&resolved, &args, worktree_path).await?;
     let message = sanitize_message(&raw);
     if message.is_empty() {
         return Err(AppError::Agent(
@@ -60,17 +108,17 @@ pub async fn generate(worktree_path: &str, cfg: &AiCommitSettings) -> Result<Str
     Ok(message)
 }
 
-/// Run `command args… prompt` in `cwd`, stdin closed, with a hard timeout; return
-/// stdout. Maps a failed spawn / non-zero exit / timeout to [`AppError::Agent`].
-async fn run_agent(
-    command: &str,
+/// Run the resolved agent for a generation turn (stdin closed, hard timeout,
+/// `kill_on_drop`); return stdout. Maps spawn / non-zero exit / timeout to
+/// [`AppError::Agent`].
+async fn run_generate(
+    resolved: &agentcli::Resolved,
     args: &[String],
     cwd: &str,
-    prompt: &str,
 ) -> Result<String, AppError> {
-    let mut cmd = Command::new(command);
-    cmd.args(args)
-        .arg(prompt)
+    let mut cmd = Command::new(&resolved.program);
+    cmd.args(&resolved.prepend)
+        .args(args)
         .current_dir(cwd)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -79,14 +127,14 @@ async fn run_agent(
 
     let child = cmd
         .spawn()
-        .map_err(|e| AppError::Agent(format!("failed to start '{command}': {e}")))?;
+        .map_err(|e| AppError::Agent(format!("failed to start the agent: {e}")))?;
 
-    let output = match tokio::time::timeout(TIMEOUT, child.wait_with_output()).await {
+    let output = match tokio::time::timeout(GENERATE_TIMEOUT, child.wait_with_output()).await {
         Ok(res) => res.map_err(|e| AppError::Agent(e.to_string()))?,
         Err(_) => {
             return Err(AppError::Agent(format!(
-                "'{command}' timed out after {}s",
-                TIMEOUT.as_secs()
+                "the agent timed out after {}s",
+                GENERATE_TIMEOUT.as_secs()
             )));
         }
     };
@@ -99,9 +147,96 @@ async fn run_agent(
         } else {
             detail.chars().take(500).collect()
         };
-        return Err(AppError::Agent(format!("'{command}' failed: {detail}")));
+        return Err(AppError::Agent(format!("the agent failed: {detail}")));
     }
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+/// Run a one-shot model-list command and return its captured output (stdout,
+/// optionally with stderr appended for CLIs that print the table there). `None`
+/// on spawn failure / timeout (caller treats it as "no models discovered").
+async fn run_list(
+    resolved: &agentcli::Resolved,
+    extra: &[&str],
+    include_stderr: bool,
+) -> Option<String> {
+    let mut cmd = Command::new(&resolved.program);
+    cmd.args(&resolved.prepend)
+        .args(extra)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    let child = cmd.spawn().ok()?;
+    let output = tokio::time::timeout(LIST_TIMEOUT, child.wait_with_output())
+        .await
+        .ok()?
+        .ok()?;
+    let mut s = String::from_utf8_lossy(&output.stdout).to_string();
+    if include_stderr {
+        s.push('\n');
+        s.push_str(&String::from_utf8_lossy(&output.stderr));
+    }
+    Some(s)
+}
+
+/// Query Codex's models via a minimal `codex app-server` JSON-RPC handshake
+/// (`initialize` → `model/list`), bounded by [`LIST_TIMEOUT`]. Any error yields
+/// an empty list (the frontend still offers "Default").
+async fn codex_models(resolved: &agentcli::Resolved) -> Vec<AgentModel> {
+    codex_models_inner(resolved).await.unwrap_or_default()
+}
+
+async fn codex_models_inner(resolved: &agentcli::Resolved) -> Option<Vec<AgentModel>> {
+    let mut child = Command::new(&resolved.program)
+        .args(&resolved.prepend)
+        .arg("app-server")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .kill_on_drop(true)
+        .spawn()
+        .ok()?;
+
+    let mut stdin = child.stdin.take()?;
+    let stdout = child.stdout.take()?;
+
+    let work = async {
+        let mut lines = BufReader::new(stdout).lines();
+
+        // 1) initialize, then wait for its response (id:1).
+        let init = r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"uxnan-desktop","title":null,"version":"1.0.0"}}}"#;
+        stdin.write_all(init.as_bytes()).await.ok()?;
+        stdin.write_all(b"\n").await.ok()?;
+        while let Ok(Some(line)) = lines.next_line().await {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) {
+                if v.get("id") == Some(&serde_json::json!(1)) {
+                    break;
+                }
+            }
+        }
+
+        // 2) model/list, then read until its response (id:2).
+        let list = r#"{"jsonrpc":"2.0","id":2,"method":"model/list","params":{}}"#;
+        stdin.write_all(list.as_bytes()).await.ok()?;
+        stdin.write_all(b"\n").await.ok()?;
+        while let Ok(Some(line)) = lines.next_line().await {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) {
+                if v.get("id") == Some(&serde_json::json!(2)) {
+                    let data = v.get("result").and_then(|r| r.get("data"))?;
+                    return Some(agentcli::parse_codex_models(data));
+                }
+            }
+        }
+        None
+    };
+
+    let result = tokio::time::timeout(LIST_TIMEOUT, work)
+        .await
+        .ok()
+        .flatten();
+    let _ = child.kill().await;
+    result
 }
 
 /// Build the agent prompt from the config and the (capped) staged diff.
@@ -178,8 +313,8 @@ mod tests {
     fn cfg() -> AiCommitSettings {
         AiCommitSettings {
             enabled: true,
-            command: "claude".into(),
-            args: vec!["-p".into()],
+            agent_id: "claude".into(),
+            model: String::new(),
             language: "auto".into(),
             conventional: true,
             include_body: true,

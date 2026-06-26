@@ -184,18 +184,23 @@ Integrada en el panel de cambios (`ChangesPanel.svelte`):
   del composer; Push / Pull aparecen cuando hay ahead/behind.
 - **Generación AI del mensaje** (opcional, opt-in): cuando se activa en
   **Configuración → Mensaje de commit con IA**, aparece un botón **Generar** en el
-  composer que redacta el mensaje a partir del diff staged. El backend
-  (`src-tauri/src/aicommit.rs`, comando `git_generate_commit_message`) ejecuta el
-  CLI configurado por el usuario de forma **no interactiva** (un subproceso de una
+  composer que redacta el mensaje a partir del diff staged. La configuración es
+  **no técnica**: el usuario elige un **agente** (solo se pueden seleccionar los
+  instalados de entre Claude Code, Codex, Gemini, OpenCode y Pi) y un **modelo**;
+  no hay comando ni argumentos que configurar. El backend resuelve cada CLI igual
+  que el bridge (`src-tauri/src/agentcli.rs`: `node <entry.js>` para instalaciones
+  npm, binario nativo si existe — así el lanzamiento no interactivo funciona en
+  Windows sin shell) y lo ejecuta de forma **no interactiva** (subproceso de una
   sola pasada — no un PTY — con stdin cerrado, timeout de 120 s y `kill_on_drop`;
-  sin API/SDK/keys de proveedor, solo el CLI local que el usuario ya usa), le pasa
-  el diff staged (`git diff --staged`, recortado a 24 KB) y devuelve el mensaje
-  (asunto en la primera línea, cuerpo opcional tras una línea en blanco). La
-  configuración vive en `AppSettings.aiCommit` (`AiCommitSettings`: agente
-  `command`+`args`, idioma, Conventional Commits, cuerpo extendido, instrucciones
-  extra), **desactivada por defecto**. Presets de invocación en modo impresión
-  para `claude -p`, `codex exec`, `gemini -p` y `opencode run`
-  (`src/lib/aiCommitPresets.ts`).
+  sin API/SDK/keys de proveedor). Los modelos se descubren por agente: estáticos
+  para Claude (alias) y Gemini (lista curada), o en vivo para OpenCode
+  (`opencode models`), Pi (`pi --list-models`) y Codex (`codex app-server`
+  `model/list`); siempre con una opción **Predeterminado** (sin flag de modelo).
+  Comandos: `git_generate_commit_message`, `ai_commit_agents`, `ai_commit_models`
+  (`src-tauri/src/aicommit.rs`). La configuración vive en `AppSettings.aiCommit`
+  (`AiCommitSettings`: `agentId`, `model`, idioma, Conventional Commits, cuerpo
+  extendido, instrucciones extra), **desactivada por defecto**. Lista de agentes
+  soportados en `src/lib/aiCommitPresets.ts`.
 
 ### 4.6 Fuentes de Diff
 

@@ -42,10 +42,10 @@
   );
 
   // The AI "Generate" button shows only when the feature is enabled AND an agent
-  // command is configured (Settings → AI commit). It drafts from the staged diff.
+  // is selected (Settings → AI commit). It drafts from the staged diff.
   const aiEnabled = $derived(
     !!app.settings.aiCommit?.enabled &&
-      (app.settings.aiCommit?.command ?? "").trim().length > 0,
+      (app.settings.aiCommit?.agentId ?? "").trim().length > 0,
   );
 
   // The optional commit fields (body, co-authors, amend, sign-off) live in a

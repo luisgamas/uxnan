@@ -18,22 +18,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   (DiffPane picks it for image files). 3 new backend tests + EN/ES strings.
 
 ### Added — git: optional AI commit-message generation
-- **Draft commit messages from the staged diff with a local CLI agent (opt-in).**
-  A new **Settings → AI commit** section turns it on and configures it: which
-  agent to run (presets for `claude -p`, `codex exec`, `gemini -p`,
-  `opencode run`, or a custom command + args), the message **language**
-  (Automatic / English / Spanish), **Conventional Commits** subject on/off,
-  **extended body** on/off, and free-form **extra instructions**. When enabled, a
-  **Generate** button appears in the commit composer; it runs the agent
-  non-interactively (a one-shot subprocess — *not* a PTY — with stdin closed, a
-  120 s timeout and `kill_on_drop`; no provider API/SDK/keys, just the local CLI),
-  feeds it the staged diff (capped at 24 KB) and fills the summary + body. New
-  backend `src-tauri/src/aicommit.rs` + `git_generate_commit_message` command +
-  `git::staged_diff`; new `AiCommitSettings` on `AppSettings` (off by default,
-  back-compat defaulted); `AppError::Agent` variant. Frontend: the settings
-  section, the composer button (`git.generateMessage`), `aiCommitPresets.ts`, and
-  EN/ES strings. 6 new backend tests (prompt building / diff truncation / output
-  sanitizing + settings round-trip).
+- **Draft commit messages from the staged diff with a local agent (opt-in).** A
+  new **Settings → AI commit** section turns it on and keeps it
+  non-technical: pick an **agent** (only the installed ones of Claude Code,
+  Codex, Gemini, OpenCode, Pi are selectable) and a **model** (the agent's own
+  models — "Default" plus a live `opencode models` / `pi --list-models` /
+  `codex app-server` `model/list` query, or Claude's aliases / Gemini's curated
+  set), the message **language** (Automatic / English / Spanish), **Conventional
+  Commits** subject on/off, **extended body** on/off, and free-form **extra
+  instructions** — no command/flags to configure. When enabled, a **Generate**
+  button appears in the commit composer; it runs the agent non-interactively (a
+  one-shot subprocess — *not* a PTY — with stdin closed, a 120 s timeout and
+  `kill_on_drop`; no provider API/SDK/keys, just the local CLI), feeds it the
+  staged diff (capped at 24 KB) and fills the summary + body. New backend
+  `src-tauri/src/agentcli.rs` (resolves each CLI the way the bridge does —
+  `node <entry.js>` for npm installs, native binary otherwise, so the
+  non-interactive run works on Windows) + `src-tauri/src/aicommit.rs` +
+  `git_generate_commit_message` / `ai_commit_agents` / `ai_commit_models`
+  commands + `git::staged_diff`; `which::resolve`; new `AiCommitSettings`
+  (agent + model) on `AppSettings` (off by default, back-compat defaulted);
+  `AppError::Agent` variant. Frontend: the settings section (agent + model
+  pickers), the composer button (`git.generateMessage`), `aiCommitPresets.ts`
+  (supported-agents list), and EN/ES strings. 14 new backend tests (CLI
+  resolution / arg building / model-list parsing + prompt building / diff
+  truncation / output sanitizing + settings round-trip).
 
 ### Added — git: WSL repos run through `wsl.exe`
 - **Repos opened from a WSL distro now use the distro's own git.** When a repo

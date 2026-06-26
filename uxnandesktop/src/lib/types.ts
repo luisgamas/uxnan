@@ -88,15 +88,15 @@ export interface AppSettings {
 }
 
 /** Config for the optional AI commit-message generator (mirror of Rust
- *  `AiCommitSettings`). Runs `command` + `args` + the built prompt as a one-shot
- *  subprocess in the worktree and returns its drafted message. */
+ *  `AiCommitSettings`). The user picks a known agent + a model; the backend
+ *  resolves the CLI and runs it one-shot with the staged diff. */
 export interface AiCommitSettings {
   /** Master switch (off by default — the Generate button stays hidden). */
   enabled: boolean;
-  /** Executable to run (e.g. `claude`, `codex`); empty = unconfigured. */
-  command: string;
-  /** Args before the prompt (e.g. `["-p"]`, `["exec"]`); the prompt is appended. */
-  args: string[];
+  /** Selected agent id: `claude`/`codex`/`gemini`/`opencode`/`pi`, or empty. */
+  agentId: string;
+  /** Selected model id (as the CLI expects it), or empty to use the CLI default. */
+  model: string;
   /** Preferred message language: `auto` or a language name (e.g. `English`). */
   language: string;
   /** Ask for a Conventional Commits subject line. */
@@ -105,6 +105,13 @@ export interface AiCommitSettings {
   includeBody: boolean;
   /** Extra free-form instructions appended to the prompt. */
   instructions: string;
+}
+
+/** A model offered by an agent (mirror of Rust `AgentModel`). `id` is what the
+ *  CLI's model flag expects verbatim; `displayName` is for the picker. */
+export interface AgentModel {
+  id: string;
+  displayName: string;
 }
 
 export interface WorktreeData {
@@ -398,8 +405,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   terminalThemeDarkId: "inherit",
   aiCommit: {
     enabled: false,
-    command: "",
-    args: [],
+    agentId: "",
+    model: "",
     language: "auto",
     conventional: true,
     includeBody: true,

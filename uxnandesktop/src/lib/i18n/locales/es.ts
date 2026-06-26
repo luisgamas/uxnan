@@ -142,13 +142,15 @@ export const es: Record<MessageKey, string> = {
   "settings.aiCommitEnabledDesc":
     "Muestra un botón «Generar» en el compositor de commits que redacta un mensaje a partir del diff preparado.",
   "settings.aiCommitAgent": "Agente",
-  "settings.aiCommitAgentDesc":
-    "Qué CLI local ejecutar en modo de impresión. Al elegir uno se rellenan el comando y los argumentos de abajo.",
-  "settings.aiCommitAgentCustom": "Personalizado",
-  "settings.aiCommitCommand": "Comando",
-  "settings.aiCommitArgs": "Argumentos",
-  "settings.aiCommitCommandDesc":
-    "El ejecutable y las banderas que lo ponen en modo de impresión de una sola pasada. El prompt (con tu diff preparado) se añade como último argumento.",
+  "settings.aiCommitAgentDesc": "Qué CLI de agente instalada redacta el mensaje.",
+  "settings.aiCommitAgentNone": "Elige un agente",
+  "settings.aiCommitNoAgents":
+    "No se encontró instalado ninguno de los agentes soportados (Claude Code, Codex, Gemini, OpenCode, Pi).",
+  "settings.aiCommitModel": "Modelo",
+  "settings.aiCommitModelDefault": "Predeterminado",
+  "settings.aiCommitModelLoading": "Cargando modelos…",
+  "settings.aiCommitModelDesc":
+    "Qué modelo usa el agente. «Predeterminado» deja que la CLI elija su modelo configurado.",
   "settings.aiCommitLanguage": "Idioma",
   "settings.aiCommitLanguageDesc": "Idioma en que se escribe el mensaje generado.",
   "settings.aiCommitLanguageAuto": "Automático",

@@ -601,6 +601,26 @@ pub async fn git_generate_commit_message(
         .map_err(CommandError::from)
 }
 
+/// Which of the supported AI-commit agents (Claude Code, Codex, Gemini, OpenCode,
+/// Pi) are installed in a runnable shape, so Settings → AI commit offers only
+/// those.
+#[tauri::command]
+pub async fn ai_commit_agents() -> Result<Vec<String>, CommandError> {
+    Ok(crate::aicommit::available_agents())
+}
+
+/// The models offered by `agentId` for AI commit messages (static for
+/// Claude/Gemini, a live CLI query for OpenCode/Pi/Codex). Best-effort: an empty
+/// list just means the user falls back to the CLI's default model.
+#[tauri::command]
+pub async fn ai_commit_models(
+    agent_id: String,
+) -> Result<Vec<crate::agentcli::AgentModel>, CommandError> {
+    crate::aicommit::list_models(&agent_id)
+        .await
+        .map_err(CommandError::from)
+}
+
 /// Payload of the `agent:detected` event: which agent command (if any) the
 /// background process scan found running in a terminal.
 #[derive(Debug, Clone, Serialize)]

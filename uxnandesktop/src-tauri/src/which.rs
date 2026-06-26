@@ -10,16 +10,22 @@ use std::path::{Path, PathBuf};
 /// Whether `command` resolves to an executable on `PATH` (or directly, if it
 /// contains a path separator). Honors `PATHEXT` on Windows.
 pub fn is_command_available(command: &str) -> bool {
+    resolve(command).is_some()
+}
+
+/// Resolve `command` to a concrete executable path on `PATH` (or directly, if it
+/// contains a path separator), honoring `PATHEXT` on Windows. `None` if not
+/// found. Used to locate `node` (to run an npm CLI's entry JS) and native agent
+/// binaries before spawning them shell-free.
+pub fn resolve(command: &str) -> Option<PathBuf> {
     if command.trim().is_empty() {
-        return false;
+        return None;
     }
     if command.contains('/') || command.contains('\\') {
-        return resolve_with_exts(Path::new(command)).is_some();
+        return resolve_with_exts(Path::new(command));
     }
-    let Some(path) = std::env::var_os("PATH") else {
-        return false;
-    };
-    std::env::split_paths(&path).any(|dir| resolve_with_exts(&dir.join(command)).is_some())
+    let path = std::env::var_os("PATH")?;
+    std::env::split_paths(&path).find_map(|dir| resolve_with_exts(&dir.join(command)))
 }
 
 /// Executable extensions to try for a bare name. On Windows this comes from

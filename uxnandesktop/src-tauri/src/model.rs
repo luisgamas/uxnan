@@ -260,9 +260,9 @@ pub struct AppSettings {
 }
 
 /// Configuration for the optional AI commit-message generator (spec `02c` §4.5).
-/// The generator runs `command` + `args` + the built prompt as a one-shot
-/// subprocess (no PTY) in the worktree, capturing stdout. All fields have
-/// back-compat defaults so older persisted state loads unchanged.
+/// The user picks a known **agent** and a **model**; the backend resolves the CLI
+/// (`crate::agentcli`) and runs it one-shot with the built prompt. All fields
+/// have back-compat defaults so older persisted state loads unchanged.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct AiCommitSettings {
@@ -270,13 +270,14 @@ pub struct AiCommitSettings {
     /// command refuses while this is false.
     #[serde(default)]
     pub enabled: bool,
-    /// Executable to run (e.g. `claude`, `codex`, `gemini`). Empty = unconfigured.
+    /// Selected agent id: one of `claude`/`codex`/`gemini`/`opencode`/`pi`, or
+    /// empty when none is chosen yet.
     #[serde(default)]
-    pub command: String,
-    /// Args inserted before the prompt (e.g. `["-p"]` for Claude's print mode,
-    /// `["exec"]` for Codex). The built prompt is appended as the final argument.
+    pub agent_id: String,
+    /// Selected model id (as the CLI's model flag expects it), or empty to let
+    /// the CLI use its own default model.
     #[serde(default)]
-    pub args: Vec<String>,
+    pub model: String,
     /// Preferred message language: `auto` (let the agent decide) or a language
     /// **name** the prompt states verbatim (e.g. `English`, `Spanish`).
     #[serde(default = "default_ai_commit_language")]
@@ -302,8 +303,8 @@ impl Default for AiCommitSettings {
     fn default() -> Self {
         Self {
             enabled: false,
-            command: String::new(),
-            args: Vec::new(),
+            agent_id: String::new(),
+            model: String::new(),
             language: default_ai_commit_language(),
             conventional: true,
             include_body: true,
@@ -567,10 +568,11 @@ mod tests {
 
     #[test]
     fn ai_commit_defaults_off_and_back_compat() {
-        // Fresh default: disabled, no command, language auto, conventional+body on.
+        // Fresh default: disabled, no agent, language auto, conventional+body on.
         let cfg = AiCommitSettings::default();
         assert!(!cfg.enabled);
-        assert!(cfg.command.is_empty());
+        assert!(cfg.agent_id.is_empty());
+        assert!(cfg.model.is_empty());
         assert_eq!(cfg.language, "auto");
         assert!(cfg.conventional && cfg.include_body);
         // Settings persisted before AI commit existed still load (field absent).
@@ -586,14 +588,15 @@ mod tests {
     fn ai_commit_round_trips_camel_case() {
         let cfg = AiCommitSettings {
             enabled: true,
-            command: "claude".into(),
-            args: vec!["-p".into()],
+            agent_id: "claude".into(),
+            model: "opus".into(),
             language: "Spanish".into(),
             conventional: true,
             include_body: false,
             instructions: "mention the ticket".into(),
         };
         let json = serde_json::to_string(&cfg).unwrap();
+        assert!(json.contains("agentId"));
         assert!(json.contains("includeBody"));
         let back: AiCommitSettings = serde_json::from_str(&json).unwrap();
         assert_eq!(cfg, back);

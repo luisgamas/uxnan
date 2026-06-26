@@ -7,13 +7,13 @@
   import * as Select from "$lib/components/ui/select";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import { Button } from "$lib/components/ui/button";
-  import { Input } from "$lib/components/ui/input";
   import { Textarea } from "$lib/components/ui/textarea";
   import { app } from "$lib/state/app.svelte";
   import { i18n, LOCALES } from "$lib/i18n";
   import type { MessageKey } from "$lib/i18n/locales/en";
-  import { AI_COMMIT_PRESETS, matchPreset } from "$lib/aiCommitPresets";
-  import type { AiCommitSettings } from "$lib/types";
+  import { AI_COMMIT_AGENTS } from "$lib/aiCommitPresets";
+  import { aiCommitAgents, aiCommitModels } from "$lib/api";
+  import type { AiCommitSettings, AgentModel } from "$lib/types";
   import {
     TERMINAL_TEMPLATES,
     type TerminalTemplate,
@@ -255,8 +255,8 @@
   // object; merge over a full default so reads/writes are always complete.
   const AI_DEFAULT: AiCommitSettings = {
     enabled: false,
-    command: "",
-    args: [],
+    agentId: "",
+    model: "",
     language: "auto",
     conventional: true,
     includeBody: true,
@@ -266,18 +266,65 @@
   function setAi(patch: Partial<AiCommitSettings>) {
     app.settings.aiCommit = { ...AI_DEFAULT, ...app.settings.aiCommit, ...patch };
   }
-  // The agent preset currently selected (by command + args), or "custom".
-  const AI_CUSTOM = "__custom__";
-  const aiPresetId = $derived(matchPreset(ai.command, ai.args)?.id ?? AI_CUSTOM);
-  const aiPresetLabel = $derived(
-    AI_COMMIT_PRESETS.find((p) => p.id === aiPresetId)?.name ??
-      i18n.t("settings.aiCommitAgentCustom"),
-  );
-  function selectAiPreset(id: string) {
-    const p = AI_COMMIT_PRESETS.find((x) => x.id === id);
-    if (p) setAi({ command: p.command, args: [...p.args] });
-    persistNow();
+
+  // Which supported agents are installed (null = not checked yet).
+  let aiAgentsInstalled = $state<Set<string> | null>(null);
+  async function detectAiAgents() {
+    try {
+      aiAgentsInstalled = new Set(await aiCommitAgents());
+    } catch {
+      aiAgentsInstalled = new Set();
+    }
   }
+  const aiAgentInstalled = (id: string) => aiAgentsInstalled?.has(id) ?? false;
+  const aiAgentLabel = $derived(
+    AI_COMMIT_AGENTS.find((a) => a.id === ai.agentId)?.name ||
+      i18n.t("settings.aiCommitAgentNone"),
+  );
+
+  // Models for the selected agent (loaded on demand from its CLI).
+  let aiModels = $state<AgentModel[]>([]);
+  let aiModelsFor = $state(""); // the agent aiModels belongs to
+  let aiModelsLoading = $state(false);
+  async function loadAiModels(agentId: string) {
+    if (!agentId) {
+      aiModels = [];
+      aiModelsFor = "";
+      return;
+    }
+    aiModelsLoading = true;
+    try {
+      aiModels = await aiCommitModels(agentId);
+    } catch {
+      aiModels = [];
+    } finally {
+      aiModelsFor = agentId;
+      aiModelsLoading = false;
+    }
+  }
+  function selectAiAgent(id: string) {
+    setAi({ agentId: id, model: "" }); // model ids are agent-specific
+    persistNow();
+    void loadAiModels(id);
+  }
+  // "" model = let the CLI use its own default; a sentinel keeps Select happy.
+  const AI_MODEL_DEFAULT = "__default__";
+  const aiModelLabel = $derived(
+    ai.model
+      ? (aiModels.find((m) => m.id === ai.model)?.displayName ?? ai.model)
+      : i18n.t("settings.aiCommitModelDefault"),
+  );
+
+  // On opening the pane: detect installed agents, then load the current agent's
+  // models once (the load stamps aiModelsFor, so this doesn't loop).
+  $effect(() => {
+    if (!(app.settingsOpen && app.settingsSection === "aicommit")) return;
+    if (aiAgentsInstalled === null) void detectAiAgents();
+    if (ai.agentId && aiModelsFor !== ai.agentId && !aiModelsLoading) {
+      void loadAiModels(ai.agentId);
+    }
+  });
+
   // Language: "auto" + each app locale (stored as the English language name so
   // the backend prompt can name it verbatim, e.g. "Write the message in Spanish").
   const AI_LANGS = [
@@ -620,54 +667,76 @@
               <p class={text.meta}>{i18n.t("settings.aiCommitEnabledDesc")}</p>
             </div>
 
-            <!-- Agent preset: fills command + args with a known CLI's print mode. -->
+            <!-- Agent: only the supported CLIs; not-installed ones are disabled. -->
             <div class="flex flex-col gap-1.5">
               <span class={cn("font-medium", text.body)}>{i18n.t("settings.aiCommitAgent")}</span>
               <Select.Root
                 type="single"
-                value={aiPresetId}
-                onValueChange={(v) => v && selectAiPreset(v)}
+                value={ai.agentId}
+                onValueChange={(v) => v && selectAiAgent(v)}
               >
-                <Select.Trigger class="w-56">{aiPresetLabel}</Select.Trigger>
+                <Select.Trigger class="w-56">
+                  {#if ai.agentId}
+                    <span class="flex items-center gap-2">
+                      <AgentLogo
+                        logo={AI_COMMIT_AGENTS.find((a) => a.id === ai.agentId)?.logo}
+                        class="size-4"
+                      />
+                      {aiAgentLabel}
+                    </span>
+                  {:else}
+                    {i18n.t("settings.aiCommitAgentNone")}
+                  {/if}
+                </Select.Trigger>
                 <Select.Content>
-                  {#each AI_COMMIT_PRESETS as p (p.id)}
-                    <Select.Item value={p.id} label={p.name}>{p.name}</Select.Item>
+                  {#each AI_COMMIT_AGENTS as a (a.id)}
+                    {@const inst = aiAgentInstalled(a.id)}
+                    <Select.Item value={a.id} label={a.name} disabled={!inst}>
+                      <span class="flex items-center gap-2">
+                        <AgentLogo logo={a.logo} class="size-4" />
+                        {a.name}
+                        {#if aiAgentsInstalled !== null && !inst}
+                          <span class={cn("ml-auto", text.meta)}>{i18n.t("settings.agentNotFound")}</span>
+                        {/if}
+                      </span>
+                    </Select.Item>
                   {/each}
-                  <Select.Item value={AI_CUSTOM} label={i18n.t("settings.aiCommitAgentCustom")}>
-                    {i18n.t("settings.aiCommitAgentCustom")}
-                  </Select.Item>
                 </Select.Content>
               </Select.Root>
-              <p class={text.meta}>{i18n.t("settings.aiCommitAgentDesc")}</p>
+              {#if aiAgentsInstalled !== null && aiAgentsInstalled.size === 0}
+                <p class={text.meta}>{i18n.t("settings.aiCommitNoAgents")}</p>
+              {:else}
+                <p class={text.meta}>{i18n.t("settings.aiCommitAgentDesc")}</p>
+              {/if}
             </div>
 
-            <!-- Command + args (editable for power users / custom agents). -->
-            <div class="flex flex-col gap-1.5 sm:flex-row sm:items-end">
-              <div class="flex flex-1 flex-col gap-1.5">
-                <span class={cn("font-medium", text.body)}>{i18n.t("settings.aiCommitCommand")}</span>
-                <Input
-                  class="font-mono text-xs"
-                  placeholder="claude"
-                  value={ai.command}
-                  oninput={(e) => setAi({ command: e.currentTarget.value })}
-                  onchange={persistNow}
-                />
-              </div>
-              <div class="flex flex-1 flex-col gap-1.5">
-                <span class={cn("font-medium", text.body)}>{i18n.t("settings.aiCommitArgs")}</span>
-                <Input
-                  class="font-mono text-xs"
-                  placeholder="-p"
-                  value={ai.args.join(" ")}
-                  oninput={(e) => {
-                    const v = e.currentTarget.value.trim();
-                    setAi({ args: v ? v.split(/\s+/) : [] });
+            <!-- Model: the CLI's default, plus whatever models it reports. -->
+            {#if ai.agentId && aiAgentInstalled(ai.agentId)}
+              <div class="flex flex-col gap-1.5">
+                <span class={cn("font-medium", text.body)}>{i18n.t("settings.aiCommitModel")}</span>
+                <Select.Root
+                  type="single"
+                  value={ai.model || AI_MODEL_DEFAULT}
+                  onValueChange={(v) => {
+                    setAi({ model: v === AI_MODEL_DEFAULT ? "" : (v ?? "") });
+                    persistNow();
                   }}
-                  onchange={persistNow}
-                />
+                >
+                  <Select.Trigger class="w-56">
+                    {aiModelsLoading ? i18n.t("settings.aiCommitModelLoading") : aiModelLabel}
+                  </Select.Trigger>
+                  <Select.Content>
+                    <Select.Item value={AI_MODEL_DEFAULT} label={i18n.t("settings.aiCommitModelDefault")}>
+                      {i18n.t("settings.aiCommitModelDefault")}
+                    </Select.Item>
+                    {#each aiModels as m (m.id)}
+                      <Select.Item value={m.id} label={m.displayName}>{m.displayName}</Select.Item>
+                    {/each}
+                  </Select.Content>
+                </Select.Root>
+                <p class={text.meta}>{i18n.t("settings.aiCommitModelDesc")}</p>
               </div>
-            </div>
-            <p class={text.meta}>{i18n.t("settings.aiCommitCommandDesc")}</p>
+            {/if}
 
             <!-- Language. -->
             <div class="flex flex-col gap-1.5">

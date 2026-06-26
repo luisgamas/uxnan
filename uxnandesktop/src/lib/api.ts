@@ -4,6 +4,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  AgentModel,
   AgentStateEntry,
   AppData,
   AppSettings,
@@ -330,4 +331,16 @@ export function gitPull(path: string): Promise<void> {
  *  is staged, or the agent fails/times out. */
 export function generateCommitMessage(path: string): Promise<string> {
   return invoke<string>("git_generate_commit_message", { path });
+}
+
+/** Which of the supported AI-commit agents (claude/codex/gemini/opencode/pi) are
+ *  installed in a runnable shape, so the picker offers only those. */
+export function aiCommitAgents(): Promise<string[]> {
+  return invoke<string[]>("ai_commit_agents");
+}
+
+/** The models offered by `agentId` for AI commit messages (static for
+ *  Claude/Gemini, a live CLI query for OpenCode/Pi/Codex). */
+export function aiCommitModels(agentId: string): Promise<AgentModel[]> {
+  return invoke<AgentModel[]>("ai_commit_models", { agentId });
 }

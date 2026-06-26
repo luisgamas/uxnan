@@ -6,6 +6,7 @@
 //! `architecture/02a-system-architecture.md`.
 
 mod agent_hooks;
+mod agentcli;
 mod aicommit;
 mod browse;
 mod commands;
@@ -235,6 +236,8 @@ pub fn run() {
             commands::git_push,
             commands::git_pull,
             commands::git_generate_commit_message,
+            commands::ai_commit_agents,
+            commands::ai_commit_models,
             commands::set_agent_commands,
             commands::get_hook_info,
             commands::agent_states,
