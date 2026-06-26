@@ -14,7 +14,7 @@ which tracks assets only a human can provide.)
 **Phases 0–5 + cross-cutting (S) are DONE — the ADE is alpha-functional as a
 standalone app** (three-panel shell, PTY terminals + splits, git worktrees, git
 status/diff/stage/commit/history, agent monitoring with the axum hook server +
-OSC/process layers, settings/themes/i18n, multi-agent orchestration). 69 Rust
+OSC/process layers, settings/themes/i18n, multi-agent orchestration). 96 Rust
 backend tests + 19 frontend Vitest unit tests (pure logic); **no Svelte component
 or E2E tests yet**. macOS is **unvalidated** (developed on Windows; CI is
 `{ubuntu, windows}`). **Phase 6 (embedded bridge / mobile pairing) is NOT started.**
@@ -53,12 +53,6 @@ yet on either side** — the bridge's `desktop/*` handler is also an empty stub
       (today both coexist: the buffer restores recreated panes, but hidden tabs
       keep their xterm mounted). Would cut memory for many background terminals
       at the cost of a replay on every show.
-
-**Git & worktrees**
-- [ ] WSL path detection (`\\wsl.localhost\…`) → route through `wsl.exe`.
-- [ ] Aggressive cleanup for squash-merged branches (patch-equivalence).
-- [ ] AI commit message + image diffs (need an agent/bridge).
-- [ ] Commit composer textarea → a shadcn `Textarea`/`Field`.
 
 **Agents** — env vars per agent, shell-aware quoting, the configurable Windows
 launch shell (cmd by default), auto-launch on worktree create, and multi-agent
@@ -107,7 +101,7 @@ are **done** (see `CHANGELOG.md` + `architecture/02d` §3). Remaining follow-ups
 
 - ✅ **Verify** — `.github/workflows/ci-desktop.yml` runs svelte-check + `npm test`
   (Vitest) + vite build + cargo fmt/clippy/test on `{ubuntu, windows}` (macOS
-  deferred with Apple). 69 Rust + 19 Vitest tests.
+  deferred with Apple). 96 Rust + 19 Vitest tests.
 - ✅ **`release-desktop.yml`** — exists: `tauri-action` bundles on a `desktop-v*` tag
   → draft GitHub Release. **Windows ships unsigned for now; macOS deferred.**
 - [ ] **Code-signing** — Windows Authenticode + macOS Developer ID + notarization

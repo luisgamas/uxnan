@@ -32,10 +32,12 @@ Highlights of what ships today:
   restores a recreated pane's scrollback, and the Kitty/CSI-u keyboard protocol.
 - Git worktrees with per-worktree terminal workspaces, hierarchical
   Projects tree, in-app directory picker, worktree palette
-  (Ctrl/Cmd+P).
+  (Ctrl/Cmd+P), squash-merged branch cleanup on removal, and WSL repos
+  routed through `wsl.exe`.
 - Full git review (status / diff / stage / commit / push / pull with a
   3 s focus-paused Tokio watcher, CodeMirror 6 diff viewer, hunk-level
-  staging, side-by-side toggle).
+  staging, side-by-side toggle, visual image diffs, and optional AI
+  commit-message generation via a local CLI agent).
 - **Agent monitoring** (Phase 4) — three layers: Layer 1 local HTTP hook
   server (`axum` with precise `working/blocked/waiting/done` and persistent
   cache) + Layer 2 terminal-title (OSC) + Layer 3 process-tree detection.
@@ -132,7 +134,7 @@ npm run tauri dev      # run the desktop app (compiles Rust on first run)
 Backend (from `src-tauri/`):
 
 ```bash
-cargo test             # unit tests (69 passing)
+cargo test             # unit tests (96 passing)
 cargo clippy --all-targets
 cargo fmt
 ```

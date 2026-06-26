@@ -182,8 +182,29 @@ Integrada en el panel de cambios (`ChangesPanel.svelte`):
   configurada. El comando backend `git_commit(path, message, amend, signOff)`.
 - **Botón de acción primaria** contextual: Commit / Amend commit según el estado
   del composer; Push / Pull aparecen cuando hay ahead/behind.
-- **Generación AI del mensaje** (pendiente): un botón para que el agente genere
-  el mensaje a partir de los cambios staged.
+- **Generación AI del mensaje** (opcional, opt-in): cuando se activa en
+  **Configuración → Mensaje de commit con IA**, aparece un botón **Generar** en el
+  composer que redacta el mensaje a partir del diff staged. La configuración es
+  **no técnica**: el usuario elige un **agente** (solo se pueden seleccionar los
+  instalados de entre Claude Code, Codex, Gemini, OpenCode y Pi) y un **modelo**;
+  no hay comando ni argumentos que configurar. El backend resuelve cada CLI igual
+  que el bridge (`src-tauri/src/agentcli.rs`: `node <entry.js>` para instalaciones
+  npm, binario nativo si existe — así el lanzamiento no interactivo funciona en
+  Windows sin shell) y lo ejecuta de forma **no interactiva** (subproceso de una
+  sola pasada — no un PTY — con stdin cerrado, timeout de 120 s y `kill_on_drop`;
+  sin API/SDK/keys de proveedor). Los modelos se descubren por agente: estáticos
+  para Claude (versiones concretas exactas, p. ej. `claude-opus-4-8`, mantenidas
+  en `agentcli.rs::CLAUDE_MODELS` con una guía de actualización — sin alias
+  "latest") y Gemini (lista curada), o en vivo para OpenCode (`opencode models`),
+  Pi (`pi --list-models`) y Codex (`codex app-server` `model/list`); siempre con
+  una opción **Predeterminado** (sin flag de modelo). El selector de modelo es
+  **buscable y con scroll** (`AiModelPicker.svelte`) porque algunos agentes
+  listan cientos de modelos.
+  Comandos: `git_generate_commit_message`, `ai_commit_agents`, `ai_commit_models`
+  (`src-tauri/src/aicommit.rs`). La configuración vive en `AppSettings.aiCommit`
+  (`AiCommitSettings`: `agentId`, `model`, idioma, Conventional Commits, cuerpo
+  extendido, instrucciones extra), **desactivada por defecto**. Lista de agentes
+  soportados en `src/lib/aiCommitPresets.ts`.
 
 ### 4.6 Fuentes de Diff
 

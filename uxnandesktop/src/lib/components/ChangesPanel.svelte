@@ -4,7 +4,10 @@
   // viewer. Status updates live via the backend `git:status-changed` event.
   import { Button } from "$lib/components/ui/button";
   import { Switch } from "$lib/components/ui/switch";
+  import { Textarea } from "$lib/components/ui/textarea";
+  import { Input } from "$lib/components/ui/input";
   import * as Collapsible from "$lib/components/ui/collapsible";
+  import { app } from "$lib/state/app.svelte";
   import { git, type FileEntry } from "$lib/state/git.svelte";
   import { terminals } from "$lib/state/terminals.svelte";
   import { cn } from "$lib/utils";
@@ -18,6 +21,7 @@
   import SearchIcon from "@lucide/svelte/icons/search";
   import Undo2Icon from "@lucide/svelte/icons/undo-2";
   import GitCommitIcon from "@lucide/svelte/icons/git-commit-horizontal";
+  import SparklesIcon from "@lucide/svelte/icons/sparkles";
   import ArrowUpIcon from "@lucide/svelte/icons/arrow-up";
   import ArrowDownIcon from "@lucide/svelte/icons/arrow-down";
   import XIcon from "@lucide/svelte/icons/x";
@@ -35,6 +39,13 @@
     (git.staged.length > 0 || git.amend) &&
       git.message.trim().length > 0 &&
       !git.committing,
+  );
+
+  // The AI "Generate" button shows only when the feature is enabled AND an agent
+  // is selected (Settings → AI commit). It drafts from the staged diff.
+  const aiEnabled = $derived(
+    !!app.settings.aiCommit?.enabled &&
+      (app.settings.aiCommit?.agentId ?? "").trim().length > 0,
   );
 
   // The optional commit fields (body, co-authors, amend, sign-off) live in a
@@ -293,12 +304,30 @@
 
     <!-- Commit composer + sync -->
     <div class="shrink-0 border-t border-sidebar-border p-2">
-      <textarea
-        class="uxnan-scroll w-full resize-none rounded-md border border-input bg-transparent px-2 py-1.5 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        rows="2"
+      {#if aiEnabled}
+        <div class="mb-1.5 flex justify-end">
+          <Button
+            variant="outline"
+            size="sm"
+            class={cn("h-6", text.body)}
+            disabled={git.aiGenerating || git.committing}
+            title={i18n.t("rightPanel.generateAiDesc")}
+            onclick={() => void git.generateMessage()}
+          >
+            <SparklesIcon
+              data-icon="inline-start"
+              class={cn(git.aiGenerating && "animate-pulse")}
+            />
+            {git.aiGenerating ? i18n.t("rightPanel.generating") : i18n.t("rightPanel.generateAi")}
+          </Button>
+        </div>
+      {/if}
+      <Textarea
+        class="uxnan-scroll min-h-0 resize-none text-xs"
+        rows={2}
         placeholder={i18n.t("rightPanel.summaryPlaceholder")}
         bind:value={git.message}
-      ></textarea>
+      />
 
       <!-- Optional fields (body / co-authors / amend / sign-off), collapsed. -->
       <Collapsible.Root bind:open={optionsOpen} class="mt-1.5">
@@ -318,12 +347,12 @@
         </Collapsible.Trigger>
         <Collapsible.Content class="mt-1.5 flex flex-col gap-2">
           <!-- Extended description (body). -->
-          <textarea
-            class="uxnan-scroll w-full resize-none rounded-md border border-input bg-transparent px-2 py-1.5 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            rows="3"
+          <Textarea
+            class="uxnan-scroll min-h-0 resize-none text-xs"
+            rows={3}
             placeholder={i18n.t("rightPanel.descriptionPlaceholder")}
             bind:value={git.body}
-          ></textarea>
+          />
 
           <!-- Co-authors → Co-authored-by trailers. -->
           <div class="flex flex-col gap-1">
@@ -333,9 +362,9 @@
             </span>
             {#each git.coAuthors as coAuthor, i (i)}
               <div class="flex items-center gap-1">
-                <input
+                <Input
                   type="text"
-                  class="min-w-0 flex-1 rounded-md border border-input bg-transparent px-2 py-1 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  class="h-7 min-w-0 flex-1 text-xs"
                   placeholder={i18n.t("rightPanel.coAuthorPlaceholder")}
                   value={coAuthor}
                   oninput={(e) => setCoAuthor(i, e.currentTarget.value)}

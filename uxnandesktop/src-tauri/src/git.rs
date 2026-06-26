@@ -10,6 +10,7 @@
 
 use std::path::Path;
 
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use serde::Serialize;
 use tokio::process::Command;
 
@@ -25,6 +26,25 @@ pub struct WorktreeEntry {
     pub head: Option<String>,
     /// The repository's primary worktree (the original checkout).
     pub is_main: bool,
+}
+
+/// Outcome of [`remove_worktree`], so the frontend can tell the user what
+/// happened to the branch. The worktree itself is always removed on success;
+/// these flags only describe the *branch* cleanup (spec §2.3).
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoveOutcome {
+    /// The branch was deleted (either a safe `-d` delete of merged work, or a
+    /// forced `-D` of a branch whose changes are already squash-merged).
+    pub branch_deleted: bool,
+    /// The branch was kept because its changes couldn't be confirmed as merged
+    /// (so no work is lost); the user can delete it by hand later.
+    pub branch_preserved: bool,
+    /// The deletion relied on squash-merge (patch-equivalence) detection — the
+    /// branch's commits aren't ancestors of the base, but its net diff already
+    /// is. Surfaced so the toast can say the branch was cleaned up, not just
+    /// "removed".
+    pub squash_merged: bool,
 }
 
 /// Working-tree status summary for a worktree card badge.
@@ -77,13 +97,46 @@ pub struct CommitInfo {
     pub refs: Vec<String>,
 }
 
+/// Build the `git` invocation for `repo_path`. A normal path runs the native
+/// `git -C <path> …`; a WSL UNC path (`\\wsl.localhost\<distro>\…`) is routed
+/// through `wsl.exe -d <distro> git -C <linux-path> …` so the distro's own Linux
+/// git runs against the repo (spec `02c` §3.2). Any further arg that is itself a
+/// WSL UNC path (e.g. a worktree path) is translated to its Linux form;
+/// everything else (subcommands, flags, relative file paths) passes through
+/// untouched. Off Windows the WSL branch compiles out.
+fn git_command(repo_path: &str, args: &[&str]) -> Command {
+    // Runtime `cfg!(windows)` (not `#[cfg]`) so the WSL branch compiles — and
+    // lints — identically on every platform; it's simply never taken off Windows.
+    if cfg!(windows) {
+        if let Some(w) = crate::wsl::parse(repo_path) {
+            let mut cmd = Command::new("wsl.exe");
+            cmd.arg("-d")
+                .arg(&w.distro)
+                .arg("git")
+                .arg("-C")
+                .arg(&w.linux);
+            for a in args {
+                match crate::wsl::parse(a) {
+                    Some(p) => {
+                        cmd.arg(p.linux);
+                    }
+                    None => {
+                        cmd.arg(a);
+                    }
+                }
+            }
+            return cmd;
+        }
+    }
+    let mut cmd = Command::new("git");
+    cmd.arg("-C").arg(repo_path).args(args);
+    cmd
+}
+
 /// Run `git` in `repo_path` and return stdout on success, mapping a non-zero
 /// exit (with stderr) to [`AppError::Git`].
 async fn git(repo_path: &str, args: &[&str]) -> Result<String, AppError> {
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(repo_path)
-        .args(args)
+    let output = git_command(repo_path, args)
         .output()
         .await
         .map_err(|e| AppError::Git(e.to_string()))?;
@@ -97,10 +150,7 @@ async fn git(repo_path: &str, args: &[&str]) -> Result<String, AppError> {
 /// Like [`git`] but tolerates exit code 1, which `git diff --no-index` uses to
 /// signal "files differ" (not an error). Any other non-zero is still an error.
 async fn git_diff_tolerant(repo_path: &str, args: &[&str]) -> Result<String, AppError> {
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(repo_path)
-        .args(args)
+    let output = git_command(repo_path, args)
         .output()
         .await
         .map_err(|e| AppError::Git(e.to_string()))?;
@@ -221,11 +271,15 @@ pub async fn is_worktree_clean(worktree_path: &str) -> Result<bool, AppError> {
 /// Summarize a worktree's working-tree status (changed entries + ahead/behind)
 /// for its sidebar card. Fast path: `git2`; CLI fallback.
 pub async fn worktree_status(worktree_path: &str) -> Result<WorktreeStatus, AppError> {
-    let p = worktree_path.to_string();
-    if let Ok(Ok(v)) =
-        tokio::task::spawn_blocking(move || crate::gitfast::worktree_status(&p)).await
-    {
-        return Ok(v);
+    // git2 (libgit2) can't see a WSL repo the way the in-distro git does, so for
+    // a WSL path we skip the fast path and use the CLI (routed through wsl.exe).
+    if !crate::wsl::is_wsl_path(worktree_path) {
+        let p = worktree_path.to_string();
+        if let Ok(Ok(v)) =
+            tokio::task::spawn_blocking(move || crate::gitfast::worktree_status(&p)).await
+        {
+            return Ok(v);
+        }
     }
     worktree_status_cli(worktree_path).await
 }
@@ -262,16 +316,18 @@ pub fn parse_status_porcelain(input: &str) -> WorktreeStatus {
 
 /// Remove a worktree with safeguards (spec §2.3). With `force = false`, refuses
 /// when the worktree has uncommitted changes. After removal it prunes the
-/// administrative files and attempts a *safe* branch delete (`git branch -d`,
-/// which fails — and is ignored — when the branch has unmerged commits, so work
-/// is never lost). Patch-equivalence detection for squash-merged branches is
-/// deferred (FOR-DEV: aggressive branch cleanup).
+/// administrative files and cleans up the branch: a *safe* delete (`git branch
+/// -d`) for merged work, then — if that's refused — squash-merge detection
+/// ([`is_squash_merged`]) which force-deletes (`git branch -D`) a branch whose
+/// net diff is already in the base, otherwise the branch is **kept** so work is
+/// never lost. The [`RemoveOutcome`] reports which path was taken so the UI can
+/// tell the user.
 pub async fn remove_worktree(
     repo_path: &str,
     worktree_path: &str,
     branch: Option<&str>,
     force: bool,
-) -> Result<(), AppError> {
+) -> Result<RemoveOutcome, AppError> {
     // Only block on uncommitted changes when the worktree is still a valid,
     // intact checkout. If `status` errors (a half-removed / broken worktree),
     // fall through so this call can finish cleaning it up.
@@ -301,10 +357,78 @@ pub async fn remove_worktree(
     // frontend kills the worktree's terminals first, and we retry briefly).
     let _ = git(repo_path, &["worktree", "prune"]).await;
     remove_dir_with_retry(worktree_path).await;
+
+    let mut outcome = RemoveOutcome::default();
     if let Some(branch) = branch {
-        let _ = git(repo_path, &["branch", "-d", branch]).await;
+        // Safe delete first: succeeds only when the branch's commits are an
+        // ancestor of some ref (truly merged), so it can never lose work.
+        if git(repo_path, &["branch", "-d", branch]).await.is_ok() {
+            outcome.branch_deleted = true;
+        } else {
+            // `-d` was refused (unmerged commits). The work may still have landed
+            // as a *squash* merge — a single commit on the base carrying the same
+            // net diff. If we can confirm that patch-equivalence, force-delete is
+            // safe; otherwise keep the branch.
+            let base = default_base(repo_path).await;
+            if base != branch && is_squash_merged(repo_path, branch, &base).await {
+                if git(repo_path, &["branch", "-D", branch]).await.is_ok() {
+                    outcome.branch_deleted = true;
+                    outcome.squash_merged = true;
+                } else {
+                    outcome.branch_preserved = true;
+                }
+            } else {
+                outcome.branch_preserved = true;
+            }
+        }
     }
-    Ok(())
+    Ok(outcome)
+}
+
+/// Whether `branch`'s net changes are already present in `base` as a squash
+/// merge (patch-equivalence), even though its commits aren't ancestors of `base`
+/// (so `git branch -d` refuses it). We synthesize a dangling commit holding the
+/// branch's tree on top of `merge-base(base, branch)`, then ask `git cherry`
+/// whether `base` already contains an equivalent patch — a `-`-prefixed line.
+/// This is the canonical squash-merge check (used by e.g. git-delete-squashed).
+/// Best-effort: any git error yields `false`, so the branch is kept rather than
+/// risk deleting unmerged work.
+async fn is_squash_merged(repo_path: &str, branch: &str, base: &str) -> bool {
+    let Ok(merge_base) = git(repo_path, &["merge-base", base, branch]).await else {
+        return false;
+    };
+    let merge_base = merge_base.trim();
+    if merge_base.is_empty() {
+        return false;
+    }
+    let tree_ref = format!("{branch}^{{tree}}");
+    let Ok(tree) = git(repo_path, &["rev-parse", &tree_ref]).await else {
+        return false;
+    };
+    let tree = tree.trim();
+    if tree.is_empty() {
+        return false;
+    }
+    // A commit with the branch's full tree, parented on the merge base, so its
+    // single patch equals the branch's whole contribution since it diverged.
+    let Ok(dangling) = git(
+        repo_path,
+        &["commit-tree", tree, "-p", merge_base, "-m", "_"],
+    )
+    .await
+    else {
+        return false;
+    };
+    let dangling = dangling.trim();
+    if dangling.is_empty() {
+        return false;
+    }
+    // `git cherry <upstream> <head>` marks each commit `+` (not in upstream) or
+    // `-` (an equivalent patch already in upstream). A `-` means squash-merged.
+    match git(repo_path, &["cherry", base, dangling]).await {
+        Ok(out) => out.lines().any(|l| l.trim_start().starts_with('-')),
+        Err(_) => false,
+    }
 }
 
 /// Delete `path` if it still exists, retrying a few times so a just-released
@@ -336,7 +460,22 @@ pub async fn list_worktrees(repo_path: &str) -> Result<Vec<WorktreeEntry>, AppEr
         }]);
     }
     let out = git(repo_path, &["worktree", "list", "--porcelain"]).await?;
-    Ok(parse_worktree_porcelain(&out))
+    let mut entries = parse_worktree_porcelain(&out);
+    // When routed through WSL, git reports Linux paths (`/home/u/repo`); map them
+    // back to the UNC form the app registered so per-worktree workspace keys line
+    // up (the frontend matches worktrees to projects by path). Runtime
+    // `cfg!(windows)` so this compiles identically everywhere; it's a no-op off
+    // Windows (and for non-WSL repos `parse` returns `None`).
+    if cfg!(windows) {
+        if let Some(w) = crate::wsl::parse(repo_path) {
+            for entry in &mut entries {
+                if entry.path.starts_with('/') {
+                    entry.path = crate::wsl::to_unc(&w.host, &w.distro, &entry.path);
+                }
+            }
+        }
+    }
+    Ok(entries)
 }
 
 /// Parse `git worktree list --porcelain` output. Blocks are separated by blank
@@ -387,9 +526,14 @@ pub fn parse_worktree_porcelain(input: &str) -> Vec<WorktreeEntry> {
 /// List a worktree's changed files. Fast path: `git2` (no subprocess); falls
 /// back to the git CLI if `git2` can't handle the repo.
 pub async fn status_files(worktree_path: &str) -> Result<Vec<FileChange>, AppError> {
-    let p = worktree_path.to_string();
-    if let Ok(Ok(v)) = tokio::task::spawn_blocking(move || crate::gitfast::status_files(&p)).await {
-        return Ok(v);
+    // WSL repos go straight to the CLI (routed through wsl.exe); see worktree_status.
+    if !crate::wsl::is_wsl_path(worktree_path) {
+        let p = worktree_path.to_string();
+        if let Ok(Ok(v)) =
+            tokio::task::spawn_blocking(move || crate::gitfast::status_files(&p)).await
+        {
+            return Ok(v);
+        }
     }
     status_files_cli(worktree_path).await
 }
@@ -438,15 +582,18 @@ pub fn parse_status_files(input: &str) -> Vec<FileChange> {
 /// Unified diff for one file. `staged` selects the index-vs-HEAD diff; otherwise
 /// the worktree-vs-index diff. Fast path: `git2`; CLI fallback.
 pub async fn diff_file(worktree_path: &str, file: &str, staged: bool) -> Result<String, AppError> {
-    let (p, f) = (worktree_path.to_string(), file.to_string());
-    if let Ok(Ok(v)) =
-        tokio::task::spawn_blocking(move || crate::gitfast::diff_file(&p, &f, staged)).await
-    {
-        // git2 returns an empty diff for an untracked file unless asked; if it's
-        // empty, fall through to the CLI which handles the untracked `--no-index`
-        // whole-file case.
-        if !v.trim().is_empty() {
-            return Ok(v);
+    // WSL repos go straight to the CLI (routed through wsl.exe); see worktree_status.
+    if !crate::wsl::is_wsl_path(worktree_path) {
+        let (p, f) = (worktree_path.to_string(), file.to_string());
+        if let Ok(Ok(v)) =
+            tokio::task::spawn_blocking(move || crate::gitfast::diff_file(&p, &f, staged)).await
+        {
+            // git2 returns an empty diff for an untracked file unless asked; if it's
+            // empty, fall through to the CLI which handles the untracked `--no-index`
+            // whole-file case.
+            if !v.trim().is_empty() {
+                return Ok(v);
+            }
         }
     }
     diff_file_cli(worktree_path, file, staged).await
@@ -484,9 +631,12 @@ pub struct FileNumstat {
 /// Added/deleted line counts per changed file vs `HEAD`. Fast path: `git2`;
 /// CLI fallback (`git diff --numstat HEAD`).
 pub async fn numstat(worktree_path: &str) -> Result<Vec<FileNumstat>, AppError> {
-    let p = worktree_path.to_string();
-    if let Ok(Ok(v)) = tokio::task::spawn_blocking(move || crate::gitfast::numstat(&p)).await {
-        return Ok(v);
+    // WSL repos go straight to the CLI (routed through wsl.exe); see worktree_status.
+    if !crate::wsl::is_wsl_path(worktree_path) {
+        let p = worktree_path.to_string();
+        if let Ok(Ok(v)) = tokio::task::spawn_blocking(move || crate::gitfast::numstat(&p)).await {
+            return Ok(v);
+        }
     }
     numstat_cli(worktree_path).await
 }
@@ -521,10 +671,14 @@ pub fn parse_numstat(input: &str) -> Vec<FileNumstat> {
 /// Returns an empty string for a clean or untracked file (untracked files have
 /// no `HEAD` baseline — the frontend treats those as wholly added on its own).
 pub async fn diff_head(worktree_path: &str, file: &str) -> Result<String, AppError> {
-    let (p, f) = (worktree_path.to_string(), file.to_string());
-    if let Ok(Ok(v)) = tokio::task::spawn_blocking(move || crate::gitfast::diff_head(&p, &f)).await
-    {
-        return Ok(v);
+    // WSL repos go straight to the CLI (routed through wsl.exe); see worktree_status.
+    if !crate::wsl::is_wsl_path(worktree_path) {
+        let (p, f) = (worktree_path.to_string(), file.to_string());
+        if let Ok(Ok(v)) =
+            tokio::task::spawn_blocking(move || crate::gitfast::diff_head(&p, &f)).await
+        {
+            return Ok(v);
+        }
     }
     git(worktree_path, &["diff", "HEAD", "--", file]).await
 }
@@ -596,15 +750,17 @@ pub async fn apply_patch(
     use std::process::Stdio;
     use tokio::io::AsyncWriteExt;
 
-    let mut args: Vec<&str> = vec!["-C", worktree_path, "apply", "--whitespace=nowarn"];
+    let mut args: Vec<&str> = vec!["apply", "--whitespace=nowarn"];
     if cached {
         args.push("--cached");
     }
     if reverse {
         args.push("--reverse");
     }
-    let mut child = Command::new("git")
-        .args(&args)
+    // `git_command` adds `-C <worktree_path>` and routes a WSL repo through
+    // wsl.exe; the patch (forward-slash relative paths) is fed on stdin and is
+    // valid in either environment.
+    let mut child = git_command(worktree_path, &args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -655,6 +811,13 @@ pub async fn commit(
     git(worktree_path, &args).await.map(|_| ())
 }
 
+/// The full staged diff (`git diff --staged`), used to feed the AI
+/// commit-message generator (spec `02c` §4.5). Routes through `wsl.exe` for WSL
+/// repos like every other command here.
+pub async fn staged_diff(worktree_path: &str) -> Result<String, AppError> {
+    git(worktree_path, &["diff", "--staged"]).await
+}
+
 /// Push the current branch (`git push`). Never retried (not idempotent).
 pub async fn push(worktree_path: &str) -> Result<(), AppError> {
     git(worktree_path, &["push"]).await.map(|_| ())
@@ -688,11 +851,14 @@ pub async fn log(
     limit: usize,
     skip: usize,
 ) -> Result<Vec<CommitInfo>, AppError> {
-    let p = worktree_path.to_string();
-    if let Ok(Ok(v)) =
-        tokio::task::spawn_blocking(move || crate::gitfast::log(&p, limit, skip)).await
-    {
-        return Ok(v);
+    // WSL repos go straight to the CLI (routed through wsl.exe); see worktree_status.
+    if !crate::wsl::is_wsl_path(worktree_path) {
+        let p = worktree_path.to_string();
+        if let Ok(Ok(v)) =
+            tokio::task::spawn_blocking(move || crate::gitfast::log(&p, limit, skip)).await
+        {
+            return Ok(v);
+        }
     }
     log_cli(worktree_path, limit, skip).await
 }
@@ -778,13 +944,121 @@ pub async fn show(worktree_path: &str, hash: &str) -> Result<String, AppError> {
     if hash.is_empty() || !hash.chars().all(|c| c.is_ascii_hexdigit()) {
         return Err(AppError::Invalid(format!("invalid commit hash: {hash}")));
     }
-    let (p, h) = (worktree_path.to_string(), hash.to_string());
-    if let Ok(Ok(v)) = tokio::task::spawn_blocking(move || crate::gitfast::show(&p, &h)).await {
-        if !v.trim().is_empty() {
-            return Ok(v);
+    // WSL repos go straight to the CLI (routed through wsl.exe); see worktree_status.
+    if !crate::wsl::is_wsl_path(worktree_path) {
+        let (p, h) = (worktree_path.to_string(), hash.to_string());
+        if let Ok(Ok(v)) = tokio::task::spawn_blocking(move || crate::gitfast::show(&p, &h)).await {
+            if !v.trim().is_empty() {
+                return Ok(v);
+            }
         }
     }
     git(worktree_path, &["show", "--format=", "-p", hash]).await
+}
+
+// --- Image diffs (visual before/after, spec `02c` §4.2) --------------------
+
+/// One side of an image diff: the image bytes as a base64 data-URL payload plus
+/// its MIME type, ready for the frontend to render as `data:<mime>;base64,<…>`.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ImageData {
+    pub mime: String,
+    pub base64: String,
+}
+
+/// Before/after image versions for a changed image file. Either side is `None`
+/// when it doesn't exist (an added file has no `old`; a deleted file has no
+/// `new`), so the frontend can render an "added"/"removed" state.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ImageDiff {
+    pub old: Option<ImageData>,
+    pub new: Option<ImageData>,
+}
+
+/// MIME type for a file with a known image extension, else `None` (the frontend
+/// only requests image diffs for recognised extensions, but we double-check).
+pub fn image_mime(file: &str) -> Option<&'static str> {
+    let ext = file.rsplit('.').next()?.to_ascii_lowercase();
+    Some(match ext.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "bmp" => "image/bmp",
+        "ico" => "image/x-icon",
+        "svg" => "image/svg+xml",
+        "avif" => "image/avif",
+        "tif" | "tiff" => "image/tiff",
+        _ => return None,
+    })
+}
+
+/// Raw stdout bytes of a git command (no UTF-8 lossy conversion), for reading
+/// binary blobs. Routes through `wsl.exe` for WSL repos like [`git`].
+async fn git_bytes(repo_path: &str, args: &[&str]) -> Result<Vec<u8>, AppError> {
+    let output = git_command(repo_path, args)
+        .output()
+        .await
+        .map_err(|e| AppError::Git(e.to_string()))?;
+    if !output.status.success() {
+        return Err(AppError::Git(
+            String::from_utf8_lossy(&output.stderr).trim().to_string(),
+        ));
+    }
+    Ok(output.stdout)
+}
+
+/// The bytes of `rev_spec` (e.g. `HEAD:img/logo.png` or `:img/logo.png` for the
+/// index), or `None` when the blob doesn't exist there (added/deleted side).
+async fn blob_bytes(repo_path: &str, rev_spec: &str) -> Option<Vec<u8>> {
+    git_bytes(repo_path, &["show", rev_spec])
+        .await
+        .ok()
+        .filter(|b| !b.is_empty())
+}
+
+/// Before/after versions of an image `file` for the visual diff viewer. `staged`
+/// mirrors [`diff_file`]: the staged view compares `HEAD` → index, the working
+/// view compares index → the file on disk. Bytes are base64-encoded for the
+/// frontend to render inline; a missing side (added/deleted) is `None`.
+pub async fn image_diff(
+    worktree_path: &str,
+    file: &str,
+    staged: bool,
+) -> Result<ImageDiff, AppError> {
+    let mime = image_mime(file)
+        .unwrap_or("application/octet-stream")
+        .to_string();
+    let encode = |bytes: Vec<u8>| ImageData {
+        mime: mime.clone(),
+        base64: BASE64.encode(&bytes),
+    };
+
+    // Old side: HEAD for the staged view, the index for the working view.
+    let old_rev = if staged {
+        format!("HEAD:{file}")
+    } else {
+        format!(":{file}")
+    };
+    let old = blob_bytes(worktree_path, &old_rev).await.map(&encode);
+
+    // New side: the index for the staged view, the working-tree file otherwise.
+    let new = if staged {
+        blob_bytes(worktree_path, &format!(":{file}"))
+            .await
+            .map(&encode)
+    } else {
+        let full = format!("{}/{}", worktree_path.trim_end_matches('/'), file);
+        tokio::fs::read(&full)
+            .await
+            .ok()
+            .filter(|b| !b.is_empty())
+            .map(&encode)
+    };
+
+    Ok(ImageDiff { old, new })
 }
 
 #[cfg(test)]
@@ -823,6 +1097,19 @@ mod tests {
     #[test]
     fn repo_name_is_final_component() {
         assert_eq!(repo_name("/home/u/myrepo"), "myrepo");
+    }
+
+    #[test]
+    fn worktree_path_for_stays_under_wsl_unc_prefix() {
+        // A WSL repo's worktree must remain a sibling under the same UNC share so
+        // the path keeps parsing as WSL (and routes through wsl.exe).
+        let p = worktree_path_for("//wsl.localhost/Ubuntu/home/u/myrepo", "feature/login");
+        assert!(p.ends_with("myrepo--feature-login"), "got {p}");
+        assert!(p.contains("wsl.localhost/Ubuntu/home/u"), "got {p}");
+        assert!(
+            crate::wsl::parse(&p).is_some(),
+            "result should still parse as WSL"
+        );
     }
 
     #[test]
@@ -939,5 +1226,128 @@ mod tests {
             vec!["HEAD", "main", "origin/main", "tag: v1.0"]
         );
         assert!(parse_refs("").is_empty());
+    }
+
+    // --- Squash-merge branch cleanup (integration; needs the git CLI) ---------
+
+    /// Run a git command in `dir`, panicking with context on failure.
+    async fn run_git(dir: &str, args: &[&str]) {
+        git(dir, args)
+            .await
+            .unwrap_or_else(|e| panic!("git {args:?} in {dir} failed: {e:?}"));
+    }
+
+    /// Init a repo on `main` with a deterministic identity and signing off, plus
+    /// one initial commit so branches have a shared base.
+    async fn init_repo(dir: &str) {
+        run_git(dir, &["init", "-b", "main"]).await;
+        run_git(dir, &["config", "user.email", "test@uxnan.dev"]).await;
+        run_git(dir, &["config", "user.name", "Uxnan Test"]).await;
+        run_git(dir, &["config", "commit.gpgsign", "false"]).await;
+        std::fs::write(format!("{dir}/README.md"), "base\n").unwrap();
+        run_git(dir, &["add", "-A"]).await;
+        run_git(dir, &["commit", "-m", "initial"]).await;
+    }
+
+    #[tokio::test]
+    async fn remove_worktree_force_deletes_squash_merged_branch() {
+        let repo = tempfile::tempdir().unwrap();
+        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        init_repo(&repo_path).await;
+
+        // A feature worktree with its own commit.
+        let wt = worktree_path_for(&repo_path, "feature");
+        add_worktree(&repo_path, "feature", &wt, Some("main"))
+            .await
+            .unwrap();
+        std::fs::write(format!("{wt}/feature.txt"), "hello\n").unwrap();
+        run_git(&wt, &["add", "-A"]).await;
+        run_git(&wt, &["commit", "-m", "add feature"]).await;
+
+        // Squash-merge it into main: the same net diff, a different commit — so
+        // `git branch -d feature` would refuse it.
+        run_git(&repo_path, &["merge", "--squash", "feature"]).await;
+        run_git(&repo_path, &["commit", "-m", "squash feature"]).await;
+
+        let outcome = remove_worktree(&repo_path, &wt, Some("feature"), false)
+            .await
+            .unwrap();
+        assert!(outcome.branch_deleted, "branch should be deleted");
+        assert!(outcome.squash_merged, "via squash-merge detection");
+        assert!(!outcome.branch_preserved);
+        // The branch is really gone.
+        let branches = list_branches(&repo_path).await.unwrap();
+        assert!(!branches.iter().any(|b| b == "feature"));
+    }
+
+    #[tokio::test]
+    async fn remove_worktree_keeps_genuinely_unmerged_branch() {
+        let repo = tempfile::tempdir().unwrap();
+        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        init_repo(&repo_path).await;
+
+        let wt = worktree_path_for(&repo_path, "wip");
+        add_worktree(&repo_path, "wip", &wt, Some("main"))
+            .await
+            .unwrap();
+        std::fs::write(format!("{wt}/wip.txt"), "unmerged\n").unwrap();
+        run_git(&wt, &["add", "-A"]).await;
+        run_git(&wt, &["commit", "-m", "wip work"]).await;
+
+        // Never merged anywhere → the branch must be preserved (no work lost).
+        let outcome = remove_worktree(&repo_path, &wt, Some("wip"), false)
+            .await
+            .unwrap();
+        assert!(outcome.branch_preserved, "unmerged branch is kept");
+        assert!(!outcome.branch_deleted);
+        assert!(!outcome.squash_merged);
+        let branches = list_branches(&repo_path).await.unwrap();
+        assert!(branches.iter().any(|b| b == "wip"));
+    }
+
+    #[test]
+    fn image_mime_maps_known_extensions() {
+        assert_eq!(image_mime("a/b/logo.png"), Some("image/png"));
+        assert_eq!(image_mime("photo.JPG"), Some("image/jpeg"));
+        assert_eq!(image_mime("icon.svg"), Some("image/svg+xml"));
+        assert_eq!(image_mime("anim.webp"), Some("image/webp"));
+        assert_eq!(image_mime("notes.txt"), None);
+        assert_eq!(image_mime("no_extension"), None);
+    }
+
+    #[tokio::test]
+    async fn image_diff_reports_old_and_new_for_working_change() {
+        let repo = tempfile::tempdir().unwrap();
+        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        init_repo(&repo_path).await;
+
+        // Commit an "image" file (arbitrary bytes — image_diff treats it opaquely).
+        std::fs::write(format!("{repo_path}/logo.png"), [0u8, 1, 2, 3]).unwrap();
+        run_git(&repo_path, &["add", "-A"]).await;
+        run_git(&repo_path, &["commit", "-m", "add logo"]).await;
+        // Modify the working tree only (unstaged).
+        std::fs::write(format!("{repo_path}/logo.png"), [9u8, 9, 9, 9, 9]).unwrap();
+
+        let diff = image_diff(&repo_path, "logo.png", false).await.unwrap();
+        let old = diff.old.expect("committed/index version exists");
+        let new = diff.new.expect("working-tree version exists");
+        assert_eq!(old.mime, "image/png");
+        assert_eq!(new.mime, "image/png");
+        // Old = index bytes [0,1,2,3]; new = working-tree bytes [9,9,9,9,9].
+        assert_eq!(old.base64, BASE64.encode([0u8, 1, 2, 3]));
+        assert_eq!(new.base64, BASE64.encode([9u8, 9, 9, 9, 9]));
+    }
+
+    #[tokio::test]
+    async fn image_diff_has_no_old_for_untracked_added_file() {
+        let repo = tempfile::tempdir().unwrap();
+        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        init_repo(&repo_path).await;
+        // A brand-new, never-committed image → no old side, new from disk.
+        std::fs::write(format!("{repo_path}/new.png"), [7u8, 7, 7]).unwrap();
+
+        let diff = image_diff(&repo_path, "new.png", false).await.unwrap();
+        assert!(diff.old.is_none(), "added file has no baseline");
+        assert_eq!(diff.new.unwrap().base64, BASE64.encode([7u8, 7, 7]));
     }
 }

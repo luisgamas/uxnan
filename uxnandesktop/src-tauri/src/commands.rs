@@ -309,7 +309,9 @@ pub async fn worktree_create(
 
 /// Remove a worktree (spec §2.3). With `force = false` the backend refuses when
 /// the worktree has uncommitted changes; the frontend surfaces this so the user
-/// can confirm a forced removal. A safe branch delete is attempted afterwards.
+/// can confirm a forced removal. Afterwards the branch is cleaned up: a safe
+/// delete for merged work, a force-delete for a confirmed squash merge, or kept
+/// otherwise. The returned [`git::RemoveOutcome`] tells the UI which happened.
 #[tauri::command]
 pub async fn worktree_remove(
     state: State<'_, AppState>,
@@ -317,7 +319,7 @@ pub async fn worktree_remove(
     path: String,
     branch: Option<String>,
     force: bool,
-) -> Result<(), CommandError> {
+) -> Result<git::RemoveOutcome, CommandError> {
     let repo_path = repo_path_of(&state, &repo_id).await?;
     git::remove_worktree(&repo_path, &path, branch.as_deref(), force)
         .await
@@ -453,6 +455,20 @@ pub async fn git_diff(path: String, file: String, staged: bool) -> Result<String
         .map_err(CommandError::from)
 }
 
+/// Before/after image versions for a changed **image** file, base64-encoded for
+/// the visual diff viewer. `staged` selects HEAD→index vs index→working-tree,
+/// mirroring `git_diff`. A missing side (added/deleted) comes back as `null`.
+#[tauri::command]
+pub async fn git_image_diff(
+    path: String,
+    file: String,
+    staged: bool,
+) -> Result<git::ImageDiff, CommandError> {
+    git::image_diff(&path, &file, staged)
+        .await
+        .map_err(CommandError::from)
+}
+
 /// Stage one file.
 #[tauri::command]
 pub async fn git_stage(path: String, file: String) -> Result<(), CommandError> {
@@ -576,6 +592,41 @@ pub async fn git_push(path: String) -> Result<(), CommandError> {
 #[tauri::command]
 pub async fn git_pull(path: String) -> Result<(), CommandError> {
     git::pull(&path).await.map_err(CommandError::from)
+}
+
+/// Draft a commit message for `path`'s **staged** changes using the configured
+/// AI agent (Settings → AI commit). Opt-in: errors when disabled/unconfigured,
+/// when nothing is staged, or when the agent fails / times out. Returns the
+/// message (subject on the first line, optional body after a blank line).
+#[tauri::command]
+pub async fn git_generate_commit_message(
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<String, CommandError> {
+    let cfg = state.data.read().await.settings.ai_commit.clone();
+    crate::aicommit::generate(&path, &cfg)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Which of the supported AI-commit agents (Claude Code, Codex, Gemini, OpenCode,
+/// Pi) are installed in a runnable shape, so Settings → AI commit offers only
+/// those.
+#[tauri::command]
+pub async fn ai_commit_agents() -> Result<Vec<String>, CommandError> {
+    Ok(crate::aicommit::available_agents())
+}
+
+/// The models offered by `agentId` for AI commit messages (static for
+/// Claude/Gemini, a live CLI query for OpenCode/Pi/Codex). Best-effort: an empty
+/// list just means the user falls back to the CLI's default model.
+#[tauri::command]
+pub async fn ai_commit_models(
+    agent_id: String,
+) -> Result<Vec<crate::agentcli::AgentModel>, CommandError> {
+    crate::aicommit::list_models(&agent_id)
+        .await
+        .map_err(CommandError::from)
 }
 
 /// Payload of the `agent:detected` event: which agent command (if any) the
