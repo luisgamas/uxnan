@@ -5,6 +5,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — file tree: dim git-ignored entries
+- **The Files tab now dims git-ignored entries (muted + italic),** so files and
+  folders git ignores (`node_modules`, `build`, `.env`, …) read as clearly apart
+  from tracked/untracked ones — matching the convention an IDE file tree uses and
+  the mobile app's file browser. The git *change* colours (untracked green,
+  deleted red, modified/staged amber) are unchanged; "ignored" is a distinct
+  concept layered on top, and it wins over a change colour (an ignored entry
+  never has a git change anyway).
+- **Backend (`fs.rs` + `gitfast.rs`).** `FsEntry` gained an `ignored: bool`;
+  `list_dir` fills it per-listing via the new `gitfast::ignored_flags` (git2
+  `is_path_ignored`, run on the blocking pool, best-effort so a non-repo
+  directory just leaves every entry un-flagged). Mirrors `git check-ignore`:
+  tracked files matching a rule are not flagged. Because the check is per-listing,
+  an ignored directory's children are each flagged when it's expanded — no
+  frontend ancestor-propagation needed. `git status` / the Changes panel are
+  untouched (ignored entries never appear there).
+- **Frontend** (`FileTreePanel.svelte`, `types.ts` `FsEntry.ignored`): ignored
+  rows render muted + italic. Tests: +2 Rust (`gitfast`: `ignored_flags` matches a
+  `.gitignore` for files + dirs; all-false outside a repo) → **71** backend tests.
+
 ### Added — terminal: tab reorder/MRU, backend ring buffer, CSI-u keyboard protocol
 - **Tab reorder + drag between regions.** Tab chips can be dragged: drop one
   elsewhere in its strip to reorder it, or onto another region's strip to move

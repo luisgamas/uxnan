@@ -28,6 +28,12 @@ pub struct FsEntry {
     /// worktree-relative path for git-status coloring from this).
     pub path: String,
     pub is_dir: bool,
+    /// Whether git ignores this entry (a `.gitignore` / exclude match), computed
+    /// per-listing. `false` outside a git repository. The file tree dims ignored
+    /// entries (muted + italic) — this is independent of git *status* (ignored
+    /// entries never appear in the review panel's changed-file list).
+    #[serde(default)]
+    pub ignored: bool,
 }
 
 /// The content of a file opened in the editor, with guards the UI honors.
@@ -69,6 +75,7 @@ pub async fn list_dir(path: &str) -> Result<Vec<FsEntry>, AppError> {
             path: normalize(&item.path()),
             name,
             is_dir,
+            ignored: false,
         };
         if is_dir {
             dirs.push(entry);
@@ -79,7 +86,20 @@ pub async fn list_dir(path: &str) -> Result<Vec<FsEntry>, AppError> {
     dirs.sort_by_key(|e| e.name.to_lowercase());
     files.sort_by_key(|e| e.name.to_lowercase());
     dirs.append(&mut files);
-    Ok(dirs)
+    let mut entries = dirs;
+
+    // Flag git-ignored entries (dimmed in the tree). libgit2 is blocking, so the
+    // ignore check runs on the blocking pool; best-effort, so any failure (or a
+    // non-repo directory) just leaves every entry un-flagged.
+    let paths: Vec<String> = entries.iter().map(|e| e.path.clone()).collect();
+    let dir = path.to_string();
+    let flags = tokio::task::spawn_blocking(move || crate::gitfast::ignored_flags(&dir, &paths))
+        .await
+        .unwrap_or_default();
+    for (entry, ignored) in entries.iter_mut().zip(flags) {
+        entry.ignored = ignored;
+    }
+    Ok(entries)
 }
 
 /// Read a single file for the editor. Refuses (via flags, not an error) to load
