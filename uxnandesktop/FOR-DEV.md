@@ -54,7 +54,6 @@ yet on either side** — the bridge's `desktop/*` handler is also an empty stub
       at the cost of a replay on every show.
 
 **Git & worktrees**
-- [ ] WSL path detection (`\\wsl.localhost\…`) → route through `wsl.exe`.
 - [ ] AI commit message + image diffs (need an agent/bridge).
 
 **Agents**

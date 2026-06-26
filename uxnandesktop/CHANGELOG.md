@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — git: WSL repos run through `wsl.exe`
+- **Repos opened from a WSL distro now use the distro's own git.** When a repo
+  path is a WSL UNC path (`\\wsl.localhost\<distro>\…` or the legacy `\\wsl$\…`,
+  in either slash form), the git layer routes every command through
+  `wsl.exe -d <distro> git -C <linux-path> …` instead of running the Windows
+  `git.exe` against the slow 9P share (which can also disagree with Linux git on
+  line endings / file modes / hooks). The new `src-tauri/src/wsl.rs` parses the
+  UNC path, `git::git_command` builds the routed invocation (translating any
+  WSL-path argument, e.g. a worktree path, to its Linux form), `worktree_list`
+  translates the Linux paths git reports back to the registered UNC form so
+  per-worktree workspace keys line up, and the `git2` fast path is skipped for
+  WSL repos (libgit2 can't see them the way the in-distro git does). Windows-only
+  routing; a no-op elsewhere. 8 new unit tests (`wsl` parse/round-trip +
+  `worktree_path_for` under a WSL prefix).
+
 ### Added — git: squash-merged branch cleanup on worktree removal
 - **Removing a worktree now cleans up a squash-merged branch.** After the safe
   `git branch -d` (which only deletes truly merged work), the backend now detects

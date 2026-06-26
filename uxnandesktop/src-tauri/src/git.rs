@@ -96,13 +96,45 @@ pub struct CommitInfo {
     pub refs: Vec<String>,
 }
 
+/// Build the `git` invocation for `repo_path`. A normal path runs the native
+/// `git -C <path> …`; a WSL UNC path (`\\wsl.localhost\<distro>\…`) is routed
+/// through `wsl.exe -d <distro> git -C <linux-path> …` so the distro's own Linux
+/// git runs against the repo (spec `02c` §3.2). Any further arg that is itself a
+/// WSL UNC path (e.g. a worktree path) is translated to its Linux form;
+/// everything else (subcommands, flags, relative file paths) passes through
+/// untouched. Off Windows the WSL branch compiles out.
+fn git_command(repo_path: &str, args: &[&str]) -> Command {
+    #[cfg(windows)]
+    {
+        if let Some(w) = crate::wsl::parse(repo_path) {
+            let mut cmd = Command::new("wsl.exe");
+            cmd.arg("-d")
+                .arg(&w.distro)
+                .arg("git")
+                .arg("-C")
+                .arg(&w.linux);
+            for a in args {
+                match crate::wsl::parse(a) {
+                    Some(p) => {
+                        cmd.arg(p.linux);
+                    }
+                    None => {
+                        cmd.arg(a);
+                    }
+                }
+            }
+            return cmd;
+        }
+    }
+    let mut cmd = Command::new("git");
+    cmd.arg("-C").arg(repo_path).args(args);
+    cmd
+}
+
 /// Run `git` in `repo_path` and return stdout on success, mapping a non-zero
 /// exit (with stderr) to [`AppError::Git`].
 async fn git(repo_path: &str, args: &[&str]) -> Result<String, AppError> {
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(repo_path)
-        .args(args)
+    let output = git_command(repo_path, args)
         .output()
         .await
         .map_err(|e| AppError::Git(e.to_string()))?;
@@ -116,10 +148,7 @@ async fn git(repo_path: &str, args: &[&str]) -> Result<String, AppError> {
 /// Like [`git`] but tolerates exit code 1, which `git diff --no-index` uses to
 /// signal "files differ" (not an error). Any other non-zero is still an error.
 async fn git_diff_tolerant(repo_path: &str, args: &[&str]) -> Result<String, AppError> {
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(repo_path)
-        .args(args)
+    let output = git_command(repo_path, args)
         .output()
         .await
         .map_err(|e| AppError::Git(e.to_string()))?;
@@ -240,11 +269,15 @@ pub async fn is_worktree_clean(worktree_path: &str) -> Result<bool, AppError> {
 /// Summarize a worktree's working-tree status (changed entries + ahead/behind)
 /// for its sidebar card. Fast path: `git2`; CLI fallback.
 pub async fn worktree_status(worktree_path: &str) -> Result<WorktreeStatus, AppError> {
-    let p = worktree_path.to_string();
-    if let Ok(Ok(v)) =
-        tokio::task::spawn_blocking(move || crate::gitfast::worktree_status(&p)).await
-    {
-        return Ok(v);
+    // git2 (libgit2) can't see a WSL repo the way the in-distro git does, so for
+    // a WSL path we skip the fast path and use the CLI (routed through wsl.exe).
+    if !crate::wsl::is_wsl_path(worktree_path) {
+        let p = worktree_path.to_string();
+        if let Ok(Ok(v)) =
+            tokio::task::spawn_blocking(move || crate::gitfast::worktree_status(&p)).await
+        {
+            return Ok(v);
+        }
     }
     worktree_status_cli(worktree_path).await
 }
@@ -425,7 +458,20 @@ pub async fn list_worktrees(repo_path: &str) -> Result<Vec<WorktreeEntry>, AppEr
         }]);
     }
     let out = git(repo_path, &["worktree", "list", "--porcelain"]).await?;
-    Ok(parse_worktree_porcelain(&out))
+    let mut entries = parse_worktree_porcelain(&out);
+    // When routed through WSL, git reports Linux paths (`/home/u/repo`); map them
+    // back to the UNC form the app registered so per-worktree workspace keys line
+    // up (the frontend matches worktrees to projects by path). Off Windows /
+    // non-WSL repos this is a no-op.
+    #[cfg(windows)]
+    if let Some(w) = crate::wsl::parse(repo_path) {
+        for entry in &mut entries {
+            if entry.path.starts_with('/') {
+                entry.path = crate::wsl::to_unc(&w.host, &w.distro, &entry.path);
+            }
+        }
+    }
+    Ok(entries)
 }
 
 /// Parse `git worktree list --porcelain` output. Blocks are separated by blank
@@ -476,9 +522,14 @@ pub fn parse_worktree_porcelain(input: &str) -> Vec<WorktreeEntry> {
 /// List a worktree's changed files. Fast path: `git2` (no subprocess); falls
 /// back to the git CLI if `git2` can't handle the repo.
 pub async fn status_files(worktree_path: &str) -> Result<Vec<FileChange>, AppError> {
-    let p = worktree_path.to_string();
-    if let Ok(Ok(v)) = tokio::task::spawn_blocking(move || crate::gitfast::status_files(&p)).await {
-        return Ok(v);
+    // WSL repos go straight to the CLI (routed through wsl.exe); see worktree_status.
+    if !crate::wsl::is_wsl_path(worktree_path) {
+        let p = worktree_path.to_string();
+        if let Ok(Ok(v)) =
+            tokio::task::spawn_blocking(move || crate::gitfast::status_files(&p)).await
+        {
+            return Ok(v);
+        }
     }
     status_files_cli(worktree_path).await
 }
@@ -527,15 +578,18 @@ pub fn parse_status_files(input: &str) -> Vec<FileChange> {
 /// Unified diff for one file. `staged` selects the index-vs-HEAD diff; otherwise
 /// the worktree-vs-index diff. Fast path: `git2`; CLI fallback.
 pub async fn diff_file(worktree_path: &str, file: &str, staged: bool) -> Result<String, AppError> {
-    let (p, f) = (worktree_path.to_string(), file.to_string());
-    if let Ok(Ok(v)) =
-        tokio::task::spawn_blocking(move || crate::gitfast::diff_file(&p, &f, staged)).await
-    {
-        // git2 returns an empty diff for an untracked file unless asked; if it's
-        // empty, fall through to the CLI which handles the untracked `--no-index`
-        // whole-file case.
-        if !v.trim().is_empty() {
-            return Ok(v);
+    // WSL repos go straight to the CLI (routed through wsl.exe); see worktree_status.
+    if !crate::wsl::is_wsl_path(worktree_path) {
+        let (p, f) = (worktree_path.to_string(), file.to_string());
+        if let Ok(Ok(v)) =
+            tokio::task::spawn_blocking(move || crate::gitfast::diff_file(&p, &f, staged)).await
+        {
+            // git2 returns an empty diff for an untracked file unless asked; if it's
+            // empty, fall through to the CLI which handles the untracked `--no-index`
+            // whole-file case.
+            if !v.trim().is_empty() {
+                return Ok(v);
+            }
         }
     }
     diff_file_cli(worktree_path, file, staged).await
@@ -573,9 +627,12 @@ pub struct FileNumstat {
 /// Added/deleted line counts per changed file vs `HEAD`. Fast path: `git2`;
 /// CLI fallback (`git diff --numstat HEAD`).
 pub async fn numstat(worktree_path: &str) -> Result<Vec<FileNumstat>, AppError> {
-    let p = worktree_path.to_string();
-    if let Ok(Ok(v)) = tokio::task::spawn_blocking(move || crate::gitfast::numstat(&p)).await {
-        return Ok(v);
+    // WSL repos go straight to the CLI (routed through wsl.exe); see worktree_status.
+    if !crate::wsl::is_wsl_path(worktree_path) {
+        let p = worktree_path.to_string();
+        if let Ok(Ok(v)) = tokio::task::spawn_blocking(move || crate::gitfast::numstat(&p)).await {
+            return Ok(v);
+        }
     }
     numstat_cli(worktree_path).await
 }
@@ -610,10 +667,14 @@ pub fn parse_numstat(input: &str) -> Vec<FileNumstat> {
 /// Returns an empty string for a clean or untracked file (untracked files have
 /// no `HEAD` baseline — the frontend treats those as wholly added on its own).
 pub async fn diff_head(worktree_path: &str, file: &str) -> Result<String, AppError> {
-    let (p, f) = (worktree_path.to_string(), file.to_string());
-    if let Ok(Ok(v)) = tokio::task::spawn_blocking(move || crate::gitfast::diff_head(&p, &f)).await
-    {
-        return Ok(v);
+    // WSL repos go straight to the CLI (routed through wsl.exe); see worktree_status.
+    if !crate::wsl::is_wsl_path(worktree_path) {
+        let (p, f) = (worktree_path.to_string(), file.to_string());
+        if let Ok(Ok(v)) =
+            tokio::task::spawn_blocking(move || crate::gitfast::diff_head(&p, &f)).await
+        {
+            return Ok(v);
+        }
     }
     git(worktree_path, &["diff", "HEAD", "--", file]).await
 }
@@ -685,15 +746,17 @@ pub async fn apply_patch(
     use std::process::Stdio;
     use tokio::io::AsyncWriteExt;
 
-    let mut args: Vec<&str> = vec!["-C", worktree_path, "apply", "--whitespace=nowarn"];
+    let mut args: Vec<&str> = vec!["apply", "--whitespace=nowarn"];
     if cached {
         args.push("--cached");
     }
     if reverse {
         args.push("--reverse");
     }
-    let mut child = Command::new("git")
-        .args(&args)
+    // `git_command` adds `-C <worktree_path>` and routes a WSL repo through
+    // wsl.exe; the patch (forward-slash relative paths) is fed on stdin and is
+    // valid in either environment.
+    let mut child = git_command(worktree_path, &args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -777,11 +840,14 @@ pub async fn log(
     limit: usize,
     skip: usize,
 ) -> Result<Vec<CommitInfo>, AppError> {
-    let p = worktree_path.to_string();
-    if let Ok(Ok(v)) =
-        tokio::task::spawn_blocking(move || crate::gitfast::log(&p, limit, skip)).await
-    {
-        return Ok(v);
+    // WSL repos go straight to the CLI (routed through wsl.exe); see worktree_status.
+    if !crate::wsl::is_wsl_path(worktree_path) {
+        let p = worktree_path.to_string();
+        if let Ok(Ok(v)) =
+            tokio::task::spawn_blocking(move || crate::gitfast::log(&p, limit, skip)).await
+        {
+            return Ok(v);
+        }
     }
     log_cli(worktree_path, limit, skip).await
 }
@@ -867,10 +933,13 @@ pub async fn show(worktree_path: &str, hash: &str) -> Result<String, AppError> {
     if hash.is_empty() || !hash.chars().all(|c| c.is_ascii_hexdigit()) {
         return Err(AppError::Invalid(format!("invalid commit hash: {hash}")));
     }
-    let (p, h) = (worktree_path.to_string(), hash.to_string());
-    if let Ok(Ok(v)) = tokio::task::spawn_blocking(move || crate::gitfast::show(&p, &h)).await {
-        if !v.trim().is_empty() {
-            return Ok(v);
+    // WSL repos go straight to the CLI (routed through wsl.exe); see worktree_status.
+    if !crate::wsl::is_wsl_path(worktree_path) {
+        let (p, h) = (worktree_path.to_string(), hash.to_string());
+        if let Ok(Ok(v)) = tokio::task::spawn_blocking(move || crate::gitfast::show(&p, &h)).await {
+            if !v.trim().is_empty() {
+                return Ok(v);
+            }
         }
     }
     git(worktree_path, &["show", "--format=", "-p", hash]).await
@@ -912,6 +981,19 @@ mod tests {
     #[test]
     fn repo_name_is_final_component() {
         assert_eq!(repo_name("/home/u/myrepo"), "myrepo");
+    }
+
+    #[test]
+    fn worktree_path_for_stays_under_wsl_unc_prefix() {
+        // A WSL repo's worktree must remain a sibling under the same UNC share so
+        // the path keeps parsing as WSL (and routes through wsl.exe).
+        let p = worktree_path_for("//wsl.localhost/Ubuntu/home/u/myrepo", "feature/login");
+        assert!(p.ends_with("myrepo--feature-login"), "got {p}");
+        assert!(p.contains("wsl.localhost/Ubuntu/home/u"), "got {p}");
+        assert!(
+            crate::wsl::parse(&p).is_some(),
+            "result should still parse as WSL"
+        );
     }
 
     #[test]
