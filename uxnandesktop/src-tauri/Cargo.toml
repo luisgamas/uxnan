@@ -31,6 +31,9 @@ tauri-plugin-notification = "2"
 tauri-plugin-window-state = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Encodes image blobs as base64 data URLs for the visual image-diff viewer
+# (git.rs `image_diff`). Pure Rust, tiny, widely used.
+base64 = "0.22"
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "fs", "process", "macros"] }
 thiserror = "2"
 uuid = { version = "1", features = ["v4"] }

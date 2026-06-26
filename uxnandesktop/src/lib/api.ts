@@ -4,6 +4,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  AgentModel,
   AgentStateEntry,
   AppData,
   AppSettings,
@@ -18,6 +19,8 @@ import type {
   HookInstall,
   HookScripts,
   HookServerInfo,
+  ImageDiff,
+  RemoveOutcome,
   RepoData,
   SavedTerminalLayout,
   WorktreeEntry,
@@ -149,14 +152,20 @@ export function worktreeCreate(
 }
 
 /** Remove a worktree. Without `force`, the backend refuses when the worktree has
- *  uncommitted changes (surface the error and offer a forced retry). */
+ *  uncommitted changes (surface the error and offer a forced retry). Resolves to
+ *  the branch-cleanup outcome (deleted / squash-merged / preserved). */
 export function worktreeRemove(
   repoId: string,
   path: string,
   branch: string | null,
   force: boolean,
-): Promise<void> {
-  return invoke("worktree_remove", { repoId, path, branch: branch ?? null, force });
+): Promise<RemoveOutcome> {
+  return invoke<RemoveOutcome>("worktree_remove", {
+    repoId,
+    path,
+    branch: branch ?? null,
+    force,
+  });
 }
 
 /** List a repo's worktrees (ADE- and agent-created). */
@@ -223,6 +232,16 @@ export function gitDiff(
   staged: boolean,
 ): Promise<string> {
   return invoke<string>("git_diff", { path, file, staged });
+}
+
+/** Before/after image versions for a changed image file (base64), for the visual
+ *  diff viewer. `staged` mirrors `gitDiff`. */
+export function gitImageDiff(
+  path: string,
+  file: string,
+  staged: boolean,
+): Promise<ImageDiff> {
+  return invoke<ImageDiff>("git_image_diff", { path, file, staged });
 }
 
 /** Stage one file. */
@@ -305,4 +324,23 @@ export function gitPush(path: string): Promise<void> {
 /** Pull fast-forward-only. */
 export function gitPull(path: string): Promise<void> {
   return invoke("git_pull", { path });
+}
+
+/** Draft a commit message for the worktree's staged changes using the configured
+ *  AI agent (Settings → AI commit). Rejects when disabled/unconfigured, nothing
+ *  is staged, or the agent fails/times out. */
+export function generateCommitMessage(path: string): Promise<string> {
+  return invoke<string>("git_generate_commit_message", { path });
+}
+
+/** Which of the supported AI-commit agents (claude/codex/gemini/opencode/pi) are
+ *  installed in a runnable shape, so the picker offers only those. */
+export function aiCommitAgents(): Promise<string[]> {
+  return invoke<string[]>("ai_commit_agents");
+}
+
+/** The models offered by `agentId` for AI commit messages (static for
+ *  Claude/Gemini, a live CLI query for OpenCode/Pi/Codex). */
+export function aiCommitModels(agentId: string): Promise<AgentModel[]> {
+  return invoke<AgentModel[]>("ai_commit_models", { agentId });
 }

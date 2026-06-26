@@ -8,6 +8,9 @@ export const es: Record<MessageKey, string> = {
   "toast.pushed": "Push realizado",
   "toast.pulled": "Pull realizado",
   "toast.worktreeRemoved": "Worktree eliminado",
+  "toast.worktreeRemovedBranchKept": "Worktree eliminado · rama conservada (sin fusionar)",
+  "toast.worktreeRemovedSquash": "Worktree eliminado · rama squash-merged depurada",
+  "toast.aiCommitGenerated": "Mensaje de commit redactado",
   "toast.projectRemoved": "Proyecto eliminado",
   "toast.agent": "Agente",
   "toast.agentDone": "{name} terminó",
@@ -132,6 +135,39 @@ export const es: Record<MessageKey, string> = {
   "settings.hooks": "Hooks",
   "settings.hooksDesc":
     "Configuraciones de hooks listas para usar para que los agentes reporten su estado preciso de fábrica.",
+  "settings.aiCommit": "Mensaje de commit con IA",
+  "settings.aiCommitDesc":
+    "Redacta opcionalmente mensajes de commit a partir de tus cambios preparados con un agente CLI local. Desactivado por defecto; no se ejecuta nada hasta que lo actives y elijas un agente.",
+  "settings.aiCommitEnabled": "Activar",
+  "settings.aiCommitEnabledDesc":
+    "Muestra un botón «Generar» en el compositor de commits que redacta un mensaje a partir del diff preparado.",
+  "settings.aiCommitAgent": "Agente",
+  "settings.aiCommitAgentDesc": "Qué CLI de agente instalada redacta el mensaje.",
+  "settings.aiCommitAgentNone": "Elige un agente",
+  "settings.aiCommitNoAgents":
+    "No se encontró instalado ninguno de los agentes soportados (Claude Code, Codex, Gemini, OpenCode, Pi).",
+  "settings.aiCommitModel": "Modelo",
+  "settings.aiCommitModelDefault": "Predeterminado",
+  "settings.aiCommitModelLoading": "Cargando modelos…",
+  "settings.aiCommitModelSearch": "Buscar modelos…",
+  "settings.aiCommitModelNoMatch": "Ningún modelo coincide.",
+  "settings.aiCommitModelDesc":
+    "Qué modelo usa el agente. «Predeterminado» deja que la CLI elija su modelo configurado.",
+  "settings.aiCommitLanguage": "Idioma",
+  "settings.aiCommitLanguageDesc": "Idioma en que se escribe el mensaje generado.",
+  "settings.aiCommitLanguageAuto": "Automático",
+  "settings.aiCommitLanguageEn": "Inglés",
+  "settings.aiCommitLanguageEs": "Español",
+  "settings.aiCommitConventional": "Conventional Commits",
+  "settings.aiCommitConventionalDesc":
+    "Pide una línea de asunto con formato Conventional Commits (p. ej. feat(scope): resumen).",
+  "settings.aiCommitBody": "Cuerpo extendido",
+  "settings.aiCommitBodyDesc":
+    "Genera también un cuerpo que explique qué cambió y por qué (si no, solo el asunto).",
+  "settings.aiCommitInstructions": "Instrucciones extra",
+  "settings.aiCommitInstructionsDesc":
+    "Guía opcional añadida al prompt (p. ej. mencionar el id del ticket, modo imperativo).",
+  "settings.aiCommitInstructionsPlaceholder": "p. ej. Referencia el ticket de Jira en el cuerpo",
   "settings.appearance": "Apariencia",
   "settings.appearanceDesc":
     "Temas y fuentes para toda la app. Elige uno integrado, crea el tuyo, o importa/exporta como JSON.",
@@ -169,12 +205,19 @@ export const es: Record<MessageKey, string> = {
   "rightPanel.commitPlaceholder": "Mensaje del commit",
   "rightPanel.commit": "Confirmar",
   "rightPanel.committing": "Confirmando…",
+  "rightPanel.generateAi": "Generar",
+  "rightPanel.generateAiDesc": "Redacta un mensaje de commit a partir de los cambios preparados con IA",
+  "rightPanel.generating": "Redactando…",
   "rightPanel.diffEmpty": "No hay nada que mostrar para este archivo.",
   "rightPanel.diffStaged": "Preparado",
   "rightPanel.diffUnstaged": "Árbol de trabajo",
   "diff.unified": "Unificado",
   "diff.sideBySide": "Lado a lado",
   "diff.close": "Cerrar diff",
+  "diff.imageBefore": "Antes",
+  "diff.imageAfter": "Después",
+  "diff.imageAdded": "Añadido (archivo nuevo)",
+  "diff.imageRemoved": "Eliminado",
   "rightPanel.viewDiff": "Ver diff",
   "palette.title": "Buscar un proyecto o worktree",
   "palette.placeholder": "Buscar un proyecto o worktree…",
@@ -434,6 +477,10 @@ export const es: Record<MessageKey, string> = {
   "settings.defaultAgentNone": "Ninguno",
   "settings.defaultAgentDesc":
     "Se lanza automáticamente en un worktree justo después de crearlo. Déjalo en “Ninguno” para no iniciar ningún agente automáticamente.",
+  "settings.agentShell": "Shell de lanzamiento de agentes",
+  "settings.agentShellSmart": "Predeterminado (Símbolo del sistema)",
+  "settings.agentShellDesc":
+    "El shell en el que se lanzan los agentes cuando no fijan el suyo. En Windows, el Símbolo del sistema inicia los CLI de agente más rápido y entrecomilla de forma más predecible que PowerShell; elige otro shell si lo prefieres.",
 
   // Settings → Agents → Hooks (configs listas para usar)
   "hooks.title": "Hooks",
@@ -472,6 +519,12 @@ export const es: Record<MessageKey, string> = {
   "agentEditor.argsPlaceholder": "argumentos (separados por espacios)",
   "agentEditor.launchIn": "Lanzar en",
   "agentEditor.defaultTerminal": "Terminal predeterminada",
+  "agentEditor.defaultShell": "Shell de agente predeterminado",
+  "agentEditor.envTitle": "Variables de entorno",
+  "agentEditor.addEnvVar": "Añadir variable",
+  "agentEditor.removeEnvVar": "Eliminar variable",
+  "agentEditor.envKeyPlaceholder": "NOMBRE",
+  "agentEditor.envValuePlaceholder": "valor",
   "agentEditor.logo": "Logo",
   "agentEditor.chooseLogo": "Elegir una imagen de logo personalizada",
   "agentEditor.resetLogo": "Restablecer el logo predeterminado",
@@ -481,4 +534,25 @@ export const es: Record<MessageKey, string> = {
   "agent.launchIn": "Lanzar un agente en {name}",
   "agent.none": "Sin agentes configurados",
   "agent.configure": "Configurar agentes…",
+
+  // Consola de orquestación multi-agente
+  "orchestration.title": "Orquestación",
+  "orchestration.desc":
+    "Envía un mensaje a tus agentes en ejecución: a todos, a un tipo (fan-out) o a los trabajadores del coordinador. Cada agente recibe su siguiente mensaje solo cuando queda libre.",
+  "orchestration.open": "Orquestar agentes en ejecución",
+  "orchestration.queued": "{n} en cola",
+  "orchestration.emptyTitle": "Sin agentes en ejecución",
+  "orchestration.emptyDesc": "Lanza agentes en tus worktrees y luego enrútales mensajes desde aquí.",
+  "orchestration.setCoordinator": "Marcar como coordinador",
+  "orchestration.unsetCoordinator": "Quitar coordinador",
+  "orchestration.clearQueue": "Vaciar mensajes en cola",
+  "orchestration.reveal": "Ir a la terminal",
+  "orchestration.messagePlaceholder": "Mensaje para enrutar a los agentes… (Ctrl+Enter para enviar)",
+  "orchestration.targetAll": "Todos los agentes",
+  "orchestration.targetWorkers": "Trabajadores del coordinador",
+  "orchestration.targetType": "Todos los {type}",
+  "orchestration.send": "Enviar",
+  "orchestration.sendN": "Enviar a {n}",
+  "orchestration.backpressureHint":
+    "Los mensajes se entregan de uno en uno por agente; el siguiente espera hasta que ese agente reporte inactividad.",
 };

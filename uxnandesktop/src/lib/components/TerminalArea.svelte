@@ -537,6 +537,7 @@
                             shell={t.shell}
                             args={t.args}
                             runCommand={t.runCommand}
+                            env={t.env}
                             focused={activeRegion && paneActive}
                             onexit={() => void terminals.closeTabAnywhere(t.id)}
                           />

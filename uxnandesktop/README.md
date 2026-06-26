@@ -32,18 +32,26 @@ Highlights of what ships today:
   restores a recreated pane's scrollback, and the Kitty/CSI-u keyboard protocol.
 - Git worktrees with per-worktree terminal workspaces, hierarchical
   Projects tree, in-app directory picker, worktree palette
-  (Ctrl/Cmd+P).
+  (Ctrl/Cmd+P), squash-merged branch cleanup on removal, and WSL repos
+  routed through `wsl.exe`.
 - Full git review (status / diff / stage / commit / push / pull with a
   3 s focus-paused Tokio watcher, CodeMirror 6 diff viewer, hunk-level
-  staging, side-by-side toggle).
+  staging, side-by-side toggle, visual image diffs, and optional AI
+  commit-message generation via a local CLI agent).
 - **Agent monitoring** (Phase 4) — three layers: Layer 1 local HTTP hook
   server (`axum` with precise `working/blocked/waiting/done` and persistent
   cache) + Layer 2 terminal-title (OSC) + Layer 3 process-tree detection.
   Colored status dots, unread/done badges, custom agent logos, per-worktree
   agent override.
+- **Multi-agent orchestration** (spec `02d` §3) — a console (status bar, shown
+  with ≥2 live agents) that routes a message to all agents, to one type
+  (fan-out), or to a coordinator's workers, with **backpressure** (each agent
+  gets its next message only once it's free) and an in-memory coordinator→workers
+  task graph.
 - Cross-cutting (S): Settings (theme + terminal profiles w/ OS templates),
   design tokens, full **i18n (EN/ES)** + Language picker, agents
-  registry + install detection + manual + auto-launch.
+  registry + install detection + manual + auto-launch, **per-agent env vars** and
+  a **configurable agent launch shell** (Command Prompt by default on Windows).
 - Virtualized lists (`@tanstack/svelte-virtual`), opt-in keep-awake
   (Windows).
 
@@ -61,6 +69,8 @@ Detailed docs live in [`docs/`](./docs/):
 [design tokens](./docs/design-tokens.md) ·
 [theming & appearance](./docs/theming.md) ·
 [internationalization (i18n)](./docs/i18n.md) ·
+[agent launch & configuration](./docs/agent-launch.md) ·
+[multi-agent orchestration](./docs/orchestration.md) ·
 [agent hooks (precise states)](./docs/agent-hooks.md).
 
 The full product/engineering specification is in
@@ -116,6 +126,7 @@ makes `pnpm install` no-op here).
 cd uxnandesktop
 npm install            # frontend deps
 npm run check          # svelte-check (type check)
+npm test               # Vitest unit tests (pure logic — 19 passing)
 npm run build          # build the SPA → build/  (required by `cargo build`'s generate_context!)
 npm run tauri dev      # run the desktop app (compiles Rust on first run)
 ```
@@ -123,7 +134,7 @@ npm run tauri dev      # run the desktop app (compiles Rust on first run)
 Backend (from `src-tauri/`):
 
 ```bash
-cargo test             # unit tests (71 passing)
+cargo test             # unit tests (98 passing)
 cargo clippy --all-targets
 cargo fmt
 ```

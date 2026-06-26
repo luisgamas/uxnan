@@ -1,6 +1,29 @@
 // Unified-diff parsing helpers — power hunk-level staging and the side-by-side
 // view. Pure functions (no Svelte/DOM), so they're easy to reason about.
 
+/** Image extensions the diff viewer renders visually (before/after) instead of
+ *  as a text diff. Kept in sync with the backend `git::image_mime`. */
+const IMAGE_EXTENSIONS = new Set([
+  "png",
+  "jpg",
+  "jpeg",
+  "gif",
+  "webp",
+  "bmp",
+  "ico",
+  "svg",
+  "avif",
+  "tif",
+  "tiff",
+]);
+
+/** Whether `path` is an image the viewer should diff visually (by extension). */
+export function isImagePath(path: string): boolean {
+  const dot = path.lastIndexOf(".");
+  if (dot < 0) return false;
+  return IMAGE_EXTENSIONS.has(path.slice(dot + 1).toLowerCase());
+}
+
 /** One `@@ … @@` hunk within a file's diff. */
 export interface Hunk {
   /** Position in the file's hunk list (0-based). */

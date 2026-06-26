@@ -154,31 +154,61 @@ El sistema de notificaciones mantiene al usuario informado del progreso de los a
 
 ## 3. Orquestacion Multi-Agente
 
-Para escenarios avanzados donde un **agente coordinador** gestiona multiples **agentes trabajadores** (workers), el ADE soporta orquestacion multi-agente con las siguientes capacidades:
+Para escenarios avanzados donde un **agente coordinador** gestiona multiples **agentes trabajadores** (workers), el ADE soporta orquestacion multi-agente con las siguientes capacidades.
+
+> **Estado: IMPLEMENTADO** (consola de orquestacion). Logica pura de routing/cola
+> en `src/lib/orchestration.ts` (con tests unitarios); store reactivo (agentes
+> vivos, timers de backpressure, entrega al PTY) en
+> `src/lib/state/orchestration.svelte.ts`; UI en `OrchestrationConsole.svelte`,
+> abierta desde la barra de estado cuando hay **≥2 agentes** corriendo. Un
+> "agente" orquestable es cualquier pestaña de terminal que corre un agente
+> (identificada por su `agentCommand`); la entrega es escribir el mensaje en el
+> PTY de la pestaña y enviar Enter.
 
 ### 3.1 Grafo de Tareas
 
-- Se mantiene un **grafo en memoria** de relaciones padre-hijo entre agentes.
-- Un agente coordinador puede crear y gestionar multiples agentes worker, cada uno en su propio worktree.
-- El grafo permite al ADE visualizar la jerarquia de orquestacion y rastrear el estado de cada worker en relacion a su coordinador.
+- Se mantiene un **grafo en memoria** (no se persiste): un agente coordinador
+  designado por el usuario y sus workers (el resto de los agentes vivos).
+- **Aclaracion respecto del diseno original:** la creacion *automatica* de
+  workers por parte del coordinador (que el coordinador genere worktrees nuevos)
+  requiere un canal de control agente→ADE que aun no existe — los agentes son
+  CLIs opacos. Hoy el usuario crea los worktrees/agentes y **designa** cual es el
+  coordinador (un click en la consola); el ADE rastrea el estado de cada worker
+  en relacion a el. La automatizacion queda como follow-up (`FOR-DEV.md`).
 
 ### 3.2 Routing de Mensajes
 
-- Un coordinador puede enviar mensajes a **agentes especificos por tipo** (por ejemplo, `@claude`, `@codex`, `@aider`).
-- **Fan-out:** Un mensaje puede distribuirse a **todos los agentes de un tipo** simultaneamente. Por ejemplo, el coordinador puede enviar una instruccion a todos los agentes `@claude` que esten activos.
-- El routing se basa en el tipo de agente registrado en el metadato de cada worktree/terminal.
+- Se puede enviar un mensaje a **agentes especificos por tipo** (por ejemplo,
+  todos los `claude`, todos los `codex`), a **todos** los agentes, o a los
+  **workers del coordinador**.
+- **Fan-out:** un mensaje se distribuye a **todos los agentes de un tipo** (o a
+  todos) simultaneamente, encolando una copia por agente.
+- El routing se basa en el tipo de agente, normalizado desde el comando del
+  agente registrado en la pestaña/terminal (`agentType()` en
+  `src/lib/orchestration.ts`).
 
 ### 3.3 Backpressure
 
-- El coordinador **no envia el siguiente mensaje** hasta que el agente worker este en estado idle (no `working`).
-- Esto previene la sobrecarga de agentes lentos y asegura que cada worker procese completamente una instruccion antes de recibir la siguiente.
-- Si un worker esta en estado `working` o `blocked`, el mensaje del coordinador se encola hasta que el worker reporte un estado disponible.
+- El orquestador **no entrega el siguiente mensaje** a un agente hasta que este
+  vuelva a estar libre (no `working`/`blocked`).
+- Cada agente tiene una **cola FIFO**; se entrega solo la cabeza cuando el agente
+  esta disponible, evitando la sobrecarga de agentes lentos.
+- La disponibilidad usa el **estado preciso del hook** cuando existe
+  (`working`/`blocked` = ocupado) y, como fallback para agentes sin hooks, la
+  **inferencia gruesa de actividad de salida** (`tab.working`). Tras entregar, se
+  espera a ver al agente reportar ocupado (ventana de gracia configurable) antes
+  de considerar su siguiente mensaje, para no duplicar la entrega.
 
-### 3.4 Linaje en Sidebar
+### 3.4 Linaje (Coordinador → Workers)
 
-- Los worktrees hijos se agrupan visualmente bajo su worktree padre en la sidebar izquierda.
-- Esto visualiza la **jerarquia de orquestacion**: el worktree del coordinador aparece como nodo padre, y los worktrees de los workers aparecen indentados debajo.
-- El usuario puede colapsar/expandir los grupos de linaje para gestionar la complejidad visual cuando hay muchos agentes orquestados.
+- La jerarquia coordinador→workers se visualiza en la **consola de orquestacion**
+  (`OrchestrationConsole.svelte`): el coordinador se marca con una corona y queda
+  resaltado, y el target "workers" hace fan-out a todos los demas.
+- **Cambio respecto del diseno original (justificado para ALPHA):** el linaje se
+  muestra en la consola en vez de anidar los worktrees hijos en la **sidebar
+  izquierda**. Anidar el arbol de worktrees del proyecto es un refactor mayor de
+  la sidebar y se difiere (`FOR-DEV.md`); la consola entrega el mismo valor
+  funcional (ver y dirigir la jerarquia) con mucho menos riesgo.
 
 ---
 

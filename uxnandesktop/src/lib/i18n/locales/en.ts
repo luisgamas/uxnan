@@ -11,6 +11,9 @@ export const en = {
   "toast.pushed": "Pushed",
   "toast.pulled": "Pulled",
   "toast.worktreeRemoved": "Worktree removed",
+  "toast.worktreeRemovedBranchKept": "Worktree removed · branch kept (unmerged)",
+  "toast.worktreeRemovedSquash": "Worktree removed · squash-merged branch cleaned up",
+  "toast.aiCommitGenerated": "Commit message drafted",
   "toast.projectRemoved": "Project removed",
   "toast.agent": "Agent",
   "toast.agentDone": "{name} finished",
@@ -135,6 +138,39 @@ export const en = {
   "settings.hooks": "Hooks",
   "settings.hooksDesc":
     "Ready-made hook configs so agents report precise state out-of-the-box.",
+  "settings.aiCommit": "AI commit message",
+  "settings.aiCommitDesc":
+    "Optionally draft commit messages from your staged changes with a local CLI agent. Off by default; nothing runs until you enable it and pick an agent.",
+  "settings.aiCommitEnabled": "Enable",
+  "settings.aiCommitEnabledDesc":
+    "Show a “Generate” button in the commit composer that drafts a message from the staged diff.",
+  "settings.aiCommitAgent": "Agent",
+  "settings.aiCommitAgentDesc": "Which installed coding-agent CLI drafts the message.",
+  "settings.aiCommitAgentNone": "Choose an agent",
+  "settings.aiCommitNoAgents":
+    "None of the supported agents (Claude Code, Codex, Gemini, OpenCode, Pi) were found installed.",
+  "settings.aiCommitModel": "Model",
+  "settings.aiCommitModelDefault": "Default",
+  "settings.aiCommitModelLoading": "Loading models…",
+  "settings.aiCommitModelSearch": "Search models…",
+  "settings.aiCommitModelNoMatch": "No models match.",
+  "settings.aiCommitModelDesc":
+    "Which model the agent uses. “Default” lets the CLI pick its configured model.",
+  "settings.aiCommitLanguage": "Language",
+  "settings.aiCommitLanguageDesc": "Language the generated message is written in.",
+  "settings.aiCommitLanguageAuto": "Automatic",
+  "settings.aiCommitLanguageEn": "English",
+  "settings.aiCommitLanguageEs": "Spanish",
+  "settings.aiCommitConventional": "Conventional Commits",
+  "settings.aiCommitConventionalDesc":
+    "Ask for a Conventional Commits subject line (e.g. feat(scope): summary).",
+  "settings.aiCommitBody": "Extended body",
+  "settings.aiCommitBodyDesc":
+    "Also generate a body explaining what changed and why (otherwise just the subject).",
+  "settings.aiCommitInstructions": "Extra instructions",
+  "settings.aiCommitInstructionsDesc":
+    "Optional guidance added to the prompt (e.g. mention the ticket id, imperative mood).",
+  "settings.aiCommitInstructionsPlaceholder": "e.g. Reference the Jira ticket in the body",
   "settings.appearance": "Appearance",
   "settings.appearanceDesc":
     "Themes and fonts for the whole app. Pick a built-in, create your own, or import/export as JSON.",
@@ -172,12 +208,19 @@ export const en = {
   "rightPanel.commitPlaceholder": "Commit message",
   "rightPanel.commit": "Commit",
   "rightPanel.committing": "Committing…",
+  "rightPanel.generateAi": "Generate",
+  "rightPanel.generateAiDesc": "Draft a commit message from the staged changes with AI",
+  "rightPanel.generating": "Drafting…",
   "rightPanel.diffEmpty": "Nothing to show for this file.",
   "rightPanel.diffStaged": "Staged",
   "rightPanel.diffUnstaged": "Working tree",
   "diff.unified": "Unified",
   "diff.sideBySide": "Side by side",
   "diff.close": "Close diff",
+  "diff.imageBefore": "Before",
+  "diff.imageAfter": "After",
+  "diff.imageAdded": "Added (new file)",
+  "diff.imageRemoved": "Removed",
   "rightPanel.viewDiff": "View diff",
   "palette.title": "Search a project or worktree",
   "palette.placeholder": "Search a project or worktree…",
@@ -436,6 +479,10 @@ export const en = {
   "settings.defaultAgentNone": "None",
   "settings.defaultAgentDesc":
     "Auto-launched in a worktree right after you create it. Leave on “None” to never start an agent automatically.",
+  "settings.agentShell": "Agent launch shell",
+  "settings.agentShellSmart": "Smart default (Command Prompt)",
+  "settings.agentShellDesc":
+    "The shell agents launch in when they don’t pin their own. Command Prompt starts agent CLIs faster and quotes more predictably than PowerShell on Windows; pick another shell if you prefer.",
 
   // Settings → Agents → Hooks (ready-made hook configs)
   "hooks.title": "Hooks",
@@ -473,6 +520,12 @@ export const en = {
   "agentEditor.argsPlaceholder": "arguments (space-separated)",
   "agentEditor.launchIn": "Launch in",
   "agentEditor.defaultTerminal": "Default terminal",
+  "agentEditor.defaultShell": "Default agent shell",
+  "agentEditor.envTitle": "Environment variables",
+  "agentEditor.addEnvVar": "Add variable",
+  "agentEditor.removeEnvVar": "Remove variable",
+  "agentEditor.envKeyPlaceholder": "NAME",
+  "agentEditor.envValuePlaceholder": "value",
   "agentEditor.logo": "Logo",
   "agentEditor.chooseLogo": "Choose a custom logo image",
   "agentEditor.resetLogo": "Reset to the default logo",
@@ -482,6 +535,27 @@ export const en = {
   "agent.launchIn": "Launch an agent in {name}",
   "agent.none": "No agents configured",
   "agent.configure": "Configure agents…",
+
+  // Multi-agent orchestration console
+  "orchestration.title": "Orchestration",
+  "orchestration.desc":
+    "Route a message to your running agents — to everyone, to one type (fan-out), or to the coordinator’s workers. Each agent gets its next message only once it’s free.",
+  "orchestration.open": "Orchestrate running agents",
+  "orchestration.queued": "{n} queued",
+  "orchestration.emptyTitle": "No running agents",
+  "orchestration.emptyDesc": "Launch agents into your worktrees, then route messages to them from here.",
+  "orchestration.setCoordinator": "Make coordinator",
+  "orchestration.unsetCoordinator": "Unset coordinator",
+  "orchestration.clearQueue": "Clear queued messages",
+  "orchestration.reveal": "Go to terminal",
+  "orchestration.messagePlaceholder": "Message to route to agents… (Ctrl+Enter to send)",
+  "orchestration.targetAll": "All agents",
+  "orchestration.targetWorkers": "Coordinator’s workers",
+  "orchestration.targetType": "All {type}",
+  "orchestration.send": "Send",
+  "orchestration.sendN": "Send to {n}",
+  "orchestration.backpressureHint":
+    "Messages are delivered one at a time per agent; the next waits until that agent reports idle.",
 } as const;
 
 /** Union of every message key (drives `t()` and the locale type). */

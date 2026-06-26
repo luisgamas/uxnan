@@ -23,6 +23,13 @@ export interface TerminalProfile {
   args: string[];
 }
 
+/** An environment variable attached to an agent (mirror of the Rust `EnvVar`).
+ *  Set on the agent's shell at launch and inherited by the agent process. */
+export interface EnvVar {
+  key: string;
+  value: string;
+}
+
 /** A registered CLI coding agent (mirror of the Rust `AgentProfile`). Launching
  *  it spawns a terminal running `command` + `args` in a worktree. */
 export interface AgentProfile {
@@ -32,8 +39,12 @@ export interface AgentProfile {
   command: string;
   /** Arguments passed to the command (e.g. `["--model", "opus"]`). */
   args: string[];
-  /** Terminal profile (shell) to launch the agent in; null → default profile. */
+  /** Terminal profile (shell) to launch the agent in; null → the configured
+   *  default agent shell (`agentShellProfileId`). */
   terminalProfileId?: string | null;
+  /** Environment variables set on the agent's shell at launch (inherited by the
+   *  agent). `UXNAN_*` hook vars win over a user key of the same name. */
+  env?: EnvVar[];
   /** Logo key for the UI (a catalog id, e.g. `claudecode`); null → generic. */
   icon?: string | null;
 }
@@ -52,6 +63,10 @@ export interface AppSettings {
   agentProfiles: AgentProfile[];
   /** Agent auto-launched when a worktree is created; null = off (default). */
   defaultAgentId?: string | null;
+  /** Terminal profile agents launch in when they don't pin their own. null
+   *  resolves to a smart default: Command Prompt on Windows, else the default
+   *  terminal profile. */
+  agentShellProfileId?: string | null;
   /** Notify when an agent goes idle while you're in another space. Default on. */
   agentNotifications?: boolean;
   /** Keep the system awake while an agent is working (opt-in). Default off. */
@@ -83,6 +98,35 @@ export interface AppSettings {
   terminalThemeLightId?: string;
   /** Terminal theme when the app theme is dark ("scheme" mode; "inherit" ok). */
   terminalThemeDarkId?: string;
+  /** AI commit-message generation (opt-in; configured in Settings → AI commit). */
+  aiCommit?: AiCommitSettings;
+}
+
+/** Config for the optional AI commit-message generator (mirror of Rust
+ *  `AiCommitSettings`). The user picks a known agent + a model; the backend
+ *  resolves the CLI and runs it one-shot with the staged diff. */
+export interface AiCommitSettings {
+  /** Master switch (off by default — the Generate button stays hidden). */
+  enabled: boolean;
+  /** Selected agent id: `claude`/`codex`/`gemini`/`opencode`/`pi`, or empty. */
+  agentId: string;
+  /** Selected model id (as the CLI expects it), or empty to use the CLI default. */
+  model: string;
+  /** Preferred message language: `auto` or a language name (e.g. `English`). */
+  language: string;
+  /** Ask for a Conventional Commits subject line. */
+  conventional: boolean;
+  /** Also generate an extended body (vs. subject only). */
+  includeBody: boolean;
+  /** Extra free-form instructions appended to the prompt. */
+  instructions: string;
+}
+
+/** A model offered by an agent (mirror of Rust `AgentModel`). `id` is what the
+ *  CLI's model flag expects verbatim; `displayName` is for the picker. */
+export interface AgentModel {
+  id: string;
+  displayName: string;
 }
 
 export interface WorktreeData {
@@ -115,6 +159,18 @@ export interface WorktreeEntry {
   branch: string | null;
   head: string | null;
   isMain: boolean;
+}
+
+/** What `worktree_remove` did with the branch (mirror of Rust `RemoveOutcome`).
+ *  The worktree itself is always removed on success; these flags describe only
+ *  the branch cleanup so the UI can tell the user. */
+export interface RemoveOutcome {
+  /** The branch was deleted (safe `-d`, or `-D` after a confirmed squash merge). */
+  branchDeleted: boolean;
+  /** The branch was kept because its changes couldn't be confirmed as merged. */
+  branchPreserved: boolean;
+  /** The delete relied on squash-merge (patch-equivalence) detection. */
+  squashMerged: boolean;
 }
 
 /** A repo's local branches + the resolved default base for the new-worktree
@@ -169,6 +225,21 @@ export interface FileChange {
   index: string;
   /** Working-tree (unstaged) status code — the `Y`. */
   worktree: string;
+}
+
+/** One side of an image diff (mirror of Rust `ImageData`): the bytes as base64
+ *  plus the MIME type, ready to render as `data:<mime>;base64,<base64>`. */
+export interface ImageData {
+  mime: string;
+  base64: string;
+}
+
+/** Before/after image versions for a changed image file (mirror of Rust
+ *  `ImageDiff`). A side is `null` when it doesn't exist (added → no `old`,
+ *  deleted → no `new`). */
+export interface ImageDiff {
+  old: ImageData | null;
+  new: ImageData | null;
 }
 
 /** Per-file added/deleted line counts vs HEAD (mirror of Rust `FileNumstat`). */
@@ -338,6 +409,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   defaultProfileId: null,
   agentProfiles: [],
   defaultAgentId: null,
+  agentShellProfileId: null,
   agentNotifications: true,
   preventSleep: false,
   autoInstallHooks: true,
@@ -352,4 +424,13 @@ export const DEFAULT_SETTINGS: AppSettings = {
   activeTerminalThemeId: "inherit",
   terminalThemeLightId: "inherit",
   terminalThemeDarkId: "inherit",
+  aiCommit: {
+    enabled: false,
+    agentId: "",
+    model: "",
+    language: "auto",
+    conventional: true,
+    includeBody: true,
+    instructions: "",
+  },
 };

@@ -95,6 +95,17 @@ pub struct TerminalProfile {
     pub args: Vec<String>,
 }
 
+/// A single environment variable a user can attach to an agent. Set on the
+/// spawned shell (and thus inherited by the agent running inside it), e.g.
+/// `ANTHROPIC_MODEL=claude-opus-4-8` or a proxy/host override. The ADE's own
+/// `UXNAN_*` hook vars always win over a user-set key of the same name.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct EnvVar {
+    pub key: String,
+    pub value: String,
+}
+
 /// A user-registered CLI coding agent (Claude Code, Codex, Aider, …). Launching
 /// it spawns a terminal running its `command` + `args` in a worktree, so the
 /// agent works inside that worktree's isolated checkout. Same shape as a
@@ -112,9 +123,15 @@ pub struct AgentProfile {
     pub args: Vec<String>,
     /// Terminal profile (shell) to launch the agent in. The agent runs *inside*
     /// this interactive shell so PATH/PATHEXT shims (`.cmd`/`.ps1`) resolve.
-    /// `None` falls back to the default terminal profile.
+    /// `None` falls back to the configured default agent shell
+    /// ([`AppSettings::agent_shell_profile_id`]).
     #[serde(default)]
     pub terminal_profile_id: Option<String>,
+    /// Environment variables set on the agent's shell at launch (inherited by the
+    /// agent process). Empty by default; `UXNAN_*` hook vars take precedence over
+    /// a user key of the same name.
+    #[serde(default)]
+    pub env: Vec<EnvVar>,
     /// Logo key for the UI (a catalog id, e.g. `claudecode`); `None` → generic.
     #[serde(default)]
     pub icon: Option<String>,
@@ -204,6 +221,13 @@ pub struct AppSettings {
     /// (the default), so creating a worktree never spawns an agent unasked.
     #[serde(default)]
     pub default_agent_id: Option<String>,
+    /// Terminal profile used to launch agents that don't pin their own
+    /// (`AgentProfile::terminal_profile_id == None`). `None` resolves to a smart
+    /// default: Command Prompt (`cmd.exe`) on Windows — agent CLIs start faster
+    /// and quote more predictably under cmd than PowerShell — else the default
+    /// terminal profile. Frontend-resolved (see `app.svelte.ts`).
+    #[serde(default)]
+    pub agent_shell_profile_id: Option<String>,
     /// Whether to fire native notifications when an agent goes idle while you're
     /// looking at another space. Default on.
     #[serde(default = "default_true")]
@@ -252,6 +276,65 @@ pub struct AppSettings {
     /// Terminal theme for a dark app theme ("scheme" mode).
     #[serde(default = "default_terminal_theme_id")]
     pub terminal_theme_dark_id: String,
+    /// AI commit-message generation (opt-in; configured in Settings → AI commit).
+    /// Spawns the chosen CLI agent non-interactively to draft a message from the
+    /// staged diff. Disabled by default, so nothing ever runs unasked.
+    #[serde(default)]
+    pub ai_commit: AiCommitSettings,
+}
+
+/// Configuration for the optional AI commit-message generator (spec `02c` §4.5).
+/// The user picks a known **agent** and a **model**; the backend resolves the CLI
+/// (`crate::agentcli`) and runs it one-shot with the built prompt. All fields
+/// have back-compat defaults so older persisted state loads unchanged.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AiCommitSettings {
+    /// Master switch. Off by default — the "Generate" button is hidden and the
+    /// command refuses while this is false.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Selected agent id: one of `claude`/`codex`/`gemini`/`opencode`/`pi`, or
+    /// empty when none is chosen yet.
+    #[serde(default)]
+    pub agent_id: String,
+    /// Selected model id (as the CLI's model flag expects it), or empty to let
+    /// the CLI use its own default model.
+    #[serde(default)]
+    pub model: String,
+    /// Preferred message language: `auto` (let the agent decide) or a language
+    /// **name** the prompt states verbatim (e.g. `English`, `Spanish`).
+    #[serde(default = "default_ai_commit_language")]
+    pub language: String,
+    /// Ask for a Conventional Commits style subject line. Default on.
+    #[serde(default = "default_true")]
+    pub conventional: bool,
+    /// Also generate an extended body (vs. a subject line only). Default on.
+    #[serde(default = "default_true")]
+    pub include_body: bool,
+    /// Extra free-form instructions appended to the prompt (e.g. "mention the
+    /// ticket id"). Optional.
+    #[serde(default)]
+    pub instructions: String,
+}
+
+/// Default AI-commit language: let the agent decide.
+fn default_ai_commit_language() -> String {
+    "auto".to_string()
+}
+
+impl Default for AiCommitSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            agent_id: String::new(),
+            model: String::new(),
+            language: default_ai_commit_language(),
+            conventional: true,
+            include_body: true,
+            instructions: String::new(),
+        }
+    }
 }
 
 /// Default terminal-theme selection mode: a single theme for both schemes.
@@ -283,6 +366,7 @@ impl Default for AppSettings {
             default_profile_id,
             agent_profiles: Vec::new(),
             default_agent_id: None,
+            agent_shell_profile_id: None,
             agent_notifications: true,
             prevent_sleep: false,
             auto_install_hooks: true,
@@ -297,6 +381,7 @@ impl Default for AppSettings {
             active_terminal_theme_id: default_terminal_theme_id(),
             terminal_theme_light_id: default_terminal_theme_id(),
             terminal_theme_dark_id: default_terminal_theme_id(),
+            ai_commit: AiCommitSettings::default(),
         }
     }
 }
@@ -480,16 +565,22 @@ mod tests {
             command: "claude".to_string(),
             args: vec!["--model".to_string(), "opus".to_string()],
             terminal_profile_id: Some("pwsh7".to_string()),
+            env: vec![EnvVar {
+                key: "ANTHROPIC_MODEL".to_string(),
+                value: "claude-opus-4-8".to_string(),
+            }],
             icon: Some("claudecode".to_string()),
         };
         let json = serde_json::to_string(&agent).unwrap();
         assert!(json.contains("terminalProfileId"));
+        assert!(json.contains("ANTHROPIC_MODEL"));
         let back: AgentProfile = serde_json::from_str(&json).unwrap();
         assert_eq!(agent, back);
-        // Older agents (pre-shell/icon) still deserialize.
+        // Older agents (pre-shell/env/icon) still deserialize.
         let legacy: AgentProfile =
             serde_json::from_str(r#"{"id":"x","name":"X","command":"x"}"#).unwrap();
         assert!(legacy.terminal_profile_id.is_none() && legacy.icon.is_none());
+        assert!(legacy.env.is_empty());
     }
 
     #[test]
@@ -504,6 +595,42 @@ mod tests {
     #[test]
     fn theme_serializes_lowercase() {
         assert_eq!(serde_json::to_string(&Theme::System).unwrap(), "\"system\"");
+    }
+
+    #[test]
+    fn ai_commit_defaults_off_and_back_compat() {
+        // Fresh default: disabled, no agent, language auto, conventional+body on.
+        let cfg = AiCommitSettings::default();
+        assert!(!cfg.enabled);
+        assert!(cfg.agent_id.is_empty());
+        assert!(cfg.model.is_empty());
+        assert_eq!(cfg.language, "auto");
+        assert!(cfg.conventional && cfg.include_body);
+        // Settings persisted before AI commit existed still load (field absent).
+        let settings: AppSettings = serde_json::from_str(
+            r#"{"theme":"system","leftSidebarWidth":280,"rightSidebarWidth":350,
+                "leftSidebarOpen":true,"rightSidebarOpen":true}"#,
+        )
+        .unwrap();
+        assert_eq!(settings.ai_commit, AiCommitSettings::default());
+    }
+
+    #[test]
+    fn ai_commit_round_trips_camel_case() {
+        let cfg = AiCommitSettings {
+            enabled: true,
+            agent_id: "claude".into(),
+            model: "opus".into(),
+            language: "Spanish".into(),
+            conventional: true,
+            include_body: false,
+            instructions: "mention the ticket".into(),
+        };
+        let json = serde_json::to_string(&cfg).unwrap();
+        assert!(json.contains("agentId"));
+        assert!(json.contains("includeBody"));
+        let back: AiCommitSettings = serde_json::from_str(&json).unwrap();
+        assert_eq!(cfg, back);
     }
 
     #[test]

@@ -6,6 +6,8 @@
 //! `architecture/02a-system-architecture.md`.
 
 mod agent_hooks;
+mod agentcli;
+mod aicommit;
 mod browse;
 mod commands;
 mod error;
@@ -21,6 +23,7 @@ mod procscan;
 mod pty;
 mod state;
 mod which;
+mod wsl;
 
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -219,6 +222,7 @@ pub fn run() {
             commands::git_status,
             commands::git_numstat,
             commands::git_diff,
+            commands::git_image_diff,
             commands::git_stage,
             commands::git_unstage,
             commands::git_stage_all,
@@ -231,6 +235,9 @@ pub fn run() {
             commands::git_set_watch,
             commands::git_push,
             commands::git_pull,
+            commands::git_generate_commit_message,
+            commands::ai_commit_agents,
+            commands::ai_commit_models,
             commands::set_agent_commands,
             commands::get_hook_info,
             commands::agent_states,

@@ -14,22 +14,26 @@ cargo fmt --check              # formatting — must be clean (run `cargo fmt` t
 
 Unit tests live in-file under `#[cfg(test)]` (e.g. `model.rs`, `persistence.rs`,
 `git.rs`, `gitfast.rs`, `pty.rs`, `hooks.rs`, `agent_hooks.rs`, `procscan.rs`,
-`which.rs`); integration tests go in `src-tauri/tests/`. ~71 backend tests cover
+`which.rs`); integration tests go in `src-tauri/tests/`. ~98 backend tests cover
 the Serde model shape, persistence round-trip / atomicity / migration / backups,
 git + worktree ops, the git2 fast path, the PTY lifecycle, the agent hook server,
-and process detection. **There are no frontend (Vitest) tests yet** — see
-[`../FOR-DEV.md`](../FOR-DEV.md).
+and process detection.
 
 ## Frontend (Svelte / TypeScript)
 
 ```bash
 cd uxnandesktop
 npm run check                  # svelte-check — must report 0 errors / 0 warnings
+npm test                       # Vitest unit tests (run once); `npm run test:watch` to watch
 npm run build                  # production SPA build must succeed
 ```
 
-Component tests (Vitest) and E2E tests (Playwright/WebdriverIO) are introduced in
-later phases — see [`../FOR-DEV.md`](../FOR-DEV.md) (Phase 5).
+**Vitest** covers the pure, framework-free logic modules (node env, no DOM):
+`shell.ts` (shell-aware agent-launch quoting) and `orchestration.ts` (multi-agent
+routing + backpressure) — 19 tests in `src/lib/*.test.ts`, config in
+`vitest.config.ts`. **Component tests** (Vitest + jsdom) and **E2E**
+(Playwright/WebdriverIO + tauri-driver) are still to come — see
+[`../FOR-DEV.md`](../FOR-DEV.md).
 
 ## UI / behavior verification
 
@@ -49,6 +53,7 @@ adjust → approve → commit.
 ```bash
 cd uxnandesktop \
   && npm run check \
+  && npm test \
   && npm run build \
   && ( cd src-tauri && cargo test && cargo clippy --all-targets && cargo fmt --check )
 ```

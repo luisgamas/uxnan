@@ -22,6 +22,8 @@ pub enum AppError {
     NotFound(String),
     #[error("git error: {0}")]
     Git(String),
+    #[error("agent error: {0}")]
+    Agent(String),
     #[error("invalid input: {0}")]
     Invalid(String),
 }
@@ -53,6 +55,7 @@ impl From<AppError> for CommandError {
             AppError::Pty(_) => "PTY_ERROR",
             AppError::NotFound(_) => "NOT_FOUND",
             AppError::Git(_) => "GIT_ERROR",
+            AppError::Agent(_) => "AGENT_ERROR",
             AppError::Invalid(_) => "INVALID_INPUT",
         };
         CommandError::new(code, e.to_string())
