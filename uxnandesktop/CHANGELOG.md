@@ -39,6 +39,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   already auto-launches the chosen agent (global default pre-selected, override
   or "None" per worktree); it now also benefits from the configurable launch
   shell. Removed from `FOR-DEV.md`.
+- **End-user docs.** New [`docs/orchestration.md`](docs/orchestration.md) (what
+  it is, where to find it, how to activate it, routing, the coordinator/worker
+  graph, backpressure, caveats) and
+  [`docs/agent-launch.md`](docs/agent-launch.md) (registering agents, per-agent
+  env vars, the launch shell, auto-launch, quoting), both linked from the README
+  Docs list and cross-linked with `docs/agent-hooks.md`.
 
 ### Added — frontend unit tests (Vitest)
 - First **frontend test harness**: Vitest (`npm test`) with unit tests for the

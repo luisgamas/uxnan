@@ -67,6 +67,8 @@ Detailed docs live in [`docs/`](./docs/):
 [design tokens](./docs/design-tokens.md) ·
 [theming & appearance](./docs/theming.md) ·
 [internationalization (i18n)](./docs/i18n.md) ·
+[agent launch & configuration](./docs/agent-launch.md) ·
+[multi-agent orchestration](./docs/orchestration.md) ·
 [agent hooks (precise states)](./docs/agent-hooks.md).
 
 The full product/engineering specification is in
