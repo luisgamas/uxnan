@@ -477,6 +477,10 @@ export const es: Record<MessageKey, string> = {
   "settings.defaultAgentNone": "Ninguno",
   "settings.defaultAgentDesc":
     "Se lanza automáticamente en un worktree justo después de crearlo. Déjalo en “Ninguno” para no iniciar ningún agente automáticamente.",
+  "settings.agentShell": "Shell de lanzamiento de agentes",
+  "settings.agentShellSmart": "Predeterminado (Símbolo del sistema)",
+  "settings.agentShellDesc":
+    "El shell en el que se lanzan los agentes cuando no fijan el suyo. En Windows, el Símbolo del sistema inicia los CLI de agente más rápido y entrecomilla de forma más predecible que PowerShell; elige otro shell si lo prefieres.",
 
   // Settings → Agents → Hooks (configs listas para usar)
   "hooks.title": "Hooks",
@@ -515,6 +519,12 @@ export const es: Record<MessageKey, string> = {
   "agentEditor.argsPlaceholder": "argumentos (separados por espacios)",
   "agentEditor.launchIn": "Lanzar en",
   "agentEditor.defaultTerminal": "Terminal predeterminada",
+  "agentEditor.defaultShell": "Shell de agente predeterminado",
+  "agentEditor.envTitle": "Variables de entorno",
+  "agentEditor.addEnvVar": "Añadir variable",
+  "agentEditor.removeEnvVar": "Eliminar variable",
+  "agentEditor.envKeyPlaceholder": "NOMBRE",
+  "agentEditor.envValuePlaceholder": "valor",
   "agentEditor.logo": "Logo",
   "agentEditor.chooseLogo": "Elegir una imagen de logo personalizada",
   "agentEditor.resetLogo": "Restablecer el logo predeterminado",
@@ -524,4 +534,25 @@ export const es: Record<MessageKey, string> = {
   "agent.launchIn": "Lanzar un agente en {name}",
   "agent.none": "Sin agentes configurados",
   "agent.configure": "Configurar agentes…",
+
+  // Consola de orquestación multi-agente
+  "orchestration.title": "Orquestación",
+  "orchestration.desc":
+    "Envía un mensaje a tus agentes en ejecución: a todos, a un tipo (fan-out) o a los trabajadores del coordinador. Cada agente recibe su siguiente mensaje solo cuando queda libre.",
+  "orchestration.open": "Orquestar agentes en ejecución",
+  "orchestration.queued": "{n} en cola",
+  "orchestration.emptyTitle": "Sin agentes en ejecución",
+  "orchestration.emptyDesc": "Lanza agentes en tus worktrees y luego enrútales mensajes desde aquí.",
+  "orchestration.setCoordinator": "Marcar como coordinador",
+  "orchestration.unsetCoordinator": "Quitar coordinador",
+  "orchestration.clearQueue": "Vaciar mensajes en cola",
+  "orchestration.reveal": "Ir a la terminal",
+  "orchestration.messagePlaceholder": "Mensaje para enrutar a los agentes… (Ctrl+Enter para enviar)",
+  "orchestration.targetAll": "Todos los agentes",
+  "orchestration.targetWorkers": "Trabajadores del coordinador",
+  "orchestration.targetType": "Todos los {type}",
+  "orchestration.send": "Enviar",
+  "orchestration.sendN": "Enviar a {n}",
+  "orchestration.backpressureHint":
+    "Los mensajes se entregan de uno en uno por agente; el siguiente espera hasta que ese agente reporte inactividad.",
 };

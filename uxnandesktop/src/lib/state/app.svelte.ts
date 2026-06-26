@@ -24,6 +24,8 @@ import {
 } from "$lib/types";
 import { terminals } from "$lib/state/terminals.svelte";
 import { primeNotifications } from "$lib/notify";
+import { buildRunCommand, shellKind } from "$lib/shell";
+import { currentOS } from "$lib/platform";
 import {
   BUILTIN_DARK,
   BUILTIN_LIGHT,
@@ -46,12 +48,6 @@ function detectSystemDark(): boolean {
 
 /** Connection state of the Rust backend, surfaced in the status bar. */
 export type BackendStatus = "connecting" | "ready" | "error";
-
-/** Quote an argument for the shell when it contains whitespace (best-effort;
- *  double quotes work across PowerShell, cmd and POSIX shells). */
-function quoteArg(arg: string): string {
-  return /\s/.test(arg) ? `"${arg}"` : arg;
-}
 
 /** A pane in the Settings dialog (also the deep-link target of `openSettings`). */
 export type SettingsSection =
@@ -76,6 +72,8 @@ class AppStore {
   errorMessage = $state<string | null>(null);
   /** Whether the Settings dialog is open. */
   settingsOpen = $state(false);
+  /** Whether the multi-agent orchestration console is open. */
+  orchestrationOpen = $state(false);
   /** Which Settings pane is shown (deep-linked via `openSettings`). */
   settingsSection = $state<SettingsSection>("appearance");
   /** Live OS dark-mode preference (kept in sync via a matchMedia listener), so
@@ -298,6 +296,25 @@ class AppStore {
     return this.launchableAgents.find((a) => a.id === id);
   }
 
+  /** The terminal profile agents launch in when they don't pin their own.
+   *  An explicit `agentShellProfileId` wins; otherwise it resolves to a smart
+   *  default — Command Prompt (`cmd.exe`) on Windows, where agent CLIs start
+   *  faster and quote more predictably than under PowerShell — else the default
+   *  terminal profile. */
+  agentShellProfile(): TerminalProfile | undefined {
+    const id = this.settings.agentShellProfileId;
+    if (id) {
+      return this.terminalProfiles.find((p) => p.id === id) ?? this.defaultProfile();
+    }
+    if (currentOS() === "windows") {
+      const cmd = this.terminalProfiles.find((p) =>
+        /(^|[\\/])cmd(\.exe)?$/i.test(p.command.trim()),
+      );
+      if (cmd) return cmd;
+    }
+    return this.defaultProfile();
+  }
+
   /** Resolve a detected agent command to a display name + logo (a configured
    *  agent wins over the catalog; an unknown command shows the command itself). */
   resolveAgent(command: string): { name: string; icon: string | null } {
@@ -339,9 +356,21 @@ class AppStore {
     // Ask for notification permission now (focused, user-initiated) so an
     // agent-idle alert later isn't lost waiting on the OS prompt.
     primeNotifications();
-    const shellProfile = this.profile(agent.terminalProfileId ?? undefined);
+    // Resolve the shell: the agent's pinned profile, else the configured default
+    // agent shell (cmd.exe on Windows by default). The command line is quoted for
+    // *that* shell's syntax so args with spaces/special chars survive.
+    const shellProfile = agent.terminalProfileId
+      ? this.profile(agent.terminalProfileId)
+      : this.agentShellProfile();
     const shell = shellProfile?.command?.trim() || undefined;
-    const runCommand = [command, ...agent.args.map(quoteArg)].join(" ");
+    const kind = shellKind(shell ?? (currentOS() === "windows" ? "cmd.exe" : undefined));
+    const runCommand = buildRunCommand(command, agent.args, kind);
+    // Per-agent env vars → real environment on the spawned shell (inherited by
+    // the agent). Blank keys are dropped; the backend prepends them before its
+    // own `UXNAN_*` so those always win.
+    const env = (agent.env ?? [])
+      .map((e) => [e.key.trim(), e.value] as [string, string])
+      .filter(([k]) => k.length > 0);
     const name = agent.name.trim() || command;
     // Base tab title = the worktree folder, so the name reverts from the agent
     // back to the shell once the agent exits (the display is agentName ?? title).
@@ -354,8 +383,10 @@ class AppStore {
       shell,
       args: shell ? shellProfile?.args : undefined,
       runCommand,
+      env: env.length ? env : undefined,
       agentName: name,
       agentIcon: agentLogoKey(agent.icon, agent.command),
+      agentCommand: agent.command.trim(),
       workspace: opts.workspace,
     });
   }

@@ -216,6 +216,16 @@
     return a?.name.trim() || a?.command || i18n.t("settings.defaultAgentNone");
   });
 
+  // Default shell agents launch in (when an agent doesn't pin its own). The
+  // "smart default" sentinel = cmd.exe on Windows, else the default terminal.
+  const AGENT_SHELL_DEFAULT = "__smart__";
+  const agentShellLabel = $derived.by(() => {
+    const id = app.settings.agentShellProfileId;
+    if (!id) return i18n.t("settings.agentShellSmart");
+    const p = app.terminalProfiles.find((x) => x.id === id);
+    return p?.name.trim() || i18n.t("terminal.unnamedProfile");
+  });
+
   // --- Terminal shells: detect which template commands are installed ---------
   const ALL_TEMPLATES = TERMINAL_TEMPLATES.flatMap((g) => g.templates);
   let shellsInstalled = $state<Set<string> | null>(null);
@@ -513,6 +523,34 @@
                 </Select.Content>
               </Select.Root>
               <p class={text.meta}>{i18n.t("settings.defaultAgentDesc")}</p>
+            </div>
+
+            <!-- Default shell agents launch in (cmd.exe on Windows by default). -->
+            <div class="flex flex-col gap-1.5">
+              <span class={cn("font-medium", text.body)}>{i18n.t("settings.agentShell")}</span>
+              <Select.Root
+                type="single"
+                value={app.settings.agentShellProfileId ?? AGENT_SHELL_DEFAULT}
+                onValueChange={(v) => {
+                  app.settings.agentShellProfileId =
+                    v === AGENT_SHELL_DEFAULT ? null : (v ?? null);
+                  persistNow();
+                }}
+              >
+                <Select.Trigger class="w-72 max-w-full">
+                  <span class="min-w-0 flex-1 truncate text-left">{agentShellLabel}</span>
+                </Select.Trigger>
+                <Select.Content>
+                  <Select.Item value={AGENT_SHELL_DEFAULT} label={i18n.t("settings.agentShellSmart")}>
+                    {i18n.t("settings.agentShellSmart")}
+                  </Select.Item>
+                  {#each app.terminalProfiles as p (p.id)}
+                    {@const label = p.name.trim() || i18n.t("terminal.unnamedProfile")}
+                    <Select.Item value={p.id} {label}>{label}</Select.Item>
+                  {/each}
+                </Select.Content>
+              </Select.Root>
+              <p class={text.meta}>{i18n.t("settings.agentShellDesc")}</p>
             </div>
 
             <!-- Agent idle notifications. -->

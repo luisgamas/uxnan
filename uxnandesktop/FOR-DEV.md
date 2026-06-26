@@ -14,9 +14,10 @@ which tracks assets only a human can provide.)
 **Phases 0–5 + cross-cutting (S) are DONE — the ADE is alpha-functional as a
 standalone app** (three-panel shell, PTY terminals + splits, git worktrees, git
 status/diff/stage/commit/history, agent monitoring with the axum hook server +
-OSC/process layers, settings/themes/i18n). 96 Rust backend tests; **no frontend
-tests yet**. macOS is **unvalidated** (developed on Windows; CI is `{ubuntu,
-windows}`). **Phase 6 (embedded bridge / mobile pairing) is NOT started.**
+OSC/process layers, settings/themes/i18n, multi-agent orchestration). 96 Rust
+backend tests + 19 frontend Vitest unit tests (pure logic); **no Svelte component
+or E2E tests yet**. macOS is **unvalidated** (developed on Windows; CI is
+`{ubuntu, windows}`). **Phase 6 (embedded bridge / mobile pairing) is NOT started.**
 
 ## Phase 6 — Bridge integration (embedded bridge / mobile pairing) ☐
 
@@ -53,12 +54,21 @@ yet on either side** — the bridge's `desktop/*` handler is also an empty stub
       keep their xterm mounted). Would cut memory for many background terminals
       at the cost of a replay on every show.
 
-**Agents**
-- [ ] Env vars per agent; better arg quoting/escaping for the injected command.
-- [ ] Prefer CMD over PowerShell for agent launch on Windows.
-- [ ] Agent auto-launch on worktree create (per-worktree agent default).
-- [ ] **Multi-agent orchestration** (task graph, @type routing, fan-out; spec
-      `02d` §3).
+**Agents** — env vars per agent, shell-aware quoting, the configurable Windows
+launch shell (cmd by default), auto-launch on worktree create, and multi-agent
+orchestration (in-memory task graph, @type/@all routing, fan-out, backpressure)
+are **done** (see `CHANGELOG.md` + `architecture/02d` §3). Remaining follow-ups:
+- [ ] **Orchestration lineage in the *main* sidebar.** The coordinator→workers
+      task graph is surfaced in the orchestration console today (spec `02d` §3.4
+      updated to match). Moving the nested lineage into the left project tree is
+      a larger sidebar-tree refactor, deferred.
+- [ ] **Agent-driven worker creation.** §3.1's "a coordinator *creates* worker
+      agents in their own worktrees" needs an agent→ADE control channel that
+      doesn't exist yet (agents are opaque CLIs). Today the user creates the
+      worktrees/agents and designates the coordinator/workers. Unblocks with the
+      embedded bridge / a local control API.
+- [ ] Persist the per-worktree launch agent onto `WorktreeData.agentId` (today
+      the choice drives the one-shot launch but isn't recorded on the worktree).
 
 **File tree / mixed tabs**
 - [ ] Tree virtualization (TanStack Virtual) for very large folders.
@@ -77,8 +87,9 @@ yet on either side** — the bridge's `desktop/*` handler is also an empty stub
 **Polish / quality**
 - [ ] Sidebar project-tree virtualization (worktree lists already virtualized).
 - [ ] Stronghold/keyring for any secret (never plaintext JSON) — needed with Phase 6.
-- [ ] E2E tests (Playwright / WebdriverIO + tauri-driver) **and** frontend (Vitest)
-      component tests — there are none yet.
+- [ ] E2E tests (Playwright / WebdriverIO + tauri-driver) **and** Svelte
+      **component** tests (Vitest + jsdom). The Vitest harness + **unit** tests
+      for pure logic now exist (`src/lib/*.test.ts`); component/E2E are still TODO.
 
 ## Platform validation
 
@@ -88,8 +99,9 @@ yet on either side** — the bridge's `desktop/*` handler is also an empty stub
 
 ## CI/CD — release
 
-- ✅ **Verify** — `.github/workflows/ci-desktop.yml` runs svelte-check + vite build +
-  cargo fmt/clippy/test on `{ubuntu, windows}` (macOS deferred with Apple). 96 tests.
+- ✅ **Verify** — `.github/workflows/ci-desktop.yml` runs svelte-check + `npm test`
+  (Vitest) + vite build + cargo fmt/clippy/test on `{ubuntu, windows}` (macOS
+  deferred with Apple). 96 Rust + 19 Vitest tests.
 - ✅ **`release-desktop.yml`** — exists: `tauri-action` bundles on a `desktop-v*` tag
   → draft GitHub Release. **Windows ships unsigned for now; macOS deferred.**
 - [ ] **Code-signing** — Windows Authenticode + macOS Developer ID + notarization
@@ -103,8 +115,9 @@ yet on either side** — the bridge's `desktop/*` handler is also an empty stub
 
 ## Cross-cutting / standing rules
 
-- [ ] Tests for every public function (AGENTS.md, ALPHA) — Rust done; **add Svelte
-      Vitest component tests**.
-- [ ] Lint/format gate before "done": `cargo clippy` + `cargo fmt` + `npm run check`.
+- [ ] Tests for every public function (AGENTS.md, ALPHA) — Rust done; pure-logic
+      frontend modules covered by Vitest; **still add Svelte component tests**.
+- [ ] Lint/format gate before "done": `cargo clippy` + `cargo fmt` + `npm run check`
+      + `npm test`.
 - [ ] Tauri capabilities: expose only the commands a window needs; no arbitrary
       FS/network from the frontend (spec §4.2). **Not yet audited.**

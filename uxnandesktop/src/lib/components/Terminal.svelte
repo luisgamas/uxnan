@@ -40,6 +40,7 @@
     shell,
     args,
     runCommand,
+    env,
     onexit,
   }: {
     id: string;
@@ -48,6 +49,7 @@
     shell?: string;
     args?: string[];
     runCommand?: string;
+    env?: [string, string][];
     onexit?: () => void;
   } = $props();
 
@@ -272,6 +274,7 @@
       cwd,
       shell,
       args,
+      env,
       cols: term.cols || 80,
       rows: term.rows || 24,
     }).catch(() => true);

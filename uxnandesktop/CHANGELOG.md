@@ -84,6 +84,53 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   focus ring, sizing and dark-mode tokens like the rest of the UI
   (`src/lib/components/ChangesPanel.svelte`).
 
+### Added — agents: multi-agent orchestration, per-agent env vars, configurable launch shell
+- **Multi-agent orchestration console (spec `02d` §3).** A new modal — opened
+  from the status bar once **≥2 agents** are running — lists every live agent
+  grouped by type and routes a message to them: to **all** agents, to **one type
+  (fan-out)** (e.g. every `claude`), or to the **coordinator's workers**. Mark
+  any agent as the **coordinator** (the in-memory task-graph root) to unlock the
+  workers target. Delivery is **backpressured** — each agent receives its next
+  queued message only once it reports free again (precise hook state when
+  available, else coarse output activity), so a slow worker is never flooded.
+  Per-agent queue depth, status dots and a "go to terminal" jump are shown
+  inline. Pure routing/queue logic in `src/lib/orchestration.ts` (unit-tested);
+  reactive store (live agents, backpressure timers, PTY delivery) in
+  `src/lib/state/orchestration.svelte.ts`; UI in `OrchestrationConsole.svelte`.
+- **Per-agent environment variables.** Each agent profile can now carry `env`
+  vars (e.g. `ANTHROPIC_MODEL=…`, a proxy/host override), edited as key/value
+  rows in **Settings → Agents**. They're set on the agent's shell at launch
+  (inherited by the agent process); the ADE's own `UXNAN_*` hook vars always win
+  on a key clash. New `EnvVar` model + `env` field on `AgentProfile` (Rust + TS),
+  threaded through `launchAgent` → `pty_create` (new `env` param).
+- **Configurable agent launch shell — Command Prompt by default on Windows.**
+  Agents that don't pin their own shell now launch in a configurable default
+  (**Settings → Agents → "Agent launch shell"**). The smart default is
+  **`cmd.exe` on Windows** (agent CLIs start faster and quote more predictably
+  than under PowerShell), else the default terminal profile. New
+  `agentShellProfileId` setting + `app.agentShellProfile()` resolver.
+- **Shell-aware argument quoting.** The agent launch command line is now quoted
+  for the syntax of the shell it lands in (PowerShell / cmd / POSIX), so agent
+  args with spaces or special characters (paths, `-p "a prompt"`) survive instead
+  of breaking. New pure `src/lib/shell.ts` (`shellKind`, `quoteArg`,
+  `buildRunCommand`), unit-tested, replacing the previous whitespace-only quoter.
+- **Verified: agent auto-launch on worktree create.** The create-worktree flow
+  already auto-launches the chosen agent (global default pre-selected, override
+  or "None" per worktree); it now also benefits from the configurable launch
+  shell. Removed from `FOR-DEV.md`.
+- **End-user docs.** New [`docs/orchestration.md`](docs/orchestration.md) (what
+  it is, where to find it, how to activate it, routing, the coordinator/worker
+  graph, backpressure, caveats) and
+  [`docs/agent-launch.md`](docs/agent-launch.md) (registering agents, per-agent
+  env vars, the launch shell, auto-launch, quoting), both linked from the README
+  Docs list and cross-linked with `docs/agent-hooks.md`.
+
+### Added — frontend unit tests (Vitest)
+- First **frontend test harness**: Vitest (`npm test`) with unit tests for the
+  pure agent-launch and orchestration logic (`shell.test.ts`,
+  `orchestration.test.ts` — 19 tests). Minimal `vitest.config.ts` (node env,
+  `$lib` alias); no component tests yet.
+
 ### Added — terminal: tab reorder/MRU, backend ring buffer, CSI-u keyboard protocol
 - **Tab reorder + drag between regions.** Tab chips can be dragged: drop one
   elsewhere in its strip to reorder it, or onto another region's strip to move

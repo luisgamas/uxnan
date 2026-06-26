@@ -133,8 +133,8 @@ Esto es lo que hace posible el paralelismo real. Sin worktrees, multiples agente
 | **6** | Bridge integration (mobile pairing) | ⏳ Pendiente | Tauri sidecar para el bridge + QR pairing; **opcional para standalone**; el bridge standalone es la referencia del contrato |
 | **Ops** | CI/CD & release pipeline | ⏳ Pendiente | Branded icons + signing + auto-updater keys (FOR-HUMAN) antes de distribuir builds |
 | **S/Follow-up** | Ready-made per-agent hook configs (Claude Code + generic wrapper) | ✅ Hecho | Scripts bundleados en `static/hooks/` + escritos a `<app-data>/hooks/` al arranque; **Settings → Agents → Hooks** ofrece Install/Uninstall para Claude (`~/.claude/settings.json` con marcador `__uxnan_managed_hooks__`) y el wrapper generico (Bash / PowerShell / cmd) para cualquier agente CLI |
-| **S/Follow-up** | Multi-agent orchestration (task graph, fan-out, sidebar lineage) | ⏳ Pendiente | Out of MVP scope |
-| **S/Follow-up** | E2E tests (Playwright / WebdriverIO + tauri-driver) | ⏳ Pendiente | `cargo test` 8 passing + `npm run check` 0/0 + `cargo clippy` + `cargo fmt` ya son verde |
+| **S/Follow-up** | Multi-agent orchestration (task graph, fan-out, backpressure) | ✅ Hecho | Consola de orquestacion (barra de estado, ≥2 agentes): routing por tipo / todos / workers + fan-out, grafo coordinador→workers **en memoria**, backpressure por agente (`02d` §3). Linaje mostrado en la consola en vez de anidarlo en la sidebar izquierda (`02d` §3.4); creacion *automatica* de workers por el coordinador queda como follow-up (`FOR-DEV.md`) |
+| **S/Follow-up** | E2E tests (Playwright / WebdriverIO + tauri-driver) + component tests | ⏳ Pendiente | Ya en verde: `cargo test` 69 passing + `npm test` 19 (Vitest, logica pura) + `npm run check` 0/0 + `cargo clippy` + `cargo fmt`. Faltan E2E y tests de componentes Svelte |
 
 > Detalle completo del avance en `uxnandesktop/CHANGELOG.md`; lo pendiente, en `uxnandesktop/FOR-DEV.md`.
 

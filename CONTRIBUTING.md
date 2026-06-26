@@ -46,7 +46,7 @@ Match the CI checks for the project you touched:
 | Project | Lint / format | Type check | Tests |
 | ------- | ------------- | ---------- | ----- |
 | `shared`/`bridge`/`relay` | `npm run format:check` (prettier) | `npm run typecheck` | `npm test` |
-| `uxnandesktop` | `cargo fmt --check` + `npm run check` (svelte-check) | — | `cargo clippy -- -D warnings`, `cargo test` |
+| `uxnandesktop` | `cargo fmt --check` + `npm run check` (svelte-check) | — | `cargo clippy -- -D warnings`, `cargo test`, `npm test` (Vitest) |
 | `uxnanmobile` | `dart format` + `flutter analyze` | — | `flutter test` (run `flutter gen-l10n` first) |
 
 CI runs these same gates on every PR (and on push to `main`). If a check fails on

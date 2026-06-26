@@ -43,11 +43,17 @@ export interface TerminalTab extends BaseTab {
   /** One-shot command typed into the shell once it starts (agent launch).
    *  Transient — never serialized, so a restored layout doesn't re-run it. */
   runCommand?: string;
+  /** Extra environment variables for this tab's PTY (agent env), as `[key,
+   *  value]` pairs. Transient — applied at spawn, never serialized. */
+  env?: [string, string][];
   /** Agent launched in this tab (set by `launchAgent`); drives idle monitoring
    *  + notifications and the per-agent sidebar rows. Transient. */
   agentName?: string;
   /** Logo key for the agent (catalog id), for the sidebar row. Transient. */
   agentIcon?: string | null;
+  /** The launched agent's executable (e.g. `claude`), used to route orchestrated
+   *  messages by agent type. Transient. */
+  agentCommand?: string;
   /** Activity inference: `true` while the tab is producing output (set by the
    *  agent monitor). Transient. */
   working?: boolean;
@@ -123,10 +129,14 @@ export interface NewTabOptions {
   args?: string[];
   /** One-shot command to type into the shell once it starts (agent launch). */
   runCommand?: string;
+  /** Extra environment variables for this tab's PTY (agent env). */
+  env?: [string, string][];
   /** Agent launched in this tab (enables idle monitoring + notifications). */
   agentName?: string;
   /** Logo key for the agent (catalog id), for the sidebar row. */
   agentIcon?: string | null;
+  /** The launched agent's executable (e.g. `claude`), for orchestration routing. */
+  agentCommand?: string;
   groupId?: string;
   /** Workspace to open in (switches the active workspace first). */
   workspace?: string;
@@ -142,8 +152,10 @@ function newTab(opts?: Omit<NewTabOptions, "groupId" | "workspace">): TerminalTa
     shell: opts?.shell,
     args: opts?.args,
     runCommand: opts?.runCommand,
+    env: opts?.env,
     agentName: opts?.agentName,
     agentIcon: opts?.agentIcon,
+    agentCommand: opts?.agentCommand,
     exited: false,
   };
 }
