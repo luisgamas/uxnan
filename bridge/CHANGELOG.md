@@ -5,6 +5,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — recovered conversations keep the real text↔work-log order
+- **The thread store now records an ordered `Message.segments` interleave**
+  (`src/conversation/thread-store.ts`). Each assistant message kept `text`
+  (concatenated deltas) and `blocks` (the structured work-log/diff/tool blocks)
+  in **separate** fields, which lost the order they streamed in — so on a
+  `turn/list` re-sync (a phone reconnecting to a still-running bridge) the
+  recovered turn rendered every command/log stacked **above** one merged
+  paragraph instead of inline with the response. `appendDelta` / `appendBlock`
+  now also append to a `segments` array (text runs grown in place, blocks pushed
+  as they land), `completeTurn` reconciles it against the authoritative final
+  text, and `toMessage` emits `segments` whenever the turn carries a structured
+  block. `content` + `blocks` are unchanged (back-compat + reconciliation), and a
+  plain-text turn ships no `segments` (its lean wire shape is untouched). The
+  on-disk history fallback (`session-history.ts`, after a bridge restart) still
+  emits blocks-first — tracked in `FOR-DEV.md`. Tests: +3
+  (`thread-store.test.ts`: interleave preserved across a delta→block→delta turn;
+  a plain-text turn ships no segments; a no-delta turn appends the final text
+  after its blocks) → **360 bridge**. Spec: `architecture/02b` (`Message`).
+
 ### Fixed — `git/log` commit order matches the desktop ADE and GitHub
 - **`git/log` now uses `--date-order` instead of `--topo-order`**
   (`src/git/git-service.ts`). `--topo-order` groups each branch's commits

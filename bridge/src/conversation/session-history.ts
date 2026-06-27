@@ -133,6 +133,12 @@ interface RawMessage {
    * Only set on assistant messages.
    */
   blocks?: unknown[];
+  // FOR-DEV: this fallback emits `text` + `blocks` separately, so a turn
+  // recovered after a bridge restart (empty `threads.json`) renders blocks-first
+  // — the phone falls back to its blocks-first layout. The live/stored path
+  // (`thread-store.ts`) already emits the ordered `Message.segments` interleave;
+  // reconstruct the same here from each CLI log's real text↔tool order and emit
+  // it via `pushMessage`. See bridge/FOR-DEV.md → "On-disk history fallback".
   createdAt: number;
 }
 

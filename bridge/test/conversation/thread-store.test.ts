@@ -95,6 +95,65 @@ test('appendBlock accumulates structured blocks and surfaces them on the message
   await rm(baseDir, { recursive: true, force: true });
 });
 
+test('segments preserve the interleaved text↔block order for re-sync', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  const { turnId } = await store.startTurn(thread.id, 'ask', 2);
+
+  // The agent narrates, runs a command, then narrates again.
+  await store.appendDelta(thread.id, turnId, 'Let me check.', 3);
+  await store.appendBlock(thread.id, turnId, { type: 'command_execution', command: 'ls' }, 4);
+  await store.appendDelta(thread.id, turnId, 'Done — all good.', 5);
+  // turn/completed carries the same concatenated text it streamed.
+  await store.completeTurn(thread.id, turnId, 'Let me check.Done — all good.', 6);
+
+  const turn = await store.getTurn(turnId);
+  const assistant = turn.messages.find((m) => m.role === 'assistant');
+  // `content` stays the full merged text; `blocks` the structured blocks…
+  assert.equal(assistant?.content, 'Let me check.Done — all good.');
+  assert.deepEqual(assistant?.blocks, [{ type: 'command_execution', command: 'ls' }]);
+  // …and `segments` carries the real production order (text, block, text) so the
+  // phone can render the work log inline instead of stacking it above the prose.
+  assert.deepEqual(assistant?.segments, [
+    { type: 'text', text: 'Let me check.' },
+    { type: 'command_execution', command: 'ls' },
+    { type: 'text', text: 'Done — all good.' },
+  ]);
+  await rm(baseDir, { recursive: true, force: true });
+});
+
+test('a plain-text turn ships no segments (lean wire shape)', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  const { turnId } = await store.startTurn(thread.id, 'ask', 2);
+  await store.appendDelta(thread.id, turnId, 'Just words.', 3);
+  await store.completeTurn(thread.id, turnId, undefined, 4);
+
+  const assistant = (await store.getTurn(turnId)).messages.find((m) => m.role === 'assistant');
+  assert.equal(assistant?.content, 'Just words.');
+  // No structured block landed → no `segments` (rendering from `content` alone
+  // is already correct), keeping the wire shape unchanged for text-only turns.
+  assert.equal(assistant?.segments, undefined);
+  await rm(baseDir, { recursive: true, force: true });
+});
+
+test('completeTurn with no streamed deltas appends the final text after blocks', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  const { turnId } = await store.startTurn(thread.id, 'ask', 2);
+
+  // A tool ran but the agent streamed no text before the closing reply.
+  await store.appendBlock(thread.id, turnId, { type: 'command_execution', command: 'pwd' }, 3);
+  await store.completeTurn(thread.id, turnId, 'Here is the answer.', 4);
+
+  const assistant = (await store.getTurn(turnId)).messages.find((m) => m.role === 'assistant');
+  assert.deepEqual(assistant?.segments, [
+    { type: 'command_execution', command: 'pwd' },
+    { type: 'text', text: 'Here is the answer.' },
+  ]);
+  await rm(baseDir, { recursive: true, force: true });
+});
+
 test('listTurns paginates with a cursor', async () => {
   const { store, baseDir } = newStore();
   const thread = await store.startThread({ projectId: 'p' }, 1);
