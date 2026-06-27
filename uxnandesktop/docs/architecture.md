@@ -1,5 +1,9 @@
 # Desktop — architecture orientation
 
+![Backend](https://img.shields.io/badge/backend-Rust_%2B_Tauri_2-000000?style=for-the-badge&logo=tauri&logoColor=FFC131)
+![Frontend](https://img.shields.io/badge/frontend-Svelte_5_runes-FF3E00?style=for-the-badge&logo=svelte&logoColor=white)
+![Spec](https://img.shields.io/badge/source_of_truth-architecture%2F-blue?style=for-the-badge)
+
 A short map of how the code is organized and where it sits in the Uxnan
 monorepo. The **authoritative specification** is in
 [`../architecture/`](../architecture/00-index.md) — this file is a quick
@@ -17,7 +21,7 @@ change-review layer, **not** an IDE.
 The system keeps three sources of truth in sync (spec §1 of
 `architecture/02a-system-architecture.md`):
 
-```
+```text
 Rust backend (Tauri core)  ──Tauri commands (invoke) + events (emit/listen)──►  Svelte webview
    repos/worktrees, PTY,                                                          UI state, layout,
    git2+CLI, persistence,                                                         active selection
@@ -44,8 +48,10 @@ Rust backend (Tauri core)  ──Tauri commands (invoke) + events (emit/listen)�
 | `commands.rs` | The `#[tauri::command]` surface. |
 | `error.rs` | `AppError` (internal) + serializable `CommandError`. |
 
-Phase 1+ adds `pty`, `git`, and agent-hook modules — see
-[`../FOR-DEV.md`](../FOR-DEV.md).
+Later phases add the runtime modules that are all present today — `pty.rs`,
+`git.rs` / `gitfast.rs`, `hooks.rs` / `agent_hooks.rs`, `procscan.rs`, `browse.rs`,
+`fs.rs` / `fswatch.rs`, `power.rs` and `which.rs`. The full file-by-file layout is
+in [`../README.md`](../README.md); remaining work is in [`../FOR-DEV.md`](../FOR-DEV.md).
 
 ## Frontend (`src/`)
 

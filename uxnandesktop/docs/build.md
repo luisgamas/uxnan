@@ -1,5 +1,9 @@
 # Desktop — release builds & packaging
 
+![Bundler](https://img.shields.io/badge/build-tauri_build-FFC131?style=for-the-badge&logo=tauri&logoColor=000000)
+![Targets](https://img.shields.io/badge/installers-Windows_%7C_macOS_%7C_Linux-lightgrey?style=for-the-badge)
+![Per_OS](https://img.shields.io/badge/cross--compile-build_on_each_OS-0a0a0a?style=for-the-badge)
+
 How to compile Uxnan Desktop for distribution. For day-to-day debug runs see
 [`development.md`](development.md).
 

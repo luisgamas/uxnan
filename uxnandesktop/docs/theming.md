@@ -1,5 +1,9 @@
 # Theming & appearance
 
+![Built-in](https://img.shields.io/badge/built--in-System_%7C_Light_%7C_Dark_%7C_Midnight_%7C_Latte-blue?style=for-the-badge)
+![Custom](https://img.shields.io/badge/custom-create_%7C_import_%7C_export-2ea44f?style=for-the-badge)
+![Terminal](https://img.shields.io/badge/terminal-own_override_layer-0a0a0a?style=for-the-badge)
+
 Uxnan Desktop ships built-in themes (System, Light, Dark, Midnight, Latte) and
 lets you create, import and export your own. A theme covers the **whole app** —
 every surface color plus the title / body / mono fonts. The terminal has its own

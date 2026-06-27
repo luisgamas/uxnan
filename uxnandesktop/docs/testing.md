@@ -1,5 +1,9 @@
 # Desktop — testing & verification
 
+![Backend](https://img.shields.io/badge/backend-cargo_test_%2B_clippy_%2B_fmt-000000?style=for-the-badge&logo=rust&logoColor=white)
+![Frontend](https://img.shields.io/badge/frontend-svelte--check_%2B_Vitest-FF3E00?style=for-the-badge&logo=svelte&logoColor=white)
+![UI](https://img.shields.io/badge/UI-verified_on--device-2ea44f?style=for-the-badge)
+
 The quality gates to run before considering a change done (AGENTS.md requires
 compile + tests + lint/format clean, and a real UI flow for UI changes).
 

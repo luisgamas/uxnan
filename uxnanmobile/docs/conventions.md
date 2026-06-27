@@ -1,5 +1,9 @@
 # Conventions
 
+![State](https://img.shields.io/badge/Riverpod_3.x-manual,_no_codegen-0553B1?style=for-the-badge)
+![UI](https://img.shields.io/badge/Material_3-design_tokens_%2B_skills-757575?style=for-the-badge&logo=materialdesign&logoColor=white)
+![Security](https://img.shields.io/badge/security-non--negotiable-2ea44f?style=for-the-badge&logo=letsencrypt&logoColor=white)
+
 The working agreement for anyone (human or agent) touching `uxnanmobile`. These
 extend the monorepo [`../../AGENTS.md`](../../AGENTS.md); where a Flutter skill's
 generic default conflicts with the [`architecture/`](../../architecture/00-index.md)

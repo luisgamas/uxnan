@@ -1,5 +1,9 @@
 # Multi-agent orchestration
 
+![Routing](https://img.shields.io/badge/route-all_%7C_by_type_%7C_workers-2ea44f?style=for-the-badge)
+![Backpressure](https://img.shields.io/badge/delivery-backpressured-blue?style=for-the-badge)
+![Scope](https://img.shields.io/badge/needs-%E2%89%A52_live_agents-lightgrey?style=for-the-badge)
+
 Run several CLI agents at once and **drive them from one place**: send a message
 to every agent, to all agents of one type, or to a coordinator's workers — and
 let the ADE deliver it to each one **only when it's free** (backpressure), so a

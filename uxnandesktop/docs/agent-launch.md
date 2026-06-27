@@ -1,5 +1,9 @@
 # Agent launch & configuration
 
+![Shell](https://img.shields.io/badge/default_launch_shell-cmd_on_Windows-0a0a0a?style=for-the-badge)
+![Env](https://img.shields.io/badge/per--agent-env_vars-2ea44f?style=for-the-badge)
+![Quoting](https://img.shields.io/badge/arguments-shell--aware_quoting-blue?style=for-the-badge)
+
 How to register CLI coding agents in the ADE and tune **how** they launch:
 per-agent **environment variables**, the **shell** they run in (Command Prompt by
 default on Windows), **auto-launch** when you create a worktree, and the

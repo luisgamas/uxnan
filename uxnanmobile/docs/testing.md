@@ -1,8 +1,14 @@
 # Testing & validation — uxnanmobile
 
+![Analyze](https://img.shields.io/badge/flutter_analyze-very__good__analysis-0175C2?style=for-the-badge&logo=dart&logoColor=white)
+![Tests](https://img.shields.io/badge/flutter_test-unit_%2B_widget-02569B?style=for-the-badge&logo=flutter&logoColor=white)
+![DB](https://img.shields.io/badge/drift-in--memory_in_tests-003B57?style=for-the-badge&logo=sqlite&logoColor=white)
+
 How to run the checks, how the tests are organized, the patterns they use, and
 what still needs a real device or a live bridge. (For the **Node** side —
-`bridge`/`relay`/`shared` — see the monorepo [`../../TESTING.md`](../../TESTING.md).)
+`bridge`/`relay`/`shared` — see
+[`../../bridge/docs/testing.md`](../../bridge/docs/testing.md) and
+[`../../relay/docs/testing.md`](../../relay/docs/testing.md).)
 
 ## Commands
 
@@ -24,7 +30,7 @@ config (Gradle/manifest/plist) or renaming the applicationId.
 
 ## Layout
 
-```
+```text
 test/
 ├── unit/
 │   ├── core/            # extensions, small utils

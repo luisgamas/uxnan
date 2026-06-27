@@ -1,5 +1,9 @@
 # uxnanmobile — developer docs
 
+![Flutter](https://img.shields.io/badge/Flutter-Android_%7C_iOS-02569B?style=for-the-badge&logo=flutter&logoColor=white)
+![Architecture](https://img.shields.io/badge/Clean_Architecture-Riverpod_3.x-0553B1?style=for-the-badge)
+![Spec](https://img.shields.io/badge/source_of_truth-architecture%2F-blue?style=for-the-badge)
+
 Reference documentation for working **inside** the Flutter app. This is the
 as-built developer guide; the canonical product/design spec lives in the
 monorepo's [`architecture/`](../../architecture/00-index.md) (PRD + SRS) and
@@ -19,5 +23,7 @@ Related files (not in `docs/`):
 - [`../FOR-DEV.md`](../FOR-DEV.md) — pending developer work (greppable `FOR-DEV:`).
 - [`../FOR-HUMAN.md`](../FOR-HUMAN.md) — assets only a human can provide.
 - [`../../AGENTS.md`](../../AGENTS.md) — monorepo-wide agent guidelines.
-- [`../../TESTING.md`](../../TESTING.md) — testing for the **Node** side
-  (`bridge`/`relay`/`shared`); the mobile testing guide is [testing.md](testing.md).
+- Node-side testing (`bridge` / `relay` / `shared`) lives in each component's docs
+  — [`../../bridge/docs/testing.md`](../../bridge/docs/testing.md) and
+  [`../../relay/docs/testing.md`](../../relay/docs/testing.md); the mobile testing
+  guide is [testing.md](testing.md).
