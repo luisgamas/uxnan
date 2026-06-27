@@ -1,15 +1,49 @@
 # @uxnan/shared
 
-Shared JSON-RPC and E2EE contracts for the Uxnan ecosystem. Consumed as a local
-workspace dependency by the **bridge** and the **relay**. The mobile app keeps
-manually-synced Dart equivalents (see
+![TypeScript](https://img.shields.io/badge/TypeScript-ESM-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
+![Node.js](https://img.shields.io/badge/Node.js-%E2%89%A518-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)
+![JSON Schema](https://img.shields.io/badge/validation-Ajv-000000?style=for-the-badge&logo=json&logoColor=white)
+![Contracts](https://img.shields.io/badge/60_methods_%7C_8_notifications-blue?style=for-the-badge)
+
+Shared JSON-RPC and E2EE contracts for the [Uxnan](../README.md) ecosystem — the
+single source of truth every component agrees on. Consumed as a local workspace
+dependency by the **[bridge](../bridge/README.md)** and the
+**[relay](../relay/README.md)**; the mobile app keeps manually-synced Dart
+equivalents (see
 [`architecture/02b-contracts-and-requirements.md`](../architecture/02b-contracts-and-requirements.md)
 §1 for the canonical contract list).
 
-> **Status:** implemented. **60 JSON-RPC methods** + **8 streaming
-> notifications**, lock-step in build-time with the `METHOD_NAMES` array and
+> **Status:** implemented and stable — **60 JSON-RPC methods** + **8 streaming
+> notifications**, kept lock-step at build time with the `METHOD_NAMES` array and
 > the `StreamNotification` enum (a compile-time assertion in
-> `src/jsonrpc/method-registry.ts` fails the build on any drift).
+> `src/jsonrpc/method-registry.ts` fails the build on any drift). Changes are
+> recorded in [`CHANGELOG.md`](CHANGELOG.md).
+
+## Why it exists
+
+Three independent codebases — a Node.js bridge, a Node.js relay, and a Flutter app
+— have to agree on exactly the same messages on the wire. Rather than letting each
+one drift its own way, every shape lives here once: the request and response
+envelopes, the streaming notifications, the E2EE handshake, the pairing payload,
+and the domain and agent models. The bridge and relay import this package
+directly; the mobile app mirrors it in Dart. When a contract changes, it changes
+here first, and the build refuses to pass if the registry and the spec disagree.
+
+<details>
+<summary><b>Diagram — one contract, three consumers</b></summary>
+
+```mermaid
+flowchart TB
+  shared["@uxnan/shared<br/>JSON-RPC + E2EE contracts"]
+  bridge["uxnan-bridge<br/>(imports directly)"]
+  relay["uxnan-relay<br/>(imports directly)"]
+  mobile["uxnanmobile<br/>(hand-synced Dart mirror)"]
+  shared --> bridge
+  shared --> relay
+  shared -. mirrored .-> mobile
+```
+
+</details>
 
 ## What's inside
 

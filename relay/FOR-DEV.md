@@ -2,7 +2,7 @@
 
 Deferred developer work for the relay. (Human-only assets are in `relay/FOR-HUMAN.md`.)
 
-## Context
+## Status
 
 The relay is **optional and self-hosted**. The product's primary paths are
 LAN-direct and Tailscale-direct to the bridge; push is now sent **bridge-direct**
@@ -10,9 +10,17 @@ LAN-direct and Tailscale-direct to the bridge; push is now sent **bridge-direct*
 optional push fallback — alpha-functional, 27 tests green, shipped via `npm`
 through the same CI matrix as the bridge.
 
-The implemented surface (envelope relay, `/health`, per-IP rate limiting,
-reconnection/peer-close, CSWSH defense, `/push/register|notify` with atomic
-persistence + dedupe) is documented in `relay/README.md` and `relay/docs/`.
+**Implemented (DONE):**
+
+- **E2EE envelope relay** — one `mac` + `iphone` per `sessionId`, forwarding every
+  frame unchanged; `GET /health`.
+- **Per-IP rate limiting** and reconnection support (peer-close + stale-socket
+  handling).
+- **CSWSH `Origin` check** on WebSocket upgrades.
+- **Push endpoints** (`/push/register|notify`, FCM, gated on creds) with **atomic
+  state persistence** to `~/.uxnan/relay-state.json` — token registry + dedupe
+  window, TTL 7d + cap 10k — as a **fallback** (the bridge is the primary push
+  path).
 
 **Closed — do not rebuild:** `/trusted-session/resolve` (manual-code pairing moved
 to the bridge's `GET /pair/resolve?code=`) and an APNs-direct sender (the decision
