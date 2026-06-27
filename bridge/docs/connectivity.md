@@ -1,5 +1,9 @@
 # Connectivity — how the phone reaches the bridge
 
+![LAN](https://img.shields.io/badge/LAN-direct-2ea44f?style=for-the-badge)
+![Tailscale](https://img.shields.io/badge/Tailscale-direct_(recommended_off--LAN)-blue?style=for-the-badge&logo=tailscale&logoColor=white)
+![Relay](https://img.shields.io/badge/relay-optional_%2F_self--hosted-lightgrey?style=for-the-badge)
+
 The phone and bridge always speak the **same E2EE protocol**; only the *transport*
 to reach the bridge differs. The pairing QR advertises the available transports and
 the phone picks one. There are three modes — pick by where you need to use it.

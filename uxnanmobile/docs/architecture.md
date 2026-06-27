@@ -1,5 +1,9 @@
 # Architecture (as built)
 
+![Layers](https://img.shields.io/badge/Clean_Architecture-core_%E2%86%92_domain_%E2%86%92_app_%E2%86%92_infra_%E2%86%92_ui-0553B1?style=for-the-badge)
+![State](https://img.shields.io/badge/Riverpod_3.x-manual_DI-blue?style=for-the-badge)
+![Persistence](https://img.shields.io/badge/drift-SQLite-003B57?style=for-the-badge&logo=sqlite&logoColor=white)
+
 A developer-oriented map of the actual code. The canonical design is the
 monorepo [`architecture/`](../../architecture/00-index.md) spec — when this doc
 and the spec disagree, the spec wins (the project is ALPHA; code follows spec).
@@ -12,7 +16,7 @@ codegen). Local persistence: **drift** (SQLite). UI: **Material 3**.
 
 Clean Architecture under `lib/`, with a strict dependency direction:
 
-```
+```text
 presentation ─▶ application ─▶ domain ◀─ infrastructure
      └──────────────▶ domain ◀──────────────┘
                        core (no deps)

@@ -13,9 +13,54 @@ only a human can provide.)
 
 The bridge is **alpha-functional** on its primary path (LAN/Tailscale-direct,
 standalone). It builds clean and the suite is green (bridge 357, shared 29, relay
-27). Nothing below blocks LAN/Tailscale-direct use. The only items that gate a
+27). Nothing below blocks LAN/Tailscale-direct use; the only items that gate a
 **public npm release** are the *Packaging* first-publish steps and real-device
 push validation (FOR-HUMAN).
+
+**Implemented (DONE):**
+
+- **E2EE transport** — relay `mac` client + direct-LAN `http+ws` server,
+  handshake, AES-256-GCM channel, byte-for-byte compatible with the mobile app;
+  background reconnect loop; stable pairing session; mDNS discovery
+  (`_uxnan._tcp.local`); manual-code pairing (`GET /pair/resolve?code=`).
+- **OS-keychain identity persistence** + single-instance lock.
+- **Real Git + Workspace handlers** — path-traversal-safe; working-tree
+  checkpoints with **true restore** + retention pruning; `git/revert`,
+  `git/deleteBranch`, `git/removeWorktree`, `workspace/exists`,
+  `workspace/browseDirs`.
+- **Conversation engine** — threads / turns + streaming, per-thread
+  `Message.blocks` / `Message.thinking` / `Message.usage`.
+- **5 real agents wired** — OpenCode (default), Claude Code, Codex, pi, and
+  Gemini CLI. Each spawns its **official local CLI** over stdio with
+  `shell:false`, parses the native stream, and emits structured
+  `stream/content/block` events (command / diff / tool) plus
+  `stream/thinking/delta` (reasoning). **Aider** is the only remaining agent
+  (recipe below).
+- **Per-thread agent/project selection** + per-project agent/model pins
+  (`projectAgents` config); per-model run-option knobs advertised on
+  `agent/models`; per-turn token usage on `stream/turn/completed`.
+- **Full thread lifecycle** — `thread/rename|archive|unarchive|delete`.
+- **Plug-and-play folder browsing** — `workspace/browseDirs` with a
+  `browseRoots` config.
+- **Direct FCM push from the bridge** — primary path, persisted across restarts,
+  per-phone target, prune-on-untrust. `firebase-admin` is an `optionalDependency`
+  (no creds = silent no-op; foreground local notifications still work).
+- **Sanitized per-agent `auth/status`** — never tokens; login detected by
+  auth-file existence only.
+- **Interactive approval intake** — Echo demo + Claude Code opt-in `PreToolUse`
+  hook + Codex via the `codex app-server` turn protocol + Gemini `BeforeTool`
+  hook; all routed through one `requestApproval` round-trip, validated
+  end-to-end.
+- **Image attachments** — CLI-agnostic file-path, sandbox-safe.
+- **On-disk `turn/list` history fallback** for Claude / Codex / OpenCode / pi /
+  Gemini JSONL/JSON stores.
+- **Bridge control** — `bridge/status` (real `relayConnected`),
+  `bridge/removeTrustedDevice` (revokes + drops session + prunes push
+  registration), `bridge/trustedDevices`, `bridge/connectedPhones`,
+  `bridge/generatePairingQr`.
+- **Autostart** (`install-service` / `uninstall-service` per platform, never
+  elevated), file logging with secret redaction, and the
+  `start`/`stop`/`status`/`qr`/`code`/`install-service` CLI.
 
 ## Transport & connectivity
 

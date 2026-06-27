@@ -4,9 +4,73 @@ Deferred implementation work (code the team/agent will do later). Distinct from
 `FOR-HUMAN.md` (assets only a human can provide). Search the codebase for
 `FOR-DEV:` to jump to the exact deferral sites.
 
-> Convention defined in the root `AGENTS.md` → "Pending developer work". The
-> implemented surface is documented in [`README.md`](README.md) + [`docs/`](docs/);
-> this file tracks only what's left.
+> Convention defined in the root `AGENTS.md` → "Pending developer work".
+> [`README.md`](README.md) carries the user-facing snapshot; the detailed status
+> below is the developer record of what's working, and the rest of this file
+> tracks what's left.
+
+## Status
+
+**MVP wired — Android alpha-ready.** All core modules are implemented and
+connected to live bridge data, validated on-device against a real bridge.
+
+**Built (DONE):**
+
+- **E2EE crypto + secure transport** (X25519 + Ed25519 + HKDF + AES-256-GCM,
+  handshake, seq/replay, outbound buffer, reconnect loop).
+- **Pairing & onboarding** — `OnboardingScreen`, `QrScannerScreen`,
+  `MyDevicesScreen`, **`ManualCodeScreen`** (bridge-first manual-code pairing,
+  `GET /pair/resolve?code=`, host typed or via mDNS discover).
+- **Direct LAN/Tailscale transport** — `DirectTransportSelector` tries each direct
+  `hosts` entry from the QR first, falls back to the relay.
+- **Multi-PC connection-targeting** — all live actions target the PC we actually
+  hold a channel to; browsing is read-only. `bridge/status` consumed (Relay /
+  Direct transport indicator).
+- **Live streaming conversations** that survive leaving/re-entering the screen
+  (per-thread in-memory buffers + `turn/list` re-sync) with a per-thread
+  **"Responding…"** activity indicator.
+- **Structured agent turns** — assistant replies without a bubble, consecutive
+  text merged, collapsible **Work log (N)**, collapsible **Changed files (N) ·
+  +a −d** with per-file diffs, **Copy response**, **Last edits** strip above the
+  composer; **Thinking** section (settings-gated, default off).
+- **New conversation flow** — `project/list` + `agent/list` + `agent/models` +
+  **folder browser** (`workspace/browseDirs`) to root a thread anywhere.
+- **Structured model picker** (readable names, default badge, Claude alias
+  "(latest)" + pinned versions + resolved-version row, `thread/setModel`).
+- **Per-model run-option knobs** (data-driven: `enum` / `toggle`, generic
+  renderer).
+- **Context-usage indicator** (percentage when the model window is known, raw
+  token count otherwise; **0 baseline** for agents with `reportsContextUsage`).
+- **Per-agent sign-in status** (`auth/status`) — banner above the composer, red
+  dot in the threads list, "Check sign-in" in the new-conversation card,
+  auto-refresh on app resume.
+- **Interactive approval** (Approve / Reject / "always allow this session") with a
+  spring `AnimatedSize` morph; validated end-to-end against Echo, Claude Code
+  (`PreToolUse` hook), Codex (`app-server`) and Gemini (`BeforeTool` hook).
+  OpenCode/pi have no headless pre-tool channel yet.
+- **Composer** — bottom-anchored bar; **stop-the-turn** mid-run; **voice → text**
+  (`speech_to_text`); **image attachments** (photo library / camera, downscaled to
+  2048 px / q85, image-only message allowed, gated by the agent's `images`
+  capability).
+- **Per-PC threads** (`Thread.deviceId`) with per-agent filter chips, search /
+  sort / density, archived-thread screen, per-thread actions (rename / archive /
+  unarchive / delete / copy id), **Remove device** (unpair), **Copy thread ID**
+  for CLI resume.
+- **Full Git** — full-screen `GitScreen` (per-file `git/diff`, branch switch with
+  auto-stash, smart PR dialog, undo-commit, `git/revert`, `git/deleteBranch`,
+  `git/removeWorktree`, etc.).
+- **FCM push** (gated) — Android LIVE; deep-link to conversation; **personalized
+  copy** + foreground suppression; per-channel notification preferences (Replies /
+  Errors).
+- **Settings** — theme mode (System/Light/Dark) + a **custom-theme library** with a
+  dedicated Theme Manager (single/dual-brightness themes, live-preview grid,
+  multi-select bulk delete/export, JSON import/export); language (EN/ES, follows
+  device or picker); notification preferences.
+- **i18n** — full app translated (EN + ES) via `flutter gen-l10n`.
+
+iOS is **not yet built** (the Podfile is generated on the first macOS build) and is
+blocked on the Apple assets in [`FOR-HUMAN.md`](FOR-HUMAN.md). Everything still
+pending is below.
 
 ## FOR-DEV: keep the R8 keep rules complete (release minification is ON)
 

@@ -1,5 +1,10 @@
 # Agent hooks — precise agent states
 
+![States](https://img.shields.io/badge/states-working_%7C_blocked_%7C_waiting_%7C_done-2ea44f?style=for-the-badge)
+![Server](https://img.shields.io/badge/hook_server-127.0.0.1_(loopback)-0a0a0a?style=for-the-badge)
+![Claude](https://img.shields.io/badge/Claude_Code-auto--installed-D97757?style=for-the-badge)
+![Others](https://img.shields.io/badge/other_agents-generic_wrapper-blue?style=for-the-badge)
+
 The ADE infers a coarse **working / idle** state from terminal output with no
 setup. To get **precise** states — `working`, `blocked`, `waiting`, `done` — an
 agent must actively report them to the ADE's local **hook server** (Layer 1 of

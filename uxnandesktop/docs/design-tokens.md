@@ -1,5 +1,8 @@
 # Desktop — design tokens (sizing & emphasis)
 
+![Source](https://img.shields.io/badge/tokens-src%2Flib%2Fdesign.ts-blue?style=for-the-badge)
+![Style](https://img.shields.io/badge/Tailwind-class_strings_by_role-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white)
+
 A small, reusable scale that keeps the UI visually consistent and lets us tune
 density from one place. The tokens are Tailwind class strings grouped by **role**
 in [`src/lib/design.ts`](../src/lib/design.ts); apply them with `cn(...)`.

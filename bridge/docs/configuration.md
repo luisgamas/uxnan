@@ -1,5 +1,8 @@
 # Bridge — configuration
 
+![Config](https://img.shields.io/badge/file-~%2F.uxnan%2Fdaemon--config.json-0a0a0a?style=for-the-badge&logo=json&logoColor=white)
+![Optional](https://img.shields.io/badge/every_field-has_a_default-2ea44f?style=for-the-badge)
+
 The daemon reads `~/.uxnan/daemon-config.json`. Every field has a default, so the
 file is optional; create it to override. Defaults live in
 [`../src/daemon-config.ts`](../src/daemon-config.ts).
@@ -9,7 +12,7 @@ file is optional; create it to override. Defaults live in
 | Field | Default | Purpose |
 |---|---|---|
 | `relayUrl` | built-in default (placeholder) | WebSocket URL of the relay (remote/off-LAN fallback). The built-in default is a **placeholder** — set this to **your own** self-hosted relay's `wss://…` URL *before* you flip `relayEnabled`, so turning the relay on is a one-line change with nothing else to wire. |
-| `relayEnabled` | `false` | **Off by default** — the bridge is LAN/Tailscale-direct (no hosting) and the pairing QR carries only the direct `hosts`. The relay is **optional and self-hosted**: pre-set `relayUrl` to your relay, then flip this to `true` and re-pair (or regenerate the QR) — the QR then carries your `relay` as a fallback after the direct `hosts`. Needed only for off-LAN access without a mesh VPN, and for **background push** (FCM). See [`connectivity.md`](./connectivity.md), [`../../relay/docs/deploy.md`](../../relay/docs/deploy.md) and [`../../relay/docs/push-notifications.md`](../../relay/docs/push-notifications.md). |
+| `relayEnabled` | `false` | **Off by default** — the bridge is LAN/Tailscale-direct (no hosting) and the pairing QR carries only the direct `hosts`. The relay is **optional and self-hosted**: pre-set `relayUrl` to your relay, then flip this to `true` and re-pair (or regenerate the QR) — the QR then carries your `relay` as a fallback after the direct `hosts`. Needed only for off-LAN access without a mesh VPN, and for **background push** (FCM). See [`connectivity.md`](./connectivity.md), [`push-notifications.md`](./push-notifications.md) and [`../../relay/docs/deploy.md`](../../relay/docs/deploy.md). |
 | `lanEnabled` | `true` | Serve the LAN WebSocket so the phone can connect directly. Its non-internal IPv4s (LAN + Tailscale `100.x`) are advertised as `hosts` in the pairing QR. |
 | `lanPort` | built-in default | LAN server port. |
 | `mdnsEnabled` | `true` | Advertise the bridge on the LAN via mDNS/Bonjour (`_uxnan._tcp`) so the phone can **discover** it for manual-code pairing without typing the host. Effective only when `lanEnabled`. Best-effort — a failed bind (UDP 5353 busy) degrades silently; pairing still works by QR or by typing the host. |
@@ -27,15 +30,18 @@ file is optional; create it to override. Defaults live in
 
 ### Per-agent overrides (`agents.<id>`)
 
-`<id>` is one of `opencode`, `claude-code`, `codex`.
+`<id>` is one of the wired agent ids: `opencode`, `claude-code`, `codex`,
+`gemini-cli`, `pi-agent`. These are the canonical `AgentId` values — note
+`gemini-cli` and `pi-agent` (not `gemini` / `pi`). The same id strings are used
+for `defaultAgent` and `projectAgents[].agentId`.
 
 | Field | Purpose |
 |---|---|
 | `binaryPath` | Absolute path to the agent CLI (else auto-resolved). |
 | `model` | Default model for that agent (an alias like `opus`, or an exact id). |
-| `models` | Extra explicit models to show in the picker **alongside** the ones the agent reports itself. Each entry is a bare id string or `{ id, displayName?, description? }`. For **Claude Code** this pins concrete versions (e.g. `claude-opus-4-7`) next to the auto-updating `opus`/`sonnet`/`haiku` aliases — see [agents.md](./agents.md#claude-code-models-latest-aliases--pinned-versions). Ignored by agents that enumerate their own models (OpenCode, Codex). |
-| `permissionMode` | Headless posture for agents that gate tools: `acceptEdits` (default — edits auto-apply), `default` (read-only/no-edit), `bypassPermissions` (full autonomy). Maps to each CLI's flag (Claude `--permission-mode`/`--dangerously-skip-permissions`; Codex `-s workspace-write`/`read-only`/`--dangerously-bypass-approvals-and-sandbox`). |
-| `interactiveApprovals` | **Claude Code only**, opt-in (default false; requires `lanEnabled`). When true, every tool the agent runs prompts you **on the phone** (Approve / Reject) before it executes — the bridge injects a `PreToolUse` hook that holds the tool until you answer (5-min timeout → deny). Overrides `permissionMode` for Claude (it forces `--permission-mode default` so the hook is the gate). Leave it off for unattended runs. |
+| `models` | Extra explicit models to show in the picker **alongside** the ones the agent reports itself. Each entry is a bare id string or `{ id, displayName?, description? }`. For **Claude Code** this pins concrete versions (e.g. `claude-opus-4-7`) next to the auto-updating `opus`/`sonnet`/`haiku` aliases — see [agents.md](./agents.md#claude-code-models-latest-aliases--pinned-versions). Currently consumed only by the Claude Code adapter; ignored by agents that enumerate their own models (OpenCode, Codex, pi, Gemini CLI). |
+| `permissionMode` | Headless posture for agents that gate tools: `acceptEdits` (default — edits auto-apply), `default` (read-only/no-edit), `bypassPermissions` (full autonomy). Mapped to each CLI's own flags — Claude (`--permission-mode` / `--dangerously-skip-permissions`), Codex (`-s workspace-write` / `read-only` / `--dangerously-bypass-approvals-and-sandbox`), Gemini (`--approval-mode auto_edit` / `plan` / `yolo`), and pi (its built-in tool posture / `--tools` / `--approve`). OpenCode does not gate tools, so it ignores this field. |
+| `interactiveApprovals` | Opt-in interactive tool approvals for **Claude Code and Gemini CLI** (default false; requires `lanEnabled`). When true, every tool the agent runs prompts you **on the phone** (Approve / Reject) before it executes: the bridge injects a `PreToolUse` hook for Claude (and a `BeforeTool` hook for Gemini) that holds the tool until you answer (5-min timeout → deny). For Claude it overrides `permissionMode` (forcing `--permission-mode default` so the hook is the gate). Leave it off for unattended runs. |
 
 ### Per-project agent/model pins (`projectAgents`)
 
@@ -47,7 +53,7 @@ optional default model for it.
 | Field | Purpose |
 |---|---|
 | `cwd` | Absolute project directory the pin applies to (matched by resolved path). |
-| `agentId` | Agent the project defaults to (`opencode` / `claude-code` / `codex`). |
+| `agentId` | Agent the project defaults to (`opencode` / `claude-code` / `codex` / `gemini-cli` / `pi-agent`). |
 | `model` | Optional default model for that agent. |
 
 When the phone starts a thread (`thread/start`) **without** an explicit

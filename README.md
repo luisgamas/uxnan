@@ -4,108 +4,151 @@
 ![Monorepo](https://img.shields.io/badge/MONOREPO-5_PROJECTS-blue?style=for-the-badge)
 ![E2EE](https://img.shields.io/badge/E2EE-AES--256--GCM-0a0a0a?style=for-the-badge&logo=letsencrypt&logoColor=white)
 ![Platforms](https://img.shields.io/badge/PLATFORMS-Android_%7C_iOS_%7C_Windows_%7C_macOS_%7C_Linux-lightgrey?style=for-the-badge)
+![License](https://img.shields.io/badge/LICENSE-MPL--2.0-2ea44f?style=for-the-badge)
 
 > [Leer en español](README.es.md)
 
-Uxnan (pronounced /uʃ.nan/) is a toolkit I'm building to solve a very specific problem I have as a developer: **controlling AI coding agents from anywhere, without my hardware becoming the bottleneck.**
+Uxnan (pronounced /uʃ.nan/) is a toolkit I'm building to solve a very specific
+problem I have as a developer: **controlling AI coding agents from anywhere,
+without my hardware becoming the bottleneck.**
 
 ## Why this project exists
 
-I work with CLI coding agents (Claude Code, Codex CLI, OpenCode, Gemini CLI, pi-agent) every day. They're extraordinary tools, but the current workflow has real friction:
+I work with CLI coding agents (Claude Code, Codex CLI, OpenCode, Gemini CLI,
+pi-agent) every day. They're extraordinary tools, but the current workflow has
+real friction:
 
-- **When I step away from my PC**, I lose all visibility into what the agent is doing. I can't check its progress, approve changes, or send new instructions from my phone.
-- **Existing desktop solutions are excellent**, but many assume high-end hardware. On my current setup, running a heavy IDE + multiple agents + an Electron environment consumes more resources than I can afford.
-- **There's no provider-agnostic mobile tool** that works with any agent, not just one in particular.
+- **When I step away from my PC**, I lose all visibility into what the agent is
+  doing. I can't check its progress, approve changes, or send new instructions
+  from my phone.
+- **Existing desktop solutions are excellent**, but many assume high-end
+  hardware. On my current setup, running a heavy IDE + multiple agents + an
+  Electron environment consumes more resources than I can afford.
+- **There's no provider-agnostic mobile tool** that works with any agent, not
+  just one in particular.
 
-Uxnan was born to solve exactly that. It's not an agent — it's the **control plane** for the agents I already use.
+Uxnan was born to solve exactly that. It's not an agent — it's the **control
+plane** for the agents I already use.
+
+## How it fits together
+
+The phone never talks to a cloud middleman in the clear. It pairs with the
+**bridge** running on your PC and connects to it **directly first** — over your
+LAN or your Tailscale network — and only falls back to an optional, self-hosted
+**relay** when you're away from home. Whatever the path, every byte is
+end-to-end encrypted; the relay only ever sees sealed envelopes.
+
+```text
+   📱 uxnanmobile                  💻 your PC
+   (Flutter app)                   ┌──────────────────────────────┐
+        │                          │  bridge  ──▶  agent CLIs      │
+        │   E2EE (X25519 +         │  (daemon)     claude · codex  │
+        ├──── Ed25519 + ──────────▶│               opencode · pi   │
+        │     AES-256-GCM)         │               gemini          │
+        │                          └──────────────────────────────┘
+        │                                      ▲
+        └──── relay (optional, ────────────────┘
+              self-hosted, off-LAN only —
+              forwards sealed envelopes, sees nothing)
+
+   uxnandesktop — a separate, lightweight desktop app to run & review the same
+   agents on the PC itself. shared — the contracts both ends speak.
+```
 
 ## What each component does
 
-### `uxnanmobile/` — Mobile App (Flutter, Android + iOS)
+Uxnan is a single repository with five projects. Each one has its own README with
+the full story; here's the short version and where to go next.
+
+### 📱 [`uxnanmobile/`](uxnanmobile/README.md) — the mobile app
 
 ![Flutter](https://img.shields.io/badge/Flutter-02569B?style=for-the-badge&logo=flutter&logoColor=white)
 ![Dart](https://img.shields.io/badge/Dart-0175C2?style=for-the-badge&logo=dart&logoColor=white)
 ![Android](https://img.shields.io/badge/Android-3DDC84?style=for-the-badge&logo=android&logoColor=white)
 ![iOS](https://img.shields.io/badge/iOS-000000?style=for-the-badge&logo=apple&logoColor=white)
-![SQLite](https://img.shields.io/badge/SQLite-003B57?style=for-the-badge&logo=sqlite&logoColor=white)
-![Material Design](https://img.shields.io/badge/Material_Design_3-757575?style=for-the-badge&logo=materialdesign&logoColor=white)
 
-A Flutter app that works as a remote control for agents running on my PC. From my phone I can watch conversations in real time, send instructions, attach images, dictate via voice, commit+push, review diffs, and receive notifications when an agent finishes a task.
+A Flutter app (Android + iOS) that turns your phone into a remote control for the
+agents on your PC. Watch conversations stream in real time, send instructions,
+attach images, dictate by voice, review diffs, commit and push, and get a
+notification the moment an agent finishes — all over the encrypted, bridge-first
+channel.
 
-The connection is end-to-end encrypted (E2EE) and is **bridge-first**: the phone tries the bridge's direct LAN/Tailscale addresses first, and falls back to a self-hosted relay only for off-LAN access. The relay — when used — only ever sees opaque E2EE envelopes.
+→ **[Read the mobile app README](uxnanmobile/README.md)**
 
-> Full technical specification: [`architecture/`](architecture/00-index.md)
-
-### `uxnandesktop/` — Desktop App (ADE, Tauri 2 + Rust + Svelte 5)
+### 🖥️ [`uxnandesktop/`](uxnandesktop/README.md) — the desktop app
 
 ![Rust](https://img.shields.io/badge/Rust-000000?style=for-the-badge&logo=rust&logoColor=white)
 ![Tauri](https://img.shields.io/badge/Tauri_2-FFC131?style=for-the-badge&logo=tauri&logoColor=000000)
 ![Svelte](https://img.shields.io/badge/Svelte_5-FF3E00?style=for-the-badge&logo=svelte&logoColor=white)
-![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white)
 ![Windows](https://img.shields.io/badge/Windows-0078D6?style=for-the-badge&logo=windows&logoColor=white)
 ![macOS](https://img.shields.io/badge/macOS-000000?style=for-the-badge&logo=apple&logoColor=white)
 ![Linux](https://img.shields.io/badge/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=white)
 
-A lightweight **Agent Development Environment** built with Tauri 2, Rust, and Svelte 5. Unlike Electron-based alternatives that consume 200-500 MB of RAM just by existing, this ADE uses the native OS webview and targets 30-100 MB of RAM.
+A lightweight **Agent Development Environment** built with Tauri 2, Rust and
+Svelte 5. Unlike Electron-based alternatives that consume 200-500 MB of RAM just
+by existing, this ADE uses the OS's native webview and targets 30-100 MB of RAM.
 
-The core idea: each task lives in its own git worktree with its own agent running in an independent pseudoterminal. I can have 5 agents working in parallel without one blocking another, switch between them with a click (no `git stash`, no `git checkout`), and review each one's changes in an integrated diff viewer (CodeMirror 6, unified + side-by-side, hunk-level staging) before committing.
+The core idea: each task lives in its own git worktree with its own agent running
+in an independent pseudoterminal. I can have 5 agents working in parallel without
+one blocking another, switch between them with a click (no `git stash`, no `git
+checkout`), and review each one's changes in an integrated diff viewer
+(CodeMirror 6, unified + side-by-side, hunk-level staging) before committing.
 
-It doesn't integrate any agent's SDK. It's terminal-centric: any CLI agent works without modification. **Phases 0–5 + the cross-cutting track (S) are complete** — the ADE is alpha-functional as a standalone app. The only remaining phase is **Phase 6 (embedded bridge / mobile pairing)**, which is *optional for standalone use*.
+It doesn't integrate any agent's SDK. It's terminal-centric: any CLI agent works
+without modification.
 
-> Full technical specification: [`uxnandesktop/architecture/`](uxnandesktop/architecture/00-index.md)
+→ **[Read the desktop app README](uxnandesktop/README.md)**
 
-### `bridge/` — Bridge Daemon (Node.js, runs on the PC)
+### 🌉 [`bridge/`](bridge/README.md) — the daemon on your PC
 
 ![Node.js](https://img.shields.io/badge/Node.js-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)
 ![JSON RPC](https://img.shields.io/badge/JSON--RPC_2.0-000000?style=for-the-badge&logo=json&logoColor=white)
 ![WebSocket](https://img.shields.io/badge/WebSocket-010101?style=for-the-badge&logo=socketdotio&logoColor=white)
 
-The **local control-plane daemon** that connects the mobile app to local agents. It implements the bridge side of the E2EE protocol (X25519 + HKDF + Ed25519 + AES-256-GCM), spawns each agent's **official local CLI** over stdio (no provider API / SDK / keys), and exposes a unified JSON-RPC interface (60 methods + 8 streaming notifications) to the phone.
+The heart of the product. A small Node.js daemon that runs on your PC, holds the
+end-to-end-encrypted connection to your phone (E2EE protocol: X25519 + HKDF +
+Ed25519 + AES-256-GCM), and drives the agents on your behalf by launching each
+one's **official local CLI** exactly as you would in a terminal. No provider API,
+no SDK, no keys: every agent runs under the account you already signed it in
+with.
 
-It works in two modes:
-- **Standalone** (default): installed separately for those who only want mobile remote control without installing the desktop app.
-- **Embedded**: the desktop app integrates it as a child process (Phase 6 of `uxnandesktop/`, *optional for standalone*).
+**Real agents wired:** OpenCode, Claude Code, Codex, pi, Gemini CLI.
 
-**Real agents wired:** OpenCode, Claude Code, Codex, pi, Gemini CLI. Each runs the official CLI in the thread's cwd with `shell:false`; the bridge parses its native stream format and emits structured `stream/content/block` events (command / diff / tool) plus `stream/thinking/delta` (reasoning). **Aider** is the only one not yet wired (recipe in `bridge/FOR-DEV.md`).
+→ **[Read the bridge README](bridge/README.md)**
 
-> Bridge specification: [`architecture/02a-system-architecture.md`](architecture/02a-system-architecture.md) (section 5.8)
-> Desktop integration: [`uxnandesktop/architecture/02e-bridge-integration.md`](uxnandesktop/architecture/02e-bridge-integration.md)
-
-### `relay/` — Relay Server (Node.js, **optional / self-hosted**)
+### 🔁 [`relay/`](relay/README.md) — the optional off-LAN hop
 
 ![Node.js](https://img.shields.io/badge/Node.js-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)
 ![E2EE](https://img.shields.io/badge/E2EE_OPAQUE-0a0a0a?style=for-the-badge&logo=letsencrypt&logoColor=white)
 
-A stateless WebSocket relay that forwards **opaque E2EE envelopes** between the phone and the bridge when they're not on the same LAN/Tailscale network. It only ever sees encrypted frames — never plaintext, keys, code, or diffs.
+A tiny, stateless WebSocket relay you can self-host for when your phone and PC
+aren't on the same network. It forwards **sealed E2EE envelopes** and nothing
+else — it never sees your code, your diffs, your keys, or a line of plaintext.
+Most of the time you won't need it at all.
 
-The relay is now **optional and self-hosted**: the product's primary paths are **LAN-direct** and **Tailscale-direct** (zero hosting, zero credentials). The relay is the hosted off-LAN fallback for users who want to run their own. Push notifications are sent **by the bridge directly** (FCM HTTP v1, lazy `firebase-admin`) and work on any transport; the relay's `/push/*` endpoints stay as a hosted fallback.
+→ **[Read the relay README](relay/README.md)**
 
-> Relay specification: [`architecture/02a-system-architecture.md`](architecture/02a-system-architecture.md) (section 5.10)
-
-### `shared/` — Shared Contracts (TypeScript, ESM, Node >=18)
+### 📦 [`shared/`](shared/README.md) — the common language
 
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
 ![JSON Schema](https://img.shields.io/badge/JSON_Schema-000000?style=for-the-badge&logo=json&logoColor=white)
 
-The single source of truth for **JSON-RPC + E2EE contracts** consumed by the bridge and the relay (the mobile app keeps hand-synced Dart equivalents). Authoritative exports:
+The single source of truth for the **JSON-RPC + E2EE contracts** that every part
+of Uxnan speaks. The bridge and relay consume it directly; the mobile app keeps
+hand-synced Dart equivalents. If two components ever need to agree on a message
+shape, they agree here.
 
-- **JSON-RPC** envelope types + constructors, error codes (`-32000..-32008` + standard), typed method registry (compile-time-locked to `METHOD_NAMES`).
-- **E2EE** handshake messages, transcript builder, `SecureEnvelope`, `PairingPayload` v2 (with `hosts: string[]` for direct addressing).
-- **Domain models** (thread/turn/message, git, workspace, project, auth, session, approval) and **agent contracts** (`IAgentAdapter`, `AgentCapabilities`, `AgentConfig`).
-- **Validation**: Ajv-backed validators for requests, responses, E2EE envelopes, pairing payloads, push payloads.
+- **JSON-RPC**: envelope types + constructors, error codes (`-32000..-32008` +
+  standard), typed method registry (build-time-locked to `METHOD_NAMES`).
+- **E2EE**: handshake messages, transcript builder, `SecureEnvelope`,
+  `PairingPayload` v2 (with `hosts: string[]` for direct addressing).
+- **Domain models** (thread/turn/message, git, workspace, project, auth, session,
+  approval) and **agent contracts** (`IAgentAdapter`, `AgentCapabilities`,
+  `AgentConfig`).
+- **Validation**: Ajv-backed validators for requests, responses, E2EE envelopes,
+  pairing payloads and push payloads.
 
-> JSON-RPC contracts: [`architecture/02b-contracts-and-requirements.md`](architecture/02b-contracts-and-requirements.md) (section 1)
-
-## Stack
-
-| Component | Technology |
-|---|---|
-| Mobile app | Flutter / Dart, Riverpod 3.x (manual), Material Design 3 (+ Neural Expressive), drift (SQLite) |
-| Desktop app | Rust, Tauri 2, Svelte 5 (Runes), shadcn-svelte, Tailwind v4, xterm.js, CodeMirror 6 |
-| Bridge | Node.js (TypeScript, ESM, Node >=18) |
-| Relay | Node.js (TypeScript, ESM, Node >=18) — optional / self-hosted |
-| Shared contracts | TypeScript (ESM, Node >=18), Ajv validators |
-| Security | X25519 + Ed25519 + AES-256-GCM + HKDF-SHA256 |
+→ **[Read the shared contracts README](shared/README.md)**
 
 ## Security
 
@@ -114,41 +157,84 @@ The single source of truth for **JSON-RPC + E2EE contracts** consumed by the bri
 ![AES-256-GCM](https://img.shields.io/badge/AES--256--GCM-Encryption-2ea44f?style=for-the-badge)
 ![HKDF-SHA256](https://img.shields.io/badge/HKDF--SHA256-Key_Derivation-2ea44f?style=for-the-badge)
 
-All communication between the mobile app and the PC goes through a real E2EE channel. The relay — when used — is transport-only and never sees plaintext. Session keys are derived via X25519 ephemeral key exchange, authenticated with Ed25519 identity signatures, and used for AES-256-GCM symmetric encryption. Bridge payloads are sanitized: `auth/status` is per-agent, never returns tokens, and detects login only by the existence of well-known auth files.
+Here privacy isn't a feature, it's the foundation. Everything that travels
+between the phone and the PC goes through a real end-to-end encrypted channel:
+session keys come from an X25519 ephemeral exchange, identities are authenticated
+with Ed25519 signatures, and traffic is sealed with AES-256-GCM. The relay, when
+it's even involved, is pure transport and never holds a key. Bridge responses are
+sanitized too — sign-in status, for example, is reported per agent and **never**
+returns a token.
 
-## Current status
+If you find a vulnerability, please don't open a public issue — see
+[`SECURITY.md`](SECURITY.md).
+
+## Status
 
 ![Phase](https://img.shields.io/badge/PHASE-ALPHA_(MVP_in_progress)-orange?style=for-the-badge)
 
-The mobile MVP runs end-to-end against the bridge with **5 real agents** (OpenCode, Claude Code, Codex, pi, Gemini CLI). The desktop ADE is alpha-functional as a standalone app. Per-component status:
+Uxnan is in **alpha**, and the core loop already works end to end. From the phone
+I can pair with the bridge and hold a real, streaming conversation with **five
+agents** — OpenCode, Claude Code, Codex, pi and Gemini CLI — over the encrypted
+channel. The desktop app is alpha-functional on its own. Push notifications are
+live on Android (iOS depends on Apple assets).
 
-| Component | Status |
-|---|---|
-| `uxnanmobile/` | **MVP wired (Android alpha-ready).** QR pairing + manual-code pairing + trusted reconnect, E2EE transport (LAN/Tailscale-direct + relay fallback), streaming conversation with **structured agent turns** (work log, changed files, thinking — all interleaved), per-PC threads with **connection-targeted multi-PC status**, **structured model picker** (readable names, default badge, alias resolved version, per-model run-option knobs), **persisted context-usage meter** (%, gated on `reportsContextUsage`), **voice->text dictation**, **image attachments** (photo library + camera), **stop-the-turn** mid-run, **per-agent sign-in status** (`auth/status`), **interactive approval** (Approve / Reject / "always allow this session"), **Remove device**, per-thread actions (rename / archive / delete / copy id), **folder browser** (`workspace/browseDirs`), **relay-vs-direct transport indicator**, **notification deep-link**, full **Git screen** (per-file diff, branch switch with auto-stash, smart PR, undo-commit), settings + notification preferences + scroll-on-send, **personalized push copy** + foreground suppression, FCM push registration (gated). iOS pending FOR-HUMAN assets. |
-| `bridge/` | **Implemented.** E2EE transport (LAN `http+ws` + optional relay), **5 real agents wired** (OpenCode, Claude Code, Codex, pi, Gemini CLI) + per-thread/project agent+model, **structured `AgentModel[]` discovery**, **per-turn token usage**, **thinking + structured commands/tools/diffs** for every agent, **interactive approval intake** (Echo demo + Claude Code opt-in `PreToolUse` hook), **image attachments** (CLI-agnostic file-path), **plug-and-play folder browsing** (`workspace/browseDirs`), **per-project agent/model pins**, **sanitized per-agent `auth/status`**, git + workspace + **checkpoints with true worktree restore + retention pruning**, **on-disk `turn/list` history fallback** (Claude/Codex/OpenCode/pi JSONL/JSON stores), **direct FCM push from the bridge** (persisted, per-phone target, prune-on-untrust), **manual-code pairing** (`GET /pair/resolve?code=`) + **mDNS discovery** (`_uxnan._tcp.local`), autostart per OS, file logging. **Aider** is the last planned agent (FOR-DEV). |
-| `relay/` | **Implemented — now OPTIONAL / self-hosted.** E2EE envelope relay by `sessionId`, per-IP rate limiting, peer-close + stale-socket handling, **CSWSH `Origin` check on upgrades**, push endpoints (`/push/register|notify`, FCM, gated on creds) with **atomic state persistence** to `~/.uxnan/relay-state.json` (token registry + dedupe window with TTL 7d + cap 10k) as a **fallback** (the bridge is the primary push path). |
-| `shared/` | **Implemented.** JSON-RPC + E2EE contracts, **60 methods** + 8 streaming notifications, Ajv validators, `PairingPayload` v2 (relay optional + hosts), per-model run-option knobs, image attachments, interactive approval. |
-| `uxnandesktop/` | **Alpha-functional (standalone).** Tauri 2 + Rust + Svelte 5 ADE. **Phases 0-5 + cross-cutting (S) complete.** Three-panel resizable shell, atomic JSON persistence (5 rotating backups + sequential migrations), PTY terminals (xterm WebGL + DOM fallback) with tabs + nested splits + drag-reorder/move tabs across regions + `Ctrl+Tab` MRU + a backend output ring buffer + Kitty/CSI-u keyboard protocol, git worktrees with per-worktree terminal workspaces, git status/diff/stage/commit/push/pull (3s focus-paused watcher, CodeMirror 6 diff viewer, hunk-level staging), **Layer 1 HTTP hook server** (axum: precise `working/blocked/waiting/done`, persistent cache) + Layer 2 terminal-title (OSC) + Layer 3 process-tree, native idle notifications, custom agent logos, per-worktree agent override, full EN/ES i18n, design tokens, agents registry + manual + auto-launch, worktree palette (Ctrl/Cmd+P), virtualized lists, opt-in keep-awake (Windows). Phase 6 (embedded bridge / mobile pairing) is the only remaining phase, *optional for standalone use*. |
+Here's the quick snapshot; the detailed, always-current state for each project
+lives in its own `FOR-DEV.md`:
 
-**Push notifications** are code-complete and **Android is live**; iOS delivery is
-pending an APNs key (macOS + Apple Developer). **Push is sent directly by the
-bridge** (FCM HTTP v1) on any transport — direct LAN, Tailscale, or relay — so
-it works without a hosted relay. The relay's `/push/*` endpoints remain as an
-optional hosted fallback.
+| Project | Where it stands | Details |
+|---|---|---|
+| [`uxnanmobile/`](uxnanmobile/README.md) | MVP wired, Android alpha-ready; iOS pending Apple assets | [status](uxnanmobile/FOR-DEV.md) |
+| [`uxnandesktop/`](uxnandesktop/README.md) | Alpha-functional as a standalone app | [status](uxnandesktop/FOR-DEV.md) |
+| [`bridge/`](bridge/README.md) | Implemented; 5 real agents wired | [status](bridge/FOR-DEV.md) |
+| [`relay/`](relay/README.md) | Implemented; optional / self-hosted | [status](relay/FOR-DEV.md) |
+| [`shared/`](shared/README.md) | Implemented; contracts locked in CI | [README](shared/README.md) |
 
-**iOS** is not yet alpha-ready: the Podfile is generated on the first macOS
-build, the APNs key must be uploaded to Firebase, and `Info.plist` usage
-strings (camera, mic, local network, photo library) are pending — see
-`uxnanmobile/FOR-HUMAN.md`.
+This is early software, with no users and no production data yet, so things can
+still change where a better idea justifies it.
 
-Per-component progress lives in each `CHANGELOG.md`; pending work in each
-`FOR-DEV.md`. Per-component docs (install, config, agents, testing, deploy)
-live in [`bridge/docs/`](bridge/docs/), [`relay/docs/`](relay/docs/),
-[`uxnanmobile/docs/`](uxnanmobile/docs/), and
-[`uxnandesktop/docs/`](uxnandesktop/docs/). The project applies
-[`AGENTS.md` -> "Spec drift control"](AGENTS.md): every `DONE` in any
-`FOR-DEV.md` is reflected in `architecture/` in the same change set.
+## Support the project
+
+Uxnan is free and open source, built in the open in my own time. If it's useful
+to you and you'd like to help it keep moving, a coffee goes a long way — and it's
+genuinely appreciated. 🙏
+
+<p align="center">
+  <a href="https://sink.gamas.workers.dev/buymeacoffee">
+    <img src="https://raw.githubusercontent.com/luisgamas/buttons-design/main/buy_me_a_coffe/buy_me_a_coffe_fill.png" width="200" alt="Buy Me a Coffee" />
+  </a>
+  <a href="https://sink.gamas.workers.dev/paypal-donations">
+    <img src="https://raw.githubusercontent.com/luisgamas/buttons-design/main/paypal/paypal_fill.png" width="200" alt="Donate via PayPal" />
+  </a>
+  <a href="https://sink.gamas.workers.dev/github-sponsor">
+    <img src="https://raw.githubusercontent.com/luisgamas/buttons-design/main/github_sponsor/github_sponsor_fill.png" width="200" alt="Sponsor on GitHub" />
+  </a>
+</p>
+
+## For contributors & developers
+
+If you want to build, run, or contribute to Uxnan, everything you need lives off
+the README so the documentation above stays focused:
+
+- **[`CONTRIBUTING.md`](CONTRIBUTING.md)** — how to set up, the quality gates, and
+  how to open a good PR.
+- **[`AGENTS.md`](AGENTS.md)** — the single source of truth for conventions,
+  architecture rules, and how the docs stay in sync. Read it before any
+  non-trivial change.
+- **Per-project docs** — each project keeps task-focused guides in its own
+  `docs/` and a `CHANGELOG.md`: [`bridge/docs/`](bridge/docs/) ·
+  [`relay/docs/`](relay/docs/) · [`uxnanmobile/docs/`](uxnanmobile/docs/) ·
+  [`uxnandesktop/docs/`](uxnandesktop/docs/).
+- **The specification** — the architecture documents are the source of truth for
+  cross-component behavior: [`architecture/`](architecture/00-index.md) (mobile,
+  bridge, relay, shared) and
+  [`uxnandesktop/architecture/`](uxnandesktop/architecture/00-index.md)
+  (desktop).
+- **Releases & versioning** — [`VERSIONS.md`](VERSIONS.md).
+
+## License
+
+Uxnan is released under the [Mozilla Public License 2.0](LICENSE).
 
 ---
 
-*Uxnan — a name with no relation to or derivation from any existing product.*
+*Uxnan — a name with no relation to, or derivation from, any existing product.*

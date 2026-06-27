@@ -1,5 +1,10 @@
 # Desktop — development & running in debug
 
+![Node.js](https://img.shields.io/badge/Node.js-%E2%89%A518-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)
+![Rust](https://img.shields.io/badge/Rust-stable-000000?style=for-the-badge&logo=rust&logoColor=white)
+![Package manager](https://img.shields.io/badge/use-npm,_not_pnpm-CB3837?style=for-the-badge&logo=npm&logoColor=white)
+![Dev server](https://img.shields.io/badge/Vite-localhost%3A1420-646CFF?style=for-the-badge&logo=vite&logoColor=white)
+
 How to set up, run, and iterate on Uxnan Desktop locally. For release builds see
 [`build.md`](build.md); for the verification gates see [`testing.md`](testing.md).
 
@@ -66,7 +71,7 @@ npm run check:watch   # re-run on change
 
 ## Project layout (where things live)
 
-```
+```text
 uxnandesktop/
 ├── src/                      # SvelteKit frontend (SPA)
 │   ├── app.css               # Tailwind v4 + shadcn-svelte tokens

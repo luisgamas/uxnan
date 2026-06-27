@@ -315,13 +315,32 @@ Match the change to the docs it touches (a single change often hits several rows
 | Behavior / API / a feature in one component | that component's **`CHANGELOG.md`** (`[Unreleased]`, [Keep a Changelog](https://keepachangelog.com/)) — **always, without exception** — plus its **`README.md`** and **`docs/`** if how it's installed / configured / used / run / tested / connected changed |
 | A cross-component contract (a `shared/` JSON-RPC method, E2EE message, notification, or model field) | the **`shared/`** types + validators, **`architecture/02a`/`02b`**, and the **`CHANGELOG.md` of every consumer** you touched this cycle (see *Cross-monorepo* below) |
 | Direction / an architecture decision (even spec-only, no code) | the affected **`architecture/`** page(s) **and** the executive summary at the top of that doc — see **§4 Spec drift control** |
-| Implementation state (a phase / feature flips planned → done, or done → reworked) | the matching **`architecture/00-index.md`** / **`04-technical-reference.md`** status table |
-| Finished a deferred item (100% + validated) | **remove** it from `FOR-DEV.md` / `FOR-HUMAN.md` — see *completion lifecycle* below |
+| Implementation state in a component (a feature / phase flips planned → done, or done → reworked) | that component's **`FOR-DEV.md` `## Status`** — the home for per-component "what's working today / what's left" (see *Where status lives* below). Also refresh the matching **`architecture/00-index.md`** / **`04-technical-reference.md`** status table when a spec-level phase flips |
+| Finished a deferred item (100% + validated) | **remove** it from `FOR-DEV.md` / `FOR-HUMAN.md` — see *completion lifecycle* below — and fold the now-shipped capability into that `FOR-DEV.md`'s `## Status` |
 | Deferred new work / left a stub / found a missing human asset | **add** a `FOR-DEV.md` / `FOR-HUMAN.md` entry **and** the inline `FOR-DEV:` / `FOR-HUMAN:` marker at its site |
 
 Verify the docs the same way you verify code: re-read what you wrote against the
 real current state (counts, file names, flags, agent lists, paths). A doc that
 cites a number, a file, or a flag that no longer matches the code is drift.
+
+#### Where status lives (README vs FOR-DEV)
+
+Keep the two audiences separate so neither doc rots:
+
+- **`README.md` (per component **and** the root `README.md`/`README.es.md`) is the
+  user-facing front door.** It explains *what the thing is and does* and carries
+  only a **brief, current snapshot** of status — never the exhaustive
+  feature-by-feature inventory. When state changes, update the snapshot only if the
+  one-line summary is now wrong.
+- **`FOR-DEV.md` `## Status` is the developer-facing home for detailed
+  implementation status** — what's working today, what's partial, what's left. This
+  is where the granular "DONE / pending" detail belongs, sitting directly above the
+  pending-work list it contextualizes. Every component's `FOR-DEV.md` opens with a
+  `## Status` section; keep it current as features land (and as items are removed
+  per the *completion lifecycle*).
+- **`architecture/` status tables** stay the spec-level record of which phases /
+  subsystems are built (see §4 Spec drift control). They track the *spec*, not the
+  prose; the per-component lived status is `FOR-DEV.md`.
 
 #### Counts, enumerations & links (easy to miss)
 
@@ -333,12 +352,46 @@ cites a number, a file, or a flag that no longer matches the code is drift.
   `N methods` count in `shared/README.md`, `bridge/README.md`, the root
   `README.md` / `README.es.md`, **and** `architecture/02b` (the `METHOD_NAMES`
   count *and* the method list); new tests bump the `N passing` / `N bridge + …`
-  counts in the affected README(s). Re-derive the number from the code (`grep -c`
-  the registry / `test(`), don't trust the old one.
+  counts wherever they're cited — the affected component's `FOR-DEV.md` `## Status`
+  and any `README.md` / `docs/` page that still quotes a count. Re-derive the number
+  from the code (`grep -c` the registry / `test(`), don't trust the old one.
 - **Never reference a git-ignored / local-only file from a tracked file.** Anything
   in `.git/info/exclude` (e.g. the local `*_MVP.md` snapshots, scratch/runbook
   notes) is the maintainer's local context and won't exist on a fresh clone —
   tracked docs, workflows and config must stand on their own without pointing at it.
+
+#### The docs track the code — re-verify them when the code moves (easy to miss)
+
+`README.md` and especially the `docs/` guides are **not** prose that ages
+gracefully on its own: they hard-code concrete facts pulled straight from the
+source, and each of those facts is a small contract that silently breaks the
+moment the code it mirrors changes. Whenever you touch code that any doc or README
+describes, **re-derive the affected facts from the source in the same change set**
+— don't trust what the doc already says. The facts that have bitten us, with where
+they live:
+
+- **CLI commands, flags & npm scripts** — the `bin`/`scripts` in each
+  `package.json`, the Tauri/Flutter commands. If you rename a script or change a
+  flag, grep the component's `README.md` + `docs/` for it.
+- **Config keys, enum values & identifiers** — field names and defaults in the
+  config type (e.g. `daemon-config.ts`), and **canonical id unions** like
+  `AgentId` (`gemini-cli`/`pi-agent`, *not* `gemini`/`pi`). A doc that lists ids
+  or config fields must match the union/interface exactly.
+- **Env var names, file names & paths** — e.g. `UXNAN_HOOK_URL` / `UXNAN_AGENT_ID`,
+  `~/.uxnan/daemon-config.json`, `~/.uxnan/checkpoints.json`. Copy them from the
+  code, never from memory.
+- **Default values & ports** — e.g. `DEFAULT_LAN_PORT`, `checkpointMaxPerProject`.
+  Quote the constant's real value.
+- **"Which agents / which features" claims** — e.g. "3 adapters wired" or "next
+  agent is X". When an agent or capability lands, the prose that enumerates them
+  (in `docs/agents.md`, `docs/testing.md`, etc.) is part of the same change.
+- **Behavior described in a doc-comment** — a `/** … */` that explains a fallback,
+  a posture, or a scope must match what the code actually does (these drift the
+  fastest, because nothing compiles them against reality).
+
+Same rule as the rest of §2: this verification lands in the **same change set** as
+the code, and a doc/comment that cites a command, key, id, path, value, or
+behavior that no longer matches the source is drift — treat it as a bug.
 
 #### Cross-monorepo functionality (read this twice)
 

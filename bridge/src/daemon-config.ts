@@ -53,10 +53,11 @@ export interface AgentSettings {
    */
   permissionMode?: AgentPermissionMode;
   /**
-   * Opt-in interactive tool approvals (Claude Code only): inject a `PreToolUse`
-   * hook (via `--settings`) so every tool round-trips to the bridge and the user
-   * approves/rejects it on the phone (`turn/send { approvalResponse }`). Requires
-   * `lanEnabled` (the hook calls the bridge's local HTTP endpoint). Default false.
+   * Opt-in interactive tool approvals (Claude Code and Gemini CLI): inject a
+   * pre-tool hook (Claude's `PreToolUse`, Gemini's `BeforeTool`) so every tool
+   * round-trips to the bridge and the user approves/rejects it on the phone
+   * (`turn/send { approvalResponse }`). Requires `lanEnabled` (the hook calls the
+   * bridge's local HTTP endpoint). Default false.
    */
   interactiveApprovals?: boolean;
 }
@@ -105,7 +106,9 @@ export interface DaemonConfig {
    * Absolute base directories the phone may BROWSE under via `workspace/browseDirs`
    * (descend into sub-folders, pick any directory as a thread's cwd) without
    * escaping the root. Empty → falls back to {@link workspaceRoots}, then the
-   * user's home directory. Set this to e.g. your `Documents` folder.
+   * bridge's launch directory (`process.cwd()`) — so an unconfigured install
+   * browses from wherever the bridge was started. Set this to e.g. your
+   * `Documents` folder.
    */
   browseRoots: string[];
   /** Per-agent settings keyed by {@link AgentId}. */

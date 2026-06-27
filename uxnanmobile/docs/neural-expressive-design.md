@@ -1,282 +1,279 @@
-# Guía de Ingeniería de UI — Neural Expressive & Material 3 Expressive para Flutter
-## Sistema de Diseño para la Era de la Inteligencia Artificial · Revisión 2.0
+# UI Engineering Guide — Neural Expressive & Material 3 Expressive for Flutter
+## Design System for the Age of Artificial Intelligence · Revision 2.0
 
-> **Nota de revisión:** Esta versión corrige errores técnicos de la v1.0, incorpora
-> información verificada del redesign real de Gemini (I/O 2026) y de las especificaciones
-> oficiales de M3 Expressive (I/O 2025), y extiende la guía con cobertura completa de
-> breakpoints responsivos (Compact → Extra-Large) y patrones de layout canónicos.
+> **Revision note:** This version corrects technical errors from v1.0, incorporates
+> verified information from the real Gemini redesign (I/O 2026) and from the official
+> M3 Expressive specifications (I/O 2025), and extends the guide with full coverage
+> of responsive breakpoints (Compact → Extra-Large) and canonical layout patterns.
 
 ---
 
-## Índice de Contenido
+## Table of Contents
 
-1. [Introducción y Contexto Real](#1-introducción-y-contexto-real)
-2. [Pilares del Sistema de Diseño](#2-pilares-del-sistema-de-diseño)
-   - [Sistema de Movimiento basado en Física de Resortes](#21-sistema-de-movimiento-basado-en-física-de-resortes)
-   - [Sistema de Formas y Geometría Expresiva](#22-sistema-de-formas-y-geometría-expresiva)
-   - [Sistema Tipográfico](#23-sistema-tipográfico)
-   - [Sistema de Color HCT](#24-sistema-de-color-hct)
-3. [Breakpoints y Clases de Ventana Responsivos](#3-breakpoints-y-clases-de-ventana-responsivos)
-4. [Especificaciones de Componentes](#4-especificaciones-de-componentes)
-   - [Scaffold y Layout Principal](#41-scaffold-y-layout-principal)
+1. [Introduction and Real Context](#1-introduction-and-real-context)
+2. [Pillars of the Design System](#2-pillars-of-the-design-system)
+   - [Spring-Physics-Based Motion System](#21-spring-physics-based-motion-system)
+   - [Shape and Expressive Geometry System](#22-shape-and-expressive-geometry-system)
+   - [Typographic System](#23-typographic-system)
+   - [HCT Color System](#24-hct-color-system)
+3. [Responsive Breakpoints and Window Classes](#3-responsive-breakpoints-and-window-classes)
+4. [Component Specifications](#4-component-specifications)
+   - [Scaffold and Main Layout](#41-scaffold-and-main-layout)
    - [AppBar / Header](#42-appbar--header)
-   - [Campo de Entrada Flotante (Prompt Pill)](#43-campo-de-entrada-flotante-prompt-pill)
+   - [Floating Input Field (Prompt Pill)](#43-floating-input-field-prompt-pill)
    - [Navigation Drawer / Sidebar](#44-navigation-drawer--sidebar)
-   - [Botones Expresivos y Grupos](#45-botones-expresivos-y-grupos)
-   - [Tarjetas y Listas](#46-tarjetas-y-listas)
-   - [Indicadores de Progreso](#47-indicadores-de-progreso)
-   - [Interfaz de Voz Inline](#48-interfaz-de-voz-inline)
-5. [Matriz de Decisión de Componentes](#5-matriz-de-decisión-de-componentes)
-6. [Implementación en Flutter](#6-implementación-en-flutter)
-   - [Tokens de Movimiento M3E](#61-tokens-de-movimiento-m3e)
+   - [Expressive Buttons and Groups](#45-expressive-buttons-and-groups)
+   - [Cards and Lists](#46-cards-and-lists)
+   - [Progress Indicators](#47-progress-indicators)
+   - [Inline Voice Interface](#48-inline-voice-interface)
+5. [Component Decision Matrix](#5-component-decision-matrix)
+6. [Implementation in Flutter](#6-implementation-in-flutter)
+   - [M3E Motion Tokens](#61-m3e-motion-tokens)
    - [Breakpoint Helper](#62-breakpoint-helper)
-   - [Widget: Tarjeta Expresiva con Radios Dinámicos](#63-widget-tarjeta-expresiva-con-radios-dinámicos)
-   - [Widget: Navigation Drawer Responsivo](#64-widget-navigation-drawer-responsivo)
-   - [Widget: Pill Input Flotante](#65-widget-pill-input-flotante)
-   - [Widget: Indicador de Carga Poligonal (Shape Morphing)](#66-widget-indicador-de-carga-poligonal-shape-morphing)
-7. [Gobernanza, Accesibilidad y Rendimiento](#7-gobernanza-accesibilidad-y-rendimiento)
+   - [Widget: Expressive Card with Dynamic Radii](#63-widget-expressive-card-with-dynamic-radii)
+   - [Widget: Responsive Navigation Drawer](#64-widget-responsive-navigation-drawer)
+   - [Widget: Floating Pill Input](#65-widget-floating-pill-input)
+   - [Widget: Polygonal Loading Indicator (Shape Morphing)](#66-widget-polygonal-loading-indicator-shape-morphing)
+7. [Governance, Accessibility, and Performance](#7-governance-accessibility-and-performance)
 
 ---
 
-## 1. Introducción y Contexto Real
+## 1. Introduction and Real Context
 
-### 1.1 Qué es Neural Expressive (y qué NO es)
+### 1.1 What Neural Expressive Is (and What It Is NOT)
 
-**Neural Expressive** es el lenguaje de diseño visual que Google desplegó globalmente el
-**19 de mayo de 2026** en Google I/O, rediseñando de raíz la app de Gemini en Android,
-iOS y web. El vicepresidente de Gemini, Josh Woodward, lo describió como "un lenguaje
-vibrante, dinámico y completamente reimaginado, construido específicamente para la era
-de la IA".
+**Neural Expressive** is the visual design language that Google rolled out globally on
+**May 19, 2026** at Google I/O, fundamentally redesigning the Gemini app on Android,
+iOS, and web. Gemini Vice President Josh Woodward described it as "a vibrant, dynamic,
+and completely reimagined language, built specifically for the age of AI."
 
-Es importante delimitar su alcance real:
+It is important to delimit its real scope:
 
-- ✅ **Es:** Un lenguaje de diseño *específico de Gemini*, construido **sobre** Material 3
-  Expressive (M3E), que adapta sus principios al contexto de interfaces conversacionales con IA.
-- ✅ **Es:** Una filosofía de presentación de información: las respuestas de IA no deben
-  ser "paredes de texto", sino *objetos editoriales diseñados* con jerarquía visual clara.
-- ❌ **No es:** Un sistema independiente de M3E. Es una capa de aplicación encima de M3E.
-- ❌ **No es:** Exclusivamente el efecto de vidrio o gradientes pulsantes. Esos son
-  componentes opcionales de *estado* (procesamiento del modelo); no son la estructura base.
-- ❌ **No es:** Solo estética. Su objetivo principal es **reducción de carga cognitiva** y
-  **localización más rápida de información crítica**.
+- ✅ **It is:** A design language *specific to Gemini*, built **on top of** Material 3
+  Expressive (M3E), which adapts its principles to the context of conversational AI interfaces.
+- ✅ **It is:** A philosophy of information presentation: AI responses should not be
+  "walls of text," but rather *designed editorial objects* with clear visual hierarchy.
+- ❌ **It is not:** A system independent of M3E. It is an application layer on top of M3E.
+- ❌ **It is not:** Exclusively the glass effect or pulsing gradients. Those are optional
+  *state* components (model processing); they are not the base structure.
+- ❌ **It is not:** Only aesthetics. Its primary goal is **reducing cognitive load** and
+  **faster localization of critical information**.
 
-**Material 3 Expressive (M3E)** fue anunciado en Google I/O 2025 y desplegado en
-dispositivos Pixel con Android 16 en septiembre de 2025. Es la evolución (no reemplazo)
-de Material You (M3), con foco en motion física, componentes expresivos y tipografía
-variable. Neural Expressive es la implementación de M3E en el producto Gemini.
+**Material 3 Expressive (M3E)** was announced at Google I/O 2025 and rolled out on
+Pixel devices with Android 16 in September 2025. It is the evolution (not replacement)
+of Material You (M3), with a focus on physics-based motion, expressive components, and
+variable typography. Neural Expressive is the implementation of M3E in the Gemini product.
 
-### 1.2 El Principio Fundamental: Del Chat-Log al Objeto Editorial
+### 1.2 The Fundamental Principle: From Chat-Log to Editorial Object
 
-La premisa central de Neural Expressive: **la respuesta de la IA es un objeto de diseño,
-no un flujo de texto**. Esto implica:
+The central premise of Neural Expressive: **the AI response is a design object,
+not a stream of text**. This implies:
 
-1. La información más crítica ocupa la parte superior con tipografía enfatizada (grande,
-   bold, aislada visualmente).
-2. El contenido de soporte se presenta en tarjetas, líneas de tiempo o visualizaciones
-   inline, no en párrafos planos.
-3. La interfaz *comunica estado*: cuando el modelo procesa, la UI se mueve de forma
-   que refleja esa actividad cognitiva (el "glowbar" pulsante de Gemini es un ejemplo).
+1. The most critical information occupies the top with emphasized typography (large,
+   bold, visually isolated).
+2. Supporting content is presented in cards, timelines, or inline visualizations,
+   not in flat paragraphs.
+3. The interface *communicates state*: when the model processes, the UI moves in a way
+   that reflects that cognitive activity (Gemini's pulsing "glowbar" is an example).
 
-### 1.3 Tu Contexto de Uso (Sin Efecto Vidrio)
+### 1.3 Your Usage Context (Without the Glass Effect)
 
-Esta guía asume que implementas **los principios estructurales y de composición** de
-Neural Expressive con **materiales sólidos y limpios**, sin reproducir los efectos de
-gradiente/glow propios del branding de Gemini. El resultado es una UI moderna, aireada
-y de bajo ruido visual, perfecta para cualquier app conversacional, productividad o
-dashboard.
+This guide assumes you implement **the structural and compositional principles** of
+Neural Expressive with **solid, clean materials**, without reproducing the
+gradient/glow effects specific to Gemini's branding. The result is a modern, airy UI
+with low visual noise, perfect for any conversational, productivity, or dashboard app.
 
 ---
 
-## 2. Pilares del Sistema de Diseño
+## 2. Pillars of the Design System
 
-### 2.1 Sistema de Movimiento basado en Física de Resortes
+### 2.1 Spring-Physics-Based Motion System
 
-M3E reemplaza por completo las curvas de Bézier por un motor de **física de resortes
-amortiguados**. Esto permite animaciones que se interrumpen y redirigen naturalmente,
-reflejando la inercia y masa de objetos reales.
+M3E completely replaces Bézier curves with a **damped spring physics** engine. This
+enables animations that interrupt and redirect naturally, reflecting the inertia and
+mass of real objects.
 
-Un resorte se define por dos parámetros:
-- **Stiffness (k):** Qué tan rígido/rápido es el resorte. Mayor k = animación más rápida.
-- **Damping Ratio (ζ):** Qué tan rápido se amortiguan las oscilaciones. `ζ = 1.0` = sin
-  rebote (amortiguación crítica). `ζ < 1.0` = rebote visible y elástico.
+A spring is defined by two parameters:
+- **Stiffness (k):** How rigid/fast the spring is. Higher k = faster animation.
+- **Damping Ratio (ζ):** How quickly oscillations are damped. `ζ = 1.0` = no
+  bounce (critical damping). `ζ < 1.0` = visible, elastic bounce.
 
-#### Tabla de Tokens Oficiales M3E
+#### Table of Official M3E Tokens
 
-| Token | Stiffness (k) | Damping (ζ) | Comportamiento | Uso Recomendado |
+| Token | Stiffness (k) | Damping (ζ) | Behavior | Recommended Use |
 |:------|:------------:|:-----------:|:---------------|:----------------|
-| `effectsFast` | 3800 | 1.00 | ~150 ms, sin rebote | Switches, checkboxes, feedback táctil micro |
-| `effectsDefault` | 1600 | 1.00 | ~300 ms, sin rebote | Transiciones de color, fade de menús |
-| `effectsSlow` | 800 | 1.00 | ~500 ms, sin rebote | Aparición de ilustraciones, fondos |
-| `spatialFast` | 1400 | 0.90 | Rápido, overshoot leve (~10%) | Icon surfaces, chips de filtro, feedback de botones |
-| `spatialDefault` | 700 | 0.90 | Orgánico, overshoot ~10% | Bottom sheets, paneles, drawer *apertura* |
-| `spatialSlow` | 300 | 0.90 | Dramático, alta inercia | Hero animations, contenedores a pantalla completa |
-| `bouncySpatial` | 400 | 0.40 | Gran rebote (~40% overshoot) | FAB menu, chips pequeños, pickers — **SOLO elementos pequeños** |
-| `snappySpatial` | 1000 | 0.75 | Rápido con rebote leve | Drag de tarjetas, carruseles |
+| `effectsFast` | 3800 | 1.00 | ~150 ms, no bounce | Switches, checkboxes, micro tactile feedback |
+| `effectsDefault` | 1600 | 1.00 | ~300 ms, no bounce | Color transitions, menu fades |
+| `effectsSlow` | 800 | 1.00 | ~500 ms, no bounce | Illustration appearance, backgrounds |
+| `spatialFast` | 1400 | 0.90 | Fast, slight overshoot (~10%) | Icon surfaces, filter chips, button feedback |
+| `spatialDefault` | 700 | 0.90 | Organic, ~10% overshoot | Bottom sheets, panels, drawer *opening* |
+| `spatialSlow` | 300 | 0.90 | Dramatic, high inertia | Hero animations, full-screen containers |
+| `bouncySpatial` | 400 | 0.40 | Large bounce (~40% overshoot) | FAB menu, small chips, pickers — **SMALL elements ONLY** |
+| `snappySpatial` | 1000 | 0.75 | Fast with slight bounce | Card drag, carousels |
 
-> ⚠️ **Corrección crítica de v1.0:** Los valores de damping en la tabla son **ratios**
-> (0.0–1.0), no valores absolutos. La clase `SpringDescription` de Flutter usa el damping
-> *crítico* calculado como `2 * sqrt(stiffness * mass)`, por lo que el parámetro `damping`
-> en Flutter **no es el mismo** que el `dampingRatio` de M3. Ver sección 6.1 para
-> la implementación correcta.
+> ⚠️ **Critical correction from v1.0:** The damping values in the table are **ratios**
+> (0.0–1.0), not absolute values. Flutter's `SpringDescription` class uses *critical*
+> damping calculated as `2 * sqrt(stiffness * mass)`, so the `damping` parameter
+> in Flutter **is not the same** as M3's `dampingRatio`. See section 6.1 for
+> the correct implementation.
 
-> ⚠️ **Error de v1.0 — Drawer con `bouncySpatial`:** La física `bouncySpatial` (k=400,
-> ζ=0.40) **nunca debe usarse en el drawer**. Un overshoot del 40% en una superficie
-> grande como el drawer se percibe como un bucle de apertura/cierre involuntario, no como
-> elasticidad expresiva. Reglas correctas:
-> - **Apertura del drawer:** `spatialDefault` (k=700, ζ=0.90) — ~320 ms, overshoot mínimo.
-> - **Cierre del drawer:** `spatialFast` (k=1400, ζ=0.90) — ~240 ms, decisivo y limpio.
-> - `bouncySpatial` queda reservado para elementos de ≤ 56 dp.
+> ⚠️ **v1.0 error — Drawer with `bouncySpatial`:** The `bouncySpatial` physics (k=400,
+> ζ=0.40) **must never be used on the drawer**. A 40% overshoot on a large surface
+> like the drawer is perceived as an involuntary open/close loop, not as
+> expressive elasticity. Correct rules:
+> - **Drawer opening:** `spatialDefault` (k=700, ζ=0.90) — ~320 ms, minimal overshoot.
+> - **Drawer closing:** `spatialFast` (k=1400, ζ=0.90) — ~240 ms, decisive and clean.
+> - `bouncySpatial` is reserved for elements of ≤ 56 dp.
 
-#### Esquema Expressive vs Standard
+#### Expressive vs Standard Scheme
 
-M3E define dos *motion schemes* aplicables globalmente:
+M3E defines two *motion schemes* applicable globally:
 
-- **Expressive (recomendado):** Springs con ligero overshoot. Para momentos hero, FABs,
-  transiciones de pantalla principal. Es el esquema por defecto de Gemini.
-- **Standard:** Springs con amortiguación crítica, sin rebote. Para apps de alta densidad
-  de información o contextos más formales (dashboards, herramientas de productividad).
+- **Expressive (recommended):** Springs with slight overshoot. For hero moments, FABs,
+  main-screen transitions. It is Gemini's default scheme.
+- **Standard:** Springs with critical damping, no bounce. For high-information-density
+  apps or more formal contexts (dashboards, productivity tools).
 
-Puedes mezclarlos: usa Expressive en momentos de impacto y Standard en transiciones
-funcionales de bajo perfil.
+You can mix them: use Expressive in impactful moments and Standard in low-profile
+functional transitions.
 
 ---
 
-### 2.2 Sistema de Formas y Geometría Expresiva
+### 2.2 Shape and Expressive Geometry System
 
-M3E expande la biblioteca morfológica a **35 figuras** (polígonos, estrellas, pétalos
-asimétricos). La regla clave: **la forma no tiene semántica funcional fija**. Una forma
-ondulada no significa "cargando" obligatoriamente; puede ser una máscara decorativa para
-un avatar.
+M3E expands the morphological library to **35 figures** (polygons, stars, asymmetric
+petals). The key rule: **shape has no fixed functional semantics**. A wavy shape
+does not necessarily mean "loading"; it can be a decorative mask for an avatar.
 
-#### Radios de Esquina por Categoría de Contenedor
+#### Corner Radii by Container Category
 
-| Rol del Token | dp | Uso típico |
+| Token Role | dp | Typical Use |
 |:---|:---:|:---|
-| `shape.none` | 0 | Separadores, divisores |
-| `shape.extraSmall` | 4 | Chips internos, badges |
-| `shape.small` | 8 | Buttons compactos, tooltips |
-| `shape.medium` | 12 | Cards internas, text fields |
-| `shape.large` | 16 | Cards principales, bottom sheets |
-| `shape.extraLarge` | 28 | Modal dialogs, FABs expandidos |
-| `shape.full` | 50%+ | Pills, avatares, icon surfaces |
+| `shape.none` | 0 | Separators, dividers |
+| `shape.extraSmall` | 4 | Internal chips, badges |
+| `shape.small` | 8 | Compact buttons, tooltips |
+| `shape.medium` | 12 | Internal cards, text fields |
+| `shape.large` | 16 | Main cards, bottom sheets |
+| `shape.extraLarge` | 28 | Modal dialogs, expanded FABs |
+| `shape.full` | 50%+ | Pills, avatars, icon surfaces |
 
-#### Principio de Tensión Visual
+#### Visual Tension Principle
 
-Combina formas redondeadas y angulares en el mismo layout para crear "tensión"
-compositiva que dirige la mirada. Ejemplo: una tarjeta con `shape.large` (16 dp) junto
-a un botón con `shape.full` (pill) crea contraste expresivo sin ruido visual.
+Combine rounded and angular shapes in the same layout to create compositional
+"tension" that directs the gaze. Example: a card with `shape.large` (16 dp) next
+to a button with `shape.full` (pill) creates expressive contrast without visual noise.
 
-#### Radios Dinámicos en Listas (Dynamic Corner Cards)
+#### Dynamic Radii in Lists (Dynamic Corner Cards)
 
-Para listas agrupadas, los radios se ajustan según posición para comunicar cohesión:
+For grouped lists, the radii adjust according to position to communicate cohesion:
 
-```
-Primer elemento:   topLeft=24, topRight=24, bottomLeft=4, bottomRight=4
-Elementos medios:  todos los radios = 4 dp
-Último elemento:   topLeft=4, topRight=4, bottomLeft=24, bottomRight=24
-Elemento único:    todos los radios = 24 dp
-Gap entre items:   3 dp (no 8 dp — el gap pequeño refuerza la cohesión visual del grupo)
+```text
+First item:    topLeft=24, topRight=24, bottomLeft=4, bottomRight=4
+Middle items:  all radii = 4 dp
+Last item:     topLeft=4, topRight=4, bottomLeft=24, bottomRight=24
+Single item:   all radii = 24 dp
+Gap between items: 3 dp (not 8 dp — the small gap reinforces the group's visual cohesion)
 ```
 
 ---
 
-### 2.3 Sistema Tipográfico
+### 2.3 Typographic System
 
-**Google Sans Flex** opera como fuente variable primaria en el ecosistema Gemini/M3E.
-Sus tres ejes de variación:
+**Google Sans Flex** operates as the primary variable font in the Gemini/M3E
+ecosystem. Its three axes of variation:
 
-1. **Weight (100–1000):** La información más crítica en el contexto de respuesta IA
-   se renderiza con weights altos (700–900) en la parte superior del contenido. El
-   cuerpo del texto usa weights medios (400–500).
-2. **Optical Size:** Ajusta automáticamente el tracking y el contraste de astas para
-   mantener legibilidad desde 11 sp (microcopy) hasta 57+ sp (display hero).
-3. **Grade / Softness:** Suaviza terminales de letras para connotar calidez vs rigor
-   intelectual según el contexto del contenido.
+1. **Weight (100–1000):** The most critical information in the AI-response context
+   is rendered with high weights (700–900) at the top of the content. The
+   body text uses medium weights (400–500).
+2. **Optical Size:** Automatically adjusts the tracking and stroke contrast to
+   maintain legibility from 11 sp (microcopy) up to 57+ sp (display hero).
+3. **Grade / Softness:** Softens letter terminals to connote warmth vs intellectual
+   rigor according to the content context.
 
-#### Escala Tipográfica Neural Expressive
+#### Neural Expressive Typographic Scale
 
-| Estilo | Size | Weight | Uso en app AI |
+| Style | Size | Weight | Use in AI app |
 |:-------|:----:|:------:|:--------------|
-| `displayLarge` | 57 sp | 400 | Pantalla de bienvenida, splash |
-| `displayMedium` | 45 sp | 400 | Greeting central ("¿En qué puedo ayudarte?") |
-| `headlineLarge` | 32 sp | 700 | Resumen crítico al inicio de respuesta IA |
-| `headlineMedium` | 28 sp | 600 | Títulos de secciones en respuesta editorial |
-| `titleLarge` | 22 sp | 500 | Nombres de conversaciones en el drawer |
-| `titleMedium` | 16 sp | 500–600 | Headers de tarjetas, labels de navegación |
-| `bodyLarge` | 16 sp | 400 | Cuerpo principal de respuesta IA |
-| `bodyMedium` | 14 sp | 400 | Contenido secundario, metadatos |
-| `labelLarge` | 14 sp | 500 | Texto de botones |
-| `labelMedium` | 12 sp | 500 | Labels de chips, badges |
+| `displayLarge` | 57 sp | 400 | Welcome screen, splash |
+| `displayMedium` | 45 sp | 400 | Central greeting ("How can I help you?") |
+| `headlineLarge` | 32 sp | 700 | Critical summary at the start of an AI response |
+| `headlineMedium` | 28 sp | 600 | Section titles in an editorial response |
+| `titleLarge` | 22 sp | 500 | Conversation names in the drawer |
+| `titleMedium` | 16 sp | 500–600 | Card headers, navigation labels |
+| `bodyLarge` | 16 sp | 400 | Main body of an AI response |
+| `bodyMedium` | 14 sp | 400 | Secondary content, metadata |
+| `labelLarge` | 14 sp | 500 | Button text |
+| `labelMedium` | 12 sp | 500 | Chip labels, badges |
 
 ---
 
-### 2.4 Sistema de Color HCT
+### 2.4 HCT Color System
 
-El espacio de color **HCT (Hue, Chroma, Tone)** es la base del dynamic color de M3.
-Para implementaciones con materiales sólidos (tu caso), los roles clave:
+The **HCT (Hue, Chroma, Tone)** color space is the foundation of M3's dynamic color.
+For implementations with solid materials (your case), the key roles:
 
-| Rol de Color | Uso Principal |
+| Color Role | Primary Use |
 |:-------------|:--------------|
-| `surface` | Fondo de pantalla principal |
-| `surfaceContainer` | Fondos de cards internas |
-| `surfaceContainerHigh` | Icon surfaces en AppBar, backgrounds de items seleccionados |
-| `surfaceContainerHighest` | Input fields, chips activos |
-| `onSurface` | Texto e iconos primarios |
-| `onSurfaceVariant` | Texto e iconos secundarios |
-| `primary` | Acciones principales, botones primarios |
-| `primaryContainer` | Background de elementos de selección activa |
-| `secondaryContainer` | Item seleccionado en navigation drawer |
-| `outline` | Bordes de cards, separadores |
-| `outlineVariant` | Bordes sutiles, divisores de lista |
+| `surface` | Main screen background |
+| `surfaceContainer` | Internal card backgrounds |
+| `surfaceContainerHigh` | Icon surfaces in the AppBar, backgrounds of selected items |
+| `surfaceContainerHighest` | Input fields, active chips |
+| `onSurface` | Primary text and icons |
+| `onSurfaceVariant` | Secondary text and icons |
+| `primary` | Primary actions, primary buttons |
+| `primaryContainer` | Background of active selection elements |
+| `secondaryContainer` | Selected item in the navigation drawer |
+| `outline` | Card borders, separators |
+| `outlineVariant` | Subtle borders, list dividers |
 
-> **Gradiente de marca (opcional):** Los gradientes de Neural Expressive (índigo→púrpura→
-> amarillo luminiscente) son opcionales para apps que quieran ese efecto. Para apps de
-> materiales sólidos, usa `primary` y `primaryContainer` del sistema dinámico de M3.
+> **Brand gradient (optional):** The Neural Expressive gradients (indigo→purple→
+> luminescent yellow) are optional for apps that want that effect. For solid-material
+> apps, use `primary` and `primaryContainer` from M3's dynamic system.
 
 ---
 
-## 3. Breakpoints y Clases de Ventana Responsivos
+## 3. Responsive Breakpoints and Window Classes
 
-M3E define **cinco breakpoints** oficiales (actualizados de las tres originales de M3):
+M3E defines **five** official breakpoints (updated from M3's original three):
 
-| Breakpoint | Ancho | Dispositivos Típicos | Navegación | Layout |
+| Breakpoint | Width | Typical Devices | Navigation | Layout |
 |:-----------|:-----:|:---------------------|:-----------|:-------|
-| **Compact** | < 600 dp | Teléfonos en portrait | Bottom NavBar | 1 pane |
-| **Medium** | 600–839 dp | Tablets portrait, foldables cerrados | Navigation Rail | 1–2 panes |
-| **Expanded** | 840–1199 dp | Tablets landscape, foldables abiertos | Drawer permanente / Rail expandido | 2 panes |
-| **Large** | 1200–1599 dp | Laptops, monitores pequeños | Drawer permanente | 2–3 panes |
-| **Extra-Large** | ≥ 1600 dp | Monitores grandes, TV | Drawer permanente ancho | 3+ panes |
+| **Compact** | < 600 dp | Phones in portrait | Bottom NavBar | 1 pane |
+| **Medium** | 600–839 dp | Portrait tablets, closed foldables | Navigation Rail | 1–2 panes |
+| **Expanded** | 840–1199 dp | Landscape tablets, open foldables | Permanent drawer / expanded rail | 2 panes |
+| **Large** | 1200–1599 dp | Laptops, small monitors | Permanent drawer | 2–3 panes |
+| **Extra-Large** | ≥ 1600 dp | Large monitors, TV | Wide permanent drawer | 3+ panes |
 
-### Reglas de Navegación por Breakpoint
+### Navigation Rules by Breakpoint
 
+```text
+Compact  → Bottom NavigationBar (3–5 destinations)
+Medium   → Navigation Rail (collapsed, no labels or with short labels)
+Expanded → Permanent Standard Navigation Drawer (320 dp, pinned)
+Large    → Permanent Standard Navigation Drawer (320 dp)
+Extra-L  → Permanent Standard Navigation Drawer (can expand to 400 dp)
 ```
-Compact  → Bottom NavigationBar (3–5 destinos)
-Medium   → Navigation Rail (colapsada, sin labels o con labels cortos)
-Expanded → Standard Navigation Drawer permanente (320 dp, pineado)
-Large    → Standard Navigation Drawer permanente (320 dp)
-Extra-L  → Standard Navigation Drawer permanente (puede expandirse a 400 dp)
-```
 
-### Márgenes de Contenido por Breakpoint
+### Content Margins by Breakpoint
 
-| Breakpoint | Margin lateral | Max content width |
+| Breakpoint | Lateral margin | Max content width |
 |:-----------|:--------------:|:-----------------:|
 | Compact | 16 dp | 100% |
 | Medium | 24 dp | 100% |
-| Expanded | 24 dp | 840 dp (centrado) |
-| Large | 32 dp | 1040 dp (centrado) |
-| Extra-Large | 32 dp | 1200 dp (centrado) |
+| Expanded | 24 dp | 840 dp (centered) |
+| Large | 32 dp | 1040 dp (centered) |
+| Extra-Large | 32 dp | 1200 dp (centered) |
 
-### Diagramas de Layout por Breakpoint
+### Layout Diagrams by Breakpoint
 
-```
-COMPACT (< 600 dp) — Teléfono Portrait
+```text
+COMPACT (< 600 dp) — Phone Portrait
 ┌─────────────────────────┐
 │ [≡ Model▾]    [tmp] [👤] │  ← Header 56 dp
 ├─────────────────────────┤
 │                         │
 │    [Logo / Gemini]      │  ← Greeting area
-│  "¿En qué te ayudo?"   │
+│  "How can I help?"      │
 │                         │
 │                         │
 │  ┌─────────────────┐    │
@@ -291,13 +288,13 @@ MEDIUM (600–839 dp) — Tablet Portrait
 │      │ [Model▾]      [tmp] [👤] │  ← Header
 │ Rail │                          │
 │      │   [Logo]                 │
-│ [🏠] │  "¿En qué te ayudo?"    │
+│ [🏠] │  "How can I help?"       │
 │ [💬] │                          │
 │ [📚] │  ┌──────────────────┐   │
 │      │  │ ➕  [input]   🎙️ │   │  ← Pill input
 │      │  └──────────────────┘   │
 └──────┴──────────────────────────┘
-Rail: 80 dp ancho, iconos sin labels (o 136 dp con labels)
+Rail: 80 dp wide, icons without labels (or 136 dp with labels)
 
 EXPANDED (840–1199 dp) — Tablet Landscape / Foldable
 ┌────────────┬────────────────────┐
@@ -305,8 +302,8 @@ EXPANDED (840–1199 dp) — Tablet Landscape / Foldable
 │  320 dp    │  [Model▾]  [👤]   │
 │  (pinned)  │                    │
 │ [New Chat] │  [Logo]            │
-│ [Search]   │ "¿En qué te       │
-│ [Library]  │  ayudo?"          │
+│ [Search]   │ "How can I        │
+│ [Library]  │  help?"           │
 │ [Settings] │                    │
 │            │  ┌──────────────┐  │
 │  ─────     │  │ ➕ [input] 🎙│  │
@@ -316,241 +313,241 @@ EXPANDED (840–1199 dp) — Tablet Landscape / Foldable
 
 ---
 
-## 4. Especificaciones de Componentes
+## 4. Component Specifications
 
-### 4.1 Scaffold y Layout Principal
+### 4.1 Scaffold and Main Layout
 
-El Scaffold en Neural Expressive se estructura en capas:
+The Scaffold in Neural Expressive is structured in layers:
 
+```text
+Layer 1 (base):     Surface — screen background, solid color
+Layer 2 (content):  Scroll area — responses, chat, content
+Layer 3 (overlay):  Floating pill input — absolute position over the content
+Layer 4 (chrome):   Transparent AppBar with veil — always on top
+Layer 5 (nav):      Bottom NavBar / Rail / Drawer (depending on breakpoint)
 ```
-Layer 1 (base):     Surface — fondo de pantalla, color sólido
-Layer 2 (content):  Área de scroll — respuestas, chat, contenido
-Layer 3 (overlay):  Pill input flotante — posición absoluta sobre el content
-Layer 4 (chrome):   AppBar transparente con velo — siempre encima
-Layer 5 (nav):      Bottom NavBar / Rail / Drawer (según breakpoint)
-```
 
-**AppBar con velo (gradiente de scroll):**
-El AppBar es transparente. Cuando hay contenido desplazable debajo, se aplica un
-gradiente vertical que evita que el texto del contenido colisione visualmente con
-los controles del header:
+**AppBar with veil (scroll gradient):**
+The AppBar is transparent. When there is scrollable content below it, a vertical
+gradient is applied to prevent the content text from visually colliding with the
+header controls:
 
-```
+```text
 surface @ opacity 0.95  →  surface @ 0.75  →  transparent
-(borde superior)            (mitad)             (borde inferior del velo)
-Altura del velo: ~64 dp
+(top edge)                  (middle)            (bottom edge of the veil)
+Veil height: ~64 dp
 ```
 
-> ⚠️ **No uses** un AppBar con fondo sólido en pantallas con contenido scrollable.
-> El velo sutil mantiene los controles legibles sin "cortar" el contenido.
+> ⚠️ **Do not use** an AppBar with a solid background on screens with scrollable
+> content. The subtle veil keeps the controls legible without "cutting off" the content.
 
 ---
 
 ### 4.2 AppBar / Header
 
-**Altura:** 56 dp (top bar estándar M3)
-**Estructura asimétrica:**
+**Height:** 56 dp (standard M3 top bar)
+**Asymmetric structure:**
 
+```text
+Left:    [≡ or ←]  [Model Picker Dropdown 36 dp]
+Center:  empty (no title on the main screen) or active conversation title
+Right:   [Temporary Chats Icon]  [Avatar/Profile 40 dp]
 ```
-Izquierda: [≡ o ←]  [Model Picker Dropdown 36 dp]
-Centro:    vacío (no título en pantalla principal) o título de conversación activa
-Derecha:   [Temporary Chats Icon]  [Avatar/Profile 40 dp]
-```
 
-#### Icon Surfaces en AppBar Transparente
+#### Icon Surfaces in a Transparent AppBar
 
-Cuando el AppBar es transparente, **todos los botones de acción deben tener superficie
-sólida**. No son iconos flotando sobre contenido — son *Icon Surfaces*:
+When the AppBar is transparent, **all action buttons must have a solid surface**.
+They are not icons floating over content — they are *Icon Surfaces*:
 
-- **Forma:** `BoxShape.circle` (no StadiumBorder)
-- **Tamaño del contenedor:** 40 dp diámetro / Área de toque: 48×48 dp (accesibilidad)
-- **Color de fondo:** `surfaceContainerHigh` — nunca `primary` ni `primaryContainer`
-  (el color neutro evita que compitan con el brand mark)
-- **Icono interior:** 20 dp, color `onSurface` o `onSurfaceVariant`
-- **Física táctil:** `spatialFast` (k=1400, ζ=0.90), escala 1.0 → 0.92 en press
+- **Shape:** `BoxShape.circle` (not StadiumBorder)
+- **Container size:** 40 dp diameter / Touch area: 48×48 dp (accessibility)
+- **Background color:** `surfaceContainerHigh` — never `primary` or `primaryContainer`
+  (the neutral color prevents them from competing with the brand mark)
+- **Inner icon:** 20 dp, color `onSurface` or `onSurfaceVariant`
+- **Tactile physics:** `spatialFast` (k=1400, ζ=0.90), scale 1.0 → 0.92 on press
 
-**Aplica a:** botón menú (hamburguesa), botón de chats temporales, botón de búsqueda,
-cualquier acción secundaria del header.
+**Applies to:** menu button (hamburger), temporary chats button, search button,
+any secondary header action.
 
 #### Model Picker Dropdown
 
-- Altura: 36 dp
-- Forma: `StadiumBorder`
+- Height: 36 dp
+- Shape: `StadiumBorder`
 - Color: `surfaceContainerHigh`
-- Contenido: ícono del modelo activo + nombre + chevron
-- Al desplegarse: usa `spatialDefault` para la apertura del menú
+- Content: active model icon + name + chevron
+- When expanding: use `spatialDefault` for opening the menu
 
 ---
 
-### 4.3 Campo de Entrada Flotante (Prompt Pill)
+### 4.3 Floating Input Field (Prompt Pill)
 
-```
+```text
 ┌────────────────────────────────────────────────────────┐
-│  ➕   [  Escribe un mensaje...                ]   🎙️  │
+│  ➕   [  Type a message...                     ]   🎙️  │
 └────────────────────────────────────────────────────────┘
-   Altura: 56 dp
-   Forma: StadiumBorder (radius = 28 dp = height/2)
+   Height: 56 dp
+   Shape: StadiumBorder (radius = 28 dp = height/2)
    Color: surfaceContainerHighest
-   Margin lateral: 16 dp en compact, 24 dp en medium+
-   Margin inferior: 16 dp + SafeArea bottom
-   Posición: flotante sobre el contenido (no anclado al teclado)
+   Lateral margin: 16 dp on compact, 24 dp on medium+
+   Bottom margin: 16 dp + SafeArea bottom
+   Position: floating over the content (not anchored to the keyboard)
 ```
 
-**Menú "+" (Unified Plus Menu):**
-Al pulsar "➕", se despliega un **bottom sheet** (no un menú contextual flotante) con:
-- Sección superior: carrusel horizontal de subida rápida (Photos, Camera, Recientes)
-- Sección inferior (scroll): acceso a almacenamiento (Files, Drive, Notebooks) y
-  herramientas AI (Deep Research, Canvas, Create Image, etc.)
-- Animación de apertura: `spatialDefault` (k=700, ζ=0.90)
+**"+" Menu (Unified Plus Menu):**
+When tapping "➕", a **bottom sheet** is displayed (not a floating context menu) with:
+- Top section: horizontal carousel for quick upload (Photos, Camera, Recent)
+- Bottom section (scroll): access to storage (Files, Drive, Notebooks) and
+  AI tools (Deep Research, Canvas, Create Image, etc.)
+- Opening animation: `spatialDefault` (k=700, ζ=0.90)
 
-**Estados del Pill Input:**
-```
-Default:    surfaceContainerHighest, sin borde
-Focused:    outline de 2 dp con color primary, sombra sutil elevation 2
-With text:  aparece botón de envío (→) reemplazando el ícono de voz
+**Pill Input states:**
+```text
+Default:    surfaceContainerHighest, no border
+Focused:    2 dp outline with primary color, subtle shadow elevation 2
+With text:  send button (→) appears, replacing the voice icon
 ```
 
 ---
 
 ### 4.4 Navigation Drawer / Sidebar
 
-#### ✅ Regla Fundamental: Push, no Overlay
+#### ✅ Fundamental Rule: Push, not Overlay
 
-El drawer **empuja** el contenido principal horizontalmente, no lo cubre con un scrim.
-El contenido principal desplazado actúa como ancla visual que comunica "sigues en la app".
+The drawer **pushes** the main content horizontally; it does not cover it with a scrim.
+The displaced main content acts as a visual anchor that communicates "you are still in the app."
 
-#### Ancho del Drawer por Breakpoint
+#### Drawer Width by Breakpoint
 
-| Breakpoint | Comportamiento | Ancho |
+| Breakpoint | Behavior | Width |
 |:-----------|:--------------|:------|
-| **Compact** (< 600 dp) | Modal, desliza desde el borde izquierdo | **100% de la pantalla** |
-| **Medium** (600–839 dp) | Modal, ancho fijo topado | 320 dp (máximo absoluto) |
-| **Expanded+** (≥ 840 dp) | **Permanente / Pinned** — sin animación de apertura | 320 dp |
+| **Compact** (< 600 dp) | Modal, slides from the left edge | **100% of the screen** |
+| **Medium** (600–839 dp) | Modal, capped fixed width | 320 dp (absolute maximum) |
+| **Expanded+** (≥ 840 dp) | **Permanent / Pinned** — no opening animation | 320 dp |
 
-> ✅ **Confirmado:** En **Compact (móvil)**, el drawer ocupa el **100% del ancho de
-> pantalla**. Así lo implementó Gemini en Neural Expressive. El usuario no ve contenido
-> principal mientras el drawer está abierto — está en "su espacio" propio, como una
-> pantalla completa limpia.
+> ✅ **Confirmed:** On **Compact (mobile)**, the drawer occupies **100% of the screen
+> width**. This is how Gemini implemented it in Neural Expressive. The user does not see
+> the main content while the drawer is open — they are in "their own space," like a
+> clean full screen.
 
-#### Parallax Suave (solo en Compact y Medium)
+#### Smooth Parallax (only on Compact and Medium)
 
-Durante la apertura/cierre, el contenido principal se desplaza con un leve desfase
-respecto al drawer para crear sensación de profundidad:
+During opening/closing, the main content moves with a slight offset relative to
+the drawer to create a sense of depth:
 
-```
+```text
 Δ_content = W_drawer × (1 - α) × p
 
-Donde:
-  p = progreso de animación [0.0 → 1.0]
-  α = 0.06 (factor de parallax)
-  W_drawer = ancho del drawer en dp
+Where:
+  p = animation progress [0.0 → 1.0]
+  α = 0.06 (parallax factor)
+  W_drawer = drawer width in dp
 
-Resultado: cuando el drawer está 100% abierto (p=1), el contenido
-se desplazó el 94% del ancho del drawer, dejando un "sliver" visible
-de ≈ 19 dp en un teléfono de 360 dp.
+Result: when the drawer is 100% open (p=1), the content
+has moved 94% of the drawer's width, leaving a visible "sliver"
+of ≈ 19 dp on a 360 dp phone.
 ```
 
-Este sliver comunica que el contenido sigue ahí, "empujado", no tapado.
+This sliver communicates that the content is still there, "pushed," not covered.
 
-#### Física de Animación del Drawer
+#### Drawer Animation Physics
 
+```text
+Opening:  spatialDefault (k=700, ζ=0.90)  → clean movement, ~320 ms
+Closing:  spatialFast  (k=1400, ζ=0.90)  → decisive and fast, ~240 ms
+Parallax: bouncySpatial (k=400, ζ=0.40)  → background content only (NOT the drawer)
 ```
-Apertura: spatialDefault (k=700, ζ=0.90)  → movimiento limpio, ~320 ms
-Cierre:   spatialFast  (k=1400, ζ=0.90)  → decisivo y rápido, ~240 ms
-Parallax: bouncySpatial (k=400, ζ=0.40)  → solo el contenido background (NO el drawer)
-```
 
-#### Layout Interno del Drawer (3 Zonas)
+#### Internal Drawer Layout (3 Zones)
 
-```
+```text
 ┌──────────────────────────────────┐
 │ [Logo / Brand]         [✕ close] │  ← Header ~88 dp
-│                                  │     El botón close sigue regla Icon Surface:
+│                                  │     The close button follows the Icon Surface rule:
 │                                  │     circular 40 dp, surfaceContainerHigh
 ├──────────────────────────────────┤
 │                                  │
-│  🔮  New Chat                    │  ← Destinations (zona expandible)
-│  🔍  Search Chats                │     Separación entre items: ≥ 20 dp
-│  📚  Library                     │     Item seleccionado: fondo secondaryContainer
-│  📓  Notebooks                   │       + peso tipográfico w600
-│  ⚙️  Settings                    │     Iconos: familia de trazos ultradelgados
-│                                  │     Padding horizontal: 20 dp
+│  🔮  New Chat                    │  ← Destinations (expandable zone)
+│  🔍  Search Chats                │     Spacing between items: ≥ 20 dp
+│  📚  Library                     │     Selected item: secondaryContainer background
+│  📓  Notebooks                   │       + w600 typographic weight
+│  ⚙️  Settings                    │     Icons: ultra-thin stroke family
+│                                  │     Horizontal padding: 20 dp
 │  ── Recent ──                    │
-│    Conversación 1                │
-│    Conversación 2                │
+│    Conversation 1                │
+│    Conversation 2                │
 │                                  │
 ├──────────────────────────────────┤
-│ [👤] Nombre de usuario           │  ← Footer ~72 dp + SafeArea
-│      Plan / Workspace  [chevron] │     Avatar: 40 dp con gradiente de marca
+│ [👤] User name                   │  ← Footer ~72 dp + SafeArea
+│      Plan / Workspace  [chevron] │     Avatar: 40 dp with brand gradient
 └──────────────────────────────────┘
 ```
 
-> **Botón de cierre:** Anclado al **borde derecho del drawer** (no al borde derecho
-> de la pantalla). En compact, esto significa que está al ~95-100% del ancho de pantalla.
-> En expanded, está a 320 dp del borde izquierdo.
+> **Close button:** Anchored to the **right edge of the drawer** (not the right edge
+> of the screen). On compact, this means it is at ~95-100% of the screen width.
+> On expanded, it is 320 dp from the left edge.
 
 ---
 
-### 4.5 Botones Expresivos y Grupos
+### 4.5 Expressive Buttons and Groups
 
-#### Connected Button Groups (reemplazo de Segmented Buttons)
+#### Connected Button Groups (replacing Segmented Buttons)
 
-Los botones segmentados están **oficialmente deprecados** en M3E para nuevas apps.
-Su reemplazo son los **Connected Button Groups**:
+Segmented buttons are **officially deprecated** in M3E for new apps.
+Their replacement is the **Connected Button Groups**:
 
-```
+```text
 ┌─────────────┐┌─────────────┐┌──────────────┐
 │   Button 1  ││   Button 2  ││   Button 3   │
 └─────────────┘└─────────────┘└──────────────┘
-   Gap entre botones: 3 dp
-   Altura: 40 dp
-   Radios: dinámicos (exteriores = 20 dp, interiores = 4 dp, igual que las card lists)
-   Máximo de opciones: 5 (para evitar desbordamiento en Compact)
+   Gap between buttons: 3 dp
+   Height: 40 dp
+   Radii: dynamic (outer = 20 dp, inner = 4 dp, same as the card lists)
+   Maximum options: 5 (to avoid overflow on Compact)
 ```
 
-**Efecto "Neighbor Squish":** Al presionar un botón, los adyacentes se comprimen
-ligeramente en el eje de colisión. Esto requiere animación coordinada con `spatialFast`.
+**"Neighbor Squish" effect:** When pressing a button, the adjacent ones compress
+slightly along the collision axis. This requires coordinated animation with `spatialFast`.
 
 #### Split Buttons
 
-```
+```text
 ┌───────────────────────────────────┬──────────────┐
-│         Acción Principal          │   ▾ (arrow)  │
+│         Primary Action            │   ▾ (arrow)  │
 └───────────────────────────────────┴──────────────┘
-  Altura: 40 dp
-  Radio exterior: 20 dp (StadiumBorder en las esquinas exteriores)
-  Separación interna: 2 dp (línea divisoria)
-  Al expandir: ícono rota 180°, radio interno del dropdown va de 20 dp → 7 dp
+  Height: 40 dp
+  Outer radius: 20 dp (StadiumBorder on the outer corners)
+  Internal separation: 2 dp (divider line)
+  On expand: the icon rotates 180°, the dropdown's inner radius goes from 20 dp → 7 dp
 ```
 
-#### FAB y FAB Menu
+#### FAB and FAB Menu
 
-- El FAB estándar (56 dp) se expande morfológicamente al pulsar, convirtiéndose
-  en una tarjeta con lista de opciones secundarias.
-- Reemplaza definitivamente el patrón Speed Dial.
-- Animación: `bouncySpatial` (k=400, ζ=0.40) — aquí sí es apropiado por ser un
-  elemento pequeño.
+- The standard FAB (56 dp) expands morphologically when tapped, becoming
+  a card with a list of secondary options.
+- It definitively replaces the Speed Dial pattern.
+- Animation: `bouncySpatial` (k=400, ζ=0.40) — here it is indeed appropriate, since it
+  is a small element.
 
-#### Jerarquía de Botones por Tamaño
+#### Button Hierarchy by Size
 
-| Tamaño | Alto | Uso |
+| Size | Height | Use |
 |:-------|:---:|:----|
-| Extra Small (XS) | 32 dp | Chips de filtro, acciones inline |
+| Extra Small (XS) | 32 dp | Filter chips, inline actions |
 | Small (S) | 40 dp | Connected groups, split buttons |
-| Medium (M) | 48 dp | Acciones secundarias de pantalla |
-| Large (L) | 56 dp | FAB, CTA principales |
-| Extra Large (XL) | 96 dp | CTA único en pantallas de baja densidad |
+| Medium (M) | 48 dp | Secondary screen actions |
+| Large (L) | 56 dp | FAB, primary CTAs |
+| Extra Large (XL) | 96 dp | Single CTA on low-density screens |
 
 ---
 
-### 4.6 Tarjetas y Listas
+### 4.6 Cards and Lists
 
 #### Dynamic Corner Card List
 
-Regla de radios para listas agrupadas (gap = 3 dp):
+Radius rule for grouped lists (gap = 3 dp):
 
 ```dart
-// Primer elemento del grupo
+// First item of the group
 BorderRadius.only(
   topLeft:     Radius.circular(24),
   topRight:    Radius.circular(24),
@@ -558,10 +555,10 @@ BorderRadius.only(
   bottomRight: Radius.circular(4),
 )
 
-// Elementos intermedios
+// Middle items
 BorderRadius.all(Radius.circular(4))
 
-// Último elemento del grupo
+// Last item of the group
 BorderRadius.only(
   topLeft:     Radius.circular(4),
   topRight:    Radius.circular(4),
@@ -569,106 +566,106 @@ BorderRadius.only(
   bottomRight: Radius.circular(24),
 )
 
-// Elemento único (sin vecinos)
+// Single item (no neighbors)
 BorderRadius.all(Radius.circular(24))
 ```
 
-#### Dismissible Cards con Neighbour-Pull
+#### Dismissible Cards with Neighbour-Pull
 
-Al hacer swipe-to-dismiss sobre un ítem:
-- Los items adyacentes (hasta 3 en cada dirección) se desplazan elásticamente hacia
-  el ítem arrastrado, anticipando visualmente el espacio que quedará.
-- Desplazamiento máximo de los vecinos: 8–12 dp
-- Animación del vecino: `spatialDefault` (k=700, ζ=0.90)
+When swipe-to-dismissing an item:
+- The adjacent items (up to 3 in each direction) shift elastically toward
+  the dragged item, visually anticipating the space that will be left.
+- Maximum neighbor displacement: 8–12 dp
+- Neighbor animation: `spatialDefault` (k=700, ζ=0.90)
 
 #### Expandable Cards
 
-- Expansión con `spatialSlow` (k=300, ζ=0.90) para maximizar la sensación de inercia
-  al desplegar contenido de soporte.
-- Auto-collapse de otras tarjetas del mismo grupo: `effectsDefault` para el fade del
-  contenido interno + `spatialDefault` para el colapso geométrico.
+- Expansion with `spatialSlow` (k=300, ζ=0.90) to maximize the sense of inertia
+  when unfolding supporting content.
+- Auto-collapse of other cards in the same group: `effectsDefault` for the fade of
+  the internal content + `spatialDefault` for the geometric collapse.
 
 ---
 
-### 4.7 Indicadores de Progreso
+### 4.7 Progress Indicators
 
-#### LinearProgressIndicator Wavy
+#### Wavy LinearProgressIndicator
 
-Variante del progreso lineal con onda sinusoidal activa durante el avance horizontal.
-Comunica actividad sin bloquear la UI.
+A variant of the linear progress indicator with a sinusoidal wave active during the
+horizontal advance. It communicates activity without blocking the UI.
 
-#### Loading Indicator Poligonal (Shape Morphing)
+#### Polygonal Loading Indicator (Shape Morphing)
 
-Reemplazo del `CircularProgressIndicator` para procesos de < 5 segundos.
+A replacement for the `CircularProgressIndicator` for processes of < 5 seconds.
 
-**Regla técnica crítica:** La secuencia de formas debe contener **mínimo 2 figuras**.
-Una secuencia de 1 forma no tiene transición y causa un crash de interpolación.
+**Critical technical rule:** The shape sequence must contain **at least 2 figures**.
+A sequence of 1 shape has no transition and causes an interpolation crash.
 
-Secuencia recomendada: `cuadrado → triángulo → octágono → estrella → cuadrado (loop)`
+Recommended sequence: `square → triangle → octagon → star → square (loop)`
 
 #### Contained Loading Indicator
 
-El polígono de morphing se aloja en un contenedor sólido `secondaryContainer`, ideal
-para aislar el estado de carga sobre una sección específica sin bloquear el resto de
-la UI.
+The morphing polygon is housed in a solid `secondaryContainer` container, ideal
+for isolating the loading state over a specific section without blocking the rest of
+the UI.
 
 ---
 
-### 4.8 Interfaz de Voz Inline
+### 4.8 Inline Voice Interface
 
-Durante conversación por voz activa, **no** se usa un panel que bloquea la pantalla.
-Se implementa un **pill inline** de 64 dp de altura anclado en la base de la pantalla:
+During an active voice conversation, a panel that blocks the screen is **not** used.
+A 64 dp tall **inline pill** is implemented, anchored at the bottom of the screen:
 
-```
+```text
 ┌──────────────────────────────────────────────────────┐
 │  [📷] [🖥️]     ≈≈≈≈≈[waveform]≈≈≈≈≈      [🔇] [✕]  │
 └──────────────────────────────────────────────────────┘
-  Alto: 64 dp
-  Forma: StadiumBorder
+  Height: 64 dp
+  Shape: StadiumBorder
   Color: surfaceContainerHigh
-  Izquierda: botones cámara + screen share
-  Centro: waveform animado (nivel de audio en tiempo real)
-  Derecha: botón mute + botón cerrar canal
+  Left: camera + screen share buttons
+  Center: animated waveform (real-time audio level)
+  Right: mute button + close-channel button
 ```
 
-Las respuestas habladas por Gemini aparecen como texto en el espacio principal de la
-pantalla, visibles y copiables sin cerrar el canal de voz.
+Responses spoken by Gemini appear as text in the main space of the screen,
+visible and copyable without closing the voice channel.
 
 ---
 
-## 5. Matriz de Decisión de Componentes
+## 5. Component Decision Matrix
 
-| Densidad Info | Volumen de Opciones | Acción Requerida | Componente Recomendado | Justificación |
+| Info Density | Option Volume | Required Action | Recommended Component | Justification |
 |:---|:---|:---|:---|:---|
-| **Baja** | 1 acción | Confirmación/ejecución directa | **XL/L Button** | Máxima área táctil, foco único |
-| **Baja** | 2–5 opciones | Selección excluyente o multi | **Connected Button Group** | Reemplaza segmented buttons; física vecinal |
-| **Baja–Media** | > 5 opciones | Filtrado continuo / etiquetas | **Chips + Scroll Horizontal** | Los groups no toleran > 5 sin overflow |
-| **Media** | Registros independientes | Navegación informativa, dismiss | **M3E Card List (radios dinámicos)** | Gap 3 dp + asimetría comunica cohesión |
-| **Alta** | Estructuras jerárquicas | Lectura bajo demanda | **Expandable Card List** | Auto-collapse reduce scroll excesivo |
-| **Alta** | Selección masiva con metadatos | Búsqueda + filtrado asociativo | **Dropdown + Búsqueda Difusa + Chip Tags** | Evita saturación; chips animados inline |
-| **Variable** | N/A | Respuesta de IA estructurada | **Editorial Layout** (títulos bold + cards + inline media) | Principio central de Neural Expressive |
+| **Low** | 1 action | Direct confirmation/execution | **XL/L Button** | Maximum touch area, single focus |
+| **Low** | 2–5 options | Exclusive or multi selection | **Connected Button Group** | Replaces segmented buttons; neighbor physics |
+| **Low–Medium** | > 5 options | Continuous filtering / labels | **Chips + Horizontal Scroll** | Groups do not tolerate > 5 without overflow |
+| **Medium** | Independent records | Informational navigation, dismiss | **M3E Card List (dynamic radii)** | Gap 3 dp + asymmetry communicates cohesion |
+| **High** | Hierarchical structures | On-demand reading | **Expandable Card List** | Auto-collapse reduces excessive scrolling |
+| **High** | Mass selection with metadata | Search + associative filtering | **Dropdown + Fuzzy Search + Chip Tags** | Avoids saturation; inline animated chips |
+| **Variable** | N/A | Structured AI response | **Editorial Layout** (bold titles + cards + inline media) | Central principle of Neural Expressive |
 
 ---
 
-## 6. Implementación en Flutter
+## 6. Implementation in Flutter
 
-### 6.1 Tokens de Movimiento M3E
+### 6.1 M3E Motion Tokens
 
-> **Corrección técnica importante:** `SpringDescription` en Flutter usa el coeficiente
-> de amortiguación **crítico** (`damping`), no el `dampingRatio`. La relación es:
+> **Important technical correction:** `SpringDescription` in Flutter uses the **critical**
+> damping coefficient (`damping`), not the `dampingRatio`. The relationship is:
 >
-> `damping_crítico = dampingRatio × 2 × sqrt(stiffness × mass)`
+> `critical_damping = dampingRatio × 2 × sqrt(stiffness × mass)`
 >
-> Para `mass = 1.0`: `damping_crítico = dampingRatio × 2 × sqrt(stiffness)`
+> For `mass = 1.0`: `critical_damping = dampingRatio × 2 × sqrt(stiffness)`
 
 ```dart
 import 'package:flutter/physics.dart';
 import 'dart:math' as math;
 
-/// Convierte los tokens de M3E (dampingRatio + stiffness) a SpringDescription
-/// compatible con Flutter, que usa damping crítico en lugar de dampingRatio.
+/// Converts the M3E tokens (dampingRatio + stiffness) to a SpringDescription
+/// compatible with Flutter, which uses critical damping instead of dampingRatio.
 class M3ESprings {
-  /// Calcula el coeficiente de amortiguación crítica para Flutter.
+  /// Computes the critical damping coefficient for Flutter.
   static double _criticalDamping({
     required double stiffness,
     required double dampingRatio,
@@ -677,34 +674,34 @@ class M3ESprings {
     return dampingRatio * 2.0 * math.sqrt(stiffness * mass);
   }
 
-  // ─── Tokens de Efectos (Non-Spatial) — sin rebote ───────────────────────
-  // Para: cambios de color, opacidad, fades
+  // ─── Effects Tokens (Non-Spatial) — no bounce ───────────────────────────
+  // For: color changes, opacity, fades
 
   static SpringDescription get effectsFast => SpringDescription(
     mass: 1.0,
     stiffness: 3800.0,
     damping: _criticalDamping(stiffness: 3800, dampingRatio: 1.0),
-    // ≈ 123.3 — amortiguación crítica, ~150 ms
+    // ≈ 123.3 — critical damping, ~150 ms
   );
 
   static SpringDescription get effectsDefault => SpringDescription(
     mass: 1.0,
     stiffness: 1600.0,
     damping: _criticalDamping(stiffness: 1600, dampingRatio: 1.0),
-    // ≈ 80.0 — amortiguación crítica, ~300 ms
+    // ≈ 80.0 — critical damping, ~300 ms
   );
 
   static SpringDescription get effectsSlow => SpringDescription(
     mass: 1.0,
     stiffness: 800.0,
     damping: _criticalDamping(stiffness: 800, dampingRatio: 1.0),
-    // ≈ 56.6 — amortiguación crítica, ~500 ms
+    // ≈ 56.6 — critical damping, ~500 ms
   );
 
-  // ─── Tokens Espaciales — con ligero rebote ───────────────────────────────
-  // Para: movimientos de posición, tamaño, rotación
+  // ─── Spatial Tokens — with slight bounce ─────────────────────────────────
+  // For: position, size, rotation movements
 
-  /// Rápido con overshoot leve (~10%). Icon surfaces, chips, feedback botones.
+  /// Fast with slight overshoot (~10%). Icon surfaces, chips, button feedback.
   static SpringDescription get spatialFast => SpringDescription(
     mass: 1.0,
     stiffness: 1400.0,
@@ -712,7 +709,7 @@ class M3ESprings {
     // ≈ 67.3 — ~240 ms
   );
 
-  /// Orgánico y responsivo. Bottom sheets, drawer apertura, paneles.
+  /// Organic and responsive. Bottom sheets, drawer opening, panels.
   static SpringDescription get spatialDefault => SpringDescription(
     mass: 1.0,
     stiffness: 700.0,
@@ -720,7 +717,7 @@ class M3ESprings {
     // ≈ 47.6 — ~320 ms
   );
 
-  /// Dramático con alta inercia. Hero animations, expansiones a pantalla completa.
+  /// Dramatic with high inertia. Hero animations, full-screen expansions.
   static SpringDescription get spatialSlow => SpringDescription(
     mass: 1.0,
     stiffness: 300.0,
@@ -728,16 +725,16 @@ class M3ESprings {
     // ≈ 31.2 — ~500 ms
   );
 
-  /// Gran rebote (~40% overshoot). SOLO para elementos pequeños (≤56 dp):
-  /// FAB menu, chips, pickers. NUNCA para drawers o superficies grandes.
+  /// Large bounce (~40% overshoot). ONLY for small elements (≤56 dp):
+  /// FAB menu, chips, pickers. NEVER for drawers or large surfaces.
   static SpringDescription get bouncySpatial => SpringDescription(
     mass: 1.0,
     stiffness: 400.0,
     damping: _criticalDamping(stiffness: 400, dampingRatio: 0.40),
-    // ≈ 16.0 — rebote expresivo visible
+    // ≈ 16.0 — visible expressive bounce
   );
 
-  /// Retorno rápido con oscilación leve. Drag de tarjetas, carruseles.
+  /// Fast return with slight oscillation. Card drag, carousels.
   static SpringDescription get snappySpatial => SpringDescription(
     mass: 1.0,
     stiffness: 1000.0,
@@ -746,7 +743,7 @@ class M3ESprings {
   );
 }
 
-/// Helper para aplicar un resorte a un AnimationController.
+/// Helper to apply a spring to an AnimationController.
 extension SpringControllerExtension on AnimationController {
   TickerFuture animateWithSpring({
     required double target,
@@ -755,8 +752,8 @@ extension SpringControllerExtension on AnimationController {
   }) {
     final simulation = SpringSimulation(
       spring,
-      value,         // posición actual
-      target,        // posición objetivo
+      value,         // current position
+      target,        // target position
       initialVelocity,
     );
     return animateWith(simulation);
@@ -771,7 +768,7 @@ extension SpringControllerExtension on AnimationController {
 ```dart
 import 'package:flutter/material.dart';
 
-/// Categorías de breakpoint basadas en M3 (5 niveles).
+/// Breakpoint categories based on M3 (5 levels).
 enum M3Breakpoint {
   compact,    // < 600 dp
   medium,     // 600–839 dp
@@ -789,8 +786,8 @@ extension M3BreakpointExtension on M3Breakpoint {
   bool get usesRail => this == M3Breakpoint.medium;
 
   double get drawerWidth {
-    if (isCompact) return double.infinity; // 100% de pantalla
-    return 320.0; // tope absoluto para medium y superiores
+    if (isCompact) return double.infinity; // 100% of the screen
+    return 320.0; // absolute cap for medium and above
   }
 
   double get contentMargin {
@@ -814,7 +811,7 @@ extension M3BreakpointExtension on M3Breakpoint {
   }
 }
 
-/// Widget que expone el breakpoint actual a sus descendientes.
+/// Widget that exposes the current breakpoint to its descendants.
 class M3BreakpointProvider extends InheritedWidget {
   final M3Breakpoint breakpoint;
 
@@ -835,7 +832,7 @@ class M3BreakpointProvider extends InheritedWidget {
       breakpoint != oldWidget.breakpoint;
 }
 
-/// Widget raíz que calcula el breakpoint a partir del ancho disponible.
+/// Root widget that computes the breakpoint from the available width.
 class M3AdaptiveLayout extends StatelessWidget {
   final Widget child;
 
@@ -866,23 +863,23 @@ class M3AdaptiveLayout extends StatelessWidget {
 
 ---
 
-### 6.3 Widget: Tarjeta Expresiva con Radios Dinámicos
+### 6.3 Widget: Expressive Card with Dynamic Radii
 
 ```dart
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-/// Posición del ítem dentro de un grupo de tarjetas.
+/// Position of the item within a group of cards.
 enum CardGroupPosition { first, middle, last, single }
 
-/// Tarjeta M3E con radios de esquina dinámicos según posición en el grupo.
-/// Incluye retroalimentación táctil elástica con física de resorte.
+/// M3E card with dynamic corner radii according to its position in the group.
+/// Includes elastic tactile feedback with spring physics.
 class M3EExpressiveCard extends StatefulWidget {
   final Widget child;
   final CardGroupPosition position;
   final VoidCallback? onTap;
-  final double outerRadius; // Radio de esquinas exteriores
-  final double innerRadius; // Radio de esquinas interiores (adyacentes a vecinos)
+  final double outerRadius; // Outer corner radius
+  final double innerRadius; // Inner corner radius (adjacent to neighbors)
   final Color? backgroundColor;
 
   const M3EExpressiveCard({
@@ -904,7 +901,7 @@ class _M3EExpressiveCardState extends State<M3EExpressiveCard>
   late AnimationController _scaleController;
   late Animation<double> _scaleAnimation;
 
-  // Escala mínima en el momento de presión
+  // Minimum scale at the moment of press
   static const double _pressedScale = 0.97;
 
   @override
@@ -912,7 +909,7 @@ class _M3EExpressiveCardState extends State<M3EExpressiveCard>
     super.initState();
     _scaleController = AnimationController(
       vsync: this,
-      // Duración máxima de seguridad; el resorte termina antes
+      // Maximum safety duration; the spring finishes earlier
       duration: const Duration(milliseconds: 600),
     );
     _scaleAnimation = Tween<double>(begin: 1.0, end: _pressedScale)
@@ -928,16 +925,16 @@ class _M3EExpressiveCardState extends State<M3EExpressiveCard>
   void _onTapDown(TapDownDetails _) {
     HapticFeedback.lightImpact();
     _scaleController.animateWithSpring(
-      target: 1.0, // hacia _pressedScale desde 1.0
+      target: 1.0, // toward _pressedScale from 1.0
       spring: M3ESprings.spatialFast,
     );
-    // Atajo: usamos forward para comprimir
+    // Shortcut: we use forward to compress
     _scaleController.forward();
   }
 
   void _onTapUp(TapUpDetails _) {
     _scaleController.animateWithSpring(
-      target: 0.0, // regresar a escala 1.0
+      target: 0.0, // return to scale 1.0
       spring: M3ESprings.spatialFast,
     );
     _scaleController.reverse();
@@ -947,7 +944,7 @@ class _M3EExpressiveCardState extends State<M3EExpressiveCard>
     _scaleController.reverse();
   }
 
-  /// Calcula el BorderRadius según posición en el grupo.
+  /// Computes the BorderRadius according to the position in the group.
   BorderRadius _buildRadius() {
     final o = Radius.circular(widget.outerRadius);
     final i = Radius.circular(widget.innerRadius);
@@ -1000,7 +997,7 @@ class _M3EExpressiveCardState extends State<M3EExpressiveCard>
   }
 }
 
-/// Wrapper para construir una lista de M3EExpressiveCards con gap de 3 dp.
+/// Wrapper to build a list of M3EExpressiveCards with a 3 dp gap.
 class M3ECardList extends StatelessWidget {
   final List<Widget> Function(int index, CardGroupPosition position) itemBuilder;
   final int itemCount;
@@ -1039,15 +1036,15 @@ class M3ECardList extends StatelessWidget {
 
 ---
 
-### 6.4 Widget: Navigation Drawer Responsivo
+### 6.4 Widget: Responsive Navigation Drawer
 
 ```dart
 import 'package:flutter/material.dart';
 
-/// Drawer responsivo que implementa las reglas Neural Expressive:
-/// - Compact: 100% ancho, push al contenido
-/// - Medium: 320 dp máx, push al contenido
-/// - Expanded+: permanente/pinned, sin animación
+/// Responsive drawer that implements the Neural Expressive rules:
+/// - Compact: 100% width, push to the content
+/// - Medium: 320 dp max, push to the content
+/// - Expanded+: permanent/pinned, no animation
 class M3EAdaptiveScaffold extends StatefulWidget {
   final Widget body;
   final Widget drawerContent;
@@ -1073,7 +1070,7 @@ class _M3EAdaptiveScaffoldState extends State<M3EAdaptiveScaffold>
   late AnimationController _drawerController;
   bool _drawerOpen = false;
 
-  // Factor de parallax: el contenido se mueve al 94% del ancho del drawer
+  // Parallax factor: the content moves at 94% of the drawer's width
   static const double _parallaxFactor = 0.94;
 
   @override
@@ -1115,7 +1112,7 @@ class _M3EAdaptiveScaffoldState extends State<M3EAdaptiveScaffold>
     final bp = M3BreakpointProvider.of(context);
     final screenWidth = MediaQuery.of(context).size.width;
 
-    // En expanded+, el drawer es permanente: no hay animación
+    // On expanded+, the drawer is permanent: there is no animation
     if (bp.usesPermanentDrawer) {
       return Row(
         children: [
@@ -1128,21 +1125,21 @@ class _M3EAdaptiveScaffoldState extends State<M3EAdaptiveScaffold>
       );
     }
 
-    // Compact y Medium: drawer modal con physics push
+    // Compact and Medium: modal drawer with physics push
     final drawerWidth = bp.isCompact
-        ? screenWidth               // 100% en compact
-        : bp.drawerWidth.clamp(0.0, screenWidth); // 320 dp topado en medium
+        ? screenWidth               // 100% on compact
+        : bp.drawerWidth.clamp(0.0, screenWidth); // 320 dp capped on medium
 
     return AnimatedBuilder(
       animation: _drawerController,
       builder: (context, _) {
         final progress = _drawerController.value;
-        // Contenido se mueve el 94% del ancho del drawer (parallax α=0.06)
+        // The content moves 94% of the drawer's width (parallax α=0.06)
         final contentOffset = drawerWidth * _parallaxFactor * progress;
 
         return Stack(
           children: [
-            // Body desplazado (parallax push)
+            // Body displaced (parallax push)
             Transform.translate(
               offset: Offset(contentOffset, 0),
               child: Scaffold(
@@ -1154,7 +1151,7 @@ class _M3EAdaptiveScaffoldState extends State<M3EAdaptiveScaffold>
               ),
             ),
 
-            // Drawer deslizándose desde la izquierda
+            // Drawer sliding from the left
             if (_drawerOpen || progress > 0)
               Transform.translate(
                 offset: Offset(drawerWidth * (progress - 1), 0),
@@ -1170,7 +1167,7 @@ class _M3EAdaptiveScaffoldState extends State<M3EAdaptiveScaffold>
   }
 }
 
-/// Contenido interior del drawer con las 3 zonas: header, destinations, footer.
+/// Inner content of the drawer with the 3 zones: header, destinations, footer.
 class M3EDrawerContent extends StatelessWidget {
   final VoidCallback onClose;
   final String brandName;
@@ -1223,7 +1220,7 @@ class M3EDrawerContent extends StatelessWidget {
               ),
             ),
 
-            // ── Destinations (expandible) ───────────────────────────────────
+            // ── Destinations (expandable) ───────────────────────────────────
             Expanded(
               child: ListView.separated(
                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
@@ -1339,7 +1336,7 @@ class _DrawerDestinationItem extends StatelessWidget {
   }
 }
 
-/// Icon Surface circular (para AppBar y header del drawer).
+/// Circular Icon Surface (for AppBar and drawer header).
 class _IconSurface extends StatelessWidget {
   final IconData icon;
   final VoidCallback? onTap;
@@ -1355,7 +1352,7 @@ class _IconSurface extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return SizedBox(
-      // Área de toque mínima: 48×48 dp (accesibilidad)
+      // Minimum touch area: 48×48 dp (accessibility)
       width: 48,
       height: 48,
       child: Center(
@@ -1363,7 +1360,7 @@ class _IconSurface extends StatelessWidget {
           onTap: onTap,
           borderRadius: BorderRadius.circular(20),
           child: Container(
-            width: 40, // Contenedor visual: 40 dp
+            width: 40, // Visual container: 40 dp
             height: 40,
             decoration: BoxDecoration(
               color: backgroundColor ?? colorScheme.surfaceContainerHigh,
@@ -1384,24 +1381,24 @@ class _IconSurface extends StatelessWidget {
 
 ---
 
-### 6.5 Widget: Pill Input Flotante
+### 6.5 Widget: Floating Pill Input
 
 ```dart
 import 'package:flutter/material.dart';
 
-/// Campo de entrada tipo píldora flotante — estilo Neural Expressive.
-/// Se posiciona sobre el contenido, desvinculado del teclado.
+/// Floating pill-style input field — Neural Expressive style.
+/// It is positioned over the content, decoupled from the keyboard.
 class M3EPillInput extends StatefulWidget {
   final TextEditingController? controller;
   final String hintText;
-  final VoidCallback? onPlusPressed;   // Abre el bottom sheet de adjuntos/tools
+  final VoidCallback? onPlusPressed;   // Opens the attachments/tools bottom sheet
   final VoidCallback? onVoicePressed;
   final ValueChanged<String>? onSubmitted;
 
   const M3EPillInput({
     super.key,
     this.controller,
-    this.hintText = 'Escribe un mensaje...',
+    this.hintText = 'Type a message...',
     this.onPlusPressed,
     this.onVoicePressed,
     this.onSubmitted,
@@ -1446,13 +1443,13 @@ class _M3EPillInputState extends State<M3EPillInput> {
         decoration: BoxDecoration(
           color: colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(28), // StadiumBorder
-          // Sombra sutil solo cuando está enfocado — no como estado base
+          // Subtle shadow only when focused — not as a base state
         ),
         child: Row(
           children: [
             const SizedBox(width: 4),
 
-            // Botón "+" — abre bottom sheet de adjuntos y herramientas
+            // "+" button — opens the attachments and tools bottom sheet
             IconButton(
               icon: const Icon(Icons.add),
               iconSize: 20,
@@ -1460,7 +1457,7 @@ class _M3EPillInputState extends State<M3EPillInput> {
               onPressed: widget.onPlusPressed,
             ),
 
-            // Campo de texto expandible
+            // Expandable text field
             Expanded(
               child: TextField(
                 controller: _controller,
@@ -1480,7 +1477,7 @@ class _M3EPillInputState extends State<M3EPillInput> {
               ),
             ),
 
-            // Botón derecho: enviar (si hay texto) o micrófono (si no hay texto)
+            // Right button: send (if there is text) or microphone (if there is no text)
             AnimatedSwitcher(
               duration: const Duration(milliseconds: 200),
               transitionBuilder: (child, animation) => ScaleTransition(
@@ -1516,25 +1513,25 @@ class _M3EPillInputState extends State<M3EPillInput> {
 
 ---
 
-### 6.6 Widget: Indicador de Carga Poligonal (Shape Morphing)
+### 6.6 Widget: Polygonal Loading Indicator (Shape Morphing)
 
 ```dart
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
 
-/// Indicador de carga poligonal — reemplazo de CircularProgressIndicator.
-/// Transiciona suavemente entre figuras geométricas usando interpolación
-/// de coordenadas de vértices.
+/// Polygonal loading indicator — a replacement for CircularProgressIndicator.
+/// Smoothly transitions between geometric figures using interpolation
+/// of vertex coordinates.
 ///
-/// REGLA: la lista [shapes] debe tener ≥ 2 elementos.
-/// Una sola forma no tiene transición y causa división por cero en el interpolador.
+/// RULE: the [shapes] list must have ≥ 2 elements.
+/// A single shape has no transition and causes a division by zero in the interpolator.
 class M3EPolygonLoader extends StatefulWidget {
   final double size;
   final Color? color;
   final Duration cycleDuration;
 
-  /// Número de lados de cada figura en la secuencia de morphing.
-  /// Mínimo 2 figuras requerido.
+  /// Number of sides of each figure in the morphing sequence.
+  /// A minimum of 2 figures is required.
   final List<int> shapes;
 
   const M3EPolygonLoader({
@@ -1542,9 +1539,9 @@ class M3EPolygonLoader extends StatefulWidget {
     this.size = 48.0,
     this.color,
     this.cycleDuration = const Duration(milliseconds: 1200),
-    this.shapes = const [4, 3, 8, 6], // cuadrado → triángulo → octágono → hexágono
+    this.shapes = const [4, 3, 8, 6], // square → triangle → octagon → hexagon
   }) : assert(shapes.length >= 2,
-            'shapes debe contener al menos 2 figuras para evitar crash de interpolación');
+            'shapes must contain at least 2 figures to avoid an interpolation crash');
 
   @override
   State<M3EPolygonLoader> createState() => _M3EPolygonLoaderState();
@@ -1639,7 +1636,7 @@ class _PolygonMorphPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
-    final radius = size.width / 2 * 0.85; // margen visual interior
+    final radius = size.width / 2 * 0.85; // inner visual margin
 
     final current = _getVertices(currentSides, radius, center);
     final next = _getVertices(nextSides, radius, center);
@@ -1671,65 +1668,65 @@ class _PolygonMorphPainter extends CustomPainter {
 
 ---
 
-## 7. Gobernanza, Accesibilidad y Rendimiento
+## 7. Governance, Accessibility, and Performance
 
-### 7.1 Accesibilidad — No Negociable
+### 7.1 Accessibility — Non-Negotiable
 
-| Requisito | Valor | Aplicación |
+| Requirement | Value | Application |
 |:----------|:------|:-----------|
-| Área de toque mínima | 48×48 dp | Todos los elementos interactivos, incluyendo Icon Surfaces de 40 dp |
-| Contraste texto/fondo | 4.5:1 | Texto en `bodyLarge`, `bodyMedium`, `labelLarge` |
-| Contraste iconos/fondo | 3.0:1 | Iconos de navegación y acción |
-| `semanticLabel` | Requerido | Todos los botones solo-ícono |
-| `Semantics(checked:)` | Requerido | Toggle groups, checkboxes |
-| Reducción de movimiento | Respetar | Detectar `MediaQuery.of(ctx).disableAnimations` y usar `effectsDefault` |
+| Minimum touch area | 48×48 dp | All interactive elements, including 40 dp Icon Surfaces |
+| Text/background contrast | 4.5:1 | Text in `bodyLarge`, `bodyMedium`, `labelLarge` |
+| Icon/background contrast | 3.0:1 | Navigation and action icons |
+| `semanticLabel` | Required | All icon-only buttons |
+| `Semantics(checked:)` | Required | Toggle groups, checkboxes |
+| Reduced motion | Respect | Detect `MediaQuery.of(ctx).disableAnimations` and use `effectsDefault` |
 
 ```dart
-// Detectar preferencia de movimiento reducido
+// Detect reduced-motion preference
 final reducedMotion = MediaQuery.of(context).disableAnimations;
 final spring = reducedMotion
-    ? M3ESprings.effectsDefault  // sin rebote, resuelve rápido
-    : M3ESprings.spatialDefault; // comportamiento normal
+    ? M3ESprings.effectsDefault  // no bounce, resolves quickly
+    : M3ESprings.spatialDefault; // normal behavior
 ```
 
-### 7.2 Regla de Moderación Expresiva
+### 7.2 Expressive Moderation Rule
 
-**Máximo 1–2 momentos expresivos de alto impacto por pantalla.**
+**A maximum of 1–2 high-impact expressive moments per screen.**
 
-Los momentos expresivos son: animaciones Hero, FAB expandido, morphing poligonal, 
-`bouncySpatial`. El resto de la UI usa tokens Standard o Spatial sin bounce.
+The expressive moments are: Hero animations, expanded FAB, polygonal morphing,
+`bouncySpatial`. The rest of the UI uses Standard or Spatial tokens without bounce.
 
-El objetivo de Neural Expressive es **reducir ruido visual**, no aumentarlo.
-Un exceso de animaciones simultáneas contradice el principio fundamental del sistema.
+The goal of Neural Expressive is to **reduce visual noise**, not increase it.
+An excess of simultaneous animations contradicts the system's fundamental principle.
 
-### 7.3 Rendimiento
+### 7.3 Performance
 
-- Animaciones complejas (polygon morphing, Hero transitions): usar `RepaintBoundary`
-  para aislar el subtree de la capa de pintura del resto de la UI.
-- En dispositivos con < 4 GB RAM o GPU limitada, desactivar el morphing poligonal
-  y usar `CircularProgressIndicator` como fallback.
-- Verificar que todos los `AnimationController` se destruyen en `dispose()`.
-- En listas largas (> 100 items), los radios dinámicos se calculan sin overhead
-  en tiempo de pintado (son solo `BorderRadius`, sin shaders).
+- Complex animations (polygon morphing, Hero transitions): use `RepaintBoundary`
+  to isolate the subtree from the paint layer of the rest of the UI.
+- On devices with < 4 GB RAM or a limited GPU, disable polygonal morphing
+  and use `CircularProgressIndicator` as a fallback.
+- Verify that all `AnimationController`s are disposed in `dispose()`.
+- In long lists (> 100 items), the dynamic radii are computed without overhead
+  at paint time (they are just `BorderRadius`, no shaders).
 
-### 7.4 Checklist de Implementación
+### 7.4 Implementation Checklist
 
-Antes de marcar un widget como "completo" en tu sistema de diseño:
+Before marking a widget as "complete" in your design system:
 
-- [ ] ¿Los tokens de física de resorte usados son los correctos para el tamaño del elemento?
-- [ ] ¿El drawer usa `spatialDefault` en apertura y `spatialFast` en cierre?
-- [ ] ¿Las Icon Surfaces tienen 40 dp visual y 48 dp de área de toque?
-- [ ] ¿El drawer en Compact es 100% del ancho de pantalla?
-- [ ] ¿En Expanded+ el drawer es permanente (sin animación de apertura)?
-- [ ] ¿Las listas agrupadas tienen gap de 3 dp y radios dinámicos (24/4)?
-- [ ] ¿La lista de formas del polygon loader tiene ≥ 2 figuras?
-- [ ] ¿`bouncySpatial` se usa SOLO en elementos ≤ 56 dp?
-- [ ] ¿Hay soporte para `disableAnimations` de accesibilidad?
-- [ ] ¿Los textos de botones solo-ícono tienen `semanticLabel`?
-- [ ] ¿El contraste de color cumple WCAG AA (4.5:1 texto, 3:1 iconos)?
+- [ ] Are the spring physics tokens used correct for the element's size?
+- [ ] Does the drawer use `spatialDefault` on opening and `spatialFast` on closing?
+- [ ] Do the Icon Surfaces have 40 dp visual and 48 dp touch area?
+- [ ] Is the drawer in Compact 100% of the screen width?
+- [ ] In Expanded+, is the drawer permanent (no opening animation)?
+- [ ] Do the grouped lists have a 3 dp gap and dynamic radii (24/4)?
+- [ ] Does the polygon loader's shape list have ≥ 2 figures?
+- [ ] Is `bouncySpatial` used ONLY on elements ≤ 56 dp?
+- [ ] Is there support for accessibility `disableAnimations`?
+- [ ] Do the icon-only button texts have a `semanticLabel`?
+- [ ] Does the color contrast meet WCAG AA (4.5:1 text, 3:1 icons)?
 
 ---
 
-*Guía generada con base en fuentes verificadas: Google I/O 2025 (M3E announcement),
-Google I/O 2026 (Neural Expressive launch), especificaciones oficiales en m3.material.io,
-cobertura técnica de 9to5Google, Android Authority y UrDesign Magazine.*
+*Guide produced based on verified sources: Google I/O 2025 (M3E announcement),
+Google I/O 2026 (Neural Expressive launch), official specifications at m3.material.io,
+technical coverage from 9to5Google, Android Authority, and UrDesign Magazine.*

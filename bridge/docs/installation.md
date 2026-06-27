@@ -1,5 +1,9 @@
 # Bridge — installation & autostart
 
+![Node.js](https://img.shields.io/badge/Node.js-%E2%89%A518-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)
+![Platforms](https://img.shields.io/badge/Windows_%7C_macOS_%7C_Linux-lightgrey?style=for-the-badge)
+![Autostart](https://img.shields.io/badge/autostart-at_logon,_never_elevated-2ea44f?style=for-the-badge)
+
 How to install, run, and auto-start the uxnan bridge daemon on a PC.
 
 ## Prerequisites
