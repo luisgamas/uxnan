@@ -52,6 +52,18 @@ reports "not available":
       "browse nearby bridges" (`_uxnan._tcp`) + the direct LAN socket. **Review the
       user-facing copy** before App Store submission.
 
+## iOS in-app update path (App Store listing required)
+
+The in-app update checker is wired for iOS (looks up the App Store version via
+the iTunes lookup endpoint and opens the listing with `url_launcher`), but it is
+**inert until the app has a live App Store listing** — the lookup returns empty
+for an unpublished bundle id, so the checker simply reports "no update". No code
+or asset is owed; this unblocks itself once the app ships to the App Store
+(opening the `https://apps.apple.com/...` link needs **no** extra `Info.plist`
+config). Android needs nothing here — it uses the Play In-App Update API, which
+reports updates only for builds installed from **Google Play** (verify on a Play
+internal-testing track build).
+
 ## iOS signing (for a store / signed `.ipa`)
 
 - [ ] Apple signing certificate (`.p12` + password) + provisioning profile (gated on

@@ -66,6 +66,12 @@ connected to live bridge data, validated on-device against a real bridge.
   dedicated Theme Manager (single/dual-brightness themes, live-preview grid,
   multi-select bulk delete/export, JSON import/export); language (EN/ES, follows
   device or picker); notification preferences.
+- **In-app update checker** (code-complete; *no silent install*) — throttled
+  check on launch/resume, **Settings → Updates** *Check now*, and a dismissible
+  *Update available* banner. Android = Play In-App Update (immediate flow); iOS =
+  App Store version lookup + open listing. Wraps `flutter_upgrade_version` behind
+  a guarded `AppUpdateService`. **Not yet device-verified** (Android needs a Play
+  internal-track build; iOS needs an App Store listing) — see below.
 - **i18n** — full app translated (EN + ES) via `flutter gen-l10n`.
 
 iOS is **not yet built** (the Podfile is generated on the first macOS build) and is
@@ -163,6 +169,21 @@ The following are pending and tracked as assets in `FOR-HUMAN.md`:
       secrets are loaded (`ANDROID_KEYSTORE_B64`, key password/alias,
       `GOOGLE_SERVICES_JSON`, `PLAY_SERVICE_ACCOUNT_JSON_BASE64`). What remains is
       executing the first tagged release and confirming the Play upload.
-- [ ] **In-app version checker** (deferred) — notify on a newer version and let the
-      user decide (no silent install): APK → poll GitHub Releases + banner; Play →
-      the In-App Updates API. iOS waits for the App Store path.
+- [ ] **In-app version checker — on-device verification.** The checker is
+      **code-complete** (`infrastructure/updates/app_update_service.dart` +
+      `presentation/providers/update_providers.dart`, wrapping
+      `flutter_upgrade_version`): a throttled check on launch/resume, a *Check
+      now* tile in **Settings → Updates**, and a dismissible *Update available*
+      banner on the threads list. Android drives the **Play In-App Update** API
+      (immediate flow); iOS looks up the **App Store** version and opens the
+      listing. **Still pending:** Android In-App Updates only report a real
+      update from a build installed via **Google Play** — verify against a **Play
+      internal-testing track** build (a sideloaded APK always reports "no
+      update"). The iOS path is inert until the App Store listing exists
+      (`FOR-HUMAN.md`).
+- [ ] **APK / GitHub-Releases update channel** (not built) — for users on a
+      sideloaded `.apk` (no Play), poll the GitHub Releases API and show the same
+      banner with a download/install action. `flutter_upgrade_version` does **not**
+      cover this channel (it only does Play In-App Updates + the iOS App Store
+      lookup), so it needs its own checker behind the existing `AppUpdateService`
+      seam.
