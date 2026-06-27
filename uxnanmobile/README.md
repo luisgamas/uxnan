@@ -1,13 +1,84 @@
 # uxnanmobile
 
-Flutter mobile client (Android + iOS) for **Uxnan** — a remote control for AI
-coding agents running on a PC, over an end-to-end encrypted channel.
+Flutter mobile client (Android + iOS) for **[Uxnan](../README.md)** — a remote
+control for the AI coding agents running on your PC, over an end-to-end encrypted
+channel. It is the part of the ecosystem you carry with you: the bridge does the
+work on the PC, and this app is how you watch it, steer it, and review it from
+anywhere.
+
+![Flutter](https://img.shields.io/badge/Flutter-02569B?style=for-the-badge&logo=flutter&logoColor=white)
+![Dart](https://img.shields.io/badge/Dart-0175C2?style=for-the-badge&logo=dart&logoColor=white)
+![Android](https://img.shields.io/badge/Android-3DDC84?style=for-the-badge&logo=android&logoColor=white)
+![iOS](https://img.shields.io/badge/iOS-000000?style=for-the-badge&logo=apple&logoColor=white)
+![Riverpod](https://img.shields.io/badge/Riverpod_3.x-0553B1?style=for-the-badge&logo=flutter&logoColor=white)
+![Material 3](https://img.shields.io/badge/Material_Design_3-757575?style=for-the-badge&logo=materialdesign&logoColor=white)
+![E2EE](https://img.shields.io/badge/E2EE-AES--256--GCM-0a0a0a?style=for-the-badge&logo=letsencrypt&logoColor=white)
+![License](https://img.shields.io/badge/LICENSE-MPL--2.0-2ea44f?style=for-the-badge)
 
 > **Status: Android ALPHA-READY. iOS pending FOR-HUMAN assets** (APNs key,
-> `Info.plist` usage strings, signing; first build requires macOS).
+> `Info.plist` usage strings, signing; the first build requires macOS).
 >
 > Full technical specification: [`../architecture/`](../architecture/00-index.md).
 > The architecture docs are the source of truth; this app implements them.
+
+## What sets it apart
+
+There is no shortage of "control your agent from your phone" tools. Uxnan takes a
+deliberately different set of positions, and most of them are felt directly from
+this app:
+
+- **Provider-agnostic, real multi-agent support.** It is not tied to a single
+  vendor. Five real agents are wired today — OpenCode, Claude Code, Codex, pi and
+  Gemini CLI — and you select the agent and model per conversation.
+- **Strong encryption that is never optional.** Every message to and from the PC
+  travels through a real end-to-end encrypted channel (X25519 + Ed25519 +
+  AES-256-GCM + HKDF). There is no "plaintext mode".
+- **Fully open source.** The entire ecosystem, this app included, is released
+  under the [MPL-2.0](../LICENSE) license. Nothing about how it connects to your
+  machine is hidden.
+- **One bridge, every project.** The bridge is started **once**, from a single
+  location on your PC, and from the app you can open a conversation in **any**
+  project beneath it — Git repositories or plain folders alike — without
+  relaunching anything per project. A built-in folder browser (`workspace/
+  browseDirs`) lets you root a new conversation wherever the bridge allows.
+- **Effortless connection.** Pairing is as simple as scanning a QR, and the app
+  can also **discover nearby bridges** automatically over mDNS or accept a short
+  manual code — no addresses to memorize, no compile-time configuration. A
+  transport indicator always tells you whether you are connected **directly** (LAN
+  / Tailscale) or **through the relay**.
+- **Parity with the bridge's main capabilities.** Streaming conversations with
+  structured agent turns, interactive approvals, model and reasoning-effort
+  selection, a live context-usage indicator, per-agent sign-in status, voice and
+  image input, and a full Git screen are all available from the phone.
+- **Full custom theming.** Beyond system light/dark, a dedicated Theme Manager
+  lets you build, preview, import and export your own themes (single- or
+  dual-brightness), so the app genuinely looks the way you want.
+
+<details>
+<summary><b>Diagram — the phone, one bridge, and every project under it</b></summary>
+
+```mermaid
+flowchart LR
+  app["📱 uxnanmobile<br/>(this app)"]
+
+  subgraph pc["💻 your PC"]
+    bridge["uxnan-bridge<br/>(started once)"]
+    p1["project-a (git)"]
+    p2["project-b (git)"]
+    p3["notes/ (plain folder)"]
+    a1["agents<br/>opencode · claude · codex · pi · gemini"]
+  end
+
+  app -- "QR · mDNS · manual code" --> bridge
+  app == "E2EE · LAN / Tailscale (direct)" ==> bridge
+  app -. "E2EE · relay (off-LAN)" .-> bridge
+  bridge --> p1
+  bridge --> p2
+  bridge --> p3
+  bridge --> a1
+```
+
+</details>
 
 ## Stack
 
@@ -73,73 +144,23 @@ Configuration is injected at compile time with `--dart-define` (spec 03 §3.3):
 ```bash
 dart format lib test
 flutter analyze            # must report 0 issues (no warnings)
-flutter test               # unit + widget tests (441 passing)
+flutter test               # unit + widget tests
 ```
 
 ## Status
 
-**MVP wired (Android alpha-ready).** All core modules are implemented and
+**MVP wired — Android alpha-ready.** Every core module is implemented and
 connected to live bridge data, validated on-device against a real bridge:
+pairing + E2EE transport, live streaming conversations with structured agent
+turns, the model picker and run-option knobs, context-usage and sign-in
+indicators, interactive approvals, voice and image input, per-PC threads, a full
+Git screen, and Android push.
 
-- **E2EE crypto + secure transport** (X25519 + Ed25519 + HKDF + AES-256-GCM,
-  handshake, seq/replay, outbound buffer, reconnect loop).
-- **Pairing & onboarding** — `OnboardingScreen`, `QrScannerScreen`,
-  `MyDevicesScreen`, **`ManualCodeScreen`** (bridge-first manual-code
-  pairing, `GET /pair/resolve?code=`, host typed or via mDNS discover).
-- **Direct LAN/Tailscale transport** — `DirectTransportSelector` tries each
-  direct `hosts` entry from the QR first, falls back to the relay.
-- **Multi-PC connection-targeting** — all live actions target the PC we
-  actually hold a channel to; browsing is read-only. `bridge/status`
-  consumed (Relay / Direct transport indicator).
-- **Live streaming conversations** that survive leaving/re-entering the
-  screen (per-thread in-memory buffers + `turn/list` re-sync) with a
-  per-thread **"Responding…"** activity indicator.
-- **Structured agent turns** — assistant replies without a bubble,
-  consecutive text merged, collapsible **Work log (N)**, collapsible
-  **Changed files (N) · +a −d** with per-file diffs, **Copy response**,
-  **Last edits** strip above the composer; **Thinking** section
-  (settings-gated, default off).
-- **New conversation flow** — `project/list` + `agent/list` + `agent/models`
-  + **folder browser** (`workspace/browseDirs`) to root a thread anywhere.
-- **Structured model picker** (readable names, default badge, Claude alias
-  "(latest)" + pinned versions + resolved-version row, `thread/setModel`).
-- **Per-model run-option knobs** (data-driven: `enum` / `toggle`,
-  generic renderer).
-- **Context-usage indicator** (percentage when the model window is known,
-  raw token count otherwise; **0 baseline** for agents with
-  `reportsContextUsage`).
-- **Per-agent sign-in status** (`auth/status`) — banner above the composer,
-  red dot in the threads list, "Check sign-in" in new-conversation card,
-  auto-refresh on app resume.
-- **Interactive approval** (Approve / Reject / "always allow this session")
-  with a spring `AnimatedSize` morph; validated end-to-end against Echo,
-  Claude Code (`PreToolUse` hook), Codex (`app-server`) and Gemini
-  (`BeforeTool` hook). OpenCode/pi have no headless pre-tool channel yet.
-- **Composer** — bottom-anchored bar; **stop-the-turn** mid-run; **voice
-  → text** (`speech_to_text`); **image attachments** (photo library /
-  camera, downscaled to 2048 px / q85, image-only message allowed,
-  gated by the agent's `images` capability).
-- **Per-PC threads** (`Thread.deviceId`) with per-agent filter chips,
-  search / sort / density, archived-thread screen, per-thread actions
-  (rename / archive / unarchive / delete / copy id), **Remove device**
-  (unpair), **Copy thread ID** for CLI resume.
-- **Full Git** — full-screen `GitScreen` (per-file `git/diff`,
-  branch switch with auto-stash, smart PR dialog, undo-commit,
-  `git/revert`, `git/deleteBranch`, `git/removeWorktree`, etc.).
-- **FCM push** (gated) — Android LIVE; deep-link to conversation;
-  **personalized copy** + foreground suppression; per-channel
-  notification preferences (Replies / Errors).
-- **Settings** — theme mode (System/Light/Dark) + a **custom-theme library**
-  with a dedicated Theme Manager (single/dual-brightness themes, live-preview
-  grid, multi-select bulk delete/export, JSON import/export); language (EN/ES,
-  follows device or picker); notification preferences.
-- **i18n** — full app translated (EN + ES) via `flutter gen-l10n`.
-
-Remaining/deferred work (Bug A relink latency, OpenCode/pi interactive approvals
-— a bridge-side gap, automated integration test, and all iOS work) is tracked in
-[`FOR-DEV.md`](FOR-DEV.md); the pending iOS/Apple
-assets are in [`FOR-HUMAN.md`](FOR-HUMAN.md). See [`CHANGELOG.md`](CHANGELOG.md)
-for the full history.
+The detailed, always-current feature inventory and what's left (Bug A relink
+latency, OpenCode/pi interactive approvals — a bridge-side gap — the automated
+integration test, and all iOS work) lives in [`FOR-DEV.md`](FOR-DEV.md); pending
+iOS/Apple assets are in [`FOR-HUMAN.md`](FOR-HUMAN.md); the full history is in
+[`CHANGELOG.md`](CHANGELOG.md).
 
 ## Documentation
 

@@ -19,6 +19,35 @@ backend tests + 19 frontend Vitest unit tests (pure logic); **no Svelte componen
 or E2E tests yet**. macOS is **unvalidated** (developed on Windows; CI is
 `{ubuntu, windows}`). **Phase 6 (embedded bridge / mobile pairing) is NOT started.**
 
+**Built (DONE), in detail:**
+
+- **Three-panel resizable shell** with atomic JSON persistence (5 rotating
+  backups + sequential schema migrations).
+- **PTY terminals** (`portable-pty 0.9`, xterm WebGL + DOM fallback) — tabs +
+  nested splits that never remount on split, drag-to-reorder / move tabs across
+  regions, `Ctrl+Tab` MRU cycling, a backend output ring buffer that restores a
+  recreated pane's scrollback, and the Kitty/CSI-u keyboard protocol.
+- **Git worktrees** — per-worktree terminal workspaces, hierarchical Projects
+  tree, in-app directory picker, worktree palette (Ctrl/Cmd+P), squash-merged
+  branch cleanup on removal, WSL repos routed through `wsl.exe`.
+- **Full git review** — status / diff / stage / commit / push / pull with a 3 s
+  focus-paused Tokio watcher, CodeMirror 6 diff viewer, hunk-level staging,
+  side-by-side toggle, visual image diffs, and optional AI commit-message
+  generation via a local CLI agent.
+- **Agent monitoring (Phase 4)** — Layer 1 local HTTP hook server (`axum`, precise
+  `working/blocked/waiting/done` + persistent cache) + Layer 2 terminal-title
+  (OSC) + Layer 3 process-tree detection; colored status dots, unread/done badges,
+  custom agent logos, per-worktree agent override.
+- **Multi-agent orchestration** (spec `02d` §3) — a console (status bar, shown with
+  ≥2 live agents) routing a message to all agents, one type (fan-out), or a
+  coordinator's workers, with backpressure + an in-memory coordinator→workers task
+  graph.
+- **Cross-cutting (S)** — Settings (theme + terminal profiles w/ OS templates),
+  design tokens, full EN/ES i18n + Language picker, agents registry + install
+  detection + manual + auto-launch, per-agent env vars, a configurable agent
+  launch shell (Command Prompt by default on Windows), virtualized lists
+  (`@tanstack/svelte-virtual`), opt-in keep-awake (Windows).
+
 ## Phase 6 — Bridge integration (embedded bridge / mobile pairing) ☐
 
 **Goal:** let the desktop act as the mobile bridge (single-install). The standalone

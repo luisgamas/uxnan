@@ -8,56 +8,118 @@ Built with **Rust + Tauri 2** (backend) and **Svelte 5 / SvelteKit + Tailwind
 CSS v4 + shadcn-svelte** (frontend). Terminals use xterm.js; diffs use
 CodeMirror 6.
 
+![Rust](https://img.shields.io/badge/Rust-000000?style=for-the-badge&logo=rust&logoColor=white)
+![Tauri](https://img.shields.io/badge/Tauri_2-FFC131?style=for-the-badge&logo=tauri&logoColor=000000)
+![Svelte](https://img.shields.io/badge/Svelte_5-FF3E00?style=for-the-badge&logo=svelte&logoColor=white)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS_v4-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white)
+![RAM](https://img.shields.io/badge/RAM-~30%E2%80%93100_MB-2ea44f?style=for-the-badge)
+![i18n](https://img.shields.io/badge/i18n-EN_%7C_ES-blue?style=for-the-badge)
+![Windows](https://img.shields.io/badge/Windows-0078D6?style=for-the-badge&logo=windows&logoColor=white)
+![macOS](https://img.shields.io/badge/macOS-000000?style=for-the-badge&logo=apple&logoColor=white)
+![Linux](https://img.shields.io/badge/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=white)
+
 > Part of the [Uxnan](../) monorepo. The full specification is the source of
 > truth — start at [`architecture/00-index.md`](architecture/00-index.md).
 > The engineering roadmap and deferred work live in [`FOR-DEV.md`](FOR-DEV.md);
 > human-provided assets in [`FOR-HUMAN.md`](FOR-HUMAN.md).
 
-## Status
+## Why it helps, even in alpha
 
-**ALPHA-FUNCTIONAL (standalone).** **Phases 0–5 + the cross-cutting track (S)
-are complete.** The ADE is ready for alpha release as a standalone app
-(manage repos / worktrees, multiplexed terminals, launch + monitor agents, full
-git review with hunk staging & diffs, settings / i18n / theming). The only
-remaining roadmap phase is **Phase 6 (bridge integration / mobile pairing)**,
-which is *optional for standalone use* — required only if you want the ADE to
-also act as the mobile bridge (otherwise, install `uxnan-bridge` standalone).
+Uxnan Desktop is for developers who want a clear, multi-agent workflow without
+paying the resource cost of a full IDE or an Electron shell. Because it renders
+through the operating system's native webview instead of bundling its own browser,
+it targets **30–100 MB of RAM** where comparable Electron applications routinely
+sit at **200–500 MB**. That difference is the point: it is meant to be a practical
+choice on low-to-moderate-resource machines, not only on high-end workstations,
+while still offering an intuitive interface for running and reviewing several
+agents at once.
 
-Highlights of what ships today:
-- Three-panel resizable shell with atomic JSON persistence (5 rotating
-  backups + sequential schema migrations).
-- PTY terminals (`portable-pty 0.9`, xterm WebGL + DOM fallback) with tabs
-  + nested splits that never remount on split, drag-to-reorder / move tabs
-  across regions, `Ctrl+Tab` MRU cycling, a backend output ring buffer that
-  restores a recreated pane's scrollback, and the Kitty/CSI-u keyboard protocol.
-- Git worktrees with per-worktree terminal workspaces, hierarchical
-  Projects tree, in-app directory picker, worktree palette
-  (Ctrl/Cmd+P), squash-merged branch cleanup on removal, and WSL repos
-  routed through `wsl.exe`.
-- Full git review (status / diff / stage / commit / push / pull with a
-  3 s focus-paused Tokio watcher, CodeMirror 6 diff viewer, hunk-level
-  staging, side-by-side toggle, visual image diffs, and optional AI
-  commit-message generation via a local CLI agent).
-- **Agent monitoring** (Phase 4) — three layers: Layer 1 local HTTP hook
-  server (`axum` with precise `working/blocked/waiting/done` and persistent
-  cache) + Layer 2 terminal-title (OSC) + Layer 3 process-tree detection.
-  Colored status dots, unread/done badges, custom agent logos, per-worktree
-  agent override.
-- **Multi-agent orchestration** (spec `02d` §3) — a console (status bar, shown
-  with ≥2 live agents) that routes a message to all agents, to one type
-  (fan-out), or to a coordinator's workers, with **backpressure** (each agent
-  gets its next message only once it's free) and an in-memory coordinator→workers
-  task graph.
-- Cross-cutting (S): Settings (theme + terminal profiles w/ OS templates),
-  design tokens, full **i18n (EN/ES)** + Language picker, agents
-  registry + install detection + manual + auto-launch, **per-agent env vars** and
-  a **configurable agent launch shell** (Command Prompt by default on Windows).
-- Virtualized lists (`@tanstack/svelte-virtual`), opt-in keep-awake
-  (Windows).
+It is deliberately **not an IDE**. It is an orchestration, monitoring, and
+change-review layer, and any CLI agent works inside it without modification.
 
-Pre-release gaps before distributing builds: branded icons + signing/
-updater keys (`FOR-HUMAN.md`) and a CI/CD pipeline (see `FOR-DEV.md` →
-*CI/CD — release builds*).
+## What it does
+
+The application is **alpha-functional as a standalone app**. The capabilities
+available today are:
+
+- **Parallel, isolated agents.** Every task gets its own git worktree, its own
+  terminal workspace, and its own agent, so one agent's work never collides with
+  another's, and switching between them is a single click rather than a `git
+  stash` / `git checkout` cycle.
+- **A full terminal multiplexer.** Tabs, nested splits, drag-to-reorder and the
+  ability to move tabs across panes, `Ctrl+Tab` MRU cycling, WebGL rendering, and
+  scrollback that survives recreating a pane — built on `portable-pty` and
+  xterm.js.
+- **Integrated Git review.** Status, stage, commit, push and pull, with a unified
+  or side-by-side diff viewer (CodeMirror 6), **hunk-level staging**, visual image
+  diffs, squash-merged branch cleanup on worktree removal, WSL repositories routed
+  through `wsl.exe`, and optional **AI-generated commit messages** drafted by a
+  local CLI agent from your staged diff.
+- **Agent monitoring.** Three layers — a precise local hook server, terminal-title
+  inference, and process-tree detection — drive colored status dots, unread / done
+  badges, and native idle notifications, so you always know whether an agent is
+  working, blocked, waiting, or done.
+- **Multi-agent orchestration.** With two or more live agents, a console routes a
+  message to all of them, to one agent type (fan-out), or to a coordinator's
+  workers, applying backpressure so no agent receives a new message before it is
+  free.
+- **Personalization and internationalization.** Full custom theming with design
+  tokens and light/dark modes, terminal profiles, per-agent launch settings and
+  environment variables, a configurable launch shell, and a completely translated
+  interface in **English and Spanish**.
+
+<details>
+<summary><b>Diagram — the three-panel ADE, a worktree per task, layered monitoring</b></summary>
+
+```mermaid
+flowchart TB
+  subgraph shell["Three-panel ADE shell"]
+    sidebar["Projects & worktrees<br/>(sidebar)"]
+    center["Terminals · diffs · files<br/>(center, splits + tabs)"]
+    agents["Agents & orchestration<br/>(status panel)"]
+  end
+
+  subgraph work["A worktree per task"]
+    w1["worktree A<br/>terminal + agent"]
+    w2["worktree B<br/>terminal + agent"]
+    w3["worktree C<br/>terminal + agent"]
+  end
+
+  subgraph mon["Agent monitoring (3 layers)"]
+    l1["Layer 1 — local hook server (axum)"]
+    l2["Layer 2 — terminal-title (OSC)"]
+    l3["Layer 3 — process-tree detection"]
+  end
+
+  sidebar --> work
+  work --> center
+  work --> mon
+  mon --> agents
+```
+
+</details>
+
+## Platform support
+
+Uxnan Desktop is cross-platform by construction — Tauri 2 targets Windows, macOS
+and Linux — but **all current testing has been carried out directly on Windows**.
+
+- **Windows** — actively developed and tested; this is the validated platform
+  today.
+- **Linux** — expected to work and built in CI, but not yet exercised end-to-end
+  by the maintainer. If you run it on Linux, your feedback and recommendations are
+  genuinely welcome; please open an issue or a discussion so the experience can be
+  hardened.
+- **macOS** — supported by the toolchain, but no maintainer builds are produced
+  yet and the platform is unvalidated. Until a signed build exists, macOS users
+  can build it themselves by following
+  [release builds & packaging](docs/build.md).
+
+The only remaining roadmap phase is **Phase 6 (bridge integration / mobile
+pairing)**, which is *optional for standalone use* — required only if you want the
+ADE to double as the mobile bridge (otherwise install `uxnan-bridge` separately).
+The detailed implementation status (phases, test counts, pre-release gaps) lives
+in [`FOR-DEV.md`](FOR-DEV.md).
 
 ## Docs
 
@@ -126,7 +188,7 @@ makes `pnpm install` no-op here).
 cd uxnandesktop
 npm install            # frontend deps
 npm run check          # svelte-check (type check)
-npm test               # Vitest unit tests (pure logic — 19 passing)
+npm test               # Vitest unit tests (pure logic)
 npm run build          # build the SPA → build/  (required by `cargo build`'s generate_context!)
 npm run tauri dev      # run the desktop app (compiles Rust on first run)
 ```
@@ -134,7 +196,7 @@ npm run tauri dev      # run the desktop app (compiles Rust on first run)
 Backend (from `src-tauri/`):
 
 ```bash
-cargo test             # unit tests (98 passing)
+cargo test             # backend unit tests
 cargo clippy --all-targets
 cargo fmt
 ```
