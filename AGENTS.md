@@ -360,6 +360,39 @@ Keep the two audiences separate so neither doc rots:
   notes) is the maintainer's local context and won't exist on a fresh clone —
   tracked docs, workflows and config must stand on their own without pointing at it.
 
+#### The docs track the code — re-verify them when the code moves (easy to miss)
+
+`README.md` and especially the `docs/` guides are **not** prose that ages
+gracefully on its own: they hard-code concrete facts pulled straight from the
+source, and each of those facts is a small contract that silently breaks the
+moment the code it mirrors changes. Whenever you touch code that any doc or README
+describes, **re-derive the affected facts from the source in the same change set**
+— don't trust what the doc already says. The facts that have bitten us, with where
+they live:
+
+- **CLI commands, flags & npm scripts** — the `bin`/`scripts` in each
+  `package.json`, the Tauri/Flutter commands. If you rename a script or change a
+  flag, grep the component's `README.md` + `docs/` for it.
+- **Config keys, enum values & identifiers** — field names and defaults in the
+  config type (e.g. `daemon-config.ts`), and **canonical id unions** like
+  `AgentId` (`gemini-cli`/`pi-agent`, *not* `gemini`/`pi`). A doc that lists ids
+  or config fields must match the union/interface exactly.
+- **Env var names, file names & paths** — e.g. `UXNAN_HOOK_URL` / `UXNAN_AGENT_ID`,
+  `~/.uxnan/daemon-config.json`, `~/.uxnan/checkpoints.json`. Copy them from the
+  code, never from memory.
+- **Default values & ports** — e.g. `DEFAULT_LAN_PORT`, `checkpointMaxPerProject`.
+  Quote the constant's real value.
+- **"Which agents / which features" claims** — e.g. "3 adapters wired" or "next
+  agent is X". When an agent or capability lands, the prose that enumerates them
+  (in `docs/agents.md`, `docs/testing.md`, etc.) is part of the same change.
+- **Behavior described in a doc-comment** — a `/** … */` that explains a fallback,
+  a posture, or a scope must match what the code actually does (these drift the
+  fastest, because nothing compiles them against reality).
+
+Same rule as the rest of §2: this verification lands in the **same change set** as
+the code, and a doc/comment that cites a command, key, id, path, value, or
+behavior that no longer matches the source is drift — treat it as a bug.
+
 #### Cross-monorepo functionality (read this twice)
 
 Many features span monorepos — a bridge method the mobile app renders, an E2EE step
