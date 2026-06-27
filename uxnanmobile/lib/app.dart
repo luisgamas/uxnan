@@ -8,6 +8,7 @@ import 'package:uxnan/domain/entities/trusted_device.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
+import 'package:uxnan/presentation/providers/update_providers.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/theme/uxnan_theme.dart';
 import 'package:uxnan/presentation/widgets/uxnan_splash.dart';
@@ -147,6 +148,9 @@ class _PushHostState extends ConsumerState<_PushHost>
       // Reconnect to the last-used PC so reopening the app (incl. after an
       // unexpected close) restores the bridge session + history automatically.
       unawaited(_autoConnectLastDevice());
+      // Throttled check for a newer app version (Play In-App Update / App
+      // Store). Best-effort and guarded — no-op off a real store.
+      unawaited(ref.read(appUpdateControllerProvider.notifier).maybeCheck());
     });
   }
 
@@ -162,6 +166,9 @@ class _PushHostState extends ConsumerState<_PushHost>
     // landed while away appear without leaving + re-entering it.
     unawaited(ref.read(sessionCoordinatorProvider).resume());
     unawaited(ref.read(threadManagerProvider).resyncActive());
+    // A store release may have shipped while we were backgrounded; re-check
+    // (throttled, so frequent resumes don't spam the store).
+    unawaited(ref.read(appUpdateControllerProvider.notifier).maybeCheck());
   }
 
   /// Best-effort cold-start reconnect to the most-recently-connected trusted PC
