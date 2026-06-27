@@ -6,6 +6,22 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — recovered conversations keep messages and activity interleaved
+- **A conversation recovered after a reconnect now shows each response with its
+  work log inline, in order** — instead of every command/activity log stacked
+  above one big merged paragraph. When the phone re-synced a thread (`turn/list`,
+  on reconnect or re-open), the agent's text and its structured blocks arrived in
+  separate fields with no order, so the recovered turn collapsed all text into a
+  single block with all activity on top. The bridge now sends an ordered
+  `segments` interleave; the app renders from it (`thread_manager.dart`
+  `_persistTurns` + `_seedLiveTurn` prefer `segments`, building contents via
+  `_assistantContentsOrdered`), so the recovered turn reads exactly like a live
+  one — text, the work log it triggered, more text, in sequence. Falls back to
+  the previous blocks-first layout when the bridge sends no `segments` (older
+  bridge, or the on-disk history fallback). Tests: +3 (`thread_manager_test.dart`:
+  resync renders segments interleaved; resync without segments falls back
+  blocks-first; a re-attached in-flight turn seeds its live buffer interleaved).
+
 ### Fixed — commit history is now in correct chronological order
 - The History screen's commits were sometimes out of time order (a branch's
   commits grouped together, so some commits made around the same time showed far

@@ -661,12 +661,15 @@ class ThreadManager {
 
   /// Builds a [_LiveTurn] for [turnId] pre-filled with the partial assistant
   /// content the bridge already streamed for it, recovered from the `turn/list`
-  /// [turns] page. Mirrors the history ordering used by [_assistantContents]
-  /// (any structured blocks first, then the accumulated text run), and keeps
-  /// the text run **last** so the next streamed delta extends it in place via
-  /// [_LiveTurn.appendText] instead of starting a detached run. Returns an
-  /// empty buffer when the active turn isn't found in the page (older bridge,
-  /// or the turn carries no assistant output yet).
+  /// [turns] page. Prefers the bridge's ordered `segments` (text runs + blocks
+  /// already interleaved in production order) so the re-attached bubble keeps
+  /// the work log inline with the response; falls back to the blocks-first
+  /// layout (any blocks, then the accumulated text run **last**) for an older
+  /// bridge that doesn't send `segments`. Either way the trailing run lets the
+  /// next streamed delta extend in place via [_LiveTurn.appendText] (a delta
+  /// after a block opens a fresh run, preserving order). Returns an empty buffer
+  /// when the active turn isn't found in the page (the turn carries no assistant
+  /// output yet).
   _LiveTurn _seedLiveTurn(String turnId, List<Object?> turns) {
     final live = _LiveTurn(turnId: turnId);
     for (final rawTurn in turns) {
@@ -678,6 +681,11 @@ class ThreadManager {
         final thinking = rawMsg['thinking'];
         if (thinking is String && thinking.isNotEmpty) {
           live.thinking += thinking;
+        }
+        final segments = _decodeBlocks(rawMsg['segments']);
+        if (segments.isNotEmpty) {
+          live.segments.addAll(segments);
+          continue;
         }
         live.segments.addAll(_decodeBlocks(rawMsg['blocks']));
         final content = rawMsg['content'];
@@ -760,31 +768,50 @@ class ThreadManager {
         final thinking =
             rawMsg['thinking'] is String ? rawMsg['thinking'] as String : '';
         final blocks = _decodeBlocks(rawMsg['blocks']);
+        // `segments` carries the assistant's text runs and blocks already
+        // interleaved in production order (bridge thread-store). When present we
+        // render from it so the work log sits inline with the response; absent
+        // (older bridge / on-disk history fallback) we fall back to the
+        // blocks-first layout. Its text runs concatenate to `content` and its
+        // non-text entries are exactly `blocks` — see the reconciliation below.
+        final segments = _decodeBlocks(rawMsg['segments']);
         final usage = _parseUsage(rawMsg['usage']);
         if (usage != null) latestUsage = usage;
         // Don't clobber a turn that is still streaming live on this device.
         if (_live[threadId]?.turnId == turnId) continue;
         final id = _streamId(turnId);
-        final contents =
-            _assistantContents(content, thinking, blocks, streaming: false);
+        final contents = segments.isNotEmpty
+            ? _assistantContentsOrdered(thinking, segments, streaming: false)
+            : _assistantContents(content, thinking, blocks, streaming: false);
         final present = byId[id];
         if (present != null) {
-          // Compare text + thinking + block count (plainText omits both), so a
-          // turn whose reasoning/blocks arrived only via history is reconciled.
-          final presentText = present.contents
-              .whereType<TextContent>()
-              .map((t) => t.text)
-              .join();
-          final presentThinking = present.contents
-              .whereType<ThinkingContent>()
-              .map((t) => t.text)
-              .join();
-          final presentBlocks = present.contents
-              .where((c) => c is! TextContent && c is! ThinkingContent)
-              .length;
-          if (presentText != content ||
-              presentThinking != thinking ||
-              presentBlocks != blocks.length) {
+          // Decide whether the stored copy needs rewriting. With `segments` we
+          // know the exact ordered shape, so compare the freshly-built contents
+          // against the stored ones by their ordered (type, text) signature —
+          // this also repairs a turn persisted blocks-first by an older client
+          // (same text + block count, but the wrong order). Without `segments`
+          // we keep the cheaper text + thinking + block-count check (a turn
+          // whose reasoning/blocks arrived only via history still reconciles).
+          final bool changed;
+          if (segments.isNotEmpty) {
+            changed = !_sameContentOrder(present.contents, contents);
+          } else {
+            final presentText = present.contents
+                .whereType<TextContent>()
+                .map((t) => t.text)
+                .join();
+            final presentThinking = present.contents
+                .whereType<ThinkingContent>()
+                .map((t) => t.text)
+                .join();
+            final presentBlocks = present.contents
+                .where((c) => c is! TextContent && c is! ThinkingContent)
+                .length;
+            changed = presentText != content ||
+                presentThinking != thinking ||
+                presentBlocks != blocks.length;
+          }
+          if (changed) {
             toSave.add(
               present.copyWith(
                 contents: contents,
@@ -1168,8 +1195,10 @@ class ThreadManager {
 
   String _streamId(String turnId) => 'stream-$turnId';
 
-  /// Decodes the wire `blocks` array (structured MessageContent JSON) from a
-  /// `turn/list` message into content blocks; tolerant of missing/malformed.
+  /// Decodes a wire array of structured MessageContent JSON (the `blocks` array
+  /// or the ordered `segments` array, where text runs decode to [TextContent])
+  /// from a `turn/list` message into content blocks; tolerant of missing or
+  /// malformed entries.
   static List<MessageContent> _decodeBlocks(Object? raw) {
     if (raw is! List) return const [];
     return [
@@ -1181,15 +1210,12 @@ class ThreadManager {
 
   /// Builds an assistant message's content blocks from its answer [text],
   /// optional [thinking] and any structured [blocks] (commands/diffs/tools).
-  /// Used for the **history** path (`turn/list`), which carries the full text
-  /// and the blocks separately with no interleave position — so blocks sit
-  /// before the text. AssistantTurnView re-groups blocks into the Work log /
-  /// Changed files sections regardless of their position here.
-  // FOR-DEV: a turn loaded purely from history (never streamed live on this
-  // device) can't interleave the work log with the response because the wire
-  // `blocks` array carries no per-block text offset. Live/persisted turns do
-  // interleave (see `_assistantContentsOrdered`); aligning history would need
-  // the bridge to emit blocks and text in one ordered stream.
+  /// This is the **fallback** history layout, used only when the bridge sends no
+  /// ordered `segments` (an older bridge, or the on-disk history fallback in
+  /// `session-history.ts`): with no interleave position the blocks sit before
+  /// the merged text run. When `segments` *are* present the caller uses
+  /// [_assistantContentsOrdered] instead, restoring the real text↔work-log
+  /// order. AssistantTurnView renders whichever order it is given.
   static List<MessageContent> _assistantContents(
     String text,
     String thinking,
@@ -1239,6 +1265,25 @@ class ThreadManager {
       out.add(const TextContent('', isStreaming: true));
     }
     return out;
+  }
+
+  /// Whether two content lists carry the same blocks in the same order, by an
+  /// `isStreaming`-agnostic `(type, plain text)` signature per block. Used to
+  /// decide if a stored assistant message must be rewritten on re-sync — it is
+  /// true when only the streaming flag differs (no rewrite) and false when the
+  /// order or content changed (e.g. a turn stored blocks-first now arrives
+  /// interleaved).
+  static bool _sameContentOrder(
+    List<MessageContent> a,
+    List<MessageContent> b,
+  ) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i].type != b[i].type || a[i].asPlainText != b[i].asPlainText) {
+        return false;
+      }
+    }
+    return true;
   }
 
   int _nextOrderIndex() {
