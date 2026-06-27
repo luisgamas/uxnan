@@ -21,6 +21,20 @@ export interface Message {
   thinking?: string;
   /** Structured content blocks (command_execution/diff/tool) produced this turn. */
   blocks?: unknown[];
+  /**
+   * The assistant message's text runs and structured blocks **in the exact
+   * order the agent produced them** — each entry is a serialized MessageContent
+   * (text runs as `{ type:'text', text }`, work-log/diff blocks as their own
+   * types). When present, a client SHOULD render from this so the work log sits
+   * inline with the response it precedes, instead of all activity collapsing
+   * above one merged paragraph. `content` (the full concatenated text) and
+   * `blocks` are retained for older clients and for re-sync reconciliation: the
+   * text runs in `segments` concatenate to `content`, and its non-text entries
+   * are exactly `blocks`. Absent for turns recovered without ordering info (an
+   * older bridge, or the on-disk history fallback) — clients fall back to
+   * `content` + `blocks` then. Only set on assistant messages.
+   */
+  segments?: unknown[];
   /** Token usage for this turn, so the phone restores the context meter on re-sync. */
   usage?: { tokens: number; contextWindow?: number };
   createdAt: number;

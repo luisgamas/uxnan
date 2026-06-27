@@ -6,6 +6,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 
 ### Added
+- **`Message.segments?`** (`models/thread.ts`): the `turn/list` assistant
+  message now carries its text runs and structured blocks **in the order the
+  agent produced them** (each entry a serialized `MessageContent`; text runs as
+  `{ type:'text', text }`). When present, a client renders from this so the work
+  log sits inline with the response instead of all activity collapsing above one
+  merged paragraph — fixing recovered conversations after a reconnect. `content`
+  (the full concatenated text) and `blocks` are retained for older clients and
+  for re-sync reconciliation (the segment text runs concatenate to `content`;
+  the non-text segments are exactly `blocks`). Wire-additive and emitted only
+  when a structured block is present; older clients ignore it and fall back to
+  `content` + `blocks`. Produced by the bridge (`thread-store.ts`), consumed by
+  mobile (`turn/list` resync + live re-attach).
 - **`WorkspaceEntry.ignored?`** (`models/workspace.ts`): optional boolean on
   `workspace/list` entries marking the ones git ignores (a `.gitignore` /
   exclude match), computed by the bridge per-listing via `git check-ignore`.
