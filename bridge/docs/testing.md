@@ -1,5 +1,8 @@
 # Bridge — testing & validation
 
+![Runner](https://img.shields.io/badge/runner-node%3Atest-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)
+![Concurrency](https://img.shields.io/badge/--test--concurrency-1_(Windows)-blue?style=for-the-badge)
+
 How to run the automated tests and validate the parts they can't fully cover on a
 dev machine (real-device E2EE, real agent CLIs, push). Relay-specific testing is in
 [`../../relay/docs/testing.md`](../../relay/docs/testing.md).
@@ -28,8 +31,9 @@ Covered: JSON-RPC contracts + validators; E2EE crypto/handshake/replay; pairing
 payload; relay forwarding/rate-limit/health; daemon state, identity (keychain via a
 fake backend), lock file; the **autostart** plan per platform; git + workspace +
 **directory browsing** + checkpoints (real git in temp repos); conversation store;
-the AgentManager + echo agent end-to-end; the OpenCode/Claude Code/Codex adapter
-parsers + streaming against fake spawns; and router-level wiring/error mapping.
+the AgentManager + echo agent end-to-end; the OpenCode / Claude Code / Codex / pi /
+Gemini adapter parsers + streaming against fake spawns; and router-level
+wiring/error mapping.
 
 ### Environment notes / known flakes (Windows)
 - **Serialized runner:** several suites boot a full bridge or spawn real child
@@ -69,13 +73,14 @@ pairing QR = Base64 of the UTF-8 JSON.
 ## 3. Validating agent adapters
 
 - **Echo:** fully tested; use it for the streaming path with no creds.
-- **OpenCode / Claude Code / Codex (wired):** see [`agents.md`](./agents.md) for how
-  each is driven. To run for real, set a working `model` (and `permissionMode`) in
-  `agents.<id>` + a real project dir, then drive a turn from the app and watch the
-  streamed deltas. Capture a CLI stream directly with stdin closed, e.g.
-  `cmd /c "<cli> ... < NUL"` (these CLIs hang on an open stdin pipe). Adapter unit
-  tests live in `test/adapters/`.
-- **Next (Gemini):** follow the recipe in [`../FOR-DEV.md`](../FOR-DEV.md).
+- **OpenCode / Claude Code / Codex / pi / Gemini CLI (all wired):** see
+  [`agents.md`](./agents.md) for how each is driven. To run for real, set a working
+  `model` (and `permissionMode`) in `agents.<id>` + a real project dir, then drive a
+  turn from the app and watch the streamed deltas. Capture a CLI stream directly
+  with stdin closed, e.g. `cmd /c "<cli> ... < NUL"` (these CLIs hang on an open
+  stdin pipe). Adapter unit tests live in `test/adapters/`.
+- **Next (Aider):** the only remaining planned adapter — follow the recipe in
+  [`../FOR-DEV.md`](../FOR-DEV.md).
 
 ## 4. Push notifications (implemented, gated)
 

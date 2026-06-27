@@ -1,5 +1,9 @@
 # Relay — deployment & hosting
 
+![Role](https://img.shields.io/badge/role-optional_%2F_self--hosted-blue?style=for-the-badge)
+![Hosting](https://img.shields.io/badge/start-LAN--only,_zero_infra-2ea44f?style=for-the-badge)
+![TLS](https://img.shields.io/badge/TLS-terminate_at_tunnel%2Fproxy-0a0a0a?style=for-the-badge&logo=letsencrypt&logoColor=white)
+
 The relay is a small WebSocket server that forwards **opaque E2EE envelopes**
 between the phone and the bridge by `sessionId`. It never sees plaintext, keys,
 code, or diffs — only encrypted frames. The envelope-forwarding path is
@@ -64,7 +68,7 @@ uxnan-relay 8787          # or: RELAY_PORT=8787 uxnan-relay
 
 ## Push notifications (gated)
 
-The relay exposes `POST /push/register` + `POST /push/notify` (Phase 6). Real
+The relay exposes `POST /push/register` + `POST /push/notify`. Real
 delivery is **gated** on a Firebase service account (`UXNAN_FCM_SERVICE_ACCOUNT`);
 without it the sender is a no-op. Setup: [`../FOR-HUMAN.md`](../FOR-HUMAN.md).
 The bridge is the **primary** push path — the relay's `/push/*` endpoints are

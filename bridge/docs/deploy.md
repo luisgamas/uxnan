@@ -1,14 +1,23 @@
 # Bridge — packaging & deployment
 
+![Install](https://img.shields.io/badge/install-npm_i_-g_uxnan--bridge-339933?style=for-the-badge&logo=npm&logoColor=white)
+![Autostart](https://img.shields.io/badge/autostart-per_OS,_never_elevated-2ea44f?style=for-the-badge)
+
 The bridge is software the **user installs on their PC**. The relay is a separate,
-**hosted** service (see [`../../relay/docs/deploy.md`](../../relay/docs/deploy.md)).
+**optional / self-hosted** service (see
+[`../../relay/docs/deploy.md`](../../relay/docs/deploy.md)).
 
 ## Run modes
 
-- **LAN-only (zero hosting):** if the phone and PC share a network, the phone
+- **LAN-direct (zero hosting):** if the phone and PC share a network, the phone
   connects directly to the bridge's LAN server — no relay to deploy. Simplest start.
-- **Remote (off-LAN):** needs a reachable relay; the relay URL is baked into the
-  pairing QR / `relayUrl` config. Hosting options are in the relay deploy doc.
+- **Tailscale-direct (zero hosting, recommended off-LAN):** with both devices on
+  the same tailnet, the bridge's `100.x` address is advertised in the pairing QR
+  and the phone reaches it directly from anywhere — still no relay.
+- **Self-hosted relay (optional):** only for off-LAN access without a mesh VPN. Set
+  `relayEnabled: true` and point `relayUrl` at your own relay; the QR then carries
+  it as a fallback after the direct `hosts`. Hosting options are in the relay
+  deploy doc.
 
 ## Publishing the bridge (npm)
 

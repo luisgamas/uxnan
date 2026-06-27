@@ -1,5 +1,10 @@
 # Push & local notifications — setup, testing, multi-account
 
+![Android](https://img.shields.io/badge/Android-LIVE-3DDC84?style=for-the-badge&logo=android&logoColor=white)
+![iOS](https://img.shields.io/badge/iOS-pending_APNs-000000?style=for-the-badge&logo=apple&logoColor=white)
+![Push](https://img.shields.io/badge/delivery-bridge--direct_FCM-FFCA28?style=for-the-badge&logo=firebase&logoColor=black)
+![Gated](https://img.shields.io/badge/code--complete-gated_on_creds-orange?style=for-the-badge)
+
 How notifications work in Uxnan, how to **activate** them from scratch against
 your own Firebase account, how to **test** they work, and which files are safe to
 commit. Push is **code-complete and gated**: everything builds and runs without
@@ -36,7 +41,7 @@ Two independent surfaces, both already wired in the app:
 
 Default — **the bridge delivers directly** (no relay):
 
-```
+```text
 agent turn ends ─► bridge (PushService.onTurnEnd)
                      │  createBridgePushSender → FCM HTTP v1
                      │  (firebase-admin, service account on the bridge)
@@ -47,7 +52,7 @@ agent turn ends ─► bridge (PushService.onTurnEnd)
 Optional fallback — **a self-hosted relay delivers** (only when the bridge holds
 no FCM credential and `relayEnabled: true`):
 
-```
+```text
 agent turn ends ─► bridge ──POST /push/notify──► relay (PushRegistry → FCM sender)
                                                    │  FCM HTTP v1 (service account on the relay)
                                                    ▼
@@ -278,16 +283,18 @@ credential in place: it delivers directly. With no credential it logs
 |---|---|---|
 | `firebase-service-account.json` | **Secret — admin private key.** Grants the ability to send FCM (and other Admin SDK calls) for your project. | **Never.** Keep it in `~/.uxnan/` per machine. To use another PC, generate a fresh key there (or copy it over a secure channel). Rotate/revoke in GCP IAM if leaked. |
 | `*.p8` (APNs key) | **Secret.** | **Never.** |
-| `android/app/google-services.json` | **Low.** Client config (project id, app id, an API key). It already ships inside your APK, so it isn't a true secret — but the API key should be restricted in the GCP console. | Optional. **Currently gitignored.** In a **private** repo it's acceptable to commit for zero-setup clones; otherwise leave it out and re-fetch with `firebase apps:sdkconfig`. |
+| `android/app/google-services.json` | **Low.** Client config (project id, app id, an API key). It already ships inside your APK, so it isn't a true secret — but the API key should be restricted in the GCP console. | **Currently gitignored, and recommended to keep that way** (the project is open source). Re-fetch it locally with `firebase apps:sdkconfig`; it is per-deployment anyway, so committing one user's config helps no one else. |
 | `ios/Runner/GoogleService-Info.plist` | **Low** (same as above, for iOS). | Same as `google-services.json`. |
 
 **Bottom line:** the **service-account key never goes in git** (it stays on this
-PC and is re-created per machine). The two **client config files are low-risk**;
-they're gitignored by default, but since this repo is private you *may* commit
-them if you'd rather every clone work without re-downloading. They are trivial to
-regenerate either way (`firebase apps:sdkconfig …`), so re-downloading on a new PC
-is a one-line command — you never lose anything by keeping them out of git.
+PC and is re-created per machine). The two **client config files are low-risk**,
+and since the project is open source they stay **gitignored by default** — each
+deployment uses its own Firebase project, so committing one machine's config would
+not help anyone else. They are trivial to regenerate (`firebase apps:sdkconfig …`),
+so re-creating them on a new PC is a one-line command — you never lose anything by
+keeping them out of git.
 
-> Want the two client files committed (private repo, convenience)? Un-ignore just
-> those two lines in `.gitignore` while keeping `firebase-service-account.json`
-> and `*.p8` ignored. Ask and it can be flipped.
+> If you specifically wanted those two client files committed for convenience
+> (e.g. in a **private** fork), you would un-ignore just those two lines in
+> `.gitignore` while keeping `firebase-service-account.json` and `*.p8` ignored.
+> For the public project, leaving them out is the safer default.

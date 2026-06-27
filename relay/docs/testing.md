@@ -1,5 +1,8 @@
 # Relay — testing
 
+![Runner](https://img.shields.io/badge/runner-node%3Atest-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)
+![Coverage](https://img.shields.io/badge/forwarding_%7C_rate--limit_%7C_CSWSH_%7C_push-tested-2ea44f?style=for-the-badge)
+
 ## Automated
 
 ```bash

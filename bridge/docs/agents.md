@@ -1,5 +1,9 @@
 # Bridge — how agents are driven
 
+![Agents](https://img.shields.io/badge/wired_agents-5-2ea44f?style=for-the-badge)
+![Transport](https://img.shields.io/badge/driven_via-official_local_CLI-339933?style=for-the-badge&logo=gnometerminal&logoColor=white)
+![No keys](https://img.shields.io/badge/no_API_%7C_no_SDK_%7C_no_keys-0a0a0a?style=for-the-badge)
+
 ## Execution model (no provider API, no SDK, no keys)
 
 For each agent, the bridge spawns that vendor's **official local CLI** as a child
@@ -73,7 +77,7 @@ exposes both, so users get plug-and-play "latest" *and* explicit version control
   Ids equal to an alias are dropped (the alias is the canonical "latest" entry).
 
 ```jsonc
-// ~/.uxnan/config.json
+// ~/.uxnan/daemon-config.json
 {
   "agents": {
     "claude-code": {
