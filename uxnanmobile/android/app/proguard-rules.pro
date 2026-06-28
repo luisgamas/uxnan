@@ -26,3 +26,11 @@
 
 # ── mobile_scanner plugin ──────────────────────────────────────────────────
 -keep class dev.steenbakker.mobile_scanner.** { *; }
+
+# ── Play In-App Update (flutter_upgrade_version) ────────────────────────────
+# The com.google.android.play:app-update library is reached via a Play Store
+# IPC/listener surface; keep its public classes so R8 full mode doesn't strip
+# the in-app update flow (checkForUpdate / startAnUpdate) in --release.
+-keep class com.google.android.play.core.** { *; }
+-keep interface com.google.android.play.core.** { *; }
+-dontwarn com.google.android.play.core.**

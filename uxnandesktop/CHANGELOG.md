@@ -5,6 +5,52 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — in-app auto-updater (Settings → Updates)
+- **The ADE now checks GitHub Releases for a newer version, downloads it in the
+  background and installs it on your terms** — built on `tauri-plugin-updater`.
+  A slim, dismissible banner under the title bar announces an available version,
+  shows download progress, and offers the install choices.
+- **Download and install are separate, deliberate steps.** Downloading is
+  non-disruptive and runs in the background; *installing restarts the app, which
+  stops every running agent* (each agent is a PTY child of the app — a restart
+  can't keep it alive). So the install is guarded: when an agent is working the
+  banner offers **Install when idle** (auto-installs the moment all agents go
+  quiet), **Install now** (with a clear "an agent is running" warning), or
+  dismiss for later. Before installing, the backend closes terminals cleanly
+  (same path as app exit) so nothing is killed mid-write.
+- **Update channels: stable · nightly** (default *stable*), mapped to GitHub's
+  **`prerelease` flag** — a normal Release feeds *stable*, a Release marked
+  pre-release feeds *nightly* — **not** the tag. So a `…-alpha.YYYYMMDD` tag still
+  ships to stable as long as the Release isn't flagged pre-release. The updater
+  polls a rolling per-channel manifest
+  (`…/releases/download/desktop-updater-<channel>/latest.json`). Version
+  *comparison* uses the numeric base (`0.0.5`) the MSI bundles, so bump that base
+  per release; the pre-release suffix is display-only.
+- **Settings → Updates** pane: current version (the **full** release name via the
+  new `app_version` command, e.g. `0.0.5-alpha.20260628`, not just the MSI base) +
+  manual "Check now", release channel, check-automatically and
+  download-automatically toggles (both on by default), and an install policy
+  (*Ask me* / *Automatically when agents are idle* / *Only when I trigger it*;
+  default *Ask me*). Full EN/ES i18n.
+- **Backend** (`src-tauri/src/updater.rs`): `updater_check`, `updater_download`
+  (stages the signed installer in memory, emits `updater:download-progress` +
+  `updater:downloaded`), `updater_staged`, `updater_install` and `app_version`
+  (full display version) commands; a per-channel `endpoint_for`; `UpdaterSettings`
+  / `UpdateChannel` (stable/nightly) / `InstallPolicy` added to the persisted
+  `AppSettings` (all defaulted, so older state loads unchanged). Signature
+  verification uses a free minisign `pubkey` in `tauri.conf.json` (unrelated to OS
+  code-signing).
+- **Release CI**: `release-desktop.yml` now signs the updater artifacts when the
+  `TAURI_SIGNING_PRIVATE_KEY` (+ password) secrets are present and injects the
+  full release name as the `UXNAN_VERSION` build env (for `app_version`); a new
+  `release-desktop-manifest.yml` reads the published release's `prerelease` flag
+  and copies its `latest.json` onto the rolling stable/nightly release the updater
+  polls. Both degrade cleanly until the signing key + a published, signed release
+  exist (see [`docs/updates.md`](docs/updates.md) and `FOR-HUMAN.md`).
+- **Tests**: +2 Rust (`updater.rs` per-channel endpoints) and +6 Vitest
+  (`updaterLogic.test.ts` — progress fraction + install-policy decision), for
+  **100 Rust + 25 Vitest**.
+
 ### Fixed — history log CLI fallback order
 - The `git log` CLI fallback now uses `--date-order` (was `--topo-order`) so it
   matches the primary git2 path (`Sort::TOPOLOGICAL | TIME`). The fast path was

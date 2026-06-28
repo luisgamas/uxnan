@@ -23,6 +23,7 @@ import type {
   RemoveOutcome,
   RepoData,
   SavedTerminalLayout,
+  UpdateInfo,
   WorktreeEntry,
   WorktreeStatus,
 } from "./types";
@@ -343,4 +344,38 @@ export function aiCommitAgents(): Promise<string[]> {
  *  Claude/Gemini, a live CLI query for OpenCode/Pi/Codex). */
 export function aiCommitModels(agentId: string): Promise<AgentModel[]> {
   return invoke<AgentModel[]>("ai_commit_models", { agentId });
+}
+
+// --- Auto-updater (Settings → Updates) -------------------------------------
+
+/** The full human-facing app version for display (e.g. `0.0.5-alpha.20260628`).
+ *  Unlike `@tauri-apps/api/app`'s `getVersion()` (the numeric MSI-safe base CI
+ *  bundles, e.g. `0.0.5`), this is the full release name CI injects at build
+ *  time; falls back to the crate version for local/dev builds. */
+export function appVersion(): Promise<string> {
+  return invoke<string>("app_version");
+}
+
+/** Check the configured release channel for a newer version. Resolves to `null`
+ *  when the app is up to date. Downloads nothing. */
+export function updaterCheck(): Promise<UpdateInfo | null> {
+  return invoke<UpdateInfo | null>("updater_check");
+}
+
+/** Download the available update in the background, staging it for install.
+ *  Emits `updater:download-progress` while running and `updater:downloaded` on
+ *  success; resolves to the downloaded version's info. */
+export function updaterDownload(): Promise<UpdateInfo> {
+  return invoke<UpdateInfo>("updater_download");
+}
+
+/** The staged (downloaded-but-not-installed) update version, or `null`. */
+export function updaterStaged(): Promise<string | null> {
+  return invoke<string | null>("updater_staged");
+}
+
+/** Apply the staged update and restart into the new version. **Stops every
+ *  running agent** (the app restarts) — call only when it's safe to do so. */
+export function updaterInstall(): Promise<void> {
+  return invoke("updater_install");
 }

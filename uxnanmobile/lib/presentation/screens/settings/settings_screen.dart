@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/domain/enums/context_indicator_mode.dart';
+import 'package:uxnan/domain/value_objects/app_update_status.dart';
 import 'package:uxnan/domain/value_objects/notification_preferences.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
+import 'package:uxnan/presentation/providers/update_providers.dart';
 import 'package:uxnan/presentation/screens/settings/personalization_screen.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
@@ -90,10 +92,82 @@ class SettingsScreen extends ConsumerWidget {
                     .read(confirmBeforePrProvider.notifier)
                     .set(value: value),
               ),
+              const SizedBox(height: UxnanSpacing.xl),
+              _SectionHeader(label: l10n.settingsUpdatesSection),
+              const SizedBox(height: UxnanSpacing.sm),
+              const _UpdatesCard(),
             ],
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Settings card for the app-update checker: shows the current state and lets
+/// the user check now or apply an available update. Honours the
+/// no-silent-install policy — applying is always an explicit tap.
+class _UpdatesCard extends ConsumerWidget {
+  const _UpdatesCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
+    final state = ref.watch(appUpdateControllerProvider);
+    final controller = ref.read(appUpdateControllerProvider.notifier);
+    final unsupported = state.status?.channel == UpdateChannel.unsupported;
+
+    final String subtitle;
+    switch (state.phase) {
+      case AppUpdatePhase.checking:
+        subtitle = l10n.updateStatusChecking;
+      case AppUpdatePhase.upToDate:
+        subtitle = unsupported
+            ? l10n.updateStatusUnsupported
+            : l10n.updateStatusUpToDate;
+      case AppUpdatePhase.available:
+        final version = state.status?.storeVersion;
+        subtitle = version == null
+            ? l10n.updateAvailableBody
+            : l10n.updateAvailableBodyVersion(version);
+      case AppUpdatePhase.error:
+        subtitle = l10n.updateStatusError;
+      case AppUpdatePhase.idle:
+        subtitle = l10n.updateCheckSubtitle;
+    }
+
+    final Widget trailing;
+    if (state.phase == AppUpdatePhase.checking) {
+      trailing = const SizedBox(
+        width: 20,
+        height: 20,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      );
+    } else if (state.hasUpdate) {
+      trailing = FilledButton(
+        onPressed: state.starting ? null : controller.startUpdate,
+        child: Text(
+          state.starting ? l10n.updateActionStarting : l10n.updateAction,
+        ),
+      );
+    } else {
+      trailing = TextButton(
+        onPressed: unsupported ? null : controller.check,
+        child: Text(l10n.updateCheckAction),
+      );
+    }
+
+    return Material(
+      color: colors.surfaceContainerHighest,
+      borderRadius: const BorderRadius.all(UxnanRadius.lg),
+      clipBehavior: Clip.antiAlias,
+      child: ListTile(
+        leading: const Icon(Icons.system_update_outlined),
+        title: Text(l10n.updateCheckTitle),
+        subtitle: Text(subtitle),
+        trailing: trailing,
+      ),
     );
   }
 }

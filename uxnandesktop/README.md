@@ -67,6 +67,11 @@ available today are:
   tokens and light/dark modes, terminal profiles, per-agent launch settings and
   environment variables, a configurable launch shell, and a completely translated
   interface in **English and Spanish**.
+- **In-app auto-updates.** Checks GitHub Releases on a chosen channel
+  (**stable** or **nightly**), downloads new versions in the background, and
+  installs on your terms — and because installing restarts the app (which stops
+  running agents), it waits for agents to go idle or for your explicit go-ahead.
+  See [updates & release channels](./docs/updates.md).
 
 <details>
 <summary><b>Diagram — the three-panel ADE, a worktree per task, layered monitoring</b></summary>
@@ -133,7 +138,8 @@ Detailed docs live in [`docs/`](./docs/):
 [internationalization (i18n)](./docs/i18n.md) ·
 [agent launch & configuration](./docs/agent-launch.md) ·
 [multi-agent orchestration](./docs/orchestration.md) ·
-[agent hooks (precise states)](./docs/agent-hooks.md).
+[agent hooks (precise states)](./docs/agent-hooks.md) ·
+[updates & release channels](./docs/updates.md).
 
 The full product/engineering specification is in
 [`architecture/`](architecture/00-index.md).

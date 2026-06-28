@@ -25,14 +25,28 @@ only this checklist and the inline `FOR-HUMAN:` markers describing what's needed
 > warnings). They're required for a clean, signed, auto-updating release. Supply
 > each as a **GitHub Actions repository secret** consumed by `release-desktop.yml`.
 
-- [ ] **Code-signing identities** (release) — Windows code-signing cert
+- [ ] **Code-signing identities (OS — paid)** (release) — Windows code-signing cert
       (SignTool / `WINDOWS_CERTIFICATE` + password), Apple Developer ID +
       notarization (`APPLE_CERTIFICATE`, `APPLE_ID`, team id, app-specific
-      password), optional GPG for Linux packages (spec §5.1).
-- [ ] **Auto-updater key + endpoint** (release) — `TAURI_SIGNING_PRIVATE_KEY`
-      (+ password) as a secret; `pubkey` and `endpoints` for
-      `tauri-plugin-updater` in `tauri.conf.json` (spec §5.2). Only if
-      auto-update is enabled.
+      password), optional GPG for Linux packages (spec §5.1). This removes the OS
+      "unknown publisher" warning. **Unrelated to the updater key below** (which
+      is free).
+- [ ] **Auto-updater signing key (FREE — required to ship updates)** — the in-app
+      updater is fully wired (Settings → Updates), but it can't verify/apply an
+      update until a real minisign keypair exists. The repo currently ships a
+      **throwaway placeholder `pubkey`** in `src-tauri/tauri.conf.json` so the app
+      starts; you must replace it with your own.
+      - **Generate:** `cd uxnandesktop && npx tauri signer generate -w ~/.uxnan-updater.key`
+        (free; nothing to buy). Keep the private key + password secret.
+      - **Where:** put the printed **public** key in
+        `src-tauri/tauri.conf.json → plugins.updater.pubkey` (replaces the
+        placeholder; safe to commit). Add the **private** key as repo secret
+        `TAURI_SIGNING_PRIVATE_KEY` and its password as
+        `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (consumed by `release-desktop.yml`).
+      - **Then:** push a `desktop-v*` tag, **publish** the draft Release; that
+        fires `release-desktop-manifest.yml`, which puts `latest.json` on the
+        rolling `desktop-updater-<channel>` release the app polls.
+      - **Step-by-step:** [`docs/updates.md`](docs/updates.md) → "First-time setup".
 
 ## Deferred until later phases (no action needed yet)
 

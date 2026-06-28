@@ -281,6 +281,84 @@ pub struct AppSettings {
     /// staged diff. Disabled by default, so nothing ever runs unasked.
     #[serde(default)]
     pub ai_commit: AiCommitSettings,
+    /// In-app auto-updater (Settings → Updates): release channel, whether to
+    /// download new versions in the background, and how the install is applied
+    /// (see `updater.rs`). All fields default, so older state loads unchanged.
+    #[serde(default)]
+    pub updater: UpdaterSettings,
+}
+
+/// Release channel the updater follows. Mapped to GitHub's only release
+/// distinction — the `prerelease` flag — not to the tag's contents: a normal
+/// Release feeds `Stable`; a Release marked *pre-release* feeds `Nightly`
+/// (earlier, less-stable builds). So the tag can say anything (e.g.
+/// `…-alpha.YYYYMMDD`) and still ship to Stable as long as the Release isn't
+/// flagged pre-release. `Stable` is the default; `Nightly` is opt-in for testers
+/// (see `docs/updates.md`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum UpdateChannel {
+    #[default]
+    Stable,
+    Nightly,
+}
+
+impl UpdateChannel {
+    /// The channel's slug, used in the rolling per-channel manifest release tag
+    /// (`desktop-updater-<slug>`).
+    pub fn slug(self) -> &'static str {
+        match self {
+            UpdateChannel::Stable => "stable",
+            UpdateChannel::Nightly => "nightly",
+        }
+    }
+}
+
+/// How a downloaded update is applied. The download itself is governed by
+/// [`UpdaterSettings::auto_download`]; this only controls the install step, which
+/// restarts the app (and therefore stops running agents — see `updater.rs`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum InstallPolicy {
+    /// Show the banner and wait for the user to choose (never installs unasked).
+    #[default]
+    Ask,
+    /// Install automatically as soon as no agent is working (the safe window).
+    WhenIdle,
+    /// Never prompt to install; the user triggers it from the banner/Settings.
+    Manual,
+}
+
+/// Auto-updater preferences (Settings → Updates). The check for a newer version
+/// is always available; these govern the channel and how/when an update lands.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdaterSettings {
+    /// Whether the app checks for updates automatically (on launch + periodically).
+    /// The manual "Check now" button works regardless. Default on.
+    #[serde(default = "default_true")]
+    pub auto_check: bool,
+    /// Release channel to follow. Default `stable`.
+    #[serde(default)]
+    pub channel: UpdateChannel,
+    /// Download a found update in the background without asking. Disjoint from the
+    /// install step. Default on (downloading never interrupts agents).
+    #[serde(default = "default_true")]
+    pub auto_download: bool,
+    /// How a downloaded update is applied. Default `ask` (never installs unasked).
+    #[serde(default)]
+    pub install_policy: InstallPolicy,
+}
+
+impl Default for UpdaterSettings {
+    fn default() -> Self {
+        Self {
+            auto_check: true,
+            channel: UpdateChannel::Stable,
+            auto_download: true,
+            install_policy: InstallPolicy::Ask,
+        }
+    }
 }
 
 /// Configuration for the optional AI commit-message generator (spec `02c` §4.5).
@@ -382,6 +460,7 @@ impl Default for AppSettings {
             terminal_theme_light_id: default_terminal_theme_id(),
             terminal_theme_dark_id: default_terminal_theme_id(),
             ai_commit: AiCommitSettings::default(),
+            updater: UpdaterSettings::default(),
         }
     }
 }

@@ -10,6 +10,7 @@ import 'package:uxnan/domain/enums/agent_id.dart';
 import 'package:uxnan/domain/enums/thread_status.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
+import 'package:uxnan/presentation/providers/update_providers.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/screens/threads/new_conversation_screen.dart';
 import 'package:uxnan/presentation/screens/threads/thread_list_controls.dart';
@@ -199,6 +200,9 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
             : Theme.of(context).colorScheme.surfaceContainerHighest,
       ),
       slivers: [
+        // App-update notice (Play In-App Update on Android / App Store on iOS).
+        // Renders nothing unless an update is available and undismissed.
+        const SliverToBoxAdapter(child: _UpdateBanner()),
         // Filter bar: a scope selector on the left (Agent / Project) and the
         // matching chip bar to the right. The scope is always visible; the
         // chip bar only appears when there's more than one option to choose
@@ -578,6 +582,92 @@ class _OfflineBanner extends StatelessWidget {
             child: Text(
               connecting ? l10n.connectionConnecting : l10n.deviceConnect,
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A dismissible "update available" notice shown atop the thread list when the
+/// store reports a newer version (Play In-App Update on Android, App Store on
+/// iOS). Tapping *Update* starts the platform update flow; *Not now* hides it
+/// for this version. Renders nothing when no undismissed update is available.
+class _UpdateBanner extends ConsumerWidget {
+  const _UpdateBanner();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(appUpdateControllerProvider);
+    if (!state.bannerVisible) return const SizedBox.shrink();
+
+    final l10n = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
+    final controller = ref.read(appUpdateControllerProvider.notifier);
+    final version = state.status?.storeVersion;
+    final body = version == null
+        ? l10n.updateAvailableBody
+        : l10n.updateAvailableBodyVersion(version);
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(
+        UxnanSpacing.lg,
+        UxnanSpacing.sm,
+        UxnanSpacing.lg,
+        0,
+      ),
+      padding: const EdgeInsets.all(UxnanSpacing.md),
+      decoration: BoxDecoration(
+        color: colors.primaryContainer,
+        borderRadius: const BorderRadius.all(UxnanRadius.lg),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.system_update_outlined,
+                size: 18,
+                color: colors.onPrimaryContainer,
+              ),
+              const SizedBox(width: UxnanSpacing.sm),
+              Expanded(
+                child: Text(
+                  l10n.updateAvailableTitle,
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        color: colors.onPrimaryContainer,
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: UxnanSpacing.xs),
+          Text(
+            body,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: colors.onPrimaryContainer,
+                ),
+          ),
+          const SizedBox(height: UxnanSpacing.sm),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(
+                onPressed: controller.dismiss,
+                child: Text(l10n.updateDismissAction),
+              ),
+              const SizedBox(width: UxnanSpacing.xs),
+              FilledButton(
+                onPressed: state.starting ? null : controller.startUpdate,
+                child: Text(
+                  state.starting
+                      ? l10n.updateActionStarting
+                      : l10n.updateAction,
+                ),
+              ),
+            ],
           ),
         ],
       ),

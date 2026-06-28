@@ -1773,4 +1773,55 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get fileViewerKeepEditing => 'Seguir editando';
+
+  @override
+  String get settingsUpdatesSection => 'Actualizaciones';
+
+  @override
+  String get updateCheckTitle => 'Buscar actualizaciones';
+
+  @override
+  String get updateCheckSubtitle =>
+      'Comprueba si hay una versión más reciente de Uxnan.';
+
+  @override
+  String get updateCheckAction => 'Buscar ahora';
+
+  @override
+  String get updateStatusChecking => 'Buscando actualizaciones…';
+
+  @override
+  String get updateStatusUpToDate => 'Tienes la última versión.';
+
+  @override
+  String get updateStatusUnsupported =>
+      'Las actualizaciones dentro de la app no están disponibles para esta versión.';
+
+  @override
+  String get updateStatusError =>
+      'No se pudo buscar actualizaciones. Inténtalo más tarde.';
+
+  @override
+  String get updateAvailableTitle => 'Actualización disponible';
+
+  @override
+  String get updateAvailableBody =>
+      'Hay una nueva versión de Uxnan lista para instalar.';
+
+  @override
+  String updateAvailableBodyVersion(String version) {
+    return 'Uxnan $version está lista para instalar.';
+  }
+
+  @override
+  String get updateAction => 'Actualizar';
+
+  @override
+  String get updateActionStarting => 'Iniciando…';
+
+  @override
+  String get updateDismissAction => 'Ahora no';
+
+  @override
+  String get updateWhatsNewLabel => 'Novedades';
 }

@@ -1,9 +1,22 @@
 name: Release — Desktop (Tauri installers)
 
 # Builds desktop installers on a `desktop-v<version>` tag and attaches them to a
-# DRAFT GitHub Release. Windows ships UNSIGNED for now (SmartScreen warning);
-# code-signing + auto-updater are deferred (see uxnandesktop/FOR-DEV.md).
+# DRAFT GitHub Release, together with the updater artifacts (`.sig` signatures +
+# a merged `latest.json`) when the signing secrets are present. Publishing that
+# draft fires `release-desktop-manifest.yml`, which copies `latest.json` onto the
+# rolling per-channel release the in-app updater polls (see uxnandesktop/docs/updates.md).
+#
+# Windows ships without OS code-signing for now (SmartScreen warning) — that is a
+# SEPARATE, paid certificate, unrelated to the free updater signature below.
 # macOS is deferred with the rest of Apple — add `macos-latest` when it resumes.
+#
+# FOR-HUMAN: the updater signature needs two repo secrets (free; generate with
+# `npx tauri signer generate`). Without them the build still succeeds, just
+# without `.sig`/`latest.json`, so the in-app updater can't verify/apply updates:
+#   - TAURI_SIGNING_PRIVATE_KEY           (contents of the generated private key)
+#   - TAURI_SIGNING_PRIVATE_KEY_PASSWORD  (its password; empty string if none)
+# Also replace `plugins.updater.pubkey` in src-tauri/tauri.conf.json with the
+# matching public key. See uxnandesktop/docs/updates.md → "First-time setup".
 
 on:
   push:
@@ -69,6 +82,10 @@ jobs:
           # only. The full version still names the GitHub Release + tag.
           BASE="${V%%-*}"                          # e.g. 0.0.1
           echo "Bundle version (MSI-safe): $BASE   |   release name: $V"
+          # Embed the FULL release name for the app to display (the bundle keeps
+          # the numeric base; see updater::app_version). Read at compile time via
+          # option_env!("UXNAN_VERSION").
+          echo "UXNAN_VERSION=$V" >> "$GITHUB_ENV"
           npm version "$BASE" --no-git-tag-version --allow-same-version
           node -e "const f='src-tauri/tauri.conf.json',fs=require('fs');const o=JSON.parse(fs.readFileSync(f,'utf8'));o.version='$BASE';fs.writeFileSync(f,JSON.stringify(o,null,2)+'\n')"
           perl -0pi -e 's/^version = "[^"]*"/version = "'"$BASE"'"/m' src-tauri/Cargo.toml
@@ -81,6 +98,11 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Updater signature (free minisign key). When set, tauri-action emits a
+          # `.sig` per installer and a merged `latest.json`; when unset it builds
+          # the same installers without them. NOT OS code-signing.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: uxnandesktop
           tagName: ${{ github.ref_name }}

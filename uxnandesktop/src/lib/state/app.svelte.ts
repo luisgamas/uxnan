@@ -57,7 +57,8 @@ export type SettingsSection =
   | "agents"
   | "aicommit"
   | "hooks"
-  | "terminal";
+  | "terminal"
+  | "updates";
 
 class AppStore {
   /** Registered repositories (and their worktrees). */

@@ -138,6 +138,9 @@ export const en = {
   "settings.hooks": "Hooks",
   "settings.hooksDesc":
     "Ready-made hook configs so agents report precise state out-of-the-box.",
+  "settings.updates": "Updates",
+  "settings.updatesDesc":
+    "Choose how Uxnan Desktop checks for, downloads and installs new versions.",
   "settings.aiCommit": "AI commit message",
   "settings.aiCommitDesc":
     "Optionally draft commit messages from your staged changes with a local CLI agent. Off by default; nothing runs until you enable it and pick an agent.",
@@ -556,6 +559,44 @@ export const en = {
   "orchestration.sendN": "Send to {n}",
   "orchestration.backpressureHint":
     "Messages are delivered one at a time per agent; the next waits until that agent reports idle.",
+
+  // Updates (auto-updater banner + Settings → Updates)
+  "updates.bannerAvailable": "Version {version} is available",
+  "updates.bannerDownloading": "Downloading version {version}…",
+  "updates.bannerDownloadingPct": "Downloading version {version}… {pct}%",
+  "updates.bannerDownloaded": "Version {version} is ready to install",
+  "updates.bannerInstalling": "Installing… the app will restart",
+  "updates.download": "Download",
+  "updates.installNow": "Install now",
+  "updates.installWhenIdle": "Install when idle",
+  "updates.dismiss": "Dismiss",
+  "updates.agentsBusyWarning": "An agent is running — installing will stop it",
+  "updates.willInstallWhenIdle": "Will install once all agents are idle",
+  "updates.upToDate": "You're on the latest version",
+  "updates.checking": "Checking for updates…",
+  "updates.checkNow": "Check now",
+  "updates.currentVersion": "Current version: {version}",
+  "updates.lastChecked": "Last checked: {when}",
+  "updates.neverChecked": "never",
+  "updates.channel": "Release channel",
+  "updates.channelDesc":
+    "Stable is recommended. Nightly gets earlier, less-stable builds (GitHub pre-releases).",
+  "updates.channelStable": "Stable",
+  "updates.channelStableDesc": "Regular releases (recommended).",
+  "updates.channelNightly": "Nightly",
+  "updates.channelNightlyDesc": "Pre-release builds; earlier but less stable.",
+  "updates.autoCheck": "Check automatically",
+  "updates.autoCheckDesc":
+    "Check for new versions on launch and periodically. You can always check manually.",
+  "updates.autoDownload": "Download automatically",
+  "updates.autoDownloadDesc":
+    "Download a found update in the background. This never interrupts running agents — only installing does.",
+  "updates.installPolicy": "Install",
+  "updates.installPolicyDesc":
+    "Installing restarts the app, which stops running agents. 'Ask' never installs without your say-so.",
+  "updates.policyAsk": "Ask me",
+  "updates.policyWhenIdle": "Automatically when agents are idle",
+  "updates.policyManual": "Only when I trigger it",
 } as const;
 
 /** Union of every message key (drives `t()` and the locale type). */

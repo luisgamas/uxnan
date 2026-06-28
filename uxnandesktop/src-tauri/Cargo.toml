@@ -25,6 +25,13 @@ tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-notification = "2"
+# In-app auto-updater: checks a per-channel `latest.json` manifest on the GitHub
+# Releases, downloads the signed installer and applies it. Signature is verified
+# against the `pubkey` in `tauri.conf.json` (a free minisign key — unrelated to
+# OS code-signing). Download and install are driven as separate steps so the
+# download is non-disruptive and the install can wait for agents to go idle
+# (see `updater.rs`).
+tauri-plugin-updater = "2"
 # Persists & restores the main window's size/position/maximized state across
 # launches (so the app reopens at the size the user left it). Official Tauri
 # plugin; auto-saves on exit and restores on startup.

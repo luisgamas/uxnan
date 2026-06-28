@@ -22,6 +22,7 @@ mod power;
 mod procscan;
 mod pty;
 mod state;
+mod updater;
 mod which;
 mod wsl;
 
@@ -42,6 +43,11 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_notification::init())
+        // In-app auto-updater (Settings → Updates). Endpoints are set per channel
+        // at runtime in `updater.rs`; the pubkey for signature verification comes
+        // from `tauri.conf.json`. Desktop-only — harmless until signed releases
+        // exist (check just finds nothing / fails to verify; the app runs fine).
+        .plugin(tauri_plugin_updater::Builder::new().build())
         // Restore the main window's last size/position/maximized state on launch
         // and save it on exit (so the app reopens where the user left it). The
         // window config provides the first-run defaults.
@@ -247,6 +253,11 @@ pub fn run() {
             commands::install_claude_hooks,
             commands::uninstall_claude_hooks,
             commands::get_hook_scripts,
+            updater::app_version,
+            updater::updater_check,
+            updater::updater_download,
+            updater::updater_staged,
+            updater::updater_install,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
