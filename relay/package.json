@@ -1,6 +1,6 @@
 {
   "name": "uxnan-relay",
-  "version": "0.0.1",
+  "version": "0.0.1-alpha.20260627",
   "description": "Uxnan Relay — forwards opaque E2EE envelopes between the mobile app and the bridge by sessionId.",
   "license": "MPL-2.0",
   "author": "Luis Donaldo Gamas Vazquez",
