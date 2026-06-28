@@ -298,6 +298,8 @@ class _GitHistoryScreenState extends ConsumerState<GitHistoryScreen> {
             )
           : null,
       actions: [
+        if (hasContent)
+          _CommitSearchAnchor(commits: _commits, onSelect: _openDetails),
         if (widget.cwd != null && !_initialLoading)
           IconSurface(
             icon: Icons.alt_route_rounded,
@@ -381,6 +383,116 @@ class _GitHistoryScreenState extends ConsumerState<GitHistoryScreen> {
       },
     );
   }
+}
+
+/// App-bar search affordance over the commit history, backed by the M3
+/// [SearchAnchor] full-screen view — the same pattern as the threads list.
+/// Matches a commit by message (title/body), full or short SHA, author
+/// (name/email) or any ref name; tapping a result opens that commit's detail.
+///
+/// Searches the commits **currently loaded** into the list (the history pages
+/// in lazily as the user scrolls and via "Load older commits"), so scrolling
+/// deeper widens what search can reach — `git/log` exposes no server-side
+/// search to query the whole history at once.
+class _CommitSearchAnchor extends StatelessWidget {
+  const _CommitSearchAnchor({required this.commits, required this.onSelect});
+
+  final List<GitCommit> commits;
+  final void Function(GitCommit commit) onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return SearchAnchor(
+      isFullScreen: true,
+      viewHintText: l10n.gitHistorySearchHint,
+      builder: (context, controller) => IconSurface(
+        icon: Icons.search_rounded,
+        tooltip: l10n.gitHistorySearch,
+        onPressed: controller.openView,
+      ),
+      suggestionsBuilder: (context, controller) {
+        final results = matchCommits(commits, controller.text);
+        if (results.isEmpty) {
+          return [
+            Padding(
+              padding: const EdgeInsets.all(UxnanSpacing.xl),
+              child: Center(
+                child: Text(
+                  l10n.gitHistorySearchEmpty,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                ),
+              ),
+            ),
+          ];
+        }
+        return [
+          for (final commit in results)
+            _CommitSearchResultTile(
+              commit: commit,
+              onTap: () {
+                controller.closeView(commit.messageTitle);
+                onSelect(commit);
+              },
+            ),
+        ];
+      },
+    );
+  }
+}
+
+/// A single commit search result: the short-SHA badge, the commit title and a
+/// muted `by <author> · <relative date>` subtitle.
+class _CommitSearchResultTile extends StatelessWidget {
+  const _CommitSearchResultTile({required this.commit, required this.onTap});
+
+  final GitCommit commit;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
+    return ListTile(
+      leading: _ShaBadge(shortSha: commit.shortSha),
+      title: Text(
+        commit.messageTitle,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      subtitle: Text(
+        '${l10n.gitHistoryCommitBy(commit.authorName)} · '
+        '${_relativeDate(commit.authorDate)}',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(color: colors.onSurfaceVariant),
+      ),
+      onTap: onTap,
+    );
+  }
+}
+
+/// Filters [commits] by [rawQuery] (case-insensitive), matching the message
+/// title/body, the full or short SHA, the author name/email, or any ref name.
+/// An empty query returns the full loaded list. Public so the filter can be
+/// unit-tested directly (mirrors `matchThreads` for the threads search).
+List<GitCommit> matchCommits(List<GitCommit> commits, String rawQuery) {
+  final q = rawQuery.trim().toLowerCase();
+  if (q.isEmpty) return commits;
+  return commits.where((c) {
+    if (c.messageTitle.toLowerCase().contains(q)) return true;
+    if (c.messageBody.toLowerCase().contains(q)) return true;
+    if (c.sha.toLowerCase().contains(q)) return true;
+    if (c.shortSha.toLowerCase().contains(q)) return true;
+    if (c.authorName.toLowerCase().contains(q)) return true;
+    if (c.authorEmail.toLowerCase().contains(q)) return true;
+    for (final ref in c.refs) {
+      if (ref.name.toLowerCase().contains(q)) return true;
+    }
+    return false;
+  }).toList();
 }
 
 /// A flat commit row for the plain (graph-off) list — no card, matching the

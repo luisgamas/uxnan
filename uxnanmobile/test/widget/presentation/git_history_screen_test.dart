@@ -383,4 +383,38 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('new line'), findsOneWidget);
   });
+
+  testWidgets('searches the history and opens a matching commit',
+      (tester) async {
+    final manager = _stubManager(commits: _sampleCommits());
+    addTearDown(manager.dispose);
+
+    await tester.pumpWidget(
+      _wrap(
+        manager: manager,
+        child: const GitHistoryScreen(cwd: '/repo'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Open the full-screen search view from the app-bar search icon.
+    await tester.tap(find.byIcon(Icons.search_rounded));
+    await tester.pumpAndSettle();
+
+    // A query that matches nothing shows the empty message (unique to the
+    // search view, so it's unambiguous against the list behind it).
+    await tester.enterText(find.byType(TextField).last, 'zzz-no-match');
+    await tester.pumpAndSettle();
+    expect(find.text('No commits match'), findsOneWidget);
+
+    // A matching query surfaces the commit as a result; tapping it opens the
+    // dedicated detail screen. The title also exists in the list behind the
+    // overlay, so tap the last (top-most) match — the result tile.
+    await tester.enterText(find.byType(TextField).last, 'history');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('feat: history view').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Commit details'), findsOneWidget);
+  });
 }

@@ -6,6 +6,17 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — search the commit history
+- **The Git commit history screen now has a search affordance**, matching the
+  threads list pattern: an app-bar `IconSurface` search icon opens a full-screen
+  M3 `SearchAnchor` view that filters commits by message (title/body), full or
+  short SHA, author (name/email) or any ref name; tapping a result opens that
+  commit's detail. Search runs over the commits **currently loaded** into the list
+  (the history pages in lazily as the user scrolls / via "Load older commits"),
+  since `git/log` exposes no server-side search. The filter is the public,
+  unit-tested `matchCommits` helper (mirrors `matchThreads`). New strings
+  `gitHistorySearch` / `gitHistorySearchHint` / `gitHistorySearchEmpty` (EN + ES).
+
 ### Fixed — phantom keyboard on returning from a commit's detail
 - **Returning from the commit detail screen no longer leaves a soft keyboard up
   on the history list** (which has no text field of its own). The detail screen's
