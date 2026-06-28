@@ -5,7 +5,6 @@ import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
-import 'package:uxnan/presentation/widgets/ne_circular_button.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 
 /// Settings screen that manages the user's `/` command-palette prompt
@@ -30,10 +29,13 @@ class PromptTemplatesScreen extends ConsumerWidget {
 
     return NeScaffold(
       title: l10n.promptTemplatesTitle,
-      floatingActionButton: NeCircularButton(
-        icon: Icons.add_rounded,
-        tooltip: l10n.promptTemplatesAdd,
-        onTap: () => _edit(context, ref),
+      // Primary "create" action — the same M3 extended FAB the threads list
+      // uses for "New conversation" (icon + label), not the circular
+      // back-to-top affordance.
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _edit(context, ref),
+        icon: const Icon(Icons.note_add_outlined),
+        label: Text(l10n.promptTemplatesAdd),
       ),
       actions: [
         if (templates.isNotEmpty)

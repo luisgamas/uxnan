@@ -32,8 +32,8 @@ void main() {
 
     expect(find.text('Review'), findsOneWidget);
 
-    // Open the editor sheet from the add FAB.
-    await tester.tap(find.byTooltip('New template'));
+    // Open the editor sheet from the add FAB (the M3 extended FAB).
+    await tester.tap(find.widgetWithText(FloatingActionButton, 'New template'));
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextField).first, 'Summarize');
