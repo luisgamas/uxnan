@@ -1,0 +1,84 @@
+name: Release — Desktop updater manifest
+
+# Publishes the in-app updater's per-channel manifest. The desktop updater polls
+# a STABLE url per channel:
+#   https://github.com/<owner>/<repo>/releases/download/desktop-updater-<channel>/latest.json
+# (see uxnandesktop/src-tauri/src/updater.rs `endpoint_for`). This workflow keeps
+# that file current: when you PUBLISH a `desktop-v*` GitHub Release (the draft
+# `release-desktop.yml` created), it reads the merged `latest.json` tauri-action
+# attached to that release and copies it onto the rolling channel release,
+# creating that release on first use.
+#
+# Channel mirrors GitHub's only release distinction — the `prerelease` flag —
+# NOT the tag's contents:
+#   a normal Release            -> stable
+#   a Release marked prerelease -> nightly
+# So a tag like `desktop-v0.0.5-alpha.20260628` still ships to STABLE as long as
+# the Release isn't flagged pre-release.
+#
+# Trigger is `release: published` (not the tag push) so the version release's
+# assets are already public — the URLs inside latest.json resolve. Until the
+# updater signing secrets exist, the source release has no `latest.json` and this
+# job exits cleanly with a notice (nothing to publish). See docs/updates.md.
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write # create/update the rolling channel release + upload the asset
+
+jobs:
+  publish-manifest:
+    # Only desktop releases; ignore the rolling channel releases themselves and
+    # every other component's tags.
+    if: startsWith(github.event.release.tag_name, 'desktop-v')
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TAG: ${{ github.event.release.tag_name }}
+      IS_PRERELEASE: ${{ github.event.release.prerelease }}
+    steps:
+      - name: Resolve channel from the release's prerelease flag
+        id: meta
+        shell: bash
+        run: |
+          if [ "$IS_PRERELEASE" = "true" ]; then
+            channel="nightly"
+          else
+            channel="stable"
+          fi
+          echo "channel=$channel" >> "$GITHUB_OUTPUT"
+          echo "Release $TAG (prerelease=$IS_PRERELEASE) -> channel '$channel'"
+
+      - name: Download latest.json from the published release
+        id: fetch
+        shell: bash
+        run: |
+          if gh release download "$TAG" --repo "$GITHUB_REPOSITORY" -p latest.json -D . 2>/dev/null; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No latest.json on $TAG — updater signing secrets are probably not configured yet; skipping manifest publish."
+          fi
+
+      - name: Publish manifest to the rolling channel release
+        if: steps.fetch.outputs.found == 'true'
+        shell: bash
+        env:
+          CHANNEL: ${{ steps.meta.outputs.channel }}
+        run: |
+          rolling="desktop-updater-$CHANNEL"
+          prerelease_flag=""
+          [ "$CHANNEL" = "stable" ] || prerelease_flag="--prerelease"
+          # Create the rolling release once; ignore the error if it already exists.
+          if ! gh release view "$rolling" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$rolling" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Uxnan Desktop — $CHANNEL channel manifest" \
+              --notes "Auto-maintained updater manifest for the $CHANNEL channel. Do not delete; the in-app updater downloads latest.json from here." \
+              $prerelease_flag \
+              --target "${GITHUB_SHA}"
+          fi
+          gh release upload "$rolling" latest.json --repo "$GITHUB_REPOSITORY" --clobber
+          echo "Published latest.json to $rolling"
