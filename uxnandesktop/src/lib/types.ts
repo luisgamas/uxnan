@@ -102,6 +102,27 @@ export interface AppSettings {
   aiCommit?: AiCommitSettings;
   /** In-app auto-updater (Settings → Updates). */
   updater?: UpdaterSettings;
+  /** Integrated developer browser (Settings → Browser). */
+  browser?: BrowserSettings;
+}
+
+/** Where a link opens when the integrated browser is enabled (mirror of Rust
+ *  `BrowserLinkPolicy`). `internal` uses the in-app tab; `external` hands off to
+ *  the OS browser; `ask` prompts per link. */
+export type BrowserLinkPolicy = "internal" | "external" | "ask";
+
+/** Integrated developer-browser preferences (mirror of Rust `BrowserSettings`). */
+export interface BrowserSettings {
+  /** Master switch. Off → every link goes to the OS browser, no agent shim. */
+  enabled: boolean;
+  /** Where links open by default. Default `internal`. */
+  linkPolicy: BrowserLinkPolicy;
+  /** Let agents open URLs in the integrated browser (inject a `BROWSER` shim). */
+  allowAgents: boolean;
+  /** Make URLs printed in the terminal clickable (routed through `linkPolicy`). */
+  terminalLinks: boolean;
+  /** Page opened when a fresh browser tab has no target URL. Empty = blank. */
+  homepage: string;
 }
 
 /** Release channel the updater follows (mirror of Rust `UpdateChannel`). Mapped
@@ -485,5 +506,12 @@ export const DEFAULT_SETTINGS: AppSettings = {
     channel: "stable",
     autoDownload: true,
     installPolicy: "ask",
+  },
+  browser: {
+    enabled: true,
+    linkPolicy: "internal",
+    allowAgents: true,
+    terminalLinks: true,
+    homepage: "",
   },
 };
