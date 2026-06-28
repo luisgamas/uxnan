@@ -670,6 +670,8 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                     ComposerBar(
                       enabled: connectedHere && !_cwdMissing,
                       hasAttachments: _attachments.isNotEmpty,
+                      // Backs the inline `@` file/folder mention picker.
+                      cwd: cwd,
                       // While the agent is producing a turn, Send becomes
                       // Stop — cancels the turn (without closing the thread).
                       running: running,

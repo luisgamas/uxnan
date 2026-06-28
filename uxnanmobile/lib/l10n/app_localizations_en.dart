@@ -460,6 +460,74 @@ class AppLocalizationsEn extends AppLocalizations {
   String get composerTools => 'Turn options';
 
   @override
+  String get composerMentionFilesTitle => 'Files & folders';
+
+  @override
+  String get composerMentionLoading => 'Listing…';
+
+  @override
+  String get composerMentionEmpty => 'No matching files';
+
+  @override
+  String get composerMentionMore => 'Keep typing to narrow results…';
+
+  @override
+  String get composerMentionNoWorkspace => 'No folder for this conversation';
+
+  @override
+  String get composerMentionError => 'Couldn\'t list this folder';
+
+  @override
+  String get composerCommandsTitle => 'Commands';
+
+  @override
+  String get composerCommandsEmpty => 'No matching command';
+
+  @override
+  String get composerCmdFilesLabel => 'Attach file or folder';
+
+  @override
+  String get composerCmdFilesDesc =>
+      'Insert an @ reference to a file or folder';
+
+  @override
+  String get composerCmdExplainLabel => 'Explain';
+
+  @override
+  String get composerCmdExplainDesc => 'Ask the agent to explain something';
+
+  @override
+  String get composerCmdExplainTemplate => 'Explain how this works: ';
+
+  @override
+  String get composerCmdReviewLabel => 'Review';
+
+  @override
+  String get composerCmdReviewDesc => 'Ask for a code review';
+
+  @override
+  String get composerCmdReviewTemplate =>
+      'Review this for bugs and improvements: ';
+
+  @override
+  String get composerCmdFixLabel => 'Fix';
+
+  @override
+  String get composerCmdFixDesc => 'Ask the agent to fix a bug';
+
+  @override
+  String get composerCmdFixTemplate => 'Find and fix the bug in: ';
+
+  @override
+  String get composerCmdTestsLabel => 'Tests';
+
+  @override
+  String get composerCmdTestsDesc => 'Ask the agent to write tests';
+
+  @override
+  String get composerCmdTestsTemplate => 'Write tests for: ';
+
+  @override
   String get newThreadAction => 'New conversation';
 
   @override

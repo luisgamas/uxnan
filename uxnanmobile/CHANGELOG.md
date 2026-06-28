@@ -6,6 +6,38 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — inline `@` file mentions and a `/` command palette in the composer
+- **The message composer now surfaces two inline affordances above the pill
+  while typing**, the way most agent GUIs do:
+  - **`@` file/folder mentions** — typing `@` opens a suggestion panel. With an
+    empty fragment (`@`, `@lib/`) it **browses** that directory (one level, via
+    `workspace/list`); once you type a fragment it switches to a **repo-wide
+    fuzzy search** (the new `workspace/searchFiles`, honoring `.gitignore`) that
+    shows full relative paths ranked best-first. Picking a folder drills in,
+    picking a file finalizes the reference as `@path` + a space. The path simply
+    becomes prompt text, which already reaches the agent CLI verbatim. Disabled
+    (with a "no folder" note) when the thread has no `cwd`. **Graceful fallback:**
+    if the connected bridge predates `workspace/searchFiles` (-32601), `@name`
+    degrades to browsing + filtering the current folder, so the picker still
+    works against an older bridge.
+  - **Completed `@` mentions render as inline code-style badges** — a
+    `MentionTextController` paints each `@path` token monospace with a subtle
+    primary tint (like a markdown code span). Purely visual: the underlying text
+    is unchanged, so the sent prompt stays plain.
+  - **`/` command palette** — when the message *starts* with `/`, a panel lists
+    uxnan's own client-side commands (these are **not** the agent CLI's
+    interactive slash commands): a *files* entry that hands off to the `@`
+    picker, plus prompt-template inserts (*explain*, *review*, *fix*, *tests*).
+    A `/` mid-message (e.g. a path) never opens it.
+- Trigger detection and text-replacement are the pure, unit-tested
+  `mention_suggestion.dart` helpers (`detectComposerTrigger`, `splitFileQuery`,
+  `applyFileMention`, `applyCommand`); the palette catalog + filter live in
+  `composer_commands.dart` (`matchComposerCommands`); the badge rendering in
+  `mention_text_controller.dart`. New `FileBrowserManager.listDirectory` (one
+  level) + `searchFiles` (repo-wide, `workspace/searchFiles`). New EN + ES strings
+  (`composerMention*`, `composerCommands*`, `composerCmd*`). 29 new tests (22
+  unit + 7 widget).
+
 ## [0.0.1-alpha.20260628] - 2026-06-28
 
 ### Fixed — onboarding shows the correct bridge install command

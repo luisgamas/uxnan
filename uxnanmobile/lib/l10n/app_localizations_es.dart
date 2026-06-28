@@ -461,6 +461,75 @@ class AppLocalizationsEs extends AppLocalizations {
   String get composerTools => 'Opciones del turno';
 
   @override
+  String get composerMentionFilesTitle => 'Archivos y carpetas';
+
+  @override
+  String get composerMentionLoading => 'Listando…';
+
+  @override
+  String get composerMentionEmpty => 'Ningún archivo coincide';
+
+  @override
+  String get composerMentionMore => 'Sigue escribiendo para acotar…';
+
+  @override
+  String get composerMentionNoWorkspace =>
+      'No hay carpeta para esta conversación';
+
+  @override
+  String get composerMentionError => 'No se pudo listar esta carpeta';
+
+  @override
+  String get composerCommandsTitle => 'Comandos';
+
+  @override
+  String get composerCommandsEmpty => 'Ningún comando coincide';
+
+  @override
+  String get composerCmdFilesLabel => 'Adjuntar archivo o carpeta';
+
+  @override
+  String get composerCmdFilesDesc =>
+      'Inserta una referencia con @ a un archivo o carpeta';
+
+  @override
+  String get composerCmdExplainLabel => 'Explicar';
+
+  @override
+  String get composerCmdExplainDesc => 'Pide al agente que explique algo';
+
+  @override
+  String get composerCmdExplainTemplate => 'Explica cómo funciona esto: ';
+
+  @override
+  String get composerCmdReviewLabel => 'Revisar';
+
+  @override
+  String get composerCmdReviewDesc => 'Pide una revisión de código';
+
+  @override
+  String get composerCmdReviewTemplate =>
+      'Revisa esto en busca de errores y mejoras: ';
+
+  @override
+  String get composerCmdFixLabel => 'Corregir';
+
+  @override
+  String get composerCmdFixDesc => 'Pide al agente que corrija un error';
+
+  @override
+  String get composerCmdFixTemplate => 'Encuentra y corrige el error en: ';
+
+  @override
+  String get composerCmdTestsLabel => 'Pruebas';
+
+  @override
+  String get composerCmdTestsDesc => 'Pide al agente que escriba pruebas';
+
+  @override
+  String get composerCmdTestsTemplate => 'Escribe pruebas para: ';
+
+  @override
   String get newThreadAction => 'Nueva conversación';
 
   @override

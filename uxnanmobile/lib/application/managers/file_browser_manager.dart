@@ -239,6 +239,51 @@ class FileBrowserManager {
     );
   }
 
+  /// Lists a single directory level for the `@`-mention picker: the entries of
+  /// [relPath] (workspace-relative; `'.'`/`''` = the workspace root itself)
+  /// under the workspace [cwd]. Unlike the lazy tree above this is a stateless
+  /// one-shot `workspace/list` — the composer holds its own transient results,
+  /// so this never touches the cached tree. Throws [FileListingException] on a
+  /// malformed response (callers degrade to "no matches").
+  Future<FileListing> listDirectory(String cwd, String relPath) =>
+      _list(_joinPath(cwd, relPath));
+
+  /// Repo-wide fuzzy file search for the `@`-mention picker (`workspace/
+  /// searchFiles`): the best matches for [query] across [cwd], honoring
+  /// `.gitignore`. [limit] caps results (the bridge clamps it). Throws
+  /// [FileListingException] on a malformed response.
+  Future<FileSearchResult> searchFiles(
+    String cwd,
+    String query, {
+    int? limit,
+  }) async {
+    final response =
+        await _sendRequest('workspace/searchFiles', <String, dynamic>{
+      'cwd': cwd,
+      'query': query,
+      if (limit != null) 'limit': limit,
+    });
+    final error = response.error;
+    if (error != null) {
+      // -32601 (method not found) = an older bridge without this method. The
+      // caller degrades to browsing + filtering the current directory.
+      if (error.code == -32601) {
+        throw const WorkspaceMethodUnsupported('workspace/searchFiles');
+      }
+      throw FileListingException(
+        'workspace/searchFiles failed (${error.code}): ${error.message}',
+      );
+    }
+    final result = response.result;
+    if (result is! Map) {
+      throw FileListingException(
+        'Invalid workspace/searchFiles response for "$cwd" '
+        '(got ${result.runtimeType}).',
+      );
+    }
+    return FileSearchResult.fromJson(result.cast<String, dynamic>());
+  }
+
   /// Reads a file's text content (UTF-8 or base64). Caller decides which path
   /// to render — for binary files the base64 form is returned and the viewer
   /// should fall back to a "binary preview" placeholder.
@@ -576,6 +621,21 @@ class FileListingException implements Exception {
 
   @override
   String toString() => 'FileListingException: $message';
+}
+
+/// Raised by [FileBrowserManager.searchFiles] when the connected bridge doesn't
+/// implement the method (JSON-RPC -32601) — i.e. an older bridge predating
+/// `workspace/searchFiles`. The composer catches this to degrade the `@` picker
+/// to browsing + filtering the current directory.
+class WorkspaceMethodUnsupported implements Exception {
+  /// Creates a [WorkspaceMethodUnsupported] for [method].
+  const WorkspaceMethodUnsupported(this.method);
+
+  /// The JSON-RPC method the bridge didn't recognize.
+  final String method;
+
+  @override
+  String toString() => 'WorkspaceMethodUnsupported: $method';
 }
 
 /// Raised by [FileBrowserManager.readFile] / [readImage] when the bridge
