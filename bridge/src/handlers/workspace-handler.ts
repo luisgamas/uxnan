@@ -20,7 +20,13 @@ import type { HandlerRouter } from '../handler-router.js';
 import { WorkspaceService } from '../workspace/workspace-service.js';
 import { CheckpointService, type CaptureOptions } from '../workspace/checkpoint-service.js';
 import { GitCommandError } from '../git/git-runner.js';
-import { asObject, optionalString, requireArray, requireString } from './params.js';
+import {
+  asObject,
+  optionalNumber,
+  optionalString,
+  requireArray,
+  requireString,
+} from './params.js';
 
 /** Map a git failure inside a checkpoint op to -32003 (RpcErrors pass through). */
 function checkpointOp<T>(fn: () => Promise<T>): Promise<T> {
@@ -50,6 +56,9 @@ export function registerWorkspaceHandlers(router: HandlerRouter): void {
     ws.readImage(requireString(p, 'cwd'), requireString(p, 'path')),
   );
   router.register('workspace/list', (p) => ws.list(requireString(p, 'cwd')));
+  router.register('workspace/searchFiles', (p) =>
+    ws.searchFiles(requireString(p, 'cwd'), requireString(p, 'query'), optionalNumber(p, 'limit')),
+  );
   router.register('workspace/browseDirs', (p, ctx: BridgeContext) => {
     const params = p ?? {};
     return ctx.browse.browse(optionalString(params, 'rootId'), optionalString(params, 'path'));
