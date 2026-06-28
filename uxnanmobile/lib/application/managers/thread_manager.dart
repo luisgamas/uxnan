@@ -667,9 +667,9 @@ class ThreadManager {
   /// layout (any blocks, then the accumulated text run **last**) for an older
   /// bridge that doesn't send `segments`. Either way the trailing run lets the
   /// next streamed delta extend in place via [_LiveTurn.appendText] (a delta
-  /// after a block opens a fresh run, preserving order). Returns an empty buffer
-  /// when the active turn isn't found in the page (the turn carries no assistant
-  /// output yet).
+  /// after a block opens a fresh run, preserving order). Returns an empty
+  /// buffer when the active turn isn't found in the page (the turn carries
+  /// no assistant output yet).
   _LiveTurn _seedLiveTurn(String turnId, List<Object?> turns) {
     final live = _LiveTurn(turnId: turnId);
     for (final rawTurn in turns) {
@@ -769,9 +769,9 @@ class ThreadManager {
             rawMsg['thinking'] is String ? rawMsg['thinking'] as String : '';
         final blocks = _decodeBlocks(rawMsg['blocks']);
         // `segments` carries the assistant's text runs and blocks already
-        // interleaved in production order (bridge thread-store). When present we
-        // render from it so the work log sits inline with the response; absent
-        // (older bridge / on-disk history fallback) we fall back to the
+        // interleaved in production order (bridge thread-store). When present
+        // we render from it so the work log sits inline with the response;
+        // absent (older bridge / on-disk history fallback) we fall back to the
         // blocks-first layout. Its text runs concatenate to `content` and its
         // non-text entries are exactly `blocks` — see the reconciliation below.
         final segments = _decodeBlocks(rawMsg['segments']);
@@ -1210,10 +1210,10 @@ class ThreadManager {
 
   /// Builds an assistant message's content blocks from its answer [text],
   /// optional [thinking] and any structured [blocks] (commands/diffs/tools).
-  /// This is the **fallback** history layout, used only when the bridge sends no
-  /// ordered `segments` (an older bridge, or the on-disk history fallback in
-  /// `session-history.ts`): with no interleave position the blocks sit before
-  /// the merged text run. When `segments` *are* present the caller uses
+  /// This is the **fallback** history layout, used only when the bridge sends
+  /// no ordered `segments` (an older bridge, or the on-disk history fallback
+  /// in `session-history.ts`): with no interleave position the blocks sit
+  /// before the merged text run. When `segments` *are* present the caller uses
   /// [_assistantContentsOrdered] instead, restoring the real text↔work-log
   /// order. AssistantTurnView renders whichever order it is given.
   static List<MessageContent> _assistantContents(

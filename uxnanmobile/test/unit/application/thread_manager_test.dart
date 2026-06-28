@@ -294,9 +294,10 @@ void main() {
 
   test('resync renders history segments interleaved (work log inline)',
       () async {
-    // The bridge sends the assistant turn's ordered `segments`: it narrated, ran
-    // a command, then narrated again. The recovered bubble must keep that order
-    // (text → work log → text), not stack all activity above one merged block.
+    // The bridge sends the assistant turn's ordered `segments`: it narrated,
+    // ran a command, then narrated again. The recovered bubble must keep that
+    // order (text → work log → text), not stack all activity above one merged
+    // block.
     turnListResult = {
       'turns': [
         {
@@ -343,7 +344,10 @@ void main() {
         turnId: 'turnR',
         role: MessageRole.assistant,
         contents: const [
-          CommandExecutionContent(command: 'ls', status: CommandStatus.completed),
+          CommandExecutionContent(
+            command: 'ls',
+            status: CommandStatus.completed,
+          ),
           TextContent('Let me check.Done.'),
         ],
         deliveryState: MessageDeliveryState.delivered,
