@@ -54,6 +54,7 @@ Cutting a release for component `<comp>` (tag `<comp>-v<version>`):
 
 | Date (YYYY-MM-DD) | shared | bridge | relay | desktop | mobile |
 | ----------------- | ------ | ------ | ----- | ------- | ------ |
+| 2026-06-28 | — | — | — | — | 0.0.1-alpha.20260628+20260628 |
 | 2026-06-27 | 0.0.1-alpha.20260627 | 0.0.1-alpha.20260627 | 0.0.1-alpha.20260627 | 0.0.1-alpha.20260627 | 0.0.1-alpha.20260627+20260627 |
 
 > FOR-DEV: once the release pipeline is validated end-to-end, a final step in
