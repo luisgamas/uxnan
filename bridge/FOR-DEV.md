@@ -12,7 +12,7 @@ only a human can provide.)
 ## Status
 
 The bridge is **alpha-functional** on its primary path (LAN/Tailscale-direct,
-standalone). It builds clean and the suite is green (bridge 357, shared 29, relay
+standalone). It builds clean and the suite is green (bridge 360, shared 29, relay
 27). Nothing below blocks LAN/Tailscale-direct use; the only items that gate a
 **public npm release** are the *Packaging* first-publish steps and real-device
 push validation (FOR-HUMAN).
@@ -29,7 +29,10 @@ push validation (FOR-HUMAN).
   `git/deleteBranch`, `git/removeWorktree`, `workspace/exists`,
   `workspace/browseDirs`.
 - **Conversation engine** — threads / turns + streaming, per-thread
-  `Message.blocks` / `Message.thinking` / `Message.usage`.
+  `Message.blocks` / `Message.thinking` / `Message.usage`, plus the ordered
+  `Message.segments` interleave (text runs + work-log/diff/tool blocks in
+  production order) so a `turn/list` re-sync renders the work log inline with
+  the response instead of stacking all activity above one merged paragraph.
 - **5 real agents wired** — OpenCode (default), Claude Code, Codex, pi, and
   Gemini CLI. Each spawns its **official local CLI** over stdio with
   `shell:false`, parses the native stream, and emits structured
@@ -119,6 +122,21 @@ push validation (FOR-HUMAN).
 - [ ] **`bridge/disconnectPhone`** — removes the session but does not close the live
       transport (`FOR-DEV:` in `bridge-control-handler.ts`). Also close the live
       transport so the phone is dropped immediately.
+
+## Conversation history
+
+- [ ] **On-disk history fallback — ordered `segments`.** The live/stored path
+      (`thread-store.ts`) emits `Message.segments` (interleaved text↔work-log
+      order), so a phone reconnecting to a still-running bridge recovers the real
+      order. The **on-disk `turn/list` fallback** (`session-history.ts`, used only
+      after a bridge restart with an empty `threads.json`) still emits
+      `content` + `blocks` separately, so a recovered turn renders blocks-first
+      (the phone falls back to `_assistantContents`). Reconstruct `segments` from
+      each CLI log's real text↔tool order (Claude `tool_use` is interleaved in the
+      assistant `content`; Codex/pi attach tool blocks after the text; OpenCode
+      parts are read in file order; Gemini bundles `toolCalls` per message) and
+      attach them to each `RawMessage`. See the `FOR-DEV:` marker in
+      `session-history.ts`.
 
 ## Agent adapters
 

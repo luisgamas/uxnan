@@ -32,6 +32,18 @@ interface StoredMessage {
   thinking?: string;
   /** Structured content blocks (command_execution/diff/tool) for this message. */
   blocks?: unknown[];
+  /**
+   * The message's text runs and structured blocks **in the order they streamed
+   * in** (text runs as `{ type:'text', text }`, blocks verbatim). This preserves
+   * the interleave that `text` + `blocks` lose when stored separately, so a
+   * `turn/list` re-sync can render the work log inline with the response instead
+   * of stacking all activity above one merged paragraph. Maintained from the
+   * first delta/block alongside `text`/`blocks` (the text runs concatenate to
+   * `text`; the non-text entries are exactly `blocks`). Emitted on the wire only
+   * when it carries a structured block — see {@link toMessage} — so plain-text
+   * turns keep the lean shape and need no client interleaving.
+   */
+  segments?: unknown[];
   /** Token usage for this turn (so the phone restores the context meter). */
   usage?: { tokens: number; contextWindow?: number };
   createdAt: number;
@@ -317,6 +329,7 @@ export class ThreadStore {
     return this.#mutate(async (threads) => {
       const assistant = this.#assistantMessage(threads, threadId, turnId);
       assistant.text += delta;
+      appendTextSegment(assistant, delta);
       this.#touch(threads, threadId, now);
     });
   }
@@ -335,6 +348,7 @@ export class ThreadStore {
     return this.#mutate(async (threads) => {
       const assistant = this.#assistantMessage(threads, threadId, turnId);
       assistant.blocks = [...(assistant.blocks ?? []), content];
+      (assistant.segments ??= []).push(content);
       this.#touch(threads, threadId, now);
     });
   }
@@ -363,7 +377,10 @@ export class ThreadStore {
       const turn = this.#turn(threads, threadId, turnId);
       if (finalText !== undefined) {
         const assistant = turn.messages.find((m) => m.role === 'assistant');
-        if (assistant) assistant.text = finalText;
+        if (assistant) {
+          assistant.text = finalText;
+          reconcileSegmentsWithText(assistant, finalText);
+        }
       }
       turn.status = 'completed';
       turn.completedAt = now;
@@ -473,6 +490,13 @@ function toMessage(message: StoredMessage): Message {
     content: message.text,
     ...(message.thinking && message.thinking.length > 0 ? { thinking: message.thinking } : {}),
     ...(message.blocks && message.blocks.length > 0 ? { blocks: message.blocks } : {}),
+    // Only surface the ordered interleave when it actually carries a structured
+    // block: a plain-text turn renders identically from `content` alone, so the
+    // extra field would be pure duplication. A turn with work-log/diff/tool
+    // blocks ships `segments` so the phone restores the real text↔activity order.
+    ...(message.segments && hasNonTextSegment(message.segments)
+      ? { segments: message.segments }
+      : {}),
     ...(message.usage ? { usage: message.usage } : {}),
     createdAt: message.createdAt,
   };
@@ -484,4 +508,55 @@ function structuredCloneThread(thread: StoredThread): StoredThread {
 
 function notFound(message: string): RpcError {
   return new RpcError(JsonRpcErrorCode.ResourceNotFound, message);
+}
+
+/** A `segments` text run: `{ type:'text', text }`. */
+function isTextSegment(value: unknown): value is { type: 'text'; text: string } {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    (value as { type?: unknown }).type === 'text' &&
+    typeof (value as { text?: unknown }).text === 'string'
+  );
+}
+
+/** True once the ordered interleave holds at least one non-text (structured) block. */
+function hasNonTextSegment(segments: unknown[]): boolean {
+  return segments.some((s) => !isTextSegment(s));
+}
+
+/**
+ * Extend the assistant message's ordered `segments` with a streamed text
+ * [delta], mirroring the live mobile buffer: grow the trailing text run in
+ * place, or open a new one when a structured block last landed (so text↔block
+ * order is preserved). Empty deltas are ignored.
+ */
+function appendTextSegment(assistant: StoredMessage, delta: string): void {
+  if (delta.length === 0) return;
+  const segments = (assistant.segments ??= []);
+  const last = segments[segments.length - 1];
+  if (isTextSegment(last)) {
+    last.text += delta;
+  } else {
+    segments.push({ type: 'text', text: delta });
+  }
+}
+
+/**
+ * Make the ordered `segments` agree with the turn's authoritative [finalText]
+ * (the `turn/completed` text, which replaces the streamed deltas). When the
+ * streamed text runs already concatenate to [finalText] — the normal case — the
+ * interleave is left untouched. Otherwise the text runs are dropped and a single
+ * trailing text run is appended after the blocks (the best we can do when the
+ * final text diverges from, or arrived without, streamed deltas). A no-op when
+ * no `segments` were ever built (a plain-text turn with no blocks).
+ */
+function reconcileSegmentsWithText(assistant: StoredMessage, finalText: string): void {
+  const segments = assistant.segments;
+  if (!segments || segments.length === 0) return;
+  const streamed = segments.filter(isTextSegment).reduce((acc, s) => acc + s.text, '');
+  if (streamed === finalText) return;
+  const blocks = segments.filter((s) => !isTextSegment(s));
+  assistant.segments =
+    finalText.length > 0 ? [...blocks, { type: 'text', text: finalText }] : blocks;
 }

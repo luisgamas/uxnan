@@ -292,6 +292,20 @@ stream/model/resolved       -> ModelResolvedParams { threadId, turnId, model }  
   el mismo codec que `Message.blocks` y lo proyecta en el **Work log** /
   **Changed files** de la respuesta. Asi los comandos/herramientas/diffs
   del agente se renderizan en vivo y sobreviven a un `turn/list` re-sync.
+- `Message.segments?`: en el re-sync (`turn/list`) el bridge ya no entrega el
+  texto (`content`) y los bloques (`blocks`) por separado — eso perdia el
+  ORDEN en que se intercalaron y hacia que un turno recuperado mostrara todo
+  el Work log apilado ARRIBA de un unico parrafo. `segments` es el intercalado
+  ordenado (corridas de texto como `{type:'text',text}` + bloques verbatim, en
+  el orden de produccion del agente). Cuando viene, el telefono renderiza desde
+  el (Work log inline con la respuesta, igual que un turno en vivo); `content` +
+  `blocks` se mantienen para clientes viejos y para la reconciliacion del
+  re-sync (las corridas de texto de `segments` concatenan a `content`; sus
+  entradas no-texto son exactamente `blocks`). Wire-aditivo, emitido solo cuando
+  el turno trae algun bloque estructurado; ausente para turnos recuperados sin
+  orden (bridge viejo, o el fallback de historial en disco `session-history.ts`,
+  que aun entrega blocks-first). Producido por `thread-store.ts`, consumido por
+  el `thread_manager` movil (`_persistTurns` + `_seedLiveTurn`).
 - `stream/model/resolved`: el bridge informa la version concreta a la que
   un alias (ej. `opus` -> `claude-opus-4-8`) se resolvio para este turno,
   para que el picker del telefono pueda mostrar una fila "Active version"

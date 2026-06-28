@@ -292,6 +292,191 @@ void main() {
     expect(_text(finalized), 'on it, let me check now');
   });
 
+  test('resync renders history segments interleaved (work log inline)',
+      () async {
+    // The bridge sends the assistant turn's ordered `segments`: it narrated,
+    // ran a command, then narrated again. The recovered bubble must keep that
+    // order (text → work log → text), not stack all activity above one merged
+    // block.
+    turnListResult = {
+      'turns': [
+        {
+          'id': 'turnS',
+          'messages': [
+            {
+              'role': 'assistant',
+              'content': 'Let me check.Done.',
+              'segments': [
+                {'type': 'text', 'text': 'Let me check.'},
+                {
+                  'type': 'command_execution',
+                  'command': 'ls',
+                  'status': 'completed',
+                },
+                {'type': 'text', 'text': 'Done.'},
+              ],
+            },
+          ],
+        },
+      ],
+      'total': 1,
+    };
+    await manager.selectThread('th1');
+    await _settle();
+
+    final msg =
+        manager.timeline.messages.firstWhere((m) => m.id == 'stream-turnS');
+    expect(msg.contents.length, 3);
+    expect(msg.contents[0], isA<TextContent>());
+    expect(msg.contents[1], isA<CommandExecutionContent>());
+    expect(msg.contents[2], isA<TextContent>());
+    expect((msg.contents[0] as TextContent).text, 'Let me check.');
+    expect((msg.contents[2] as TextContent).text, 'Done.');
+  });
+
+  test('resync repairs a turn previously persisted blocks-first', () async {
+    // A turn the buggy older client stored blocks-first (work log above the
+    // merged text): same text + same block, wrong order.
+    await messageRepo.saveMessage(
+      Message(
+        id: 'stream-turnR',
+        threadId: 'th1',
+        turnId: 'turnR',
+        role: MessageRole.assistant,
+        contents: const [
+          CommandExecutionContent(
+            command: 'ls',
+            status: CommandStatus.completed,
+          ),
+          TextContent('Let me check.Done.'),
+        ],
+        deliveryState: MessageDeliveryState.delivered,
+        orderIndex: 0,
+        createdAt: DateTime.fromMillisecondsSinceEpoch(1000),
+      ),
+    );
+    // The bridge now re-sends the same turn WITH ordered segments.
+    turnListResult = {
+      'turns': [
+        {
+          'id': 'turnR',
+          'messages': [
+            {
+              'role': 'assistant',
+              'content': 'Let me check.Done.',
+              'segments': [
+                {'type': 'text', 'text': 'Let me check.'},
+                {
+                  'type': 'command_execution',
+                  'command': 'ls',
+                  'status': 'completed',
+                },
+                {'type': 'text', 'text': 'Done.'},
+              ],
+            },
+          ],
+        },
+      ],
+      'total': 1,
+    };
+    await manager.selectThread('th1');
+    await _settle();
+
+    // The stored copy was rewritten into the interleaved order.
+    final repaired =
+        manager.timeline.messages.firstWhere((m) => m.id == 'stream-turnR');
+    expect(repaired.contents[0], isA<TextContent>());
+    expect(repaired.contents[1], isA<CommandExecutionContent>());
+    expect(repaired.contents[2], isA<TextContent>());
+  });
+
+  test('resync without segments falls back to blocks-first layout', () async {
+    // An older bridge (or the on-disk history fallback) sends `content` +
+    // `blocks` only — no `segments`. The recovered bubble keeps the prior
+    // behaviour: structured blocks first, then the merged text.
+    turnListResult = {
+      'turns': [
+        {
+          'id': 'turnB',
+          'messages': [
+            {
+              'role': 'assistant',
+              'content': 'All set.',
+              'blocks': [
+                {
+                  'type': 'command_execution',
+                  'command': 'ls',
+                  'status': 'completed',
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      'total': 1,
+    };
+    await manager.selectThread('th1');
+    await _settle();
+
+    final msg =
+        manager.timeline.messages.firstWhere((m) => m.id == 'stream-turnB');
+    expect(msg.contents.length, 2);
+    expect(msg.contents[0], isA<CommandExecutionContent>());
+    expect(msg.contents[1], isA<TextContent>());
+    expect((msg.contents[1] as TextContent).text, 'All set.');
+  });
+
+  test('resync seeds the re-attached live buffer with interleaved segments',
+      () async {
+    await manager.selectThread('th1');
+    await _settle();
+
+    // The bridge reports the in-flight turn AND its ordered partial output:
+    // it narrated, ran a command, narrated again — all before we reconnected.
+    turnListResult = {
+      'turns': [
+        {
+          'id': 'turnZ',
+          'messages': [
+            {
+              'role': 'assistant',
+              'content': 'Checking.Found it.',
+              'segments': [
+                {'type': 'text', 'text': 'Checking.'},
+                {
+                  'type': 'command_execution',
+                  'command': 'grep x',
+                  'status': 'completed',
+                },
+                {'type': 'text', 'text': 'Found it.'},
+              ],
+            },
+          ],
+        },
+      ],
+      'total': 1,
+      'activeTurnId': 'turnZ',
+    };
+    await manager.resyncActive();
+    await _settle();
+
+    final reattached =
+        manager.timeline.messages.firstWhere((m) => m.id == 'stream-turnZ');
+    // The interleaved order is recovered, not blocks-first.
+    expect(reattached.contents[0], isA<TextContent>());
+    expect(reattached.contents[1], isA<CommandExecutionContent>());
+    expect(reattached.contents[2], isA<TextContent>());
+
+    // A delta after the reconnect extends the trailing text run in place.
+    events.add(
+      const MessageDeltaEvent(turnId: 'turnZ', threadId: 'th1', delta: ' done'),
+    );
+    await _settle();
+    final streamed =
+        manager.timeline.messages.firstWhere((m) => m.id == 'stream-turnZ');
+    expect((streamed.contents.last as TextContent).text, 'Found it. done');
+  });
+
   test('finalizes with the bridge text when re-attached without streamed text',
       () async {
     await manager.selectThread('th1');
