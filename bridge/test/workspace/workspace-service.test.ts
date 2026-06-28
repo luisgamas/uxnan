@@ -127,7 +127,9 @@ test('searchFiles fuzzy-matches files and their ancestor dirs across the repo', 
 
   // A nested path query works (path substring), and the dir is matchable too.
   const nested = await ws.searchFiles(root, 'presentation/home');
-  assert.ok(nested.matches.some((m) => m.path === 'lib/presentation/home.dart' && m.type === 'file'));
+  assert.ok(
+    nested.matches.some((m) => m.path === 'lib/presentation/home.dart' && m.type === 'file'),
+  );
   const dirHit = await ws.searchFiles(root, 'presentation');
   assert.ok(dirHit.matches.some((m) => m.path === 'lib/presentation' && m.type === 'dir'));
   await rm(root, { recursive: true, force: true });

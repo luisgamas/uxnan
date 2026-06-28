@@ -20,13 +20,7 @@ import type { HandlerRouter } from '../handler-router.js';
 import { WorkspaceService } from '../workspace/workspace-service.js';
 import { CheckpointService, type CaptureOptions } from '../workspace/checkpoint-service.js';
 import { GitCommandError } from '../git/git-runner.js';
-import {
-  asObject,
-  optionalNumber,
-  optionalString,
-  requireArray,
-  requireString,
-} from './params.js';
+import { asObject, optionalNumber, optionalString, requireArray, requireString } from './params.js';
 
 /** Map a git failure inside a checkpoint op to -32003 (RpcErrors pass through). */
 function checkpointOp<T>(fn: () => Promise<T>): Promise<T> {
