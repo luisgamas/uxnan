@@ -6,6 +6,54 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — onboarding shows the correct bridge install command
+- **The "Install the bridge on your PC" onboarding step now tells the user to
+  install the bridge as a global npm package, not run it via `npx`.** The bridge
+  is published as the global CLI `uxnan-bridge` (its `bin`), so the page now shows
+  the canonical two-step flow — `npm install -g uxnan-bridge` (install once) then
+  `uxnan-bridge start` — matching `bridge/docs/installation.md`. Replaced the
+  single `npx uxnan-bridge` command card with two labelled `CommandCardWidget`s
+  and reworded `onboardingInstallBody` accordingly (EN + ES), adding the
+  `onboardingInstallStepInstall` / `onboardingInstallStepStart` strings. Updated
+  `onboarding_screen_test.dart` to assert both commands.
+
+### Changed — manual-code pairing screen redesigned for Neural Expressive
+- **The "Pair with a code" screen (the no-camera pairing alternative) now follows
+  the app's Material 3 + Neural Expressive language** instead of the previous
+  minimal M3 form. It adopts a transparent `NeTopBar` (scroll veil) over an
+  `IconSurface` back button — matching the QR scanner's chrome — an Icon Surface
+  hero, the "Browse nearby bridges" mDNS action as a tappable dynamic-corner
+  `ExpressiveCard` (with a hint subtitle), the host/code fields grouped on a single
+  `NeSurface` with filled (borderless, focus-outlined) inputs, a pill (`StadiumBorder`)
+  primary CTA, and the `PolygonLoader` shape-morph indicator while resolving the
+  code (replacing the M3 `CircularProgressIndicator`). New strings
+  `manualCodeFormTitle` / `manualCodeBrowseHint` (EN + ES). Pairing logic is
+  unchanged.
+
+### Changed — onboarding NE polish (single-unit scroll, agents named, unified buttons)
+- **Each onboarding page now scrolls as a single unit.** `OnboardingPageLayout`
+  previously kept the decorative floating-agents band fixed and only scrolled the
+  middle region, so tall pages (the install page) looked like a half-scrolling
+  panel. The whole page body (top band + hero + title + body + extra child) now
+  lives inside one `SingleChildScrollView` (a `LayoutBuilder` + min-height
+  `ConstrainedBox` keeps short pages vertically centered, tall ones fully
+  scrollable). The only fixed chrome stays the top **Skip** button and the bottom
+  nav buttons + page-dot indicator (in `OnboardingScreen`).
+- **Page 2 (Features) names the five wired agents.** `featureMultiAgentBody` now
+  reads "Works with Claude Code, Codex, Gemini, OpenCode and Pi — with more agents
+  on the way." (EN + ES), replacing the partial list that omitted Pi.
+- **Page 3 (Install) explains the bridge root.** Added an NE note card (`NeSurface`,
+  outlined, folder glyph) below the start step: the folder where you start the
+  bridge becomes its root, so one bridge serves every folder/repo under it — no
+  need to start it per project. New string `onboardingInstallRootNote` (EN + ES).
+- **Unified the primary buttons across onboarding + pairing.** New shared
+  `NeButton` (`widgets/ne_button.dart`) — a `StadiumBorder` pill at the M3 Medium
+  size (48 dp), with `NeButton.icon` and an outlined secondary variant — now drives
+  the onboarding Next/Back/Scan controls, the camera-permission "Allow / Open
+  settings" and scanner-error "Pair with a code" buttons, and the manual-pairing
+  CTA shares the same shape/size. Replaces the mix of default-shaped 56 dp
+  `FilledButton`/`OutlinedButton`s so every primary action matches.
+
 ## [0.0.1-alpha.20260627] - 2026-06-27
 
 ### Fixed — recovered conversations keep messages and activity interleaved
