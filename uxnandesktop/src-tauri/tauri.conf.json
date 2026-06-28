@@ -27,6 +27,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -34,5 +35,16 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDlEM0E4OUVFMUM5NDEyMzcKUldRM0VwUWM3b2s2blN2Z1FOOUI1akhEaDRwL0VxYXpZbUUyWUtOWjhuUDdPSUszWHNsTUF0enkK",
+      "endpoints": [
+        "https://github.com/luisgamas/uxnan/releases/download/desktop-updater-stable/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }
