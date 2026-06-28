@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.1-alpha.20260627] - 2026-06-27
+
 ### Fixed — recovered conversations keep the real text↔work-log order
 - **The thread store now records an ordered `Message.segments` interleave**
   (`src/conversation/thread-store.ts`). Each assistant message kept `text`

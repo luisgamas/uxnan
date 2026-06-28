@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.1-alpha.20260627] - 2026-06-27
+
 ### Changed — push notifications doc moved to the bridge
 - `relay/docs/push-notifications.md` was **moved to
   `bridge/docs/push-notifications.md`** and rewritten bridge-first (push is

@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.1-alpha.20260627] - 2026-06-27
+
 ### Added — in-app auto-updater (Settings → Updates)
 - **The ADE now checks GitHub Releases for a newer version, downloads it in the
   background and installs it on your terms** — built on `tauri-plugin-updater`.

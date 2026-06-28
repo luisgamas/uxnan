@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.1-alpha.20260627] - 2026-06-27
+
 ### Added
 - **`Message.segments?`** (`models/thread.ts`): the `turn/list` assistant
   message now carries its text runs and structured blocks **in the order the
