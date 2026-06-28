@@ -66,7 +66,7 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get featureMultiAgentBody =>
-      'Funciona con Codex, Claude Code, Gemini CLI, OpenCode y más — sin lock-in.';
+      'Funciona con Claude Code, Codex, Gemini, OpenCode y Pi — y se están añadiendo más agentes. Sin lock-in.';
 
   @override
   String get featureE2eeTitle => 'Cifrado de extremo a extremo';
@@ -87,7 +87,17 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get onboardingInstallBody =>
-      'Ejecuta esto en una terminal de la computadora donde viven tus agentes:';
+      'En la computadora donde viven tus agentes, instala el bridge una vez y luego inícialo:';
+
+  @override
+  String get onboardingInstallStepInstall => '1. Instala (una vez)';
+
+  @override
+  String get onboardingInstallStepStart => '2. Inicia el bridge';
+
+  @override
+  String get onboardingInstallRootNote =>
+      'La carpeta donde inicies el bridge será su raíz. Desde tu teléfono verás todas las carpetas y repos que estén dentro de ella — así inicias el bridge una sola vez, no por cada proyecto.';
 
   @override
   String get onboardingInstallHint =>
@@ -1574,7 +1584,14 @@ class AppLocalizationsEs extends AppLocalizations {
   String get manualCodeConnecting => 'Resolviendo código…';
 
   @override
+  String get manualCodeFormTitle => 'Datos del bridge';
+
+  @override
   String get manualCodeBrowse => 'Buscar bridges cercanos';
+
+  @override
+  String get manualCodeBrowseHint =>
+      'Encuentra un bridge en tu Wi-Fi automáticamente';
 
   @override
   String get bridgeDiscoveryTitle => 'Bridges cercanos';

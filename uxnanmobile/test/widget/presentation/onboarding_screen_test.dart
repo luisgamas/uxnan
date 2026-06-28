@@ -31,7 +31,8 @@ void main() {
 
     // → Page 3 — Install (shows the bridge command).
     await turnPage(find.text('Next'));
-    expect(find.text('npx uxnan-bridge'), findsOneWidget);
+    expect(find.text('npm install -g uxnan-bridge'), findsOneWidget);
+    expect(find.text('uxnan-bridge start'), findsOneWidget);
 
     // → Page 4 — Pair (the scan CTA replaces "Next").
     await turnPage(find.text('Next'));
@@ -39,6 +40,7 @@ void main() {
 
     // Back returns to the install page.
     await turnPage(find.text('Back'));
-    expect(find.text('npx uxnan-bridge'), findsOneWidget);
+    expect(find.text('npm install -g uxnan-bridge'), findsOneWidget);
+    expect(find.text('uxnan-bridge start'), findsOneWidget);
   });
 }

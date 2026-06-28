@@ -15,6 +15,7 @@ import 'package:uxnan/presentation/screens/pairing/update_prompt_dialog.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
+import 'package:uxnan/presentation/widgets/ne_button.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 
 /// Camera state for the scanner screen.
@@ -364,9 +365,9 @@ class _ScannerError extends StatelessWidget {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: UxnanSpacing.xl),
-              FilledButton(
+              NeButton(
                 onPressed: () => context.go(AppRoutes.manualPairing),
-                child: Text(l10n.manualCodeTitle),
+                label: l10n.manualCodeTitle,
               ),
               const SizedBox(height: UxnanSpacing.sm),
               TextButton(
@@ -423,13 +424,11 @@ class _PermissionRequest extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: UxnanSpacing.xl),
-            FilledButton(
+            NeButton(
               onPressed: onAllow,
-              child: Text(
-                permanentlyDenied
-                    ? l10n.actionOpenSettings
-                    : l10n.actionAllowCamera,
-              ),
+              label: permanentlyDenied
+                  ? l10n.actionOpenSettings
+                  : l10n.actionAllowCamera,
             ),
           ],
         ),

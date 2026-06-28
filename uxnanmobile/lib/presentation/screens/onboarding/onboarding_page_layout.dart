@@ -36,54 +36,64 @@ class OnboardingPageLayout extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
 
-    return Column(
-      children: [
-        if (top != null) top!,
-        Expanded(
-          child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(UxnanSpacing.xl),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 96,
-                      height: 96,
-                      decoration: BoxDecoration(
-                        color: colors.primaryContainer,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(icon, size: 44, color: colors.primary),
+    // The whole page body scrolls as a single unit: the decorative top band,
+    // the hero, the title/body and any extra child all live inside one
+    // SingleChildScrollView. The only fixed chrome (Skip, nav buttons, page
+    // dots) lives in the parent OnboardingScreen. A LayoutBuilder + a
+    // min-height ConstrainedBox keeps short pages vertically centered while
+    // tall content (e.g. the install page) stays fully scrollable.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(
+            UxnanSpacing.xl,
+            0,
+            UxnanSpacing.xl,
+            UxnanSpacing.xl,
+          ),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (top != null) top!,
+                Center(
+                  child: Container(
+                    width: 96,
+                    height: 96,
+                    decoration: BoxDecoration(
+                      color: colors.primaryContainer,
+                      shape: BoxShape.circle,
                     ),
+                    child: Icon(icon, size: 44, color: colors.primary),
                   ),
-                  const SizedBox(height: UxnanSpacing.xl),
+                ),
+                const SizedBox(height: UxnanSpacing.xl),
+                Text(
+                  title,
+                  style: textTheme.headlineMedium,
+                  textAlign: TextAlign.center,
+                ),
+                if (body != null) ...[
+                  const SizedBox(height: UxnanSpacing.md),
                   Text(
-                    title,
-                    style: textTheme.headlineMedium,
+                    body!,
+                    style: textTheme.bodyMedium?.copyWith(
+                      color: colors.onSurfaceVariant,
+                    ),
                     textAlign: TextAlign.center,
                   ),
-                  if (body != null) ...[
-                    const SizedBox(height: UxnanSpacing.md),
-                    Text(
-                      body!,
-                      style: textTheme.bodyMedium?.copyWith(
-                        color: colors.onSurfaceVariant,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                  if (child != null) ...[
-                    const SizedBox(height: UxnanSpacing.xl),
-                    child!,
-                  ],
                 ],
-              ),
+                if (child != null) ...[
+                  const SizedBox(height: UxnanSpacing.xl),
+                  child!,
+                ],
+              ],
             ),
           ),
-        ),
-      ],
+        );
+      },
     );
   }
 }

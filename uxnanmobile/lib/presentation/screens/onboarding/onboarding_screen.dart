@@ -10,6 +10,7 @@ import 'package:uxnan/presentation/screens/onboarding/onboarding_page_layout.dar
 import 'package:uxnan/presentation/screens/onboarding/welcome_page.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/agent_logos.dart';
+import 'package:uxnan/presentation/widgets/ne_button.dart';
 
 /// Multi-page onboarding flow ending in a CTA to scan the pairing QR.
 class OnboardingScreen extends StatefulWidget {
@@ -153,29 +154,26 @@ class _BottomControls extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
 
     final primary = isLast
-        ? FilledButton.icon(
+        ? NeButton.icon(
             onPressed: onScan,
-            icon: const Icon(Icons.qr_code_scanner_rounded),
-            label: Text(l10n.actionScanQr),
+            icon: Icons.qr_code_scanner_rounded,
+            label: l10n.actionScanQr,
           )
-        : FilledButton(onPressed: onNext, child: Text(l10n.onboardingNext));
+        : NeButton(onPressed: onNext, label: l10n.onboardingNext);
 
     if (isFirst) {
-      return SizedBox(width: double.infinity, height: 56, child: primary);
+      return SizedBox(width: double.infinity, child: primary);
     }
     return Row(
       children: [
         Expanded(
-          child: SizedBox(
-            height: 56,
-            child: OutlinedButton(
-              onPressed: onBack,
-              child: Text(l10n.onboardingBack),
-            ),
+          child: NeButton.outlined(
+            onPressed: onBack,
+            label: l10n.onboardingBack,
           ),
         ),
         const SizedBox(width: UxnanSpacing.md),
-        Expanded(child: SizedBox(height: 56, child: primary)),
+        Expanded(child: primary),
       ],
     );
   }

@@ -209,7 +209,7 @@ abstract class AppLocalizations {
   /// No description provided for @featureMultiAgentBody.
   ///
   /// In en, this message translates to:
-  /// **'Works with Codex, Claude Code, Gemini CLI, OpenCode and more — no lock-in.'**
+  /// **'Works with Claude Code, Codex, Gemini, OpenCode and Pi — with more agents on the way. No lock-in.'**
   String get featureMultiAgentBody;
 
   /// No description provided for @featureE2eeTitle.
@@ -245,8 +245,26 @@ abstract class AppLocalizations {
   /// No description provided for @onboardingInstallBody.
   ///
   /// In en, this message translates to:
-  /// **'Run this in a terminal on the computer where your agents live:'**
+  /// **'On the computer where your agents live, install the bridge once, then start it:'**
   String get onboardingInstallBody;
+
+  /// No description provided for @onboardingInstallStepInstall.
+  ///
+  /// In en, this message translates to:
+  /// **'1. Install (once)'**
+  String get onboardingInstallStepInstall;
+
+  /// No description provided for @onboardingInstallStepStart.
+  ///
+  /// In en, this message translates to:
+  /// **'2. Start the bridge'**
+  String get onboardingInstallStepStart;
+
+  /// No description provided for @onboardingInstallRootNote.
+  ///
+  /// In en, this message translates to:
+  /// **'The folder where you start the bridge becomes its root. From your phone you\'ll see every folder and repo under it — so you only start the bridge once, not separately for each project.'**
+  String get onboardingInstallRootNote;
 
   /// No description provided for @onboardingInstallHint.
   ///
@@ -2954,11 +2972,23 @@ abstract class AppLocalizations {
   /// **'Resolving code…'**
   String get manualCodeConnecting;
 
+  /// No description provided for @manualCodeFormTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Bridge details'**
+  String get manualCodeFormTitle;
+
   /// No description provided for @manualCodeBrowse.
   ///
   /// In en, this message translates to:
   /// **'Browse nearby bridges'**
   String get manualCodeBrowse;
+
+  /// No description provided for @manualCodeBrowseHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Find a bridge on your Wi-Fi automatically'**
+  String get manualCodeBrowseHint;
 
   /// No description provided for @bridgeDiscoveryTitle.
   ///
