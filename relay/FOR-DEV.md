@@ -7,8 +7,9 @@ Deferred developer work for the relay. (Human-only assets are in `relay/FOR-HUMA
 The relay is **optional and self-hosted**. The product's primary paths are
 LAN-direct and Tailscale-direct to the bridge; push is now sent **bridge-direct**
 (see `bridge/FOR-DEV.md`). The relay is a pure E2EE-envelope forwarder and an
-optional push fallback — alpha-functional, 27 tests green, shipped via `npm`
-through the same CI matrix as the bridge.
+optional push fallback — alpha-functional, 27 tests green, **first npm release
+shipped** (`uxnan-relay@0.0.1-alpha.20260627`, `alpha` dist-tag) through the same
+CI matrix as the bridge.
 
 **Implemented (DONE):**
 
