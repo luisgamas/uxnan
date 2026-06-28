@@ -63,6 +63,11 @@ pub struct AppState {
     pub hook_install: Arc<RwLock<Option<HookInstall>>>,
     /// Keep-awake controller: blocks system sleep while an agent works (opt-in).
     pub power: SleepBlocker,
+    /// A downloaded-but-not-yet-installed update, staged in memory between the
+    /// `updater_download` and `updater_install` commands so the background
+    /// download and the (agent-stopping) install stay separate steps. `None`
+    /// until a download finishes; cleared once installed. See `updater.rs`.
+    pub staged_update: Arc<RwLock<Option<crate::updater::StagedUpdate>>>,
 }
 
 impl AppState {
@@ -78,6 +83,7 @@ impl AppState {
             hook: Arc::new(RwLock::new(None)),
             hook_install: Arc::new(RwLock::new(None)),
             power: SleepBlocker::new(),
+            staged_update: Arc::new(RwLock::new(None)),
         }
     }
 }

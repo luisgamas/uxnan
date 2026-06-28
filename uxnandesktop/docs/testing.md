@@ -18,10 +18,10 @@ cargo fmt --check              # formatting — must be clean (run `cargo fmt` t
 
 Unit tests live in-file under `#[cfg(test)]` (e.g. `model.rs`, `persistence.rs`,
 `git.rs`, `gitfast.rs`, `pty.rs`, `hooks.rs`, `agent_hooks.rs`, `procscan.rs`,
-`which.rs`); integration tests go in `src-tauri/tests/`. ~98 backend tests cover
-the Serde model shape, persistence round-trip / atomicity / migration / backups,
-git + worktree ops, the git2 fast path, the PTY lifecycle, the agent hook server,
-and process detection.
+`updater.rs`, `which.rs`); integration tests go in `src-tauri/tests/`. ~100
+backend tests cover the Serde model shape, persistence round-trip / atomicity /
+migration / backups, git + worktree ops, the git2 fast path, the PTY lifecycle,
+the agent hook server, process detection, and the updater's per-channel endpoints.
 
 ## Frontend (Svelte / TypeScript)
 
@@ -33,8 +33,9 @@ npm run build                  # production SPA build must succeed
 ```
 
 **Vitest** covers the pure, framework-free logic modules (node env, no DOM):
-`shell.ts` (shell-aware agent-launch quoting) and `orchestration.ts` (multi-agent
-routing + backpressure) — 19 tests in `src/lib/*.test.ts`, config in
+`shell.ts` (shell-aware agent-launch quoting), `orchestration.ts` (multi-agent
+routing + backpressure) and `updaterLogic.ts` (download-progress fraction +
+install-policy decision) — 25 tests in `src/lib/*.test.ts`, config in
 `vitest.config.ts`. **Component tests** (Vitest + jsdom) and **E2E**
 (Playwright/WebdriverIO + tauri-driver) are still to come — see
 [`../FOR-DEV.md`](../FOR-DEV.md).

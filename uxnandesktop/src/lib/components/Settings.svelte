@@ -20,6 +20,13 @@
   } from "$lib/terminalTemplates";
   import { AGENT_CATALOG, type CatalogAgent } from "$lib/agentCatalog";
   import { detectAgents } from "$lib/api";
+  import { updater } from "$lib/state/updater.svelte";
+  import { appVersion } from "$lib/api";
+  import type {
+    UpdaterSettings,
+    UpdateChannel,
+    InstallPolicy,
+  } from "$lib/types";
   import TerminalProfileEditor from "./TerminalProfileEditor.svelte";
   import AgentProfileEditor from "./AgentProfileEditor.svelte";
   import AiModelPicker from "./AiModelPicker.svelte";
@@ -40,6 +47,7 @@
   import LanguagesIcon from "@lucide/svelte/icons/languages";
   import KeyboardIcon from "@lucide/svelte/icons/keyboard";
   import WebhookIcon from "@lucide/svelte/icons/webhook";
+  import DownloadIcon from "@lucide/svelte/icons/download";
   import PlusIcon from "@lucide/svelte/icons/plus";
   import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
   import ArrowLeftIcon from "@lucide/svelte/icons/arrow-left";
@@ -339,6 +347,53 @@
     i18n.t(AI_LANGS.find((l) => l.value === ai.language)?.labelKey ?? "settings.aiCommitLanguageAuto"),
   );
 
+  // --- Updates --------------------------------------------------------------
+  // Merge over a full default so reads/writes are always complete (state saved
+  // before this feature, or the web preview, may lack the object).
+  const UPDATER_DEFAULT: UpdaterSettings = {
+    autoCheck: true,
+    channel: "stable",
+    autoDownload: true,
+    installPolicy: "ask",
+  };
+  const up = $derived<UpdaterSettings>({
+    ...UPDATER_DEFAULT,
+    ...app.settings.updater,
+  });
+  function setUp(patch: Partial<UpdaterSettings>) {
+    app.settings.updater = { ...UPDATER_DEFAULT, ...app.settings.updater, ...patch };
+  }
+
+  const UPDATE_CHANNELS: { value: UpdateChannel; labelKey: MessageKey; descKey: MessageKey }[] = [
+    { value: "stable", labelKey: "updates.channelStable", descKey: "updates.channelStableDesc" },
+    { value: "nightly", labelKey: "updates.channelNightly", descKey: "updates.channelNightlyDesc" },
+  ];
+  const INSTALL_POLICIES: { value: InstallPolicy; labelKey: MessageKey }[] = [
+    { value: "ask", labelKey: "updates.policyAsk" },
+    { value: "whenIdle", labelKey: "updates.policyWhenIdle" },
+    { value: "manual", labelKey: "updates.policyManual" },
+  ];
+  const channelLabel = $derived(
+    i18n.t(UPDATE_CHANNELS.find((c) => c.value === up.channel)?.labelKey ?? "updates.channelStable"),
+  );
+  const installPolicyLabel = $derived(
+    i18n.t(INSTALL_POLICIES.find((p) => p.value === up.installPolicy)?.labelKey ?? "updates.policyAsk"),
+  );
+
+  // The running app's full version name (shown in the Updates pane). This is the
+  // complete release name (e.g. 0.0.5-alpha.20260628), not the numeric MSI base.
+  let currentVersion = $state("");
+  $effect(() => {
+    if (app.settingsOpen && app.settingsSection === "updates" && !currentVersion) {
+      appVersion().then((v) => (currentVersion = v)).catch(() => {});
+    }
+  });
+  const lastCheckedLabel = $derived(
+    updater.lastChecked
+      ? new Date(updater.lastChecked).toLocaleString()
+      : i18n.t("updates.neverChecked"),
+  );
+
   const navItems = [
     { id: "appearance", key: "settings.appearance", icon: PaletteIcon },
     { id: "language", key: "settings.language", icon: LanguagesIcon },
@@ -347,6 +402,7 @@
     { id: "aicommit", key: "settings.aiCommit", icon: SparklesIcon },
     { id: "hooks", key: "settings.hooks", icon: WebhookIcon },
     { id: "terminal", key: "settings.terminal", icon: TerminalIcon },
+    { id: "updates", key: "settings.updates", icon: DownloadIcon },
   ] as const;
 </script>
 
@@ -847,6 +903,136 @@
               <p class={text.meta}>{i18n.t("settings.hooksDesc")}</p>
             </div>
             <AgentHooksPanel />
+          </div>
+        {:else if app.settingsSection === "updates"}
+          <div class="flex flex-col gap-4">
+            <div class="flex flex-col gap-1">
+              <span class={text.heading}>{i18n.t("settings.updates")}</span>
+              <p class={text.meta}>{i18n.t("settings.updatesDesc")}</p>
+            </div>
+
+            <!-- Current version + manual check. -->
+            <div class="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
+              <div class="flex min-w-0 flex-col">
+                <span class={cn("font-medium", text.body)}>
+                  {i18n.t("updates.currentVersion", { version: currentVersion || "—" })}
+                </span>
+                <span class={text.meta}>
+                  {#if updater.status === "checking"}
+                    {i18n.t("updates.checking")}
+                  {:else if updater.status === "available" || updater.status === "downloading" || updater.status === "downloaded"}
+                    {i18n.t("updates.bannerAvailable", { version: updater.update?.version ?? "" })}
+                  {:else}
+                    {i18n.t("updates.lastChecked", { when: lastCheckedLabel })}
+                  {/if}
+                </span>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={updater.status === "checking" ||
+                  updater.status === "downloading" ||
+                  updater.status === "installing"}
+                onclick={() => void updater.checkNow()}
+              >
+                <RotateCcwIcon data-icon="inline-start" />
+                {i18n.t("updates.checkNow")}
+              </Button>
+            </div>
+
+            <!-- Release channel. -->
+            <div class="flex flex-col gap-1.5">
+              <span class={cn("font-medium", text.body)}>{i18n.t("updates.channel")}</span>
+              <Select.Root
+                type="single"
+                value={up.channel}
+                onValueChange={(v) => {
+                  setUp({ channel: (v as UpdateChannel) ?? "stable" });
+                  persistNow();
+                  void updater.checkNow();
+                }}
+              >
+                <Select.Trigger class="w-56">{channelLabel}</Select.Trigger>
+                <Select.Content>
+                  {#each UPDATE_CHANNELS as c (c.value)}
+                    <Select.Item value={c.value} label={i18n.t(c.labelKey)}>
+                      <div class="flex flex-col">
+                        <span>{i18n.t(c.labelKey)}</span>
+                        <span class={text.meta}>{i18n.t(c.descKey)}</span>
+                      </div>
+                    </Select.Item>
+                  {/each}
+                </Select.Content>
+              </Select.Root>
+              <p class={text.meta}>{i18n.t("updates.channelDesc")}</p>
+            </div>
+
+            <!-- Check automatically. -->
+            <div class="flex flex-col gap-1.5">
+              <span class={cn("font-medium", text.body)}>{i18n.t("updates.autoCheck")}</span>
+              <Select.Root
+                type="single"
+                value={up.autoCheck ? "on" : "off"}
+                onValueChange={(v) => {
+                  setUp({ autoCheck: v === "on" });
+                  persistNow();
+                }}
+              >
+                <Select.Trigger class="w-56">
+                  {up.autoCheck ? i18n.t("common.on") : i18n.t("common.off")}
+                </Select.Trigger>
+                <Select.Content>
+                  <Select.Item value="on" label={i18n.t("common.on")}>{i18n.t("common.on")}</Select.Item>
+                  <Select.Item value="off" label={i18n.t("common.off")}>{i18n.t("common.off")}</Select.Item>
+                </Select.Content>
+              </Select.Root>
+              <p class={text.meta}>{i18n.t("updates.autoCheckDesc")}</p>
+            </div>
+
+            <!-- Download automatically (background; never interrupts agents). -->
+            <div class="flex flex-col gap-1.5">
+              <span class={cn("font-medium", text.body)}>{i18n.t("updates.autoDownload")}</span>
+              <Select.Root
+                type="single"
+                value={up.autoDownload ? "on" : "off"}
+                onValueChange={(v) => {
+                  setUp({ autoDownload: v === "on" });
+                  persistNow();
+                }}
+              >
+                <Select.Trigger class="w-56">
+                  {up.autoDownload ? i18n.t("common.on") : i18n.t("common.off")}
+                </Select.Trigger>
+                <Select.Content>
+                  <Select.Item value="on" label={i18n.t("common.on")}>{i18n.t("common.on")}</Select.Item>
+                  <Select.Item value="off" label={i18n.t("common.off")}>{i18n.t("common.off")}</Select.Item>
+                </Select.Content>
+              </Select.Root>
+              <p class={text.meta}>{i18n.t("updates.autoDownloadDesc")}</p>
+            </div>
+
+            <!-- Install policy: how a downloaded update is applied (restart stops agents). -->
+            <div class="flex flex-col gap-1.5">
+              <span class={cn("font-medium", text.body)}>{i18n.t("updates.installPolicy")}</span>
+              <Select.Root
+                type="single"
+                value={up.installPolicy}
+                onValueChange={(v) => {
+                  setUp({ installPolicy: (v as InstallPolicy) ?? "ask" });
+                  persistNow();
+                }}
+              >
+                <Select.Trigger class="w-56">{installPolicyLabel}</Select.Trigger>
+                <Select.Content>
+                  {#each INSTALL_POLICIES as p (p.value)}
+                    <Select.Item value={p.value} label={i18n.t(p.labelKey)}>
+                      {i18n.t(p.labelKey)}
+                    </Select.Item>
+                  {/each}
+                </Select.Content>
+              </Select.Root>
+              <p class={text.meta}>{i18n.t("updates.installPolicyDesc")}</p>
+            </div>
           </div>
         {:else}
           <div class="flex flex-col gap-4">

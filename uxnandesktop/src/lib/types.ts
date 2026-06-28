@@ -100,6 +100,53 @@ export interface AppSettings {
   terminalThemeDarkId?: string;
   /** AI commit-message generation (opt-in; configured in Settings → AI commit). */
   aiCommit?: AiCommitSettings;
+  /** In-app auto-updater (Settings → Updates). */
+  updater?: UpdaterSettings;
+}
+
+/** Release channel the updater follows (mirror of Rust `UpdateChannel`). Mapped
+ *  to GitHub's `prerelease` flag, not the tag: a normal Release → `stable`; a
+ *  Release marked pre-release → `nightly` (earlier, less-stable builds).
+ *  `stable` is the default; `nightly` is opt-in for testers. */
+export type UpdateChannel = "stable" | "nightly";
+
+/** How a downloaded update is applied (mirror of Rust `InstallPolicy`).
+ *  `ask` never installs unasked; `whenIdle` auto-installs once no agent is
+ *  working; `manual` only when the user triggers it. */
+export type InstallPolicy = "ask" | "whenIdle" | "manual";
+
+/** Auto-updater preferences (mirror of Rust `UpdaterSettings`). Checking for a
+ *  newer version is always available; these govern the channel and how/when an
+ *  update is downloaded and applied. */
+export interface UpdaterSettings {
+  /** Check for updates automatically (on launch + periodically). Default on. */
+  autoCheck: boolean;
+  /** Release channel to follow. Default `stable`. */
+  channel: UpdateChannel;
+  /** Download a found update in the background without asking. Default on. */
+  autoDownload: boolean;
+  /** How a downloaded update is applied. Default `ask`. */
+  installPolicy: InstallPolicy;
+}
+
+/** Metadata about an available update (mirror of Rust `UpdateInfo`). */
+export interface UpdateInfo {
+  /** The new version offered by the manifest. */
+  version: string;
+  /** The version currently running. */
+  currentVersion: string;
+  /** Release notes, if the manifest provided any. */
+  notes: string | null;
+  /** Publish date (RFC 3339 string), if provided. */
+  date: string | null;
+}
+
+/** Payload of the `updater:download-progress` event. */
+export interface UpdateDownloadProgress {
+  /** Bytes downloaded so far. */
+  downloaded: number;
+  /** Total bytes, when the server reported a content length. */
+  contentLength: number | null;
 }
 
 /** Config for the optional AI commit-message generator (mirror of Rust
@@ -432,5 +479,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
     conventional: true,
     includeBody: true,
     instructions: "",
+  },
+  updater: {
+    autoCheck: true,
+    channel: "stable",
+    autoDownload: true,
+    installPolicy: "ask",
   },
 };

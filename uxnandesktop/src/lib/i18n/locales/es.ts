@@ -135,6 +135,9 @@ export const es: Record<MessageKey, string> = {
   "settings.hooks": "Hooks",
   "settings.hooksDesc":
     "Configuraciones de hooks listas para usar para que los agentes reporten su estado preciso de fábrica.",
+  "settings.updates": "Actualizaciones",
+  "settings.updatesDesc":
+    "Elige cómo Uxnan Desktop busca, descarga e instala nuevas versiones.",
   "settings.aiCommit": "Mensaje de commit con IA",
   "settings.aiCommitDesc":
     "Redacta opcionalmente mensajes de commit a partir de tus cambios preparados con un agente CLI local. Desactivado por defecto; no se ejecuta nada hasta que lo actives y elijas un agente.",
@@ -555,4 +558,44 @@ export const es: Record<MessageKey, string> = {
   "orchestration.sendN": "Enviar a {n}",
   "orchestration.backpressureHint":
     "Los mensajes se entregan de uno en uno por agente; el siguiente espera hasta que ese agente reporte inactividad.",
+
+  // Updates (banner del auto-updater + Ajustes → Actualizaciones)
+  "updates.bannerAvailable": "Versión {version} disponible",
+  "updates.bannerDownloading": "Descargando versión {version}…",
+  "updates.bannerDownloadingPct": "Descargando versión {version}… {pct}%",
+  "updates.bannerDownloaded": "La versión {version} está lista para instalar",
+  "updates.bannerInstalling": "Instalando… la app se reiniciará",
+  "updates.download": "Descargar",
+  "updates.installNow": "Instalar ahora",
+  "updates.installWhenIdle": "Instalar al quedar libre",
+  "updates.dismiss": "Descartar",
+  "updates.agentsBusyWarning":
+    "Hay un agente en ejecución — instalar lo detendrá",
+  "updates.willInstallWhenIdle":
+    "Se instalará cuando todos los agentes estén inactivos",
+  "updates.upToDate": "Estás en la última versión",
+  "updates.checking": "Buscando actualizaciones…",
+  "updates.checkNow": "Buscar ahora",
+  "updates.currentVersion": "Versión actual: {version}",
+  "updates.lastChecked": "Última comprobación: {when}",
+  "updates.neverChecked": "nunca",
+  "updates.channel": "Canal de versiones",
+  "updates.channelDesc":
+    "Se recomienda Stable. Nightly recibe compilaciones más tempranas y menos estables (pre-releases de GitHub).",
+  "updates.channelStable": "Stable",
+  "updates.channelStableDesc": "Versiones normales (recomendado).",
+  "updates.channelNightly": "Nightly",
+  "updates.channelNightlyDesc": "Compilaciones pre-release; más tempranas pero menos estables.",
+  "updates.autoCheck": "Buscar automáticamente",
+  "updates.autoCheckDesc":
+    "Busca nuevas versiones al iniciar y periódicamente. Siempre puedes buscar manualmente.",
+  "updates.autoDownload": "Descargar automáticamente",
+  "updates.autoDownloadDesc":
+    "Descarga en segundo plano una actualización encontrada. Esto nunca interrumpe a los agentes en ejecución — solo instalar lo hace.",
+  "updates.installPolicy": "Instalación",
+  "updates.installPolicyDesc":
+    "Instalar reinicia la app, lo que detiene a los agentes en ejecución. «Preguntarme» nunca instala sin tu permiso.",
+  "updates.policyAsk": "Preguntarme",
+  "updates.policyWhenIdle": "Automáticamente cuando los agentes estén inactivos",
+  "updates.policyManual": "Solo cuando yo lo active",
 };

@@ -5,6 +5,7 @@
   import { applyTheme } from "$lib/theme";
   import { agentMonitor } from "$lib/state/agentMonitor.svelte";
   import { agentStatus } from "$lib/state/agentStatus.svelte";
+  import { updater } from "$lib/state/updater.svelte";
   import { anyAgentWorking } from "$lib/state/agentDisplay";
   import { unread } from "$lib/state/unread.svelte";
   import { setPreventSleep } from "$lib/api";
@@ -18,6 +19,8 @@
     void agentMonitor.startDetection();
     // Hydrate + subscribe to precise hook-reported agent states.
     void agentStatus.start();
+    // Auto-updater: restore any staged download, then check on the chosen channel.
+    void updater.start();
     // Coming back to the window clears the "unread agent result" badges.
     const onFocus = () => unread.clearAll();
     window.addEventListener("focus", onFocus);
