@@ -105,6 +105,7 @@ pub async fn start(app: AppHandle, token: String) -> std::io::Result<HookServerI
     };
     let router = Router::new()
         .route("/hook", post(handle_hook))
+        .route("/browser", post(handle_browser))
         .route("/health", get(|| async { "ok" }))
         .with_state(ctx);
     tauri::async_runtime::spawn(async move {
@@ -175,6 +176,37 @@ async fn handle_hook(
     StatusCode::NO_CONTENT
 }
 
+/// The JSON body the agent `BROWSER` shim POSTs to open a URL in-app: `{"url": …}`.
+#[derive(Debug, Clone, Deserialize)]
+struct BrowserRequest {
+    url: String,
+}
+
+/// Handle one `POST /browser`: authorize, then route the URL through the user's
+/// browser policy (in-app tab / OS browser / prompt). Lets an agent open a link in
+/// the integrated browser via `UXNAN_BROWSER_URL` + `UXNAN_BROWSER_TOKEN`.
+async fn handle_browser(
+    AxumState(ctx): AxumState<HookCtx>,
+    headers: HeaderMap,
+    Json(payload): Json<BrowserRequest>,
+) -> StatusCode {
+    let authorized = headers
+        .get(TOKEN_HEADER)
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v == ctx.token)
+        .unwrap_or(false);
+    if !authorized {
+        return StatusCode::UNAUTHORIZED;
+    }
+    if payload.url.trim().is_empty() {
+        return StatusCode::BAD_REQUEST;
+    }
+    match crate::browser::route_url(&ctx.app, payload.url).await {
+        Ok(()) => StatusCode::NO_CONTENT,
+        Err(_) => StatusCode::BAD_REQUEST,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -207,6 +239,16 @@ mod tests {
     fn unknown_status_is_rejected() {
         let bad = serde_json::from_str::<HookPayload>(r#"{"agentId":"x","status":"napping"}"#);
         assert!(bad.is_err());
+    }
+
+    #[test]
+    fn browser_request_parses_url() {
+        // The agent `$BROWSER` shim POSTs exactly this body to `/browser`.
+        let req: BrowserRequest =
+            serde_json::from_str(r#"{"url":"http://localhost:5173"}"#).unwrap();
+        assert_eq!(req.url, "http://localhost:5173");
+        // A body without `url` is rejected (handler then returns 400).
+        assert!(serde_json::from_str::<BrowserRequest>(r#"{}"#).is_err());
     }
 
     #[test]

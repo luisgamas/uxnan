@@ -99,9 +99,40 @@ pub async fn pty_create(
     let mut env: Vec<(String, String)> = env.unwrap_or_default();
     env.retain(|(k, _)| !k.trim().is_empty());
     env.push(("UXNAN_AGENT_ID".to_string(), id.clone()));
-    if let Some(hook) = state.hook.read().await.clone() {
-        env.push(("UXNAN_HOOK_URL".to_string(), hook.url));
-        env.push(("UXNAN_HOOK_TOKEN".to_string(), hook.token));
+    let hook = state.hook.read().await.clone();
+    if let Some(h) = &hook {
+        env.push(("UXNAN_HOOK_URL".to_string(), h.url.clone()));
+        env.push(("UXNAN_HOOK_TOKEN".to_string(), h.token.clone()));
+    }
+
+    // Integrated browser: when enabled and agents are allowed, let an agent open a
+    // URL in the in-app browser by POSTing it to the hook server's `/browser` route
+    // (`UXNAN_BROWSER_URL` + `_TOKEN`), and point `$BROWSER` at the bundled shim so
+    // tools that honor it (logins/previews) land in-app too. Honors the user's
+    // link policy on arrival (see `browser::route_url`).
+    let (browser_enabled, allow_agents) = {
+        let data = state.data.read().await;
+        (
+            data.settings.browser.enabled,
+            data.settings.browser.allow_agents,
+        )
+    };
+    if browser_enabled && allow_agents {
+        if let Some(h) = &hook {
+            env.push((
+                "UXNAN_BROWSER_URL".to_string(),
+                h.url.replacen("/hook", "/browser", 1),
+            ));
+            env.push(("UXNAN_BROWSER_TOKEN".to_string(), h.token.clone()));
+        }
+        if let Some(install) = state.hook_install.read().await.clone() {
+            let shim = if cfg!(windows) {
+                install.browser_shim_cmd
+            } else {
+                install.browser_shim_bash
+            };
+            env.push(("BROWSER".to_string(), shim));
+        }
     }
 
     state
@@ -414,6 +445,27 @@ pub fn reveal_path(app: AppHandle, path: String) -> Result<(), CommandError> {
     app.opener()
         .reveal_item_in_dir(std::path::PathBuf::from(path))
         .map_err(|e| CommandError::new("REVEAL_FAILED", e.to_string()))
+}
+
+/// The single decision point every link in the ADE funnels through: open `url` in
+/// the integrated browser tab, hand it to the OS default browser, or (for the
+/// `Ask` policy) let the frontend prompt — per the user's `BrowserSettings`.
+/// Powers the `openUrl` frontend wrapper and terminal link clicks; the agent
+/// `BROWSER` shim reaches the same logic via the hook server's `/browser` route.
+#[tauri::command]
+pub async fn open_url(app: AppHandle, url: String) -> Result<(), CommandError> {
+    crate::browser::route_url(&app, url).await
+}
+
+/// Open `url` in the OS default browser unconditionally (ignores the link policy).
+/// Powers the integrated browser's "open in system browser" action and the `Ask`
+/// prompt's external choice.
+#[tauri::command]
+pub fn open_external(app: AppHandle, url: String) -> Result<(), CommandError> {
+    use tauri_plugin_opener::OpenerExt;
+    app.opener()
+        .open_url(url, None::<&str>)
+        .map_err(|e| CommandError::new("OPEN_EXTERNAL_FAILED", e.to_string()))
 }
 
 /// Working-tree-vs-`HEAD` diff for one file, powering the editor's change gutter

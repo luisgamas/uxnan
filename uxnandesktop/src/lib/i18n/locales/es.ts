@@ -138,6 +138,9 @@ export const es: Record<MessageKey, string> = {
   "settings.updates": "Actualizaciones",
   "settings.updatesDesc":
     "Elige cómo Uxnan Desktop busca, descarga e instala nuevas versiones.",
+  "settings.browser": "Navegador",
+  "settings.browserDesc":
+    "Un navegador ligero dentro de la app para previsualizar y depurar lo que construyen tus agentes, y abrir los enlaces que crean.",
   "settings.aiCommit": "Mensaje de commit con IA",
   "settings.aiCommitDesc":
     "Redacta opcionalmente mensajes de commit a partir de tus cambios preparados con un agente CLI local. Desactivado por defecto; no se ejecuta nada hasta que lo actives y elijas un agente.",
@@ -598,4 +601,36 @@ export const es: Record<MessageKey, string> = {
   "updates.policyAsk": "Preguntarme",
   "updates.policyWhenIdle": "Automáticamente cuando los agentes estén inactivos",
   "updates.policyManual": "Solo cuando yo lo active",
+
+  // Navegador de desarrollo integrado (Ajustes → Navegador + barra del navegador)
+  "browser.enabled": "Navegador integrado",
+  "browser.enabledDesc":
+    "Si está apagado, todos los enlaces se abren en tu navegador del sistema y los agentes no pueden usar el integrado.",
+  "browser.linkPolicy": "Abrir enlaces",
+  "browser.linkPolicyDesc": "Dónde se abren los enlaces por defecto: en la app o en tu navegador del sistema.",
+  "browser.policyInternal": "En el navegador integrado",
+  "browser.policyInternalDesc": "Abre los enlaces en una pestaña del navegador interno.",
+  "browser.policyExternal": "En mi navegador del sistema",
+  "browser.policyExternalDesc": "Manda siempre los enlaces a tu navegador por defecto (Chrome, Firefox…).",
+  "browser.policyAsk": "Preguntar cada vez",
+  "browser.policyAskDesc": "Elige interno o del sistema en cada enlace.",
+  "browser.allowAgents": "Permitir que los agentes abran enlaces",
+  "browser.allowAgentsDesc":
+    "Los agentes que abran una URL (inicios de sesión, previsualizaciones) caen en el navegador integrado automáticamente.",
+  "browser.terminalLinks": "Enlaces clicables en la terminal",
+  "browser.terminalLinksDesc":
+    "Hace clicables las URLs que se imprimen en la terminal (aplica a nuevas terminales).",
+  "browser.homepage": "Página de inicio",
+  "browser.homepageDesc": "Se abre cuando una pestaña nueva no tiene destino (déjala vacía para ninguna).",
+  "browser.homepagePlaceholder": "https://ejemplo.com",
+  "browser.back": "Atrás",
+  "browser.forward": "Adelante",
+  "browser.reload": "Recargar",
+  "browser.openExternal": "Abrir en el navegador del sistema",
+  "browser.devtools": "Herramientas de desarrollo",
+  "browser.close": "Cerrar navegador",
+  "browser.toggle": "Mostrar/ocultar panel del navegador",
+  "browser.addressPlaceholder": "Escribe una URL",
+  "browser.unavailable": "El navegador integrado no está disponible aquí.",
+  "browser.askPrompt": "¿Abrir {url} en el navegador integrado? (Cancelar abre tu navegador del sistema.)",
 };

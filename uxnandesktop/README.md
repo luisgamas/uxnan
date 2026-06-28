@@ -63,6 +63,12 @@ available today are:
   message to all of them, to one agent type (fan-out), or to a coordinator's
   workers, applying backpressure so no agent receives a new message before it is
   free.
+- **Integrated developer browser.** A complete in-app browser in a right-side panel
+  (a real system webview docked to the app, so it loads any site and has real
+  DevTools) to preview and debug what your agents build — `localhost` dev servers
+  and any site — and to open the links they create. Links route by a policy you
+  choose (in-app · system browser · ask); when allowed, agents open URLs in it
+  automatically. See [the integrated browser](./docs/browser.md).
 - **Personalization and internationalization.** Full custom theming with design
   tokens and light/dark modes, terminal profiles, per-agent launch settings and
   environment variables, a configurable launch shell, and a completely translated
@@ -139,6 +145,7 @@ Detailed docs live in [`docs/`](./docs/):
 [agent launch & configuration](./docs/agent-launch.md) ·
 [multi-agent orchestration](./docs/orchestration.md) ·
 [agent hooks (precise states)](./docs/agent-hooks.md) ·
+[integrated browser](./docs/browser.md) ·
 [updates & release channels](./docs/updates.md).
 
 The full product/engineering specification is in

@@ -5,6 +5,44 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — integrated developer browser
+- **A complete in-app developer browser** to preview/debug the systems agents build
+  and open the links agents produce — **not** a general-purpose browser. It lives in
+  a new **right-side "4th panel"**: toggle it from the status bar (globe), or let a
+  link route into it. Chrome: back / forward / reload / address bar /
+  open-in-system-browser / DevTools.
+- **Rendered with a real `WebviewWindow`** (`src-tauri/src/browser.rs` +
+  `BrowserPanel.svelte`): the page is a frameless system webview (Chromium/WebView2
+  on Windows) **owned by** and **docked to** the main window — it loads **any** site
+  (Google included, no embedding restrictions) and exposes **real DevTools**, while
+  staying light (it reuses the OS webview the ADE already runs). The toolbar lives in
+  the panel's DOM; the page window is glued over the panel's content area and
+  follows the app's move/resize, so it reads as a 4th panel. It's created lazily on
+  open and destroyed on close, and never persists across restarts. The page **fills
+  the panel and resizes with it** (the window is non-resizable on its own — only the
+  panel's handle changes its size); the panel width is persisted (`browserPanelWidth`).
+  *(Note: this supersedes an earlier `<iframe>` attempt — too limited, blocked by
+  `X-Frame-Options` — and a native child-webview attempt that froze the app on
+  Windows; the owned `WebviewWindow` is the stable, complete approach.)*
+- **One link-routing decision point** (`open_url` → `browser::route_url`): every
+  link the ADE opens funnels through the user's policy — the in-app browser, the OS
+  browser, or a per-link prompt — with the OS browser always available as a fallback
+  (`open_external`).
+- **`BrowserSettings` / `BrowserLinkPolicy`** in the persisted `AppSettings`
+  (`enabled` · `linkPolicy` internal/external/ask · `allowAgents` · `terminalLinks`
+  · `homepage`; all `#[serde(default)]` so older state loads unchanged) with a new
+  **Settings → Browser** pane (EN/ES).
+- **Agents open links in-app automatically.** When the browser is enabled and
+  *allow agents* is on, each agent terminal gets `UXNAN_BROWSER_URL` +
+  `UXNAN_BROWSER_TOKEN` and a `$BROWSER` shim (`static/hooks/uxnan-browser.{sh,cmd}`,
+  written alongside the hook scripts). A URL the agent opens is POSTed to the hook
+  server's new **`/browser`** route, which applies the same link policy. Agents can
+  also open one explicitly: `curl -X POST "$UXNAN_BROWSER_URL" -H "X-Uxnan-Token:
+  $UXNAN_BROWSER_TOKEN" -d '{"url":"…"}'`.
+- **Clickable terminal links** (`@xterm/addon-web-links`): **Ctrl/Cmd-click** a URL
+  printed in the terminal to open it through the link policy (a plain click is just
+  text, like VS Code). Toggle in Settings → Browser.
+
 ## [0.0.1-alpha.20260627] - 2026-06-27
 
 ### Added — in-app auto-updater (Settings → Updates)
