@@ -73,11 +73,15 @@ jobs:
           [ "$CHANNEL" = "stable" ] || prerelease_flag="--prerelease"
           # Create the rolling release once; ignore the error if it already exists.
           if ! gh release view "$rolling" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            # --latest=false so this internal channel-manifest release never
+            # claims the repo's "Latest" badge — that belongs to the real
+            # desktop-v* version release.
             gh release create "$rolling" \
               --repo "$GITHUB_REPOSITORY" \
               --title "Uxnan Desktop — $CHANNEL channel manifest" \
               --notes "Auto-maintained updater manifest for the $CHANNEL channel. Do not delete; the in-app updater downloads latest.json from here." \
               $prerelease_flag \
+              --latest=false \
               --target "${GITHUB_SHA}"
           fi
           gh release upload "$rolling" latest.json --repo "$GITHUB_REPOSITORY" --clobber
