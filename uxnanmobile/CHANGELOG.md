@@ -6,6 +6,33 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — in-app update checker (Play In-App Updates + iOS App Store)
+- **The app now checks for newer versions and lets the user decide — no silent
+  install.** A throttled check runs on cold start and on resume (at most once
+  every 12 h); a manual *Check now* lives in **Settings → Updates**, and an
+  *Update available* banner appears atop the threads list when a newer version
+  ships. On **Android** it drives the **Play In-App Update** API (an *immediate*,
+  user-confirmed, Play-managed download + install + restart); on **iOS** it looks
+  up the **App Store** version and opens the listing. The banner is dismissible
+  per store version (it won't nag again until a *newer* one ships).
+- Wraps the `flutter_upgrade_version` plugin behind a guarded, injectable
+  `AppUpdateService` (`infrastructure/updates/`) that maps both platforms to a
+  single `AppUpdateStatus` value object; an `AppUpdateController`
+  (`presentation/providers/update_providers.dart`) owns the throttle, dismissal
+  and the user-initiated launch. State + throttle persist in
+  `UpdatePreferencesStore` (`uxnan.updates.lastCheckMs` /
+  `…dismissedVersion`). Added `url_launcher` for the iOS App Store open action,
+  and R8 keep rules for `com.google.android.play.core.**` (release minify is on).
+- **Caveats:** Android In-App Updates only report a real update when the build
+  was installed from **Google Play** (a Play *internal-testing* track build) — a
+  sideloaded `--release`/debug APK reports "no update", by design. The **iOS**
+  path is inert until the app has an **App Store listing** (the iTunes lookup
+  returns empty before then). A separate **GitHub-Releases-APK** update channel
+  is **not** covered by this plugin (tracked in `FOR-DEV.md`).
+- Tests: `app_update_service_test.dart` (platform mapping, guards, start/open),
+  `update_preferences_store_test.dart`, `update_controller_test.dart`
+  (throttle / dismiss / launch) — 24 new tests.
+
 ### Fixed — commit history is now in correct chronological order
 - The History screen's commits were sometimes out of time order (a branch's
   commits grouped together, so some commits made around the same time showed far

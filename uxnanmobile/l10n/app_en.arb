@@ -920,5 +920,71 @@
   "fileViewerKeepEditing": "Keep editing",
   "@fileViewerKeepEditing": {
     "description": "Cancel button that keeps the unsaved edits and stays in the editor."
+  },
+  "settingsUpdatesSection": "Updates",
+  "@settingsUpdatesSection": {
+    "description": "Settings section header for the app-update / version checker."
+  },
+  "updateCheckTitle": "Check for updates",
+  "@updateCheckTitle": {
+    "description": "Title of the settings tile that checks the store for a newer app version."
+  },
+  "updateCheckSubtitle": "See if a newer version of Uxnan is available.",
+  "@updateCheckSubtitle": {
+    "description": "Subtitle of the update-check settings tile."
+  },
+  "updateCheckAction": "Check now",
+  "@updateCheckAction": {
+    "description": "Button that runs an update check immediately."
+  },
+  "updateStatusChecking": "Checking for updates…",
+  "@updateStatusChecking": {
+    "description": "Status shown while an update check is in flight."
+  },
+  "updateStatusUpToDate": "You're on the latest version.",
+  "@updateStatusUpToDate": {
+    "description": "Status shown when no newer version is available."
+  },
+  "updateStatusUnsupported": "In-app updates aren't available for this build.",
+  "@updateStatusUnsupported": {
+    "description": "Status shown when the platform/build has no in-app update mechanism (e.g. a sideloaded build, or a platform other than Android/iOS)."
+  },
+  "updateStatusError": "Couldn't check for updates. Try again later.",
+  "@updateStatusError": {
+    "description": "Status shown when an update check failed."
+  },
+  "updateAvailableTitle": "Update available",
+  "@updateAvailableTitle": {
+    "description": "Title of the update-available banner and card."
+  },
+  "updateAvailableBody": "A new version of Uxnan is ready to install.",
+  "@updateAvailableBody": {
+    "description": "Body of the update-available banner when the version is unknown."
+  },
+  "updateAvailableBodyVersion": "Uxnan {version} is ready to install.",
+  "@updateAvailableBodyVersion": {
+    "description": "Body of the update-available banner when the new version is known.",
+    "placeholders": {
+      "version": {
+        "type": "String",
+        "example": "0.0.2"
+      }
+    }
+  },
+  "updateAction": "Update",
+  "@updateAction": {
+    "description": "Button that starts applying the available update (Play flow on Android, App Store on iOS)."
+  },
+  "updateActionStarting": "Starting…",
+  "@updateActionStarting": {
+    "description": "Label of the update button while the update flow is being launched."
+  },
+  "updateDismissAction": "Not now",
+  "@updateDismissAction": {
+    "description": "Button that dismisses the update banner for the current version."
+  },
+  "updateWhatsNewLabel": "What's new",
+  "@updateWhatsNewLabel": {
+    "description": "Label above the store release notes for the available update."
   }
 }

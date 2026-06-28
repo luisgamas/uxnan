@@ -3313,6 +3313,96 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Keep editing'**
   String get fileViewerKeepEditing;
+
+  /// Settings section header for the app-update / version checker.
+  ///
+  /// In en, this message translates to:
+  /// **'Updates'**
+  String get settingsUpdatesSection;
+
+  /// Title of the settings tile that checks the store for a newer app version.
+  ///
+  /// In en, this message translates to:
+  /// **'Check for updates'**
+  String get updateCheckTitle;
+
+  /// Subtitle of the update-check settings tile.
+  ///
+  /// In en, this message translates to:
+  /// **'See if a newer version of Uxnan is available.'**
+  String get updateCheckSubtitle;
+
+  /// Button that runs an update check immediately.
+  ///
+  /// In en, this message translates to:
+  /// **'Check now'**
+  String get updateCheckAction;
+
+  /// Status shown while an update check is in flight.
+  ///
+  /// In en, this message translates to:
+  /// **'Checking for updates…'**
+  String get updateStatusChecking;
+
+  /// Status shown when no newer version is available.
+  ///
+  /// In en, this message translates to:
+  /// **'You\'re on the latest version.'**
+  String get updateStatusUpToDate;
+
+  /// Status shown when the platform/build has no in-app update mechanism (e.g. a sideloaded build, or a platform other than Android/iOS).
+  ///
+  /// In en, this message translates to:
+  /// **'In-app updates aren\'t available for this build.'**
+  String get updateStatusUnsupported;
+
+  /// Status shown when an update check failed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t check for updates. Try again later.'**
+  String get updateStatusError;
+
+  /// Title of the update-available banner and card.
+  ///
+  /// In en, this message translates to:
+  /// **'Update available'**
+  String get updateAvailableTitle;
+
+  /// Body of the update-available banner when the version is unknown.
+  ///
+  /// In en, this message translates to:
+  /// **'A new version of Uxnan is ready to install.'**
+  String get updateAvailableBody;
+
+  /// Body of the update-available banner when the new version is known.
+  ///
+  /// In en, this message translates to:
+  /// **'Uxnan {version} is ready to install.'**
+  String updateAvailableBodyVersion(String version);
+
+  /// Button that starts applying the available update (Play flow on Android, App Store on iOS).
+  ///
+  /// In en, this message translates to:
+  /// **'Update'**
+  String get updateAction;
+
+  /// Label of the update button while the update flow is being launched.
+  ///
+  /// In en, this message translates to:
+  /// **'Starting…'**
+  String get updateActionStarting;
+
+  /// Button that dismisses the update banner for the current version.
+  ///
+  /// In en, this message translates to:
+  /// **'Not now'**
+  String get updateDismissAction;
+
+  /// Label above the store release notes for the available update.
+  ///
+  /// In en, this message translates to:
+  /// **'What\'s new'**
+  String get updateWhatsNewLabel;
 }
 
 class _AppLocalizationsDelegate

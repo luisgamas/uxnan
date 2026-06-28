@@ -26,6 +26,8 @@ import 'package:uxnan/infrastructure/storage/notification_preferences_store.dart
 import 'package:uxnan/infrastructure/storage/phone_identity_store.dart';
 import 'package:uxnan/infrastructure/storage/secure_store.dart';
 import 'package:uxnan/infrastructure/storage/thread_list_preferences_store.dart';
+import 'package:uxnan/infrastructure/storage/update_preferences_store.dart';
+import 'package:uxnan/infrastructure/updates/app_update_service.dart';
 
 /// Infrastructure-layer providers.
 ///
@@ -117,6 +119,19 @@ final speechToTextServiceProvider = Provider<SpeechToTextService>((ref) {
   ref.onDispose(service.cancel);
   return service;
 });
+
+/// App-update checker. Guarded — wraps the Play In-App Update API (Android)
+/// and the App Store version lookup (iOS); off a real store it simply reports
+/// "no update" instead of throwing. Enforces the no-silent-install policy.
+final appUpdateServiceProvider = Provider<AppUpdateService>(
+  (ref) => AppUpdateService(),
+);
+
+/// Persists the update checker's throttle timestamp + dismissed version
+/// (non-sensitive, on-device).
+final updatePreferencesStoreProvider = Provider<UpdatePreferencesStore>(
+  (ref) => UpdatePreferencesStore(),
+);
 
 /// Image picker for composer attachments (gallery / camera). Guarded — a
 /// cancel or denied permission yields null, never throws.

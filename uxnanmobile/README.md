@@ -104,7 +104,7 @@ core/            cross-cutting utilities (constants, errors, extensions, utils)
 domain/          entities, value_objects, enums, repositories, services (pure Dart)
 application/     coordinators, managers, processors (use cases orchestration)
 infrastructure/  transport, storage (drift), repositories, platform, crypto,
-                 notifications, pairing, speech, media
+                 notifications, pairing, speech, media, updates
 presentation/    screens, widgets, providers, router, theme
 l10n/            generated localizations (en, es)
 ```
