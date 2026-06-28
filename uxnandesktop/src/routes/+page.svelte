@@ -25,6 +25,7 @@
   import WorktreeSearch from "$lib/components/WorktreeSearch.svelte";
   import DirectoryPicker from "$lib/components/DirectoryPicker.svelte";
   import BackendStatus from "$lib/components/BackendStatus.svelte";
+  import UpdateBanner from "$lib/components/UpdateBanner.svelte";
   import { Toaster } from "$lib/components/ui/sonner";
 
   // Resize bounds for each sidebar (px).
@@ -200,6 +201,9 @@
        never torn down — otherwise an agent's launch command would be re-typed on
        return and xterm would lose its screen. -->
   <div class="relative flex min-h-0 flex-1 flex-col">
+    <!-- Auto-update banner (available / downloading / ready to install) -->
+    <UpdateBanner />
+
     <div class="flex min-h-0 flex-1">
       {#if app.settings.leftSidebarOpen}
         <aside
