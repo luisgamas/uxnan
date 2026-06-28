@@ -13,8 +13,10 @@ only a human can provide.)
 
 The bridge is **alpha-functional** on its primary path (LAN/Tailscale-direct,
 standalone). It builds clean and the suite is green (bridge 360, shared 29, relay
-27). Nothing below blocks LAN/Tailscale-direct use; the only items that gate a
-**public npm release** are the *Packaging* first-publish steps and real-device
+27). The **first npm release shipped** — `uxnan-bridge@0.0.1-alpha.20260627` is
+published under the `alpha` dist-tag (`@uxnan/shared` pinned to the same version by
+the release workflow). Nothing below blocks LAN/Tailscale-direct use; the remaining
+release follow-ups are the post-publish *Packaging* hardening items and real-device
 push validation (FOR-HUMAN).
 
 **Implemented (DONE):**
@@ -195,14 +197,11 @@ The OpenCode adapter is the template for any "one-shot per-turn CLI" agent:
 ## Packaging — npm publish readiness
 
 `bin`/`files`/`engines`/`repository`/`prepublishOnly` are set on all three packages,
-and `.github/workflows/release-npm.yml` automates the tag-driven publish. What
-remains is the **first actual publish**:
+and `.github/workflows/release-npm.yml` automates the tag-driven publish. The
+**first publish shipped** (`0.0.1-alpha.20260627`, `alpha` dist-tag) — the workflow
+pinned `@uxnan/shared` to the exact version at publish time, validated by the
+successful run. Remaining post-publish hardening:
 
-- [ ] **Pin `@uxnan/shared` for the registry** — publish `@uxnan/shared` first, then
-      change the bridge/relay dep `"@uxnan/shared": "*"` → `"^0.x"` (the `*` workspace
-      spec does NOT resolve from npm). The release workflow does this pin at publish
-      time; verify it. Same for the bridge's `"uxnan-relay": "*"` devDependency (drop
-      or pin; only the e2e test uses it).
 - [ ] **Packed-install smoke** — `npm pack` each package, `npm install -g
       ./uxnan-bridge-*.tgz`, run `uxnan-bridge qr`.
 - [ ] **Executable bit** — ensure `scripts/*.sh` keep their executable bit on the

@@ -145,10 +145,26 @@ are **done** (see `CHANGELOG.md` + `architecture/02d` §3). Remaining follow-ups
   (`src-tauri/src/updater.rs` + Settings → Updates + banner; stable/nightly
   channels via GitHub's pre-release flag; background download + idle-guarded
   install). The rolling per-channel `latest.json` is published by
-  `release-desktop-manifest.yml`. **Functional once
-  the human supplies the signing keypair** (`FOR-HUMAN.md`) and publishes a signed
-  release — until then `check()` finds nothing and the app runs normally. See
-  [`docs/updates.md`](docs/updates.md).
+  `release-desktop-manifest.yml`. The signing keypair is configured and
+  `desktop-v0.0.1-alpha.20260627` shipped signed installers + a `latest.json`
+  on the `desktop-updater-stable` channel. See [`docs/updates.md`](docs/updates.md).
+- [ ] **Public distribution while the repo is PRIVATE (blocker for end users)** —
+      the GitHub-Releases download URLs and the updater endpoint
+      (`…/releases/download/desktop-updater-<channel>/latest.json`) return **404**
+      to anonymous clients while `luisgamas/uxnan` is private, so the in-app
+      updater and public installer downloads only work for authenticated
+      collaborators. Decision (2026-06-27): **keep the repo private for now.**
+      Revisit when going public, or move desktop binaries to a dedicated **public**
+      releases repo (then update `tauri.conf.json → plugins.updater.endpoints` +
+      `release-desktop*.yml`). npm and Play distribution are unaffected.
+- [ ] **Manifest workflow needs `contents: write` for first-time channel creation** —
+      `release-desktop-manifest.yml`'s `gh release create` of a channel's rolling
+      release 403'd because the repo's `default_workflow_permissions` is `read`
+      (the workflow's `permissions: contents: write` was not honored for the
+      create). Worked around by publishing `desktop-updater-stable` manually;
+      subsequent uploads to an existing channel succeed. To fully automate, set
+      Settings → Actions → Workflow permissions to **Read and write**
+      (`gh api -X PUT repos/luisgamas/uxnan/actions/permissions/workflow -f default_workflow_permissions=write`).
 - [ ] **Code-signing (OS)** — Windows Authenticode + macOS Developer ID +
       notarization (human-provided **paid** certs — see `FOR-HUMAN.md`).
       Independent of the (free) updater signature above; the build runs unsigned

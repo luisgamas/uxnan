@@ -13,6 +13,13 @@ which versions "go together".
 - Per-component git tags drive releases:
   `shared-v*`, `bridge-v*`, `relay-v*`, `desktop-v*`, `mobile-v*`
   (mobile may append `+<buildNumber>`, e.g. `mobile-v0.0.1-alpha.20260621+5`).
+- **Source tracks the tag.** Bump the component's manifest version to the release
+  version before tagging — npm: `package.json`; mobile: `pubspec.yaml`. **Desktop**
+  keeps the **numeric base** (`0.0.1`) in `tauri.conf.json` / `Cargo.toml` because
+  the Windows MSI rejects a non-numeric pre-release identifier; its full version
+  rides the tag + the compiled-in `UXNAN_VERSION`. The npm and desktop release
+  workflows re-apply the version from the tag with `--allow-same-version`, so a
+  source==tag match is fine; mobile **fails** the release on a pubspec↔tag mismatch.
 - npm packages publish under the **`alpha`** dist-tag.
 - Mobile ships to **Google Play** (open testing / beta); desktop to **GitHub
   Releases** (draft).
@@ -47,7 +54,7 @@ Cutting a release for component `<comp>` (tag `<comp>-v<version>`):
 
 | Date (YYYY-MM-DD) | shared | bridge | relay | desktop | mobile |
 | ----------------- | ------ | ------ | ----- | ------- | ------ |
-| _no releases yet_ |        |        |       |         |        |
+| 2026-06-27 | 0.0.1-alpha.20260627 | 0.0.1-alpha.20260627 | 0.0.1-alpha.20260627 | 0.0.1-alpha.20260627 | 0.0.1-alpha.20260627+20260627 |
 
 > FOR-DEV: once the release pipeline is validated end-to-end, a final step in
 > each release workflow can append/update the matching cell here automatically

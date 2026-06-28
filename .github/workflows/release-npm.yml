@@ -62,7 +62,10 @@ jobs:
         run: npm ci
 
       - name: Set package version
-        run: npm version "${{ steps.meta.outputs.version }}" --no-git-tag-version -w ${{ steps.meta.outputs.ws }}
+        # `--allow-same-version` so the workspace's package.json can already carry
+        # the release version (source tracks the tag, like mobile's pubspec) without
+        # failing here; if it lags (still at the base) this bumps it to the tag.
+        run: npm version "${{ steps.meta.outputs.version }}" --no-git-tag-version --allow-same-version -w ${{ steps.meta.outputs.ws }}
 
       - name: Pin @uxnan/shared (bridge/relay only)
         if: steps.meta.outputs.ws != 'shared'

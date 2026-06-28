@@ -29,24 +29,8 @@ only this checklist and the inline `FOR-HUMAN:` markers describing what's needed
       (SignTool / `WINDOWS_CERTIFICATE` + password), Apple Developer ID +
       notarization (`APPLE_CERTIFICATE`, `APPLE_ID`, team id, app-specific
       password), optional GPG for Linux packages (spec §5.1). This removes the OS
-      "unknown publisher" warning. **Unrelated to the updater key below** (which
-      is free).
-- [ ] **Auto-updater signing key (FREE — required to ship updates)** — the in-app
-      updater is fully wired (Settings → Updates), but it can't verify/apply an
-      update until a real minisign keypair exists. The repo currently ships a
-      **throwaway placeholder `pubkey`** in `src-tauri/tauri.conf.json` so the app
-      starts; you must replace it with your own.
-      - **Generate:** `cd uxnandesktop && npx tauri signer generate -w ~/.uxnan-updater.key`
-        (free; nothing to buy). Keep the private key + password secret.
-      - **Where:** put the printed **public** key in
-        `src-tauri/tauri.conf.json → plugins.updater.pubkey` (replaces the
-        placeholder; safe to commit). Add the **private** key as repo secret
-        `TAURI_SIGNING_PRIVATE_KEY` and its password as
-        `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (consumed by `release-desktop.yml`).
-      - **Then:** push a `desktop-v*` tag, **publish** the draft Release; that
-        fires `release-desktop-manifest.yml`, which puts `latest.json` on the
-        rolling `desktop-updater-<channel>` release the app polls.
-      - **Step-by-step:** [`docs/updates.md`](docs/updates.md) → "First-time setup".
+      "unknown publisher" warning. **Unrelated to the updater key** (which is free
+      and already configured).
 
 ## Deferred until later phases (no action needed yet)
 
