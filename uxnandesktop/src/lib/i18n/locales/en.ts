@@ -100,6 +100,7 @@ export const en = {
   "terminal.terminal": "Terminal",
   "terminal.chooseProfile": "Choose a terminal profile",
   "terminal.newTerminal": "New terminal",
+  "terminal.newBrowser": "New browser tab",
   "terminal.unnamedProfile": "Unnamed profile",
   "terminal.context":
     "Active terminal context — choose a project or worktree in the left panel",
@@ -141,6 +142,9 @@ export const en = {
   "settings.updates": "Updates",
   "settings.updatesDesc":
     "Choose how Uxnan Desktop checks for, downloads and installs new versions.",
+  "settings.browser": "Browser",
+  "settings.browserDesc":
+    "A lightweight in-app browser to preview and debug what your agents build, and to open the links they create.",
   "settings.aiCommit": "AI commit message",
   "settings.aiCommitDesc":
     "Optionally draft commit messages from your staged changes with a local CLI agent. Off by default; nothing runs until you enable it and pick an agent.",
@@ -597,6 +601,35 @@ export const en = {
   "updates.policyAsk": "Ask me",
   "updates.policyWhenIdle": "Automatically when agents are idle",
   "updates.policyManual": "Only when I trigger it",
+
+  // Integrated developer browser (Settings → Browser + the browser tab chrome)
+  "browser.enabled": "Integrated browser",
+  "browser.enabledDesc":
+    "When off, every link opens in your system browser and agents can't use the in-app one.",
+  "browser.linkPolicy": "Open links",
+  "browser.linkPolicyDesc": "Where links open by default — in the app or your system browser.",
+  "browser.policyInternal": "In the integrated browser",
+  "browser.policyInternalDesc": "Open links in an in-app browser tab.",
+  "browser.policyExternal": "In my system browser",
+  "browser.policyExternalDesc": "Always hand links to your default browser (Chrome, Firefox…).",
+  "browser.policyAsk": "Ask each time",
+  "browser.policyAskDesc": "Choose in-app or system browser per link.",
+  "browser.allowAgents": "Let agents open links",
+  "browser.allowAgentsDesc":
+    "Agents that open a URL (logins, previews) land in the integrated browser automatically.",
+  "browser.terminalLinks": "Clickable terminal links",
+  "browser.terminalLinksDesc":
+    "Make URLs printed in the terminal clickable (applies to new terminals).",
+  "browser.homepage": "Home page",
+  "browser.homepageDesc": "Opened when a new browser tab has no target (leave blank for none).",
+  "browser.homepagePlaceholder": "https://example.com",
+  "browser.back": "Back",
+  "browser.forward": "Forward",
+  "browser.reload": "Reload",
+  "browser.openExternal": "Open in system browser",
+  "browser.addressPlaceholder": "Enter a URL",
+  "browser.unavailable": "The integrated browser isn't available here.",
+  "browser.askPrompt": "Open {url} in the integrated browser? (Cancel opens your system browser.)",
 } as const;
 
 /** Union of every message key (drives `t()` and the locale type). */

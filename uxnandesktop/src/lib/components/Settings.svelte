@@ -8,6 +8,7 @@
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import { Button } from "$lib/components/ui/button";
   import { Textarea } from "$lib/components/ui/textarea";
+  import { Input } from "$lib/components/ui/input";
   import { app } from "$lib/state/app.svelte";
   import { i18n, LOCALES } from "$lib/i18n";
   import type { MessageKey } from "$lib/i18n/locales/en";
@@ -26,6 +27,8 @@
     UpdaterSettings,
     UpdateChannel,
     InstallPolicy,
+    BrowserSettings,
+    BrowserLinkPolicy,
   } from "$lib/types";
   import TerminalProfileEditor from "./TerminalProfileEditor.svelte";
   import AgentProfileEditor from "./AgentProfileEditor.svelte";
@@ -54,6 +57,7 @@
   import RotateCcwIcon from "@lucide/svelte/icons/rotate-ccw";
   import XIcon from "@lucide/svelte/icons/x";
   import SparklesIcon from "@lucide/svelte/icons/sparkles";
+  import GlobeIcon from "@lucide/svelte/icons/globe";
 
   // Persist (debounced for typing; immediate for discrete actions).
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -394,6 +398,32 @@
       : i18n.t("updates.neverChecked"),
   );
 
+  // --- Integrated browser ---------------------------------------------------
+  // Merge over a full default so reads/writes are always complete (state saved
+  // before this feature, or the web preview, may lack the object).
+  const BROWSER_DEFAULT: BrowserSettings = {
+    enabled: true,
+    linkPolicy: "internal",
+    allowAgents: true,
+    terminalLinks: true,
+    homepage: "",
+  };
+  const br = $derived<BrowserSettings>({
+    ...BROWSER_DEFAULT,
+    ...app.settings.browser,
+  });
+  function setBr(patch: Partial<BrowserSettings>) {
+    app.settings.browser = { ...BROWSER_DEFAULT, ...app.settings.browser, ...patch };
+  }
+  const LINK_POLICIES: { value: BrowserLinkPolicy; labelKey: MessageKey; descKey: MessageKey }[] = [
+    { value: "internal", labelKey: "browser.policyInternal", descKey: "browser.policyInternalDesc" },
+    { value: "external", labelKey: "browser.policyExternal", descKey: "browser.policyExternalDesc" },
+    { value: "ask", labelKey: "browser.policyAsk", descKey: "browser.policyAskDesc" },
+  ];
+  const linkPolicyLabel = $derived(
+    i18n.t(LINK_POLICIES.find((p) => p.value === br.linkPolicy)?.labelKey ?? "browser.policyInternal"),
+  );
+
   const navItems = [
     { id: "appearance", key: "settings.appearance", icon: PaletteIcon },
     { id: "language", key: "settings.language", icon: LanguagesIcon },
@@ -402,6 +432,7 @@
     { id: "aicommit", key: "settings.aiCommit", icon: SparklesIcon },
     { id: "hooks", key: "settings.hooks", icon: WebhookIcon },
     { id: "terminal", key: "settings.terminal", icon: TerminalIcon },
+    { id: "browser", key: "settings.browser", icon: GlobeIcon },
     { id: "updates", key: "settings.updates", icon: DownloadIcon },
   ] as const;
 </script>
@@ -1032,6 +1063,122 @@
                 </Select.Content>
               </Select.Root>
               <p class={text.meta}>{i18n.t("updates.installPolicyDesc")}</p>
+            </div>
+          </div>
+        {:else if app.settingsSection === "browser"}
+          <div class="flex flex-col gap-4">
+            <div class="flex flex-col gap-1">
+              <span class={text.heading}>{i18n.t("settings.browser")}</span>
+              <p class={text.meta}>{i18n.t("settings.browserDesc")}</p>
+            </div>
+
+            <!-- Master switch. -->
+            <div class="flex flex-col gap-1.5">
+              <span class={cn("font-medium", text.body)}>{i18n.t("browser.enabled")}</span>
+              <Select.Root
+                type="single"
+                value={br.enabled ? "on" : "off"}
+                onValueChange={(v) => {
+                  setBr({ enabled: v === "on" });
+                  persistNow();
+                }}
+              >
+                <Select.Trigger class="w-56">
+                  {br.enabled ? i18n.t("common.on") : i18n.t("common.off")}
+                </Select.Trigger>
+                <Select.Content>
+                  <Select.Item value="on" label={i18n.t("common.on")}>{i18n.t("common.on")}</Select.Item>
+                  <Select.Item value="off" label={i18n.t("common.off")}>{i18n.t("common.off")}</Select.Item>
+                </Select.Content>
+              </Select.Root>
+              <p class={text.meta}>{i18n.t("browser.enabledDesc")}</p>
+            </div>
+
+            <!-- Link policy: where links open. -->
+            <div class="flex flex-col gap-1.5">
+              <span class={cn("font-medium", text.body)}>{i18n.t("browser.linkPolicy")}</span>
+              <Select.Root
+                type="single"
+                value={br.linkPolicy}
+                disabled={!br.enabled}
+                onValueChange={(v) => {
+                  setBr({ linkPolicy: (v as BrowserLinkPolicy) ?? "internal" });
+                  persistNow();
+                }}
+              >
+                <Select.Trigger class="w-56">{linkPolicyLabel}</Select.Trigger>
+                <Select.Content>
+                  {#each LINK_POLICIES as p (p.value)}
+                    <Select.Item value={p.value} label={i18n.t(p.labelKey)}>
+                      <div class="flex flex-col">
+                        <span>{i18n.t(p.labelKey)}</span>
+                        <span class={text.meta}>{i18n.t(p.descKey)}</span>
+                      </div>
+                    </Select.Item>
+                  {/each}
+                </Select.Content>
+              </Select.Root>
+              <p class={text.meta}>{i18n.t("browser.linkPolicyDesc")}</p>
+            </div>
+
+            <!-- Let agents open URLs in the integrated browser. -->
+            <div class="flex flex-col gap-1.5">
+              <span class={cn("font-medium", text.body)}>{i18n.t("browser.allowAgents")}</span>
+              <Select.Root
+                type="single"
+                value={br.allowAgents ? "on" : "off"}
+                disabled={!br.enabled}
+                onValueChange={(v) => {
+                  setBr({ allowAgents: v === "on" });
+                  persistNow();
+                }}
+              >
+                <Select.Trigger class="w-56">
+                  {br.allowAgents ? i18n.t("common.on") : i18n.t("common.off")}
+                </Select.Trigger>
+                <Select.Content>
+                  <Select.Item value="on" label={i18n.t("common.on")}>{i18n.t("common.on")}</Select.Item>
+                  <Select.Item value="off" label={i18n.t("common.off")}>{i18n.t("common.off")}</Select.Item>
+                </Select.Content>
+              </Select.Root>
+              <p class={text.meta}>{i18n.t("browser.allowAgentsDesc")}</p>
+            </div>
+
+            <!-- Make terminal URLs clickable. -->
+            <div class="flex flex-col gap-1.5">
+              <span class={cn("font-medium", text.body)}>{i18n.t("browser.terminalLinks")}</span>
+              <Select.Root
+                type="single"
+                value={br.terminalLinks ? "on" : "off"}
+                disabled={!br.enabled}
+                onValueChange={(v) => {
+                  setBr({ terminalLinks: v === "on" });
+                  persistNow();
+                }}
+              >
+                <Select.Trigger class="w-56">
+                  {br.terminalLinks ? i18n.t("common.on") : i18n.t("common.off")}
+                </Select.Trigger>
+                <Select.Content>
+                  <Select.Item value="on" label={i18n.t("common.on")}>{i18n.t("common.on")}</Select.Item>
+                  <Select.Item value="off" label={i18n.t("common.off")}>{i18n.t("common.off")}</Select.Item>
+                </Select.Content>
+              </Select.Root>
+              <p class={text.meta}>{i18n.t("browser.terminalLinksDesc")}</p>
+            </div>
+
+            <!-- Homepage. -->
+            <div class="flex flex-col gap-1.5">
+              <span class={cn("font-medium", text.body)}>{i18n.t("browser.homepage")}</span>
+              <Input
+                class="w-full max-w-md"
+                value={br.homepage}
+                placeholder={i18n.t("browser.homepagePlaceholder")}
+                disabled={!br.enabled}
+                oninput={(e) => setBr({ homepage: e.currentTarget.value })}
+                onchange={() => persistNow()}
+              />
+              <p class={text.meta}>{i18n.t("browser.homepageDesc")}</p>
             </div>
           </div>
         {:else}

@@ -93,7 +93,26 @@ export interface CommitTab extends BaseTab {
   subject: string;
 }
 
-export type GroupTab = TerminalTab | FileTab | DiffTab | CommitTab;
+/** An integrated developer-browser tab. Hosts a native child webview (managed by
+ *  the Rust `browser_*` commands) positioned over this tab's region; `url` is the
+ *  target / current address. Transient — never serialized (the webview spawns
+ *  lazily on open and is destroyed on close, so nothing reopens on restart). */
+export interface BrowserTab extends BaseTab {
+  kind: "browser";
+  /** Target URL (updated as the user/agent navigates). */
+  url: string;
+}
+
+export type GroupTab = TerminalTab | FileTab | DiffTab | CommitTab | BrowserTab;
+
+/** A readable tab title from a URL (its hostname), falling back to "Browser". */
+function browserTitle(url: string): string {
+  try {
+    return new URL(url).hostname || "Browser";
+  } catch {
+    return "Browser";
+  }
+}
 
 /** A region: a tab strip over one-or-more terminals. */
 export interface TabGroup {
@@ -277,13 +296,15 @@ export function computeAreaLayout(root: AreaNode): {
 
 // --- Persistence (structure only; fresh shells spawn on restore) ----------
 
-/** Drop **diff** and **commit** tabs from a cloned tree (both transient — never
- *  persisted) and collapse any region/split left empty, so serialization only
- *  ever sees terminal + file tabs in non-empty groups. Returns null when nothing
- *  remains. */
+/** Drop **diff**, **commit** and **browser** tabs from a cloned tree (all
+ *  transient — never persisted) and collapse any region/split left empty, so
+ *  serialization only ever sees terminal + file tabs in non-empty groups. Returns
+ *  null when nothing remains. */
 function pruneDiffs(node: AreaNode): AreaNode | null {
   if (node.kind === "group") {
-    const tabs = node.tabs.filter((t) => t.kind !== "diff" && t.kind !== "commit");
+    const tabs = node.tabs.filter(
+      (t) => t.kind !== "diff" && t.kind !== "commit" && t.kind !== "browser",
+    );
     if (tabs.length === 0) return null;
     const activeTabId = tabs.some((t) => t.id === node.activeTabId)
       ? node.activeTabId
@@ -684,6 +705,34 @@ class TerminalStore {
     this.commitStates.set(id, new CommitViewerState(worktree, hash, subject));
     this.insertTab(tab, opts?.groupId);
     return id;
+  }
+
+  /** Open a new integrated-browser tab at `url` (focus + insert). The native
+   *  webview is created lazily by `BrowserPane` once the tab mounts. */
+  openBrowser(url: string, opts?: { workspace?: string; groupId?: string }): string {
+    if (opts?.workspace !== undefined) this.setWorkspace(opts.workspace);
+    const id = crypto.randomUUID();
+    const tab: BrowserTab = { kind: "browser", id, title: browserTitle(url), url };
+    this.insertTab(tab, opts?.groupId);
+    return id;
+  }
+
+  /** Route a URL to the integrated browser: if the active tab is already a browser,
+   *  navigate it in place (no tab explosion from chatty agents); otherwise open a
+   *  new browser tab. Returns the tab id. */
+  showUrl(url: string): string {
+    const root = this.root;
+    if (root) {
+      const group = findGroup(root, this.activeGroupId) ?? firstGroup(root);
+      const active = group?.tabs.find((t) => t.id === group.activeTabId);
+      if (active?.kind === "browser") {
+        active.url = url;
+        active.title = browserTitle(url);
+        this.setActiveTab(group.id, active.id);
+        return active.id;
+      }
+    }
+    return this.openBrowser(url);
   }
 
   /** The live editor state for a file tab (undefined for other kinds). */

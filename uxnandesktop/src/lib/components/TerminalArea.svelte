@@ -18,6 +18,7 @@
   import FileEditor from "./FileEditor.svelte";
   import DiffPane from "./DiffPane.svelte";
   import CommitPane from "./CommitPane.svelte";
+  import BrowserPane from "./BrowserPane.svelte";
   import { resolveAgentDisplay } from "$lib/state/agentDisplay";
   import AgentStatusDot from "./AgentStatusDot.svelte";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
@@ -33,6 +34,7 @@
   import FileIcon from "@lucide/svelte/icons/file";
   import FileDiffIcon from "@lucide/svelte/icons/file-diff";
   import GitCommitIcon from "@lucide/svelte/icons/git-commit-horizontal";
+  import GlobeIcon from "@lucide/svelte/icons/globe";
   import NewWorktreeDialog from "./NewWorktreeDialog.svelte";
 
   /** Default profile's shell/args, for region-level + and splits. A blank
@@ -46,6 +48,12 @@
   // The terminal area background follows the resolved terminal theme (matches
   // xterm's background).
   const paneBg = $derived(app.resolveTerminal().theme.background);
+
+  /** Open a new integrated-browser tab at the configured homepage (or blank). */
+  function openBrowserTab(): void {
+    const home = app.settings.browser?.homepage?.trim();
+    terminals.openBrowser(home && home.length > 0 ? home : "about:blank");
+  }
 
   // --- Workspaces (one terminal set per worktree + a Global space) ---------
   // Active workspace breadcrumb (repo / branch). Rendered in the status bar
@@ -344,6 +352,13 @@
               {p.name.trim() || i18n.t("terminal.unnamedProfile")}
             </DropdownMenu.Item>
           {/each}
+          {#if app.settings.browser?.enabled ?? true}
+            <DropdownMenu.Separator />
+            <DropdownMenu.Item class={text.menu} onclick={openBrowserTab}>
+              <GlobeIcon class={icon.button} />
+              {i18n.t("terminal.newBrowser")}
+            </DropdownMenu.Item>
+          {/if}
         </DropdownMenu.Content>
       </DropdownMenu.Root>
     </div>
@@ -449,6 +464,15 @@
                           >
                             {t.title}
                           </button>
+                        {:else if t.kind === "browser"}
+                          <GlobeIcon class={cn(icon.decorative, "shrink-0")} />
+                          <button
+                            class="max-w-[120px] truncate"
+                            onclick={() => terminals.setActiveTab(g.group.id, t.id)}
+                            title={t.url}
+                          >
+                            {t.title}
+                          </button>
                         {:else}
                           <GitCommitIcon class={cn(icon.decorative, "shrink-0")} />
                           <button
@@ -551,6 +575,8 @@
                           {#if st}
                             <DiffPane state={st} />
                           {/if}
+                        {:else if t.kind === "browser"}
+                          <BrowserPane tab={t} />
                         {:else}
                           {@const st = terminals.commitState(t.id)}
                           {#if st}

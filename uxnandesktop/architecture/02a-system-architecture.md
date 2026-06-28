@@ -147,7 +147,7 @@ Cada tab vive dentro de un TabGroup y representa una unidad de contenido en el a
 
 | Campo | Descripcion |
 |-------|-------------|
-| Tipo de contenido | `terminal` (emulador PTY), `editor` (CodeMirror 6), `diff` (visor de comparacion), `browser` (webview embebido) |
+| Tipo de contenido | `terminal` (emulador PTY), `editor` (CodeMirror 6), `diff` (visor de comparacion), `browser` (webview embebido — implementado, ver §4.2b) |
 | TabGroup padre | A que TabGroup pertenece este tab |
 
 ### 2.6 TabGroup
@@ -285,6 +285,37 @@ Esto es una distincion importante que diferencia al ADE de un terminal convencio
 - Dentro de un mismo tab de terminal, divide el area en multiples panes PTY.
 - Cada pane es un proceso independiente con su propio shell/agente.
 - Similar a como funcionan los splits en Vim o tmux.
+
+### 4.2b Navegador integrado (tab `browser`) — implementado
+
+El tipo de contenido `browser` (webview embebido) **está implementado** como un
+navegador *de desarrollo* ligero: para previsualizar/depurar lo que construyen los
+agentes y abrir los enlaces que generan — no un navegador de uso general.
+
+- **Motor:** un `<iframe>` del DOM dentro del webview de la app (`BrowserPane`), no
+  un webview nativo. Es un tab central real que compone con el layout, **no puede
+  congelar la app ni pintar sobre menús**, y es muy ligero (otro *browsing context*
+  en el webview que la app ya ejecuta). *Decisión de diseño:* se descartó el
+  *child webview* nativo (multiwebview `unstable` de Tauri) porque en Windows
+  bloqueaba el hilo principal (congelaba la app) — el iframe es estable. El tab
+  `browser` es **transitorio** (nunca se serializa). Límite conocido: sitios que
+  rechazan ser embebidos (`X-Frame-Options` / `frame-ancestors`) quedan en blanco →
+  el botón "abrir en el navegador del sistema" los cubre; `localhost` casi nunca lo
+  bloquea.
+- **Política de enlaces (`BrowserSettings`):** un único punto de decisión
+  (`browser::route_url`, expuesto como el comando `open_url`) enruta cada enlace
+  según `linkPolicy` (`internal` → tab interno vía el evento `browser:open-url`,
+  `external` → navegador del SO vía `tauri-plugin-opener`/`open_external`, `ask` →
+  el usuario elige). Un navegador deshabilitado siempre va a externo. Campos:
+  `enabled`, `linkPolicy`, `allowAgents`, `terminalLinks`, `homepage` (todos con
+  `#[serde(default)]`).
+- **Agentes:** con `enabled && allowAgents`, cada terminal de agente recibe
+  `UXNAN_BROWSER_URL` + `UXNAN_BROWSER_TOKEN` y un shim `$BROWSER`
+  (`static/hooks/uxnan-browser.{sh,cmd}`). Una URL que el agente abre se hace `POST`
+  a la ruta **`/browser`** del servidor de hooks local (`hooks.rs`), que la enruta
+  por la misma política. Mismo patrón que `UXNAN_HOOK_*`.
+- **Terminal:** las URLs impresas en la terminal son clicables con **Ctrl/Cmd+clic**
+  (`@xterm/addon-web-links`) y pasan por `open_url` (toggle `terminalLinks`).
 
 ### 4.3 Ejemplo de Layout Complejo
 

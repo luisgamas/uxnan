@@ -5,6 +5,38 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — integrated developer browser
+- **A lightweight in-app developer browser** to preview/debug the systems agents
+  build and open the links agents produce — a new `browser` center tab (splittable
+  beside terminals), **not** a general-purpose browser. Open one from the center
+  "+" menu (*New browser tab*) or let a link route into it. Chrome: back / forward
+  / reload / address bar / open-in-system-browser.
+- **Rendered with a DOM `<iframe>`** (frontend `BrowserPane`): a real center tab
+  that composes with the layout, can never freeze the app or paint over menus, and
+  is very light (just another browsing context in the webview the ADE already
+  runs). Ideal for `localhost` dev servers and most links; sites that refuse to be
+  embedded (`X-Frame-Options` / `frame-ancestors`) render blank — the toolbar's
+  *open in system browser* covers those. The `browser` tab is transient (never
+  serialized).
+- **One link-routing decision point** (`open_url` → `browser::route_url`): every
+  link the ADE opens funnels through the user's policy — the in-app browser, the OS
+  browser, or a per-link prompt — with the OS browser always available as a fallback
+  (`open_external`).
+- **`BrowserSettings` / `BrowserLinkPolicy`** in the persisted `AppSettings`
+  (`enabled` · `linkPolicy` internal/external/ask · `allowAgents` · `terminalLinks`
+  · `homepage`; all `#[serde(default)]` so older state loads unchanged) with a new
+  **Settings → Browser** pane (EN/ES).
+- **Agents open links in-app automatically.** When the browser is enabled and
+  *allow agents* is on, each agent terminal gets `UXNAN_BROWSER_URL` +
+  `UXNAN_BROWSER_TOKEN` and a `$BROWSER` shim (`static/hooks/uxnan-browser.{sh,cmd}`,
+  written alongside the hook scripts). A URL the agent opens is POSTed to the hook
+  server's new **`/browser`** route, which applies the same link policy. Agents can
+  also open one explicitly: `curl -X POST "$UXNAN_BROWSER_URL" -H "X-Uxnan-Token:
+  $UXNAN_BROWSER_TOKEN" -d '{"url":"…"}'`.
+- **Clickable terminal links** (`@xterm/addon-web-links`): **Ctrl/Cmd-click** a URL
+  printed in the terminal to open it through the link policy (a plain click is just
+  text, like VS Code). Toggle in Settings → Browser.
+
 ## [0.0.1-alpha.20260627] - 2026-06-27
 
 ### Added — in-app auto-updater (Settings → Updates)

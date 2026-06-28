@@ -45,12 +45,19 @@ pub const WRAPPER_BASH: &str = include_str!("../../static/hooks/uxnan-hook-wrapp
 pub const WRAPPER_POWERSHELL: &str = include_str!("../../static/hooks/uxnan-hook-wrapper.ps1");
 /// The generic wrapper for any CLI agent (cmd / batch — the no-PowerShell fallback).
 pub const WRAPPER_CMD: &str = include_str!("../../static/hooks/uxnan-hook-wrapper.cmd");
+/// The integrated-browser shim (Unix / Git Bash / WSL) — `$BROWSER` points here so
+/// a URL an agent opens lands in the in-app browser (see `commands.rs` pty env).
+pub const BROWSER_SHIM_BASH: &str = include_str!("../../static/hooks/uxnan-browser.sh");
+/// The integrated-browser shim (Windows / cmd) — `%BROWSER%` points here.
+pub const BROWSER_SHIM_CMD: &str = include_str!("../../static/hooks/uxnan-browser.cmd");
 
 /// File names of the bundled scripts (used when writing them to disk).
 const CLAUDE_HOOK_FILENAME: &str = "uxnan-claude-hook.cjs";
 const WRAPPER_BASH_FILENAME: &str = "uxnan-hook-wrapper.sh";
 const WRAPPER_POWERSHELL_FILENAME: &str = "uxnan-hook-wrapper.ps1";
 const WRAPPER_CMD_FILENAME: &str = "uxnan-hook-wrapper.cmd";
+const BROWSER_SHIM_BASH_FILENAME: &str = "uxnan-browser.sh";
+const BROWSER_SHIM_CMD_FILENAME: &str = "uxnan-browser.cmd";
 
 /// A platform-aware absolute path of every script the ADE writes under
 /// `<app-data>/hooks/`, plus the resolved Claude `settings.json` path and
@@ -68,6 +75,10 @@ pub struct HookInstall {
     pub wrapper_powershell: String,
     /// Absolute path of the cmd / batch wrapper.
     pub wrapper_cmd: String,
+    /// Absolute path of the integrated-browser shim (Bash).
+    pub browser_shim_bash: String,
+    /// Absolute path of the integrated-browser shim (cmd / batch).
+    pub browser_shim_cmd: String,
     /// The resolved Claude `settings.json` path (`%USERPROFILE%\.claude\settings.json`
     /// on Windows, `~/.claude/settings.json` elsewhere).
     pub claude_settings_path: String,
@@ -120,6 +131,14 @@ pub fn install_scripts_to(dir: &Path) -> Result<HookInstall, AppError> {
     let bash = write(WRAPPER_BASH_FILENAME, WRAPPER_BASH)?;
     let ps = write(WRAPPER_POWERSHELL_FILENAME, WRAPPER_POWERSHELL)?;
     let cmd = write(WRAPPER_CMD_FILENAME, WRAPPER_CMD)?;
+    let browser_bash = write(BROWSER_SHIM_BASH_FILENAME, BROWSER_SHIM_BASH)?;
+    let browser_cmd = write(BROWSER_SHIM_CMD_FILENAME, BROWSER_SHIM_CMD)?;
+    // The Bash shim is invoked directly as `$BROWSER <url>`, so it needs +x on Unix.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&browser_bash, std::fs::Permissions::from_mode(0o755));
+    }
     let settings = claude_settings_path().ok_or_else(|| {
         AppError::Invalid("cannot resolve home directory for Claude settings path".into())
     })?;
@@ -129,6 +148,8 @@ pub fn install_scripts_to(dir: &Path) -> Result<HookInstall, AppError> {
         wrapper_bash: bash.to_string_lossy().into_owned(),
         wrapper_powershell: ps.to_string_lossy().into_owned(),
         wrapper_cmd: cmd.to_string_lossy().into_owned(),
+        browser_shim_bash: browser_bash.to_string_lossy().into_owned(),
+        browser_shim_cmd: browser_cmd.to_string_lossy().into_owned(),
         claude_settings_path: settings.to_string_lossy().into_owned(),
     })
 }
@@ -332,6 +353,14 @@ mod tests {
                 .join(WRAPPER_CMD_FILENAME)
                 .to_string_lossy()
                 .into_owned(),
+            browser_shim_bash: dir
+                .join(BROWSER_SHIM_BASH_FILENAME)
+                .to_string_lossy()
+                .into_owned(),
+            browser_shim_cmd: dir
+                .join(BROWSER_SHIM_CMD_FILENAME)
+                .to_string_lossy()
+                .into_owned(),
             claude_settings_path: settings.to_string_lossy().into_owned(),
         }
     }
@@ -401,13 +430,15 @@ mod tests {
     }
 
     #[test]
-    fn install_scripts_writes_all_four_files_idempotently() {
+    fn install_scripts_writes_all_files_idempotently() {
         let tmp = tempdir();
         let info = install_scripts_to(&tmp).expect("install succeeds");
         assert!(Path::new(&info.claude_hook_script).is_file());
         assert!(Path::new(&info.wrapper_bash).is_file());
         assert!(Path::new(&info.wrapper_powershell).is_file());
         assert!(Path::new(&info.wrapper_cmd).is_file());
+        assert!(Path::new(&info.browser_shim_bash).is_file());
+        assert!(Path::new(&info.browser_shim_cmd).is_file());
         // Re-running is a no-op (mtime + content-stable).
         let first_mtime = std::fs::metadata(&info.claude_hook_script)
             .unwrap()

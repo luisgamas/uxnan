@@ -202,6 +202,21 @@ export function revealPath(path: string): Promise<void> {
   return invoke("reveal_path", { path });
 }
 
+// --- Integrated browser ----------------------------------------------------
+// The browser itself is a DOM `<iframe>` in the frontend; the backend only owns
+// link routing. `openUrl` is the single decision point: it routes to the in-app
+// browser tab, the OS browser, or a prompt per the user's BrowserSettings.
+
+/** Route a URL per the user's browser settings (internal tab / OS browser / ask). */
+export function openUrl(url: string): Promise<void> {
+  return invoke("open_url", { url });
+}
+
+/** Open a URL in the OS default browser unconditionally (ignores the policy). */
+export function openExternal(url: string): Promise<void> {
+  return invoke("open_external", { url });
+}
+
 /** Set (or clear with `null`) the worktree root the filesystem watcher follows.
  *  The backend then emits `fs:changed` as files under it change on disk. */
 export function fsSetWatch(path: string | null): Promise<void> {

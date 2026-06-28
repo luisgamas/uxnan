@@ -15,7 +15,7 @@ which tracks assets only a human can provide.)
 standalone app** (three-panel shell, PTY terminals + splits, git worktrees, git
 status/diff/stage/commit/history, agent monitoring with the axum hook server +
 OSC/process layers, settings/themes/i18n, multi-agent orchestration,
-**in-app auto-updater**). 100 Rust backend tests + 25 frontend Vitest unit tests
+**in-app auto-updater**). 104 Rust backend tests + 25 frontend Vitest unit tests
 (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
 (developed on Windows; CI is `{ubuntu, windows}`). **Phase 6 (embedded bridge /
 mobile pairing) is NOT started.**
@@ -54,6 +54,40 @@ mobile pairing) is NOT started.**
   waits for the safe window or explicit consent), banner UI, EN/ES i18n. Endpoint
   per channel + signing/CI in [`docs/updates.md`](docs/updates.md); signing key is
   a `FOR-HUMAN.md` item.
+
+## Integrated developer browser ☐
+
+**Goal:** a lightweight in-app browser tab to preview/debug the systems agents
+build and open the links agents produce — **not** a general-purpose browser. A
+`browser` center tab kind (foreseen in `architecture/02a` §4.2b). Agent link
+interception **on by default**; one central link-policy decision point with an
+always-working OS fallback.
+
+**Engine decision:** an iframe, **not** a native child webview. The native
+multiwebview path (Tauri `unstable`) froze the app on Windows (`add_child` blocked
+the main thread), so it was dropped; the iframe is stable, truly embedded, and
+light. Trade-off: framing-protected sites (`X-Frame-Options`) render blank → the
+toolbar's "open in system browser" covers them.
+
+**Done (code-complete, validated by clippy/fmt/tests + svelte-check + vite build):**
+`BrowserSettings`/`BrowserLinkPolicy` model + Settings → Browser pane; the
+iframe-based `BrowserPane` (back/forward/reload/address/open-external) + the
+`browser` center tab + "+ New browser tab"; `open_url`/`open_external` routing
+(shared `browser::route_url`) + the `browser:open-url` listener; **agent
+auto-interception** (`UXNAN_BROWSER_*` env + `$BROWSER` shim
+`static/hooks/uxnan-browser.{sh,cmd}` + the hook-server `/browser` route, gated on
+`enabled && allow_agents`); **Ctrl/Cmd-clickable terminal links**
+(`@xterm/addon-web-links`).
+
+Spec synced: `architecture/02a` §4.2b now documents the integrated browser
+(content-type table + design); user guide in `docs/browser.md`.
+
+### Still pending
+- [ ] **On-device validation of the agent `$BROWSER` shim.** The iframe browser,
+      its chrome, link routing and Ctrl/Cmd-click are verified on device; the
+      `$BROWSER` shim auto-interception (and the `/browser` route end-to-end) still
+      needs a real agent run to confirm. The explicit `curl` path is the reliable
+      fallback meanwhile.
 
 ## Phase 6 — Bridge integration (embedded bridge / mobile pairing) ☐
 
@@ -137,7 +171,7 @@ are **done** (see `CHANGELOG.md` + `architecture/02d` §3). Remaining follow-ups
 
 - ✅ **Verify** — `.github/workflows/ci-desktop.yml` runs svelte-check + `npm test`
   (Vitest) + vite build + cargo fmt/clippy/test on `{ubuntu, windows}` (macOS
-  deferred with Apple). 100 Rust + 25 Vitest tests.
+  deferred with Apple). 104 Rust + 25 Vitest tests.
 - ✅ **`release-desktop.yml`** — exists: `tauri-action` bundles on a `desktop-v*` tag
   → draft GitHub Release, **and signs the updater artifacts** when the signing
   secrets are set. **Windows ships without OS code-signing for now; macOS deferred.**
