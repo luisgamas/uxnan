@@ -202,15 +202,21 @@ class _GitHistoryScreenState extends ConsumerState<GitHistoryScreen> {
     );
   }
 
-  void _openDetails(GitCommit commit) {
+  Future<void> _openDetails(GitCommit commit) async {
     final cwd = widget.cwd;
     if (cwd == null) return;
-    GitCommitDetailScreen.push(
+    await GitCommitDetailScreen.push(
       context,
       cwd: cwd,
       sha: commit.sha,
       seed: commit,
     );
+    // Returning from the detail screen can leave a soft keyboard up — its
+    // `SelectableText` fields (message, SHA, metadata) open a text-input
+    // connection that resurfaces on this list, which has no editable of its
+    // own. Drop focus so it dismisses (same fix the file browser uses when
+    // returning from the file viewer).
+    if (mounted) FocusManager.instance.primaryFocus?.unfocus();
   }
 
   /// Opens the branch/ref picker and, on selection, reloads the history from

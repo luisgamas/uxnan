@@ -6,6 +6,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — phantom keyboard on returning from a commit's detail
+- **Returning from the commit detail screen no longer leaves a soft keyboard up
+  on the history list** (which has no text field of its own). The detail screen's
+  `SelectableText` fields (message, SHA, metadata) open a text-input connection
+  that resurfaced on the previous route; `GitHistoryScreen` now drops focus
+  (`FocusManager.instance.primaryFocus?.unfocus()`) after the detail screen pops —
+  the same fix the file browser uses when returning from the file viewer.
+
 ## [0.0.1-alpha.20260628] - 2026-06-28
 
 ### Fixed — onboarding shows the correct bridge install command
