@@ -2,10 +2,29 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uxnan/application/managers/file_browser_manager.dart';
+import 'package:uxnan/domain/value_objects/prompt_template.dart';
 import 'package:uxnan/domain/value_objects/rpc_message.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
+import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/file_browser_providers.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_bar.dart';
+
+/// Fixed `/` palette templates so the command test doesn't depend on disk/seed.
+const _templates = [
+  PromptTemplate(
+    id: 'review',
+    label: 'Review',
+    body: 'Review this for bugs and improvements: ',
+  ),
+];
+
+/// A [PromptTemplatesLibrary] that skips disk hydration and serves [_items].
+class _FixedTemplatesLibrary extends PromptTemplatesLibrary {
+  _FixedTemplatesLibrary(this._items);
+  final List<PromptTemplate> _items;
+  @override
+  List<PromptTemplate> build() => _items;
+}
 
 /// A canned `workspace/list` for the repo root (browse mode, empty `@` query).
 const _rootListing = <String, dynamic>{
@@ -54,6 +73,8 @@ Widget _wrap({
     overrides: [
       if (manager != null)
         fileBrowserManagerProvider.overrideWith((ref) => manager),
+      promptTemplatesLibraryProvider
+          .overrideWith(() => _FixedTemplatesLibrary(_templates)),
     ],
     child: MaterialApp(
       localizationsDelegates: AppLocalizations.localizationsDelegates,

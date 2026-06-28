@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:uxnan/domain/value_objects/prompt_template.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 
 /// What a `/` palette entry does when picked.
@@ -11,9 +12,9 @@ enum ComposerCommandKind {
 }
 
 /// One entry in uxnan's own `/` command palette. These are **client-side**
-/// actions (prompt templates + the file-mention hand-off), not the CLI agent's
+/// actions (the `@`-file hand-off + user prompt templates), not the CLI agent's
 /// own slash commands — those are interactive-mode features the bridge does not
-/// drive. Keeping the catalog data-driven means the set is easy to curate.
+/// drive.
 class ComposerCommand {
   /// Creates a [ComposerCommand].
   const ComposerCommand({
@@ -25,16 +26,16 @@ class ComposerCommand {
     this.template,
   });
 
-  /// Stable, language-neutral id — also what `/<query>` matches against.
+  /// Stable, id — also what `/<query>` matches against.
   final String id;
 
   /// Leading glyph in the palette row.
   final IconData icon;
 
-  /// Localized display name.
+  /// Display name.
   final String label;
 
-  /// Localized one-line description.
+  /// One-line description (a body preview for templates).
   final String description;
 
   /// What picking the command does.
@@ -44,10 +45,13 @@ class ComposerCommand {
   final String? template;
 }
 
-/// The `/` palette catalog, localized from [l10n]. The first entry hands off to
-/// the `@` file picker; the rest drop in common prompt templates the user then
-/// completes.
-List<ComposerCommand> composerCommands(AppLocalizations l10n) => [
+/// The `/` palette: the built-in `@`-file hand-off first, then the user's
+/// [templates] (managed in Settings → Prompt templates).
+List<ComposerCommand> composerCommands(
+  AppLocalizations l10n,
+  List<PromptTemplate> templates,
+) =>
+    [
       ComposerCommand(
         id: 'files',
         icon: Icons.alternate_email_rounded,
@@ -55,43 +59,46 @@ List<ComposerCommand> composerCommands(AppLocalizations l10n) => [
         description: l10n.composerCmdFilesDesc,
         kind: ComposerCommandKind.startFileMention,
       ),
-      ComposerCommand(
+      for (final t in templates)
+        ComposerCommand(
+          id: t.id,
+          icon: Icons.notes_rounded,
+          label: t.label,
+          description: t.body,
+          kind: ComposerCommandKind.insertTemplate,
+          template: t.body,
+        ),
+    ];
+
+/// The shipped default prompt templates, localized from [l10n]. Seeded into the
+/// user's library on first run (and on a Settings *reset*); the user then owns
+/// them. The `files` hand-off is **not** a template — it's always present.
+List<PromptTemplate> defaultPromptTemplates(AppLocalizations l10n) => [
+      PromptTemplate(
         id: 'explain',
-        icon: Icons.lightbulb_outline_rounded,
         label: l10n.composerCmdExplainLabel,
-        description: l10n.composerCmdExplainDesc,
-        kind: ComposerCommandKind.insertTemplate,
-        template: l10n.composerCmdExplainTemplate,
+        body: l10n.composerCmdExplainTemplate,
       ),
-      ComposerCommand(
+      PromptTemplate(
         id: 'review',
-        icon: Icons.rate_review_outlined,
         label: l10n.composerCmdReviewLabel,
-        description: l10n.composerCmdReviewDesc,
-        kind: ComposerCommandKind.insertTemplate,
-        template: l10n.composerCmdReviewTemplate,
+        body: l10n.composerCmdReviewTemplate,
       ),
-      ComposerCommand(
+      PromptTemplate(
         id: 'fix',
-        icon: Icons.bug_report_outlined,
         label: l10n.composerCmdFixLabel,
-        description: l10n.composerCmdFixDesc,
-        kind: ComposerCommandKind.insertTemplate,
-        template: l10n.composerCmdFixTemplate,
+        body: l10n.composerCmdFixTemplate,
       ),
-      ComposerCommand(
+      PromptTemplate(
         id: 'tests',
-        icon: Icons.science_outlined,
         label: l10n.composerCmdTestsLabel,
-        description: l10n.composerCmdTestsDesc,
-        kind: ComposerCommandKind.insertTemplate,
-        template: l10n.composerCmdTestsTemplate,
+        body: l10n.composerCmdTestsTemplate,
       ),
     ];
 
 /// Filters [commands] by a `/`-palette [rawQuery] (the text after the `/`),
-/// matching the stable [ComposerCommand.id] or the localized label
-/// (case-insensitive). An empty query returns the full catalog.
+/// matching the [ComposerCommand.id] or the label (case-insensitive). An empty
+/// query returns the full catalog.
 List<ComposerCommand> matchComposerCommands(
   List<ComposerCommand> commands,
   String rawQuery,

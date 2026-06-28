@@ -32,11 +32,15 @@ import 'package:uxnan/domain/value_objects/git/git_action_progress.dart';
 import 'package:uxnan/domain/value_objects/git/git_status_change.dart'
     show GitStatusChange;
 import 'package:uxnan/domain/value_objects/notification_preferences.dart';
+import 'package:uxnan/domain/value_objects/prompt_template.dart';
 import 'package:uxnan/domain/value_objects/turn_timeline_snapshot.dart';
 import 'package:uxnan/infrastructure/transport/secure_transport_layer.dart';
 import 'package:uxnan/infrastructure/transport/transport_selector.dart';
 import 'package:uxnan/infrastructure/transport/websocket_transport.dart';
+import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
+import 'package:uxnan/presentation/screens/conversation/composer/composer_commands.dart'
+    show defaultPromptTemplates;
 import 'package:uxnan/presentation/screens/threads/thread_list_controls.dart'
     show ThreadSort;
 import 'package:uxnan/presentation/theme/uxnan_theme.dart' show ThemeSource;
@@ -967,6 +971,108 @@ class CustomThemesLibrary extends Notifier<List<CustomTheme>> {
 final customThemesLibraryProvider =
     NotifierProvider<CustomThemesLibrary, List<CustomTheme>>(
   CustomThemesLibrary.new,
+);
+
+/// The user's `/` command-palette prompt templates. Persisted as a JSON array
+/// in SharedPreferences. On a fresh install the shipped defaults are seeded
+/// **in the app's language** (the device locale resolved against the supported
+/// locales); they're then fully user-owned — editable and deletable. Unlike the
+/// custom-themes library there are no protected built-ins: the user may clear
+/// the list entirely (the palette then offers only the `@`-file hand-off).
+class PromptTemplatesLibrary extends Notifier<List<PromptTemplate>> {
+  /// Set the moment the user mutates the list, so a late [_hydrate] (or seed)
+  /// never clobbers a change that raced in while disk was being read.
+  bool _userMutated = false;
+
+  @override
+  List<PromptTemplate> build() {
+    unawaited(_hydrate());
+    return const [];
+  }
+
+  Future<void> _hydrate() async {
+    final store = ref.read(promptTemplatesStoreProvider);
+    final stored = await store.readTemplates();
+    if (_userMutated) return;
+    if (stored != null) {
+      if (!_listEquals(state, stored)) {
+        state = List<PromptTemplate>.unmodifiable(stored);
+      }
+      return;
+    }
+    // Fresh install: seed the shipped defaults in the app's language, then
+    // persist so a follow-up read sees them (and the user can edit/delete).
+    final defaults = await _localizedDefaults();
+    if (_userMutated) return;
+    state = List<PromptTemplate>.unmodifiable(defaults);
+    await store.writeTemplates(defaults);
+  }
+
+  Future<List<PromptTemplate>> _localizedDefaults() async {
+    final device = WidgetsBinding.instance.platformDispatcher.locale;
+    final locale = AppLocalizations.supportedLocales.firstWhere(
+      (l) => l.languageCode == device.languageCode,
+      orElse: () => AppLocalizations.supportedLocales.first,
+    );
+    final l10n = await AppLocalizations.delegate.load(locale);
+    return defaultPromptTemplates(l10n);
+  }
+
+  /// Appends [template]. Ids are caller-generated and assumed unique.
+  Future<void> add(PromptTemplate template) async {
+    _userMutated = true;
+    state = List<PromptTemplate>.unmodifiable([...state, template]);
+    await _persist();
+  }
+
+  /// Replaces the template with the same id (no-op if absent).
+  Future<void> update(PromptTemplate template) async {
+    _userMutated = true;
+    final next = [
+      for (final t in state)
+        if (t.id == template.id) template else t,
+    ];
+    state = List<PromptTemplate>.unmodifiable(next);
+    await _persist();
+  }
+
+  /// Removes the template with [id]. Returns whether one was removed.
+  Future<bool> remove(String id) async {
+    _userMutated = true;
+    final next = state.where((t) => t.id != id).toList(growable: false);
+    if (next.length == state.length) return false;
+    state = List<PromptTemplate>.unmodifiable(next);
+    await _persist();
+    return true;
+  }
+
+  /// Restores the shipped defaults (in the app's language), dropping every
+  /// user edit.
+  Future<void> resetToDefaults() async {
+    _userMutated = true;
+    final defaults = await _localizedDefaults();
+    state = List<PromptTemplate>.unmodifiable(defaults);
+    await _persist();
+  }
+
+  Future<void> _persist() =>
+      ref.read(promptTemplatesStoreProvider).writeTemplates(state);
+
+  static bool _listEquals(List<PromptTemplate> a, List<PromptTemplate> b) {
+    if (identical(a, b)) return true;
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+}
+
+/// The user's `/` command-palette prompt templates (seeded from the shipped
+/// defaults on first run, then fully user-managed).
+final promptTemplatesLibraryProvider =
+    NotifierProvider<PromptTemplatesLibrary, List<PromptTemplate>>(
+  PromptTemplatesLibrary.new,
 );
 
 /// The id of the user's active custom theme within the library, or null when

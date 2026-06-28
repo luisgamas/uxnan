@@ -998,12 +998,6 @@ abstract class AppLocalizations {
   /// **'Explain'**
   String get composerCmdExplainLabel;
 
-  /// No description provided for @composerCmdExplainDesc.
-  ///
-  /// In en, this message translates to:
-  /// **'Ask the agent to explain something'**
-  String get composerCmdExplainDesc;
-
   /// No description provided for @composerCmdExplainTemplate.
   ///
   /// In en, this message translates to:
@@ -1015,12 +1009,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Review'**
   String get composerCmdReviewLabel;
-
-  /// No description provided for @composerCmdReviewDesc.
-  ///
-  /// In en, this message translates to:
-  /// **'Ask for a code review'**
-  String get composerCmdReviewDesc;
 
   /// No description provided for @composerCmdReviewTemplate.
   ///
@@ -1034,12 +1022,6 @@ abstract class AppLocalizations {
   /// **'Fix'**
   String get composerCmdFixLabel;
 
-  /// No description provided for @composerCmdFixDesc.
-  ///
-  /// In en, this message translates to:
-  /// **'Ask the agent to fix a bug'**
-  String get composerCmdFixDesc;
-
   /// No description provided for @composerCmdFixTemplate.
   ///
   /// In en, this message translates to:
@@ -1052,17 +1034,119 @@ abstract class AppLocalizations {
   /// **'Tests'**
   String get composerCmdTestsLabel;
 
-  /// No description provided for @composerCmdTestsDesc.
-  ///
-  /// In en, this message translates to:
-  /// **'Ask the agent to write tests'**
-  String get composerCmdTestsDesc;
-
   /// No description provided for @composerCmdTestsTemplate.
   ///
   /// In en, this message translates to:
   /// **'Write tests for: '**
   String get composerCmdTestsTemplate;
+
+  /// No description provided for @settingsPromptTemplatesTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Prompt templates'**
+  String get settingsPromptTemplatesTitle;
+
+  /// No description provided for @settingsPromptTemplatesSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit the / command palette snippets'**
+  String get settingsPromptTemplatesSubtitle;
+
+  /// No description provided for @promptTemplatesTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Prompt templates'**
+  String get promptTemplatesTitle;
+
+  /// No description provided for @promptTemplatesAdd.
+  ///
+  /// In en, this message translates to:
+  /// **'New template'**
+  String get promptTemplatesAdd;
+
+  /// No description provided for @promptTemplatesReset.
+  ///
+  /// In en, this message translates to:
+  /// **'Reset to defaults'**
+  String get promptTemplatesReset;
+
+  /// No description provided for @promptTemplatesEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No templates'**
+  String get promptTemplatesEmpty;
+
+  /// No description provided for @promptTemplatesEmptyBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Create snippets you can drop into a message from the composer\'s / palette.'**
+  String get promptTemplatesEmptyBody;
+
+  /// No description provided for @promptTemplatesNewTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'New template'**
+  String get promptTemplatesNewTitle;
+
+  /// No description provided for @promptTemplatesEditTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit template'**
+  String get promptTemplatesEditTitle;
+
+  /// No description provided for @promptTemplatesLabelField.
+  ///
+  /// In en, this message translates to:
+  /// **'Name'**
+  String get promptTemplatesLabelField;
+
+  /// No description provided for @promptTemplatesLabelHint.
+  ///
+  /// In en, this message translates to:
+  /// **'e.g. Review'**
+  String get promptTemplatesLabelHint;
+
+  /// No description provided for @promptTemplatesBodyField.
+  ///
+  /// In en, this message translates to:
+  /// **'Text'**
+  String get promptTemplatesBodyField;
+
+  /// No description provided for @promptTemplatesBodyHint.
+  ///
+  /// In en, this message translates to:
+  /// **'The text inserted into the message'**
+  String get promptTemplatesBodyHint;
+
+  /// No description provided for @promptTemplatesDeleteTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete template?'**
+  String get promptTemplatesDeleteTitle;
+
+  /// Confirmation body when deleting a prompt template.
+  ///
+  /// In en, this message translates to:
+  /// **'\"{label}\" will be removed.'**
+  String promptTemplatesDeleteBody(String label);
+
+  /// No description provided for @promptTemplatesDeleteConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete'**
+  String get promptTemplatesDeleteConfirm;
+
+  /// No description provided for @promptTemplatesResetTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Reset templates?'**
+  String get promptTemplatesResetTitle;
+
+  /// No description provided for @promptTemplatesResetBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This restores the default templates and drops your edits.'**
+  String get promptTemplatesResetBody;
 
   /// No description provided for @newThreadAction.
   ///

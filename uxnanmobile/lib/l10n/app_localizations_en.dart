@@ -494,16 +494,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get composerCmdExplainLabel => 'Explain';
 
   @override
-  String get composerCmdExplainDesc => 'Ask the agent to explain something';
-
-  @override
   String get composerCmdExplainTemplate => 'Explain how this works: ';
 
   @override
   String get composerCmdReviewLabel => 'Review';
-
-  @override
-  String get composerCmdReviewDesc => 'Ask for a code review';
 
   @override
   String get composerCmdReviewTemplate =>
@@ -513,19 +507,72 @@ class AppLocalizationsEn extends AppLocalizations {
   String get composerCmdFixLabel => 'Fix';
 
   @override
-  String get composerCmdFixDesc => 'Ask the agent to fix a bug';
-
-  @override
   String get composerCmdFixTemplate => 'Find and fix the bug in: ';
 
   @override
   String get composerCmdTestsLabel => 'Tests';
 
   @override
-  String get composerCmdTestsDesc => 'Ask the agent to write tests';
+  String get composerCmdTestsTemplate => 'Write tests for: ';
 
   @override
-  String get composerCmdTestsTemplate => 'Write tests for: ';
+  String get settingsPromptTemplatesTitle => 'Prompt templates';
+
+  @override
+  String get settingsPromptTemplatesSubtitle =>
+      'Edit the / command palette snippets';
+
+  @override
+  String get promptTemplatesTitle => 'Prompt templates';
+
+  @override
+  String get promptTemplatesAdd => 'New template';
+
+  @override
+  String get promptTemplatesReset => 'Reset to defaults';
+
+  @override
+  String get promptTemplatesEmpty => 'No templates';
+
+  @override
+  String get promptTemplatesEmptyBody =>
+      'Create snippets you can drop into a message from the composer\'s / palette.';
+
+  @override
+  String get promptTemplatesNewTitle => 'New template';
+
+  @override
+  String get promptTemplatesEditTitle => 'Edit template';
+
+  @override
+  String get promptTemplatesLabelField => 'Name';
+
+  @override
+  String get promptTemplatesLabelHint => 'e.g. Review';
+
+  @override
+  String get promptTemplatesBodyField => 'Text';
+
+  @override
+  String get promptTemplatesBodyHint => 'The text inserted into the message';
+
+  @override
+  String get promptTemplatesDeleteTitle => 'Delete template?';
+
+  @override
+  String promptTemplatesDeleteBody(String label) {
+    return '\"$label\" will be removed.';
+  }
+
+  @override
+  String get promptTemplatesDeleteConfirm => 'Delete';
+
+  @override
+  String get promptTemplatesResetTitle => 'Reset templates?';
+
+  @override
+  String get promptTemplatesResetBody =>
+      'This restores the default templates and drops your edits.';
 
   @override
   String get newThreadAction => 'New conversation';

@@ -26,17 +26,28 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
     is unchanged, so the sent prompt stays plain.
   - **`/` command palette** — when the message *starts* with `/`, a panel lists
     uxnan's own client-side commands (these are **not** the agent CLI's
-    interactive slash commands): a *files* entry that hands off to the `@`
-    picker, plus prompt-template inserts (*explain*, *review*, *fix*, *tests*).
-    A `/` mid-message (e.g. a path) never opens it.
+    interactive slash commands): a built-in *files* entry that hands off to the
+    `@` picker, plus the user's **prompt templates**. A `/` mid-message (e.g. a
+    path) never opens it.
+
+### Added — manage `/` prompt templates in Settings
+- **Settings → Prompt templates** — a new screen to **create, edit, delete and
+  reset** the `/` palette's prompt templates. Templates are single-language
+  (whatever the user types) and persist on-device (`PromptTemplatesStore`,
+  SharedPreferences). On a fresh install the shipped defaults (*explain*,
+  *review*, *fix*, *tests*) are **seeded in the app's language** and are then
+  fully user-owned; the user may also clear them entirely (the palette then
+  offers only the `@`-file hand-off). New `PromptTemplate` model +
+  `promptTemplatesLibraryProvider` (mirrors the custom-themes library). New
+  EN + ES strings (`settingsPromptTemplates*`, `promptTemplates*`).
 - Trigger detection and text-replacement are the pure, unit-tested
   `mention_suggestion.dart` helpers (`detectComposerTrigger`, `splitFileQuery`,
   `applyFileMention`, `applyCommand`); the palette catalog + filter live in
-  `composer_commands.dart` (`matchComposerCommands`); the badge rendering in
-  `mention_text_controller.dart`. New `FileBrowserManager.listDirectory` (one
-  level) + `searchFiles` (repo-wide, `workspace/searchFiles`). New EN + ES strings
-  (`composerMention*`, `composerCommands*`, `composerCmd*`). 29 new tests (22
-  unit + 7 widget).
+  `composer_commands.dart` (`matchComposerCommands` + `defaultPromptTemplates`);
+  the badge rendering in `mention_text_controller.dart`. New
+  `FileBrowserManager.listDirectory` (one level) + `searchFiles` (repo-wide,
+  `workspace/searchFiles`). New EN + ES strings (`composerMention*`,
+  `composerCommands*`, `composerCmd*`). 40 new tests (31 unit + 9 widget).
 
 ## [0.0.1-alpha.20260628] - 2026-06-28
 

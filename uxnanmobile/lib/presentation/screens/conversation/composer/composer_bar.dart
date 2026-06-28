@@ -5,8 +5,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/application/managers/file_browser_manager.dart';
 import 'package:uxnan/core/extensions/string_ext.dart';
 import 'package:uxnan/domain/entities/file_browser.dart';
+import 'package:uxnan/domain/value_objects/prompt_template.dart';
 import 'package:uxnan/infrastructure/speech/speech_to_text_service.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
+import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/file_browser_providers.dart';
 import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_commands.dart';
@@ -397,6 +399,8 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
     final l10n = AppLocalizations.of(context);
     final showSend = _hasText || widget.hasAttachments;
     final canSend = showSend && widget.enabled;
+    // The `/` palette is the built-in file hand-off + the user's templates.
+    final templates = ref.watch(promptTemplatesLibraryProvider);
 
     return SafeArea(
       top: false,
@@ -420,6 +424,7 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
                 if (_trigger != null)
                   _SuggestionPanel(
                     trigger: _trigger!,
+                    templates: templates,
                     files: _fileMatches,
                     listing: _listing,
                     listError: _listError,
@@ -525,6 +530,7 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
 class _SuggestionPanel extends StatelessWidget {
   const _SuggestionPanel({
     required this.trigger,
+    required this.templates,
     required this.files,
     required this.listing,
     required this.listError,
@@ -540,6 +546,7 @@ class _SuggestionPanel extends StatelessWidget {
   });
 
   final ComposerTriggerContext trigger;
+  final List<PromptTemplate> templates;
   final List<FileEntry> files;
   final bool listing;
   final bool listError;
@@ -560,7 +567,10 @@ class _SuggestionPanel extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     final isCommand = trigger.trigger == ComposerTrigger.command;
     final commands = isCommand
-        ? matchComposerCommands(composerCommands(l10n), trigger.query)
+        ? matchComposerCommands(
+            composerCommands(l10n, templates),
+            trigger.query,
+          )
         : const <ComposerCommand>[];
 
     final title =
