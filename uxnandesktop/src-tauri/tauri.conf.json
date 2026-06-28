@@ -38,7 +38,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDlEM0E4OUVFMUM5NDEyMzcKUldRM0VwUWM3b2s2blN2Z1FOOUI1akhEaDRwL0VxYXpZbUUyWUtOWjhuUDdPSUszWHNsTUF0enkK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IENFMjdFQUFFRTBDRDE0Q0UKUldUT0ZNM2dydW9uemdBMmdQeW1SK2I1cmJXaXdTck1xMlNxL2ZHSVRWK0N3WXpEUDlVZlZXYTEK",
       "endpoints": [
         "https://github.com/luisgamas/uxnan/releases/download/desktop-updater-stable/latest.json"
       ],
