@@ -6,6 +6,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.0.1-alpha.20260627] - 2026-06-27
+
 ### Fixed — recovered conversations keep messages and activity interleaved
 - **A conversation recovered after a reconnect now shows each response with its
   work log inline, in order** — instead of every command/activity log stacked
