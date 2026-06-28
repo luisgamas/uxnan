@@ -71,7 +71,7 @@ connected to live bridge data, validated on-device against a real bridge.
   *Update available* banner. Android = Play In-App Update (immediate flow); iOS =
   App Store version lookup + open listing. Wraps `flutter_upgrade_version` behind
   a guarded `AppUpdateService`. **Not yet device-verified** (Android needs a Play
-  internal-track build; iOS needs an App Store listing) — see below.
+  open-testing (beta) track build; iOS needs an App Store listing) — see below.
 - **i18n** — full app translated (EN + ES) via `flutter gen-l10n`.
 
 iOS is **not yet built** (the Podfile is generated on the first macOS build) and is
@@ -164,7 +164,7 @@ The following are pending and tracked as assets in `FOR-HUMAN.md`:
 ## Release / CI-CD
 
 - [ ] **First signed release run** — `.github/workflows/{ci-mobile,release-mobile}.yml`
-      both exist (verify gate + AAB → Google Play **internal** track via
+      both exist (verify gate + AAB → Google Play **open-testing** (beta) track via
       `r0adkll/upload-google-play`); signing is wired in `build.gradle.kts` and the
       secrets are loaded (`ANDROID_KEYSTORE_B64`, key password/alias,
       `GOOGLE_SERVICES_JSON`, `PLAY_SERVICE_ACCOUNT_JSON_BASE64`). What remains is
@@ -178,7 +178,7 @@ The following are pending and tracked as assets in `FOR-HUMAN.md`:
       (immediate flow); iOS looks up the **App Store** version and opens the
       listing. **Still pending:** Android In-App Updates only report a real
       update from a build installed via **Google Play** — verify against a **Play
-      internal-testing track** build (a sideloaded APK always reports "no
+      open-testing (beta) track** build (a sideloaded APK always reports "no
       update"). The iOS path is inert until the App Store listing exists
       (`FOR-HUMAN.md`).
 - [ ] **APK / GitHub-Releases update channel** (not built) — for users on a

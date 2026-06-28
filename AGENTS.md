@@ -550,7 +550,7 @@ contributor-facing summary is in [`CONTRIBUTING.md`](CONTRIBUTING.md) → *Relea
 2. **Update `VERSIONS.md` and validate the deploy** — in the same change set, add or
    refresh the component's row in the history table, **and confirm the release
    actually shipped**: the `release-*.yml` run is green and the artifact landed (npm
-   published under the `alpha` dist-tag / the Play **internal** build uploaded / the
+   published under the `alpha` dist-tag / the Play **open-testing** (beta) build uploaded / the
    desktop GitHub **Release** draft exists). A red or half-finished release run is
    **not** a release — fix it before recording the row.
 3. **Mobile — `pubspec.yaml` MUST match the tag (NON-NEGOTIABLE).** Before tagging

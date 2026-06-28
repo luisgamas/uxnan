@@ -77,7 +77,7 @@ first re-runs the verification and only builds/publishes if it's green.
 | --- | ------ |
 | `shared-v*` / `bridge-v*` / `relay-v*` | publish to **npm** (publish `shared` first) |
 | `desktop-v*` | build installers → **GitHub Release** (draft) |
-| `mobile-v*[+build]` | signed AAB → **Google Play** (internal track) |
+| `mobile-v*[+build]` | signed AAB → **Google Play** (open testing / beta) |
 
 Versions follow `0.0.PATCH-alpha.YYYYMMDD` (see [`VERSIONS.md`](VERSIONS.md)).
 

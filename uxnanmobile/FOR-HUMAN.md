@@ -62,7 +62,7 @@ or asset is owed; this unblocks itself once the app ships to the App Store
 (opening the `https://apps.apple.com/...` link needs **no** extra `Info.plist`
 config). Android needs nothing here — it uses the Play In-App Update API, which
 reports updates only for builds installed from **Google Play** (verify on a Play
-internal-testing track build).
+open-testing (beta) track build).
 
 ## iOS signing (for a store / signed `.ipa`)
 

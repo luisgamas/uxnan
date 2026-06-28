@@ -1,7 +1,7 @@
-name: Release — Mobile (Google Play, internal track)
+name: Release — Mobile (Google Play, open testing / beta)
 
 # Builds a signed AAB on a `mobile-v<version>[+<build>]` tag and uploads it to
-# the Google Play **internal** testing track. Distribution is via Google Play,
+# the Google Play **open testing** (beta) track. Distribution is via Google Play,
 # not GitHub Releases. iOS is deferred (Apple).
 #
 # Tag examples:
@@ -140,12 +140,12 @@ jobs:
             --build-name="${{ steps.meta.outputs.name }}" \
             --build-number="${{ steps.meta.outputs.build }}"
 
-      - name: Upload to Google Play (internal track)
+      - name: Upload to Google Play (open testing / beta)
         uses: r0adkll/upload-google-play@v1
         with:
           serviceAccountJson: uxnanmobile/play-account.json
           packageName: dev.luisgamas.uxnanmobile
           releaseFiles: uxnanmobile/build/app/outputs/bundle/release/app-release.aab
-          track: internal
+          track: beta
           status: completed
           whatsNewDirectory: .github/whatsnew

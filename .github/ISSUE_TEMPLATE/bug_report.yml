@@ -97,7 +97,7 @@ body:
     id: install
     attributes:
       label: How was it installed / built?
-      description: "e.g. npm i -g, GitHub Release installer (.msi/.deb), built from source, Google Play internal."
+      description: "e.g. npm i -g, GitHub Release installer (.msi/.deb), built from source, Google Play."
 
   - type: textarea
     id: context

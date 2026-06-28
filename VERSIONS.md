@@ -14,7 +14,7 @@ which versions "go together".
   `shared-v*`, `bridge-v*`, `relay-v*`, `desktop-v*`, `mobile-v*`
   (mobile may append `+<buildNumber>`, e.g. `mobile-v0.0.1-alpha.20260621+5`).
 - npm packages publish under the **`alpha`** dist-tag.
-- Mobile ships to **Google Play** (internal track); desktop to **GitHub
+- Mobile ships to **Google Play** (open testing / beta); desktop to **GitHub
   Releases** (draft).
 
 ## Release checklist
@@ -37,7 +37,7 @@ Cutting a release for component `<comp>` (tag `<comp>-v<version>`):
    which triggers `release-<comp>.yml`.
 5. **Validate the deploy** — wait for the `release-*.yml` run to go **green** and
    confirm the artifact actually landed: npm shows the new version under the `alpha`
-   dist-tag / the Play **internal** track has the new build / the desktop **GitHub
+   dist-tag / the Play **open-testing** (beta) track has the new build / the desktop **GitHub
    Release** draft exists. A red or half-finished run is **not** a release — fix it.
 6. **Record it** — add the row to the *History* table below (date + the component's
    new version) and commit it to `main`, as the last release step (see the

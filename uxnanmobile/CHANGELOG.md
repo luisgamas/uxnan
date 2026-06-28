@@ -40,7 +40,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   `…dismissedVersion`). Added `url_launcher` for the iOS App Store open action,
   and R8 keep rules for `com.google.android.play.core.**` (release minify is on).
 - **Caveats:** Android In-App Updates only report a real update when the build
-  was installed from **Google Play** (a Play *internal-testing* track build) — a
+  was installed from **Google Play** (a Play *open-testing* / beta track build) — a
   sideloaded `--release`/debug APK reports "no update", by design. The **iOS**
   path is inert until the app has an **App Store listing** (the iTunes lookup
   returns empty before then). A separate **GitHub-Releases-APK** update channel
