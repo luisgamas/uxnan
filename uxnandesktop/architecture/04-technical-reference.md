@@ -307,6 +307,25 @@ Monitoreo en tiempo real de agentes. Badges en sidebar. Notificaciones nativas d
 - Implementar splits de TabGroup (nivel alto: dividir area central en regiones independientes).
 - Testing E2E de flujos principales con Playwright o WebdriverIO.
 
+#### Auto-updater in-app — ✅ Hecho (adición post-plan)
+
+- `tauri-plugin-updater` envuelto en `src-tauri/src/updater.rs`: comandos
+  `updater_check` / `updater_download` / `updater_staged` / `updater_install`.
+- **Descarga e instalación separadas a propósito**: descargar es en segundo plano
+  (no molesta a los agentes); instalar reinicia la app y por tanto **detiene los
+  agentes** (cada agente es un hijo PTY del proceso), así que la instalación está
+  guardada por la actividad de agentes (instala al quedar inactivos, o con
+  confirmación explícita). Antes de instalar se cierran las terminales limpiamente.
+- **Canales** `stable`/`nightly` (default stable), mapeados al flag `prerelease`
+  de GitHub (no al tag): release normal → stable, release marcado pre-release →
+  nightly; endpoint por canal apuntando a un `latest.json` rodante. La comparacion
+  de versiones usa la base numerica (`0.0.X`) que empaqueta el MSI; el nombre
+  completo (con `-alpha.YYYYMMDD`) se muestra via `app_version`.
+- UI: banner (`UpdateBanner.svelte`) + sección **Settings → Updates**; store
+  `state/updater.svelte.ts`; i18n EN/ES. Firma minisign gratuita (`pubkey` en
+  `tauri.conf.json`), independiente del code-signing del SO. Detalle operativo
+  en `docs/updates.md`; clave de firma en `FOR-HUMAN.md`.
+
 #### Entregable
 
 ADE MVP completo, pulido y listo para uso diario.

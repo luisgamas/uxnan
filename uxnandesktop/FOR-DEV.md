@@ -14,10 +14,11 @@ which tracks assets only a human can provide.)
 **Phases 0–5 + cross-cutting (S) are DONE — the ADE is alpha-functional as a
 standalone app** (three-panel shell, PTY terminals + splits, git worktrees, git
 status/diff/stage/commit/history, agent monitoring with the axum hook server +
-OSC/process layers, settings/themes/i18n, multi-agent orchestration). 98 Rust
-backend tests + 19 frontend Vitest unit tests (pure logic); **no Svelte component
-or E2E tests yet**. macOS is **unvalidated** (developed on Windows; CI is
-`{ubuntu, windows}`). **Phase 6 (embedded bridge / mobile pairing) is NOT started.**
+OSC/process layers, settings/themes/i18n, multi-agent orchestration,
+**in-app auto-updater**). 100 Rust backend tests + 25 frontend Vitest unit tests
+(pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
+(developed on Windows; CI is `{ubuntu, windows}`). **Phase 6 (embedded bridge /
+mobile pairing) is NOT started.**
 
 **Built (DONE), in detail:**
 
@@ -47,6 +48,12 @@ or E2E tests yet**. macOS is **unvalidated** (developed on Windows; CI is
   detection + manual + auto-launch, per-agent env vars, a configurable agent
   launch shell (Command Prompt by default on Windows), virtualized lists
   (`@tanstack/svelte-virtual`), opt-in keep-awake (Windows).
+- **In-app auto-updater** (`tauri-plugin-updater`) — Settings → Updates with
+  stable/nightly channels (mapped to GitHub's pre-release flag), background
+  download + agent-idle-guarded install (a restart stops agents, so the install
+  waits for the safe window or explicit consent), banner UI, EN/ES i18n. Endpoint
+  per channel + signing/CI in [`docs/updates.md`](docs/updates.md); signing key is
+  a `FOR-HUMAN.md` item.
 
 ## Phase 6 — Bridge integration (embedded bridge / mobile pairing) ☐
 
@@ -130,17 +137,22 @@ are **done** (see `CHANGELOG.md` + `architecture/02d` §3). Remaining follow-ups
 
 - ✅ **Verify** — `.github/workflows/ci-desktop.yml` runs svelte-check + `npm test`
   (Vitest) + vite build + cargo fmt/clippy/test on `{ubuntu, windows}` (macOS
-  deferred with Apple). 98 Rust + 19 Vitest tests.
+  deferred with Apple). 100 Rust + 25 Vitest tests.
 - ✅ **`release-desktop.yml`** — exists: `tauri-action` bundles on a `desktop-v*` tag
-  → draft GitHub Release. **Windows ships unsigned for now; macOS deferred.**
-- [ ] **Code-signing** — Windows Authenticode + macOS Developer ID + notarization
-      (human-provided certs — see `FOR-HUMAN.md`). The build runs unsigned without
-      them (OS "unknown publisher" warnings).
-- [ ] **Auto-updater (real)** — DEFERRED by decision; `tauri-plugin-updater` + an
-      `updater` block + a signing keypair (`TAURI_SIGNING_PRIVATE_KEY`) + a hosted
-      `latest.json`. Until then installers are downloaded manually.
-- [ ] **In-app version checker** — DEFERRED. Notify on a newer GitHub Release and let
-      the user decide (no silent install).
+  → draft GitHub Release, **and signs the updater artifacts** when the signing
+  secrets are set. **Windows ships without OS code-signing for now; macOS deferred.**
+- ✅ **Auto-updater** — `tauri-plugin-updater` wired end-to-end in the app
+  (`src-tauri/src/updater.rs` + Settings → Updates + banner; stable/nightly
+  channels via GitHub's pre-release flag; background download + idle-guarded
+  install). The rolling per-channel `latest.json` is published by
+  `release-desktop-manifest.yml`. **Functional once
+  the human supplies the signing keypair** (`FOR-HUMAN.md`) and publishes a signed
+  release — until then `check()` finds nothing and the app runs normally. See
+  [`docs/updates.md`](docs/updates.md).
+- [ ] **Code-signing (OS)** — Windows Authenticode + macOS Developer ID +
+      notarization (human-provided **paid** certs — see `FOR-HUMAN.md`).
+      Independent of the (free) updater signature above; the build runs unsigned
+      without them (OS "unknown publisher" warnings).
 
 ## Cross-cutting / standing rules
 
