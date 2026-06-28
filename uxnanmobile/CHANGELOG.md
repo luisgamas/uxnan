@@ -6,6 +6,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.0.1-alpha.20260628] - 2026-06-28
+
 ### Fixed — onboarding shows the correct bridge install command
 - **The "Install the bridge on your PC" onboarding step now tells the user to
   install the bridge as a global npm package, not run it via `npx`.** The bridge
