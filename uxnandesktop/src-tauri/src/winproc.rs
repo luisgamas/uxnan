@@ -27,7 +27,10 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 /// window on Windows. Behaves exactly like `Command::new(program)` everywhere
 /// else.
 pub fn command<S: AsRef<OsStr>>(program: S) -> Command {
+    #[cfg(windows)]
     let mut cmd = Command::new(program);
+    #[cfg(not(windows))]
+    let cmd = Command::new(program);
     #[cfg(windows)]
     cmd.creation_flags(CREATE_NO_WINDOW);
     cmd
