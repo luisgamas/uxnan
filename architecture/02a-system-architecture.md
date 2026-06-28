@@ -1681,8 +1681,16 @@ async function handleApplyCheckpoint({ checkpointId }) { ... }
 async function handleApplyPatchChanges({ changes }) { ... }
 ```
 
-Las RPCs `workspace/list`, `workspace/readFile` y `workspace/readImage`
-son consumidas hoy por:
+`workspace/searchFiles` complementa a `workspace/list` con una **busqueda
+fuzzy de archivos en todo el repositorio** (respeta `.gitignore`, excluye
+`.git` y archivos sensibles igual que `list`): en un repo git es un unico
+`git ls-files` (tracked + untracked no ignorados) mas las carpetas ancestro
+derivadas; fuera de un repo, un walk recursivo acotado. El ranking es
+basename-substring > path-substring > subsecuencia. Lo consume el picker `@`
+del composer movil, y queda listo para un buscador en el visor de archivos.
+
+Las RPCs `workspace/list`, `workspace/searchFiles`, `workspace/readFile` y
+`workspace/readImage` son consumidas hoy por:
 
 - **Folder browser en la app** (`NewConversationSheet` /
   `workspace_browser.dart`) — el selector de root + breadcrumb.
