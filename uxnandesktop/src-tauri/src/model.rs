@@ -286,6 +286,19 @@ pub struct AppSettings {
     /// (see `updater.rs`). All fields default, so older state loads unchanged.
     #[serde(default)]
     pub updater: UpdaterSettings,
+    /// Integrated developer browser (Settings → Browser): whether links route to
+    /// the in-app browser window vs the OS browser, and whether agents may drive it
+    /// (see `BrowserSettings`). All fields default, so older state loads unchanged.
+    #[serde(default)]
+    pub browser: BrowserSettings,
+    /// Width (px) of the integrated browser panel (the right-side "4th panel").
+    #[serde(default = "default_browser_panel_width")]
+    pub browser_panel_width: u32,
+}
+
+/// Default width of the integrated browser panel.
+fn default_browser_panel_width() -> u32 {
+    520
 }
 
 /// Release channel the updater follows. Mapped to GitHub's only release
@@ -357,6 +370,60 @@ impl Default for UpdaterSettings {
             channel: UpdateChannel::Stable,
             auto_download: true,
             install_policy: InstallPolicy::Ask,
+        }
+    }
+}
+
+/// Where a link opens when the integrated browser is enabled. Governs both links
+/// the user clicks inside the ADE and URLs agents try to open (via the injected
+/// `BROWSER` shim — see `hooks.rs`). `Internal` uses the in-app browser tab;
+/// `External` always hands off to the OS default browser; `Ask` defers the choice
+/// to the user per link (frontend-resolved).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum BrowserLinkPolicy {
+    #[default]
+    Internal,
+    External,
+    Ask,
+}
+
+/// Integrated **developer** browser (Settings → Browser). A lightweight in-app
+/// webview tab for previewing/debugging the systems agents build and opening the
+/// links agents produce — deliberately not a general-purpose browser. The webview
+/// is created lazily (only when a browser tab opens) and torn down when closed, so
+/// it costs nothing until used. All fields default, so older state loads unchanged.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrowserSettings {
+    /// Master switch. When off, every link goes to the OS default browser and no
+    /// `BROWSER` shim is injected into agents. Default on.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Where links open by default (see [`BrowserLinkPolicy`]). Default `internal`.
+    #[serde(default)]
+    pub link_policy: BrowserLinkPolicy,
+    /// Let agents open URLs in the integrated browser by injecting a `BROWSER`
+    /// shim into their environment (see `hooks.rs`). Default on.
+    #[serde(default = "default_true")]
+    pub allow_agents: bool,
+    /// Make URLs printed in the terminal clickable (routed through `link_policy`).
+    /// Default on.
+    #[serde(default = "default_true")]
+    pub terminal_links: bool,
+    /// Page opened when a fresh browser tab has no target URL. Empty = blank tab.
+    #[serde(default)]
+    pub homepage: String,
+}
+
+impl Default for BrowserSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            link_policy: BrowserLinkPolicy::Internal,
+            allow_agents: true,
+            terminal_links: true,
+            homepage: String::new(),
         }
     }
 }
@@ -461,6 +528,8 @@ impl Default for AppSettings {
             terminal_theme_dark_id: default_terminal_theme_id(),
             ai_commit: AiCommitSettings::default(),
             updater: UpdaterSettings::default(),
+            browser: BrowserSettings::default(),
+            browser_panel_width: default_browser_panel_width(),
         }
     }
 }
@@ -674,6 +743,29 @@ mod tests {
     #[test]
     fn theme_serializes_lowercase() {
         assert_eq!(serde_json::to_string(&Theme::System).unwrap(), "\"system\"");
+    }
+
+    #[test]
+    fn browser_settings_default_on_and_serialize_camel_case() {
+        let settings = AppSettings::default();
+        assert!(settings.browser.enabled);
+        assert!(settings.browser.allow_agents);
+        assert_eq!(settings.browser.link_policy, BrowserLinkPolicy::Internal);
+        let json = serde_json::to_string(&settings).unwrap();
+        assert!(json.contains("linkPolicy"));
+        assert!(json.contains("\"internal\""));
+        assert!(!json.contains("link_policy"));
+    }
+
+    #[test]
+    fn settings_deserialize_without_browser_defaults_on() {
+        // State persisted before the integrated browser existed must still load,
+        // and pick up the default-on browser settings.
+        let json = r#"{"theme":"system","leftSidebarWidth":280,"rightSidebarWidth":350,
+            "leftSidebarOpen":true,"rightSidebarOpen":true}"#;
+        let settings: AppSettings = serde_json::from_str(json).unwrap();
+        assert!(settings.browser.enabled);
+        assert_eq!(settings.browser.link_policy, BrowserLinkPolicy::Internal);
     }
 
     #[test]
