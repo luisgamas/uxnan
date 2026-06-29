@@ -1,6 +1,6 @@
 {
   "name": "uxnan-desktop",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Uxnan Desktop — Agent Development Environment (ADE). Tauri 2 + Svelte 5.",
   "type": "module",
   "license": "MPL-2.0",

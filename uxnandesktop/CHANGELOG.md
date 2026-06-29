@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.2-alpha.20260628] - 2026-06-28
+
 ### Added — integrated developer browser
 - **A complete in-app developer browser** to preview/debug the systems agents build
   and open the links agents produce — **not** a general-purpose browser. It lives in
