@@ -5,6 +5,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — no more console windows flashing open on Windows
+- **The packaged Windows app no longer flashes a cascade of console windows on
+  launch (and during use).** A release build runs under the Windows `windows`
+  subsystem (no console of its own), so every child process the app spawned —
+  `git` (including the 3s status watcher and the initial repo load), `wsl.exe`
+  for WSL repos, and the agent CLIs probed for model discovery / AI commit
+  messages — got a brand-new console **window** allocated by Windows. They
+  appeared as terminal windows blinking open and shut, one after another. The bug
+  was invisible in `cargo tauri dev` because a debug build keeps a console the
+  children inherit.
+- **Fix:** a new `src-tauri/src/winproc.rs` helper (`winproc::command`) creates
+  every spawned `tokio::process::Command` with the `CREATE_NO_WINDOW` creation
+  flag on Windows (no-op elsewhere). `git.rs` (`git_command`, covering `git` +
+  `wsl.exe`) and `aicommit.rs` (agent generation + Codex/Claude/Gemini model
+  discovery) now route through it. PTY-hosted shells were never affected — they
+  run under ConPTY, which is already windowless.
+
 ## [0.0.1-alpha.20260627] - 2026-06-27
 
 ### Added — in-app auto-updater (Settings → Updates)

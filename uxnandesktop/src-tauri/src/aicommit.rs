@@ -15,7 +15,6 @@ use std::process::Stdio;
 use std::time::Duration;
 
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::process::Command;
 
 use crate::agentcli::{self, AgentModel};
 use crate::error::AppError;
@@ -116,7 +115,7 @@ async fn run_generate(
     args: &[String],
     cwd: &str,
 ) -> Result<String, AppError> {
-    let mut cmd = Command::new(&resolved.program);
+    let mut cmd = crate::winproc::command(&resolved.program);
     cmd.args(&resolved.prepend)
         .args(args)
         .current_dir(cwd)
@@ -160,7 +159,7 @@ async fn run_list(
     extra: &[&str],
     include_stderr: bool,
 ) -> Option<String> {
-    let mut cmd = Command::new(&resolved.program);
+    let mut cmd = crate::winproc::command(&resolved.program);
     cmd.args(&resolved.prepend)
         .args(extra)
         .stdin(Stdio::null())
@@ -188,7 +187,7 @@ async fn codex_models(resolved: &agentcli::Resolved) -> Vec<AgentModel> {
 }
 
 async fn codex_models_inner(resolved: &agentcli::Resolved) -> Option<Vec<AgentModel>> {
-    let mut child = Command::new(&resolved.program)
+    let mut child = crate::winproc::command(&resolved.program)
         .args(&resolved.prepend)
         .arg("app-server")
         .stdin(Stdio::piped())
