@@ -15,6 +15,8 @@ import type {
   PatchChange,
   WorkspaceEntry,
   WorkspaceListing,
+  WorkspaceMatch,
+  WorkspaceSearchResult,
 } from '@uxnan/shared';
 import { isSensitiveName, resolveWithinRoot } from './path-guard.js';
 import { runGit } from '../git/git-runner.js';
@@ -100,6 +102,109 @@ export class WorkspaceService {
   }
 
   /**
+   * Repo-wide fuzzy file search for the `@`-mention picker (and, later, a file
+   * browser search). Honors `.gitignore` and skips `.git` + sensitive files.
+   *
+   * Candidates are every non-ignored file (tracked + untracked) plus their
+   * ancestor directories, so both files and folders are matchable. In a git
+   * repo this is a single `git ls-files` (respecting `.gitignore`); outside a
+   * repo it falls back to a bounded recursive walk. Matches are ranked
+   * basename-substring > path-substring > subsequence, shorter paths first.
+   */
+  async searchFiles(root: string, query: string, limit?: number): Promise<WorkspaceSearchResult> {
+    const resolvedRoot = resolve(root);
+    const cap = Math.min(Math.max(limit ?? 40, 1), 100);
+    const q = query.trim();
+
+    let files: string[];
+    try {
+      files = await this.#gitFiles(resolvedRoot);
+    } catch {
+      files = await this.#walkFiles(resolvedRoot);
+    }
+
+    // Every file's ancestor directories are matchable too (so `@lib` finds the
+    // folder, not just files under it).
+    const dirs = new Set<string>();
+    for (const file of files) {
+      let slash = file.lastIndexOf('/');
+      while (slash > 0) {
+        dirs.add(file.slice(0, slash));
+        slash = file.lastIndexOf('/', slash - 1);
+      }
+    }
+    const candidates: WorkspaceMatch[] = [
+      ...files.map((path): WorkspaceMatch => ({ path, type: 'file' })),
+      ...[...dirs].map((path): WorkspaceMatch => ({ path, type: 'dir' })),
+    ].filter((c) => !c.path.split('/').some((seg: string) => isSensitiveName(seg)));
+
+    const scored: { match: WorkspaceMatch; score: number }[] = [];
+    for (const match of candidates) {
+      const score = fuzzyScore(match.path, q);
+      if (score !== null) scored.push({ match, score });
+    }
+    scored.sort(
+      (a, b) =>
+        b.score - a.score ||
+        a.match.path.length - b.match.path.length ||
+        a.match.path.localeCompare(b.match.path),
+    );
+    return {
+      cwd: '.',
+      matches: scored.slice(0, cap).map((s) => s.match),
+      truncated: scored.length > cap,
+    };
+  }
+
+  /**
+   * Non-ignored files (tracked + untracked, honoring `.gitignore`) as
+   * workspace-relative POSIX paths, via a single `git ls-files`. Rejects when
+   * [dir] isn't a git repo (the caller falls back to a manual walk).
+   */
+  async #gitFiles(dir: string): Promise<string[]> {
+    const { stdout } = await runGit(dir, [
+      'ls-files',
+      '-z',
+      '--cached',
+      '--others',
+      '--exclude-standard',
+    ]);
+    return stdout.split('\0').filter((p) => p.length > 0 && !p.startsWith('.git/'));
+  }
+
+  /**
+   * Bounded recursive file walk for non-git workspaces: skips `.git` and
+   * sensitive names, caps depth and total files so a huge tree can't hang the
+   * search. Returns workspace-relative POSIX paths.
+   */
+  async #walkFiles(root: string): Promise<string[]> {
+    const out: string[] = [];
+    const maxFiles = 20_000;
+    const maxDepth = 12;
+    const walk = async (absDir: string, rel: string, depth: number): Promise<void> => {
+      if (out.length >= maxFiles || depth > maxDepth) return;
+      let dirents;
+      try {
+        dirents = await readdir(absDir, { withFileTypes: true });
+      } catch {
+        return;
+      }
+      for (const dirent of dirents) {
+        if (out.length >= maxFiles) return;
+        if (dirent.name === '.git' || isSensitiveName(dirent.name)) continue;
+        const childRel = rel ? `${rel}/${dirent.name}` : dirent.name;
+        if (dirent.isDirectory()) {
+          await walk(resolve(absDir, dirent.name), childRel, depth + 1);
+        } else if (dirent.isFile()) {
+          out.push(childRel);
+        }
+      }
+    };
+    await walk(root, '', 0);
+    return out;
+  }
+
+  /**
    * The subset of [names] (basenames in [dir]) that git ignores, via a single
    * `git check-ignore -z`. Tracked files matching an ignore rule are *not*
    * reported (git knows they're tracked), so force-added files stay un-dimmed.
@@ -162,4 +267,29 @@ function toRelative(root: string, abs: string): string {
 function isBinary(buffer: Buffer): boolean {
   const sample = buffer.subarray(0, 8000);
   return sample.includes(0);
+}
+
+/**
+ * Scores [path] against a fuzzy [query] (higher = better), or null when it
+ * doesn't match at all. A substring hit in the basename ranks above one in the
+ * full path, which ranks above an in-order subsequence match. An empty query
+ * matches everything (score 0) so callers can show a default top slice.
+ */
+function fuzzyScore(path: string, query: string): number | null {
+  if (query.length === 0) return 0;
+  const lowerPath = path.toLowerCase();
+  const lowerQuery = query.toLowerCase();
+  const base = lowerPath.slice(lowerPath.lastIndexOf('/') + 1);
+
+  const baseIdx = base.indexOf(lowerQuery);
+  if (baseIdx !== -1) return 1000 - baseIdx;
+  const pathIdx = lowerPath.indexOf(lowerQuery);
+  if (pathIdx !== -1) return 500 - pathIdx;
+
+  // In-order subsequence (e.g. "lmd" matches "lib/main.dart").
+  let qi = 0;
+  for (let i = 0; i < lowerPath.length && qi < lowerQuery.length; i++) {
+    if (lowerPath[i] === lowerQuery[qi]) qi++;
+  }
+  return qi === lowerQuery.length ? 100 : null;
 }

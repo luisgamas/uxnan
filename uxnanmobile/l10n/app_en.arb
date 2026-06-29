@@ -225,6 +225,55 @@
     "description": "Title of the composer '+' turn-tools sheet (attach + run options + approval) and tooltip of the '+' button."
   },
 
+  "composerMentionFilesTitle": "Files & folders",
+  "@composerMentionFilesTitle": {
+    "description": "Header of the inline @-mention suggestion panel above the composer."
+  },
+  "composerMentionLoading": "Listing…",
+  "composerMentionEmpty": "No matching files",
+  "composerMentionMore": "Keep typing to narrow results…",
+  "composerMentionNoWorkspace": "No folder for this conversation",
+  "composerMentionError": "Couldn't list this folder",
+  "composerCommandsTitle": "Commands",
+  "@composerCommandsTitle": {
+    "description": "Header of the inline /-command palette above the composer."
+  },
+  "composerCommandsEmpty": "No matching command",
+  "composerCmdFilesLabel": "Attach file or folder",
+  "composerCmdFilesDesc": "Insert an @ reference to a file or folder",
+  "composerCmdExplainLabel": "Explain",
+  "composerCmdExplainTemplate": "Explain how this works: ",
+  "composerCmdReviewLabel": "Review",
+  "composerCmdReviewTemplate": "Review this for bugs and improvements: ",
+  "composerCmdFixLabel": "Fix",
+  "composerCmdFixTemplate": "Find and fix the bug in: ",
+  "composerCmdTestsLabel": "Tests",
+  "composerCmdTestsTemplate": "Write tests for: ",
+  "settingsPromptTemplatesTitle": "Prompt templates",
+  "settingsPromptTemplatesSubtitle": "Edit the / command palette snippets",
+  "promptTemplatesTitle": "Prompt templates",
+  "promptTemplatesAdd": "New template",
+  "promptTemplatesReset": "Reset to defaults",
+  "promptTemplatesEmpty": "No templates",
+  "promptTemplatesEmptyBody": "Create snippets you can drop into a message from the composer's / palette.",
+  "promptTemplatesNewTitle": "New template",
+  "promptTemplatesEditTitle": "Edit template",
+  "promptTemplatesLabelField": "Name",
+  "promptTemplatesLabelHint": "e.g. Review",
+  "promptTemplatesBodyField": "Text",
+  "promptTemplatesBodyHint": "The text inserted into the message",
+  "promptTemplatesDeleteTitle": "Delete template?",
+  "promptTemplatesDeleteBody": "\"{label}\" will be removed.",
+  "@promptTemplatesDeleteBody": {
+    "description": "Confirmation body when deleting a prompt template.",
+    "placeholders": {
+      "label": { "type": "String", "example": "Review" }
+    }
+  },
+  "promptTemplatesDeleteConfirm": "Delete",
+  "promptTemplatesResetTitle": "Reset templates?",
+  "promptTemplatesResetBody": "This restores the default templates and drops your edits.",
+
   "newThreadAction": "New conversation",
   "newThreadTitle": "New conversation",
   "newThreadProject": "Project",

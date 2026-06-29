@@ -93,6 +93,14 @@ shipping.
 
 ## App-side pending work (no live bridge needed)
 
+- [ ] **File-browser search (reuse `workspace/searchFiles`).** The repo-wide
+      fuzzy search is **ready end-to-end** — the bridge method `workspace/
+      searchFiles` and `FileBrowserManager.searchFiles(cwd, query)` already exist
+      (they back the composer's `@` picker). What's missing is the UI: add a
+      search affordance to `FileBrowserScreen` (presentation/conversation/files)
+      that calls `searchFiles` and shows the flat path matches (tap → open in the
+      file viewer), mirroring the threads/commit-history search style. No
+      bridge/contract work — purely the mobile screen.
 - [ ] **Project drift repository** — the `projects` table exists; the repository +
       `AgentConfig` wiring lands with the projects module.
 - [ ] **Work-log auto-expand while streaming; tap Last-edits strip to jump.** Low.

@@ -723,4 +723,39 @@ void main() {
     await sub.cancel();
     await bus.dispose();
   });
+
+  test('searchFiles sends cwd/query/limit and parses matches + truncated',
+      () async {
+    final calls = <Map<String, dynamic>>[];
+    final manager = _buildManager(
+      onCall: (m, p) {
+        if (m == 'workspace/searchFiles') calls.add(p);
+      },
+      responder: (m, _) => RpcMessage.response(
+        id: '1',
+        result: const <String, dynamic>{
+          'cwd': '.',
+          'truncated': true,
+          'matches': [
+            {'path': 'lib/main.dart', 'type': 'file'},
+            {'path': 'lib', 'type': 'dir'},
+          ],
+        },
+      ),
+    );
+
+    final result = await manager.searchFiles(_workspaceRoot, 'main', limit: 40);
+
+    expect(calls, hasLength(1));
+    expect(calls.single['cwd'], _workspaceRoot);
+    expect(calls.single['query'], 'main');
+    expect(calls.single['limit'], 40);
+    expect(result.matches, hasLength(2));
+    expect(result.matches.first.path, 'lib/main.dart');
+    expect(result.matches.first.type, FileEntryType.file);
+    expect(result.matches[1].type, FileEntryType.dir);
+    expect(result.truncated, isTrue);
+
+    await manager.dispose();
+  });
 }

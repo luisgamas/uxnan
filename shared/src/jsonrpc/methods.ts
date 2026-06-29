@@ -32,6 +32,8 @@ import type {
   TurnAttachment,
   WorkspaceExistsResult,
   WorkspaceListing,
+  SearchFilesParams,
+  WorkspaceSearchResult,
 } from '../models/workspace.js';
 import type { AuthStatus, Project } from '../models/project.js';
 import type { ApprovalResponse } from '../models/approval.js';
@@ -320,6 +322,7 @@ export interface JsonRpcMethodRegistry {
   'workspace/readFile': { params: { cwd: string; path: string }; result: FileContent };
   'workspace/readImage': { params: { cwd: string; path: string }; result: ImageContent };
   'workspace/list': { params: { cwd: string }; result: WorkspaceListing };
+  'workspace/searchFiles': { params: SearchFilesParams; result: WorkspaceSearchResult };
   'workspace/browseDirs': { params: BrowseDirsParams; result: BrowseResult };
   'workspace/checkpoint': { params: CheckpointParams; result: Checkpoint };
   'workspace/diffCheckpoint': { params: { id: string }; result: CheckpointDiff };

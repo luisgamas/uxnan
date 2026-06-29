@@ -7,6 +7,7 @@ import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/update_providers.dart';
 import 'package:uxnan/presentation/screens/settings/personalization_screen.dart';
+import 'package:uxnan/presentation/screens/settings/prompt_templates_screen.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 
@@ -78,6 +79,10 @@ class SettingsScreen extends ConsumerWidget {
                 contextMode: ref.watch(contextIndicatorModeProvider),
                 onContextModeChanged: (value) =>
                     ref.read(contextIndicatorModeProvider.notifier).set(value),
+              ),
+              const SizedBox(height: UxnanSpacing.sm),
+              _PromptTemplatesTile(
+                onTap: () => PromptTemplatesScreen.push(context),
               ),
               const SizedBox(height: UxnanSpacing.xl),
               _SectionHeader(label: l10n.settingsGitSection),
@@ -271,6 +276,29 @@ class _PersonalizationTile extends StatelessWidget {
         leading: const Icon(Icons.palette_outlined),
         title: Text(l10n.settingsPersonalizationTitle),
         subtitle: Text(l10n.settingsPersonalizationSubtitle),
+        trailing: const Icon(Icons.chevron_right_rounded),
+        onTap: onTap,
+      ),
+    );
+  }
+}
+
+class _PromptTemplatesTile extends StatelessWidget {
+  const _PromptTemplatesTile({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
+    return Material(
+      color: colors.surfaceContainerHighest,
+      borderRadius: const BorderRadius.all(UxnanRadius.lg),
+      clipBehavior: Clip.antiAlias,
+      child: ListTile(
+        leading: const Icon(Icons.notes_rounded),
+        title: Text(l10n.settingsPromptTemplatesTitle),
+        subtitle: Text(l10n.settingsPromptTemplatesSubtitle),
         trailing: const Icon(Icons.chevron_right_rounded),
         onTap: onTap,
       ),

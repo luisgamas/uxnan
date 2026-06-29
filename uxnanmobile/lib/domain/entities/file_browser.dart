@@ -94,6 +94,59 @@ class FileListing extends Equatable {
   List<Object?> get props => [cwd, entries];
 }
 
+/// A single hit from `workspace/searchFiles` — a repo-wide fuzzy file search.
+///
+/// Unlike [FileEntry] (a one-level listing whose `name` is a basename), a match
+/// carries the full workspace-relative [path], so the `@`-mention picker can
+/// insert it directly.
+class FileSearchMatch extends Equatable {
+  /// Creates a [FileSearchMatch].
+  const FileSearchMatch({required this.path, required this.type});
+
+  /// Reconstructs a [FileSearchMatch] from its JSON form.
+  factory FileSearchMatch.fromJson(Map<String, dynamic> json) =>
+      FileSearchMatch(
+        path: json['path'] as String? ?? '',
+        type: FileEntry._type(json['type'] as String?),
+      );
+
+  /// Workspace-relative POSIX path (e.g. `lib/main.dart`).
+  final String path;
+
+  /// Whether the match is a file or a directory.
+  final FileEntryType type;
+
+  @override
+  List<Object?> get props => [path, type];
+}
+
+/// The result of a `workspace/searchFiles` call: the best fuzzy [matches] and
+/// whether more candidates matched than the returned cap ([truncated]).
+class FileSearchResult extends Equatable {
+  /// Creates a [FileSearchResult].
+  const FileSearchResult({required this.matches, required this.truncated});
+
+  /// Reconstructs a [FileSearchResult] from its JSON form.
+  factory FileSearchResult.fromJson(Map<String, dynamic> json) =>
+      FileSearchResult(
+        matches: [
+          if (json['matches'] is List)
+            for (final m in (json['matches'] as List))
+              if (m is Map) FileSearchMatch.fromJson(m.cast<String, dynamic>()),
+        ],
+        truncated: json['truncated'] == true,
+      );
+
+  /// The best fuzzy matches, best-first.
+  final List<FileSearchMatch> matches;
+
+  /// Whether more candidates matched than were returned.
+  final bool truncated;
+
+  @override
+  List<Object?> get props => [matches, truncated];
+}
+
 /// A node in the lazy-loaded file tree displayed in the file browser.
 ///
 /// The browser is intentionally lazy: only directories the user has expanded

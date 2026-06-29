@@ -110,3 +110,69 @@ test('path traversal, .git and sensitive files are denied', async () => {
   }
   await rm(root, { recursive: true, force: true });
 });
+
+test('searchFiles fuzzy-matches files and their ancestor dirs across the repo', async () => {
+  const root = await newRoot();
+  await runGit(root, ['init', '-b', 'main']);
+  await mkdir(join(root, 'lib', 'presentation'), { recursive: true });
+  await writeFile(join(root, 'lib', 'main.dart'), 'void main() {}');
+  await writeFile(join(root, 'lib', 'presentation', 'home.dart'), 'class Home {}');
+  await writeFile(join(root, 'README.md'), '# hi');
+
+  const byName = await ws.searchFiles(root, 'main');
+  const paths = byName.matches.map((m) => m.path);
+  // A basename hit ranks first.
+  assert.equal(paths[0], 'lib/main.dart');
+  assert.ok(!byName.truncated);
+
+  // A nested path query works (path substring), and the dir is matchable too.
+  const nested = await ws.searchFiles(root, 'presentation/home');
+  assert.ok(
+    nested.matches.some((m) => m.path === 'lib/presentation/home.dart' && m.type === 'file'),
+  );
+  const dirHit = await ws.searchFiles(root, 'presentation');
+  assert.ok(dirHit.matches.some((m) => m.path === 'lib/presentation' && m.type === 'dir'));
+  await rm(root, { recursive: true, force: true });
+});
+
+test('searchFiles respects .gitignore and excludes sensitive files', async () => {
+  const root = await newRoot();
+  await runGit(root, ['init', '-b', 'main']);
+  await writeFile(join(root, '.gitignore'), 'build/\nsecret.txt\n');
+  await mkdir(join(root, 'build'), { recursive: true });
+  await writeFile(join(root, 'build', 'out.js'), '1');
+  await writeFile(join(root, 'secret.txt'), 'x');
+  await writeFile(join(root, '.env'), 'TOKEN=1');
+  await writeFile(join(root, 'keep.txt'), 'x');
+
+  const all = await ws.searchFiles(root, '');
+  const paths = all.matches.map((m) => m.path);
+  assert.ok(paths.includes('keep.txt'));
+  // git-ignored and sensitive entries never surface.
+  assert.ok(!paths.includes('build/out.js'));
+  assert.ok(!paths.includes('build'));
+  assert.ok(!paths.includes('secret.txt'));
+  assert.ok(!paths.includes('.env'));
+  await rm(root, { recursive: true, force: true });
+});
+
+test('searchFiles caps results and flags truncation', async () => {
+  const root = await newRoot();
+  await runGit(root, ['init', '-b', 'main']);
+  for (let i = 0; i < 10; i++) {
+    await writeFile(join(root, `note${i}.txt`), 'x');
+  }
+  const capped = await ws.searchFiles(root, 'note', 3);
+  assert.equal(capped.matches.length, 3);
+  assert.ok(capped.truncated);
+  await rm(root, { recursive: true, force: true });
+});
+
+test('searchFiles works outside a git repo via the walk fallback', async () => {
+  const root = await newRoot();
+  await mkdir(join(root, 'src'), { recursive: true });
+  await writeFile(join(root, 'src', 'app.ts'), '1');
+  const res = await ws.searchFiles(root, 'app');
+  assert.ok(res.matches.some((m) => m.path === 'src/app.ts'));
+  await rm(root, { recursive: true, force: true });
+});

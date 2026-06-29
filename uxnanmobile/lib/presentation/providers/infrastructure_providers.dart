@@ -24,6 +24,7 @@ import 'package:uxnan/infrastructure/storage/conversation_preferences_store.dart
 import 'package:uxnan/infrastructure/storage/local_database.dart';
 import 'package:uxnan/infrastructure/storage/notification_preferences_store.dart';
 import 'package:uxnan/infrastructure/storage/phone_identity_store.dart';
+import 'package:uxnan/infrastructure/storage/prompt_templates_store.dart';
 import 'package:uxnan/infrastructure/storage/secure_store.dart';
 import 'package:uxnan/infrastructure/storage/thread_list_preferences_store.dart';
 import 'package:uxnan/infrastructure/storage/update_preferences_store.dart';
@@ -87,6 +88,11 @@ final conversationPreferencesStoreProvider =
 /// Persists appearance + language preferences (non-sensitive, on-device).
 final appearancePreferencesStoreProvider = Provider<AppearancePreferencesStore>(
   (ref) => AppearancePreferencesStore(),
+);
+
+/// Persists the user's `/` command-palette prompt templates (on-device).
+final promptTemplatesStoreProvider = Provider<PromptTemplatesStore>(
+  (ref) => PromptTemplatesStore(),
 );
 
 /// Persists thread-list view preferences (sort + density, on-device).

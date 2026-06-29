@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — `workspace/searchFiles` (repo-wide fuzzy file search)
+- **New JSON-RPC method `workspace/searchFiles`** (`SearchFilesParams` →
+  `WorkspaceSearchResult` with `WorkspaceMatch[]` + `truncated`) — a fuzzy file
+  search across the whole repository that honors `.gitignore` (and excludes
+  `.git` + sensitive files, like `workspace/list`). Backs the mobile composer's
+  `@`-mention picker; reusable for a future file-browser search. Added to
+  `methods.ts`, `models/workspace.ts` and `METHOD_NAMES` (now **61**). See
+  `architecture/02a` (workspace §) and `02b` (method list).
+
 ## [0.0.1-alpha.20260627] - 2026-06-27
 
 ### Added

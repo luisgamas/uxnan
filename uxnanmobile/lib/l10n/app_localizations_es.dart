@@ -461,6 +461,122 @@ class AppLocalizationsEs extends AppLocalizations {
   String get composerTools => 'Opciones del turno';
 
   @override
+  String get composerMentionFilesTitle => 'Archivos y carpetas';
+
+  @override
+  String get composerMentionLoading => 'Listando…';
+
+  @override
+  String get composerMentionEmpty => 'Ningún archivo coincide';
+
+  @override
+  String get composerMentionMore => 'Sigue escribiendo para acotar…';
+
+  @override
+  String get composerMentionNoWorkspace =>
+      'No hay carpeta para esta conversación';
+
+  @override
+  String get composerMentionError => 'No se pudo listar esta carpeta';
+
+  @override
+  String get composerCommandsTitle => 'Comandos';
+
+  @override
+  String get composerCommandsEmpty => 'Ningún comando coincide';
+
+  @override
+  String get composerCmdFilesLabel => 'Adjuntar archivo o carpeta';
+
+  @override
+  String get composerCmdFilesDesc =>
+      'Inserta una referencia con @ a un archivo o carpeta';
+
+  @override
+  String get composerCmdExplainLabel => 'Explicar';
+
+  @override
+  String get composerCmdExplainTemplate => 'Explica cómo funciona esto: ';
+
+  @override
+  String get composerCmdReviewLabel => 'Revisar';
+
+  @override
+  String get composerCmdReviewTemplate =>
+      'Revisa esto en busca de errores y mejoras: ';
+
+  @override
+  String get composerCmdFixLabel => 'Corregir';
+
+  @override
+  String get composerCmdFixTemplate => 'Encuentra y corrige el error en: ';
+
+  @override
+  String get composerCmdTestsLabel => 'Pruebas';
+
+  @override
+  String get composerCmdTestsTemplate => 'Escribe pruebas para: ';
+
+  @override
+  String get settingsPromptTemplatesTitle => 'Plantillas de prompt';
+
+  @override
+  String get settingsPromptTemplatesSubtitle =>
+      'Edita los atajos del palette de /';
+
+  @override
+  String get promptTemplatesTitle => 'Plantillas de prompt';
+
+  @override
+  String get promptTemplatesAdd => 'Nueva plantilla';
+
+  @override
+  String get promptTemplatesReset => 'Restaurar predeterminadas';
+
+  @override
+  String get promptTemplatesEmpty => 'Sin plantillas';
+
+  @override
+  String get promptTemplatesEmptyBody =>
+      'Crea atajos que puedes insertar en un mensaje desde el palette de / del composer.';
+
+  @override
+  String get promptTemplatesNewTitle => 'Nueva plantilla';
+
+  @override
+  String get promptTemplatesEditTitle => 'Editar plantilla';
+
+  @override
+  String get promptTemplatesLabelField => 'Nombre';
+
+  @override
+  String get promptTemplatesLabelHint => 'p. ej. Revisar';
+
+  @override
+  String get promptTemplatesBodyField => 'Texto';
+
+  @override
+  String get promptTemplatesBodyHint => 'El texto que se inserta en el mensaje';
+
+  @override
+  String get promptTemplatesDeleteTitle => '¿Eliminar plantilla?';
+
+  @override
+  String promptTemplatesDeleteBody(String label) {
+    return 'Se eliminará \"$label\".';
+  }
+
+  @override
+  String get promptTemplatesDeleteConfirm => 'Eliminar';
+
+  @override
+  String get promptTemplatesResetTitle => '¿Restaurar plantillas?';
+
+  @override
+  String get promptTemplatesResetBody =>
+      'Esto restaura las plantillas predeterminadas y descarta tus ediciones.';
+
+  @override
   String get newThreadAction => 'Nueva conversación';
 
   @override

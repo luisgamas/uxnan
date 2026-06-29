@@ -78,6 +78,36 @@ export interface WorkspaceListing {
   entries: WorkspaceEntry[];
 }
 
+/** Params for `workspace/searchFiles` (a repo-wide fuzzy file search). */
+export interface SearchFilesParams {
+  /** Absolute search root (the thread's resolved `cwd`). */
+  cwd: string;
+  /** The fuzzy query (matched against workspace-relative paths). */
+  query: string;
+  /** Max matches to return (the bridge clamps this; default 40, max 100). */
+  limit?: number;
+}
+
+/** A single `workspace/searchFiles` hit. */
+export interface WorkspaceMatch {
+  /** Workspace-relative POSIX path (e.g. `lib/main.dart`). */
+  path: string;
+  type: WorkspaceEntryType;
+}
+
+/**
+ * Result of `workspace/searchFiles`: the best fuzzy matches across the whole
+ * repository, honoring `.gitignore` (and excluding `.git` + sensitive files,
+ * like `workspace/list`). `truncated` is true when more candidates matched than
+ * the returned cap, so the UI can hint "refine your search".
+ */
+export interface WorkspaceSearchResult {
+  /** The search root, always `.` (matches the `workspace/list` convention). */
+  cwd: string;
+  matches: WorkspaceMatch[];
+  truncated: boolean;
+}
+
 export interface Checkpoint {
   id: string;
   threadId?: string;

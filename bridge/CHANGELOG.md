@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — `workspace/searchFiles` handler (repo-wide fuzzy file search)
+- **`WorkspaceService.searchFiles(root, query, limit?)`**
+  (`src/workspace/workspace-service.ts`) + the `workspace/searchFiles` handler
+  registration — a fuzzy file search across the whole repo for the mobile `@`
+  picker. In a git repo it gathers candidates via a single `git ls-files
+  --cached --others --exclude-standard` (tracked + untracked, honoring
+  `.gitignore`) plus their ancestor directories; outside a repo it falls back to
+  a bounded recursive walk. Excludes `.git` + sensitive files (same posture as
+  `workspace/list`); ranks basename-substring > path-substring > subsequence;
+  clamps `limit` (default 40, max 100) and flags `truncated`. 5 new
+  `workspace-service` tests. Contract lives in `@uxnan/shared`.
+
 ## [0.0.1-alpha.20260627] - 2026-06-27
 
 ### Fixed — recovered conversations keep the real text↔work-log order
