@@ -982,6 +982,15 @@ class AppLocalizationsEs extends AppLocalizations {
   String get gitHistoryBackToTop => 'Volver arriba';
 
   @override
+  String get gitHistorySearch => 'Buscar commits';
+
+  @override
+  String get gitHistorySearchHint => 'Busca por mensaje, SHA o autor';
+
+  @override
+  String get gitHistorySearchEmpty => 'Ningún commit coincide';
+
+  @override
   String get gitHistoryViewBranch => 'Ver rama o ref';
 
   @override

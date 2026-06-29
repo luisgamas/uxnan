@@ -25,6 +25,7 @@ mod pty;
 mod state;
 mod updater;
 mod which;
+mod winproc;
 mod wsl;
 
 use std::sync::atomic::Ordering;
