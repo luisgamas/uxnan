@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.2-alpha.20260628] - 2026-06-28
+
 ### Added — `workspace/searchFiles` (repo-wide fuzzy file search)
 - **New JSON-RPC method `workspace/searchFiles`** (`SearchFilesParams` →
   `WorkspaceSearchResult` with `WorkspaceMatch[]` + `truncated`) — a fuzzy file
