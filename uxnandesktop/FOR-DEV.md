@@ -15,7 +15,7 @@ which tracks assets only a human can provide.)
 standalone app** (three-panel shell, PTY terminals + splits, git worktrees, git
 status/diff/stage/commit/history, agent monitoring with the axum hook server +
 OSC/process layers, settings/themes/i18n, multi-agent orchestration,
-**in-app auto-updater**). 100 Rust backend tests + 25 frontend Vitest unit tests
+**in-app auto-updater**). 106 Rust backend tests + 25 frontend Vitest unit tests
 (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
 (developed on Windows; CI is `{ubuntu, windows}`). **Phase 6 (embedded bridge /
 mobile pairing) is NOT started.**
@@ -54,6 +54,40 @@ mobile pairing) is NOT started.**
   waits for the safe window or explicit consent), banner UI, EN/ES i18n. Endpoint
   per channel + signing/CI in [`docs/updates.md`](docs/updates.md); signing key is
   a `FOR-HUMAN.md` item.
+
+## Integrated developer browser ☐
+
+**Goal:** a complete in-app developer browser to preview/debug the systems agents
+build and open the links agents produce — **not** a general-purpose browser. Lives
+as a right-side "4th panel" (`architecture/02a` §4.2b). Agent link interception
+**on by default**; one central link-policy decision point with an always-working OS
+fallback.
+
+**Engine decision:** a frameless `WebviewWindow` **owned by + docked to** the main
+window (stable Tauri API), holding the page; the toolbar lives in the panel's DOM
+and the window is glued over the panel's content rect. Chosen after two rejected
+attempts: a native child webview (Tauri `unstable` multiwebview) **froze the app**
+on Windows (`add_child` blocked the main thread), and a plain `<iframe>` was too
+limited (blocked by `X-Frame-Options`, no DevTools). The owned window loads any
+site + has real DevTools while staying light.
+
+**Done (code-complete, validated by clippy/fmt/tests + svelte-check + vite build):**
+`BrowserSettings`/`BrowserLinkPolicy` + `browserPanelWidth` model + Settings →
+Browser pane; the `browser_window_*` backend (`browser.rs`) + `BrowserPanel.svelte`
+(toolbar + glued window: back/forward/reload/address/open-external/DevTools) + the
+right-side panel + status-bar toggle; `open_url`/`open_external` routing (shared
+`browser::route_url`) + the `browser:open-url` listener; **agent auto-interception**
+(`UXNAN_BROWSER_*` env + `$BROWSER` shim `static/hooks/uxnan-browser.{sh,cmd}` + the
+hook-server `/browser` route, gated on `enabled && allow_agents`); **Ctrl/Cmd-
+clickable terminal links** (`@xterm/addon-web-links`).
+
+Spec synced: `architecture/02a` §4.2b documents the integrated browser; user guide
+in `docs/browser.md`.
+
+### Still pending
+- [ ] **On-device validation.** The docked `WebviewWindow` (its gluing to the panel
+      on move/resize/DPI) and the agent `$BROWSER` shim end-to-end need a real run to
+      confirm. The explicit `curl` path is the reliable fallback for the shim.
 
 ## Phase 6 — Bridge integration (embedded bridge / mobile pairing) ☐
 
@@ -137,7 +171,7 @@ are **done** (see `CHANGELOG.md` + `architecture/02d` §3). Remaining follow-ups
 
 - ✅ **Verify** — `.github/workflows/ci-desktop.yml` runs svelte-check + `npm test`
   (Vitest) + vite build + cargo fmt/clippy/test on `{ubuntu, windows}` (macOS
-  deferred with Apple). 100 Rust + 25 Vitest tests.
+  deferred with Apple). 106 Rust + 25 Vitest tests.
 - ✅ **`release-desktop.yml`** — exists: `tauri-action` bundles on a `desktop-v*` tag
   → draft GitHub Release, **and signs the updater artifacts** when the signing
   secrets are set. **Windows ships without OS code-signing for now; macOS deferred.**

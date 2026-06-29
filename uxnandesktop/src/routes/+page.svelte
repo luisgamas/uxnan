@@ -13,6 +13,7 @@
   import WebhookIcon from "@lucide/svelte/icons/webhook";
   import PanelLeftIcon from "@lucide/svelte/icons/panel-left";
   import PanelRightIcon from "@lucide/svelte/icons/panel-right";
+  import GlobeIcon from "@lucide/svelte/icons/globe";
   import LayersIcon from "@lucide/svelte/icons/layers";
   import WorkflowIcon from "@lucide/svelte/icons/workflow";
   import TerminalArea from "$lib/components/TerminalArea.svelte";
@@ -20,6 +21,7 @@
   import TitleBar from "$lib/components/TitleBar.svelte";
   import LeftSidebar from "$lib/components/LeftSidebar.svelte";
   import RightPanel from "$lib/components/RightPanel.svelte";
+  import BrowserPanel from "$lib/components/BrowserPanel.svelte";
   import Settings from "$lib/components/Settings.svelte";
   import OrchestrationConsole from "$lib/components/OrchestrationConsole.svelte";
   import WorktreeSearch from "$lib/components/WorktreeSearch.svelte";
@@ -33,8 +35,13 @@
   const LEFT_MAX = 480;
   const RIGHT_MIN = 240;
   const RIGHT_MAX = 560;
+  const BROWSER_MIN = 320;
+  const BROWSER_MAX = 900;
 
-  type Side = "left" | "right";
+  /** Fallback width for the browser panel when settings predate it. */
+  const browserWidth = () => app.settings.browserPanelWidth ?? 520;
+
+  type Side = "left" | "right" | "browser";
 
   let dragging = $state<Side | null>(null);
   let startX = 0;
@@ -49,7 +56,9 @@
     startWidth =
       side === "left"
         ? app.settings.leftSidebarWidth
-        : app.settings.rightSidebarWidth;
+        : side === "right"
+          ? app.settings.rightSidebarWidth
+          : browserWidth();
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   }
 
@@ -58,13 +67,16 @@
     const dx = e.clientX - startX;
     if (dragging === "left") {
       app.settings.leftSidebarWidth = clamp(startWidth + dx, LEFT_MIN, LEFT_MAX);
-    } else {
+    } else if (dragging === "right") {
       // Right handle grows the panel as the pointer moves left.
       app.settings.rightSidebarWidth = clamp(
         startWidth - dx,
         RIGHT_MIN,
         RIGHT_MAX,
       );
+    } else {
+      // Browser panel handle (far right) grows as the pointer moves left.
+      app.settings.browserPanelWidth = clamp(startWidth - dx, BROWSER_MIN, BROWSER_MAX);
     }
   }
 
@@ -249,6 +261,27 @@
           <RightPanel />
         </aside>
       {/if}
+
+      {#if app.browserOpen}
+        <!-- Browser panel resize handle (far right) -->
+        <div
+          class="w-1 shrink-0 cursor-col-resize bg-border transition-colors hover:bg-ring"
+          role="separator"
+          aria-orientation="vertical"
+          onpointerdown={(e) => onHandleDown("browser", e)}
+          onpointermove={onHandleMove}
+          onpointerup={onHandleUp}
+        ></div>
+
+        <!-- 4th panel: the integrated developer browser. The toolbar is here; the
+             page is a docked WebviewWindow positioned over the panel's content. -->
+        <aside
+          class="flex shrink-0 flex-col overflow-hidden bg-sidebar text-sidebar-foreground"
+          style="width: {browserWidth()}px"
+        >
+          <BrowserPanel />
+        </aside>
+      {/if}
     </div>
 
     <!-- Status bar: breadcrumb (left) · backend + panel toggles (right) -->
@@ -336,6 +369,22 @@
       >
         <PanelRightIcon class="size-3.5" />
       </button>
+      {#if app.settings.browser?.enabled ?? true}
+        <button
+          class={cn(
+            "flex size-6 items-center justify-center rounded",
+            app.browserOpen
+              ? surface.tab
+              : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+          )}
+          title={i18n.t("browser.toggle")}
+          aria-label={i18n.t("browser.toggle")}
+          aria-pressed={app.browserOpen}
+          onclick={() => app.toggleBrowser()}
+        >
+          <GlobeIcon class="size-3.5" />
+        </button>
+      {/if}
     </footer>
 
     <!-- Settings overlays the still-mounted body (full content region). -->

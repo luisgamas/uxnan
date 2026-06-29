@@ -202,6 +202,84 @@ export function revealPath(path: string): Promise<void> {
   return invoke("reveal_path", { path });
 }
 
+// --- Integrated browser ----------------------------------------------------
+// The browser is a docked, frameless `WebviewWindow` (a real system webview, so it
+// loads any site + has DevTools), positioned by the frontend over uxnan's browser
+// panel. `openUrl` is the single decision point: in-app window / OS browser / ask.
+// Window geometry is in CSS (logical) px relative to the main window content area.
+
+/** Route a URL per the user's browser settings (in-app window / OS browser / ask). */
+export function openUrl(url: string): Promise<void> {
+  return invoke("open_url", { url });
+}
+
+/** Open a URL in the OS default browser unconditionally (ignores the policy). */
+export function openExternal(url: string): Promise<void> {
+  return invoke("open_external", { url });
+}
+
+/** Open (or reuse + navigate) the docked browser window at `url`, glued to the
+ *  panel rect (CSS px relative to the main window content area). */
+export function browserWindowOpen(
+  url: string,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+): Promise<void> {
+  return invoke("browser_window_open", { url, x, y, width, height });
+}
+
+/** Reposition / resize the browser window to track the panel rect. */
+export function browserWindowSetBounds(
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+): Promise<void> {
+  return invoke("browser_window_set_bounds", { x, y, width, height });
+}
+
+/** Navigate the browser window to a new URL. */
+export function browserWindowNavigate(url: string): Promise<void> {
+  return invoke("browser_window_navigate", { url });
+}
+
+/** Reload the current page. */
+export function browserWindowReload(): Promise<void> {
+  return invoke("browser_window_reload");
+}
+
+/** Go back in the page's history. */
+export function browserWindowBack(): Promise<void> {
+  return invoke("browser_window_back");
+}
+
+/** Go forward in the page's history. */
+export function browserWindowForward(): Promise<void> {
+  return invoke("browser_window_forward");
+}
+
+/** Show the browser window (its panel became visible again). */
+export function browserWindowShow(): Promise<void> {
+  return invoke("browser_window_show");
+}
+
+/** Hide the browser window without destroying it. */
+export function browserWindowHide(): Promise<void> {
+  return invoke("browser_window_hide");
+}
+
+/** Destroy the browser window (the panel closed). */
+export function browserWindowClose(): Promise<void> {
+  return invoke("browser_window_close");
+}
+
+/** Open the browser window's DevTools. */
+export function browserWindowDevtools(): Promise<void> {
+  return invoke("browser_window_devtools");
+}
+
 /** Set (or clear with `null`) the worktree root the filesystem watcher follows.
  *  The backend then emits `fs:changed` as files under it change on disk. */
 export function fsSetWatch(path: string | null): Promise<void> {

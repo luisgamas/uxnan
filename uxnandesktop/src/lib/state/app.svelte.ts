@@ -4,14 +4,17 @@
 // of the backend's persisted document. Backend remains authoritative for repos,
 // worktrees and settings on disk; here we hold the live copy the UI binds to.
 
+import { listen } from "@tauri-apps/api/event";
 import {
   getAppState,
   getClaudeHooksStatus,
   getHookInstall,
+  openExternal,
   ping,
   setAgentCommands,
   updateSettings,
 } from "$lib/api";
+import { i18n } from "$lib/i18n";
 import { AGENT_CATALOG, agentLogoKey } from "$lib/agentCatalog";
 import {
   DEFAULT_SETTINGS,
@@ -58,7 +61,8 @@ export type SettingsSection =
   | "aicommit"
   | "hooks"
   | "terminal"
-  | "updates";
+  | "updates"
+  | "browser";
 
 class AppStore {
   /** Registered repositories (and their worktrees). */
@@ -75,6 +79,10 @@ class AppStore {
   settingsOpen = $state(false);
   /** Whether the multi-agent orchestration console is open. */
   orchestrationOpen = $state(false);
+  /** Whether the integrated browser panel (the right-side "4th panel") is open. */
+  browserOpen = $state(false);
+  /** Target URL shown in the integrated browser panel. */
+  browserUrl = $state("");
   /** Which Settings pane is shown (deep-linked via `openSettings`). */
   settingsSection = $state<SettingsSection>("appearance");
   /** Live OS dark-mode preference (kept in sync via a matchMedia listener), so
@@ -131,6 +139,26 @@ class AppStore {
   openSettings(section: SettingsSection = "appearance"): void {
     this.settingsSection = section;
     this.settingsOpen = true;
+  }
+
+  /** Open the integrated browser panel at `url` (or the configured homepage, or a
+   *  blank page). If the panel is already open, this just navigates it. */
+  openBrowser(url?: string): void {
+    const home = this.settings.browser?.homepage?.trim();
+    const target = (url && url.trim()) || (home && home.length > 0 ? home : "about:blank");
+    this.browserUrl = target;
+    this.browserOpen = true;
+  }
+
+  /** Close the integrated browser panel (its `WebviewWindow` is destroyed). */
+  closeBrowser(): void {
+    this.browserOpen = false;
+  }
+
+  /** Toggle the integrated browser panel (opens at the homepage/blank). */
+  toggleBrowser(): void {
+    if (this.browserOpen) this.closeBrowser();
+    else this.openBrowser();
   }
 
   /** Subscribe to OS dark-mode changes so the "System" theme tracks them live. */
@@ -223,6 +251,27 @@ class AppStore {
       // Still hydrate (with the default layout) so terminals render even when
       // the backend is unreachable (e.g. the web preview).
       terminals.restore(null);
+    }
+    // Route URLs the backend decides to open internally to the browser tab
+    // (independent of backend health above; a no-op without the Tauri event bus).
+    void this.listenOpenUrl();
+  }
+
+  /** Route backend `browser:open-url` events to the integrated browser tab. Fired
+   *  by `open_url` (terminal link clicks, the agent `BROWSER` shim). For the `ask`
+   *  policy the user picks in-app vs the OS browser. */
+  private async listenOpenUrl(): Promise<void> {
+    try {
+      await listen<{ url: string; ask: boolean }>("browser:open-url", (e) => {
+        const { url, ask } = e.payload;
+        if (ask && !confirm(i18n.t("browser.askPrompt", { url }))) {
+          void openExternal(url).catch(() => {});
+          return;
+        }
+        this.openBrowser(url);
+      });
+    } catch {
+      // No Tauri event bus (web preview) — nothing to route.
     }
   }
 

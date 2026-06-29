@@ -9,6 +9,7 @@ mod agent_hooks;
 mod agentcli;
 mod aicommit;
 mod browse;
+mod browser;
 mod commands;
 mod error;
 mod fs;
@@ -223,6 +224,18 @@ pub fn run() {
             commands::fs_write_file,
             commands::fs_set_watch,
             commands::reveal_path,
+            commands::open_url,
+            commands::open_external,
+            browser::browser_window_open,
+            browser::browser_window_set_bounds,
+            browser::browser_window_navigate,
+            browser::browser_window_reload,
+            browser::browser_window_back,
+            browser::browser_window_forward,
+            browser::browser_window_show,
+            browser::browser_window_hide,
+            browser::browser_window_close,
+            browser::browser_window_devtools,
             commands::git_diff_head,
             commands::set_terminal_layout,
             commands::agents_detect,

@@ -21,7 +21,9 @@
   import { FitAddon } from "@xterm/addon-fit";
   import { WebglAddon } from "@xterm/addon-webgl";
   import { LigaturesAddon } from "@xterm/addon-ligatures";
+  import { WebLinksAddon } from "@xterm/addon-web-links";
   import "@xterm/xterm/css/xterm.css";
+  import { openUrl } from "$lib/api";
   import { clipboardRead, clipboardWrite } from "$lib/clipboard";
   import { terminals } from "$lib/state/terminals.svelte";
   import { agentMonitor } from "$lib/state/agentMonitor.svelte";
@@ -130,6 +132,25 @@
         term.loadAddon(new WebglAddon());
       } catch {
         // WebGL unavailable — xterm falls back to the DOM renderer.
+      }
+    }
+
+    // Make printed URLs clickable, routed through the integrated-browser link
+    // policy (in-app tab / OS browser / prompt). Gated on the setting; like
+    // ligatures, the choice applies to terminals created after it changes.
+    if (app.settings.browser?.terminalLinks ?? true) {
+      try {
+        term.loadAddon(
+          new WebLinksAddon((event, uri) => {
+            // Like VS Code: only Ctrl/Cmd-click follows a link; a plain click is
+            // just text selection (so links don't open by accident).
+            if (!event.ctrlKey && !event.metaKey) return;
+            event.preventDefault();
+            void openUrl(uri).catch(() => {});
+          }),
+        );
+      } catch {
+        // web-links addon unavailable — URLs just stay non-clickable.
       }
     }
 
