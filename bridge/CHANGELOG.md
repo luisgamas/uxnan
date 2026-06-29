@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.2-alpha.20260628] - 2026-06-28
+
 ### Added — `workspace/searchFiles` handler (repo-wide fuzzy file search)
 - **`WorkspaceService.searchFiles(root, query, limit?)`**
   (`src/workspace/workspace-service.ts`) + the `workspace/searchFiles` handler
