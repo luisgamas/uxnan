@@ -1,7 +1,7 @@
 What's new in this update:
 
-• Clearer onboarding: corrected the bridge setup commands and smoother scrolling.
-• The "pair with a code" screen has a fresh, cleaner design.
-• Consistent buttons across setup and pairing.
+• Mention files with @ and run quick / commands — including your own saved prompt templates — right from the message box.
+• Search your commit history.
+• Fixed a keyboard that could linger after viewing a commit's details.
 
 Thanks for testing this alpha!

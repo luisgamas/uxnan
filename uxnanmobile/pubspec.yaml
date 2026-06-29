@@ -4,7 +4,7 @@ description: "Uxnan - remote control for AI coding agents (E2EE mobile client)"
 publish_to: 'none'
 
 # version: <build-name>+<build-number>
-version: 0.0.1-alpha.20260628+20260628
+version: 0.0.2-alpha.20260628+20260629
 
 environment:
   sdk: '>=3.4.0 <4.0.0'

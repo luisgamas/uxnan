@@ -6,6 +6,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.0.2-alpha.20260628] - 2026-06-28
+
 ### Added — inline `@` file mentions and a `/` command palette in the composer
 - **The message composer now surfaces two inline affordances above the pill
   while typing**, the way most agent GUIs do:
