@@ -2144,6 +2144,24 @@ abstract class AppLocalizations {
   /// **'Back to top'**
   String get gitHistoryBackToTop;
 
+  /// No description provided for @gitHistorySearch.
+  ///
+  /// In en, this message translates to:
+  /// **'Search commits'**
+  String get gitHistorySearch;
+
+  /// No description provided for @gitHistorySearchHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Search by message, SHA or author'**
+  String get gitHistorySearchHint;
+
+  /// No description provided for @gitHistorySearchEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No commits match'**
+  String get gitHistorySearchEmpty;
+
   /// No description provided for @gitHistoryViewBranch.
   ///
   /// In en, this message translates to:

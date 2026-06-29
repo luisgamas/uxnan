@@ -109,7 +109,7 @@ fn git_command(repo_path: &str, args: &[&str]) -> Command {
     // lints — identically on every platform; it's simply never taken off Windows.
     if cfg!(windows) {
         if let Some(w) = crate::wsl::parse(repo_path) {
-            let mut cmd = Command::new("wsl.exe");
+            let mut cmd = crate::winproc::command("wsl.exe");
             cmd.arg("-d")
                 .arg(&w.distro)
                 .arg("git")
@@ -128,7 +128,7 @@ fn git_command(repo_path: &str, args: &[&str]) -> Command {
             return cmd;
         }
     }
-    let mut cmd = Command::new("git");
+    let mut cmd = crate::winproc::command("git");
     cmd.arg("-C").arg(repo_path).args(args);
     cmd
 }
