@@ -1111,19 +1111,24 @@
               </div>
             </div>
 
-            <div class="flex flex-col gap-2">
-              {#each app.terminalProfiles as profile (profile.id)}
-                <TerminalProfileEditor
-                  {profile}
-                  onchange={schedulePersist}
-                  onremove={() => removeProfile(profile.id)}
-                />
-              {:else}
-                <p class={cn("text-muted-foreground", text.body)}>
-                  {i18n.t("settings.noProfiles")}
-                </p>
-              {/each}
-            </div>
+            {#if app.terminalProfiles.length > 0}
+              <!-- One list: each profile is a row that expands to its command/args. -->
+              <div class="flex flex-col divide-y divide-border/60 overflow-hidden rounded-md border border-border/60">
+                {#each app.terminalProfiles as profile (profile.id)}
+                  <div class="px-2.5">
+                    <TerminalProfileEditor
+                      {profile}
+                      onchange={schedulePersist}
+                      onremove={() => removeProfile(profile.id)}
+                    />
+                  </div>
+                {/each}
+              </div>
+            {:else}
+              <p class={cn("text-muted-foreground", text.body)}>
+                {i18n.t("settings.noProfiles")}
+              </p>
+            {/if}
           </SettingsSection>
         {/if}
         </div>

@@ -200,7 +200,14 @@ regressions.
   of rows; list/editor-heavy ones (the agents catalog, hooks, shortcuts, terminal
   profiles) use a `bare` `SettingsSection` (consistent header, no band — avoids
   card-in-card) with softened `/60` borders. The top band also dropped from h-12
-  to h-9 to match the home top band.
+  to h-9 to match the home top band. **Appearance** (Interface + Terminal) was
+  brought into the same shell. **Shortcuts** moved from per-group bordered boxes
+  to one band with divider-separated rows. **Hooks** dropped its duplicate inner
+  header. The **agents** and **terminal-profiles** lists are now single
+  divider-separated containers where each item is a **collapsible row** that
+  expands to its config (agent: command/args/shell/env; profile: command/args);
+  for agents, configured ones sit first and the remaining known agents follow as
+  add-rows, greyed when not found on PATH.
 
 ### Fixed
 - **Git status not reflected in the UI (file-tree coloring + Changes tab empty).**
