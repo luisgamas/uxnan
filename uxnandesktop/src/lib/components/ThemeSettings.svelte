@@ -38,6 +38,7 @@
   import { i18n } from "$lib/i18n";
   import ThemeEditor from "./ThemeEditor.svelte";
   import TerminalThemeEditor from "./TerminalThemeEditor.svelte";
+  import SettingsSection from "./SettingsSection.svelte";
   import FontPicker from "./FontPicker.svelte";
   import PlusIcon from "@lucide/svelte/icons/plus";
   import UploadIcon from "@lucide/svelte/icons/upload";
@@ -48,8 +49,6 @@
   import DownloadIcon from "@lucide/svelte/icons/download";
   import Trash2Icon from "@lucide/svelte/icons/trash-2";
   import CheckIcon from "@lucide/svelte/icons/check";
-  import PaletteIcon from "@lucide/svelte/icons/palette";
-  import TerminalIcon from "@lucide/svelte/icons/terminal";
 
   let error = $state<string | null>(null);
 
@@ -285,10 +284,7 @@
   {#if error}<p class={cn("text-destructive", text.body)}>{error}</p>{/if}
 
   <!-- ===== Interface ===== -->
-  <div class="flex items-center gap-2">
-    <PaletteIcon class={cn(icon.button, "text-muted-foreground")} />
-    <span class={text.heading}>{i18n.t("appearance.tabInterface")}</span>
-  </div>
+  <SettingsSection bare title={i18n.t("appearance.tabInterface")}>
 
   <!-- Fonts (override every theme's fonts) -->
   <div class="flex flex-col gap-1.5">
@@ -368,11 +364,10 @@
     </div>
   </div>
 
+  </SettingsSection>
+
   <!-- ===== Terminal ===== -->
-  <div class="flex items-center gap-2">
-    <TerminalIcon class={cn(icon.button, "text-muted-foreground")} />
-    <span class={text.heading}>{i18n.t("appearance.tabTerminal")}</span>
-  </div>
+  <SettingsSection bare title={i18n.t("appearance.tabTerminal")}>
 
   <!-- Fonts (terminal typography override — wins over each terminal theme) -->
   <div class="flex flex-col gap-1.5">
@@ -450,6 +445,7 @@
       </div>
     {/if}
   </div>
+  </SettingsSection>
 </div>
 
 {#snippet termCard(preset: TerminalThemePreset | null, scope: "single" | "dark" | "light", base: "light" | "dark")}
