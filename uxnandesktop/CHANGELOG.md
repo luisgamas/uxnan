@@ -71,14 +71,15 @@ regressions.
   panel dividers, with a faint seam. The center now sits flush and its divider
   lines up with the others; the active-pane focus indicator is a non-insetting
   inset ring that only appears when the workspace is actually split.
-- **Comfortable scale + bundled UI fonts (dual face).** Two variable faces are
-  bundled (`@fontsource-variable/geist` + `@fontsource-variable/dm-sans`, imported
-  in `app.css`) so the UI renders the same regardless of the OS. **Geist** — a
-  humanist, low-contrast variable sans — is the dense **body/UI** face: it renders
-  soft and light at 12–13px chrome, the opposite of a rigid geometric face. **DM
-  Sans** is kept as the distinct **title/display** face (`--ux-font-title`) so
-  headings carry their own accent. A small global `letter-spacing` (0.01em) and
-  grayscale antialiasing keep text even. The whole type/control scale moved up one
+- **Comfortable scale + bundled UI font.** **Geist** — a humanist, low-contrast
+  variable sans — is the single UI face for **both body and titles** (the
+  title/body hierarchy comes from size + weight, not a second face); it renders
+  soft and light at 12–13px chrome, the opposite of a rigid geometric face. Both
+  Geist and DM Sans are bundled as variable woff2 (`@fontsource-variable/geist` +
+  `@fontsource-variable/dm-sans`, imported in `app.css`) so the leading family
+  always resolves regardless of the OS — DM Sans is now only a fallback. A small
+  global `letter-spacing` (0.01em) and grayscale antialiasing keep text even. The
+  whole type/control scale moved up one
   notch toward a roomier desktop density: body text 12→13px, item titles 13→14px,
   metadata 11→12px, indicators 10→11px, section headings 14→15px; control icons
   14→16px; the default button, inputs and select triggers 32→36px tall; and the
@@ -95,9 +96,23 @@ regressions.
   shell/sidebar/panel depth automatically. Exposed them to Tailwind via `@theme inline`
   (`bg-ux-panel`, …). Added a `can-hover:` variant so hover-reveal controls never
   stick on touch, sleek theme-aware scrollbars (`.scrollbar-sleek`,
-  `.worktree-sidebar-scrollbar`), and a `prefers-reduced-motion` guard. The body/UI
-  face is **Geist** and the title face is **DM Sans** (`--ux-font-body` /
-  `--ux-font-title`), kept in sync between `app.css` and `DEFAULT_FONTS`.
+  `.worktree-sidebar-scrollbar`), and a `prefers-reduced-motion` guard. **Geist**
+  is the UI face for both `--ux-font-body` and `--ux-font-title` (DM Sans only a
+  fallback), kept in sync between `app.css` and `DEFAULT_FONTS`.
+- **Font overrides now carry a fallback (fixes "custom font doesn't apply").**
+  A user-picked UI or terminal font was written to the CSS variable / xterm
+  option **bare** (`"Some Font"` with no fallback), so the moment that one name
+  couldn't resolve the text dropped to the browser's proportional serif — which
+  read as "the app fell back to a basic system font". A new `composeFontStack()`
+  composes any single picked family in front of the role's bundled stack
+  (Geist / DM Sans / OS UI for sans, the full mono stack for terminals), applied
+  in `applyTheme` and `resolveTerminal`, so a missing or misspelled family now
+  degrades gracefully to the bundled face instead of serif.
+- **Terminal typography defaults.** The default terminal font is now a richer
+  cross-platform mono stack (`"SF Mono", … "Cascadia Mono", "JetBrains Mono", …
+  Nerd Font fallbacks, monospace`) at a lighter default weight (300) and 14px,
+  for a cleaner, softer terminal face (still fully overridable per the terminal
+  typography settings).
 - **Role tokens (`design.ts`).** Selection is now a **neutral** language: the
   `surface.active` / `activeNested` / `tab` tokens switched from primary-tinted
   fills to quiet sidebar-accent / foreground-mixed surfaces (propagating to the

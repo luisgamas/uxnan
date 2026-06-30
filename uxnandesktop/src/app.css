@@ -1,8 +1,8 @@
 @import "tailwindcss";
 /* Bundle the UI faces (variable woff2) locally so they render regardless of
    what's installed on the OS — matched by the `--ux-font-*` defaults below.
-   Geist is the dense body/UI face; DM Sans is kept as the distinct title
-   (display) face so headings carry their own accent. */
+   Geist is the UI face for body and titles; DM Sans is bundled only as a
+   fallback so the stack still has a humanist face if Geist ever fails to load. */
 @import "@fontsource-variable/geist/index.css";
 @import "@fontsource-variable/dm-sans/index.css";
 
@@ -17,16 +17,19 @@
 :root {
   --radius: 0.625rem;
   /* Themeable font families (overridden at runtime by `applyTheme`). Geist (a
-     humanist variable sans) is the dense UI/body face — it renders soft and
-     light at 12-13px chrome, the opposite of a rigid geometric face. DM Sans
-     stays as the title (display) face, giving headings a distinct accent. Both
-     stacks degrade to the OS UI font (kept in sync with `DEFAULT_FONTS` in
-     `theme.ts`). */
+     humanist variable sans) is the single UI face for both body and titles — it
+     renders soft and light at 12-13px chrome, the opposite of a rigid geometric
+     face; the title/body hierarchy comes from size + weight, not a second face.
+     DM Sans and the OS UI font stay only as graceful fallbacks. The variable
+     families are bundled via `@fontsource-variable/*` above, so the leading name
+     always resolves (kept in sync with `DEFAULT_FONTS` in `theme.ts`). */
   --ux-font-body: "Geist Variable", "Geist", "DM Sans Variable", "DM Sans",
     -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, system-ui, sans-serif;
-  --ux-font-title: "DM Sans Variable", "DM Sans", "Geist Variable", "Geist",
-    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, system-ui, sans-serif;
-  --ux-font-mono: ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  --ux-font-title: var(--ux-font-body);
+  --ux-font-mono: "SF Mono", SFMono-Regular, ui-monospace, "Cascadia Mono",
+    "Cascadia Code", "JetBrains Mono", Menlo, Consolas, "DejaVu Sans Mono",
+    "Liberation Mono", "Symbols Nerd Font Mono", "MesloLGS Nerd Font",
+    "JetBrainsMono Nerd Font", "Hack Nerd Font", monospace;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
