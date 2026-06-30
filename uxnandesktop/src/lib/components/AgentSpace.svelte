@@ -79,8 +79,15 @@
                 <AgentStatusDot status={d.status} stale={d.stale} />
               {/if}
             </span>
-            <AgentLogo logo={t.agentIcon} class="size-4 shrink-0" />
-            <span class={cn("min-w-0 flex-1 truncate", text.body)}>
+            <AgentLogo logo={t.agentIcon} class="size-3.5 shrink-0" />
+            <!-- Agents are quiet nested items: 12px, muted unless active — so the
+                 branch name (and the worktree line) keep the visual lead. -->
+            <span
+              class={cn(
+                "min-w-0 flex-1 truncate text-xs",
+                isActive ? "font-medium text-foreground" : "text-muted-foreground",
+              )}
+            >
               {t.agentName}{#if t.exited}<span class={cn("ml-1", text.meta)}>· {i18n.t("terminal.exited")}</span>{/if}
             </span>
           </button>

@@ -626,87 +626,78 @@
           </div>
         {:else if app.settingsSection === "agents"}
           <div class="flex flex-col gap-6">
-            <div class="flex flex-col gap-1">
-              <span class={text.heading}>{i18n.t("settings.agents")}</span>
-              <p class={text.meta}>{i18n.t("settings.agentsDesc")}</p>
-            </div>
+            <SettingsSection title={i18n.t("settings.agents")} description={i18n.t("settings.agentsDesc")}>
+              <div class="divide-y divide-border/60">
+                <SettingsRow label={i18n.t("settings.defaultAgent")} description={i18n.t("settings.defaultAgentDesc")}>
+                  {#snippet control()}
+                    <Select.Root
+                      type="single"
+                      value={app.settings.defaultAgentId ?? NO_DEFAULT_AGENT}
+                      onValueChange={(v) => {
+                        app.settings.defaultAgentId = v === NO_DEFAULT_AGENT ? null : (v ?? null);
+                        persistNow();
+                      }}
+                    >
+                      <Select.Trigger class="w-56">{defaultAgentLabel}</Select.Trigger>
+                      <Select.Content>
+                        <Select.Item value={NO_DEFAULT_AGENT} label={i18n.t("settings.defaultAgentNone")}>
+                          {i18n.t("settings.defaultAgentNone")}
+                        </Select.Item>
+                        {#each app.launchableAgents as a (a.id)}
+                          {@const label = a.name.trim() || a.command}
+                          <Select.Item value={a.id} {label}>{label}</Select.Item>
+                        {/each}
+                      </Select.Content>
+                    </Select.Root>
+                  {/snippet}
+                </SettingsRow>
 
-            <!-- Default agent: auto-launched when a worktree is created. -->
-            <div class="flex flex-col gap-1.5">
-              <span class={cn("font-medium", text.body)}>{i18n.t("settings.defaultAgent")}</span>
-              <Select.Root
-                type="single"
-                value={app.settings.defaultAgentId ?? NO_DEFAULT_AGENT}
-                onValueChange={(v) => {
-                  app.settings.defaultAgentId = v === NO_DEFAULT_AGENT ? null : (v ?? null);
-                  persistNow();
-                }}
-              >
-                <Select.Trigger class="w-56">{defaultAgentLabel}</Select.Trigger>
-                <Select.Content>
-                  <Select.Item value={NO_DEFAULT_AGENT} label={i18n.t("settings.defaultAgentNone")}>
-                    {i18n.t("settings.defaultAgentNone")}
-                  </Select.Item>
-                  {#each app.launchableAgents as a (a.id)}
-                    {@const label = a.name.trim() || a.command}
-                    <Select.Item value={a.id} {label}>{label}</Select.Item>
-                  {/each}
-                </Select.Content>
-              </Select.Root>
-              <p class={text.meta}>{i18n.t("settings.defaultAgentDesc")}</p>
-            </div>
+                <SettingsRow label={i18n.t("settings.agentShell")} description={i18n.t("settings.agentShellDesc")}>
+                  {#snippet control()}
+                    <Select.Root
+                      type="single"
+                      value={app.settings.agentShellProfileId ?? AGENT_SHELL_DEFAULT}
+                      onValueChange={(v) => {
+                        app.settings.agentShellProfileId =
+                          v === AGENT_SHELL_DEFAULT ? null : (v ?? null);
+                        persistNow();
+                      }}
+                    >
+                      <Select.Trigger class="w-72 max-w-full">
+                        <span class="min-w-0 flex-1 truncate text-left">{agentShellLabel}</span>
+                      </Select.Trigger>
+                      <Select.Content>
+                        <Select.Item value={AGENT_SHELL_DEFAULT} label={i18n.t("settings.agentShellSmart")}>
+                          {i18n.t("settings.agentShellSmart")}
+                        </Select.Item>
+                        {#each app.terminalProfiles as p (p.id)}
+                          {@const label = p.name.trim() || i18n.t("terminal.unnamedProfile")}
+                          <Select.Item value={p.id} {label}>{label}</Select.Item>
+                        {/each}
+                      </Select.Content>
+                    </Select.Root>
+                  {/snippet}
+                </SettingsRow>
 
-            <!-- Default shell agents launch in (cmd.exe on Windows by default). -->
-            <div class="flex flex-col gap-1.5">
-              <span class={cn("font-medium", text.body)}>{i18n.t("settings.agentShell")}</span>
-              <Select.Root
-                type="single"
-                value={app.settings.agentShellProfileId ?? AGENT_SHELL_DEFAULT}
-                onValueChange={(v) => {
-                  app.settings.agentShellProfileId =
-                    v === AGENT_SHELL_DEFAULT ? null : (v ?? null);
-                  persistNow();
-                }}
-              >
-                <Select.Trigger class="w-72 max-w-full">
-                  <span class="min-w-0 flex-1 truncate text-left">{agentShellLabel}</span>
-                </Select.Trigger>
-                <Select.Content>
-                  <Select.Item value={AGENT_SHELL_DEFAULT} label={i18n.t("settings.agentShellSmart")}>
-                    {i18n.t("settings.agentShellSmart")}
-                  </Select.Item>
-                  {#each app.terminalProfiles as p (p.id)}
-                    {@const label = p.name.trim() || i18n.t("terminal.unnamedProfile")}
-                    <Select.Item value={p.id} {label}>{label}</Select.Item>
-                  {/each}
-                </Select.Content>
-              </Select.Root>
-              <p class={text.meta}>{i18n.t("settings.agentShellDesc")}</p>
-            </div>
+                <SettingsRow label={i18n.t("settings.agentNotifications")} description={i18n.t("settings.agentNotificationsDesc")}>
+                  {#snippet control()}
+                    <Switch
+                      checked={app.settings.agentNotifications !== false}
+                      onCheckedChange={(c) => { app.settings.agentNotifications = c; persistNow(); }}
+                    />
+                  {/snippet}
+                </SettingsRow>
 
-            <!-- Agent idle notifications (on/off → Switch). -->
-            <div class="flex items-center justify-between gap-3">
-              <div class="min-w-0 space-y-0.5">
-                <span class={cn("block font-medium text-foreground", text.body)}>{i18n.t("settings.agentNotifications")}</span>
-                <p class={text.meta}>{i18n.t("settings.agentNotificationsDesc")}</p>
+                <SettingsRow label={i18n.t("settings.preventSleep")} description={i18n.t("settings.preventSleepDesc")}>
+                  {#snippet control()}
+                    <Switch
+                      checked={app.settings.preventSleep === true}
+                      onCheckedChange={(c) => { app.settings.preventSleep = c; persistNow(); }}
+                    />
+                  {/snippet}
+                </SettingsRow>
               </div>
-              <Switch
-                checked={app.settings.agentNotifications !== false}
-                onCheckedChange={(c) => { app.settings.agentNotifications = c; persistNow(); }}
-              />
-            </div>
-
-            <!-- Keep the system awake while an agent is working (opt-in → Switch). -->
-            <div class="flex items-center justify-between gap-3">
-              <div class="min-w-0 space-y-0.5">
-                <span class={cn("block font-medium text-foreground", text.body)}>{i18n.t("settings.preventSleep")}</span>
-                <p class={text.meta}>{i18n.t("settings.preventSleepDesc")}</p>
-              </div>
-              <Switch
-                checked={app.settings.preventSleep === true}
-                onCheckedChange={(c) => { app.settings.preventSleep = c; persistNow(); }}
-              />
-            </div>
+            </SettingsSection>
 
             <!-- Catalog: every known agent; only the installed ones are addable. -->
             <div class="flex flex-col gap-1.5">
