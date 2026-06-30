@@ -89,24 +89,24 @@ npx skills add https://github.com/luisgamas/skills/tree/main/flutter-riverpod-ex
 npx skills add https://github.com/luisgamas/skills/tree/main/flutter-m3-uiux -g -y
 ```
 
-#### Svelte / desktop skills — `uxnandesktop/` only
+#### Svelte / desktop skill — `uxnandesktop/` only
 
-These three skills encode the Svelte 5 + shadcn-svelte style used by the desktop
-ADE frontend. Use them when building or refactoring `uxnandesktop/` UI.
+The desktop UI skill encodes the clean, token-driven Svelte 5 + shadcn-svelte
+visual system used by the `uxnandesktop/` ADE frontend. Use it whenever you
+build, restyle, or refactor `uxnandesktop/` UI. **Canonical source:
+`https://github.com/luisgamas/skills`.**
 
 | Skill | Purpose |
 |---|---|
-| `shadcn-svelte` | Add/update/compose shadcn-svelte components and design-system presets |
-| `svelte-code-writer` | Svelte 5 docs lookup + code analysis when writing/editing `.svelte` / `.svelte.ts` |
-| `svelte-core-bestpractices` | Modern Svelte 5 reactivity, events, styling, library integration |
+| `svelte-clean-desktop-ui` | Token-driven clean desktop UI/UX system for Svelte 5 with shadcn-svelte / Bits UI / Tailwind v4 / lucide — shell layouts, sidebars, panes, settings, cards, menus, tabs, forms, dialogs, compact density, neutral surface layering, DM Sans typography and polished motion, without changing the underlying UI libraries |
 
-**Installation:** If any skill is missing, install it globally with the exact
-commands below. `shadcn-svelte` comes from the huntabyte registry; the two
-`svelte-*` skills both ship from the official `sveltejs/ai-tools` bundle:
+**Installation:** If the skill is missing, install it globally with the exact
+command below. The `-g` flag installs globally and the CLI automatically creates
+symlinks for every agent detected on the machine — no manual symlink steps are
+needed:
 
 ```bash
-npx skills add https://github.com/huntabyte/shadcn-svelte --skill shadcn-svelte
-npx skills add https://github.com/sveltejs/ai-tools
+npx skills add https://github.com/luisgamas/skills/tree/main/svelte-clean-desktop-ui -g -y
 ```
 
 #### Verification (both sets)

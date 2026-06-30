@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — docs
+- **Desktop UI skill consolidated.** The monorepo `AGENTS.md` now scopes a single
+  canonical Svelte/desktop skill, `svelte-clean-desktop-ui` (from
+  `https://github.com/luisgamas/skills`), to `uxnandesktop/` — replacing the prior
+  trio (`shadcn-svelte`, `svelte-code-writer`, `svelte-core-bestpractices`). It is
+  the token-driven clean desktop UI/UX system to use for all `uxnandesktop/` UI work.
+
 ## [0.0.2-alpha.20260628] - 2026-06-28
 
 ### Added — integrated developer browser
