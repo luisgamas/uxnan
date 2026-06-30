@@ -48,7 +48,7 @@
 <div class="flex flex-col">
 <div
   class={cn(
-    "group flex items-center gap-1.5 rounded-md py-1 pl-1 pr-1 hover:bg-accent/40",
+    "group flex items-center gap-1.5 rounded-md py-1 pl-1 pr-1 transition-colors hover:bg-foreground/[0.055] dark:hover:bg-foreground/[0.065]",
     active && surface.active,
   )}
   role="button"

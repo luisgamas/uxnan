@@ -6,7 +6,7 @@
   import { unread } from "$lib/state/unread.svelte";
   import { clipboardWrite } from "$lib/clipboard";
   import { cn } from "$lib/utils";
-  import { icon, iconButton, surface, text } from "$lib/design";
+  import { icon, iconButton, panel, surface, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
   import NewWorktreeDialog from "./NewWorktreeDialog.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
@@ -52,11 +52,11 @@
   const isExpanded = $derived(expanded || projects.query.trim().length > 0);
 </script>
 
-<div class="overflow-hidden rounded-md border border-sidebar-border">
+<div class={panel.sidebarCard}>
   <!-- Project header = the main worktree context (selectable) -->
   <div
     class={cn(
-      "flex items-center gap-1 px-1.5 py-1.5 transition-colors hover:bg-accent/40",
+      "group flex min-h-11 items-center gap-1.5 px-2 py-1.5 transition-colors hover:bg-foreground/[0.045]",
       activeProject && surface.active,
     )}
   >
@@ -168,7 +168,7 @@
 
   <!-- Worktrees (non-main) as nested sub-rows — git projects only -->
   {#if isGit && isExpanded}
-    <div class="border-t border-sidebar-border bg-background/40 py-1 pl-3 pr-1">
+    <div class="border-t border-sidebar-border/60 bg-background/35 py-1 pl-3 pr-1">
       {#if childRows.length === 0}
         <div class="flex items-center justify-between px-1 py-0.5">
           <span class={text.meta}>{i18n.t("project.noWorktrees")}</span>

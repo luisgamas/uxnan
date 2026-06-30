@@ -36,6 +36,13 @@ or accessibility regressions.
   **`Dialog.Content` had no drop shadow** (only a hairline ring), so a modal read
   flatter than a dropdown — added a proper elevation shadow (light + dark) so the
   modal sits clearly above the overlay.
+- **Left sidebar, project & worktree rows.** The project list now uses the sleek,
+  hover-revealed sidebar scrollbar with a stable gutter (no more chunky track, no
+  row shift). Project cards gained a soft `sidebar-border/60` border + a faint
+  `sidebar-foreground` surface and a roomier header; project and worktree row hover
+  switched from an accent tint to a quiet foreground-mixed fill. Selection stays the
+  neutral sidebar-accent; the worktree active-indicator bar is the one deliberate
+  primary accent (a focus marker).
 
 ### Changed — docs
 - **Desktop UI skill consolidated.** The monorepo `AGENTS.md` now scopes a single

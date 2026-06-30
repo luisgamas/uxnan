@@ -41,7 +41,7 @@
   });
 </script>
 
-<div class="flex h-full min-h-0 flex-col">
+<div class="scrollbar-sleek-parent flex h-full min-h-0 flex-col">
   <!-- Search = a full-width button that opens the palette; Settings below it. -->
   <div class="flex shrink-0 flex-col gap-2 border-b border-sidebar-border p-2">
     <Button
@@ -115,7 +115,7 @@
 
   <!-- Project tree: each project is selectable (= its main worktree) and
        expands to show its non-main worktrees as sub-rows. -->
-  <div class="uxnan-scroll min-h-0 flex-1 overflow-y-auto px-2 pb-2 pt-1">
+  <div class="scrollbar-sleek worktree-sidebar-scrollbar min-h-0 flex-1 overflow-y-auto px-2 pb-2 pt-1">
     {#if sortedRepos.length === 0}
       <div class="flex flex-col items-center gap-2 px-2 py-6 text-center">
         <p class="text-xs text-muted-foreground">
