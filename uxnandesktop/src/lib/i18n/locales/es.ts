@@ -181,6 +181,10 @@ export const es: Record<MessageKey, string> = {
   "settings.aiCommitInstructionsDesc":
     "Guía opcional añadida al prompt (p. ej. mencionar el id del ticket, modo imperativo).",
   "settings.aiCommitInstructionsPlaceholder": "p. ej. Referencia el ticket de Jira en el cuerpo",
+  "settings.groupGeneral": "General",
+  "settings.groupAgents": "Agentes",
+  "settings.groupWorkspace": "Espacio de trabajo",
+  "settings.groupApp": "Aplicación",
   "settings.appearance": "Apariencia",
   "settings.appearanceDesc":
     "Temas y fuentes para toda la app. Elige uno integrado, crea el tuyo, o importa/exporta como JSON.",

@@ -178,9 +178,13 @@ regressions.
 - **Settings shell.** Widened the content column to `max-w-3xl` with the sleek
   scrollbar and roomier `px-8 py-7` padding; polished the section nav (steady
   `h-8` rows, 13px tracking-tight labels, foreground hover) and softened the
-  header/nav dividers to `border/60`. The deeper per-section "header over a soft
-  body band" restructure is tracked as a reviewed follow-up in `FOR-DEV.md`
-  (large 9-section change; warrants on-device visual review).
+  header/nav dividers to `border/60`. The top band (back button + window
+  controls) now carries a subtle horizontal divider so it separates from the
+  content, and the section nav is **organized into titled groups** (General ·
+  Agents · Workspace · Application) using the shared `text.section` heading — the
+  same section-header treatment as the home left sidebar — so the long flat list
+  reads as areas. The deeper per-section "header over a soft body band"
+  restructure is in progress (see below; tracked in `FOR-DEV.md`).
 
 ### Fixed
 - **Git status not reflected in the UI (file-tree coloring + Changes tab empty).**

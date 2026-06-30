@@ -43,7 +43,7 @@
     resolveBinding,
   } from "$lib/keybindings";
   import { cn } from "$lib/utils";
-  import { icon, iconButton, text } from "$lib/design";
+  import { divider, icon, iconButton, text } from "$lib/design";
   import PaletteIcon from "@lucide/svelte/icons/palette";
   import TerminalIcon from "@lucide/svelte/icons/terminal";
   import BotIcon from "@lucide/svelte/icons/bot";
@@ -424,16 +424,38 @@
     i18n.t(LINK_POLICIES.find((p) => p.value === br.linkPolicy)?.labelKey ?? "browser.policyInternal"),
   );
 
-  const navItems = [
-    { id: "appearance", key: "settings.appearance", icon: PaletteIcon },
-    { id: "language", key: "settings.language", icon: LanguagesIcon },
-    { id: "shortcuts", key: "settings.shortcuts", icon: KeyboardIcon },
-    { id: "agents", key: "settings.agents", icon: BotIcon },
-    { id: "aicommit", key: "settings.aiCommit", icon: SparklesIcon },
-    { id: "hooks", key: "settings.hooks", icon: WebhookIcon },
-    { id: "terminal", key: "settings.terminal", icon: TerminalIcon },
-    { id: "browser", key: "settings.browser", icon: GlobeIcon },
-    { id: "updates", key: "settings.updates", icon: DownloadIcon },
+  // Grouped section nav — titled groups (like the center "+" launcher) so a long
+  // flat list reads as organized areas, while each item keeps the settings-nav
+  // row recipe. Group headings use the shared `text.section` token for coherence
+  // with the home left sidebar's section headers.
+  const navGroups = [
+    {
+      titleKey: "settings.groupGeneral",
+      items: [
+        { id: "appearance", key: "settings.appearance", icon: PaletteIcon },
+        { id: "language", key: "settings.language", icon: LanguagesIcon },
+        { id: "shortcuts", key: "settings.shortcuts", icon: KeyboardIcon },
+      ],
+    },
+    {
+      titleKey: "settings.groupAgents",
+      items: [
+        { id: "agents", key: "settings.agents", icon: BotIcon },
+        { id: "aicommit", key: "settings.aiCommit", icon: SparklesIcon },
+        { id: "hooks", key: "settings.hooks", icon: WebhookIcon },
+      ],
+    },
+    {
+      titleKey: "settings.groupWorkspace",
+      items: [
+        { id: "terminal", key: "settings.terminal", icon: TerminalIcon },
+        { id: "browser", key: "settings.browser", icon: GlobeIcon },
+      ],
+    },
+    {
+      titleKey: "settings.groupApp",
+      items: [{ id: "updates", key: "settings.updates", icon: DownloadIcon }],
+    },
   ] as const;
 </script>
 
@@ -445,7 +467,7 @@
          not part of the drag region). -->
     <header
       data-tauri-drag-region
-      class="flex h-12 shrink-0 items-center gap-2 px-3"
+      class={cn("flex h-12 shrink-0 items-center gap-2 px-3", divider.bottom)}
     >
       <Button
         variant="ghost"
@@ -463,25 +485,30 @@
     </header>
 
     <div class="flex min-h-0 flex-1">
-      <!-- Section nav (left sidebar) -->
+      <!-- Section nav (left sidebar): titled groups + settings-nav rows. -->
       <nav
-        class="flex w-56 shrink-0 flex-col gap-0.5 border-r border-border/60 p-2"
+        class="scrollbar-sleek flex w-56 shrink-0 flex-col gap-4 overflow-y-auto border-r border-border/60 p-2"
         aria-label={i18n.t("settings.title")}
       >
-        {#each navItems as item (item.id)}
-          {@const Icon = item.icon}
-          <button
-            class={cn(
-              "flex h-8 items-center gap-2 rounded-md px-2 text-left text-[13px] font-medium tracking-tight transition-colors",
-              app.settingsSection === item.id
-                ? "bg-accent text-accent-foreground"
-                : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
-            )}
-            onclick={() => (app.settingsSection = item.id)}
-          >
-            <Icon class={icon.button} />
-            {i18n.t(item.key)}
-          </button>
+        {#each navGroups as group (group.titleKey)}
+          <div class="flex flex-col gap-0.5">
+            <span class={cn("px-2 pb-0.5", text.section)}>{i18n.t(group.titleKey)}</span>
+            {#each group.items as item (item.id)}
+              {@const Icon = item.icon}
+              <button
+                class={cn(
+                  "flex h-8 items-center gap-2 rounded-md px-2 text-left text-[13px] font-medium tracking-tight transition-colors",
+                  app.settingsSection === item.id
+                    ? "bg-accent text-accent-foreground"
+                    : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+                )}
+                onclick={() => (app.settingsSection = item.id)}
+              >
+                <Icon class={icon.button} />
+                {i18n.t(item.key)}
+              </button>
+            {/each}
+          </div>
         {/each}
       </nav>
 

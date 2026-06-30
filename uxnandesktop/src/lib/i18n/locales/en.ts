@@ -184,6 +184,10 @@ export const en = {
   "settings.aiCommitInstructionsDesc":
     "Optional guidance added to the prompt (e.g. mention the ticket id, imperative mood).",
   "settings.aiCommitInstructionsPlaceholder": "e.g. Reference the Jira ticket in the body",
+  "settings.groupGeneral": "General",
+  "settings.groupAgents": "Agents",
+  "settings.groupWorkspace": "Workspace",
+  "settings.groupApp": "Application",
   "settings.appearance": "Appearance",
   "settings.appearanceDesc":
     "Themes and fonts for the whole app. Pick a built-in, create your own, or import/export as JSON.",
