@@ -59,6 +59,14 @@ or accessibility regressions.
   body band" restructure is tracked as a reviewed follow-up in `FOR-DEV.md`
   (large 9-section change; warrants on-device visual review).
 
+### Fixed
+- **Invisible scrollbars on light themes.** The dense-panel scrollbar
+  (`.uxnan-scroll`, used by the file tree, changes/commit panels, diff breadcrumb,
+  directory picker, theme editors and virtualized lists) used a fixed white thumb,
+  so it disappeared on light themes. It's now a theme-aware `muted-foreground` tint
+  (via `color-mix`), visible on both light and dark. The xterm terminal viewport
+  keeps its own light thumb (it renders on its own dark surface).
+
 ### Changed — docs
 - **Desktop UI skill consolidated.** The monorepo `AGENTS.md` now scopes a single
   canonical Svelte/desktop skill, `svelte-clean-desktop-ui` (from
