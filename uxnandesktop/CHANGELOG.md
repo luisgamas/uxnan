@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — clean desktop UI redesign
+A token-driven visual refresh (via the `svelte-clean-desktop-ui` system) toward a
+calm, dense, tool-like desktop feel, with no UI-library changes and no behavior
+or accessibility regressions.
+- **Foundations (`app.css` + `theme.ts`).** Added a layer of theme-aware semantic
+  surface tokens — `--ux-shell`, `--ux-sidebar-accent`, `--ux-panel`,
+  `--ux-panel-muted`, `--ux-editor-surface`, `--ux-elevated`, plus hover/subtle-border
+  tints — derived from the base palette via `color-mix` (one formula darkens light
+  themes and lightens dark ones), so every built-in and custom theme gains coherent
+  shell/sidebar/panel depth automatically. Exposed them to Tailwind via `@theme inline`
+  (`bg-ux-panel`, …). Added a `can-hover:` variant so hover-reveal controls never
+  stick on touch, sleek theme-aware scrollbars (`.scrollbar-sleek`,
+  `.worktree-sidebar-scrollbar`), and a `prefers-reduced-motion` guard. The default
+  UI face is now **DM Sans** (graceful fallback to the OS UI font), kept in sync
+  between `--ux-font-*` and `DEFAULT_FONTS`.
+
 ### Changed — docs
 - **Desktop UI skill consolidated.** The monorepo `AGENTS.md` now scopes a single
   canonical Svelte/desktop skill, `svelte-clean-desktop-ui` (from
