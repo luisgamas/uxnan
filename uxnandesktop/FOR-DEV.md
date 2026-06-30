@@ -155,6 +155,13 @@ are **done** (see `CHANGELOG.md` + `architecture/02d` §3). Remaining follow-ups
       back-compat).
 
 **Polish / quality**
+- [ ] **Agent sign-in status as the list's second line.** In Settings → Agents,
+      the unified list shows each agent's `command` as the second (muted) line.
+      Replace it (where available) with the agent's real session/sign-in status —
+      e.g. "Signed in as <user> · <plan>" / "Not signed in" — like the providers
+      list in the reference UI. Needs the sanitized per-agent `auth/status` (it
+      lives on the bridge side today) surfaced to the desktop settings; never show
+      tokens. Where status is unknown, fall back to the command.
 - [ ] **Settings list-body polish (optional follow-up).** The section-shell
       refactor is done — all nine sections use `SettingsSection` (consistent
       header), settings-style sections use the `panel.settingsBody` band of

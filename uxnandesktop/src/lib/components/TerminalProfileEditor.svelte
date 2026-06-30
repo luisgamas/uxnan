@@ -9,6 +9,7 @@
   import * as Collapsible from "$lib/components/ui/collapsible";
   import Trash2Icon from "@lucide/svelte/icons/trash-2";
   import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
+  import TerminalIcon from "@lucide/svelte/icons/terminal";
 
   let {
     profile,
@@ -34,8 +35,11 @@
   }
 </script>
 
-<Collapsible.Root bind:open={expanded} class="flex flex-col gap-2 py-2">
-  <div class="flex items-center gap-2">
+<Collapsible.Root bind:open={expanded} class="flex flex-col gap-2 py-2.5">
+  <div class="flex items-center gap-2.5">
+    <span class="flex size-7 shrink-0 items-center justify-center rounded-md border border-border/60 text-muted-foreground">
+      <TerminalIcon class="size-3.5" />
+    </span>
     <button
       type="button"
       class="min-w-0 flex-1 text-left"
@@ -44,6 +48,9 @@
       <span class={cn("block truncate font-medium text-foreground", text.body)}>
         {profile.name?.trim() || profile.command || i18n.t("profileEditor.namePlaceholder")}
       </span>
+      {#if profile.name?.trim() && profile.command}
+        <span class="block truncate font-mono text-[11px] leading-4 text-muted-foreground">{profile.command}</span>
+      {/if}
     </button>
     <Collapsible.Trigger
       class="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
