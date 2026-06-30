@@ -25,24 +25,70 @@ in [`src/lib/design.ts`](../src/lib/design.ts); apply them with `cn(...)`.
 | Token | Size | Use |
 |---|---|---|
 | `icon.button` | 14px (`size-3.5`) | Icons inside a button or the search field |
+| `icon.nav` | 16px (`size-4`) | A leading icon in a nav / list row |
 | `icon.decorative` | 12px (`size-3`) | Purely-visual / informational: breadcrumb, leading item icons, status & "running terminals" indicators |
 | `icon.empty` | 28px (`size-7`) | Empty-state illustration |
 
 ### Icon buttons (`iconButton`)
 | Token | Size | Use |
 |---|---|---|
-| `iconButton.action` | 24px (`size-6`) | Ghost icon buttons in toolbars, cards and rows |
+| `iconButton.xs` | 24px (`size-6`) | Compact action in a dense row / card |
+| `iconButton.sm` | 28px (`size-7`) | Slightly roomier action |
+| `iconButton.action` | 24px (`size-6`) | Canonical ghost icon button in toolbars, cards and rows |
+| `iconButton.toolbar` | 32px (`size-8`) | Primary toolbar button |
 
 ### Text (`text`)
 | Token | Size / style | Use |
 |---|---|---|
+| `text.pageTitle` | 24px semibold | Settings / page title (largest, boldest) |
+| `text.heading` | 14px semibold | Settings section heading |
+| `text.subheading` | 13px medium | Sub-section heading inside a pane |
 | `text.title` | 13px medium | Primary item title (project / worktree name) |
 | `text.body` | 12px | Body & interactive text (buttons, inputs, list items, menu items) |
+| `text.bodyStrong` | 12px medium | Body text that needs a touch more weight (active labels) |
 | `text.meta` | 11px muted | Secondary, informational text (paths, descriptions) — **muted, not bold** |
 | `text.menu` | 12px | Floating-menu item text |
-| `text.menuLabel` | 11px muted | Floating-menu section label |
+| `text.menuLabel` | 11px medium muted | Floating-menu section label |
 | `text.section` | 11px medium uppercase muted | Sidebar / panel section header |
 | `text.indicator` | 10px | Tiny badges, counters and indicators |
+
+### Surfaces & selection (`surface`)
+Neutral, layered surfaces. Selection reads through a quiet **sidebar-accent**
+fill (`--ux-sidebar-accent`), never a saturated color field. The surface
+variables themselves (`--ux-shell`, `--ux-panel`, …) live in `app.css`, derived
+from the theme palette so they follow every theme — see
+[theming](theming.md#how-its-applied).
+
+| Token | Use |
+|---|---|
+| `surface.shell` | App canvas / shell root |
+| `surface.sidebar` | A navigation surface (left/right sidebars) |
+| `surface.panel` | A content panel |
+| `surface.panelMuted` | A subtly distinct panel band (e.g. a toolbar over a panel) |
+| `surface.elevated` | An elevated overlay (menu / popover body) |
+| `surface.active` | Selected project / worktree card (strongest selection) |
+| `surface.activeNested` | Selected agent row nested under a worktree (lighter, subordinate) |
+| `surface.tab` | Active panel tab (lifted neutral segment) |
+
+### Rows (`row`)
+Dense, breathable list/nav rows. Compose `*Inactive` / `*Active` state classes
+on top of the base.
+
+| Token | Use |
+|---|---|
+| `row.sidebar` + `row.sidebarInactive` / `row.sidebarActive` | Sidebar nav / project / worktree / settings-nav row (~28px) |
+| `row.list` + `row.listInactive` / `row.listActive` | A list row in a content panel (file tree, changes, …) |
+
+### Fields & containers (`field`, `panel`, `focus`)
+| Token | Use |
+|---|---|
+| `field.input` | A text input |
+| `field.search` | The compact, field-like search button |
+| `panel.settingsBody` | A settings section body band (controls inside; no card-in-card) |
+| `panel.sectionHeader` | A settings section header (title + description over a divider) |
+| `panel.card` | A standalone content card |
+| `panel.sidebarCard` | A selectable sidebar card (project/worktree outer shell) |
+| `focus.ring` | The shared focus-visible ring |
 
 ## Principles
 - **Emphasis is earned.** Informational text (paths, counts, hints) stays

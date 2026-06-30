@@ -20,6 +20,15 @@ or accessibility regressions.
   `.worktree-sidebar-scrollbar`), and a `prefers-reduced-motion` guard. The default
   UI face is now **DM Sans** (graceful fallback to the OS UI font), kept in sync
   between `--ux-font-*` and `DEFAULT_FONTS`.
+- **Role tokens (`design.ts`).** Selection is now a **neutral** language: the
+  `surface.active` / `activeNested` / `tab` tokens switched from primary-tinted
+  fills to quiet sidebar-accent / foreground-mixed surfaces (propagating to the
+  project & worktree cards, nested agent rows and panel tabs that consume them).
+  Extended the module with layered `surface.{shell,sidebar,panel,panelMuted,elevated}`,
+  dense `row` recipes, `field` (input + field-like search), `panel`
+  (settings body / section header / cards) and a shared `focus` ring, plus
+  `icon.nav`, `iconButton.{xs,sm,toolbar}` and `text.{pageTitle,subheading,bodyStrong}`.
+  `docs/design-tokens.md` updated to match.
 
 ### Changed — docs
 - **Desktop UI skill consolidated.** The monorepo `AGENTS.md` now scopes a single
