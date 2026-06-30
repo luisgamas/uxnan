@@ -86,8 +86,8 @@
   }
 </script>
 
-<Collapsible.Root bind:open={expanded} class="flex flex-col gap-2 py-2">
-  <div class="flex items-center gap-2">
+<Collapsible.Root bind:open={expanded} class="flex flex-col gap-2 py-2.5">
+  <div class="flex items-center gap-2.5">
     <div class="relative shrink-0">
       <button
         type="button"
@@ -125,6 +125,9 @@
       <span class={cn("block truncate font-medium text-foreground", text.body)}>
         {agent.name?.trim() || agent.command || i18n.t("agentEditor.namePlaceholder")}
       </span>
+      {#if agent.name?.trim() && agent.command}
+        <span class="block truncate font-mono text-[11px] leading-4 text-muted-foreground">{agent.command}</span>
+      {/if}
     </button>
     <Collapsible.Trigger
       class="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"

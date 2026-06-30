@@ -287,10 +287,10 @@
   <SettingsSection bare title={i18n.t("appearance.tabInterface")}>
 
   <!-- Fonts (override every theme's fonts) -->
-  <div class="flex flex-col gap-1.5">
+  <div class="flex flex-col gap-2">
     <span class={text.subheading}>{i18n.t("appearance.fonts")}</span>
     <p class={text.meta}>{i18n.t("appearance.fontsDesc")}</p>
-    <div class="mt-1 grid grid-cols-3 gap-2">
+    <div class="grid grid-cols-3 gap-3 rounded-xl border border-border/50 bg-card/50 p-4 shadow-xs">
       {#each [["title", "appearance.fontTitle"], ["body", "appearance.fontBody"], ["mono", "appearance.fontMono"]] as [key, labelKey] (key)}
         {@const k = key as "title" | "body" | "mono"}
         <div class="flex min-w-0 flex-col gap-1">
@@ -317,7 +317,7 @@
         <Button size="sm" onclick={newTheme}><PlusIcon data-icon="inline-start" />{i18n.t("appearance.newTheme")}</Button>
       </div>
     </div>
-    <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
+    <div class="grid grid-cols-2 gap-2.5 rounded-xl border border-border/50 bg-card/50 p-4 shadow-xs sm:grid-cols-3">
       <button type="button" class={cn("flex flex-col gap-2 rounded-lg border p-2 text-left", activeId === "system" ? "border-primary ring-1 ring-primary/30" : "border-border hover:bg-accent/40")} onclick={() => selectTheme("system")}>
         <div class="flex h-8 overflow-hidden rounded border border-border">
           <div class="flex-1 bg-white"></div>
@@ -370,10 +370,11 @@
   <SettingsSection bare title={i18n.t("appearance.tabTerminal")}>
 
   <!-- Fonts (terminal typography override — wins over each terminal theme) -->
-  <div class="flex flex-col gap-1.5">
+  <div class="flex flex-col gap-2">
     <span class={text.subheading}>{i18n.t("appearance.fonts")}</span>
     <p class={text.meta}>{i18n.t("appearance.terminalFontsDesc")}</p>
-    <div class="mt-1 grid grid-cols-2 gap-2 sm:grid-cols-3">
+    <div class="flex flex-col gap-3 rounded-xl border border-border/50 bg-card/50 p-4 shadow-xs">
+    <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
       <div class="col-span-2 flex min-w-0 flex-col gap-1 sm:col-span-3">
         <Label class={text.meta}>{i18n.t("terminalTheme.font")}</Label>
         <FontPicker
@@ -400,9 +401,10 @@
         <Input value={tf.fontWeight != null ? String(tf.fontWeight) : ""} placeholder="normal" oninput={(e) => setTermFontStr("fontWeight", e.currentTarget.value)} />
       </div>
     </div>
-    <div class="mt-1 flex items-center gap-2">
+    <div class="flex items-center gap-2">
       <Switch checked={tf.ligatures ?? false} onCheckedChange={(c) => { ensureTermFonts().ligatures = c; persist(); }} />
       <Label class={text.body}>{i18n.t("terminalTheme.ligatures")}</Label>
+    </div>
     </div>
   </div>
 
@@ -418,6 +420,7 @@
     </div>
     <p class={text.meta}>{i18n.t("appearance.terminalThemesDesc")}</p>
 
+    <div class="flex flex-col gap-3 rounded-xl border border-border/50 bg-card/50 p-4 shadow-xs">
     <!-- Optional: a separate terminal theme per light/dark app theme -->
     <div class="flex items-center justify-between gap-4">
       <div class="flex min-w-0 flex-col gap-0.5">
@@ -444,6 +447,7 @@
         {#each lightThemes as preset (preset.id)}{@render termCard(preset, "light", "light")}{/each}
       </div>
     {/if}
+    </div>
   </div>
   </SettingsSection>
 </div>

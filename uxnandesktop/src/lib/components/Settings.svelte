@@ -717,7 +717,7 @@
               {#if installed === null}
                 <p class={text.meta}>{i18n.t("settings.detecting")}</p>
               {/if}
-              <div class="flex flex-col divide-y divide-border/60 rounded-xl border border-border/50 bg-card/50 px-4 shadow-xs">
+              <div class="flex flex-col divide-y divide-border/60 rounded-xl border border-border/50 bg-card/50 px-5 shadow-xs">
                 {#each app.agentProfiles as agent (agent.id)}
                   <AgentProfileEditor
                     {agent}
@@ -728,10 +728,12 @@
                 {#each AGENT_CATALOG.filter((c) => !isConfigured(c)) as c (c.id)}
                   {@const inst = isInstalled(c)}
                   <div class={cn("flex items-center gap-2.5 py-2.5", !inst && "opacity-55")}>
-                    <AgentLogo logo={c.logo} class="size-4 shrink-0" />
+                    <span class="flex size-7 shrink-0 items-center justify-center">
+                      <AgentLogo logo={c.logo} class="size-5" />
+                    </span>
                     <div class="min-w-0 flex-1">
-                      <div class={cn("truncate", text.body)}>{c.name}</div>
-                      <div class={cn("truncate font-mono", text.meta)}>{c.command}</div>
+                      <div class={cn("truncate font-medium text-foreground", text.body)}>{c.name}</div>
+                      <div class="truncate font-mono text-[11px] leading-4 text-muted-foreground">{c.command}</div>
                     </div>
                     {#if inst}
                       <Button variant="ghost" size="sm" class="h-7 shrink-0 gap-1" onclick={() => addCatalogAgent(c)}>
@@ -1111,7 +1113,7 @@
 
             {#if app.terminalProfiles.length > 0}
               <!-- One list: each profile is a row that expands to its command/args. -->
-              <div class="flex flex-col divide-y divide-border/60 rounded-xl border border-border/50 bg-card/50 px-4 shadow-xs">
+              <div class="flex flex-col divide-y divide-border/60 rounded-xl border border-border/50 bg-card/50 px-5 shadow-xs">
                 {#each app.terminalProfiles as profile (profile.id)}
                   <TerminalProfileEditor
                     {profile}
