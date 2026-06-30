@@ -20,7 +20,7 @@
   import CommitPane from "./CommitPane.svelte";
   import { resolveAgentDisplay } from "$lib/state/agentDisplay";
   import AgentStatusDot from "./AgentStatusDot.svelte";
-  import { divider, icon, text } from "$lib/design";
+  import { divider, icon, tab, text } from "$lib/design";
   import { cn } from "$lib/utils";
   import { i18n } from "$lib/i18n";
   import PlusIcon from "@lucide/svelte/icons/plus";
@@ -350,12 +350,12 @@
                         aria-hidden="true"
                       ></div>
                       <div
-                        class="flex shrink-0 items-center gap-1 rounded px-2 py-0.5 text-xs {activeChip
-                          ? 'bg-background text-foreground'
-                          : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'} {tabDrag?.dragging &&
-                        tabDrag.tabId === t.id
-                          ? 'opacity-40'
-                          : ''}"
+                        class={cn(
+                          "flex h-full shrink-0 items-center gap-1.5 px-3 text-[13px]",
+                          tab.base,
+                          activeChip ? tab.active : tab.inactive,
+                          tabDrag?.dragging && tabDrag.tabId === t.id && "opacity-40",
+                        )}
                         role="group"
                         data-tab-id={t.id}
                         data-group-id={g.group.id}

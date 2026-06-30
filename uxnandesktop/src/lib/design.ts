@@ -95,12 +95,6 @@ export const surface = {
   /** A selected agent row nested under a worktree — same neutral language,
    *  lighter, so it always reads as subordinate to its parent card. */
   activeNested: "bg-foreground/[0.055] text-foreground",
-  /** Active state for a panel tab. Plain classes (apply *conditionally* on the
-   *  active tab) — bits-ui exposes selection via `data-state="active"`, not
-   *  `data-active`, and this project doesn't define a `data-active` variant, so
-   *  a component's own `data-active:` classes never render. A lifted neutral
-   *  segment (bg + subtle ring + soft shadow) reads as selected on any strip. */
-  tab: "bg-background text-foreground shadow-sm ring-1 ring-border/70",
 } as const;
 
 /** Row recipes — comfortable, breathable list/nav rows. `*Inactive` /
@@ -152,4 +146,15 @@ export const divider = {
   bottom: "border-b border-border",
   /** A divider above the element (the status bar). */
   top: "border-t border-border",
+} as const;
+
+/** Tab recipes — an active tab reads like a selected sidebar item: a quiet
+ *  sidebar-accent fill *plus* a firm foreground underline (the worktree-selection
+ *  feel + an underline-style active bar). Compose `cn(tab.base, isActive ?
+ *  tab.active : tab.inactive)`; `base` reserves the 2px underline so toggling
+ *  never shifts content. Shared by the center terminal tabs and the right panel. */
+export const tab = {
+  base: "border-b-2 border-transparent transition-colors",
+  active: "bg-[var(--ux-sidebar-accent)] border-foreground text-foreground",
+  inactive: "text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground",
 } as const;

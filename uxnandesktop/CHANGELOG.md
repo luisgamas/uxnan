@@ -40,6 +40,15 @@ regressions.
   with no visible seam (it was most noticeable behind split terminals). Drag-to-resize
   still works via a wider invisible hit strip, with a hairline that appears only on
   hover. Factored into one reusable `resizeHandle` snippet.
+- **Active tabs restyled; worktree bar removed.** The center terminal tabs and the
+  right-panel tabs no longer read as a floating badge — an active tab now uses a
+  quiet sidebar-accent fill (like a selected worktree) with a firm foreground
+  underline, via a shared `tab` token (`design.ts`). The shared `tabs-trigger`
+  primitive (the right panel is its only consumer) was simplified to a neutral base
+  so the token fully drives the active look. Removed the small vertical primary bar
+  on the selected worktree (the surface fill already marks selection), and the
+  status-bar panel toggles moved off the retired `surface.tab` to a plain neutral
+  active fill. `docs/design-tokens.md` updated.
 - **Comfortable scale + bundled UI font.** **DM Sans is now bundled**
   (`@fontsource-variable/dm-sans`, imported in `app.css`) so the UI face actually
   renders regardless of the OS, with a small global `letter-spacing` (0.01em) and

@@ -58,12 +58,6 @@
   onkeydown={(e) =>
     (e.key === "Enter" || e.key === " ") && projects.setActiveWorktree(row.path)}
 >
-  <span
-    class={cn(
-      "h-4 w-0.5 shrink-0 rounded-full",
-      active ? "bg-primary" : "bg-transparent",
-    )}
-  ></span>
   <GitBranchIcon class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
   <div class="flex min-w-0 flex-1 items-center gap-1.5">
     <span class={cn("truncate", text.body)}>{label}</span>

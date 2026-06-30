@@ -11,7 +11,7 @@
   import { git } from "$lib/state/git.svelte";
   import { projects } from "$lib/state/projects.svelte";
   import { i18n } from "$lib/i18n";
-  import { divider, icon, surface } from "$lib/design";
+  import { divider, icon, tab as tabStyle } from "$lib/design";
   import { cn } from "$lib/utils";
   import FolderTreeIcon from "@lucide/svelte/icons/folder-tree";
   import GitCompareIcon from "@lucide/svelte/icons/git-compare-arrows";
@@ -38,21 +38,21 @@
   >
     <Tabs.Trigger
       value="files"
-      class={cn("px-2 text-xs", tab === "files" && surface.tab)}
+      class={cn("px-3 text-[13px]", tabStyle.base, tab === "files" ? tabStyle.active : tabStyle.inactive)}
     >
       <FolderTreeIcon data-icon="inline-start" class={cn(icon.decorative)} />
       {i18n.t("fileTree.tab")}
     </Tabs.Trigger>
     <Tabs.Trigger
       value="changes"
-      class={cn("px-2 text-xs", tab === "changes" && surface.tab)}
+      class={cn("px-3 text-[13px]", tabStyle.base, tab === "changes" ? tabStyle.active : tabStyle.inactive)}
     >
       <GitCompareIcon data-icon="inline-start" class={cn(icon.decorative)} />
       {i18n.t("rightPanel.changesTab")}
     </Tabs.Trigger>
     <Tabs.Trigger
       value="history"
-      class={cn("px-2 text-xs", tab === "history" && surface.tab)}
+      class={cn("px-3 text-[13px]", tabStyle.base, tab === "history" ? tabStyle.active : tabStyle.inactive)}
     >
       <GitBranchIcon data-icon="inline-start" class={cn(icon.decorative)} />
       {i18n.t("history.tab")}

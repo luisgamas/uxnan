@@ -8,7 +8,7 @@
   import { matchAction } from "$lib/keybindings";
   import { isUntestedPlatform, osLabel } from "$lib/platform";
   import { cn } from "$lib/utils";
-  import { divider, surface } from "$lib/design";
+  import { divider } from "$lib/design";
   import TriangleAlertIcon from "@lucide/svelte/icons/triangle-alert";
   import WebhookIcon from "@lucide/svelte/icons/webhook";
   import PanelLeftIcon from "@lucide/svelte/icons/panel-left";
@@ -344,7 +344,7 @@
         class={cn(
           "flex size-6 items-center justify-center rounded",
           app.settings.leftSidebarOpen
-            ? surface.tab
+            ? "bg-accent text-foreground"
             : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
         )}
         title={i18n.t("titlebar.toggleLeft")}
@@ -358,7 +358,7 @@
         class={cn(
           "flex size-6 items-center justify-center rounded",
           app.settings.rightSidebarOpen
-            ? surface.tab
+            ? "bg-accent text-foreground"
             : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
         )}
         title={i18n.t("terminal.toggleRight")}
@@ -373,7 +373,7 @@
           class={cn(
             "flex size-6 items-center justify-center rounded",
             app.browserOpen
-              ? surface.tab
+              ? "bg-accent text-foreground"
               : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
           )}
           title={i18n.t("browser.toggle")}

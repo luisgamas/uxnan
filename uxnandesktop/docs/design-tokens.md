@@ -69,7 +69,6 @@ from the theme palette so they follow every theme — see
 | `surface.elevated` | An elevated overlay (menu / popover body) |
 | `surface.active` | Selected project / worktree card (strongest selection) |
 | `surface.activeNested` | Selected agent row nested under a worktree (lighter, subordinate) |
-| `surface.tab` | Active panel tab (lifted neutral segment) |
 
 ### Rows (`row`)
 Dense, breathable list/nav rows. Compose `*Inactive` / `*Active` state classes
@@ -91,6 +90,7 @@ on top of the base.
 | `panel.sidebarCard` | A selectable sidebar card (project/worktree outer shell) |
 | `focus.ring` | The shared focus-visible ring |
 | `divider.bottom` / `divider.top` | The subtle hairline section divider (top band of each panel, the status bar) — one reusable `--border` hairline so every divider matches |
+| `tab.base` + `tab.active` / `tab.inactive` | Active tab = a quiet sidebar-accent fill (like a selected worktree) + a firm foreground underline; shared by the center terminal tabs and the right panel |
 
 ## Principles
 - **Emphasis is earned.** Informational text (paths, counts, hints) stays
