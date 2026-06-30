@@ -31,6 +31,7 @@
   import FileDiffIcon from "@lucide/svelte/icons/file-diff";
   import GitCommitIcon from "@lucide/svelte/icons/git-commit-horizontal";
   import NewWorktreeDialog from "./NewWorktreeDialog.svelte";
+  import LauncherMenu from "./LauncherMenu.svelte";
 
   /** Default profile's shell/args, for region-level + and splits. A blank
    *  command falls back to the backend's platform default shell. */
@@ -334,8 +335,13 @@
                   role="group"
                   onpointerdown={() => terminals.setActiveGroup(g.group.id)}
                 >
-                  <!-- Region tab strip (pointer-driven tab drag target) -->
+                  <!-- Region tab strip (pointer-driven tab drag target). It's the
+                       top band of the title-bar-less center, so its empty areas
+                       double as a window drag handle (Tauri checks the exact
+                       target, so tabs/buttons — which lack the attribute — stay
+                       clickable; the flex-1 spacer below is the main drag zone). -->
                   <div
+                    data-tauri-drag-region
                     class={cn("uxnan-scroll flex h-9 shrink-0 items-center gap-1 overflow-x-auto bg-sidebar px-1", divider.bottom)}
                     data-tab-strip
                     data-group-id={g.group.id}
@@ -436,16 +442,32 @@
                         : 'bg-transparent'}"
                       aria-hidden="true"
                     ></div>
-                    <button
-                      class="ml-0.5 shrink-0 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                      title={i18n.t("terminal.newInRegion")}
-                      aria-label={i18n.t("terminal.newTerminal")}
-                      onclick={() =>
-                        terminals.create({ groupId: g.group.id, ...defaultShellArgs() })}
-                    >
-                      +
-                    </button>
-                    <div class="flex-1"></div>
+                    <!-- The "+" opens the unified launcher (terminals · agents ·
+                         browser · worktree) for this worktree — the same menu as
+                         the project card, grouped by type. The Global terminal
+                         space has no worktree to launch into, so it keeps the
+                         plain "new terminal in this region" button. -->
+                    {#if activeRepo}
+                      <LauncherMenu
+                        repo={activeRepo}
+                        target={{ path: wsKey, branch: null }}
+                        onNewWorktree={() => (newWorktreeOpen = true)}
+                        align="start"
+                        triggerClass="ml-0.5 size-6"
+                        title={i18n.t("launcher.openHere")}
+                      />
+                    {:else}
+                      <button
+                        class="ml-0.5 shrink-0 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                        title={i18n.t("terminal.newInRegion")}
+                        aria-label={i18n.t("terminal.newTerminal")}
+                        onclick={() =>
+                          terminals.create({ groupId: g.group.id, ...defaultShellArgs() })}
+                      >
+                        +
+                      </button>
+                    {/if}
+                    <div data-tauri-drag-region class="flex-1"></div>
                     <button
                       class="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                       title={i18n.t("terminal.splitRight")}
@@ -548,20 +570,28 @@
              two actions. The "New worktree" action only makes sense inside
              a registered repo's context, so it's disabled (with a tooltip)
              in the Global workspace where there's nothing to branch from. -->
-        <div class="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
+        <!-- Empty center: with no top tab strip here, the empty canvas itself is
+             the window drag handle. The attribute is repeated on the non-interactive
+             children (logo, copy) so dragging works from anywhere but the buttons. -->
+        <div
+          data-tauri-drag-region
+          class="flex h-full flex-col items-center justify-center gap-4 px-6 text-center"
+        >
           <img
             src="/logo_nb.svg"
             alt=""
             aria-hidden="true"
+            data-tauri-drag-region
             class="block size-24 opacity-90 dark:hidden"
           />
           <img
             src="/logo_wnb.svg"
             alt=""
             aria-hidden="true"
+            data-tauri-drag-region
             class="hidden size-24 opacity-90 dark:block"
           />
-          <div class={cn("text-muted-foreground", text.body)}>
+          <div data-tauri-drag-region class={cn("text-muted-foreground", text.body)}>
             {i18n.t("terminal.noTerminalsIn", {
               context: ctx.repo ? `${ctx.repo} / ${ctx.name}` : ctx.name,
             })}

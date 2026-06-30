@@ -3,6 +3,7 @@
   import { terminals } from "$lib/state/terminals.svelte";
   import { projects } from "$lib/state/projects.svelte";
   import { orchestration } from "$lib/state/orchestration.svelte";
+  import { git } from "$lib/state/git.svelte";
   import { fsSetWatch } from "$lib/api";
   import { i18n } from "$lib/i18n";
   import { matchAction } from "$lib/keybindings";
@@ -110,6 +111,20 @@
   // detection). Emits `fs:changed`, consumed by the file tree + open tabs.
   $effect(() => {
     void fsSetWatch(projects.activeWorktreePath).catch(() => {});
+  });
+
+  // Load the active worktree's git status here too — at the always-mounted shell,
+  // not inside the right panel. The status feeds the file-tree coloring, the
+  // project-card dirty badges AND the Changes tab, so it must follow the active
+  // worktree regardless of whether the right panel is open or which tab is shown
+  // (previously this lived in RightPanel, so the status only loaded while that
+  // panel was mounted). `startListening` subscribes once to the live
+  // `git:status-changed` events; the load reacts to every worktree change.
+  $effect(() => {
+    void git.startListening();
+  });
+  $effect(() => {
+    void git.load(projects.activeWorktreePath);
   });
 
   // Suppress the webview's built-in context menu (it's most visible in debug

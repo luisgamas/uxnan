@@ -24,11 +24,22 @@
     repo,
     onNewWorktree,
     triggerClass,
+    target = null,
+    align = "end",
+    title,
   }: {
     repo: RepoData;
     /** When provided, the menu offers "New worktree" (the card owns the dialog). */
     onNewWorktree?: () => void;
     triggerClass?: string;
+    /** When set, render ONE type-grouped menu (Terminals / Agents / Browser /
+     *  Worktree) for this single worktree — used by the center tab strip's "+".
+     *  Without it, the menu groups by worktree (the project-card behavior). */
+    target?: { path: string; branch: string | null } | null;
+    /** DropdownMenu content alignment relative to the trigger. */
+    align?: "start" | "center" | "end";
+    /** Trigger tooltip; defaults to the project-wide "open in {name}" copy. */
+    title?: string;
   } = $props();
 
   const agents = $derived(app.launchableAgents);
@@ -59,7 +70,7 @@
         variant="ghost"
         size="icon"
         class={cn(iconButton.xs, triggerClass)}
-        title={i18n.t("launcher.open", { name: repo.name })}
+        title={title ?? i18n.t("launcher.open", { name: repo.name })}
         onclick={(e: MouseEvent) => e.stopPropagation()}
         {...props}
       >
@@ -67,7 +78,73 @@
       </Button>
     {/snippet}
   </DropdownMenu.Trigger>
-  <DropdownMenu.Content align="end" class="min-w-56">
+  <DropdownMenu.Content {align} class="min-w-56">
+    {#if target}
+      {@const t = target}
+      <!-- Single-worktree mode (center "+"): sections by type. -->
+      <DropdownMenu.Group>
+        <DropdownMenu.GroupHeading class={text.menuLabel}>
+          {i18n.t("launcher.sectionTerminals")}
+        </DropdownMenu.GroupHeading>
+        <DropdownMenu.Item class={text.menu} onclick={() => projects.openTerminalAt(t.path)}>
+          <TerminalIcon class={icon.button} />
+          {i18n.t("terminal.newDefault")}
+        </DropdownMenu.Item>
+        {#each profiles as p (p.id)}
+          <DropdownMenu.Item class={text.menu} onclick={() => projects.openTerminalAt(t.path, p.id)}>
+            <TerminalIcon class={icon.button} />
+            {p.name.trim() || i18n.t("terminal.unnamedProfile")}
+          </DropdownMenu.Item>
+        {/each}
+      </DropdownMenu.Group>
+
+      {#if agents.length}
+        <DropdownMenu.Separator />
+        <DropdownMenu.Group>
+          <DropdownMenu.GroupHeading class={text.menuLabel}>
+            {i18n.t("launcher.sectionAgents")}
+          </DropdownMenu.GroupHeading>
+          {#each agents as agent (agent.id)}
+            <DropdownMenu.Item class={text.menu} onclick={() => projects.launchAgentAt(t.path, agent)}>
+              <AgentLogo logo={agentLogoKey(agent.icon, agent.command)} />
+              {agent.name.trim() || agent.command}
+            </DropdownMenu.Item>
+          {/each}
+        </DropdownMenu.Group>
+      {/if}
+
+      {#if browserEnabled}
+        <DropdownMenu.Separator />
+        <DropdownMenu.Group>
+          <DropdownMenu.GroupHeading class={text.menuLabel}>
+            {i18n.t("launcher.sectionBrowser")}
+          </DropdownMenu.GroupHeading>
+          <DropdownMenu.Item class={text.menu} onclick={() => app.openBrowser()}>
+            <GlobeIcon class={icon.button} />
+            {i18n.t("launcher.browser")}
+          </DropdownMenu.Item>
+        </DropdownMenu.Group>
+      {/if}
+
+      {#if onNewWorktree}
+        <DropdownMenu.Separator />
+        <DropdownMenu.Group>
+          <DropdownMenu.GroupHeading class={text.menuLabel}>
+            {i18n.t("launcher.sectionWorktree")}
+          </DropdownMenu.GroupHeading>
+          <DropdownMenu.Item class={text.menu} onclick={onNewWorktree}>
+            <GitBranchPlusIcon class={icon.button} />
+            {i18n.t("project.newWorktree")}
+          </DropdownMenu.Item>
+        </DropdownMenu.Group>
+      {/if}
+
+      <DropdownMenu.Separator />
+      <DropdownMenu.Item class={text.menu} onclick={() => app.openSettings("agents")}>
+        <SettingsIcon class={icon.button} />
+        {i18n.t("agent.configure")}
+      </DropdownMenu.Item>
+    {:else}
     {#each targets as t (t.path)}
       <DropdownMenu.Group>
         <DropdownMenu.GroupHeading class={text.menuLabel}>
@@ -110,5 +187,6 @@
       <SettingsIcon class={icon.button} />
       {i18n.t("agent.configure")}
     </DropdownMenu.Item>
+    {/if}
   </DropdownMenu.Content>
 </DropdownMenu.Root>

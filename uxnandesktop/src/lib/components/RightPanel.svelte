@@ -3,13 +3,10 @@
   // lazy file tree of the whole working tree; "Changes" (second) is the git
   // version-control review. Tab state is local; each panel keeps its own state in
   // a store, so flipping tabs preserves the tree expansion and the commit draft.
-  import { onMount } from "svelte";
   import * as Tabs from "$lib/components/ui/tabs";
   import FileTreePanel from "./FileTreePanel.svelte";
   import ChangesPanel from "./ChangesPanel.svelte";
   import HistoryPanel from "./HistoryPanel.svelte";
-  import { git } from "$lib/state/git.svelte";
-  import { projects } from "$lib/state/projects.svelte";
   import { i18n } from "$lib/i18n";
   import { divider, icon, tab as tabStyle } from "$lib/design";
   import { cn } from "$lib/utils";
@@ -19,13 +16,9 @@
 
   let tab = $state<"files" | "changes" | "history">("files");
 
-  // Load git status here (the always-mounted parent), not in a tab body: the
-  // "Files" tab colors its tree from this status, and the inactive "Changes" tab
-  // is unmounted, so loading it there would leave the tree uncolored at startup.
-  onMount(() => void git.startListening());
-  $effect(() => {
-    void git.load(projects.activeWorktreePath);
-  });
+  // Git status for the active worktree is loaded by the always-mounted shell
+  // (`+page.svelte`), so the file-tree coloring, project-card badges and the
+  // Changes tab all stay in sync even when this panel is closed.
 </script>
 
 <div class="flex h-full min-h-0 w-full flex-col">

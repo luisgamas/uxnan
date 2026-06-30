@@ -125,6 +125,12 @@ regressions.
   is never empty; the result is fetched once and shared across pickers. The same
   picker now drives the global UI/terminal font overrides **and** the per-theme /
   per-terminal-theme font fields, so all four font controls behave identically.
+- **Unified launcher on the center tabs "+".** The center tab strip's "+" no
+  longer opens a bare terminal — it now opens the same floating launcher as the
+  project card, reusing `LauncherMenu` in a new single-worktree mode that groups
+  the actions by **type section** (Terminals · Agents · Browser · Worktree) for
+  the active worktree, in the current clean menu style. (The Global terminal
+  space, which has no worktree to launch into, keeps the plain new-terminal "+".)
   `surface.active` / `activeNested` / `tab` tokens switched from primary-tinted
   fills to quiet sidebar-accent / foreground-mixed surfaces (propagating to the
   project & worktree cards, nested agent rows and panel tabs that consume them).
@@ -171,6 +177,19 @@ regressions.
   (large 9-section change; warrants on-device visual review).
 
 ### Fixed
+- **Git status not reflected in the UI (file-tree coloring + Changes tab empty).**
+  The active worktree's git status was loaded only inside `RightPanel` — which
+  mounts only while the right panel is open — so the file-tree change coloring,
+  the project-card dirty badges and the Changes tab could all show nothing despite
+  real changes. The load now lives in the always-mounted shell (`+page.svelte`),
+  next to the filesystem watcher and keyed off the active worktree, so the status
+  follows the worktree regardless of which panel/tab is open. The live
+  `git:status-changed` subscription moved with it.
+- **Window drag lost in the center panel.** With the top title bar removed, the
+  center had no drag handle. Its top band — the tab strip (its empty area + the
+  flex spacer) and the empty-state canvas (logo + copy) — is now a
+  `data-tauri-drag-region`, so the window drags again from the center while tabs
+  and buttons stay clickable (Tauri matches the exact target).
 - **Invisible scrollbars on light themes.** The dense-panel scrollbar
   (`.uxnan-scroll`, used by the file tree, changes/commit panels, diff breadcrumb,
   directory picker, theme editors and virtualized lists) used a fixed white thumb,
