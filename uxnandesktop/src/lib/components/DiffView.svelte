@@ -228,7 +228,7 @@
             {#if area === "staged"}
               <button
                 type="button"
-                class="border-l border-border px-1 py-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+                class="border-l border-border/60 px-1 py-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
                 title={i18n.t("diff.unstageHunk")}
                 onclick={() => act(h.index, "unstage")}
               >
@@ -237,7 +237,7 @@
             {:else}
               <button
                 type="button"
-                class="border-l border-border px-1 py-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+                class="border-l border-border/60 px-1 py-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
                 title={i18n.t("diff.stageHunk")}
                 onclick={() => act(h.index, "stage")}
               >
@@ -245,7 +245,7 @@
               </button>
               <button
                 type="button"
-                class="border-l border-border px-1 py-0.5 text-muted-foreground hover:bg-accent hover:text-destructive"
+                class="border-l border-border/60 px-1 py-0.5 text-muted-foreground hover:bg-accent hover:text-destructive"
                 title={i18n.t("diff.discardHunk")}
                 onclick={() => act(h.index, "discard")}
               >
@@ -276,7 +276,7 @@
       <button
         type="button"
         class={cn(
-          "flex items-center gap-1 border-l border-border px-2 py-0.5",
+          "flex items-center gap-1 border-l border-border/60 px-2 py-0.5",
           textToken.indicator,
           mode === "side" ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground",
         )}

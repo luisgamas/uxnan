@@ -71,10 +71,14 @@ regressions.
   panel dividers, with a faint seam. The center now sits flush and its divider
   lines up with the others; the active-pane focus indicator is a non-insetting
   inset ring that only appears when the workspace is actually split.
-- **Comfortable scale + bundled UI font.** **DM Sans is now bundled**
-  (`@fontsource-variable/dm-sans`, imported in `app.css`) so the UI face actually
-  renders regardless of the OS, with a small global `letter-spacing` (0.01em) and
-  grayscale antialiasing for crisp text. The whole type/control scale moved up one
+- **Comfortable scale + bundled UI fonts (dual face).** Two variable faces are
+  bundled (`@fontsource-variable/geist` + `@fontsource-variable/dm-sans`, imported
+  in `app.css`) so the UI renders the same regardless of the OS. **Geist** — a
+  humanist, low-contrast variable sans — is the dense **body/UI** face: it renders
+  soft and light at 12–13px chrome, the opposite of a rigid geometric face. **DM
+  Sans** is kept as the distinct **title/display** face (`--ux-font-title`) so
+  headings carry their own accent. A small global `letter-spacing` (0.01em) and
+  grayscale antialiasing keep text even. The whole type/control scale moved up one
   notch toward a roomier desktop density: body text 12→13px, item titles 13→14px,
   metadata 11→12px, indicators 10→11px, section headings 14→15px; control icons
   14→16px; the default button, inputs and select triggers 32→36px tall; and the
@@ -91,8 +95,9 @@ regressions.
   shell/sidebar/panel depth automatically. Exposed them to Tailwind via `@theme inline`
   (`bg-ux-panel`, …). Added a `can-hover:` variant so hover-reveal controls never
   stick on touch, sleek theme-aware scrollbars (`.scrollbar-sleek`,
-  `.worktree-sidebar-scrollbar`), and a `prefers-reduced-motion` guard. The default
-  UI face is **DM Sans**, kept in sync between `--ux-font-*` and `DEFAULT_FONTS`.
+  `.worktree-sidebar-scrollbar`), and a `prefers-reduced-motion` guard. The body/UI
+  face is **Geist** and the title face is **DM Sans** (`--ux-font-body` /
+  `--ux-font-title`), kept in sync between `app.css` and `DEFAULT_FONTS`.
 - **Role tokens (`design.ts`).** Selection is now a **neutral** language: the
   `surface.active` / `activeNested` / `tab` tokens switched from primary-tinted
   fills to quiet sidebar-accent / foreground-mixed surfaces (propagating to the
@@ -125,6 +130,13 @@ regressions.
   toggles now read as neutral lifted segments (stale "primary tint" comment
   corrected). Panel separation is still carried by the sidebar/canvas surface
   delta, so softer borders don't lose structure.
+- **Completed the hairline softening.** Moved the shared `divider` token to
+  `border-border/60` and dropped every remaining full-strength `border-border`
+  seam to `/60` across the panel chrome — the Files/Changes/History toolbars and
+  footers (`border-sidebar-border`), the commit / diff / file-editor headers, the
+  browser toolbar, and the diff / theme-editor toggle dividers — so no structural
+  hairline renders as a hard, crisp line (the earlier passes had only reached the
+  top-band and tab-strip dividers).
 - **Settings shell.** Widened the content column to `max-w-3xl` with the sleek
   scrollbar and roomier `px-8 py-7` padding; polished the section nav (steady
   `h-8` rows, 13px tracking-tight labels, foreground hover) and softened the

@@ -168,7 +168,7 @@
 
 <div class="flex h-full w-full flex-col bg-background">
   <!-- Toolbar / address bar (lives in the main window; the page window docks below) -->
-  <div class="flex shrink-0 items-center gap-1 border-b border-border px-1.5 py-1">
+  <div class="flex shrink-0 items-center gap-1 border-b border-border/60 px-1.5 py-1">
     <button
       class="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
       title={i18n.t("browser.back")}

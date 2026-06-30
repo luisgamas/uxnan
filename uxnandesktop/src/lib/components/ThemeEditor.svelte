@@ -96,7 +96,7 @@
       </button>
       <button
         type="button"
-        class={cn("flex items-center gap-1 border-l border-border px-2 py-0.5", text.indicator, mode === "json" ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground")}
+        class={cn("flex items-center gap-1 border-l border-border/60 px-2 py-0.5", text.indicator, mode === "json" ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground")}
         onclick={() => { jsonText = themeToJson(theme); mode = "json"; }}
       >
         <CodeIcon class="size-3.5" />JSON

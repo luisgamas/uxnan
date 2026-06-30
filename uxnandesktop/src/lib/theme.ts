@@ -151,12 +151,13 @@ export const ANSI_TOKENS: (keyof TerminalTheme)[] = [
 
 // --- Default fonts ---------------------------------------------------------
 
-// Kept in sync with the `--ux-font-*` defaults in `app.css`. DM Sans is the
-// desktop UI face when installed; the stack degrades to the OS UI font
-// otherwise. Themes may override any family by name via `ThemeFonts`.
+// Kept in sync with the `--ux-font-*` defaults in `app.css`. Geist is the dense
+// UI/body face (humanist variable sans — soft and light at small chrome sizes);
+// DM Sans is the distinct title (display) face for headings. Both stacks degrade
+// to the OS UI font. Themes may override any family by name via `ThemeFonts`.
 export const DEFAULT_FONTS = {
-  body: '"DM Sans Variable", "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, system-ui, sans-serif',
-  title: '"DM Sans Variable", "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, system-ui, sans-serif',
+  body: '"Geist Variable", "Geist", "DM Sans Variable", "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, system-ui, sans-serif',
+  title: '"DM Sans Variable", "DM Sans", "Geist Variable", "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, system-ui, sans-serif',
   mono: 'ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, monospace',
 } as const;
 

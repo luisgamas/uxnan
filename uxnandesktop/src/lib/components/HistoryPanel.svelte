@@ -241,7 +241,7 @@
 
 <div class="flex h-full min-h-0 flex-col">
   <!-- Header: count · graph toggle · search · refresh -->
-  <header class="flex h-9 shrink-0 items-center gap-0.5 border-b border-sidebar-border px-2">
+  <header class="flex h-9 shrink-0 items-center gap-0.5 border-b border-sidebar-border/60 px-2">
     {#if searching}
       <!-- svelte-ignore a11y_autofocus -->
       <input
@@ -312,7 +312,7 @@
     </VirtualList>
 
     {#if history.query.trim().length === 0 && !history.reachedEnd}
-      <div class="shrink-0 border-t border-sidebar-border p-2">
+      <div class="shrink-0 border-t border-sidebar-border/60 p-2">
         <Button
           variant="outline"
           size="sm"

@@ -275,7 +275,7 @@
 </script>
 
 <div class="flex h-full min-h-0 flex-col bg-background">
-  <header class="flex h-9 shrink-0 items-center gap-2 border-b border-border px-2">
+  <header class="flex h-9 shrink-0 items-center gap-2 border-b border-border/60 px-2">
     <FileIcon class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
     <span class={cn("min-w-0 flex-1 truncate font-mono", text.body)} title={fileState.path}>
       {fileState.rel || fileState.name}
@@ -317,7 +317,7 @@
   {/if}
 
   {#if fileState.error}
-    <div class="shrink-0 border-b border-border px-3 py-1.5">
+    <div class="shrink-0 border-b border-border/60 px-3 py-1.5">
       <p class={cn("text-destructive", text.body)}>{fileState.error}</p>
     </div>
   {/if}

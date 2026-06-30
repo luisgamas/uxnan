@@ -114,7 +114,7 @@
       <button type="button" class={cn("flex items-center gap-1 px-2 py-0.5", text.indicator, mode === "visual" ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground")} onclick={() => (mode = "visual")}>
         <SlidersIcon class="size-3.5" />{i18n.t("appearance.visual")}
       </button>
-      <button type="button" class={cn("flex items-center gap-1 border-l border-border px-2 py-0.5", text.indicator, mode === "json" ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground")} onclick={() => { jsonText = terminalThemeToJson(preset); mode = "json"; }}>
+      <button type="button" class={cn("flex items-center gap-1 border-l border-border/60 px-2 py-0.5", text.indicator, mode === "json" ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground")} onclick={() => { jsonText = terminalThemeToJson(preset); mode = "json"; }}>
         <CodeIcon class="size-3.5" />JSON
       </button>
     </div>

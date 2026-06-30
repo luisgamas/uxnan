@@ -115,7 +115,7 @@
 </script>
 
 <div class="flex h-full min-h-0 flex-col">
-  <header class="flex h-9 shrink-0 items-center gap-0.5 border-b border-sidebar-border px-2">
+  <header class="flex h-9 shrink-0 items-center gap-0.5 border-b border-sidebar-border/60 px-2">
     {#if searching}
       <!-- svelte-ignore a11y_autofocus -->
       <input

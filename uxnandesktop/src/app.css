@@ -1,6 +1,9 @@
 @import "tailwindcss";
-/* Bundle DM Sans (variable woff2) locally so the UI face renders regardless of
-   what's installed on the OS — matched by the `--ux-font-*` defaults below. */
+/* Bundle the UI faces (variable woff2) locally so they render regardless of
+   what's installed on the OS — matched by the `--ux-font-*` defaults below.
+   Geist is the dense body/UI face; DM Sans is kept as the distinct title
+   (display) face so headings carry their own accent. */
+@import "@fontsource-variable/geist/index.css";
 @import "@fontsource-variable/dm-sans/index.css";
 
 /* shadcn-svelte design tokens (neutral base, Tailwind v4 / oklch).
@@ -13,12 +16,16 @@
 
 :root {
   --radius: 0.625rem;
-  /* Themeable font families (overridden at runtime by `applyTheme`). DM Sans is
-     the desktop UI face when present; the stack degrades to the OS UI font
-     otherwise (kept in sync with `DEFAULT_FONTS` in `theme.ts`). */
-  --ux-font-body: "DM Sans Variable", "DM Sans", -apple-system, BlinkMacSystemFont,
-    "Segoe UI", Roboto, Ubuntu, system-ui, sans-serif;
-  --ux-font-title: var(--ux-font-body);
+  /* Themeable font families (overridden at runtime by `applyTheme`). Geist (a
+     humanist variable sans) is the dense UI/body face — it renders soft and
+     light at 12-13px chrome, the opposite of a rigid geometric face. DM Sans
+     stays as the title (display) face, giving headings a distinct accent. Both
+     stacks degrade to the OS UI font (kept in sync with `DEFAULT_FONTS` in
+     `theme.ts`). */
+  --ux-font-body: "Geist Variable", "Geist", "DM Sans Variable", "DM Sans",
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, system-ui, sans-serif;
+  --ux-font-title: "DM Sans Variable", "DM Sans", "Geist Variable", "Geist",
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, system-ui, sans-serif;
   --ux-font-mono: ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, monospace;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);

@@ -140,12 +140,14 @@ export const focus = {
 
 /** Hairline section dividers — the single, subtle separator used for the top
  *  band of each panel and the bottom status bar. Reusable so every divider in
- *  the shell reads the same (theme-aware `--border`). Compose with `cn(...)`. */
+ *  the shell reads the same (theme-aware `--border`, softened to /60 so the
+ *  structural seams stay quiet against the content instead of reading as hard,
+ *  crisp lines). Compose with `cn(...)`. */
 export const divider = {
   /** A divider below the element (top-band sections). */
-  bottom: "border-b border-border",
+  bottom: "border-b border-border/60",
   /** A divider above the element (the status bar). */
-  top: "border-t border-border",
+  top: "border-t border-border/60",
 } as const;
 
 /** Tab recipes — an active tab reads like a selected sidebar item: a quiet

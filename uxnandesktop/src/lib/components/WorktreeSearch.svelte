@@ -68,7 +68,7 @@
   <Dialog.Content class="gap-0 overflow-hidden p-0 sm:max-w-lg">
     <Dialog.Title class="sr-only">{i18n.t("palette.title")}</Dialog.Title>
     <Dialog.Description class="sr-only">{i18n.t("palette.placeholder")}</Dialog.Description>
-    <div class="flex items-center gap-2 border-b border-border px-3 py-2">
+    <div class="flex items-center gap-2 border-b border-border/60 px-3 py-2">
       <SearchIcon class={cn(icon.button, "shrink-0 text-muted-foreground")} />
       <input
         bind:this={inputEl}
@@ -103,6 +103,6 @@
         {/snippet}
       </VirtualList>
     {/if}
-    <DialogHints class="border-t border-border bg-muted/30 px-3 py-1.5" />
+    <DialogHints class="border-t border-border/60 bg-muted/30 px-3 py-1.5" />
   </Dialog.Content>
 </Dialog.Root>

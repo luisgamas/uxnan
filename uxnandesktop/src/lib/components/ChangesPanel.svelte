@@ -239,7 +239,7 @@
 
 <div class="flex h-full min-h-0 flex-col">
   <!-- Header: stage-all (highlighted, first) · changed-file count · search · refresh -->
-  <header class="flex h-9 shrink-0 items-center gap-0.5 border-b border-sidebar-border px-2">
+  <header class="flex h-9 shrink-0 items-center gap-0.5 border-b border-sidebar-border/60 px-2">
     {#if searching}
       <!-- svelte-ignore a11y_autofocus -->
       <input
@@ -303,7 +303,7 @@
     {/if}
 
     <!-- Commit composer + sync -->
-    <div class="shrink-0 border-t border-sidebar-border p-2">
+    <div class="shrink-0 border-t border-sidebar-border/60 p-2">
       {#if aiEnabled}
         <div class="mb-1.5 flex justify-end">
           <Button

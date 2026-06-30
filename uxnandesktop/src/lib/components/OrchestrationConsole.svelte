@@ -185,7 +185,7 @@
       </div>
 
       <!-- Composer: message + routing target -->
-      <div class="flex flex-col gap-2 border-t border-border pt-3">
+      <div class="flex flex-col gap-2 border-t border-border/60 pt-3">
         <Textarea
           bind:value={message}
           placeholder={i18n.t("orchestration.messagePlaceholder")}
