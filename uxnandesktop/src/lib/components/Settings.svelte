@@ -444,7 +444,7 @@
     <!-- Header (draggable on Tauri via the title bar; the buttons inside are
          not part of the drag region). -->
     <header
-      class="flex h-12 shrink-0 items-center gap-2 border-b border-border px-3"
+      class="flex h-12 shrink-0 items-center gap-2 border-b border-border/60 px-3"
     >
       <Button
         variant="ghost"
@@ -464,18 +464,17 @@
     <div class="flex min-h-0 flex-1">
       <!-- Section nav (left sidebar) -->
       <nav
-        class="flex w-56 shrink-0 flex-col gap-0.5 border-r border-border p-2"
+        class="flex w-56 shrink-0 flex-col gap-0.5 border-r border-border/60 p-2"
         aria-label={i18n.t("settings.title")}
       >
         {#each navItems as item (item.id)}
           {@const Icon = item.icon}
           <button
             class={cn(
-              "flex items-center gap-2 rounded-md px-2 py-1.5 text-left font-medium",
-              text.body,
+              "flex h-8 items-center gap-2 rounded-md px-2 text-left text-[13px] font-medium tracking-tight transition-colors",
               app.settingsSection === item.id
                 ? "bg-accent text-accent-foreground"
-                : "text-muted-foreground hover:bg-accent/50",
+                : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
             )}
             onclick={() => (app.settingsSection = item.id)}
           >
@@ -487,8 +486,13 @@
 
       <!-- Section content (centered column; text stays left-aligned). The extra
            bottom padding lets the last options scroll clear of the window edge. -->
-      <div class="uxnan-scroll min-h-0 flex-1 overflow-y-auto p-6">
-        <div class="mx-auto w-full max-w-2xl pb-16">
+      <!-- FOR-DEV: Settings sections still render as flat ad-hoc group stacks.
+           The clean-desktop pattern wraps each section in a header (panel.sectionHeader
+           + text.pageTitle) over a soft body band (panel.settingsBody). Deferred:
+           it's a large 9-section restructure that should be visually reviewed
+           on-device before landing. See uxnandesktop/FOR-DEV.md. -->
+      <div class="scrollbar-sleek min-h-0 flex-1 overflow-y-auto px-8 py-7">
+        <div class="mx-auto w-full max-w-3xl pb-16">
         {#if app.settingsSection === "appearance"}
           <ThemeSettings />
         {:else if app.settingsSection === "language"}

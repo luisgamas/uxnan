@@ -52,6 +52,12 @@ or accessibility regressions.
   toggles now read as neutral lifted segments (stale "primary tint" comment
   corrected). Panel separation is still carried by the sidebar/canvas surface
   delta, so softer borders don't lose structure.
+- **Settings shell.** Widened the content column to `max-w-3xl` with the sleek
+  scrollbar and roomier `px-8 py-7` padding; polished the section nav (steady
+  `h-8` rows, 13px tracking-tight labels, foreground hover) and softened the
+  header/nav dividers to `border/60`. The deeper per-section "header over a soft
+  body band" restructure is tracked as a reviewed follow-up in `FOR-DEV.md`
+  (large 9-section change; warrants on-device visual review).
 
 ### Changed — docs
 - **Desktop UI skill consolidated.** The monorepo `AGENTS.md` now scopes a single

@@ -155,6 +155,13 @@ are **done** (see `CHANGELOG.md` + `architecture/02d` §3). Remaining follow-ups
       back-compat).
 
 **Polish / quality**
+- [ ] **Settings section-shell refactor.** The clean desktop UI redesign tokenized
+      the pattern (`panel.sectionHeader` + `text.pageTitle` over a `panel.settingsBody`
+      band) and applied the shell-level polish (wider `max-w-3xl` content, sleek
+      scrollbar, refined nav), but the 9 sections in `Settings.svelte` still render
+      as flat ad-hoc group stacks. Wrapping each section in the header+body band is a
+      large restructure that should be visually reviewed on-device before landing.
+      Marker: `FOR-DEV:` in `src/lib/components/Settings.svelte` (content area).
 - [ ] Sidebar project-tree virtualization (worktree lists already virtualized).
 - [ ] Stronghold/keyring for any secret (never plaintext JSON) — needed with Phase 6.
 - [ ] E2E tests (Playwright / WebdriverIO + tauri-driver) **and** Svelte
