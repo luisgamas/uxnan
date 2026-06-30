@@ -19,10 +19,18 @@ regressions.
   settings-style nav buttons (tighter, a quiet accent when active), and the center
   pane's "+ Terminal" launcher (default shell + profiles) moved into the
   **Projects** header as a compact "+" menu, next to smaller add/refresh/sort
-  icons. All section-dividing lines were removed (no borders/dividers; resize
-  handles are invisible until hover) — panels still separate via their surface
-  tint, and the window stays draggable via the new top sections. Each shell region
-  now carries a `Region:` comment for easy reference.
+  icons. Vertical panel separation stays borderless (resize handles are invisible
+  until hover), while a subtle horizontal divider marks the **top band** of each
+  panel — the brand header, the center tab strip and the right-panel
+  window-controls header — plus one under the right-panel tabs; those top sections
+  share a height (h-9) and the center tab strip is tinted like the side panels, so
+  the top band reads as one continuous strip. The window stays draggable via the
+  top sections, and each shell region carries a `Region:` comment for reference.
+- **Token-driven, equal header icons.** The compact action icons in the projects
+  header and the right-panel toolbars (Files / Changes / History) now use the
+  shared `icon.action` (14px) + `iconButton.xs` tokens instead of hardcoded sizes,
+  so the left and right panels match exactly. Added `icon.action` to `design.ts`
+  and `docs/design-tokens.md`.
 - **Comfortable scale + bundled UI font.** **DM Sans is now bundled**
   (`@fontsource-variable/dm-sans`, imported in `app.css`) so the UI face actually
   renders regardless of the OS, with a small global `letter-spacing` (0.01em) and

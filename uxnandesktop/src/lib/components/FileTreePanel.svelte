@@ -13,7 +13,7 @@
   import { fileTree } from "$lib/state/fileTree.svelte";
   import { revealPath } from "$lib/api";
   import { cn } from "$lib/utils";
-  import { icon, text } from "$lib/design";
+  import { icon, iconButton, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
   import { Button } from "$lib/components/ui/button";
   import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
@@ -129,26 +129,26 @@
         )}
         onkeydown={(e) => e.key === "Escape" && toggleSearch()}
       />
-      <Button variant="ghost" size="icon" class="size-6" title={i18n.t("common.close")} onclick={toggleSearch}>
-        <XIcon class={icon.button} />
+      <Button variant="ghost" size="icon" class={iconButton.xs} title={i18n.t("common.close")} onclick={toggleSearch}>
+        <XIcon class={icon.action} />
       </Button>
     {:else}
       <span class={cn("flex-1 truncate", text.section)} title={root ?? ""}>{worktreeName}</span>
       {#if root}
-        <Button variant="ghost" size="icon" class="size-6" title={i18n.t("fileTree.search")} onclick={toggleSearch}>
-          <SearchIcon class={icon.button} />
+        <Button variant="ghost" size="icon" class={iconButton.xs} title={i18n.t("fileTree.search")} onclick={toggleSearch}>
+          <SearchIcon class={icon.action} />
         </Button>
-        <Button variant="ghost" size="icon" class="size-6" title={i18n.t("fileTree.collapseAll")} onclick={() => fileTree.collapseAll()}>
-          <FoldVerticalIcon class={icon.button} />
+        <Button variant="ghost" size="icon" class={iconButton.xs} title={i18n.t("fileTree.collapseAll")} onclick={() => fileTree.collapseAll()}>
+          <FoldVerticalIcon class={icon.action} />
         </Button>
         <!-- "Expand all" (UnfoldVertical → fileTree.expandAll) is implemented but
              hidden for now: recursively loading a large tree is too slow. Re-enable
              once it's lazy/bounded enough to feel instant. FOR-DEV. -->
-        <Button variant="ghost" size="icon" class="size-6" title={i18n.t("fileTree.reveal")} onclick={reveal}>
-          <FolderOpenIcon class={icon.button} />
+        <Button variant="ghost" size="icon" class={iconButton.xs} title={i18n.t("fileTree.reveal")} onclick={reveal}>
+          <FolderOpenIcon class={icon.action} />
         </Button>
-        <Button variant="ghost" size="icon" class="size-6" title={i18n.t("fileTree.refresh")} onclick={() => fileTree.refresh()}>
-          <RefreshCwIcon class={cn(icon.button, fileTree.loadingDir.size > 0 && "animate-spin")} />
+        <Button variant="ghost" size="icon" class={iconButton.xs} title={i18n.t("fileTree.refresh")} onclick={() => fileTree.refresh()}>
+          <RefreshCwIcon class={cn(icon.action, fileTree.loadingDir.size > 0 && "animate-spin")} />
         </Button>
       {/if}
     {/if}

@@ -335,7 +335,7 @@
                 >
                   <!-- Region tab strip (pointer-driven tab drag target) -->
                   <div
-                    class="uxnan-scroll flex h-8 shrink-0 items-center gap-1 overflow-x-auto bg-card px-1"
+                    class="uxnan-scroll flex h-9 shrink-0 items-center gap-1 overflow-x-auto border-b bg-sidebar px-1"
                     data-tab-strip
                     data-group-id={g.group.id}
                     data-tab-count={g.group.tabs.length}

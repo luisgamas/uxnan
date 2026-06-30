@@ -253,8 +253,8 @@
         )}
         onkeydown={(e) => e.key === "Escape" && toggleSearch()}
       />
-      <Button variant="ghost" size="icon" class="size-6" title={i18n.t("common.close")} onclick={toggleSearch}>
-        <XIcon class={icon.button} />
+      <Button variant="ghost" size="icon" class={iconButton.xs} title={i18n.t("common.close")} onclick={toggleSearch}>
+        <XIcon class={icon.action} />
       </Button>
     {:else}
       <span class={cn("flex-1 truncate", text.section)}>
@@ -263,17 +263,17 @@
         {/if}
       </span>
       {#if git.path}
-        <Button variant="ghost" size="icon" class="size-6" title={i18n.t("rightPanel.search")} onclick={toggleSearch}>
-          <SearchIcon class={icon.button} />
+        <Button variant="ghost" size="icon" class={iconButton.xs} title={i18n.t("rightPanel.search")} onclick={toggleSearch}>
+          <SearchIcon class={icon.action} />
         </Button>
         <Button
           variant="ghost"
           size="icon"
-          class="size-6"
+          class={iconButton.xs}
           title={i18n.t("rightPanel.refresh")}
           onclick={() => void git.refresh()}
         >
-          <RefreshCwIcon class={cn(icon.button, git.loading && "animate-spin")} />
+          <RefreshCwIcon class={cn(icon.action, git.loading && "animate-spin")} />
         </Button>
       {/if}
     {/if}

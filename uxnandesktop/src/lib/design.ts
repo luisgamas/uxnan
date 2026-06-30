@@ -20,6 +20,11 @@
 export const icon = {
   /** Inside a button, control or the search field (16px). */
   button: "size-4",
+  /** Inside a compact toolbar / panel-header ghost action button (14px). Pairs
+   *  with `iconButton.xs`; deliberately smaller than `icon.button` so dense
+   *  headers (the projects header, the right-panel toolbars) stay quiet — use
+   *  this for those, not the 16px `icon.button`. */
+  action: "size-3.5",
   /** A leading icon in a nav / list row (16px). */
   nav: "size-4",
   /** Purely-visual / informational: breadcrumb, leading item icons,

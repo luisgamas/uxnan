@@ -9,7 +9,7 @@
   import { projects } from "$lib/state/projects.svelte";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
-  import { icon, text } from "$lib/design";
+  import { icon, iconButton, text } from "$lib/design";
   import { clipboardWrite } from "$lib/clipboard";
   import { toast } from "$lib/toast";
   import { computeGraph, type GraphRow, type GraphEdge } from "$lib/gitGraph";
@@ -255,8 +255,8 @@
         )}
         onkeydown={(e) => e.key === "Escape" && toggleSearch()}
       />
-      <Button variant="ghost" size="icon" class="size-6" title={i18n.t("common.close")} onclick={toggleSearch}>
-        <XIcon class={icon.button} />
+      <Button variant="ghost" size="icon" class={iconButton.xs} title={i18n.t("common.close")} onclick={toggleSearch}>
+        <XIcon class={icon.action} />
       </Button>
     {:else}
       <span class={cn("flex-1 truncate", text.section)}>
@@ -272,23 +272,23 @@
         <Button
           variant="ghost"
           size="icon"
-          class={cn("size-6", history.showGraph && "text-primary")}
+          class={cn(iconButton.xs, history.showGraph && "text-primary")}
           title={i18n.t(history.showGraph ? "history.hideGraph" : "history.showGraph")}
           onclick={() => (history.showGraph = !history.showGraph)}
         >
-          <GitBranchIcon class={icon.button} />
+          <GitBranchIcon class={icon.action} />
         </Button>
-        <Button variant="ghost" size="icon" class="size-6" title={i18n.t("history.search")} onclick={toggleSearch}>
-          <SearchIcon class={icon.button} />
+        <Button variant="ghost" size="icon" class={iconButton.xs} title={i18n.t("history.search")} onclick={toggleSearch}>
+          <SearchIcon class={icon.action} />
         </Button>
         <Button
           variant="ghost"
           size="icon"
-          class="size-6"
+          class={iconButton.xs}
           title={i18n.t("history.refresh")}
           onclick={() => void history.refresh()}
         >
-          <RefreshCwIcon class={cn(icon.button, history.loading && "animate-spin")} />
+          <RefreshCwIcon class={cn(icon.action, history.loading && "animate-spin")} />
         </Button>
       {/if}
     {/if}

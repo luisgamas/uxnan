@@ -5,7 +5,7 @@
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import ProjectCard from "./ProjectCard.svelte";
   import Kbd from "./Kbd.svelte";
-  import { icon, text } from "$lib/design";
+  import { icon, iconButton, text } from "$lib/design";
   import { cn } from "$lib/utils";
   import { i18n } from "$lib/i18n";
   import { formatChord, resolveBinding } from "$lib/keybindings";
@@ -60,7 +60,7 @@
        is no title bar). -->
   <div
     data-tauri-drag-region
-    class="flex h-10 shrink-0 select-none items-center gap-2 px-3"
+    class="flex h-9 shrink-0 select-none items-center gap-2 border-b px-3"
   >
     <img
       src="/logo_nb.svg"
@@ -122,26 +122,26 @@
     <Button
       variant="ghost"
       size="icon"
-      class="size-6"
+      class={iconButton.xs}
       title={`${i18n.t("sidebar.addProject")} (${addChord})`}
       onclick={() => (projects.pickerOpen = true)}
     >
-      <FolderPlusIcon class="size-3.5" />
+      <FolderPlusIcon class={icon.action} />
     </Button>
     <Button
       variant="ghost"
       size="icon"
-      class="size-6"
+      class={iconButton.xs}
       title={i18n.t("sidebar.refresh")}
       onclick={() => void projects.init()}
     >
-      <RefreshCwIcon class="size-3.5" />
+      <RefreshCwIcon class={icon.action} />
     </Button>
     <DropdownMenu.Root>
       <DropdownMenu.Trigger>
         {#snippet child({ props })}
-          <Button variant="ghost" size="icon" class="size-6" title={i18n.t("sidebar.sort")} {...props}>
-            <ArrowUpDownIcon class="size-3.5" />
+          <Button variant="ghost" size="icon" class={iconButton.xs} title={i18n.t("sidebar.sort")} {...props}>
+            <ArrowUpDownIcon class={icon.action} />
           </Button>
         {/snippet}
       </DropdownMenu.Trigger>
@@ -159,8 +159,8 @@
     <DropdownMenu.Root>
       <DropdownMenu.Trigger>
         {#snippet child({ props })}
-          <Button variant="ghost" size="icon" class="size-6" title={i18n.t("terminal.newTerminal")} {...props}>
-            <PlusIcon class="size-3.5" />
+          <Button variant="ghost" size="icon" class={iconButton.xs} title={i18n.t("terminal.newTerminal")} {...props}>
+            <PlusIcon class={icon.action} />
           </Button>
         {/snippet}
       </DropdownMenu.Trigger>

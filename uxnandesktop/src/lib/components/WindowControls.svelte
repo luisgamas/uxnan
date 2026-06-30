@@ -15,7 +15,7 @@
   }
 
   const btn =
-    "flex h-10 w-11 items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground";
+    "flex h-9 w-11 items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground";
 </script>
 
 <!-- Window controls. The OS chrome is disabled (`decorations: false`), so these
@@ -41,7 +41,7 @@
     <SquareIcon class="size-3.5" />
   </button>
   <button
-    class="flex h-10 w-11 items-center justify-center text-muted-foreground transition-colors hover:bg-destructive hover:text-white"
+    class="flex h-9 w-11 items-center justify-center text-muted-foreground transition-colors hover:bg-destructive hover:text-white"
     title={i18n.t("titlebar.close")}
     aria-label={i18n.t("titlebar.close")}
     onclick={() => windowAction((w) => w.close())}
