@@ -159,12 +159,14 @@ are **done** (see `CHANGELOG.md` + `architecture/02d` §3). Remaining follow-ups
       `SettingsSection` (title + description over a soft `panel.settingsBody` band)
       and `SettingsRow` (label + helper + right-aligned control, `divide-y` rows)
       now exist, and the shell-level polish landed (top divider, grouped nav, wider
-      `max-w-3xl`, sleek scrollbar). Sections migrated so far: **Language, Browser**
-      (Browser also swapped its on/off Selects for `Switch`). Still to migrate:
-      shortcuts, agents, AI commit, hooks, terminal, updates — each picking the
-      right control per setting (Switch for on/off, Select only for 3+ choices) and
-      reserving borders for real divisions. Landing incrementally for on-device
-      review. Marker: `FOR-DEV:` in `src/lib/components/Settings.svelte`.
+      `max-w-3xl`, sleek scrollbar). Sections wrapped in the section shell so far:
+      **Language, Browser, Updates, AI commit**. **Every on/off setting is now a
+      `Switch`** (not an on/off Select), across all sections. Still to wrap in the
+      shell: **shortcuts**, the **agents** catalog/your-agents lists, **hooks**,
+      **terminal** (these are list/editor-heavy, so it's structural wrapping more
+      than control swaps) — reserving borders for real divisions. Landing
+      incrementally for on-device review. Marker: `FOR-DEV:` in
+      `src/lib/components/Settings.svelte`.
 - [ ] Sidebar project-tree virtualization (worktree lists already virtualized).
 - [ ] Stronghold/keyring for any secret (never plaintext JSON) — needed with Phase 6.
 - [ ] E2E tests (Playwright / WebdriverIO + tauri-driver) **and** Svelte

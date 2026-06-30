@@ -520,10 +520,12 @@
       <!-- FOR-DEV: Settings sections are migrating to the clean-desktop pattern —
            each section wrapped in `SettingsSection` (title + description over a
            soft `panel.settingsBody` band) with `SettingsRow`s and the right
-           control per setting (a Switch for on/off, not an on/off Select). Done:
-           Language, Browser. Pending: shortcuts, agents, AI commit, hooks,
-           terminal, updates. Landed incrementally for on-device review. See
-           uxnandesktop/FOR-DEV.md. -->
+           control per setting (a Switch for on/off, not an on/off Select).
+           Migrated to SettingsSection/SettingsRow: Language, Browser, Updates,
+           AI commit. Every on/off setting across Settings is now a Switch (incl.
+           agent notifications + keep-awake). Still to wrap in the section shell:
+           shortcuts, the agents catalog/your-agents lists, hooks, terminal.
+           Landed incrementally for on-device review. See uxnandesktop/FOR-DEV.md. -->
       <div class="scrollbar-sleek min-h-0 flex-1 overflow-y-auto px-8 py-7">
         <div class="mx-auto w-full max-w-3xl pb-16">
         {#if app.settingsSection === "appearance"}
@@ -682,48 +684,28 @@
               <p class={text.meta}>{i18n.t("settings.agentShellDesc")}</p>
             </div>
 
-            <!-- Agent idle notifications. -->
-            <div class="flex flex-col gap-1.5">
-              <span class={cn("font-medium", text.body)}>{i18n.t("settings.agentNotifications")}</span>
-              <Select.Root
-                type="single"
-                value={app.settings.agentNotifications === false ? "off" : "on"}
-                onValueChange={(v) => {
-                  app.settings.agentNotifications = v !== "off";
-                  persistNow();
-                }}
-              >
-                <Select.Trigger class="w-56">
-                  {app.settings.agentNotifications === false ? i18n.t("common.off") : i18n.t("common.on")}
-                </Select.Trigger>
-                <Select.Content>
-                  <Select.Item value="on" label={i18n.t("common.on")}>{i18n.t("common.on")}</Select.Item>
-                  <Select.Item value="off" label={i18n.t("common.off")}>{i18n.t("common.off")}</Select.Item>
-                </Select.Content>
-              </Select.Root>
-              <p class={text.meta}>{i18n.t("settings.agentNotificationsDesc")}</p>
+            <!-- Agent idle notifications (on/off → Switch). -->
+            <div class="flex items-center justify-between gap-3">
+              <div class="min-w-0 space-y-0.5">
+                <span class={cn("block font-medium text-foreground", text.body)}>{i18n.t("settings.agentNotifications")}</span>
+                <p class={text.meta}>{i18n.t("settings.agentNotificationsDesc")}</p>
+              </div>
+              <Switch
+                checked={app.settings.agentNotifications !== false}
+                onCheckedChange={(c) => { app.settings.agentNotifications = c; persistNow(); }}
+              />
             </div>
 
-            <!-- Keep the system awake while an agent is working (opt-in). -->
-            <div class="flex flex-col gap-1.5">
-              <span class={cn("font-medium", text.body)}>{i18n.t("settings.preventSleep")}</span>
-              <Select.Root
-                type="single"
-                value={app.settings.preventSleep === true ? "on" : "off"}
-                onValueChange={(v) => {
-                  app.settings.preventSleep = v === "on";
-                  persistNow();
-                }}
-              >
-                <Select.Trigger class="w-56">
-                  {app.settings.preventSleep === true ? i18n.t("common.on") : i18n.t("common.off")}
-                </Select.Trigger>
-                <Select.Content>
-                  <Select.Item value="on" label={i18n.t("common.on")}>{i18n.t("common.on")}</Select.Item>
-                  <Select.Item value="off" label={i18n.t("common.off")}>{i18n.t("common.off")}</Select.Item>
-                </Select.Content>
-              </Select.Root>
-              <p class={text.meta}>{i18n.t("settings.preventSleepDesc")}</p>
+            <!-- Keep the system awake while an agent is working (opt-in → Switch). -->
+            <div class="flex items-center justify-between gap-3">
+              <div class="min-w-0 space-y-0.5">
+                <span class={cn("block font-medium text-foreground", text.body)}>{i18n.t("settings.preventSleep")}</span>
+                <p class={text.meta}>{i18n.t("settings.preventSleepDesc")}</p>
+              </div>
+              <Switch
+                checked={app.settings.preventSleep === true}
+                onCheckedChange={(c) => { app.settings.preventSleep = c; persistNow(); }}
+              />
             </div>
 
             <!-- Catalog: every known agent; only the installed ones are addable. -->
@@ -799,176 +781,111 @@
 
           </div>
         {:else if app.settingsSection === "aicommit"}
-          <div class="flex flex-col gap-6">
-            <div class="flex flex-col gap-1">
-              <span class={text.heading}>{i18n.t("settings.aiCommit")}</span>
-              <p class={text.meta}>{i18n.t("settings.aiCommitDesc")}</p>
-            </div>
+          <SettingsSection title={i18n.t("settings.aiCommit")} description={i18n.t("settings.aiCommitDesc")}>
+            <div class="divide-y divide-border/60">
+              <SettingsRow label={i18n.t("settings.aiCommitEnabled")} description={i18n.t("settings.aiCommitEnabledDesc")}>
+                {#snippet control()}
+                  <Switch
+                    checked={ai.enabled}
+                    onCheckedChange={(c) => { setAi({ enabled: c }); persistNow(); }}
+                  />
+                {/snippet}
+              </SettingsRow>
 
-            <!-- Master switch. -->
-            <div class="flex flex-col gap-1.5">
-              <span class={cn("font-medium", text.body)}>{i18n.t("settings.aiCommitEnabled")}</span>
-              <Select.Root
-                type="single"
-                value={ai.enabled ? "on" : "off"}
-                onValueChange={(v) => {
-                  setAi({ enabled: v === "on" });
-                  persistNow();
-                }}
+              <SettingsRow
+                label={i18n.t("settings.aiCommitAgent")}
+                description={aiAgentsInstalled !== null && aiAgentsInstalled.size === 0
+                  ? i18n.t("settings.aiCommitNoAgents")
+                  : i18n.t("settings.aiCommitAgentDesc")}
               >
-                <Select.Trigger class="w-56">
-                  {ai.enabled ? i18n.t("common.on") : i18n.t("common.off")}
-                </Select.Trigger>
-                <Select.Content>
-                  <Select.Item value="on" label={i18n.t("common.on")}>{i18n.t("common.on")}</Select.Item>
-                  <Select.Item value="off" label={i18n.t("common.off")}>{i18n.t("common.off")}</Select.Item>
-                </Select.Content>
-              </Select.Root>
-              <p class={text.meta}>{i18n.t("settings.aiCommitEnabledDesc")}</p>
-            </div>
+                {#snippet control()}
+                  <Select.Root type="single" value={ai.agentId} onValueChange={(v) => v && selectAiAgent(v)}>
+                    <Select.Trigger class="w-56">
+                      {#if ai.agentId}
+                        <span class="flex items-center gap-2">
+                          <AgentLogo logo={AI_COMMIT_AGENTS.find((a) => a.id === ai.agentId)?.logo} class="size-4" />
+                          {aiAgentLabel}
+                        </span>
+                      {:else}
+                        {i18n.t("settings.aiCommitAgentNone")}
+                      {/if}
+                    </Select.Trigger>
+                    <Select.Content>
+                      {#each AI_COMMIT_AGENTS as a (a.id)}
+                        {@const inst = aiAgentInstalled(a.id)}
+                        <Select.Item value={a.id} label={a.name} disabled={!inst}>
+                          <span class="flex items-center gap-2">
+                            <AgentLogo logo={a.logo} class="size-4" />
+                            {a.name}
+                            {#if aiAgentsInstalled !== null && !inst}
+                              <span class={cn("ml-auto", text.meta)}>{i18n.t("settings.agentNotFound")}</span>
+                            {/if}
+                          </span>
+                        </Select.Item>
+                      {/each}
+                    </Select.Content>
+                  </Select.Root>
+                {/snippet}
+              </SettingsRow>
 
-            <!-- Agent: only the supported CLIs; not-installed ones are disabled. -->
-            <div class="flex flex-col gap-1.5">
-              <span class={cn("font-medium", text.body)}>{i18n.t("settings.aiCommitAgent")}</span>
-              <Select.Root
-                type="single"
-                value={ai.agentId}
-                onValueChange={(v) => v && selectAiAgent(v)}
-              >
-                <Select.Trigger class="w-56">
-                  {#if ai.agentId}
-                    <span class="flex items-center gap-2">
-                      <AgentLogo
-                        logo={AI_COMMIT_AGENTS.find((a) => a.id === ai.agentId)?.logo}
-                        class="size-4"
-                      />
-                      {aiAgentLabel}
-                    </span>
-                  {:else}
-                    {i18n.t("settings.aiCommitAgentNone")}
-                  {/if}
-                </Select.Trigger>
-                <Select.Content>
-                  {#each AI_COMMIT_AGENTS as a (a.id)}
-                    {@const inst = aiAgentInstalled(a.id)}
-                    <Select.Item value={a.id} label={a.name} disabled={!inst}>
-                      <span class="flex items-center gap-2">
-                        <AgentLogo logo={a.logo} class="size-4" />
-                        {a.name}
-                        {#if aiAgentsInstalled !== null && !inst}
-                          <span class={cn("ml-auto", text.meta)}>{i18n.t("settings.agentNotFound")}</span>
-                        {/if}
-                      </span>
-                    </Select.Item>
-                  {/each}
-                </Select.Content>
-              </Select.Root>
-              {#if aiAgentsInstalled !== null && aiAgentsInstalled.size === 0}
-                <p class={text.meta}>{i18n.t("settings.aiCommitNoAgents")}</p>
-              {:else}
-                <p class={text.meta}>{i18n.t("settings.aiCommitAgentDesc")}</p>
+              {#if ai.agentId && aiAgentInstalled(ai.agentId)}
+                <SettingsRow label={i18n.t("settings.aiCommitModel")} description={i18n.t("settings.aiCommitModelDesc")}>
+                  {#snippet control()}
+                    <AiModelPicker
+                      models={aiModels}
+                      value={ai.model}
+                      loading={aiModelsLoading}
+                      onSelect={(id) => { setAi({ model: id }); persistNow(); }}
+                    />
+                  {/snippet}
+                </SettingsRow>
               {/if}
-            </div>
 
-            <!-- Model: the CLI's default, plus whatever models it reports
-                 (searchable + scrollable — some agents list hundreds). -->
-            {#if ai.agentId && aiAgentInstalled(ai.agentId)}
-              <div class="flex flex-col gap-1.5">
-                <span class={cn("font-medium", text.body)}>{i18n.t("settings.aiCommitModel")}</span>
-                <AiModelPicker
-                  models={aiModels}
-                  value={ai.model}
-                  loading={aiModelsLoading}
-                  onSelect={(id) => {
-                    setAi({ model: id });
-                    persistNow();
-                  }}
-                />
-                <p class={text.meta}>{i18n.t("settings.aiCommitModelDesc")}</p>
-              </div>
-            {/if}
+              <SettingsRow label={i18n.t("settings.aiCommitLanguage")} description={i18n.t("settings.aiCommitLanguageDesc")}>
+                {#snippet control()}
+                  <Select.Root type="single" value={ai.language} onValueChange={(v) => { setAi({ language: v ?? "auto" }); persistNow(); }}>
+                    <Select.Trigger class="w-56">{aiLanguageLabel}</Select.Trigger>
+                    <Select.Content>
+                      {#each AI_LANGS as l (l.value)}
+                        <Select.Item value={l.value} label={i18n.t(l.labelKey)}>{i18n.t(l.labelKey)}</Select.Item>
+                      {/each}
+                    </Select.Content>
+                  </Select.Root>
+                {/snippet}
+              </SettingsRow>
 
-            <!-- Language. -->
-            <div class="flex flex-col gap-1.5">
-              <span class={cn("font-medium", text.body)}>{i18n.t("settings.aiCommitLanguage")}</span>
-              <Select.Root
-                type="single"
-                value={ai.language}
-                onValueChange={(v) => {
-                  setAi({ language: v ?? "auto" });
-                  persistNow();
-                }}
-              >
-                <Select.Trigger class="w-56">{aiLanguageLabel}</Select.Trigger>
-                <Select.Content>
-                  {#each AI_LANGS as l (l.value)}
-                    <Select.Item value={l.value} label={i18n.t(l.labelKey)}>
-                      {i18n.t(l.labelKey)}
-                    </Select.Item>
-                  {/each}
-                </Select.Content>
-              </Select.Root>
-              <p class={text.meta}>{i18n.t("settings.aiCommitLanguageDesc")}</p>
-            </div>
+              <SettingsRow label={i18n.t("settings.aiCommitConventional")} description={i18n.t("settings.aiCommitConventionalDesc")}>
+                {#snippet control()}
+                  <Switch
+                    checked={ai.conventional}
+                    onCheckedChange={(c) => { setAi({ conventional: c }); persistNow(); }}
+                  />
+                {/snippet}
+              </SettingsRow>
 
-            <!-- Conventional Commits subject. -->
-            <div class="flex flex-col gap-1.5">
-              <span class={cn("font-medium", text.body)}>{i18n.t("settings.aiCommitConventional")}</span>
-              <Select.Root
-                type="single"
-                value={ai.conventional ? "on" : "off"}
-                onValueChange={(v) => {
-                  setAi({ conventional: v === "on" });
-                  persistNow();
-                }}
-              >
-                <Select.Trigger class="w-56">
-                  {ai.conventional ? i18n.t("common.on") : i18n.t("common.off")}
-                </Select.Trigger>
-                <Select.Content>
-                  <Select.Item value="on" label={i18n.t("common.on")}>{i18n.t("common.on")}</Select.Item>
-                  <Select.Item value="off" label={i18n.t("common.off")}>{i18n.t("common.off")}</Select.Item>
-                </Select.Content>
-              </Select.Root>
-              <p class={text.meta}>{i18n.t("settings.aiCommitConventionalDesc")}</p>
-            </div>
+              <SettingsRow label={i18n.t("settings.aiCommitBody")} description={i18n.t("settings.aiCommitBodyDesc")}>
+                {#snippet control()}
+                  <Switch
+                    checked={ai.includeBody}
+                    onCheckedChange={(c) => { setAi({ includeBody: c }); persistNow(); }}
+                  />
+                {/snippet}
+              </SettingsRow>
 
-            <!-- Extended body. -->
-            <div class="flex flex-col gap-1.5">
-              <span class={cn("font-medium", text.body)}>{i18n.t("settings.aiCommitBody")}</span>
-              <Select.Root
-                type="single"
-                value={ai.includeBody ? "on" : "off"}
-                onValueChange={(v) => {
-                  setAi({ includeBody: v === "on" });
-                  persistNow();
-                }}
-              >
-                <Select.Trigger class="w-56">
-                  {ai.includeBody ? i18n.t("common.on") : i18n.t("common.off")}
-                </Select.Trigger>
-                <Select.Content>
-                  <Select.Item value="on" label={i18n.t("common.on")}>{i18n.t("common.on")}</Select.Item>
-                  <Select.Item value="off" label={i18n.t("common.off")}>{i18n.t("common.off")}</Select.Item>
-                </Select.Content>
-              </Select.Root>
-              <p class={text.meta}>{i18n.t("settings.aiCommitBodyDesc")}</p>
+              <SettingsRow label={i18n.t("settings.aiCommitInstructions")} description={i18n.t("settings.aiCommitInstructionsDesc")}>
+                {#snippet children()}
+                  <Textarea
+                    class="mt-1 min-h-0 resize-none text-xs"
+                    rows={2}
+                    placeholder={i18n.t("settings.aiCommitInstructionsPlaceholder")}
+                    value={ai.instructions}
+                    oninput={(e) => setAi({ instructions: e.currentTarget.value })}
+                    onchange={persistNow}
+                  />
+                {/snippet}
+              </SettingsRow>
             </div>
-
-            <!-- Extra instructions. -->
-            <div class="flex flex-col gap-1.5">
-              <span class={cn("font-medium", text.body)}>{i18n.t("settings.aiCommitInstructions")}</span>
-              <Textarea
-                class="min-h-0 resize-none text-xs"
-                rows={2}
-                placeholder={i18n.t("settings.aiCommitInstructionsPlaceholder")}
-                value={ai.instructions}
-                oninput={(e) => setAi({ instructions: e.currentTarget.value })}
-                onchange={persistNow}
-              />
-              <p class={text.meta}>{i18n.t("settings.aiCommitInstructionsDesc")}</p>
-            </div>
-          </div>
+          </SettingsSection>
         {:else if app.settingsSection === "hooks"}
           <div class="flex flex-col gap-6">
             <div class="flex flex-col gap-1">
@@ -978,135 +895,104 @@
             <AgentHooksPanel />
           </div>
         {:else if app.settingsSection === "updates"}
-          <div class="flex flex-col gap-6">
-            <div class="flex flex-col gap-1">
-              <span class={text.heading}>{i18n.t("settings.updates")}</span>
-              <p class={text.meta}>{i18n.t("settings.updatesDesc")}</p>
-            </div>
-
-            <!-- Current version + manual check. -->
-            <div class="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
-              <div class="flex min-w-0 flex-col">
-                <span class={cn("font-medium", text.body)}>
-                  {i18n.t("updates.currentVersion", { version: currentVersion || "—" })}
-                </span>
-                <span class={text.meta}>
-                  {#if updater.status === "checking"}
-                    {i18n.t("updates.checking")}
-                  {:else if updater.status === "available" || updater.status === "downloading" || updater.status === "downloaded"}
-                    {i18n.t("updates.bannerAvailable", { version: updater.update?.version ?? "" })}
-                  {:else}
-                    {i18n.t("updates.lastChecked", { when: lastCheckedLabel })}
-                  {/if}
-                </span>
+          <SettingsSection title={i18n.t("settings.updates")} description={i18n.t("settings.updatesDesc")}>
+            <div class="divide-y divide-border/60">
+              <!-- Current version + manual check (a plain row, not a boxed card). -->
+              <div class="flex items-center justify-between gap-3 py-3.5 first:pt-0">
+                <div class="min-w-0 space-y-0.5">
+                  <div class={cn("font-medium text-foreground", text.body)}>
+                    {i18n.t("updates.currentVersion", { version: currentVersion || "—" })}
+                  </div>
+                  <p class="text-[12px] leading-5 text-muted-foreground">
+                    {#if updater.status === "checking"}
+                      {i18n.t("updates.checking")}
+                    {:else if updater.status === "available" || updater.status === "downloading" || updater.status === "downloaded"}
+                      {i18n.t("updates.bannerAvailable", { version: updater.update?.version ?? "" })}
+                    {:else}
+                      {i18n.t("updates.lastChecked", { when: lastCheckedLabel })}
+                    {/if}
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={updater.status === "checking" ||
+                    updater.status === "downloading" ||
+                    updater.status === "installing"}
+                  onclick={() => void updater.checkNow()}
+                >
+                  <RotateCcwIcon data-icon="inline-start" />
+                  {i18n.t("updates.checkNow")}
+                </Button>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={updater.status === "checking" ||
-                  updater.status === "downloading" ||
-                  updater.status === "installing"}
-                onclick={() => void updater.checkNow()}
-              >
-                <RotateCcwIcon data-icon="inline-start" />
-                {i18n.t("updates.checkNow")}
-              </Button>
-            </div>
 
-            <!-- Release channel. -->
-            <div class="flex flex-col gap-1.5">
-              <span class={cn("font-medium", text.body)}>{i18n.t("updates.channel")}</span>
-              <Select.Root
-                type="single"
-                value={up.channel}
-                onValueChange={(v) => {
-                  setUp({ channel: (v as UpdateChannel) ?? "stable" });
-                  persistNow();
-                  void updater.checkNow();
-                }}
-              >
-                <Select.Trigger class="w-56">{channelLabel}</Select.Trigger>
-                <Select.Content>
-                  {#each UPDATE_CHANNELS as c (c.value)}
-                    <Select.Item value={c.value} label={i18n.t(c.labelKey)}>
-                      <div class="flex flex-col">
-                        <span>{i18n.t(c.labelKey)}</span>
-                        <span class={text.meta}>{i18n.t(c.descKey)}</span>
-                      </div>
-                    </Select.Item>
-                  {/each}
-                </Select.Content>
-              </Select.Root>
-              <p class={text.meta}>{i18n.t("updates.channelDesc")}</p>
-            </div>
+              <SettingsRow label={i18n.t("updates.channel")} description={i18n.t("updates.channelDesc")}>
+                {#snippet control()}
+                  <Select.Root
+                    type="single"
+                    value={up.channel}
+                    onValueChange={(v) => {
+                      setUp({ channel: (v as UpdateChannel) ?? "stable" });
+                      persistNow();
+                      void updater.checkNow();
+                    }}
+                  >
+                    <Select.Trigger class="w-56">{channelLabel}</Select.Trigger>
+                    <Select.Content>
+                      {#each UPDATE_CHANNELS as c (c.value)}
+                        <Select.Item value={c.value} label={i18n.t(c.labelKey)}>
+                          <div class="flex flex-col">
+                            <span>{i18n.t(c.labelKey)}</span>
+                            <span class={text.meta}>{i18n.t(c.descKey)}</span>
+                          </div>
+                        </Select.Item>
+                      {/each}
+                    </Select.Content>
+                  </Select.Root>
+                {/snippet}
+              </SettingsRow>
 
-            <!-- Check automatically. -->
-            <div class="flex flex-col gap-1.5">
-              <span class={cn("font-medium", text.body)}>{i18n.t("updates.autoCheck")}</span>
-              <Select.Root
-                type="single"
-                value={up.autoCheck ? "on" : "off"}
-                onValueChange={(v) => {
-                  setUp({ autoCheck: v === "on" });
-                  persistNow();
-                }}
-              >
-                <Select.Trigger class="w-56">
-                  {up.autoCheck ? i18n.t("common.on") : i18n.t("common.off")}
-                </Select.Trigger>
-                <Select.Content>
-                  <Select.Item value="on" label={i18n.t("common.on")}>{i18n.t("common.on")}</Select.Item>
-                  <Select.Item value="off" label={i18n.t("common.off")}>{i18n.t("common.off")}</Select.Item>
-                </Select.Content>
-              </Select.Root>
-              <p class={text.meta}>{i18n.t("updates.autoCheckDesc")}</p>
-            </div>
+              <SettingsRow label={i18n.t("updates.autoCheck")} description={i18n.t("updates.autoCheckDesc")}>
+                {#snippet control()}
+                  <Switch
+                    checked={up.autoCheck}
+                    onCheckedChange={(c) => { setUp({ autoCheck: c }); persistNow(); }}
+                  />
+                {/snippet}
+              </SettingsRow>
 
-            <!-- Download automatically (background; never interrupts agents). -->
-            <div class="flex flex-col gap-1.5">
-              <span class={cn("font-medium", text.body)}>{i18n.t("updates.autoDownload")}</span>
-              <Select.Root
-                type="single"
-                value={up.autoDownload ? "on" : "off"}
-                onValueChange={(v) => {
-                  setUp({ autoDownload: v === "on" });
-                  persistNow();
-                }}
-              >
-                <Select.Trigger class="w-56">
-                  {up.autoDownload ? i18n.t("common.on") : i18n.t("common.off")}
-                </Select.Trigger>
-                <Select.Content>
-                  <Select.Item value="on" label={i18n.t("common.on")}>{i18n.t("common.on")}</Select.Item>
-                  <Select.Item value="off" label={i18n.t("common.off")}>{i18n.t("common.off")}</Select.Item>
-                </Select.Content>
-              </Select.Root>
-              <p class={text.meta}>{i18n.t("updates.autoDownloadDesc")}</p>
-            </div>
+              <SettingsRow label={i18n.t("updates.autoDownload")} description={i18n.t("updates.autoDownloadDesc")}>
+                {#snippet control()}
+                  <Switch
+                    checked={up.autoDownload}
+                    onCheckedChange={(c) => { setUp({ autoDownload: c }); persistNow(); }}
+                  />
+                {/snippet}
+              </SettingsRow>
 
-            <!-- Install policy: how a downloaded update is applied (restart stops agents). -->
-            <div class="flex flex-col gap-1.5">
-              <span class={cn("font-medium", text.body)}>{i18n.t("updates.installPolicy")}</span>
-              <Select.Root
-                type="single"
-                value={up.installPolicy}
-                onValueChange={(v) => {
-                  setUp({ installPolicy: (v as InstallPolicy) ?? "ask" });
-                  persistNow();
-                }}
-              >
-                <Select.Trigger class="w-56">{installPolicyLabel}</Select.Trigger>
-                <Select.Content>
-                  {#each INSTALL_POLICIES as p (p.value)}
-                    <Select.Item value={p.value} label={i18n.t(p.labelKey)}>
-                      {i18n.t(p.labelKey)}
-                    </Select.Item>
-                  {/each}
-                </Select.Content>
-              </Select.Root>
-              <p class={text.meta}>{i18n.t("updates.installPolicyDesc")}</p>
+              <SettingsRow label={i18n.t("updates.installPolicy")} description={i18n.t("updates.installPolicyDesc")}>
+                {#snippet control()}
+                  <Select.Root
+                    type="single"
+                    value={up.installPolicy}
+                    onValueChange={(v) => {
+                      setUp({ installPolicy: (v as InstallPolicy) ?? "ask" });
+                      persistNow();
+                    }}
+                  >
+                    <Select.Trigger class="w-56">{installPolicyLabel}</Select.Trigger>
+                    <Select.Content>
+                      {#each INSTALL_POLICIES as p (p.value)}
+                        <Select.Item value={p.value} label={i18n.t(p.labelKey)}>
+                          {i18n.t(p.labelKey)}
+                        </Select.Item>
+                      {/each}
+                    </Select.Content>
+                  </Select.Root>
+                {/snippet}
+              </SettingsRow>
             </div>
-          </div>
+          </SettingsSection>
         {:else if app.settingsSection === "browser"}
           <SettingsSection
             title={i18n.t("settings.browser")}

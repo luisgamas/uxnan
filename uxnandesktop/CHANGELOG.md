@@ -190,9 +190,13 @@ regressions.
   band) and **`SettingsRow`** (label + helper text, control right-aligned on wide
   screens, quiet `divide-y` between rows — no per-row card) replace the flat
   ad-hoc group stacks. Each setting now uses the **right control for its shape**:
-  on/off settings are **`Switch`es**, not on/off comboboxes — the **Browser**
-  section's four on/off Selects became Switches (its 3-option link policy stays a
-  Select). Migrated so far: **Language, Browser**; the rest follow incrementally.
+  on/off settings are **`Switch`es**, not on/off comboboxes. Migrated to the
+  section/row pattern: **Language, Browser, Updates, AI commit**; and **every
+  on/off setting across Settings is now a Switch** (Browser ×4, AI commit ×3,
+  Updates ×2, plus agent notifications + keep-awake) — multi-option settings
+  (link policy, release channel, install policy, language, agent/model) stay
+  Selects. Remaining sections to wrap in the section shell (shortcuts, the agents
+  catalog/your-agents lists, hooks, terminal) follow incrementally.
 
 ### Fixed
 - **Git status not reflected in the UI (file-tree coloring + Changes tab empty).**
