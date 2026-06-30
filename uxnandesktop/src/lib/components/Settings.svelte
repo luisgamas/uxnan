@@ -444,7 +444,8 @@
     <!-- Header (draggable on Tauri via the title bar; the buttons inside are
          not part of the drag region). -->
     <header
-      class="flex h-12 shrink-0 items-center gap-2 border-b border-border/60 px-3"
+      data-tauri-drag-region
+      class="flex h-12 shrink-0 items-center gap-2 px-3"
     >
       <Button
         variant="ghost"
