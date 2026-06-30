@@ -192,6 +192,24 @@
 
 <svelte:window oncontextmenu={onContextMenu} onkeydown={onKeyDown} />
 
+<!-- Reusable column resize handle. Zero-width in layout so adjacent panels sit
+     flush (no visible seam, even behind split terminals); a wider absolute strip
+     straddles the boundary for grabbing, with a hairline that only shows on hover. -->
+{#snippet resizeHandle(side: Side)}
+  <div class="relative w-0 shrink-0">
+    <div
+      class="group absolute inset-y-0 left-1/2 z-20 w-1.5 -translate-x-1/2 cursor-col-resize"
+      role="separator"
+      aria-orientation="vertical"
+      onpointerdown={(e) => onHandleDown(side, e)}
+      onpointermove={onHandleMove}
+      onpointerup={onHandleUp}
+    >
+      <div class="mx-auto h-full w-px bg-transparent transition-colors group-hover:bg-ring/50"></div>
+    </div>
+  </div>
+{/snippet}
+
 <div class="flex h-screen w-screen flex-col bg-background text-foreground">
   <!-- Non-blocking toasts (errors + successes) -->
   <Toaster position="bottom-right" />
@@ -228,15 +246,7 @@
           <LeftSidebar />
         </aside>
 
-        <!-- Left resize handle -->
-        <div
-          class="w-1 shrink-0 cursor-col-resize bg-transparent transition-colors hover:bg-ring/40"
-          role="separator"
-          aria-orientation="vertical"
-          onpointerdown={(e) => onHandleDown("left", e)}
-          onpointermove={onHandleMove}
-          onpointerup={onHandleUp}
-        ></div>
+        {@render resizeHandle("left")}
       {/if}
 
       <!-- Region: Center workspace (Pane area) — a tree of regions whose tabs are
@@ -248,15 +258,7 @@
 
       {#if app.settings.rightSidebarOpen}
         <!-- Region: Right panel — window-controls header · Files/Changes/History. -->
-        <!-- Right resize handle -->
-        <div
-          class="w-1 shrink-0 cursor-col-resize bg-transparent transition-colors hover:bg-ring/40"
-          role="separator"
-          aria-orientation="vertical"
-          onpointerdown={(e) => onHandleDown("right", e)}
-          onpointermove={onHandleMove}
-          onpointerup={onHandleUp}
-        ></div>
+        {@render resizeHandle("right")}
 
         <aside
           class="flex shrink-0 flex-col overflow-hidden bg-sidebar text-sidebar-foreground"
@@ -267,15 +269,7 @@
       {/if}
 
       {#if app.browserOpen}
-        <!-- Browser panel resize handle (far right) -->
-        <div
-          class="w-1 shrink-0 cursor-col-resize bg-transparent transition-colors hover:bg-ring/40"
-          role="separator"
-          aria-orientation="vertical"
-          onpointerdown={(e) => onHandleDown("browser", e)}
-          onpointermove={onHandleMove}
-          onpointerup={onHandleUp}
-        ></div>
+        {@render resizeHandle("browser")}
 
         <!-- 4th panel: the integrated developer browser. The toolbar is here; the
              page is a docked WebviewWindow positioned over the panel's content. -->

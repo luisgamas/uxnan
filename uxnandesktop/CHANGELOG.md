@@ -35,6 +35,11 @@ regressions.
   into a `divider` token (`design.ts`: `divider.bottom` / `divider.top`, one
   `--border` hairline) and applied it at every divider site, and added
   `divider.top` to the bottom status bar so it's separated like the other sections.
+- **Flush panels (zero-gap resize).** The column resize handles no longer occupy
+  any layout width, so the left/right/browser panels sit flush against the center
+  with no visible seam (it was most noticeable behind split terminals). Drag-to-resize
+  still works via a wider invisible hit strip, with a hairline that appears only on
+  hover. Factored into one reusable `resizeHandle` snippet.
 - **Comfortable scale + bundled UI font.** **DM Sans is now bundled**
   (`@fontsource-variable/dm-sans`, imported in `app.css`) so the UI face actually
   renders regardless of the OS, with a small global `letter-spacing` (0.01em) and
