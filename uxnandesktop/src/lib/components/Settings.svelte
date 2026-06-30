@@ -695,46 +695,50 @@
               </div>
             </SettingsSection>
 
-            <!-- Catalog: every known agent; only the installed ones are addable. -->
+            <!-- One agents list: configured agents first (each row expands to its
+                 command / args / shell / env config), then the remaining known
+                 agents to add — greyed when not found on PATH. -->
             <div class="flex flex-col gap-1.5">
-              <div class="flex items-center justify-between">
-                <span class={text.section}>{i18n.t("settings.agentsAvailable")}</span>
-                {#if addableCount > 0}
-                  <Button variant="outline" size="sm" onclick={addAllInstalled}>
+              <div class="flex items-center justify-between gap-2">
+                <span class={text.section}>{i18n.t("settings.yourAgents")}</span>
+                <div class="flex items-center gap-1.5">
+                  {#if addableCount > 0}
+                    <Button variant="outline" size="sm" onclick={addAllInstalled}>
+                      <PlusIcon data-icon="inline-start" />
+                      {i18n.t("settings.addAllInstalled")}
+                    </Button>
+                  {/if}
+                  <Button variant="outline" size="sm" onclick={addCustomAgent}>
                     <PlusIcon data-icon="inline-start" />
-                    {i18n.t("settings.addAllInstalled")}
+                    {i18n.t("settings.addCustomAgent")}
                   </Button>
-                {/if}
+                </div>
               </div>
               {#if installed === null}
                 <p class={text.meta}>{i18n.t("settings.detecting")}</p>
               {/if}
-              <div class="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-                {#each AGENT_CATALOG as c (c.id)}
+              <div class="flex flex-col divide-y divide-border/60 overflow-hidden rounded-md border border-border/60">
+                {#each app.agentProfiles as agent (agent.id)}
+                  <div class="px-2.5">
+                    <AgentProfileEditor
+                      {agent}
+                      onchange={schedulePersist}
+                      onremove={() => removeAgent(agent.id)}
+                    />
+                  </div>
+                {/each}
+                {#each AGENT_CATALOG.filter((c) => !isConfigured(c)) as c (c.id)}
                   {@const inst = isInstalled(c)}
-                  {@const conf = isConfigured(c)}
-                  <div
-                    class={cn(
-                      "flex items-center gap-2 rounded-md border border-border px-2 py-1.5",
-                      !inst && "opacity-55",
-                    )}
-                  >
-                    <AgentLogo logo={c.logo} class="size-4" />
+                  <div class={cn("flex items-center gap-2 px-2.5 py-2", !inst && "opacity-55")}>
+                    <AgentLogo logo={c.logo} class="size-4 shrink-0" />
                     <div class="min-w-0 flex-1">
                       <div class={cn("truncate", text.body)}>{c.name}</div>
                       <div class={cn("truncate font-mono", text.meta)}>{c.command}</div>
                     </div>
-                    {#if conf}
-                      <span class={cn("shrink-0", text.meta)}>{i18n.t("settings.agentAdded")}</span>
-                    {:else if inst}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        class={iconButton.action}
-                        title={i18n.t("common.add")}
-                        onclick={() => addCatalogAgent(c)}
-                      >
+                    {#if inst}
+                      <Button variant="ghost" size="sm" class="h-7 shrink-0 gap-1" onclick={() => addCatalogAgent(c)}>
                         <PlusIcon class={icon.button} />
+                        {i18n.t("common.add")}
                       </Button>
                     {:else}
                       <span class={cn("shrink-0", text.meta)}>{i18n.t("settings.agentNotFound")}</span>
@@ -742,28 +746,6 @@
                   </div>
                 {/each}
               </div>
-            </div>
-
-            <!-- Configured agents -->
-            <div class="flex items-center justify-between">
-              <span class={text.section}>{i18n.t("settings.yourAgents")}</span>
-              <Button variant="outline" size="sm" onclick={addCustomAgent}>
-                <PlusIcon data-icon="inline-start" />
-                {i18n.t("settings.addCustomAgent")}
-              </Button>
-            </div>
-            <div class="flex flex-col gap-2">
-              {#each app.agentProfiles as agent (agent.id)}
-                <AgentProfileEditor
-                  {agent}
-                  onchange={schedulePersist}
-                  onremove={() => removeAgent(agent.id)}
-                />
-              {:else}
-                <p class={cn("text-muted-foreground", text.body)}>
-                  {i18n.t("settings.noAgents")}
-                </p>
-              {/each}
             </div>
 
           </div>
