@@ -38,21 +38,21 @@
   >
     <Tabs.Trigger
       value="files"
-      class={cn("px-3 text-[13px]", tabStyle.base, tab === "files" ? tabStyle.active : tabStyle.inactive)}
+      class={cn("px-3 text-[13px]", tabStyle.base, tab === "files" ? tabStyle.activeLine : tabStyle.inactiveLine)}
     >
       <FolderTreeIcon data-icon="inline-start" class={cn(icon.decorative)} />
       {i18n.t("fileTree.tab")}
     </Tabs.Trigger>
     <Tabs.Trigger
       value="changes"
-      class={cn("px-3 text-[13px]", tabStyle.base, tab === "changes" ? tabStyle.active : tabStyle.inactive)}
+      class={cn("px-3 text-[13px]", tabStyle.base, tab === "changes" ? tabStyle.activeLine : tabStyle.inactiveLine)}
     >
       <GitCompareIcon data-icon="inline-start" class={cn(icon.decorative)} />
       {i18n.t("rightPanel.changesTab")}
     </Tabs.Trigger>
     <Tabs.Trigger
       value="history"
-      class={cn("px-3 text-[13px]", tabStyle.base, tab === "history" ? tabStyle.active : tabStyle.inactive)}
+      class={cn("px-3 text-[13px]", tabStyle.base, tab === "history" ? tabStyle.activeLine : tabStyle.inactiveLine)}
     >
       <GitBranchIcon data-icon="inline-start" class={cn(icon.decorative)} />
       {i18n.t("history.tab")}

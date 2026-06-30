@@ -325,9 +325,10 @@
               {#each wsLayout.groups as g (g.group.id)}
                 {@const activeRegion = isActiveWs && wsActiveGroup === g.group.id}
                 <div
-                  class="absolute flex flex-col overflow-hidden rounded-sm border {activeRegion
-                    ? 'border-ring'
-                    : 'border-transparent'}"
+                  class="absolute flex flex-col overflow-hidden {activeRegion &&
+                  wsLayout.groups.length > 1
+                    ? 'ring-1 ring-inset ring-ring/70'
+                    : ''}"
                   style="left:{g.rect.x}%; top:{g.rect.y}%; width:{g.rect.w}%; height:{g
                     .rect.h}%"
                   role="group"

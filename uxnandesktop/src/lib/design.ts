@@ -155,6 +155,11 @@ export const divider = {
  *  never shifts content. Shared by the center terminal tabs and the right panel. */
 export const tab = {
   base: "border-b-2 border-transparent transition-colors",
+  /** Filled tabs (center terminal strip): quiet fill + firm underline. */
   active: "bg-[var(--ux-sidebar-accent)] border-foreground text-foreground",
   inactive: "text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground",
+  /** Line tabs (right panel): just the firm underline, no fill — reads cleaner
+   *  on small view tabs. */
+  activeLine: "border-foreground text-foreground",
+  inactiveLine: "text-muted-foreground hover:text-foreground",
 } as const;

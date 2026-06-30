@@ -40,15 +40,22 @@ regressions.
   with no visible seam (it was most noticeable behind split terminals). Drag-to-resize
   still works via a wider invisible hit strip, with a hairline that appears only on
   hover. Factored into one reusable `resizeHandle` snippet.
-- **Active tabs restyled; worktree bar removed.** The center terminal tabs and the
-  right-panel tabs no longer read as a floating badge — an active tab now uses a
-  quiet sidebar-accent fill (like a selected worktree) with a firm foreground
-  underline, via a shared `tab` token (`design.ts`). The shared `tabs-trigger`
+- **Active tabs restyled; worktree bar removed.** Tabs no longer read as a floating
+  badge — an active tab reads like a selected worktree, via a shared `tab` token
+  (`design.ts`): the **center** terminal tabs use a quiet sidebar-accent fill + a
+  firm foreground underline, while the **right-panel** view tabs use just the
+  underline (no fill — cleaner on those small tabs). The shared `tabs-trigger`
   primitive (the right panel is its only consumer) was simplified to a neutral base
   so the token fully drives the active look. Removed the small vertical primary bar
   on the selected worktree (the surface fill already marks selection), and the
   status-bar panel toggles moved off the retired `surface.tab` to a plain neutral
   active fill. `docs/design-tokens.md` updated.
+- **Center top band aligned + flush.** Dropped the 1px frame + rounding each
+  terminal region drew around itself — it inset the top region's tab strip by 1px,
+  so the center's top divider sat slightly below and inset from the left/right
+  panel dividers, with a faint seam. The center now sits flush and its divider
+  lines up with the others; the active-pane focus indicator is a non-insetting
+  inset ring that only appears when the workspace is actually split.
 - **Comfortable scale + bundled UI font.** **DM Sans is now bundled**
   (`@fontsource-variable/dm-sans`, imported in `app.css`) so the UI face actually
   renders regardless of the OS, with a small global `letter-spacing` (0.01em) and
