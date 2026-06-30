@@ -7,7 +7,6 @@
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import * as Dialog from "$lib/components/ui/dialog";
   import { Button } from "$lib/components/ui/button";
-  import { Badge } from "$lib/components/ui/badge";
   import { projects, type WorktreeRow } from "$lib/state/projects.svelte";
   import { unread } from "$lib/state/unread.svelte";
   import { terminals } from "$lib/state/terminals.svelte";
@@ -16,7 +15,6 @@
   import { cn } from "$lib/utils";
   import { icon, iconButton, surface, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
-  import LauncherMenu from "./LauncherMenu.svelte";
   import AgentSpace from "./AgentSpace.svelte";
   import AgentStatusDot from "./AgentStatusDot.svelte";
   import GitBranchIcon from "@lucide/svelte/icons/git-branch";
@@ -26,11 +24,9 @@
 
   let {
     row,
-    onNewWorktree,
     onRemoveProject,
   }: {
     row: WorktreeRow;
-    onNewWorktree?: () => void;
     /** Main worktree only: "remove" removes the whole project (the card owns it). */
     onRemoveProject?: () => void;
   } = $props();
@@ -42,7 +38,7 @@
   const dirName = $derived(
     row.path.replace(/\\/g, "/").replace(/\/+$/, "").split("/").pop() ?? row.path,
   );
-  const meta = $derived(row.isMain ? label : dirName);
+  const meta = $derived(dirName);
 
   // Aggregate agent status for the leading dot: a working agent wins, else the
   // first one; null when the worktree has no agents (show the branch icon).
@@ -101,11 +97,6 @@
     <div class="min-w-0 flex-1">
       <div class="flex items-center gap-1.5">
         <span class={cn("truncate", text.body, active && "font-medium")}>{label}</span>
-        {#if row.isMain}
-          <Badge variant="secondary" class={cn("shrink-0 font-normal", text.indicator)}>
-            {i18n.t("worktree.primary")}
-          </Badge>
-        {/if}
         {#if hasUnread}
           <span class="size-1.5 shrink-0 rounded-full bg-red-500" title={i18n.t("monitor.unread")}></span>
         {/if}
@@ -127,7 +118,6 @@
       <div class={cn("truncate", text.meta)}>{meta}</div>
     </div>
 
-    <LauncherMenu path={row.path} {label} {onNewWorktree} triggerClass={hoverReveal} />
     <DropdownMenu.Root>
       <DropdownMenu.Trigger>
         {#snippet child({ props })}

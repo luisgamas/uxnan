@@ -10,15 +10,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   reserve borders for the few places that need them): a project is a **borderless
   group** — an identity header (icon · name) whose three actions reveal on hover
   (collapse/expand · a unified launcher **+** · an overflow **⋯** with copy-path /
-  remove-project). Expanding lists the worktrees as rows: the **primary** worktree
-  first with a "primary" badge, then the children. Each worktree row shows an
-  aggregate **agent-status dot** (or the branch icon when idle), the branch name, a
-  second line ("main" for the primary, else the worktree folder), git status, and
-  the same hover **+** / **⋯** (copy-path / remove-worktree) — selection keeps the
-  quiet sidebar-accent highlight. New reusable **`LauncherMenu`** ("+"): one menu
-  to start a terminal (default + each profile), launch any configured agent, or
-  create a worktree — scoped to that row's worktree, used by the header and every
-  row (replaces the separate terminal button + `LaunchAgentMenu`, now removed).
+  remove-project). Expanding lists the worktrees as rows: the primary (main) first,
+  then the children — identified by its "main" branch name (no badge). Each row
+  shows an aggregate **agent-status dot** (or the branch icon when idle), the branch
+  name, a second line with the worktree folder, git status, and a hover **⋯**
+  (copy-path / remove-worktree, or remove-project for main); selection keeps the
+  quiet sidebar-accent highlight. The new reusable **`LauncherMenu`** ("+") lives
+  only on the project header: a menu grouped by worktree (primary first) lets you
+  open a terminal (default + each profile) or launch any agent in a chosen
+  worktree, plus open the browser, create a worktree, or jump to agent settings
+  (replaces the separate terminal button + `LaunchAgentMenu`, now removed).
   `openTerminalAt` gained an optional `profileId`.
 A token-driven visual refresh (via the `svelte-clean-desktop-ui` system) toward a
 calm, **comfortable**, tool-like desktop feel — readable type and breathable rows,

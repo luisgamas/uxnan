@@ -102,9 +102,7 @@ export const en = {
   "terminal.newTerminal": "New terminal",
   "terminal.unnamedProfile": "Unnamed profile",
   "launcher.open": "Open a terminal, agent or worktree in {name}",
-  "launcher.terminal": "Terminal",
-  "launcher.agents": "Agents",
-  "worktree.primary": "primary",
+  "launcher.browser": "Open browser",
   "terminal.context":
     "Active terminal context — choose a project or worktree in the left panel",
   "terminal.toggleRight": "Toggle right panel",

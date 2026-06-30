@@ -1,8 +1,9 @@
 <script lang="ts">
-  // One "+" button that opens everything you can start in a workspace: a new
-  // terminal (default + each profile), an agent (each configured one), and — when
-  // the caller allows it — a new worktree. Reused by the project header and every
-  // worktree row, so the launch affordance is identical everywhere.
+  // The project's "+" — one place to start anything, in any of the project's
+  // worktrees. Each worktree is a group (heading = its branch/folder) listing the
+  // things you can open there: a terminal (default + each profile) and each
+  // configured agent. Below: open the browser, create a worktree, agent settings.
+  // Lives only on the project header (rows don't repeat it).
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import { Button } from "$lib/components/ui/button";
   import { app } from "$lib/state/app.svelte";
@@ -11,27 +12,44 @@
   import { cn } from "$lib/utils";
   import { icon, iconButton, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
+  import type { RepoData } from "$lib/types";
   import AgentLogo from "./AgentLogo.svelte";
   import PlusIcon from "@lucide/svelte/icons/plus";
   import TerminalIcon from "@lucide/svelte/icons/terminal";
   import GitBranchPlusIcon from "@lucide/svelte/icons/git-branch-plus";
+  import GlobeIcon from "@lucide/svelte/icons/globe";
   import SettingsIcon from "@lucide/svelte/icons/settings";
 
   let {
-    path,
-    label,
+    repo,
     onNewWorktree,
     triggerClass,
   }: {
-    path: string;
-    label: string;
-    /** When provided, the menu offers "New worktree" (the caller owns the dialog). */
+    repo: RepoData;
+    /** When provided, the menu offers "New worktree" (the card owns the dialog). */
     onNewWorktree?: () => void;
     triggerClass?: string;
   } = $props();
 
   const agents = $derived(app.launchableAgents);
   const profiles = $derived(app.terminalProfiles);
+  const browserEnabled = $derived(app.settings.browser?.enabled ?? true);
+
+  // Targets to launch into: the project's worktrees (primary first). A non-git
+  // folder has none, so it's its own single target.
+  const targets = $derived.by(() => {
+    const list = projects.worktreesOf(repo.id);
+    if (list.length === 0) return [{ path: repo.path, branch: null as string | null, isMain: true }];
+    return [...list].sort((a, b) => (b.isMain ? 1 : 0) - (a.isMain ? 1 : 0));
+  });
+
+  function targetLabel(t: { path: string; branch: string | null }): string {
+    return (
+      t.branch ??
+      t.path.replace(/\\/g, "/").replace(/\/+$/, "").split("/").pop() ??
+      repo.name
+    );
+  }
 </script>
 
 <DropdownMenu.Root>
@@ -41,7 +59,7 @@
         variant="ghost"
         size="icon"
         class={cn(iconButton.xs, triggerClass)}
-        title={i18n.t("launcher.open", { name: label })}
+        title={i18n.t("launcher.open", { name: repo.name })}
         onclick={(e: MouseEvent) => e.stopPropagation()}
         {...props}
       >
@@ -50,43 +68,43 @@
     {/snippet}
   </DropdownMenu.Trigger>
   <DropdownMenu.Content align="end" class="min-w-56">
-    <DropdownMenu.GroupHeading class={text.menuLabel}>
-      {i18n.t("launcher.terminal")}
-    </DropdownMenu.GroupHeading>
-    <DropdownMenu.Item class={text.menu} onclick={() => projects.openTerminalAt(path)}>
-      <TerminalIcon class={icon.button} />
-      {i18n.t("terminal.newDefault")}
-    </DropdownMenu.Item>
-    {#each profiles as p (p.id)}
-      <DropdownMenu.Item class={text.menu} onclick={() => projects.openTerminalAt(path, p.id)}>
-        <TerminalIcon class={icon.button} />
-        {p.name.trim() || i18n.t("terminal.unnamedProfile")}
-      </DropdownMenu.Item>
+    {#each targets as t (t.path)}
+      <DropdownMenu.Group>
+        <DropdownMenu.GroupHeading class={text.menuLabel}>
+          {targetLabel(t)}
+        </DropdownMenu.GroupHeading>
+        <DropdownMenu.Item class={text.menu} onclick={() => projects.openTerminalAt(t.path)}>
+          <TerminalIcon class={icon.button} />
+          {i18n.t("terminal.newDefault")}
+        </DropdownMenu.Item>
+        {#each profiles as p (p.id)}
+          <DropdownMenu.Item class={text.menu} onclick={() => projects.openTerminalAt(t.path, p.id)}>
+            <TerminalIcon class={icon.button} />
+            {p.name.trim() || i18n.t("terminal.unnamedProfile")}
+          </DropdownMenu.Item>
+        {/each}
+        {#each agents as agent (agent.id)}
+          <DropdownMenu.Item class={text.menu} onclick={() => projects.launchAgentAt(t.path, agent)}>
+            <AgentLogo logo={agentLogoKey(agent.icon, agent.command)} />
+            {agent.name.trim() || agent.command}
+          </DropdownMenu.Item>
+        {/each}
+      </DropdownMenu.Group>
+      <DropdownMenu.Separator />
     {/each}
 
-    <DropdownMenu.Separator />
-    <DropdownMenu.GroupHeading class={text.menuLabel}>
-      {i18n.t("launcher.agents")}
-    </DropdownMenu.GroupHeading>
-    {#if agents.length > 0}
-      {#each agents as agent (agent.id)}
-        <DropdownMenu.Item class={text.menu} onclick={() => projects.launchAgentAt(path, agent)}>
-          <AgentLogo logo={agentLogoKey(agent.icon, agent.command)} />
-          {agent.name.trim() || agent.command}
-        </DropdownMenu.Item>
-      {/each}
-    {:else}
-      <div class={cn("px-2 py-1.5", text.meta)}>{i18n.t("agent.none")}</div>
+    {#if browserEnabled}
+      <DropdownMenu.Item class={text.menu} onclick={() => app.openBrowser()}>
+        <GlobeIcon class={icon.button} />
+        {i18n.t("launcher.browser")}
+      </DropdownMenu.Item>
     {/if}
-
     {#if onNewWorktree}
-      <DropdownMenu.Separator />
       <DropdownMenu.Item class={text.menu} onclick={onNewWorktree}>
         <GitBranchPlusIcon class={icon.button} />
         {i18n.t("project.newWorktree")}
       </DropdownMenu.Item>
     {/if}
-
     <DropdownMenu.Separator />
     <DropdownMenu.Item class={text.menu} onclick={() => app.openSettings("agents")}>
       <SettingsIcon class={icon.button} />

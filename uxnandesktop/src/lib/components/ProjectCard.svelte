@@ -106,8 +106,7 @@
         </Button>
       {/if}
       <LauncherMenu
-        path={mainPath}
-        label={repo.name}
+        {repo}
         onNewWorktree={isGit ? () => (newWorktreeOpen = true) : undefined}
         triggerClass={hoverReveal}
       />
@@ -140,7 +139,6 @@
         {#each rows as row (row.path)}
           <WorktreeRow
             {row}
-            onNewWorktree={() => (newWorktreeOpen = true)}
             onRemoveProject={row.isMain ? () => (confirmRemoveOpen = true) : undefined}
           />
         {/each}

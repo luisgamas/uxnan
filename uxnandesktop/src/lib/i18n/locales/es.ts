@@ -99,9 +99,7 @@ export const es: Record<MessageKey, string> = {
   "terminal.newTerminal": "Nueva terminal",
   "terminal.unnamedProfile": "Perfil sin nombre",
   "launcher.open": "Abrir una terminal, agente o worktree en {name}",
-  "launcher.terminal": "Terminal",
-  "launcher.agents": "Agentes",
-  "worktree.primary": "primario",
+  "launcher.browser": "Abrir navegador",
   "terminal.context":
     "Contexto de terminal activo — elige un proyecto o worktree en el panel izquierdo",
   "terminal.toggleRight": "Mostrar/ocultar panel derecho",
