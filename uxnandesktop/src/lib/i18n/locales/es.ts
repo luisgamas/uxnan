@@ -135,6 +135,7 @@ export const es: Record<MessageKey, string> = {
   "settings.title": "Configuración",
   "settings.general": "General",
   "settings.terminal": "Terminal",
+  "settings.terminalDesc": "Perfil de shell predeterminado y los perfiles con que se abren agentes y terminales.",
   "settings.language": "Idioma",
   "settings.shortcuts": "Atajos de teclado",
   "settings.shortcutsDesc":

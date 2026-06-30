@@ -155,18 +155,14 @@ are **done** (see `CHANGELOG.md` + `architecture/02d` §3). Remaining follow-ups
       back-compat).
 
 **Polish / quality**
-- [ ] **Settings section-shell refactor (in progress).** Reusable
-      `SettingsSection` (title + description over a soft `panel.settingsBody` band)
-      and `SettingsRow` (label + helper + right-aligned control, `divide-y` rows)
-      now exist, and the shell-level polish landed (top divider, grouped nav, wider
-      `max-w-3xl`, sleek scrollbar). Sections wrapped in the section shell so far:
-      **Language, Browser, Updates, AI commit**. **Every on/off setting is now a
-      `Switch`** (not an on/off Select), across all sections. Still to wrap in the
-      shell: **shortcuts**, the **agents** catalog/your-agents lists, **hooks**,
-      **terminal** (these are list/editor-heavy, so it's structural wrapping more
-      than control swaps) — reserving borders for real divisions. Landing
-      incrementally for on-device review. Marker: `FOR-DEV:` in
-      `src/lib/components/Settings.svelte`.
+- [ ] **Settings list-body polish (optional follow-up).** The section-shell
+      refactor is done — all nine sections use `SettingsSection` (consistent
+      header), settings-style sections use the `panel.settingsBody` band of
+      `SettingsRow`s, every on/off is a `Switch`, and list/editor-heavy sections
+      use the `bare` header with softened borders. Optional next polish: tighten
+      the inner list sub-content (agents catalog cards, terminal profile editors,
+      shortcut keycaps) further into the row/density recipes. Visual, review on
+      device.
 - [ ] Sidebar project-tree virtualization (worktree lists already virtualized).
 - [ ] Stronghold/keyring for any secret (never plaintext JSON) — needed with Phase 6.
 - [ ] E2E tests (Playwright / WebdriverIO + tauri-driver) **and** Svelte

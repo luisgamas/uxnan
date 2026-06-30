@@ -517,15 +517,13 @@
 
       <!-- Section content (centered column; text stays left-aligned). The extra
            bottom padding lets the last options scroll clear of the window edge. -->
-      <!-- FOR-DEV: Settings sections are migrating to the clean-desktop pattern —
-           each section wrapped in `SettingsSection` (title + description over a
-           soft `panel.settingsBody` band) with `SettingsRow`s and the right
-           control per setting (a Switch for on/off, not an on/off Select).
-           Migrated to SettingsSection/SettingsRow: Language, Browser, Updates,
-           AI commit. Every on/off setting across Settings is now a Switch (incl.
-           agent notifications + keep-awake). Still to wrap in the section shell:
-           shortcuts, the agents catalog/your-agents lists, hooks, terminal.
-           Landed incrementally for on-device review. See uxnandesktop/FOR-DEV.md. -->
+      <!-- Each section uses the clean-desktop pattern: a `SettingsSection` header
+           (title + description over a divider), with a soft `panel.settingsBody`
+           band of `SettingsRow`s for settings-style sections, or `bare` (header
+           only) for sections whose body is a self-contained list/editor (agents
+           catalog, hooks, shortcuts, terminal profiles) to avoid card-in-card.
+           The right control per setting: a Switch for on/off, a Select only for
+           3+ choices; borders only where they divide. -->
       <div class="scrollbar-sleek min-h-0 flex-1 overflow-y-auto px-8 py-7">
         <div class="mx-auto w-full max-w-3xl pb-16">
         {#if app.settingsSection === "appearance"}
@@ -561,15 +559,11 @@
             </SettingsRow>
           </SettingsSection>
         {:else if app.settingsSection === "shortcuts"}
-          <div class="flex flex-col gap-6">
-            <div class="flex flex-col gap-1">
-              <span class={text.heading}>{i18n.t("settings.shortcuts")}</span>
-              <p class={text.meta}>{i18n.t("settings.shortcutsDesc")}</p>
-            </div>
+          <SettingsSection bare title={i18n.t("settings.shortcuts")} description={i18n.t("settings.shortcutsDesc")}>
             {#each SHORTCUT_GROUPS as group (group.titleKey)}
               <div class="flex flex-col gap-1.5">
                 <span class={text.section}>{i18n.t(group.titleKey)}</span>
-                <div class="flex flex-col divide-y divide-border rounded-md border border-border">
+                <div class="flex flex-col divide-y divide-border/60 rounded-md border border-border/60">
                   {#each group.actions as action (action.id)}
                     {@const chord = resolveBinding(action.id)}
                     {@const isCapturing = capturing === action.id}
@@ -623,7 +617,7 @@
                 </div>
               </div>
             {/each}
-          </div>
+          </SettingsSection>
         {:else if app.settingsSection === "agents"}
           <div class="flex flex-col gap-6">
             <SettingsSection title={i18n.t("settings.agents")} description={i18n.t("settings.agentsDesc")}>
@@ -878,13 +872,9 @@
             </div>
           </SettingsSection>
         {:else if app.settingsSection === "hooks"}
-          <div class="flex flex-col gap-6">
-            <div class="flex flex-col gap-1">
-              <span class={text.heading}>{i18n.t("settings.hooks")}</span>
-              <p class={text.meta}>{i18n.t("settings.hooksDesc")}</p>
-            </div>
+          <SettingsSection bare title={i18n.t("settings.hooks")} description={i18n.t("settings.hooksDesc")}>
             <AgentHooksPanel />
-          </div>
+          </SettingsSection>
         {:else if app.settingsSection === "updates"}
           <SettingsSection title={i18n.t("settings.updates")} description={i18n.t("settings.updatesDesc")}>
             <div class="divide-y divide-border/60">
@@ -1062,27 +1052,28 @@
             </div>
           </SettingsSection>
         {:else}
-          <div class="flex flex-col gap-6">
-            <span class={text.heading}>{i18n.t("settings.terminal")}</span>
-            <div class="flex flex-col gap-1.5">
-              <span class={cn("font-medium", text.body)}>{i18n.t("settings.defaultProfile")}</span>
-              <Select.Root
-                type="single"
-                value={app.settings.defaultProfileId ?? undefined}
-                onValueChange={(v) => {
-                  app.settings.defaultProfileId = v ?? null;
-                  persistNow();
-                }}
-              >
-                <Select.Trigger class="w-56">{defaultProfileLabel}</Select.Trigger>
-                <Select.Content>
-                  {#each app.terminalProfiles as p (p.id)}
-                    {@const label = p.name.trim() || i18n.t("terminal.unnamedProfile")}
-                    <Select.Item value={p.id} {label}>{label}</Select.Item>
-                  {/each}
-                </Select.Content>
-              </Select.Root>
-              <p class={text.meta}>{i18n.t("settings.defaultProfileDesc")}</p>
+          <SettingsSection bare title={i18n.t("settings.terminal")} description={i18n.t("settings.terminalDesc")}>
+            <div class="rounded-xl border border-border/50 bg-card/50 px-7 py-4 shadow-xs">
+              <SettingsRow label={i18n.t("settings.defaultProfile")} description={i18n.t("settings.defaultProfileDesc")}>
+                {#snippet control()}
+                  <Select.Root
+                    type="single"
+                    value={app.settings.defaultProfileId ?? undefined}
+                    onValueChange={(v) => {
+                      app.settings.defaultProfileId = v ?? null;
+                      persistNow();
+                    }}
+                  >
+                    <Select.Trigger class="w-56">{defaultProfileLabel}</Select.Trigger>
+                    <Select.Content>
+                      {#each app.terminalProfiles as p (p.id)}
+                        {@const label = p.name.trim() || i18n.t("terminal.unnamedProfile")}
+                        <Select.Item value={p.id} {label}>{label}</Select.Item>
+                      {/each}
+                    </Select.Content>
+                  </Select.Root>
+                {/snippet}
+              </SettingsRow>
             </div>
 
             <div class="flex items-center justify-between gap-1.5">
@@ -1149,7 +1140,7 @@
                 </p>
               {/each}
             </div>
-          </div>
+          </SettingsSection>
         {/if}
         </div>
       </div>

@@ -195,8 +195,12 @@ regressions.
   on/off setting across Settings is now a Switch** (Browser ×4, AI commit ×3,
   Updates ×2, plus agent notifications + keep-awake) — multi-option settings
   (link policy, release channel, install policy, language, agent/model) stay
-  Selects. Remaining sections to wrap in the section shell (shortcuts, the agents
-  catalog/your-agents lists, hooks, terminal) follow incrementally.
+  Selects. **All nine sections** now use the section shell: settings-style ones
+  (Language, Browser, Updates, AI commit, the agents settings) use the soft band
+  of rows; list/editor-heavy ones (the agents catalog, hooks, shortcuts, terminal
+  profiles) use a `bare` `SettingsSection` (consistent header, no band — avoids
+  card-in-card) with softened `/60` borders. The top band also dropped from h-12
+  to h-9 to match the home top band.
 
 ### Fixed
 - **Git status not reflected in the UI (file-tree coloring + Changes tab empty).**

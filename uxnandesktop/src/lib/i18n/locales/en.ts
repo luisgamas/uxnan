@@ -138,6 +138,7 @@ export const en = {
   "settings.title": "Settings",
   "settings.general": "General",
   "settings.terminal": "Terminal",
+  "settings.terminalDesc": "Default shell profile and the profiles agents and terminals launch with.",
   "settings.language": "Language",
   "settings.shortcuts": "Keyboard shortcuts",
   "settings.shortcutsDesc":

@@ -10,6 +10,7 @@
     title,
     description,
     headerAction,
+    bare = false,
     children,
     class: className,
   }: {
@@ -17,6 +18,9 @@
     description?: string;
     /** Optional control aligned to the right of the header (e.g. a primary action). */
     headerAction?: Snippet;
+    /** Skip the soft body band — for sections whose body is a self-contained
+     *  sub-component or list that already frames itself (avoids card-in-card). */
+    bare?: boolean;
     children: Snippet;
     class?: string;
   } = $props();
@@ -32,7 +36,11 @@
     </div>
     {#if headerAction}{@render headerAction()}{/if}
   </div>
-  <div class={panel.settingsBody}>
+  {#if bare}
     {@render children()}
-  </div>
+  {:else}
+    <div class={panel.settingsBody}>
+      {@render children()}
+    </div>
+  {/if}
 </section>
