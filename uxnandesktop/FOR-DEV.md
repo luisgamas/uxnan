@@ -155,13 +155,16 @@ are **done** (see `CHANGELOG.md` + `architecture/02d` §3). Remaining follow-ups
       back-compat).
 
 **Polish / quality**
-- [ ] **Settings section-shell refactor.** The clean desktop UI redesign tokenized
-      the pattern (`panel.sectionHeader` + `text.pageTitle` over a `panel.settingsBody`
-      band) and applied the shell-level polish (wider `max-w-3xl` content, sleek
-      scrollbar, refined nav), but the 9 sections in `Settings.svelte` still render
-      as flat ad-hoc group stacks. Wrapping each section in the header+body band is a
-      large restructure that should be visually reviewed on-device before landing.
-      Marker: `FOR-DEV:` in `src/lib/components/Settings.svelte` (content area).
+- [ ] **Settings section-shell refactor (in progress).** Reusable
+      `SettingsSection` (title + description over a soft `panel.settingsBody` band)
+      and `SettingsRow` (label + helper + right-aligned control, `divide-y` rows)
+      now exist, and the shell-level polish landed (top divider, grouped nav, wider
+      `max-w-3xl`, sleek scrollbar). Sections migrated so far: **Language, Browser**
+      (Browser also swapped its on/off Selects for `Switch`). Still to migrate:
+      shortcuts, agents, AI commit, hooks, terminal, updates — each picking the
+      right control per setting (Switch for on/off, Select only for 3+ choices) and
+      reserving borders for real divisions. Landing incrementally for on-device
+      review. Marker: `FOR-DEV:` in `src/lib/components/Settings.svelte`.
 - [ ] Sidebar project-tree virtualization (worktree lists already virtualized).
 - [ ] Stronghold/keyring for any secret (never plaintext JSON) — needed with Phase 6.
 - [ ] E2E tests (Playwright / WebdriverIO + tauri-driver) **and** Svelte

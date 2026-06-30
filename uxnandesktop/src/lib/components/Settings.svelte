@@ -9,6 +9,7 @@
   import { Button } from "$lib/components/ui/button";
   import { Textarea } from "$lib/components/ui/textarea";
   import { Input } from "$lib/components/ui/input";
+  import { Switch } from "$lib/components/ui/switch";
   import { app } from "$lib/state/app.svelte";
   import { i18n, LOCALES } from "$lib/i18n";
   import type { MessageKey } from "$lib/i18n/locales/en";
@@ -36,6 +37,8 @@
   import AgentLogo from "./AgentLogo.svelte";
   import AgentHooksPanel from "./AgentHooksPanel.svelte";
   import ThemeSettings from "./ThemeSettings.svelte";
+  import SettingsSection from "./SettingsSection.svelte";
+  import SettingsRow from "./SettingsRow.svelte";
   import {
     SHORTCUT_GROUPS,
     eventToChord,
@@ -514,40 +517,47 @@
 
       <!-- Section content (centered column; text stays left-aligned). The extra
            bottom padding lets the last options scroll clear of the window edge. -->
-      <!-- FOR-DEV: Settings sections still render as flat ad-hoc group stacks.
-           The clean-desktop pattern wraps each section in a header (panel.sectionHeader
-           + text.pageTitle) over a soft body band (panel.settingsBody). Deferred:
-           it's a large 9-section restructure that should be visually reviewed
-           on-device before landing. See uxnandesktop/FOR-DEV.md. -->
+      <!-- FOR-DEV: Settings sections are migrating to the clean-desktop pattern —
+           each section wrapped in `SettingsSection` (title + description over a
+           soft `panel.settingsBody` band) with `SettingsRow`s and the right
+           control per setting (a Switch for on/off, not an on/off Select). Done:
+           Language, Browser. Pending: shortcuts, agents, AI commit, hooks,
+           terminal, updates. Landed incrementally for on-device review. See
+           uxnandesktop/FOR-DEV.md. -->
       <div class="scrollbar-sleek min-h-0 flex-1 overflow-y-auto px-8 py-7">
         <div class="mx-auto w-full max-w-3xl pb-16">
         {#if app.settingsSection === "appearance"}
           <ThemeSettings />
         {:else if app.settingsSection === "language"}
-          <div class="flex flex-col gap-1.5">
-            <span class={text.heading}>{i18n.t("settings.language")}</span>
-            <Select.Root
-              type="single"
-              value={app.settings.language}
-              onValueChange={(v) => {
-                app.settings.language = v ?? "system";
-                persistNow();
-              }}
-            >
-              <Select.Trigger class="w-56">{languageLabel}</Select.Trigger>
-              <Select.Content>
-                <Select.Item value="system" label={i18n.t("settings.language.system")}>
-                  {i18n.t("settings.language.system")}
-                </Select.Item>
-                {#each LOCALES as locale (locale.code)}
-                  <Select.Item value={locale.code} label={locale.name}>
-                    {locale.name}
-                  </Select.Item>
-                {/each}
-              </Select.Content>
-            </Select.Root>
-            <p class={text.meta}>{i18n.t("settings.language.desc")}</p>
-          </div>
+          <SettingsSection
+            title={i18n.t("settings.language")}
+            description={i18n.t("settings.language.desc")}
+          >
+            <SettingsRow label={i18n.t("settings.language")}>
+              {#snippet control()}
+                <Select.Root
+                  type="single"
+                  value={app.settings.language}
+                  onValueChange={(v) => {
+                    app.settings.language = v ?? "system";
+                    persistNow();
+                  }}
+                >
+                  <Select.Trigger class="w-56">{languageLabel}</Select.Trigger>
+                  <Select.Content>
+                    <Select.Item value="system" label={i18n.t("settings.language.system")}>
+                      {i18n.t("settings.language.system")}
+                    </Select.Item>
+                    {#each LOCALES as locale (locale.code)}
+                      <Select.Item value={locale.code} label={locale.name}>
+                        {locale.name}
+                      </Select.Item>
+                    {/each}
+                  </Select.Content>
+                </Select.Root>
+              {/snippet}
+            </SettingsRow>
+          </SettingsSection>
         {:else if app.settingsSection === "shortcuts"}
           <div class="flex flex-col gap-6">
             <div class="flex flex-col gap-1">
@@ -1098,121 +1108,82 @@
             </div>
           </div>
         {:else if app.settingsSection === "browser"}
-          <div class="flex flex-col gap-6">
-            <div class="flex flex-col gap-1">
-              <span class={text.heading}>{i18n.t("settings.browser")}</span>
-              <p class={text.meta}>{i18n.t("settings.browserDesc")}</p>
-            </div>
+          <SettingsSection
+            title={i18n.t("settings.browser")}
+            description={i18n.t("settings.browserDesc")}
+          >
+            <div class="divide-y divide-border/60">
+              <!-- On/off settings are Switches (not on/off comboboxes). -->
+              <SettingsRow label={i18n.t("browser.enabled")} description={i18n.t("browser.enabledDesc")}>
+                {#snippet control()}
+                  <Switch
+                    checked={br.enabled}
+                    onCheckedChange={(c) => { setBr({ enabled: c }); persistNow(); }}
+                  />
+                {/snippet}
+              </SettingsRow>
 
-            <!-- Master switch. -->
-            <div class="flex flex-col gap-1.5">
-              <span class={cn("font-medium", text.body)}>{i18n.t("browser.enabled")}</span>
-              <Select.Root
-                type="single"
-                value={br.enabled ? "on" : "off"}
-                onValueChange={(v) => {
-                  setBr({ enabled: v === "on" });
-                  persistNow();
-                }}
-              >
-                <Select.Trigger class="w-56">
-                  {br.enabled ? i18n.t("common.on") : i18n.t("common.off")}
-                </Select.Trigger>
-                <Select.Content>
-                  <Select.Item value="on" label={i18n.t("common.on")}>{i18n.t("common.on")}</Select.Item>
-                  <Select.Item value="off" label={i18n.t("common.off")}>{i18n.t("common.off")}</Select.Item>
-                </Select.Content>
-              </Select.Root>
-              <p class={text.meta}>{i18n.t("browser.enabledDesc")}</p>
-            </div>
+              <!-- Link policy has three options, so it stays a Select. -->
+              <SettingsRow label={i18n.t("browser.linkPolicy")} description={i18n.t("browser.linkPolicyDesc")}>
+                {#snippet control()}
+                  <Select.Root
+                    type="single"
+                    value={br.linkPolicy}
+                    disabled={!br.enabled}
+                    onValueChange={(v) => {
+                      setBr({ linkPolicy: (v as BrowserLinkPolicy) ?? "internal" });
+                      persistNow();
+                    }}
+                  >
+                    <Select.Trigger class="w-56">{linkPolicyLabel}</Select.Trigger>
+                    <Select.Content>
+                      {#each LINK_POLICIES as p (p.value)}
+                        <Select.Item value={p.value} label={i18n.t(p.labelKey)}>
+                          <div class="flex flex-col">
+                            <span>{i18n.t(p.labelKey)}</span>
+                            <span class={text.meta}>{i18n.t(p.descKey)}</span>
+                          </div>
+                        </Select.Item>
+                      {/each}
+                    </Select.Content>
+                  </Select.Root>
+                {/snippet}
+              </SettingsRow>
 
-            <!-- Link policy: where links open. -->
-            <div class="flex flex-col gap-1.5">
-              <span class={cn("font-medium", text.body)}>{i18n.t("browser.linkPolicy")}</span>
-              <Select.Root
-                type="single"
-                value={br.linkPolicy}
-                disabled={!br.enabled}
-                onValueChange={(v) => {
-                  setBr({ linkPolicy: (v as BrowserLinkPolicy) ?? "internal" });
-                  persistNow();
-                }}
-              >
-                <Select.Trigger class="w-56">{linkPolicyLabel}</Select.Trigger>
-                <Select.Content>
-                  {#each LINK_POLICIES as p (p.value)}
-                    <Select.Item value={p.value} label={i18n.t(p.labelKey)}>
-                      <div class="flex flex-col">
-                        <span>{i18n.t(p.labelKey)}</span>
-                        <span class={text.meta}>{i18n.t(p.descKey)}</span>
-                      </div>
-                    </Select.Item>
-                  {/each}
-                </Select.Content>
-              </Select.Root>
-              <p class={text.meta}>{i18n.t("browser.linkPolicyDesc")}</p>
-            </div>
+              <SettingsRow label={i18n.t("browser.allowAgents")} description={i18n.t("browser.allowAgentsDesc")}>
+                {#snippet control()}
+                  <Switch
+                    checked={br.allowAgents}
+                    disabled={!br.enabled}
+                    onCheckedChange={(c) => { setBr({ allowAgents: c }); persistNow(); }}
+                  />
+                {/snippet}
+              </SettingsRow>
 
-            <!-- Let agents open URLs in the integrated browser. -->
-            <div class="flex flex-col gap-1.5">
-              <span class={cn("font-medium", text.body)}>{i18n.t("browser.allowAgents")}</span>
-              <Select.Root
-                type="single"
-                value={br.allowAgents ? "on" : "off"}
-                disabled={!br.enabled}
-                onValueChange={(v) => {
-                  setBr({ allowAgents: v === "on" });
-                  persistNow();
-                }}
-              >
-                <Select.Trigger class="w-56">
-                  {br.allowAgents ? i18n.t("common.on") : i18n.t("common.off")}
-                </Select.Trigger>
-                <Select.Content>
-                  <Select.Item value="on" label={i18n.t("common.on")}>{i18n.t("common.on")}</Select.Item>
-                  <Select.Item value="off" label={i18n.t("common.off")}>{i18n.t("common.off")}</Select.Item>
-                </Select.Content>
-              </Select.Root>
-              <p class={text.meta}>{i18n.t("browser.allowAgentsDesc")}</p>
-            </div>
+              <SettingsRow label={i18n.t("browser.terminalLinks")} description={i18n.t("browser.terminalLinksDesc")}>
+                {#snippet control()}
+                  <Switch
+                    checked={br.terminalLinks}
+                    disabled={!br.enabled}
+                    onCheckedChange={(c) => { setBr({ terminalLinks: c }); persistNow(); }}
+                  />
+                {/snippet}
+              </SettingsRow>
 
-            <!-- Make terminal URLs clickable. -->
-            <div class="flex flex-col gap-1.5">
-              <span class={cn("font-medium", text.body)}>{i18n.t("browser.terminalLinks")}</span>
-              <Select.Root
-                type="single"
-                value={br.terminalLinks ? "on" : "off"}
-                disabled={!br.enabled}
-                onValueChange={(v) => {
-                  setBr({ terminalLinks: v === "on" });
-                  persistNow();
-                }}
-              >
-                <Select.Trigger class="w-56">
-                  {br.terminalLinks ? i18n.t("common.on") : i18n.t("common.off")}
-                </Select.Trigger>
-                <Select.Content>
-                  <Select.Item value="on" label={i18n.t("common.on")}>{i18n.t("common.on")}</Select.Item>
-                  <Select.Item value="off" label={i18n.t("common.off")}>{i18n.t("common.off")}</Select.Item>
-                </Select.Content>
-              </Select.Root>
-              <p class={text.meta}>{i18n.t("browser.terminalLinksDesc")}</p>
+              <SettingsRow label={i18n.t("browser.homepage")} description={i18n.t("browser.homepageDesc")}>
+                {#snippet control()}
+                  <Input
+                    class="w-72 max-w-full"
+                    value={br.homepage}
+                    placeholder={i18n.t("browser.homepagePlaceholder")}
+                    disabled={!br.enabled}
+                    oninput={(e) => setBr({ homepage: e.currentTarget.value })}
+                    onchange={() => persistNow()}
+                  />
+                {/snippet}
+              </SettingsRow>
             </div>
-
-            <!-- Homepage. -->
-            <div class="flex flex-col gap-1.5">
-              <span class={cn("font-medium", text.body)}>{i18n.t("browser.homepage")}</span>
-              <Input
-                class="w-full max-w-md"
-                value={br.homepage}
-                placeholder={i18n.t("browser.homepagePlaceholder")}
-                disabled={!br.enabled}
-                oninput={(e) => setBr({ homepage: e.currentTarget.value })}
-                onchange={() => persistNow()}
-              />
-              <p class={text.meta}>{i18n.t("browser.homepageDesc")}</p>
-            </div>
-          </div>
+          </SettingsSection>
         {:else}
           <div class="flex flex-col gap-6">
             <span class={text.heading}>{i18n.t("settings.terminal")}</span>

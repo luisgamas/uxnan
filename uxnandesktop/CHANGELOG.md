@@ -185,6 +185,14 @@ regressions.
   same section-header treatment as the home left sidebar — so the long flat list
   reads as areas. The deeper per-section "header over a soft body band"
   restructure is in progress (see below; tracked in `FOR-DEV.md`).
+- **Settings sections → clean-desktop pattern (in progress).** New reusable
+  **`SettingsSection`** (strong title + description over a soft `panel.settingsBody`
+  band) and **`SettingsRow`** (label + helper text, control right-aligned on wide
+  screens, quiet `divide-y` between rows — no per-row card) replace the flat
+  ad-hoc group stacks. Each setting now uses the **right control for its shape**:
+  on/off settings are **`Switch`es**, not on/off comboboxes — the **Browser**
+  section's four on/off Selects became Switches (its 3-option link policy stays a
+  Select). Migrated so far: **Language, Browser**; the rest follow incrementally.
 
 ### Fixed
 - **Git status not reflected in the UI (file-tree coloring + Changes tab empty).**
