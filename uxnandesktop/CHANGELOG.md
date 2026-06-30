@@ -21,6 +21,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   worktree, plus open the browser, create a worktree, or jump to agent settings
   (replaces the separate terminal button + `LaunchAgentMenu`, now removed).
   `openTerminalAt` gained an optional `profileId`.
+- **Compact agent space under each worktree.** The per-worktree agent block
+  (`AgentSpace`) now reads as part of the worktree: the "Agents · n" toggle
+  shrank to a quiet 10px header, and the agents nest under a **subtle vertical
+  guide line** that ties them to their worktree/branch. The agent currently
+  shown in the center gets a **firm accent bar** over that line, so you can tell
+  which agent you're on at a glance. Rows keep our own status dot + agent logo.
 A token-driven visual refresh (via the `svelte-clean-desktop-ui` system) toward a
 calm, **comfortable**, tool-like desktop feel — readable type and breathable rows,
 not a cramped grid — with no UI-library changes and no behavior or accessibility
