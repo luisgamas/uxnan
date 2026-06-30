@@ -4,7 +4,7 @@
   import { Button } from "$lib/components/ui/button";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
-  import { icon } from "$lib/design";
+  import { icon, text } from "$lib/design";
   import type { TerminalProfile } from "$lib/types";
   import * as Collapsible from "$lib/components/ui/collapsible";
   import Trash2Icon from "@lucide/svelte/icons/trash-2";
@@ -36,12 +36,15 @@
 
 <Collapsible.Root bind:open={expanded} class="flex flex-col gap-2 py-2">
   <div class="flex items-center gap-2">
-    <Input
-      class="h-8 text-xs"
-      placeholder={i18n.t("profileEditor.namePlaceholder")}
-      bind:value={profile.name}
-      oninput={onchange}
-    />
+    <button
+      type="button"
+      class="min-w-0 flex-1 text-left"
+      onclick={() => (expanded = !expanded)}
+    >
+      <span class={cn("block truncate font-medium text-foreground", text.body)}>
+        {profile.name?.trim() || profile.command || i18n.t("profileEditor.namePlaceholder")}
+      </span>
+    </button>
     <Collapsible.Trigger
       class="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
       title={i18n.t(expanded ? "project.collapse" : "project.expand")}
@@ -57,7 +60,14 @@
       <Trash2Icon class={icon.button} />
     </Button>
   </div>
-  <Collapsible.Content class="flex flex-col gap-1.5 sm:flex-row">
+  <Collapsible.Content class="flex flex-col gap-2.5 pt-1">
+    <Input
+      class="h-8 text-xs"
+      placeholder={i18n.t("profileEditor.namePlaceholder")}
+      bind:value={profile.name}
+      oninput={onchange}
+    />
+    <div class="flex flex-col gap-2 sm:flex-row">
     <Input
       class="h-8 flex-1 font-mono text-xs"
       placeholder={i18n.t("profileEditor.commandPlaceholder")}
@@ -70,5 +80,6 @@
       bind:value={argsText}
       oninput={commitArgs}
     />
+    </div>
   </Collapsible.Content>
 </Collapsible.Root>

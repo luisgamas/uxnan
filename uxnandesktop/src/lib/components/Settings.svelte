@@ -559,16 +559,16 @@
             </SettingsRow>
           </SettingsSection>
         {:else if app.settingsSection === "shortcuts"}
-          <SettingsSection title={i18n.t("settings.shortcuts")} description={i18n.t("settings.shortcutsDesc")}>
-            <div class="space-y-5">
+          <SettingsSection bare title={i18n.t("settings.shortcuts")} description={i18n.t("settings.shortcutsDesc")}>
+            <div class="space-y-6">
             {#each SHORTCUT_GROUPS as group (group.titleKey)}
-              <div class="flex flex-col gap-1">
-                <span class={text.section}>{i18n.t(group.titleKey)}</span>
-                <div class="flex flex-col divide-y divide-border/60">
+              <div class="space-y-2">
+                <span class={cn("px-1", text.section)}>{i18n.t(group.titleKey)}</span>
+                <div class="divide-y divide-border/60 rounded-xl border border-border/50 bg-card/50 px-5 shadow-xs">
                   {#each group.actions as action (action.id)}
                     {@const chord = resolveBinding(action.id)}
                     {@const isCapturing = capturing === action.id}
-                    <div class="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
+                    <div class="flex items-center gap-3 py-3">
                       <div class="min-w-0 flex-1">
                         <div class={text.body}>{i18n.t(action.labelKey)}</div>
                         <div class={cn("truncate", text.meta)}>{i18n.t(action.descKey)}</div>
@@ -717,19 +717,17 @@
               {#if installed === null}
                 <p class={text.meta}>{i18n.t("settings.detecting")}</p>
               {/if}
-              <div class="flex flex-col divide-y divide-border/60 overflow-hidden rounded-md border border-border/60">
+              <div class="flex flex-col divide-y divide-border/60 rounded-xl border border-border/50 bg-card/50 px-4 shadow-xs">
                 {#each app.agentProfiles as agent (agent.id)}
-                  <div class="px-2.5">
-                    <AgentProfileEditor
-                      {agent}
-                      onchange={schedulePersist}
-                      onremove={() => removeAgent(agent.id)}
-                    />
-                  </div>
+                  <AgentProfileEditor
+                    {agent}
+                    onchange={schedulePersist}
+                    onremove={() => removeAgent(agent.id)}
+                  />
                 {/each}
                 {#each AGENT_CATALOG.filter((c) => !isConfigured(c)) as c (c.id)}
                   {@const inst = isInstalled(c)}
-                  <div class={cn("flex items-center gap-2 px-2.5 py-2", !inst && "opacity-55")}>
+                  <div class={cn("flex items-center gap-2.5 py-2.5", !inst && "opacity-55")}>
                     <AgentLogo logo={c.logo} class="size-4 shrink-0" />
                     <div class="min-w-0 flex-1">
                       <div class={cn("truncate", text.body)}>{c.name}</div>
@@ -1113,15 +1111,13 @@
 
             {#if app.terminalProfiles.length > 0}
               <!-- One list: each profile is a row that expands to its command/args. -->
-              <div class="flex flex-col divide-y divide-border/60 overflow-hidden rounded-md border border-border/60">
+              <div class="flex flex-col divide-y divide-border/60 rounded-xl border border-border/50 bg-card/50 px-4 shadow-xs">
                 {#each app.terminalProfiles as profile (profile.id)}
-                  <div class="px-2.5">
-                    <TerminalProfileEditor
-                      {profile}
-                      onchange={schedulePersist}
-                      onremove={() => removeProfile(profile.id)}
-                    />
-                  </div>
+                  <TerminalProfileEditor
+                    {profile}
+                    onchange={schedulePersist}
+                    onremove={() => removeProfile(profile.id)}
+                  />
                 {/each}
               </div>
             {:else}

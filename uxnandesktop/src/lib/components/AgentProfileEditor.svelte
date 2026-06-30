@@ -117,12 +117,15 @@
         onchange={onPickLogo}
       />
     </div>
-    <Input
-      class="h-8 text-xs"
-      placeholder={i18n.t("agentEditor.namePlaceholder")}
-      bind:value={agent.name}
-      oninput={onchange}
-    />
+    <button
+      type="button"
+      class="min-w-0 flex-1 text-left"
+      onclick={() => (expanded = !expanded)}
+    >
+      <span class={cn("block truncate font-medium text-foreground", text.body)}>
+        {agent.name?.trim() || agent.command || i18n.t("agentEditor.namePlaceholder")}
+      </span>
+    </button>
     <Collapsible.Trigger
       class="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
       title={i18n.t(expanded ? "project.collapse" : "project.expand")}
@@ -138,8 +141,14 @@
       <Trash2Icon class={icon.button} />
     </Button>
   </div>
-  <Collapsible.Content class="flex flex-col gap-2">
-  <div class="flex flex-col gap-1.5 sm:flex-row">
+  <Collapsible.Content class="flex flex-col gap-2.5 pt-1">
+  <Input
+    class="h-8 text-xs"
+    placeholder={i18n.t("agentEditor.namePlaceholder")}
+    bind:value={agent.name}
+    oninput={onchange}
+  />
+  <div class="flex flex-col gap-2 sm:flex-row">
     <Input
       class="h-8 flex-1 font-mono text-xs"
       placeholder={i18n.t("agentEditor.commandPlaceholder")}
