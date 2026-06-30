@@ -45,19 +45,18 @@
       <ChevronRightIcon
         class={cn("size-3 shrink-0 transition-transform", expanded && "rotate-90")}
       />
-      <span class="text-[10px] font-medium uppercase tracking-[0.04em]">{i18n.t("agents.spaceLabel")}</span>
-      <span class="text-[10px] text-muted-foreground/50">{tabs.length}</span>
+      <span class="text-[8px] font-medium uppercase tracking-[0.05em]">{i18n.t("agents.spaceLabel")}</span>
+      <span class="text-[8px] text-muted-foreground/50">{tabs.length}</span>
       {#if !expanded && anyWorking}
         <AgentStatusDot status="working" />
       {/if}
     </button>
 
     {#if expanded}
-      <!-- Agents live in the worktree's own space: a subtle vertical guide line on
-           the left ties them to their worktree/branch; the agent currently shown
-           in the center gets a firm accent bar over that line, so you can tell
-           which agent you're standing on. -->
-      <div class="ml-2 flex flex-col border-l border-border/50 pl-2.5">
+      <!-- Agents live in the worktree's own (selected) surface. Only the agent
+           currently shown in the center carries a firm vertical accent bar — no
+           inactive guide line — so the active agent is the one clear marker. -->
+      <div class="ml-2 flex flex-col pl-2.5">
         {#each tabs as t (t.id)}
           {@const d = resolveAgentDisplay(t)}
           {@const isActive = revealedId === t.id}

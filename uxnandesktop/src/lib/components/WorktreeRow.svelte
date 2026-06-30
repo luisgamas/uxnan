@@ -74,11 +74,14 @@
   }
 </script>
 
-<div class="flex flex-col">
+<!-- The whole worktree block — its row AND its agents — sits inside one surface:
+     when the worktree is selected the selection fill/ring wraps everything, so the
+     agents read as living in that worktree's space (not floating below it). -->
+<div class={cn("flex flex-col rounded-md", active && surface.active)}>
   <div
     class={cn(
-      "group flex items-center gap-2 rounded-md py-1 pl-2 pr-1 transition-colors hover:bg-foreground/[0.05]",
-      active && surface.active,
+      "group flex items-center gap-2 rounded-md py-1 pl-2 pr-1 transition-colors",
+      !active && "hover:bg-foreground/[0.05]",
     )}
     role="button"
     tabindex="0"
@@ -153,7 +156,7 @@
       </DropdownMenu.Content>
     </DropdownMenu.Root>
   </div>
-  <div class="pl-6">
+  <div class="pl-6 pr-1 pb-1">
     <AgentSpace path={row.path} />
   </div>
 </div>

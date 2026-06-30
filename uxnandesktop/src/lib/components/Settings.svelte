@@ -470,7 +470,7 @@
          not part of the drag region). -->
     <header
       data-tauri-drag-region
-      class={cn("flex h-12 shrink-0 items-center gap-2 px-3", divider.bottom)}
+      class={cn("flex h-9 shrink-0 items-center gap-2 px-3", divider.bottom)}
     >
       <Button
         variant="ghost"
