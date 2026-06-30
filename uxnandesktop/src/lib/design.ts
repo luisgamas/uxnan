@@ -5,26 +5,28 @@
 // one place. Apply them with `cn(...)`, e.g.
 // `class={cn(iconButton.action, "text-muted-foreground")}`.
 //
-// Visual language (clean desktop UI):
-//   - Neutral, layered surfaces (see the `--ux-*` tokens in `app.css`); selection
-//     reads through a quiet sidebar-accent fill, never a saturated color field.
-//   - icons : 12px decorative · 14px in controls · 16px nav · 28px empty-state
-//   - text  : 10px indicators · 11px meta/labels · 12px body/menus · 13px titles
-//   - rows  : ~28px dense nav rows, 8px horizontal rhythm
+// Visual language (clean desktop UI): neutral layered surfaces (see the `--ux-*`
+// tokens in `app.css`); selection reads through a quiet sidebar-accent fill,
+// never a saturated color field. The scale aims for a comfortable,
+// breathable desktop density — medium-sized rows and readable text, not a
+// cramped grid:
+//   - text  : 11px meta-labels/sections · 12px metadata · 13px body/menus · 14px titles
+//   - icons  : 14px decorative · 16px in controls/nav · 32px empty-state
+//   - rows   : ~32-36px nav/list rows, 10px horizontal rhythm
 //
 // See docs/design-tokens.md.
 
 /** Icon sizes by role (width = height via Tailwind `size-*`). */
 export const icon = {
-  /** Inside a button or the search field (14px). */
-  button: "size-3.5",
+  /** Inside a button, control or the search field (16px). */
+  button: "size-4",
   /** A leading icon in a nav / list row (16px). */
   nav: "size-4",
   /** Purely-visual / informational: breadcrumb, leading item icons,
-   *  status & running indicators (12px). */
-  decorative: "size-3",
-  /** Empty-state illustration (28px). */
-  empty: "size-7",
+   *  status & running indicators (14px). */
+  decorative: "size-3.5",
+  /** Empty-state illustration (32px). */
+  empty: "size-8",
 } as const;
 
 /** Footprint of a ghost icon-button (the clickable square). */
@@ -33,8 +35,8 @@ export const iconButton = {
   xs: "size-6",
   /** Slightly roomier action (28px). */
   sm: "size-7",
-  /** Toolbar / header / card / row action buttons (24px). Canonical alias. */
-  action: "size-6",
+  /** Toolbar / header / card / row action buttons (28px). Canonical alias. */
+  action: "size-7",
   /** Primary toolbar button (32px). */
   toolbar: "size-8",
 } as const;
@@ -45,25 +47,25 @@ export const text = {
   /** Settings / page title (the largest, boldest text). */
   pageTitle: "font-title text-2xl font-semibold leading-tight",
   /** Settings section heading (top of each pane). */
-  heading: "font-title text-sm font-semibold tracking-tight",
+  heading: "font-title text-[15px] font-semibold tracking-tight",
   /** Sub-section heading inside a pane (medium weight, between heading & body). */
-  subheading: "text-[13px] font-medium",
-  /** Primary item title (project / worktree name). */
-  title: "font-title text-[13px] font-medium tracking-tight",
+  subheading: "text-sm font-medium",
+  /** Primary item title (project / worktree name) — a prominent 14px label. */
+  title: "font-title text-sm font-medium tracking-tight",
   /** Body & interactive text (buttons, inputs, list items, menu items). */
-  body: "text-xs",
+  body: "text-[13px]",
   /** Body text that needs a touch more weight (active labels). */
-  bodyStrong: "text-xs font-medium",
+  bodyStrong: "text-[13px] font-medium",
   /** Secondary, informational text (paths, descriptions) — muted, not bold. */
-  meta: "text-[11px] leading-4 text-muted-foreground",
+  meta: "text-xs leading-4 text-muted-foreground",
   /** Floating-menu item text. */
-  menu: "text-xs",
+  menu: "text-[13px]",
   /** Floating-menu section label. */
   menuLabel: "text-[11px] font-medium text-muted-foreground",
   /** Sidebar / panel section header — muted, medium weight (not heavy black). */
-  section: "text-[11px] font-medium uppercase tracking-[0.04em] text-muted-foreground",
+  section: "text-[11px] font-medium uppercase tracking-[0.05em] text-muted-foreground",
   /** Tiny badges, counters and indicators. */
-  indicator: "text-[10px]",
+  indicator: "text-[11px]",
 } as const;
 
 /** Surfaces & selection — a single *neutral* language for layering and for
@@ -96,18 +98,18 @@ export const surface = {
   tab: "bg-background text-foreground shadow-sm ring-1 ring-border/70",
 } as const;
 
-/** Row recipes — dense, breathable list/nav rows. `*Inactive` / `*Active` are
- *  the state classes to compose conditionally on top of the base. */
+/** Row recipes — comfortable, breathable list/nav rows. `*Inactive` /
+ *  `*Active` are the state classes to compose conditionally on top of the base. */
 export const row = {
-  /** Sidebar nav / project / worktree / settings-nav row base (~28px). */
+  /** Sidebar nav / project / worktree / settings-nav row base (~32px). */
   sidebar:
-    "group flex min-h-7 w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] font-medium tracking-tight transition-colors",
+    "group flex min-h-8 w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-[13px] font-medium tracking-tight transition-colors",
   sidebarInactive:
     "text-sidebar-foreground/60 hover:bg-foreground/[0.055] hover:text-sidebar-foreground dark:hover:bg-foreground/[0.065]",
   sidebarActive: "bg-[var(--ux-sidebar-accent)] text-sidebar-foreground",
-  /** A list row in a content panel (file tree, changes, …). */
+  /** A list row in a content panel (file tree, changes, …) (~36px). */
   list:
-    "group flex min-h-8 w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] transition-colors",
+    "group flex min-h-9 w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-[13px] transition-colors",
   listInactive: "text-muted-foreground hover:bg-accent hover:text-foreground",
   listActive: "bg-accent text-accent-foreground",
 } as const;
@@ -115,9 +117,9 @@ export const row = {
 /** Field controls — text inputs and the compact, field-like search button. */
 export const field = {
   input:
-    "h-8 rounded-md border border-input bg-background px-2.5 text-sm shadow-xs transition-colors placeholder:text-muted-foreground/70 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50",
+    "h-9 rounded-md border border-input bg-background px-3 text-sm shadow-xs transition-colors placeholder:text-muted-foreground/70 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50",
   search:
-    "h-7 rounded-md border border-sidebar-border/70 bg-sidebar-foreground/5 pl-7 pr-2 text-[12px] font-medium text-sidebar-foreground/60 transition-colors hover:border-sidebar-border hover:bg-sidebar-foreground/8",
+    "h-8 rounded-md border border-sidebar-border/70 bg-sidebar-foreground/5 pl-8 pr-2.5 text-[13px] font-medium text-sidebar-foreground/60 transition-colors hover:border-sidebar-border hover:bg-sidebar-foreground/8",
 } as const;
 
 /** Container surfaces — settings bodies, section headers and cards. */

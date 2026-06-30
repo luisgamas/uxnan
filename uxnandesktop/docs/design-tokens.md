@@ -24,33 +24,33 @@ in [`src/lib/design.ts`](../src/lib/design.ts); apply them with `cn(...)`.
 ### Icons (`icon`)
 | Token | Size | Use |
 |---|---|---|
-| `icon.button` | 14px (`size-3.5`) | Icons inside a button or the search field |
+| `icon.button` | 16px (`size-4`) | Icons inside a button, control or the search field |
 | `icon.nav` | 16px (`size-4`) | A leading icon in a nav / list row |
-| `icon.decorative` | 12px (`size-3`) | Purely-visual / informational: breadcrumb, leading item icons, status & "running terminals" indicators |
-| `icon.empty` | 28px (`size-7`) | Empty-state illustration |
+| `icon.decorative` | 14px (`size-3.5`) | Purely-visual / informational: breadcrumb, leading item icons, status & "running terminals" indicators |
+| `icon.empty` | 32px (`size-8`) | Empty-state illustration |
 
 ### Icon buttons (`iconButton`)
 | Token | Size | Use |
 |---|---|---|
 | `iconButton.xs` | 24px (`size-6`) | Compact action in a dense row / card |
 | `iconButton.sm` | 28px (`size-7`) | Slightly roomier action |
-| `iconButton.action` | 24px (`size-6`) | Canonical ghost icon button in toolbars, cards and rows |
+| `iconButton.action` | 28px (`size-7`) | Canonical ghost icon button in toolbars, cards and rows |
 | `iconButton.toolbar` | 32px (`size-8`) | Primary toolbar button |
 
 ### Text (`text`)
 | Token | Size / style | Use |
 |---|---|---|
 | `text.pageTitle` | 24px semibold | Settings / page title (largest, boldest) |
-| `text.heading` | 14px semibold | Settings section heading |
-| `text.subheading` | 13px medium | Sub-section heading inside a pane |
-| `text.title` | 13px medium | Primary item title (project / worktree name) |
-| `text.body` | 12px | Body & interactive text (buttons, inputs, list items, menu items) |
-| `text.bodyStrong` | 12px medium | Body text that needs a touch more weight (active labels) |
-| `text.meta` | 11px muted | Secondary, informational text (paths, descriptions) — **muted, not bold** |
-| `text.menu` | 12px | Floating-menu item text |
+| `text.heading` | 15px semibold | Settings section heading |
+| `text.subheading` | 14px medium | Sub-section heading inside a pane |
+| `text.title` | 14px medium | Primary item title (project / worktree name) |
+| `text.body` | 13px | Body & interactive text (buttons, inputs, list items, menu items) |
+| `text.bodyStrong` | 13px medium | Body text that needs a touch more weight (active labels) |
+| `text.meta` | 12px muted | Secondary, informational text (paths, descriptions) — **muted, not bold** |
+| `text.menu` | 13px | Floating-menu item text |
 | `text.menuLabel` | 11px medium muted | Floating-menu section label |
 | `text.section` | 11px medium uppercase muted | Sidebar / panel section header |
-| `text.indicator` | 10px | Tiny badges, counters and indicators |
+| `text.indicator` | 11px | Tiny badges, counters and indicators |
 
 ### Surfaces & selection (`surface`)
 Neutral, layered surfaces. Selection reads through a quiet **sidebar-accent**

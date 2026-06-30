@@ -7,8 +7,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Changed — clean desktop UI redesign
 A token-driven visual refresh (via the `svelte-clean-desktop-ui` system) toward a
-calm, dense, tool-like desktop feel, with no UI-library changes and no behavior
-or accessibility regressions.
+calm, **comfortable**, tool-like desktop feel — readable type and breathable rows,
+not a cramped grid — with no UI-library changes and no behavior or accessibility
+regressions.
+- **Comfortable scale + bundled UI font.** **DM Sans is now bundled**
+  (`@fontsource-variable/dm-sans`, imported in `app.css`) so the UI face actually
+  renders regardless of the OS, with a small global `letter-spacing` (0.01em) and
+  grayscale antialiasing for crisp text. The whole type/control scale moved up one
+  notch toward a roomier desktop density: body text 12→13px, item titles 13→14px,
+  metadata 11→12px, indicators 10→11px, section headings 14→15px; control icons
+  14→16px; the default button, inputs and select triggers 32→36px tall; and the
+  `row` recipes grew to ~32–36px with more horizontal rhythm. Because these are
+  `design.ts` tokens + shared primitives, the new proportions propagate across the
+  whole app.
 - **Foundations (`app.css` + `theme.ts`).** Added a layer of theme-aware semantic
   surface tokens — `--ux-shell`, `--ux-sidebar-accent`, `--ux-panel`,
   `--ux-panel-muted`, `--ux-editor-surface`, `--ux-elevated`, plus hover/subtle-border
@@ -18,8 +29,7 @@ or accessibility regressions.
   (`bg-ux-panel`, …). Added a `can-hover:` variant so hover-reveal controls never
   stick on touch, sleek theme-aware scrollbars (`.scrollbar-sleek`,
   `.worktree-sidebar-scrollbar`), and a `prefers-reduced-motion` guard. The default
-  UI face is now **DM Sans** (graceful fallback to the OS UI font), kept in sync
-  between `--ux-font-*` and `DEFAULT_FONTS`.
+  UI face is **DM Sans**, kept in sync between `--ux-font-*` and `DEFAULT_FONTS`.
 - **Role tokens (`design.ts`).** Selection is now a **neutral** language: the
   `surface.active` / `activeNested` / `tab` tokens switched from primary-tinted
   fills to quiet sidebar-accent / foreground-mixed surfaces (propagating to the

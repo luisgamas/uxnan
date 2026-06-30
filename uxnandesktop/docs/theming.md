@@ -147,9 +147,11 @@ theme (built-in or custom) gets coherent shell, sidebar and panel depth
 automatically. Because the mix is over `--foreground`, the same formula darkens
 light themes and lightens dark ones.
 
-When no font is set, the UI defaults to **DM Sans** (`DEFAULT_FONTS` in
-`theme.ts`, mirrored by `--ux-font-*` in `app.css`), falling back to the OS UI
-font when DM Sans is not installed.
+When no font is set, the UI defaults to **DM Sans**, which is **bundled** with
+the app (`@fontsource-variable/dm-sans`, imported in `app.css`) so it renders
+regardless of what's installed on the OS. The default is declared in
+`DEFAULT_FONTS` (`theme.ts`) and mirrored by `--ux-font-*` in `app.css`; the body
+also gets a small `letter-spacing` + grayscale antialiasing for crisp rendering.
 
 The terminal is resolved by `resolveTerminal`, which starts from the active
 theme's base defaults (background/foreground + a standard ANSI palette) and
