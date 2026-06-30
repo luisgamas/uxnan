@@ -43,6 +43,15 @@ or accessibility regressions.
   switched from an accent tint to a quiet foreground-mixed fill. Selection stays the
   neutral sidebar-accent; the worktree active-indicator bar is the one deliberate
   primary accent (a focus marker).
+- **Shell, agent space, right panel & terminal chrome.** Quieted the structural
+  chrome so it recedes behind the content: the window resize handles and the
+  terminal split dividers are now soft (`border/50`–`/60`) until hover
+  (`ring/70`), and the status-bar, right-panel tab strip and terminal tab strips
+  use softened `border/60` dividers. The nested agent rows hover with the same
+  neutral foreground-mixed fill as the other rows, and the status-bar panel
+  toggles now read as neutral lifted segments (stale "primary tint" comment
+  corrected). Panel separation is still carried by the sidebar/canvas surface
+  delta, so softer borders don't lose structure.
 
 ### Changed — docs
 - **Desktop UI skill consolidated.** The monorepo `AGENTS.md` now scopes a single

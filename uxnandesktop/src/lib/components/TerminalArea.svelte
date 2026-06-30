@@ -307,7 +307,7 @@
 
 <div class="flex h-full flex-col">
   <!-- Slim strip: new-terminal action, workspace switcher, right-panel toggle -->
-  <div class="flex h-8 shrink-0 items-center gap-1 border-b border-border bg-card px-2">
+  <div class="flex h-8 shrink-0 items-center gap-1 border-b border-border/60 bg-card px-2">
     <div class="flex items-center">
       <button
         class={cn(
@@ -380,7 +380,7 @@
                 >
                   <!-- Region tab strip (pointer-driven tab drag target) -->
                   <div
-                    class="uxnan-scroll flex h-8 shrink-0 items-center gap-1 overflow-x-auto border-b border-border bg-card px-1"
+                    class="uxnan-scroll flex h-8 shrink-0 items-center gap-1 overflow-x-auto border-b border-border/60 bg-card px-1"
                     data-tab-strip
                     data-group-id={g.group.id}
                     data-tab-count={g.group.tabs.length}
@@ -576,7 +576,7 @@
                   onpointerup={dividerUp}
                 >
                   <div
-                    class="bg-border transition-colors hover:bg-ring {d.dir === 'row'
+                    class="bg-border/60 transition-colors hover:bg-ring/70 {d.dir === 'row'
                       ? 'mx-auto h-full w-px'
                       : 'my-auto h-px w-full'}"
                   ></div>

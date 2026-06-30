@@ -30,7 +30,7 @@
 
 <Tabs.Root bind:value={tab} class="flex h-full min-h-0 w-full flex-col gap-0">
   <Tabs.List
-    class="h-8 shrink-0 justify-start gap-1 rounded-none border-b border-sidebar-border bg-transparent px-2 py-0"
+    class="h-8 shrink-0 justify-start gap-1 rounded-none border-b border-sidebar-border/60 bg-transparent px-2 py-0"
   >
     <Tabs.Trigger
       value="files"

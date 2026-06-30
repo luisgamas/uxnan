@@ -56,7 +56,7 @@
           {@const d = resolveAgentDisplay(t)}
           <button
             class={cn(
-              "flex items-center gap-1.5 rounded-md py-1 pl-1 pr-1 text-left hover:bg-accent/40",
+              "flex items-center gap-1.5 rounded-md py-1 pl-1 pr-1 text-left transition-colors hover:bg-foreground/[0.045] dark:hover:bg-foreground/[0.055]",
               revealedId === t.id && surface.activeNested,
             )}
             title={d ? `${t.agentName} · ${i18n.t(`monitor.${d.status}`)}` : t.agentName}

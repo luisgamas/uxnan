@@ -227,7 +227,7 @@
 
         <!-- Left resize handle -->
         <div
-          class="w-1 shrink-0 cursor-col-resize bg-border transition-colors hover:bg-ring"
+          class="w-1 shrink-0 cursor-col-resize bg-border/50 transition-colors hover:bg-ring/70"
           role="separator"
           aria-orientation="vertical"
           onpointerdown={(e) => onHandleDown("left", e)}
@@ -246,7 +246,7 @@
       {#if app.settings.rightSidebarOpen}
         <!-- Right resize handle -->
         <div
-          class="w-1 shrink-0 cursor-col-resize bg-border transition-colors hover:bg-ring"
+          class="w-1 shrink-0 cursor-col-resize bg-border/50 transition-colors hover:bg-ring/70"
           role="separator"
           aria-orientation="vertical"
           onpointerdown={(e) => onHandleDown("right", e)}
@@ -265,7 +265,7 @@
       {#if app.browserOpen}
         <!-- Browser panel resize handle (far right) -->
         <div
-          class="w-1 shrink-0 cursor-col-resize bg-border transition-colors hover:bg-ring"
+          class="w-1 shrink-0 cursor-col-resize bg-border/50 transition-colors hover:bg-ring/70"
           role="separator"
           aria-orientation="vertical"
           onpointerdown={(e) => onHandleDown("browser", e)}
@@ -286,7 +286,7 @@
 
     <!-- Status bar: breadcrumb (left) · backend + panel toggles (right) -->
     <footer
-      class="flex h-7 shrink-0 items-center gap-2 border-t border-border px-2 text-xs text-muted-foreground"
+      class="flex h-7 shrink-0 items-center gap-2 border-t border-border/60 px-2 text-xs text-muted-foreground"
     >
       <!-- Active workspace breadcrumb -->
       <div class="inline-flex min-w-0 items-center gap-1" title={i18n.t("terminal.context")}>
@@ -340,7 +340,7 @@
       <!-- Backend status (icon + live popover) -->
       <BackendStatus />
 
-      <!-- Show/hide panels — selected = panel visible (primary tint) -->
+      <!-- Show/hide panels — selected = panel visible (neutral lifted segment) -->
       <button
         class={cn(
           "flex size-6 items-center justify-center rounded",
