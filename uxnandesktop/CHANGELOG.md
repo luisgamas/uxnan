@@ -29,6 +29,13 @@ or accessibility regressions.
   (settings body / section header / cards) and a shared `focus` ring, plus
   `icon.nav`, `iconButton.{xs,sm,toolbar}` and `text.{pageTitle,subheading,bodyStrong}`.
   `docs/design-tokens.md` updated to match.
+- **UI primitives.** Audited the shadcn-svelte primitives against the clean-desktop
+  bar — button, input, badge, card, select, tabs, dropdown-menu and popover are
+  already polished (compact density, foreground-mixed `ring-1` elevation, proper
+  focus/disabled/invalid states) and were left intact. Fixed the one real gap:
+  **`Dialog.Content` had no drop shadow** (only a hairline ring), so a modal read
+  flatter than a dropdown — added a proper elevation shadow (light + dark) so the
+  modal sits clearly above the overlay.
 
 ### Changed — docs
 - **Desktop UI skill consolidated.** The monorepo `AGENTS.md` now scopes a single
