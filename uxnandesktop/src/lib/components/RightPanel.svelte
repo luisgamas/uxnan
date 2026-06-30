@@ -28,9 +28,13 @@
   });
 </script>
 
-<Tabs.Root bind:value={tab} class="flex h-full min-h-0 w-full flex-col gap-0">
+<div class="flex h-full min-h-0 w-full flex-col">
+  <!-- Region: Window-controls header — a drag strip; the min/max/close controls
+       float over its right (fixed overlay rendered in +page.svelte). -->
+  <div data-tauri-drag-region class="h-10 shrink-0"></div>
+  <Tabs.Root bind:value={tab} class="flex min-h-0 w-full flex-1 flex-col gap-0">
   <Tabs.List
-    class="h-8 shrink-0 justify-start gap-1 rounded-none border-b border-sidebar-border/60 bg-transparent px-2 py-0"
+    class="h-8 shrink-0 justify-start gap-1 rounded-none bg-transparent px-2 py-0"
   >
     <Tabs.Trigger
       value="files"
@@ -63,4 +67,5 @@
   <Tabs.Content value="history" class="min-h-0 flex-1 overflow-hidden">
     <HistoryPanel />
   </Tabs.Content>
-</Tabs.Root>
+  </Tabs.Root>
+</div>

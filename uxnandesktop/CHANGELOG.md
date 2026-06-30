@@ -10,6 +10,19 @@ A token-driven visual refresh (via the `svelte-clean-desktop-ui` system) toward 
 calm, **comfortable**, tool-like desktop feel — readable type and breathable rows,
 not a cramped grid — with no UI-library changes and no behavior or accessibility
 regressions.
+- **Title-bar-less layout.** Removed the top window title bar; the three panels
+  now run to the very top of the window. The brand (logo · "Uxnan Desktop" ·
+  Alpha) moved to a header atop the **left sidebar**, and the min/max/close window
+  controls to a header atop the **right panel** — rendered as a fixed top-right
+  overlay so they stay reachable even when that panel is hidden (the OS chrome is
+  disabled). The left sidebar's search + settings became borderless,
+  settings-style nav buttons (tighter, a quiet accent when active), and the center
+  pane's "+ Terminal" launcher (default shell + profiles) moved into the
+  **Projects** header as a compact "+" menu, next to smaller add/refresh/sort
+  icons. All section-dividing lines were removed (no borders/dividers; resize
+  handles are invisible until hover) — panels still separate via their surface
+  tint, and the window stays draggable via the new top sections. Each shell region
+  now carries a `Region:` comment for easy reference.
 - **Comfortable scale + bundled UI font.** **DM Sans is now bundled**
   (`@fontsource-variable/dm-sans`, imported in `app.css`) so the UI face actually
   renders regardless of the OS, with a small global `letter-spacing` (0.01em) and

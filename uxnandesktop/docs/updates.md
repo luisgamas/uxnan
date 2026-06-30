@@ -18,7 +18,8 @@ background, and installs it **on your terms**. Configure it in
 - **Install** — how a downloaded update is applied: **Ask me** (default),
   **Automatically when agents are idle**, or **Only when I trigger it**.
 
-When an update is ready, a slim banner appears under the title bar.
+When an update is ready, a slim banner appears at the top of the window, above
+the panels.
 
 ### Why install is special (agents)
 

@@ -20,13 +20,10 @@
   import CommitPane from "./CommitPane.svelte";
   import { resolveAgentDisplay } from "$lib/state/agentDisplay";
   import AgentStatusDot from "./AgentStatusDot.svelte";
-  import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import { icon, text } from "$lib/design";
   import { cn } from "$lib/utils";
   import { i18n } from "$lib/i18n";
   import PlusIcon from "@lucide/svelte/icons/plus";
-  import TerminalIcon from "@lucide/svelte/icons/terminal";
-  import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
   import Columns2Icon from "@lucide/svelte/icons/columns-2";
   import Rows2Icon from "@lucide/svelte/icons/rows-2";
   import GitBranchIcon from "@lucide/svelte/icons/git-branch";
@@ -306,53 +303,11 @@
 />
 
 <div class="flex h-full flex-col">
-  <!-- Slim strip: new-terminal action, workspace switcher, right-panel toggle -->
-  <div class="flex h-8 shrink-0 items-center gap-1 border-b border-border/60 bg-card px-2">
-    <div class="flex items-center">
-      <button
-        class={cn(
-          "inline-flex items-center gap-1 rounded-l px-2 py-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-          text.body,
-        )}
-        title={i18n.t("terminal.newDefault")}
-        onclick={() => app.openTerminal()}
-      >
-        <PlusIcon class={icon.button} />
-        {i18n.t("terminal.terminal")}
-      </button>
-      <DropdownMenu.Root>
-        <DropdownMenu.Trigger>
-          {#snippet child({ props })}
-            <button
-              class="rounded-r px-0.5 py-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-              title={i18n.t("terminal.chooseProfile")}
-              aria-label={i18n.t("terminal.chooseProfile")}
-              {...props}
-            >
-              <ChevronDownIcon class={icon.button} />
-            </button>
-          {/snippet}
-        </DropdownMenu.Trigger>
-        <DropdownMenu.Content align="start" class="min-w-44">
-          <DropdownMenu.Label class={text.menuLabel}>{i18n.t("terminal.newTerminal")}</DropdownMenu.Label>
-          {#each app.terminalProfiles as p (p.id)}
-            <DropdownMenu.Item
-              class={text.menu}
-              onclick={() => app.openTerminal({ profileId: p.id })}
-            >
-              <TerminalIcon class={icon.button} />
-              {p.name.trim() || i18n.t("terminal.unnamedProfile")}
-            </DropdownMenu.Item>
-          {/each}
-        </DropdownMenu.Content>
-      </DropdownMenu.Root>
-    </div>
-
-    <div class="flex-1"></div>
-  </div>
-
-  <!-- Each workspace's region tree is rendered (and stays mounted) but only the
-       active workspace is shown, so background worktrees keep streaming. -->
+  <!-- Region: Center workspace — the per-region tab strips sit at the very top
+       now. The "new terminal" launcher (default + profiles) moved to the left
+       sidebar's Projects header. Each workspace's region tree is rendered (and
+       stays mounted) but only the active workspace is shown, so background
+       worktrees keep streaming. -->
   <div class="relative min-h-0 flex-1 overflow-hidden" style:background-color={paneBg}>
     {#if terminals.hydrated}
       {#each terminals.openWorkspaceKeys as wsKey (wsKey)}
@@ -380,7 +335,7 @@
                 >
                   <!-- Region tab strip (pointer-driven tab drag target) -->
                   <div
-                    class="uxnan-scroll flex h-8 shrink-0 items-center gap-1 overflow-x-auto border-b border-border/60 bg-card px-1"
+                    class="uxnan-scroll flex h-8 shrink-0 items-center gap-1 overflow-x-auto bg-card px-1"
                     data-tab-strip
                     data-group-id={g.group.id}
                     data-tab-count={g.group.tabs.length}

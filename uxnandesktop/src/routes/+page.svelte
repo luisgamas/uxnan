@@ -18,7 +18,7 @@
   import WorkflowIcon from "@lucide/svelte/icons/workflow";
   import TerminalArea from "$lib/components/TerminalArea.svelte";
   import SaveDiscardDialog from "$lib/components/SaveDiscardDialog.svelte";
-  import TitleBar from "$lib/components/TitleBar.svelte";
+  import WindowControls from "$lib/components/WindowControls.svelte";
   import LeftSidebar from "$lib/components/LeftSidebar.svelte";
   import RightPanel from "$lib/components/RightPanel.svelte";
   import BrowserPanel from "$lib/components/BrowserPanel.svelte";
@@ -196,8 +196,10 @@
   <!-- Non-blocking toasts (errors + successes) -->
   <Toaster position="bottom-right" />
 
-  <!-- Custom title bar (OS chrome disabled) -->
-  <TitleBar />
+  <!-- Window controls (min/max/close) — fixed top-right overlay. There is no
+       title bar: the brand sits atop the left sidebar and these controls atop
+       the right panel, while the three panels run to the very top of the window. -->
+  <WindowControls />
 
   <!-- Quick worktree switcher (Ctrl/Cmd+P) -->
   <WorktreeSearch />
@@ -218,6 +220,7 @@
 
     <div class="flex min-h-0 flex-1">
       {#if app.settings.leftSidebarOpen}
+        <!-- Region: Left sidebar (Projects panel) — brand · quick actions · projects. -->
         <aside
           class="flex shrink-0 flex-col overflow-hidden bg-sidebar text-sidebar-foreground"
           style="width: {app.settings.leftSidebarWidth}px"
@@ -227,7 +230,7 @@
 
         <!-- Left resize handle -->
         <div
-          class="w-1 shrink-0 cursor-col-resize bg-border/50 transition-colors hover:bg-ring/70"
+          class="w-1 shrink-0 cursor-col-resize bg-transparent transition-colors hover:bg-ring/40"
           role="separator"
           aria-orientation="vertical"
           onpointerdown={(e) => onHandleDown("left", e)}
@@ -236,17 +239,18 @@
         ></div>
       {/if}
 
-      <!-- Center area: a tree of regions whose tabs are terminals, file editors
-           or diffs (TerminalArea). Every tab stays mounted (id-keyed) so no
-           PTY/xterm/CodeMirror is torn down on split or tab switch. -->
+      <!-- Region: Center workspace (Pane area) — a tree of regions whose tabs are
+           terminals, file editors or diffs (TerminalArea). Every tab stays mounted
+           (id-keyed) so no PTY/xterm/CodeMirror is torn down on split or tab switch. -->
       <main class="relative flex min-w-0 flex-1 flex-col overflow-hidden">
         <TerminalArea />
       </main>
 
       {#if app.settings.rightSidebarOpen}
+        <!-- Region: Right panel — window-controls header · Files/Changes/History. -->
         <!-- Right resize handle -->
         <div
-          class="w-1 shrink-0 cursor-col-resize bg-border/50 transition-colors hover:bg-ring/70"
+          class="w-1 shrink-0 cursor-col-resize bg-transparent transition-colors hover:bg-ring/40"
           role="separator"
           aria-orientation="vertical"
           onpointerdown={(e) => onHandleDown("right", e)}
@@ -265,7 +269,7 @@
       {#if app.browserOpen}
         <!-- Browser panel resize handle (far right) -->
         <div
-          class="w-1 shrink-0 cursor-col-resize bg-border/50 transition-colors hover:bg-ring/70"
+          class="w-1 shrink-0 cursor-col-resize bg-transparent transition-colors hover:bg-ring/40"
           role="separator"
           aria-orientation="vertical"
           onpointerdown={(e) => onHandleDown("browser", e)}
@@ -285,8 +289,9 @@
     </div>
 
     <!-- Status bar: breadcrumb (left) · backend + panel toggles (right) -->
+    <!-- Region: Status bar — breadcrumb (left) · backend + panel toggles (right). -->
     <footer
-      class="flex h-7 shrink-0 items-center gap-2 border-t border-border/60 px-2 text-xs text-muted-foreground"
+      class="flex h-7 shrink-0 items-center gap-2 px-2 text-xs text-muted-foreground"
     >
       <!-- Active workspace breadcrumb -->
       <div class="inline-flex min-w-0 items-center gap-1" title={i18n.t("terminal.context")}>
