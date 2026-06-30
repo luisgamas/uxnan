@@ -1,23 +1,24 @@
 <script lang="ts">
+  // A project: a borderless group with an identity header and, when expanded,
+  // a list of its worktrees (the primary one first, badged, then the children).
+  // The header's three actions — collapse/expand, the shared launcher (+), and
+  // the overflow menu (copy path / remove project) — reveal on hover.
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import { Button } from "$lib/components/ui/button";
-  import { Badge } from "$lib/components/ui/badge";
   import { projects } from "$lib/state/projects.svelte";
   import { unread } from "$lib/state/unread.svelte";
   import { clipboardWrite } from "$lib/clipboard";
   import { cn } from "$lib/utils";
-  import { icon, iconButton, panel, surface, text } from "$lib/design";
+  import { icon, iconButton, surface, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
   import NewWorktreeDialog from "./NewWorktreeDialog.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import WorktreeRow from "./WorktreeRow.svelte";
   import AgentSpace from "./AgentSpace.svelte";
-  import LaunchAgentMenu from "./LaunchAgentMenu.svelte";
+  import LauncherMenu from "./LauncherMenu.svelte";
   import type { RepoData } from "$lib/types";
   import FolderGitIcon from "@lucide/svelte/icons/folder-git-2";
   import FolderIcon from "@lucide/svelte/icons/folder";
-  import TerminalIcon from "@lucide/svelte/icons/terminal";
-  import GitBranchPlusIcon from "@lucide/svelte/icons/git-branch-plus";
   import MoreVerticalIcon from "@lucide/svelte/icons/ellipsis-vertical";
   import CopyIcon from "@lucide/svelte/icons/copy";
   import Trash2Icon from "@lucide/svelte/icons/trash-2";
@@ -25,120 +26,96 @@
 
   let { repo }: { repo: RepoData } = $props();
 
-  // A non-git folder is a valid project but has no worktrees/branches, so its
-  // worktree affordances (expand, "new worktree", the worktrees subtree) are
-  // hidden. Absent flag (older persisted state) means git.
+  // A non-git folder is a valid project but has no worktrees, so it skips the
+  // expand/worktree machinery and is itself the selectable context.
   const isGit = $derived(repo.isGit !== false);
 
   let newWorktreeOpen = $state(false);
   let confirmRemoveOpen = $state(false);
   let expanded = $state(false);
 
-  // The project's own context = its main worktree (path === repo path).
   const mainPath = $derived(projects.mainWorktree(repo.id)?.path ?? repo.path);
-  const activeProject = $derived(projects.activeWorktreePath === mainPath);
-  const mainStatus = $derived(projects.status(mainPath));
   const children = $derived(projects.visibleChildWorktrees(repo.id));
-  const childRows = $derived(
-    children.map((w) => ({ ...w, repoId: repo.id, repoName: repo.name })),
-  );
-  // Unread if the project's own context, or any of its worktrees, has a result
-  // the user hasn't reviewed (so a collapsed project still surfaces it).
+  // Expanded list = the primary (main) worktree first, then the child worktrees.
+  const rows = $derived.by(() => {
+    const main = projects.mainWorktree(repo.id);
+    const childRows = children.map((w) => ({ ...w, repoId: repo.id, repoName: repo.name }));
+    if (!main) return childRows;
+    return [{ ...main, isMain: true, repoId: repo.id, repoName: repo.name }, ...childRows];
+  });
+  // Unread if the project's own context, or any worktree, has an unreviewed result.
   const hasUnread = $derived(
     unread.has(mainPath) ||
       projects.childWorktrees(repo.id).some((w) => unread.has(w.path)),
   );
+  // Highlight the (collapsed) header when this project holds the active worktree,
+  // so you can still see "where you are" without expanding.
+  const projectActive = $derived(
+    projects.activeWorktreePath != null &&
+      (projects.activeWorktreePath === mainPath ||
+        projects.childWorktrees(repo.id).some((w) => w.path === projects.activeWorktreePath)),
+  );
   // Auto-expand while searching so matching worktrees are visible.
   const isExpanded = $derived(expanded || projects.query.trim().length > 0);
+
+  const hoverReveal = "opacity-0 group-hover/header:opacity-100";
+
+  function onHeaderActivate() {
+    if (isGit) expanded = !isExpanded;
+    else projects.setActiveWorktree(repo.path);
+  }
 </script>
 
-<div class={panel.sidebarCard}>
-  <!-- Project header = the main worktree context (selectable) -->
+<div class="flex flex-col">
+  <!-- Project header -->
   <div
     class={cn(
-      "group flex min-h-12 items-center gap-2 px-2.5 py-2 transition-colors hover:bg-foreground/[0.045]",
-      activeProject && surface.active,
+      "group/header flex min-h-9 items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-foreground/[0.05]",
+      projectActive && !isExpanded && surface.active,
     )}
+    role="button"
+    tabindex="0"
+    title={repo.path}
+    onclick={onHeaderActivate}
+    onkeydown={(e) => (e.key === "Enter" || e.key === " ") && onHeaderActivate()}
   >
     {#if isGit}
-      <button
-        class="shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground"
-        title={isExpanded ? i18n.t("project.collapse") : i18n.t("project.expand")}
-        aria-label={isExpanded ? i18n.t("project.collapse") : i18n.t("project.expand")}
-        onclick={() => (expanded = !isExpanded)}
-      >
-        <ChevronRightIcon
-          class={cn(icon.button, "transition-transform", isExpanded && "rotate-90")}
-        />
-      </button>
+      <FolderGitIcon class={cn(icon.nav, "shrink-0 text-muted-foreground")} />
     {:else}
-      <span class="shrink-0 p-0.5"><span class={cn(icon.button, "block")}></span></span>
+      <FolderIcon class={cn(icon.nav, "shrink-0 text-muted-foreground")} />
+    {/if}
+    <span class={cn("min-w-0 flex-1 truncate", text.title)} title={repo.name}>{repo.name}</span>
+    {#if hasUnread}
+      <span class="size-1.5 shrink-0 rounded-full bg-red-500" title={i18n.t("monitor.unread")}></span>
     {/if}
 
-    <button
-      class="flex min-w-0 flex-1 items-center gap-1.5 text-left"
-      title={i18n.t("project.workIn", { name: repo.name })}
-      onclick={() => projects.setActiveWorktree(mainPath)}
-    >
-      {#if isGit}
-        <FolderGitIcon class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
-      {:else}
-        <FolderIcon class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
-      {/if}
-      <div class="min-w-0 flex-1">
-        <div class="flex items-center gap-1.5">
-          <span class={cn("truncate", text.title)} title={repo.name}>{repo.name}</span>
-          {#if hasUnread}
-            <span
-              class="size-1.5 shrink-0 rounded-full bg-red-500"
-              title={i18n.t("monitor.unread")}
-            ></span>
-          {/if}
-          {#if mainStatus && mainStatus.dirty > 0}
-            <span
-              class={cn(
-                "inline-flex shrink-0 items-center gap-0.5 text-amber-600 dark:text-amber-400",
-                text.indicator,
-              )}
-              title={i18n.t("project.dirtyTooltip", { n: mainStatus.dirty })}
-            >
-              <span class="size-1.5 rounded-full bg-amber-500"></span>{mainStatus.dirty}
-            </span>
-          {/if}
-        </div>
-        <div class={cn("truncate", text.meta)} title={repo.path}>
-          {repo.path}
-        </div>
-      </div>
-    </button>
-
     <div class="flex shrink-0 items-center gap-0.5">
-      <Button
-        variant="ghost"
-        size="icon"
-        class={iconButton.action}
-        title={i18n.t("project.openTerminal", { name: repo.name })}
-        onclick={() => projects.openTerminalAt(mainPath)}
-      >
-        <TerminalIcon class={icon.button} />
-      </Button>
-      <LaunchAgentMenu label={repo.name} path={mainPath} />
       {#if isGit}
         <Button
           variant="ghost"
           size="icon"
-          class={iconButton.action}
-          title={i18n.t("project.newWorktree")}
-          onclick={() => (newWorktreeOpen = true)}
+          class={cn(iconButton.xs, hoverReveal)}
+          title={isExpanded ? i18n.t("project.collapse") : i18n.t("project.expand")}
+          aria-label={isExpanded ? i18n.t("project.collapse") : i18n.t("project.expand")}
+          onclick={(e) => {
+            e.stopPropagation();
+            expanded = !isExpanded;
+          }}
         >
-          <GitBranchPlusIcon class={icon.button} />
+          <ChevronRightIcon class={cn(icon.action, "transition-transform", isExpanded && "rotate-90")} />
         </Button>
       {/if}
+      <LauncherMenu
+        path={mainPath}
+        label={repo.name}
+        onNewWorktree={isGit ? () => (newWorktreeOpen = true) : undefined}
+        triggerClass={hoverReveal}
+      />
       <DropdownMenu.Root>
         <DropdownMenu.Trigger>
           {#snippet child({ props })}
-            <Button variant="ghost" size="icon" class={iconButton.action} title={i18n.t("common.more")} {...props}>
-              <MoreVerticalIcon class={icon.button} />
+            <Button variant="ghost" size="icon" class={cn(iconButton.xs, hoverReveal)} title={i18n.t("common.more")} onclick={(e: MouseEvent) => e.stopPropagation()} {...props}>
+              <MoreVerticalIcon class={icon.action} />
             </Button>
           {/snippet}
         </DropdownMenu.Trigger>
@@ -148,11 +125,7 @@
             {i18n.t("common.copyPath")}
           </DropdownMenu.Item>
           <DropdownMenu.Separator />
-          <DropdownMenu.Item
-            variant="destructive"
-            class={text.menu}
-            onclick={() => (confirmRemoveOpen = true)}
-          >
+          <DropdownMenu.Item variant="destructive" class={text.menu} onclick={() => (confirmRemoveOpen = true)}>
             <Trash2Icon class={icon.button} />
             {i18n.t("project.removeProject")}
           </DropdownMenu.Item>
@@ -161,41 +134,22 @@
     </div>
   </div>
 
-  <!-- The project's own (main worktree) agent terminals -->
-  <div class="px-1.5 pl-6">
-    <AgentSpace path={mainPath} />
-  </div>
-
-  <!-- Worktrees (non-main) as nested sub-rows — git projects only -->
-  {#if isGit && isExpanded}
-    <div class="border-t border-sidebar-border/60 bg-background/35 py-1.5 pl-3 pr-1">
-      {#if childRows.length === 0}
-        <div class="flex items-center justify-between px-1 py-0.5">
-          <span class={text.meta}>{i18n.t("project.noWorktrees")}</span>
-          <Button
-            variant="ghost"
-            size="sm"
-            class={cn("h-6", text.body)}
-            onclick={() => (newWorktreeOpen = true)}
-          >
-            <GitBranchPlusIcon class={icon.decorative} />
-            {i18n.t("common.new")}
-          </Button>
-        </div>
-      {:else}
-        <div class="flex flex-col">
-          {#each childRows as row (row.path)}
-            <WorktreeRow {row} />
-          {/each}
-        </div>
-      {/if}
-    </div>
-  {:else if isGit && children.length > 0}
-    <!-- Collapsed: a compact count so the relationship is visible -->
-    <div class="px-2.5 pb-1.5">
-      <Badge variant="secondary" class={cn("font-normal", text.indicator)}>
-        {i18n.plural(children.length, "project.worktreeOne", "project.worktreeOther")}
-      </Badge>
+  {#if isGit}
+    {#if isExpanded}
+      <div class="flex flex-col pl-2">
+        {#each rows as row (row.path)}
+          <WorktreeRow
+            {row}
+            onNewWorktree={() => (newWorktreeOpen = true)}
+            onRemoveProject={row.isMain ? () => (confirmRemoveOpen = true) : undefined}
+          />
+        {/each}
+      </div>
+    {/if}
+  {:else}
+    <!-- Non-git folder: no worktrees — its agents live right under the header. -->
+    <div class="pl-6">
+      <AgentSpace path={repo.path} />
     </div>
   {/if}
 </div>

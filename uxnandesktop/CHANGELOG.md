@@ -6,6 +6,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 
 ### Changed — clean desktop UI redesign
+- **Project / worktree cards rebuilt.** Dropped the heavy bordered card (we now
+  reserve borders for the few places that need them): a project is a **borderless
+  group** — an identity header (icon · name) whose three actions reveal on hover
+  (collapse/expand · a unified launcher **+** · an overflow **⋯** with copy-path /
+  remove-project). Expanding lists the worktrees as rows: the **primary** worktree
+  first with a "primary" badge, then the children. Each worktree row shows an
+  aggregate **agent-status dot** (or the branch icon when idle), the branch name, a
+  second line ("main" for the primary, else the worktree folder), git status, and
+  the same hover **+** / **⋯** (copy-path / remove-worktree) — selection keeps the
+  quiet sidebar-accent highlight. New reusable **`LauncherMenu`** ("+"): one menu
+  to start a terminal (default + each profile), launch any configured agent, or
+  create a worktree — scoped to that row's worktree, used by the header and every
+  row (replaces the separate terminal button + `LaunchAgentMenu`, now removed).
+  `openTerminalAt` gained an optional `profileId`.
 A token-driven visual refresh (via the `svelte-clean-desktop-ui` system) toward a
 calm, **comfortable**, tool-like desktop feel — readable type and breathable rows,
 not a cramped grid — with no UI-library changes and no behavior or accessibility

@@ -294,10 +294,11 @@ class ProjectsStore {
     unread.clear(path);
   }
 
-  /** Open a terminal in `path`'s workspace (and switch to it). */
-  openTerminalAt(path: string): void {
+  /** Open a terminal in `path`'s workspace (and switch to it). An optional
+   *  `profileId` opens that terminal profile instead of the default shell. */
+  openTerminalAt(path: string, profileId?: string): void {
     this.activeWorktreePath = path;
-    app.openTerminal({ cwd: path, title: baseName(path), workspace: path });
+    app.openTerminal({ cwd: path, title: baseName(path), workspace: path, profileId });
   }
 
   /** Launch an agent in `path`'s workspace (and switch to it). */
