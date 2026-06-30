@@ -12,6 +12,7 @@ mod browse;
 mod browser;
 mod commands;
 mod error;
+mod fonts;
 mod fs;
 mod fswatch;
 mod git;
@@ -224,6 +225,7 @@ pub fn run() {
             commands::fs_write_file,
             commands::fs_set_watch,
             commands::reveal_path,
+            fonts::list_system_fonts,
             commands::open_url,
             commands::open_external,
             browser::browser_window_open,

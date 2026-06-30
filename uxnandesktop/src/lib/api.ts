@@ -43,6 +43,13 @@ export function ping(): Promise<string> {
   return invoke<string>("ping");
 }
 
+/** List installed system font families (sorted, deduped) for the appearance
+ *  font pickers. Falls back to a curated list on the backend if enumeration
+ *  fails, so the result is never empty. */
+export function listSystemFonts(): Promise<string[]> {
+  return invoke<string[]>("list_system_fonts");
+}
+
 /** Return the subset of `commands` installed on the machine (PATH + PATHEXT),
  *  so the agent catalog can enable only the agents actually present. */
 export function detectAgents(commands: string[]): Promise<string[]> {

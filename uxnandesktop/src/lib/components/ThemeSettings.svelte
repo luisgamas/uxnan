@@ -15,6 +15,7 @@
   import { app } from "$lib/state/app.svelte";
   import {
     BUILTIN_IDS,
+    BUNDLED_FONTS,
     DEFAULT_FONTS,
     TERMINAL_INHERIT_ID,
     duplicateTheme,
@@ -37,6 +38,7 @@
   import { i18n } from "$lib/i18n";
   import ThemeEditor from "./ThemeEditor.svelte";
   import TerminalThemeEditor from "./TerminalThemeEditor.svelte";
+  import FontPicker from "./FontPicker.svelte";
   import PlusIcon from "@lucide/svelte/icons/plus";
   import UploadIcon from "@lucide/svelte/icons/upload";
   import ClipboardPasteIcon from "@lucide/svelte/icons/clipboard-paste";
@@ -292,14 +294,18 @@
   <div class="flex flex-col gap-1.5">
     <span class={text.subheading}>{i18n.t("appearance.fonts")}</span>
     <p class={text.meta}>{i18n.t("appearance.fontsDesc")}</p>
-    <datalist id="uxnan-fonts-global">
-      {#each ["Inter", "Roboto", "Segoe UI", "system-ui", "JetBrains Mono", "Cascadia Code", "Fira Code"] as f (f)}<option value={f}></option>{/each}
-    </datalist>
     <div class="mt-1 grid grid-cols-3 gap-2">
       {#each [["title", "appearance.fontTitle"], ["body", "appearance.fontBody"], ["mono", "appearance.fontMono"]] as [key, labelKey] (key)}
-        <div class="flex flex-col gap-1">
+        {@const k = key as "title" | "body" | "mono"}
+        <div class="flex min-w-0 flex-col gap-1">
           <Label class={text.meta}>{i18n.t(labelKey as never)}</Label>
-          <Input list="uxnan-fonts-global" placeholder={DEFAULT_FONTS[key as "title" | "body" | "mono"].split(",")[0]} value={app.settings.fonts?.[key as "title" | "body" | "mono"] ?? ""} oninput={(e) => { ensureFonts()[key as "title" | "body" | "mono"] = e.currentTarget.value || undefined; persist(); }} />
+          <FontPicker
+            value={app.settings.fonts?.[k]}
+            placeholder={DEFAULT_FONTS[k].split(",")[0].replace(/"/g, "")}
+            bundled={k === "mono" ? [] : [...BUNDLED_FONTS]}
+            clearLabel={i18n.t("appearance.fontDefault")}
+            onChange={(v) => { ensureFonts()[k] = v; persist(); }}
+          />
         </div>
       {/each}
     </div>
@@ -372,13 +378,15 @@
   <div class="flex flex-col gap-1.5">
     <span class={text.subheading}>{i18n.t("appearance.fonts")}</span>
     <p class={text.meta}>{i18n.t("appearance.terminalFontsDesc")}</p>
-    <datalist id="uxnan-term-fonts">
-      {#each ["JetBrains Mono", "Cascadia Code", "Fira Code", "Consolas", "ui-monospace"] as f (f)}<option value={f}></option>{/each}
-    </datalist>
     <div class="mt-1 grid grid-cols-2 gap-2 sm:grid-cols-3">
-      <div class="col-span-2 flex flex-col gap-1 sm:col-span-3">
+      <div class="col-span-2 flex min-w-0 flex-col gap-1 sm:col-span-3">
         <Label class={text.meta}>{i18n.t("terminalTheme.font")}</Label>
-        <Input list="uxnan-term-fonts" value={tf.fontFamily ?? ""} placeholder={termFontBase.fontFamily.split(",")[0]} oninput={(e) => setTermFontStr("fontFamily", e.currentTarget.value)} />
+        <FontPicker
+          value={tf.fontFamily ?? undefined}
+          placeholder={termFontBase.fontFamily.split(",")[0].replace(/"/g, "")}
+          clearLabel={i18n.t("appearance.fontInherit")}
+          onChange={(v) => setTermFontStr("fontFamily", v ?? "")}
+        />
       </div>
       <div class="flex flex-col gap-1">
         <Label class={text.meta}>{i18n.t("terminalTheme.size")}</Label>

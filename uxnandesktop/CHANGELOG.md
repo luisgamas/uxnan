@@ -113,7 +113,18 @@ regressions.
   Nerd Font fallbacks, monospace`) at a lighter default weight (300) and 14px,
   for a cleaner, softer terminal face (still fully overridable per the terminal
   typography settings).
-- **Role tokens (`design.ts`).** Selection is now a **neutral** language: the
+- **Font picker — choose from the installed system fonts.** Replaced the
+  free-text font fields (a tiny hardcoded `datalist`) with a reusable
+  **`FontPicker`** combobox (Popover + Command) that lists the machine's real
+  installed fonts, each previewed in its own face, with the app's bundled faces
+  (Geist / DM Sans) surfaced on top and a "use a custom family" escape hatch for
+  names that only exist on another machine / SSH host. A new Rust
+  `list_system_fonts` command enumerates families per-OS (PowerShell
+  `InstalledFontCollection` on Windows, `fc-list` on Linux, `system_profiler` on
+  macOS) through the windowless spawn helper, with a curated fallback so the list
+  is never empty; the result is fetched once and shared across pickers. The same
+  picker now drives the global UI/terminal font overrides **and** the per-theme /
+  per-terminal-theme font fields, so all four font controls behave identically.
   `surface.active` / `activeNested` / `tab` tokens switched from primary-tinted
   fills to quiet sidebar-accent / foreground-mixed surfaces (propagating to the
   project & worktree cards, nested agent rows and panel tabs that consume them).

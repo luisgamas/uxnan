@@ -164,6 +164,11 @@ export const DEFAULT_FONTS = {
   mono: '"SF Mono", SFMono-Regular, ui-monospace, "Cascadia Mono", "Cascadia Code", "JetBrains Mono", Menlo, Consolas, "DejaVu Sans Mono", "Liberation Mono", "Symbols Nerd Font Mono", "MesloLGS Nerd Font", "JetBrainsMono Nerd Font", "Hack Nerd Font", monospace',
 } as const;
 
+/** The variable faces bundled with the app via `@fontsource-variable/*` (so they
+ *  resolve regardless of what's installed). Surfaced at the top of the UI-font
+ *  pickers; the source of truth for "which faces ship with the app". */
+export const BUNDLED_FONTS = ["Geist Variable", "DM Sans Variable"] as const;
+
 // --- Built-in themes (mirror `app.css`) ------------------------------------
 
 export const BUILTIN_LIGHT: Theme = {
