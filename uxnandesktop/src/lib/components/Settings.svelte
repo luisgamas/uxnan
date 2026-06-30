@@ -559,15 +559,16 @@
             </SettingsRow>
           </SettingsSection>
         {:else if app.settingsSection === "shortcuts"}
-          <SettingsSection bare title={i18n.t("settings.shortcuts")} description={i18n.t("settings.shortcutsDesc")}>
+          <SettingsSection title={i18n.t("settings.shortcuts")} description={i18n.t("settings.shortcutsDesc")}>
+            <div class="space-y-5">
             {#each SHORTCUT_GROUPS as group (group.titleKey)}
-              <div class="flex flex-col gap-1.5">
+              <div class="flex flex-col gap-1">
                 <span class={text.section}>{i18n.t(group.titleKey)}</span>
-                <div class="flex flex-col divide-y divide-border/60 rounded-md border border-border/60">
+                <div class="flex flex-col divide-y divide-border/60">
                   {#each group.actions as action (action.id)}
                     {@const chord = resolveBinding(action.id)}
                     {@const isCapturing = capturing === action.id}
-                    <div class="flex items-center gap-3 px-3 py-2">
+                    <div class="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
                       <div class="min-w-0 flex-1">
                         <div class={text.body}>{i18n.t(action.labelKey)}</div>
                         <div class={cn("truncate", text.meta)}>{i18n.t(action.descKey)}</div>
@@ -617,6 +618,7 @@
                 </div>
               </div>
             {/each}
+            </div>
           </SettingsSection>
         {:else if app.settingsSection === "agents"}
           <div class="flex flex-col gap-6">

@@ -8,7 +8,7 @@
   import { terminals } from "$lib/state/terminals.svelte";
   import { resolveAgentDisplay } from "$lib/state/agentDisplay";
   import { cn } from "$lib/utils";
-  import { surface, text } from "$lib/design";
+  import { text } from "$lib/design";
   import { i18n } from "$lib/i18n";
   import AgentLogo from "./AgentLogo.svelte";
   import AgentStatusDot from "./AgentStatusDot.svelte";
@@ -53,27 +53,22 @@
     </button>
 
     {#if expanded}
-      <!-- Agents live in the worktree's own (selected) surface. Only the agent
-           currently shown in the center carries a firm vertical accent bar — no
-           inactive guide line — so the active agent is the one clear marker. -->
-      <div class="ml-2 flex flex-col pl-2.5">
+      <!-- Agents live in the worktree's own (selected) surface, aligned under the
+           "Agents · n" header. The active agent reads from a quiet row fill alone
+           (no accent line) — the container already tells you which worktree, this
+           tells you which agent. -->
+      <div class="flex flex-col">
         {#each tabs as t (t.id)}
           {@const d = resolveAgentDisplay(t)}
           {@const isActive = revealedId === t.id}
           <button
             class={cn(
-              "relative flex items-center gap-2 rounded-md py-1 pl-1.5 pr-1 text-left transition-colors hover:bg-foreground/[0.045] dark:hover:bg-foreground/[0.055]",
-              isActive && surface.activeNested,
+              "flex items-center gap-2 rounded-md py-1 pl-1 pr-1 text-left transition-colors hover:bg-foreground/[0.04] dark:hover:bg-foreground/[0.05]",
+              isActive && "bg-foreground/[0.05] dark:bg-foreground/[0.06]",
             )}
             title={d ? `${t.agentName} · ${i18n.t(`monitor.${d.status}`)}` : t.agentName}
             onclick={() => reveal(t.id)}
           >
-            {#if isActive}
-              <span
-                class="absolute -left-2.5 top-1 bottom-1 w-px rounded-full bg-foreground/80"
-                aria-hidden="true"
-              ></span>
-            {/if}
             <span class="flex size-3 shrink-0 items-center justify-center">
               {#if d}
                 <AgentStatusDot status={d.status} stale={d.stale} />
