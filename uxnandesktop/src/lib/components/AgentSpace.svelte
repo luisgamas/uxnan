@@ -36,7 +36,7 @@
 {#if tabs.length > 0}
   <div class="flex flex-col">
     <button
-      class="flex items-center gap-1 rounded px-1 py-0.5 text-muted-foreground hover:text-foreground"
+      class="flex items-center gap-1.5 rounded px-1.5 py-1 text-muted-foreground hover:text-foreground"
       onclick={() => (expanded = !expanded)}
       title={i18n.t(expanded ? "project.collapse" : "project.expand")}
     >
@@ -56,7 +56,7 @@
           {@const d = resolveAgentDisplay(t)}
           <button
             class={cn(
-              "flex items-center gap-1.5 rounded-md py-1 pl-1 pr-1 text-left transition-colors hover:bg-foreground/[0.045] dark:hover:bg-foreground/[0.055]",
+              "flex items-center gap-2 rounded-md py-1.5 pl-1.5 pr-1 text-left transition-colors hover:bg-foreground/[0.045] dark:hover:bg-foreground/[0.055]",
               revealedId === t.id && surface.activeNested,
             )}
             title={d ? `${t.agentName} · ${i18n.t(`monitor.${d.status}`)}` : t.agentName}

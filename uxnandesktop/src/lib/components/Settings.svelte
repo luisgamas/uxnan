@@ -521,7 +521,7 @@
             <p class={text.meta}>{i18n.t("settings.language.desc")}</p>
           </div>
         {:else if app.settingsSection === "shortcuts"}
-          <div class="flex flex-col gap-4">
+          <div class="flex flex-col gap-6">
             <div class="flex flex-col gap-1">
               <span class={text.heading}>{i18n.t("settings.shortcuts")}</span>
               <p class={text.meta}>{i18n.t("settings.shortcutsDesc")}</p>
@@ -585,7 +585,7 @@
             {/each}
           </div>
         {:else if app.settingsSection === "agents"}
-          <div class="flex flex-col gap-4">
+          <div class="flex flex-col gap-6">
             <div class="flex flex-col gap-1">
               <span class={text.heading}>{i18n.t("settings.agents")}</span>
               <p class={text.meta}>{i18n.t("settings.agentsDesc")}</p>
@@ -761,7 +761,7 @@
 
           </div>
         {:else if app.settingsSection === "aicommit"}
-          <div class="flex flex-col gap-4">
+          <div class="flex flex-col gap-6">
             <div class="flex flex-col gap-1">
               <span class={text.heading}>{i18n.t("settings.aiCommit")}</span>
               <p class={text.meta}>{i18n.t("settings.aiCommitDesc")}</p>
@@ -932,7 +932,7 @@
             </div>
           </div>
         {:else if app.settingsSection === "hooks"}
-          <div class="flex flex-col gap-4">
+          <div class="flex flex-col gap-6">
             <div class="flex flex-col gap-1">
               <span class={text.heading}>{i18n.t("settings.hooks")}</span>
               <p class={text.meta}>{i18n.t("settings.hooksDesc")}</p>
@@ -940,7 +940,7 @@
             <AgentHooksPanel />
           </div>
         {:else if app.settingsSection === "updates"}
-          <div class="flex flex-col gap-4">
+          <div class="flex flex-col gap-6">
             <div class="flex flex-col gap-1">
               <span class={text.heading}>{i18n.t("settings.updates")}</span>
               <p class={text.meta}>{i18n.t("settings.updatesDesc")}</p>
@@ -1070,7 +1070,7 @@
             </div>
           </div>
         {:else if app.settingsSection === "browser"}
-          <div class="flex flex-col gap-4">
+          <div class="flex flex-col gap-6">
             <div class="flex flex-col gap-1">
               <span class={text.heading}>{i18n.t("settings.browser")}</span>
               <p class={text.meta}>{i18n.t("settings.browserDesc")}</p>
@@ -1186,7 +1186,7 @@
             </div>
           </div>
         {:else}
-          <div class="flex flex-col gap-4">
+          <div class="flex flex-col gap-6">
             <span class={text.heading}>{i18n.t("settings.terminal")}</span>
             <div class="flex flex-col gap-1.5">
               <span class={cn("font-medium", text.body)}>{i18n.t("settings.defaultProfile")}</span>

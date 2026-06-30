@@ -56,7 +56,7 @@
   <!-- Project header = the main worktree context (selectable) -->
   <div
     class={cn(
-      "group flex min-h-11 items-center gap-1.5 px-2 py-1.5 transition-colors hover:bg-foreground/[0.045]",
+      "group flex min-h-12 items-center gap-2 px-2.5 py-2 transition-colors hover:bg-foreground/[0.045]",
       activeProject && surface.active,
     )}
   >
@@ -168,7 +168,7 @@
 
   <!-- Worktrees (non-main) as nested sub-rows — git projects only -->
   {#if isGit && isExpanded}
-    <div class="border-t border-sidebar-border/60 bg-background/35 py-1 pl-3 pr-1">
+    <div class="border-t border-sidebar-border/60 bg-background/35 py-1.5 pl-3 pr-1">
       {#if childRows.length === 0}
         <div class="flex items-center justify-between px-1 py-0.5">
           <span class={text.meta}>{i18n.t("project.noWorktrees")}</span>

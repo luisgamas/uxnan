@@ -19,7 +19,9 @@ regressions.
   14→16px; the default button, inputs and select triggers 32→36px tall; and the
   `row` recipes grew to ~32–36px with more horizontal rhythm. Because these are
   `design.ts` tokens + shared primitives, the new proportions propagate across the
-  whole app.
+  whole app. The left panel (sidebar search/settings/header, project & worktree
+  rows, agent rows) and the Settings sections also got roomier inline padding,
+  gaps and row heights so the breathing room is felt, not just the type size.
 - **Foundations (`app.css` + `theme.ts`).** Added a layer of theme-aware semantic
   surface tokens — `--ux-shell`, `--ux-sidebar-accent`, `--ux-panel`,
   `--ux-panel-muted`, `--ux-editor-surface`, `--ux-elevated`, plus hover/subtle-border

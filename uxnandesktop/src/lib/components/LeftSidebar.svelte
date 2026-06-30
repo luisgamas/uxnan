@@ -43,10 +43,10 @@
 
 <div class="scrollbar-sleek-parent flex h-full min-h-0 flex-col">
   <!-- Search = a full-width button that opens the palette; Settings below it. -->
-  <div class="flex shrink-0 flex-col gap-2 border-b border-sidebar-border p-2">
+  <div class="flex shrink-0 flex-col gap-2 border-b border-sidebar-border p-2.5">
     <Button
       variant="outline"
-      class="h-8 w-full justify-start gap-2 px-2.5 font-normal text-muted-foreground"
+      class="h-9 w-full justify-start gap-2 px-3 font-normal text-muted-foreground"
       title={i18n.t("sidebar.search")}
       onclick={() => (projects.paletteOpen = true)}
     >
@@ -58,7 +58,7 @@
     </Button>
     <Button
       variant="outline"
-      class="h-8 w-full justify-start gap-2 px-2.5 font-normal text-muted-foreground"
+      class="h-9 w-full justify-start gap-2 px-3 font-normal text-muted-foreground"
       title={i18n.t("settings.title")}
       onclick={() => (app.settingsOpen = true)}
     >
@@ -71,7 +71,7 @@
   </div>
 
   <!-- Header -->
-  <header class="flex h-8 shrink-0 items-center gap-1 px-2">
+  <header class="flex h-9 shrink-0 items-center gap-1 px-2.5">
     <span class={cn("flex-1", text.section)}>
       {i18n.t("sidebar.projects")}
       <span class="text-muted-foreground/60">({projects.filteredRepos.length})</span>
@@ -115,7 +115,7 @@
 
   <!-- Project tree: each project is selectable (= its main worktree) and
        expands to show its non-main worktrees as sub-rows. -->
-  <div class="scrollbar-sleek worktree-sidebar-scrollbar min-h-0 flex-1 overflow-y-auto px-2 pb-2 pt-1">
+  <div class="scrollbar-sleek worktree-sidebar-scrollbar min-h-0 flex-1 overflow-y-auto px-2.5 pb-2.5 pt-1.5">
     {#if sortedRepos.length === 0}
       <div class="flex flex-col items-center gap-2 px-2 py-6 text-center">
         <p class="text-xs text-muted-foreground">
@@ -132,7 +132,7 @@
         {/if}
       </div>
     {:else}
-      <div class="flex flex-col gap-1.5">
+      <div class="flex flex-col gap-2">
         {#each sortedRepos as repo (repo.id)}
           <ProjectCard {repo} />
         {/each}
