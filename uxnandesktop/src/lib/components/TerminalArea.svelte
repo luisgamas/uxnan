@@ -20,7 +20,7 @@
   import CommitPane from "./CommitPane.svelte";
   import { resolveAgentDisplay } from "$lib/state/agentDisplay";
   import AgentStatusDot from "./AgentStatusDot.svelte";
-  import { icon, text } from "$lib/design";
+  import { divider, icon, text } from "$lib/design";
   import { cn } from "$lib/utils";
   import { i18n } from "$lib/i18n";
   import PlusIcon from "@lucide/svelte/icons/plus";
@@ -335,7 +335,7 @@
                 >
                   <!-- Region tab strip (pointer-driven tab drag target) -->
                   <div
-                    class="uxnan-scroll flex h-9 shrink-0 items-center gap-1 overflow-x-auto border-b bg-sidebar px-1"
+                    class={cn("uxnan-scroll flex h-9 shrink-0 items-center gap-1 overflow-x-auto bg-sidebar px-1", divider.bottom)}
                     data-tab-strip
                     data-group-id={g.group.id}
                     data-tab-count={g.group.tabs.length}

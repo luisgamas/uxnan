@@ -90,6 +90,7 @@ on top of the base.
 | `panel.card` | A standalone content card |
 | `panel.sidebarCard` | A selectable sidebar card (project/worktree outer shell) |
 | `focus.ring` | The shared focus-visible ring |
+| `divider.bottom` / `divider.top` | The subtle hairline section divider (top band of each panel, the status bar) — one reusable `--border` hairline so every divider matches |
 
 ## Principles
 - **Emphasis is earned.** Informational text (paths, counts, hints) stays

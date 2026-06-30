@@ -11,7 +11,7 @@
   import { git } from "$lib/state/git.svelte";
   import { projects } from "$lib/state/projects.svelte";
   import { i18n } from "$lib/i18n";
-  import { icon, surface } from "$lib/design";
+  import { divider, icon, surface } from "$lib/design";
   import { cn } from "$lib/utils";
   import FolderTreeIcon from "@lucide/svelte/icons/folder-tree";
   import GitCompareIcon from "@lucide/svelte/icons/git-compare-arrows";
@@ -31,10 +31,10 @@
 <div class="flex h-full min-h-0 w-full flex-col">
   <!-- Region: Window-controls header — a drag strip; the min/max/close controls
        float over its right (fixed overlay rendered in +page.svelte). -->
-  <div data-tauri-drag-region class="h-9 shrink-0 border-b"></div>
+  <div data-tauri-drag-region class={cn("h-9 shrink-0", divider.bottom)}></div>
   <Tabs.Root bind:value={tab} class="flex min-h-0 w-full flex-1 flex-col gap-0">
   <Tabs.List
-    class="h-8 shrink-0 justify-start gap-1 rounded-none border-b bg-transparent px-2 py-0"
+    class={cn("h-8 shrink-0 justify-start gap-1 rounded-none bg-transparent px-2 py-0", divider.bottom)}
   >
     <Tabs.Trigger
       value="files"

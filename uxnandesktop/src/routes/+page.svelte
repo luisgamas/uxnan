@@ -8,7 +8,7 @@
   import { matchAction } from "$lib/keybindings";
   import { isUntestedPlatform, osLabel } from "$lib/platform";
   import { cn } from "$lib/utils";
-  import { surface } from "$lib/design";
+  import { divider, surface } from "$lib/design";
   import TriangleAlertIcon from "@lucide/svelte/icons/triangle-alert";
   import WebhookIcon from "@lucide/svelte/icons/webhook";
   import PanelLeftIcon from "@lucide/svelte/icons/panel-left";
@@ -291,7 +291,7 @@
     <!-- Status bar: breadcrumb (left) · backend + panel toggles (right) -->
     <!-- Region: Status bar — breadcrumb (left) · backend + panel toggles (right). -->
     <footer
-      class="flex h-7 shrink-0 items-center gap-2 px-2 text-xs text-muted-foreground"
+      class={cn("flex h-7 shrink-0 items-center gap-2 px-2 text-xs text-muted-foreground", divider.top)}
     >
       <!-- Active workspace breadcrumb -->
       <div class="inline-flex min-w-0 items-center gap-1" title={i18n.t("terminal.context")}>

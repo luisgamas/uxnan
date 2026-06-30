@@ -143,3 +143,13 @@ export const panel = {
 export const focus = {
   ring: "focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
 } as const;
+
+/** Hairline section dividers — the single, subtle separator used for the top
+ *  band of each panel and the bottom status bar. Reusable so every divider in
+ *  the shell reads the same (theme-aware `--border`). Compose with `cn(...)`. */
+export const divider = {
+  /** A divider below the element (top-band sections). */
+  bottom: "border-b border-border",
+  /** A divider above the element (the status bar). */
+  top: "border-t border-border",
+} as const;

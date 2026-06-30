@@ -31,6 +31,10 @@ regressions.
   shared `icon.action` (14px) + `iconButton.xs` tokens instead of hardcoded sizes,
   so the left and right panels match exactly. Added `icon.action` to `design.ts`
   and `docs/design-tokens.md`.
+- **Reusable divider token + status-bar divider.** Factored the top-band hairline
+  into a `divider` token (`design.ts`: `divider.bottom` / `divider.top`, one
+  `--border` hairline) and applied it at every divider site, and added
+  `divider.top` to the bottom status bar so it's separated like the other sections.
 - **Comfortable scale + bundled UI font.** **DM Sans is now bundled**
   (`@fontsource-variable/dm-sans`, imported in `app.css`) so the UI face actually
   renders regardless of the OS, with a small global `letter-spacing` (0.01em) and

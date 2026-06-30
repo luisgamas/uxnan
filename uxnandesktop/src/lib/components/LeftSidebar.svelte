@@ -5,7 +5,7 @@
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import ProjectCard from "./ProjectCard.svelte";
   import Kbd from "./Kbd.svelte";
-  import { icon, iconButton, text } from "$lib/design";
+  import { divider, icon, iconButton, text } from "$lib/design";
   import { cn } from "$lib/utils";
   import { i18n } from "$lib/i18n";
   import { formatChord, resolveBinding } from "$lib/keybindings";
@@ -60,7 +60,7 @@
        is no title bar). -->
   <div
     data-tauri-drag-region
-    class="flex h-9 shrink-0 select-none items-center gap-2 border-b px-3"
+    class={cn("flex h-9 shrink-0 select-none items-center gap-2 px-3", divider.bottom)}
   >
     <img
       src="/logo_nb.svg"
