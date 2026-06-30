@@ -28,7 +28,7 @@
   // Borderless nav button (mirrors the Settings section nav): no chrome until
   // hover, a quiet accent fill when "active".
   const navBase =
-    "group flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] font-medium tracking-tight transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50";
+    "group flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] font-medium tracking-tight transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50";
   const navIdle = "text-muted-foreground hover:bg-accent/60 hover:text-foreground";
   const navActive = "bg-accent text-accent-foreground";
 
@@ -88,7 +88,7 @@
   </div>
 
   <!-- Region: Quick actions — borderless nav buttons (search + settings). -->
-  <div class="flex shrink-0 flex-col gap-0.5 px-2 pb-1">
+  <div class="flex shrink-0 flex-col gap-px px-2 pb-1 pt-2">
     <button
       class={cn(navBase, navIdle)}
       title={i18n.t("sidebar.search")}

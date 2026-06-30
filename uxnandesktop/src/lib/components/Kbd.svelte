@@ -12,7 +12,7 @@
 
 <kbd
   class={cn(
-    "inline-flex h-[18px] min-w-[18px] items-center justify-center rounded border border-border bg-muted px-1 font-mono text-[10px] font-medium leading-none text-muted-foreground",
+    "inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-[5px] border border-border/60 bg-foreground/[0.04] px-1.5 font-sans text-[10px] font-medium leading-none text-muted-foreground/90 dark:bg-foreground/[0.06]",
     className,
   )}
 >
