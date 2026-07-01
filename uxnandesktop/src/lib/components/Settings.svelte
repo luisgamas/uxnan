@@ -898,7 +898,8 @@
                   <Combobox
                     value={up.installPolicy}
                     groups={installPolicyGroups}
-                    triggerClass="w-56"
+                    triggerClass="w-full sm:w-80"
+                    contentClass="w-80"
                     searchPlaceholder={i18n.t("common.search")}
                     onChange={(v) => { setUp({ installPolicy: v as InstallPolicy }); persistNow(); }}
                   />
