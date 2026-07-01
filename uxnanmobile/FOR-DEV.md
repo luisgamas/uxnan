@@ -36,7 +36,9 @@ connected to live bridge data, validated on-device against a real bridge.
 - **New conversation flow** — `project/list` + `agent/list` + `agent/models` +
   **folder browser** (`workspace/browseDirs`) to root a thread anywhere.
 - **Structured model picker** (readable names, default badge, Claude alias
-  "(latest)" + pinned versions + resolved-version row, `thread/setModel`).
+  "(latest)" + pinned versions + resolved-version row, `thread/setModel`), with
+  a **Settings ▸ Models** switch to hide Claude Code's `isLatestAlias` "(latest)"
+  entries and show only pinned versions (display-only; persisted locally).
 - **Per-model run-option knobs** (data-driven: `enum` / `toggle`, generic
   renderer).
 - **Context-usage indicator** (percentage when the model window is known, raw

@@ -661,6 +661,22 @@
   "settingsConfirmPushSubtitle": "Ask before pushing — a push can't be undone.",
   "settingsConfirmPrTitle": "Confirm before pull request",
   "settingsConfirmPrSubtitle": "Ask before opening a pull request.",
+  "settingsModelsSection": "Models",
+  "@settingsModelsSection": {
+    "description": "Header for the settings section that controls the AI model picker."
+  },
+  "settingsClaudeLatestTitle": "Show Claude Code “latest” models",
+  "@settingsClaudeLatestTitle": {
+    "description": "Title of the toggle that shows/hides Claude Code's opus/sonnet/haiku “latest” alias models in the model picker."
+  },
+  "settingsClaudeLatestSubtitle": "List the Opus, Sonnet and Haiku “(latest)” aliases in the model picker.",
+  "@settingsClaudeLatestSubtitle": {
+    "description": "Subtitle of the Claude Code latest-models toggle."
+  },
+  "settingsClaudeLatestHint": "The “(latest)” aliases always route to the newest version of each tier your account can use, so you don't have to pick an exact one. Turn this off to hide them and choose only pinned, exact versions. Conversations already using an alias keep working.",
+  "@settingsClaudeLatestHint": {
+    "description": "Explanatory note under the Claude Code latest-models toggle, describing what the latest aliases do."
+  },
   "settingsAppearanceSection": "Appearance",
   "settingsPersonalizationTitle": "Personalization",
   "settingsPersonalizationSubtitle": "Theme, custom themes and language",

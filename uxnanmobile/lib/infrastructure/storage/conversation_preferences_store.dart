@@ -17,6 +17,7 @@ class ConversationPreferencesStore {
       'uxnan.conversation.contextIndicatorMode';
   static const String _confirmPushKey = 'uxnan.git.confirmPush';
   static const String _confirmPrKey = 'uxnan.git.confirmPr';
+  static const String _showClaudeLatestKey = 'uxnan.models.showClaudeLatest';
 
   /// Whether the agent-thinking section is shown, or `null` if never set (so
   /// the caller keeps the default).
@@ -85,5 +86,19 @@ class ConversationPreferencesStore {
   Future<void> writeConfirmPr({required bool value}) async {
     final prefs = await _prefs;
     await prefs.setBool(_confirmPrKey, value);
+  }
+
+  /// Whether Claude Code's "latest" alias models (`opus`/`sonnet`/`haiku`) are
+  /// shown in the model picker, or `null` if never set (keep the default).
+  Future<bool?> readShowClaudeLatest() async {
+    final prefs = await _prefs;
+    if (!prefs.containsKey(_showClaudeLatestKey)) return null;
+    return prefs.getBool(_showClaudeLatestKey);
+  }
+
+  /// Persists the show-Claude-latest-aliases preference.
+  Future<void> writeShowClaudeLatest({required bool value}) async {
+    final prefs = await _prefs;
+    await prefs.setBool(_showClaudeLatestKey, value);
   }
 }

@@ -85,6 +85,27 @@ class SettingsScreen extends ConsumerWidget {
                 onTap: () => PromptTemplatesScreen.push(context),
               ),
               const SizedBox(height: UxnanSpacing.xl),
+              _SectionHeader(label: l10n.settingsModelsSection),
+              const SizedBox(height: UxnanSpacing.sm),
+              _ModelsCard(
+                showClaudeLatest: ref.watch(showClaudeLatestModelsProvider),
+                onShowClaudeLatestChanged: (value) => ref
+                    .read(showClaudeLatestModelsProvider.notifier)
+                    .set(value: value),
+              ),
+              const SizedBox(height: UxnanSpacing.sm),
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: UxnanSpacing.xs,
+                ),
+                child: Text(
+                  l10n.settingsClaudeLatestHint,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                ),
+              ),
+              const SizedBox(height: UxnanSpacing.xl),
               _SectionHeader(label: l10n.settingsGitSection),
               const SizedBox(height: UxnanSpacing.sm),
               _GitCard(
@@ -301,6 +322,35 @@ class _PromptTemplatesTile extends StatelessWidget {
         subtitle: Text(l10n.settingsPromptTemplatesSubtitle),
         trailing: const Icon(Icons.chevron_right_rounded),
         onTap: onTap,
+      ),
+    );
+  }
+}
+
+class _ModelsCard extends StatelessWidget {
+  const _ModelsCard({
+    required this.showClaudeLatest,
+    required this.onShowClaudeLatestChanged,
+  });
+
+  final bool showClaudeLatest;
+  final ValueChanged<bool> onShowClaudeLatestChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
+
+    return Material(
+      color: colors.surfaceContainerHighest,
+      borderRadius: const BorderRadius.all(UxnanRadius.lg),
+      clipBehavior: Clip.antiAlias,
+      child: SwitchListTile(
+        secondary: const Icon(Icons.auto_awesome_outlined),
+        title: Text(l10n.settingsClaudeLatestTitle),
+        subtitle: Text(l10n.settingsClaudeLatestSubtitle),
+        value: showClaudeLatest,
+        onChanged: onShowClaudeLatestChanged,
       ),
     );
   }

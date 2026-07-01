@@ -1327,6 +1327,20 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsConfirmPrSubtitle => 'Ask before opening a pull request.';
 
   @override
+  String get settingsModelsSection => 'Models';
+
+  @override
+  String get settingsClaudeLatestTitle => 'Show Claude Code “latest” models';
+
+  @override
+  String get settingsClaudeLatestSubtitle =>
+      'List the Opus, Sonnet and Haiku “(latest)” aliases in the model picker.';
+
+  @override
+  String get settingsClaudeLatestHint =>
+      'The “(latest)” aliases always route to the newest version of each tier your account can use, so you don\'t have to pick an exact one. Turn this off to hide them and choose only pinned, exact versions. Conversations already using an alias keep working.';
+
+  @override
   String get settingsAppearanceSection => 'Appearance';
 
   @override

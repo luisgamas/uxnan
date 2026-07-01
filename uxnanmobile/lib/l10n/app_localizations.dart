@@ -2534,6 +2534,30 @@ abstract class AppLocalizations {
   /// **'Ask before opening a pull request.'**
   String get settingsConfirmPrSubtitle;
 
+  /// Header for the settings section that controls the AI model picker.
+  ///
+  /// In en, this message translates to:
+  /// **'Models'**
+  String get settingsModelsSection;
+
+  /// Title of the toggle that shows/hides Claude Code's opus/sonnet/haiku “latest” alias models in the model picker.
+  ///
+  /// In en, this message translates to:
+  /// **'Show Claude Code “latest” models'**
+  String get settingsClaudeLatestTitle;
+
+  /// Subtitle of the Claude Code latest-models toggle.
+  ///
+  /// In en, this message translates to:
+  /// **'List the Opus, Sonnet and Haiku “(latest)” aliases in the model picker.'**
+  String get settingsClaudeLatestSubtitle;
+
+  /// Explanatory note under the Claude Code latest-models toggle, describing what the latest aliases do.
+  ///
+  /// In en, this message translates to:
+  /// **'The “(latest)” aliases always route to the newest version of each tier your account can use, so you don\'t have to pick an exact one. Turn this off to hide them and choose only pinned, exact versions. Conversations already using an alias keep working.'**
+  String get settingsClaudeLatestHint;
+
   /// No description provided for @settingsAppearanceSection.
   ///
   /// In en, this message translates to:

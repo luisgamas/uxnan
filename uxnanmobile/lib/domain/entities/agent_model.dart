@@ -103,6 +103,7 @@ class AgentModel extends Equatable {
     this.description,
     this.version,
     this.isDefault = false,
+    this.isLatestAlias = false,
     this.options = const [],
   });
 
@@ -135,6 +136,7 @@ class AgentModel extends Equatable {
             description != null && description.isNotEmpty ? description : null,
         version: version != null && version.isNotEmpty ? version : null,
         isDefault: json['isDefault'] == true,
+        isLatestAlias: json['isLatestAlias'] == true,
         options: options,
       );
     }
@@ -156,12 +158,24 @@ class AgentModel extends Equatable {
   /// Whether this is the agent's current default model.
   final bool isDefault;
 
+  /// Whether this is a moving-target "latest" alias (Claude Code's
+  /// `opus`/`sonnet`/`haiku`, which always route to the newest version of that
+  /// tier). Lets settings hide these and keep only concrete pinned versions.
+  final bool isLatestAlias;
+
   /// Per-model run-option knobs (reasoning effort, etc.); empty when none.
   final List<AgentModelOption> options;
 
   @override
-  List<Object?> get props =>
-      [id, displayName, description, version, isDefault, options];
+  List<Object?> get props => [
+        id,
+        displayName,
+        description,
+        version,
+        isDefault,
+        isLatestAlias,
+        options,
+      ];
 }
 
 /// A provider-labelled group of models, for a sectioned model picker.

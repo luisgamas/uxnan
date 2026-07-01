@@ -6,6 +6,22 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — Settings ▸ Models: hide Claude Code's "latest" aliases
+- **New "Models" settings section** (`settings_screen.dart`) with a switch,
+  *Show Claude Code "latest" models*, plus an explanatory note describing what
+  the `opus`/`sonnet`/`haiku` "(latest)" aliases do (they always route to the
+  newest version of each tier your account can use). Turning it off hides those
+  moving-target aliases from the model picker so only concrete pinned versions
+  show; conversations already running on an alias keep working. Persisted
+  locally (`ConversationPreferencesStore.readShowClaudeLatest` /
+  `writeShowClaudeLatest`, key `uxnan.models.showClaudeLatest`; defaults on) via
+  `showClaudeLatestModelsProvider`.
+- **`AgentModel.isLatestAlias`** (`agent_model.dart`) parses the new
+  `@uxnan/shared` contract flag, so the picker identifies aliases from the
+  bridge instead of hardcoding ids; the currently-selected model stays visible
+  even when aliases are hidden. New entity + widget tests; the picker filter is
+  display-only (thread run-option/context-window lookups are untouched).
+
 ## [0.0.2-alpha.20260628] - 2026-06-28
 
 ### Added — inline `@` file mentions and a `/` command palette in the composer

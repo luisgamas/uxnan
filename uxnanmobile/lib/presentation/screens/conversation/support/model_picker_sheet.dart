@@ -51,6 +51,7 @@ class _ModelPickerSheetState extends ConsumerState<ModelPickerSheet> {
     final l10n = AppLocalizations.of(context);
     final colors = Theme.of(context).colorScheme;
     final modelsAsync = ref.watch(agentModelsProvider(widget.agentId));
+    final showLatest = ref.watch(showClaudeLatestModelsProvider);
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
 
     return SafeArea(
@@ -111,12 +112,25 @@ class _ModelPickerSheetState extends ConsumerState<ModelPickerSheet> {
                   padding: const EdgeInsets.all(UxnanSpacing.md),
                   child: Text(l10n.modelPickerLoadFailed),
                 ),
-                data: (models) => _ModelList(
-                  models: _query.isEmpty
+                data: (models) {
+                  // Hide Claude Code's moving-target "latest" aliases when the
+                  // user turned them off in settings — but always keep the
+                  // currently-selected model visible so the picker reflects it.
+                  final visible = showLatest
                       ? models
-                      : models.where(_matchesQuery).toList(),
-                  current: widget.current,
-                ),
+                      : models
+                          .where(
+                            (m) =>
+                                !m.isLatestAlias || m.id == widget.current,
+                          )
+                          .toList();
+                  return _ModelList(
+                    models: _query.isEmpty
+                        ? visible
+                        : visible.where(_matchesQuery).toList(),
+                    current: widget.current,
+                  );
+                },
               ),
             ),
           ],
