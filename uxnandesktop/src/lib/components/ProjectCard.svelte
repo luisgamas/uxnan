@@ -11,11 +11,10 @@
   import { cn } from "$lib/utils";
   import { icon, iconButton, surface, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
-  import NewWorktreeDialog from "./NewWorktreeDialog.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import WorktreeRow from "./WorktreeRow.svelte";
   import AgentSpace from "./AgentSpace.svelte";
-  import LauncherMenu from "./LauncherMenu.svelte";
+  import LauncherDialog from "./LauncherDialog.svelte";
   import type { RepoData } from "$lib/types";
   import FolderGitIcon from "@lucide/svelte/icons/folder-git-2";
   import FolderIcon from "@lucide/svelte/icons/folder";
@@ -23,6 +22,7 @@
   import CopyIcon from "@lucide/svelte/icons/copy";
   import Trash2Icon from "@lucide/svelte/icons/trash-2";
   import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
+  import PlusIcon from "@lucide/svelte/icons/plus";
 
   let { repo }: { repo: RepoData } = $props();
 
@@ -30,7 +30,7 @@
   // expand/worktree machinery and is itself the selectable context.
   const isGit = $derived(repo.isGit !== false);
 
-  let newWorktreeOpen = $state(false);
+  let launcherOpen = $state(false);
   let confirmRemoveOpen = $state(false);
   let expanded = $state(false);
 
@@ -105,11 +105,18 @@
           <ChevronRightIcon class={cn(icon.action, "transition-transform", isExpanded && "rotate-90")} />
         </Button>
       {/if}
-      <LauncherMenu
-        {repo}
-        onNewWorktree={isGit ? () => (newWorktreeOpen = true) : undefined}
-        triggerClass={hoverReveal}
-      />
+      <Button
+        variant="ghost"
+        size="icon"
+        class={cn(iconButton.xs, hoverReveal)}
+        title={i18n.t("launcher.open", { name: repo.name })}
+        onclick={(e) => {
+          e.stopPropagation();
+          launcherOpen = true;
+        }}
+      >
+        <PlusIcon class={icon.action} />
+      </Button>
       <DropdownMenu.Root>
         <DropdownMenu.Trigger>
           {#snippet child({ props })}
@@ -152,7 +159,7 @@
   {/if}
 </div>
 
-<NewWorktreeDialog {repo} bind:open={newWorktreeOpen} />
+<LauncherDialog {repo} bind:open={launcherOpen} />
 <ConfirmDialog
   bind:open={confirmRemoveOpen}
   title={i18n.t("project.removeTitle")}

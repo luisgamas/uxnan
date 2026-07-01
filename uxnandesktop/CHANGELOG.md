@@ -5,7 +5,39 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added
+- **Reusable searchable selectors (`Combobox`, `MultiSelect`).** Extracted the
+  searchable-select pattern that had lived inside `FontPicker` (Popover + Command:
+  a search box, grouped options, comfortable padding, a check on the current
+  value) into two generic components sharing a `ComboItem` / `ComboGroup` shape:
+  `Combobox.svelte` (single value, `{ groups, value, onChange }`) and
+  `MultiSelect.svelte` (a token-input multi-select — chosen values are compact
+  removable chips, an "Add" trigger opens the searchable grouped list, so the
+  field stays the same small size for 3 or 300 options). Both take optional
+  `itemPrefix` / `triggerContent` snippets (logos, badges, custom triggers). Used
+  by the launcher window; the building blocks for future selectors.
+- **Project launcher window (`LauncherDialog`).** The project card's **+** now
+  opens a dialog instead of a floating menu. The flow reads as a sentence — pick
+  **where** (an existing worktree via the searchable `Combobox`, or **New
+  worktree…** which reveals the branch name + base + folder preview) and **what**
+  to open there (a searchable `MultiSelect` over terminals / every profile / every
+  agent / the browser — one *or several* at once), then **Open** / **Create &
+  open**. Selecting a target switches and links the workspace, and creating a
+  worktree no longer force-launches the default agent (the "what to open"
+  selection is the single source of truth). Replaces the previous per-worktree
+  floating menu on the project header, which repeated every option once per branch
+  and overflowed the screen on projects with several worktrees.
+
 ### Changed — clean desktop UI redesign
+- **Left sidebar nav buttons** (search · settings) now match the Settings section
+  nav height (`h-8`) instead of the slightly shorter `h-7`.
+- **Project card header** no longer paints a hover background; the three header
+  actions still reveal on hover and the active-project highlight is unchanged.
+- **Center tab strip.** Tabs now sit flush (removed the inter-tab gap and the
+  always-reserved insertion markers, which collapse to zero width until they are
+  the active drop target) and the **whole tab chip is the click target** (a tap
+  anywhere on the colored chip selects it — previously only the label text did,
+  a tiny hit area for short names like "pi"). Drag-to-reorder/move is unchanged.
 - **Project / worktree cards rebuilt.** Dropped the heavy bordered card (we now
   reserve borders for the few places that need them): a project is a **borderless
   group** — an identity header (icon · name) whose three actions reveal on hover
@@ -15,12 +47,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   shows an aggregate **agent-status dot** (or the branch icon when idle), the branch
   name, a second line with the worktree folder, git status, and a hover **⋯**
   (copy-path / remove-worktree, or remove-project for main); selection keeps the
-  quiet sidebar-accent highlight. The new reusable **`LauncherMenu`** ("+") lives
-  only on the project header: a menu grouped by worktree (primary first) lets you
-  open a terminal (default + each profile) or launch any agent in a chosen
-  worktree, plus open the browser, create a worktree, or jump to agent settings
-  (replaces the separate terminal button + `LaunchAgentMenu`, now removed).
-  `openTerminalAt` gained an optional `profileId`.
+  quiet sidebar-accent highlight. The project header's **+** opens the
+  `LauncherDialog` window (see *Added*); the `LauncherMenu` dropdown (grouped by
+  type — terminals · agents · browser · worktree) remains on the **center tab
+  strip's +** for the single active worktree (replaces the separate terminal
+  button + `LaunchAgentMenu`, now removed). `openTerminalAt` gained an optional
+  `profileId`.
 - **Compact agent space under each worktree.** The per-worktree agent block
   (`AgentSpace`) now reads as part of the worktree: the "Agents · n" toggle
   shrank to a quiet 10px header, and the agents nest under a **subtle vertical
