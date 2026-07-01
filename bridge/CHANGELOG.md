@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — Claude Code aliases flagged `isLatestAlias` on `agent/models`
+- **`ClaudeCodeAdapter.listModels()`** (`src/adapters/claude-adapter.ts`) now
+  sets `isLatestAlias: true` on each stable alias entry (`opus`/`sonnet`/`haiku`)
+  it advertises. The concrete pinned versions leave it absent. This is the
+  `@uxnan/shared` `AgentModel.isLatestAlias` contract field — it lets the phone
+  offer to hide the moving-target aliases and show only exact versions without
+  hardcoding ids. 2 assertions added to `claude-adapter.test.ts`.
+
 ### Added — Claude Code `Sonnet 5` in the seeded model picker
 - **`claude-sonnet-5` ("Sonnet 5")** seeded in Claude Code's default
   `models` list (`src/daemon-config.ts`), so a fresh install offers the newest

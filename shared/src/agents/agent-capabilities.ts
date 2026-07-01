@@ -115,4 +115,12 @@ export interface AgentModel {
    * CLI does not expose it.
    */
   contextWindow?: number;
+  /**
+   * Marks a moving-target "latest" alias (Claude Code's `opus`/`sonnet`/`haiku`,
+   * each of which always routes to the newest version of that tier the account
+   * can use — see {@link version} for the resolved concrete id). Concrete/pinned
+   * models leave this absent. Presentation-only: lets a client offer to
+   * hide the aliases and show exact versions only, without hardcoding ids.
+   */
+  isLatestAlias?: boolean;
 }
