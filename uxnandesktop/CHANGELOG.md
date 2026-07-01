@@ -54,6 +54,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   and overflowed the screen on projects with several worktrees.
 
 ### Changed — clean desktop UI redesign
+- **Keyboard shortcuts render as individual keycaps.** New reusable `KeyChord`
+  splits a chord into one `Kbd` per key with a faint "+" between (Mac keeps the
+  tight `⌘`-cluster, no "+"), so `Ctrl+,` reads as `Ctrl` `+` `,` instead of one
+  crammed cap. Backed by a new `formatChordParts` in `keybindings.ts`; wired into
+  the left sidebar's quick actions (search · settings · add project).
 - **Left sidebar nav buttons** (search · settings) now match the Settings section
   nav height (`h-8`) instead of the slightly shorter `h-7`.
 - **Project card header** no longer paints a hover background; the three header

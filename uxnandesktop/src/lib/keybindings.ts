@@ -178,10 +178,15 @@ export function matchAction(e: KeyboardEvent): string | null {
  *  to the caller). */
 export function formatChord(chord: string): string {
   if (!chord) return "";
-  return chord
-    .split("+")
-    .map((p) => (p === "Mod" ? (isMac ? "⌘" : "Ctrl") : p))
-    .join(isMac ? "" : "+");
+  return formatChordParts(chord).join(isMac ? "" : "+");
+}
+
+/** The display tokens of a chord, one per key (Mod → Ctrl or ⌘). Lets the UI
+ *  render each key as its own keycap (e.g. `Ctrl` `+` `,`) instead of cramming
+ *  a whole combo into one — far more legible. `[]` for an empty/disabled chord. */
+export function formatChordParts(chord: string): string[] {
+  if (!chord) return [];
+  return chord.split("+").map((p) => (p === "Mod" ? (isMac ? "⌘" : "Ctrl") : p));
 }
 
 /** Convert a chord to a CodeMirror key name (`Mod+Shift+S` → `Mod-Shift-s`), or

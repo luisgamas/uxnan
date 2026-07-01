@@ -4,7 +4,7 @@
   import { Button } from "$lib/components/ui/button";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import ProjectCard from "./ProjectCard.svelte";
-  import Kbd from "./Kbd.svelte";
+  import KeyChord from "./KeyChord.svelte";
   import { divider, icon, iconButton, text } from "$lib/design";
   import { cn } from "$lib/utils";
   import { i18n } from "$lib/i18n";
@@ -20,10 +20,12 @@
   type Sort = "manual" | "name-asc" | "name-desc";
   let sort = $state<Sort>("manual");
 
-  // Display chords for the shortcut hints on the quick actions.
-  const searchChord = $derived(formatChord(resolveBinding("worktreePalette")));
-  const addChord = $derived(formatChord(resolveBinding("addProject")));
-  const settingsChord = $derived(formatChord(resolveBinding("openSettings")));
+  // Raw bindings (for the split keycaps via KeyChord) + their formatted strings
+  // (for tooltips / presence guards) for the shortcut hints on the quick actions.
+  const searchBinding = $derived(resolveBinding("worktreePalette"));
+  const addBinding = $derived(resolveBinding("addProject"));
+  const settingsBinding = $derived(resolveBinding("openSettings"));
+  const addChord = $derived(formatChord(addBinding));
 
   // Borderless nav button (mirrors the Settings section nav): no chrome until
   // hover, a quiet accent fill when "active".
@@ -96,8 +98,8 @@
     >
       <SearchIcon class={icon.button} />
       <span class="flex-1 truncate text-left">{i18n.t("sidebar.search")}</span>
-      {#if searchChord}
-        <Kbd>{searchChord}</Kbd>
+      {#if searchBinding}
+        <KeyChord chord={searchBinding} />
       {/if}
     </button>
     <button
@@ -107,8 +109,8 @@
     >
       <SettingsIcon class={icon.button} />
       <span class="flex-1 truncate text-left">{i18n.t("settings.title")}</span>
-      {#if settingsChord}
-        <Kbd>{settingsChord}</Kbd>
+      {#if settingsBinding}
+        <KeyChord chord={settingsBinding} />
       {/if}
     </button>
   </div>
@@ -195,8 +197,8 @@
           <Button variant="outline" size="sm" onclick={() => (projects.pickerOpen = true)}>
             <FolderPlusIcon data-icon="inline-start" />
             {i18n.t("sidebar.addRepo")}
-            {#if addChord}
-              <Kbd class="ml-1">{addChord}</Kbd>
+            {#if addBinding}
+              <KeyChord class="ml-1" chord={addBinding} />
             {/if}
           </Button>
         {/if}
