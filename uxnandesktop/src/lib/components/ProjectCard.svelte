@@ -70,7 +70,7 @@
   <!-- Project header -->
   <div
     class={cn(
-      "group/header flex min-h-9 items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-foreground/[0.05]",
+      "group/header flex min-h-9 items-center gap-2 rounded-md px-2 py-1.5 transition-colors",
       projectActive && !isExpanded && surface.active,
     )}
     role="button"
