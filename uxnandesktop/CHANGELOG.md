@@ -54,6 +54,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   and overflowed the screen on projects with several worktrees.
 
 ### Changed — clean desktop UI redesign
+- **New-worktree dialog redesigned + unified on `Combobox`.** The branch field
+  gained a leading branch glyph; the **base ref** and **agent** pickers moved from
+  the raw `Select` to the shared searchable `Combobox` (agent logos via its
+  `itemPrefix`), matching every other single-select in the app; the destination
+  preview is a softer bordered band with a folder glyph.
 - **Add-project folder browser redesigned.** Rebuilt on the **same shell as the
   quick-switch palette** — `Dialog.Content` is `overflow-hidden p-0` so the rounded
   card clips every section (the scroll list and its scrollbar included) and nothing
