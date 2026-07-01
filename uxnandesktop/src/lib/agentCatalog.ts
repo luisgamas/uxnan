@@ -2,9 +2,12 @@
 // detects which `command`s are installed (PATH + PATHEXT), and lets the user
 // one-click add the installed ones (or add a custom agent by hand).
 //
-// `logo` is the basename of an SVG under `static/agents/` (served at
-// `/agents/<logo>.svg`). Names use the product's real casing; commands are the
-// executable name as found on PATH — keep both correct so detection works.
+// Logos resolve in a fallback chain (see `agentIconSources`): a user's own
+// custom logo → a bundled SVG under `static/agents/<logo>.svg` → the product's
+// favicon (fetched by `faviconUrl`) → the generic Bot glyph. Bundled SVGs are
+// the crispest, so keep them for the flagship agents; `favicon` covers everything
+// else without shipping an asset. Names use the product's real casing; commands
+// are the executable name as found on PATH — keep both correct so detection works.
 
 export interface CatalogAgent {
   /** Stable id, also used as the logo key. */
@@ -13,58 +16,70 @@ export interface CatalogAgent {
   name: string;
   /** Executable name on PATH (e.g. `claude`, `agy`). */
   command: string;
-  /** SVG basename under `static/agents/`. */
+  /** SVG basename under `static/agents/` (top-tier logo when one is bundled). */
   logo: string;
+  /** Site to pull a favicon from when no bundled SVG resolves (e.g. `cursor.com`). */
+  favicon?: string;
 }
 
 export const AGENT_CATALOG: CatalogAgent[] = [
-  { id: "claudecode", name: "Claude Code", command: "claude", logo: "claudecode" },
-  { id: "codex", name: "Codex", command: "codex", logo: "codex" },
-  { id: "gemini", name: "Gemini CLI", command: "gemini", logo: "gemini" },
-  { id: "opencode", name: "OpenCode", command: "opencode", logo: "opencode" },
+  { id: "claudecode", name: "Claude Code", command: "claude", logo: "claudecode", favicon: "claude.ai" },
+  { id: "codex", name: "Codex", command: "codex", logo: "codex", favicon: "openai.com" },
+  { id: "gemini", name: "Gemini CLI", command: "gemini", logo: "gemini", favicon: "gemini.google.com" },
+  { id: "opencode", name: "OpenCode", command: "opencode", logo: "opencode", favicon: "opencode.ai" },
   { id: "pi", name: "Pi", command: "pi", logo: "pi" },
-  { id: "antigravity", name: "Antigravity", command: "agy", logo: "antigravity" },
-  { id: "goose", name: "Goose", command: "goose", logo: "goose" },
-  { id: "grok", name: "Grok", command: "grok", logo: "grok" },
-  { id: "kilocode", name: "Kilo Code", command: "kilo", logo: "kilocode" },
-  { id: "kimi", name: "Kimi", command: "kimi", logo: "kimi" },
-  { id: "qwen", name: "Qwen Code", command: "qwen", logo: "qwen" },
+  { id: "antigravity", name: "Antigravity", command: "agy", logo: "antigravity", favicon: "antigravity.google" },
+  { id: "goose", name: "Goose", command: "goose", logo: "goose", favicon: "goose-docs.ai" },
+  { id: "grok", name: "Grok", command: "grok", logo: "grok", favicon: "x.ai" },
+  { id: "kilocode", name: "Kilo Code", command: "kilo", logo: "kilocode", favicon: "kilocode.ai" },
+  { id: "kimi", name: "Kimi", command: "kimi", logo: "kimi", favicon: "moonshot.cn" },
+  { id: "qwen", name: "Qwen Code", command: "qwen", logo: "qwen", favicon: "qwenlm.github.io" },
   // Additional known CLI agents. `command` is the executable users put on PATH —
   // not always the npm package name (Cursor ships `cursor-agent`, Kiro ships
-  // `kiro-cli`, Continue ships `cn`, Mistral Vibe ships `vibe`). Brand logos for
-  // these are pending (see FOR-HUMAN.md); AgentLogo shows a generic glyph until
-  // each SVG lands under `static/agents/`.
-  { id: "cursor", name: "Cursor", command: "cursor-agent", logo: "cursor" },
-  { id: "aider", name: "Aider", command: "aider", logo: "aider" },
-  { id: "amp", name: "Amp", command: "amp", logo: "amp" },
-  { id: "cline", name: "Cline", command: "cline", logo: "cline" },
-  { id: "droid", name: "Droid", command: "droid", logo: "droid" },
-  { id: "copilot", name: "GitHub Copilot", command: "copilot", logo: "copilot" },
-  { id: "continue", name: "Continue", command: "cn", logo: "continue" },
-  { id: "kiro", name: "Kiro", command: "kiro-cli", logo: "kiro" },
-  { id: "auggie", name: "Auggie", command: "auggie", logo: "auggie" },
-  { id: "crush", name: "Crush", command: "crush", logo: "crush" },
-  { id: "codebuff", name: "Codebuff", command: "codebuff", logo: "codebuff" },
-  { id: "commandcode", name: "Command Code", command: "command-code", logo: "commandcode" },
-  { id: "mimo", name: "MiMo Code", command: "mimo", logo: "mimo" },
-  { id: "devin", name: "Devin", command: "devin", logo: "devin" },
-  { id: "hermes", name: "Hermes", command: "hermes", logo: "hermes" },
-  { id: "mistralvibe", name: "Mistral Vibe", command: "vibe", logo: "mistralvibe" },
-  { id: "rovo", name: "Rovo Dev", command: "rovo", logo: "rovo" },
-  { id: "autohand", name: "Autohand Code", command: "autohand", logo: "autohand" },
+  // `kiro-cli`, Continue ships `cn`, Mistral Vibe ships `vibe`). These have no
+  // bundled SVG; their logo comes from `favicon` (or the Bot glyph if unset).
+  { id: "cursor", name: "Cursor", command: "cursor-agent", logo: "cursor", favicon: "cursor.com" },
+  { id: "aider", name: "Aider", command: "aider", logo: "aider", favicon: "aider.chat" },
+  { id: "amp", name: "Amp", command: "amp", logo: "amp", favicon: "ampcode.com" },
+  { id: "cline", name: "Cline", command: "cline", logo: "cline", favicon: "cline.bot" },
+  { id: "droid", name: "Droid", command: "droid", logo: "droid", favicon: "factory.ai" },
+  { id: "copilot", name: "GitHub Copilot", command: "copilot", logo: "copilot", favicon: "github.com" },
+  { id: "continue", name: "Continue", command: "cn", logo: "continue", favicon: "continue.dev" },
+  { id: "kiro", name: "Kiro", command: "kiro-cli", logo: "kiro", favicon: "kiro.dev" },
+  { id: "auggie", name: "Auggie", command: "auggie", logo: "auggie", favicon: "augmentcode.com" },
+  { id: "crush", name: "Crush", command: "crush", logo: "crush", favicon: "charm.sh" },
+  { id: "codebuff", name: "Codebuff", command: "codebuff", logo: "codebuff", favicon: "codebuff.com" },
+  { id: "commandcode", name: "Command Code", command: "command-code", logo: "commandcode", favicon: "commandcode.ai" },
+  { id: "mimo", name: "MiMo Code", command: "mimo", logo: "mimo", favicon: "mimo.xiaomi.com" },
+  { id: "devin", name: "Devin", command: "devin", logo: "devin", favicon: "devin.ai" },
+  { id: "hermes", name: "Hermes", command: "hermes", logo: "hermes", favicon: "nousresearch.com" },
+  { id: "mistralvibe", name: "Mistral Vibe", command: "vibe", logo: "mistralvibe", favicon: "mistral.ai" },
+  { id: "rovo", name: "Rovo Dev", command: "rovo", logo: "rovo", favicon: "atlassian.com" },
+  { id: "autohand", name: "Autohand Code", command: "autohand", logo: "autohand", favicon: "autohand.ai" },
   { id: "openclaude", name: "OpenClaude", command: "openclaude", logo: "openclaude" },
-  { id: "openclaw", name: "OpenClaw", command: "openclaw", logo: "openclaw" },
-  { id: "omp", name: "OMP", command: "omp", logo: "omp" },
-  { id: "ante", name: "Ante", command: "ante", logo: "ante" },
+  { id: "openclaw", name: "OpenClaw", command: "openclaw", logo: "openclaw", favicon: "openclaw.ai" },
+  { id: "omp", name: "OMP", command: "omp", logo: "omp", favicon: "omp.sh" },
+  { id: "ante", name: "Ante", command: "ante", logo: "ante", favicon: "antigma.ai" },
 ];
 
-/** Resolve a logo value to an `<img src>`, or null when there's none. A catalog
- *  key (e.g. `claudecode`) maps to its bundled SVG; a user's custom logo is
- *  stored inline as a `data:` URL and used as-is (also tolerates `http(s)`/`/`). */
-export function agentLogoSrc(logo?: string | null): string | null {
-  if (!logo) return null;
-  if (/^(data:|https?:|\/)/.test(logo)) return logo;
-  return `/agents/${logo}.svg`;
+/** A site's favicon, via Google's public favicon service (64px, downscaled for
+ *  crispness). Used as the logo fallback for agents without a bundled SVG. */
+export function faviconUrl(domain: string): string {
+  return `https://www.google.com/s2/favicons?domain=${domain}&sz=64`;
+}
+
+/** Ordered logo candidates for a logo key, tried in turn by AgentLogo until one
+ *  loads (then the Bot glyph). A user's custom logo (stored inline as a `data:`
+ *  URL, or an `http(s)`/`/` path) wins outright and is used as-is — that's what
+ *  keeps a manually-added logo persistent. Otherwise a catalog agent yields its
+ *  bundled SVG first, then its favicon. */
+export function agentIconSources(logo?: string | null): string[] {
+  if (!logo) return [];
+  if (/^(data:|https?:|\/)/.test(logo)) return [logo];
+  const out = [`/agents/${logo}.svg`];
+  const entry = AGENT_CATALOG.find((c) => c.logo === logo || c.id === logo);
+  if (entry?.favicon) out.push(faviconUrl(entry.favicon));
+  return out;
 }
 
 /** Best logo key for an agent: its stored `icon`, else matched from the catalog

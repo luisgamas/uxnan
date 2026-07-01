@@ -278,17 +278,29 @@ regressions.
   the launcher window use. The **agent** selectors now show each agent's **logo**
   on the trigger and rows (consistent with the AI-commit list) via the combobox
   `itemPrefix`. Removed the now-dead per-field label derivations.
-- **Bigger agent catalog + robust logo fallback.** The known-agent catalog
+- **Bigger agent catalog + favicon logo fallback.** The known-agent catalog
   (`agentCatalog.ts`) grew from 11 to 33 CLI agents (Cursor `cursor-agent`,
   Aider, Amp, Cline, Droid, GitHub Copilot, Continue `cn`, Kiro `kiro-cli`,
   Auggie, Crush, Codebuff, Command Code, MiMo Code, Devin, Hermes, Mistral Vibe
   `vibe`, Rovo Dev, Autohand, OpenClaude, OpenClaw, OMP, Ante), so more agents
-  are detected on PATH and one-click addable in Settings → Agents. `AgentLogo`
-  now falls back to the generic Bot glyph if a brand SVG is missing (via
-  `onerror`) instead of a broken image — the new agents' logos are tracked in
-  `FOR-HUMAN.md`.
+  are detected on PATH and one-click addable in Settings → Agents. Every agent
+  now shows a real logo via a fallback chain in `AgentLogo` — a user's custom
+  logo → a bundled `static/agents/<logo>.svg` → the product's **favicon**
+  (`favicon` field per catalog entry, via Google's favicon service; new
+  `agentIconSources`/`faviconUrl`) → the generic Bot glyph — each candidate
+  advancing on `onerror`. This applies everywhere logos render: the Agents list,
+  every agent combobox, and the left-panel project/worktree cards. So the 22 new
+  agents get logos without shipping SVGs; a bundled SVG (still optional, now
+  tracked as a *crispness* upgrade in `FOR-HUMAN.md`) simply takes priority.
 
 ### Fixed
+- **Kilo Code detection command.** The catalog listed Kilo Code under `kilocode`;
+  its real PATH executable is `kilo`, so it now detects correctly.
+- **Install-policy field readability.** Settings → Updates → Installation kept its
+  compact `w-56` combobox but with short option labels (Ask me / Automatically /
+  Manually) and a trimmed one-line description; a small `?` beside it opens a
+  hover-card explaining all three policies (`SettingsRow` gained an optional
+  `help` snippet for this).
 - **Git status not reflected in the UI (file-tree coloring + Changes tab empty).**
   The active worktree's git status was loaded only inside `RightPanel` — which
   mounts only while the right panel is open — so the file-tree change coloring,

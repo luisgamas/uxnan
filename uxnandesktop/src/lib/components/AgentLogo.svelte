@@ -1,7 +1,9 @@
 <script lang="ts">
-  // An agent's brand logo (SVG from static/agents/), falling back to a generic
-  // Bot glyph for custom agents with no logo. Sized via the design tokens.
-  import { agentLogoSrc } from "$lib/agentCatalog";
+  // An agent's brand logo, resolved through a fallback chain: a user's custom
+  // logo → the bundled SVG (static/agents/) → the product's favicon → a generic
+  // Bot glyph. Each candidate that fails to load advances to the next; when all
+  // are exhausted the Bot shows, so a broken <img> never appears. Sized via tokens.
+  import { agentIconSources } from "$lib/agentCatalog";
   import { cn } from "$lib/utils";
   import { icon } from "$lib/design";
   import BotIcon from "@lucide/svelte/icons/bot";
@@ -11,23 +13,22 @@
     class: className,
   }: { logo?: string | null; class?: string } = $props();
 
-  const src = $derived(agentLogoSrc(logo));
-  // Fall back to the generic glyph when the SVG is missing (a catalog agent whose
-  // brand logo hasn't been added yet) so a broken <img> never shows. Reset when
-  // the source changes.
-  let failed = $state(false);
+  const sources = $derived(agentIconSources(logo));
+  // Index into `sources`; onerror advances it. Reset when the key changes.
+  let idx = $state(0);
   $effect(() => {
-    void src;
-    failed = false;
+    void sources;
+    idx = 0;
   });
+  const src = $derived(sources[idx]);
 </script>
 
-{#if src && !failed}
+{#if src}
   <img
     {src}
     alt=""
     class={cn(icon.button, "shrink-0 object-contain", className)}
-    onerror={() => (failed = true)}
+    onerror={() => (idx += 1)}
   />
 {:else}
   <BotIcon class={cn(icon.button, "shrink-0 text-muted-foreground", className)} />

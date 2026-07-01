@@ -9,15 +9,18 @@ only this checklist and the inline `FOR-HUMAN:` markers describing what's needed
 
 ## Open items
 
-- [ ] **Brand logos for the newly-added catalog agents** — the agent catalog
-      (`src/lib/agentCatalog.ts`) grew with more known CLI agents, but their brand
-      SVGs aren't in the repo yet, so they currently render the generic Bot glyph
-      (graceful fallback in `AgentLogo.svelte`).
-      - **What/Where:** add one SVG per agent under `static/agents/<logo>.svg`,
-        where `<logo>` is the catalog entry's `logo` field. Pending:
-        `cursor`, `aider`, `amp`, `cline`, `droid`, `copilot`, `continue`, `kiro`,
-        `auggie`, `crush`, `codebuff`, `commandcode`, `mimo`, `devin`, `hermes`,
-        `mistralvibe`, `rovo`, `autohand`, `openclaude`, `openclaw`, `omp`, `ante`.
+- [ ] **(Optional) Crisper brand SVGs for catalog agents** — every catalog agent
+      already shows a logo automatically: `AgentLogo.svelte` resolves a bundled SVG
+      first, then the agent's favicon (`favicon` field in `src/lib/agentCatalog.ts`,
+      fetched via Google's favicon service), then the generic Bot glyph. So this is
+      **not blocking** — it only sharpens agents that currently fall back to a
+      low-res favicon.
+      - **What/Where:** drop a vector logo at `static/agents/<logo>.svg`, where
+        `<logo>` is the catalog entry's `logo` field; it takes priority over the
+        favicon. Agents without a bundled SVG today: `cursor`, `aider`, `amp`,
+        `cline`, `droid`, `copilot`, `continue`, `kiro`, `auggie`, `crush`,
+        `codebuff`, `commandcode`, `mimo`, `devin`, `hermes`, `mistralvibe`, `rovo`,
+        `autohand`, `openclaude`, `openclaw`, `omp`, `ante`.
       - **Config:** none — `AgentLogo` picks up `/agents/<logo>.svg` automatically
         once the file exists (viewBox-normalized, monochrome-friendly like the
         existing ones).
