@@ -8,7 +8,6 @@
   import {
     terminals,
     computeAreaLayout,
-    GLOBAL_WORKSPACE,
     type AreaDivider,
     type AreaSplit,
     type Rect,
@@ -30,7 +29,6 @@
   import FileIcon from "@lucide/svelte/icons/file";
   import FileDiffIcon from "@lucide/svelte/icons/file-diff";
   import GitCommitIcon from "@lucide/svelte/icons/git-commit-horizontal";
-  import NewWorktreeDialog from "./NewWorktreeDialog.svelte";
   import LauncherMenu from "./LauncherMenu.svelte";
 
   /** Default profile's shell/args, for region-level + and splits. A blank
@@ -50,24 +48,23 @@
   // (`+page.svelte`); here it's only used for the empty-state copy.
   const ctx = $derived(projects.activeContext);
 
-  /** The repo the active workspace belongs to (if any). The empty-state
-   *  "New worktree" button is only enabled when this resolves to a repo —
-   *  worktrees must branch from a registered git repo, not from the Global
-   *  terminal space. Returns `null` for the Global workspace and when the
-   *  active key doesn't match any known repo or worktree. */
-  const activeRepo = $derived.by(() => {
-    const key = terminals.activeWorkspace;
-    if (key === GLOBAL_WORKSPACE) return null;
-    const mainRepo = app.repos.find((r) => r.path === key);
-    if (mainRepo) return mainRepo;
-    for (const r of app.repos) {
-      if (projects.worktreesOf(r.id).some((w) => w.path === key)) return r;
-    }
-    return null;
-  });
+  // The repo the active workspace belongs to (null for the Global space). Read
+  // from the shared store so the empty-state "New worktree" button, the global
+  // shortcut and the page-mounted dialog all agree on the same repo + open state.
+  const activeRepo = $derived(projects.activeRepo);
 
-  // --- Empty-state "New worktree" dialog state -----------------------------
-  let newWorktreeOpen = $state(false);
+  // Keyboard hints listed under the empty-state buttons (informative only). "New
+  // worktree" appears only inside a repo; filtered to bound actions so a blank /
+  // disabled chord never renders an empty row.
+  const emptyHints = $derived(
+    [
+      { label: i18n.t("shortcuts.newTerminal"), chord: resolveBinding("newTerminal") },
+      activeRepo
+        ? { label: i18n.t("shortcuts.newWorktree"), chord: resolveBinding("newWorktree") }
+        : null,
+      { label: i18n.t("shortcuts.addProject"), chord: resolveBinding("addProject") },
+    ].filter((h): h is { label: string; chord: string } => !!h && h.chord.length > 0),
+  );
 
   let unlistenDrop: (() => void) | undefined;
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -212,9 +209,9 @@
         label: i18n.t("terminal.copy"),
         action: () => ctrl?.copy(),
         disabled: !ctrl?.hasSelection(),
-        chord: "Ctrl+C",
+        chord: "Mod+C",
       },
-      { label: i18n.t("terminal.paste"), action: () => void ctrl?.paste(), chord: "Ctrl+V" },
+      { label: i18n.t("terminal.paste"), action: () => void ctrl?.paste(), chord: "Mod+V" },
       { separator: true },
       ...splitItems(groupId),
       { separator: true },
@@ -473,7 +470,7 @@
                       <LauncherMenu
                         repo={activeRepo}
                         target={{ path: wsKey, branch: null }}
-                        onNewWorktree={() => (newWorktreeOpen = true)}
+                        onNewWorktree={() => (projects.newWorktreeOpen = true)}
                         align="start"
                         triggerClass="ml-0.5 size-6"
                         title={i18n.t("launcher.openHere")}
@@ -621,7 +618,7 @@
                   "inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 font-medium text-foreground hover:bg-accent hover:text-accent-foreground",
                   text.body,
                 )}
-                onclick={() => (newWorktreeOpen = true)}
+                onclick={() => (projects.newWorktreeOpen = true)}
               >
                 <GitBranchIcon class={icon.button} />
                 {i18n.t("newWorktree.title")}
@@ -640,18 +637,27 @@
               </button>
             {/if}
           </div>
+
+          <!-- Informative keyboard hints under the buttons (not inside them):
+               the same actions plus "add project", each with its live keycap. -->
+          {#if emptyHints.length}
+            <div
+              data-tauri-drag-region
+              class="grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1.5 text-xs"
+            >
+              {#each emptyHints as hint (hint.label)}
+                <span data-tauri-drag-region class="text-right text-muted-foreground/80">
+                  {hint.label}
+                </span>
+                <KeyChord chord={hint.chord} />
+              {/each}
+            </div>
+          {/if}
         </div>
       {/if}
     {/if}
   </div>
 </div>
-
-<!-- Dialog is mounted once at the bottom of the component tree. We pass the
-     active repo (resolved above); the bindable `open` is only flipped when the
-     user clicks the empty-state's "New worktree" button. -->
-{#if activeRepo}
-  <NewWorktreeDialog repo={activeRepo} bind:open={newWorktreeOpen} />
-{/if}
 
 <!-- Floating label that follows the pointer while dragging a tab. -->
 {#if tabDrag?.dragging}

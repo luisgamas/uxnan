@@ -25,7 +25,7 @@ import {
   type RepoData,
   type TerminalProfile,
 } from "$lib/types";
-import { terminals, type SplitDir } from "$lib/state/terminals.svelte";
+import { terminals, GLOBAL_WORKSPACE, type SplitDir } from "$lib/state/terminals.svelte";
 import { primeNotifications } from "$lib/notify";
 import { buildRunCommand, shellKind } from "$lib/shell";
 import { currentOS } from "$lib/platform";
@@ -325,6 +325,13 @@ class AppStore {
       args: command ? profile?.args : undefined,
       workspace: opts?.workspace,
     });
+  }
+
+  /** Open a terminal in the Global scratch space (not tied to any project),
+   *  switching to it. The counterpart to `openTerminal`, which targets the
+   *  active workspace. */
+  openGlobalTerminal(): void {
+    this.openTerminal({ workspace: GLOBAL_WORKSPACE });
   }
 
   /** Split the active workspace's focused terminal region in `dir`, opening a

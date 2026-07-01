@@ -63,6 +63,13 @@ export const KEY_ACTIONS: KeyAction[] = [
     default: "Mod+O",
   },
   {
+    id: "newWorktree",
+    labelKey: "shortcuts.newWorktree",
+    descKey: "shortcuts.newWorktreeDesc",
+    category: "navigation",
+    default: "Mod+Shift+N",
+  },
+  {
     id: "toggleLeftSidebar",
     labelKey: "shortcuts.toggleLeftSidebar",
     descKey: "shortcuts.toggleLeftSidebarDesc",
@@ -80,6 +87,13 @@ export const KEY_ACTIONS: KeyAction[] = [
     id: "newTerminal",
     labelKey: "shortcuts.newTerminal",
     descKey: "shortcuts.newTerminalDesc",
+    category: "terminal",
+    default: "Mod+T",
+  },
+  {
+    id: "newGlobalTerminal",
+    labelKey: "shortcuts.newGlobalTerminal",
+    descKey: "shortcuts.newGlobalTerminalDesc",
     category: "terminal",
     default: "Mod+Shift+T",
   },

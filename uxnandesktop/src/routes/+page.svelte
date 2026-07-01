@@ -23,6 +23,7 @@
   import LeftSidebar from "$lib/components/LeftSidebar.svelte";
   import RightPanel from "$lib/components/RightPanel.svelte";
   import BrowserPanel from "$lib/components/BrowserPanel.svelte";
+  import NewWorktreeDialog from "$lib/components/NewWorktreeDialog.svelte";
   import Settings from "$lib/components/Settings.svelte";
   import OrchestrationConsole from "$lib/components/OrchestrationConsole.svelte";
   import WorktreeSearch from "$lib/components/WorktreeSearch.svelte";
@@ -180,10 +181,14 @@
         }
         return;
       case "newTerminal":
-        // Always tied to the active workspace (bootstraps the first terminal if
-        // it's empty — same as the empty-state button).
+        // Tied to the active workspace (bootstraps the first terminal if it's
+        // empty — same as the empty-state button).
         e.preventDefault();
         app.openTerminal();
+        return;
+      case "newGlobalTerminal":
+        e.preventDefault();
+        app.openGlobalTerminal();
         return;
       case "splitRight":
         e.preventDefault();
@@ -202,6 +207,10 @@
       case "addProject":
         e.preventDefault();
         projects.pickerOpen = true;
+        return;
+      case "newWorktree":
+        e.preventDefault();
+        projects.requestNewWorktree(); // no-op outside a repo
         return;
       case "openSettings":
         e.preventDefault();
@@ -253,6 +262,13 @@
 
   <!-- Add-project directory picker (Ctrl/Cmd+O; also from the sidebar) -->
   <DirectoryPicker bind:open={projects.pickerOpen} />
+
+  <!-- New-worktree dialog (Ctrl/Cmd+Shift+N; also the empty-state button). Mounted
+       once here so the shortcut works regardless of what the center shows; only
+       present when the active workspace is inside a repo to branch from. -->
+  {#if projects.activeRepo}
+    <NewWorktreeDialog repo={projects.activeRepo} bind:open={projects.newWorktreeOpen} />
+  {/if}
 
   <!-- Unsaved-edit prompt (driven by the saveDiscard service on tab close) -->
   <SaveDiscardDialog />

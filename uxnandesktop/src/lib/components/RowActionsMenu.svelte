@@ -13,8 +13,10 @@
   import { clipboardWrite } from "$lib/clipboard";
   import { revealPath } from "$lib/api";
   import { agentLogoKey } from "$lib/agentCatalog";
+  import { resolveBinding } from "$lib/keybindings";
   import { text } from "$lib/design";
   import { i18n } from "$lib/i18n";
+  import KeyChord from "./KeyChord.svelte";
   import AgentLogo from "./AgentLogo.svelte";
   import AgentStatusDot from "./AgentStatusDot.svelte";
   import TerminalIcon from "@lucide/svelte/icons/terminal";
@@ -52,6 +54,7 @@
   <ContextMenu.Item class={text.menu} onclick={() => projects.openTerminalAt(path)}>
     <TerminalIcon />
     {i18n.t("terminal.newDefault")}
+    <KeyChord chord={resolveBinding("newTerminal")} class="ml-auto pl-2" />
   </ContextMenu.Item>
   {#if profiles.length}
     <ContextMenu.Sub>

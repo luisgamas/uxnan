@@ -54,6 +54,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   and overflowed the screen on projects with several worktrees.
 
 ### Changed — clean desktop UI redesign
+- **Terminal & workspace keyboard shortcuts + empty-state hints.** New configurable
+  shortcuts (Settings → Keyboard shortcuts): **New terminal** (`Mod+T`) opens in the
+  **active workspace's folder**; **New global terminal** (`Mod+Shift+T`) opens in the
+  Global scratch space (home); **New worktree** (`Mod+Shift+N`) creates a worktree in
+  the active repo (a no-op outside one). The empty center panel now lists these plus
+  **Add project** (`Mod+O`) as informative text + keycap hints below its buttons. The
+  **project-card context menu** shows the *New terminal* keycap. The new-worktree
+  dialog moved to the shell (shared `projects.activeRepo` / `newWorktreeOpen`) so the
+  shortcut and the empty-state button drive the same dialog. All keycaps render via
+  `KeyChord` (⌘ on macOS via `Mod`).
 - **Terminal split moved to the context menu + keyboard.** Removed the two
   split-vertical / split-horizontal buttons from the center tab strip; splitting
   now lives only in each terminal's right-click menu (pane or tab). That menu was
@@ -339,6 +349,10 @@ regressions.
   tracked as a *crispness* upgrade in `FOR-HUMAN.md`) simply takes priority.
 
 ### Fixed
+- **Terminal copy/paste respect the platform modifier.** Copy/paste in a terminal now
+  use the primary modifier — **⌘ on macOS**, Ctrl elsewhere — instead of Ctrl on every
+  platform. On macOS `⌘+C`/`⌘+V` copy/paste and `Ctrl+C` stays the shell's SIGINT; the
+  right-click menu shows `⌘C`/`⌘V`. Windows/Linux behavior is unchanged.
 - **New terminals open in the active project's folder, not the PC home.** A terminal
   created for a worktree — the empty-state button, the tab-strip `+`, the *New
   terminal* shortcut, or a split — now defaults its working directory to that

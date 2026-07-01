@@ -18,6 +18,7 @@ import {
 import type {
   AgentProfile,
   BranchList,
+  RepoData,
   WorktreeEntry,
   WorktreeStatus,
 } from "$lib/types";
@@ -59,6 +60,31 @@ class ProjectsStore {
    *  component) so a global keyboard shortcut can open it even when the left
    *  sidebar is collapsed — the picker is mounted once at the page root. */
   pickerOpen = $state(false);
+  /** Whether the "new worktree" dialog is open. Lives here (not in a component)
+   *  so a global keyboard shortcut and the empty-state button can both open it;
+   *  the dialog is mounted once at the page root, bound to [`activeRepo`]. */
+  newWorktreeOpen = $state(false);
+
+  /** The repo the active workspace belongs to (its main repo, or the repo a
+   *  worktree branches from), or null for the Global space / an unknown key.
+   *  Drives the "new worktree" affordances, which only apply inside a repo. */
+  get activeRepo(): RepoData | null {
+    const key = terminals.activeWorkspace;
+    if (key === GLOBAL_WORKSPACE) return null;
+    const main = app.repos.find((r) => r.path === key);
+    if (main) return main;
+    for (const r of app.repos) {
+      if (this.worktreesOf(r.id).some((w) => w.path === key)) return r;
+    }
+    return null;
+  }
+
+  /** Open the "new worktree" dialog for the active repo. A no-op outside a repo
+   *  (Global space / nothing selected), so a shortcut does nothing rather than
+   *  prompting with no repo to branch from. */
+  requestNewWorktree(): void {
+    if (this.activeRepo) this.newWorktreeOpen = true;
+  }
 
   /** Projects visible for the search query: those whose name/path matches OR
    *  that have a matching worktree. */

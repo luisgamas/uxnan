@@ -29,7 +29,8 @@
   import { agentMonitor } from "$lib/state/agentMonitor.svelte";
   import { app } from "$lib/state/app.svelte";
   import { KeyboardProtocol } from "$lib/terminal/keyboardProtocol";
-  import { matchAction } from "$lib/keybindings";
+  import { matchAction, isMac } from "$lib/keybindings";
+  import { projects } from "$lib/state/projects.svelte";
 
   // Effective terminal appearance (general theme base + per-terminal overrides:
   // font, size, line height, spacing, weight, ligatures, cursor, ANSI colors).
@@ -198,6 +199,10 @@
           app.openTerminal();
           e.preventDefault();
           return false;
+        case "newGlobalTerminal":
+          app.openGlobalTerminal();
+          e.preventDefault();
+          return false;
         case "splitRight":
           app.splitActiveTerminal("row");
           e.preventDefault();
@@ -222,9 +227,17 @@
           terminals.focusSplit(-1);
           e.preventDefault();
           return false;
+        case "newWorktree":
+          projects.requestNewWorktree();
+          e.preventDefault();
+          return false;
       }
 
-      if (e.ctrlKey && !e.altKey && !e.shiftKey) {
+      // Copy / paste on the platform's primary modifier: ⌘ on macOS, Ctrl
+      // elsewhere. On macOS this keeps Ctrl+C as the shell's SIGINT (only ⌘+C
+      // copies); on Windows/Linux Ctrl+C copies when there's a selection.
+      const primaryMod = isMac ? e.metaKey : e.ctrlKey;
+      if (primaryMod && !e.altKey && !e.shiftKey) {
         const key = e.key.toLowerCase();
         if (key === "c" && term?.hasSelection()) {
           copySelection();
