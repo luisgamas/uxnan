@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — Claude Code `Sonnet 5` in the seeded model picker
+- **`claude-sonnet-5` ("Sonnet 5")** seeded in Claude Code's default
+  `models` list (`src/daemon-config.ts`), so a fresh install offers the newest
+  Sonnet-tier version as an explicit pick alongside the auto-updating
+  `opus`/`sonnet`/`haiku` aliases. The `sonnet` alias already tracks "latest",
+  so this is a convenience/visibility entry; `claudeContextWindow` already maps
+  any `sonnet` id to the 1M window, so no adapter change was needed. Docs
+  (`docs/agents.md`, `docs/configuration.md`) and the `daemon-config` seed test
+  updated to match.
+
 ## [0.0.2-alpha.20260628] - 2026-06-28
 
 ### Added — `workspace/searchFiles` handler (repo-wide fuzzy file search)

@@ -13,6 +13,7 @@ test('resolveDaemonConfig seeds Claude Code with concrete pinned models', () => 
   );
   assert.ok(ids.includes('claude-fable-5'));
   assert.ok(ids.includes('claude-opus-4-8'));
+  assert.ok(ids.includes('claude-sonnet-5'));
   assert.ok(ids.includes('claude-sonnet-4-6'));
 });
 

@@ -86,6 +86,7 @@ exposes both, so users get plug-and-play "latest" *and* explicit version control
         { "id": "claude-fable-5",   "displayName": "Fable 5" },
         { "id": "claude-opus-4-8",  "displayName": "Opus 4.8" },
         { "id": "claude-opus-4-7",  "displayName": "Opus 4.7" },
+        { "id": "claude-sonnet-5",  "displayName": "Sonnet 5" },
         { "id": "claude-sonnet-4-6","displayName": "Sonnet 4.6" },
         { "id": "claude-haiku-4-5", "displayName": "Haiku 4.5" },
         "claude-opus-4-1"               // bare id — displayName falls back to the id
