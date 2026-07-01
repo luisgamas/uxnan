@@ -123,6 +123,17 @@ yet on either side** — the bridge's `desktop/*` handler is also an empty stub
       (today both coexist: the buffer restores recreated panes, but hidden tabs
       keep their xterm mounted). Would cut memory for many background terminals
       at the cost of a replay on every show.
+- [ ] **Workspace lifecycle — active indicator + sleep/hibernate.** Surface which
+      projects/worktrees have a *live* space (open terminals) vs an empty one — an
+      indicator on the project/worktree cards, so it's obvious where terminals are
+      running and which space is completely empty. Add a **"Sleep workspace"**
+      action (+ shortcut) that closes every tab of a workspace and frees its
+      resources (kill the PTYs + drop the xterm renderers) to reclaim memory on a
+      machine with many active projects. Complements the hidden-renderer disposal
+      above (that trims per-tab memory; this drops a whole workspace at once). Wire
+      into the card context menu (`RowActionsMenu`) and the keyboard-shortcut set;
+      the workspace store already keys terminals per worktree path, so "which
+      workspaces have tabs" is derivable from `terminals.workspaces`.
 
 **Agents** — env vars per agent, shell-aware quoting, the configurable Windows
 launch shell (cmd by default), auto-launch on worktree create, and multi-agent
