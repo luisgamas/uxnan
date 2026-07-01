@@ -77,7 +77,12 @@ export class DaemonState {
   async initConfig(): Promise<DaemonConfig> {
     const existing = await this.readJson<Partial<DaemonConfig>>(DAEMON_FILES.config);
     if (existing) return resolveDaemonConfig(existing);
-    await this.writeConfig(DEFAULT_DAEMON_CONFIG);
+    // Persist the seed WITHOUT the built-in `agents` model lists. Freezing them
+    // here is what stopped new app versions from ever adding models to an
+    // existing install — the seeded lists are a live baseline unioned in at read
+    // time (see `mergeAgentModels`), so they must not be written to disk.
+    const { agents: _seededAgents, ...withoutAgents } = DEFAULT_DAEMON_CONFIG;
+    await this.writeJson(DAEMON_FILES.config, withoutAgents);
     return DEFAULT_DAEMON_CONFIG;
   }
 }

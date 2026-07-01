@@ -40,3 +40,19 @@ test('initConfig writes defaults and merges a partial on next read', async () =>
   assert.equal(merged.relayUrl, DEFAULT_DAEMON_CONFIG.relayUrl);
   await rm(state.baseDir, { recursive: true, force: true });
 });
+
+test('initConfig does not freeze the seeded model lists to disk', async () => {
+  const state = freshState();
+  await state.initConfig();
+  // The on-disk file must NOT carry the built-in agents/models — otherwise a
+  // future app version could never add a model to an existing install.
+  const onDisk = await state.readJson<Record<string, unknown>>('daemon-config.json');
+  assert.equal(onDisk?.['agents'], undefined);
+  // Yet the effective config still surfaces the live seed (Sonnet 5 included).
+  const effective = await state.readConfig();
+  const ids = (effective.agents['claude-code']?.models ?? []).map((m) =>
+    typeof m === 'string' ? m : m.id,
+  );
+  assert.ok(ids.includes('claude-sonnet-5'));
+  await rm(state.baseDir, { recursive: true, force: true });
+});

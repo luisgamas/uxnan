@@ -38,10 +38,12 @@ export interface AgentSettings {
   /** Default model the agent uses (e.g. `provider/model` for OpenCode). */
   model?: string;
   /**
-   * Extra explicit models to show in the picker **in addition** to the ones the
-   * agent reports itself. For Claude Code (which exposes only the moving
-   * `opus`/`sonnet`/`haiku` aliases), this is how you pin concrete versions
-   * (e.g. `claude-opus-4-7`) so users can deliberately select an older model.
+   * Extra explicit models to show in the picker, **added on top of** the
+   * project's built-in (seeded) list — the two are UNION-ed by id at load time
+   * (see `mergeAgentModels`), so the built-in list always stays current with the
+   * app and your entries extend/override it. For Claude Code (which exposes only
+   * the moving `opus`/`sonnet`/`haiku` aliases) this is how you pin an extra
+   * concrete version; a same-id entry overrides the seed's `displayName`.
    * Entries may be a bare id string or an {@link AgentModelSpec}. Currently
    * consumed by the Claude Code adapter; ignored by agents that enumerate their
    * own models (OpenCode, Codex).
@@ -163,13 +165,47 @@ export const DEFAULT_DAEMON_CONFIG: DaemonConfig = {
   },
 };
 
+/** The id of a `models` entry (bare string or {@link AgentModelSpec}). */
+function modelId(entry: string | AgentModelSpec): string {
+  return (typeof entry === 'string' ? entry : entry.id).trim();
+}
+
+/**
+ * Union the built-in (seeded) `models` with the user's, deduped by id.
+ *
+ * The **built-in list is a live baseline from code** (not frozen on disk): a new
+ * app version that adds a model to the seed surfaces it for every install,
+ * without the user editing their config. The user's entries are treated as
+ * additions/overrides — a new id is appended, and an id that collides with a
+ * seed entry replaces it (so a custom `displayName` wins) while keeping the
+ * seed's position. Returns `undefined` when neither side has any (so the field
+ * stays absent rather than an empty array).
+ */
+export function mergeAgentModels(
+  seed?: (string | AgentModelSpec)[],
+  user?: (string | AgentModelSpec)[],
+): (string | AgentModelSpec)[] | undefined {
+  if (!seed?.length && !user?.length) return undefined;
+  const order: string[] = [];
+  const byId = new Map<string, string | AgentModelSpec>();
+  for (const entry of [...(seed ?? []), ...(user ?? [])]) {
+    const id = modelId(entry);
+    if (!id) continue;
+    if (!byId.has(id)) order.push(id);
+    byId.set(id, entry); // later (user) entry wins on a collision
+  }
+  return order.length > 0 ? order.map((id) => byId.get(id)!) : undefined;
+}
+
 /** Merge a partial (e.g. loaded from disk) over the defaults. */
 export function resolveDaemonConfig(partial?: Partial<DaemonConfig> | null): DaemonConfig {
   const merged = { ...DEFAULT_DAEMON_CONFIG, ...(partial ?? {}) };
   // Deep-merge per-agent settings so a partial override (e.g. setting just
-  // `permissionMode` for one agent) preserves seeded defaults like Claude
-  // Code's `models` rather than wiping the whole agents map. Set an explicit
-  // empty value (e.g. `models: []`) to clear a seeded default.
+  // `permissionMode` for one agent) preserves seeded defaults rather than wiping
+  // the whole agents map. `models` is special: the seeded list is a live
+  // baseline from code, UNION-ed with the user's entries (see
+  // `mergeAgentModels`), so new seeded models reach existing installs
+  // automatically — a persisted (possibly stale) `models` never shadows them.
   const ids = new Set<string>([
     ...Object.keys(DEFAULT_DAEMON_CONFIG.agents),
     ...Object.keys(partial?.agents ?? {}),
@@ -177,10 +213,17 @@ export function resolveDaemonConfig(partial?: Partial<DaemonConfig> | null): Dae
   const agents: Partial<Record<AgentId, AgentSettings>> = {};
   for (const id of ids) {
     const key = id as AgentId;
-    agents[key] = {
+    const settings: AgentSettings = {
       ...DEFAULT_DAEMON_CONFIG.agents[key],
       ...(partial?.agents?.[key] ?? {}),
     };
+    const models = mergeAgentModels(
+      DEFAULT_DAEMON_CONFIG.agents[key]?.models,
+      partial?.agents?.[key]?.models,
+    );
+    if (models) settings.models = models;
+    else delete settings.models;
+    agents[key] = settings;
   }
   merged.agents = agents;
   return merged;

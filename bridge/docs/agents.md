@@ -70,11 +70,15 @@ exposes both, so users get plug-and-play "latest" *and* explicit version control
   turn runs, the concrete version the alias resolved to (e.g. `claude-opus-4-8`)
   is reported via the `model_resolved` event and shown in the phone's session
   status sheet.
-- **Pinned concrete versions (declared in config):** add exact, versioned ids in
-  `agents.claude-code.models` to make them selectable alongside the aliases —
-  e.g. to use an older-but-still-available model. They show their exact id in the
-  picker. An entry may be a bare id string or `{ id, displayName?, description? }`.
-  Ids equal to an alias are dropped (the alias is the canonical "latest" entry).
+- **Pinned concrete versions (built-in baseline + your extras):** the bridge
+  ships a curated list of concrete versions in code (`DEFAULT_DAEMON_CONFIG`) and
+  **unions** it with anything you add in `agents.claude-code.models`, deduped by
+  id. So the built-in list stays current with the app automatically (a new
+  version adds models to every install — see the "live baseline" note below),
+  and your entries extend it: a new id is appended, and an entry whose id matches
+  a built-in one overrides its `displayName`. An entry may be a bare id string or
+  `{ id, displayName?, description? }`. Ids equal to an alias are dropped (the
+  alias is the canonical "latest" entry).
 
 ```jsonc
 // ~/.uxnan/daemon-config.json
@@ -96,13 +100,18 @@ exposes both, so users get plug-and-play "latest" *and* explicit version control
 }
 ```
 
-The bridge ships this list as the **default** (see `DEFAULT_DAEMON_CONFIG`), so a
-fresh install already shows those versions. Curate it as models are released or
-retired — the aliases cover "latest" regardless, so pinning is purely for
-explicit/older-version selection. Use only ids Claude Code accepts (the alias
-resolves to one such id; `claude --model <id>` validates them). The same
-`models` field works for any agent the adapter honors it for; today that's
-Claude Code (OpenCode and Codex enumerate their own models).
+**Live baseline (why you never have to edit this file to get new models):** the
+built-in list is a *code* default (`DEFAULT_DAEMON_CONFIG`), unioned in at load
+time — it is **not** frozen into `~/.uxnan/daemon-config.json`. `initConfig`
+persists the seed *without* the `agents` block, and `resolveDaemonConfig` unions
+the code seed with whatever is on disk. So when a new app version adds a model to
+the seed, every existing install picks it up automatically; your own `models`
+entries are preserved on top. (Because the two are unioned, an empty
+`"models": []` no longer clears the list — the baseline always stays.) The
+aliases cover "latest" regardless, so pinning is purely for explicit/older-version
+selection. Use only ids Claude Code accepts (`claude --model <id>` validates
+them). The same `models` field works for any agent the adapter honors it for;
+today that's Claude Code (OpenCode and Codex enumerate their own models).
 
 ## Adding a new agent (e.g. Aider)
 

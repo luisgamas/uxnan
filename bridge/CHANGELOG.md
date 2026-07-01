@@ -5,6 +5,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — seeded model list no longer frozen to disk (new models reach existing installs)
+- **Root cause:** `initConfig` wrote the *entire* `DEFAULT_DAEMON_CONFIG` —
+  including the seeded `agents.claude-code.models` — to `~/.uxnan/daemon-config.json`
+  on first run, and `resolveDaemonConfig` let that persisted list **replace** the
+  code default. So a new app version that added a model to the seed (e.g. Sonnet 5)
+  never reached an existing install; the user had to hand-edit the file.
+- **Fix (`src/daemon-config.ts`, `src/daemon-state.ts`):**
+  - `resolveDaemonConfig` now **unions** the built-in seeded `models` with the
+    user's, deduped by id (new `mergeAgentModels`): the seed is a live baseline
+    from code, the user's entries are additions/overrides (a same-id entry wins
+    its `displayName`; a new id is appended). A persisted (stale) list can no
+    longer shadow newly-seeded models.
+  - `initConfig` persists the seed **without** the `agents` block, so the built-in
+    model lists are never frozen to disk.
+  - Behavior change: an empty `"models": []` no longer clears the baseline (the
+    union always keeps it). Docs updated (`docs/agents.md`, `docs/configuration.md`).
+  - 4 tests added/updated (`daemon-config.test.ts`, `daemon-state.test.ts`),
+    incl. a persisted-list-still-gains-new-models case and a no-freeze-to-disk case.
+
 ### Added — Claude Code aliases flagged `isLatestAlias` on `agent/models`
 - **`ClaudeCodeAdapter.listModels()`** (`src/adapters/claude-adapter.ts`) now
   sets `isLatestAlias: true` on each stable alias entry (`opus`/`sonnet`/`haiku`)
