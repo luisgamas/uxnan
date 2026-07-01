@@ -5,6 +5,7 @@
   // room. Close with the back button, the gear in the title bar, or Escape.
 
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
+  import * as HoverCard from "$lib/components/ui/hover-card";
   import { Button } from "$lib/components/ui/button";
   import { Textarea } from "$lib/components/ui/textarea";
   import { Input } from "$lib/components/ui/input";
@@ -61,6 +62,7 @@
   import XIcon from "@lucide/svelte/icons/x";
   import SparklesIcon from "@lucide/svelte/icons/sparkles";
   import GlobeIcon from "@lucide/svelte/icons/globe";
+  import CircleHelpIcon from "@lucide/svelte/icons/circle-help";
 
   // Persist (debounced for typing; immediate for discrete actions).
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -894,12 +896,38 @@
               </SettingsRow>
 
               <SettingsRow label={i18n.t("updates.installPolicy")} description={i18n.t("updates.installPolicyDesc")}>
+                {#snippet help()}
+                  <HoverCard.Root>
+                    <HoverCard.Trigger>
+                      {#snippet child({ props })}
+                        <button
+                          {...props}
+                          type="button"
+                          class="inline-flex text-muted-foreground/70 transition-colors hover:text-foreground"
+                          aria-label={i18n.t("updates.installPolicyHelpTitle")}
+                        >
+                          <CircleHelpIcon class="size-3.5" />
+                        </button>
+                      {/snippet}
+                    </HoverCard.Trigger>
+                    <HoverCard.Content class="w-80">
+                      <p class={cn("mb-2 font-medium text-foreground", text.body)}>{i18n.t("updates.installPolicyHelpTitle")}</p>
+                      <dl class="space-y-2">
+                        {#each [["updates.policyAsk", "updates.policyAskHelp"], ["updates.policyWhenIdle", "updates.policyWhenIdleHelp"], ["updates.policyManual", "updates.policyManualHelp"]] as [nameKey, helpKey] (nameKey)}
+                          <div>
+                            <dt class={cn("font-medium text-foreground", text.body)}>{i18n.t(nameKey as never)}</dt>
+                            <dd class="text-[12px] leading-5 text-muted-foreground">{i18n.t(helpKey as never)}</dd>
+                          </div>
+                        {/each}
+                      </dl>
+                    </HoverCard.Content>
+                  </HoverCard.Root>
+                {/snippet}
                 {#snippet control()}
                   <Combobox
                     value={up.installPolicy}
                     groups={installPolicyGroups}
-                    triggerClass="w-full sm:w-80"
-                    contentClass="w-80"
+                    triggerClass="w-56"
                     searchPlaceholder={i18n.t("common.search")}
                     onChange={(v) => { setUp({ installPolicy: v as InstallPolicy }); persistNow(); }}
                   />

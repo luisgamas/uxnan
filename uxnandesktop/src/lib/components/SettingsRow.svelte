@@ -13,6 +13,7 @@
     for: htmlFor,
     control,
     children,
+    help,
     class: className,
   }: {
     label?: string;
@@ -23,6 +24,8 @@
     control?: Snippet;
     /** Extra content under the label (e.g. an inline editor), full-width. */
     children?: Snippet;
+    /** Small trailing affordance next to the description (e.g. a help "?"). */
+    help?: Snippet;
     class?: string;
   } = $props();
 </script>
@@ -33,13 +36,18 @@
     className,
   )}
 >
-  {#if label || description}
+  {#if label || description || help}
     <div class="min-w-0 space-y-0.5">
       {#if label}
         <label class={cn("block font-medium text-foreground", text.body)} for={htmlFor}>{label}</label>
       {/if}
-      {#if description}
-        <p class={cn("text-[12px] leading-5 text-muted-foreground")}>{description}</p>
+      {#if description || help}
+        <div class="flex items-start gap-1.5">
+          {#if description}
+            <p class={cn("text-[12px] leading-5 text-muted-foreground")}>{description}</p>
+          {/if}
+          {#if help}<span class="shrink-0">{@render help()}</span>{/if}
+        </div>
       {/if}
     </div>
   {/if}

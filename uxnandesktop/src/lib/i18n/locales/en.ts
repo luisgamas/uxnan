@@ -640,10 +640,15 @@ export const en = {
     "Download a found update in the background. This never interrupts running agents — only installing does.",
   "updates.installPolicy": "Install",
   "updates.installPolicyDesc":
-    "Installing restarts the app, which stops running agents. 'Ask' never installs without your say-so.",
+    "Installing restarts the app and fully stops any running agents.",
+  "updates.installPolicyHelpTitle": "When to install a downloaded update",
   "updates.policyAsk": "Ask me",
-  "updates.policyWhenIdle": "Automatically when agents are idle",
-  "updates.policyManual": "Only when I trigger it",
+  "updates.policyWhenIdle": "Automatically",
+  "updates.policyManual": "Manually",
+  "updates.policyAskHelp": "Prompt you before installing a downloaded update.",
+  "updates.policyWhenIdleHelp":
+    "Install on its own once every agent is idle, so no running work is interrupted.",
+  "updates.policyManualHelp": "Never installs by itself — you trigger the install from here.",
 
   // Integrated developer browser (Settings → Browser + the browser tab chrome)
   "browser.enabled": "Integrated browser",

@@ -641,10 +641,15 @@ export const es: Record<MessageKey, string> = {
     "Descarga en segundo plano una actualización encontrada. Esto nunca interrumpe a los agentes en ejecución — solo instalar lo hace.",
   "updates.installPolicy": "Instalación",
   "updates.installPolicyDesc":
-    "Instalar reinicia la app, lo que detiene a los agentes en ejecución. «Preguntarme» nunca instala sin tu permiso.",
+    "Instalar reinicia la app y los agentes en ejecución serán detenidos completamente.",
+  "updates.installPolicyHelpTitle": "Cuándo instalar una actualización descargada",
   "updates.policyAsk": "Preguntarme",
-  "updates.policyWhenIdle": "Automáticamente cuando los agentes estén inactivos",
-  "updates.policyManual": "Solo cuando yo lo active",
+  "updates.policyWhenIdle": "Automáticamente",
+  "updates.policyManual": "Manualmente",
+  "updates.policyAskHelp": "Te pregunta antes de instalar una actualización descargada.",
+  "updates.policyWhenIdleHelp":
+    "Se instala sola cuando todos los agentes estén inactivos, para no interrumpir el trabajo.",
+  "updates.policyManualHelp": "Nunca se instala sola; tú disparas la instalación desde aquí.",
 
   // Navegador de desarrollo integrado (Ajustes → Navegador + barra del navegador)
   "browser.enabled": "Navegador integrado",

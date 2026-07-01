@@ -26,7 +26,7 @@ export const AGENT_CATALOG: CatalogAgent[] = [
   { id: "antigravity", name: "Antigravity", command: "agy", logo: "antigravity" },
   { id: "goose", name: "Goose", command: "goose", logo: "goose" },
   { id: "grok", name: "Grok", command: "grok", logo: "grok" },
-  { id: "kilocode", name: "Kilo Code", command: "kilocode", logo: "kilocode" },
+  { id: "kilocode", name: "Kilo Code", command: "kilo", logo: "kilocode" },
   { id: "kimi", name: "Kimi", command: "kimi", logo: "kimi" },
   { id: "qwen", name: "Qwen Code", command: "qwen", logo: "qwen" },
   // Additional known CLI agents. `command` is the executable users put on PATH —
