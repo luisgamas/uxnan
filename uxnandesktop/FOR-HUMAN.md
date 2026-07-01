@@ -9,6 +9,18 @@ only this checklist and the inline `FOR-HUMAN:` markers describing what's needed
 
 ## Open items
 
+- [ ] **Brand logos for the newly-added catalog agents** — the agent catalog
+      (`src/lib/agentCatalog.ts`) grew with more known CLI agents, but their brand
+      SVGs aren't in the repo yet, so they currently render the generic Bot glyph
+      (graceful fallback in `AgentLogo.svelte`).
+      - **What/Where:** add one SVG per agent under `static/agents/<logo>.svg`,
+        where `<logo>` is the catalog entry's `logo` field. Pending:
+        `cursor`, `aider`, `amp`, `cline`, `droid`, `copilot`, `continue`, `kiro`,
+        `auggie`, `crush`, `codebuff`, `commandcode`, `mimo`, `devin`, `hermes`,
+        `mistralvibe`, `rovo`, `autohand`, `openclaude`, `openclaw`, `omp`, `ante`.
+      - **Config:** none — `AgentLogo` picks up `/agents/<logo>.svg` automatically
+        once the file exists (viewBox-normalized, monochrome-friendly like the
+        existing ones).
 - [ ] **Production app-icon artwork (sign-off)** — a brand mark already ships:
       `src-tauri/icons/*` were regenerated from `logo.svg` (+ `static/logo*.svg` /
       `favicon.png`), so these are no longer Tauri's default placeholders. What

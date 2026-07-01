@@ -29,6 +29,33 @@ export const AGENT_CATALOG: CatalogAgent[] = [
   { id: "kilocode", name: "Kilo Code", command: "kilocode", logo: "kilocode" },
   { id: "kimi", name: "Kimi", command: "kimi", logo: "kimi" },
   { id: "qwen", name: "Qwen Code", command: "qwen", logo: "qwen" },
+  // Additional known CLI agents. `command` is the executable users put on PATH —
+  // not always the npm package name (Cursor ships `cursor-agent`, Kiro ships
+  // `kiro-cli`, Continue ships `cn`, Mistral Vibe ships `vibe`). Brand logos for
+  // these are pending (see FOR-HUMAN.md); AgentLogo shows a generic glyph until
+  // each SVG lands under `static/agents/`.
+  { id: "cursor", name: "Cursor", command: "cursor-agent", logo: "cursor" },
+  { id: "aider", name: "Aider", command: "aider", logo: "aider" },
+  { id: "amp", name: "Amp", command: "amp", logo: "amp" },
+  { id: "cline", name: "Cline", command: "cline", logo: "cline" },
+  { id: "droid", name: "Droid", command: "droid", logo: "droid" },
+  { id: "copilot", name: "GitHub Copilot", command: "copilot", logo: "copilot" },
+  { id: "continue", name: "Continue", command: "cn", logo: "continue" },
+  { id: "kiro", name: "Kiro", command: "kiro-cli", logo: "kiro" },
+  { id: "auggie", name: "Auggie", command: "auggie", logo: "auggie" },
+  { id: "crush", name: "Crush", command: "crush", logo: "crush" },
+  { id: "codebuff", name: "Codebuff", command: "codebuff", logo: "codebuff" },
+  { id: "commandcode", name: "Command Code", command: "command-code", logo: "commandcode" },
+  { id: "mimo", name: "MiMo Code", command: "mimo", logo: "mimo" },
+  { id: "devin", name: "Devin", command: "devin", logo: "devin" },
+  { id: "hermes", name: "Hermes", command: "hermes", logo: "hermes" },
+  { id: "mistralvibe", name: "Mistral Vibe", command: "vibe", logo: "mistralvibe" },
+  { id: "rovo", name: "Rovo Dev", command: "rovo", logo: "rovo" },
+  { id: "autohand", name: "Autohand Code", command: "autohand", logo: "autohand" },
+  { id: "openclaude", name: "OpenClaude", command: "openclaude", logo: "openclaude" },
+  { id: "openclaw", name: "OpenClaw", command: "openclaw", logo: "openclaw" },
+  { id: "omp", name: "OMP", command: "omp", logo: "omp" },
+  { id: "ante", name: "Ante", command: "ante", logo: "ante" },
 ];
 
 /** Resolve a logo value to an `<img src>`, or null when there's none. A catalog

@@ -12,10 +12,23 @@
   }: { logo?: string | null; class?: string } = $props();
 
   const src = $derived(agentLogoSrc(logo));
+  // Fall back to the generic glyph when the SVG is missing (a catalog agent whose
+  // brand logo hasn't been added yet) so a broken <img> never shows. Reset when
+  // the source changes.
+  let failed = $state(false);
+  $effect(() => {
+    void src;
+    failed = false;
+  });
 </script>
 
-{#if src}
-  <img {src} alt="" class={cn(icon.button, "shrink-0 object-contain", className)} />
+{#if src && !failed}
+  <img
+    {src}
+    alt=""
+    class={cn(icon.button, "shrink-0 object-contain", className)}
+    onerror={() => (failed = true)}
+  />
 {:else}
   <BotIcon class={cn(icon.button, "shrink-0 text-muted-foreground", className)} />
 {/if}

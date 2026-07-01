@@ -278,6 +278,15 @@ regressions.
   the launcher window use. The **agent** selectors now show each agent's **logo**
   on the trigger and rows (consistent with the AI-commit list) via the combobox
   `itemPrefix`. Removed the now-dead per-field label derivations.
+- **Bigger agent catalog + robust logo fallback.** The known-agent catalog
+  (`agentCatalog.ts`) grew from 11 to 33 CLI agents (Cursor `cursor-agent`,
+  Aider, Amp, Cline, Droid, GitHub Copilot, Continue `cn`, Kiro `kiro-cli`,
+  Auggie, Crush, Codebuff, Command Code, MiMo Code, Devin, Hermes, Mistral Vibe
+  `vibe`, Rovo Dev, Autohand, OpenClaude, OpenClaw, OMP, Ante), so more agents
+  are detected on PATH and one-click addable in Settings → Agents. `AgentLogo`
+  now falls back to the generic Bot glyph if a brand SVG is missing (via
+  `onerror`) instead of a broken image — the new agents' logos are tracked in
+  `FOR-HUMAN.md`.
 
 ### Fixed
 - **Git status not reflected in the UI (file-tree coloring + Changes tab empty).**
