@@ -323,6 +323,13 @@ regressions.
   tracked as a *crispness* upgrade in `FOR-HUMAN.md`) simply takes priority.
 
 ### Fixed
+- **Integrated browser: re-docks when the app window moves/resizes.** The browser
+  is a separate owned webview positioned in absolute screen coords over the panel
+  slot; its bounds were only re-pushed when the slot's *window-relative* rect
+  changed, so moving the whole app window (whose relative rect is unchanged) left
+  the browser stranded at the old screen position with an empty panel. `BrowserPanel`
+  now listens to the main window's `onMoved`/`onResized` and re-places the docked
+  window from the new origin.
 - **Integrated browser: window controls no longer cover its toolbar.** When the
   browser panel is open it's the right-most panel, so the min/max/close overlay
   (fixed top-right) landed on top of the browser's back/forward/reload + address
