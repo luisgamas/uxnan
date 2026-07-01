@@ -70,19 +70,6 @@
     }
   }
 
-  // Lanes that continue *below* a commit (edges reaching the row's bottom), so an
-  // expanded file list can keep the graph visually continuous by drawing straight
-  // verticals at those columns through its rows.
-  function continuingLanes(row: GraphRow): { x: number; color: string }[] {
-    const out: { x: number; color: string }[] = [];
-    for (const e of row.edges) {
-      if (e.kind === "outNode" || e.kind === "through" || e.kind === "mergeOut") {
-        out.push({ x: laneX(e.toLane), color: e.color });
-      }
-    }
-    return out;
-  }
-
   // The graph is only meaningful over the full, unfiltered log (a filter breaks
   // parent chains), so it's drawn when graph view is on AND no filter is active.
   const graphOn = $derived(history.showGraph && history.query.trim().length === 0);
@@ -215,23 +202,10 @@
   </svg>
 {/snippet}
 
-<!-- Straight lane continuations under an expanded commit, so the graph doesn't
-     visually break across its file rows. -->
-{#snippet contGutter(rowLayout: GraphRow)}
-  <svg width={gutterWidth} height={FILE_H} class="shrink-0" aria-hidden="true">
-    {#each continuingLanes(rowLayout) as lane, i (i)}
-      <path d="M {lane.x} 0 V {FILE_H}" fill="none" stroke={lane.color} stroke-width="1.5" />
-    {/each}
-  </svg>
-{/snippet}
-
 {#snippet commitRow(commit: CommitInfo, cindex: number)}
   {@const expanded = history.isExpanded(commit.hash)}
   <div
-    class={cn(
-      "group flex h-11 cursor-pointer items-center gap-1.5 rounded-md pr-1",
-      expanded ? "bg-accent/40" : "hover:bg-accent/40",
-    )}
+    class="group flex h-11 cursor-pointer items-center gap-1.5 rounded-md pr-1"
     role="button"
     tabindex="0"
     title={i18n.t("history.showFiles")}
@@ -363,8 +337,8 @@
     onclick={() => openFile(entry.commit, entry.file)}
     onkeydown={(e) => (e.key === "Enter" || e.key === " ") && openFile(entry.commit, entry.file)}
   >
-    {#if layout && layout.rows[entry.cindex]}
-      {@render contGutter(layout.rows[entry.cindex])}
+    {#if graphOn}
+      <div class="shrink-0" style="width:{gutterWidth}px" aria-hidden="true"></div>
     {/if}
     <div class="flex min-w-0 flex-1 items-center gap-1.5 pl-6 pr-1">
       <span class={cn("w-3 shrink-0 text-center font-mono font-semibold", text.indicator, s.class)}>
@@ -379,8 +353,8 @@
 
 {#snippet statusRow(entry: Extract<Entry, { kind: "status" }>)}
   <div class="flex h-7 items-center">
-    {#if layout && layout.rows[entry.cindex]}
-      {@render contGutter(layout.rows[entry.cindex])}
+    {#if graphOn}
+      <div class="shrink-0" style="width:{gutterWidth}px" aria-hidden="true"></div>
     {/if}
     <span class={cn("pl-6", text.meta)}>{entry.text}</span>
   </div>

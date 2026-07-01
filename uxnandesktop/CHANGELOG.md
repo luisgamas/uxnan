@@ -294,6 +294,18 @@ regressions.
   tracked as a *crispness* upgrade in `FOR-HUMAN.md`) simply takes priority.
 
 ### Fixed
+- **History: overlapping stale rows after expand/collapse (+ graph polish).**
+  Expanding then collapsing a commit could leave its file rows painted on top of
+  the following commits with the branch graph looking cut. Root cause was in the
+  shared `VirtualList`: it pushed the virtualizer's `count`/sizes in a *post-render*
+  `$effect`, so the render that reads the derived rows saw the previous options for
+  one frame — enough to strand the absolutely-positioned rows. It now syncs options
+  in `$effect.pre` (before the render reads them), so the row set is always current.
+  Also, in the History tab: the commit row no longer paints an accent background
+  (it sat *behind* the graph gutter and clashed with the node's background-punch),
+  and an expanded commit's file rows no longer draw graph lanes through them — the
+  graph stays put instead of stretching down the file list (rows keep their gutter
+  indent via a plain spacer). Removed the now-unused `contGutter`/`continuingLanes`.
 - **Kilo Code detection command.** The catalog listed Kilo Code under `kilocode`;
   its real PATH executable is `kilo`, so it now detects correctly.
 - **Install-policy field readability.** Settings → Updates → Installation kept its

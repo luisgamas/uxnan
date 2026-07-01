@@ -41,11 +41,17 @@
     overscan: 12,
   });
 
-  // Keep the virtualizer's options in sync with reactive inputs. IMPORTANT: read
-  // the store with `get()` (not `$virtualizer`) so this effect does NOT subscribe
-  // to the store — otherwise `measure()` emits, re-runs the effect, emits again…
-  // an infinite loop that freezes the UI. Deps are the explicit reads below.
-  $effect(() => {
+  // Keep the virtualizer's options in sync with reactive inputs. This MUST run
+  // *before* the render reads `rows`/`totalSize` (hence `$effect.pre`, not a
+  // post-effect): otherwise, when `items` changes (e.g. a commit's file list
+  // collapses), the render that reads the derived `rows` still sees the previous
+  // options, painting a stale frame of absolutely-positioned rows that overlap the
+  // new ones. Pushing options here means the same-tick render reads fresh virtual
+  // items. IMPORTANT: read the store with `get()` (not `$virtualizer`) so this
+  // effect does NOT subscribe to it — `setOptions`/`measure` emit, and subscribing
+  // would re-run the effect on its own emission, an infinite loop. Deps are the
+  // explicit reactive reads below.
+  $effect.pre(() => {
     const count = items.length;
     const size = estimateSize;
     const over = overscan;
