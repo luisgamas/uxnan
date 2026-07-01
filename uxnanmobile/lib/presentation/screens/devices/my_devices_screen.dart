@@ -12,6 +12,7 @@ import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
+import 'package:uxnan/presentation/widgets/ne_card.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 
 /// The app's home: the list of paired PCs (trusted bridges). The app keeps one
@@ -248,18 +249,12 @@ class _DeviceCard extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
     final host = _addressLabel(device);
 
-    return Material(
-      color: colors.surfaceContainerHighest,
-      borderRadius: const BorderRadius.all(UxnanRadius.lg),
-      child: InkWell(
-        borderRadius: const BorderRadius.all(UxnanRadius.lg),
-        onTap: onOpen,
-        child: Padding(
-          padding: const EdgeInsets.all(UxnanSpacing.md),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+    return NeCard(
+      onTap: onOpen,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
                 children: [
                   _PcAvatar(active: _isConnected),
                   const SizedBox(width: UxnanSpacing.md),
@@ -387,9 +382,7 @@ class _DeviceCard extends StatelessWidget {
               ),
             ],
           ),
-        ),
-      ),
-    );
+        );
   }
 
   String _lastSeenText(AppLocalizations l10n) {

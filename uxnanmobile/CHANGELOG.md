@@ -6,6 +6,21 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — shared `NeCard` primitive + calmer card tone (My Devices, Threads, New conversation)
+- **New `NeCard` widget** (`ne_card.dart`): the app's discrete-card primitive —
+  one calm `surfaceContainer` tone (not `surfaceContainerHighest`, which NE §2.4
+  reserves for inputs/active chips) + a 16 dp radius + the M3E `spatialFast`
+  press feedback (wraps `ExpressiveCard`). Centralizes the card look so it stays
+  consistent app-wide and ends the `surfaceContainerHighest`-for-cards drift.
+- **Migrated the hand-rolled cards** on **My Devices** (`_DeviceCard`), the
+  **Threads** list (`ThreadTile`, unread tint rebased on the calmer tone), and
+  the **New-conversation** dialog's folder + worktree cards to `NeCard`.
+- Left as-is (correct per NE): the pairing screen (already exemplary — filled
+  inputs legitimately use `surfaceContainerHighest`), the new-conversation
+  agent/model selectors (intentional borders + selection tint), and the Git
+  history/commit-detail screens (their `surfaceContainerHighest` is on code
+  chips/pills, not content cards).
+
 ### Changed — Neural Expressive redesign of the settings area (less visual noise)
 - **Settings, Personalization and Prompt Templates** rebuilt on the repo's own
   Neural Expressive components to cut visual noise (guide §4.6 / §7.2): quiet
