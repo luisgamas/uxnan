@@ -323,6 +323,11 @@ regressions.
   tracked as a *crispness* upgrade in `FOR-HUMAN.md`) simply takes priority.
 
 ### Fixed
+- **Integrated browser: window controls no longer cover its toolbar.** When the
+  browser panel is open it's the right-most panel, so the min/max/close overlay
+  (fixed top-right) landed on top of the browser's back/forward/reload + address
+  bar. The panel now leads with the same `h-9` drag strip the right panel uses, so
+  those controls float over an empty strip and the toolbar sits clear below it.
 - **History: overlapping stale rows after expand/collapse (+ graph polish).**
   Expanding then collapsing a commit could leave its file rows painted on top of
   the following commits with the branch graph looking cut. Root cause was in the

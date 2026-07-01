@@ -167,6 +167,13 @@
 </script>
 
 <div class="flex h-full w-full flex-col bg-background">
+  <!-- Window-controls drag strip. When the browser is open it is the right-most
+       panel, so the min/max/close overlay (fixed top-right, rendered in
+       +page.svelte) lands over *this* panel. Mirror the right panel's top band
+       (h-9 drag strip) so those controls float over an empty strip instead of
+       covering the toolbar buttons below — which is what happened before. -->
+  <div data-tauri-drag-region class="h-9 shrink-0 border-b border-border/60"></div>
+
   <!-- Toolbar / address bar (lives in the main window; the page window docks below) -->
   <div class="flex shrink-0 items-center gap-1 border-b border-border/60 px-1.5 py-1">
     <button
