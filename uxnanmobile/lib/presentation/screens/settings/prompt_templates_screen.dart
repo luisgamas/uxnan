@@ -4,6 +4,7 @@ import 'package:uxnan/domain/value_objects/prompt_template.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/widgets/expressive_card.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 
@@ -59,14 +60,16 @@ class PromptTemplatesScreen extends ConsumerWidget {
               UxnanSpacing.lg,
               UxnanSpacing.xxl,
             ),
+            // Dynamic-corner card list (NE §4.6): a tight 3 dp gap + 24/4 radii
+            // read the templates as one cohesive group.
             sliver: SliverList.separated(
               itemCount: templates.length,
-              separatorBuilder: (_, __) =>
-                  const SizedBox(height: UxnanSpacing.sm),
+              separatorBuilder: (_, __) => const SizedBox(height: 3),
               itemBuilder: (context, index) {
                 final template = templates[index];
                 return _TemplateCard(
                   template: template,
+                  position: _positionFor(index, templates.length),
                   onEdit: () => _edit(context, ref, existing: template),
                   onDelete: () => _confirmDelete(context, library, template),
                 );
@@ -152,16 +155,27 @@ class PromptTemplatesScreen extends ConsumerWidget {
   }
 }
 
+/// The [CardGroupPosition] for item [index] in a list of [count] cards.
+CardGroupPosition _positionFor(int index, int count) {
+  if (count == 1) return CardGroupPosition.single;
+  if (index == 0) return CardGroupPosition.first;
+  if (index == count - 1) return CardGroupPosition.last;
+  return CardGroupPosition.middle;
+}
+
 /// A single template row: its label + a one-line body preview, with edit
-/// (whole-tile tap) and delete affordances.
+/// (whole-tile tap) and delete affordances. Rendered as a dynamic-corner
+/// [ExpressiveCard] so the list reads as one cohesive group.
 class _TemplateCard extends StatelessWidget {
   const _TemplateCard({
     required this.template,
+    required this.position,
     required this.onEdit,
     required this.onDelete,
   });
 
   final PromptTemplate template;
+  final CardGroupPosition position;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
@@ -170,52 +184,47 @@ class _TemplateCard extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-    return Material(
-      color: colors.surfaceContainerHighest,
-      borderRadius: const BorderRadius.all(UxnanRadius.lg),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onEdit,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(
-            UxnanSpacing.md,
-            UxnanSpacing.sm,
-            UxnanSpacing.xs,
-            UxnanSpacing.sm,
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      template.label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: textTheme.titleSmall
-                          ?.copyWith(fontWeight: FontWeight.w600),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      template.body,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: textTheme.bodySmall
-                          ?.copyWith(color: colors.onSurfaceVariant),
-                    ),
-                  ],
+    return ExpressiveCard(
+      position: position,
+      color: colors.surfaceContainer,
+      onTap: onEdit,
+      padding: const EdgeInsets.fromLTRB(
+        UxnanSpacing.md,
+        UxnanSpacing.sm,
+        UxnanSpacing.xs,
+        UxnanSpacing.sm,
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  template.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: textTheme.titleSmall
+                      ?.copyWith(fontWeight: FontWeight.w600),
                 ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.delete_outline_rounded),
-                tooltip: l10n.promptTemplatesDeleteConfirm,
-                color: colors.onSurfaceVariant,
-                onPressed: onDelete,
-              ),
-            ],
+                const SizedBox(height: 2),
+                Text(
+                  template.body,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: textTheme.bodySmall
+                      ?.copyWith(color: colors.onSurfaceVariant),
+                ),
+              ],
+            ),
           ),
-        ),
+          IconButton(
+            icon: const Icon(Icons.delete_outline_rounded),
+            tooltip: l10n.promptTemplatesDeleteConfirm,
+            color: colors.onSurfaceVariant,
+            onPressed: onDelete,
+          ),
+        ],
       ),
     );
   }

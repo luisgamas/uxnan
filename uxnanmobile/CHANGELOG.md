@@ -6,6 +6,21 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — Neural Expressive redesign of the settings area (less visual noise)
+- **Settings, Personalization and Prompt Templates** rebuilt on the repo's own
+  Neural Expressive components to cut visual noise (guide §4.6 / §7.2): quiet
+  section labels (`onSurfaceVariant`, no accent color) instead of primary-colored
+  headers; **dynamic-corner card groups** (`ExpressiveCardGroup`, 24/4 radii +
+  3 dp gap) with a calm `surfaceContainer` tone instead of hand-rolled
+  `surfaceContainerHighest` cards; **no per-row dividers** (the gap + corners
+  separate rows); and `SegmentedButton` → **`ConnectedButtonGroup`** (the M3E
+  replacement) for the context-indicator and theme-mode selectors.
+- **New shared widgets** (`settings_tiles.dart`): `NeSectionHeader`,
+  `NeSectionHint`, `NeSwitchTile`, `NeNavTile` — the grouped-settings building
+  blocks all three screens now reuse (DRY). The language picker and template
+  list also became dynamic-corner groups. Behavior/persistence unchanged; widget
+  tests updated for the new controls.
+
 ### Added — Settings ▸ Models: hide Claude Code's "latest" aliases
 - **New "Models" settings section** (`settings_screen.dart`) with a switch,
   *Show Claude Code "latest" models*, plus an explanatory note describing what

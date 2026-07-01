@@ -8,6 +8,7 @@ import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/screens/settings/personalization_screen.dart';
 import 'package:uxnan/presentation/screens/settings/theme_manager_screen.dart';
+import 'package:uxnan/presentation/widgets/connected_button_group.dart';
 
 Widget _wrap() {
   return const ProviderScope(
@@ -66,14 +67,17 @@ void main() {
     await tester.pumpWidget(_wrap());
     await tester.pumpAndSettle();
 
-    final picker = tester.widget<SegmentedButton<ThemeModeOption>>(
-      find.byType(SegmentedButton<ThemeModeOption>),
+    final picker = tester.widget<ConnectedButtonGroup<ThemeModeOption>>(
+      find.byType(ConnectedButtonGroup<ThemeModeOption>),
     );
-    expect(picker.selected, contains(ThemeModeOption.system));
-    // Enabled on first run (brand baseline) — the segments gate nothing yet.
-    for (final segment in picker.segments) {
-      expect(segment.enabled, isTrue);
-    }
+    expect(picker.selected, ThemeModeOption.system);
+    // Enabled on first run (brand baseline): tapping another mode applies it.
+    await tester.tap(find.text('Dark'));
+    await tester.pumpAndSettle();
+    expect(
+      _container(tester).read(themeModeSettingProvider),
+      ThemeMode.dark,
+    );
     expect(_container(tester).read(useCustomThemeProvider), isFalse);
   });
 

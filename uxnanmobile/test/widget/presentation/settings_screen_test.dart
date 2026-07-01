@@ -10,6 +10,7 @@ import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
 import 'package:uxnan/presentation/screens/settings/settings_screen.dart';
+import 'package:uxnan/presentation/widgets/connected_button_group.dart';
 
 Widget _wrap() {
   return ProviderScope(
@@ -76,8 +77,8 @@ void main() {
     'context indicator selector defaults to percentage and persists a change',
     (tester) async {
       // Tall viewport so the full settings list fits without scrolling — a
-      // scrolled-to-top SegmentedButton lands under the transparent app-bar
-      // veil and the segment tap misses.
+      // scrolled-to-top control lands under the transparent app-bar veil and
+      // the tap misses.
       tester.view.physicalSize = const Size(800, 2400);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
@@ -88,16 +89,16 @@ void main() {
 
       // The three options render; percentage is selected by default.
       await tester.ensureVisible(
-        find.byType(SegmentedButton<ContextIndicatorMode>),
+        find.byType(ConnectedButtonGroup<ContextIndicatorMode>),
       );
       await tester.pumpAndSettle();
       expect(find.text('Percentage'), findsOneWidget);
       expect(find.text('Tokens'), findsOneWidget);
       expect(find.text('Both'), findsOneWidget);
-      final segmented = tester.widget<SegmentedButton<ContextIndicatorMode>>(
-        find.byType(SegmentedButton<ContextIndicatorMode>),
+      final group = tester.widget<ConnectedButtonGroup<ContextIndicatorMode>>(
+        find.byType(ConnectedButtonGroup<ContextIndicatorMode>),
       );
-      expect(segmented.selected, {ContextIndicatorMode.percentage});
+      expect(group.selected, ContextIndicatorMode.percentage);
 
       // Choosing "Both" persists it.
       await tester.tap(find.text('Both'));
