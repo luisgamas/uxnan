@@ -221,6 +221,7 @@
   // drives both the insertion marker and the floating drag label.
   let tabDrag = $state<{
     tabId: string;
+    groupId: string;
     title: string;
     pointerId: number;
     startX: number;
@@ -233,11 +234,12 @@
 
   const DRAG_THRESHOLD_PX = 5;
 
-  function onChipPointerDown(e: PointerEvent, tabId: string, title: string) {
+  function onChipPointerDown(e: PointerEvent, groupId: string, tabId: string, title: string) {
     if (e.button !== 0) return; // left button only
     if ((e.target as HTMLElement).closest("[data-tab-close]")) return; // the × button
     tabDrag = {
       tabId,
+      groupId,
       title,
       pointerId: e.pointerId,
       startX: e.clientX,
@@ -264,10 +266,17 @@
     (e.currentTarget as HTMLElement).releasePointerCapture?.(tabDrag.pointerId);
     const wasDragging = tabDrag.dragging;
     const tabId = tabDrag.tabId;
+    const groupId = tabDrag.groupId;
     const slot = dropSlot;
     tabDrag = null;
     dropSlot = null;
-    if (wasDragging && slot) terminals.moveTab(tabId, slot.groupId, slot.index);
+    if (wasDragging) {
+      if (slot) terminals.moveTab(tabId, slot.groupId, slot.index);
+    } else {
+      // A plain tap anywhere on the chip selects the tab (the whole colored
+      // chip is the hit target, not just the label).
+      terminals.setActiveTab(groupId, tabId);
+    }
   }
   /** Resolve the drop slot from the element under the pointer: over a chip, the
    *  slot is before/after it by pointer side; over a strip's empty area, append;
@@ -358,7 +367,7 @@
                       ></div>
                       <div
                         class={cn(
-                          "flex h-full shrink-0 items-center gap-1.5 px-3 text-[13px]",
+                          "flex h-full shrink-0 cursor-pointer items-center gap-1.5 px-3 text-[13px]",
                           tab.base,
                           activeChip ? tab.active : tab.inactive,
                           tabDrag?.dragging && tabDrag.tabId === t.id && "opacity-40",
@@ -368,7 +377,7 @@
                         data-group-id={g.group.id}
                         data-tab-index={ti}
                         onpointerdown={(e) =>
-                          onChipPointerDown(e, t.id, t.kind === "terminal" ? (t.agentName ?? t.title) : t.title)}
+                          onChipPointerDown(e, g.group.id, t.id, t.kind === "terminal" ? (t.agentName ?? t.title) : t.title)}
                         onpointermove={onChipPointerMove}
                         onpointerup={onChipPointerUp}
                         oncontextmenu={t.kind === "terminal"
@@ -380,22 +389,20 @@
                           {#if display}
                             <AgentStatusDot status={display.status} stale={display.stale} />
                           {/if}
-                          <button
+                          <span
                             class="max-w-[120px] truncate {t.exited ? 'line-through' : ''}"
-                            onclick={() => terminals.setActiveTab(g.group.id, t.id)}
                             title={t.agentName ?? t.title}
                           >
                             {t.agentName ?? t.title}
-                          </button>
+                          </span>
                         {:else if t.kind === "file"}
                           <FileIcon class={cn(icon.decorative, "shrink-0")} />
-                          <button
+                          <span
                             class="max-w-[120px] truncate"
-                            onclick={() => terminals.setActiveTab(g.group.id, t.id)}
                             title={t.path}
                           >
                             {t.title}
-                          </button>
+                          </span>
                           {#if terminals.fileState(t.id)?.dirty}
                             <span
                               class="text-amber-600 dark:text-amber-400"
@@ -404,22 +411,20 @@
                           {/if}
                         {:else if t.kind === "diff"}
                           <FileDiffIcon class={cn(icon.decorative, "shrink-0")} />
-                          <button
+                          <span
                             class="max-w-[120px] truncate"
-                            onclick={() => terminals.setActiveTab(g.group.id, t.id)}
                             title={t.file}
                           >
                             {t.title}
-                          </button>
+                          </span>
                         {:else}
                           <GitCommitIcon class={cn(icon.decorative, "shrink-0")} />
-                          <button
+                          <span
                             class="max-w-[120px] truncate font-mono"
-                            onclick={() => terminals.setActiveTab(g.group.id, t.id)}
                             title={t.subject}
                           >
                             {t.title}
-                          </button>
+                          </span>
                         {/if}
                         <button
                           class="rounded px-0.5 text-muted-foreground opacity-60 hover:bg-destructive/20 hover:text-foreground hover:opacity-100"
