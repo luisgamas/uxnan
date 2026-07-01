@@ -2,7 +2,6 @@
   import * as Dialog from "$lib/components/ui/dialog";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
-  import { Badge } from "$lib/components/ui/badge";
   import { browseDirs } from "$lib/api";
   import { projects } from "$lib/state/projects.svelte";
   import { cn } from "$lib/utils";
@@ -88,71 +87,86 @@
 </script>
 
 <Dialog.Root bind:open>
-  <Dialog.Content class="sm:max-w-[560px]">
-    <Dialog.Header>
-      <Dialog.Title>{i18n.t("picker.title")}</Dialog.Title>
-      <Dialog.Description>{i18n.t("picker.desc")}</Dialog.Description>
-    </Dialog.Header>
+  <!-- Same shell as the quick-switch palette: overflow-hidden + p-0 so the
+       rounded card clips every section (the scroll list and its scrollbar
+       included) and nothing bleeds past the frame; each section owns its px-4. -->
+  <Dialog.Content class="gap-0 overflow-hidden p-0 sm:max-w-[560px]">
+    <!-- Header -->
+    <div class="flex flex-col gap-1 border-b border-border/60 px-4 pb-3 pt-4 pr-10">
+      <Dialog.Title class="text-[15px] font-semibold leading-none">{i18n.t("picker.title")}</Dialog.Title>
+      <Dialog.Description class={text.meta}>{i18n.t("picker.desc")}</Dialog.Description>
+    </div>
 
-    <!-- Current path + up -->
-    <div class="flex items-center gap-2">
+    <!-- Location bar: a parent-up button + the current path as an editable field
+         with a leading folder glyph, so it reads like a file-manager address. -->
+    <div class="flex items-center gap-2 border-b border-border/60 px-4 py-3">
       <Button
         variant="outline"
         size="icon-sm"
+        class="size-8 shrink-0"
         title={i18n.t("picker.parent")}
         disabled={!listing?.parent || loading}
         onclick={() => listing?.parent && go(listing.parent)}
       >
         <CornerLeftUpIcon class={icon.button} />
       </Button>
-      <Input
-        class="h-7 flex-1 font-mono text-xs"
-        placeholder={i18n.t("picker.pathPlaceholder")}
-        bind:value={pathInput}
-        spellcheck={false}
-        onkeydown={onNavKey}
-      />
+      <div class="relative min-w-0 flex-1">
+        <FolderIcon
+          class="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground/80"
+        />
+        <Input
+          class="h-8 w-full pl-8 font-mono text-xs"
+          placeholder={i18n.t("picker.pathPlaceholder")}
+          bind:value={pathInput}
+          spellcheck={false}
+          onkeydown={onNavKey}
+        />
+      </div>
     </div>
 
-    <!-- Sub-folders -->
-    <div class="uxnan-scroll h-64 overflow-y-auto rounded-md border border-border">
+    <!-- Sub-folders scroll region. Each row is a folder glyph + name; repos are
+         flagged with a git-folder icon and a quiet primary tag, plus a hover Add. -->
+    <div class="uxnan-scroll h-64 overflow-y-auto p-2">
       {#if loading}
-        <div class="p-4 text-center text-xs text-muted-foreground">{i18n.t("common.loading")}</div>
+        <div class={cn("py-10 text-center", text.meta)}>{i18n.t("common.loading")}</div>
       {:else if listing && listing.entries.length === 0}
-        <div class="p-4 text-center text-xs text-muted-foreground">
-          {i18n.t("picker.empty")}
+        <div class="flex flex-col items-center gap-2.5 py-10 text-center">
+          <FolderIcon class="size-6 text-muted-foreground/40" />
+          <p class={text.meta}>{i18n.t("picker.empty")}</p>
         </div>
       {:else if listing}
         {#each listing.entries as entry, i (entry.path)}
           <div
             class={cn(
-              "group flex items-center gap-2 px-2 py-1.5",
+              "group flex h-9 items-center gap-2.5 rounded-md px-2",
               i === activeIdx ? "bg-accent" : "hover:bg-accent/50",
             )}
             onmouseenter={() => (activeIdx = i)}
             role="presentation"
           >
             <button
-              class={cn("flex min-w-0 flex-1 items-center gap-2 text-left", text.body)}
+              class={cn("flex min-w-0 flex-1 items-center gap-2.5 text-left", text.body)}
               title={i18n.t("picker.open", { name: entry.name })}
               onclick={() => go(entry.path)}
             >
               {#if entry.isRepo}
                 <FolderGitIcon class={cn(icon.button, "shrink-0 text-primary")} />
               {:else}
-                <FolderIcon class={cn(icon.button, "shrink-0 text-muted-foreground")} />
+                <FolderIcon class={cn(icon.button, "shrink-0 text-muted-foreground/80")} />
               {/if}
               <span class="truncate">{entry.name}</span>
               {#if entry.isRepo}
-                <Badge variant="outline" class="px-1 py-0 text-[9px] uppercase">
+                <span
+                  class="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-primary"
+                >
                   {i18n.t("picker.repoBadge")}
-                </Badge>
+                </span>
               {/if}
             </button>
             <Button
-              variant="ghost"
+              variant={entry.isRepo ? "secondary" : "ghost"}
               size="sm"
-              class="h-6 text-[11px] opacity-0 group-hover:opacity-100"
+              class="h-7 shrink-0 px-2.5 text-[11px] opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100"
               disabled={busy}
               onclick={() => add(entry.path)}
             >
@@ -164,24 +178,22 @@
     </div>
 
     {#if error}
-      <div
-        class="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive"
-      >
+      <div class="border-t border-border/60 bg-destructive/10 px-4 py-2 text-xs text-destructive">
         {error}
       </div>
     {/if}
 
-    <Dialog.Footer class="items-center sm:justify-between">
+    <!-- Footer: hints + cancel / add, on a quiet band with a top hairline. -->
+    <div
+      class="flex items-center justify-between gap-2 border-t border-border/60 bg-muted/30 px-4 py-2.5"
+    >
       <DialogHints class="hidden sm:flex" />
       <div class="flex items-center gap-2">
-        <Button variant="ghost" onclick={() => (open = false)}>{i18n.t("common.cancel")}</Button>
-        <Button
-          disabled={!listing || busy}
-          onclick={() => listing && add(listing.path)}
-        >
+        <Button variant="ghost" size="sm" onclick={() => (open = false)}>{i18n.t("common.cancel")}</Button>
+        <Button size="sm" disabled={!listing || busy} onclick={() => listing && add(listing.path)}>
           {busy ? i18n.t("common.adding") : i18n.t("picker.addFolder")}
         </Button>
       </div>
-    </Dialog.Footer>
+    </div>
   </Dialog.Content>
 </Dialog.Root>

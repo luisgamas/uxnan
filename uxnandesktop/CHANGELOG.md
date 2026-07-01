@@ -54,7 +54,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   and overflowed the screen on projects with several worktrees.
 
 ### Changed — clean desktop UI redesign
-- **Quick-switch palette (Ctrl/Cmd+P) redesigned.** The three sections were
+- **Add-project folder browser redesigned.** Rebuilt on the **same shell as the
+  quick-switch palette** — `Dialog.Content` is `overflow-hidden p-0` so the rounded
+  card clips every section (the scroll list and its scrollbar included) and nothing
+  bleeds past the frame; each stacked section (header · address bar · folder list ·
+  footer) owns its `px-4` and a hairline divider. The path row is a file-manager
+  address bar (parent-up + an editable path field with a leading folder glyph,
+  `min-w-0` so a long path can't overflow). Repos are flagged by a git-folder icon
+  and a quiet primary tag (replacing the tiny outline badge), with a hover "Add"
+  (filled `secondary` for repos); loading/empty states are centered with an icon. The three sections were
   rebuilt rather than merely spaced out: the **search** row is roomier with the
   input as the focal point (15px) and a live result count on the right; **results**
   are now two-line rows (branch over its folder path) with a soft leading branch
