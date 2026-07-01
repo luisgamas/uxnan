@@ -147,6 +147,17 @@ are **done** (see `CHANGELOG.md` + `architecture/02d` §3). Remaining follow-ups
       worktree only).
 - [ ] Tab/region reorder + drag for the mixed `terminal|file|diff` tabs.
 
+**Workspace / context menu**
+- [ ] **"Open with" external editors/IDEs + customization.** The worktree row's
+      right-click menu (a reusable `ui/context-menu`) covers terminals · agents ·
+      reveal-in-file-manager · configure · remove. The requested *Open with →
+      text editors / IDEs* submenu (launch the worktree folder in VS Code / an
+      IDE) plus a user-customizable editor list needs a new **external-editor
+      registry**: a catalog + per-editor launch command, a Settings pane to
+      add/edit them, and a backend "open path in app" command. Only "Reveal in
+      file manager" (`reveal_path`) ships today. Inline `FOR-DEV:` marker at the
+      reveal item in `src/lib/components/WorktreeRow.svelte`.
+
 **Theming**
 - [ ] Import font *files* (.ttf/.otf/.woff2) via `@font-face` (today: installed
       family name only).

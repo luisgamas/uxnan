@@ -1,13 +1,13 @@
 <script lang="ts">
   // A project: a borderless group with an identity header and, when expanded,
-  // a list of its worktrees (the primary one first, badged, then the children).
-  // The header's three actions — collapse/expand, the shared launcher (+), and
-  // the overflow menu (copy path / remove project) — reveal on hover.
-  import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
+  // a list of its worktrees (the primary one first, then the children). The
+  // header's two actions — collapse/expand and the shared launcher (+) — reveal
+  // on hover; right-clicking the header opens the shared actions menu
+  // (`RowActionsMenu`: copy path / remove project / terminals / agents / …).
+  import * as ContextMenu from "$lib/components/ui/context-menu";
   import { Button } from "$lib/components/ui/button";
   import { projects } from "$lib/state/projects.svelte";
   import { unread } from "$lib/state/unread.svelte";
-  import { clipboardWrite } from "$lib/clipboard";
   import { cn } from "$lib/utils";
   import { icon, iconButton, surface, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
@@ -15,12 +15,10 @@
   import WorktreeRow from "./WorktreeRow.svelte";
   import AgentSpace from "./AgentSpace.svelte";
   import LauncherDialog from "./LauncherDialog.svelte";
+  import RowActionsMenu from "./RowActionsMenu.svelte";
   import type { RepoData } from "$lib/types";
   import FolderGitIcon from "@lucide/svelte/icons/folder-git-2";
   import FolderIcon from "@lucide/svelte/icons/folder";
-  import MoreVerticalIcon from "@lucide/svelte/icons/ellipsis-vertical";
-  import CopyIcon from "@lucide/svelte/icons/copy";
-  import Trash2Icon from "@lucide/svelte/icons/trash-2";
   import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
   import PlusIcon from "@lucide/svelte/icons/plus";
 
@@ -67,78 +65,71 @@
 </script>
 
 <div class="flex flex-col">
-  <!-- Project header -->
-  <div
-    class={cn(
-      "group/header flex min-h-9 items-center gap-2 rounded-md px-2 py-1.5 transition-colors",
-      projectActive && !isExpanded && surface.active,
-    )}
-    role="button"
-    tabindex="0"
-    title={repo.path}
-    onclick={onHeaderActivate}
-    onkeydown={(e) => (e.key === "Enter" || e.key === " ") && onHeaderActivate()}
-  >
-    {#if isGit}
-      <FolderGitIcon class={cn(icon.nav, "shrink-0 text-muted-foreground")} />
-    {:else}
-      <FolderIcon class={cn(icon.nav, "shrink-0 text-muted-foreground")} />
-    {/if}
-    <span class={cn("min-w-0 flex-1 truncate", text.title)} title={repo.name}>{repo.name}</span>
-    {#if hasUnread}
-      <span class="size-1.5 shrink-0 rounded-full bg-red-500" title={i18n.t("monitor.unread")}></span>
-    {/if}
-
-    <div class="flex shrink-0 items-center gap-0.5">
-      {#if isGit}
-        <Button
-          variant="ghost"
-          size="icon"
-          class={cn(iconButton.xs, hoverReveal)}
-          title={isExpanded ? i18n.t("project.collapse") : i18n.t("project.expand")}
-          aria-label={isExpanded ? i18n.t("project.collapse") : i18n.t("project.expand")}
-          onclick={(e) => {
-            e.stopPropagation();
-            expanded = !isExpanded;
-          }}
+  <!-- Project header — left-click expands (git) or selects (folder); right-click
+       opens the shared actions menu (same body as a worktree row). -->
+  <ContextMenu.Root>
+    <ContextMenu.Trigger>
+      {#snippet child({ props })}
+        <div
+          {...props}
+          class={cn(
+            "group/header flex min-h-9 items-center gap-2 rounded-md px-2 py-1.5 transition-colors",
+            projectActive && !isExpanded && surface.active,
+          )}
+          role="button"
+          tabindex="0"
+          title={repo.path}
+          onclick={onHeaderActivate}
+          onkeydown={(e) => (e.key === "Enter" || e.key === " ") && onHeaderActivate()}
         >
-          <ChevronRightIcon class={cn(icon.action, "transition-transform", isExpanded && "rotate-90")} />
-        </Button>
-      {/if}
-      <Button
-        variant="ghost"
-        size="icon"
-        class={cn(iconButton.xs, hoverReveal)}
-        title={i18n.t("launcher.open", { name: repo.name })}
-        onclick={(e) => {
-          e.stopPropagation();
-          launcherOpen = true;
-        }}
-      >
-        <PlusIcon class={icon.action} />
-      </Button>
-      <DropdownMenu.Root>
-        <DropdownMenu.Trigger>
-          {#snippet child({ props })}
-            <Button variant="ghost" size="icon" class={cn(iconButton.xs, hoverReveal)} title={i18n.t("common.more")} onclick={(e: MouseEvent) => e.stopPropagation()} {...props}>
-              <MoreVerticalIcon class={icon.action} />
+          {#if isGit}
+            <FolderGitIcon class={cn(icon.nav, "shrink-0 text-muted-foreground")} />
+          {:else}
+            <FolderIcon class={cn(icon.nav, "shrink-0 text-muted-foreground")} />
+          {/if}
+          <span class={cn("min-w-0 flex-1 truncate", text.title)} title={repo.name}>{repo.name}</span>
+          {#if hasUnread}
+            <span class="size-1.5 shrink-0 rounded-full bg-red-500" title={i18n.t("monitor.unread")}></span>
+          {/if}
+
+          <div class="flex shrink-0 items-center gap-0.5">
+            {#if isGit}
+              <Button
+                variant="ghost"
+                size="icon"
+                class={cn(iconButton.xs, hoverReveal)}
+                title={isExpanded ? i18n.t("project.collapse") : i18n.t("project.expand")}
+                aria-label={isExpanded ? i18n.t("project.collapse") : i18n.t("project.expand")}
+                onclick={(e) => {
+                  e.stopPropagation();
+                  expanded = !isExpanded;
+                }}
+              >
+                <ChevronRightIcon class={cn(icon.action, "transition-transform", isExpanded && "rotate-90")} />
+              </Button>
+            {/if}
+            <Button
+              variant="ghost"
+              size="icon"
+              class={cn(iconButton.xs, hoverReveal)}
+              title={i18n.t("launcher.open", { name: repo.name })}
+              onclick={(e) => {
+                e.stopPropagation();
+                launcherOpen = true;
+              }}
+            >
+              <PlusIcon class={icon.action} />
             </Button>
-          {/snippet}
-        </DropdownMenu.Trigger>
-        <DropdownMenu.Content align="end" class="min-w-44">
-          <DropdownMenu.Item class={text.menu} onclick={() => clipboardWrite(repo.path)}>
-            <CopyIcon class={icon.button} />
-            {i18n.t("common.copyPath")}
-          </DropdownMenu.Item>
-          <DropdownMenu.Separator />
-          <DropdownMenu.Item variant="destructive" class={text.menu} onclick={() => (confirmRemoveOpen = true)}>
-            <Trash2Icon class={icon.button} />
-            {i18n.t("project.removeProject")}
-          </DropdownMenu.Item>
-        </DropdownMenu.Content>
-      </DropdownMenu.Root>
-    </div>
-  </div>
+          </div>
+        </div>
+      {/snippet}
+    </ContextMenu.Trigger>
+    <RowActionsMenu
+      path={mainPath}
+      removeLabel={i18n.t("project.removeProject")}
+      onRemove={() => (confirmRemoveOpen = true)}
+    />
+  </ContextMenu.Root>
 
   {#if isGit}
     {#if isExpanded}

@@ -6,6 +6,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 
 ### Added
+- **Reusable `ContextMenu` primitive + shared actions menu.** Added a
+  `ui/context-menu` wrapper (bits-ui `ContextMenu`, styled to match our
+  `dropdown-menu`: same popover surface, ring, animation, submenus, with
+  scroll-capped content/sub-content, at the skill's menu density —
+  `min-h-7 gap-2 px-2 py-1.5`). A single reusable `RowActionsMenu` renders the
+  body — new terminal (default) + a *by-profile* submenu, **Launch agent** and
+  **Active agents** submenus (both scroll when long), reveal in file manager,
+  copy path, a Configure submenu (agents / terminals), and a destructive remove —
+  and is shared by **both** the worktree/branch rows **and** the project-card
+  header via **right-click**. The always-visible **⋯ overflow buttons were
+  removed** from every worktree row **and** the project header (the right-click
+  menu replaces them; the header keeps only expand + the launcher **+**).
 - **Reusable searchable selectors (`Combobox`, `MultiSelect`).** Extracted the
   searchable-select pattern that had lived inside `FontPicker` (Popover + Command:
   a search box, grouped options, comfortable padding, a check on the current
@@ -33,6 +45,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   nav height (`h-8`) instead of the slightly shorter `h-7`.
 - **Project card header** no longer paints a hover background; the three header
   actions still reveal on hover and the active-project highlight is unchanged.
+- **Clicking a worktree/branch row now opens a terminal.** Left-click (or
+  Enter/Space) selects and links the worktree and opens a **default-profile
+  terminal** when that workspace has none yet — so a click lands you in a working
+  terminal instead of an empty pane. Repeated clicks don't stack duplicates (it
+  only opens one when the workspace is empty).
 - **Center tab strip.** Tabs now sit flush (removed the inter-tab gap and the
   always-reserved insertion markers, which collapse to zero width until they are
   the active drop target) and the **whole tab chip is the click target** (a tap
