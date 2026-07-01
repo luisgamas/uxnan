@@ -389,7 +389,12 @@
         <Button
           variant="ghost"
           size="icon"
-          class={cn(iconButton.xs, history.showGraph && "text-primary")}
+          aria-pressed={history.showGraph}
+          class={cn(
+            iconButton.xs,
+            history.showGraph &&
+              "bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary",
+          )}
           title={i18n.t(history.showGraph ? "history.hideGraph" : "history.showGraph")}
           onclick={() => (history.showGraph = !history.showGraph)}
         >

@@ -54,6 +54,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   and overflowed the screen on projects with several worktrees.
 
 ### Changed — clean desktop UI redesign
+- **History graph button reads as a toggle.** The show/hide-graph button in the
+  History header now shows a clear pressed state (soft primary fill + `text-primary`,
+  `aria-pressed`) when the graph is on, instead of only tinting the icon — so its
+  on/off state is obvious while it stays a ghost icon button like its neighbors.
 - **New-worktree dialog redesigned + unified on `Combobox`.** The branch field
   gained a leading branch glyph; the **base ref** and **agent** pickers moved from
   the raw `Select` to the shared searchable `Combobox` (agent logos via its
