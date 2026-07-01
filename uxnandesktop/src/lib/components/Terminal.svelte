@@ -194,6 +194,18 @@
           void terminals.closeTabAnywhere(id);
           e.preventDefault();
           return false;
+        case "newTerminal":
+          app.openTerminal();
+          e.preventDefault();
+          return false;
+        case "splitRight":
+          app.splitActiveTerminal("row");
+          e.preventDefault();
+          return false;
+        case "splitDown":
+          app.splitActiveTerminal("col");
+          e.preventDefault();
+          return false;
         case "cycleTabNext":
           terminals.cycleTab(true);
           e.preventDefault();

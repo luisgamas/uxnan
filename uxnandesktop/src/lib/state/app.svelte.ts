@@ -25,7 +25,7 @@ import {
   type RepoData,
   type TerminalProfile,
 } from "$lib/types";
-import { terminals } from "$lib/state/terminals.svelte";
+import { terminals, type SplitDir } from "$lib/state/terminals.svelte";
 import { primeNotifications } from "$lib/notify";
 import { buildRunCommand, shellKind } from "$lib/shell";
 import { currentOS } from "$lib/platform";
@@ -324,6 +324,20 @@ class AppStore {
       shell: command || undefined,
       args: command ? profile?.args : undefined,
       workspace: opts?.workspace,
+    });
+  }
+
+  /** Split the active workspace's focused terminal region in `dir`, opening a
+   *  new terminal from the default profile in the fresh pane. Stays bound to the
+   *  active workspace; a no-op when there's no region to split (nothing selected
+   *  / an empty workspace), so a keyboard shortcut does nothing rather than
+   *  surprising the user with an out-of-context split. */
+  splitActiveTerminal(dir: SplitDir): void {
+    const profile = this.defaultProfile();
+    const command = profile?.command?.trim();
+    terminals.split(terminals.activeGroupId, dir, {
+      shell: command || undefined,
+      args: command ? profile?.args : undefined,
     });
   }
 

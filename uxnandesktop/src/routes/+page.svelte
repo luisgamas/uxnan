@@ -179,6 +179,20 @@
           terminals.focusSplit(-1);
         }
         return;
+      case "newTerminal":
+        // Always tied to the active workspace (bootstraps the first terminal if
+        // it's empty — same as the empty-state button).
+        e.preventDefault();
+        app.openTerminal();
+        return;
+      case "splitRight":
+        e.preventDefault();
+        app.splitActiveTerminal("row");
+        return;
+      case "splitDown":
+        e.preventDefault();
+        app.splitActiveTerminal("col");
+        return;
       case "saveFile":
         return; // handled by the editor's own keymap when focused
       case "worktreePalette":

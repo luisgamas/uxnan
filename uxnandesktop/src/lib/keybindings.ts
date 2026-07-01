@@ -77,6 +77,27 @@ export const KEY_ACTIONS: KeyAction[] = [
     default: "Mod+J",
   },
   {
+    id: "newTerminal",
+    labelKey: "shortcuts.newTerminal",
+    descKey: "shortcuts.newTerminalDesc",
+    category: "terminal",
+    default: "Mod+Shift+T",
+  },
+  {
+    id: "splitRight",
+    labelKey: "shortcuts.splitRight",
+    descKey: "shortcuts.splitRightDesc",
+    category: "terminal",
+    default: "Mod+Shift+ArrowRight",
+  },
+  {
+    id: "splitDown",
+    labelKey: "shortcuts.splitDown",
+    descKey: "shortcuts.splitDownDesc",
+    category: "terminal",
+    default: "Mod+Shift+ArrowDown",
+  },
+  {
     id: "cycleTabNext",
     labelKey: "shortcuts.cycleTabNext",
     descKey: "shortcuts.cycleTabNextDesc",

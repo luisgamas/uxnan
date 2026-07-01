@@ -23,9 +23,9 @@
   import { divider, icon, tab, text } from "$lib/design";
   import { cn } from "$lib/utils";
   import { i18n } from "$lib/i18n";
+  import { resolveBinding } from "$lib/keybindings";
+  import KeyChord from "./KeyChord.svelte";
   import PlusIcon from "@lucide/svelte/icons/plus";
-  import Columns2Icon from "@lucide/svelte/icons/columns-2";
-  import Rows2Icon from "@lucide/svelte/icons/rows-2";
   import GitBranchIcon from "@lucide/svelte/icons/git-branch";
   import FileIcon from "@lucide/svelte/icons/file";
   import FileDiffIcon from "@lucide/svelte/icons/file-diff";
@@ -158,7 +158,14 @@
   // --- Context menus -------------------------------------------------------
   type MenuItem =
     | { separator: true }
-    | { label: string; action: () => void; danger?: boolean; disabled?: boolean };
+    | {
+        label: string;
+        action: () => void;
+        danger?: boolean;
+        disabled?: boolean;
+        /** Raw chord for the trailing keycap hint (e.g. "Ctrl+C", "Mod+W"). */
+        chord?: string;
+      };
   let menu = $state<{ x: number; y: number; items: MenuItem[] } | null>(null);
 
   function openMenu(e: MouseEvent, items: MenuItem[]) {
@@ -172,10 +179,12 @@
       {
         label: i18n.t("terminal.splitRight"),
         action: () => terminals.split(groupId, "row", defaultShellArgs()),
+        chord: resolveBinding("splitRight"),
       },
       {
         label: i18n.t("terminal.splitDown"),
         action: () => terminals.split(groupId, "col", defaultShellArgs()),
+        chord: resolveBinding("splitDown"),
       },
     ];
   }
@@ -184,11 +193,13 @@
       {
         label: i18n.t("terminal.newTerminal"),
         action: () => terminals.create({ groupId, ...defaultShellArgs() }),
+        chord: resolveBinding("newTerminal"),
       },
       {
         label: i18n.t("terminal.closeTerminal"),
         action: () => void terminals.closeTab(groupId, tabId),
         danger: true,
+        chord: resolveBinding("closeCenter"),
       },
     ];
   }
@@ -197,8 +208,13 @@
     terminals.setActiveTab(groupId, tabId);
     const ctrl = terminals.controller(tabId);
     openMenu(e, [
-      { label: i18n.t("terminal.copy"), action: () => ctrl?.copy(), disabled: !ctrl?.hasSelection() },
-      { label: i18n.t("terminal.paste"), action: () => void ctrl?.paste() },
+      {
+        label: i18n.t("terminal.copy"),
+        action: () => ctrl?.copy(),
+        disabled: !ctrl?.hasSelection(),
+        chord: "Ctrl+C",
+      },
+      { label: i18n.t("terminal.paste"), action: () => void ctrl?.paste(), chord: "Ctrl+V" },
       { separator: true },
       ...splitItems(groupId),
       { separator: true },
@@ -473,23 +489,9 @@
                         +
                       </button>
                     {/if}
+                    <!-- Split lives in each terminal's right-click menu (tab or
+                         pane), not here — this stays a drag region. -->
                     <div data-tauri-drag-region class="flex-1"></div>
-                    <button
-                      class="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                      title={i18n.t("terminal.splitRight")}
-                      aria-label={i18n.t("terminal.splitRight")}
-                      onclick={() => terminals.split(g.group.id, "row", defaultShellArgs())}
-                    >
-                      <Columns2Icon class={icon.button} />
-                    </button>
-                    <button
-                      class="ml-0.5 flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                      title={i18n.t("terminal.splitDown")}
-                      aria-label={i18n.t("terminal.splitDown")}
-                      onclick={() => terminals.split(g.group.id, "col", defaultShellArgs())}
-                    >
-                      <Rows2Icon class={icon.button} />
-                    </button>
                   </div>
 
                   <!-- Pane stack for this region (active tab shown). One pane per
@@ -661,10 +663,12 @@
   </div>
 {/if}
 
-<!-- Floating context menu -->
+<!-- Floating context menu (right-click on a terminal pane or its tab). Styled to
+     match the app's other menus (ring + soft popover, rounded rows); items with a
+     keyboard equivalent show it as a trailing keycap hint. -->
 {#if menu}
   <div
-    class="fixed z-50 min-w-[160px] rounded-md border border-border bg-popover py-1 text-popover-foreground shadow-md"
+    class="fixed z-50 min-w-44 rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10"
     style="left:{menu.x}px; top:{menu.y}px"
     role="menu"
     tabindex="-1"
@@ -672,19 +676,26 @@
   >
     {#each menu.items as item, i (i)}
       {#if "separator" in item}
-        <div class="my-1 h-px bg-border"></div>
+        <div class="-mx-1 my-1 h-px bg-border"></div>
       {:else}
         <button
-          class="flex w-full items-center px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground disabled:opacity-40 disabled:hover:bg-transparent {item.danger
-            ? 'text-destructive'
-            : ''}"
+          class={cn(
+            "flex min-h-7 w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm disabled:pointer-events-none disabled:opacity-50",
+            item.danger
+              ? "text-destructive hover:bg-destructive/10 hover:text-destructive"
+              : "hover:bg-accent hover:text-accent-foreground",
+          )}
+          role="menuitem"
           disabled={item.disabled}
           onclick={() => {
             item.action();
             menu = null;
           }}
         >
-          {item.label}
+          <span class="truncate">{item.label}</span>
+          {#if item.chord}
+            <KeyChord chord={item.chord} class="ml-auto pl-2" />
+          {/if}
         </button>
       {/if}
     {/each}

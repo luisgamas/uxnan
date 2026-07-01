@@ -54,6 +54,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   and overflowed the screen on projects with several worktrees.
 
 ### Changed — clean desktop UI redesign
+- **Terminal split moved to the context menu + keyboard.** Removed the two
+  split-vertical / split-horizontal buttons from the center tab strip; splitting
+  now lives only in each terminal's right-click menu (pane or tab). That menu was
+  restyled to match the app's other menus (soft popover ring, rounded rows) and
+  now shows a trailing **keycap hint** for every action that has a shortcut. Added
+  three configurable shortcuts (Settings → Keyboard shortcuts): **New terminal**
+  (`Mod+Shift+T`), **Split right** (`Mod+Shift+→`) and **Split down**
+  (`Mod+Shift+↓`) — picked to avoid clobbering shell signals (Ctrl+C/D/\, …) and to
+  sit in the same directional family as focus-split (`Mod+Alt+→/←`). All three stay
+  bound to the **active workspace**: new terminal opens in its focused region
+  (bootstrapping the first one when the workspace is empty, same as the empty-state
+  button), and split acts on the focused region — a **no-op when there's nothing to
+  split**, so a shortcut never spawns an out-of-context pane and no chooser is shown.
+  New `app.splitActiveTerminal`; the shortcuts are handled both globally (`+page`)
+  and while a terminal is focused (`Terminal.svelte`). Also gave the copy/paste/close
+  menu items their keycap hints (`Ctrl+C` / `Ctrl+V` / the `closeCenter` chord).
 - **History graph button reads as a toggle.** The show/hide-graph button in the
   History header now shows a clear pressed state (soft primary fill + `text-primary`,
   `aria-pressed`) when the graph is on, instead of only tinting the icon — so its
