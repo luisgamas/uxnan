@@ -351,18 +351,19 @@
                        clickable; the flex-1 spacer below is the main drag zone). -->
                   <div
                     data-tauri-drag-region
-                    class={cn("uxnan-scroll flex h-9 shrink-0 items-center gap-1 overflow-x-auto bg-sidebar px-1", divider.bottom)}
+                    class={cn("uxnan-scroll flex h-9 shrink-0 items-center overflow-x-auto bg-sidebar px-1", divider.bottom)}
                     data-tab-strip
                     data-group-id={g.group.id}
                     data-tab-count={g.group.tabs.length}
                   >
                     {#each g.group.tabs as t, ti (t.id)}
                       {@const activeChip = g.group.activeTabId === t.id}
-                      <!-- Insertion marker before this tab -->
+                      <!-- Insertion marker before this tab: zero-width until it's
+                           the active drop target, so tabs sit flush (no gaps). -->
                       <div
-                        class="h-5 w-0.5 shrink-0 rounded-full {isDropAt(g.group.id, ti)
-                          ? 'bg-ring'
-                          : 'bg-transparent'}"
+                        class="h-5 shrink-0 rounded-full {isDropAt(g.group.id, ti)
+                          ? 'w-0.5 bg-ring'
+                          : 'w-0 bg-transparent'}"
                         aria-hidden="true"
                       ></div>
                       <div
@@ -439,12 +440,12 @@
                     {/each}
                     <!-- Insertion marker after the last tab (append slot) -->
                     <div
-                      class="h-5 w-0.5 shrink-0 rounded-full {isDropAt(
+                      class="h-5 shrink-0 rounded-full {isDropAt(
                         g.group.id,
                         g.group.tabs.length,
                       )
-                        ? 'bg-ring'
-                        : 'bg-transparent'}"
+                        ? 'w-0.5 bg-ring'
+                        : 'w-0 bg-transparent'}"
                       aria-hidden="true"
                     ></div>
                     <!-- The "+" opens the unified launcher (terminals · agents ·
@@ -482,7 +483,7 @@
                       <Columns2Icon class={icon.button} />
                     </button>
                     <button
-                      class="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                      class="ml-0.5 flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                       title={i18n.t("terminal.splitDown")}
                       aria-label={i18n.t("terminal.splitDown")}
                       onclick={() => terminals.split(g.group.id, "col", defaultShellArgs())}
