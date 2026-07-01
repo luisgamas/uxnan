@@ -339,6 +339,14 @@ regressions.
   tracked as a *crispness* upgrade in `FOR-HUMAN.md`) simply takes priority.
 
 ### Fixed
+- **New terminals open in the active project's folder, not the PC home.** A terminal
+  created for a worktree — the empty-state button, the tab-strip `+`, the *New
+  terminal* shortcut, or a split — now defaults its working directory to that
+  workspace's folder. Before, it spawned in the home directory unless the caller
+  passed an explicit `cwd` (only the card context menu did), so the shortcut/`+`
+  terminals all landed in home even inside a project. Centralized in
+  `terminals.create`/`split` via a `cwdFor` helper; the Global scratch space (which
+  has no folder) still opens in home.
 - **Integrated browser: re-docks when the app window moves/resizes.** The browser
   is a separate owned webview positioned in absolute screen coords over the panel
   slot; its bounds were only re-pushed when the slot's *window-relative* rect

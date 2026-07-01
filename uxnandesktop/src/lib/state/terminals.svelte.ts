@@ -570,12 +570,23 @@ class TerminalStore {
   }
 
   // --- Tabs ----------------------------------------------------------------
+  /** The folder a new terminal should open in: an explicit `cwd` wins; otherwise
+   *  the target workspace's folder (its worktree path), so a terminal opened in a
+   *  project lands in that project rather than the PC home. The Global scratch
+   *  space (`""`) has no folder, so it falls back to the backend default (home). */
+  private cwdFor(explicit: string | undefined, workspace: string): string | undefined {
+    if (explicit) return explicit;
+    return workspace && workspace !== GLOBAL_WORKSPACE ? workspace : undefined;
+  }
+
   /** Add a tab to a region (defaults to the active region of the active
    *  workspace). `opts.workspace` switches workspace first; an empty workspace
-   *  opens its first region. */
+   *  opens its first region. A terminal with no explicit `cwd` inherits the
+   *  target workspace's folder (see [`cwdFor`]). */
   create(opts?: NewTabOptions): string {
     if (opts?.workspace !== undefined) this.setWorkspace(opts.workspace);
-    const tab = newTab(opts);
+    const cwd = this.cwdFor(opts?.cwd, opts?.workspace ?? this.activeWorkspace);
+    const tab = newTab({ ...opts, cwd });
     this.insertTab(tab, opts?.groupId);
     return tab.id;
   }
@@ -1044,7 +1055,10 @@ class TerminalStore {
     if (!this.root) return;
     const group = findGroup(this.root, groupId);
     if (!group) return;
-    const fresh = newGroup(opts);
+    // The new pane inherits the active workspace's folder when no cwd is given,
+    // so a split in a project opens in that project (not the PC home).
+    const cwd = this.cwdFor(opts?.cwd, this.activeWorkspace);
+    const fresh = newGroup({ ...opts, cwd });
     this.root = replaceGroup(this.root, groupId, {
       kind: "split",
       dir,
