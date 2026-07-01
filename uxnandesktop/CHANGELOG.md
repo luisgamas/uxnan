@@ -54,6 +54,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   and overflowed the screen on projects with several worktrees.
 
 ### Changed — clean desktop UI redesign
+- **Quick-switch palette (Ctrl/Cmd+P) redesigned.** The three sections were
+  rebuilt rather than merely spaced out: the **search** row is roomier with the
+  input as the focal point (15px) and a live result count on the right; **results**
+  are now two-line rows (branch over its folder path) with a soft leading branch
+  glyph chip and the repo as a trailing tag, at a comfortable 52px; the **empty
+  state** is a centered icon + message; and the **hint bar** got more breathing
+  room. New `palette.countOne/Other` i18n (EN/ES).
 - **Keyboard shortcuts render as individual keycaps.** New reusable `KeyChord`
   splits a chord into one `Kbd` per key with a faint "+" between (Mac keeps the
   tight `⌘`-cluster, no "+"), so `Ctrl+,` reads as `Ctrl` `+` `,` instead of one

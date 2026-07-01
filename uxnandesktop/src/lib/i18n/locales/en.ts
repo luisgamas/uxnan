@@ -266,6 +266,8 @@ export const en = {
   "palette.title": "Search a project or worktree",
   "palette.placeholder": "Search a project or worktree…",
   "palette.empty": "No projects or worktrees match.",
+  "palette.countOne": "{n} result",
+  "palette.countOther": "{n} results",
   "palette.hintNavigate": "Navigate",
   "palette.hintSelect": "Select",
   "palette.hintExit": "Exit",

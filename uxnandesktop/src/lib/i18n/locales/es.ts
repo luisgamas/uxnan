@@ -263,6 +263,8 @@ export const es: Record<MessageKey, string> = {
   "palette.title": "Buscar un proyecto o worktree",
   "palette.placeholder": "Buscar un proyecto o worktree…",
   "palette.empty": "Ningún proyecto o worktree coincide.",
+  "palette.countOne": "{n} resultado",
+  "palette.countOther": "{n} resultados",
   "palette.hintNavigate": "Navegar",
   "palette.hintSelect": "Seleccionar",
   "palette.hintExit": "Salir",

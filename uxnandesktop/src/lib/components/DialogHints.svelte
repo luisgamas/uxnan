@@ -8,14 +8,15 @@
   let { class: className }: { class?: string } = $props();
 </script>
 
-<div class="flex items-center gap-3 text-[11px] text-muted-foreground {className ?? ''}">
-  <span class="flex items-center gap-1">
-    <Kbd>↑</Kbd><Kbd>↓</Kbd>{i18n.t("palette.hintNavigate")}
+<div class="flex items-center gap-4 text-[11px] text-muted-foreground {className ?? ''}">
+  <span class="flex items-center gap-1.5">
+    <span class="flex items-center gap-1"><Kbd>↑</Kbd><Kbd>↓</Kbd></span>
+    {i18n.t("palette.hintNavigate")}
   </span>
-  <span class="flex items-center gap-1">
+  <span class="flex items-center gap-1.5">
     <Kbd>↵</Kbd>{i18n.t("palette.hintSelect")}
   </span>
-  <span class="flex items-center gap-1">
+  <span class="flex items-center gap-1.5">
     <Kbd>Esc</Kbd>{i18n.t("palette.hintExit")}
   </span>
 </div>
