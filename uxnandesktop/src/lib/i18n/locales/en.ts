@@ -136,6 +136,9 @@ export const en = {
   "terminal.toggleRight": "Toggle right panel",
   "terminal.general": "General",
   "terminal.noTerminalsIn": "No terminals in {context}",
+  "terminal.nameNote": "Uxnan · /uʃ.nan/",
+  "terminal.nameSub":
+    "a name with no relation to, or derivation from, any existing product.",
   "terminal.worktreeNeedsRepo":
     "Pick a project or worktree in the left panel to enable this.",
   "terminal.newInRegion": "New terminal in this region",

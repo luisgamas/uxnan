@@ -133,6 +133,9 @@ export const es: Record<MessageKey, string> = {
   "terminal.toggleRight": "Mostrar/ocultar panel derecho",
   "terminal.general": "General",
   "terminal.noTerminalsIn": "Sin terminales en {context}",
+  "terminal.nameNote": "Uxnan · /uʃ.nan/",
+  "terminal.nameSub":
+    "un nombre sin relación ni derivación de ningún producto existente.",
   "terminal.worktreeNeedsRepo":
     "Selecciona un proyecto o worktree en el panel izquierdo para habilitar esto.",
   "terminal.newInRegion": "Nueva terminal en esta región",

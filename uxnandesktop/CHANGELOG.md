@@ -54,6 +54,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   and overflowed the screen on projects with several worktrees.
 
 ### Changed — clean desktop UI redesign
+- **Empty center panel gained a quiet name footnote.** Pinned to the bottom of the
+  empty canvas (both the Global scratch space and an empty project/worktree): a
+  two-line, muted footer — `Uxnan · /uʃ.nan/` over the subtitle *"a name with no
+  relation to, or derivation from, any existing product."* (localized EN/ES). New
+  `terminal.nameNote` / `terminal.nameSub` i18n keys.
 - **Terminal & workspace keyboard shortcuts + empty-state hints.** New configurable
   shortcuts (Settings → Keyboard shortcuts): **New terminal** (`Mod+T`) opens in the
   **active workspace's folder**; **New global terminal** (`Mod+Shift+T`) opens in the

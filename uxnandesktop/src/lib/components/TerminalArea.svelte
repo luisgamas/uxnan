@@ -580,7 +580,7 @@
              children (logo, copy) so dragging works from anywhere but the buttons. -->
         <div
           data-tauri-drag-region
-          class="flex h-full flex-col items-center justify-center gap-4 px-6 text-center"
+          class="relative flex h-full flex-col items-center justify-center gap-4 px-6 text-center"
         >
           <img
             src="/logo_nb.svg"
@@ -653,6 +653,20 @@
               {/each}
             </div>
           {/if}
+
+          <!-- Quiet name + pronunciation over a subtitle, pinned to the bottom of
+               the empty canvas. -->
+          <div
+            data-tauri-drag-region
+            class="absolute inset-x-0 bottom-0 flex flex-col items-center gap-0.5 px-6 pb-4 text-center"
+          >
+            <span data-tauri-drag-region class="text-[11px] tracking-wide text-muted-foreground/55">
+              {i18n.t("terminal.nameNote")}
+            </span>
+            <span data-tauri-drag-region class="text-[10px] italic text-muted-foreground/40">
+              {i18n.t("terminal.nameSub")}
+            </span>
+          </div>
         </div>
       {/if}
     {/if}
