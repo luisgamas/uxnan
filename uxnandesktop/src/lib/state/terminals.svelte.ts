@@ -91,6 +91,8 @@ export interface CommitTab extends BaseTab {
   hash: string;
   /** Commit subject (for the tab title tooltip). */
   subject: string;
+  /** When set, the tab shows only this file's slice of the commit diff. */
+  file?: string;
 }
 
 export type GroupTab = TerminalTab | FileTab | DiffTab | CommitTab;
@@ -664,9 +666,10 @@ class TerminalStore {
     worktree: string,
     hash: string,
     subject: string,
-    opts?: { workspace?: string; groupId?: string },
+    opts?: { workspace?: string; groupId?: string; file?: string },
   ): string {
-    const existing = this.findCommitTab(worktree, hash);
+    const file = opts?.file;
+    const existing = this.findCommitTab(worktree, hash, file);
     if (existing) {
       this.revealTab(existing.workspace, existing.tab.id);
       return existing.tab.id;
@@ -676,12 +679,13 @@ class TerminalStore {
     const tab: CommitTab = {
       kind: "commit",
       id,
-      title: hash.slice(0, 7),
+      title: file ? (file.split("/").pop() ?? file) : hash.slice(0, 7),
       worktree,
       hash,
       subject,
+      file,
     };
-    this.commitStates.set(id, new CommitViewerState(worktree, hash, subject));
+    this.commitStates.set(id, new CommitViewerState(worktree, hash, subject, file));
     this.insertTab(tab, opts?.groupId);
     return id;
   }
@@ -728,9 +732,15 @@ class TerminalStore {
   private findCommitTab(
     worktree: string,
     hash: string,
+    file?: string,
   ): { tab: CommitTab; workspace: string } | undefined {
     for (const { tab, workspace } of this.tabsWithWorkspace()) {
-      if (tab.kind === "commit" && tab.worktree === worktree && tab.hash === hash)
+      if (
+        tab.kind === "commit" &&
+        tab.worktree === worktree &&
+        tab.hash === hash &&
+        tab.file === file
+      )
         return { tab, workspace };
     }
     return undefined;
@@ -743,9 +753,10 @@ class TerminalStore {
   isDiffOpen(worktree: string, file: string, staged: boolean): boolean {
     return this.findDiffTab(worktree, file, staged) !== undefined;
   }
-  /** Whether a commit is already open in some tab (for the history-list mark). */
-  isCommitOpen(worktree: string, hash: string): boolean {
-    return this.findCommitTab(worktree, hash) !== undefined;
+  /** Whether a commit (optionally a specific file's slice) is already open in some
+   *  tab (for the history-list open mark). */
+  isCommitOpen(worktree: string, hash: string, file?: string): boolean {
+    return this.findCommitTab(worktree, hash, file) !== undefined;
   }
 
   // --- Agent activity monitoring (read by the agent monitor + the sidebar) ---

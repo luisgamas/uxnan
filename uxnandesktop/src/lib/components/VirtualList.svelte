@@ -1,7 +1,9 @@
 <script lang="ts" generics="T">
   // Thin virtualized list on @tanstack/svelte-virtual: renders only the visible
-  // rows of a (potentially long) flat list, in its own scroll container. Rows
-  // are fixed-height (`estimateSize`). Pass an `activeIndex` to keep a
+  // rows of a (potentially long) flat list, in its own scroll container. Row
+  // heights are known up-front — pass `estimateSize` as a fixed number, or a
+  // `(index) => number` for exact per-row heights (e.g. a list mixing tall and
+  // short rows) without runtime measurement. Pass an `activeIndex` to keep a
   // keyboard-highlighted row scrolled into view.
   import { createVirtualizer } from "@tanstack/svelte-virtual";
   import { get } from "svelte/store";
@@ -17,12 +19,16 @@
     row,
   }: {
     items: T[];
-    estimateSize?: number;
+    /** Fixed row height, or an exact per-index height function. */
+    estimateSize?: number | ((index: number) => number);
     overscan?: number;
     activeIndex?: number;
     class?: string;
     row: Snippet<[T, number]>;
   } = $props();
+
+  const sizeAt = (index: number): number =>
+    typeof estimateSize === "function" ? estimateSize(index) : estimateSize;
 
   let scrollEl = $state<HTMLDivElement>();
 
@@ -31,7 +37,7 @@
   const virtualizer = createVirtualizer<HTMLDivElement, HTMLDivElement>({
     count: 0,
     getScrollElement: () => scrollEl ?? null,
-    estimateSize: () => estimateSize,
+    estimateSize: (i) => sizeAt(i),
     overscan: 12,
   });
 
@@ -48,7 +54,7 @@
     v.setOptions({
       count,
       getScrollElement: () => el,
-      estimateSize: () => size,
+      estimateSize: (i) => (typeof size === "function" ? size(i) : size),
       overscan: over,
     });
     v.measure();

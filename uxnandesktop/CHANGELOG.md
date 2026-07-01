@@ -6,6 +6,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 
 ### Added
+- **History: expand a commit to per-file diffs + a details hover-card.** Clicking a
+  commit in the History tab now **expands it inline to its changed-file list**
+  (status letter + path) instead of opening one giant diff; clicking a file opens
+  **just that file's slice** of the commit diff as a center tab (much more
+  readable). The commit diff is fetched once (`git_show`) and split per file
+  **client-side** (new `diffParse` util, unit-tested — no new backend). Under the
+  branch graph, an expanded commit keeps the graph continuous by drawing straight
+  lane continuations through its file rows. Hovering a commit shows a new reusable
+  **`ui/hover-card`** (bits-ui `LinkPreview`, app-styled) with the full subject,
+  body message, short+full hash, author (name · email), absolute date and refs.
+  `VirtualList` gained exact **per-index row heights** (`estimateSize` may now be a
+  `(index) => number`) so the mixed commit/file rows virtualize without runtime
+  measurement.
 - **Reusable `ContextMenu` primitive + shared actions menu.** Added a
   `ui/context-menu` wrapper (bits-ui `ContextMenu`, styled to match our
   `dropdown-menu`: same popover surface, ring, animation, submenus, with
