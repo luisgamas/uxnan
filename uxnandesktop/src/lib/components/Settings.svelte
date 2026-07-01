@@ -4,7 +4,6 @@
   // work. The status bar is hidden in settings mode to give the content more
   // room. Close with the back button, the gear in the title bar, or Escape.
 
-  import * as Select from "$lib/components/ui/select";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import { Button } from "$lib/components/ui/button";
   import { Textarea } from "$lib/components/ui/textarea";
@@ -20,7 +19,7 @@
     TERMINAL_TEMPLATES,
     type TerminalTemplate,
   } from "$lib/terminalTemplates";
-  import { AGENT_CATALOG, type CatalogAgent } from "$lib/agentCatalog";
+  import { AGENT_CATALOG, agentLogoKey, type CatalogAgent } from "$lib/agentCatalog";
   import { detectAgents } from "$lib/api";
   import { updater } from "$lib/state/updater.svelte";
   import { appVersion } from "$lib/api";
@@ -34,6 +33,7 @@
   import TerminalProfileEditor from "./TerminalProfileEditor.svelte";
   import AgentProfileEditor from "./AgentProfileEditor.svelte";
   import AiModelPicker from "./AiModelPicker.svelte";
+  import Combobox, { type ComboGroup, type ComboItem } from "./Combobox.svelte";
   import AgentLogo from "./AgentLogo.svelte";
   import AgentHooksPanel from "./AgentHooksPanel.svelte";
   import ThemeSettings from "./ThemeSettings.svelte";
@@ -115,24 +115,6 @@
       close();
     }
   }
-
-  // Language: "system" + each available locale.
-  const languageLabel = $derived.by(() => {
-    if (app.settings.language === "system")
-      return i18n.t("settings.language.system");
-    return (
-      LOCALES.find((l) => l.code === app.settings.language)?.name ??
-      i18n.t("settings.language.system")
-    );
-  });
-
-  const defaultProfileLabel = $derived.by(() => {
-    const p = app.terminalProfiles.find(
-      (x) => x.id === app.settings.defaultProfileId,
-    );
-    if (!p) return i18n.t("terminal.unnamedProfile");
-    return p.name.trim() || i18n.t("terminal.unnamedProfile");
-  });
 
   function addBlankProfile() {
     app.settings.terminalProfiles.push({
@@ -224,22 +206,9 @@
 
   // Default agent (auto-launched on worktree create); "__none__" = off.
   const NO_DEFAULT_AGENT = "__none__";
-  const defaultAgentLabel = $derived.by(() => {
-    const id = app.settings.defaultAgentId;
-    if (!id) return i18n.t("settings.defaultAgentNone");
-    const a = app.agentProfiles.find((x) => x.id === id);
-    return a?.name.trim() || a?.command || i18n.t("settings.defaultAgentNone");
-  });
-
   // Default shell agents launch in (when an agent doesn't pin its own). The
   // "smart default" sentinel = cmd.exe on Windows, else the default terminal.
   const AGENT_SHELL_DEFAULT = "__smart__";
-  const agentShellLabel = $derived.by(() => {
-    const id = app.settings.agentShellProfileId;
-    if (!id) return i18n.t("settings.agentShellSmart");
-    const p = app.terminalProfiles.find((x) => x.id === id);
-    return p?.name.trim() || i18n.t("terminal.unnamedProfile");
-  });
 
   // --- Terminal shells: detect which template commands are installed ---------
   const ALL_TEMPLATES = TERMINAL_TEMPLATES.flatMap((g) => g.templates);
@@ -303,11 +272,6 @@
     }
   }
   const aiAgentInstalled = (id: string) => aiAgentsInstalled?.has(id) ?? false;
-  const aiAgentLabel = $derived(
-    AI_COMMIT_AGENTS.find((a) => a.id === ai.agentId)?.name ||
-      i18n.t("settings.aiCommitAgentNone"),
-  );
-
   // Models for the selected agent (loaded on demand from its CLI).
   let aiModels = $state<AgentModel[]>([]);
   let aiModelsFor = $state(""); // the agent aiModels belongs to
@@ -350,9 +314,6 @@
     { value: "English", labelKey: "settings.aiCommitLanguageEn" as MessageKey },
     { value: "Spanish", labelKey: "settings.aiCommitLanguageEs" as MessageKey },
   ];
-  const aiLanguageLabel = $derived(
-    i18n.t(AI_LANGS.find((l) => l.value === ai.language)?.labelKey ?? "settings.aiCommitLanguageAuto"),
-  );
 
   // --- Updates --------------------------------------------------------------
   // Merge over a full default so reads/writes are always complete (state saved
@@ -380,13 +341,6 @@
     { value: "whenIdle", labelKey: "updates.policyWhenIdle" },
     { value: "manual", labelKey: "updates.policyManual" },
   ];
-  const channelLabel = $derived(
-    i18n.t(UPDATE_CHANNELS.find((c) => c.value === up.channel)?.labelKey ?? "updates.channelStable"),
-  );
-  const installPolicyLabel = $derived(
-    i18n.t(INSTALL_POLICIES.find((p) => p.value === up.installPolicy)?.labelKey ?? "updates.policyAsk"),
-  );
-
   // The running app's full version name (shown in the Updates pane). This is the
   // complete release name (e.g. 0.0.5-alpha.20260628), not the numeric MSI base.
   let currentVersion = $state("");
@@ -423,9 +377,74 @@
     { value: "external", labelKey: "browser.policyExternal", descKey: "browser.policyExternalDesc" },
     { value: "ask", labelKey: "browser.policyAsk", descKey: "browser.policyAskDesc" },
   ];
-  const linkPolicyLabel = $derived(
-    i18n.t(LINK_POLICIES.find((p) => p.value === br.linkPolicy)?.labelKey ?? "browser.policyInternal"),
-  );
+
+  // Option groups for the unified `Combobox` selectors (one searchable design for
+  // every single-select field). Agent fields carry a logo via the combobox's
+  // `itemPrefix`, resolved from the value.
+  const languageGroups = $derived<ComboGroup[]>([
+    {
+      items: [
+        { value: "system", label: i18n.t("settings.language.system") },
+        ...LOCALES.map((l) => ({ value: l.code, label: l.name })),
+      ],
+    },
+  ]);
+  const defaultAgentGroups = $derived<ComboGroup[]>([
+    {
+      items: [
+        { value: NO_DEFAULT_AGENT, label: i18n.t("settings.defaultAgentNone") },
+        ...app.launchableAgents.map((a) => ({
+          value: a.id,
+          label: a.name.trim() || a.command,
+          keywords: [a.command],
+        })),
+      ],
+    },
+  ]);
+  const agentShellGroups = $derived<ComboGroup[]>([
+    {
+      items: [
+        { value: AGENT_SHELL_DEFAULT, label: i18n.t("settings.agentShellSmart") },
+        ...app.terminalProfiles.map((p) => ({
+          value: p.id,
+          label: p.name.trim() || i18n.t("terminal.unnamedProfile"),
+        })),
+      ],
+    },
+  ]);
+  const aiAgentGroups = $derived<ComboGroup[]>([
+    {
+      items: AI_COMMIT_AGENTS.map((a) => ({
+        value: a.id,
+        label: a.name,
+        disabled: !aiAgentInstalled(a.id),
+        meta:
+          aiAgentsInstalled !== null && !aiAgentInstalled(a.id)
+            ? i18n.t("settings.agentNotFound")
+            : undefined,
+      })),
+    },
+  ]);
+  const aiLanguageGroups = $derived<ComboGroup[]>([
+    { items: AI_LANGS.map((l) => ({ value: l.value, label: i18n.t(l.labelKey) })) },
+  ]);
+  const channelGroups = $derived<ComboGroup[]>([
+    { items: UPDATE_CHANNELS.map((c) => ({ value: c.value, label: i18n.t(c.labelKey) })) },
+  ]);
+  const installPolicyGroups = $derived<ComboGroup[]>([
+    { items: INSTALL_POLICIES.map((p) => ({ value: p.value, label: i18n.t(p.labelKey) })) },
+  ]);
+  const linkPolicyGroups = $derived<ComboGroup[]>([
+    { items: LINK_POLICIES.map((p) => ({ value: p.value, label: i18n.t(p.labelKey) })) },
+  ]);
+  const profileGroups = $derived<ComboGroup[]>([
+    {
+      items: app.terminalProfiles.map((p) => ({
+        value: p.id,
+        label: p.name.trim() || i18n.t("terminal.unnamedProfile"),
+      })),
+    },
+  ]);
 
   // Grouped section nav — titled groups (like the center "+" launcher) so a long
   // flat list reads as organized areas, while each item keeps the settings-nav
@@ -535,26 +554,13 @@
           >
             <SettingsRow label={i18n.t("settings.language")}>
               {#snippet control()}
-                <Select.Root
-                  type="single"
+                <Combobox
                   value={app.settings.language}
-                  onValueChange={(v) => {
-                    app.settings.language = v ?? "system";
-                    persistNow();
-                  }}
-                >
-                  <Select.Trigger class="w-56">{languageLabel}</Select.Trigger>
-                  <Select.Content>
-                    <Select.Item value="system" label={i18n.t("settings.language.system")}>
-                      {i18n.t("settings.language.system")}
-                    </Select.Item>
-                    {#each LOCALES as locale (locale.code)}
-                      <Select.Item value={locale.code} label={locale.name}>
-                        {locale.name}
-                      </Select.Item>
-                    {/each}
-                  </Select.Content>
-                </Select.Root>
+                  groups={languageGroups}
+                  triggerClass="w-56"
+                  searchPlaceholder={i18n.t("common.search")}
+                  onChange={(v) => { app.settings.language = v; persistNow(); }}
+                />
               {/snippet}
             </SettingsRow>
           </SettingsSection>
@@ -626,52 +632,32 @@
               <div class="divide-y divide-border/60">
                 <SettingsRow label={i18n.t("settings.defaultAgent")} description={i18n.t("settings.defaultAgentDesc")}>
                   {#snippet control()}
-                    <Select.Root
-                      type="single"
+                    <Combobox
                       value={app.settings.defaultAgentId ?? NO_DEFAULT_AGENT}
-                      onValueChange={(v) => {
-                        app.settings.defaultAgentId = v === NO_DEFAULT_AGENT ? null : (v ?? null);
+                      groups={defaultAgentGroups}
+                      triggerClass="w-56"
+                      searchPlaceholder={i18n.t("common.search")}
+                      itemPrefix={agentPrefix}
+                      onChange={(v) => {
+                        app.settings.defaultAgentId = v === NO_DEFAULT_AGENT ? null : v;
                         persistNow();
                       }}
-                    >
-                      <Select.Trigger class="w-56">{defaultAgentLabel}</Select.Trigger>
-                      <Select.Content>
-                        <Select.Item value={NO_DEFAULT_AGENT} label={i18n.t("settings.defaultAgentNone")}>
-                          {i18n.t("settings.defaultAgentNone")}
-                        </Select.Item>
-                        {#each app.launchableAgents as a (a.id)}
-                          {@const label = a.name.trim() || a.command}
-                          <Select.Item value={a.id} {label}>{label}</Select.Item>
-                        {/each}
-                      </Select.Content>
-                    </Select.Root>
+                    />
                   {/snippet}
                 </SettingsRow>
 
                 <SettingsRow label={i18n.t("settings.agentShell")} description={i18n.t("settings.agentShellDesc")}>
                   {#snippet control()}
-                    <Select.Root
-                      type="single"
+                    <Combobox
                       value={app.settings.agentShellProfileId ?? AGENT_SHELL_DEFAULT}
-                      onValueChange={(v) => {
-                        app.settings.agentShellProfileId =
-                          v === AGENT_SHELL_DEFAULT ? null : (v ?? null);
+                      groups={agentShellGroups}
+                      triggerClass="w-72 max-w-full"
+                      searchPlaceholder={i18n.t("common.search")}
+                      onChange={(v) => {
+                        app.settings.agentShellProfileId = v === AGENT_SHELL_DEFAULT ? null : v;
                         persistNow();
                       }}
-                    >
-                      <Select.Trigger class="w-72 max-w-full">
-                        <span class="min-w-0 flex-1 truncate text-left">{agentShellLabel}</span>
-                      </Select.Trigger>
-                      <Select.Content>
-                        <Select.Item value={AGENT_SHELL_DEFAULT} label={i18n.t("settings.agentShellSmart")}>
-                          {i18n.t("settings.agentShellSmart")}
-                        </Select.Item>
-                        {#each app.terminalProfiles as p (p.id)}
-                          {@const label = p.name.trim() || i18n.t("terminal.unnamedProfile")}
-                          <Select.Item value={p.id} {label}>{label}</Select.Item>
-                        {/each}
-                      </Select.Content>
-                    </Select.Root>
+                    />
                   {/snippet}
                 </SettingsRow>
 
@@ -768,32 +754,15 @@
                   : i18n.t("settings.aiCommitAgentDesc")}
               >
                 {#snippet control()}
-                  <Select.Root type="single" value={ai.agentId} onValueChange={(v) => v && selectAiAgent(v)}>
-                    <Select.Trigger class="w-56">
-                      {#if ai.agentId}
-                        <span class="flex items-center gap-2">
-                          <AgentLogo logo={AI_COMMIT_AGENTS.find((a) => a.id === ai.agentId)?.logo} class="size-4" />
-                          {aiAgentLabel}
-                        </span>
-                      {:else}
-                        {i18n.t("settings.aiCommitAgentNone")}
-                      {/if}
-                    </Select.Trigger>
-                    <Select.Content>
-                      {#each AI_COMMIT_AGENTS as a (a.id)}
-                        {@const inst = aiAgentInstalled(a.id)}
-                        <Select.Item value={a.id} label={a.name} disabled={!inst}>
-                          <span class="flex items-center gap-2">
-                            <AgentLogo logo={a.logo} class="size-4" />
-                            {a.name}
-                            {#if aiAgentsInstalled !== null && !inst}
-                              <span class={cn("ml-auto", text.meta)}>{i18n.t("settings.agentNotFound")}</span>
-                            {/if}
-                          </span>
-                        </Select.Item>
-                      {/each}
-                    </Select.Content>
-                  </Select.Root>
+                  <Combobox
+                    value={ai.agentId}
+                    groups={aiAgentGroups}
+                    placeholder={i18n.t("settings.aiCommitAgentNone")}
+                    searchPlaceholder={i18n.t("common.search")}
+                    triggerClass="w-56"
+                    itemPrefix={aiAgentPrefix}
+                    onChange={(v) => selectAiAgent(v)}
+                  />
                 {/snippet}
               </SettingsRow>
 
@@ -812,14 +781,13 @@
 
               <SettingsRow label={i18n.t("settings.aiCommitLanguage")} description={i18n.t("settings.aiCommitLanguageDesc")}>
                 {#snippet control()}
-                  <Select.Root type="single" value={ai.language} onValueChange={(v) => { setAi({ language: v ?? "auto" }); persistNow(); }}>
-                    <Select.Trigger class="w-56">{aiLanguageLabel}</Select.Trigger>
-                    <Select.Content>
-                      {#each AI_LANGS as l (l.value)}
-                        <Select.Item value={l.value} label={i18n.t(l.labelKey)}>{i18n.t(l.labelKey)}</Select.Item>
-                      {/each}
-                    </Select.Content>
-                  </Select.Root>
+                  <Combobox
+                    value={ai.language}
+                    groups={aiLanguageGroups}
+                    triggerClass="w-56"
+                    searchPlaceholder={i18n.t("common.search")}
+                    onChange={(v) => { setAi({ language: v }); persistNow(); }}
+                  />
                 {/snippet}
               </SettingsRow>
 
@@ -893,27 +861,17 @@
 
               <SettingsRow label={i18n.t("updates.channel")} description={i18n.t("updates.channelDesc")}>
                 {#snippet control()}
-                  <Select.Root
-                    type="single"
+                  <Combobox
                     value={up.channel}
-                    onValueChange={(v) => {
-                      setUp({ channel: (v as UpdateChannel) ?? "stable" });
+                    groups={channelGroups}
+                    triggerClass="w-56"
+                    searchPlaceholder={i18n.t("common.search")}
+                    onChange={(v) => {
+                      setUp({ channel: v as UpdateChannel });
                       persistNow();
                       void updater.checkNow();
                     }}
-                  >
-                    <Select.Trigger class="w-56">{channelLabel}</Select.Trigger>
-                    <Select.Content>
-                      {#each UPDATE_CHANNELS as c (c.value)}
-                        <Select.Item value={c.value} label={i18n.t(c.labelKey)}>
-                          <div class="flex flex-col">
-                            <span>{i18n.t(c.labelKey)}</span>
-                            <span class={text.meta}>{i18n.t(c.descKey)}</span>
-                          </div>
-                        </Select.Item>
-                      {/each}
-                    </Select.Content>
-                  </Select.Root>
+                  />
                 {/snippet}
               </SettingsRow>
 
@@ -937,23 +895,13 @@
 
               <SettingsRow label={i18n.t("updates.installPolicy")} description={i18n.t("updates.installPolicyDesc")}>
                 {#snippet control()}
-                  <Select.Root
-                    type="single"
+                  <Combobox
                     value={up.installPolicy}
-                    onValueChange={(v) => {
-                      setUp({ installPolicy: (v as InstallPolicy) ?? "ask" });
-                      persistNow();
-                    }}
-                  >
-                    <Select.Trigger class="w-56">{installPolicyLabel}</Select.Trigger>
-                    <Select.Content>
-                      {#each INSTALL_POLICIES as p (p.value)}
-                        <Select.Item value={p.value} label={i18n.t(p.labelKey)}>
-                          {i18n.t(p.labelKey)}
-                        </Select.Item>
-                      {/each}
-                    </Select.Content>
-                  </Select.Root>
+                    groups={installPolicyGroups}
+                    triggerClass="w-56"
+                    searchPlaceholder={i18n.t("common.search")}
+                    onChange={(v) => { setUp({ installPolicy: v as InstallPolicy }); persistNow(); }}
+                  />
                 {/snippet}
               </SettingsRow>
             </div>
@@ -977,27 +925,14 @@
               <!-- Link policy has three options, so it stays a Select. -->
               <SettingsRow label={i18n.t("browser.linkPolicy")} description={i18n.t("browser.linkPolicyDesc")}>
                 {#snippet control()}
-                  <Select.Root
-                    type="single"
+                  <Combobox
                     value={br.linkPolicy}
+                    groups={linkPolicyGroups}
                     disabled={!br.enabled}
-                    onValueChange={(v) => {
-                      setBr({ linkPolicy: (v as BrowserLinkPolicy) ?? "internal" });
-                      persistNow();
-                    }}
-                  >
-                    <Select.Trigger class="w-56">{linkPolicyLabel}</Select.Trigger>
-                    <Select.Content>
-                      {#each LINK_POLICIES as p (p.value)}
-                        <Select.Item value={p.value} label={i18n.t(p.labelKey)}>
-                          <div class="flex flex-col">
-                            <span>{i18n.t(p.labelKey)}</span>
-                            <span class={text.meta}>{i18n.t(p.descKey)}</span>
-                          </div>
-                        </Select.Item>
-                      {/each}
-                    </Select.Content>
-                  </Select.Root>
+                    triggerClass="w-56"
+                    searchPlaceholder={i18n.t("common.search")}
+                    onChange={(v) => { setBr({ linkPolicy: v as BrowserLinkPolicy }); persistNow(); }}
+                  />
                 {/snippet}
               </SettingsRow>
 
@@ -1040,22 +975,14 @@
             <div class="rounded-xl border border-border/50 bg-card/50 px-7 py-4 shadow-xs">
               <SettingsRow label={i18n.t("settings.defaultProfile")} description={i18n.t("settings.defaultProfileDesc")}>
                 {#snippet control()}
-                  <Select.Root
-                    type="single"
+                  <Combobox
                     value={app.settings.defaultProfileId ?? undefined}
-                    onValueChange={(v) => {
-                      app.settings.defaultProfileId = v ?? null;
-                      persistNow();
-                    }}
-                  >
-                    <Select.Trigger class="w-56">{defaultProfileLabel}</Select.Trigger>
-                    <Select.Content>
-                      {#each app.terminalProfiles as p (p.id)}
-                        {@const label = p.name.trim() || i18n.t("terminal.unnamedProfile")}
-                        <Select.Item value={p.id} {label}>{label}</Select.Item>
-                      {/each}
-                    </Select.Content>
-                  </Select.Root>
+                    groups={profileGroups}
+                    placeholder={i18n.t("terminal.chooseProfile")}
+                    triggerClass="w-56"
+                    searchPlaceholder={i18n.t("common.search")}
+                    onChange={(v) => { app.settings.defaultProfileId = v; persistNow(); }}
+                  />
                 {/snippet}
               </SettingsRow>
             </div>
@@ -1134,3 +1061,17 @@
     </div>
   </div>
 {/if}
+
+<!-- Leading logo for the agent selectors (shown on the trigger and each row),
+     resolved from the item value. -->
+{#snippet agentPrefix(item: ComboItem)}
+  {#if item.value !== NO_DEFAULT_AGENT}
+    {@const a = app.launchableAgents.find((x) => x.id === item.value)}
+    {#if a}<AgentLogo logo={agentLogoKey(a.icon, a.command)} class="size-4 shrink-0" />{/if}
+  {/if}
+{/snippet}
+
+{#snippet aiAgentPrefix(item: ComboItem)}
+  {@const a = AI_COMMIT_AGENTS.find((x) => x.id === item.value)}
+  {#if a}<AgentLogo logo={a.logo} class="size-4 shrink-0" />{/if}
+{/snippet}

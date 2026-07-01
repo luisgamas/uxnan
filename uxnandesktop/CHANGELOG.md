@@ -270,6 +270,14 @@ regressions.
   expands to its config (agent: command/args/shell/env; profile: command/args);
   for agents, configured ones sit first and the remaining known agents follow as
   add-rows, greyed when not found on PATH.
+- **One combobox for every single-select field.** All the settings dropdowns
+  (Language, default agent, agent shell, AI-commit agent + language, update
+  channel + install policy, browser link policy, terminal default profile)
+  switched from the plain `Select` to the shared searchable **`Combobox`**
+  (Popover + Command) — the same field the font pickers, the AI model picker and
+  the launcher window use. The **agent** selectors now show each agent's **logo**
+  on the trigger and rows (consistent with the AI-commit list) via the combobox
+  `itemPrefix`. Removed the now-dead per-field label derivations.
 
 ### Fixed
 - **Git status not reflected in the UI (file-tree coloring + Changes tab empty).**

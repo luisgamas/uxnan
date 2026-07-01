@@ -36,6 +36,7 @@ export const en = {
   "common.adding": "Adding…",
   "common.creating": "Creating…",
   "common.loading": "Loading…",
+  "common.search": "Search…",
 
   // Left sidebar
   "sidebar.search": "Search a project or worktree…",

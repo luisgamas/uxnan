@@ -33,6 +33,7 @@ export const es: Record<MessageKey, string> = {
   "common.adding": "Agregando…",
   "common.creating": "Creando…",
   "common.loading": "Cargando…",
+  "common.search": "Buscar…",
 
   // Left sidebar
   "sidebar.search": "Buscar un proyecto o worktree…",
