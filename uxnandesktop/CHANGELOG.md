@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.3-alpha.20260702] - 2026-07-02
+
 ### Build
 - **Production app icons regenerated from a 1024² master.** The icon set is now
   derived from the final 1024×1024 brand PNG, kept in-repo as
