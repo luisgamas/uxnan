@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.3-alpha.20260702] - 2026-07-02
+
 ### Added — `AgentModel.isLatestAlias` (flags moving-target "latest" aliases)
 - **`AgentModel.isLatestAlias?: boolean`** (`src/agents/agent-capabilities.ts`):
   a presentation-only flag marking a moving-target "latest" alias — Claude
