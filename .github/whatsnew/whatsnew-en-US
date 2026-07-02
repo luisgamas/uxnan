@@ -1,7 +1,8 @@
 What's new in this update:
 
-• Mention files with @ and run quick / commands — including your own saved prompt templates — right from the message box.
-• Search your commit history.
-• Fixed a keyboard that could linger after viewing a commit's details.
+• Import a theme by pasting it, choosing a .json file, or from a link — now in a full-screen editor that's easy to review before importing.
+• Cleaner, calmer Settings and Personalization screens.
+• New option to hide the auto-updating "latest" AI models and show only specific versions in the picker.
+• Fixed imported themes that could vanish after a restart.
 
 Thanks for testing this alpha!

@@ -6,6 +6,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.0.3-alpha.20260702] - 2026-07-02
+
 ### Added — theme import from a file / URL, in a full-screen editor
 - **Theme import is now a full-screen editor** (`ThemeImportScreen`,
   `theme_sheets.dart`), not a cramped bottom sheet (which overflowed on a big

@@ -1,7 +1,8 @@
 Novedades de esta actualización:
 
-• Menciona archivos con @ y usa comandos rápidos con / —incluidas tus propias plantillas de prompts— desde el cuadro de mensaje.
-• Busca en tu historial de commits.
-• Corregido un teclado que podía quedarse tras ver el detalle de un commit.
+• Importa un tema pegándolo, eligiendo un archivo .json o desde un enlace, ahora en un editor a pantalla completa fácil de revisar antes de importar.
+• Pantallas de Ajustes y Personalización más limpias y tranquilas.
+• Nueva opción para ocultar los modelos de IA "más recientes" y mostrar solo versiones concretas en el selector.
+• Corregidos los temas importados que podían desaparecer al reiniciar.
 
 ¡Gracias por probar esta alfa!
