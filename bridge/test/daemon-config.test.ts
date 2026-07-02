@@ -1,10 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  DEFAULT_DAEMON_CONFIG,
-  mergeAgentModels,
-  resolveDaemonConfig,
-} from '../src/index.js';
+import { DEFAULT_DAEMON_CONFIG, mergeAgentModels, resolveDaemonConfig } from '../src/index.js';
 
 /** Extract the model ids from a resolved Claude Code config. */
 function claudeModelIds(config: ReturnType<typeof resolveDaemonConfig>): string[] {
