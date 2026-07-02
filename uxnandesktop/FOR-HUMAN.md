@@ -24,15 +24,6 @@ only this checklist and the inline `FOR-HUMAN:` markers describing what's needed
       - **Config:** none — `AgentLogo` picks up `/agents/<logo>.svg` automatically
         once the file exists (viewBox-normalized, monochrome-friendly like the
         existing ones).
-- [ ] **Production app-icon artwork (sign-off)** — a brand mark already ships:
-      `src-tauri/icons/*` were regenerated from `logo.svg` (+ `static/logo*.svg` /
-      `favicon.png`), so these are no longer Tauri's default placeholders. What
-      remains is **final production-quality artwork + sign-off**.
-      - **Where:** `src-tauri/icons/` (`32x32.png`, `128x128.png`,
-        `128x128@2x.png`, `icon.ico`, `icon.icns`, `Square*Logo.png` / `StoreLogo.png`).
-      - **Config:** regenerate with `npm run tauri icon path/to/source.png` (1024²
-        source); paths are already wired in `tauri.conf.json → bundle.icon`.
-
 ## Needed for distributable / signed release builds
 
 > The CI/CD pipeline (see `FOR-DEV.md → "CI/CD — release builds"`) can produce

@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Build
+- **Production app icons regenerated from a 1024² master.** The icon set is now
+  derived from the final 1024×1024 brand PNG, kept in-repo as
+  `src-tauri/app-icon.png` for reproducible regeneration
+  (`npm run tauri icon src-tauri/app-icon.png`): crisper `icon.icns` / `icon.ico`
+  and every PNG size (including the macOS 512@2x slot). The mobile
+  `icons/android` & `icons/ios` output was dropped (desktop-only app);
+  `tauri.conf.json → bundle.icon` wiring is unchanged. Closes the last app-icon
+  `FOR-HUMAN` item (final artwork provided + signed off).
+
 ### Added
 - **History: expand a commit to per-file diffs + a details hover-card.** Clicking a
   commit in the History tab now **expands it inline to its changed-file list**
