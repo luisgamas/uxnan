@@ -63,6 +63,13 @@ export const KEY_ACTIONS: KeyAction[] = [
     default: "Mod+O",
   },
   {
+    id: "newWorktree",
+    labelKey: "shortcuts.newWorktree",
+    descKey: "shortcuts.newWorktreeDesc",
+    category: "navigation",
+    default: "Mod+Shift+N",
+  },
+  {
     id: "toggleLeftSidebar",
     labelKey: "shortcuts.toggleLeftSidebar",
     descKey: "shortcuts.toggleLeftSidebarDesc",
@@ -75,6 +82,34 @@ export const KEY_ACTIONS: KeyAction[] = [
     descKey: "shortcuts.toggleRightSidebarDesc",
     category: "panels",
     default: "Mod+J",
+  },
+  {
+    id: "newTerminal",
+    labelKey: "shortcuts.newTerminal",
+    descKey: "shortcuts.newTerminalDesc",
+    category: "terminal",
+    default: "Mod+T",
+  },
+  {
+    id: "newGlobalTerminal",
+    labelKey: "shortcuts.newGlobalTerminal",
+    descKey: "shortcuts.newGlobalTerminalDesc",
+    category: "terminal",
+    default: "Mod+Shift+T",
+  },
+  {
+    id: "splitRight",
+    labelKey: "shortcuts.splitRight",
+    descKey: "shortcuts.splitRightDesc",
+    category: "terminal",
+    default: "Mod+Shift+ArrowRight",
+  },
+  {
+    id: "splitDown",
+    labelKey: "shortcuts.splitDown",
+    descKey: "shortcuts.splitDownDesc",
+    category: "terminal",
+    default: "Mod+Shift+ArrowDown",
   },
   {
     id: "cycleTabNext",
@@ -178,10 +213,15 @@ export function matchAction(e: KeyboardEvent): string | null {
  *  to the caller). */
 export function formatChord(chord: string): string {
   if (!chord) return "";
-  return chord
-    .split("+")
-    .map((p) => (p === "Mod" ? (isMac ? "⌘" : "Ctrl") : p))
-    .join(isMac ? "" : "+");
+  return formatChordParts(chord).join(isMac ? "" : "+");
+}
+
+/** The display tokens of a chord, one per key (Mod → Ctrl or ⌘). Lets the UI
+ *  render each key as its own keycap (e.g. `Ctrl` `+` `,`) instead of cramming
+ *  a whole combo into one — far more legible. `[]` for an empty/disabled chord. */
+export function formatChordParts(chord: string): string[] {
+  if (!chord) return [];
+  return chord.split("+").map((p) => (p === "Mod" ? (isMac ? "⌘" : "Ctrl") : p));
 }
 
 /** Convert a chord to a CodeMirror key name (`Mod+Shift+S` → `Mod-Shift-s`), or

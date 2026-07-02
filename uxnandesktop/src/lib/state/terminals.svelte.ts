@@ -91,6 +91,8 @@ export interface CommitTab extends BaseTab {
   hash: string;
   /** Commit subject (for the tab title tooltip). */
   subject: string;
+  /** When set, the tab shows only this file's slice of the commit diff. */
+  file?: string;
 }
 
 export type GroupTab = TerminalTab | FileTab | DiffTab | CommitTab;
@@ -568,12 +570,23 @@ class TerminalStore {
   }
 
   // --- Tabs ----------------------------------------------------------------
+  /** The folder a new terminal should open in: an explicit `cwd` wins; otherwise
+   *  the target workspace's folder (its worktree path), so a terminal opened in a
+   *  project lands in that project rather than the PC home. The Global scratch
+   *  space (`""`) has no folder, so it falls back to the backend default (home). */
+  private cwdFor(explicit: string | undefined, workspace: string): string | undefined {
+    if (explicit) return explicit;
+    return workspace && workspace !== GLOBAL_WORKSPACE ? workspace : undefined;
+  }
+
   /** Add a tab to a region (defaults to the active region of the active
    *  workspace). `opts.workspace` switches workspace first; an empty workspace
-   *  opens its first region. */
+   *  opens its first region. A terminal with no explicit `cwd` inherits the
+   *  target workspace's folder (see [`cwdFor`]). */
   create(opts?: NewTabOptions): string {
     if (opts?.workspace !== undefined) this.setWorkspace(opts.workspace);
-    const tab = newTab(opts);
+    const cwd = this.cwdFor(opts?.cwd, opts?.workspace ?? this.activeWorkspace);
+    const tab = newTab({ ...opts, cwd });
     this.insertTab(tab, opts?.groupId);
     return tab.id;
   }
@@ -664,9 +677,10 @@ class TerminalStore {
     worktree: string,
     hash: string,
     subject: string,
-    opts?: { workspace?: string; groupId?: string },
+    opts?: { workspace?: string; groupId?: string; file?: string },
   ): string {
-    const existing = this.findCommitTab(worktree, hash);
+    const file = opts?.file;
+    const existing = this.findCommitTab(worktree, hash, file);
     if (existing) {
       this.revealTab(existing.workspace, existing.tab.id);
       return existing.tab.id;
@@ -676,12 +690,13 @@ class TerminalStore {
     const tab: CommitTab = {
       kind: "commit",
       id,
-      title: hash.slice(0, 7),
+      title: file ? (file.split("/").pop() ?? file) : hash.slice(0, 7),
       worktree,
       hash,
       subject,
+      file,
     };
-    this.commitStates.set(id, new CommitViewerState(worktree, hash, subject));
+    this.commitStates.set(id, new CommitViewerState(worktree, hash, subject, file));
     this.insertTab(tab, opts?.groupId);
     return id;
   }
@@ -728,9 +743,15 @@ class TerminalStore {
   private findCommitTab(
     worktree: string,
     hash: string,
+    file?: string,
   ): { tab: CommitTab; workspace: string } | undefined {
     for (const { tab, workspace } of this.tabsWithWorkspace()) {
-      if (tab.kind === "commit" && tab.worktree === worktree && tab.hash === hash)
+      if (
+        tab.kind === "commit" &&
+        tab.worktree === worktree &&
+        tab.hash === hash &&
+        tab.file === file
+      )
         return { tab, workspace };
     }
     return undefined;
@@ -743,9 +764,10 @@ class TerminalStore {
   isDiffOpen(worktree: string, file: string, staged: boolean): boolean {
     return this.findDiffTab(worktree, file, staged) !== undefined;
   }
-  /** Whether a commit is already open in some tab (for the history-list mark). */
-  isCommitOpen(worktree: string, hash: string): boolean {
-    return this.findCommitTab(worktree, hash) !== undefined;
+  /** Whether a commit (optionally a specific file's slice) is already open in some
+   *  tab (for the history-list open mark). */
+  isCommitOpen(worktree: string, hash: string, file?: string): boolean {
+    return this.findCommitTab(worktree, hash, file) !== undefined;
   }
 
   // --- Agent activity monitoring (read by the agent monitor + the sidebar) ---
@@ -1033,7 +1055,10 @@ class TerminalStore {
     if (!this.root) return;
     const group = findGroup(this.root, groupId);
     if (!group) return;
-    const fresh = newGroup(opts);
+    // The new pane inherits the active workspace's folder when no cwd is given,
+    // so a split in a project opens in that project (not the PC home).
+    const cwd = this.cwdFor(opts?.cwd, this.activeWorkspace);
+    const fresh = newGroup({ ...opts, cwd });
     this.root = replaceGroup(this.root, groupId, {
       kind: "split",
       dir,

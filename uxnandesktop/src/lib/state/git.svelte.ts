@@ -30,6 +30,7 @@ import { history } from "$lib/state/history.svelte";
 import { toast, toastError } from "$lib/toast";
 import { i18n } from "$lib/i18n";
 import { isImagePath } from "$lib/diff";
+import { commitFileDiff } from "$lib/diffParse";
 import type { FileChange, GitStatusEvent } from "$lib/types";
 
 const msg = (e: unknown) =>
@@ -395,18 +396,22 @@ export class CommitViewerState {
   readonly worktree: string;
   readonly hash: string;
   readonly subject: string;
+  /** When set, the viewer shows only this file's slice of the commit diff. */
+  readonly file: string | null;
   diff = $state("");
   diffLoading = $state(true);
   error = $state<string | null>(null);
 
-  constructor(worktree: string, hash: string, subject: string) {
+  constructor(worktree: string, hash: string, subject: string, file?: string) {
     this.worktree = worktree;
     this.hash = hash;
     this.subject = subject;
+    this.file = file ?? null;
     void this.reload();
   }
 
-  /** (Re)load the commit diff. Abandoned after 30 s so the UI never hangs. */
+  /** (Re)load the commit diff. Abandoned after 30 s so the UI never hangs. When
+   *  scoped to a `file`, the full commit diff is sliced to that file's chunk. */
   async reload(): Promise<void> {
     this.diffLoading = true;
     this.error = null;
@@ -414,7 +419,8 @@ export class CommitViewerState {
       const timeout = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("diff timed out")), 30_000),
       );
-      this.diff = await Promise.race([gitShow(this.worktree, this.hash), timeout]);
+      const full = await Promise.race([gitShow(this.worktree, this.hash), timeout]);
+      this.diff = this.file ? commitFileDiff(full, this.file) : full;
     } catch (e) {
       this.error = msg(e);
       toastError(e);

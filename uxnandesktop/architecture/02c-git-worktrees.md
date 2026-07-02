@@ -212,7 +212,9 @@ El visor maneja tres fuentes de diff:
 
 1. **Uncommitted**: Working tree vs HEAD. Es el más común, muestra los cambios que el agente acaba de hacer.
 2. **Branch**: Rama actual vs rama base. Muestra el changeset completo de una feature branch.
-3. **Commit**: Un commit individual. Muestra qué cambió ese commit específico.
+3. **Commit**: Un commit individual, o **una sola porción de archivo** de él (el
+   diff se parte por archivo en el frontend). Muestra qué cambió ese commit —
+   entero, o el archivo elegido desde la lista expandida en Historial.
 
 Cada fuente pasa por una **capa de deduplicación** que evita calcular el mismo diff múltiples veces si el usuario lo abre en diferentes contextos.
 
@@ -360,11 +362,21 @@ worktree activo. Características:
   hash corto, autor y **tiempo relativo localizado** (`Intl.RelativeTimeFormat`).
 - **Estados**: sin worktree, no es repo (el log falla), repo sin commits, sin
   resultados de filtro. **Filtro** cliente por resumen/hash/autor.
-- **Ver commit**: un clic abre el **diff completo del commit** como una **pestaña
-  central** (`CommitPane.svelte`, `DiffView` en solo-lectura), respaldada por un
-  `CommitViewerState` autocontenido registrado en el store de terminales —
-  igual que abren las pestañas de archivo/diff. Backend: `git_show(path, hash)`
-  (diff vs primer padre; el `hash` se valida como hexadecimal antes de usarse).
+- **Expandir commit → archivos → diff por archivo**: un clic en un commit lo
+  **expande en línea** mostrando su lista de archivos modificados (letra de estado
+  A/M/D/R + ruta); un clic en un archivo abre **solo la porción de ese archivo**
+  del diff del commit como **pestaña central** de solo-lectura (`CommitPane.svelte`
+  + `DiffView`, respaldada por un `CommitViewerState` con filtro `file`, registrado
+  en el store de terminales). Backend: se usa el **mismo** `git_show(path, hash)`
+  (diff vs primer padre; `hash` validado como hexadecimal) — el diff completo se
+  **parte por archivo en el frontend** (`diffParse.ts → splitCommitDiff /
+  commitFileDiff`, con tests unitarios), sin comandos nuevos. La lista de archivos
+  se cachea por hash en `history.svelte.ts` (los commits son inmutables). Los
+  diffs por archivo son mucho más legibles que un único blob gigante.
+- **Hover-card de detalles**: al pasar el cursor sobre un commit aparece una
+  tarjeta flotante (`ui/hover-card`, sobre `bits-ui LinkPreview`) con el título
+  completo, el cuerpo del mensaje, el hash corto y completo, el autor (nombre ·
+  email), la fecha absoluta localizada y las refs.
 - **Grafo de ramas integrado**: un toggle dibuja un *gutter* SVG de carriles de
   colores (ramas, merges, separaciones) a la izquierda de cada commit. Los
   carriles se calculan **puramente en el frontend** a partir de los `parents` de

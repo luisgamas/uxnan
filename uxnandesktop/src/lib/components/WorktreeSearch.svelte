@@ -65,44 +65,71 @@
 </script>
 
 <Dialog.Root bind:open={projects.paletteOpen}>
-  <Dialog.Content class="gap-0 overflow-hidden p-0 sm:max-w-lg">
+  <Dialog.Content class="gap-0 overflow-hidden p-0 sm:max-w-xl">
     <Dialog.Title class="sr-only">{i18n.t("palette.title")}</Dialog.Title>
     <Dialog.Description class="sr-only">{i18n.t("palette.placeholder")}</Dialog.Description>
-    <div class="flex items-center gap-2 border-b border-border px-3 py-2">
+
+    <!-- Search: the field is the focal point — a roomy input row over a hairline. -->
+    <div class="flex items-center gap-3 border-b border-border/60 px-4 py-3.5">
       <SearchIcon class={cn(icon.button, "shrink-0 text-muted-foreground")} />
       <input
         bind:this={inputEl}
         bind:value={query}
         {onkeydown}
         placeholder={i18n.t("palette.placeholder")}
-        class="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+        class="min-w-0 flex-1 bg-transparent text-[15px] leading-6 outline-none placeholder:text-muted-foreground/60"
         autocomplete="off"
         spellcheck="false"
       />
+      {#if items.length > 0}
+        <span class={cn("shrink-0 tabular-nums text-muted-foreground/60", text.indicator)}>
+          {i18n.plural(items.length, "palette.countOne", "palette.countOther")}
+        </span>
+      {/if}
     </div>
+
+    <!-- Listing: two-line rows (branch over its path) with a soft leading glyph
+         chip and the repo as a trailing tag, so each result reads at a glance. -->
     {#if items.length === 0}
-      <p class={cn("px-2 py-3 text-center", text.meta)}>{i18n.t("palette.empty")}</p>
+      <div class="flex flex-col items-center gap-2.5 px-4 py-12 text-center">
+        <SearchIcon class="size-6 text-muted-foreground/40" />
+        <p class={text.meta}>{i18n.t("palette.empty")}</p>
+      </div>
     {:else}
-      <VirtualList {items} estimateSize={34} activeIndex={activeIdx} class="max-h-80 p-1">
+      <VirtualList {items} estimateSize={52} activeIndex={activeIdx} class="max-h-[22rem] p-2">
         {#snippet row(w, i)}
           <button
             class={cn(
-              "flex h-[34px] w-full items-center gap-2 rounded-md px-2 text-left",
+              "flex h-[52px] w-full items-center gap-3 rounded-lg px-2.5 text-left transition-colors",
               i === activeIdx ? "bg-accent" : "hover:bg-accent/50",
             )}
             onmouseenter={() => (activeIdx = i)}
             onclick={() => choose(i)}
           >
-            <GitBranchIcon class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
-            <span class={cn("shrink-0 font-medium", text.body)}>
-              {w.branch || i18n.t("worktree.detached")}
+            <span
+              class="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted/60 text-muted-foreground"
+            >
+              <GitBranchIcon class={icon.button} />
             </span>
-            <span class={cn("min-w-0 flex-1 truncate", text.meta)}>{w.path}</span>
-            <span class={cn("shrink-0 text-muted-foreground/70", text.indicator)}>{w.repoName}</span>
+            <span class="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span class={cn("truncate font-medium", text.body)}>
+                {w.branch || i18n.t("worktree.detached")}
+              </span>
+              <span class={cn("truncate", text.meta)}>{w.path}</span>
+            </span>
+            <span
+              class={cn(
+                "shrink-0 rounded-md bg-muted px-2 py-0.5 font-medium text-muted-foreground",
+                text.indicator,
+              )}
+            >
+              {w.repoName}
+            </span>
           </button>
         {/snippet}
       </VirtualList>
     {/if}
-    <DialogHints class="border-t border-border bg-muted/30 px-3 py-1.5" />
+
+    <DialogHints class="border-t border-border/60 bg-muted/30 px-4 py-2.5" />
   </Dialog.Content>
 </Dialog.Root>

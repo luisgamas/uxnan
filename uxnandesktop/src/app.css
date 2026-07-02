@@ -1,16 +1,35 @@
 @import "tailwindcss";
+/* Bundle the UI faces (variable woff2) locally so they render regardless of
+   what's installed on the OS — matched by the `--ux-font-*` defaults below.
+   Geist is the UI face for body and titles; DM Sans is bundled only as a
+   fallback so the stack still has a humanist face if Geist ever fails to load. */
+@import "@fontsource-variable/geist/index.css";
+@import "@fontsource-variable/dm-sans/index.css";
 
 /* shadcn-svelte design tokens (neutral base, Tailwind v4 / oklch).
    Kept compatible with `shadcn-svelte add` so generated components inherit
    these variables. Dark mode is driven by the `.dark` class on <html>. */
 @custom-variant dark (&:is(.dark *));
+/* `can-hover:` — apply only on devices with a real (pointer) hover, so
+   hover-reveal controls never get stuck visible on touch. */
+@custom-variant can-hover (@media (hover: hover));
 
 :root {
   --radius: 0.625rem;
-  /* Themeable font families (overridden at runtime by `applyTheme`). */
-  --ux-font-body: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif;
+  /* Themeable font families (overridden at runtime by `applyTheme`). Geist (a
+     humanist variable sans) is the single UI face for both body and titles — it
+     renders soft and light at 12-13px chrome, the opposite of a rigid geometric
+     face; the title/body hierarchy comes from size + weight, not a second face.
+     DM Sans and the OS UI font stay only as graceful fallbacks. The variable
+     families are bundled via `@fontsource-variable/*` above, so the leading name
+     always resolves (kept in sync with `DEFAULT_FONTS` in `theme.ts`). */
+  --ux-font-body: "Geist Variable", "Geist", "DM Sans Variable", "DM Sans",
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, system-ui, sans-serif;
   --ux-font-title: var(--ux-font-body);
-  --ux-font-mono: ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  --ux-font-mono: "SF Mono", SFMono-Regular, ui-monospace, "Cascadia Mono",
+    "Cascadia Code", "JetBrains Mono", Menlo, Consolas, "DejaVu Sans Mono",
+    "Liberation Mono", "Symbols Nerd Font Mono", "MesloLGS Nerd Font",
+    "JetBrainsMono Nerd Font", "Hack Nerd Font", monospace;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -32,6 +51,21 @@
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-border: oklch(0.922 0 0);
+
+  /* Semantic desktop surfaces — neutral layers that separate the shell, panels,
+     editor and elevated overlays with small luminance deltas. Derived from the
+     themeable base tokens via `color-mix`, so they follow every built-in and
+     custom theme automatically (the foreground-mixed formulas darken light
+     themes and lighten dark themes from one definition — no `.dark` overrides
+     needed) and stay correct when `applyTheme` rewrites the base tokens. */
+  --ux-shell: var(--background);
+  --ux-sidebar-accent: color-mix(in oklab, var(--foreground) 8%, var(--sidebar));
+  --ux-sidebar-hover: color-mix(in srgb, var(--foreground) 6%, transparent);
+  --ux-panel: var(--card);
+  --ux-panel-muted: color-mix(in oklab, var(--foreground) 3%, var(--card));
+  --ux-editor-surface: var(--card);
+  --ux-elevated: var(--popover);
+  --ux-subtle-border: color-mix(in srgb, var(--foreground) 9%, transparent);
 }
 
 .dark {
@@ -87,6 +121,13 @@
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-border: var(--sidebar-border);
+  /* Semantic desktop surfaces (usable as `bg-ux-panel`, `bg-ux-elevated`, …). */
+  --color-ux-shell: var(--ux-shell);
+  --color-ux-sidebar-accent: var(--ux-sidebar-accent);
+  --color-ux-panel: var(--ux-panel);
+  --color-ux-panel-muted: var(--ux-panel-muted);
+  --color-ux-editor-surface: var(--ux-editor-surface);
+  --color-ux-elevated: var(--ux-elevated);
 }
 
 @layer base {
@@ -101,6 +142,11 @@
     background-color: var(--background);
     color: var(--foreground);
     font-family: var(--ux-font-body);
+    /* A touch of tracking + grayscale smoothing so the UI face (DM Sans) renders
+       crisp and even — the difference between "a font is set" and "it reads right". */
+    letter-spacing: 0.01em;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
     /* The ADE is a desktop shell: never rubber-band/scroll the whole window. */
     overflow: hidden;
     -webkit-user-select: none;
@@ -136,30 +182,109 @@
   font-family: var(--ux-font-title);
 }
 
-/* Slim, themed scrollbars for the terminal viewport (xterm) and sidebars —
-   instead of the chunky default OS scrollbar. */
-.xterm .xterm-viewport,
-.uxnan-scroll {
+/* Slim scrollbar for the xterm viewport — the terminal renders on its own
+   (usually dark) themed surface, so a light thumb reads well there. */
+.xterm .xterm-viewport {
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
 }
-.xterm .xterm-viewport::-webkit-scrollbar,
-.uxnan-scroll::-webkit-scrollbar {
+.xterm .xterm-viewport::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
-.xterm .xterm-viewport::-webkit-scrollbar-track,
-.uxnan-scroll::-webkit-scrollbar-track {
+.xterm .xterm-viewport::-webkit-scrollbar-track {
   background: transparent;
 }
-.xterm .xterm-viewport::-webkit-scrollbar-thumb,
-.uxnan-scroll::-webkit-scrollbar-thumb {
+.xterm .xterm-viewport::-webkit-scrollbar-thumb {
   background-color: rgba(255, 255, 255, 0.18);
   border-radius: 9999px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
-.xterm .xterm-viewport::-webkit-scrollbar-thumb:hover,
-.uxnan-scroll::-webkit-scrollbar-thumb:hover {
+.xterm .xterm-viewport::-webkit-scrollbar-thumb:hover {
   background-color: rgba(255, 255, 255, 0.32);
+}
+
+/* Slim, theme-aware scrollbar for dense panels & lists (8px). The thumb is a
+   muted-foreground tint so it stays visible on both light and dark app surfaces
+   — a fixed white thumb vanished on light themes. (General content panels use
+   the wider `.scrollbar-sleek`; this is the compact 8px variant.) */
+.uxnan-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--muted-foreground) 32%, transparent) transparent;
+}
+.uxnan-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.uxnan-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.uxnan-scroll::-webkit-scrollbar-thumb {
+  background-color: color-mix(in srgb, var(--muted-foreground) 30%, transparent);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.uxnan-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in srgb, var(--muted-foreground) 50%, transparent);
+}
+
+/* Sleek, theme-aware scrollbars for general panels and popovers. The thumb is a
+   muted-foreground tint that strengthens on hover; the track stays transparent
+   so the gutter never reads louder than the content. */
+.scrollbar-sleek {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--muted-foreground) 34%, transparent) transparent;
+}
+.scrollbar-sleek::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+.scrollbar-sleek::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-sleek::-webkit-scrollbar-thumb {
+  min-height: 28px;
+  border: 3px solid transparent;
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--muted-foreground) 28%, transparent);
+  background-clip: padding-box;
+}
+.scrollbar-sleek::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in srgb, var(--muted-foreground) 48%, transparent);
+}
+
+/* Sidebar scrollbar: 8px, transparent until the surrounding panel
+   (`.scrollbar-sleek-parent`) or the list itself is hovered, with a stable
+   gutter so list rows never shift when the thumb appears. */
+.worktree-sidebar-scrollbar {
+  padding-right: 4px;
+  scrollbar-gutter: stable;
+  scrollbar-color: transparent transparent;
+}
+.worktree-sidebar-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+.worktree-sidebar-scrollbar::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  border: 3px solid transparent;
+  border-right-width: 0;
+  border-radius: 9999px;
+  background-clip: padding-box;
+}
+.scrollbar-sleek-parent:hover .worktree-sidebar-scrollbar,
+.worktree-sidebar-scrollbar:hover {
+  scrollbar-color: color-mix(in srgb, var(--muted-foreground) 48%, transparent) transparent;
+}
+.scrollbar-sleek-parent:hover .worktree-sidebar-scrollbar::-webkit-scrollbar-thumb,
+.worktree-sidebar-scrollbar:hover::-webkit-scrollbar-thumb {
+  background-color: color-mix(in srgb, var(--muted-foreground) 28%, transparent);
+}
+
+/* Honor the OS "reduce motion" preference for the whole shell. */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    scroll-behavior: auto;
+  }
 }

@@ -151,11 +151,23 @@ export const ANSI_TOKENS: (keyof TerminalTheme)[] = [
 
 // --- Default fonts ---------------------------------------------------------
 
+// Kept in sync with the `--ux-font-*` defaults in `app.css`. Geist (a humanist
+// variable sans — soft and light at small chrome sizes) is the single UI face
+// for both body and titles; the title/body hierarchy comes from size + weight,
+// not a second face. DM Sans + the OS UI font stay only as graceful fallbacks.
+// The leading variable families are bundled (`@fontsource-variable/*`), so they
+// always resolve. Themes may override any family by name via `ThemeFonts`; the
+// override is composed in front of these stacks (see `composeFontStack`).
 export const DEFAULT_FONTS = {
-  body: 'system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif',
-  title: 'system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif',
-  mono: 'ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, monospace',
+  body: '"Geist Variable", "Geist", "DM Sans Variable", "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, system-ui, sans-serif',
+  title: '"Geist Variable", "Geist", "DM Sans Variable", "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, system-ui, sans-serif',
+  mono: '"SF Mono", SFMono-Regular, ui-monospace, "Cascadia Mono", "Cascadia Code", "JetBrains Mono", Menlo, Consolas, "DejaVu Sans Mono", "Liberation Mono", "Symbols Nerd Font Mono", "MesloLGS Nerd Font", "JetBrainsMono Nerd Font", "Hack Nerd Font", monospace',
 } as const;
+
+/** The variable faces bundled with the app via `@fontsource-variable/*` (so they
+ *  resolve regardless of what's installed). Surfaced at the top of the UI-font
+ *  pickers; the source of truth for "which faces ship with the app". */
+export const BUNDLED_FONTS = ["Geist Variable", "DM Sans Variable"] as const;
 
 // --- Built-in themes (mirror `app.css`) ------------------------------------
 
@@ -282,6 +294,25 @@ export const BUILTIN_IDS = new Set(BUILTIN_THEMES.map((t) => t.id));
 
 // --- Apply (write CSS variables) -------------------------------------------
 
+/** Compose a user-picked font family in front of a role's bundled fallback
+ *  stack, so a missing / misspelled / not-yet-loaded family degrades to the
+ *  bundled face (Geist) → DM Sans → the OS UI font instead of the browser's
+ *  serif default. This is why a manual font choice "doesn't load" without it:
+ *  a bare `--ux-font-* : "Some Font"` with no fallback drops straight to serif
+ *  the moment that one name can't resolve.
+ *
+ *  - empty / whitespace → the fallback stack unchanged;
+ *  - a value that already contains a comma is treated as a complete stack and
+ *    used as-is (so power users can still paste a full stack);
+ *  - a single multi-word family is quoted before the fallback. */
+export function composeFontStack(family: string | null | undefined, fallback: string): string {
+  const f = (family ?? "").trim();
+  if (!f) return fallback;
+  if (f.includes(",")) return f;
+  const head = /\s/.test(f) && !/["']/.test(f) ? `"${f}"` : f;
+  return `${head}, ${fallback}`;
+}
+
 /** Apply a theme to the document: write every color token + radius + fonts as
  *  CSS variables on <html>, and toggle the `.dark` class from its base. */
 export function applyTheme(theme: Theme): void {
@@ -292,12 +323,12 @@ export function applyTheme(theme: Theme): void {
     if (value) root.style.setProperty(cssVarFor(key), value);
   }
   root.style.setProperty("--radius", theme.radius || BUILTIN_LIGHT.radius!);
-  root.style.setProperty("--ux-font-body", theme.fonts?.body || DEFAULT_FONTS.body);
+  root.style.setProperty("--ux-font-body", composeFontStack(theme.fonts?.body, DEFAULT_FONTS.body));
   root.style.setProperty(
     "--ux-font-title",
-    theme.fonts?.title || theme.fonts?.body || DEFAULT_FONTS.title,
+    composeFontStack(theme.fonts?.title ?? theme.fonts?.body, DEFAULT_FONTS.title),
   );
-  root.style.setProperty("--ux-font-mono", theme.fonts?.mono || DEFAULT_FONTS.mono);
+  root.style.setProperty("--ux-font-mono", composeFontStack(theme.fonts?.mono, DEFAULT_FONTS.mono));
   root.classList.toggle("dark", theme.base === "dark");
 }
 
@@ -355,11 +386,15 @@ export function resolveTerminal(base: "light" | "dark", ov: TerminalTheme | null
     theme[key] = (o[key] as string) || DEFAULT_ANSI[key];
   }
   return {
-    fontFamily: o.fontFamily || DEFAULT_FONTS.mono,
-    fontSize: o.fontSize ?? 13,
+    // Compose so a custom terminal family still falls back to the full mono
+    // stack (and never to a proportional serif) when it isn't installed.
+    fontFamily: composeFontStack(o.fontFamily, DEFAULT_FONTS.mono),
+    fontSize: o.fontSize ?? 14,
     lineHeight: o.lineHeight ?? 1.0,
     letterSpacing: o.letterSpacing ?? 0,
-    fontWeight: o.fontWeight ?? "normal",
+    // A lighter default weight reads cleaner for terminal text than a full
+    // "normal" (400); the mono faces in the stack carry a 300 axis.
+    fontWeight: o.fontWeight ?? 300,
     ligatures: o.ligatures ?? false,
     cursorStyle: o.cursorStyle ?? "block",
     cursorBlink: o.cursorBlink ?? true,

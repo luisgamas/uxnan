@@ -123,6 +123,17 @@ yet on either side** — the bridge's `desktop/*` handler is also an empty stub
       (today both coexist: the buffer restores recreated panes, but hidden tabs
       keep their xterm mounted). Would cut memory for many background terminals
       at the cost of a replay on every show.
+- [ ] **Workspace lifecycle — active indicator + sleep/hibernate.** Surface which
+      projects/worktrees have a *live* space (open terminals) vs an empty one — an
+      indicator on the project/worktree cards, so it's obvious where terminals are
+      running and which space is completely empty. Add a **"Sleep workspace"**
+      action (+ shortcut) that closes every tab of a workspace and frees its
+      resources (kill the PTYs + drop the xterm renderers) to reclaim memory on a
+      machine with many active projects. Complements the hidden-renderer disposal
+      above (that trims per-tab memory; this drops a whole workspace at once). Wire
+      into the card context menu (`RowActionsMenu`) and the keyboard-shortcut set;
+      the workspace store already keys terminals per worktree path, so "which
+      workspaces have tabs" is derivable from `terminals.workspaces`.
 
 **Agents** — env vars per agent, shell-aware quoting, the configurable Windows
 launch shell (cmd by default), auto-launch on worktree create, and multi-agent
@@ -147,6 +158,17 @@ are **done** (see `CHANGELOG.md` + `architecture/02d` §3). Remaining follow-ups
       worktree only).
 - [ ] Tab/region reorder + drag for the mixed `terminal|file|diff` tabs.
 
+**Workspace / context menu**
+- [ ] **"Open with" external editors/IDEs + customization.** The worktree row's
+      right-click menu (a reusable `ui/context-menu`) covers terminals · agents ·
+      reveal-in-file-manager · configure · remove. The requested *Open with →
+      text editors / IDEs* submenu (launch the worktree folder in VS Code / an
+      IDE) plus a user-customizable editor list needs a new **external-editor
+      registry**: a catalog + per-editor launch command, a Settings pane to
+      add/edit them, and a backend "open path in app" command. Only "Reveal in
+      file manager" (`reveal_path`) ships today. Inline `FOR-DEV:` marker at the
+      reveal item in `src/lib/components/WorktreeRow.svelte`.
+
 **Theming**
 - [ ] Import font *files* (.ttf/.otf/.woff2) via `@font-face` (today: installed
       family name only).
@@ -155,6 +177,21 @@ are **done** (see `CHANGELOG.md` + `architecture/02d` §3). Remaining follow-ups
       back-compat).
 
 **Polish / quality**
+- [ ] **Agent sign-in status as the list's second line.** In Settings → Agents,
+      the unified list shows each agent's `command` as the second (muted) line.
+      Replace it (where available) with the agent's real session/sign-in status —
+      e.g. "Signed in as <user> · <plan>" / "Not signed in" — like the providers
+      list in the reference UI. Needs the sanitized per-agent `auth/status` (it
+      lives on the bridge side today) surfaced to the desktop settings; never show
+      tokens. Where status is unknown, fall back to the command.
+- [ ] **Settings list-body polish (optional follow-up).** The section-shell
+      refactor is done — all nine sections use `SettingsSection` (consistent
+      header), settings-style sections use the `panel.settingsBody` band of
+      `SettingsRow`s, every on/off is a `Switch`, and list/editor-heavy sections
+      use the `bare` header with softened borders. Optional next polish: tighten
+      the inner list sub-content (agents catalog cards, terminal profile editors,
+      shortcut keycaps) further into the row/density recipes. Visual, review on
+      device.
 - [ ] Sidebar project-tree virtualization (worktree lists already virtualized).
 - [ ] Stronghold/keyring for any secret (never plaintext JSON) — needed with Phase 6.
 - [ ] E2E tests (Playwright / WebdriverIO + tauri-driver) **and** Svelte

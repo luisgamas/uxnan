@@ -21,7 +21,7 @@
 
 {#if updater.bannerVisible}
   <div
-    class="flex shrink-0 items-center gap-3 border-b border-border bg-primary/10 px-3 py-1.5"
+    class="flex shrink-0 items-center gap-3 border-b border-border/60 bg-primary/10 px-3 py-1.5"
     role="status"
   >
     <!-- Leading icon reflects the phase. -->

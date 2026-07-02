@@ -191,12 +191,9 @@
   );
 </script>
 
+<!-- The section title + description are provided by the enclosing
+     `SettingsSection` (see Settings.svelte), so this panel doesn't repeat them. -->
 <div class="flex flex-col gap-4">
-  <div class="flex flex-col gap-1">
-    <span class={cn("font-medium", text.body)}>{i18n.t("hooks.title")}</span>
-    <p class={text.meta}>{i18n.t("hooks.desc")}</p>
-  </div>
-
   {#if degraded}
     <p class={text.meta}>
       {i18n.t("settings.detecting")}

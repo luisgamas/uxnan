@@ -8,7 +8,6 @@
   import {
     terminals,
     computeAreaLayout,
-    GLOBAL_WORKSPACE,
     type AreaDivider,
     type AreaSplit,
     type Rect,
@@ -20,20 +19,17 @@
   import CommitPane from "./CommitPane.svelte";
   import { resolveAgentDisplay } from "$lib/state/agentDisplay";
   import AgentStatusDot from "./AgentStatusDot.svelte";
-  import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
-  import { icon, text } from "$lib/design";
+  import { divider, icon, tab, text } from "$lib/design";
   import { cn } from "$lib/utils";
   import { i18n } from "$lib/i18n";
+  import { resolveBinding } from "$lib/keybindings";
+  import KeyChord from "./KeyChord.svelte";
   import PlusIcon from "@lucide/svelte/icons/plus";
-  import TerminalIcon from "@lucide/svelte/icons/terminal";
-  import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
-  import Columns2Icon from "@lucide/svelte/icons/columns-2";
-  import Rows2Icon from "@lucide/svelte/icons/rows-2";
   import GitBranchIcon from "@lucide/svelte/icons/git-branch";
   import FileIcon from "@lucide/svelte/icons/file";
   import FileDiffIcon from "@lucide/svelte/icons/file-diff";
   import GitCommitIcon from "@lucide/svelte/icons/git-commit-horizontal";
-  import NewWorktreeDialog from "./NewWorktreeDialog.svelte";
+  import LauncherMenu from "./LauncherMenu.svelte";
 
   /** Default profile's shell/args, for region-level + and splits. A blank
    *  command falls back to the backend's platform default shell. */
@@ -52,24 +48,23 @@
   // (`+page.svelte`); here it's only used for the empty-state copy.
   const ctx = $derived(projects.activeContext);
 
-  /** The repo the active workspace belongs to (if any). The empty-state
-   *  "New worktree" button is only enabled when this resolves to a repo —
-   *  worktrees must branch from a registered git repo, not from the Global
-   *  terminal space. Returns `null` for the Global workspace and when the
-   *  active key doesn't match any known repo or worktree. */
-  const activeRepo = $derived.by(() => {
-    const key = terminals.activeWorkspace;
-    if (key === GLOBAL_WORKSPACE) return null;
-    const mainRepo = app.repos.find((r) => r.path === key);
-    if (mainRepo) return mainRepo;
-    for (const r of app.repos) {
-      if (projects.worktreesOf(r.id).some((w) => w.path === key)) return r;
-    }
-    return null;
-  });
+  // The repo the active workspace belongs to (null for the Global space). Read
+  // from the shared store so the empty-state "New worktree" button, the global
+  // shortcut and the page-mounted dialog all agree on the same repo + open state.
+  const activeRepo = $derived(projects.activeRepo);
 
-  // --- Empty-state "New worktree" dialog state -----------------------------
-  let newWorktreeOpen = $state(false);
+  // Keyboard hints listed under the empty-state buttons (informative only). "New
+  // worktree" appears only inside a repo; filtered to bound actions so a blank /
+  // disabled chord never renders an empty row.
+  const emptyHints = $derived(
+    [
+      { label: i18n.t("shortcuts.newTerminal"), chord: resolveBinding("newTerminal") },
+      activeRepo
+        ? { label: i18n.t("shortcuts.newWorktree"), chord: resolveBinding("newWorktree") }
+        : null,
+      { label: i18n.t("shortcuts.addProject"), chord: resolveBinding("addProject") },
+    ].filter((h): h is { label: string; chord: string } => !!h && h.chord.length > 0),
+  );
 
   let unlistenDrop: (() => void) | undefined;
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -160,7 +155,14 @@
   // --- Context menus -------------------------------------------------------
   type MenuItem =
     | { separator: true }
-    | { label: string; action: () => void; danger?: boolean; disabled?: boolean };
+    | {
+        label: string;
+        action: () => void;
+        danger?: boolean;
+        disabled?: boolean;
+        /** Raw chord for the trailing keycap hint (e.g. "Ctrl+C", "Mod+W"). */
+        chord?: string;
+      };
   let menu = $state<{ x: number; y: number; items: MenuItem[] } | null>(null);
 
   function openMenu(e: MouseEvent, items: MenuItem[]) {
@@ -174,10 +176,12 @@
       {
         label: i18n.t("terminal.splitRight"),
         action: () => terminals.split(groupId, "row", defaultShellArgs()),
+        chord: resolveBinding("splitRight"),
       },
       {
         label: i18n.t("terminal.splitDown"),
         action: () => terminals.split(groupId, "col", defaultShellArgs()),
+        chord: resolveBinding("splitDown"),
       },
     ];
   }
@@ -186,11 +190,13 @@
       {
         label: i18n.t("terminal.newTerminal"),
         action: () => terminals.create({ groupId, ...defaultShellArgs() }),
+        chord: resolveBinding("newTerminal"),
       },
       {
         label: i18n.t("terminal.closeTerminal"),
         action: () => void terminals.closeTab(groupId, tabId),
         danger: true,
+        chord: resolveBinding("closeCenter"),
       },
     ];
   }
@@ -199,8 +205,13 @@
     terminals.setActiveTab(groupId, tabId);
     const ctrl = terminals.controller(tabId);
     openMenu(e, [
-      { label: i18n.t("terminal.copy"), action: () => ctrl?.copy(), disabled: !ctrl?.hasSelection() },
-      { label: i18n.t("terminal.paste"), action: () => void ctrl?.paste() },
+      {
+        label: i18n.t("terminal.copy"),
+        action: () => ctrl?.copy(),
+        disabled: !ctrl?.hasSelection(),
+        chord: "Mod+C",
+      },
+      { label: i18n.t("terminal.paste"), action: () => void ctrl?.paste(), chord: "Mod+V" },
       { separator: true },
       ...splitItems(groupId),
       { separator: true },
@@ -223,6 +234,7 @@
   // drives both the insertion marker and the floating drag label.
   let tabDrag = $state<{
     tabId: string;
+    groupId: string;
     title: string;
     pointerId: number;
     startX: number;
@@ -235,11 +247,12 @@
 
   const DRAG_THRESHOLD_PX = 5;
 
-  function onChipPointerDown(e: PointerEvent, tabId: string, title: string) {
+  function onChipPointerDown(e: PointerEvent, groupId: string, tabId: string, title: string) {
     if (e.button !== 0) return; // left button only
     if ((e.target as HTMLElement).closest("[data-tab-close]")) return; // the × button
     tabDrag = {
       tabId,
+      groupId,
       title,
       pointerId: e.pointerId,
       startX: e.clientX,
@@ -266,10 +279,17 @@
     (e.currentTarget as HTMLElement).releasePointerCapture?.(tabDrag.pointerId);
     const wasDragging = tabDrag.dragging;
     const tabId = tabDrag.tabId;
+    const groupId = tabDrag.groupId;
     const slot = dropSlot;
     tabDrag = null;
     dropSlot = null;
-    if (wasDragging && slot) terminals.moveTab(tabId, slot.groupId, slot.index);
+    if (wasDragging) {
+      if (slot) terminals.moveTab(tabId, slot.groupId, slot.index);
+    } else {
+      // A plain tap anywhere on the chip selects the tab (the whole colored
+      // chip is the hit target, not just the label).
+      terminals.setActiveTab(groupId, tabId);
+    }
   }
   /** Resolve the drop slot from the element under the pointer: over a chip, the
    *  slot is before/after it by pointer side; over a strip's empty area, append;
@@ -306,53 +326,11 @@
 />
 
 <div class="flex h-full flex-col">
-  <!-- Slim strip: new-terminal action, workspace switcher, right-panel toggle -->
-  <div class="flex h-8 shrink-0 items-center gap-1 border-b border-border bg-card px-2">
-    <div class="flex items-center">
-      <button
-        class={cn(
-          "inline-flex items-center gap-1 rounded-l px-2 py-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-          text.body,
-        )}
-        title={i18n.t("terminal.newDefault")}
-        onclick={() => app.openTerminal()}
-      >
-        <PlusIcon class={icon.button} />
-        {i18n.t("terminal.terminal")}
-      </button>
-      <DropdownMenu.Root>
-        <DropdownMenu.Trigger>
-          {#snippet child({ props })}
-            <button
-              class="rounded-r px-0.5 py-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-              title={i18n.t("terminal.chooseProfile")}
-              aria-label={i18n.t("terminal.chooseProfile")}
-              {...props}
-            >
-              <ChevronDownIcon class={icon.button} />
-            </button>
-          {/snippet}
-        </DropdownMenu.Trigger>
-        <DropdownMenu.Content align="start" class="min-w-44">
-          <DropdownMenu.Label class={text.menuLabel}>{i18n.t("terminal.newTerminal")}</DropdownMenu.Label>
-          {#each app.terminalProfiles as p (p.id)}
-            <DropdownMenu.Item
-              class={text.menu}
-              onclick={() => app.openTerminal({ profileId: p.id })}
-            >
-              <TerminalIcon class={icon.button} />
-              {p.name.trim() || i18n.t("terminal.unnamedProfile")}
-            </DropdownMenu.Item>
-          {/each}
-        </DropdownMenu.Content>
-      </DropdownMenu.Root>
-    </div>
-
-    <div class="flex-1"></div>
-  </div>
-
-  <!-- Each workspace's region tree is rendered (and stays mounted) but only the
-       active workspace is shown, so background worktrees keep streaming. -->
+  <!-- Region: Center workspace — the per-region tab strips sit at the very top
+       now. The "new terminal" launcher (default + profiles) moved to the left
+       sidebar's Projects header. Each workspace's region tree is rendered (and
+       stays mounted) but only the active workspace is shown, so background
+       worktrees keep streaming. -->
   <div class="relative min-h-0 flex-1 overflow-hidden" style:background-color={paneBg}>
     {#if terminals.hydrated}
       {#each terminals.openWorkspaceKeys as wsKey (wsKey)}
@@ -370,43 +348,50 @@
               {#each wsLayout.groups as g (g.group.id)}
                 {@const activeRegion = isActiveWs && wsActiveGroup === g.group.id}
                 <div
-                  class="absolute flex flex-col overflow-hidden rounded-sm border {activeRegion
-                    ? 'border-ring'
-                    : 'border-transparent'}"
+                  class="absolute flex flex-col overflow-hidden {activeRegion &&
+                  wsLayout.groups.length > 1
+                    ? 'ring-1 ring-inset ring-ring/70'
+                    : ''}"
                   style="left:{g.rect.x}%; top:{g.rect.y}%; width:{g.rect.w}%; height:{g
                     .rect.h}%"
                   role="group"
                   onpointerdown={() => terminals.setActiveGroup(g.group.id)}
                 >
-                  <!-- Region tab strip (pointer-driven tab drag target) -->
+                  <!-- Region tab strip (pointer-driven tab drag target). It's the
+                       top band of the title-bar-less center, so its empty areas
+                       double as a window drag handle (Tauri checks the exact
+                       target, so tabs/buttons — which lack the attribute — stay
+                       clickable; the flex-1 spacer below is the main drag zone). -->
                   <div
-                    class="uxnan-scroll flex h-8 shrink-0 items-center gap-1 overflow-x-auto border-b border-border bg-card px-1"
+                    data-tauri-drag-region
+                    class={cn("uxnan-scroll flex h-9 shrink-0 items-center overflow-x-auto bg-sidebar px-1", divider.bottom)}
                     data-tab-strip
                     data-group-id={g.group.id}
                     data-tab-count={g.group.tabs.length}
                   >
                     {#each g.group.tabs as t, ti (t.id)}
                       {@const activeChip = g.group.activeTabId === t.id}
-                      <!-- Insertion marker before this tab -->
+                      <!-- Insertion marker before this tab: zero-width until it's
+                           the active drop target, so tabs sit flush (no gaps). -->
                       <div
-                        class="h-5 w-0.5 shrink-0 rounded-full {isDropAt(g.group.id, ti)
-                          ? 'bg-ring'
-                          : 'bg-transparent'}"
+                        class="h-5 shrink-0 rounded-full {isDropAt(g.group.id, ti)
+                          ? 'w-0.5 bg-ring'
+                          : 'w-0 bg-transparent'}"
                         aria-hidden="true"
                       ></div>
                       <div
-                        class="flex shrink-0 items-center gap-1 rounded px-2 py-0.5 text-xs {activeChip
-                          ? 'bg-background text-foreground'
-                          : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'} {tabDrag?.dragging &&
-                        tabDrag.tabId === t.id
-                          ? 'opacity-40'
-                          : ''}"
+                        class={cn(
+                          "flex h-full shrink-0 cursor-pointer items-center gap-1.5 px-3 text-[13px]",
+                          tab.base,
+                          activeChip ? tab.active : tab.inactive,
+                          tabDrag?.dragging && tabDrag.tabId === t.id && "opacity-40",
+                        )}
                         role="group"
                         data-tab-id={t.id}
                         data-group-id={g.group.id}
                         data-tab-index={ti}
                         onpointerdown={(e) =>
-                          onChipPointerDown(e, t.id, t.kind === "terminal" ? (t.agentName ?? t.title) : t.title)}
+                          onChipPointerDown(e, g.group.id, t.id, t.kind === "terminal" ? (t.agentName ?? t.title) : t.title)}
                         onpointermove={onChipPointerMove}
                         onpointerup={onChipPointerUp}
                         oncontextmenu={t.kind === "terminal"
@@ -418,22 +403,20 @@
                           {#if display}
                             <AgentStatusDot status={display.status} stale={display.stale} />
                           {/if}
-                          <button
+                          <span
                             class="max-w-[120px] truncate {t.exited ? 'line-through' : ''}"
-                            onclick={() => terminals.setActiveTab(g.group.id, t.id)}
                             title={t.agentName ?? t.title}
                           >
                             {t.agentName ?? t.title}
-                          </button>
+                          </span>
                         {:else if t.kind === "file"}
                           <FileIcon class={cn(icon.decorative, "shrink-0")} />
-                          <button
+                          <span
                             class="max-w-[120px] truncate"
-                            onclick={() => terminals.setActiveTab(g.group.id, t.id)}
                             title={t.path}
                           >
                             {t.title}
-                          </button>
+                          </span>
                           {#if terminals.fileState(t.id)?.dirty}
                             <span
                               class="text-amber-600 dark:text-amber-400"
@@ -442,22 +425,20 @@
                           {/if}
                         {:else if t.kind === "diff"}
                           <FileDiffIcon class={cn(icon.decorative, "shrink-0")} />
-                          <button
+                          <span
                             class="max-w-[120px] truncate"
-                            onclick={() => terminals.setActiveTab(g.group.id, t.id)}
                             title={t.file}
                           >
                             {t.title}
-                          </button>
+                          </span>
                         {:else}
                           <GitCommitIcon class={cn(icon.decorative, "shrink-0")} />
-                          <button
+                          <span
                             class="max-w-[120px] truncate font-mono"
-                            onclick={() => terminals.setActiveTab(g.group.id, t.id)}
                             title={t.subject}
                           >
                             {t.title}
-                          </button>
+                          </span>
                         {/if}
                         <button
                           class="rounded px-0.5 text-muted-foreground opacity-60 hover:bg-destructive/20 hover:text-foreground hover:opacity-100"
@@ -472,40 +453,42 @@
                     {/each}
                     <!-- Insertion marker after the last tab (append slot) -->
                     <div
-                      class="h-5 w-0.5 shrink-0 rounded-full {isDropAt(
+                      class="h-5 shrink-0 rounded-full {isDropAt(
                         g.group.id,
                         g.group.tabs.length,
                       )
-                        ? 'bg-ring'
-                        : 'bg-transparent'}"
+                        ? 'w-0.5 bg-ring'
+                        : 'w-0 bg-transparent'}"
                       aria-hidden="true"
                     ></div>
-                    <button
-                      class="ml-0.5 shrink-0 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                      title={i18n.t("terminal.newInRegion")}
-                      aria-label={i18n.t("terminal.newTerminal")}
-                      onclick={() =>
-                        terminals.create({ groupId: g.group.id, ...defaultShellArgs() })}
-                    >
-                      +
-                    </button>
-                    <div class="flex-1"></div>
-                    <button
-                      class="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                      title={i18n.t("terminal.splitRight")}
-                      aria-label={i18n.t("terminal.splitRight")}
-                      onclick={() => terminals.split(g.group.id, "row", defaultShellArgs())}
-                    >
-                      <Columns2Icon class={icon.button} />
-                    </button>
-                    <button
-                      class="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                      title={i18n.t("terminal.splitDown")}
-                      aria-label={i18n.t("terminal.splitDown")}
-                      onclick={() => terminals.split(g.group.id, "col", defaultShellArgs())}
-                    >
-                      <Rows2Icon class={icon.button} />
-                    </button>
+                    <!-- The "+" opens the unified launcher (terminals · agents ·
+                         browser · worktree) for this worktree — the same menu as
+                         the project card, grouped by type. The Global terminal
+                         space has no worktree to launch into, so it keeps the
+                         plain "new terminal in this region" button. -->
+                    {#if activeRepo}
+                      <LauncherMenu
+                        repo={activeRepo}
+                        target={{ path: wsKey, branch: null }}
+                        onNewWorktree={() => (projects.newWorktreeOpen = true)}
+                        align="start"
+                        triggerClass="ml-0.5 size-6"
+                        title={i18n.t("launcher.openHere")}
+                      />
+                    {:else}
+                      <button
+                        class="ml-0.5 shrink-0 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                        title={i18n.t("terminal.newInRegion")}
+                        aria-label={i18n.t("terminal.newTerminal")}
+                        onclick={() =>
+                          terminals.create({ groupId: g.group.id, ...defaultShellArgs() })}
+                      >
+                        +
+                      </button>
+                    {/if}
+                    <!-- Split lives in each terminal's right-click menu (tab or
+                         pane), not here — this stays a drag region. -->
+                    <div data-tauri-drag-region class="flex-1"></div>
                   </div>
 
                   <!-- Pane stack for this region (active tab shown). One pane per
@@ -576,7 +559,7 @@
                   onpointerup={dividerUp}
                 >
                   <div
-                    class="bg-border transition-colors hover:bg-ring {d.dir === 'row'
+                    class="bg-border/60 transition-colors hover:bg-ring/70 {d.dir === 'row'
                       ? 'mx-auto h-full w-px'
                       : 'my-auto h-px w-full'}"
                   ></div>
@@ -592,20 +575,28 @@
              two actions. The "New worktree" action only makes sense inside
              a registered repo's context, so it's disabled (with a tooltip)
              in the Global workspace where there's nothing to branch from. -->
-        <div class="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
+        <!-- Empty center: with no top tab strip here, the empty canvas itself is
+             the window drag handle. The attribute is repeated on the non-interactive
+             children (logo, copy) so dragging works from anywhere but the buttons. -->
+        <div
+          data-tauri-drag-region
+          class="relative flex h-full flex-col items-center justify-center gap-4 px-6 text-center"
+        >
           <img
             src="/logo_nb.svg"
             alt=""
             aria-hidden="true"
+            data-tauri-drag-region
             class="block size-24 opacity-90 dark:hidden"
           />
           <img
             src="/logo_wnb.svg"
             alt=""
             aria-hidden="true"
+            data-tauri-drag-region
             class="hidden size-24 opacity-90 dark:block"
           />
-          <div class={cn("text-muted-foreground", text.body)}>
+          <div data-tauri-drag-region class={cn("text-muted-foreground", text.body)}>
             {i18n.t("terminal.noTerminalsIn", {
               context: ctx.repo ? `${ctx.repo} / ${ctx.name}` : ctx.name,
             })}
@@ -627,7 +618,7 @@
                   "inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 font-medium text-foreground hover:bg-accent hover:text-accent-foreground",
                   text.body,
                 )}
-                onclick={() => (newWorktreeOpen = true)}
+                onclick={() => (projects.newWorktreeOpen = true)}
               >
                 <GitBranchIcon class={icon.button} />
                 {i18n.t("newWorktree.title")}
@@ -646,18 +637,41 @@
               </button>
             {/if}
           </div>
+
+          <!-- Informative keyboard hints under the buttons (not inside them):
+               the same actions plus "add project", each with its live keycap. -->
+          {#if emptyHints.length}
+            <div
+              data-tauri-drag-region
+              class="grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1.5 text-xs"
+            >
+              {#each emptyHints as hint (hint.label)}
+                <span data-tauri-drag-region class="text-right text-muted-foreground/80">
+                  {hint.label}
+                </span>
+                <KeyChord chord={hint.chord} />
+              {/each}
+            </div>
+          {/if}
+
+          <!-- Quiet name + pronunciation over a subtitle, pinned to the bottom of
+               the empty canvas. -->
+          <div
+            data-tauri-drag-region
+            class="absolute inset-x-0 bottom-0 flex flex-col items-center gap-0.5 px-6 pb-4 text-center"
+          >
+            <span data-tauri-drag-region class="text-[11px] tracking-wide text-muted-foreground/55">
+              {i18n.t("terminal.nameNote")}
+            </span>
+            <span data-tauri-drag-region class="text-[10px] italic text-muted-foreground/40">
+              {i18n.t("terminal.nameSub")}
+            </span>
+          </div>
         </div>
       {/if}
     {/if}
   </div>
 </div>
-
-<!-- Dialog is mounted once at the bottom of the component tree. We pass the
-     active repo (resolved above); the bindable `open` is only flipped when the
-     user clicks the empty-state's "New worktree" button. -->
-{#if activeRepo}
-  <NewWorktreeDialog repo={activeRepo} bind:open={newWorktreeOpen} />
-{/if}
 
 <!-- Floating label that follows the pointer while dragging a tab. -->
 {#if tabDrag?.dragging}
@@ -669,10 +683,12 @@
   </div>
 {/if}
 
-<!-- Floating context menu -->
+<!-- Floating context menu (right-click on a terminal pane or its tab). Styled to
+     match the app's other menus (ring + soft popover, rounded rows); items with a
+     keyboard equivalent show it as a trailing keycap hint. -->
 {#if menu}
   <div
-    class="fixed z-50 min-w-[160px] rounded-md border border-border bg-popover py-1 text-popover-foreground shadow-md"
+    class="fixed z-50 min-w-44 rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10"
     style="left:{menu.x}px; top:{menu.y}px"
     role="menu"
     tabindex="-1"
@@ -680,19 +696,26 @@
   >
     {#each menu.items as item, i (i)}
       {#if "separator" in item}
-        <div class="my-1 h-px bg-border"></div>
+        <div class="-mx-1 my-1 h-px bg-border"></div>
       {:else}
         <button
-          class="flex w-full items-center px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground disabled:opacity-40 disabled:hover:bg-transparent {item.danger
-            ? 'text-destructive'
-            : ''}"
+          class={cn(
+            "flex min-h-7 w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm disabled:pointer-events-none disabled:opacity-50",
+            item.danger
+              ? "text-destructive hover:bg-destructive/10 hover:text-destructive"
+              : "hover:bg-accent hover:text-accent-foreground",
+          )}
+          role="menuitem"
           disabled={item.disabled}
           onclick={() => {
             item.action();
             menu = null;
           }}
         >
-          {item.label}
+          <span class="truncate">{item.label}</span>
+          {#if item.chord}
+            <KeyChord chord={item.chord} class="ml-auto pl-2" />
+          {/if}
         </button>
       {/if}
     {/each}

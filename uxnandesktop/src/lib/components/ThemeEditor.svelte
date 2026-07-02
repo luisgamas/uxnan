@@ -12,6 +12,7 @@
   import {
     THEME_TOKENS,
     DEFAULT_FONTS,
+    BUNDLED_FONTS,
     themeToJson,
     type Theme,
     type ThemeColors,
@@ -19,6 +20,7 @@
   import { cn } from "$lib/utils";
   import { text } from "$lib/design";
   import { i18n } from "$lib/i18n";
+  import FontPicker from "./FontPicker.svelte";
   import CodeIcon from "@lucide/svelte/icons/code";
   import SlidersIcon from "@lucide/svelte/icons/sliders-horizontal";
 
@@ -72,8 +74,6 @@
     theme.base === "dark" ? i18n.t("settings.theme.dark") : i18n.t("settings.theme.light"),
   );
 
-  const COMMON_FONTS = ["Inter", "Roboto", "Segoe UI", "system-ui", "JetBrains Mono", "Cascadia Code", "Fira Code", "Consolas"];
-
   function ensureFonts() {
     if (!theme.fonts) theme.fonts = {};
     return theme.fonts;
@@ -96,7 +96,7 @@
       </button>
       <button
         type="button"
-        class={cn("flex items-center gap-1 border-l border-border px-2 py-0.5", text.indicator, mode === "json" ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground")}
+        class={cn("flex items-center gap-1 border-l border-border/60 px-2 py-0.5", text.indicator, mode === "json" ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground")}
         onclick={() => { jsonText = themeToJson(theme); mode = "json"; }}
       >
         <CodeIcon class="size-3.5" />JSON
@@ -127,18 +127,17 @@
             </div>
           </div>
 
-          <datalist id="uxnan-fonts-editor">
-            {#each COMMON_FONTS as f (f)}<option value={f}></option>{/each}
-          </datalist>
           <div class="grid grid-cols-3 gap-2">
             {#each [["title", "appearance.fontTitle"], ["body", "appearance.fontBody"], ["mono", "appearance.fontMono"]] as [key, labelKey] (key)}
-              <div class="flex flex-col gap-1">
+              {@const k = key as "title" | "body" | "mono"}
+              <div class="flex min-w-0 flex-col gap-1">
                 <Label class={text.meta}>{i18n.t(labelKey as never)}</Label>
-                <Input
-                  list="uxnan-fonts-editor"
-                  placeholder={DEFAULT_FONTS[key as "title" | "body" | "mono"].split(",")[0]}
-                  value={theme.fonts?.[key as "title" | "body" | "mono"] ?? ""}
-                  oninput={(e) => (ensureFonts()[key as "title" | "body" | "mono"] = e.currentTarget.value || undefined)}
+                <FontPicker
+                  value={theme.fonts?.[k]}
+                  placeholder={DEFAULT_FONTS[k].split(",")[0].replace(/"/g, "")}
+                  bundled={k === "mono" ? [] : [...BUNDLED_FONTS]}
+                  clearLabel={i18n.t("appearance.fontDefault")}
+                  onChange={(v) => (ensureFonts()[k] = v)}
                 />
               </div>
             {/each}

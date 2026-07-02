@@ -139,6 +139,20 @@ variable on `<html>`, sets `--ux-font-{body,title,mono}` and `--radius`, and
 toggles the `.dark` class from the theme's `base` (so Tailwind `dark:` status
 utilities still render correctly). Switching is instant — no rebuild.
 
+A theme only needs to define the base palette above: the ADE's **semantic
+surface layers** — `--ux-shell`, `--ux-sidebar-accent`, `--ux-panel`,
+`--ux-panel-muted`, `--ux-editor-surface`, `--ux-elevated` and the hover/border
+tints — are derived in `app.css` from those base tokens via `color-mix`, so any
+theme (built-in or custom) gets coherent shell, sidebar and panel depth
+automatically. Because the mix is over `--foreground`, the same formula darkens
+light themes and lightens dark ones.
+
+When no font is set, the UI defaults to **DM Sans**, which is **bundled** with
+the app (`@fontsource-variable/dm-sans`, imported in `app.css`) so it renders
+regardless of what's installed on the OS. The default is declared in
+`DEFAULT_FONTS` (`theme.ts`) and mirrored by `--ux-font-*` in `app.css`; the body
+also gets a small `letter-spacing` + grayscale antialiasing for crisp rendering.
+
 The terminal is resolved by `resolveTerminal`, which starts from the active
 theme's base defaults (background/foreground + a standard ANSI palette) and
 overlays the per-terminal overrides, producing the xterm font options + theme.

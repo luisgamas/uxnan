@@ -3,12 +3,13 @@
   import { terminals } from "$lib/state/terminals.svelte";
   import { projects } from "$lib/state/projects.svelte";
   import { orchestration } from "$lib/state/orchestration.svelte";
+  import { git } from "$lib/state/git.svelte";
   import { fsSetWatch } from "$lib/api";
   import { i18n } from "$lib/i18n";
   import { matchAction } from "$lib/keybindings";
   import { isUntestedPlatform, osLabel } from "$lib/platform";
   import { cn } from "$lib/utils";
-  import { surface } from "$lib/design";
+  import { divider } from "$lib/design";
   import TriangleAlertIcon from "@lucide/svelte/icons/triangle-alert";
   import WebhookIcon from "@lucide/svelte/icons/webhook";
   import PanelLeftIcon from "@lucide/svelte/icons/panel-left";
@@ -18,10 +19,11 @@
   import WorkflowIcon from "@lucide/svelte/icons/workflow";
   import TerminalArea from "$lib/components/TerminalArea.svelte";
   import SaveDiscardDialog from "$lib/components/SaveDiscardDialog.svelte";
-  import TitleBar from "$lib/components/TitleBar.svelte";
+  import WindowControls from "$lib/components/WindowControls.svelte";
   import LeftSidebar from "$lib/components/LeftSidebar.svelte";
   import RightPanel from "$lib/components/RightPanel.svelte";
   import BrowserPanel from "$lib/components/BrowserPanel.svelte";
+  import NewWorktreeDialog from "$lib/components/NewWorktreeDialog.svelte";
   import Settings from "$lib/components/Settings.svelte";
   import OrchestrationConsole from "$lib/components/OrchestrationConsole.svelte";
   import WorktreeSearch from "$lib/components/WorktreeSearch.svelte";
@@ -112,6 +114,20 @@
     void fsSetWatch(projects.activeWorktreePath).catch(() => {});
   });
 
+  // Load the active worktree's git status here too — at the always-mounted shell,
+  // not inside the right panel. The status feeds the file-tree coloring, the
+  // project-card dirty badges AND the Changes tab, so it must follow the active
+  // worktree regardless of whether the right panel is open or which tab is shown
+  // (previously this lived in RightPanel, so the status only loaded while that
+  // panel was mounted). `startListening` subscribes once to the live
+  // `git:status-changed` events; the load reacts to every worktree change.
+  $effect(() => {
+    void git.startListening();
+  });
+  $effect(() => {
+    void git.load(projects.activeWorktreePath);
+  });
+
   // Suppress the webview's built-in context menu (it's most visible in debug
   // builds and exposes dev/inspect entries). Native menus stay on text fields so
   // right-click paste keeps working; our terminal tab/pane menus call
@@ -164,6 +180,24 @@
           terminals.focusSplit(-1);
         }
         return;
+      case "newTerminal":
+        // Tied to the active workspace (bootstraps the first terminal if it's
+        // empty — same as the empty-state button).
+        e.preventDefault();
+        app.openTerminal();
+        return;
+      case "newGlobalTerminal":
+        e.preventDefault();
+        app.openGlobalTerminal();
+        return;
+      case "splitRight":
+        e.preventDefault();
+        app.splitActiveTerminal("row");
+        return;
+      case "splitDown":
+        e.preventDefault();
+        app.splitActiveTerminal("col");
+        return;
       case "saveFile":
         return; // handled by the editor's own keymap when focused
       case "worktreePalette":
@@ -173,6 +207,10 @@
       case "addProject":
         e.preventDefault();
         projects.pickerOpen = true;
+        return;
+      case "newWorktree":
+        e.preventDefault();
+        projects.requestNewWorktree(); // no-op outside a repo
         return;
       case "openSettings":
         e.preventDefault();
@@ -192,18 +230,45 @@
 
 <svelte:window oncontextmenu={onContextMenu} onkeydown={onKeyDown} />
 
+<!-- Reusable column resize handle. Zero-width in layout so adjacent panels sit
+     flush (no visible seam, even behind split terminals); a wider absolute strip
+     straddles the boundary for grabbing, with a hairline that only shows on hover. -->
+{#snippet resizeHandle(side: Side)}
+  <div class="relative w-0 shrink-0">
+    <div
+      class="group absolute inset-y-0 left-1/2 z-20 w-1.5 -translate-x-1/2 cursor-col-resize"
+      role="separator"
+      aria-orientation="vertical"
+      onpointerdown={(e) => onHandleDown(side, e)}
+      onpointermove={onHandleMove}
+      onpointerup={onHandleUp}
+    >
+      <div class="mx-auto h-full w-px bg-transparent transition-colors group-hover:bg-ring/50"></div>
+    </div>
+  </div>
+{/snippet}
+
 <div class="flex h-screen w-screen flex-col bg-background text-foreground">
   <!-- Non-blocking toasts (errors + successes) -->
   <Toaster position="bottom-right" />
 
-  <!-- Custom title bar (OS chrome disabled) -->
-  <TitleBar />
+  <!-- Window controls (min/max/close) — fixed top-right overlay. There is no
+       title bar: the brand sits atop the left sidebar and these controls atop
+       the right panel, while the three panels run to the very top of the window. -->
+  <WindowControls />
 
   <!-- Quick worktree switcher (Ctrl/Cmd+P) -->
   <WorktreeSearch />
 
   <!-- Add-project directory picker (Ctrl/Cmd+O; also from the sidebar) -->
   <DirectoryPicker bind:open={projects.pickerOpen} />
+
+  <!-- New-worktree dialog (Ctrl/Cmd+Shift+N; also the empty-state button). Mounted
+       once here so the shortcut works regardless of what the center shows; only
+       present when the active workspace is inside a repo to branch from. -->
+  {#if projects.activeRepo}
+    <NewWorktreeDialog repo={projects.activeRepo} bind:open={projects.newWorktreeOpen} />
+  {/if}
 
   <!-- Unsaved-edit prompt (driven by the saveDiscard service on tab close) -->
   <SaveDiscardDialog />
@@ -218,6 +283,7 @@
 
     <div class="flex min-h-0 flex-1">
       {#if app.settings.leftSidebarOpen}
+        <!-- Region: Left sidebar (Projects panel) — brand · quick actions · projects. -->
         <aside
           class="flex shrink-0 flex-col overflow-hidden bg-sidebar text-sidebar-foreground"
           style="width: {app.settings.leftSidebarWidth}px"
@@ -225,34 +291,19 @@
           <LeftSidebar />
         </aside>
 
-        <!-- Left resize handle -->
-        <div
-          class="w-1 shrink-0 cursor-col-resize bg-border transition-colors hover:bg-ring"
-          role="separator"
-          aria-orientation="vertical"
-          onpointerdown={(e) => onHandleDown("left", e)}
-          onpointermove={onHandleMove}
-          onpointerup={onHandleUp}
-        ></div>
+        {@render resizeHandle("left")}
       {/if}
 
-      <!-- Center area: a tree of regions whose tabs are terminals, file editors
-           or diffs (TerminalArea). Every tab stays mounted (id-keyed) so no
-           PTY/xterm/CodeMirror is torn down on split or tab switch. -->
+      <!-- Region: Center workspace (Pane area) — a tree of regions whose tabs are
+           terminals, file editors or diffs (TerminalArea). Every tab stays mounted
+           (id-keyed) so no PTY/xterm/CodeMirror is torn down on split or tab switch. -->
       <main class="relative flex min-w-0 flex-1 flex-col overflow-hidden">
         <TerminalArea />
       </main>
 
       {#if app.settings.rightSidebarOpen}
-        <!-- Right resize handle -->
-        <div
-          class="w-1 shrink-0 cursor-col-resize bg-border transition-colors hover:bg-ring"
-          role="separator"
-          aria-orientation="vertical"
-          onpointerdown={(e) => onHandleDown("right", e)}
-          onpointermove={onHandleMove}
-          onpointerup={onHandleUp}
-        ></div>
+        <!-- Region: Right panel — window-controls header · Files/Changes/History. -->
+        {@render resizeHandle("right")}
 
         <aside
           class="flex shrink-0 flex-col overflow-hidden bg-sidebar text-sidebar-foreground"
@@ -263,15 +314,7 @@
       {/if}
 
       {#if app.browserOpen}
-        <!-- Browser panel resize handle (far right) -->
-        <div
-          class="w-1 shrink-0 cursor-col-resize bg-border transition-colors hover:bg-ring"
-          role="separator"
-          aria-orientation="vertical"
-          onpointerdown={(e) => onHandleDown("browser", e)}
-          onpointermove={onHandleMove}
-          onpointerup={onHandleUp}
-        ></div>
+        {@render resizeHandle("browser")}
 
         <!-- 4th panel: the integrated developer browser. The toolbar is here; the
              page is a docked WebviewWindow positioned over the panel's content. -->
@@ -285,8 +328,9 @@
     </div>
 
     <!-- Status bar: breadcrumb (left) · backend + panel toggles (right) -->
+    <!-- Region: Status bar — breadcrumb (left) · backend + panel toggles (right). -->
     <footer
-      class="flex h-7 shrink-0 items-center gap-2 border-t border-border px-2 text-xs text-muted-foreground"
+      class={cn("flex h-7 shrink-0 items-center gap-2 px-2 text-xs text-muted-foreground", divider.top)}
     >
       <!-- Active workspace breadcrumb -->
       <div class="inline-flex min-w-0 items-center gap-1" title={i18n.t("terminal.context")}>
@@ -340,12 +384,12 @@
       <!-- Backend status (icon + live popover) -->
       <BackendStatus />
 
-      <!-- Show/hide panels — selected = panel visible (primary tint) -->
+      <!-- Show/hide panels — selected = panel visible (neutral lifted segment) -->
       <button
         class={cn(
           "flex size-6 items-center justify-center rounded",
           app.settings.leftSidebarOpen
-            ? surface.tab
+            ? "bg-accent text-foreground"
             : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
         )}
         title={i18n.t("titlebar.toggleLeft")}
@@ -359,7 +403,7 @@
         class={cn(
           "flex size-6 items-center justify-center rounded",
           app.settings.rightSidebarOpen
-            ? surface.tab
+            ? "bg-accent text-foreground"
             : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
         )}
         title={i18n.t("terminal.toggleRight")}
@@ -374,7 +418,7 @@
           class={cn(
             "flex size-6 items-center justify-center rounded",
             app.browserOpen
-              ? surface.tab
+              ? "bg-accent text-foreground"
               : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
           )}
           title={i18n.t("browser.toggle")}

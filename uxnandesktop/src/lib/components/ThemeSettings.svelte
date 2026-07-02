@@ -9,12 +9,12 @@
   import * as Dialog from "$lib/components/ui/dialog";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
-  import { Label } from "$lib/components/ui/label";
   import { Textarea } from "$lib/components/ui/textarea";
   import { Switch } from "$lib/components/ui/switch";
   import { app } from "$lib/state/app.svelte";
   import {
     BUILTIN_IDS,
+    BUNDLED_FONTS,
     DEFAULT_FONTS,
     TERMINAL_INHERIT_ID,
     duplicateTheme,
@@ -33,10 +33,13 @@
   import { fsReadFile, fsWriteFile } from "$lib/api";
   import { clipboardWrite } from "$lib/clipboard";
   import { cn } from "$lib/utils";
-  import { icon, iconButton, text } from "$lib/design";
+  import { icon, iconButton, surface, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
   import ThemeEditor from "./ThemeEditor.svelte";
   import TerminalThemeEditor from "./TerminalThemeEditor.svelte";
+  import SettingsSection from "./SettingsSection.svelte";
+  import SettingsRow from "./SettingsRow.svelte";
+  import FontPicker from "./FontPicker.svelte";
   import PlusIcon from "@lucide/svelte/icons/plus";
   import UploadIcon from "@lucide/svelte/icons/upload";
   import ClipboardPasteIcon from "@lucide/svelte/icons/clipboard-paste";
@@ -46,10 +49,20 @@
   import DownloadIcon from "@lucide/svelte/icons/download";
   import Trash2Icon from "@lucide/svelte/icons/trash-2";
   import CheckIcon from "@lucide/svelte/icons/check";
-  import PaletteIcon from "@lucide/svelte/icons/palette";
-  import TerminalIcon from "@lucide/svelte/icons/terminal";
 
   let error = $state<string | null>(null);
+
+  // Shared recipes so every appearance sub-block reads like the rest of Settings:
+  // a soft card band for grouped rows, a selectable theme card in the app's
+  // neutral selection language (`surface.active`), and the theme-card grid.
+  const band = "rounded-xl border border-border/50 bg-card/50 px-5 py-1.5 shadow-xs";
+  const grid = "grid grid-cols-2 gap-2.5 sm:grid-cols-3";
+  function cardClass(selected: boolean): string {
+    return cn(
+      "flex flex-col gap-2 rounded-lg border p-2 text-left transition-colors",
+      selected ? cn(surface.active, "border-transparent") : "border-border/60 hover:bg-foreground/[0.04]",
+    );
+  }
 
   function persist() {
     void app.persistSettings();
@@ -283,173 +296,206 @@
   {#if error}<p class={cn("text-destructive", text.body)}>{error}</p>{/if}
 
   <!-- ===== Interface ===== -->
-  <div class="flex items-center gap-2">
-    <PaletteIcon class={cn(icon.button, "text-muted-foreground")} />
-    <span class={text.heading}>{i18n.t("appearance.tabInterface")}</span>
-  </div>
+  <SettingsSection bare title={i18n.t("appearance.tabInterface")} description={i18n.t("appearance.interfaceDesc")}>
+    <div class="flex flex-col gap-6">
 
-  <!-- Fonts (override every theme's fonts) -->
-  <div class="flex flex-col gap-1.5">
-    <span class={text.subheading}>{i18n.t("appearance.fonts")}</span>
-    <p class={text.meta}>{i18n.t("appearance.fontsDesc")}</p>
-    <datalist id="uxnan-fonts-global">
-      {#each ["Inter", "Roboto", "Segoe UI", "system-ui", "JetBrains Mono", "Cascadia Code", "Fira Code"] as f (f)}<option value={f}></option>{/each}
-    </datalist>
-    <div class="mt-1 grid grid-cols-3 gap-2">
-      {#each [["title", "appearance.fontTitle"], ["body", "appearance.fontBody"], ["mono", "appearance.fontMono"]] as [key, labelKey] (key)}
-        <div class="flex flex-col gap-1">
-          <Label class={text.meta}>{i18n.t(labelKey as never)}</Label>
-          <Input list="uxnan-fonts-global" placeholder={DEFAULT_FONTS[key as "title" | "body" | "mono"].split(",")[0]} value={app.settings.fonts?.[key as "title" | "body" | "mono"] ?? ""} oninput={(e) => { ensureFonts()[key as "title" | "body" | "mono"] = e.currentTarget.value || undefined; persist(); }} />
+      <!-- Fonts (override every theme's fonts) -->
+      <div class="space-y-2">
+        <div class="space-y-0.5 px-1">
+          <span class={text.section}>{i18n.t("appearance.fonts")}</span>
+          <p class={text.meta}>{i18n.t("appearance.fontsDesc")}</p>
         </div>
-      {/each}
-    </div>
-  </div>
-
-  <!-- Themes -->
-  <div class="flex flex-col gap-2">
-    <div class="flex items-center justify-between gap-2">
-      <span class={text.subheading}>{i18n.t("appearance.themesLabel")}</span>
-      <div class="flex items-center gap-1.5">
-        <Button variant="outline" size="sm" onclick={() => importFile("theme")}><UploadIcon data-icon="inline-start" />{i18n.t("appearance.import")}</Button>
-        <Button variant="outline" size="sm" onclick={() => openPaste("theme")}><ClipboardPasteIcon data-icon="inline-start" />{i18n.t("appearance.paste")}</Button>
-        <Button size="sm" onclick={newTheme}><PlusIcon data-icon="inline-start" />{i18n.t("appearance.newTheme")}</Button>
-      </div>
-    </div>
-    <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
-      <button type="button" class={cn("flex flex-col gap-2 rounded-lg border p-2 text-left", activeId === "system" ? "border-primary ring-1 ring-primary/30" : "border-border hover:bg-accent/40")} onclick={() => selectTheme("system")}>
-        <div class="flex h-8 overflow-hidden rounded border border-border">
-          <div class="flex-1 bg-white"></div>
-          <div class="flex-1 bg-neutral-900"></div>
-        </div>
-        <div class="flex items-center gap-1">
-          <span class={cn("flex-1 truncate", text.body)}>{i18n.t("settings.theme.system")}</span>
-          {#if activeId === "system"}<CheckIcon class={cn(icon.decorative, "text-primary")} />{/if}
-        </div>
-      </button>
-
-      {#each app.allThemes() as theme (theme.id)}
-        {@const isActive = activeId === theme.id}
-        {@const isCustom = !BUILTIN_IDS.has(theme.id)}
-        <div class={cn("flex flex-col gap-2 rounded-lg border p-2", isActive ? "border-primary ring-1 ring-primary/30" : "border-border")}>
-          <button type="button" class="flex flex-col gap-2 text-left" onclick={() => selectTheme(theme.id)}>
-            <div class="flex h-8 overflow-hidden rounded border border-border">
-              {#each swatchKeys as k (k)}<div class="flex-1" style:background-color={theme.colors[k]}></div>{/each}
-            </div>
-          </button>
-          <div class="flex items-center gap-1">
-            <button type="button" class={cn("min-w-0 flex-1 truncate text-left", text.body)} onclick={() => selectTheme(theme.id)}>{theme.name}</button>
-            {#if isActive}<CheckIcon class={cn(icon.decorative, "shrink-0 text-primary")} />{/if}
-            <DropdownMenu.Root>
-              <DropdownMenu.Trigger>
-                {#snippet child({ props })}
-                  <Button variant="ghost" size="icon" class={cn(iconButton.action, "shrink-0")} title={i18n.t("common.more")} {...props}><MoreVerticalIcon class={icon.button} /></Button>
+        <div class={band}>
+          <div class="divide-y divide-border/60">
+            {#each [["title", "appearance.fontTitle", "appearance.fontTitleDesc"], ["body", "appearance.fontBody", "appearance.fontBodyDesc"], ["mono", "appearance.fontMono", "appearance.fontMonoDesc"]] as [key, labelKey, descKey] (key)}
+              {@const k = key as "title" | "body" | "mono"}
+              <SettingsRow label={i18n.t(labelKey as never)} description={i18n.t(descKey as never)}>
+                {#snippet control()}
+                  <FontPicker
+                    value={app.settings.fonts?.[k]}
+                    placeholder={DEFAULT_FONTS[k].split(",")[0].replace(/"/g, "")}
+                    bundled={k === "mono" ? [] : [...BUNDLED_FONTS]}
+                    clearLabel={i18n.t("appearance.fontDefault")}
+                    triggerClass="w-64"
+                    onChange={(v) => { ensureFonts()[k] = v; persist(); }}
+                  />
                 {/snippet}
-              </DropdownMenu.Trigger>
-              <DropdownMenu.Content align="end" class="min-w-44">
-                {#if isCustom}<DropdownMenu.Item class={text.menu} onclick={() => editTheme(theme)}><PencilIcon class={icon.button} />{i18n.t("appearance.edit")}</DropdownMenu.Item>{/if}
-                <DropdownMenu.Item class={text.menu} onclick={() => duplicateThemeAction(theme)}><CopyIcon class={icon.button} />{i18n.t("appearance.duplicate")}</DropdownMenu.Item>
-                <DropdownMenu.Item class={text.menu} onclick={() => exportFile(theme.name, themeToJson(theme))}><DownloadIcon class={icon.button} />{i18n.t("appearance.exportFile")}</DropdownMenu.Item>
-                <DropdownMenu.Item class={text.menu} onclick={() => void clipboardWrite(themeToJson(theme))}><CopyIcon class={icon.button} />{i18n.t("appearance.copyJson")}</DropdownMenu.Item>
-                {#if isCustom}
-                  <DropdownMenu.Separator />
-                  <DropdownMenu.Item variant="destructive" class={text.menu} onclick={() => removeTheme(theme.id)}><Trash2Icon class={icon.button} />{i18n.t("common.remove")}</DropdownMenu.Item>
-                {/if}
-              </DropdownMenu.Content>
-            </DropdownMenu.Root>
+              </SettingsRow>
+            {/each}
           </div>
         </div>
-      {/each}
+      </div>
+
+      <!-- Themes -->
+      <div class="space-y-2">
+        <div class="flex items-center justify-between gap-2 px-1">
+          <span class={text.section}>{i18n.t("appearance.themesLabel")}</span>
+          <div class="flex items-center gap-1.5">
+            <Button variant="outline" size="sm" onclick={() => importFile("theme")}><UploadIcon data-icon="inline-start" />{i18n.t("appearance.import")}</Button>
+            <Button variant="outline" size="sm" onclick={() => openPaste("theme")}><ClipboardPasteIcon data-icon="inline-start" />{i18n.t("appearance.paste")}</Button>
+            <Button size="sm" onclick={newTheme}><PlusIcon data-icon="inline-start" />{i18n.t("appearance.newTheme")}</Button>
+          </div>
+        </div>
+        <!-- Scroll-capped so a large collection stays bounded, not a runaway grid. -->
+        <div class="uxnan-scroll max-h-[22rem] overflow-y-auto">
+          <div class={grid}>
+            <button type="button" class={cardClass(activeId === "system")} onclick={() => selectTheme("system")}>
+              <div class="flex h-8 overflow-hidden rounded border border-border/70">
+                <div class="flex-1 bg-white"></div>
+                <div class="flex-1 bg-neutral-900"></div>
+              </div>
+              <div class="flex items-center gap-1">
+                <span class={cn("flex-1 truncate", text.body)}>{i18n.t("settings.theme.system")}</span>
+                {#if activeId === "system"}<CheckIcon class={cn(icon.decorative, "text-primary")} />{/if}
+              </div>
+            </button>
+
+            {#each app.allThemes() as theme (theme.id)}
+              {@const isActive = activeId === theme.id}
+              {@const isCustom = !BUILTIN_IDS.has(theme.id)}
+              <div class={cardClass(isActive)}>
+                <button type="button" class="flex flex-col gap-2 text-left" onclick={() => selectTheme(theme.id)}>
+                  <div class="flex h-8 overflow-hidden rounded border border-border/70">
+                    {#each swatchKeys as k (k)}<div class="flex-1" style:background-color={theme.colors[k]}></div>{/each}
+                  </div>
+                </button>
+                <div class="flex items-center gap-1">
+                  <button type="button" class={cn("min-w-0 flex-1 truncate text-left", text.body)} onclick={() => selectTheme(theme.id)}>{theme.name}</button>
+                  {#if isActive}<CheckIcon class={cn(icon.decorative, "shrink-0 text-primary")} />{/if}
+                  <DropdownMenu.Root>
+                    <DropdownMenu.Trigger>
+                      {#snippet child({ props })}
+                        <Button variant="ghost" size="icon" class={cn(iconButton.action, "shrink-0")} title={i18n.t("common.more")} {...props}><MoreVerticalIcon class={icon.button} /></Button>
+                      {/snippet}
+                    </DropdownMenu.Trigger>
+                    <DropdownMenu.Content align="end" class="min-w-44">
+                      {#if isCustom}<DropdownMenu.Item class={text.menu} onclick={() => editTheme(theme)}><PencilIcon class={icon.button} />{i18n.t("appearance.edit")}</DropdownMenu.Item>{/if}
+                      <DropdownMenu.Item class={text.menu} onclick={() => duplicateThemeAction(theme)}><CopyIcon class={icon.button} />{i18n.t("appearance.duplicate")}</DropdownMenu.Item>
+                      <DropdownMenu.Item class={text.menu} onclick={() => exportFile(theme.name, themeToJson(theme))}><DownloadIcon class={icon.button} />{i18n.t("appearance.exportFile")}</DropdownMenu.Item>
+                      <DropdownMenu.Item class={text.menu} onclick={() => void clipboardWrite(themeToJson(theme))}><CopyIcon class={icon.button} />{i18n.t("appearance.copyJson")}</DropdownMenu.Item>
+                      {#if isCustom}
+                        <DropdownMenu.Separator />
+                        <DropdownMenu.Item variant="destructive" class={text.menu} onclick={() => removeTheme(theme.id)}><Trash2Icon class={icon.button} />{i18n.t("common.remove")}</DropdownMenu.Item>
+                      {/if}
+                    </DropdownMenu.Content>
+                  </DropdownMenu.Root>
+                </div>
+              </div>
+            {/each}
+          </div>
+        </div>
+      </div>
+
     </div>
-  </div>
+  </SettingsSection>
 
   <!-- ===== Terminal ===== -->
-  <div class="flex items-center gap-2">
-    <TerminalIcon class={cn(icon.button, "text-muted-foreground")} />
-    <span class={text.heading}>{i18n.t("appearance.tabTerminal")}</span>
-  </div>
+  <SettingsSection bare title={i18n.t("appearance.tabTerminal")} description={i18n.t("appearance.terminalDesc")}>
+    <div class="flex flex-col gap-6">
 
-  <!-- Fonts (terminal typography override — wins over each terminal theme) -->
-  <div class="flex flex-col gap-1.5">
-    <span class={text.subheading}>{i18n.t("appearance.fonts")}</span>
-    <p class={text.meta}>{i18n.t("appearance.terminalFontsDesc")}</p>
-    <datalist id="uxnan-term-fonts">
-      {#each ["JetBrains Mono", "Cascadia Code", "Fira Code", "Consolas", "ui-monospace"] as f (f)}<option value={f}></option>{/each}
-    </datalist>
-    <div class="mt-1 grid grid-cols-2 gap-2 sm:grid-cols-3">
-      <div class="col-span-2 flex flex-col gap-1 sm:col-span-3">
-        <Label class={text.meta}>{i18n.t("terminalTheme.font")}</Label>
-        <Input list="uxnan-term-fonts" value={tf.fontFamily ?? ""} placeholder={termFontBase.fontFamily.split(",")[0]} oninput={(e) => setTermFontStr("fontFamily", e.currentTarget.value)} />
+      <!-- Typography (terminal font override — wins over each terminal theme) -->
+      <div class="space-y-2">
+        <div class="space-y-0.5 px-1">
+          <span class={text.section}>{i18n.t("appearance.fonts")}</span>
+          <p class={text.meta}>{i18n.t("appearance.terminalFontsDesc")}</p>
+        </div>
+        <div class={band}>
+          <div class="divide-y divide-border/60">
+            <SettingsRow label={i18n.t("terminalTheme.font")} description={i18n.t("appearance.termFamilyDesc")}>
+              {#snippet control()}
+                <FontPicker
+                  value={tf.fontFamily ?? undefined}
+                  placeholder={termFontBase.fontFamily.split(",")[0].replace(/"/g, "")}
+                  clearLabel={i18n.t("appearance.fontInherit")}
+                  triggerClass="w-64"
+                  onChange={(v) => setTermFontStr("fontFamily", v ?? "")}
+                />
+              {/snippet}
+            </SettingsRow>
+            <SettingsRow label={i18n.t("terminalTheme.size")} description={i18n.t("appearance.termSizeDesc")}>
+              {#snippet control()}
+                <Input type="number" class="w-24" value={tf.fontSize ?? ""} placeholder={String(termFontBase.fontSize)} oninput={(e) => setTermFontNum("fontSize", e.currentTarget.value)} />
+              {/snippet}
+            </SettingsRow>
+            <SettingsRow label={i18n.t("terminalTheme.lineHeight")} description={i18n.t("appearance.termLineHeightDesc")}>
+              {#snippet control()}
+                <Input type="number" step="0.05" class="w-24" value={tf.lineHeight ?? ""} placeholder={String(termFontBase.lineHeight)} oninput={(e) => setTermFontNum("lineHeight", e.currentTarget.value)} />
+              {/snippet}
+            </SettingsRow>
+            <SettingsRow label={i18n.t("terminalTheme.letterSpacing")} description={i18n.t("appearance.termLetterSpacingDesc")}>
+              {#snippet control()}
+                <Input type="number" step="0.5" class="w-24" value={tf.letterSpacing ?? ""} placeholder={String(termFontBase.letterSpacing)} oninput={(e) => setTermFontNum("letterSpacing", e.currentTarget.value)} />
+              {/snippet}
+            </SettingsRow>
+            <SettingsRow label={i18n.t("terminalTheme.ligatures")} description={i18n.t("appearance.termLigaturesDesc")}>
+              {#snippet control()}
+                <Switch checked={tf.ligatures ?? false} onCheckedChange={(c) => { ensureTermFonts().ligatures = c; persist(); }} />
+              {/snippet}
+            </SettingsRow>
+          </div>
+        </div>
       </div>
-      <div class="flex flex-col gap-1">
-        <Label class={text.meta}>{i18n.t("terminalTheme.size")}</Label>
-        <Input type="number" value={tf.fontSize ?? ""} placeholder={String(termFontBase.fontSize)} oninput={(e) => setTermFontNum("fontSize", e.currentTarget.value)} />
-      </div>
-      <div class="flex flex-col gap-1">
-        <Label class={text.meta}>{i18n.t("terminalTheme.lineHeight")}</Label>
-        <Input type="number" step="0.05" value={tf.lineHeight ?? ""} placeholder={String(termFontBase.lineHeight)} oninput={(e) => setTermFontNum("lineHeight", e.currentTarget.value)} />
-      </div>
-      <div class="flex flex-col gap-1">
-        <Label class={text.meta}>{i18n.t("terminalTheme.letterSpacing")}</Label>
-        <Input type="number" step="0.5" value={tf.letterSpacing ?? ""} placeholder={String(termFontBase.letterSpacing)} oninput={(e) => setTermFontNum("letterSpacing", e.currentTarget.value)} />
-      </div>
-      <div class="flex flex-col gap-1">
-        <Label class={text.meta}>{i18n.t("terminalTheme.weight")}</Label>
-        <Input value={tf.fontWeight != null ? String(tf.fontWeight) : ""} placeholder="normal" oninput={(e) => setTermFontStr("fontWeight", e.currentTarget.value)} />
-      </div>
-    </div>
-    <div class="mt-1 flex items-center gap-2">
-      <Switch checked={tf.ligatures ?? false} onCheckedChange={(c) => { ensureTermFonts().ligatures = c; persist(); }} />
-      <Label class={text.body}>{i18n.t("terminalTheme.ligatures")}</Label>
-    </div>
-  </div>
 
-  <!-- Themes -->
-  <div class="flex flex-col gap-2">
-    <div class="flex items-center justify-between gap-2">
-      <span class={text.subheading}>{i18n.t("appearance.themesLabel")}</span>
-      <div class="flex items-center gap-1.5">
-        <Button variant="outline" size="sm" onclick={() => importFile("terminal")}><UploadIcon data-icon="inline-start" />{i18n.t("appearance.import")}</Button>
-        <Button variant="outline" size="sm" onclick={() => openPaste("terminal")}><ClipboardPasteIcon data-icon="inline-start" />{i18n.t("appearance.paste")}</Button>
-        <Button size="sm" onclick={newTermTheme}><PlusIcon data-icon="inline-start" />{i18n.t("appearance.newTheme")}</Button>
-      </div>
-    </div>
-    <p class={text.meta}>{i18n.t("appearance.terminalThemesDesc")}</p>
+      <!-- Terminal themes -->
+      <div class="space-y-2">
+        <div class="flex items-center justify-between gap-2 px-1">
+          <span class={text.section}>{i18n.t("appearance.themesLabel")}</span>
+          <div class="flex items-center gap-1.5">
+            <Button variant="outline" size="sm" onclick={() => importFile("terminal")}><UploadIcon data-icon="inline-start" />{i18n.t("appearance.import")}</Button>
+            <Button variant="outline" size="sm" onclick={() => openPaste("terminal")}><ClipboardPasteIcon data-icon="inline-start" />{i18n.t("appearance.paste")}</Button>
+            <Button size="sm" onclick={newTermTheme}><PlusIcon data-icon="inline-start" />{i18n.t("appearance.newTheme")}</Button>
+          </div>
+        </div>
+        <p class={cn("px-1", text.meta)}>{i18n.t("appearance.terminalThemesDesc")}</p>
 
-    <!-- Optional: a separate terminal theme per light/dark app theme -->
-    <div class="flex items-center justify-between gap-4">
-      <div class="flex min-w-0 flex-col gap-0.5">
-        <span class={text.subheading}>{i18n.t("appearance.separateSchemes")}</span>
-        <span class={text.meta}>{i18n.t("appearance.separateSchemesDesc")}</span>
-      </div>
-      <Switch checked={termMode === "scheme"} onCheckedChange={setTermMode} />
-    </div>
+        <!-- Optional: a separate terminal theme per light/dark app theme -->
+        <div class={band}>
+          <SettingsRow label={i18n.t("appearance.separateSchemes")} description={i18n.t("appearance.separateSchemesDesc")}>
+            {#snippet control()}
+              <Switch checked={termMode === "scheme"} onCheckedChange={setTermMode} />
+            {/snippet}
+          </SettingsRow>
+        </div>
 
-    {#if termMode === "single"}
-      <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
-        {@render termCard(null, "single", appBase)}
-        {#each termThemes as preset (preset.id)}{@render termCard(preset, "single", presetBase(preset))}{/each}
+        {#if termMode === "single"}
+          <div class="uxnan-scroll max-h-[22rem] overflow-y-auto">
+            <div class={grid}>
+              {@render termCard(null, "single", appBase)}
+              {#each termThemes as preset (preset.id)}{@render termCard(preset, "single", presetBase(preset))}{/each}
+            </div>
+          </div>
+        {:else}
+          <div class="space-y-1.5">
+            <span class={cn("px-1", text.section)}>{i18n.t("appearance.darkThemes")}</span>
+            <div class="uxnan-scroll max-h-[22rem] overflow-y-auto">
+              <div class={grid}>
+                {@render termCard(null, "dark", "dark")}
+                {#each darkThemes as preset (preset.id)}{@render termCard(preset, "dark", "dark")}{/each}
+              </div>
+            </div>
+          </div>
+          <div class="space-y-1.5">
+            <span class={cn("px-1", text.section)}>{i18n.t("appearance.lightThemes")}</span>
+            <div class="uxnan-scroll max-h-[22rem] overflow-y-auto">
+              <div class={grid}>
+                {@render termCard(null, "light", "light")}
+                {#each lightThemes as preset (preset.id)}{@render termCard(preset, "light", "light")}{/each}
+              </div>
+            </div>
+          </div>
+        {/if}
       </div>
-    {:else}
-      <span class={text.subheading}>{i18n.t("appearance.darkThemes")}</span>
-      <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
-        {@render termCard(null, "dark", "dark")}
-        {#each darkThemes as preset (preset.id)}{@render termCard(preset, "dark", "dark")}{/each}
-      </div>
-      <span class={cn("mt-2", text.subheading)}>{i18n.t("appearance.lightThemes")}</span>
-      <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
-        {@render termCard(null, "light", "light")}
-        {#each lightThemes as preset (preset.id)}{@render termCard(preset, "light", "light")}{/each}
-      </div>
-    {/if}
-  </div>
+
+    </div>
+  </SettingsSection>
 </div>
 
 {#snippet termCard(preset: TerminalThemePreset | null, scope: "single" | "dark" | "light", base: "light" | "dark")}
   {@const id = preset ? preset.id : TERMINAL_INHERIT_ID}
   {@const selected = scope === "single" ? activeTermId === id : scope === "dark" ? termDarkId === id : termLightId === id}
-  <div class={cn("flex flex-col gap-2 rounded-lg border p-2", selected ? "border-primary ring-1 ring-primary/30" : "border-border")}>
+  <div class={cardClass(selected)}>
     <button type="button" class="flex flex-col gap-2 text-left" onclick={() => (scope === "single" ? selectTerm(id) : setTermScheme(scope, id))}>
-      <div class="flex h-8 overflow-hidden rounded border border-border">
+      <div class="flex h-8 overflow-hidden rounded border border-border/70">
         {#each termSwatches(preset, base) as c, i (i)}<div class="flex-1" style:background-color={c}></div>{/each}
       </div>
     </button>

@@ -24,6 +24,7 @@
   import { i18n } from "$lib/i18n";
   import CodeIcon from "@lucide/svelte/icons/code";
   import SlidersIcon from "@lucide/svelte/icons/sliders-horizontal";
+  import FontPicker from "./FontPicker.svelte";
 
   let {
     open = $bindable(false),
@@ -114,7 +115,7 @@
       <button type="button" class={cn("flex items-center gap-1 px-2 py-0.5", text.indicator, mode === "visual" ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground")} onclick={() => (mode = "visual")}>
         <SlidersIcon class="size-3.5" />{i18n.t("appearance.visual")}
       </button>
-      <button type="button" class={cn("flex items-center gap-1 border-l border-border px-2 py-0.5", text.indicator, mode === "json" ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground")} onclick={() => { jsonText = terminalThemeToJson(preset); mode = "json"; }}>
+      <button type="button" class={cn("flex items-center gap-1 border-l border-border/60 px-2 py-0.5", text.indicator, mode === "json" ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground")} onclick={() => { jsonText = terminalThemeToJson(preset); mode = "json"; }}>
         <CodeIcon class="size-3.5" />JSON
       </button>
     </div>
@@ -142,7 +143,12 @@
           <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
             <div class="col-span-2 flex flex-col gap-1 sm:col-span-3">
               <Label class={cn("flex items-center gap-1", text.meta)}>{@render overrideDot(isSet("fontFamily"))}{i18n.t("terminalTheme.font")}</Label>
-              <Input value={preset.fontFamily ?? ""} placeholder={inherited.fontFamily.split(",")[0]} oninput={(e) => setStr("fontFamily", e.currentTarget.value)} />
+              <FontPicker
+                value={preset.fontFamily ?? undefined}
+                placeholder={inherited.fontFamily.split(",")[0].replace(/"/g, "")}
+                clearLabel={i18n.t("appearance.fontInherit")}
+                onChange={(v) => setStr("fontFamily", v ?? "")}
+              />
             </div>
             <div class="flex flex-col gap-1">
               <Label class={cn("flex items-center gap-1", text.meta)}>{@render overrideDot(isSet("fontSize"))}{i18n.t("terminalTheme.size")}</Label>

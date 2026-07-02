@@ -1,6 +1,6 @@
 <script lang="ts">
   import * as Dialog from "$lib/components/ui/dialog";
-  import * as Select from "$lib/components/ui/select";
+  import Combobox, { type ComboGroup } from "./Combobox.svelte";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import { projects } from "$lib/state/projects.svelte";
@@ -12,6 +12,7 @@
   import AgentLogo from "./AgentLogo.svelte";
   import { agentLogoKey } from "$lib/agentCatalog";
   import GitBranchIcon from "@lucide/svelte/icons/git-branch";
+  import FolderIcon from "@lucide/svelte/icons/folder";
 
   let {
     repo,
@@ -29,8 +30,16 @@
   const NONE = "__none__";
   let agentId = $state<string>(NONE);
   const launchable = $derived(app.launchableAgents);
-  const selectedAgent = $derived(launchable.find((a) => a.id === agentId));
-  const agentLabel = $derived(selectedAgent?.name.trim() || i18n.t("newWorktree.agentNone"));
+  // Agent options for the Combobox: a "none" row, then each launchable agent
+  // (logos rendered via the `agentPrefix` snippet, matched back by value).
+  const agentGroups = $derived<ComboGroup[]>([
+    {
+      items: [
+        { value: NONE, label: i18n.t("newWorktree.agentNone") },
+        ...launchable.map((a) => ({ value: a.id, label: a.name.trim() || a.command })),
+      ],
+    },
+  ]);
 
   // The sibling folder the backend will create: `<repo>--<safe-branch>`
   // (mirrors `git::worktree_path_for`). Shown so the user knows where it lands.
@@ -52,7 +61,9 @@
   const baseOptions = $derived(
     base && !branches.includes(base) ? [base, ...branches] : branches,
   );
-  const baseLabel = $derived(base || i18n.t("newWorktree.selectBase"));
+  const baseGroups = $derived<ComboGroup[]>([
+    { items: baseOptions.map((b) => ({ value: b, label: b })) },
+  ]);
 
   // Load branches + default base each time the dialog opens.
   $effect(() => {
@@ -89,6 +100,13 @@
   }
 </script>
 
+{#snippet agentPrefix(item: { value: string })}
+  {@const a = launchable.find((x) => x.id === item.value)}
+  {#if a}
+    <AgentLogo logo={agentLogoKey(a.icon, a.command)} class="size-4 shrink-0" />
+  {/if}
+{/snippet}
+
 <Dialog.Root bind:open>
   <Dialog.Content class="sm:max-w-[460px]">
     <Dialog.Header>
@@ -98,69 +116,61 @@
       </Dialog.Description>
     </Dialog.Header>
 
-    <div class="flex flex-col gap-4 py-2">
+    <div class="flex flex-col gap-4 py-1">
+      <!-- Branch name — the focal field, with a leading branch glyph. -->
       <div class="flex flex-col gap-1.5">
         <label for="wt-branch" class={cn("font-medium", text.body)}>{i18n.t("newWorktree.branch")}</label>
-        <Input
-          id="wt-branch"
-          placeholder={i18n.t("newWorktree.branchPlaceholder")}
-          bind:value={branch}
-          autocomplete="off"
-          onkeydown={(e) => e.key === "Enter" && submit()}
-        />
+        <div class="relative">
+          <GitBranchIcon
+            class="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground/80"
+          />
+          <Input
+            id="wt-branch"
+            class="pl-8"
+            placeholder={i18n.t("newWorktree.branchPlaceholder")}
+            bind:value={branch}
+            autocomplete="off"
+            onkeydown={(e) => e.key === "Enter" && submit()}
+          />
+        </div>
       </div>
 
+      <!-- Base ref — searchable Combobox (shared with the rest of the app). -->
       <div class="flex flex-col gap-1.5">
         <span class={cn("font-medium", text.body)}>{i18n.t("newWorktree.base")}</span>
-        <Select.Root type="single" bind:value={base} disabled={loading}>
-          <Select.Trigger class="w-full">{baseLabel}</Select.Trigger>
-          <Select.Content>
-            {#each baseOptions as b (b)}
-              <Select.Item value={b} label={b}>{b}</Select.Item>
-            {/each}
-          </Select.Content>
-        </Select.Root>
+        <Combobox
+          value={base}
+          groups={baseGroups}
+          triggerClass="w-full"
+          placeholder={i18n.t("newWorktree.selectBase")}
+          searchPlaceholder={i18n.t("common.search")}
+          disabled={loading}
+          onChange={(v) => (base = v)}
+        />
         <p class={text.meta}>{i18n.t("newWorktree.baseDesc")}</p>
       </div>
 
+      <!-- Agent to launch — same Combobox with logos via the prefix snippet. -->
       {#if launchable.length > 0}
         <div class="flex flex-col gap-1.5">
           <span class={cn("font-medium", text.body)}>{i18n.t("newWorktree.agent")}</span>
-          <Select.Root type="single" bind:value={agentId}>
-            <Select.Trigger class="w-full">
-              <span class="flex items-center gap-2">
-                {#if selectedAgent}
-                  <AgentLogo
-                    logo={agentLogoKey(selectedAgent.icon, selectedAgent.command)}
-                    class="size-4"
-                  />
-                {/if}
-                {agentLabel}
-              </span>
-            </Select.Trigger>
-            <Select.Content>
-              <Select.Item value={NONE} label={i18n.t("newWorktree.agentNone")}>
-                {i18n.t("newWorktree.agentNone")}
-              </Select.Item>
-              {#each launchable as a (a.id)}
-                {@const name = a.name.trim() || a.command}
-                <Select.Item value={a.id} label={name}>
-                  <span class="flex items-center gap-2">
-                    <AgentLogo logo={agentLogoKey(a.icon, a.command)} class="size-4" />
-                    {name}
-                  </span>
-                </Select.Item>
-              {/each}
-            </Select.Content>
-          </Select.Root>
+          <Combobox
+            value={agentId}
+            groups={agentGroups}
+            triggerClass="w-full"
+            searchPlaceholder={i18n.t("common.search")}
+            itemPrefix={agentPrefix}
+            onChange={(v) => (agentId = v)}
+          />
           <p class={text.meta}>{i18n.t("newWorktree.agentDesc")}</p>
         </div>
       {/if}
 
+      <!-- Where it lands — a quiet preview of the sibling folder to be created. -->
       {#if previewPath}
-        <div class="flex items-start gap-2 rounded-md bg-muted/50 px-3 py-2">
-          <GitBranchIcon class={cn(icon.decorative, "mt-0.5 shrink-0 text-muted-foreground")} />
-          <code class="break-all text-[11px] text-muted-foreground">{previewPath}</code>
+        <div class="flex items-start gap-2 rounded-lg border border-border/50 bg-muted/40 px-3 py-2.5">
+          <FolderIcon class={cn(icon.decorative, "mt-px shrink-0 text-muted-foreground")} />
+          <code class="break-all text-[11px] leading-5 text-muted-foreground">{previewPath}</code>
         </div>
       {/if}
 

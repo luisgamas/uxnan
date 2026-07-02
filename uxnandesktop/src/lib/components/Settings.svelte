@@ -4,11 +4,12 @@
   // work. The status bar is hidden in settings mode to give the content more
   // room. Close with the back button, the gear in the title bar, or Escape.
 
-  import * as Select from "$lib/components/ui/select";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
+  import * as HoverCard from "$lib/components/ui/hover-card";
   import { Button } from "$lib/components/ui/button";
   import { Textarea } from "$lib/components/ui/textarea";
   import { Input } from "$lib/components/ui/input";
+  import { Switch } from "$lib/components/ui/switch";
   import { app } from "$lib/state/app.svelte";
   import { i18n, LOCALES } from "$lib/i18n";
   import type { MessageKey } from "$lib/i18n/locales/en";
@@ -19,7 +20,7 @@
     TERMINAL_TEMPLATES,
     type TerminalTemplate,
   } from "$lib/terminalTemplates";
-  import { AGENT_CATALOG, type CatalogAgent } from "$lib/agentCatalog";
+  import { AGENT_CATALOG, agentLogoKey, type CatalogAgent } from "$lib/agentCatalog";
   import { detectAgents } from "$lib/api";
   import { updater } from "$lib/state/updater.svelte";
   import { appVersion } from "$lib/api";
@@ -33,9 +34,12 @@
   import TerminalProfileEditor from "./TerminalProfileEditor.svelte";
   import AgentProfileEditor from "./AgentProfileEditor.svelte";
   import AiModelPicker from "./AiModelPicker.svelte";
+  import Combobox, { type ComboGroup, type ComboItem } from "./Combobox.svelte";
   import AgentLogo from "./AgentLogo.svelte";
   import AgentHooksPanel from "./AgentHooksPanel.svelte";
   import ThemeSettings from "./ThemeSettings.svelte";
+  import SettingsSection from "./SettingsSection.svelte";
+  import SettingsRow from "./SettingsRow.svelte";
   import {
     SHORTCUT_GROUPS,
     eventToChord,
@@ -43,7 +47,7 @@
     resolveBinding,
   } from "$lib/keybindings";
   import { cn } from "$lib/utils";
-  import { icon, iconButton, text } from "$lib/design";
+  import { divider, icon, iconButton, text } from "$lib/design";
   import PaletteIcon from "@lucide/svelte/icons/palette";
   import TerminalIcon from "@lucide/svelte/icons/terminal";
   import BotIcon from "@lucide/svelte/icons/bot";
@@ -58,6 +62,7 @@
   import XIcon from "@lucide/svelte/icons/x";
   import SparklesIcon from "@lucide/svelte/icons/sparkles";
   import GlobeIcon from "@lucide/svelte/icons/globe";
+  import CircleHelpIcon from "@lucide/svelte/icons/circle-help";
 
   // Persist (debounced for typing; immediate for discrete actions).
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -112,24 +117,6 @@
       close();
     }
   }
-
-  // Language: "system" + each available locale.
-  const languageLabel = $derived.by(() => {
-    if (app.settings.language === "system")
-      return i18n.t("settings.language.system");
-    return (
-      LOCALES.find((l) => l.code === app.settings.language)?.name ??
-      i18n.t("settings.language.system")
-    );
-  });
-
-  const defaultProfileLabel = $derived.by(() => {
-    const p = app.terminalProfiles.find(
-      (x) => x.id === app.settings.defaultProfileId,
-    );
-    if (!p) return i18n.t("terminal.unnamedProfile");
-    return p.name.trim() || i18n.t("terminal.unnamedProfile");
-  });
 
   function addBlankProfile() {
     app.settings.terminalProfiles.push({
@@ -221,22 +208,9 @@
 
   // Default agent (auto-launched on worktree create); "__none__" = off.
   const NO_DEFAULT_AGENT = "__none__";
-  const defaultAgentLabel = $derived.by(() => {
-    const id = app.settings.defaultAgentId;
-    if (!id) return i18n.t("settings.defaultAgentNone");
-    const a = app.agentProfiles.find((x) => x.id === id);
-    return a?.name.trim() || a?.command || i18n.t("settings.defaultAgentNone");
-  });
-
   // Default shell agents launch in (when an agent doesn't pin its own). The
   // "smart default" sentinel = cmd.exe on Windows, else the default terminal.
   const AGENT_SHELL_DEFAULT = "__smart__";
-  const agentShellLabel = $derived.by(() => {
-    const id = app.settings.agentShellProfileId;
-    if (!id) return i18n.t("settings.agentShellSmart");
-    const p = app.terminalProfiles.find((x) => x.id === id);
-    return p?.name.trim() || i18n.t("terminal.unnamedProfile");
-  });
 
   // --- Terminal shells: detect which template commands are installed ---------
   const ALL_TEMPLATES = TERMINAL_TEMPLATES.flatMap((g) => g.templates);
@@ -300,11 +274,6 @@
     }
   }
   const aiAgentInstalled = (id: string) => aiAgentsInstalled?.has(id) ?? false;
-  const aiAgentLabel = $derived(
-    AI_COMMIT_AGENTS.find((a) => a.id === ai.agentId)?.name ||
-      i18n.t("settings.aiCommitAgentNone"),
-  );
-
   // Models for the selected agent (loaded on demand from its CLI).
   let aiModels = $state<AgentModel[]>([]);
   let aiModelsFor = $state(""); // the agent aiModels belongs to
@@ -347,9 +316,6 @@
     { value: "English", labelKey: "settings.aiCommitLanguageEn" as MessageKey },
     { value: "Spanish", labelKey: "settings.aiCommitLanguageEs" as MessageKey },
   ];
-  const aiLanguageLabel = $derived(
-    i18n.t(AI_LANGS.find((l) => l.value === ai.language)?.labelKey ?? "settings.aiCommitLanguageAuto"),
-  );
 
   // --- Updates --------------------------------------------------------------
   // Merge over a full default so reads/writes are always complete (state saved
@@ -377,13 +343,6 @@
     { value: "whenIdle", labelKey: "updates.policyWhenIdle" },
     { value: "manual", labelKey: "updates.policyManual" },
   ];
-  const channelLabel = $derived(
-    i18n.t(UPDATE_CHANNELS.find((c) => c.value === up.channel)?.labelKey ?? "updates.channelStable"),
-  );
-  const installPolicyLabel = $derived(
-    i18n.t(INSTALL_POLICIES.find((p) => p.value === up.installPolicy)?.labelKey ?? "updates.policyAsk"),
-  );
-
   // The running app's full version name (shown in the Updates pane). This is the
   // complete release name (e.g. 0.0.5-alpha.20260628), not the numeric MSI base.
   let currentVersion = $state("");
@@ -420,20 +379,107 @@
     { value: "external", labelKey: "browser.policyExternal", descKey: "browser.policyExternalDesc" },
     { value: "ask", labelKey: "browser.policyAsk", descKey: "browser.policyAskDesc" },
   ];
-  const linkPolicyLabel = $derived(
-    i18n.t(LINK_POLICIES.find((p) => p.value === br.linkPolicy)?.labelKey ?? "browser.policyInternal"),
-  );
 
-  const navItems = [
-    { id: "appearance", key: "settings.appearance", icon: PaletteIcon },
-    { id: "language", key: "settings.language", icon: LanguagesIcon },
-    { id: "shortcuts", key: "settings.shortcuts", icon: KeyboardIcon },
-    { id: "agents", key: "settings.agents", icon: BotIcon },
-    { id: "aicommit", key: "settings.aiCommit", icon: SparklesIcon },
-    { id: "hooks", key: "settings.hooks", icon: WebhookIcon },
-    { id: "terminal", key: "settings.terminal", icon: TerminalIcon },
-    { id: "browser", key: "settings.browser", icon: GlobeIcon },
-    { id: "updates", key: "settings.updates", icon: DownloadIcon },
+  // Option groups for the unified `Combobox` selectors (one searchable design for
+  // every single-select field). Agent fields carry a logo via the combobox's
+  // `itemPrefix`, resolved from the value.
+  const languageGroups = $derived<ComboGroup[]>([
+    {
+      items: [
+        { value: "system", label: i18n.t("settings.language.system") },
+        ...LOCALES.map((l) => ({ value: l.code, label: l.name })),
+      ],
+    },
+  ]);
+  const defaultAgentGroups = $derived<ComboGroup[]>([
+    {
+      items: [
+        { value: NO_DEFAULT_AGENT, label: i18n.t("settings.defaultAgentNone") },
+        ...app.launchableAgents.map((a) => ({
+          value: a.id,
+          label: a.name.trim() || a.command,
+          keywords: [a.command],
+        })),
+      ],
+    },
+  ]);
+  const agentShellGroups = $derived<ComboGroup[]>([
+    {
+      items: [
+        { value: AGENT_SHELL_DEFAULT, label: i18n.t("settings.agentShellSmart") },
+        ...app.terminalProfiles.map((p) => ({
+          value: p.id,
+          label: p.name.trim() || i18n.t("terminal.unnamedProfile"),
+        })),
+      ],
+    },
+  ]);
+  const aiAgentGroups = $derived<ComboGroup[]>([
+    {
+      items: AI_COMMIT_AGENTS.map((a) => ({
+        value: a.id,
+        label: a.name,
+        disabled: !aiAgentInstalled(a.id),
+        meta:
+          aiAgentsInstalled !== null && !aiAgentInstalled(a.id)
+            ? i18n.t("settings.agentNotFound")
+            : undefined,
+      })),
+    },
+  ]);
+  const aiLanguageGroups = $derived<ComboGroup[]>([
+    { items: AI_LANGS.map((l) => ({ value: l.value, label: i18n.t(l.labelKey) })) },
+  ]);
+  const channelGroups = $derived<ComboGroup[]>([
+    { items: UPDATE_CHANNELS.map((c) => ({ value: c.value, label: i18n.t(c.labelKey) })) },
+  ]);
+  const installPolicyGroups = $derived<ComboGroup[]>([
+    { items: INSTALL_POLICIES.map((p) => ({ value: p.value, label: i18n.t(p.labelKey) })) },
+  ]);
+  const linkPolicyGroups = $derived<ComboGroup[]>([
+    { items: LINK_POLICIES.map((p) => ({ value: p.value, label: i18n.t(p.labelKey) })) },
+  ]);
+  const profileGroups = $derived<ComboGroup[]>([
+    {
+      items: app.terminalProfiles.map((p) => ({
+        value: p.id,
+        label: p.name.trim() || i18n.t("terminal.unnamedProfile"),
+      })),
+    },
+  ]);
+
+  // Grouped section nav — titled groups (like the center "+" launcher) so a long
+  // flat list reads as organized areas, while each item keeps the settings-nav
+  // row recipe. Group headings use the shared `text.section` token for coherence
+  // with the home left sidebar's section headers.
+  const navGroups = [
+    {
+      titleKey: "settings.groupGeneral",
+      items: [
+        { id: "appearance", key: "settings.appearance", icon: PaletteIcon },
+        { id: "language", key: "settings.language", icon: LanguagesIcon },
+        { id: "shortcuts", key: "settings.shortcuts", icon: KeyboardIcon },
+      ],
+    },
+    {
+      titleKey: "settings.groupAgents",
+      items: [
+        { id: "agents", key: "settings.agents", icon: BotIcon },
+        { id: "aicommit", key: "settings.aiCommit", icon: SparklesIcon },
+        { id: "hooks", key: "settings.hooks", icon: WebhookIcon },
+      ],
+    },
+    {
+      titleKey: "settings.groupWorkspace",
+      items: [
+        { id: "terminal", key: "settings.terminal", icon: TerminalIcon },
+        { id: "browser", key: "settings.browser", icon: GlobeIcon },
+      ],
+    },
+    {
+      titleKey: "settings.groupApp",
+      items: [{ id: "updates", key: "settings.updates", icon: DownloadIcon }],
+    },
   ] as const;
 </script>
 
@@ -444,7 +490,8 @@
     <!-- Header (draggable on Tauri via the title bar; the buttons inside are
          not part of the drag region). -->
     <header
-      class="flex h-12 shrink-0 items-center gap-2 border-b border-border px-3"
+      data-tauri-drag-region
+      class={cn("flex h-9 shrink-0 items-center gap-2 px-3", divider.bottom)}
     >
       <Button
         variant="ghost"
@@ -462,74 +509,74 @@
     </header>
 
     <div class="flex min-h-0 flex-1">
-      <!-- Section nav (left sidebar) -->
+      <!-- Section nav (left sidebar): titled groups + settings-nav rows. -->
       <nav
-        class="flex w-56 shrink-0 flex-col gap-0.5 border-r border-border p-2"
+        class="scrollbar-sleek flex w-56 shrink-0 flex-col gap-4 overflow-y-auto border-r border-border/60 p-2"
         aria-label={i18n.t("settings.title")}
       >
-        {#each navItems as item (item.id)}
-          {@const Icon = item.icon}
-          <button
-            class={cn(
-              "flex items-center gap-2 rounded-md px-2 py-1.5 text-left font-medium",
-              text.body,
-              app.settingsSection === item.id
-                ? "bg-accent text-accent-foreground"
-                : "text-muted-foreground hover:bg-accent/50",
-            )}
-            onclick={() => (app.settingsSection = item.id)}
-          >
-            <Icon class={icon.button} />
-            {i18n.t(item.key)}
-          </button>
+        {#each navGroups as group (group.titleKey)}
+          <div class="flex flex-col gap-0.5">
+            <span class={cn("px-2 pb-0.5", text.section)}>{i18n.t(group.titleKey)}</span>
+            {#each group.items as item (item.id)}
+              {@const Icon = item.icon}
+              <button
+                class={cn(
+                  "flex h-8 items-center gap-2 rounded-md px-2 text-left text-[13px] font-medium tracking-tight transition-colors",
+                  app.settingsSection === item.id
+                    ? "bg-accent text-accent-foreground"
+                    : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+                )}
+                onclick={() => (app.settingsSection = item.id)}
+              >
+                <Icon class={icon.button} />
+                {i18n.t(item.key)}
+              </button>
+            {/each}
+          </div>
         {/each}
       </nav>
 
       <!-- Section content (centered column; text stays left-aligned). The extra
            bottom padding lets the last options scroll clear of the window edge. -->
-      <div class="uxnan-scroll min-h-0 flex-1 overflow-y-auto p-6">
-        <div class="mx-auto w-full max-w-2xl pb-16">
+      <!-- Each section uses the clean-desktop pattern: a `SettingsSection` header
+           (title + description over a divider), with a soft `panel.settingsBody`
+           band of `SettingsRow`s for settings-style sections, or `bare` (header
+           only) for sections whose body is a self-contained list/editor (agents
+           catalog, hooks, shortcuts, terminal profiles) to avoid card-in-card.
+           The right control per setting: a Switch for on/off, a Select only for
+           3+ choices; borders only where they divide. -->
+      <div class="scrollbar-sleek min-h-0 flex-1 overflow-y-auto px-8 py-7">
+        <div class="mx-auto w-full max-w-3xl pb-16">
         {#if app.settingsSection === "appearance"}
           <ThemeSettings />
         {:else if app.settingsSection === "language"}
-          <div class="flex flex-col gap-1.5">
-            <span class={text.heading}>{i18n.t("settings.language")}</span>
-            <Select.Root
-              type="single"
-              value={app.settings.language}
-              onValueChange={(v) => {
-                app.settings.language = v ?? "system";
-                persistNow();
-              }}
-            >
-              <Select.Trigger class="w-56">{languageLabel}</Select.Trigger>
-              <Select.Content>
-                <Select.Item value="system" label={i18n.t("settings.language.system")}>
-                  {i18n.t("settings.language.system")}
-                </Select.Item>
-                {#each LOCALES as locale (locale.code)}
-                  <Select.Item value={locale.code} label={locale.name}>
-                    {locale.name}
-                  </Select.Item>
-                {/each}
-              </Select.Content>
-            </Select.Root>
-            <p class={text.meta}>{i18n.t("settings.language.desc")}</p>
-          </div>
+          <SettingsSection
+            title={i18n.t("settings.language")}
+            description={i18n.t("settings.language.desc")}
+          >
+            <SettingsRow label={i18n.t("settings.language")}>
+              {#snippet control()}
+                <Combobox
+                  value={app.settings.language}
+                  groups={languageGroups}
+                  triggerClass="w-56"
+                  searchPlaceholder={i18n.t("common.search")}
+                  onChange={(v) => { app.settings.language = v; persistNow(); }}
+                />
+              {/snippet}
+            </SettingsRow>
+          </SettingsSection>
         {:else if app.settingsSection === "shortcuts"}
-          <div class="flex flex-col gap-4">
-            <div class="flex flex-col gap-1">
-              <span class={text.heading}>{i18n.t("settings.shortcuts")}</span>
-              <p class={text.meta}>{i18n.t("settings.shortcutsDesc")}</p>
-            </div>
+          <SettingsSection bare title={i18n.t("settings.shortcuts")} description={i18n.t("settings.shortcutsDesc")}>
+            <div class="space-y-6">
             {#each SHORTCUT_GROUPS as group (group.titleKey)}
-              <div class="flex flex-col gap-1.5">
-                <span class={text.section}>{i18n.t(group.titleKey)}</span>
-                <div class="flex flex-col divide-y divide-border rounded-md border border-border">
+              <div class="space-y-2">
+                <span class={cn("px-1", text.section)}>{i18n.t(group.titleKey)}</span>
+                <div class="divide-y divide-border/60 rounded-xl border border-border/50 bg-card/50 px-5 shadow-xs">
                   {#each group.actions as action (action.id)}
                     {@const chord = resolveBinding(action.id)}
                     {@const isCapturing = capturing === action.id}
-                    <div class="flex items-center gap-3 px-3 py-2">
+                    <div class="flex items-center gap-3 py-3">
                       <div class="min-w-0 flex-1">
                         <div class={text.body}>{i18n.t(action.labelKey)}</div>
                         <div class={cn("truncate", text.meta)}>{i18n.t(action.descKey)}</div>
@@ -579,151 +626,107 @@
                 </div>
               </div>
             {/each}
-          </div>
+            </div>
+          </SettingsSection>
         {:else if app.settingsSection === "agents"}
-          <div class="flex flex-col gap-4">
-            <div class="flex flex-col gap-1">
-              <span class={text.heading}>{i18n.t("settings.agents")}</span>
-              <p class={text.meta}>{i18n.t("settings.agentsDesc")}</p>
-            </div>
+          <div class="flex flex-col gap-6">
+            <SettingsSection title={i18n.t("settings.agents")} description={i18n.t("settings.agentsDesc")}>
+              <div class="divide-y divide-border/60">
+                <SettingsRow label={i18n.t("settings.defaultAgent")} description={i18n.t("settings.defaultAgentDesc")}>
+                  {#snippet control()}
+                    <Combobox
+                      value={app.settings.defaultAgentId ?? NO_DEFAULT_AGENT}
+                      groups={defaultAgentGroups}
+                      triggerClass="w-56"
+                      searchPlaceholder={i18n.t("common.search")}
+                      itemPrefix={agentPrefix}
+                      onChange={(v) => {
+                        app.settings.defaultAgentId = v === NO_DEFAULT_AGENT ? null : v;
+                        persistNow();
+                      }}
+                    />
+                  {/snippet}
+                </SettingsRow>
 
-            <!-- Default agent: auto-launched when a worktree is created. -->
-            <div class="flex flex-col gap-1.5">
-              <span class={cn("font-medium", text.body)}>{i18n.t("settings.defaultAgent")}</span>
-              <Select.Root
-                type="single"
-                value={app.settings.defaultAgentId ?? NO_DEFAULT_AGENT}
-                onValueChange={(v) => {
-                  app.settings.defaultAgentId = v === NO_DEFAULT_AGENT ? null : (v ?? null);
-                  persistNow();
-                }}
-              >
-                <Select.Trigger class="w-56">{defaultAgentLabel}</Select.Trigger>
-                <Select.Content>
-                  <Select.Item value={NO_DEFAULT_AGENT} label={i18n.t("settings.defaultAgentNone")}>
-                    {i18n.t("settings.defaultAgentNone")}
-                  </Select.Item>
-                  {#each app.launchableAgents as a (a.id)}
-                    {@const label = a.name.trim() || a.command}
-                    <Select.Item value={a.id} {label}>{label}</Select.Item>
-                  {/each}
-                </Select.Content>
-              </Select.Root>
-              <p class={text.meta}>{i18n.t("settings.defaultAgentDesc")}</p>
-            </div>
+                <SettingsRow label={i18n.t("settings.agentShell")} description={i18n.t("settings.agentShellDesc")}>
+                  {#snippet control()}
+                    <Combobox
+                      value={app.settings.agentShellProfileId ?? AGENT_SHELL_DEFAULT}
+                      groups={agentShellGroups}
+                      triggerClass="w-72 max-w-full"
+                      searchPlaceholder={i18n.t("common.search")}
+                      onChange={(v) => {
+                        app.settings.agentShellProfileId = v === AGENT_SHELL_DEFAULT ? null : v;
+                        persistNow();
+                      }}
+                    />
+                  {/snippet}
+                </SettingsRow>
 
-            <!-- Default shell agents launch in (cmd.exe on Windows by default). -->
-            <div class="flex flex-col gap-1.5">
-              <span class={cn("font-medium", text.body)}>{i18n.t("settings.agentShell")}</span>
-              <Select.Root
-                type="single"
-                value={app.settings.agentShellProfileId ?? AGENT_SHELL_DEFAULT}
-                onValueChange={(v) => {
-                  app.settings.agentShellProfileId =
-                    v === AGENT_SHELL_DEFAULT ? null : (v ?? null);
-                  persistNow();
-                }}
-              >
-                <Select.Trigger class="w-72 max-w-full">
-                  <span class="min-w-0 flex-1 truncate text-left">{agentShellLabel}</span>
-                </Select.Trigger>
-                <Select.Content>
-                  <Select.Item value={AGENT_SHELL_DEFAULT} label={i18n.t("settings.agentShellSmart")}>
-                    {i18n.t("settings.agentShellSmart")}
-                  </Select.Item>
-                  {#each app.terminalProfiles as p (p.id)}
-                    {@const label = p.name.trim() || i18n.t("terminal.unnamedProfile")}
-                    <Select.Item value={p.id} {label}>{label}</Select.Item>
-                  {/each}
-                </Select.Content>
-              </Select.Root>
-              <p class={text.meta}>{i18n.t("settings.agentShellDesc")}</p>
-            </div>
+                <SettingsRow label={i18n.t("settings.agentNotifications")} description={i18n.t("settings.agentNotificationsDesc")}>
+                  {#snippet control()}
+                    <Switch
+                      checked={app.settings.agentNotifications !== false}
+                      onCheckedChange={(c) => { app.settings.agentNotifications = c; persistNow(); }}
+                    />
+                  {/snippet}
+                </SettingsRow>
 
-            <!-- Agent idle notifications. -->
-            <div class="flex flex-col gap-1.5">
-              <span class={cn("font-medium", text.body)}>{i18n.t("settings.agentNotifications")}</span>
-              <Select.Root
-                type="single"
-                value={app.settings.agentNotifications === false ? "off" : "on"}
-                onValueChange={(v) => {
-                  app.settings.agentNotifications = v !== "off";
-                  persistNow();
-                }}
-              >
-                <Select.Trigger class="w-56">
-                  {app.settings.agentNotifications === false ? i18n.t("common.off") : i18n.t("common.on")}
-                </Select.Trigger>
-                <Select.Content>
-                  <Select.Item value="on" label={i18n.t("common.on")}>{i18n.t("common.on")}</Select.Item>
-                  <Select.Item value="off" label={i18n.t("common.off")}>{i18n.t("common.off")}</Select.Item>
-                </Select.Content>
-              </Select.Root>
-              <p class={text.meta}>{i18n.t("settings.agentNotificationsDesc")}</p>
-            </div>
+                <SettingsRow label={i18n.t("settings.preventSleep")} description={i18n.t("settings.preventSleepDesc")}>
+                  {#snippet control()}
+                    <Switch
+                      checked={app.settings.preventSleep === true}
+                      onCheckedChange={(c) => { app.settings.preventSleep = c; persistNow(); }}
+                    />
+                  {/snippet}
+                </SettingsRow>
+              </div>
+            </SettingsSection>
 
-            <!-- Keep the system awake while an agent is working (opt-in). -->
+            <!-- One agents list: configured agents first (each row expands to its
+                 command / args / shell / env config), then the remaining known
+                 agents to add — greyed when not found on PATH. -->
             <div class="flex flex-col gap-1.5">
-              <span class={cn("font-medium", text.body)}>{i18n.t("settings.preventSleep")}</span>
-              <Select.Root
-                type="single"
-                value={app.settings.preventSleep === true ? "on" : "off"}
-                onValueChange={(v) => {
-                  app.settings.preventSleep = v === "on";
-                  persistNow();
-                }}
-              >
-                <Select.Trigger class="w-56">
-                  {app.settings.preventSleep === true ? i18n.t("common.on") : i18n.t("common.off")}
-                </Select.Trigger>
-                <Select.Content>
-                  <Select.Item value="on" label={i18n.t("common.on")}>{i18n.t("common.on")}</Select.Item>
-                  <Select.Item value="off" label={i18n.t("common.off")}>{i18n.t("common.off")}</Select.Item>
-                </Select.Content>
-              </Select.Root>
-              <p class={text.meta}>{i18n.t("settings.preventSleepDesc")}</p>
-            </div>
-
-            <!-- Catalog: every known agent; only the installed ones are addable. -->
-            <div class="flex flex-col gap-1.5">
-              <div class="flex items-center justify-between">
-                <span class={text.section}>{i18n.t("settings.agentsAvailable")}</span>
-                {#if addableCount > 0}
-                  <Button variant="outline" size="sm" onclick={addAllInstalled}>
+              <div class="flex items-center justify-between gap-2">
+                <span class={text.section}>{i18n.t("settings.yourAgents")}</span>
+                <div class="flex items-center gap-1.5">
+                  {#if addableCount > 0}
+                    <Button variant="outline" size="sm" onclick={addAllInstalled}>
+                      <PlusIcon data-icon="inline-start" />
+                      {i18n.t("settings.addAllInstalled")}
+                    </Button>
+                  {/if}
+                  <Button variant="outline" size="sm" onclick={addCustomAgent}>
                     <PlusIcon data-icon="inline-start" />
-                    {i18n.t("settings.addAllInstalled")}
+                    {i18n.t("settings.addCustomAgent")}
                   </Button>
-                {/if}
+                </div>
               </div>
               {#if installed === null}
                 <p class={text.meta}>{i18n.t("settings.detecting")}</p>
               {/if}
-              <div class="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-                {#each AGENT_CATALOG as c (c.id)}
+              <div class="flex flex-col divide-y divide-border/60 rounded-xl border border-border/50 bg-card/50 px-5 shadow-xs">
+                {#each app.agentProfiles as agent (agent.id)}
+                  <AgentProfileEditor
+                    {agent}
+                    onchange={schedulePersist}
+                    onremove={() => removeAgent(agent.id)}
+                  />
+                {/each}
+                {#each AGENT_CATALOG.filter((c) => !isConfigured(c)) as c (c.id)}
                   {@const inst = isInstalled(c)}
-                  {@const conf = isConfigured(c)}
-                  <div
-                    class={cn(
-                      "flex items-center gap-2 rounded-md border border-border px-2 py-1.5",
-                      !inst && "opacity-55",
-                    )}
-                  >
-                    <AgentLogo logo={c.logo} class="size-4" />
+                  <div class={cn("flex items-center gap-2.5 py-2.5", !inst && "opacity-55")}>
+                    <span class="flex size-7 shrink-0 items-center justify-center">
+                      <AgentLogo logo={c.logo} class="size-5" />
+                    </span>
                     <div class="min-w-0 flex-1">
-                      <div class={cn("truncate", text.body)}>{c.name}</div>
-                      <div class={cn("truncate font-mono", text.meta)}>{c.command}</div>
+                      <div class={cn("truncate font-medium text-foreground", text.body)}>{c.name}</div>
+                      <div class="truncate font-mono text-[11px] leading-4 text-muted-foreground">{c.command}</div>
                     </div>
-                    {#if conf}
-                      <span class={cn("shrink-0", text.meta)}>{i18n.t("settings.agentAdded")}</span>
-                    {:else if inst}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        class={iconButton.action}
-                        title={i18n.t("common.add")}
-                        onclick={() => addCatalogAgent(c)}
-                      >
+                    {#if inst}
+                      <Button variant="ghost" size="sm" class="h-7 shrink-0 gap-1" onclick={() => addCatalogAgent(c)}>
                         <PlusIcon class={icon.button} />
+                        {i18n.t("common.add")}
                       </Button>
                     {:else}
                       <span class={cn("shrink-0", text.meta)}>{i18n.t("settings.agentNotFound")}</span>
@@ -733,476 +736,284 @@
               </div>
             </div>
 
-            <!-- Configured agents -->
-            <div class="flex items-center justify-between">
-              <span class={text.section}>{i18n.t("settings.yourAgents")}</span>
-              <Button variant="outline" size="sm" onclick={addCustomAgent}>
-                <PlusIcon data-icon="inline-start" />
-                {i18n.t("settings.addCustomAgent")}
-              </Button>
-            </div>
-            <div class="flex flex-col gap-2">
-              {#each app.agentProfiles as agent (agent.id)}
-                <AgentProfileEditor
-                  {agent}
-                  onchange={schedulePersist}
-                  onremove={() => removeAgent(agent.id)}
-                />
-              {:else}
-                <p class={cn("text-muted-foreground", text.body)}>
-                  {i18n.t("settings.noAgents")}
-                </p>
-              {/each}
-            </div>
-
           </div>
         {:else if app.settingsSection === "aicommit"}
-          <div class="flex flex-col gap-4">
-            <div class="flex flex-col gap-1">
-              <span class={text.heading}>{i18n.t("settings.aiCommit")}</span>
-              <p class={text.meta}>{i18n.t("settings.aiCommitDesc")}</p>
-            </div>
+          <SettingsSection title={i18n.t("settings.aiCommit")} description={i18n.t("settings.aiCommitDesc")}>
+            <div class="divide-y divide-border/60">
+              <SettingsRow label={i18n.t("settings.aiCommitEnabled")} description={i18n.t("settings.aiCommitEnabledDesc")}>
+                {#snippet control()}
+                  <Switch
+                    checked={ai.enabled}
+                    onCheckedChange={(c) => { setAi({ enabled: c }); persistNow(); }}
+                  />
+                {/snippet}
+              </SettingsRow>
 
-            <!-- Master switch. -->
-            <div class="flex flex-col gap-1.5">
-              <span class={cn("font-medium", text.body)}>{i18n.t("settings.aiCommitEnabled")}</span>
-              <Select.Root
-                type="single"
-                value={ai.enabled ? "on" : "off"}
-                onValueChange={(v) => {
-                  setAi({ enabled: v === "on" });
-                  persistNow();
-                }}
+              <SettingsRow
+                label={i18n.t("settings.aiCommitAgent")}
+                description={aiAgentsInstalled !== null && aiAgentsInstalled.size === 0
+                  ? i18n.t("settings.aiCommitNoAgents")
+                  : i18n.t("settings.aiCommitAgentDesc")}
               >
-                <Select.Trigger class="w-56">
-                  {ai.enabled ? i18n.t("common.on") : i18n.t("common.off")}
-                </Select.Trigger>
-                <Select.Content>
-                  <Select.Item value="on" label={i18n.t("common.on")}>{i18n.t("common.on")}</Select.Item>
-                  <Select.Item value="off" label={i18n.t("common.off")}>{i18n.t("common.off")}</Select.Item>
-                </Select.Content>
-              </Select.Root>
-              <p class={text.meta}>{i18n.t("settings.aiCommitEnabledDesc")}</p>
-            </div>
+                {#snippet control()}
+                  <Combobox
+                    value={ai.agentId}
+                    groups={aiAgentGroups}
+                    placeholder={i18n.t("settings.aiCommitAgentNone")}
+                    searchPlaceholder={i18n.t("common.search")}
+                    triggerClass="w-56"
+                    itemPrefix={aiAgentPrefix}
+                    onChange={(v) => selectAiAgent(v)}
+                  />
+                {/snippet}
+              </SettingsRow>
 
-            <!-- Agent: only the supported CLIs; not-installed ones are disabled. -->
-            <div class="flex flex-col gap-1.5">
-              <span class={cn("font-medium", text.body)}>{i18n.t("settings.aiCommitAgent")}</span>
-              <Select.Root
-                type="single"
-                value={ai.agentId}
-                onValueChange={(v) => v && selectAiAgent(v)}
-              >
-                <Select.Trigger class="w-56">
-                  {#if ai.agentId}
-                    <span class="flex items-center gap-2">
-                      <AgentLogo
-                        logo={AI_COMMIT_AGENTS.find((a) => a.id === ai.agentId)?.logo}
-                        class="size-4"
-                      />
-                      {aiAgentLabel}
-                    </span>
-                  {:else}
-                    {i18n.t("settings.aiCommitAgentNone")}
-                  {/if}
-                </Select.Trigger>
-                <Select.Content>
-                  {#each AI_COMMIT_AGENTS as a (a.id)}
-                    {@const inst = aiAgentInstalled(a.id)}
-                    <Select.Item value={a.id} label={a.name} disabled={!inst}>
-                      <span class="flex items-center gap-2">
-                        <AgentLogo logo={a.logo} class="size-4" />
-                        {a.name}
-                        {#if aiAgentsInstalled !== null && !inst}
-                          <span class={cn("ml-auto", text.meta)}>{i18n.t("settings.agentNotFound")}</span>
-                        {/if}
-                      </span>
-                    </Select.Item>
-                  {/each}
-                </Select.Content>
-              </Select.Root>
-              {#if aiAgentsInstalled !== null && aiAgentsInstalled.size === 0}
-                <p class={text.meta}>{i18n.t("settings.aiCommitNoAgents")}</p>
-              {:else}
-                <p class={text.meta}>{i18n.t("settings.aiCommitAgentDesc")}</p>
+              {#if ai.agentId && aiAgentInstalled(ai.agentId)}
+                <SettingsRow label={i18n.t("settings.aiCommitModel")} description={i18n.t("settings.aiCommitModelDesc")}>
+                  {#snippet control()}
+                    <AiModelPicker
+                      models={aiModels}
+                      value={ai.model}
+                      loading={aiModelsLoading}
+                      onSelect={(id) => { setAi({ model: id }); persistNow(); }}
+                    />
+                  {/snippet}
+                </SettingsRow>
               {/if}
-            </div>
 
-            <!-- Model: the CLI's default, plus whatever models it reports
-                 (searchable + scrollable — some agents list hundreds). -->
-            {#if ai.agentId && aiAgentInstalled(ai.agentId)}
-              <div class="flex flex-col gap-1.5">
-                <span class={cn("font-medium", text.body)}>{i18n.t("settings.aiCommitModel")}</span>
-                <AiModelPicker
-                  models={aiModels}
-                  value={ai.model}
-                  loading={aiModelsLoading}
-                  onSelect={(id) => {
-                    setAi({ model: id });
-                    persistNow();
-                  }}
-                />
-                <p class={text.meta}>{i18n.t("settings.aiCommitModelDesc")}</p>
-              </div>
-            {/if}
+              <SettingsRow label={i18n.t("settings.aiCommitLanguage")} description={i18n.t("settings.aiCommitLanguageDesc")}>
+                {#snippet control()}
+                  <Combobox
+                    value={ai.language}
+                    groups={aiLanguageGroups}
+                    triggerClass="w-56"
+                    searchPlaceholder={i18n.t("common.search")}
+                    onChange={(v) => { setAi({ language: v }); persistNow(); }}
+                  />
+                {/snippet}
+              </SettingsRow>
 
-            <!-- Language. -->
-            <div class="flex flex-col gap-1.5">
-              <span class={cn("font-medium", text.body)}>{i18n.t("settings.aiCommitLanguage")}</span>
-              <Select.Root
-                type="single"
-                value={ai.language}
-                onValueChange={(v) => {
-                  setAi({ language: v ?? "auto" });
-                  persistNow();
-                }}
-              >
-                <Select.Trigger class="w-56">{aiLanguageLabel}</Select.Trigger>
-                <Select.Content>
-                  {#each AI_LANGS as l (l.value)}
-                    <Select.Item value={l.value} label={i18n.t(l.labelKey)}>
-                      {i18n.t(l.labelKey)}
-                    </Select.Item>
-                  {/each}
-                </Select.Content>
-              </Select.Root>
-              <p class={text.meta}>{i18n.t("settings.aiCommitLanguageDesc")}</p>
-            </div>
+              <SettingsRow label={i18n.t("settings.aiCommitConventional")} description={i18n.t("settings.aiCommitConventionalDesc")}>
+                {#snippet control()}
+                  <Switch
+                    checked={ai.conventional}
+                    onCheckedChange={(c) => { setAi({ conventional: c }); persistNow(); }}
+                  />
+                {/snippet}
+              </SettingsRow>
 
-            <!-- Conventional Commits subject. -->
-            <div class="flex flex-col gap-1.5">
-              <span class={cn("font-medium", text.body)}>{i18n.t("settings.aiCommitConventional")}</span>
-              <Select.Root
-                type="single"
-                value={ai.conventional ? "on" : "off"}
-                onValueChange={(v) => {
-                  setAi({ conventional: v === "on" });
-                  persistNow();
-                }}
-              >
-                <Select.Trigger class="w-56">
-                  {ai.conventional ? i18n.t("common.on") : i18n.t("common.off")}
-                </Select.Trigger>
-                <Select.Content>
-                  <Select.Item value="on" label={i18n.t("common.on")}>{i18n.t("common.on")}</Select.Item>
-                  <Select.Item value="off" label={i18n.t("common.off")}>{i18n.t("common.off")}</Select.Item>
-                </Select.Content>
-              </Select.Root>
-              <p class={text.meta}>{i18n.t("settings.aiCommitConventionalDesc")}</p>
-            </div>
+              <SettingsRow label={i18n.t("settings.aiCommitBody")} description={i18n.t("settings.aiCommitBodyDesc")}>
+                {#snippet control()}
+                  <Switch
+                    checked={ai.includeBody}
+                    onCheckedChange={(c) => { setAi({ includeBody: c }); persistNow(); }}
+                  />
+                {/snippet}
+              </SettingsRow>
 
-            <!-- Extended body. -->
-            <div class="flex flex-col gap-1.5">
-              <span class={cn("font-medium", text.body)}>{i18n.t("settings.aiCommitBody")}</span>
-              <Select.Root
-                type="single"
-                value={ai.includeBody ? "on" : "off"}
-                onValueChange={(v) => {
-                  setAi({ includeBody: v === "on" });
-                  persistNow();
-                }}
-              >
-                <Select.Trigger class="w-56">
-                  {ai.includeBody ? i18n.t("common.on") : i18n.t("common.off")}
-                </Select.Trigger>
-                <Select.Content>
-                  <Select.Item value="on" label={i18n.t("common.on")}>{i18n.t("common.on")}</Select.Item>
-                  <Select.Item value="off" label={i18n.t("common.off")}>{i18n.t("common.off")}</Select.Item>
-                </Select.Content>
-              </Select.Root>
-              <p class={text.meta}>{i18n.t("settings.aiCommitBodyDesc")}</p>
+              <SettingsRow label={i18n.t("settings.aiCommitInstructions")} description={i18n.t("settings.aiCommitInstructionsDesc")}>
+                {#snippet children()}
+                  <Textarea
+                    class="mt-1 min-h-0 resize-none text-xs"
+                    rows={2}
+                    placeholder={i18n.t("settings.aiCommitInstructionsPlaceholder")}
+                    value={ai.instructions}
+                    oninput={(e) => setAi({ instructions: e.currentTarget.value })}
+                    onchange={persistNow}
+                  />
+                {/snippet}
+              </SettingsRow>
             </div>
-
-            <!-- Extra instructions. -->
-            <div class="flex flex-col gap-1.5">
-              <span class={cn("font-medium", text.body)}>{i18n.t("settings.aiCommitInstructions")}</span>
-              <Textarea
-                class="min-h-0 resize-none text-xs"
-                rows={2}
-                placeholder={i18n.t("settings.aiCommitInstructionsPlaceholder")}
-                value={ai.instructions}
-                oninput={(e) => setAi({ instructions: e.currentTarget.value })}
-                onchange={persistNow}
-              />
-              <p class={text.meta}>{i18n.t("settings.aiCommitInstructionsDesc")}</p>
-            </div>
-          </div>
+          </SettingsSection>
         {:else if app.settingsSection === "hooks"}
-          <div class="flex flex-col gap-4">
-            <div class="flex flex-col gap-1">
-              <span class={text.heading}>{i18n.t("settings.hooks")}</span>
-              <p class={text.meta}>{i18n.t("settings.hooksDesc")}</p>
-            </div>
+          <SettingsSection bare title={i18n.t("settings.hooks")} description={i18n.t("settings.hooksDesc")}>
             <AgentHooksPanel />
-          </div>
+          </SettingsSection>
         {:else if app.settingsSection === "updates"}
-          <div class="flex flex-col gap-4">
-            <div class="flex flex-col gap-1">
-              <span class={text.heading}>{i18n.t("settings.updates")}</span>
-              <p class={text.meta}>{i18n.t("settings.updatesDesc")}</p>
-            </div>
-
-            <!-- Current version + manual check. -->
-            <div class="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
-              <div class="flex min-w-0 flex-col">
-                <span class={cn("font-medium", text.body)}>
-                  {i18n.t("updates.currentVersion", { version: currentVersion || "—" })}
-                </span>
-                <span class={text.meta}>
-                  {#if updater.status === "checking"}
-                    {i18n.t("updates.checking")}
-                  {:else if updater.status === "available" || updater.status === "downloading" || updater.status === "downloaded"}
-                    {i18n.t("updates.bannerAvailable", { version: updater.update?.version ?? "" })}
-                  {:else}
-                    {i18n.t("updates.lastChecked", { when: lastCheckedLabel })}
-                  {/if}
-                </span>
+          <SettingsSection title={i18n.t("settings.updates")} description={i18n.t("settings.updatesDesc")}>
+            <div class="divide-y divide-border/60">
+              <!-- Current version + manual check (a plain row, not a boxed card). -->
+              <div class="flex items-center justify-between gap-3 py-3.5 first:pt-0">
+                <div class="min-w-0 space-y-0.5">
+                  <div class={cn("font-medium text-foreground", text.body)}>
+                    {i18n.t("updates.currentVersion", { version: currentVersion || "—" })}
+                  </div>
+                  <p class="text-[12px] leading-5 text-muted-foreground">
+                    {#if updater.status === "checking"}
+                      {i18n.t("updates.checking")}
+                    {:else if updater.status === "available" || updater.status === "downloading" || updater.status === "downloaded"}
+                      {i18n.t("updates.bannerAvailable", { version: updater.update?.version ?? "" })}
+                    {:else}
+                      {i18n.t("updates.lastChecked", { when: lastCheckedLabel })}
+                    {/if}
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={updater.status === "checking" ||
+                    updater.status === "downloading" ||
+                    updater.status === "installing"}
+                  onclick={() => void updater.checkNow()}
+                >
+                  <RotateCcwIcon data-icon="inline-start" />
+                  {i18n.t("updates.checkNow")}
+                </Button>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={updater.status === "checking" ||
-                  updater.status === "downloading" ||
-                  updater.status === "installing"}
-                onclick={() => void updater.checkNow()}
-              >
-                <RotateCcwIcon data-icon="inline-start" />
-                {i18n.t("updates.checkNow")}
-              </Button>
-            </div>
 
-            <!-- Release channel. -->
-            <div class="flex flex-col gap-1.5">
-              <span class={cn("font-medium", text.body)}>{i18n.t("updates.channel")}</span>
-              <Select.Root
-                type="single"
-                value={up.channel}
-                onValueChange={(v) => {
-                  setUp({ channel: (v as UpdateChannel) ?? "stable" });
-                  persistNow();
-                  void updater.checkNow();
-                }}
-              >
-                <Select.Trigger class="w-56">{channelLabel}</Select.Trigger>
-                <Select.Content>
-                  {#each UPDATE_CHANNELS as c (c.value)}
-                    <Select.Item value={c.value} label={i18n.t(c.labelKey)}>
-                      <div class="flex flex-col">
-                        <span>{i18n.t(c.labelKey)}</span>
-                        <span class={text.meta}>{i18n.t(c.descKey)}</span>
-                      </div>
-                    </Select.Item>
-                  {/each}
-                </Select.Content>
-              </Select.Root>
-              <p class={text.meta}>{i18n.t("updates.channelDesc")}</p>
-            </div>
+              <SettingsRow label={i18n.t("updates.channel")} description={i18n.t("updates.channelDesc")}>
+                {#snippet control()}
+                  <Combobox
+                    value={up.channel}
+                    groups={channelGroups}
+                    triggerClass="w-56"
+                    searchPlaceholder={i18n.t("common.search")}
+                    onChange={(v) => {
+                      setUp({ channel: v as UpdateChannel });
+                      persistNow();
+                      void updater.checkNow();
+                    }}
+                  />
+                {/snippet}
+              </SettingsRow>
 
-            <!-- Check automatically. -->
-            <div class="flex flex-col gap-1.5">
-              <span class={cn("font-medium", text.body)}>{i18n.t("updates.autoCheck")}</span>
-              <Select.Root
-                type="single"
-                value={up.autoCheck ? "on" : "off"}
-                onValueChange={(v) => {
-                  setUp({ autoCheck: v === "on" });
-                  persistNow();
-                }}
-              >
-                <Select.Trigger class="w-56">
-                  {up.autoCheck ? i18n.t("common.on") : i18n.t("common.off")}
-                </Select.Trigger>
-                <Select.Content>
-                  <Select.Item value="on" label={i18n.t("common.on")}>{i18n.t("common.on")}</Select.Item>
-                  <Select.Item value="off" label={i18n.t("common.off")}>{i18n.t("common.off")}</Select.Item>
-                </Select.Content>
-              </Select.Root>
-              <p class={text.meta}>{i18n.t("updates.autoCheckDesc")}</p>
-            </div>
+              <SettingsRow label={i18n.t("updates.autoCheck")} description={i18n.t("updates.autoCheckDesc")}>
+                {#snippet control()}
+                  <Switch
+                    checked={up.autoCheck}
+                    onCheckedChange={(c) => { setUp({ autoCheck: c }); persistNow(); }}
+                  />
+                {/snippet}
+              </SettingsRow>
 
-            <!-- Download automatically (background; never interrupts agents). -->
-            <div class="flex flex-col gap-1.5">
-              <span class={cn("font-medium", text.body)}>{i18n.t("updates.autoDownload")}</span>
-              <Select.Root
-                type="single"
-                value={up.autoDownload ? "on" : "off"}
-                onValueChange={(v) => {
-                  setUp({ autoDownload: v === "on" });
-                  persistNow();
-                }}
-              >
-                <Select.Trigger class="w-56">
-                  {up.autoDownload ? i18n.t("common.on") : i18n.t("common.off")}
-                </Select.Trigger>
-                <Select.Content>
-                  <Select.Item value="on" label={i18n.t("common.on")}>{i18n.t("common.on")}</Select.Item>
-                  <Select.Item value="off" label={i18n.t("common.off")}>{i18n.t("common.off")}</Select.Item>
-                </Select.Content>
-              </Select.Root>
-              <p class={text.meta}>{i18n.t("updates.autoDownloadDesc")}</p>
-            </div>
+              <SettingsRow label={i18n.t("updates.autoDownload")} description={i18n.t("updates.autoDownloadDesc")}>
+                {#snippet control()}
+                  <Switch
+                    checked={up.autoDownload}
+                    onCheckedChange={(c) => { setUp({ autoDownload: c }); persistNow(); }}
+                  />
+                {/snippet}
+              </SettingsRow>
 
-            <!-- Install policy: how a downloaded update is applied (restart stops agents). -->
-            <div class="flex flex-col gap-1.5">
-              <span class={cn("font-medium", text.body)}>{i18n.t("updates.installPolicy")}</span>
-              <Select.Root
-                type="single"
-                value={up.installPolicy}
-                onValueChange={(v) => {
-                  setUp({ installPolicy: (v as InstallPolicy) ?? "ask" });
-                  persistNow();
-                }}
-              >
-                <Select.Trigger class="w-56">{installPolicyLabel}</Select.Trigger>
-                <Select.Content>
-                  {#each INSTALL_POLICIES as p (p.value)}
-                    <Select.Item value={p.value} label={i18n.t(p.labelKey)}>
-                      {i18n.t(p.labelKey)}
-                    </Select.Item>
-                  {/each}
-                </Select.Content>
-              </Select.Root>
-              <p class={text.meta}>{i18n.t("updates.installPolicyDesc")}</p>
+              <SettingsRow label={i18n.t("updates.installPolicy")} description={i18n.t("updates.installPolicyDesc")}>
+                {#snippet help()}
+                  <HoverCard.Root>
+                    <HoverCard.Trigger>
+                      {#snippet child({ props })}
+                        <button
+                          {...props}
+                          type="button"
+                          class="inline-flex text-muted-foreground/70 transition-colors hover:text-foreground"
+                          aria-label={i18n.t("updates.installPolicyHelpTitle")}
+                        >
+                          <CircleHelpIcon class="size-3.5" />
+                        </button>
+                      {/snippet}
+                    </HoverCard.Trigger>
+                    <HoverCard.Content class="w-80">
+                      <p class={cn("mb-2 font-medium text-foreground", text.body)}>{i18n.t("updates.installPolicyHelpTitle")}</p>
+                      <dl class="space-y-2">
+                        {#each [["updates.policyAsk", "updates.policyAskHelp"], ["updates.policyWhenIdle", "updates.policyWhenIdleHelp"], ["updates.policyManual", "updates.policyManualHelp"]] as [nameKey, helpKey] (nameKey)}
+                          <div>
+                            <dt class={cn("font-medium text-foreground", text.body)}>{i18n.t(nameKey as never)}</dt>
+                            <dd class="text-[12px] leading-5 text-muted-foreground">{i18n.t(helpKey as never)}</dd>
+                          </div>
+                        {/each}
+                      </dl>
+                    </HoverCard.Content>
+                  </HoverCard.Root>
+                {/snippet}
+                {#snippet control()}
+                  <Combobox
+                    value={up.installPolicy}
+                    groups={installPolicyGroups}
+                    triggerClass="w-56"
+                    searchPlaceholder={i18n.t("common.search")}
+                    onChange={(v) => { setUp({ installPolicy: v as InstallPolicy }); persistNow(); }}
+                  />
+                {/snippet}
+              </SettingsRow>
             </div>
-          </div>
+          </SettingsSection>
         {:else if app.settingsSection === "browser"}
-          <div class="flex flex-col gap-4">
-            <div class="flex flex-col gap-1">
-              <span class={text.heading}>{i18n.t("settings.browser")}</span>
-              <p class={text.meta}>{i18n.t("settings.browserDesc")}</p>
-            </div>
+          <SettingsSection
+            title={i18n.t("settings.browser")}
+            description={i18n.t("settings.browserDesc")}
+          >
+            <div class="divide-y divide-border/60">
+              <!-- On/off settings are Switches (not on/off comboboxes). -->
+              <SettingsRow label={i18n.t("browser.enabled")} description={i18n.t("browser.enabledDesc")}>
+                {#snippet control()}
+                  <Switch
+                    checked={br.enabled}
+                    onCheckedChange={(c) => { setBr({ enabled: c }); persistNow(); }}
+                  />
+                {/snippet}
+              </SettingsRow>
 
-            <!-- Master switch. -->
-            <div class="flex flex-col gap-1.5">
-              <span class={cn("font-medium", text.body)}>{i18n.t("browser.enabled")}</span>
-              <Select.Root
-                type="single"
-                value={br.enabled ? "on" : "off"}
-                onValueChange={(v) => {
-                  setBr({ enabled: v === "on" });
-                  persistNow();
-                }}
-              >
-                <Select.Trigger class="w-56">
-                  {br.enabled ? i18n.t("common.on") : i18n.t("common.off")}
-                </Select.Trigger>
-                <Select.Content>
-                  <Select.Item value="on" label={i18n.t("common.on")}>{i18n.t("common.on")}</Select.Item>
-                  <Select.Item value="off" label={i18n.t("common.off")}>{i18n.t("common.off")}</Select.Item>
-                </Select.Content>
-              </Select.Root>
-              <p class={text.meta}>{i18n.t("browser.enabledDesc")}</p>
-            </div>
+              <!-- Link policy has three options, so it stays a Select. -->
+              <SettingsRow label={i18n.t("browser.linkPolicy")} description={i18n.t("browser.linkPolicyDesc")}>
+                {#snippet control()}
+                  <Combobox
+                    value={br.linkPolicy}
+                    groups={linkPolicyGroups}
+                    disabled={!br.enabled}
+                    triggerClass="w-56"
+                    searchPlaceholder={i18n.t("common.search")}
+                    onChange={(v) => { setBr({ linkPolicy: v as BrowserLinkPolicy }); persistNow(); }}
+                  />
+                {/snippet}
+              </SettingsRow>
 
-            <!-- Link policy: where links open. -->
-            <div class="flex flex-col gap-1.5">
-              <span class={cn("font-medium", text.body)}>{i18n.t("browser.linkPolicy")}</span>
-              <Select.Root
-                type="single"
-                value={br.linkPolicy}
-                disabled={!br.enabled}
-                onValueChange={(v) => {
-                  setBr({ linkPolicy: (v as BrowserLinkPolicy) ?? "internal" });
-                  persistNow();
-                }}
-              >
-                <Select.Trigger class="w-56">{linkPolicyLabel}</Select.Trigger>
-                <Select.Content>
-                  {#each LINK_POLICIES as p (p.value)}
-                    <Select.Item value={p.value} label={i18n.t(p.labelKey)}>
-                      <div class="flex flex-col">
-                        <span>{i18n.t(p.labelKey)}</span>
-                        <span class={text.meta}>{i18n.t(p.descKey)}</span>
-                      </div>
-                    </Select.Item>
-                  {/each}
-                </Select.Content>
-              </Select.Root>
-              <p class={text.meta}>{i18n.t("browser.linkPolicyDesc")}</p>
-            </div>
+              <SettingsRow label={i18n.t("browser.allowAgents")} description={i18n.t("browser.allowAgentsDesc")}>
+                {#snippet control()}
+                  <Switch
+                    checked={br.allowAgents}
+                    disabled={!br.enabled}
+                    onCheckedChange={(c) => { setBr({ allowAgents: c }); persistNow(); }}
+                  />
+                {/snippet}
+              </SettingsRow>
 
-            <!-- Let agents open URLs in the integrated browser. -->
-            <div class="flex flex-col gap-1.5">
-              <span class={cn("font-medium", text.body)}>{i18n.t("browser.allowAgents")}</span>
-              <Select.Root
-                type="single"
-                value={br.allowAgents ? "on" : "off"}
-                disabled={!br.enabled}
-                onValueChange={(v) => {
-                  setBr({ allowAgents: v === "on" });
-                  persistNow();
-                }}
-              >
-                <Select.Trigger class="w-56">
-                  {br.allowAgents ? i18n.t("common.on") : i18n.t("common.off")}
-                </Select.Trigger>
-                <Select.Content>
-                  <Select.Item value="on" label={i18n.t("common.on")}>{i18n.t("common.on")}</Select.Item>
-                  <Select.Item value="off" label={i18n.t("common.off")}>{i18n.t("common.off")}</Select.Item>
-                </Select.Content>
-              </Select.Root>
-              <p class={text.meta}>{i18n.t("browser.allowAgentsDesc")}</p>
-            </div>
+              <SettingsRow label={i18n.t("browser.terminalLinks")} description={i18n.t("browser.terminalLinksDesc")}>
+                {#snippet control()}
+                  <Switch
+                    checked={br.terminalLinks}
+                    disabled={!br.enabled}
+                    onCheckedChange={(c) => { setBr({ terminalLinks: c }); persistNow(); }}
+                  />
+                {/snippet}
+              </SettingsRow>
 
-            <!-- Make terminal URLs clickable. -->
-            <div class="flex flex-col gap-1.5">
-              <span class={cn("font-medium", text.body)}>{i18n.t("browser.terminalLinks")}</span>
-              <Select.Root
-                type="single"
-                value={br.terminalLinks ? "on" : "off"}
-                disabled={!br.enabled}
-                onValueChange={(v) => {
-                  setBr({ terminalLinks: v === "on" });
-                  persistNow();
-                }}
-              >
-                <Select.Trigger class="w-56">
-                  {br.terminalLinks ? i18n.t("common.on") : i18n.t("common.off")}
-                </Select.Trigger>
-                <Select.Content>
-                  <Select.Item value="on" label={i18n.t("common.on")}>{i18n.t("common.on")}</Select.Item>
-                  <Select.Item value="off" label={i18n.t("common.off")}>{i18n.t("common.off")}</Select.Item>
-                </Select.Content>
-              </Select.Root>
-              <p class={text.meta}>{i18n.t("browser.terminalLinksDesc")}</p>
+              <SettingsRow label={i18n.t("browser.homepage")} description={i18n.t("browser.homepageDesc")}>
+                {#snippet control()}
+                  <Input
+                    class="w-72 max-w-full"
+                    value={br.homepage}
+                    placeholder={i18n.t("browser.homepagePlaceholder")}
+                    disabled={!br.enabled}
+                    oninput={(e) => setBr({ homepage: e.currentTarget.value })}
+                    onchange={() => persistNow()}
+                  />
+                {/snippet}
+              </SettingsRow>
             </div>
-
-            <!-- Homepage. -->
-            <div class="flex flex-col gap-1.5">
-              <span class={cn("font-medium", text.body)}>{i18n.t("browser.homepage")}</span>
-              <Input
-                class="w-full max-w-md"
-                value={br.homepage}
-                placeholder={i18n.t("browser.homepagePlaceholder")}
-                disabled={!br.enabled}
-                oninput={(e) => setBr({ homepage: e.currentTarget.value })}
-                onchange={() => persistNow()}
-              />
-              <p class={text.meta}>{i18n.t("browser.homepageDesc")}</p>
-            </div>
-          </div>
+          </SettingsSection>
         {:else}
-          <div class="flex flex-col gap-4">
-            <span class={text.heading}>{i18n.t("settings.terminal")}</span>
-            <div class="flex flex-col gap-1.5">
-              <span class={cn("font-medium", text.body)}>{i18n.t("settings.defaultProfile")}</span>
-              <Select.Root
-                type="single"
-                value={app.settings.defaultProfileId ?? undefined}
-                onValueChange={(v) => {
-                  app.settings.defaultProfileId = v ?? null;
-                  persistNow();
-                }}
-              >
-                <Select.Trigger class="w-56">{defaultProfileLabel}</Select.Trigger>
-                <Select.Content>
-                  {#each app.terminalProfiles as p (p.id)}
-                    {@const label = p.name.trim() || i18n.t("terminal.unnamedProfile")}
-                    <Select.Item value={p.id} {label}>{label}</Select.Item>
-                  {/each}
-                </Select.Content>
-              </Select.Root>
-              <p class={text.meta}>{i18n.t("settings.defaultProfileDesc")}</p>
+          <SettingsSection bare title={i18n.t("settings.terminal")} description={i18n.t("settings.terminalDesc")}>
+            <div class="rounded-xl border border-border/50 bg-card/50 px-7 py-4 shadow-xs">
+              <SettingsRow label={i18n.t("settings.defaultProfile")} description={i18n.t("settings.defaultProfileDesc")}>
+                {#snippet control()}
+                  <Combobox
+                    value={app.settings.defaultProfileId ?? undefined}
+                    groups={profileGroups}
+                    placeholder={i18n.t("terminal.chooseProfile")}
+                    triggerClass="w-56"
+                    searchPlaceholder={i18n.t("common.search")}
+                    onChange={(v) => { app.settings.defaultProfileId = v; persistNow(); }}
+                  />
+                {/snippet}
+              </SettingsRow>
             </div>
 
             <div class="flex items-center justify-between gap-1.5">
@@ -1256,23 +1067,40 @@
               </div>
             </div>
 
-            <div class="flex flex-col gap-2">
-              {#each app.terminalProfiles as profile (profile.id)}
-                <TerminalProfileEditor
-                  {profile}
-                  onchange={schedulePersist}
-                  onremove={() => removeProfile(profile.id)}
-                />
-              {:else}
-                <p class={cn("text-muted-foreground", text.body)}>
-                  {i18n.t("settings.noProfiles")}
-                </p>
-              {/each}
-            </div>
-          </div>
+            {#if app.terminalProfiles.length > 0}
+              <!-- One list: each profile is a row that expands to its command/args. -->
+              <div class="flex flex-col divide-y divide-border/60 rounded-xl border border-border/50 bg-card/50 px-5 shadow-xs">
+                {#each app.terminalProfiles as profile (profile.id)}
+                  <TerminalProfileEditor
+                    {profile}
+                    onchange={schedulePersist}
+                    onremove={() => removeProfile(profile.id)}
+                  />
+                {/each}
+              </div>
+            {:else}
+              <p class={cn("text-muted-foreground", text.body)}>
+                {i18n.t("settings.noProfiles")}
+              </p>
+            {/if}
+          </SettingsSection>
         {/if}
         </div>
       </div>
     </div>
   </div>
 {/if}
+
+<!-- Leading logo for the agent selectors (shown on the trigger and each row),
+     resolved from the item value. -->
+{#snippet agentPrefix(item: ComboItem)}
+  {#if item.value !== NO_DEFAULT_AGENT}
+    {@const a = app.launchableAgents.find((x) => x.id === item.value)}
+    {#if a}<AgentLogo logo={agentLogoKey(a.icon, a.command)} class="size-4 shrink-0" />{/if}
+  {/if}
+{/snippet}
+
+{#snippet aiAgentPrefix(item: ComboItem)}
+  {@const a = AI_COMMIT_AGENTS.find((x) => x.id === item.value)}
+  {#if a}<AgentLogo logo={a.logo} class="size-4 shrink-0" />{/if}
+{/snippet}

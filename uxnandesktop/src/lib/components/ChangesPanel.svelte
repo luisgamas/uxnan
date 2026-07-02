@@ -239,7 +239,7 @@
 
 <div class="flex h-full min-h-0 flex-col">
   <!-- Header: stage-all (highlighted, first) · changed-file count · search · refresh -->
-  <header class="flex h-9 shrink-0 items-center gap-0.5 border-b border-sidebar-border px-2">
+  <header class="flex h-9 shrink-0 items-center gap-0.5 border-b border-sidebar-border/60 px-2">
     {#if searching}
       <!-- svelte-ignore a11y_autofocus -->
       <input
@@ -253,8 +253,8 @@
         )}
         onkeydown={(e) => e.key === "Escape" && toggleSearch()}
       />
-      <Button variant="ghost" size="icon" class="size-6" title={i18n.t("common.close")} onclick={toggleSearch}>
-        <XIcon class={icon.button} />
+      <Button variant="ghost" size="icon" class={iconButton.xs} title={i18n.t("common.close")} onclick={toggleSearch}>
+        <XIcon class={icon.action} />
       </Button>
     {:else}
       <span class={cn("flex-1 truncate", text.section)}>
@@ -263,17 +263,17 @@
         {/if}
       </span>
       {#if git.path}
-        <Button variant="ghost" size="icon" class="size-6" title={i18n.t("rightPanel.search")} onclick={toggleSearch}>
-          <SearchIcon class={icon.button} />
+        <Button variant="ghost" size="icon" class={iconButton.xs} title={i18n.t("rightPanel.search")} onclick={toggleSearch}>
+          <SearchIcon class={icon.action} />
         </Button>
         <Button
           variant="ghost"
           size="icon"
-          class="size-6"
+          class={iconButton.xs}
           title={i18n.t("rightPanel.refresh")}
           onclick={() => void git.refresh()}
         >
-          <RefreshCwIcon class={cn(icon.button, git.loading && "animate-spin")} />
+          <RefreshCwIcon class={cn(icon.action, git.loading && "animate-spin")} />
         </Button>
       {/if}
     {/if}
@@ -303,7 +303,7 @@
     {/if}
 
     <!-- Commit composer + sync -->
-    <div class="shrink-0 border-t border-sidebar-border p-2">
+    <div class="shrink-0 border-t border-sidebar-border/60 p-2">
       {#if aiEnabled}
         <div class="mb-1.5 flex justify-end">
           <Button

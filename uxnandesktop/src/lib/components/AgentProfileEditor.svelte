@@ -11,9 +11,11 @@
   import { icon, text } from "$lib/design";
   import type { AgentProfile, EnvVar } from "$lib/types";
   import AgentLogo from "./AgentLogo.svelte";
+  import * as Collapsible from "$lib/components/ui/collapsible";
   import Trash2Icon from "@lucide/svelte/icons/trash-2";
   import XIcon from "@lucide/svelte/icons/x";
   import PlusIcon from "@lucide/svelte/icons/plus";
+  import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
 
   let {
     agent,
@@ -24,6 +26,11 @@
     onchange: () => void;
     onremove: () => void;
   } = $props();
+
+  // Collapsed by default: the row shows the agent (logo · name), and expands to
+  // its command / args / shell / env config. It's one row of the agents list, so
+  // it carries no border of its own (the list separates rows with a divider).
+  let expanded = $state(false);
 
   // Args are edited as a local space-separated string and committed to the array.
   // Seeded once (rows are keyed by id, so a different agent remounts this).
@@ -79,12 +86,12 @@
   }
 </script>
 
-<div class="flex flex-col gap-2 rounded-md border border-border p-2.5">
-  <div class="flex items-center gap-2">
+<Collapsible.Root bind:open={expanded} class="flex flex-col gap-2 py-2.5">
+  <div class="flex items-center gap-2.5">
     <div class="relative shrink-0">
       <button
         type="button"
-        class="flex size-7 items-center justify-center rounded-md border border-border hover:bg-accent/50"
+        class="flex size-7 items-center justify-center rounded-md border border-border/60 hover:bg-accent/50"
         title={i18n.t("agentEditor.chooseLogo")}
         aria-label={i18n.t("agentEditor.chooseLogo")}
         onclick={() => fileInput?.click()}
@@ -110,12 +117,24 @@
         onchange={onPickLogo}
       />
     </div>
-    <Input
-      class="h-8 text-xs"
-      placeholder={i18n.t("agentEditor.namePlaceholder")}
-      bind:value={agent.name}
-      oninput={onchange}
-    />
+    <button
+      type="button"
+      class="min-w-0 flex-1 text-left"
+      onclick={() => (expanded = !expanded)}
+    >
+      <span class={cn("block truncate font-medium text-foreground", text.body)}>
+        {agent.name?.trim() || agent.command || i18n.t("agentEditor.namePlaceholder")}
+      </span>
+      {#if agent.name?.trim() && agent.command}
+        <span class="block truncate font-mono text-[11px] leading-4 text-muted-foreground">{agent.command}</span>
+      {/if}
+    </button>
+    <Collapsible.Trigger
+      class="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+      title={i18n.t(expanded ? "project.collapse" : "project.expand")}
+    >
+      <ChevronDownIcon class={cn(icon.button, "transition-transform", expanded && "rotate-180")} />
+    </Collapsible.Trigger>
     <Button
       variant="ghost"
       size="icon-sm"
@@ -125,7 +144,14 @@
       <Trash2Icon class={icon.button} />
     </Button>
   </div>
-  <div class="flex flex-col gap-1.5 sm:flex-row">
+  <Collapsible.Content class="flex flex-col gap-2.5 pt-1">
+  <Input
+    class="h-8 text-xs"
+    placeholder={i18n.t("agentEditor.namePlaceholder")}
+    bind:value={agent.name}
+    oninput={onchange}
+  />
+  <div class="flex flex-col gap-2 sm:flex-row">
     <Input
       class="h-8 flex-1 font-mono text-xs"
       placeholder={i18n.t("agentEditor.commandPlaceholder")}
@@ -203,4 +229,5 @@
       </div>
     {/each}
   </div>
-</div>
+  </Collapsible.Content>
+</Collapsible.Root>

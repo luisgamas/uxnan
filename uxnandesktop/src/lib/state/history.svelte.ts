@@ -6,9 +6,16 @@
 // marked stale by the git store after a commit/push/pull so it re-fetches the
 // next time the tab is shown.
 
-import { gitLog } from "$lib/api";
+import { gitLog, gitShow } from "$lib/api";
 import { toastError } from "$lib/toast";
+import { splitCommitDiff, type CommitFile } from "$lib/diffParse";
 import type { CommitInfo } from "$lib/types";
+
+/** Per-commit changed-file cache entry (lazily loaded when a commit expands). */
+export interface CommitFilesState {
+  status: "loading" | "ready" | "error";
+  files: CommitFile[];
+}
 
 const msg = (e: unknown) =>
   e && typeof e === "object" && "message" in e
@@ -32,6 +39,43 @@ class HistoryStore {
   query = $state("");
   /** Whether to draw the branch graph gutter (off → plain list). */
   showGraph = $state(true);
+
+  /** Which commits are expanded (showing their changed-file list) by hash. */
+  expanded = $state<Record<string, boolean>>({});
+  /** Lazily-loaded changed-file lists per commit hash (parsed from `git show`). */
+  fileCache = $state<Record<string, CommitFilesState>>({});
+
+  isExpanded(hash: string): boolean {
+    return this.expanded[hash] === true;
+  }
+  filesFor(hash: string): CommitFilesState | undefined {
+    return this.fileCache[hash];
+  }
+
+  /** Toggle a commit's expanded file list; load (and cache) its files on first
+   *  expand. Commit diffs are immutable, so the cache is kept until the worktree
+   *  changes. */
+  toggleExpand(hash: string): void {
+    if (this.expanded[hash]) {
+      this.expanded[hash] = false;
+      return;
+    }
+    this.expanded[hash] = true;
+    if (!this.fileCache[hash]) void this.loadFiles(hash);
+  }
+
+  private async loadFiles(hash: string): Promise<void> {
+    const path = this.path;
+    if (!path) return;
+    this.fileCache[hash] = { status: "loading", files: [] };
+    try {
+      const full = await gitShow(path, hash);
+      if (this.path !== path) return; // worktree switched under us
+      this.fileCache[hash] = { status: "ready", files: splitCommitDiff(full) };
+    } catch {
+      this.fileCache[hash] = { status: "error", files: [] };
+    }
+  }
 
   /** The path whose log is currently loaded (so `ensure` is a no-op when the tab
    *  re-mounts on the same worktree). `null` means "nothing loaded yet". */
@@ -64,6 +108,9 @@ class HistoryStore {
     this.error = null;
     this.commits = [];
     this.reachedEnd = false;
+    // A different worktree's expansions/file caches don't apply here.
+    this.expanded = {};
+    this.fileCache = {};
     if (!path) return;
     this.loading = true;
     try {

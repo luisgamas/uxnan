@@ -16,7 +16,7 @@
 </script>
 
 <div class="flex h-full min-h-0 flex-col bg-background">
-  <header class="flex h-9 shrink-0 items-center gap-2 border-b border-border px-2">
+  <header class="flex h-9 shrink-0 items-center gap-2 border-b border-border/60 px-2">
     <FileDiffIcon class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
     <span class={cn("min-w-0 flex-1 truncate font-mono", text.body)} title={state.file}>{state.file}</span>
     <span class={cn("shrink-0 rounded-sm bg-muted px-1.5 py-0.5", text.indicator)}>

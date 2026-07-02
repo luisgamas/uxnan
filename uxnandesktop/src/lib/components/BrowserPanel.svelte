@@ -15,6 +15,7 @@
 
   import { onDestroy, onMount, untrack } from "svelte";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
   import {
     browserWindowBack,
     browserWindowClose,
@@ -120,18 +121,37 @@
 
   onMount(() => {
     raf = requestAnimationFrame(tick);
-    let un: UnlistenFn | null = null;
     let disposed = false;
-    void listen<{ url: string }>("browser:navigated", (e) => {
-      lastNavigated = e.payload.url;
-      address = e.payload.url;
-    }).then((u) => {
-      if (disposed) u();
-      else un = u;
-    });
+    const unlisteners: UnlistenFn[] = [];
+    const track = (p: Promise<UnlistenFn>) =>
+      void p.then((u) => (disposed ? u() : unlisteners.push(u)));
+
+    track(
+      listen<{ url: string }>("browser:navigated", (e) => {
+        lastNavigated = e.payload.url;
+        address = e.payload.url;
+      }),
+    );
+
+    // Re-dock when the main window moves or resizes. The docked window is placed
+    // in absolute screen coords (main window origin + the slot's offset), but the
+    // slot's window-relative rect doesn't change on a move — so nothing else would
+    // re-push its bounds, stranding the browser at the old screen position while
+    // the app moves away. Invalidating `last` makes the next rAF tick re-place it
+    // from the new origin. (An owned child window doesn't follow its parent on
+    // Windows.) Skipped in the web preview, where there's no Tauri window.
+    try {
+      const win = getCurrentWindow();
+      const invalidate = () => (last = { x: -1, y: -1, w: -1, h: -1 });
+      track(win.onMoved(invalidate));
+      track(win.onResized(invalidate));
+    } catch {
+      // No Tauri runtime (browser preview) — nothing to track.
+    }
+
     return () => {
       disposed = true;
-      un?.();
+      for (const u of unlisteners) u();
     };
   });
 
@@ -167,8 +187,15 @@
 </script>
 
 <div class="flex h-full w-full flex-col bg-background">
+  <!-- Window-controls drag strip. When the browser is open it is the right-most
+       panel, so the min/max/close overlay (fixed top-right, rendered in
+       +page.svelte) lands over *this* panel. Mirror the right panel's top band
+       (h-9 drag strip) so those controls float over an empty strip instead of
+       covering the toolbar buttons below — which is what happened before. -->
+  <div data-tauri-drag-region class="h-9 shrink-0 border-b border-border/60"></div>
+
   <!-- Toolbar / address bar (lives in the main window; the page window docks below) -->
-  <div class="flex shrink-0 items-center gap-1 border-b border-border px-1.5 py-1">
+  <div class="flex shrink-0 items-center gap-1 border-b border-border/60 px-1.5 py-1">
     <button
       class="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
       title={i18n.t("browser.back")}

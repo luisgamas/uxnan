@@ -5,6 +5,447 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Build
+- **Production app icons regenerated from a 1024² master.** The icon set is now
+  derived from the final 1024×1024 brand PNG, kept in-repo as
+  `src-tauri/app-icon.png` for reproducible regeneration
+  (`npm run tauri icon src-tauri/app-icon.png`): crisper `icon.icns` / `icon.ico`
+  and every PNG size (including the macOS 512@2x slot). The mobile
+  `icons/android` & `icons/ios` output was dropped (desktop-only app);
+  `tauri.conf.json → bundle.icon` wiring is unchanged. Closes the last app-icon
+  `FOR-HUMAN` item (final artwork provided + signed off).
+
+### Added
+- **History: expand a commit to per-file diffs + a details hover-card.** Clicking a
+  commit in the History tab now **expands it inline to its changed-file list**
+  (status letter + path) instead of opening one giant diff; clicking a file opens
+  **just that file's slice** of the commit diff as a center tab (much more
+  readable). The commit diff is fetched once (`git_show`) and split per file
+  **client-side** (new `diffParse` util, unit-tested — no new backend). Under the
+  branch graph, an expanded commit keeps the graph continuous by drawing straight
+  lane continuations through its file rows. Hovering a commit shows a new reusable
+  **`ui/hover-card`** (bits-ui `LinkPreview`, app-styled) with the full subject,
+  body message, short+full hash, author (name · email), absolute date and refs.
+  `VirtualList` gained exact **per-index row heights** (`estimateSize` may now be a
+  `(index) => number`) so the mixed commit/file rows virtualize without runtime
+  measurement.
+- **Reusable `ContextMenu` primitive + shared actions menu.** Added a
+  `ui/context-menu` wrapper (bits-ui `ContextMenu`, styled to match our
+  `dropdown-menu`: same popover surface, ring, animation, submenus, with
+  scroll-capped content/sub-content, at the skill's menu density —
+  `min-h-7 gap-2 px-2 py-1.5`). A single reusable `RowActionsMenu` renders the
+  body — new terminal (default) + a *by-profile* submenu, **Launch agent** and
+  **Active agents** submenus (both scroll when long), reveal in file manager,
+  copy path, a Configure submenu (agents / terminals), and a destructive remove —
+  and is shared by **both** the worktree/branch rows **and** the project-card
+  header via **right-click**. The always-visible **⋯ overflow buttons were
+  removed** from every worktree row **and** the project header (the right-click
+  menu replaces them; the header keeps only expand + the launcher **+**).
+- **Reusable searchable selectors (`Combobox`, `MultiSelect`).** Extracted the
+  searchable-select pattern that had lived inside `FontPicker` (Popover + Command:
+  a search box, grouped options, comfortable padding, a check on the current
+  value) into two generic components sharing a `ComboItem` / `ComboGroup` shape:
+  `Combobox.svelte` (single value, `{ groups, value, onChange }`) and
+  `MultiSelect.svelte` (a token-input multi-select — chosen values are compact
+  removable chips, an "Add" trigger opens the searchable grouped list, so the
+  field stays the same small size for 3 or 300 options). Both take optional
+  `itemPrefix` / `triggerContent` snippets (logos, badges, custom triggers). Used
+  by the launcher window; the building blocks for future selectors.
+- **Project launcher window (`LauncherDialog`).** The project card's **+** now
+  opens a dialog instead of a floating menu. The flow reads as a sentence — pick
+  **where** (an existing worktree via the searchable `Combobox`, or **New
+  worktree…** which reveals the branch name + base + folder preview) and **what**
+  to open there (a searchable `MultiSelect` over terminals / every profile / every
+  agent / the browser — one *or several* at once), then **Open** / **Create &
+  open**. Selecting a target switches and links the workspace, and creating a
+  worktree no longer force-launches the default agent (the "what to open"
+  selection is the single source of truth). Replaces the previous per-worktree
+  floating menu on the project header, which repeated every option once per branch
+  and overflowed the screen on projects with several worktrees.
+
+### Changed — clean desktop UI redesign
+- **Appearance settings rebuilt on the shared settings language.** The pane
+  dropped its ad-hoc soft-boxed blocks for the same rhythm as the other panes:
+  each of **Interface** and **Terminal** now has a real `SettingsSection` header
+  (title + description over a divider) and, within it, **Fonts first, then
+  Themes**. Font/typography options are `SettingsRow`s (label + a helper line +
+  right-aligned control) inside a soft band — including the terminal font family,
+  size, line-height, letter-spacing and ligatures (the redundant **font-weight**
+  control was removed; typefaces carry their own weight). Theme selection moved to
+  the app's neutral selection language (`surface.active`), and the theme/terminal
+  preview grids are now **scroll-capped** (`max-h` + `uxnan-scroll`) so a large
+  collection stays a bounded, scrollable region instead of a runaway grid. New
+  per-row description i18n keys (EN/ES).
+- **Empty center panel gained a quiet name footnote.** Pinned to the bottom of the
+  empty canvas (both the Global scratch space and an empty project/worktree): a
+  two-line, muted footer — `Uxnan · /uʃ.nan/` over the subtitle *"a name with no
+  relation to, or derivation from, any existing product."* (localized EN/ES). New
+  `terminal.nameNote` / `terminal.nameSub` i18n keys.
+- **Terminal & workspace keyboard shortcuts + empty-state hints.** New configurable
+  shortcuts (Settings → Keyboard shortcuts): **New terminal** (`Mod+T`) opens in the
+  **active workspace's folder**; **New global terminal** (`Mod+Shift+T`) opens in the
+  Global scratch space (home); **New worktree** (`Mod+Shift+N`) creates a worktree in
+  the active repo (a no-op outside one). The empty center panel now lists these plus
+  **Add project** (`Mod+O`) as informative text + keycap hints below its buttons. The
+  **project-card context menu** shows the *New terminal* keycap. The new-worktree
+  dialog moved to the shell (shared `projects.activeRepo` / `newWorktreeOpen`) so the
+  shortcut and the empty-state button drive the same dialog. All keycaps render via
+  `KeyChord` (⌘ on macOS via `Mod`).
+- **Terminal split moved to the context menu + keyboard.** Removed the two
+  split-vertical / split-horizontal buttons from the center tab strip; splitting
+  now lives only in each terminal's right-click menu (pane or tab). That menu was
+  restyled to match the app's other menus (soft popover ring, rounded rows) and
+  now shows a trailing **keycap hint** for every action that has a shortcut. Added
+  three configurable shortcuts (Settings → Keyboard shortcuts): **New terminal**
+  (`Mod+Shift+T`), **Split right** (`Mod+Shift+→`) and **Split down**
+  (`Mod+Shift+↓`) — picked to avoid clobbering shell signals (Ctrl+C/D/\, …) and to
+  sit in the same directional family as focus-split (`Mod+Alt+→/←`). All three stay
+  bound to the **active workspace**: new terminal opens in its focused region
+  (bootstrapping the first one when the workspace is empty, same as the empty-state
+  button), and split acts on the focused region — a **no-op when there's nothing to
+  split**, so a shortcut never spawns an out-of-context pane and no chooser is shown.
+  New `app.splitActiveTerminal`; the shortcuts are handled both globally (`+page`)
+  and while a terminal is focused (`Terminal.svelte`). Also gave the copy/paste/close
+  menu items their keycap hints (`Ctrl+C` / `Ctrl+V` / the `closeCenter` chord).
+- **History graph button reads as a toggle.** The show/hide-graph button in the
+  History header now shows a clear pressed state (soft primary fill + `text-primary`,
+  `aria-pressed`) when the graph is on, instead of only tinting the icon — so its
+  on/off state is obvious while it stays a ghost icon button like its neighbors.
+- **New-worktree dialog redesigned + unified on `Combobox`.** The branch field
+  gained a leading branch glyph; the **base ref** and **agent** pickers moved from
+  the raw `Select` to the shared searchable `Combobox` (agent logos via its
+  `itemPrefix`), matching every other single-select in the app; the destination
+  preview is a softer bordered band with a folder glyph.
+- **Add-project folder browser redesigned.** Rebuilt on the **same shell as the
+  quick-switch palette** — `Dialog.Content` is `overflow-hidden p-0` so the rounded
+  card clips every section (the scroll list and its scrollbar included) and nothing
+  bleeds past the frame; each stacked section (header · address bar · folder list ·
+  footer) owns its `px-4` and a hairline divider. The path row is a file-manager
+  address bar (parent-up + an editable path field with a leading folder glyph,
+  `min-w-0` so a long path can't overflow). Repos are flagged by a git-folder icon
+  and a quiet primary tag (replacing the tiny outline badge), with a hover "Add"
+  (filled `secondary` for repos); loading/empty states are centered with an icon. The three sections were
+  rebuilt rather than merely spaced out: the **search** row is roomier with the
+  input as the focal point (15px) and a live result count on the right; **results**
+  are now two-line rows (branch over its folder path) with a soft leading branch
+  glyph chip and the repo as a trailing tag, at a comfortable 52px; the **empty
+  state** is a centered icon + message; and the **hint bar** got more breathing
+  room. New `palette.countOne/Other` i18n (EN/ES).
+- **Keyboard shortcuts render as individual keycaps.** New reusable `KeyChord`
+  splits a chord into one `Kbd` per key with a faint "+" between (Mac keeps the
+  tight `⌘`-cluster, no "+"), so `Ctrl+,` reads as `Ctrl` `+` `,` instead of one
+  crammed cap. Backed by a new `formatChordParts` in `keybindings.ts`; wired into
+  the left sidebar's quick actions (search · settings · add project).
+- **Left sidebar nav buttons** (search · settings) now match the Settings section
+  nav height (`h-8`) instead of the slightly shorter `h-7`.
+- **Project card header** no longer paints a hover background; the three header
+  actions still reveal on hover and the active-project highlight is unchanged.
+- **Clicking a worktree/branch row now opens a terminal.** Left-click (or
+  Enter/Space) selects and links the worktree and opens a **default-profile
+  terminal** when that workspace has none yet — so a click lands you in a working
+  terminal instead of an empty pane. Repeated clicks don't stack duplicates (it
+  only opens one when the workspace is empty).
+- **Center tab strip.** Tabs now sit flush (removed the inter-tab gap and the
+  always-reserved insertion markers, which collapse to zero width until they are
+  the active drop target) and the **whole tab chip is the click target** (a tap
+  anywhere on the colored chip selects it — previously only the label text did,
+  a tiny hit area for short names like "pi"). Drag-to-reorder/move is unchanged.
+- **Project / worktree cards rebuilt.** Dropped the heavy bordered card (we now
+  reserve borders for the few places that need them): a project is a **borderless
+  group** — an identity header (icon · name) whose three actions reveal on hover
+  (collapse/expand · a unified launcher **+** · an overflow **⋯** with copy-path /
+  remove-project). Expanding lists the worktrees as rows: the primary (main) first,
+  then the children — identified by its "main" branch name (no badge). Each row
+  shows an aggregate **agent-status dot** (or the branch icon when idle), the branch
+  name, a second line with the worktree folder, git status, and a hover **⋯**
+  (copy-path / remove-worktree, or remove-project for main); selection keeps the
+  quiet sidebar-accent highlight. The project header's **+** opens the
+  `LauncherDialog` window (see *Added*); the `LauncherMenu` dropdown (grouped by
+  type — terminals · agents · browser · worktree) remains on the **center tab
+  strip's +** for the single active worktree (replaces the separate terminal
+  button + `LaunchAgentMenu`, now removed). `openTerminalAt` gained an optional
+  `profileId`.
+- **Compact agent space under each worktree.** The per-worktree agent block
+  (`AgentSpace`) now reads as part of the worktree: the "Agents · n" toggle
+  shrank to a quiet 10px header, and the agents nest under a **subtle vertical
+  guide line** that ties them to their worktree/branch. The agent currently
+  shown in the center gets a **firm accent bar** over that line, so you can tell
+  which agent you're on at a glance. Rows keep our own status dot + agent logo.
+A token-driven visual refresh (via the `svelte-clean-desktop-ui` system) toward a
+calm, **comfortable**, tool-like desktop feel — readable type and breathable rows,
+not a cramped grid — with no UI-library changes and no behavior or accessibility
+regressions.
+- **Title-bar-less layout.** Removed the top window title bar; the three panels
+  now run to the very top of the window. The brand (logo · "Uxnan Desktop" ·
+  Alpha) moved to a header atop the **left sidebar**, and the min/max/close window
+  controls to a header atop the **right panel** — rendered as a fixed top-right
+  overlay so they stay reachable even when that panel is hidden (the OS chrome is
+  disabled). The left sidebar's search + settings became borderless,
+  settings-style nav buttons (tighter, a quiet accent when active), and the center
+  pane's "+ Terminal" launcher (default shell + profiles) moved into the
+  **Projects** header as a compact "+" menu, next to smaller add/refresh/sort
+  icons. Vertical panel separation stays borderless (resize handles are invisible
+  until hover), while a subtle horizontal divider marks the **top band** of each
+  panel — the brand header, the center tab strip and the right-panel
+  window-controls header — plus one under the right-panel tabs; those top sections
+  share a height (h-9) and the center tab strip is tinted like the side panels, so
+  the top band reads as one continuous strip. The window stays draggable via the
+  top sections, and each shell region carries a `Region:` comment for reference.
+- **Token-driven, equal header icons.** The compact action icons in the projects
+  header and the right-panel toolbars (Files / Changes / History) now use the
+  shared `icon.action` (14px) + `iconButton.xs` tokens instead of hardcoded sizes,
+  so the left and right panels match exactly. Added `icon.action` to `design.ts`
+  and `docs/design-tokens.md`.
+- **Reusable divider token + status-bar divider.** Factored the top-band hairline
+  into a `divider` token (`design.ts`: `divider.bottom` / `divider.top`, one
+  `--border` hairline) and applied it at every divider site, and added
+  `divider.top` to the bottom status bar so it's separated like the other sections.
+- **Flush panels (zero-gap resize).** The column resize handles no longer occupy
+  any layout width, so the left/right/browser panels sit flush against the center
+  with no visible seam (it was most noticeable behind split terminals). Drag-to-resize
+  still works via a wider invisible hit strip, with a hairline that appears only on
+  hover. Factored into one reusable `resizeHandle` snippet.
+- **Active tabs restyled; worktree bar removed.** Tabs no longer read as a floating
+  badge — an active tab reads like a selected worktree, via a shared `tab` token
+  (`design.ts`): the **center** terminal tabs use a quiet sidebar-accent fill + a
+  firm foreground underline, while the **right-panel** view tabs use just the
+  underline (no fill — cleaner on those small tabs). The shared `tabs-trigger`
+  primitive (the right panel is its only consumer) was simplified to a neutral base
+  so the token fully drives the active look. Removed the small vertical primary bar
+  on the selected worktree (the surface fill already marks selection), and the
+  status-bar panel toggles moved off the retired `surface.tab` to a plain neutral
+  active fill. `docs/design-tokens.md` updated.
+- **Center top band aligned + flush.** Dropped the 1px frame + rounding each
+  terminal region drew around itself — it inset the top region's tab strip by 1px,
+  so the center's top divider sat slightly below and inset from the left/right
+  panel dividers, with a faint seam. The center now sits flush and its divider
+  lines up with the others; the active-pane focus indicator is a non-insetting
+  inset ring that only appears when the workspace is actually split.
+- **Comfortable scale + bundled UI font.** **Geist** — a humanist, low-contrast
+  variable sans — is the single UI face for **both body and titles** (the
+  title/body hierarchy comes from size + weight, not a second face); it renders
+  soft and light at 12–13px chrome, the opposite of a rigid geometric face. Both
+  Geist and DM Sans are bundled as variable woff2 (`@fontsource-variable/geist` +
+  `@fontsource-variable/dm-sans`, imported in `app.css`) so the leading family
+  always resolves regardless of the OS — DM Sans is now only a fallback. A small
+  global `letter-spacing` (0.01em) and grayscale antialiasing keep text even. The
+  whole type/control scale moved up one
+  notch toward a roomier desktop density: body text 12→13px, item titles 13→14px,
+  metadata 11→12px, indicators 10→11px, section headings 14→15px; control icons
+  14→16px; the default button, inputs and select triggers 32→36px tall; and the
+  `row` recipes grew to ~32–36px with more horizontal rhythm. Because these are
+  `design.ts` tokens + shared primitives, the new proportions propagate across the
+  whole app. The left panel (sidebar search/settings/header, project & worktree
+  rows, agent rows) and the Settings sections also got roomier inline padding,
+  gaps and row heights so the breathing room is felt, not just the type size.
+- **Foundations (`app.css` + `theme.ts`).** Added a layer of theme-aware semantic
+  surface tokens — `--ux-shell`, `--ux-sidebar-accent`, `--ux-panel`,
+  `--ux-panel-muted`, `--ux-editor-surface`, `--ux-elevated`, plus hover/subtle-border
+  tints — derived from the base palette via `color-mix` (one formula darkens light
+  themes and lightens dark ones), so every built-in and custom theme gains coherent
+  shell/sidebar/panel depth automatically. Exposed them to Tailwind via `@theme inline`
+  (`bg-ux-panel`, …). Added a `can-hover:` variant so hover-reveal controls never
+  stick on touch, sleek theme-aware scrollbars (`.scrollbar-sleek`,
+  `.worktree-sidebar-scrollbar`), and a `prefers-reduced-motion` guard. **Geist**
+  is the UI face for both `--ux-font-body` and `--ux-font-title` (DM Sans only a
+  fallback), kept in sync between `app.css` and `DEFAULT_FONTS`.
+- **Font overrides now carry a fallback (fixes "custom font doesn't apply").**
+  A user-picked UI or terminal font was written to the CSS variable / xterm
+  option **bare** (`"Some Font"` with no fallback), so the moment that one name
+  couldn't resolve the text dropped to the browser's proportional serif — which
+  read as "the app fell back to a basic system font". A new `composeFontStack()`
+  composes any single picked family in front of the role's bundled stack
+  (Geist / DM Sans / OS UI for sans, the full mono stack for terminals), applied
+  in `applyTheme` and `resolveTerminal`, so a missing or misspelled family now
+  degrades gracefully to the bundled face instead of serif.
+- **Terminal typography defaults.** The default terminal font is now a richer
+  cross-platform mono stack (`"SF Mono", … "Cascadia Mono", "JetBrains Mono", …
+  Nerd Font fallbacks, monospace`) at a lighter default weight (300) and 14px,
+  for a cleaner, softer terminal face (still fully overridable per the terminal
+  typography settings).
+- **Font picker — choose from the installed system fonts.** Replaced the
+  free-text font fields (a tiny hardcoded `datalist`) with a reusable
+  **`FontPicker`** combobox (Popover + Command) that lists the machine's real
+  installed fonts, each previewed in its own face, with the app's bundled faces
+  (Geist / DM Sans) surfaced on top and a "use a custom family" escape hatch for
+  names that only exist on another machine / SSH host. A new Rust
+  `list_system_fonts` command enumerates families per-OS (PowerShell
+  `InstalledFontCollection` on Windows, `fc-list` on Linux, `system_profiler` on
+  macOS) through the windowless spawn helper, with a curated fallback so the list
+  is never empty; the result is fetched once and shared across pickers. The same
+  picker now drives the global UI/terminal font overrides **and** the per-theme /
+  per-terminal-theme font fields, so all four font controls behave identically.
+- **Unified launcher on the center tabs "+".** The center tab strip's "+" no
+  longer opens a bare terminal — it now opens the same floating launcher as the
+  project card, reusing `LauncherMenu` in a new single-worktree mode that groups
+  the actions by **type section** (Terminals · Agents · Browser · Worktree) for
+  the active worktree, in the current clean menu style. (The Global terminal
+  space, which has no worktree to launch into, keeps the plain new-terminal "+".)
+  `surface.active` / `activeNested` / `tab` tokens switched from primary-tinted
+  fills to quiet sidebar-accent / foreground-mixed surfaces (propagating to the
+  project & worktree cards, nested agent rows and panel tabs that consume them).
+  Extended the module with layered `surface.{shell,sidebar,panel,panelMuted,elevated}`,
+  dense `row` recipes, `field` (input + field-like search), `panel`
+  (settings body / section header / cards) and a shared `focus` ring, plus
+  `icon.nav`, `iconButton.{xs,sm,toolbar}` and `text.{pageTitle,subheading,bodyStrong}`.
+  `docs/design-tokens.md` updated to match.
+- **UI primitives.** Audited the shadcn-svelte primitives against the clean-desktop
+  bar — button, input, badge, card, select, tabs, dropdown-menu and popover are
+  already polished (compact density, foreground-mixed `ring-1` elevation, proper
+  focus/disabled/invalid states) and were left intact. Fixed the one real gap:
+  **`Dialog.Content` had no drop shadow** (only a hairline ring), so a modal read
+  flatter than a dropdown — added a proper elevation shadow (light + dark) so the
+  modal sits clearly above the overlay.
+- **Left sidebar, project & worktree rows.** The project list now uses the sleek,
+  hover-revealed sidebar scrollbar with a stable gutter (no more chunky track, no
+  row shift). Project cards gained a soft `sidebar-border/60` border + a faint
+  `sidebar-foreground` surface and a roomier header; project and worktree row hover
+  switched from an accent tint to a quiet foreground-mixed fill. Selection stays the
+  neutral sidebar-accent; the worktree active-indicator bar is the one deliberate
+  primary accent (a focus marker).
+- **Shell, agent space, right panel & terminal chrome.** Quieted the structural
+  chrome so it recedes behind the content: the window resize handles and the
+  terminal split dividers are now soft (`border/50`–`/60`) until hover
+  (`ring/70`), and the status-bar, right-panel tab strip and terminal tab strips
+  use softened `border/60` dividers. The nested agent rows hover with the same
+  neutral foreground-mixed fill as the other rows, and the status-bar panel
+  toggles now read as neutral lifted segments (stale "primary tint" comment
+  corrected). Panel separation is still carried by the sidebar/canvas surface
+  delta, so softer borders don't lose structure.
+- **Completed the hairline softening.** Moved the shared `divider` token to
+  `border-border/60` and dropped every remaining full-strength `border-border`
+  seam to `/60` across the panel chrome — the Files/Changes/History toolbars and
+  footers (`border-sidebar-border`), the commit / diff / file-editor headers, the
+  browser toolbar, and the diff / theme-editor toggle dividers — so no structural
+  hairline renders as a hard, crisp line (the earlier passes had only reached the
+  top-band and tab-strip dividers).
+- **Settings shell.** Widened the content column to `max-w-3xl` with the sleek
+  scrollbar and roomier `px-8 py-7` padding; polished the section nav (steady
+  `h-8` rows, 13px tracking-tight labels, foreground hover) and softened the
+  header/nav dividers to `border/60`. The top band (back button + window
+  controls) now carries a subtle horizontal divider so it separates from the
+  content, and the section nav is **organized into titled groups** (General ·
+  Agents · Workspace · Application) using the shared `text.section` heading — the
+  same section-header treatment as the home left sidebar — so the long flat list
+  reads as areas. The deeper per-section "header over a soft body band"
+  restructure is in progress (see below; tracked in `FOR-DEV.md`).
+- **Settings sections → clean-desktop pattern (in progress).** New reusable
+  **`SettingsSection`** (strong title + description over a soft `panel.settingsBody`
+  band) and **`SettingsRow`** (label + helper text, control right-aligned on wide
+  screens, quiet `divide-y` between rows — no per-row card) replace the flat
+  ad-hoc group stacks. Each setting now uses the **right control for its shape**:
+  on/off settings are **`Switch`es**, not on/off comboboxes. Migrated to the
+  section/row pattern: **Language, Browser, Updates, AI commit**; and **every
+  on/off setting across Settings is now a Switch** (Browser ×4, AI commit ×3,
+  Updates ×2, plus agent notifications + keep-awake) — multi-option settings
+  (link policy, release channel, install policy, language, agent/model) stay
+  Selects. **All nine sections** now use the section shell: settings-style ones
+  (Language, Browser, Updates, AI commit, the agents settings) use the soft band
+  of rows; list/editor-heavy ones (the agents catalog, hooks, shortcuts, terminal
+  profiles) use a `bare` `SettingsSection` (consistent header, no band — avoids
+  card-in-card) with softened `/60` borders. The top band also dropped from h-12
+  to h-9 to match the home top band. **Appearance** (Interface + Terminal) was
+  brought into the same shell. **Shortcuts** moved from per-group bordered boxes
+  to one band with divider-separated rows. **Hooks** dropped its duplicate inner
+  header. The **agents** and **terminal-profiles** lists are now single
+  divider-separated containers where each item is a **collapsible row** that
+  expands to its config (agent: command/args/shell/env; profile: command/args);
+  for agents, configured ones sit first and the remaining known agents follow as
+  add-rows, greyed when not found on PATH.
+- **One combobox for every single-select field.** All the settings dropdowns
+  (Language, default agent, agent shell, AI-commit agent + language, update
+  channel + install policy, browser link policy, terminal default profile)
+  switched from the plain `Select` to the shared searchable **`Combobox`**
+  (Popover + Command) — the same field the font pickers, the AI model picker and
+  the launcher window use. The **agent** selectors now show each agent's **logo**
+  on the trigger and rows (consistent with the AI-commit list) via the combobox
+  `itemPrefix`. Removed the now-dead per-field label derivations.
+- **Bigger agent catalog + favicon logo fallback.** The known-agent catalog
+  (`agentCatalog.ts`) grew from 11 to 33 CLI agents (Cursor `cursor-agent`,
+  Aider, Amp, Cline, Droid, GitHub Copilot, Continue `cn`, Kiro `kiro-cli`,
+  Auggie, Crush, Codebuff, Command Code, MiMo Code, Devin, Hermes, Mistral Vibe
+  `vibe`, Rovo Dev, Autohand, OpenClaude, OpenClaw, OMP, Ante), so more agents
+  are detected on PATH and one-click addable in Settings → Agents. Every agent
+  now shows a real logo via a fallback chain in `AgentLogo` — a user's custom
+  logo → a bundled `static/agents/<logo>.svg` → the product's **favicon**
+  (`favicon` field per catalog entry, via Google's favicon service; new
+  `agentIconSources`/`faviconUrl`) → the generic Bot glyph — each candidate
+  advancing on `onerror`. This applies everywhere logos render: the Agents list,
+  every agent combobox, and the left-panel project/worktree cards. So the 22 new
+  agents get logos without shipping SVGs; a bundled SVG (still optional, now
+  tracked as a *crispness* upgrade in `FOR-HUMAN.md`) simply takes priority.
+
+### Fixed
+- **Terminal copy/paste respect the platform modifier.** Copy/paste in a terminal now
+  use the primary modifier — **⌘ on macOS**, Ctrl elsewhere — instead of Ctrl on every
+  platform. On macOS `⌘+C`/`⌘+V` copy/paste and `Ctrl+C` stays the shell's SIGINT; the
+  right-click menu shows `⌘C`/`⌘V`. Windows/Linux behavior is unchanged.
+- **New terminals open in the active project's folder, not the PC home.** A terminal
+  created for a worktree — the empty-state button, the tab-strip `+`, the *New
+  terminal* shortcut, or a split — now defaults its working directory to that
+  workspace's folder. Before, it spawned in the home directory unless the caller
+  passed an explicit `cwd` (only the card context menu did), so the shortcut/`+`
+  terminals all landed in home even inside a project. Centralized in
+  `terminals.create`/`split` via a `cwdFor` helper; the Global scratch space (which
+  has no folder) still opens in home.
+- **Integrated browser: re-docks when the app window moves/resizes.** The browser
+  is a separate owned webview positioned in absolute screen coords over the panel
+  slot; its bounds were only re-pushed when the slot's *window-relative* rect
+  changed, so moving the whole app window (whose relative rect is unchanged) left
+  the browser stranded at the old screen position with an empty panel. `BrowserPanel`
+  now listens to the main window's `onMoved`/`onResized` and re-places the docked
+  window from the new origin.
+- **Integrated browser: window controls no longer cover its toolbar.** When the
+  browser panel is open it's the right-most panel, so the min/max/close overlay
+  (fixed top-right) landed on top of the browser's back/forward/reload + address
+  bar. The panel now leads with the same `h-9` drag strip the right panel uses, so
+  those controls float over an empty strip and the toolbar sits clear below it.
+- **History: overlapping stale rows after expand/collapse (+ graph polish).**
+  Expanding then collapsing a commit could leave its file rows painted on top of
+  the following commits with the branch graph looking cut. Root cause was in the
+  shared `VirtualList`: it pushed the virtualizer's `count`/sizes in a *post-render*
+  `$effect`, so the render that reads the derived rows saw the previous options for
+  one frame — enough to strand the absolutely-positioned rows. It now syncs options
+  in `$effect.pre` (before the render reads them), so the row set is always current.
+  Also, in the History tab: the commit row no longer paints an accent background
+  (it sat *behind* the graph gutter and clashed with the node's background-punch),
+  and an expanded commit's file rows no longer draw graph lanes through them — the
+  graph stays put instead of stretching down the file list (rows keep their gutter
+  indent via a plain spacer). Removed the now-unused `contGutter`/`continuingLanes`.
+- **Kilo Code detection command.** The catalog listed Kilo Code under `kilocode`;
+  its real PATH executable is `kilo`, so it now detects correctly.
+- **Install-policy field readability.** Settings → Updates → Installation kept its
+  compact `w-56` combobox but with short option labels (Ask me / Automatically /
+  Manually) and a trimmed one-line description; a small `?` beside it opens a
+  hover-card explaining all three policies (`SettingsRow` gained an optional
+  `help` snippet for this).
+- **Git status not reflected in the UI (file-tree coloring + Changes tab empty).**
+  The active worktree's git status was loaded only inside `RightPanel` — which
+  mounts only while the right panel is open — so the file-tree change coloring,
+  the project-card dirty badges and the Changes tab could all show nothing despite
+  real changes. The load now lives in the always-mounted shell (`+page.svelte`),
+  next to the filesystem watcher and keyed off the active worktree, so the status
+  follows the worktree regardless of which panel/tab is open. The live
+  `git:status-changed` subscription moved with it.
+- **Window drag lost in the center panel.** With the top title bar removed, the
+  center had no drag handle. Its top band — the tab strip (its empty area + the
+  flex spacer) and the empty-state canvas (logo + copy) — is now a
+  `data-tauri-drag-region`, so the window drags again from the center while tabs
+  and buttons stay clickable (Tauri matches the exact target).
+- **Invisible scrollbars on light themes.** The dense-panel scrollbar
+  (`.uxnan-scroll`, used by the file tree, changes/commit panels, diff breadcrumb,
+  directory picker, theme editors and virtualized lists) used a fixed white thumb,
+  so it disappeared on light themes. It's now a theme-aware `muted-foreground` tint
+  (via `color-mix`), visible on both light and dark. The xterm terminal viewport
+  keeps its own light thumb (it renders on its own dark surface).
+
+### Changed — docs
+- **Desktop UI skill consolidated.** The monorepo `AGENTS.md` now scopes a single
+  canonical Svelte/desktop skill, `svelte-clean-desktop-ui` (from
+  `https://github.com/luisgamas/skills`), to `uxnandesktop/` — replacing the prior
+  trio (`shadcn-svelte`, `svelte-code-writer`, `svelte-core-bestpractices`). It is
+  the token-driven clean desktop UI/UX system to use for all `uxnandesktop/` UI work.
+
 ## [0.0.2-alpha.20260628] - 2026-06-28
 
 ### Added — integrated developer browser

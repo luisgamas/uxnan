@@ -55,7 +55,7 @@
           {app.errorMessage}
         </div>
       {/if}
-      <div class="flex items-center justify-between border-t border-border pt-2">
+      <div class="flex items-center justify-between border-t border-border/60 pt-2">
         <span class={text.meta}>{i18n.t("status.backendRepos")}</span>
         <span class={cn("font-medium text-foreground", text.body)}>{app.repos.length}</span>
       </div>
