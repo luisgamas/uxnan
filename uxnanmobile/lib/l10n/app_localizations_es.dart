@@ -2060,7 +2060,7 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get settingsConversationNavSubtitle =>
-      'Razonamiento, desplazamiento e indicador de contexto';
+      'Razonamiento, modelos, contexto y plantillas';
 
   @override
   String get settingsModelsNavSubtitle => 'Opciones del selector de modelos';
@@ -2122,4 +2122,34 @@ class AppLocalizationsEs extends AppLocalizations {
     );
     return '$_temp0';
   }
+
+  @override
+  String get settingsGeneralSection => 'General';
+
+  @override
+  String get settingsWorkspaceSection => 'Espacio de trabajo';
+
+  @override
+  String get settingsSystemSection => 'Sistema';
+
+  @override
+  String get settingsConversationAgentsGroup => 'Agentes';
+
+  @override
+  String get settingsConversationClaudeGroup => 'Claude';
+
+  @override
+  String get settingsConversationChatGroup => 'Conversación';
+
+  @override
+  String get settingsNotificationsEventsGroup => 'Eventos del agente';
+
+  @override
+  String get settingsGitConfirmationsGroup => 'Confirmaciones';
+
+  @override
+  String get settingsUpdatesVersionGroup => 'Versión';
+
+  @override
+  String get licensesError => 'No se pudieron cargar las licencias.';
 }

@@ -177,3 +177,12 @@ The following are pending and tracked as assets in `FOR-HUMAN.md`:
       cover this channel (it only does Play In-App Updates + the iOS StoreKit
       path), so it needs its own checker behind the existing `AppUpdateService`
       seam.
+- [ ] **Settings restructure + update flow — functional validation on device.**
+      The sectioned settings (General / Workspace / System landing → per-section
+      screens, About with the app logo, open-source licenses) and the reworked
+      update flow (in-section download → install, configurable interval) pass
+      analyze + widget/unit tests, but their **runtime behaviour** hasn't been
+      exercised on a real device yet (the maintainer is reviewing the UI). Verify
+      the license list actually populates on-device (the provider now surfaces a
+      load error with a retry instead of a blank list), navigation into each
+      section, and the update download/install states, in the next build.

@@ -38,6 +38,10 @@ class SourceControlSectionScreen extends ConsumerWidget {
           ),
           sliver: SliverList.list(
             children: [
+              NeSectionHeader(
+                label: l10n.settingsGitConfirmationsGroup,
+                first: true,
+              ),
               ExpressiveCardGroup(
                 count: 2,
                 itemBuilder: (context, i, pos) => switch (i) {

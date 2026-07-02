@@ -40,6 +40,10 @@ class UpdatesSectionScreen extends ConsumerWidget {
           ),
           sliver: SliverList.list(
             children: [
+              NeSectionHeader(
+                label: l10n.settingsUpdatesVersionGroup,
+                first: true,
+              ),
               const _CurrentVersionCard(),
               const SizedBox(height: UxnanSpacing.sm),
               const _UpdateStateCard(),

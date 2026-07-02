@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
-import 'package:uxnan/presentation/screens/settings/licenses/licenses_screen.dart';
 import 'package:uxnan/presentation/screens/settings/personalization_screen.dart';
 import 'package:uxnan/presentation/screens/settings/sections/about_section_screen.dart';
 import 'package:uxnan/presentation/screens/settings/sections/conversation_section_screen.dart';
-import 'package:uxnan/presentation/screens/settings/sections/models_section_screen.dart';
 import 'package:uxnan/presentation/screens/settings/sections/notifications_section_screen.dart';
 import 'package:uxnan/presentation/screens/settings/sections/source_control_section_screen.dart';
 import 'package:uxnan/presentation/screens/settings/sections/updates_section_screen.dart';
@@ -22,10 +20,10 @@ typedef _Section = ({
   void Function(BuildContext context) open,
 });
 
-/// App settings landing: a compact list of sections. Tapping a section opens a
-/// dedicated screen holding that section's options — so the first screen stays
-/// scannable instead of listing every toggle at once (guide §4.6: quiet labels
-/// over cohesive dynamic-corner card groups on a calm `surfaceContainer` tone).
+/// App settings landing: sections grouped into General / Workspace / System.
+/// Tapping a section opens a dedicated screen holding that section's options —
+/// so the first screen stays scannable instead of listing every toggle at once
+/// (guide §4.6: quiet labels over cohesive dynamic-corner card groups).
 class SettingsScreen extends ConsumerWidget {
   /// Creates the settings screen.
   const SettingsScreen({super.key});
@@ -34,7 +32,7 @@ class SettingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
 
-    final sections = <_Section>[
+    final general = <_Section>[
       (
         icon: Icons.palette_outlined,
         title: l10n.settingsPersonalizationTitle,
@@ -47,6 +45,9 @@ class SettingsScreen extends ConsumerWidget {
         subtitle: l10n.settingsNotificationsNavSubtitle,
         open: NotificationsSectionScreen.push,
       ),
+    ];
+
+    final workspace = <_Section>[
       (
         icon: Icons.forum_outlined,
         title: l10n.settingsConversationSection,
@@ -54,37 +55,25 @@ class SettingsScreen extends ConsumerWidget {
         open: ConversationSectionScreen.push,
       ),
       (
-        icon: Icons.auto_awesome_outlined,
-        title: l10n.settingsModelsSection,
-        subtitle: l10n.settingsModelsNavSubtitle,
-        open: ModelsSectionScreen.push,
-      ),
-      (
         icon: Icons.commit_rounded,
         title: l10n.settingsGitSection,
         subtitle: l10n.settingsGitNavSubtitle,
         open: SourceControlSectionScreen.push,
       ),
+    ];
+
+    final system = <_Section>[
       (
         icon: Icons.system_update_outlined,
         title: l10n.settingsUpdatesSection,
         subtitle: l10n.settingsUpdatesNavSubtitle,
         open: UpdatesSectionScreen.push,
       ),
-    ];
-
-    final about = <_Section>[
       (
         icon: Icons.info_outline_rounded,
         title: l10n.settingsAboutTitle,
         subtitle: l10n.settingsAboutSubtitle,
         open: AboutSectionScreen.push,
-      ),
-      (
-        icon: Icons.description_outlined,
-        title: l10n.settingsLicensesTitle,
-        subtitle: l10n.settingsLicensesSubtitle,
-        open: LicensesScreen.push,
       ),
     ];
 
@@ -100,9 +89,12 @@ class SettingsScreen extends ConsumerWidget {
           ),
           sliver: SliverList.list(
             children: [
-              _SectionGroup(sections: sections),
-              NeSectionHeader(label: l10n.settingsAboutSection),
-              _SectionGroup(sections: about),
+              NeSectionHeader(label: l10n.settingsGeneralSection, first: true),
+              _SectionGroup(sections: general),
+              NeSectionHeader(label: l10n.settingsWorkspaceSection),
+              _SectionGroup(sections: workspace),
+              NeSectionHeader(label: l10n.settingsSystemSection),
+              _SectionGroup(sections: system),
             ],
           ),
         ),

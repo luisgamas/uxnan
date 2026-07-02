@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:uxnan/core/utils/logger.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
@@ -10,7 +11,7 @@ import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 import 'package:uxnan/presentation/widgets/settings_tiles.dart';
 
 /// The public source repository for the project.
-const String _kSourceRepoUrl = 'https://github.com/luisgamas/uxnan';
+const String _kSourceRepoUrl = 'https://sink.gamas.workers.dev/uxnan-repo';
 
 /// The About settings section: app identity + version, a short description, the
 /// developer/project info, and links (source code, open-source licenses).
@@ -113,10 +114,13 @@ class _AboutHeader extends StatelessWidget {
             color: colors.primaryContainer,
             borderRadius: const BorderRadius.all(UxnanRadius.lg),
           ),
-          child: Icon(
-            Icons.terminal_rounded,
-            size: 34,
-            color: colors.onPrimaryContainer,
+          padding: const EdgeInsets.all(UxnanSpacing.md),
+          child: SvgPicture.asset(
+            'assets/images/logo_fg.svg',
+            colorFilter: ColorFilter.mode(
+              colors.onPrimaryContainer,
+              BlendMode.srcIn,
+            ),
           ),
         ),
         const SizedBox(width: UxnanSpacing.lg),

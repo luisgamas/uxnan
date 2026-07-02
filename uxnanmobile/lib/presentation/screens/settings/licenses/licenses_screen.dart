@@ -45,7 +45,19 @@ class LicensesScreen extends ConsumerWidget {
               ),
             ),
             error: (_, __) => SliverToBoxAdapter(
-              child: NeSectionHint(text: l10n.licensesEmpty),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  NeSectionHint(text: l10n.licensesError),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton(
+                      onPressed: () => ref.invalidate(packageLicensesProvider),
+                      child: Text(l10n.actionRetry),
+                    ),
+                  ),
+                ],
+              ),
             ),
             data: (entries) {
               if (entries.isEmpty) {

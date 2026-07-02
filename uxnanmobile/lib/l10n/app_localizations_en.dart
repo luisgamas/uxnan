@@ -2048,7 +2048,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsConversationNavSubtitle =>
-      'Thinking, scroll and context indicator';
+      'Thinking, models, context and templates';
 
   @override
   String get settingsModelsNavSubtitle => 'Model picker options';
@@ -2109,4 +2109,34 @@ class AppLocalizationsEn extends AppLocalizations {
     );
     return '$_temp0';
   }
+
+  @override
+  String get settingsGeneralSection => 'General';
+
+  @override
+  String get settingsWorkspaceSection => 'Workspace';
+
+  @override
+  String get settingsSystemSection => 'System';
+
+  @override
+  String get settingsConversationAgentsGroup => 'Agents';
+
+  @override
+  String get settingsConversationClaudeGroup => 'Claude';
+
+  @override
+  String get settingsConversationChatGroup => 'Conversation';
+
+  @override
+  String get settingsNotificationsEventsGroup => 'Agent events';
+
+  @override
+  String get settingsGitConfirmationsGroup => 'Confirmations';
+
+  @override
+  String get settingsUpdatesVersionGroup => 'Version';
+
+  @override
+  String get licensesError => 'Couldn\'t load the licenses.';
 }

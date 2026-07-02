@@ -3839,7 +3839,7 @@ abstract class AppLocalizations {
   /// Settings landing subtitle for the Conversation section.
   ///
   /// In en, this message translates to:
-  /// **'Thinking, scroll and context indicator'**
+  /// **'Thinking, models, context and templates'**
   String get settingsConversationNavSubtitle;
 
   /// Settings landing subtitle for the Models section.
@@ -3937,6 +3937,66 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{count, plural, =1{1 license} other{{count} licenses}}'**
   String licenseCountLabel(int count);
+
+  /// Settings landing group header for General (appearance, notifications).
+  ///
+  /// In en, this message translates to:
+  /// **'General'**
+  String get settingsGeneralSection;
+
+  /// Settings landing group header for Workspace (conversation, source control).
+  ///
+  /// In en, this message translates to:
+  /// **'Workspace'**
+  String get settingsWorkspaceSection;
+
+  /// Settings landing group header for System (updates, about).
+  ///
+  /// In en, this message translates to:
+  /// **'System'**
+  String get settingsSystemSection;
+
+  /// Conversation section sub-group for agent behaviour (thinking, context).
+  ///
+  /// In en, this message translates to:
+  /// **'Agents'**
+  String get settingsConversationAgentsGroup;
+
+  /// Conversation section sub-group for Claude model-picker options.
+  ///
+  /// In en, this message translates to:
+  /// **'Claude'**
+  String get settingsConversationClaudeGroup;
+
+  /// Conversation section sub-group for chat behaviour (scroll, templates).
+  ///
+  /// In en, this message translates to:
+  /// **'Conversation'**
+  String get settingsConversationChatGroup;
+
+  /// Notifications section sub-group header for the event toggles.
+  ///
+  /// In en, this message translates to:
+  /// **'Agent events'**
+  String get settingsNotificationsEventsGroup;
+
+  /// Source control section sub-group header for the confirmation toggles.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirmations'**
+  String get settingsGitConfirmationsGroup;
+
+  /// Updates section sub-group header for the current version + update state.
+  ///
+  /// In en, this message translates to:
+  /// **'Version'**
+  String get settingsUpdatesVersionGroup;
+
+  /// Shown when the license registry failed to load.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load the licenses.'**
+  String get licensesError;
 }
 
 class _AppLocalizationsDelegate

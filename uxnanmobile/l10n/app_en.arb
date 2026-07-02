@@ -1162,7 +1162,7 @@
   "@settingsNotificationsNavSubtitle": {
     "description": "Settings landing subtitle for the Notifications section."
   },
-  "settingsConversationNavSubtitle": "Thinking, scroll and context indicator",
+  "settingsConversationNavSubtitle": "Thinking, models, context and templates",
   "@settingsConversationNavSubtitle": {
     "description": "Settings landing subtitle for the Conversation section."
   },
@@ -1235,5 +1235,45 @@
     "placeholders": {
       "count": { "type": "int" }
     }
+  },
+  "settingsGeneralSection": "General",
+  "@settingsGeneralSection": {
+    "description": "Settings landing group header for General (appearance, notifications)."
+  },
+  "settingsWorkspaceSection": "Workspace",
+  "@settingsWorkspaceSection": {
+    "description": "Settings landing group header for Workspace (conversation, source control)."
+  },
+  "settingsSystemSection": "System",
+  "@settingsSystemSection": {
+    "description": "Settings landing group header for System (updates, about)."
+  },
+  "settingsConversationAgentsGroup": "Agents",
+  "@settingsConversationAgentsGroup": {
+    "description": "Conversation section sub-group for agent behaviour (thinking, context)."
+  },
+  "settingsConversationClaudeGroup": "Claude",
+  "@settingsConversationClaudeGroup": {
+    "description": "Conversation section sub-group for Claude model-picker options."
+  },
+  "settingsConversationChatGroup": "Conversation",
+  "@settingsConversationChatGroup": {
+    "description": "Conversation section sub-group for chat behaviour (scroll, templates)."
+  },
+  "settingsNotificationsEventsGroup": "Agent events",
+  "@settingsNotificationsEventsGroup": {
+    "description": "Notifications section sub-group header for the event toggles."
+  },
+  "settingsGitConfirmationsGroup": "Confirmations",
+  "@settingsGitConfirmationsGroup": {
+    "description": "Source control section sub-group header for the confirmation toggles."
+  },
+  "settingsUpdatesVersionGroup": "Version",
+  "@settingsUpdatesVersionGroup": {
+    "description": "Updates section sub-group header for the current version + update state."
+  },
+  "licensesError": "Couldn't load the licenses.",
+  "@licensesError": {
+    "description": "Shown when the license registry failed to load."
   }
 }

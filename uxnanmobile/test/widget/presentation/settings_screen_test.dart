@@ -50,15 +50,21 @@ void main() {
     await tester.pumpWidget(_wrap());
     await tester.pumpAndSettle();
 
-    // Section entries are present…
+    // Grouped section headers…
+    expect(find.text('General'), findsOneWidget);
+    expect(find.text('Workspace'), findsOneWidget);
+    expect(find.text('System'), findsOneWidget);
+    // …and the section entries under them.
+    expect(find.text('Personalization'), findsOneWidget);
     expect(find.text('Notifications'), findsOneWidget);
     expect(find.text('Conversation'), findsOneWidget);
-    expect(find.text('Models'), findsOneWidget);
     expect(find.text('Source control'), findsOneWidget);
     expect(find.text('Updates'), findsOneWidget);
     expect(find.text('About Uxnan'), findsOneWidget);
-    expect(find.text('Open-source licenses'), findsOneWidget);
-    // …but no option toggles live on the landing itself.
+    // Models moved into Conversation; Licenses lives inside About.
+    expect(find.text('Models'), findsNothing);
+    expect(find.text('Open-source licenses'), findsNothing);
+    // No option toggles live on the landing itself.
     expect(find.byType(Switch), findsNothing);
   });
 
@@ -136,7 +142,8 @@ void main() {
   );
 
   testWidgets(
-    'Models section: Claude latest-models toggle defaults on and persists off',
+    'Conversation section: Claude latest-models toggle defaults on and '
+    'persists off',
     (tester) async {
       tester.view.physicalSize = const Size(800, 2400);
       tester.view.devicePixelRatio = 1.0;
@@ -145,7 +152,7 @@ void main() {
 
       await tester.pumpWidget(_wrap());
       await tester.pumpAndSettle();
-      await _openSection(tester, 'Models');
+      await _openSection(tester, 'Conversation');
 
       final toggle = find.widgetWithText(
         SwitchListTile,

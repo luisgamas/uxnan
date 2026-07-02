@@ -6,6 +6,22 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — settings grouped (General / Workspace / System) + About logo + licenses fix
+- **The settings landing groups its sections** under **General** (Personalization,
+  Notifications), **Workspace** (Conversation, Source control) and **System**
+  (Updates, About). **Models** moved into the Conversation section as a **Claude**
+  sub-group; each section screen is now organised into labelled sub-groups
+  (Conversation → *Agents* / *Claude* / *Conversation*; Notifications, Source
+  control and Updates each get a header). The standalone Open-source licenses tile
+  was removed from the landing — it lives inside About, where it belongs.
+- **About shows the app logo** (theme-tinted `logo_fg.svg` via `flutter_svg`)
+  instead of a placeholder glyph.
+- **Fixed — open-source licenses showing empty.** `packageLicensesProvider` now
+  tolerates a failing license collector (logs + keeps going) so the bundled
+  licenses still load, and the screen distinguishes a real load error (with a
+  retry) from a genuinely empty registry. New widget test
+  (`licenses_screen_test.dart`) covers the screen rendering registered packages.
+
 ### Changed — in-app updates: single package, flexible download + in-app install, configurable interval
 - **Swapped `flutter_upgrade_version` → `in_app_update_flutter`** (one package for
   both platforms). Android now uses the Play **flexible** flow: background

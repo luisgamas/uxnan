@@ -10,9 +10,9 @@ import 'package:uxnan/presentation/widgets/expressive_card.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 import 'package:uxnan/presentation/widgets/settings_tiles.dart';
 
-/// The Conversation settings section: agent-thinking visibility,
-/// scroll-on-send, the context-indicator mode, and an entry to the
-/// prompt-template editor.
+/// The Conversation settings section, itself grouped into sub-sections:
+/// **Agents** (reasoning visibility + context indicator), **Claude** (model
+/// picker options) and **Conversation** (scroll behaviour + prompt templates).
 class ConversationSectionScreen extends ConsumerWidget {
   /// Creates the conversation section screen.
   const ConversationSectionScreen({super.key});
@@ -42,8 +42,13 @@ class ConversationSectionScreen extends ConsumerWidget {
           ),
           sliver: SliverList.list(
             children: [
+              // ── Agents ─────────────────────────────────────────────────
+              NeSectionHeader(
+                label: l10n.settingsConversationAgentsGroup,
+                first: true,
+              ),
               ExpressiveCardGroup(
-                count: 3,
+                count: 2,
                 itemBuilder: (context, i, pos) => switch (i) {
                   0 => NeSwitchTile(
                       position: pos,
@@ -55,16 +60,6 @@ class ConversationSectionScreen extends ConsumerWidget {
                           .read(showAgentThinkingProvider.notifier)
                           .set(value: v),
                     ),
-                  1 => NeSwitchTile(
-                      position: pos,
-                      icon: Icons.vertical_align_bottom_rounded,
-                      title: l10n.settingsScrollOnSendTitle,
-                      subtitle: l10n.settingsScrollOnSendSubtitle,
-                      value: ref.watch(scrollToBottomOnSendProvider),
-                      onChanged: (v) => ref
-                          .read(scrollToBottomOnSendProvider.notifier)
-                          .set(value: v),
-                    ),
                   _ => _ContextIndicatorTile(
                       position: pos,
                       mode: ref.watch(contextIndicatorModeProvider),
@@ -74,12 +69,43 @@ class ConversationSectionScreen extends ConsumerWidget {
                     ),
                 },
               ),
-              const SizedBox(height: UxnanSpacing.sm),
-              NeNavTile(
-                icon: Icons.notes_rounded,
-                title: l10n.settingsPromptTemplatesTitle,
-                subtitle: l10n.settingsPromptTemplatesSubtitle,
-                onTap: () => PromptTemplatesScreen.push(context),
+
+              // ── Claude ─────────────────────────────────────────────────
+              NeSectionHeader(label: l10n.settingsConversationClaudeGroup),
+              NeSwitchTile(
+                icon: Icons.auto_awesome_outlined,
+                title: l10n.settingsClaudeLatestTitle,
+                subtitle: l10n.settingsClaudeLatestSubtitle,
+                value: ref.watch(showClaudeLatestModelsProvider),
+                onChanged: (v) => ref
+                    .read(showClaudeLatestModelsProvider.notifier)
+                    .set(value: v),
+              ),
+              NeSectionHint(text: l10n.settingsClaudeLatestHint),
+
+              // ── Conversation ───────────────────────────────────────────
+              NeSectionHeader(label: l10n.settingsConversationChatGroup),
+              ExpressiveCardGroup(
+                count: 2,
+                itemBuilder: (context, i, pos) => switch (i) {
+                  0 => NeSwitchTile(
+                      position: pos,
+                      icon: Icons.vertical_align_bottom_rounded,
+                      title: l10n.settingsScrollOnSendTitle,
+                      subtitle: l10n.settingsScrollOnSendSubtitle,
+                      value: ref.watch(scrollToBottomOnSendProvider),
+                      onChanged: (v) => ref
+                          .read(scrollToBottomOnSendProvider.notifier)
+                          .set(value: v),
+                    ),
+                  _ => NeNavTile(
+                      position: pos,
+                      icon: Icons.notes_rounded,
+                      title: l10n.settingsPromptTemplatesTitle,
+                      subtitle: l10n.settingsPromptTemplatesSubtitle,
+                      onTap: () => PromptTemplatesScreen.push(context),
+                    ),
+                },
               ),
             ],
           ),

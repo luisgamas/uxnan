@@ -683,7 +683,7 @@
   "updateIntervalWeekly": "Cada semana",
   "updateIntervalMonthly": "Cada mes",
   "settingsNotificationsNavSubtitle": "Respuestas, errores y entrega",
-  "settingsConversationNavSubtitle": "Razonamiento, desplazamiento e indicador de contexto",
+  "settingsConversationNavSubtitle": "Razonamiento, modelos, contexto y plantillas",
   "settingsModelsNavSubtitle": "Opciones del selector de modelos",
   "settingsGitNavSubtitle": "Confirmaciones de push y pull request",
   "settingsUpdatesNavSubtitle": "Versión, programación de búsqueda e instalación",
@@ -699,5 +699,15 @@
   "aboutLegalSection": "Legal",
   "aboutVersionLabel": "Versión {version}",
   "licensesEmpty": "No se encontraron licencias.",
-  "licenseCountLabel": "{count, plural, =1{1 licencia} other{{count} licencias}}"
+  "licenseCountLabel": "{count, plural, =1{1 licencia} other{{count} licencias}}",
+  "settingsGeneralSection": "General",
+  "settingsWorkspaceSection": "Espacio de trabajo",
+  "settingsSystemSection": "Sistema",
+  "settingsConversationAgentsGroup": "Agentes",
+  "settingsConversationClaudeGroup": "Claude",
+  "settingsConversationChatGroup": "Conversación",
+  "settingsNotificationsEventsGroup": "Eventos del agente",
+  "settingsGitConfirmationsGroup": "Confirmaciones",
+  "settingsUpdatesVersionGroup": "Versión",
+  "licensesError": "No se pudieron cargar las licencias."
 }

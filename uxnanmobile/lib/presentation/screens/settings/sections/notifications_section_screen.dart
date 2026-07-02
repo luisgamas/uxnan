@@ -42,6 +42,10 @@ class NotificationsSectionScreen extends ConsumerWidget {
           ),
           sliver: SliverList.list(
             children: [
+              NeSectionHeader(
+                label: l10n.settingsNotificationsEventsGroup,
+                first: true,
+              ),
               ExpressiveCardGroup(
                 count: 2,
                 itemBuilder: (context, i, pos) => switch (i) {
