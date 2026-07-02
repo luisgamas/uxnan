@@ -203,6 +203,15 @@ are **done** (see `CHANGELOG.md` + `architecture/02d` §3). Remaining follow-ups
 - [ ] **macOS** is unvalidated end-to-end (no macOS CI; developed on Windows).
 - [ ] **keep-awake** is implemented for macOS/Linux but **untested** there
       (`power.rs`); Windows works.
+- [ ] **Update UI (pinned sonner toast + in-Settings download/install) — visual +
+      functional validation pending.** The former top banner is now a pinned
+      sonner toast (`UpdateToast.svelte` + `updateToast.ts`) and the
+      download/install actions were surfaced inline in **Settings → Updates**.
+      `svelte-check` + Vitest pass, but the toast's on-screen appearance and the
+      end-to-end download → install flow haven't been exercised in a running build
+      yet (blocked on a real update to appear — see the private-repo 404 item under
+      *CI/CD — release*). Validate the toast look/feel and the Settings actions in
+      the next update.
 
 ## CI/CD — release
 
@@ -213,9 +222,9 @@ are **done** (see `CHANGELOG.md` + `architecture/02d` §3). Remaining follow-ups
   → draft GitHub Release, **and signs the updater artifacts** when the signing
   secrets are set. **Windows ships without OS code-signing for now; macOS deferred.**
 - ✅ **Auto-updater** — `tauri-plugin-updater` wired end-to-end in the app
-  (`src-tauri/src/updater.rs` + Settings → Updates + banner; stable/nightly
-  channels via GitHub's pre-release flag; background download + idle-guarded
-  install). The rolling per-channel `latest.json` is published by
+  (`src-tauri/src/updater.rs` + Settings → Updates with inline download/install +
+  a pinned sonner toast `UpdateToast.svelte`; stable/nightly channels via GitHub's
+  pre-release flag; background download + idle-guarded install). The rolling per-channel `latest.json` is published by
   `release-desktop-manifest.yml`. The signing keypair is configured and
   `desktop-v0.0.1-alpha.20260627` shipped signed installers + a `latest.json`
   on the `desktop-updater-stable` channel. See [`docs/updates.md`](docs/updates.md).
