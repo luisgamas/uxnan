@@ -64,6 +64,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   and overflowed the screen on projects with several worktrees.
 
 ### Changed — clean desktop UI redesign
+- **Appearance settings rebuilt on the shared settings language.** The pane
+  dropped its ad-hoc soft-boxed blocks for the same rhythm as the other panes:
+  each of **Interface** and **Terminal** now has a real `SettingsSection` header
+  (title + description over a divider) and, within it, **Fonts first, then
+  Themes**. Font/typography options are `SettingsRow`s (label + a helper line +
+  right-aligned control) inside a soft band — including the terminal font family,
+  size, line-height, letter-spacing and ligatures (the redundant **font-weight**
+  control was removed; typefaces carry their own weight). Theme selection moved to
+  the app's neutral selection language (`surface.active`), and the theme/terminal
+  preview grids are now **scroll-capped** (`max-h` + `uxnan-scroll`) so a large
+  collection stays a bounded, scrollable region instead of a runaway grid. New
+  per-row description i18n keys (EN/ES).
 - **Empty center panel gained a quiet name footnote.** Pinned to the bottom of the
   empty canvas (both the Global scratch space and an empty project/worktree): a
   two-line, muted footer — `Uxnan · /uʃ.nan/` over the subtitle *"a name with no
