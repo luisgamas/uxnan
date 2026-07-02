@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.3-alpha.20260702] - 2026-07-02
+
 ### Fixed — seeded model list no longer frozen to disk (new models reach existing installs)
 - **Root cause:** `initConfig` wrote the *entire* `DEFAULT_DAEMON_CONFIG` —
   including the seeded `agents.claude-code.models` — to `~/.uxnan/daemon-config.json`
