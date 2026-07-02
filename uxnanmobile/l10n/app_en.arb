@@ -1092,6 +1092,72 @@
   "@updateWhatsNewLabel": {
     "description": "Label above the store release notes for the available update."
   },
+  "updateCurrentVersionTitle": "Current version",
+  "@updateCurrentVersionTitle": {
+    "description": "Label for the installed app version row in the Updates section."
+  },
+  "updateDownloadAction": "Download",
+  "@updateDownloadAction": {
+    "description": "Button that starts the in-app background download of the available update (Android)."
+  },
+  "updateInstallAction": "Install now",
+  "@updateInstallAction": {
+    "description": "Button that installs a downloaded update (Android; the app restarts)."
+  },
+  "updateStatusDownloading": "Downloading update…",
+  "@updateStatusDownloading": {
+    "description": "Status shown while the update downloads in the background."
+  },
+  "updateStatusDownloadingPercent": "Downloading update… {percent}%",
+  "@updateStatusDownloadingPercent": {
+    "description": "Status shown while the update downloads, with a percentage.",
+    "placeholders": {
+      "percent": {
+        "type": "int",
+        "example": "42"
+      }
+    }
+  },
+  "updateStatusDownloaded": "Update downloaded — ready to install.",
+  "@updateStatusDownloaded": {
+    "description": "Status shown when a flexible update finished downloading."
+  },
+  "updateStatusInstalling": "Installing update…",
+  "@updateStatusInstalling": {
+    "description": "Status shown while the downloaded update is being installed."
+  },
+  "updateIntervalSectionTitle": "Check automatically",
+  "@updateIntervalSectionTitle": {
+    "description": "Header above the automatic check-interval selector."
+  },
+  "updateIntervalEveryLaunch": "Every launch",
+  "@updateIntervalEveryLaunch": {
+    "description": "Check-interval option: check on every app launch."
+  },
+  "updateIntervalEvery6h": "Every 6 hours",
+  "@updateIntervalEvery6h": {
+    "description": "Check-interval option: every 6 hours."
+  },
+  "updateIntervalEvery12h": "Every 12 hours",
+  "@updateIntervalEvery12h": {
+    "description": "Check-interval option: every 12 hours."
+  },
+  "updateIntervalEvery24h": "Every day",
+  "@updateIntervalEvery24h": {
+    "description": "Check-interval option: every 24 hours (the default)."
+  },
+  "updateIntervalEvery48h": "Every 2 days",
+  "@updateIntervalEvery48h": {
+    "description": "Check-interval option: every 48 hours."
+  },
+  "updateIntervalWeekly": "Every week",
+  "@updateIntervalWeekly": {
+    "description": "Check-interval option: weekly."
+  },
+  "updateIntervalMonthly": "Every month",
+  "@updateIntervalMonthly": {
+    "description": "Check-interval option: monthly."
+  },
   "settingsNotificationsNavSubtitle": "Replies, errors and delivery",
   "@settingsNotificationsNavSubtitle": {
     "description": "Settings landing subtitle for the Notifications section."

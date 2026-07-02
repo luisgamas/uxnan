@@ -3740,6 +3740,96 @@ abstract class AppLocalizations {
   /// **'What\'s new'**
   String get updateWhatsNewLabel;
 
+  /// Label for the installed app version row in the Updates section.
+  ///
+  /// In en, this message translates to:
+  /// **'Current version'**
+  String get updateCurrentVersionTitle;
+
+  /// Button that starts the in-app background download of the available update (Android).
+  ///
+  /// In en, this message translates to:
+  /// **'Download'**
+  String get updateDownloadAction;
+
+  /// Button that installs a downloaded update (Android; the app restarts).
+  ///
+  /// In en, this message translates to:
+  /// **'Install now'**
+  String get updateInstallAction;
+
+  /// Status shown while the update downloads in the background.
+  ///
+  /// In en, this message translates to:
+  /// **'Downloading update…'**
+  String get updateStatusDownloading;
+
+  /// Status shown while the update downloads, with a percentage.
+  ///
+  /// In en, this message translates to:
+  /// **'Downloading update… {percent}%'**
+  String updateStatusDownloadingPercent(int percent);
+
+  /// Status shown when a flexible update finished downloading.
+  ///
+  /// In en, this message translates to:
+  /// **'Update downloaded — ready to install.'**
+  String get updateStatusDownloaded;
+
+  /// Status shown while the downloaded update is being installed.
+  ///
+  /// In en, this message translates to:
+  /// **'Installing update…'**
+  String get updateStatusInstalling;
+
+  /// Header above the automatic check-interval selector.
+  ///
+  /// In en, this message translates to:
+  /// **'Check automatically'**
+  String get updateIntervalSectionTitle;
+
+  /// Check-interval option: check on every app launch.
+  ///
+  /// In en, this message translates to:
+  /// **'Every launch'**
+  String get updateIntervalEveryLaunch;
+
+  /// Check-interval option: every 6 hours.
+  ///
+  /// In en, this message translates to:
+  /// **'Every 6 hours'**
+  String get updateIntervalEvery6h;
+
+  /// Check-interval option: every 12 hours.
+  ///
+  /// In en, this message translates to:
+  /// **'Every 12 hours'**
+  String get updateIntervalEvery12h;
+
+  /// Check-interval option: every 24 hours (the default).
+  ///
+  /// In en, this message translates to:
+  /// **'Every day'**
+  String get updateIntervalEvery24h;
+
+  /// Check-interval option: every 48 hours.
+  ///
+  /// In en, this message translates to:
+  /// **'Every 2 days'**
+  String get updateIntervalEvery48h;
+
+  /// Check-interval option: weekly.
+  ///
+  /// In en, this message translates to:
+  /// **'Every week'**
+  String get updateIntervalWeekly;
+
+  /// Check-interval option: monthly.
+  ///
+  /// In en, this message translates to:
+  /// **'Every month'**
+  String get updateIntervalMonthly;
+
   /// Settings landing subtitle for the Notifications section.
   ///
   /// In en, this message translates to:

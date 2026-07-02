@@ -8,6 +8,7 @@ import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/entities/trusted_device.dart';
 import 'package:uxnan/domain/enums/agent_id.dart';
 import 'package:uxnan/domain/enums/thread_status.dart';
+import 'package:uxnan/domain/value_objects/app_update_status.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/update_providers.dart';
@@ -589,10 +590,12 @@ class _OfflineBanner extends StatelessWidget {
   }
 }
 
-/// A dismissible "update available" notice shown atop the thread list when the
-/// store reports a newer version (Play In-App Update on Android, App Store on
-/// iOS). Tapping *Update* starts the platform update flow; *Not now* hides it
-/// for this version. Renders nothing when no undismissed update is available.
+/// A dismissible "update available" notice shown atop the thread list, kept in
+/// sync with the Updates settings section via the same controller. Reflects the
+/// download → install flow (Play In-App Update on Android, App Store on iOS):
+/// *Download*/*Update* → progress → *Install now*. *Not now* hides it for this
+/// version (only at the available stage). Renders nothing when no undismissed
+/// update is in play.
 class _UpdateBanner extends ConsumerWidget {
   const _UpdateBanner();
 
@@ -605,9 +608,7 @@ class _UpdateBanner extends ConsumerWidget {
     final colors = Theme.of(context).colorScheme;
     final controller = ref.read(appUpdateControllerProvider.notifier);
     final version = state.status?.storeVersion;
-    final body = version == null
-        ? l10n.updateAvailableBody
-        : l10n.updateAvailableBodyVersion(version);
+    final body = _body(l10n, state, version: version);
 
     return Container(
       margin: const EdgeInsets.fromLTRB(
@@ -653,25 +654,88 @@ class _UpdateBanner extends ConsumerWidget {
           const SizedBox(height: UxnanSpacing.sm),
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              TextButton(
-                onPressed: controller.dismiss,
-                child: Text(l10n.updateDismissAction),
-              ),
-              const SizedBox(width: UxnanSpacing.xs),
-              FilledButton(
-                onPressed: state.starting ? null : controller.startUpdate,
-                child: Text(
-                  state.starting
-                      ? l10n.updateActionStarting
-                      : l10n.updateAction,
-                ),
-              ),
-            ],
+            children: _actions(l10n, controller, state),
           ),
         ],
       ),
     );
+  }
+
+  String _body(
+    AppLocalizations l10n,
+    AppUpdateState state, {
+    required String? version,
+  }) {
+    switch (state.phase) {
+      case AppUpdatePhase.downloading:
+        final fraction = state.install?.fraction;
+        return fraction == null
+            ? l10n.updateStatusDownloading
+            : l10n.updateStatusDownloadingPercent((fraction * 100).round());
+      case AppUpdatePhase.downloaded:
+        return l10n.updateStatusDownloaded;
+      case AppUpdatePhase.installing:
+        return l10n.updateStatusInstalling;
+      case AppUpdatePhase.available:
+      case AppUpdatePhase.idle:
+      case AppUpdatePhase.checking:
+      case AppUpdatePhase.upToDate:
+      case AppUpdatePhase.error:
+        return version == null
+            ? l10n.updateAvailableBody
+            : l10n.updateAvailableBodyVersion(version);
+    }
+  }
+
+  List<Widget> _actions(
+    AppLocalizations l10n,
+    AppUpdateController controller,
+    AppUpdateState state,
+  ) {
+    switch (state.phase) {
+      case AppUpdatePhase.downloading:
+        return const [
+          SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ];
+      case AppUpdatePhase.installing:
+        return const [
+          SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ];
+      case AppUpdatePhase.downloaded:
+        return [
+          FilledButton(
+            onPressed: controller.install,
+            child: Text(l10n.updateInstallAction),
+          ),
+        ];
+      case AppUpdatePhase.available:
+      case AppUpdatePhase.idle:
+      case AppUpdatePhase.checking:
+      case AppUpdatePhase.upToDate:
+      case AppUpdatePhase.error:
+        final isIos = state.status?.channel == UpdateChannel.appStore;
+        return [
+          TextButton(
+            onPressed: controller.dismiss,
+            child: Text(l10n.updateDismissAction),
+          ),
+          const SizedBox(width: UxnanSpacing.xs),
+          FilledButton(
+            onPressed: state.starting ? null : controller.download,
+            child: Text(
+              isIos ? l10n.updateAction : l10n.updateDownloadAction,
+            ),
+          ),
+        ];
+    }
   }
 }
 

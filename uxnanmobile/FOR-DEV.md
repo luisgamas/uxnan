@@ -68,12 +68,18 @@ connected to live bridge data, validated on-device against a real bridge.
   dedicated Theme Manager (single/dual-brightness themes, live-preview grid,
   multi-select bulk delete/export, JSON import/export); language (EN/ES, follows
   device or picker); notification preferences.
-- **In-app update checker** (code-complete; *no silent install*) — throttled
-  check on launch/resume, **Settings → Updates** *Check now*, and a dismissible
-  *Update available* banner. Android = Play In-App Update (immediate flow); iOS =
-  App Store version lookup + open listing. Wraps `flutter_upgrade_version` behind
-  a guarded `AppUpdateService`. **Not yet device-verified** (Android needs a Play
-  open-testing (beta) track build; iOS needs an App Store listing) — see below.
+- **In-app update checker** (code-complete; *no silent install*) — check on
+  launch/resume throttled by a **configurable interval** (every launch / 6h / 12h
+  / 24h default / 48h / weekly / monthly), the installed **current version**, a
+  *Check now* action, and an **in-section download → install** flow in
+  **Settings → Updates** (plus the dismissible *Update available* banner on
+  Threads, in sync). Android = Play In-App Update **flexible** flow (background
+  download with real % + in-app install); iOS = App Store version lookup (`dio`
+  iTunes) + StoreKit `SKStoreProductViewController` overlay. Single package
+  `in_app_update_flutter` behind a guarded `AppUpdateService`. **Not yet
+  device-verified** (Android needs a Play open-testing (beta) track build — Play
+  only reports updates for Play-distributed builds; iOS needs an App Store
+  listing) — see below.
 - **i18n** — full app translated (EN + ES) via `flutter gen-l10n`.
 
 iOS is **not yet built** (the Podfile is generated on the first macOS build) and is
@@ -153,18 +159,21 @@ The following are pending and tracked as assets in `FOR-HUMAN.md`:
 - [ ] **In-app version checker — on-device verification.** The checker is
       **code-complete** (`infrastructure/updates/app_update_service.dart` +
       `presentation/providers/update_providers.dart`, wrapping
-      `flutter_upgrade_version`): a throttled check on launch/resume, a *Check
-      now* tile in **Settings → Updates**, and a dismissible *Update available*
-      banner on the threads list. Android drives the **Play In-App Update** API
-      (immediate flow); iOS looks up the **App Store** version and opens the
-      listing. **Still pending:** Android In-App Updates only report a real
-      update from a build installed via **Google Play** — verify against a **Play
-      open-testing (beta) track** build (a sideloaded APK always reports "no
-      update"). The iOS path is inert until the App Store listing exists
-      (`FOR-HUMAN.md`).
+      `in_app_update_flutter`): an interval-throttled check on launch/resume
+      (configurable: every launch / 6h / 12h / 24h default / 48h / weekly /
+      monthly), the installed **current version**, a *Check now* action, and an
+      **in-section download → install** flow in **Settings → Updates** (plus the
+      dismissible *Update available* banner on the threads list, in sync). Android
+      drives the **Play In-App Update** API (**flexible** flow: background download
+      with real % + in-app install); iOS looks up the **App Store** version
+      (`dio`) and presents the store page via StoreKit. **Still pending:** Android
+      In-App Updates only report a real update from a build installed via **Google
+      Play** — verify against a **Play open-testing (beta) track** build (a
+      sideloaded APK always reports "no update"). The iOS path is inert until the
+      App Store listing exists (`FOR-HUMAN.md`).
 - [ ] **APK / GitHub-Releases update channel** (not built) — for users on a
       sideloaded `.apk` (no Play), poll the GitHub Releases API and show the same
-      banner with a download/install action. `flutter_upgrade_version` does **not**
-      cover this channel (it only does Play In-App Updates + the iOS App Store
-      lookup), so it needs its own checker behind the existing `AppUpdateService`
+      banner with a download/install action. `in_app_update_flutter` does **not**
+      cover this channel (it only does Play In-App Updates + the iOS StoreKit
+      path), so it needs its own checker behind the existing `AppUpdateService`
       seam.

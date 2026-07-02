@@ -38,9 +38,9 @@ dependencies:
   flutter_riverpod: ^3.0.0 # state management (manual providers)
   flutter_secure_storage: ^9.2.0 # Keychain / Keystore
   flutter_svg: ^2.0.10 # SVG rendering (agent logos)
-  flutter_upgrade_version: ^1.1.9 # in-app update: Play In-App Updates (Android) + App Store version check (iOS)
   go_router: ^14.0.0 # declarative navigation
   image_picker: ^1.1.2 # composer attach: pick image from gallery/camera
+  in_app_update_flutter: ^3.0.0 # in-app update: Play flexible (Android) + StoreKit (iOS)
   intl: any # i18n + date formatting (pinned by flutter_localizations)
   logger: ^2.4.0 # structured logging
   mobile_scanner: ^6.0.11 # QR scanner (CameraX/MLKit, AVFoundation)
@@ -54,7 +54,7 @@ dependencies:
   share_plus: ^10.1.4 # native share sheet (theme JSON export to file)
   shared_preferences: ^2.3.0 # non-sensitive preferences
   speech_to_text: ^7.0.0 # on-device speech-to-text (composer dictation)
-  url_launcher: ^6.3.0 # open the App Store listing for the iOS in-app update path
+  url_launcher: ^6.3.0 # open external links (About source link, iOS store fallback)
   uuid: ^4.4.0 # UUID generation
   web_socket_channel: ^3.0.0 # WebSocket client (LAN + relay)
 

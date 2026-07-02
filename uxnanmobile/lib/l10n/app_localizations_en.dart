@@ -1997,6 +1997,53 @@ class AppLocalizationsEn extends AppLocalizations {
   String get updateWhatsNewLabel => 'What\'s new';
 
   @override
+  String get updateCurrentVersionTitle => 'Current version';
+
+  @override
+  String get updateDownloadAction => 'Download';
+
+  @override
+  String get updateInstallAction => 'Install now';
+
+  @override
+  String get updateStatusDownloading => 'Downloading update…';
+
+  @override
+  String updateStatusDownloadingPercent(int percent) {
+    return 'Downloading update… $percent%';
+  }
+
+  @override
+  String get updateStatusDownloaded => 'Update downloaded — ready to install.';
+
+  @override
+  String get updateStatusInstalling => 'Installing update…';
+
+  @override
+  String get updateIntervalSectionTitle => 'Check automatically';
+
+  @override
+  String get updateIntervalEveryLaunch => 'Every launch';
+
+  @override
+  String get updateIntervalEvery6h => 'Every 6 hours';
+
+  @override
+  String get updateIntervalEvery12h => 'Every 12 hours';
+
+  @override
+  String get updateIntervalEvery24h => 'Every day';
+
+  @override
+  String get updateIntervalEvery48h => 'Every 2 days';
+
+  @override
+  String get updateIntervalWeekly => 'Every week';
+
+  @override
+  String get updateIntervalMonthly => 'Every month';
+
+  @override
   String get settingsNotificationsNavSubtitle => 'Replies, errors and delivery';
 
   @override

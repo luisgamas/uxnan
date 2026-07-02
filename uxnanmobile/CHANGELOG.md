@@ -6,6 +6,30 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — in-app updates: single package, flexible download + in-app install, configurable interval
+- **Swapped `flutter_upgrade_version` → `in_app_update_flutter`** (one package for
+  both platforms). Android now uses the Play **flexible** flow: background
+  download with a **real progress %** (`InstallStateAndroid` byte counts) and an
+  **in-app install** (`completeUpdateAndroid`) — no more full-screen immediate
+  flow. iOS looks up the App Store version via a `dio` iTunes query and presents
+  the store page in-app with StoreKit `SKStoreProductViewController`
+  (`showUpdateForIos`), deriving the numeric App Store id from the lookup — the
+  external `url_launcher` open is now only a fallback.
+- **Settings → Updates is a full section screen**: the **installed version**, a
+  live state card (checking / available / **downloading with %** / **downloaded →
+  Install now** / installing / error), and the download → install flow **in the
+  section** — you no longer have to go to Threads to install. The Threads
+  *Update available* banner stays, driven by the same controller (in sync).
+- **Configurable check interval** — every launch / 6h / 12h / 24h (default) / 48h
+  / weekly / monthly, persisted; replaces the hardcoded 12h auto-check throttle
+  (`UpdateCheckInterval`, `UpdatePreferencesStore.readInterval/writeInterval`).
+- New `AppInstallStage`/`AppInstallProgress`, extended `AppUpdatePhase`
+  (downloading/downloaded/installing) and `AppUpdateController`
+  (`download`/`install`/`setInterval`). EN/ES strings added; tests for the
+  service (Android/iOS/unsupported), controller (phases + interval throttle) and
+  the interval store round-trip updated. Spec: `architecture/00-index.md`,
+  `FOR-DEV.md`, `FOR-HUMAN.md`.
+
 ### Changed — settings is now a sectioned landing, not one long scroll
 - **`SettingsScreen` is a landing of section entries.** Instead of listing every
   option at once, the first screen shows a compact list of sections
