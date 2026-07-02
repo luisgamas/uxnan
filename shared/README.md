@@ -53,7 +53,7 @@ flowchart TB
 | Streaming | `StreamNotification` enum + param types (`TurnStartedParams`, `MessageDeltaParams`, `ThinkingDeltaParams`, `ContentBlockParams`, `TurnCompletedParams`, `TurnUsage`, `TurnErrorParams`, `TurnAbortedParams`, `ModelResolvedParams`) |
 | E2EE | handshake messages (`clientHello` / `serverHello` / `clientAuth` / `ready`), `buildHandshakeTranscript`, `SecureEnvelope`, `PairingPayload` v2 (`relay` optional + `hosts: string[]`) with `Base64(utf8(JSON))` QR encoding |
 | Models | thread / turn / message (with `MessageContent` polymorphic blocks), git, workspace (incl. `browseDirs` + `exists`), project, auth, session/trust, approval |
-| Agents | `IAgentAdapter` (with `respondApproval`, `listModels`, `nativeSessionId`, `SendTurnOptions { threadId, turnId, text, service?, effort?, options?, attachments?, cwd?, accessMode? }`), `AgentModel` (incl. `version?`, `isDefault?`, `options?`, `contextWindow?`), `AgentCapabilities` (incl. `images`, `approvals`, `reportsContextUsage`), `AgentConfig` (cwd, agentId, model, plus optional `binaryPath`/`extraArgs`) |
+| Agents | `IAgentAdapter` (with `respondApproval`, `listModels`, `nativeSessionId`, `SendTurnOptions { threadId, turnId, text, service?, effort?, options?, attachments?, cwd?, accessMode? }`), `AgentModel` (incl. `version?`, `isDefault?`, `options?`, `contextWindow?`, `isLatestAlias?`), `AgentCapabilities` (incl. `images`, `approvals`, `reportsContextUsage`), `AgentConfig` (cwd, agentId, model, plus optional `binaryPath`/`extraArgs`) |
 | Validation | Ajv validators for requests, responses, envelopes, pairing payload, push payloads |
 
 ## Usage

@@ -94,7 +94,11 @@ void main() {
     await tester.tap(find.byIcon(Icons.file_download_outlined));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), json);
-    await tester.tap(find.widgetWithText(FilledButton, 'Import theme'));
+    await tester.pumpAndSettle(); // let the Import button enable
+    final importBtn = find.widgetWithText(FilledButton, 'Import theme');
+    await tester.ensureVisible(importBtn);
+    await tester.pumpAndSettle();
+    await tester.tap(importBtn);
     await tester.pumpAndSettle();
 
     expect(find.text('ImpA'), findsOneWidget);
@@ -123,7 +127,11 @@ void main() {
     await tester.tap(find.byIcon(Icons.file_download_outlined));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), json);
-    await tester.tap(find.widgetWithText(FilledButton, 'Import theme'));
+    await tester.pumpAndSettle(); // let the Import button enable
+    final importBtn = find.widgetWithText(FilledButton, 'Import theme');
+    await tester.ensureVisible(importBtn);
+    await tester.pumpAndSettle();
+    await tester.tap(importBtn);
     await tester.pumpAndSettle();
 
     // Both kept (the second got a fresh id) — two cards named 'Dup'.

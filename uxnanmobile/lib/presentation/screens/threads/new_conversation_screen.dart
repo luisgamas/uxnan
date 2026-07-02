@@ -16,6 +16,7 @@ import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/agent_logo_chip.dart';
 import 'package:uxnan/presentation/widgets/agent_visuals.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
+import 'package:uxnan/presentation/widgets/ne_card.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 
 /// Full-screen Material 3 dialog to start a new conversation: pick the working
@@ -323,59 +324,51 @@ class _WorkingDirCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-    return Material(
-      color: colors.surfaceContainerHighest,
-      borderRadius: const BorderRadius.all(UxnanRadius.lg),
-      child: InkWell(
-        borderRadius: const BorderRadius.all(UxnanRadius.lg),
-        onTap: onBrowse,
-        child: Padding(
-          padding: const EdgeInsets.all(UxnanSpacing.md),
-          child: Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: colors.secondaryContainer,
-                  borderRadius: const BorderRadius.all(UxnanRadius.md),
-                ),
-                child: Icon(
-                  Icons.folder_outlined,
-                  color: colors.onSecondaryContainer,
-                ),
-              ),
-              const SizedBox(width: UxnanSpacing.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      name,
-                      style: textTheme.titleSmall,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      path,
-                      style: UxnanTypography.codeSmall.copyWith(
-                        color: colors.onSurfaceVariant,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                      maxLines: 1,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: UxnanSpacing.sm),
-              TextButton.icon(
-                onPressed: onBrowse,
-                icon: const Icon(Icons.folder_open_outlined, size: 18),
-                label: Text(AppLocalizations.of(context).newThreadChangeFolder),
-              ),
-            ],
+    return NeCard(
+      onTap: onBrowse,
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: colors.secondaryContainer,
+              borderRadius: const BorderRadius.all(UxnanRadius.md),
+            ),
+            child: Icon(
+              Icons.folder_outlined,
+              color: colors.onSecondaryContainer,
+            ),
           ),
-        ),
+          const SizedBox(width: UxnanSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  style: textTheme.titleSmall,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  path,
+                  style: UxnanTypography.codeSmall.copyWith(
+                    color: colors.onSurfaceVariant,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: UxnanSpacing.sm),
+          TextButton.icon(
+            onPressed: onBrowse,
+            icon: const Icon(Icons.folder_open_outlined, size: 18),
+            label: Text(AppLocalizations.of(context).newThreadChangeFolder),
+          ),
+        ],
       ),
     );
   }
@@ -406,87 +399,83 @@ class _WorktreeCard extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final l10n = AppLocalizations.of(context);
-    return Material(
-      color: colors.surfaceContainerHighest,
-      borderRadius: const BorderRadius.all(UxnanRadius.lg),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(
-          UxnanSpacing.md,
-          UxnanSpacing.xs,
-          UxnanSpacing.sm,
-          UxnanSpacing.xs,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.account_tree_outlined,
-                  size: 20,
-                  color: colors.onSurfaceVariant,
+    return NeCard(
+      padding: const EdgeInsets.fromLTRB(
+        UxnanSpacing.md,
+        UxnanSpacing.xs,
+        UxnanSpacing.sm,
+        UxnanSpacing.xs,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.account_tree_outlined,
+                size: 20,
+                color: colors.onSurfaceVariant,
+              ),
+              const SizedBox(width: UxnanSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(l10n.newThreadWorktree, style: textTheme.titleSmall),
+                    const SizedBox(height: 2),
+                    Text(
+                      l10n.newThreadWorktreeDesc,
+                      style: textTheme.bodySmall?.copyWith(
+                        color: colors.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: UxnanSpacing.md),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(l10n.newThreadWorktree, style: textTheme.titleSmall),
-                      const SizedBox(height: 2),
-                      Text(
-                        l10n.newThreadWorktreeDesc,
-                        style: textTheme.bodySmall?.copyWith(
-                          color: colors.onSurfaceVariant,
+              ),
+              const SizedBox(width: UxnanSpacing.sm),
+              Switch(value: enabled, onChanged: onToggle),
+            ],
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.topLeft,
+            child: enabled
+                ? Padding(
+                    padding: const EdgeInsets.only(
+                      top: UxnanSpacing.sm,
+                      bottom: UxnanSpacing.xs,
+                      right: UxnanSpacing.xs,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        TextField(
+                          controller: branch,
+                          decoration: InputDecoration(
+                            isDense: true,
+                            labelText: l10n.newThreadWorktreeBranchHint,
+                            border: const OutlineInputBorder(
+                              borderRadius: BorderRadius.all(UxnanRadius.md),
+                            ),
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: UxnanSpacing.sm),
-                Switch(value: enabled, onChanged: onToggle),
-              ],
-            ),
-            AnimatedSize(
-              duration: const Duration(milliseconds: 180),
-              curve: Curves.easeOutCubic,
-              alignment: Alignment.topLeft,
-              child: enabled
-                  ? Padding(
-                      padding: const EdgeInsets.only(
-                        top: UxnanSpacing.sm,
-                        bottom: UxnanSpacing.xs,
-                        right: UxnanSpacing.xs,
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          TextField(
-                            controller: branch,
-                            decoration: InputDecoration(
-                              isDense: true,
-                              labelText: l10n.newThreadWorktreeBranchHint,
-                              border: const OutlineInputBorder(
-                                borderRadius: BorderRadius.all(UxnanRadius.md),
-                              ),
-                            ),
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          visualDensity: VisualDensity.compact,
+                          title: Text(
+                            l10n.newThreadWorktreeManaged,
+                            style: textTheme.bodyMedium,
                           ),
-                          SwitchListTile(
-                            contentPadding: EdgeInsets.zero,
-                            visualDensity: VisualDensity.compact,
-                            title: Text(
-                              l10n.newThreadWorktreeManaged,
-                              style: textTheme.bodyMedium,
-                            ),
-                            value: managed,
-                            onChanged: onToggleManaged,
-                          ),
-                        ],
-                      ),
-                    )
-                  : const SizedBox(width: double.infinity),
-            ),
-          ],
-        ),
+                          value: managed,
+                          onChanged: onToggleManaged,
+                        ),
+                      ],
+                    ),
+                  )
+                : const SizedBox(width: double.infinity),
+          ),
+        ],
       ),
     );
   }

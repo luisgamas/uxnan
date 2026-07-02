@@ -345,6 +345,8 @@ test('ClaudeCodeAdapter lists the stable aliases as "latest" labelled models', a
   );
   assert.equal(models.find((m) => m.id === 'sonnet')?.isDefault, true);
   assert.equal(models.find((m) => m.id === 'opus')?.isDefault, false);
+  // Every alias is flagged as a moving-target "latest" model.
+  assert.ok(models.every((m) => m.isLatestAlias === true));
 });
 
 test('ClaudeCodeAdapter appends pinned concrete models after the aliases', async () => {
@@ -370,6 +372,9 @@ test('ClaudeCodeAdapter appends pinned concrete models after the aliases', async
   // the pinned id matching defaultModel is the default, not an alias
   assert.equal(models.find((m) => m.id === 'claude-opus-4-7')?.isDefault, true);
   assert.equal(models.find((m) => m.id === 'opus')?.isDefault, false);
+  // only the aliases are flagged "latest"; the pinned concrete versions are not
+  assert.equal(models.find((m) => m.id === 'opus')?.isLatestAlias, true);
+  assert.equal(models.find((m) => m.id === 'claude-opus-4-8')?.isLatestAlias, undefined);
 });
 
 test('claudeContextWindow maps tiers and ids to window sizes', () => {

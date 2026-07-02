@@ -10,6 +10,7 @@ import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
 import 'package:uxnan/presentation/screens/settings/settings_screen.dart';
+import 'package:uxnan/presentation/widgets/connected_button_group.dart';
 
 Widget _wrap() {
   return ProviderScope(
@@ -75,21 +76,29 @@ void main() {
   testWidgets(
     'context indicator selector defaults to percentage and persists a change',
     (tester) async {
+      // Tall viewport so the full settings list fits without scrolling — a
+      // scrolled-to-top control lands under the transparent app-bar veil and
+      // the tap misses.
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
       await tester.pumpWidget(_wrap());
       await tester.pumpAndSettle();
 
       // The three options render; percentage is selected by default.
       await tester.ensureVisible(
-        find.byType(SegmentedButton<ContextIndicatorMode>),
+        find.byType(ConnectedButtonGroup<ContextIndicatorMode>),
       );
       await tester.pumpAndSettle();
       expect(find.text('Percentage'), findsOneWidget);
       expect(find.text('Tokens'), findsOneWidget);
       expect(find.text('Both'), findsOneWidget);
-      final segmented = tester.widget<SegmentedButton<ContextIndicatorMode>>(
-        find.byType(SegmentedButton<ContextIndicatorMode>),
+      final group = tester.widget<ConnectedButtonGroup<ContextIndicatorMode>>(
+        find.byType(ConnectedButtonGroup<ContextIndicatorMode>),
       );
-      expect(segmented.selected, {ContextIndicatorMode.percentage});
+      expect(group.selected, ContextIndicatorMode.percentage);
 
       // Choosing "Both" persists it.
       await tester.tap(find.text('Both'));
@@ -98,6 +107,38 @@ void main() {
         preferences: SharedPreferences.getInstance(),
       ).readContextIndicatorMode();
       expect(stored, ContextIndicatorMode.both.name);
+    },
+  );
+
+  testWidgets(
+    'Claude latest-models toggle defaults on and persists off',
+    (tester) async {
+      // Tall viewport so the toggle at the bottom of the list is hittable.
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(_wrap());
+      await tester.pumpAndSettle();
+
+      final toggle = find.widgetWithText(
+        SwitchListTile,
+        'Show Claude Code “latest” models',
+      );
+      expect(toggle, findsOneWidget);
+      // On by default (current behaviour: aliases shown).
+      expect(tester.widget<SwitchListTile>(toggle).value, isTrue);
+
+      await tester.ensureVisible(toggle);
+      await tester.tap(toggle);
+      await tester.pumpAndSettle();
+
+      expect(tester.widget<SwitchListTile>(toggle).value, isFalse);
+      final stored = await ConversationPreferencesStore(
+        preferences: SharedPreferences.getInstance(),
+      ).readShowClaudeLatest();
+      expect(stored, isFalse);
     },
   );
 }

@@ -39,7 +39,7 @@ for `defaultAgent` and `projectAgents[].agentId`.
 |---|---|
 | `binaryPath` | Absolute path to the agent CLI (else auto-resolved). |
 | `model` | Default model for that agent (an alias like `opus`, or an exact id). |
-| `models` | Extra explicit models to show in the picker **alongside** the ones the agent reports itself. Each entry is a bare id string or `{ id, displayName?, description? }`. For **Claude Code** this pins concrete versions (e.g. `claude-opus-4-7`) next to the auto-updating `opus`/`sonnet`/`haiku` aliases — see [agents.md](./agents.md#claude-code-models-latest-aliases--pinned-versions). Currently consumed only by the Claude Code adapter; ignored by agents that enumerate their own models (OpenCode, Codex, pi, Gemini CLI). |
+| `models` | Extra explicit models to show in the picker, **unioned on top of** the project's built-in (seeded) list — the built-in list is a live code default that stays current with the app automatically, and your entries extend/override it by id (a same-id entry wins its `displayName`; an empty `[]` does **not** clear the baseline). Each entry is a bare id string or `{ id, displayName?, description? }`. For **Claude Code** this pins concrete versions (e.g. `claude-opus-4-7`) next to the auto-updating `opus`/`sonnet`/`haiku` aliases — see [agents.md](./agents.md#claude-code-models-latest-aliases--pinned-versions). Currently consumed only by the Claude Code adapter; ignored by agents that enumerate their own models (OpenCode, Codex, pi, Gemini CLI). |
 | `permissionMode` | Headless posture for agents that gate tools: `acceptEdits` (default — edits auto-apply), `default` (read-only/no-edit), `bypassPermissions` (full autonomy). Mapped to each CLI's own flags — Claude (`--permission-mode` / `--dangerously-skip-permissions`), Codex (`-s workspace-write` / `read-only` / `--dangerously-bypass-approvals-and-sandbox`), Gemini (`--approval-mode auto_edit` / `plan` / `yolo`), and pi (its built-in tool posture / `--tools` / `--approve`). OpenCode does not gate tools, so it ignores this field. |
 | `interactiveApprovals` | Opt-in interactive tool approvals for **Claude Code and Gemini CLI** (default false; requires `lanEnabled`). When true, every tool the agent runs prompts you **on the phone** (Approve / Reject) before it executes: the bridge injects a `PreToolUse` hook for Claude (and a `BeforeTool` hook for Gemini) that holds the tool until you answer (5-min timeout → deny). For Claude it overrides `permissionMode` (forcing `--permission-mode default` so the hook is the gate). Leave it off for unattended runs. |
 
@@ -77,6 +77,7 @@ reserved and not yet consumed.)
       "models": [
         { "id": "claude-fable-5", "displayName": "Fable 5" },
         { "id": "claude-opus-4-8", "displayName": "Opus 4.8" },
+        { "id": "claude-sonnet-5", "displayName": "Sonnet 5" },
         { "id": "claude-sonnet-4-6", "displayName": "Sonnet 4.6" },
         "claude-haiku-4-5"
       ]

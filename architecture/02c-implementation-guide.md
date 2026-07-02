@@ -933,76 +933,56 @@ son **protegidos** — la acción *Delete* en el menú del item está
 deshabilitada y `CustomThemesLibrary.remove` los rechaza, así que el
 usuario nunca queda con la librería vacía.
 
-##### Picker (`PersonalizationScreen`)
+##### Personalización (adelgazada) + Theme Manager dedicado
 
-`PersonalizationScreen` (`lib/presentation/screens/settings/personalization_screen.dart`)
-tiene tres secciones apiladas:
+La UI de temas está partida en **dos pantallas**. El modelo viejo (un
+único `ExpansionTile` colapsable con la librería embebida en
+Personalización, dirigido por `customThemesExpandedProvider`) quedó
+**retirado**: la librería vive ahora en una pantalla propia.
 
-1. **Tema** — *header* "Tema", seguido de:
-   - `SegmentedButton<ThemeModeOption>` de **3 segmentos**
-     (`system` / `light` / `dark`). El constructor acepta un flag
-     `disabled` que se activa cuando `useCustomThemeProvider` es true
-     (los segmentos se renderizan deshabilitados; el `onSelectionChanged`
-     se vuelve null).
-   - **Switch master** — `SwitchListTile.adaptive` con etiqueta "Use a
-     custom theme" + subtítulo. Conmuta `useCustomThemeProvider`.
-2. **Custom themes (colapsable + acciones de librería)** —
-   `Material(color: surfaceContainerHighest)` envuelve el switch y:
-   - **Switch master** (`SwitchListTile.adaptive` con etiqueta "Use a
-     custom theme" + subtítulo). Conmuta `useCustomThemeProvider`.
-   - **Lista de temas** (`_CustomThemesCollapsible`,
-     `ConsumerStatefulWidget` que envuelve un `ExpansionTile` con un
-     `ExpansibleController` dirigido por
-     `customThemesExpandedProvider` — `Notifier<bool>` persistido en
-     `AppearancePreferencesStore.readCustomThemesExpanded` /
-     `writeCustomThemesExpanded` bajo
-     `uxnan.appearance.customThemesExpanded`. La expansion/collapse
-     sobrevive restarts y el toggle del switch maestro. Solo contiene
-     las **filas de tema** (ver abajo); las acciones de librería son
-     hermanos del colapsable para que estén siempre a un tap.
-   - **Filas de tema**: cada item es un `ListTile` con un `Icon` de
-     radio (chequeado = activo) como leading, `name` + badge
-     (*Active* / *Built-in*) como título, 4 color dots
-     (light.primary + dark.primary + light.surface + dark.surface)
-     como subtítulo, y un `IconSurfaceMenu` (trailing) con tres
-     acciones:
-     - **Edit** — abre `CustomThemeEditorScreen` contra ese tema; al
-       guardar, `customThemesLibraryProvider.notifier.upsert(next)`
-       reemplaza la entrada por id (sin cambiar el id).
-     - **Export** — abre un bottom sheet con dos opciones:
-       *Copy to clipboard* (copia `theme.toJsonString()` y snackbar)
-       o *Save to file* (escribe el JSON a un archivo temporal y abre
-       el sheet nativo via `share_plus`, archivo
-       `uxnan-theme-<slug>.json`).
-     - **Delete** — `AlertDialog` de confirmación; falla silenciosa
-       (snackbar) si el id es built-in; al confirmar, elimina de la
-       librería y, si era el activo, limpia el active id y apaga el
-       switch. Captura notifiers antes del primer `await` para no
-       usar `ref` después de que la fila se desmonte.
-   - **Acciones a nivel de librería** (hermanos del colapsable, fuera
-     del `ExpansionTile`):
-     - **New theme** — abre un dialog (preview HSV + sliders H/S/V +
-       `SegmentedButton<Brightness>` Light/Dark + Cancel/Apply).
-       El seed es el color que el usuario eligió; el `primary` del
-       esquema se fuerza a ese seed y los demás roles se derivan via
-       `ColorScheme.fromSeed(seedColor: seed, brightness)`; el editor
-       abre en la pestaña que el usuario eligió.
-     - **Import theme** — `Dialog` con text field multi-línea (estilo
-       monoespaciado). Acepta un JSON objeto (un tema) o un JSON array
-       (varios temas). A cada entrada se le asigna un id fresco si
-       choca con un id existente en la librería. Snackbar con el
-       conteo de importados + advertencia si algunos fallaron.
-     - **Export all themes** — abre el mismo bottom sheet de Export:
-       *Copy to clipboard* (array JSON pretty-printed al portapapeles)
-       o *Save to file* (archivo `uxnan-themes-<YYYYMMDD-HHmm>.json`
-       vía share sheet nativo).
-     - **Reset library** — `customThemesLibraryProvider.notifier
-       .resetToBuiltIns()`: restaura `kBuiltInCustomThemes`, limpia el
-       active id y apaga el switch. Estilo de error en el tile
-       (ícono + texto en `colorScheme.error`) para que el affordance
-       sea claro.
+**`PersonalizationScreen`** (`lib/presentation/screens/settings/personalization_screen.dart`)
+— en estilo Neural Expressive (labels de sección callados + grupos de
+tarjetas de esquina dinámica), tres secciones:
 
-3. **Idioma** — sin cambios respecto al modelo anterior.
+1. **Tema** — un `ConnectedButtonGroup<ThemeModeOption>` (System / Light /
+   Dark, el reemplazo M3E del `SegmentedButton`). Se **deshabilita**
+   (Opacity + IgnorePointer) cuando un custom theme **single-brightness**
+   fuerza el brillo (`themePickerEnabledProvider` = false); un theme
+   **dual** o el baseline de marca lo dejan libre.
+2. **Custom theme** — un `ExpressiveCardGroup` de 2 filas: un `NeSwitchTile`
+   master (conmuta `useCustomThemeProvider`; encenderlo sin selección
+   activa el primer tema de la librería) + un `NeNavTile` que entra al
+   Theme Manager, mostrando el nombre del tema activo + un mini-palette de
+   4 puntos (o chevron si no hay activo).
+3. **Idioma** — grupo de filas de radio (system default + cada locale
+   soportado), sin cambios funcionales respecto al modelo anterior.
+
+**`ThemeManagerScreen`** (`lib/presentation/screens/settings/theme_manager_screen.dart`)
+— la librería multi-tema completa, separada de Personalización:
+
+- **Grid de cards de preview en vivo**: dual = light\|dark lado a lado,
+  single = un panel; chip de brillo + badges *Active* / *Built-in*.
+- **Tap** activa el tema; **long-press** entra en modo multi-selección
+  para **borrar / exportar en bloque**.
+- **New** / **Import** / **Export all** / **Reset** viven en el `NeTopBar`.
+  *New* abre el editor (`CustomThemeEditorScreen`); *Reset* llama
+  `customThemesLibraryProvider.notifier.resetToBuiltIns()` (restaura
+  `kBuiltInCustomThemes`, limpia el active id y apaga el switch).
+- **Import** es una **pantalla completa** (`ThemeImportScreen`,
+  `theme_sheets.dart`) — no un sheet (un sheet acotado desbordaba con un blob
+  grande) — con el patrón de formulario NE (à la `ManualCodeScreen`): `NeTopBar`
+  transparente con Close, un campo que **llena la pantalla y hace scroll
+  interno**, la fila de fuentes alternativas y una CTA **Import** inferior a todo
+  el ancho (deshabilitada hasta que hay texto). Acepta formato nativo, Material
+  Theme Builder y flat (objeto único o array); la fuente puede ser **pegar**,
+  **un archivo `.json`** (`file_picker`) o **una URL http(s)** (`dio`,
+  `ResponseType.plain`, timeouts + tope de 5 MB) — las tres llenan el mismo campo
+  para revisar antes de importar. **Ids built-in:** al importar, un id
+  `uxnan.builtin.*` (o cualquier colisión) recibe un id fresco, así ningún import
+  queda como "integrado" (no borrable / no persistido); al exportar, un tema
+  built-in se emite con un id fresco no-builtin para que reimporte como custom
+  normal. **Export** sigue siendo un bottom sheet: *Copy to clipboard* o *Save to
+  file* (`share_plus`), por tema o `Export all` (array pretty-printed).
 
 ##### Editor (`CustomThemeEditorScreen`)
 
@@ -1116,9 +1096,10 @@ segmento *Custom* del `SegmentedButton`) tenía dos fricciones:
 
 El switch master reemplaza la semántica del antiguo segmento *Custom*:
 cuando el switch está on, la app aplica el tema activo; cuando está
-off, el picker System/Light/Dark conduce. El colapsable sigue el
-estado del switch (enabled cuando on, IgnorePointer+Opacity cuando
-off), tal como pide el feedback de UX.
+off, el picker System/Light/Dark conduce. Un custom theme
+**single-brightness** además fuerza su brillo y deshabilita el picker
+(`themePickerEnabledProvider`), mientras que un theme **dual** deja al
+usuario alternar System/Light/Dark sobre su propio esquema.
 
 ### 3.2 Componentes de UI criticos
 

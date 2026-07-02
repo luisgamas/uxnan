@@ -661,6 +661,22 @@
   "settingsConfirmPushSubtitle": "Ask before pushing — a push can't be undone.",
   "settingsConfirmPrTitle": "Confirm before pull request",
   "settingsConfirmPrSubtitle": "Ask before opening a pull request.",
+  "settingsModelsSection": "Models",
+  "@settingsModelsSection": {
+    "description": "Header for the settings section that controls the AI model picker."
+  },
+  "settingsClaudeLatestTitle": "Show Claude Code “latest” models",
+  "@settingsClaudeLatestTitle": {
+    "description": "Title of the toggle that shows/hides Claude Code's opus/sonnet/haiku “latest” alias models in the model picker."
+  },
+  "settingsClaudeLatestSubtitle": "List the Opus, Sonnet and Haiku “(latest)” aliases in the model picker.",
+  "@settingsClaudeLatestSubtitle": {
+    "description": "Subtitle of the Claude Code latest-models toggle."
+  },
+  "settingsClaudeLatestHint": "The “(latest)” aliases always route to the newest version of each tier your account can use, so you don't have to pick an exact one. Turn this off to hide them and choose only pinned, exact versions. Conversations already using an alias keep working.",
+  "@settingsClaudeLatestHint": {
+    "description": "Explanatory note under the Claude Code latest-models toggle, describing what the latest aliases do."
+  },
   "settingsAppearanceSection": "Appearance",
   "settingsPersonalizationTitle": "Personalization",
   "settingsPersonalizationSubtitle": "Theme, custom themes and language",
@@ -752,6 +768,38 @@
   "personalizationCustomThemesImportDialogTitle": "Import theme",
   "personalizationCustomThemesImportDialogBody": "Paste a theme JSON exported from another device. You can paste a single theme or a JSON array of themes to import them all at once.",
   "personalizationCustomThemesImportFieldHint": "Paste theme JSON here",
+  "themeImportFromFile": "From file",
+  "@themeImportFromFile": {
+    "description": "Button that imports theme JSON by picking a .json file from the device."
+  },
+  "themeImportFromUrl": "From URL",
+  "@themeImportFromUrl": {
+    "description": "Button that imports theme JSON by fetching it from an http(s) URL."
+  },
+  "themeImportUrlTitle": "Import from URL",
+  "@themeImportUrlTitle": {
+    "description": "Title of the dialog that asks for a URL to fetch a theme JSON from."
+  },
+  "themeImportUrlHint": "https://…/theme.json",
+  "@themeImportUrlHint": {
+    "description": "Hint text for the theme-import URL field."
+  },
+  "themeImportUrlFetch": "Fetch",
+  "@themeImportUrlFetch": {
+    "description": "Confirm button that fetches the theme JSON from the entered URL."
+  },
+  "themeImportUrlInvalid": "Enter a valid http(s):// URL.",
+  "@themeImportUrlInvalid": {
+    "description": "Error shown when the theme-import URL is malformed."
+  },
+  "themeImportUrlError": "Couldn't fetch a theme from that URL.",
+  "@themeImportUrlError": {
+    "description": "Error shown when fetching a theme JSON from the URL fails."
+  },
+  "themeImportFileError": "Couldn't read that file.",
+  "@themeImportFileError": {
+    "description": "Error shown when the picked theme .json file can't be read."
+  },
   "personalizationCustomThemesImportSuccess": "Theme imported",
   "@personalizationCustomThemesImportSuccess": {
     "description": "Snackbar text shown after a successful import. The number of themes imported is appended in the message."

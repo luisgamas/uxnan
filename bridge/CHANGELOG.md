@@ -5,6 +5,43 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — seeded model list no longer frozen to disk (new models reach existing installs)
+- **Root cause:** `initConfig` wrote the *entire* `DEFAULT_DAEMON_CONFIG` —
+  including the seeded `agents.claude-code.models` — to `~/.uxnan/daemon-config.json`
+  on first run, and `resolveDaemonConfig` let that persisted list **replace** the
+  code default. So a new app version that added a model to the seed (e.g. Sonnet 5)
+  never reached an existing install; the user had to hand-edit the file.
+- **Fix (`src/daemon-config.ts`, `src/daemon-state.ts`):**
+  - `resolveDaemonConfig` now **unions** the built-in seeded `models` with the
+    user's, deduped by id (new `mergeAgentModels`): the seed is a live baseline
+    from code, the user's entries are additions/overrides (a same-id entry wins
+    its `displayName`; a new id is appended). A persisted (stale) list can no
+    longer shadow newly-seeded models.
+  - `initConfig` persists the seed **without** the `agents` block, so the built-in
+    model lists are never frozen to disk.
+  - Behavior change: an empty `"models": []` no longer clears the baseline (the
+    union always keeps it). Docs updated (`docs/agents.md`, `docs/configuration.md`).
+  - 4 tests added/updated (`daemon-config.test.ts`, `daemon-state.test.ts`),
+    incl. a persisted-list-still-gains-new-models case and a no-freeze-to-disk case.
+
+### Added — Claude Code aliases flagged `isLatestAlias` on `agent/models`
+- **`ClaudeCodeAdapter.listModels()`** (`src/adapters/claude-adapter.ts`) now
+  sets `isLatestAlias: true` on each stable alias entry (`opus`/`sonnet`/`haiku`)
+  it advertises. The concrete pinned versions leave it absent. This is the
+  `@uxnan/shared` `AgentModel.isLatestAlias` contract field — it lets the phone
+  offer to hide the moving-target aliases and show only exact versions without
+  hardcoding ids. 2 assertions added to `claude-adapter.test.ts`.
+
+### Added — Claude Code `Sonnet 5` in the seeded model picker
+- **`claude-sonnet-5` ("Sonnet 5")** seeded in Claude Code's default
+  `models` list (`src/daemon-config.ts`), so a fresh install offers the newest
+  Sonnet-tier version as an explicit pick alongside the auto-updating
+  `opus`/`sonnet`/`haiku` aliases. The `sonnet` alias already tracks "latest",
+  so this is a convenience/visibility entry; `claudeContextWindow` already maps
+  any `sonnet` id to the 1M window, so no adapter change was needed. Docs
+  (`docs/agents.md`, `docs/configuration.md`) and the `daemon-config` seed test
+  updated to match.
+
 ## [0.0.2-alpha.20260628] - 2026-06-28
 
 ### Added — `workspace/searchFiles` handler (repo-wide fuzzy file search)

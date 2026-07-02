@@ -564,6 +564,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         displayName: `${label} (latest)`,
         description: `Always the newest ${label} your account can use`,
         isDefault: def === alias,
+        // Flags the moving-target alias so the phone can offer to hide these
+        // and show only the concrete pinned versions (contract field).
+        isLatestAlias: true,
       } satisfies AgentModel;
     });
 

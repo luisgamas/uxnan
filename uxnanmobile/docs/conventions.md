@@ -31,6 +31,15 @@ spec, the spec wins.
 - Extract `colorScheme` / `textTheme` once at the top of `build()`. No hardcoded
   colors or ad-hoc spacing — use the tokens in `presentation/theme/`
   (`UxnanColors`, `UxnanSpacing`, `UxnanRadius`, `UxnanTypography`).
+- **Reuse the NE building-block widgets** in `presentation/widgets/` instead of
+  hand-rolling surfaces: `NeCard` (discrete card — calm `surfaceContainer` tone +
+  16 dp radius + spring press), `ExpressiveCard`/`ExpressiveCardGroup` (grouped
+  settings rows, dynamic 24/4 corners + 3 dp gap), `ConnectedButtonGroup` (the
+  M3E replacement for `SegmentedButton`), the `settings_tiles.dart` rows
+  (`NeSectionHeader` / `NeSectionHint` / `NeSwitchTile` / `NeNavTile`), plus
+  `NeSurface`, `IconSurface`, `NeScaffold` / `NeTopBar`. Cards use
+  `surfaceContainer`, **never** `surfaceContainerHighest` — that tone is reserved
+  for input fills / active chips (NE §2.4).
 - Prefer current M3 widgets over Material 2 equivalents. Keep modal sheets
   scrollable so they fit short screens (and the 800×600 test window).
 - **UI is proposed, not committed unilaterally.** Implement → verify once

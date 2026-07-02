@@ -6,6 +6,80 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — theme import from a file / URL, in a full-screen editor
+- **Theme import is now a full-screen editor** (`ThemeImportScreen`,
+  `theme_sheets.dart`), not a cramped bottom sheet (which overflowed on a big
+  paste): it mirrors the app's NE form pattern (à la `ManualCodeScreen`) — a
+  transparent `NeTopBar` with a Close, a paste field that **fills the screen and
+  scrolls internally**, the alternative sources on one row, and a bottom
+  full-width **Import** CTA (disabled until there's text).
+- **Three import sources**, all filling the same field so the user reviews
+  before importing: **paste**, **a `.json` file** from the device (new
+  `file_picker` dependency), and **an http(s) URL** (`dio`, plain response,
+  connect/receive timeouts + a 5 MB guard). Inline errors for a bad URL / read
+  failure.
+- **Fixed — imported/exported themes no longer masquerade as built-ins.** A
+  theme exported from a seeded example carried a `uxnan.builtin.*` id; re-imported
+  (even renamed) it was flagged built-in — undeletable and **not persisted**
+  (built-ins are seeded, not stored, so it vanished on restart). Now **export**
+  emits a fresh non-builtin id for built-in themes, and **import** reassigns a
+  fresh id to any theme whose id is a built-in id (in addition to the existing
+  collision reassignment) — imports are always normal, deletable, persisted
+  custom themes.
+- 3 widget tests (`theme_sheets_test.dart`); the import tests in
+  `theme_manager_screen_test.dart` updated for the full-screen editor. Spec:
+  `architecture/02c` §3.1 (import sources).
+- **Build:** `file_picker`'s transitive `flutter_plugin_android_lifecycle`
+  requires compiling against Android API 36, so `android/app/build.gradle.kts`
+  pins `compileSdk = 36` and `android/build.gradle.kts` bumps the plugin
+  subprojects to 36 (compile-time only — `minSdk` 24 / `targetSdk` unchanged).
+
+### Changed — shared `NeCard` primitive + calmer card tone (My Devices, Threads, New conversation)
+- **New `NeCard` widget** (`ne_card.dart`): the app's discrete-card primitive —
+  one calm `surfaceContainer` tone (not `surfaceContainerHighest`, which NE §2.4
+  reserves for inputs/active chips) + a 16 dp radius + the M3E `spatialFast`
+  press feedback (wraps `ExpressiveCard`). Centralizes the card look so it stays
+  consistent app-wide and ends the `surfaceContainerHighest`-for-cards drift.
+- **Migrated the hand-rolled cards** on **My Devices** (`_DeviceCard`), the
+  **Threads** list (`ThreadTile`, unread tint rebased on the calmer tone), and
+  the **New-conversation** dialog's folder + worktree cards to `NeCard`.
+- Left as-is (correct per NE): the pairing screen (already exemplary — filled
+  inputs legitimately use `surfaceContainerHighest`), the new-conversation
+  agent/model selectors (intentional borders + selection tint), and the Git
+  history/commit-detail screens (their `surfaceContainerHighest` is on code
+  chips/pills, not content cards).
+
+### Changed — Neural Expressive redesign of the settings area (less visual noise)
+- **Settings, Personalization and Prompt Templates** rebuilt on the repo's own
+  Neural Expressive components to cut visual noise (guide §4.6 / §7.2): quiet
+  section labels (`onSurfaceVariant`, no accent color) instead of primary-colored
+  headers; **dynamic-corner card groups** (`ExpressiveCardGroup`, 24/4 radii +
+  3 dp gap) with a calm `surfaceContainer` tone instead of hand-rolled
+  `surfaceContainerHighest` cards; **no per-row dividers** (the gap + corners
+  separate rows); and `SegmentedButton` → **`ConnectedButtonGroup`** (the M3E
+  replacement) for the context-indicator and theme-mode selectors.
+- **New shared widgets** (`settings_tiles.dart`): `NeSectionHeader`,
+  `NeSectionHint`, `NeSwitchTile`, `NeNavTile` — the grouped-settings building
+  blocks all three screens now reuse (DRY). The language picker and template
+  list also became dynamic-corner groups. Behavior/persistence unchanged; widget
+  tests updated for the new controls.
+
+### Added — Settings ▸ Models: hide Claude Code's "latest" aliases
+- **New "Models" settings section** (`settings_screen.dart`) with a switch,
+  *Show Claude Code "latest" models*, plus an explanatory note describing what
+  the `opus`/`sonnet`/`haiku` "(latest)" aliases do (they always route to the
+  newest version of each tier your account can use). Turning it off hides those
+  moving-target aliases from the model picker so only concrete pinned versions
+  show; conversations already running on an alias keep working. Persisted
+  locally (`ConversationPreferencesStore.readShowClaudeLatest` /
+  `writeShowClaudeLatest`, key `uxnan.models.showClaudeLatest`; defaults on) via
+  `showClaudeLatestModelsProvider`.
+- **`AgentModel.isLatestAlias`** (`agent_model.dart`) parses the new
+  `@uxnan/shared` contract flag, so the picker identifies aliases from the
+  bridge instead of hardcoding ids; the currently-selected model stays visible
+  even when aliases are hidden. New entity + widget tests; the picker filter is
+  display-only (thread run-option/context-window lookups are untouched).
+
 ## [0.0.2-alpha.20260628] - 2026-06-28
 
 ### Added — inline `@` file mentions and a `/` command palette in the composer

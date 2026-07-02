@@ -12,6 +12,7 @@ import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
+import 'package:uxnan/presentation/widgets/ne_card.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 
 /// The app's home: the list of paired PCs (trusted bridges). The app keeps one
@@ -248,146 +249,138 @@ class _DeviceCard extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
     final host = _addressLabel(device);
 
-    return Material(
-      color: colors.surfaceContainerHighest,
-      borderRadius: const BorderRadius.all(UxnanRadius.lg),
-      child: InkWell(
-        borderRadius: const BorderRadius.all(UxnanRadius.lg),
-        onTap: onOpen,
-        child: Padding(
-          padding: const EdgeInsets.all(UxnanSpacing.md),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return NeCard(
+      onTap: onOpen,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              Row(
-                children: [
-                  _PcAvatar(active: _isConnected),
-                  const SizedBox(width: UxnanSpacing.md),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+              _PcAvatar(active: _isConnected),
+              const SizedBox(width: UxnanSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      device.displayName,
+                      style: textTheme.titleSmall,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Row(
                       children: [
-                        Text(
-                          device.displayName,
-                          style: textTheme.titleSmall,
-                          overflow: TextOverflow.ellipsis,
+                        Icon(
+                          Icons.cloud_outlined,
+                          size: 13,
+                          color: colors.onSurfaceVariant,
                         ),
-                        const SizedBox(height: 2),
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.cloud_outlined,
-                              size: 13,
+                        const SizedBox(width: UxnanSpacing.xs),
+                        Flexible(
+                          child: Text(
+                            host,
+                            style: UxnanTypography.codeSmall.copyWith(
                               color: colors.onSurfaceVariant,
                             ),
-                            const SizedBox(width: UxnanSpacing.xs),
-                            Flexible(
-                              child: Text(
-                                host,
-                                style: UxnanTypography.codeSmall.copyWith(
-                                  color: colors.onSurfaceVariant,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              PopupMenuButton<void>(
+                icon: Icon(
+                  Icons.more_vert_rounded,
+                  color: colors.onSurfaceVariant,
+                ),
+                itemBuilder: (context) => [
+                  PopupMenuItem<void>(
+                    onTap: onVerify,
+                    child: Row(
+                      children: [
+                        const Icon(Icons.wifi_tethering_rounded, size: 18),
+                        const SizedBox(width: UxnanSpacing.sm),
+                        Flexible(child: Text(l10n.deviceVerifyConnection)),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem<void>(
+                    onTap: onRename,
+                    child: Row(
+                      children: [
+                        const Icon(Icons.edit_outlined, size: 18),
+                        const SizedBox(width: UxnanSpacing.sm),
+                        Flexible(child: Text(l10n.deviceRename)),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem<void>(
+                    onTap: onRemove,
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.link_off_rounded,
+                          size: 18,
+                          color: colors.error,
+                        ),
+                        const SizedBox(width: UxnanSpacing.sm),
+                        Flexible(
+                          child: Text(
+                            l10n.deviceRemove,
+                            style: TextStyle(color: colors.error),
+                          ),
                         ),
                       ],
                     ),
                   ),
-                  PopupMenuButton<void>(
-                    icon: Icon(
-                      Icons.more_vert_rounded,
-                      color: colors.onSurfaceVariant,
-                    ),
-                    itemBuilder: (context) => [
-                      PopupMenuItem<void>(
-                        onTap: onVerify,
-                        child: Row(
-                          children: [
-                            const Icon(Icons.wifi_tethering_rounded, size: 18),
-                            const SizedBox(width: UxnanSpacing.sm),
-                            Flexible(child: Text(l10n.deviceVerifyConnection)),
-                          ],
-                        ),
-                      ),
-                      PopupMenuItem<void>(
-                        onTap: onRename,
-                        child: Row(
-                          children: [
-                            const Icon(Icons.edit_outlined, size: 18),
-                            const SizedBox(width: UxnanSpacing.sm),
-                            Flexible(child: Text(l10n.deviceRename)),
-                          ],
-                        ),
-                      ),
-                      PopupMenuItem<void>(
-                        onTap: onRemove,
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.link_off_rounded,
-                              size: 18,
-                              color: colors.error,
-                            ),
-                            const SizedBox(width: UxnanSpacing.sm),
-                            Flexible(
-                              child: Text(
-                                l10n.deviceRemove,
-                                style: TextStyle(color: colors.error),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              const SizedBox(height: UxnanSpacing.sm),
-              Row(
-                children: [
-                  Icon(
-                    Icons.history_rounded,
-                    size: 14,
-                    color: colors.onSurfaceVariant,
-                  ),
-                  const SizedBox(width: UxnanSpacing.xs),
-                  Expanded(
-                    child: Text(
-                      _lastSeenText(l10n),
-                      style: textTheme.bodySmall?.copyWith(
-                        color: colors.onSurfaceVariant,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: UxnanSpacing.xs),
-              Row(
-                children: [
-                  Expanded(
-                    child: _StatusLine(
-                      isConnected: isConnected,
-                      isConnecting: isConnecting,
-                      relayConnected: relayConnected,
-                    ),
-                  ),
-                  if (!isConnected)
-                    FilledButton.tonal(
-                      onPressed: isConnecting ? null : onConnect,
-                      child: Text(
-                        isConnecting
-                            ? l10n.connectionConnecting
-                            : l10n.deviceConnect,
-                      ),
-                    ),
                 ],
               ),
             ],
           ),
-        ),
+          const SizedBox(height: UxnanSpacing.sm),
+          Row(
+            children: [
+              Icon(
+                Icons.history_rounded,
+                size: 14,
+                color: colors.onSurfaceVariant,
+              ),
+              const SizedBox(width: UxnanSpacing.xs),
+              Expanded(
+                child: Text(
+                  _lastSeenText(l10n),
+                  style: textTheme.bodySmall?.copyWith(
+                    color: colors.onSurfaceVariant,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: UxnanSpacing.xs),
+          Row(
+            children: [
+              Expanded(
+                child: _StatusLine(
+                  isConnected: isConnected,
+                  isConnecting: isConnecting,
+                  relayConnected: relayConnected,
+                ),
+              ),
+              if (!isConnected)
+                FilledButton.tonal(
+                  onPressed: isConnecting ? null : onConnect,
+                  child: Text(
+                    isConnecting
+                        ? l10n.connectionConnecting
+                        : l10n.deviceConnect,
+                  ),
+                ),
+            ],
+          ),
+        ],
       ),
     );
   }

@@ -1327,6 +1327,20 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsConfirmPrSubtitle => 'Ask before opening a pull request.';
 
   @override
+  String get settingsModelsSection => 'Models';
+
+  @override
+  String get settingsClaudeLatestTitle => 'Show Claude Code “latest” models';
+
+  @override
+  String get settingsClaudeLatestSubtitle =>
+      'List the Opus, Sonnet and Haiku “(latest)” aliases in the model picker.';
+
+  @override
+  String get settingsClaudeLatestHint =>
+      'The “(latest)” aliases always route to the newest version of each tier your account can use, so you don\'t have to pick an exact one. Turn this off to hide them and choose only pinned, exact versions. Conversations already using an alias keep working.';
+
+  @override
   String get settingsAppearanceSection => 'Appearance';
 
   @override
@@ -1573,6 +1587,30 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get personalizationCustomThemesImportFieldHint =>
       'Paste theme JSON here';
+
+  @override
+  String get themeImportFromFile => 'From file';
+
+  @override
+  String get themeImportFromUrl => 'From URL';
+
+  @override
+  String get themeImportUrlTitle => 'Import from URL';
+
+  @override
+  String get themeImportUrlHint => 'https://…/theme.json';
+
+  @override
+  String get themeImportUrlFetch => 'Fetch';
+
+  @override
+  String get themeImportUrlInvalid => 'Enter a valid http(s):// URL.';
+
+  @override
+  String get themeImportUrlError => 'Couldn\'t fetch a theme from that URL.';
+
+  @override
+  String get themeImportFileError => 'Couldn\'t read that file.';
 
   @override
   String get personalizationCustomThemesImportSuccess => 'Theme imported';

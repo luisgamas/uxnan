@@ -5,7 +5,10 @@ import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/screens/settings/theme_manager_screen.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/widgets/connected_button_group.dart';
+import 'package:uxnan/presentation/widgets/expressive_card.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
+import 'package:uxnan/presentation/widgets/settings_tiles.dart';
 
 /// User-selectable theme mode (System / Light / Dark).
 ///
@@ -38,10 +41,10 @@ ThemeModeOption _toOption(ThemeMode mode) => switch (mode) {
       ThemeMode.dark => ThemeModeOption.dark,
     };
 
-/// Appearance & language settings: theme mode (system/light/dark), the master
-/// switch for custom themes + an entry to the full [ThemeManagerScreen], and
-/// the app language. The custom-themes library (grid, create, import/export,
-/// bulk actions) lives in its own screen so this one stays compact.
+/// Appearance & language settings, in the Neural Expressive settings style
+/// (quiet section labels + dynamic-corner card groups): theme mode
+/// (system/light/dark) as a Connected Button Group, the custom-themes master
+/// switch + an entry to the full [ThemeManagerScreen], and the app language.
 class PersonalizationScreen extends ConsumerWidget {
   /// Creates the personalization screen.
   const PersonalizationScreen({super.key});
@@ -67,12 +70,14 @@ class PersonalizationScreen extends ConsumerWidget {
             UxnanSpacing.lg,
             UxnanSpacing.sm,
             UxnanSpacing.lg,
-            UxnanSpacing.xl,
+            UxnanSpacing.xxl,
           ),
           sliver: SliverList.list(
             children: [
-              _Header(label: l10n.personalizationThemeSection),
-              const SizedBox(height: UxnanSpacing.sm),
+              NeSectionHeader(
+                label: l10n.personalizationThemeSection,
+                first: true,
+              ),
               _ThemeModeOptionSelector(
                 // Enabled for the brand baseline and for DUAL custom themes
                 // (so the user can flip which side shows); disabled only for a
@@ -83,11 +88,9 @@ class PersonalizationScreen extends ConsumerWidget {
                     .read(themeModeSettingProvider.notifier)
                     .set(_toMaterialThemeMode(next)),
               ),
-              const SizedBox(height: UxnanSpacing.md),
-              const _CustomThemeCard(),
-              const SizedBox(height: UxnanSpacing.xl),
-              _Header(label: l10n.personalizationLanguageSection),
               const SizedBox(height: UxnanSpacing.sm),
+              const _CustomThemeCard(),
+              NeSectionHeader(label: l10n.personalizationLanguageSection),
               _LanguageSelector(
                 selectedTag: localeTag,
                 onChanged: (locale) =>
@@ -101,7 +104,8 @@ class PersonalizationScreen extends ConsumerWidget {
   }
 }
 
-/// The 3-option segmented button (System / Light / Dark). Disabled when a
+/// Theme mode (System / Light / Dark) as a Connected Button Group — the M3E
+/// replacement for the segmented button. Dimmed + non-interactive when a
 /// single-brightness custom theme forces the brightness.
 class _ThemeModeOptionSelector extends StatelessWidget {
   const _ThemeModeOptionSelector({
@@ -117,38 +121,34 @@ class _ThemeModeOptionSelector extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    return SizedBox(
-      width: double.infinity,
-      child: SegmentedButton<ThemeModeOption>(
-        showSelectedIcon: false,
-        segments: [
-          ButtonSegment(
-            value: ThemeModeOption.system,
-            icon: const Icon(Icons.brightness_auto_outlined),
-            label: Text(l10n.themeSystem),
-          ),
-          ButtonSegment(
-            value: ThemeModeOption.light,
-            icon: const Icon(Icons.light_mode_outlined),
-            label: Text(l10n.themeLight),
-          ),
-          ButtonSegment(
-            value: ThemeModeOption.dark,
-            icon: const Icon(Icons.dark_mode_outlined),
-            label: Text(l10n.themeDark),
-          ),
-        ],
-        selected: {option},
-        onSelectionChanged:
-            disabled ? null : (selection) => onChanged(selection.first),
-      ),
+
+    String labelFor(ThemeModeOption o) => switch (o) {
+          ThemeModeOption.system => l10n.themeSystem,
+          ThemeModeOption.light => l10n.themeLight,
+          ThemeModeOption.dark => l10n.themeDark,
+        };
+
+    final group = ConnectedButtonGroup<ThemeModeOption>(
+      values: const [
+        ThemeModeOption.system,
+        ThemeModeOption.light,
+        ThemeModeOption.dark,
+      ],
+      selected: option,
+      onChanged: onChanged,
+      labelBuilder: (value, _) => Text(labelFor(value)),
+    );
+
+    if (!disabled) return group;
+    return Opacity(
+      opacity: 0.5,
+      child: IgnorePointer(child: group),
     );
   }
 }
 
-/// The custom-theme card: a master switch plus an entry to the full theme
-/// manager (which owns the library grid, create, import/export and bulk
-/// actions). When a theme is active its name + a mini palette preview show
+/// The custom-theme card group: a master switch plus an entry to the full theme
+/// manager. When a theme is active its name + a mini palette preview show
 /// inline so the current choice is visible without opening the manager.
 class _CustomThemeCard extends ConsumerWidget {
   const _CustomThemeCard();
@@ -171,7 +171,6 @@ class _CustomThemeCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
-    final colors = Theme.of(context).colorScheme;
     final useCustom = ref.watch(useCustomThemeProvider);
     final library = ref.watch(customThemesLibraryProvider);
     final activeId = ref.watch(activeCustomThemeIdProvider);
@@ -184,46 +183,31 @@ class _CustomThemeCard extends ConsumerWidget {
         }
       }
     }
+    final activeTheme = active;
 
-    return Material(
-      color: colors.surfaceContainerHighest,
-      borderRadius: const BorderRadius.all(UxnanRadius.lg),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SwitchListTile.adaptive(
+    return ExpressiveCardGroup(
+      count: 2,
+      itemBuilder: (context, i, pos) => switch (i) {
+        0 => NeSwitchTile(
+            position: pos,
+            icon: Icons.palette_outlined,
+            title: l10n.personalizationUseCustomThemeLabel,
+            subtitle: l10n.personalizationUseCustomThemeSubtitle,
             value: useCustom,
             onChanged: (next) => _onToggle(ref, next: next),
-            title: Text(l10n.personalizationUseCustomThemeLabel),
-            subtitle: Text(l10n.personalizationUseCustomThemeSubtitle),
-            secondary: Icon(
-              Icons.palette_outlined,
-              color: colors.onSurfaceVariant,
-            ),
           ),
-          Divider(height: 1, color: colors.outlineVariant),
-          ListTile(
-            leading: Icon(
-              Icons.collections_bookmark_outlined,
-              color: colors.onSurfaceVariant,
-            ),
-            title: Text(l10n.personalizationCustomThemesHeader),
-            subtitle: Text(
-              active != null
-                  ? active.name
-                  : l10n.personalizationManageThemesSubtitle(library.length),
-            ),
-            trailing: active != null
-                ? _MiniPalette(theme: active)
-                : Icon(
-                    Icons.chevron_right_rounded,
-                    color: colors.onSurfaceVariant,
-                  ),
+        _ => NeNavTile(
+            position: pos,
+            icon: Icons.collections_bookmark_outlined,
+            title: l10n.personalizationCustomThemesHeader,
+            subtitle: activeTheme != null
+                ? activeTheme.name
+                : l10n.personalizationManageThemesSubtitle(library.length),
+            trailing:
+                activeTheme != null ? _MiniPalette(theme: activeTheme) : null,
             onTap: () => ThemeManagerScreen.push(context),
           ),
-        ],
-      ),
+      },
     );
   }
 }
@@ -275,6 +259,8 @@ class _Dot extends StatelessWidget {
   }
 }
 
+/// The language picker: a dynamic-corner card group of radio rows (system
+/// default + each supported locale), no per-row dividers.
 class _LanguageSelector extends StatelessWidget {
   const _LanguageSelector({
     required this.selectedTag,
@@ -290,50 +276,29 @@ class _LanguageSelector extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     final colors = Theme.of(context).colorScheme;
     const locales = AppLocalizations.supportedLocales;
-    return Material(
-      color: colors.surfaceContainerHighest,
-      borderRadius: const BorderRadius.all(UxnanRadius.lg),
-      clipBehavior: Clip.antiAlias,
-      child: RadioGroup<String?>(
-        groupValue: selectedTag,
-        onChanged: (tag) => onChanged(tag == null ? null : Locale(tag)),
-        child: Column(
-          children: [
-            RadioListTile<String?>(
-              value: null,
-              title: Text(l10n.languageSystemDefault),
-              secondary: const Icon(Icons.smartphone_outlined),
-            ),
-            for (final locale in locales) ...[
-              Divider(height: 1, color: colors.outlineVariant),
-              RadioListTile<String?>(
-                value: locale.languageCode,
-                title: Text(_languageName(locale)),
-              ),
-            ],
-          ],
+    return RadioGroup<String?>(
+      groupValue: selectedTag,
+      onChanged: (tag) => onChanged(tag == null ? null : Locale(tag)),
+      child: ExpressiveCardGroup(
+        count: locales.length + 1,
+        itemBuilder: (context, i, pos) => ExpressiveCard(
+          position: pos,
+          color: colors.surfaceContainer,
+          padding: EdgeInsets.zero,
+          child: i == 0
+              ? RadioListTile<String?>(
+                  value: null,
+                  title: Text(l10n.languageSystemDefault),
+                  secondary: Icon(
+                    Icons.smartphone_outlined,
+                    color: colors.onSurfaceVariant,
+                  ),
+                )
+              : RadioListTile<String?>(
+                  value: locales[i - 1].languageCode,
+                  title: Text(_languageName(locales[i - 1])),
+                ),
         ),
-      ),
-    );
-  }
-}
-
-class _Header extends StatelessWidget {
-  const _Header({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: UxnanSpacing.xs),
-      child: Text(
-        label,
-        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-              color: colors.primary,
-              fontWeight: FontWeight.w600,
-            ),
       ),
     );
   }

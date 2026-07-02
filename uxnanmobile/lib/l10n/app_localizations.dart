@@ -2534,6 +2534,30 @@ abstract class AppLocalizations {
   /// **'Ask before opening a pull request.'**
   String get settingsConfirmPrSubtitle;
 
+  /// Header for the settings section that controls the AI model picker.
+  ///
+  /// In en, this message translates to:
+  /// **'Models'**
+  String get settingsModelsSection;
+
+  /// Title of the toggle that shows/hides Claude Code's opus/sonnet/haiku “latest” alias models in the model picker.
+  ///
+  /// In en, this message translates to:
+  /// **'Show Claude Code “latest” models'**
+  String get settingsClaudeLatestTitle;
+
+  /// Subtitle of the Claude Code latest-models toggle.
+  ///
+  /// In en, this message translates to:
+  /// **'List the Opus, Sonnet and Haiku “(latest)” aliases in the model picker.'**
+  String get settingsClaudeLatestSubtitle;
+
+  /// Explanatory note under the Claude Code latest-models toggle, describing what the latest aliases do.
+  ///
+  /// In en, this message translates to:
+  /// **'The “(latest)” aliases always route to the newest version of each tier your account can use, so you don\'t have to pick an exact one. Turn this off to hide them and choose only pinned, exact versions. Conversations already using an alias keep working.'**
+  String get settingsClaudeLatestHint;
+
   /// No description provided for @settingsAppearanceSection.
   ///
   /// In en, this message translates to:
@@ -2989,6 +3013,54 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Paste theme JSON here'**
   String get personalizationCustomThemesImportFieldHint;
+
+  /// Button that imports theme JSON by picking a .json file from the device.
+  ///
+  /// In en, this message translates to:
+  /// **'From file'**
+  String get themeImportFromFile;
+
+  /// Button that imports theme JSON by fetching it from an http(s) URL.
+  ///
+  /// In en, this message translates to:
+  /// **'From URL'**
+  String get themeImportFromUrl;
+
+  /// Title of the dialog that asks for a URL to fetch a theme JSON from.
+  ///
+  /// In en, this message translates to:
+  /// **'Import from URL'**
+  String get themeImportUrlTitle;
+
+  /// Hint text for the theme-import URL field.
+  ///
+  /// In en, this message translates to:
+  /// **'https://…/theme.json'**
+  String get themeImportUrlHint;
+
+  /// Confirm button that fetches the theme JSON from the entered URL.
+  ///
+  /// In en, this message translates to:
+  /// **'Fetch'**
+  String get themeImportUrlFetch;
+
+  /// Error shown when the theme-import URL is malformed.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a valid http(s):// URL.'**
+  String get themeImportUrlInvalid;
+
+  /// Error shown when fetching a theme JSON from the URL fails.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t fetch a theme from that URL.'**
+  String get themeImportUrlError;
+
+  /// Error shown when the picked theme .json file can't be read.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t read that file.'**
+  String get themeImportFileError;
 
   /// Snackbar text shown after a successful import. The number of themes imported is appended in the message.
   ///

@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — `AgentModel.isLatestAlias` (flags moving-target "latest" aliases)
+- **`AgentModel.isLatestAlias?: boolean`** (`src/agents/agent-capabilities.ts`):
+  a presentation-only flag marking a moving-target "latest" alias — Claude
+  Code's `opus`/`sonnet`/`haiku`, each of which always routes to the newest
+  version of its tier (the resolved concrete id is on `version`). Concrete /
+  pinned models leave it absent. Lets a client (the mobile app) offer to hide
+  the aliases and show only exact pinned versions **without hardcoding ids**.
+  Backward-compatible optional field; consumers tolerate it being absent.
+  Reflected in `architecture/02b` (`AgentModel` contract + the `agent/models`
+  field list).
+
 ## [0.0.2-alpha.20260628] - 2026-06-28
 
 ### Added — `workspace/searchFiles` (repo-wide fuzzy file search)

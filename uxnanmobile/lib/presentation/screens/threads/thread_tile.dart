@@ -14,6 +14,7 @@ import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/agent_logo_chip.dart';
 import 'package:uxnan/presentation/widgets/agent_visuals.dart';
+import 'package:uxnan/presentation/widgets/ne_card.dart';
 
 /// A per-thread action chosen from the long-press menu.
 enum _ThreadAction { rename, copyId, archive, unarchive, delete }
@@ -48,47 +49,43 @@ class ThreadTile extends ConsumerWidget {
         ref.watch(authStatusProvider(thread.agentId)).value?.requiresLogin ??
             false;
 
-    return Material(
+    return NeCard(
+      // An unread reply gently tints the card (primary over the calm base) so
+      // it stands out without shouting.
       color: unread
           ? Color.alphaBlend(
               colors.primary.withValues(alpha: 0.10),
-              colors.surfaceContainerHighest,
+              colors.surfaceContainer,
             )
-          : colors.surfaceContainerHighest,
-      borderRadius: const BorderRadius.all(UxnanRadius.lg),
-      child: InkWell(
-        borderRadius: const BorderRadius.all(UxnanRadius.lg),
-        onTap: () => context.push(AppRoutes.conversation(thread.id)),
-        onLongPress: () => showThreadActions(context, ref, thread),
-        child: Padding(
-          padding: compact
-              ? const EdgeInsets.symmetric(
-                  horizontal: UxnanSpacing.md,
-                  vertical: UxnanSpacing.sm,
-                )
-              : const EdgeInsets.all(UxnanSpacing.md),
-          child: Row(
-            children: [
-              _AgentAvatar(agent: agent, size: compact ? 34 : 44),
-              SizedBox(width: compact ? UxnanSpacing.sm : UxnanSpacing.md),
-              Expanded(
-                child: compact
-                    ? _CompactContent(
-                        thread: thread,
-                        activity: activity,
-                        unread: unread,
-                        requiresLogin: requiresLogin,
-                      )
-                    : _FullContent(
-                        thread: thread,
-                        activity: activity,
-                        unread: unread,
-                        requiresLogin: requiresLogin,
-                      ),
-              ),
-            ],
+          : null,
+      padding: compact
+          ? const EdgeInsets.symmetric(
+              horizontal: UxnanSpacing.md,
+              vertical: UxnanSpacing.sm,
+            )
+          : const EdgeInsets.all(UxnanSpacing.md),
+      onTap: () => context.push(AppRoutes.conversation(thread.id)),
+      onLongPress: () => showThreadActions(context, ref, thread),
+      child: Row(
+        children: [
+          _AgentAvatar(agent: agent, size: compact ? 34 : 44),
+          SizedBox(width: compact ? UxnanSpacing.sm : UxnanSpacing.md),
+          Expanded(
+            child: compact
+                ? _CompactContent(
+                    thread: thread,
+                    activity: activity,
+                    unread: unread,
+                    requiresLogin: requiresLogin,
+                  )
+                : _FullContent(
+                    thread: thread,
+                    activity: activity,
+                    unread: unread,
+                    requiresLogin: requiresLogin,
+                  ),
           ),
-        ),
+        ],
       ),
     );
   }

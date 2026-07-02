@@ -1331,6 +1331,21 @@ class AppLocalizationsEs extends AppLocalizations {
       'Preguntar antes de abrir un pull request.';
 
   @override
+  String get settingsModelsSection => 'Modelos';
+
+  @override
+  String get settingsClaudeLatestTitle =>
+      'Mostrar modelos «latest» de Claude Code';
+
+  @override
+  String get settingsClaudeLatestSubtitle =>
+      'Muestra los alias «(latest)» de Opus, Sonnet y Haiku en el selector de modelos.';
+
+  @override
+  String get settingsClaudeLatestHint =>
+      'Los alias «(latest)» siempre usan la versión más reciente de cada nivel que tu cuenta puede utilizar, así no tienes que elegir una exacta. Desactívalo para ocultarlos y elegir solo versiones fijas y exactas. Las conversaciones que ya usan un alias siguen funcionando.';
+
+  @override
   String get settingsAppearanceSection => 'Apariencia';
 
   @override
@@ -1580,6 +1595,30 @@ class AppLocalizationsEs extends AppLocalizations {
   @override
   String get personalizationCustomThemesImportFieldHint =>
       'Pega aquí el JSON del tema';
+
+  @override
+  String get themeImportFromFile => 'Desde archivo';
+
+  @override
+  String get themeImportFromUrl => 'Desde URL';
+
+  @override
+  String get themeImportUrlTitle => 'Importar desde URL';
+
+  @override
+  String get themeImportUrlHint => 'https://…/tema.json';
+
+  @override
+  String get themeImportUrlFetch => 'Obtener';
+
+  @override
+  String get themeImportUrlInvalid => 'Ingresa una URL http(s):// válida.';
+
+  @override
+  String get themeImportUrlError => 'No se pudo obtener un tema de esa URL.';
+
+  @override
+  String get themeImportFileError => 'No se pudo leer ese archivo.';
 
   @override
   String get personalizationCustomThemesImportSuccess => 'Tema importado';

@@ -15,6 +15,25 @@ void main() {
       expect(model.displayName, 'GPT-5.5');
       expect(model.description, 'Frontier model.');
       expect(model.isDefault, isTrue);
+      // Absent isLatestAlias parses to false.
+      expect(model.isLatestAlias, isFalse);
+    });
+
+    test('parses the isLatestAlias flag when present', () {
+      final alias = AgentModel.fromAny({
+        'id': 'sonnet',
+        'displayName': 'Sonnet (latest)',
+        'version': 'claude-sonnet-5',
+        'isLatestAlias': true,
+      });
+      expect(alias, isNotNull);
+      expect(alias!.isLatestAlias, isTrue);
+      // A concrete pinned model leaves it false.
+      final pinned = AgentModel.fromAny({
+        'id': 'claude-sonnet-5',
+        'displayName': 'Sonnet 5',
+      });
+      expect(pinned!.isLatestAlias, isFalse);
     });
 
     test('accepts a bare id string (legacy bridge)', () {
