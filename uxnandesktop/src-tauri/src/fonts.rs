@@ -61,7 +61,12 @@ async fn run(program: &str, args: &[&str]) -> Option<String> {
 async fn enumerate() -> Vec<String> {
     // Add-Type guarantees System.Drawing is loaded; emit one family per line.
     const SCRIPT: &str = "Add-Type -AssemblyName System.Drawing; (New-Object System.Drawing.Text.InstalledFontCollection).Families | ForEach-Object { $_.Name }";
-    match run("powershell", &["-NoProfile", "-NonInteractive", "-Command", SCRIPT]).await {
+    match run(
+        "powershell",
+        &["-NoProfile", "-NonInteractive", "-Command", SCRIPT],
+    )
+    .await
+    {
         Some(s) => s.lines().map(|l| l.to_string()).collect(),
         None => Vec::new(),
     }
