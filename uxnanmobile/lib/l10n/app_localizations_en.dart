@@ -1995,4 +1995,71 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get updateWhatsNewLabel => 'What\'s new';
+
+  @override
+  String get settingsNotificationsNavSubtitle => 'Replies, errors and delivery';
+
+  @override
+  String get settingsConversationNavSubtitle =>
+      'Thinking, scroll and context indicator';
+
+  @override
+  String get settingsModelsNavSubtitle => 'Model picker options';
+
+  @override
+  String get settingsGitNavSubtitle => 'Push and pull-request confirmations';
+
+  @override
+  String get settingsUpdatesNavSubtitle =>
+      'Version, check schedule and install';
+
+  @override
+  String get settingsAboutSection => 'About';
+
+  @override
+  String get settingsAboutTitle => 'About Uxnan';
+
+  @override
+  String get settingsAboutSubtitle => 'App info and developer';
+
+  @override
+  String get settingsLicensesTitle => 'Open-source licenses';
+
+  @override
+  String get settingsLicensesSubtitle => 'Third-party packages Uxnan uses';
+
+  @override
+  String get aboutDescription =>
+      'Drive your PC coding agents from your phone — end-to-end encrypted.';
+
+  @override
+  String get aboutDeveloperSection => 'Developer';
+
+  @override
+  String get aboutSourceCodeTitle => 'Source code';
+
+  @override
+  String get aboutSourceCodeSubtitle => 'View the project on GitHub';
+
+  @override
+  String get aboutLegalSection => 'Legal';
+
+  @override
+  String aboutVersionLabel(String version) {
+    return 'Version $version';
+  }
+
+  @override
+  String get licensesEmpty => 'No licenses found.';
+
+  @override
+  String licenseCountLabel(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count licenses',
+      one: '1 license',
+    );
+    return '$_temp0';
+  }
 }

@@ -6,6 +6,30 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — settings is now a sectioned landing, not one long scroll
+- **`SettingsScreen` is a landing of section entries.** Instead of listing every
+  option at once, the first screen shows a compact list of sections
+  (`NeNavTile`s in dynamic-corner groups); tapping one opens a dedicated screen
+  with just that section's options (`Navigator.push`, the existing `static push`
+  pattern). New screens under `lib/presentation/screens/settings/sections/`:
+  `NotificationsSectionScreen`, `ConversationSectionScreen` (now owns the
+  context-indicator selector), `ModelsSectionScreen`,
+  `SourceControlSectionScreen`, `UpdatesSectionScreen`. Appearance still opens
+  `PersonalizationScreen`.
+
+### Added — About screen + open-source licenses
+- **`AboutSectionScreen`** — app identity + installed version (new
+  `appPackageInfoProvider` backed by the new `package_info_plus` dependency), a
+  short description, a source-code link (GitHub), and an entry to the licenses.
+- **Open-source licenses** — `LicensesScreen` lists every third-party package
+  (aggregated from Flutter's `LicenseRegistry` via `packageLicensesProvider`,
+  value object `PackageLicenses`) and `LicenseDetailScreen` shows each package's
+  full license text.
+- New EN/ES strings for the section subtitles, About and licenses screens.
+- Tests: `settings_screen_test.dart` reworked for the landing + per-section
+  navigation; new `licenses_provider_test.dart` (aggregation + `PackageLicenses`).
+  Spec: `architecture/02c` §14 (settings landing por secciones).
+
 ## [0.0.3-alpha.20260702] - 2026-07-02
 
 ### Added — theme import from a file / URL, in a full-screen editor

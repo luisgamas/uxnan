@@ -933,6 +933,35 @@ son **protegidos** — la acción *Delete* en el menú del item está
 deshabilitada y `CustomThemesLibrary.remove` los rechaza, así que el
 usuario nunca queda con la librería vacía.
 
+##### Settings — landing por secciones
+
+La pantalla raíz de ajustes (`SettingsScreen`,
+`lib/presentation/screens/settings/settings_screen.dart`) ya **no** lista todas
+las opciones en un único scroll. Ahora es un **landing de secciones**: un grupo
+de `NeNavTile` (esquina dinámica) por sección; al tocar una se hace
+`Navigator.push` (patrón `static push`, como `PersonalizationScreen`) a su
+pantalla dedicada. Las pantallas de sección viven en
+`lib/presentation/screens/settings/sections/`:
+
+- `NotificationsSectionScreen` — los dos toggles de notificación.
+- `ConversationSectionScreen` — thinking / scroll-on-send / indicador de
+  contexto + entrada a plantillas de prompt (el `_ContextIndicatorTile` se
+  movió aquí).
+- `ModelsSectionScreen` — el toggle de modelos "(latest)" de Claude.
+- `SourceControlSectionScreen` — las confirmaciones de push / pull request.
+- `UpdatesSectionScreen` — el estado de actualización (ver módulo de updates).
+- `AboutSectionScreen` — identidad + versión de la app (`appPackageInfoProvider`
+  vía `package_info_plus`), descripción, código fuente (GitHub) y acceso a las
+  licencias.
+
+**Licencias open-source** (`lib/presentation/screens/settings/licenses/`):
+`LicensesScreen` lista los paquetes de terceros (agregados desde
+`LicenseRegistry` por `packageLicensesProvider`, entidad `PackageLicenses`) y
+`LicenseDetailScreen` muestra el texto completo por paquete.
+
+Appearance (Personalización) mantiene su pantalla; las subsecciones de temas de
+abajo no cambian.
+
 ##### Personalización (adelgazada) + Theme Manager dedicado
 
 La UI de temas está partida en **dos pantallas**. El modelo viejo (un

@@ -45,6 +45,7 @@ dependencies:
   logger: ^2.4.0 # structured logging
   mobile_scanner: ^6.0.11 # QR scanner (CameraX/MLKit, AVFoundation)
   nsd: ^5.0.1 # mDNS/Bonjour browse of _uxnan._tcp bridges (NsdManager / DNSSD)
+  package_info_plus: ^9.0.1 # installed app name/version/build (About + Updates)
   path_provider: ^2.1.0 # on-disk app directories
   permission_handler: ^11.3.0 # camera / notification permissions
   pointycastle: ^3.9.0 # AES-256-GCM, HKDF, SHA-256

@@ -33,18 +33,42 @@ Widget _wrap() {
   );
 }
 
+/// Opens the section reached by tapping [sectionTitle] on the settings landing.
+Future<void> _openSection(WidgetTester tester, String sectionTitle) async {
+  await tester.tap(find.text(sectionTitle));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
-  testWidgets('renders both notification toggles, on by default', (
+  testWidgets('landing lists the sections and shows no inline toggles', (
     tester,
   ) async {
     await tester.pumpWidget(_wrap());
     await tester.pumpAndSettle();
 
+    // Section entries are present…
     expect(find.text('Notifications'), findsOneWidget);
+    expect(find.text('Conversation'), findsOneWidget);
+    expect(find.text('Models'), findsOneWidget);
+    expect(find.text('Source control'), findsOneWidget);
+    expect(find.text('Updates'), findsOneWidget);
+    expect(find.text('About Uxnan'), findsOneWidget);
+    expect(find.text('Open-source licenses'), findsOneWidget);
+    // …but no option toggles live on the landing itself.
+    expect(find.byType(Switch), findsNothing);
+  });
+
+  testWidgets('Notifications section: both toggles on by default', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_wrap());
+    await tester.pumpAndSettle();
+    await _openSection(tester, 'Notifications');
+
     expect(find.text('Replies'), findsOneWidget);
     expect(find.text('Errors'), findsOneWidget);
     expect(
@@ -53,9 +77,12 @@ void main() {
     );
   });
 
-  testWidgets('toggling a switch flips it and persists', (tester) async {
+  testWidgets('Notifications section: toggling a switch flips and persists', (
+    tester,
+  ) async {
     await tester.pumpWidget(_wrap());
     await tester.pumpAndSettle();
+    await _openSection(tester, 'Notifications');
 
     // Flip "Replies" (turnCompleted) off.
     await tester.tap(find.widgetWithText(SwitchListTile, 'Replies'));
@@ -74,11 +101,9 @@ void main() {
   });
 
   testWidgets(
-    'context indicator selector defaults to percentage and persists a change',
+    'Conversation section: context indicator defaults to percentage and '
+    'persists a change',
     (tester) async {
-      // Tall viewport so the full settings list fits without scrolling — a
-      // scrolled-to-top control lands under the transparent app-bar veil and
-      // the tap misses.
       tester.view.physicalSize = const Size(800, 2400);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
@@ -86,8 +111,8 @@ void main() {
 
       await tester.pumpWidget(_wrap());
       await tester.pumpAndSettle();
+      await _openSection(tester, 'Conversation');
 
-      // The three options render; percentage is selected by default.
       await tester.ensureVisible(
         find.byType(ConnectedButtonGroup<ContextIndicatorMode>),
       );
@@ -111,9 +136,8 @@ void main() {
   );
 
   testWidgets(
-    'Claude latest-models toggle defaults on and persists off',
+    'Models section: Claude latest-models toggle defaults on and persists off',
     (tester) async {
-      // Tall viewport so the toggle at the bottom of the list is hittable.
       tester.view.physicalSize = const Size(800, 2400);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
@@ -121,13 +145,13 @@ void main() {
 
       await tester.pumpWidget(_wrap());
       await tester.pumpAndSettle();
+      await _openSection(tester, 'Models');
 
       final toggle = find.widgetWithText(
         SwitchListTile,
         'Show Claude Code “latest” models',
       );
       expect(toggle, findsOneWidget);
-      // On by default (current behaviour: aliases shown).
       expect(tester.widget<SwitchListTile>(toggle).value, isTrue);
 
       await tester.ensureVisible(toggle);

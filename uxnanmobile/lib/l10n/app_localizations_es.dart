@@ -2005,4 +2005,73 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get updateWhatsNewLabel => 'Novedades';
+
+  @override
+  String get settingsNotificationsNavSubtitle =>
+      'Respuestas, errores y entrega';
+
+  @override
+  String get settingsConversationNavSubtitle =>
+      'Razonamiento, desplazamiento e indicador de contexto';
+
+  @override
+  String get settingsModelsNavSubtitle => 'Opciones del selector de modelos';
+
+  @override
+  String get settingsGitNavSubtitle => 'Confirmaciones de push y pull request';
+
+  @override
+  String get settingsUpdatesNavSubtitle =>
+      'Versión, programación de búsqueda e instalación';
+
+  @override
+  String get settingsAboutSection => 'Acerca de';
+
+  @override
+  String get settingsAboutTitle => 'Acerca de Uxnan';
+
+  @override
+  String get settingsAboutSubtitle =>
+      'Información de la app y del desarrollador';
+
+  @override
+  String get settingsLicensesTitle => 'Licencias de código abierto';
+
+  @override
+  String get settingsLicensesSubtitle => 'Paquetes de terceros que usa Uxnan';
+
+  @override
+  String get aboutDescription =>
+      'Controla tus agentes de código de la PC desde tu teléfono, con cifrado de extremo a extremo.';
+
+  @override
+  String get aboutDeveloperSection => 'Desarrollador';
+
+  @override
+  String get aboutSourceCodeTitle => 'Código fuente';
+
+  @override
+  String get aboutSourceCodeSubtitle => 'Ver el proyecto en GitHub';
+
+  @override
+  String get aboutLegalSection => 'Legal';
+
+  @override
+  String aboutVersionLabel(String version) {
+    return 'Versión $version';
+  }
+
+  @override
+  String get licensesEmpty => 'No se encontraron licencias.';
+
+  @override
+  String licenseCountLabel(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count licencias',
+      one: '1 licencia',
+    );
+    return '$_temp0';
+  }
 }
