@@ -293,8 +293,7 @@ class _ThemeImportScreenState extends State<ThemeImportScreen> {
                             borderRadius: BorderRadius.all(UxnanRadius.md),
                             borderSide: BorderSide.none,
                           ),
-                          contentPadding:
-                              const EdgeInsets.all(UxnanSpacing.md),
+                          contentPadding: const EdgeInsets.all(UxnanSpacing.md),
                         ),
                       ),
                     ),
@@ -345,8 +344,7 @@ class _ThemeImportScreenState extends State<ThemeImportScreen> {
                           ? () => Navigator.of(context).pop(_controller.text)
                           : null,
                       icon: const Icon(Icons.file_download_outlined),
-                      label:
-                          Text(l10n.personalizationCustomThemesImportAction),
+                      label: Text(l10n.personalizationCustomThemesImportAction),
                     ),
                   ],
                 ),

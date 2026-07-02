@@ -408,76 +408,76 @@ class _WorktreeCard extends StatelessWidget {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.account_tree_outlined,
-                  size: 20,
-                  color: colors.onSurfaceVariant,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.account_tree_outlined,
+                size: 20,
+                color: colors.onSurfaceVariant,
+              ),
+              const SizedBox(width: UxnanSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(l10n.newThreadWorktree, style: textTheme.titleSmall),
+                    const SizedBox(height: 2),
+                    Text(
+                      l10n.newThreadWorktreeDesc,
+                      style: textTheme.bodySmall?.copyWith(
+                        color: colors.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: UxnanSpacing.md),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(l10n.newThreadWorktree, style: textTheme.titleSmall),
-                      const SizedBox(height: 2),
-                      Text(
-                        l10n.newThreadWorktreeDesc,
-                        style: textTheme.bodySmall?.copyWith(
-                          color: colors.onSurfaceVariant,
+              ),
+              const SizedBox(width: UxnanSpacing.sm),
+              Switch(value: enabled, onChanged: onToggle),
+            ],
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.topLeft,
+            child: enabled
+                ? Padding(
+                    padding: const EdgeInsets.only(
+                      top: UxnanSpacing.sm,
+                      bottom: UxnanSpacing.xs,
+                      right: UxnanSpacing.xs,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        TextField(
+                          controller: branch,
+                          decoration: InputDecoration(
+                            isDense: true,
+                            labelText: l10n.newThreadWorktreeBranchHint,
+                            border: const OutlineInputBorder(
+                              borderRadius: BorderRadius.all(UxnanRadius.md),
+                            ),
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: UxnanSpacing.sm),
-                Switch(value: enabled, onChanged: onToggle),
-              ],
-            ),
-            AnimatedSize(
-              duration: const Duration(milliseconds: 180),
-              curve: Curves.easeOutCubic,
-              alignment: Alignment.topLeft,
-              child: enabled
-                  ? Padding(
-                      padding: const EdgeInsets.only(
-                        top: UxnanSpacing.sm,
-                        bottom: UxnanSpacing.xs,
-                        right: UxnanSpacing.xs,
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          TextField(
-                            controller: branch,
-                            decoration: InputDecoration(
-                              isDense: true,
-                              labelText: l10n.newThreadWorktreeBranchHint,
-                              border: const OutlineInputBorder(
-                                borderRadius: BorderRadius.all(UxnanRadius.md),
-                              ),
-                            ),
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          visualDensity: VisualDensity.compact,
+                          title: Text(
+                            l10n.newThreadWorktreeManaged,
+                            style: textTheme.bodyMedium,
                           ),
-                          SwitchListTile(
-                            contentPadding: EdgeInsets.zero,
-                            visualDensity: VisualDensity.compact,
-                            title: Text(
-                              l10n.newThreadWorktreeManaged,
-                              style: textTheme.bodyMedium,
-                            ),
-                            value: managed,
-                            onChanged: onToggleManaged,
-                          ),
-                        ],
-                      ),
-                    )
-                  : const SizedBox(width: double.infinity),
-            ),
-          ],
-        ),
-      );
+                          value: managed,
+                          onChanged: onToggleManaged,
+                        ),
+                      ],
+                    ),
+                  )
+                : const SizedBox(width: double.infinity),
+          ),
+        ],
+      ),
+    );
   }
 }
 

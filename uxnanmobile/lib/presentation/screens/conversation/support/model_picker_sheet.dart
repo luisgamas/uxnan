@@ -120,8 +120,7 @@ class _ModelPickerSheetState extends ConsumerState<ModelPickerSheet> {
                       ? models
                       : models
                           .where(
-                            (m) =>
-                                !m.isLatestAlias || m.id == widget.current,
+                            (m) => !m.isLatestAlias || m.id == widget.current,
                           )
                           .toList();
                   return _ModelList(
