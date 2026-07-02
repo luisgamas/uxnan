@@ -29,8 +29,8 @@
   import WorktreeSearch from "$lib/components/WorktreeSearch.svelte";
   import DirectoryPicker from "$lib/components/DirectoryPicker.svelte";
   import BackendStatus from "$lib/components/BackendStatus.svelte";
-  import UpdateBanner from "$lib/components/UpdateBanner.svelte";
   import { Toaster } from "$lib/components/ui/sonner";
+  import { initUpdateToast } from "$lib/updateToast";
 
   // Resize bounds for each sidebar (px).
   const LEFT_MIN = 200;
@@ -127,6 +127,12 @@
   $effect(() => {
     void git.load(projects.activeWorktreePath);
   });
+
+  // Drive the pinned, persistent update toast (replaces the old fixed banner):
+  // shown while the updater has something actionable, re-shown on reload when a
+  // staged download is restored, dismissed via the store. Native OS
+  // notifications are untouched (see notify.ts).
+  initUpdateToast();
 
   // Suppress the webview's built-in context menu (it's most visible in debug
   // builds and exposes dev/inspect entries). Native menus stay on text fields so
@@ -278,8 +284,8 @@
        never torn down — otherwise an agent's launch command would be re-typed on
        return and xterm would lose its screen. -->
   <div class="relative flex min-h-0 flex-1 flex-col">
-    <!-- Auto-update banner (available / downloading / ready to install) -->
-    <UpdateBanner />
+    <!-- Auto-update is surfaced as a pinned sonner toast (see initUpdateToast in
+         the script) and inside Settings → Updates, not a top strip. -->
 
     <div class="flex min-h-0 flex-1">
       {#if app.settings.leftSidebarOpen}

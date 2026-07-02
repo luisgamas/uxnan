@@ -59,6 +59,8 @@
   import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
   import ArrowLeftIcon from "@lucide/svelte/icons/arrow-left";
   import RotateCcwIcon from "@lucide/svelte/icons/rotate-ccw";
+  import LoaderIcon from "@lucide/svelte/icons/loader-circle";
+  import TriangleAlertIcon from "@lucide/svelte/icons/triangle-alert";
   import XIcon from "@lucide/svelte/icons/x";
   import SparklesIcon from "@lucide/svelte/icons/sparkles";
   import GlobeIcon from "@lucide/svelte/icons/globe";
@@ -356,6 +358,9 @@
       ? new Date(updater.lastChecked).toLocaleString()
       : i18n.t("updates.neverChecked"),
   );
+  /** Live download fraction (0–1, or null when the total is unknown), for the
+   *  Updates panel's inline progress copy — mirrors the update toast/banner. */
+  const updatePct = $derived(updater.progressFraction);
 
   // --- Integrated browser ---------------------------------------------------
   // Merge over a full default so reads/writes are always complete (state saved
@@ -841,24 +846,81 @@
                   <p class="text-[12px] leading-5 text-muted-foreground">
                     {#if updater.status === "checking"}
                       {i18n.t("updates.checking")}
-                    {:else if updater.status === "available" || updater.status === "downloading" || updater.status === "downloaded"}
+                    {:else if updater.status === "available"}
                       {i18n.t("updates.bannerAvailable", { version: updater.update?.version ?? "" })}
+                    {:else if updater.status === "downloading"}
+                      {updatePct !== null
+                        ? i18n.t("updates.bannerDownloadingPct", {
+                            version: updater.update?.version ?? "",
+                            pct: String(Math.round(updatePct * 100)),
+                          })
+                        : i18n.t("updates.bannerDownloading", { version: updater.update?.version ?? "" })}
+                    {:else if updater.status === "downloaded"}
+                      {i18n.t("updates.bannerDownloaded", { version: updater.update?.version ?? "" })}
+                    {:else if updater.status === "installing"}
+                      {i18n.t("updates.bannerInstalling")}
                     {:else}
                       {i18n.t("updates.lastChecked", { when: lastCheckedLabel })}
                     {/if}
                   </p>
+                  <!-- Amber note: installing restarts the app and stops the running agent. -->
+                  {#if updater.status === "downloaded" && updater.agentsBusy}
+                    <span class="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400">
+                      <TriangleAlertIcon class={icon.decorative} />
+                      <span class={text.indicator}>{i18n.t("updates.agentsBusyWarning")}</span>
+                    </span>
+                  {/if}
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={updater.status === "checking" ||
-                    updater.status === "downloading" ||
-                    updater.status === "installing"}
-                  onclick={() => void updater.checkNow()}
-                >
-                  <RotateCcwIcon data-icon="inline-start" />
-                  {i18n.t("updates.checkNow")}
-                </Button>
+
+                <!-- Phase-aware actions: mirror the update toast so the user can
+                     download / install straight from Settings, consistent with the
+                     install policy. Falls back to "Check now" when idle. -->
+                <div class="flex shrink-0 items-center gap-1.5">
+                  {#if updater.status === "available"}
+                    <Button size="sm" onclick={() => void updater.download()}>
+                      <DownloadIcon data-icon="inline-start" />
+                      {i18n.t("updates.download")}
+                    </Button>
+                  {:else if updater.status === "downloading"}
+                    <Button size="sm" disabled>
+                      <LoaderIcon data-icon="inline-start" class="animate-spin" />
+                      {updatePct !== null
+                        ? i18n.t("updates.bannerDownloadingPct", {
+                            version: updater.update?.version ?? "",
+                            pct: String(Math.round(updatePct * 100)),
+                          })
+                        : i18n.t("updates.download")}
+                    </Button>
+                  {:else if updater.status === "downloaded"}
+                    {#if updater.agentsBusy}
+                      <Button size="sm" onclick={() => updater.installWhenIdle()}>
+                        {i18n.t("updates.installWhenIdle")}
+                      </Button>
+                      <Button variant="outline" size="sm" onclick={() => void updater.installNow()}>
+                        {i18n.t("updates.installNow")}
+                      </Button>
+                    {:else}
+                      <Button size="sm" onclick={() => void updater.installNow()}>
+                        {i18n.t("updates.installNow")}
+                      </Button>
+                    {/if}
+                  {:else if updater.status === "installing"}
+                    <Button size="sm" disabled>
+                      <LoaderIcon data-icon="inline-start" class="animate-spin" />
+                      {i18n.t("updates.bannerInstalling")}
+                    </Button>
+                  {:else}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={updater.status === "checking"}
+                      onclick={() => void updater.checkNow()}
+                    >
+                      <RotateCcwIcon data-icon="inline-start" />
+                      {i18n.t("updates.checkNow")}
+                    </Button>
+                  {/if}
+                </div>
               </div>
 
               <SettingsRow label={i18n.t("updates.channel")} description={i18n.t("updates.channelDesc")}>
