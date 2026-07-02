@@ -968,10 +968,20 @@ tarjetas de esquina dinámica), tres secciones:
   *New* abre el editor (`CustomThemeEditorScreen`); *Reset* llama
   `customThemesLibraryProvider.notifier.resetToBuiltIns()` (restaura
   `kBuiltInCustomThemes`, limpia el active id y apaga el switch).
-- **Import / Export** usan **bottom sheets** (`theme_sheets.dart`). Import
-  acepta formato nativo, Material Theme Builder y flat (objeto único o
-  array de varios temas); a cada entrada se le asigna un id fresco si
-  choca con uno existente. Export ofrece *Copy to clipboard* o *Save to
+- **Import** es una **pantalla completa** (`ThemeImportScreen`,
+  `theme_sheets.dart`) — no un sheet (un sheet acotado desbordaba con un blob
+  grande) — con el patrón de formulario NE (à la `ManualCodeScreen`): `NeTopBar`
+  transparente con Close, un campo que **llena la pantalla y hace scroll
+  interno**, la fila de fuentes alternativas y una CTA **Import** inferior a todo
+  el ancho (deshabilitada hasta que hay texto). Acepta formato nativo, Material
+  Theme Builder y flat (objeto único o array); la fuente puede ser **pegar**,
+  **un archivo `.json`** (`file_picker`) o **una URL http(s)** (`dio`,
+  `ResponseType.plain`, timeouts + tope de 5 MB) — las tres llenan el mismo campo
+  para revisar antes de importar. **Ids built-in:** al importar, un id
+  `uxnan.builtin.*` (o cualquier colisión) recibe un id fresco, así ningún import
+  queda como "integrado" (no borrable / no persistido); al exportar, un tema
+  built-in se emite con un id fresco no-builtin para que reimporte como custom
+  normal. **Export** sigue siendo un bottom sheet: *Copy to clipboard* o *Save to
   file* (`share_plus`), por tema o `Export all` (array pretty-printed).
 
 ##### Editor (`CustomThemeEditorScreen`)

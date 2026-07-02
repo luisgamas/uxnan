@@ -1,28 +1,38 @@
+import 'dart:convert';
+
+import 'package:dio/dio.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/widgets/icon_surface.dart';
+import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 
-/// Bottom sheets shared by the theme manager and the theme editor for
-/// importing and exporting theme JSON.
+/// The theme-import editor and the export choice sheet.
 ///
-/// Neural Expressive uses **bottom sheets** (not dialogs) for input and for
-/// action menus on mobile — pasting a JSON blob or choosing copy-vs-file is an
-/// input/menu task, so a sheet (rounded top, neutral surface, keyboard-aware)
-/// is the right surface. Confirmations stay [AlertDialog]s elsewhere.
+/// **Import is a full-screen editor** (`ThemeImportScreen`), not a sheet:
+/// pasting/reviewing a large multi-theme JSON needs room (a capped sheet
+/// overflowed), and it's a fill→confirm task, so it mirrors the app's
+/// Neural Expressive form pattern (à la `ManualCodeScreen`) — a transparent
+/// `NeTopBar` with a Close Icon Surface, the paste field filling the screen,
+/// the alternative sources on one row, and a bottom full-width primary CTA.
+///
+/// Import accepts three sources — all resolve to the same JSON text the caller
+/// parses: **paste**, **a `.json` file** (`file_picker`), and **an http(s)
+/// URL** (`dio`). Export stays a small bottom sheet (copy vs save-to-file).
 
-/// Opens a keyboard-aware bottom sheet with a multi-line field to paste theme
-/// JSON. Returns the pasted text, or null if dismissed/cancelled.
-Future<String?> showImportThemeSheet(
+/// Opens the full-screen theme-import editor. Returns the JSON text to import,
+/// or null if the user cancelled.
+Future<String?> showThemeImportEditor(
   BuildContext context, {
   required String title,
   required String body,
   required String hint,
 }) {
-  return showModalBottomSheet<String>(
-    context: context,
-    isScrollControlled: true,
-    showDragHandle: true,
-    builder: (ctx) => _ImportThemeSheet(title: title, body: body, hint: hint),
+  return Navigator.of(context).push<String>(
+    MaterialPageRoute<String>(
+      builder: (_) => ThemeImportScreen(title: title, body: body, hint: hint),
+    ),
   );
 }
 
@@ -55,28 +65,177 @@ Future<ThemeExportChoice?> showThemeExportSheet(
   );
 }
 
-class _ImportThemeSheet extends StatefulWidget {
-  const _ImportThemeSheet({
+/// Distinguishes a "bad URL / bad file" from a network/read failure so the UI
+/// can show the right message.
+class _ThemeSourceException implements Exception {
+  const _ThemeSourceException({required this.invalidInput});
+
+  /// True when the user's input was malformed (bad URL); false for a
+  /// network/read failure.
+  final bool invalidInput;
+}
+
+/// Picks a `.json` file and returns its UTF-8 text, or null if the user
+/// cancelled. Throws [_ThemeSourceException] if the file can't be read.
+Future<String?> _pickThemeJsonFile() async {
+  final FilePickerResult? result;
+  try {
+    result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['json'],
+      withData: true,
+    );
+  } on Object {
+    throw const _ThemeSourceException(invalidInput: false);
+  }
+  if (result == null || result.files.isEmpty) return null; // cancelled
+  final bytes = result.files.first.bytes;
+  if (bytes == null) throw const _ThemeSourceException(invalidInput: false);
+  try {
+    return utf8.decode(bytes);
+  } on Object {
+    throw const _ThemeSourceException(invalidInput: false);
+  }
+}
+
+/// Fetches theme JSON from an http(s) [url] as plain text. Throws
+/// [_ThemeSourceException] (invalid URL, or network failure / too large).
+Future<String> _fetchThemeJsonFromUrl(String url) async {
+  final uri = Uri.tryParse(url.trim());
+  if (uri == null ||
+      !(uri.isScheme('https') || uri.isScheme('http')) ||
+      uri.host.isEmpty) {
+    throw const _ThemeSourceException(invalidInput: true);
+  }
+  final dio = Dio(
+    BaseOptions(
+      connectTimeout: const Duration(seconds: 10),
+      receiveTimeout: const Duration(seconds: 15),
+      responseType: ResponseType.plain,
+    ),
+  );
+  try {
+    final res = await dio.getUri<String>(uri);
+    final data = res.data ?? '';
+    if (data.length > 5 * 1024 * 1024) {
+      // Guard against a huge response OOMing the app.
+      throw const _ThemeSourceException(invalidInput: false);
+    }
+    return data;
+  } on _ThemeSourceException {
+    rethrow;
+  } on Object {
+    throw const _ThemeSourceException(invalidInput: false);
+  }
+}
+
+/// Prompts for an http(s) URL to fetch a theme JSON from. Returns the URL, or
+/// null if cancelled.
+Future<String?> _promptThemeUrl(BuildContext context) {
+  final l10n = AppLocalizations.of(context);
+  final controller = TextEditingController();
+  return showDialog<String>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text(l10n.themeImportUrlTitle),
+      content: TextField(
+        controller: controller,
+        autofocus: true,
+        keyboardType: TextInputType.url,
+        autocorrect: false,
+        decoration: InputDecoration(hintText: l10n.themeImportUrlHint),
+        onSubmitted: (v) => Navigator.of(ctx).pop(v.trim()),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(),
+          child: Text(l10n.actionCancel),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(ctx).pop(controller.text.trim()),
+          child: Text(l10n.themeImportUrlFetch),
+        ),
+      ],
+    ),
+  );
+}
+
+/// The full-screen theme-import editor: a paste field that fills the screen, an
+/// alternative-sources row (file / URL), and a bottom full-width Import CTA.
+class ThemeImportScreen extends StatefulWidget {
+  /// Creates a [ThemeImportScreen].
+  const ThemeImportScreen({
     required this.title,
     required this.body,
     required this.hint,
+    super.key,
   });
 
+  /// Screen title.
   final String title;
+
+  /// One-line explanation under the top bar.
   final String body;
+
+  /// Hint text for the empty paste field.
   final String hint;
 
   @override
-  State<_ImportThemeSheet> createState() => _ImportThemeSheetState();
+  State<ThemeImportScreen> createState() => _ThemeImportScreenState();
 }
 
-class _ImportThemeSheetState extends State<_ImportThemeSheet> {
+class _ThemeImportScreenState extends State<ThemeImportScreen> {
   final TextEditingController _controller = TextEditingController();
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(_onTextChanged);
+  }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _controller
+      ..removeListener(_onTextChanged)
+      ..dispose();
     super.dispose();
+  }
+
+  void _onTextChanged() => setState(() {});
+
+  Future<void> _fromFile() async {
+    final l10n = AppLocalizations.of(context);
+    setState(() => _error = null);
+    try {
+      final text = await _pickThemeJsonFile();
+      if (text == null || !mounted) return; // cancelled
+      _controller.text = text;
+    } on _ThemeSourceException {
+      if (mounted) setState(() => _error = l10n.themeImportFileError);
+    }
+  }
+
+  Future<void> _fromUrl() async {
+    final l10n = AppLocalizations.of(context);
+    final url = await _promptThemeUrl(context);
+    if (url == null || url.isEmpty || !mounted) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final text = await _fetchThemeJsonFromUrl(url);
+      if (mounted) _controller.text = text;
+    } on _ThemeSourceException catch (e) {
+      final message = e.invalidInput
+          ? l10n.themeImportUrlInvalid
+          : l10n.themeImportUrlError;
+      if (mounted) setState(() => _error = message);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   @override
@@ -84,76 +243,135 @@ class _ImportThemeSheetState extends State<_ImportThemeSheet> {
     final l10n = AppLocalizations.of(context);
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-    // Lift the sheet above the keyboard; cap the field so the sheet stays a
-    // sheet (not a full-screen takeover) on tall devices.
-    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
-    return Padding(
-      padding: EdgeInsets.only(bottom: bottomInset),
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(
-            UxnanSpacing.lg,
-            0,
-            UxnanSpacing.lg,
-            UxnanSpacing.lg,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(widget.title, style: textTheme.titleLarge),
-              const SizedBox(height: UxnanSpacing.xs),
-              Text(
-                widget.body,
-                style: textTheme.bodyMedium?.copyWith(
-                  color: colors.onSurfaceVariant,
+    final canImport = _controller.text.trim().isNotEmpty;
+
+    // NE form pattern (à la ManualCodeScreen): a transparent NeTopBar over a
+    // full-height Column. The paste field fills the middle and scrolls
+    // internally (never overflows, however big the JSON); the source buttons
+    // and the primary Import CTA stay pinned at the bottom. The Scaffold's
+    // resizeToAvoidBottomInset already shrinks the body for the keyboard — do
+    // NOT add viewInsets to the padding too, or it double-counts and the field
+    // collapses (the bottom row then overflows and the buttons ride up).
+    return Scaffold(
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: SafeArea(
+              top: false,
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(
+                  UxnanSpacing.lg,
+                  NeTopBar.preferredHeight(context),
+                  UxnanSpacing.lg,
+                  UxnanSpacing.lg,
                 ),
-              ),
-              const SizedBox(height: UxnanSpacing.md),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 240),
-                child: TextField(
-                  controller: _controller,
-                  maxLines: null,
-                  minLines: 6,
-                  autofocus: true,
-                  textAlignVertical: TextAlignVertical.top,
-                  style: textTheme.bodySmall?.copyWith(
-                    fontFamily: 'JetBrainsMono',
-                  ),
-                  decoration: InputDecoration(
-                    hintText: widget.hint,
-                    filled: true,
-                    fillColor: colors.surfaceContainerHighest,
-                    border: const OutlineInputBorder(
-                      borderRadius: BorderRadius.all(UxnanRadius.md),
-                      borderSide: BorderSide.none,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      widget.body,
+                      style: textTheme.bodyMedium?.copyWith(
+                        color: colors.onSurfaceVariant,
+                      ),
                     ),
-                    contentPadding: const EdgeInsets.all(UxnanSpacing.md),
-                  ),
+                    const SizedBox(height: UxnanSpacing.md),
+                    Expanded(
+                      child: TextField(
+                        controller: _controller,
+                        expands: true,
+                        maxLines: null,
+                        autofocus: true,
+                        textAlignVertical: TextAlignVertical.top,
+                        style: textTheme.bodySmall?.copyWith(
+                          fontFamily: 'JetBrainsMono',
+                        ),
+                        decoration: InputDecoration(
+                          hintText: widget.hint,
+                          filled: true,
+                          fillColor: colors.surfaceContainerHighest,
+                          border: const OutlineInputBorder(
+                            borderRadius: BorderRadius.all(UxnanRadius.md),
+                            borderSide: BorderSide.none,
+                          ),
+                          contentPadding:
+                              const EdgeInsets.all(UxnanSpacing.md),
+                        ),
+                      ),
+                    ),
+                    if (_error != null) ...[
+                      const SizedBox(height: UxnanSpacing.sm),
+                      Text(
+                        _error!,
+                        style:
+                            textTheme.bodySmall?.copyWith(color: colors.error),
+                      ),
+                    ],
+                    const SizedBox(height: UxnanSpacing.md),
+                    // Alternative sources: fill the field from a file or a URL
+                    // so the user can review before importing.
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _busy ? null : _fromFile,
+                            icon: const Icon(
+                              Icons.folder_open_outlined,
+                              size: 18,
+                            ),
+                            label: Text(l10n.themeImportFromFile),
+                          ),
+                        ),
+                        const SizedBox(width: UxnanSpacing.sm),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _busy ? null : _fromUrl,
+                            icon: _busy
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.link_rounded, size: 18),
+                            label: Text(l10n.themeImportFromUrl),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: UxnanSpacing.md),
+                    FilledButton.icon(
+                      onPressed: canImport
+                          ? () => Navigator.of(context).pop(_controller.text)
+                          : null,
+                      icon: const Icon(Icons.file_download_outlined),
+                      label:
+                          Text(l10n.personalizationCustomThemesImportAction),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: UxnanSpacing.md),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: Text(l10n.actionCancel),
-                  ),
-                  const SizedBox(width: UxnanSpacing.sm),
-                  FilledButton.icon(
-                    onPressed: () =>
-                        Navigator.of(context).pop(_controller.text),
-                    icon: const Icon(Icons.file_download_outlined),
-                    label: Text(l10n.personalizationCustomThemesImportAction),
-                  ),
-                ],
-              ),
-            ],
+            ),
           ),
-        ),
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: NeTopBar(
+              leading: IconSurface(
+                icon: Icons.close_rounded,
+                tooltip: l10n.actionCancel,
+                onPressed: () => Navigator.of(context).maybePop(),
+              ),
+              title: Text(
+                widget.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: textTheme.titleLarge?.copyWith(fontSize: 20),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

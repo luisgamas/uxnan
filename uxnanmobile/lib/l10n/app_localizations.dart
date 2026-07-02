@@ -3014,6 +3014,54 @@ abstract class AppLocalizations {
   /// **'Paste theme JSON here'**
   String get personalizationCustomThemesImportFieldHint;
 
+  /// Button that imports theme JSON by picking a .json file from the device.
+  ///
+  /// In en, this message translates to:
+  /// **'From file'**
+  String get themeImportFromFile;
+
+  /// Button that imports theme JSON by fetching it from an http(s) URL.
+  ///
+  /// In en, this message translates to:
+  /// **'From URL'**
+  String get themeImportFromUrl;
+
+  /// Title of the dialog that asks for a URL to fetch a theme JSON from.
+  ///
+  /// In en, this message translates to:
+  /// **'Import from URL'**
+  String get themeImportUrlTitle;
+
+  /// Hint text for the theme-import URL field.
+  ///
+  /// In en, this message translates to:
+  /// **'https://…/theme.json'**
+  String get themeImportUrlHint;
+
+  /// Confirm button that fetches the theme JSON from the entered URL.
+  ///
+  /// In en, this message translates to:
+  /// **'Fetch'**
+  String get themeImportUrlFetch;
+
+  /// Error shown when the theme-import URL is malformed.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a valid http(s):// URL.'**
+  String get themeImportUrlInvalid;
+
+  /// Error shown when fetching a theme JSON from the URL fails.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t fetch a theme from that URL.'**
+  String get themeImportUrlError;
+
+  /// Error shown when the picked theme .json file can't be read.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t read that file.'**
+  String get themeImportFileError;
+
   /// Snackbar text shown after a successful import. The number of themes imported is appended in the message.
   ///
   /// In en, this message translates to:

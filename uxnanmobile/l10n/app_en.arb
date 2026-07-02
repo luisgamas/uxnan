@@ -768,6 +768,38 @@
   "personalizationCustomThemesImportDialogTitle": "Import theme",
   "personalizationCustomThemesImportDialogBody": "Paste a theme JSON exported from another device. You can paste a single theme or a JSON array of themes to import them all at once.",
   "personalizationCustomThemesImportFieldHint": "Paste theme JSON here",
+  "themeImportFromFile": "From file",
+  "@themeImportFromFile": {
+    "description": "Button that imports theme JSON by picking a .json file from the device."
+  },
+  "themeImportFromUrl": "From URL",
+  "@themeImportFromUrl": {
+    "description": "Button that imports theme JSON by fetching it from an http(s) URL."
+  },
+  "themeImportUrlTitle": "Import from URL",
+  "@themeImportUrlTitle": {
+    "description": "Title of the dialog that asks for a URL to fetch a theme JSON from."
+  },
+  "themeImportUrlHint": "https://…/theme.json",
+  "@themeImportUrlHint": {
+    "description": "Hint text for the theme-import URL field."
+  },
+  "themeImportUrlFetch": "Fetch",
+  "@themeImportUrlFetch": {
+    "description": "Confirm button that fetches the theme JSON from the entered URL."
+  },
+  "themeImportUrlInvalid": "Enter a valid http(s):// URL.",
+  "@themeImportUrlInvalid": {
+    "description": "Error shown when the theme-import URL is malformed."
+  },
+  "themeImportUrlError": "Couldn't fetch a theme from that URL.",
+  "@themeImportUrlError": {
+    "description": "Error shown when fetching a theme JSON from the URL fails."
+  },
+  "themeImportFileError": "Couldn't read that file.",
+  "@themeImportFileError": {
+    "description": "Error shown when the picked theme .json file can't be read."
+  },
   "personalizationCustomThemesImportSuccess": "Theme imported",
   "@personalizationCustomThemesImportSuccess": {
     "description": "Snackbar text shown after a successful import. The number of themes imported is appended in the message."

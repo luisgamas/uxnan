@@ -34,7 +34,11 @@ if (file("google-services.json").exists()) {
 
 android {
     namespace = "dev.luisgamas.uxnanmobile"
-    compileSdk = flutter.compileSdkVersion
+    // Pinned to 36 (not flutter.compileSdkVersion, currently 34): file_picker's
+    // transitive flutter_plugin_android_lifecycle requires compiling against
+    // API 36+. Compile-time only — targetSdk/minSdk (runtime behavior + device
+    // support) are unchanged below.
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {

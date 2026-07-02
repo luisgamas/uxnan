@@ -1597,6 +1597,30 @@ class AppLocalizationsEs extends AppLocalizations {
       'Pega aquí el JSON del tema';
 
   @override
+  String get themeImportFromFile => 'Desde archivo';
+
+  @override
+  String get themeImportFromUrl => 'Desde URL';
+
+  @override
+  String get themeImportUrlTitle => 'Importar desde URL';
+
+  @override
+  String get themeImportUrlHint => 'https://…/tema.json';
+
+  @override
+  String get themeImportUrlFetch => 'Obtener';
+
+  @override
+  String get themeImportUrlInvalid => 'Ingresa una URL http(s):// válida.';
+
+  @override
+  String get themeImportUrlError => 'No se pudo obtener un tema de esa URL.';
+
+  @override
+  String get themeImportFileError => 'No se pudo leer ese archivo.';
+
+  @override
   String get personalizationCustomThemesImportSuccess => 'Tema importado';
 
   @override

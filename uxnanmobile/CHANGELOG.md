@@ -6,6 +6,34 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — theme import from a file / URL, in a full-screen editor
+- **Theme import is now a full-screen editor** (`ThemeImportScreen`,
+  `theme_sheets.dart`), not a cramped bottom sheet (which overflowed on a big
+  paste): it mirrors the app's NE form pattern (à la `ManualCodeScreen`) — a
+  transparent `NeTopBar` with a Close, a paste field that **fills the screen and
+  scrolls internally**, the alternative sources on one row, and a bottom
+  full-width **Import** CTA (disabled until there's text).
+- **Three import sources**, all filling the same field so the user reviews
+  before importing: **paste**, **a `.json` file** from the device (new
+  `file_picker` dependency), and **an http(s) URL** (`dio`, plain response,
+  connect/receive timeouts + a 5 MB guard). Inline errors for a bad URL / read
+  failure.
+- **Fixed — imported/exported themes no longer masquerade as built-ins.** A
+  theme exported from a seeded example carried a `uxnan.builtin.*` id; re-imported
+  (even renamed) it was flagged built-in — undeletable and **not persisted**
+  (built-ins are seeded, not stored, so it vanished on restart). Now **export**
+  emits a fresh non-builtin id for built-in themes, and **import** reassigns a
+  fresh id to any theme whose id is a built-in id (in addition to the existing
+  collision reassignment) — imports are always normal, deletable, persisted
+  custom themes.
+- 3 widget tests (`theme_sheets_test.dart`); the import tests in
+  `theme_manager_screen_test.dart` updated for the full-screen editor. Spec:
+  `architecture/02c` §3.1 (import sources).
+- **Build:** `file_picker`'s transitive `flutter_plugin_android_lifecycle`
+  requires compiling against Android API 36, so `android/app/build.gradle.kts`
+  pins `compileSdk = 36` and `android/build.gradle.kts` bumps the plugin
+  subprojects to 36 (compile-time only — `minSdk` 24 / `targetSdk` unchanged).
+
 ### Changed — shared `NeCard` primitive + calmer card tone (My Devices, Threads, New conversation)
 - **New `NeCard` widget** (`ne_card.dart`): the app's discrete-card primitive —
   one calm `surfaceContainer` tone (not `surfaceContainerHighest`, which NE §2.4

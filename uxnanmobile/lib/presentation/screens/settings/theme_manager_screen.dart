@@ -88,7 +88,7 @@ class _ThemeManagerScreenState extends ConsumerState<ThemeManagerScreen> {
 
   Future<void> _import() async {
     final l10n = AppLocalizations.of(context);
-    final raw = await showImportThemeSheet(
+    final raw = await showThemeImportEditor(
       context,
       title: l10n.personalizationCustomThemesImportDialogTitle,
       body: l10n.personalizationCustomThemesImportDialogBody,
@@ -126,7 +126,12 @@ class _ThemeManagerScreenState extends ConsumerState<ThemeManagerScreen> {
         }
         try {
           var imported = CustomTheme.fromJson(entry.cast<String, dynamic>());
-          if (seenIds.contains(imported.id)) {
+          // Never let an import become a "built-in": a JSON exported from a
+          // seeded theme (or hand-edited) carrying a `uxnan.builtin.*` id would
+          // otherwise be undeletable AND not persisted (built-ins are seeded,
+          // not stored). Reassign a fresh id for a built-in id or a collision.
+          if (isBuiltInCustomThemeId(imported.id) ||
+              seenIds.contains(imported.id)) {
             imported = imported.withId(CustomTheme.freshId());
           }
           seenIds.add(imported.id);
@@ -190,14 +195,21 @@ class _ThemeManagerScreenState extends ConsumerState<ThemeManagerScreen> {
     }
   }
 
+  /// A theme in exportable form: a built-in gets a fresh, non-`uxnan.builtin.`
+  /// id so the exported JSON re-imports as a normal (deletable, persisted)
+  /// custom theme instead of a fake built-in. Authored themes export as-is.
+  CustomTheme _exportable(CustomTheme theme) => isBuiltInCustomThemeId(theme.id)
+      ? theme.withId(CustomTheme.freshId())
+      : theme;
+
   Future<void> _exportOne(CustomTheme theme) =>
-      _exportPayload(theme.toJsonString(), theme.name);
+      _exportPayload(_exportable(theme).toJsonString(), theme.name);
 
   Future<void> _exportAll() async {
     final l10n = AppLocalizations.of(context);
     final themes = ref.read(customThemesLibraryProvider);
     final payload = const JsonEncoder.withIndent('  ')
-        .convert(themes.map((t) => t.toJson()).toList());
+        .convert(themes.map((t) => _exportable(t).toJson()).toList());
     await _exportPayload(
       payload,
       l10n.personalizationCustomThemesExportAllAction,
@@ -212,7 +224,7 @@ class _ThemeManagerScreenState extends ConsumerState<ThemeManagerScreen> {
     if (selected.isEmpty) return;
     final l10n = AppLocalizations.of(context);
     final payload = const JsonEncoder.withIndent('  ')
-        .convert(selected.map((t) => t.toJson()).toList());
+        .convert(selected.map((t) => _exportable(t).toJson()).toList());
     await _exportPayload(
       payload,
       l10n.personalizationCustomThemesExportAllAction,
