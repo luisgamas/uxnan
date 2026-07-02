@@ -131,28 +131,6 @@ shipping.
       headless modes expose no pre-tool channel; see `bridge/FOR-DEV.md`). The app
       already renders approvals for Echo/Claude/Codex/Gemini.
 
-## On-device verification backlog
-
-These features are code-complete but not yet maintainer-verified on a real device
-against a live bridge. Verify and tick off:
-
-- Manual-code pairing (type host + code) and mDNS "browse nearby bridges"
-  (discovery lists a real bridge).
-- The Relay-vs-Direct transport indicator reading over a hosted-relay session
-  (background→resume reconnection is verified — see the Bug A fixes in
-  `CHANGELOG.md`).
-- Remote history scroll-up paging on a long real thread; scroll-position landing
-  on repeated opens; *Jump to latest* after a restore.
-- Reasoning-effort knobs changing a real turn; per-agent auth-status banners
-  clearing once the agent is logged in; multi-PC remove-device flow.
-- Git "force" paths (delete unmerged branch / remove dirty worktree) and
-  vanished-cwd ("folder no longer exists") gating.
-
-## UI polish (Neural Expressive)
-
-- [ ] **Manual-code pairing screen** is a minimal M3 form — restyle to the Neural
-      Expressive language (see `docs/neural-expressive-design.md`).
-
 ## iOS (all blocked on the first macOS build + FOR-HUMAN assets)
 
 iOS has never been compiled (the Podfile is generated on the first macOS build).
@@ -163,13 +141,6 @@ The following are pending and tracked as assets in `FOR-HUMAN.md`:
 - [ ] `NSPhotoLibraryUsageDescription` (+ camera) for image attach.
 - [ ] `NSMicrophoneUsageDescription` + `NSSpeechRecognitionUsageDescription` (voice).
 - [ ] iOS APNs end-to-end (paid Apple account + APNs `.p8` in Firebase).
-
-## Spec drift owed
-
-- [ ] **Sync the architecture spec to the theme rework** — `architecture/00-index.md`
-      still describes the old collapsible-in-Personalization custom-theme model;
-      the app now ships single/dual themes + a dedicated Theme Manager. Per
-      `AGENTS.md` → *Spec drift control*, reflect the rework in the spec.
 
 ## Release / CI-CD
 
