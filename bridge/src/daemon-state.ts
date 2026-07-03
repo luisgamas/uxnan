@@ -23,6 +23,7 @@ export const DAEMON_FILES = {
   lock: 'bridge.lock',
   checkpoints: 'checkpoints.json',
   threads: 'threads.json',
+  updateCheck: 'update-check.json',
 } as const;
 
 export class DaemonState {

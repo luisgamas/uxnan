@@ -15,16 +15,19 @@ import { buildBridgeStatus } from '../bridge-status.js';
 import { generatePairingPayload } from '../qr.js';
 
 export function registerBridgeControlHandlers(router: HandlerRouter): void {
-  router.register('bridge/status', (_params, ctx: BridgeContext) =>
-    buildBridgeStatus({
+  router.register('bridge/status', (_params, ctx: BridgeContext) => {
+    const update = ctx.updateStatus();
+    return buildBridgeStatus({
       version: ctx.version,
       relayConnected: ctx.relayConnected(),
       lanEnabled: ctx.config.lanEnabled,
       activeSessions: ctx.sessions.count,
       startedAt: ctx.startedAt,
       now: ctx.now(),
-    }),
-  );
+      ...(update?.latestVersion !== undefined ? { latestVersion: update.latestVersion } : {}),
+      ...(update?.updateAvailable ? { updateAvailable: true } : {}),
+    });
+  });
 
   router.register('bridge/generatePairingQr', (_params, ctx: BridgeContext) =>
     generatePairingPayload({

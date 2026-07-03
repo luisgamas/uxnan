@@ -1513,10 +1513,11 @@ bridge/
 │   ├── daemon-state.ts             # persiste config, pairing, status
 │   ├── daemon-config.ts            # ~/.uxnan/daemon-config.json
 │   ├── handler-router.ts           # ruteo + validacion Ajv de metodos JSON-RPC
-│   ├── bridge-status.ts            # snapshots de estado / relayConnected
+│   ├── bridge-status.ts            # snapshots de estado / relayConnected / update (latestVersion)
+│   ├── update-check.ts             # chequeo de version en npm (dist-tag latest, cache 24h)
 │   ├── qr.ts                       # QR + pairing code
 │   ├── account-status.ts           # snapshot sanitizado de auth (nunca tokens)
-│   ├── version.ts                  # BRIDGE_VERSION desde package.json
+│   ├── version.ts                  # BRIDGE_VERSION + BRIDGE_PACKAGE_NAME desde package.json
 │   ├── lock-file.ts                # single-instance lock + stop
 │   ├── logger.ts                   # logging a archivo + redaccion de secretos
 │   ├── service-installer.ts        # autostart por OS (sin elevacion)

@@ -23,6 +23,7 @@ import { generatePairingPayload } from './qr.js';
 import { PairingCodeService } from './pairing/pairing-code-service.js';
 import { createFileLogger, type LogLevel } from './logger.js';
 import { BRIDGE_VERSION } from './version.js';
+import { cachedUpdateStatus, ensureUpdateStatus, type UpdateStatus } from './update-check.js';
 import { FileTrustStore, type TrustStore } from './transport/trust-store.js';
 import { handleSecureConnection } from './transport/session-handler.js';
 import { connectRelayAsMac, type RelayConnection } from './transport/relay-client.js';
@@ -66,6 +67,9 @@ export interface Bridge {
   readonly router: HandlerRouter;
   readonly trustStore: TrustStore;
   status(): BridgeStatus;
+  /** Latest self-update status from the background npm check, or `undefined`
+   * before the first check resolves. */
+  updateStatus(): UpdateStatus | undefined;
   generatePairingQr(): PairingPayload;
   /** The current manual-pairing code to show on the PC (rotates on expiry). */
   currentPairingCode(): string;
@@ -319,6 +323,21 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   // by both the CLI `status()` and the `bridge/status` handler (via the context).
   const relayState = { connected: false };
 
+  // Self-update status from the background npm check, read by the CLI notice and
+  // exposed to the phone via `bridge/status`. Seeded synchronously from the
+  // on-disk cache, then refreshed in the background (TTL-gated, non-blocking).
+  const updateState: { status: UpdateStatus | undefined } = {
+    status: await cachedUpdateStatus(state, BRIDGE_VERSION),
+  };
+  const refreshUpdate = (): Promise<void> =>
+    ensureUpdateStatus(state)
+      .then((status) => {
+        updateState.status = status;
+      })
+      .catch(() => {
+        /* best-effort — never surface update-check failures to the daemon */
+      });
+
   const context: BridgeContext = {
     version: BRIDGE_VERSION,
     startedAt,
@@ -336,11 +355,19 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
     pushService,
     logger,
     relayConnected: () => relayState.connected,
+    updateStatus: () => updateState.status,
     now,
   };
 
   const router = new HandlerRouter(context);
   registerAllHandlers(router);
+
+  // Kick a background refresh on boot and every 6h; unref'd so a short-lived CLI
+  // command (qr/code/status) isn't kept alive, cleared on stop().
+  void refreshUpdate();
+  const UPDATE_REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1000;
+  const updateTimer = setInterval(() => void refreshUpdate(), UPDATE_REFRESH_INTERVAL_MS);
+  updateTimer.unref?.();
 
   const relayConnections: RelayConnection[] = [];
   let lanHandle: LanServerHandle | undefined;
@@ -367,7 +394,12 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
         activeSessions: sessions.count,
         startedAt,
         now: now(),
+        ...(updateState.status?.latestVersion !== undefined
+          ? { latestVersion: updateState.status.latestVersion }
+          : {}),
+        ...(updateState.status?.updateAvailable ? { updateAvailable: true } : {}),
       }),
+    updateStatus: () => updateState.status,
     generatePairingQr: () => buildPairingPayload(),
     currentPairingCode: () => pairingCodeService.currentCode(),
     connectRelay: async (sessionId: string) => {
@@ -501,6 +533,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
     stop: async () => {
       logger.info('bridge stopping');
       stopping = true;
+      clearInterval(updateTimer);
       await agentManager.stopAll();
       for (const connection of relayConnections) {
         connection.ws.close();

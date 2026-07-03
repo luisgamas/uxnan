@@ -5,6 +5,32 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — self-update check (CLI notice + `bridge/status` fields for the phone)
+- **Background npm update check** (`src/update-check.ts`): the bridge is the
+  ecosystem's core engine, so it now checks whether a newer build has been
+  published to npm under the `latest` dist-tag and nudges the user to update. It
+  queries `registry.npmjs.org/-/package/uxnan-bridge/dist-tags`, caches the
+  result in `~/.uxnan/update-check.json` (24h TTL, new `DAEMON_FILES.updateCheck`),
+  and compares versions with the new shared `isNewerVersion` (SemVer precedence).
+  The check is best-effort and non-blocking — any offline/parse failure is
+  swallowed (reported as "unknown"), and the daemon refreshes it in the
+  background on boot and every 6h (unref'd timer, cleared on stop).
+- **CLI notice:** `start`, `status`, `qr` and `code` print a one-line
+  "A newer bridge is available: <version> … npm install -g uxnan-bridge@latest"
+  to **stderr** (so it never corrupts the stdout of `status`/`code`) when the
+  running version is outdated; silent otherwise.
+- **`bridge/status` now carries `latestVersion` + `updateAvailable`** (shared
+  `BridgeStatus`), populated from the cached check via the new
+  `BridgeContext.updateStatus()`. Lets the phone show a "bridge update available"
+  hint **without querying npm itself** (see `uxnanmobile`). `buildBridgeStatus`
+  includes the fields only when known.
+- **`version.ts`** now also exports `BRIDGE_PACKAGE_NAME` (read from
+  `package.json`), so the update check can never drift from what's published.
+- Tests: 11 new (`test/update-check.test.ts`) covering the registry parse, TTL
+  caching, offline fallback, and the CLI notice message. Reflected in
+  `shared/` (`compareVersions`/`isNewerVersion`, `BridgeStatus` fields),
+  `architecture/02a` (§5.8 bridge status) and `02b` (`bridge/status` result).
+
 ## [0.0.3-alpha.20260702] - 2026-07-02
 
 ### Fixed — seeded model list no longer frozen to disk (new models reach existing installs)
