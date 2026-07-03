@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — npm releases now publish to the `latest` dist-tag
+- `release-npm.yml` published every version under the **`alpha`** dist-tag, so
+  `npm install -g uxnan-bridge` kept resolving the **first** version ever
+  published (`latest` was stuck at `0.0.1-alpha.20260627`, never advanced). The
+  workflow now publishes to **`latest`**, so the newest release is what
+  `npm install` and the self-update check resolve. Pre-release channels
+  (`alpha`/`beta`) are opt-in — add them manually per build
+  (`npm dist-tag add uxnan-bridge@<version> beta`). Convention documented in
+  `VERSIONS.md`; a one-time manual `npm dist-tag add` is needed to move the
+  already-published packages' `latest` forward (see `VERSIONS.md`).
+
 ### Added — self-update check (CLI notice + `bridge/status` fields for the phone)
 - **Background npm update check** (`src/update-check.ts`): the bridge is the
   ecosystem's core engine, so it now checks whether a newer build has been

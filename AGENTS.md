@@ -550,9 +550,11 @@ contributor-facing summary is in [`CONTRIBUTING.md`](CONTRIBUTING.md) → *Relea
 2. **Update `VERSIONS.md` and validate the deploy** — in the same change set, add or
    refresh the component's row in the history table, **and confirm the release
    actually shipped**: the `release-*.yml` run is green and the artifact landed (npm
-   published under the `alpha` dist-tag / the Play **open-testing** (beta) build uploaded / the
+   published to the `latest` dist-tag / the Play **open-testing** (beta) build uploaded / the
    desktop GitHub **Release** draft exists). A red or half-finished release run is
-   **not** a release — fix it before recording the row.
+   **not** a release — fix it before recording the row. (npm's `latest` dist-tag
+   always tracks the newest release; `alpha`/`beta` channels are opt-in, added
+   manually per build — see `VERSIONS.md`.)
 3. **Mobile — `pubspec.yaml` MUST match the tag (NON-NEGOTIABLE).** Before tagging
    `mobile-v<name>+<build>`, bump `uxnanmobile/pubspec.yaml` `version:` to the same
    `<name>+<build>`, then **commit AND push it** so the **tagged commit** carries the

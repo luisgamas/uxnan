@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — npm releases publish to the `latest` dist-tag
+- `release-npm.yml` now publishes to **`latest`** (was `alpha`) and pins
+  `@uxnan/shared` for bridge/relay via `dist-tags.latest`, so `npm install`
+  resolves the newest release. `alpha`/`beta` are opt-in, added manually. A
+  one-time manual `npm dist-tag add` is needed to move the already-published
+  packages' `latest` forward — see `VERSIONS.md`.
+
 ### Added — version-compare util + `BridgeStatus` update fields
 - **`compareVersions(a, b)` / `isNewerVersion(candidate, current)`**
   (`src/version/compare.ts`): dependency-free SemVer 2.0.0 precedence
