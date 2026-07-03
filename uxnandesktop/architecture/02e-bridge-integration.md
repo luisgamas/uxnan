@@ -466,6 +466,9 @@ export interface JsonRpcMethodRegistry {
   "auth/logout":       { params: void;                  result: void };
 
   // Bridge control (desktop → bridge)
+  // BridgeStatus incluye `latestVersion`/`updateAvailable` (chequeo npm del
+  // bridge). El bridge embebido debe conservarlos para que el telefono siga
+  // mostrando el aviso "actualiza el bridge" (ver bridge/src/update-check.ts).
   "bridge/status":          { params: void;             result: BridgeStatus };
   "bridge/generatePairingQr": { params: void;           result: PairingPayload };
   "bridge/connectedPhones": { params: void;             result: ConnectedPhone[] };

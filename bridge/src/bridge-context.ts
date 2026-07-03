@@ -13,6 +13,7 @@ import type { AgentManager } from './agents/agent-manager.js';
 import type { ProjectRegistry } from './projects/project-registry.js';
 import type { BrowseService } from './workspace/browse-service.js';
 import type { PushService } from './push/push-service.js';
+import type { UpdateStatus } from './update-check.js';
 import type { Logger } from './logger.js';
 
 export interface BridgeContext {
@@ -41,6 +42,12 @@ export interface BridgeContext {
   readonly logger: Logger;
   /** Whether at least one relay connection is currently serving a phone. */
   relayConnected(): boolean;
+  /**
+   * Latest known self-update status from the background npm check, or
+   * `undefined` before the first check completes. Read by `bridge/status` so the
+   * phone can show a "bridge update available" hint.
+   */
+  updateStatus(): UpdateStatus | undefined;
   /** Injected clock (epoch ms) for testability. */
   now(): number;
 }

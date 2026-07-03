@@ -15,6 +15,10 @@ export interface BridgeStatusInput {
   startedAt: number;
   /** Current time in epoch ms (injected for testability). */
   now: number;
+  /** Latest published bridge version, from the background npm update check. */
+  latestVersion?: string;
+  /** Whether {@link latestVersion} is strictly newer than {@link version}. */
+  updateAvailable?: boolean;
 }
 
 export function buildBridgeStatus(input: BridgeStatusInput): BridgeStatus {
@@ -25,5 +29,7 @@ export function buildBridgeStatus(input: BridgeStatusInput): BridgeStatus {
     activeSessions: input.activeSessions,
     platform: platform(),
     uptimeMs: Math.max(0, input.now - input.startedAt),
+    ...(input.latestVersion !== undefined ? { latestVersion: input.latestVersion } : {}),
+    ...(input.updateAvailable ? { updateAvailable: true } : {}),
   };
 }

@@ -124,6 +124,13 @@ Logs are written to `~/.uxnan/logs/bridge-YYYY-MM-DD.log` (daily rotation, with 
 secret-redaction pass) and to stderr. Autostart at login is configured by the
 platform scripts under `scripts/`.
 
+The bridge is the ecosystem's core engine, so `start`/`status`/`qr`/`code` also
+print a one-line **"a newer bridge is available"** notice to stderr when the
+running version is behind the latest published to npm (`latest` dist-tag). The
+check is best-effort and cached in `~/.uxnan/update-check.json` (24h TTL), and
+the result is also exposed to the phone via `bridge/status`
+(`latestVersion`/`updateAvailable`).
+
 The Ed25519 identity is stored in the OS keychain (Windows Credential Manager /
 macOS Keychain / Linux Secret Service) via `@napi-rs/keyring`. With no keychain
 available, the bridge still runs with an in-memory identity (not persisted across
@@ -148,7 +155,8 @@ Task-focused guides live in [`docs/`](docs/):
   manually-synced Dart equivalents of the same shapes.
 - **State.** Non-secret JSON under `~/.uxnan/` (atomic writes) —
   `daemon-config.json`, `pairing-session.json`, `threads.json`,
-  `trusted-phones.json`, `push-state.json`, `agent-cache/`, `logs/`. The Ed25519
+  `trusted-phones.json`, `push-state.json`, `update-check.json`, `agent-cache/`,
+  `logs/`. The Ed25519
   identity is a secret kept in a `SecretStore`, never written in plaintext.
 - **Routing.** `HandlerRouter.dispatchRaw()` validates the envelope and routes to
   registered handlers; errors map to JSON-RPC error codes (`-32000..-32008` +

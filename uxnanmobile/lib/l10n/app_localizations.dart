@@ -1286,6 +1286,12 @@ abstract class AppLocalizations {
   /// **'Default'**
   String get modelPickerDefault;
 
+  /// No description provided for @modelPickerRefresh.
+  ///
+  /// In en, this message translates to:
+  /// **'Refresh models'**
+  String get modelPickerRefresh;
+
   /// No description provided for @newThreadFailed.
   ///
   /// In en, this message translates to:
@@ -3733,6 +3739,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Not now'**
   String get updateDismissAction;
+
+  /// Title of the informational banner shown when the paired PC's Uxnan bridge is outdated.
+  ///
+  /// In en, this message translates to:
+  /// **'Bridge update available'**
+  String get bridgeUpdateTitle;
+
+  /// Body of the bridge-update banner when the latest bridge version is unknown.
+  ///
+  /// In en, this message translates to:
+  /// **'Your PC\'s Uxnan bridge is out of date. Update it on your computer for the latest features and fixes.'**
+  String get bridgeUpdateBody;
+
+  /// Body of the bridge-update banner when the latest bridge version is known.
+  ///
+  /// In en, this message translates to:
+  /// **'A newer bridge ({version}) is available. Update it on your computer for the latest features and fixes.'**
+  String bridgeUpdateBodyVersion(String version);
+
+  /// Accessibility label / tooltip for the button that dismisses the bridge-update banner.
+  ///
+  /// In en, this message translates to:
+  /// **'Dismiss'**
+  String get bridgeUpdateDismiss;
 
   /// Label above the store release notes for the available update.
   ///

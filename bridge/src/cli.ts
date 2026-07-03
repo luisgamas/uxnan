@@ -17,6 +17,7 @@ import { encodePairingQr } from '@uxnan/shared';
 import { startBridge } from './bridge.js';
 import { renderPairingQr } from './qr.js';
 import { BRIDGE_VERSION } from './version.js';
+import { ensureUpdateStatus, updateNoticeMessage } from './update-check.js';
 import { DaemonState, DAEMON_FILES } from './daemon-state.js';
 import { LockFile, isProcessAlive } from './lock-file.js';
 import {
@@ -41,6 +42,22 @@ Commands:
   help             Show this help
 `;
 
+/**
+ * Best-effort "a newer bridge is available" notice, printed to stderr (so it
+ * never corrupts the stdout of commands like `status`/`code`). TTL-gated via the
+ * on-disk cache, bounded by a short fetch timeout, and silent when up to date,
+ * offline, or the latest version is unknown.
+ */
+async function printUpdateNotice(): Promise<void> {
+  try {
+    const status = await ensureUpdateStatus(new DaemonState());
+    const message = updateNoticeMessage(status);
+    if (message) process.stderr.write(`\n${message}\n`);
+  } catch {
+    // Never let the update check affect the command's outcome.
+  }
+}
+
 async function cmdQr(): Promise<void> {
   const bridge = await startBridge();
   const payload = bridge.generatePairingQr();
@@ -51,6 +68,7 @@ async function cmdQr(): Promise<void> {
   process.stdout.write(`Expires at: ${new Date(payload.expiresAt).toISOString()}\n`);
   process.stdout.write(`Payload: ${encodePairingQr(payload)}\n`);
   await bridge.stop();
+  await printUpdateNotice();
 }
 
 async function cmdCode(): Promise<void> {
@@ -60,12 +78,14 @@ async function cmdCode(): Promise<void> {
   const bridge = await startBridge();
   process.stdout.write(`${bridge.currentPairingCode()}\n`);
   await bridge.stop();
+  await printUpdateNotice();
 }
 
 async function cmdStatus(): Promise<void> {
   const bridge = await startBridge();
   process.stdout.write(`${JSON.stringify(bridge.status(), null, 2)}\n`);
   await bridge.stop();
+  await printUpdateNotice();
 }
 
 async function cmdStart(): Promise<void> {
@@ -115,6 +135,7 @@ async function cmdStart(): Promise<void> {
     process.stdout.write('Relay disabled; using the direct LAN/Tailscale path only.\n');
   }
 
+  await printUpdateNotice();
   process.stdout.write('Press Ctrl+C to stop.\n');
   await new Promise<void>((resolve) => {
     const shutdown = (): void => {

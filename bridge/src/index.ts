@@ -5,7 +5,19 @@
  * The live transport and agent runtimes are added in later increments.
  */
 export { startBridge, type Bridge, type StartBridgeOptions } from './bridge.js';
-export { BRIDGE_VERSION } from './version.js';
+export { BRIDGE_VERSION, BRIDGE_PACKAGE_NAME } from './version.js';
+export {
+  fetchLatestPublishedVersion,
+  computeUpdateStatus,
+  readUpdateCache,
+  cachedUpdateStatus,
+  ensureUpdateStatus,
+  updateNoticeMessage,
+  UPDATE_CHECK_TTL_MS,
+  type UpdateCheckCache,
+  type UpdateStatus,
+  type UpdateCheckOptions,
+} from './update-check.js';
 
 export { HandlerRouter, type RpcHandler } from './handler-router.js';
 export type { BridgeContext } from './bridge-context.js';

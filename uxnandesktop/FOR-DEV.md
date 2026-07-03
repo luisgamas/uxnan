@@ -104,6 +104,17 @@ yet on either side** — the bridge's `desktop/*` handler is also an empty stub
       keys **inside** the bridge process (never exposed to the Rust core — spec §4.1).
 - [ ] Commands: `bridge_start`, `bridge_stop`, `bridge_status`, `bridge_generate_qr`.
       Events: `bridge:connection-changed`, `bridge:mobile-connected`.
+- [ ] **Embedded-bridge update check.** The standalone bridge already runs a
+      background npm update check and reports it (CLI notice + `bridge/status`
+      `latestVersion`/`updateAvailable`; see `bridge/src/update-check.ts` and
+      `shared` `isNewerVersion`). When embedding the bridge here, make sure the
+      **embedded** bridge's `bridge/status` still carries those fields so the
+      paired phone keeps showing its "bridge update available" hint, and surface
+      the same "bridge is outdated" state in the desktop UI (Settings → Mobile
+      connection / About). The desktop app's own installer auto-updates via
+      `tauri-plugin-updater`, but that updates the **desktop app**, not the
+      pinned Node bridge version it ships — so the bridge's own check still
+      matters. Unblocks with the sidecar above.
 
 ### Frontend (Svelte)
 - [ ] Settings → Mobile connection: QR pairing dialog, connected-phone indicator,

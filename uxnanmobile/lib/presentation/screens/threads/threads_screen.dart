@@ -204,6 +204,9 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
         // App-update notice (Play In-App Update on Android / App Store on iOS).
         // Renders nothing unless an update is available and undismissed.
         const SliverToBoxAdapter(child: _UpdateBanner()),
+        // Bridge-update notice: the paired PC's bridge reports it's outdated
+        // (`bridge/status.updateAvailable`). Informational + dismissible.
+        const SliverToBoxAdapter(child: _BridgeUpdateBanner()),
         // Filter bar: a scope selector on the left (Agent / Project) and the
         // matching chip bar to the right. The scope is always visible; the
         // chip bar only appears when there's more than one option to choose
@@ -736,6 +739,91 @@ class _UpdateBanner extends ConsumerWidget {
           ),
         ];
     }
+  }
+}
+
+/// A dismissible, informational notice shown atop the thread list when the
+/// paired PC's Uxnan bridge reports a newer version is available
+/// (`bridge/status.updateAvailable`). The bridge is the core engine, so we
+/// nudge the user to update it **on their computer**. The phone can't update
+/// it, so there's no action button — swipe it away or tap the close icon to
+/// hide it until a newer bridge appears. Renders nothing when the bridge is up
+/// to date, unknown, or the notice was dismissed.
+class _BridgeUpdateBanner extends ConsumerWidget {
+  const _BridgeUpdateBanner();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final info = ref.watch(bridgeUpdateProvider);
+    if (info == null) return const SizedBox.shrink();
+
+    final l10n = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
+    final latest = info.latestVersion;
+    final body = latest == null
+        ? l10n.bridgeUpdateBody
+        : l10n.bridgeUpdateBodyVersion(latest);
+
+    return Dismissible(
+      key: ValueKey('bridge-update-${latest ?? ''}'),
+      onDismissed: (_) =>
+          ref.read(bridgeUpdateDismissalProvider.notifier).dismiss(latest),
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(
+          UxnanSpacing.lg,
+          UxnanSpacing.sm,
+          UxnanSpacing.lg,
+          0,
+        ),
+        padding: const EdgeInsets.all(UxnanSpacing.md),
+        decoration: BoxDecoration(
+          color: colors.tertiaryContainer,
+          borderRadius: const BorderRadius.all(UxnanRadius.lg),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.dns_outlined,
+                  size: 18,
+                  color: colors.onTertiaryContainer,
+                ),
+                const SizedBox(width: UxnanSpacing.sm),
+                Expanded(
+                  child: Text(
+                    l10n.bridgeUpdateTitle,
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          color: colors.onTertiaryContainer,
+                          fontWeight: FontWeight.w600,
+                        ),
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => ref
+                      .read(bridgeUpdateDismissalProvider.notifier)
+                      .dismiss(latest),
+                  icon: const Icon(Icons.close_rounded, size: 18),
+                  color: colors.onTertiaryContainer,
+                  tooltip: l10n.bridgeUpdateDismiss,
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+              ],
+            ),
+            const SizedBox(height: UxnanSpacing.xs),
+            Text(
+              body,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: colors.onTertiaryContainer,
+                  ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

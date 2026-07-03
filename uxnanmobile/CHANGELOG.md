@@ -6,6 +6,33 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — model / agent / project lists now re-sync when the bridge changes
+- **Root cause:** `agentModelsProvider` (and `agentsProvider`,
+  `projectsProvider`) were plain fetch-once `FutureProvider`s that cached the
+  bridge's reply in memory for the whole app session and never re-fetched — so a
+  model **added on the bridge** (e.g. a new Claude version like Sonnet 5) never
+  reached the picker until a cold app restart, even after updating the bridge.
+- **Fix (`application_providers.dart`):** these three providers now
+  `ref.watch(connectedDeviceProvider)`, mirroring the already-correct
+  `bridgeStatusProvider`, so they re-run `agent/models` / `agent/list` /
+  `project/list` on every (re)connect — updating the bridge and reconnecting is
+  now enough for new models/agents/projects to appear.
+
+### Added — bridge-update banner + model picker refresh
+- The bridge now reports whether it's outdated on `bridge/status`
+  (`updateAvailable` / `latestVersion`, from its own npm check). A new,
+  **dismissible** (swipe-away or close-icon) informational banner atop the
+  thread list nudges the user to update the bridge **on their PC** when it's
+  behind — the phone can't update it, so there's no action button. The
+  **phone never queries npm** — it only renders what the bridge reports
+  (`bridgeUpdateProvider`, `_BridgeUpdateBanner`, `BridgeStatus` entity extended
+  with `latestVersion`/`updateAvailable`). EN/ES strings added. A fixed "bridge
+  version / update" row in Settings → About is deferred to avoid colliding with
+  the in-flight settings overhaul (see `FOR-DEV.md`).
+- **Manual refresh in the model picker** (`model_picker_sheet.dart`): a refresh
+  icon in the sheet header re-syncs the list on demand
+  (`ref.invalidate(agentModelsProvider)`), so a model added on the PC shows
+  without even reconnecting.
 ### Changed — settings grouped (General / Workspace / System) + About logo + licenses fix
 - **The settings landing groups its sections** under **General** (Personalization,
   Notifications), **Workspace** (Conversation, Source control) and **System**

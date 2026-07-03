@@ -20,7 +20,13 @@ which versions "go together".
   rides the tag + the compiled-in `UXNAN_VERSION`. The npm and desktop release
   workflows re-apply the version from the tag with `--allow-same-version`, so a
   source==tag match is fine; mobile **fails** the release on a pubspec↔tag mismatch.
-- npm packages publish under the **`alpha`** dist-tag.
+- npm packages publish to the **`latest`** dist-tag, so `npm install`
+  (`npm install -g uxnan-bridge`) and the bridge's self-update check always
+  resolve the **newest** release. Pre-release channels (`alpha`/`beta`) are
+  **opt-in** — the maintainer adds them manually per build when wanted, e.g.
+  `npm dist-tag add uxnan-bridge@<version> beta`. (Historically the workflow
+  published under `alpha`, which left `latest` stuck at the very first version;
+  see *Fixing an already-published package's `latest`* below.)
 - Mobile ships to **Google Play** (open testing / beta); desktop to **GitHub
   Releases** (draft).
 
@@ -43,12 +49,36 @@ Cutting a release for component `<comp>` (tag `<comp>-v<version>`):
 4. **Tag & push** — `git tag <comp>-v<version> && git push origin <comp>-v<version>`,
    which triggers `release-<comp>.yml`.
 5. **Validate the deploy** — wait for the `release-*.yml` run to go **green** and
-   confirm the artifact actually landed: npm shows the new version under the `alpha`
-   dist-tag / the Play **open-testing** (beta) track has the new build / the desktop **GitHub
-   Release** draft exists. A red or half-finished run is **not** a release — fix it.
+   confirm the artifact actually landed: npm shows the new version on the `latest`
+   dist-tag (`npm view <pkg> dist-tags.latest`) / the Play **open-testing** (beta)
+   track has the new build / the desktop **GitHub Release** draft exists. A red or
+   half-finished run is **not** a release — fix it.
 6. **Record it** — add the row to the *History* table below (date + the component's
    new version) and commit it to `main`, as the last release step (see the
    automation note under the table).
+
+## Fixing an already-published package's `latest`
+
+The workflow **used to** publish under the `alpha` dist-tag. Because npm only sets
+`latest` on a package's **first** publish and `--tag alpha` never moves it, the
+already-published packages have `latest` stuck at their first version
+(`0.0.1-alpha.20260627`) even though newer versions exist under `alpha`. So
+`npm install -g uxnan-bridge` installs the *oldest* build.
+
+The workflow is now fixed (publishes to `latest`), but the **existing** packages
+need a one-time manual `latest` move — this requires npm publish rights and is
+**not** something CI does. From an `npm login`'d shell, point `latest` at the
+newest published version (see the *History* table for the current newest):
+
+```bash
+npm dist-tag add @uxnan/shared@0.0.3-alpha.20260702 latest
+npm dist-tag add uxnan-bridge@0.0.3-alpha.20260702 latest
+# relay's latest is already its newest (0.0.1-alpha.20260627) — nothing to do.
+```
+
+Verify with `npm view <pkg> dist-tags`. Optionally drop the now-redundant `alpha`
+tag (`npm dist-tag rm uxnan-bridge alpha`) — leaving it is harmless. From the next
+release onward the workflow keeps `latest` current automatically.
 
 ## History
 

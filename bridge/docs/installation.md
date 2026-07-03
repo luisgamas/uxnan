@@ -55,6 +55,25 @@ reconnects to the trusted device without re-scanning.
 
 See [`connectivity.md`](./connectivity.md) for the three modes.
 
+## Staying up to date
+
+The bridge is the ecosystem's core engine, so it checks whether a newer build
+has been published to npm (under the `latest` dist-tag) and nudges you to update.
+`start`, `status`, `qr` and `code` print a one-line notice to **stderr** when the
+running version is behind:
+
+```
+A newer bridge is available: <version> (you have <current>).
+Update with: npm install -g uxnan-bridge@latest
+```
+
+The check is best-effort (silent when offline / up to date), cached in
+`~/.uxnan/update-check.json` with a 24h TTL, and the running daemon refreshes it
+in the background. The paired phone learns the same thing via `bridge/status`
+(`latestVersion`/`updateAvailable`) and shows an informational hint — see the
+mobile app. Update with `npm install -g uxnan-bridge@latest` (or `git pull` +
+`npm install` for a source checkout).
+
 ## Autostart (run at logon, no open terminal)
 
 ```bash
@@ -76,5 +95,6 @@ commands above supersede them.
 ## Where things live
 
 `~/.uxnan/` holds the daemon config, pairing session, trusted-phones list, thread
-store, checkpoints metadata, the single-instance lock, and daily-rotated logs.
+store, checkpoints metadata, the update-check cache (`update-check.json`), the
+single-instance lock, and daily-rotated logs.
 Configuration reference: [`configuration.md`](./configuration.md).
