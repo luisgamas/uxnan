@@ -5,6 +5,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — update prompt is a pinned sonner toast; download/install from Settings
+- **The fixed top-of-page update banner is gone.** The "update available /
+  downloading / ready to install" prompt is now a **persistent sonner toast**
+  (`UpdateToast.svelte`, driven by `updateToast.ts` with a stable id +
+  `duration: Infinity`, so it never auto-dismisses and re-appears on reload when a
+  staged download is restored). Same phases, copy and actions as the old banner
+  (Download / Install now / Install when idle / Dismiss); dismissal goes through
+  `updater.dismiss()`. `UpdateBanner.svelte` removed.
+- **Settings → Updates now exposes the download/install actions inline.** When a
+  version is available you can **Download** it, and when it's downloaded you can
+  **Install now** (or **Install when idle** while an agent is busy) — consistent
+  with the selected install policy — without leaving Settings for the toast.
+- Native OS notifications (agent-idle) are unchanged. No backend/Rust changes;
+  the existing `updater` store already exposed everything. Vitest + `svelte-check`
+  green. Spec: `architecture/00-index.md`, `architecture/04-technical-reference.md`
+  (updater UI), `docs/updates.md`.
+
 ## [0.0.3-alpha.20260702] - 2026-07-02
 
 ### Build

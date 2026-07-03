@@ -33,6 +33,69 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   icon in the sheet header re-syncs the list on demand
   (`ref.invalidate(agentModelsProvider)`), so a model added on the PC shows
   without even reconnecting.
+### Changed — settings grouped (General / Workspace / System) + About logo + licenses fix
+- **The settings landing groups its sections** under **General** (Personalization,
+  Notifications), **Workspace** (Conversation, Source control) and **System**
+  (Updates, About). **Models** moved into the Conversation section as a **Claude**
+  sub-group; each section screen is now organised into labelled sub-groups
+  (Conversation → *Agents* / *Claude* / *Conversation*; Notifications, Source
+  control and Updates each get a header). The standalone Open-source licenses tile
+  was removed from the landing — it lives inside About, where it belongs.
+- **About shows the app logo** (theme-tinted `logo_fg.svg` via `flutter_svg`)
+  instead of a placeholder glyph.
+- **Fixed — open-source licenses showing empty.** `packageLicensesProvider` now
+  tolerates a failing license collector (logs + keeps going) so the bundled
+  licenses still load, and the screen distinguishes a real load error (with a
+  retry) from a genuinely empty registry. New widget test
+  (`licenses_screen_test.dart`) covers the screen rendering registered packages.
+
+### Changed — in-app updates: single package, flexible download + in-app install, configurable interval
+- **Swapped `flutter_upgrade_version` → `in_app_update_flutter`** (one package for
+  both platforms). Android now uses the Play **flexible** flow: background
+  download with a **real progress %** (`InstallStateAndroid` byte counts) and an
+  **in-app install** (`completeUpdateAndroid`) — no more full-screen immediate
+  flow. iOS looks up the App Store version via a `dio` iTunes query and presents
+  the store page in-app with StoreKit `SKStoreProductViewController`
+  (`showUpdateForIos`), deriving the numeric App Store id from the lookup — the
+  external `url_launcher` open is now only a fallback.
+- **Settings → Updates is a full section screen**: the **installed version**, a
+  live state card (checking / available / **downloading with %** / **downloaded →
+  Install now** / installing / error), and the download → install flow **in the
+  section** — you no longer have to go to Threads to install. The Threads
+  *Update available* banner stays, driven by the same controller (in sync).
+- **Configurable check interval** — every launch / 6h / 12h / 24h (default) / 48h
+  / weekly / monthly, persisted; replaces the hardcoded 12h auto-check throttle
+  (`UpdateCheckInterval`, `UpdatePreferencesStore.readInterval/writeInterval`).
+- New `AppInstallStage`/`AppInstallProgress`, extended `AppUpdatePhase`
+  (downloading/downloaded/installing) and `AppUpdateController`
+  (`download`/`install`/`setInterval`). EN/ES strings added; tests for the
+  service (Android/iOS/unsupported), controller (phases + interval throttle) and
+  the interval store round-trip updated. Spec: `architecture/00-index.md`,
+  `FOR-DEV.md`, `FOR-HUMAN.md`.
+
+### Changed — settings is now a sectioned landing, not one long scroll
+- **`SettingsScreen` is a landing of section entries.** Instead of listing every
+  option at once, the first screen shows a compact list of sections
+  (`NeNavTile`s in dynamic-corner groups); tapping one opens a dedicated screen
+  with just that section's options (`Navigator.push`, the existing `static push`
+  pattern). New screens under `lib/presentation/screens/settings/sections/`:
+  `NotificationsSectionScreen`, `ConversationSectionScreen` (now owns the
+  context-indicator selector), `ModelsSectionScreen`,
+  `SourceControlSectionScreen`, `UpdatesSectionScreen`. Appearance still opens
+  `PersonalizationScreen`.
+
+### Added — About screen + open-source licenses
+- **`AboutSectionScreen`** — app identity + installed version (new
+  `appPackageInfoProvider` backed by the new `package_info_plus` dependency), a
+  short description, a source-code link (GitHub), and an entry to the licenses.
+- **Open-source licenses** — `LicensesScreen` lists every third-party package
+  (aggregated from Flutter's `LicenseRegistry` via `packageLicensesProvider`,
+  value object `PackageLicenses`) and `LicenseDetailScreen` shows each package's
+  full license text.
+- New EN/ES strings for the section subtitles, About and licenses screens.
+- Tests: `settings_screen_test.dart` reworked for the landing + per-section
+  navigation; new `licenses_provider_test.dart` (aggregation + `PackageLicenses`).
+  Spec: `architecture/02c` §14 (settings landing por secciones).
 
 ## [0.0.3-alpha.20260702] - 2026-07-02
 

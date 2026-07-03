@@ -55,7 +55,11 @@ quitting the app), so nothing is killed mid-write.
     a stale download, closes terminals, installs, and restarts.
   - The frontend store `src/lib/state/updater.svelte.ts` orchestrates check →
     (auto?)download → install, applies the install policy, and runs the
-    idle-guard; `src/lib/components/UpdateBanner.svelte` is the banner.
+    idle-guard. The prompt is a **pinned sonner toast**
+    (`src/lib/components/UpdateToast.svelte`, driven by `src/lib/updateToast.ts`
+    with a stable id + `duration: Infinity`), and the same download/install
+    actions are also available inline in **Settings → Updates**
+    (`src/lib/components/Settings.svelte`).
 - **Signature** — verified against `plugins.updater.pubkey` in
   `src-tauri/tauri.conf.json`. This is a **free minisign key**, unrelated to OS
   code-signing (the paid Authenticode/Apple cert that removes "unknown publisher"

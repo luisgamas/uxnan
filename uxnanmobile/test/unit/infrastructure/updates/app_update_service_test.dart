@@ -1,25 +1,45 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter_upgrade_version/flutter_upgrade_version.dart';
+import 'package:in_app_update_flutter/in_app_update_flutter.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:uxnan/domain/value_objects/app_update_status.dart';
 import 'package:uxnan/infrastructure/updates/app_update_service.dart';
 
 void main() {
-  PackageInfo pkg({String version = '1.0.0'}) => PackageInfo(
+  PackageInfo pkg({
+    String version = '1.0.0',
+    String packageName = 'dev.luisgamas.uxnanmobile',
+  }) =>
+      PackageInfo(
+        appName: 'Uxnan',
+        packageName: packageName,
         version: version,
-        packageName: 'dev.luisgamas.uxnanmobile',
+        buildNumber: '1',
+      );
+
+  AppUpdateInfoAndroid androidInfo({
+    required UpdateAvailabilityAndroid availability,
+    int? versionCode,
+    bool flexible = true,
+  }) =>
+      AppUpdateInfoAndroid(
+        updateAvailability: availability,
+        availableVersionCode: versionCode,
+        updatePriority: 0,
+        isImmediateUpdateAllowed: true,
+        isFlexibleUpdateAllowed: flexible,
+        installStatus: InstallStatusAndroid.unknown,
       );
 
   group('Android — Play In-App Update', () {
-    test('maps an available update with its flags + version code', () async {
+    test('maps an available update with flags + version code', () async {
       final service = AppUpdateService(
         platformOverride: TargetPlatform.android,
         isWebOverride: false,
         packageInfoLoader: () async => pkg(),
-        androidUpdateCheck: () async => AppUpdateInfo(
-          updateAvailability: UpdateAvailability.updateAvailable,
-          immediateAllowed: true,
-          availableVersionCode: 42,
+        androidCheck: () async => androidInfo(
+          availability: UpdateAvailabilityAndroid.updateAvailable,
+          versionCode: 42,
         ),
       );
 
@@ -28,8 +48,7 @@ void main() {
       expect(status.channel, UpdateChannel.playStore);
       expect(status.updateAvailable, isTrue);
       expect(status.storeVersion, '42');
-      expect(status.immediateAllowed, isTrue);
-      expect(status.flexibleAllowed, isFalse);
+      expect(status.flexibleAllowed, isTrue);
       expect(status.localVersion, '1.0.0');
     });
 
@@ -38,8 +57,8 @@ void main() {
         platformOverride: TargetPlatform.android,
         isWebOverride: false,
         packageInfoLoader: () async => pkg(),
-        androidUpdateCheck: () async => AppUpdateInfo(
-          updateAvailability: UpdateAvailability.updateNotAvailable,
+        androidCheck: () async => androidInfo(
+          availability: UpdateAvailabilityAndroid.updateNotAvailable,
         ),
       );
 
@@ -52,7 +71,7 @@ void main() {
       final service = AppUpdateService(
         platformOverride: TargetPlatform.android,
         isWebOverride: false,
-        androidUpdateCheck: () async => throw Exception('not from Play'),
+        androidCheck: () async => throw Exception('not from Play'),
       );
 
       final status = await service.check();
@@ -60,34 +79,94 @@ void main() {
       expect(status.updateAvailable, isFalse);
     });
 
-    test('startPlayUpdate uses an immediate flow and returns null on success',
-        () async {
-      AppUpdateType? started;
+    test('startFlexibleDownload returns null on success', () async {
+      var started = 0;
       final service = AppUpdateService(
         platformOverride: TargetPlatform.android,
         isWebOverride: false,
-        androidUpdateStart: (type) async {
-          started = type;
-          return null;
+        androidStartFlexible: () async {
+          started++;
+          return UpdateResultAndroid.success;
         },
       );
 
-      expect(await service.startPlayUpdate(), isNull);
-      expect(started, AppUpdateType.immediate);
+      expect(await service.startFlexibleDownload(), isNull);
+      expect(started, 1);
+    });
+
+    test('startFlexibleDownload reports a canceled flow', () async {
+      final service = AppUpdateService(
+        platformOverride: TargetPlatform.android,
+        isWebOverride: false,
+        androidStartFlexible: () async => UpdateResultAndroid.userCanceled,
+      );
+
+      expect(await service.startFlexibleDownload(), isNotNull);
+    });
+
+    test('completeFlexibleInstall returns null on success', () async {
+      var completed = 0;
+      final service = AppUpdateService(
+        platformOverride: TargetPlatform.android,
+        isWebOverride: false,
+        androidComplete: () async => completed++,
+      );
+
+      expect(await service.completeFlexibleInstall(), isNull);
+      expect(completed, 1);
+    });
+
+    test('installProgress maps a downloading state with a fraction', () async {
+      final service = AppUpdateService(
+        platformOverride: TargetPlatform.android,
+        isWebOverride: false,
+        androidInstallStates: () => Stream.fromIterable([
+          const InstallStateAndroid(
+            status: InstallStatusAndroid.downloading,
+            bytesDownloaded: 50,
+            totalBytesToDownload: 100,
+          ),
+          const InstallStateAndroid(
+            status: InstallStatusAndroid.downloaded,
+            bytesDownloaded: 100,
+            totalBytesToDownload: 100,
+          ),
+        ]),
+      );
+
+      final events = await service.installProgress().toList();
+      expect(events.first.stage, AppInstallStage.downloading);
+      expect(events.first.fraction, 0.5);
+      expect(events.last.stage, AppInstallStage.downloaded);
+      expect(events.last.fraction, isNull);
     });
   });
 
   group('iOS — App Store lookup', () {
-    test('maps canUpdate + store link + version', () async {
+    Map<String, dynamic> lookupBody({
+      required String version,
+      String url = 'https://apps.apple.com/app/id1',
+      String? notes = 'Bug fixes',
+      int trackId = 123456,
+    }) =>
+        <String, dynamic>{
+          'resultCount': 1,
+          'results': [
+            <String, dynamic>{
+              'version': version,
+              'trackViewUrl': url,
+              'releaseNotes': notes,
+              'trackId': trackId,
+            },
+          ],
+        };
+
+    test('maps an available update, store link, notes + appStoreId', () async {
       final service = AppUpdateService(
         platformOverride: TargetPlatform.iOS,
         isWebOverride: false,
         packageInfoLoader: () async => pkg(),
-        iosStoreLookup: (info, region) async => VersionInfo(
-          localVersion: '1.0.0',
-          storeVersion: '2.0.0',
-          appStoreLink: 'https://apps.apple.com/app/id1',
-        ),
+        iosLookup: (bundleId) async => lookupBody(version: '2.0.0'),
       );
 
       final status = await service.check();
@@ -95,6 +174,8 @@ void main() {
       expect(status.updateAvailable, isTrue);
       expect(status.storeVersion, '2.0.0');
       expect(status.storeUrl, 'https://apps.apple.com/app/id1');
+      expect(status.releaseNotes, 'Bug fixes');
+      expect(status.appStoreId, '123456');
     });
 
     test('reports no update when the store matches the local version',
@@ -103,22 +184,72 @@ void main() {
         platformOverride: TargetPlatform.iOS,
         isWebOverride: false,
         packageInfoLoader: () async => pkg(version: '2.0.0'),
-        iosStoreLookup: (info, region) async => VersionInfo(
-          localVersion: '2.0.0',
-          storeVersion: '2.0.0',
-          appStoreLink: 'https://apps.apple.com/app/id1',
-        ),
+        iosLookup: (bundleId) async => lookupBody(version: '2.0.0'),
       );
 
       expect((await service.check()).updateAvailable, isFalse);
     });
 
-    test('startPlayUpdate is a no-op off Android', () async {
+    test('_isNewer treats a dotted store version as newer (2.0.1 > 2.0)',
+        () async {
+      final service = AppUpdateService(
+        platformOverride: TargetPlatform.iOS,
+        isWebOverride: false,
+        packageInfoLoader: () async => pkg(version: '2.0'),
+        iosLookup: (bundleId) async => lookupBody(version: '2.0.1'),
+      );
+
+      expect((await service.check()).updateAvailable, isTrue);
+    });
+
+    test('reports no update when the lookup returns no results', () async {
+      final service = AppUpdateService(
+        platformOverride: TargetPlatform.iOS,
+        isWebOverride: false,
+        packageInfoLoader: () async => pkg(),
+        iosLookup: (bundleId) async =>
+            <String, dynamic>{'results': <dynamic>[]},
+      );
+
+      expect((await service.check()).updateAvailable, isFalse);
+    });
+
+    test('startFlexibleDownload is a no-op off Android', () async {
       final service = AppUpdateService(
         platformOverride: TargetPlatform.iOS,
         isWebOverride: false,
       );
-      expect(await service.startPlayUpdate(), isNotNull);
+      expect(await service.startFlexibleDownload(), isNotNull);
+    });
+
+    test('presentStore uses the StoreKit overlay when an id is present',
+        () async {
+      String? presented;
+      final service = AppUpdateService(
+        platformOverride: TargetPlatform.iOS,
+        isWebOverride: false,
+        iosPresent: (id) async => presented = id,
+      );
+
+      await service.presentStore(appStoreId: '999');
+      expect(presented, '999');
+    });
+
+    test('presentStore falls back to the url when no id', () async {
+      Uri? opened;
+      final service = AppUpdateService(
+        platformOverride: TargetPlatform.iOS,
+        isWebOverride: false,
+        urlOpener: (uri) async {
+          opened = uri;
+          return true;
+        },
+      );
+
+      await service.presentStore(
+        storeUrl: 'https://apps.apple.com/app/id1',
+      );
+      expect(opened.toString(), 'https://apps.apple.com/app/id1');
     });
   });
 
@@ -138,30 +269,6 @@ void main() {
       isWebOverride: true,
     );
     expect((await service.check()).channel, UpdateChannel.unsupported);
-  });
-
-  group('openStore', () {
-    test('launches a valid url', () async {
-      Uri? opened;
-      final service = AppUpdateService(
-        urlOpener: (uri) async {
-          opened = uri;
-          return true;
-        },
-      );
-
-      expect(
-        await service.openStore('https://apps.apple.com/app/id1'),
-        isTrue,
-      );
-      expect(opened.toString(), 'https://apps.apple.com/app/id1');
-    });
-
-    test('guards a launch failure into false', () async {
-      final service = AppUpdateService(
-        urlOpener: (uri) async => throw Exception('no handler'),
-      );
-      expect(await service.openStore('https://example.com'), isFalse);
-    });
+    expect(await service.installProgress().toList(), isEmpty);
   });
 }
