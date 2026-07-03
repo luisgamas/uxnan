@@ -22,6 +22,9 @@ export * from './agents/agent-capabilities.js';
 export * from './agents/agent-config.js';
 export * from './agents/agent-adapter.js';
 
+// Version
+export * from './version/compare.js';
+
 // Notifications
 export * from './notifications/push-payload.js';
 

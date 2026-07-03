@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — version-compare util + `BridgeStatus` update fields
+- **`compareVersions(a, b)` / `isNewerVersion(candidate, current)`**
+  (`src/version/compare.ts`): dependency-free SemVer 2.0.0 precedence
+  comparison (date-stamped `-alpha.YYYYMMDD` prereleases ordered numerically,
+  `+build` metadata ignored, unparseable inputs sort lowest). Lets the bridge
+  decide "is the published version newer than mine?" without a `semver`
+  dependency. Exported from the package root; 7 new tests (`test/version.test.ts`).
+- **`BridgeStatus.latestVersion?: string` + `BridgeStatus.updateAvailable?: boolean`**
+  (`src/models/session.ts`): the bridge's own background npm update check reports
+  the latest published version and whether it is strictly newer than the running
+  one, so the phone can surface a "bridge update available" hint **without
+  querying npm itself**. Backward-compatible optional fields (absent when the
+  check hasn't run or is offline). Reflected in `architecture/02b`
+  (`BridgeStatus` contract + `bridge/status` result).
+
 ## [0.0.3-alpha.20260702] - 2026-07-02
 
 ### Added — `AgentModel.isLatestAlias` (flags moving-target "latest" aliases)
