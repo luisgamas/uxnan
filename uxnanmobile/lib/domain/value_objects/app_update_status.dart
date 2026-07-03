@@ -1,4 +1,5 @@
 import 'package:equatable/equatable.dart';
+import 'package:flutter/foundation.dart';
 
 /// Which platform update mechanism a check ran against.
 enum UpdateChannel {
@@ -6,8 +7,9 @@ enum UpdateChannel {
   /// Play's own flow, so no store URL is needed.
   playStore,
 
-  /// Apple App Store version lookup (iOS). The update is applied by sending
-  /// the user to the App Store listing ([AppUpdateStatus.storeUrl]).
+  /// Apple App Store version lookup (iOS). The update is applied by presenting
+  /// the App Store product page ([AppUpdateStatus.appStoreId]) via StoreKit,
+  /// or by opening [AppUpdateStatus.storeUrl] as a fallback.
   appStore,
 
   /// No in-app update mechanism applies on this platform (web/desktop or a
@@ -32,7 +34,7 @@ class AppUpdateStatus extends Equatable {
     this.storeVersion,
     this.storeUrl,
     this.releaseNotes,
-    this.immediateAllowed = false,
+    this.appStoreId,
     this.flexibleAllowed = false,
   });
 
@@ -45,7 +47,7 @@ class AppUpdateStatus extends Equatable {
         storeVersion = null,
         storeUrl = null,
         releaseNotes = null,
-        immediateAllowed = false,
+        appStoreId = null,
         flexibleAllowed = false;
 
   /// The mechanism this result came from.
@@ -69,8 +71,9 @@ class AppUpdateStatus extends Equatable {
   /// The store's release notes for the new version, when available (iOS).
   final String? releaseNotes;
 
-  /// Android only: Play reports an *immediate* update flow is allowed.
-  final bool immediateAllowed;
+  /// iOS only: the numeric App Store id (from the iTunes lookup `trackId`),
+  /// used to present the StoreKit product-page overlay. Null on Android.
+  final String? appStoreId;
 
   /// Android only: Play reports a *flexible* update flow is allowed.
   final bool flexibleAllowed;
@@ -83,7 +86,61 @@ class AppUpdateStatus extends Equatable {
         storeVersion,
         storeUrl,
         releaseNotes,
-        immediateAllowed,
+        appStoreId,
         flexibleAllowed,
       ];
+}
+
+/// The stage of an in-progress flexible (background-download) update on
+/// Android, mapped from the plugin's install-state stream.
+enum AppInstallStage {
+  /// No install is in progress.
+  idle,
+
+  /// The update is downloading in the background.
+  downloading,
+
+  /// The update finished downloading and is ready to install.
+  downloaded,
+
+  /// The update is being installed (the app will restart).
+  installing,
+
+  /// The update installed successfully.
+  installed,
+
+  /// The download or install failed.
+  failed,
+
+  /// The user canceled the update.
+  canceled,
+}
+
+/// A snapshot of a flexible update's download/install progress.
+///
+/// [fraction] is the download completion in `0.0..1.0` when the platform
+/// reports byte progress (the Play flexible flow does), else null.
+@immutable
+class AppInstallProgress {
+  /// Creates an [AppInstallProgress].
+  const AppInstallProgress({required this.stage, this.fraction});
+
+  /// The current install stage.
+  final AppInstallStage stage;
+
+  /// Download completion in `0.0..1.0`, or null when byte progress is
+  /// unavailable.
+  final double? fraction;
+
+  @override
+  bool operator ==(Object other) =>
+      other is AppInstallProgress &&
+      other.stage == stage &&
+      other.fraction == fraction;
+
+  @override
+  int get hashCode => Object.hash(stage, fraction);
+
+  @override
+  String toString() => 'AppInstallProgress(stage: $stage, fraction: $fraction)';
 }

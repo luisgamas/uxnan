@@ -1091,5 +1091,189 @@
   "updateWhatsNewLabel": "What's new",
   "@updateWhatsNewLabel": {
     "description": "Label above the store release notes for the available update."
+  },
+  "updateCurrentVersionTitle": "Current version",
+  "@updateCurrentVersionTitle": {
+    "description": "Label for the installed app version row in the Updates section."
+  },
+  "updateDownloadAction": "Download",
+  "@updateDownloadAction": {
+    "description": "Button that starts the in-app background download of the available update (Android)."
+  },
+  "updateInstallAction": "Install now",
+  "@updateInstallAction": {
+    "description": "Button that installs a downloaded update (Android; the app restarts)."
+  },
+  "updateStatusDownloading": "Downloading update…",
+  "@updateStatusDownloading": {
+    "description": "Status shown while the update downloads in the background."
+  },
+  "updateStatusDownloadingPercent": "Downloading update… {percent}%",
+  "@updateStatusDownloadingPercent": {
+    "description": "Status shown while the update downloads, with a percentage.",
+    "placeholders": {
+      "percent": {
+        "type": "int",
+        "example": "42"
+      }
+    }
+  },
+  "updateStatusDownloaded": "Update downloaded — ready to install.",
+  "@updateStatusDownloaded": {
+    "description": "Status shown when a flexible update finished downloading."
+  },
+  "updateStatusInstalling": "Installing update…",
+  "@updateStatusInstalling": {
+    "description": "Status shown while the downloaded update is being installed."
+  },
+  "updateIntervalSectionTitle": "Check automatically",
+  "@updateIntervalSectionTitle": {
+    "description": "Header above the automatic check-interval selector."
+  },
+  "updateIntervalEveryLaunch": "Every launch",
+  "@updateIntervalEveryLaunch": {
+    "description": "Check-interval option: check on every app launch."
+  },
+  "updateIntervalEvery6h": "Every 6 hours",
+  "@updateIntervalEvery6h": {
+    "description": "Check-interval option: every 6 hours."
+  },
+  "updateIntervalEvery12h": "Every 12 hours",
+  "@updateIntervalEvery12h": {
+    "description": "Check-interval option: every 12 hours."
+  },
+  "updateIntervalEvery24h": "Every day",
+  "@updateIntervalEvery24h": {
+    "description": "Check-interval option: every 24 hours (the default)."
+  },
+  "updateIntervalEvery48h": "Every 2 days",
+  "@updateIntervalEvery48h": {
+    "description": "Check-interval option: every 48 hours."
+  },
+  "updateIntervalWeekly": "Every week",
+  "@updateIntervalWeekly": {
+    "description": "Check-interval option: weekly."
+  },
+  "updateIntervalMonthly": "Every month",
+  "@updateIntervalMonthly": {
+    "description": "Check-interval option: monthly."
+  },
+  "settingsNotificationsNavSubtitle": "Replies, errors and delivery",
+  "@settingsNotificationsNavSubtitle": {
+    "description": "Settings landing subtitle for the Notifications section."
+  },
+  "settingsConversationNavSubtitle": "Thinking, models, context and templates",
+  "@settingsConversationNavSubtitle": {
+    "description": "Settings landing subtitle for the Conversation section."
+  },
+  "settingsModelsNavSubtitle": "Model picker options",
+  "@settingsModelsNavSubtitle": {
+    "description": "Settings landing subtitle for the Models section."
+  },
+  "settingsGitNavSubtitle": "Push and pull-request confirmations",
+  "@settingsGitNavSubtitle": {
+    "description": "Settings landing subtitle for the Source control section."
+  },
+  "settingsUpdatesNavSubtitle": "Version, check schedule and install",
+  "@settingsUpdatesNavSubtitle": {
+    "description": "Settings landing subtitle for the Updates section."
+  },
+  "settingsAboutSection": "About",
+  "@settingsAboutSection": {
+    "description": "Header for the About group on the settings landing."
+  },
+  "settingsAboutTitle": "About Uxnan",
+  "@settingsAboutTitle": {
+    "description": "Title of the About section (app info and developer)."
+  },
+  "settingsAboutSubtitle": "App info and developer",
+  "@settingsAboutSubtitle": {
+    "description": "Settings landing subtitle for the About section."
+  },
+  "settingsLicensesTitle": "Open-source licenses",
+  "@settingsLicensesTitle": {
+    "description": "Title of the open-source licenses screen."
+  },
+  "settingsLicensesSubtitle": "Third-party packages Uxnan uses",
+  "@settingsLicensesSubtitle": {
+    "description": "Settings/About subtitle for the open-source licenses entry."
+  },
+  "aboutDescription": "Drive your PC coding agents from your phone — end-to-end encrypted.",
+  "@aboutDescription": {
+    "description": "One-line description of the app on the About screen."
+  },
+  "aboutDeveloperSection": "Developer",
+  "@aboutDeveloperSection": {
+    "description": "Header for the developer group on the About screen."
+  },
+  "aboutSourceCodeTitle": "Source code",
+  "@aboutSourceCodeTitle": {
+    "description": "About screen row that opens the project's source repository."
+  },
+  "aboutSourceCodeSubtitle": "View the project on GitHub",
+  "@aboutSourceCodeSubtitle": {
+    "description": "Subtitle for the source-code row on the About screen."
+  },
+  "aboutLegalSection": "Legal",
+  "@aboutLegalSection": {
+    "description": "Header for the legal group on the About screen."
+  },
+  "aboutVersionLabel": "Version {version}",
+  "@aboutVersionLabel": {
+    "description": "Installed app version shown on the About screen.",
+    "placeholders": {
+      "version": { "type": "String" }
+    }
+  },
+  "licensesEmpty": "No licenses found.",
+  "@licensesEmpty": {
+    "description": "Shown when the license registry has no entries."
+  },
+  "licenseCountLabel": "{count, plural, =1{1 license} other{{count} licenses}}",
+  "@licenseCountLabel": {
+    "description": "Number of licenses a package registered.",
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "settingsGeneralSection": "General",
+  "@settingsGeneralSection": {
+    "description": "Settings landing group header for General (appearance, notifications)."
+  },
+  "settingsWorkspaceSection": "Workspace",
+  "@settingsWorkspaceSection": {
+    "description": "Settings landing group header for Workspace (conversation, source control)."
+  },
+  "settingsSystemSection": "System",
+  "@settingsSystemSection": {
+    "description": "Settings landing group header for System (updates, about)."
+  },
+  "settingsConversationAgentsGroup": "Agents",
+  "@settingsConversationAgentsGroup": {
+    "description": "Conversation section sub-group for agent behaviour (thinking, context)."
+  },
+  "settingsConversationClaudeGroup": "Claude",
+  "@settingsConversationClaudeGroup": {
+    "description": "Conversation section sub-group for Claude model-picker options."
+  },
+  "settingsConversationChatGroup": "Conversation",
+  "@settingsConversationChatGroup": {
+    "description": "Conversation section sub-group for chat behaviour (scroll, templates)."
+  },
+  "settingsNotificationsEventsGroup": "Agent events",
+  "@settingsNotificationsEventsGroup": {
+    "description": "Notifications section sub-group header for the event toggles."
+  },
+  "settingsGitConfirmationsGroup": "Confirmations",
+  "@settingsGitConfirmationsGroup": {
+    "description": "Source control section sub-group header for the confirmation toggles."
+  },
+  "settingsUpdatesVersionGroup": "Version",
+  "@settingsUpdatesVersionGroup": {
+    "description": "Updates section sub-group header for the current version + update state."
+  },
+  "licensesError": "Couldn't load the licenses.",
+  "@licensesError": {
+    "description": "Shown when the license registry failed to load."
   }
 }

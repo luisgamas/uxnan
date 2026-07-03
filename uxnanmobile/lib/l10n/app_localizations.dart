@@ -3739,6 +3739,264 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'What\'s new'**
   String get updateWhatsNewLabel;
+
+  /// Label for the installed app version row in the Updates section.
+  ///
+  /// In en, this message translates to:
+  /// **'Current version'**
+  String get updateCurrentVersionTitle;
+
+  /// Button that starts the in-app background download of the available update (Android).
+  ///
+  /// In en, this message translates to:
+  /// **'Download'**
+  String get updateDownloadAction;
+
+  /// Button that installs a downloaded update (Android; the app restarts).
+  ///
+  /// In en, this message translates to:
+  /// **'Install now'**
+  String get updateInstallAction;
+
+  /// Status shown while the update downloads in the background.
+  ///
+  /// In en, this message translates to:
+  /// **'Downloading update…'**
+  String get updateStatusDownloading;
+
+  /// Status shown while the update downloads, with a percentage.
+  ///
+  /// In en, this message translates to:
+  /// **'Downloading update… {percent}%'**
+  String updateStatusDownloadingPercent(int percent);
+
+  /// Status shown when a flexible update finished downloading.
+  ///
+  /// In en, this message translates to:
+  /// **'Update downloaded — ready to install.'**
+  String get updateStatusDownloaded;
+
+  /// Status shown while the downloaded update is being installed.
+  ///
+  /// In en, this message translates to:
+  /// **'Installing update…'**
+  String get updateStatusInstalling;
+
+  /// Header above the automatic check-interval selector.
+  ///
+  /// In en, this message translates to:
+  /// **'Check automatically'**
+  String get updateIntervalSectionTitle;
+
+  /// Check-interval option: check on every app launch.
+  ///
+  /// In en, this message translates to:
+  /// **'Every launch'**
+  String get updateIntervalEveryLaunch;
+
+  /// Check-interval option: every 6 hours.
+  ///
+  /// In en, this message translates to:
+  /// **'Every 6 hours'**
+  String get updateIntervalEvery6h;
+
+  /// Check-interval option: every 12 hours.
+  ///
+  /// In en, this message translates to:
+  /// **'Every 12 hours'**
+  String get updateIntervalEvery12h;
+
+  /// Check-interval option: every 24 hours (the default).
+  ///
+  /// In en, this message translates to:
+  /// **'Every day'**
+  String get updateIntervalEvery24h;
+
+  /// Check-interval option: every 48 hours.
+  ///
+  /// In en, this message translates to:
+  /// **'Every 2 days'**
+  String get updateIntervalEvery48h;
+
+  /// Check-interval option: weekly.
+  ///
+  /// In en, this message translates to:
+  /// **'Every week'**
+  String get updateIntervalWeekly;
+
+  /// Check-interval option: monthly.
+  ///
+  /// In en, this message translates to:
+  /// **'Every month'**
+  String get updateIntervalMonthly;
+
+  /// Settings landing subtitle for the Notifications section.
+  ///
+  /// In en, this message translates to:
+  /// **'Replies, errors and delivery'**
+  String get settingsNotificationsNavSubtitle;
+
+  /// Settings landing subtitle for the Conversation section.
+  ///
+  /// In en, this message translates to:
+  /// **'Thinking, models, context and templates'**
+  String get settingsConversationNavSubtitle;
+
+  /// Settings landing subtitle for the Models section.
+  ///
+  /// In en, this message translates to:
+  /// **'Model picker options'**
+  String get settingsModelsNavSubtitle;
+
+  /// Settings landing subtitle for the Source control section.
+  ///
+  /// In en, this message translates to:
+  /// **'Push and pull-request confirmations'**
+  String get settingsGitNavSubtitle;
+
+  /// Settings landing subtitle for the Updates section.
+  ///
+  /// In en, this message translates to:
+  /// **'Version, check schedule and install'**
+  String get settingsUpdatesNavSubtitle;
+
+  /// Header for the About group on the settings landing.
+  ///
+  /// In en, this message translates to:
+  /// **'About'**
+  String get settingsAboutSection;
+
+  /// Title of the About section (app info and developer).
+  ///
+  /// In en, this message translates to:
+  /// **'About Uxnan'**
+  String get settingsAboutTitle;
+
+  /// Settings landing subtitle for the About section.
+  ///
+  /// In en, this message translates to:
+  /// **'App info and developer'**
+  String get settingsAboutSubtitle;
+
+  /// Title of the open-source licenses screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Open-source licenses'**
+  String get settingsLicensesTitle;
+
+  /// Settings/About subtitle for the open-source licenses entry.
+  ///
+  /// In en, this message translates to:
+  /// **'Third-party packages Uxnan uses'**
+  String get settingsLicensesSubtitle;
+
+  /// One-line description of the app on the About screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Drive your PC coding agents from your phone — end-to-end encrypted.'**
+  String get aboutDescription;
+
+  /// Header for the developer group on the About screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Developer'**
+  String get aboutDeveloperSection;
+
+  /// About screen row that opens the project's source repository.
+  ///
+  /// In en, this message translates to:
+  /// **'Source code'**
+  String get aboutSourceCodeTitle;
+
+  /// Subtitle for the source-code row on the About screen.
+  ///
+  /// In en, this message translates to:
+  /// **'View the project on GitHub'**
+  String get aboutSourceCodeSubtitle;
+
+  /// Header for the legal group on the About screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Legal'**
+  String get aboutLegalSection;
+
+  /// Installed app version shown on the About screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Version {version}'**
+  String aboutVersionLabel(String version);
+
+  /// Shown when the license registry has no entries.
+  ///
+  /// In en, this message translates to:
+  /// **'No licenses found.'**
+  String get licensesEmpty;
+
+  /// Number of licenses a package registered.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 license} other{{count} licenses}}'**
+  String licenseCountLabel(int count);
+
+  /// Settings landing group header for General (appearance, notifications).
+  ///
+  /// In en, this message translates to:
+  /// **'General'**
+  String get settingsGeneralSection;
+
+  /// Settings landing group header for Workspace (conversation, source control).
+  ///
+  /// In en, this message translates to:
+  /// **'Workspace'**
+  String get settingsWorkspaceSection;
+
+  /// Settings landing group header for System (updates, about).
+  ///
+  /// In en, this message translates to:
+  /// **'System'**
+  String get settingsSystemSection;
+
+  /// Conversation section sub-group for agent behaviour (thinking, context).
+  ///
+  /// In en, this message translates to:
+  /// **'Agents'**
+  String get settingsConversationAgentsGroup;
+
+  /// Conversation section sub-group for Claude model-picker options.
+  ///
+  /// In en, this message translates to:
+  /// **'Claude'**
+  String get settingsConversationClaudeGroup;
+
+  /// Conversation section sub-group for chat behaviour (scroll, templates).
+  ///
+  /// In en, this message translates to:
+  /// **'Conversation'**
+  String get settingsConversationChatGroup;
+
+  /// Notifications section sub-group header for the event toggles.
+  ///
+  /// In en, this message translates to:
+  /// **'Agent events'**
+  String get settingsNotificationsEventsGroup;
+
+  /// Source control section sub-group header for the confirmation toggles.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirmations'**
+  String get settingsGitConfirmationsGroup;
+
+  /// Updates section sub-group header for the current version + update state.
+  ///
+  /// In en, this message translates to:
+  /// **'Version'**
+  String get settingsUpdatesVersionGroup;
+
+  /// Shown when the license registry failed to load.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load the licenses.'**
+  String get licensesError;
 }
 
 class _AppLocalizationsDelegate

@@ -321,7 +321,10 @@ Monitoreo en tiempo real de agentes. Badges en sidebar. Notificaciones nativas d
   nightly; endpoint por canal apuntando a un `latest.json` rodante. La comparacion
   de versiones usa la base numerica (`0.0.X`) que empaqueta el MSI; el nombre
   completo (con `-alpha.YYYYMMDD`) se muestra via `app_version`.
-- UI: banner (`UpdateBanner.svelte`) + sección **Settings → Updates**; store
+- UI: un **toast sonner fijado** (`UpdateToast.svelte`, orquestado por
+  `updateToast.ts` con id estable + `duration: Infinity`, reemplaza al antiguo
+  banner fijo superior) + acciones de **descargar/instalar dentro de
+  Settings → Updates** (coherentes con la política de instalación); store
   `state/updater.svelte.ts`; i18n EN/ES. Firma minisign gratuita (`pubkey` en
   `tauri.conf.json`), independiente del code-signing del SO. Detalle operativo
   en `docs/updates.md`; clave de firma en `FOR-HUMAN.md`.

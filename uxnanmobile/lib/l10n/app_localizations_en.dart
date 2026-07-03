@@ -1995,4 +1995,148 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get updateWhatsNewLabel => 'What\'s new';
+
+  @override
+  String get updateCurrentVersionTitle => 'Current version';
+
+  @override
+  String get updateDownloadAction => 'Download';
+
+  @override
+  String get updateInstallAction => 'Install now';
+
+  @override
+  String get updateStatusDownloading => 'Downloading update…';
+
+  @override
+  String updateStatusDownloadingPercent(int percent) {
+    return 'Downloading update… $percent%';
+  }
+
+  @override
+  String get updateStatusDownloaded => 'Update downloaded — ready to install.';
+
+  @override
+  String get updateStatusInstalling => 'Installing update…';
+
+  @override
+  String get updateIntervalSectionTitle => 'Check automatically';
+
+  @override
+  String get updateIntervalEveryLaunch => 'Every launch';
+
+  @override
+  String get updateIntervalEvery6h => 'Every 6 hours';
+
+  @override
+  String get updateIntervalEvery12h => 'Every 12 hours';
+
+  @override
+  String get updateIntervalEvery24h => 'Every day';
+
+  @override
+  String get updateIntervalEvery48h => 'Every 2 days';
+
+  @override
+  String get updateIntervalWeekly => 'Every week';
+
+  @override
+  String get updateIntervalMonthly => 'Every month';
+
+  @override
+  String get settingsNotificationsNavSubtitle => 'Replies, errors and delivery';
+
+  @override
+  String get settingsConversationNavSubtitle =>
+      'Thinking, models, context and templates';
+
+  @override
+  String get settingsModelsNavSubtitle => 'Model picker options';
+
+  @override
+  String get settingsGitNavSubtitle => 'Push and pull-request confirmations';
+
+  @override
+  String get settingsUpdatesNavSubtitle =>
+      'Version, check schedule and install';
+
+  @override
+  String get settingsAboutSection => 'About';
+
+  @override
+  String get settingsAboutTitle => 'About Uxnan';
+
+  @override
+  String get settingsAboutSubtitle => 'App info and developer';
+
+  @override
+  String get settingsLicensesTitle => 'Open-source licenses';
+
+  @override
+  String get settingsLicensesSubtitle => 'Third-party packages Uxnan uses';
+
+  @override
+  String get aboutDescription =>
+      'Drive your PC coding agents from your phone — end-to-end encrypted.';
+
+  @override
+  String get aboutDeveloperSection => 'Developer';
+
+  @override
+  String get aboutSourceCodeTitle => 'Source code';
+
+  @override
+  String get aboutSourceCodeSubtitle => 'View the project on GitHub';
+
+  @override
+  String get aboutLegalSection => 'Legal';
+
+  @override
+  String aboutVersionLabel(String version) {
+    return 'Version $version';
+  }
+
+  @override
+  String get licensesEmpty => 'No licenses found.';
+
+  @override
+  String licenseCountLabel(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count licenses',
+      one: '1 license',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get settingsGeneralSection => 'General';
+
+  @override
+  String get settingsWorkspaceSection => 'Workspace';
+
+  @override
+  String get settingsSystemSection => 'System';
+
+  @override
+  String get settingsConversationAgentsGroup => 'Agents';
+
+  @override
+  String get settingsConversationClaudeGroup => 'Claude';
+
+  @override
+  String get settingsConversationChatGroup => 'Conversation';
+
+  @override
+  String get settingsNotificationsEventsGroup => 'Agent events';
+
+  @override
+  String get settingsGitConfirmationsGroup => 'Confirmations';
+
+  @override
+  String get settingsUpdatesVersionGroup => 'Version';
+
+  @override
+  String get licensesError => 'Couldn\'t load the licenses.';
 }

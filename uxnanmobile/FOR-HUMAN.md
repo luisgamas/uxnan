@@ -55,14 +55,18 @@ reports "not available":
 ## iOS in-app update path (App Store listing required)
 
 The in-app update checker is wired for iOS (looks up the App Store version via
-the iTunes lookup endpoint and opens the listing with `url_launcher`), but it is
-**inert until the app has a live App Store listing** — the lookup returns empty
-for an unpublished bundle id, so the checker simply reports "no update". No code
-or asset is owed; this unblocks itself once the app ships to the App Store
-(opening the `https://apps.apple.com/...` link needs **no** extra `Info.plist`
-config). Android needs nothing here — it uses the Play In-App Update API, which
-reports updates only for builds installed from **Google Play** (verify on a Play
-open-testing (beta) track build).
+the iTunes lookup endpoint with `dio`, then presents the App Store product page
+in-app via StoreKit's `SKStoreProductViewController` — `in_app_update_flutter`'s
+`showUpdateForIos`, with the numeric App Store id derived at runtime from the
+lookup's `trackId`), but it is **inert until the app has a live App Store
+listing** — the lookup returns empty for an unpublished bundle id, so the checker
+simply reports "no update". No code or asset is owed; this unblocks itself once
+the app ships to the App Store (StoreKit needs **no** extra `Info.plist` config;
+the iOS deployment target is already 15.5 ≥ the required 13.0, and the overlay
+does not work on the Simulator/TestFlight — verify on a real device). Android
+needs nothing here — it uses the Play In-App Update API, which reports updates
+only for builds installed from **Google Play** (verify on a Play open-testing
+(beta) track build).
 
 ## iOS signing (for a store / signed `.ipa`)
 

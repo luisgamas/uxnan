@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uxnan/domain/enums/update_check_interval.dart';
 import 'package:uxnan/infrastructure/storage/update_preferences_store.dart';
 
 void main() {
@@ -41,6 +42,28 @@ void main() {
       await store.writeDismissedVersion('7');
       await store.writeDismissedVersion('');
       expect(await store.readDismissedVersion(), isNull);
+    });
+  });
+
+  group('interval', () {
+    test('defaults when unset', () async {
+      expect(
+        await storeWith({}).readInterval(),
+        UpdateCheckInterval.defaultInterval,
+      );
+    });
+
+    test('defaults on an unknown stored value', () async {
+      final store = storeWith({'uxnan.updates.checkInterval': 'bogus'});
+      expect(await store.readInterval(), UpdateCheckInterval.defaultInterval);
+    });
+
+    test('round-trips a chosen interval', () async {
+      final store = storeWith({});
+      await store.writeInterval(UpdateCheckInterval.weekly);
+      expect(await store.readInterval(), UpdateCheckInterval.weekly);
+      await store.writeInterval(UpdateCheckInterval.everyLaunch);
+      expect(await store.readInterval(), UpdateCheckInterval.everyLaunch);
     });
   });
 }
