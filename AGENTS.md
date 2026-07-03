@@ -547,7 +547,17 @@ contributor-facing summary is in [`CONTRIBUTING.md`](CONTRIBUTING.md) → *Relea
 
 1. **The release version comes from the tag** (e.g.
    `mobile-v0.0.1-alpha.20260621+5`). Tag a commit that is already green on CI.
-2. **Update `VERSIONS.md` and validate the deploy** — in the same change set, add or
+2. **Bump EVERY version file AND its lockfile in the same commit (NO drift).**
+   Before tagging, set the release version in **all** of the component's
+   version-bearing files **and re-sync the lockfile** — the release workflows
+   re-apply the version at build time (`--allow-same-version`), which **masks** an
+   un-bumped committed lock (that's how `uxnandesktop/package-lock.json` drifted to
+   `0.0.2`). npm: `npm version -w <ws>` (updates `package.json` + root
+   `package-lock.json`); **desktop:** `tauri.conf.json` + `Cargo.toml` +
+   `Cargo.lock` + `package.json` + `package-lock.json` (numeric base); mobile:
+   `pubspec.yaml`. Verify each manifest version **equals** its lockfile counterpart.
+   Full per-file list + commands in **`VERSIONS.md`** → *Convention*.
+3. **Update `VERSIONS.md` and validate the deploy** — in the same change set, add or
    refresh the component's row in the history table, **and confirm the release
    actually shipped**: the `release-*.yml` run is green and the artifact landed (npm
    published to the `latest` dist-tag / the Play **open-testing** (beta) build uploaded / the
@@ -555,12 +565,12 @@ contributor-facing summary is in [`CONTRIBUTING.md`](CONTRIBUTING.md) → *Relea
    **not** a release — fix it before recording the row. (npm's `latest` dist-tag
    always tracks the newest release; `alpha`/`beta` channels are opt-in, added
    manually per build — see `VERSIONS.md`.)
-3. **Mobile — `pubspec.yaml` MUST match the tag (NON-NEGOTIABLE).** Before tagging
+4. **Mobile — `pubspec.yaml` MUST match the tag (NON-NEGOTIABLE).** Before tagging
    `mobile-v<name>+<build>`, bump `uxnanmobile/pubspec.yaml` `version:` to the same
    `<name>+<build>`, then **commit AND push it** so the **tagged commit** carries the
    matching version — the Flutter source never lags behind a released tag.
    `release-mobile.yml` enforces this and **fails the release on a mismatch**.
-4. **Mobile — user-facing release notes.** `.github/whatsnew/whatsnew-en-US` and
+5. **Mobile — user-facing release notes.** `.github/whatsnew/whatsnew-en-US` and
    `whatsnew-es-ES` must hold a short, **non-technical**, user-facing summary of the
    new version's `CHANGELOG.md` (what changed, in plain language for end users),
    **≤ 500 characters each** (Google Play's limit). `release-mobile.yml` validates

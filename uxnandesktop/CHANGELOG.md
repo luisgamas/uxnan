@@ -5,6 +5,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.5-alpha.20260703] - 2026-07-03
+
+### Fixed — blank white screen on startup (0.0.4 regression)
+- **0.0.4 crashed to a blank white screen right after the splash.** The pinned
+  update-toast driver added in 0.0.4 (`initUpdateToast`) uses the `$effect` rune,
+  but it lived in a plain **`updateToast.ts`** — and Svelte 5 runes are only
+  compiled in `.svelte` / `.svelte.ts` files. In a plain `.ts` the `$effect` call
+  is left untransformed, so at runtime it's an undefined identifier: calling
+  `initUpdateToast()` during `+page.svelte` mount threw a `ReferenceError`, which
+  took the whole page down (blank screen). CI didn't catch it because
+  `svelte-check` types `$effect` as an ambient global and Vitest only exercises
+  pure logic — neither mounts the real app.
+- **Fix:** renamed `updateToast.ts` → **`updateToast.svelte.ts`** (so the Svelte
+  compiler processes the rune; matches the repo convention for rune-using
+  non-component modules, e.g. `state/*.svelte.ts`) and updated the import in
+  `routes/+page.svelte` to `$lib/updateToast.svelte`. Verified via the dev-server
+  browser flow: the module now compiles `$effect` to `$.user_effect` and the app
+  mounts; `svelte-check` + Vitest green.
+- **Prevention:** added a CI/`npm run check` guard (`scripts/check-runes.mjs`,
+  new `check:runes` script) that **fails** if a Svelte rune appears in a plain
+  `.ts` file — the exact gap that let this ship green. Documented the rule in
+  `docs/development.md`.
+
 ## [0.0.4-alpha.20260703] - 2026-07-03
 
 ### Changed — update prompt is a pinned sonner toast; download/install from Settings

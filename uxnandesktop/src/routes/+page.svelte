@@ -30,7 +30,7 @@
   import DirectoryPicker from "$lib/components/DirectoryPicker.svelte";
   import BackendStatus from "$lib/components/BackendStatus.svelte";
   import { Toaster } from "$lib/components/ui/sonner";
-  import { initUpdateToast } from "$lib/updateToast";
+  import { initUpdateToast } from "$lib/updateToast.svelte";
 
   // Resize bounds for each sidebar (px).
   const LEFT_MIN = 200;

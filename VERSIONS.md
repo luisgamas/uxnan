@@ -13,13 +13,28 @@ which versions "go together".
 - Per-component git tags drive releases:
   `shared-v*`, `bridge-v*`, `relay-v*`, `desktop-v*`, `mobile-v*`
   (mobile may append `+<buildNumber>`, e.g. `mobile-v0.0.1-alpha.20260621+5`).
-- **Source tracks the tag.** Bump the component's manifest version to the release
-  version before tagging — npm: `package.json`; mobile: `pubspec.yaml`. **Desktop**
-  keeps the **numeric base** (`0.0.1`) in `tauri.conf.json` / `Cargo.toml` because
-  the Windows MSI rejects a non-numeric pre-release identifier; its full version
-  rides the tag + the compiled-in `UXNAN_VERSION`. The npm and desktop release
-  workflows re-apply the version from the tag with `--allow-same-version`, so a
-  source==tag match is fine; mobile **fails** the release on a pubspec↔tag mismatch.
+- **Source tracks the tag — bump EVERY version file AND its lockfile in the same
+  commit.** A stale lockfile is silent drift: the npm/desktop release workflows
+  re-apply the version at build time with `--allow-same-version`, which **masks**
+  an un-bumped source lock (that is exactly how `uxnandesktop/package-lock.json`
+  sat at `0.0.2` while the app shipped `0.0.3`/`0.0.4`). So bump **all** of a
+  component's version-bearing files, and re-sync the lockfile, before tagging:
+  - **npm (shared / bridge / relay):** `package.json` **and the root
+    `package-lock.json`** — use `npm version <v> -w <ws> --no-git-tag-version`
+    (it updates **both**), not a hand edit of `package.json`.
+  - **desktop:** the **numeric base** (`0.0.PATCH`, MSI-safe — the Windows MSI
+    rejects a non-numeric pre-release id; the full version rides the tag + the
+    compiled-in `UXNAN_VERSION`) in **all five**: `src-tauri/tauri.conf.json`,
+    `src-tauri/Cargo.toml`, **`src-tauri/Cargo.lock`** (the `uxnan-desktop`
+    entry), `uxnandesktop/package.json`, **and `uxnandesktop/package-lock.json`**
+    (`npm install --package-lock-only` to re-sync the lock). Do **not** rely on
+    the CI `npm version` step to fix the lock — that leaves the committed lock
+    drifting.
+  - **mobile:** `pubspec.yaml` (its `pubspec.lock` carries no app version).
+    `release-mobile.yml` **fails** the release on a pubspec↔tag mismatch.
+  - **Verify before tagging:** each manifest version **equals** its lockfile
+    counterpart (`node -p "require('./uxnandesktop/package-lock.json').version"`
+    etc.). Never commit a manifest/lock version mismatch.
 - npm packages publish to the **`latest`** dist-tag, so `npm install`
   (`npm install -g uxnan-bridge`) and the bridge's self-update check always
   resolve the **newest** release. Pre-release channels (`alpha`/`beta`) are
@@ -84,6 +99,7 @@ release onward the workflow keeps `latest` current automatically.
 
 | Date (YYYY-MM-DD) | shared | bridge | relay | desktop | mobile |
 | ----------------- | ------ | ------ | ----- | ------- | ------ |
+| 2026-07-03 | — | — | — | 0.0.5-alpha.20260703 | — | <!-- desktop-only hotfix: blank-screen (rune in plain .ts) -->
 | 2026-07-03 | 0.0.4-alpha.20260703 | 0.0.4-alpha.20260703 | — | 0.0.4-alpha.20260703 | 0.0.4-alpha.20260703+20260703 |
 | 2026-07-02 | 0.0.3-alpha.20260702 | 0.0.3-alpha.20260702 | — | 0.0.3-alpha.20260702 | 0.0.3-alpha.20260702+20260702 |
 | 2026-06-28 | 0.0.2-alpha.20260628 | 0.0.2-alpha.20260628 | — | 0.0.2-alpha.20260628 | 0.0.2-alpha.20260628+20260629 |
