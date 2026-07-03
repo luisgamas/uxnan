@@ -1,16 +1,24 @@
-# Uxnan
+<h1 align="center">Uxnan</h1>
 
-![Status](https://img.shields.io/badge/STATUS-ALPHA-orange?style=for-the-badge)
-![Monorepo](https://img.shields.io/badge/MONOREPO-5_PROJECTS-blue?style=for-the-badge)
-![E2EE](https://img.shields.io/badge/E2EE-AES--256--GCM-0a0a0a?style=for-the-badge&logo=letsencrypt&logoColor=white)
-![Platforms](https://img.shields.io/badge/PLATFORMS-Android_%7C_iOS_%7C_Windows_%7C_macOS_%7C_Linux-lightgrey?style=for-the-badge)
-![License](https://img.shields.io/badge/LICENSE-MPL--2.0-2ea44f?style=for-the-badge)
+<p align="center">
+  <img src="https://img.shields.io/badge/STATUS-ALPHA-orange?style=for-the-badge" alt="Status" />
+  <img src="https://img.shields.io/badge/MONOREPO-5_PROJECTS-blue?style=for-the-badge" alt="Monorepo" />
+  <img src="https://img.shields.io/badge/E2EE-AES--256--GCM-0a0a0a?style=for-the-badge&logo=letsencrypt&logoColor=white" alt="E2EE" />
+  <img src="https://img.shields.io/badge/PLATFORMS-Android_%7C_iOS_%7C_Windows_%7C_macOS_%7C_Linux-lightgrey?style=for-the-badge" alt="Platforms" />
+  <img src="https://img.shields.io/badge/LICENSE-MPL--2.0-2ea44f?style=for-the-badge" alt="License" />
+</p>
 
-> [Leer en español](README.es.md)
+<p align="center">
+  <a href="README.es.md"><b>Leer en español</b></a>
+</p>
 
 Uxnan (pronounced /uʃ.nan/) is a toolkit I'm building to solve a very specific
 problem I have as a developer: **controlling AI coding agents from anywhere,
 without my hardware becoming the bottleneck.**
+
+<p align="center">
+  <img src="assets/uxnan-branding.png" alt="Uxnan — control your AI coding agents from anywhere" width="100%" />
+</p>
 
 ## Why this project exists
 
@@ -60,7 +68,7 @@ end-to-end encrypted; the relay only ever sees sealed envelopes.
 Uxnan is a single repository with five projects. Each one has its own README with
 the full story; here's the short version and where to go next.
 
-### 📱 [`uxnanmobile/`](uxnanmobile/README.md) — the mobile app
+### 📱 `Uxnanmobile` — the mobile app
 
 ![Flutter](https://img.shields.io/badge/Flutter-02569B?style=for-the-badge&logo=flutter&logoColor=white)
 ![Dart](https://img.shields.io/badge/Dart-0175C2?style=for-the-badge&logo=dart&logoColor=white)
@@ -73,9 +81,15 @@ attach images, dictate by voice, review diffs, commit and push, and get a
 notification the moment an agent finishes — all over the encrypted, bridge-first
 channel.
 
+<a href="https://sink.gamas.workers.dev/uxnan-android">
+  <img alt="Get it on Google Play" src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" height="64" />
+</a>
+
 → **[Read the mobile app README](uxnanmobile/README.md)**
 
-### 🖥️ [`uxnandesktop/`](uxnandesktop/README.md) — the desktop app
+---
+
+### 🖥️ `Uxnandesktop` — the desktop app
 
 ![Rust](https://img.shields.io/badge/Rust-000000?style=for-the-badge&logo=rust&logoColor=white)
 ![Tauri](https://img.shields.io/badge/Tauri_2-FFC131?style=for-the-badge&logo=tauri&logoColor=000000)
@@ -97,9 +111,15 @@ checkout`), and review each one's changes in an integrated diff viewer
 It doesn't integrate any agent's SDK. It's terminal-centric: any CLI agent works
 without modification.
 
+<a href="https://github.com/luisgamas/uxnan/releases">
+  <img alt="Download from GitHub Releases" src="https://img.shields.io/badge/Download-GitHub_Releases-24292e?style=for-the-badge&logo=github&logoColor=white"/>
+</a>
+
 → **[Read the desktop app README](uxnandesktop/README.md)**
 
-### 🌉 [`bridge/`](bridge/README.md) — the daemon on your PC
+---
+
+### 🌉 `Bridge` — the daemon on your PC
 
 ![Node.js](https://img.shields.io/badge/Node.js-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)
 ![JSON RPC](https://img.shields.io/badge/JSON--RPC_2.0-000000?style=for-the-badge&logo=json&logoColor=white)
@@ -116,7 +136,9 @@ with.
 
 → **[Read the bridge README](bridge/README.md)**
 
-### 🔁 [`relay/`](relay/README.md) — the optional off-LAN hop
+---
+
+### 🔁 `Relay` — the optional off-LAN hop
 
 ![Node.js](https://img.shields.io/badge/Node.js-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)
 ![E2EE](https://img.shields.io/badge/E2EE_OPAQUE-0a0a0a?style=for-the-badge&logo=letsencrypt&logoColor=white)
@@ -128,7 +150,9 @@ Most of the time you won't need it at all.
 
 → **[Read the relay README](relay/README.md)**
 
-### 📦 [`shared/`](shared/README.md) — the common language
+---
+
+### 📦 `Shared` — the common language
 
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
 ![JSON Schema](https://img.shields.io/badge/JSON_Schema-000000?style=for-the-badge&logo=json&logoColor=white)
@@ -200,13 +224,13 @@ genuinely appreciated. 🙏
 
 <p align="center">
   <a href="https://sink.gamas.workers.dev/buymeacoffee">
-    <img src="https://raw.githubusercontent.com/luisgamas/buttons-design/main/buy_me_a_coffe/buy_me_a_coffe_fill.png" width="200" alt="Buy Me a Coffee" />
+    <img src="https://raw.githubusercontent.com/luisgamas/buttons-design/main/buy_me_a_coffe/buy_me_a_coffe_fill.png" height="40" alt="Buy Me a Coffee" />
   </a>
   <a href="https://sink.gamas.workers.dev/paypal-donations">
-    <img src="https://raw.githubusercontent.com/luisgamas/buttons-design/main/paypal/paypal_fill.png" width="200" alt="Donate via PayPal" />
+    <img src="https://raw.githubusercontent.com/luisgamas/buttons-design/main/paypal/paypal_fill.png" height="40" alt="Donate via PayPal" />
   </a>
   <a href="https://sink.gamas.workers.dev/github-sponsor">
-    <img src="https://raw.githubusercontent.com/luisgamas/buttons-design/main/github_sponsor/github_sponsor_fill.png" width="200" alt="Sponsor on GitHub" />
+    <img src="https://raw.githubusercontent.com/luisgamas/buttons-design/main/github_sponsor/github_sponsor_fill.png" height="40" alt="Sponsor on GitHub" />
   </a>
 </p>
 
