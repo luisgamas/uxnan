@@ -6,6 +6,18 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — model / agent / project lists now re-sync when the bridge changes
+- **Root cause:** `agentModelsProvider` (and `agentsProvider`,
+  `projectsProvider`) were plain fetch-once `FutureProvider`s that cached the
+  bridge's reply in memory for the whole app session and never re-fetched — so a
+  model **added on the bridge** (e.g. a new Claude version like Sonnet 5) never
+  reached the picker until a cold app restart, even after updating the bridge.
+- **Fix (`application_providers.dart`):** these three providers now
+  `ref.watch(connectedDeviceProvider)`, mirroring the already-correct
+  `bridgeStatusProvider`, so they re-run `agent/models` / `agent/list` /
+  `project/list` on every (re)connect — updating the bridge and reconnecting is
+  now enough for new models/agents/projects to appear.
+
 ## [0.0.3-alpha.20260702] - 2026-07-02
 
 ### Added — theme import from a file / URL, in a full-screen editor

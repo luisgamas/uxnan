@@ -218,9 +218,13 @@ final threadByIdProvider = Provider.family<Thread?, String>((ref, threadId) {
 });
 
 /// The bridge's projects (`project/list`) for the new-conversation flow.
-final projectsProvider = FutureProvider<List<Project>>(
-  (ref) => ref.watch(threadManagerProvider).loadProjects(),
-);
+/// Re-fetched whenever the connected device changes so a bridge restart/update
+/// re-syncs the list (the bridge owns it) — a plain fetch-once provider would
+/// serve a stale in-memory copy for the whole app session.
+final projectsProvider = FutureProvider<List<Project>>((ref) {
+  ref.watch(connectedDeviceProvider);
+  return ref.watch(threadManagerProvider).loadProjects();
+});
 
 /// Navigates the bridge's browse roots (`workspace/browseDirs`) for the
 /// folder picker in the new-conversation flow.
@@ -229,13 +233,24 @@ final workspaceBrowserProvider = Provider<WorkspaceBrowser>(
 );
 
 /// The bridge's agents (`agent/list`) for the new-conversation flow.
-final agentsProvider = FutureProvider<List<AgentDescriptor>>(
-  (ref) => ref.watch(threadManagerProvider).loadAgents(),
-);
+/// Re-fetched on connected-device change (see [projectsProvider]) so a newly
+/// wired agent on an updated bridge shows up without a cold app restart.
+final agentsProvider = FutureProvider<List<AgentDescriptor>>((ref) {
+  ref.watch(connectedDeviceProvider);
+  return ref.watch(threadManagerProvider).loadAgents();
+});
 
 /// The models a given agent reports (`agent/models`), for the model picker.
+/// Re-fetched whenever the connected device changes so a model added to the
+/// bridge's list (e.g. a new Claude version) appears after the phone reconnects
+/// to the updated bridge — without a cold app restart. Previously this was a
+/// fetch-once provider whose in-memory cache never refreshed, so bridge-side
+/// model additions never reached the picker.
 final agentModelsProvider = FutureProvider.family<List<AgentModel>, String>(
-  (ref, agentId) => ref.watch(threadManagerProvider).loadModels(agentId),
+  (ref, agentId) {
+    ref.watch(connectedDeviceProvider);
+    return ref.watch(threadManagerProvider).loadModels(agentId);
+  },
 );
 
 /// The sanitized auth status the bridge reports for an agent (`auth/status`),
