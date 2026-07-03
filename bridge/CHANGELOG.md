@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.4-alpha.20260703] - 2026-07-03
+
 ### Changed — npm releases now publish to the `latest` dist-tag
 - `release-npm.yml` published every version under the **`alpha`** dist-tag, so
   `npm install -g uxnan-bridge` kept resolving the **first** version ever

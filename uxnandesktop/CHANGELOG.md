@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.4-alpha.20260703] - 2026-07-03
+
 ### Changed — update prompt is a pinned sonner toast; download/install from Settings
 - **The fixed top-of-page update banner is gone.** The "update available /
   downloading / ready to install" prompt is now a **persistent sonner toast**
