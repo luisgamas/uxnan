@@ -6,6 +6,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.0.4-alpha.20260703] - 2026-07-03
+
 ### Fixed — model / agent / project lists now re-sync when the bridge changes
 - **Root cause:** `agentModelsProvider` (and `agentsProvider`,
   `projectsProvider`) were plain fetch-once `FutureProvider`s that cached the
