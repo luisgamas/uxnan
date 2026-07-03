@@ -120,6 +120,45 @@ final bridgeStatusProvider = FutureProvider<BridgeStatus?>((ref) async {
       : null;
 });
 
+/// Tracks the bridge `latestVersion`s the user dismissed so the informational
+/// "bridge update available" banner stays hidden until a newer bridge appears.
+/// In-memory (per app session); the banner reappears next launch if the bridge
+/// is still outdated.
+class BridgeUpdateDismissal extends Notifier<Set<String>> {
+  @override
+  Set<String> build() => const {};
+
+  /// Hides the banner for the given latest version.
+  void dismiss(String? latestVersion) {
+    if (latestVersion == null || latestVersion.isEmpty) return;
+    state = {...state, latestVersion};
+  }
+}
+
+/// Drives dismissal of the bridge-update banner.
+final bridgeUpdateDismissalProvider =
+    NotifierProvider<BridgeUpdateDismissal, Set<String>>(
+  BridgeUpdateDismissal.new,
+);
+
+// FOR-DEV: also surface this as a fixed row in Settings → About once the
+// settings overhaul (feat/settings-updates-overhaul) merges — read this same
+// provider; no new data/contract work. See FOR-DEV.md.
+/// The informational "a newer bridge is available" state for the banner, or
+/// null when the bridge is up to date / unknown / the notice was dismissed.
+/// The **bridge** decides `updateAvailable` (it runs the npm check and reports
+/// it on `bridge/status`); the phone only renders the hint — it never queries
+/// npm itself. Refreshes with [bridgeStatusProvider] on (re)connect.
+final bridgeUpdateProvider =
+    Provider<({String? currentVersion, String? latestVersion})?>((ref) {
+  final status = ref.watch(bridgeStatusProvider).value;
+  if (status == null || !status.updateAvailable) return null;
+  final latest = status.latestVersion;
+  final dismissed = ref.watch(bridgeUpdateDismissalProvider);
+  if (latest != null && dismissed.contains(latest)) return null;
+  return (currentVersion: status.version, latestVersion: latest);
+});
+
 /// Reactive list of paired trusted devices (PCs), for the UI.
 final trustedDevicesProvider = StreamProvider<List<TrustedDevice>>(
   (ref) => ref.watch(trustedDeviceRepositoryProvider).watchDevices(),

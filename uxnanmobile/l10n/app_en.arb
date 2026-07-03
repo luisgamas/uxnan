@@ -300,6 +300,7 @@
   "modelPickerLoadFailed": "Couldn't load models",
   "modelPickerEmpty": "No matching models",
   "modelPickerDefault": "Default",
+  "modelPickerRefresh": "Refresh models",
   "newThreadFailed": "Couldn't start the conversation",
   "newThreadLoadFailed": "Couldn't load from the bridge",
   "newThreadNoProjects": "No projects available on this PC.",
@@ -1087,6 +1088,28 @@
   "updateDismissAction": "Not now",
   "@updateDismissAction": {
     "description": "Button that dismisses the update banner for the current version."
+  },
+  "bridgeUpdateTitle": "Bridge update available",
+  "@bridgeUpdateTitle": {
+    "description": "Title of the informational banner shown when the paired PC's Uxnan bridge is outdated."
+  },
+  "bridgeUpdateBody": "Your PC's Uxnan bridge is out of date. Update it on your computer for the latest features and fixes.",
+  "@bridgeUpdateBody": {
+    "description": "Body of the bridge-update banner when the latest bridge version is unknown."
+  },
+  "bridgeUpdateBodyVersion": "A newer bridge ({version}) is available. Update it on your computer for the latest features and fixes.",
+  "@bridgeUpdateBodyVersion": {
+    "description": "Body of the bridge-update banner when the latest bridge version is known.",
+    "placeholders": {
+      "version": {
+        "type": "String",
+        "example": "0.0.4-alpha.20260805"
+      }
+    }
+  },
+  "bridgeUpdateDismiss": "Dismiss",
+  "@bridgeUpdateDismiss": {
+    "description": "Accessibility label / tooltip for the button that dismisses the bridge-update banner."
   },
   "updateWhatsNewLabel": "What's new",
   "@updateWhatsNewLabel": {

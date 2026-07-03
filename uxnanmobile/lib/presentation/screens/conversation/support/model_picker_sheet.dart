@@ -68,9 +68,24 @@ class _ModelPickerSheetState extends ConsumerState<ModelPickerSheet> {
           children: [
             Padding(
               padding: const EdgeInsets.only(bottom: UxnanSpacing.sm),
-              child: Text(
-                l10n.modelPickerTitle,
-                style: Theme.of(context).textTheme.titleMedium,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      l10n.modelPickerTitle,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                  ),
+                  // Manual re-sync with the bridge, so a model added on the
+                  // PC (after updating the bridge) shows without reconnecting.
+                  IconButton(
+                    onPressed: () =>
+                        ref.invalidate(agentModelsProvider(widget.agentId)),
+                    icon: const Icon(Icons.refresh_rounded, size: 20),
+                    tooltip: l10n.modelPickerRefresh,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ],
               ),
             ),
             TextField(

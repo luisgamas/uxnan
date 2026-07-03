@@ -95,6 +95,17 @@ shipping.
 
 ## App-side pending work (no live bridge needed)
 
+- [ ] **Bridge-update: fixed "About" row in Settings.** The bridge-outdated
+      **banner** (thread list) and its data are done — `bridgeUpdateProvider`
+      exposes `{ currentVersion, latestVersion }` from `bridge/status`
+      (`updateAvailable`/`latestVersion`), and `BridgeStatus` parses both. What's
+      left is a **fixed, always-visible row** in **Settings → About** showing the
+      bridge version and an "update available" hint. It was intentionally **not**
+      added on the current Settings screen to avoid a large collision with the
+      in-flight settings overhaul on `feat/settings-updates-overhaul` (which
+      rebuilds the settings landing + adds About/Licenses screens). **Unblocks
+      when that overhaul merges:** add the row to the new About section, reading
+      `bridgeUpdateProvider` (no new data/contract work needed).
 - [ ] **File-browser search (reuse `workspace/searchFiles`).** The repo-wide
       fuzzy search is **ready end-to-end** — the bridge method `workspace/
       searchFiles` and `FileBrowserManager.searchFiles(cwd, query)` already exist

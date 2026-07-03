@@ -18,6 +18,22 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   `project/list` on every (re)connect — updating the bridge and reconnecting is
   now enough for new models/agents/projects to appear.
 
+### Added — bridge-update banner + model picker refresh
+- The bridge now reports whether it's outdated on `bridge/status`
+  (`updateAvailable` / `latestVersion`, from its own npm check). A new,
+  **dismissible** (swipe-away or close-icon) informational banner atop the
+  thread list nudges the user to update the bridge **on their PC** when it's
+  behind — the phone can't update it, so there's no action button. The
+  **phone never queries npm** — it only renders what the bridge reports
+  (`bridgeUpdateProvider`, `_BridgeUpdateBanner`, `BridgeStatus` entity extended
+  with `latestVersion`/`updateAvailable`). EN/ES strings added. A fixed "bridge
+  version / update" row in Settings → About is deferred to avoid colliding with
+  the in-flight settings overhaul (see `FOR-DEV.md`).
+- **Manual refresh in the model picker** (`model_picker_sheet.dart`): a refresh
+  icon in the sheet header re-syncs the list on demand
+  (`ref.invalidate(agentModelsProvider)`), so a model added on the PC shows
+  without even reconnecting.
+
 ## [0.0.3-alpha.20260702] - 2026-07-02
 
 ### Added — theme import from a file / URL, in a full-screen editor

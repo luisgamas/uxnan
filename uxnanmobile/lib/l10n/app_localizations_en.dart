@@ -644,6 +644,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get modelPickerDefault => 'Default';
 
   @override
+  String get modelPickerRefresh => 'Refresh models';
+
+  @override
   String get newThreadFailed => 'Couldn\'t start the conversation';
 
   @override
@@ -1992,6 +1995,21 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get updateDismissAction => 'Not now';
+
+  @override
+  String get bridgeUpdateTitle => 'Bridge update available';
+
+  @override
+  String get bridgeUpdateBody =>
+      'Your PC\'s Uxnan bridge is out of date. Update it on your computer for the latest features and fixes.';
+
+  @override
+  String bridgeUpdateBodyVersion(String version) {
+    return 'A newer bridge ($version) is available. Update it on your computer for the latest features and fixes.';
+  }
+
+  @override
+  String get bridgeUpdateDismiss => 'Dismiss';
 
   @override
   String get updateWhatsNewLabel => 'What\'s new';

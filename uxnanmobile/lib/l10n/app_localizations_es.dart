@@ -646,6 +646,9 @@ class AppLocalizationsEs extends AppLocalizations {
   String get modelPickerDefault => 'Predeterminado';
 
   @override
+  String get modelPickerRefresh => 'Actualizar modelos';
+
+  @override
   String get newThreadFailed => 'No se pudo iniciar la conversación';
 
   @override
@@ -2002,6 +2005,21 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get updateDismissAction => 'Ahora no';
+
+  @override
+  String get bridgeUpdateTitle => 'Actualización del bridge disponible';
+
+  @override
+  String get bridgeUpdateBody =>
+      'El bridge de Uxnan en tu PC está desactualizado. Actualízalo en tu computadora para obtener las últimas mejoras y correcciones.';
+
+  @override
+  String bridgeUpdateBodyVersion(String version) {
+    return 'Hay un bridge más reciente ($version) disponible. Actualízalo en tu computadora para obtener las últimas mejoras y correcciones.';
+  }
+
+  @override
+  String get bridgeUpdateDismiss => 'Descartar';
 
   @override
   String get updateWhatsNewLabel => 'Novedades';

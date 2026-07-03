@@ -209,6 +209,7 @@
   "modelPickerLoadFailed": "No se pudieron cargar los modelos",
   "modelPickerEmpty": "Sin modelos coincidentes",
   "modelPickerDefault": "Predeterminado",
+  "modelPickerRefresh": "Actualizar modelos",
   "newThreadFailed": "No se pudo iniciar la conversación",
   "newThreadLoadFailed": "No se pudo cargar desde el bridge",
   "newThreadNoProjects": "No hay proyectos disponibles en esta PC.",
@@ -666,5 +667,9 @@
   "updateAction": "Actualizar",
   "updateActionStarting": "Iniciando…",
   "updateDismissAction": "Ahora no",
+  "bridgeUpdateTitle": "Actualización del bridge disponible",
+  "bridgeUpdateBody": "El bridge de Uxnan en tu PC está desactualizado. Actualízalo en tu computadora para obtener las últimas mejoras y correcciones.",
+  "bridgeUpdateBodyVersion": "Hay un bridge más reciente ({version}) disponible. Actualízalo en tu computadora para obtener las últimas mejoras y correcciones.",
+  "bridgeUpdateDismiss": "Descartar",
   "updateWhatsNewLabel": "Novedades"
 }
