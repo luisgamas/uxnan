@@ -65,9 +65,21 @@ expected. Use `npm run tauri dev` whenever you need real backend behavior
 ## Type-check while developing
 
 ```bash
-npm run check         # one-shot svelte-check (sync + type check)
+npm run check         # rune guard + svelte-check (sync + type check)
 npm run check:watch   # re-run on change
+npm run check:runes   # just the rune guard (see below)
 ```
+
+> **Runes must live in `.svelte` / `.svelte.ts` files (not plain `.ts`).**
+> Svelte 5 runes (`$state`, `$derived`, `$effect`, `$props`, …) are compiled by
+> the Svelte compiler, which only processes `.svelte` and `.svelte.ts`/`.svelte.js`
+> files. Put a rune in a plain `.ts` and it is left as a bare identifier that
+> throws a `ReferenceError` at runtime (a blank white screen — it crashes the
+> component that imports it). Neither `svelte-check` (runes are ambient types)
+> nor `vite build` catches this, so `npm run check` runs a guard
+> (`scripts/check-runes.mjs`, also in desktop CI) that **fails** if a rune appears
+> in a plain `.ts`. Fix: name the module `*.svelte.ts` (e.g. `state/*.svelte.ts`,
+> `updateToast.svelte.ts`) and import it accordingly.
 
 ## Project layout (where things live)
 
