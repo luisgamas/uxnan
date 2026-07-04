@@ -99,10 +99,6 @@ the browser MCP; user guide in `docs/browser.md`.
 - [ ] **On-device validation.** The docked `WebviewWindow` (its gluing to the panel
       on move/resize/DPI) and the agent `$BROWSER` shim end-to-end need a real run to
       confirm. The explicit `curl` path is the reliable fallback for the shim.
-- [ ] **Browser MCP — Settings UI on-device review.** The Settings → Browser panel
-      controls are built (master switch, setup-mode selector, per-agent toggles,
-      copy-paste snippet, EN/ES; `svelte-check` + Vitest green) but not yet
-      visually reviewed in the Tauri app. Confirm layout/copy on-device and adjust.
 - [ ] **Browser MCP — add more agents.** The injector is a registry: to support a new
       CLI (e.g. `agy`/Antigravity, Cursor's `cursor-agent`, Grok, amp, Pi), add a row to
       `mcpinject::AGENTS` + a match arm in `config_path` (its config file path) and
