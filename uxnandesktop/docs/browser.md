@@ -132,7 +132,6 @@ always referenced via `UXNAN_MCP_TOKEN` (never inlined):
 | Codex | `.codex/config.toml` | `~/.codex/config.toml` | `[mcp_servers.uxnan-browser]` `url` + `bearer_token_env_var` |
 | Gemini CLI | `.gemini/settings.json` | `~/.gemini/settings.json` | `mcpServers.uxnan-browser` `{httpUrl, headers}` |
 | OpenCode | `opencode.json` | `~/.config/opencode/opencode.json` | `mcp.uxnan-browser` `{type:"remote", url, headers, enabled}` |
-| Pi | — *(global only)* | `~/.pi/agent/mcp.json` | `mcpServers.uxnan-browser` `{url, headers}` — **best-effort** (unverified upstream) |
 
 Merges are non-destructive (your other keys/servers are preserved), and a file the
 ADE creates is added to the repo's local `info/exclude` so it doesn't show up in
@@ -141,7 +140,7 @@ ADE creates is added to the repo's local `info/exclude` so it doesn't show up in
 ### Adding another agent
 
 The injector is a small registry, so wiring a new CLI (e.g. `agy`/Antigravity,
-Cursor's `cursor-agent`, Grok, amp, …) is three edits in `src-tauri/src/mcpinject.rs`:
+Cursor's `cursor-agent`, Grok, amp, Pi, …) is three edits in `src-tauri/src/mcpinject.rs`:
 
 1. Add a row to **`AGENTS`** — its stable id, label, and whether it has a
    project-scoped config or only a global one (`Scope`).

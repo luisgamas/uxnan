@@ -87,7 +87,7 @@ clickable terminal links** (`@xterm/addon-web-links`).
 serves a minimal Streamable-HTTP MCP endpoint at `/mcp` (control tools
 `browser_open/navigate/reload/back/forward/status`, same hook-server token);
 `mcpinject.rs` writes each launched CLI's native MCP config (Claude/Codex/Gemini/
-OpenCode/Pi) referencing the `UXNAN_MCP_TOKEN` env (token never in a file), merging
+OpenCode) referencing the `UXNAN_MCP_TOKEN` env (token never in a file), merging
 without clobbering and cleaning up on exit; `BrowserSettings.mcp*` (enabled /
 injection mode `off|workspace|global` / disabled-agents) + `mcp_info` command. See
 `docs/browser.md` → *Agent browser MCP*.
@@ -103,13 +103,8 @@ the browser MCP; user guide in `docs/browser.md`.
       controls are built (master switch, setup-mode selector, per-agent toggles,
       copy-paste snippet, EN/ES; `svelte-check` + Vitest green) but not yet
       visually reviewed in the Tauri app. Confirm layout/copy on-device and adjust.
-- [ ] **Browser MCP — Pi injection is best-effort.** Pi has no project-scoped MCP
-      config (only global `~/.pi/agent/mcp.json`) and its HTTP-server + auth-header
-      shape isn't documented upstream; `mcpinject::json_entry` writes a best-guess
-      `{url, headers:{Authorization}}`. Verify against a real Pi install and fix the
-      shape if needed (`FOR-DEV:` marker at the `"pi"` arm in `mcpinject.rs`).
 - [ ] **Browser MCP — add more agents.** The injector is a registry: to support a new
-      CLI (e.g. `agy`/Antigravity, Cursor's `cursor-agent`, Grok, amp), add a row to
+      CLI (e.g. `agy`/Antigravity, Cursor's `cursor-agent`, Grok, amp, Pi), add a row to
       `mcpinject::AGENTS` + a match arm in `config_path` (its config file path) and
       `write_entry`/`json_entry` (its MCP-server shape). Recipe + the per-agent table
       in `docs/browser.md` → *Adding another agent*.

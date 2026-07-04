@@ -22,8 +22,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   reuse the existing link-policy path (`browser::route_url` → the frontend panel);
   `status` reports the live open/URL/policy via a new `AppState.browser_url` tracker.
 - **Config injection** (`src-tauri/src/mcpinject.rs`) — writes each CLI's native MCP
-  config so it finds the server on startup, for **Claude Code, Codex, Gemini CLI,
-  OpenCode and Pi**. The **token is never written to a file**: every config references
+  config so it finds the server on startup, for **Claude Code, Codex, Gemini CLI and
+  OpenCode**. The **token is never written to a file**: every config references
   the `UXNAN_MCP_TOKEN` env var (injected into the agent's PTY), so the secret stays
   in the process env *and* the injected config is inert outside a uxnan-launched
   terminal (an agent run elsewhere can't authenticate — it won't hijack the browser).
@@ -36,10 +36,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   **`off`** (wire it by hand from the Settings copy-paste snippet). Per-agent opt-out
   via `mcpDisabledAgents`; master switch `mcpEnabled` (default on). New `mcp_info`
   command surfaces the endpoint + token + supported-agent catalog to Settings.
-- **Extensible** — a new agent (e.g. `agy`/Antigravity, Cursor, Grok, amp) is one row
-  in `mcpinject::AGENTS` plus a match arm in `config_path`/`write_entry`; recipe in
-  `docs/browser.md`. Pi's HTTP+auth config shape is unverified upstream, so its
-  injection is best-effort (tracked in `FOR-DEV.md`).
+- **Extensible** — a new agent (e.g. `agy`/Antigravity, Cursor, Grok, amp, Pi) is one
+  row in `mcpinject::AGENTS` plus a match arm in `config_path`/`write_entry`; recipe
+  in `docs/browser.md`.
 
 ## [0.0.5-alpha.20260703] - 2026-07-03
 

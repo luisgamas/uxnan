@@ -31,7 +31,6 @@
 //! | Codex | `.codex/config.toml` | `~/.codex/config.toml` | `[mcp_servers.<n>] url + bearer_token_env_var` |
 //! | Gemini CLI | `.gemini/settings.json` | `~/.gemini/settings.json` | `mcpServers.<n> {httpUrl,headers}` |
 //! | OpenCode | `opencode.json` | `~/.config/opencode/opencode.json` | `mcp.<n> {type:remote,url,headers,enabled}` |
-//! | Pi | — (global only) | `~/.pi/agent/mcp.json` | `mcpServers.<n> {url,headers}` |
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -49,15 +48,6 @@ pub const SERVER_NAME: &str = "uxnan-browser";
 /// token itself is never written to a config file.
 pub const TOKEN_ENV: &str = "UXNAN_MCP_TOKEN";
 
-/// Where an agent keeps its config, for the Settings panel + docs.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Scope {
-    /// Has a project-scoped config auto-discovered in the working directory.
-    Project,
-    /// Only a single global user config (no per-project file).
-    GlobalOnly,
-}
-
 /// One agent the ADE can auto-configure to reach the browser MCP server.
 #[derive(Debug, Clone, Copy)]
 pub struct McpAgent {
@@ -65,8 +55,6 @@ pub struct McpAgent {
     pub id: &'static str,
     /// Human-readable name for the UI.
     pub label: &'static str,
-    /// Whether it supports a project-scoped config or only a global one.
-    pub scope: Scope,
 }
 
 /// Serializable view of a supported agent for the Settings → Browser panel (the
@@ -76,9 +64,6 @@ pub struct McpAgent {
 pub struct AgentInfo {
     pub id: String,
     pub label: String,
-    /// True for agents with no project-scoped config (only injected in Global mode
-    /// / via their global file — e.g. Pi). The UI notes this.
-    pub global_only: bool,
 }
 
 /// The supported-agent catalog for the frontend (Settings panel + docs).
@@ -88,7 +73,6 @@ pub fn agent_infos() -> Vec<AgentInfo> {
         .map(|a| AgentInfo {
             id: a.id.to_string(),
             label: a.label.to_string(),
-            global_only: a.scope == Scope::GlobalOnly,
         })
         .collect()
 }
@@ -96,11 +80,10 @@ pub fn agent_infos() -> Vec<AgentInfo> {
 /// The agents we currently know how to configure. Add a row here (plus a match arm
 /// in [`config_path`] and [`write_entry`]) to support a new agent.
 pub const AGENTS: &[McpAgent] = &[
-    McpAgent { id: "claude", label: "Claude Code", scope: Scope::Project },
-    McpAgent { id: "codex", label: "Codex", scope: Scope::Project },
-    McpAgent { id: "gemini", label: "Gemini CLI", scope: Scope::Project },
-    McpAgent { id: "opencode", label: "OpenCode", scope: Scope::Project },
-    McpAgent { id: "pi", label: "Pi", scope: Scope::GlobalOnly },
+    McpAgent { id: "claude", label: "Claude Code" },
+    McpAgent { id: "codex", label: "Codex" },
+    McpAgent { id: "gemini", label: "Gemini CLI" },
+    McpAgent { id: "opencode", label: "OpenCode" },
 ];
 
 /// A config file we wrote, recorded so it can be undone on exit.
@@ -120,8 +103,7 @@ pub fn mcp_endpoint(hook_url: &str) -> String {
 }
 
 /// The config file path for `agent` under `mode`, given the terminal `cwd` and the
-/// user's `home`. `None` when the agent has no config for that mode (Pi has no
-/// project file, so it always uses its global path).
+/// user's `home`. `None` for an unknown agent.
 fn config_path(agent: &str, mode: McpInjection, cwd: &Path, home: &Path) -> Option<PathBuf> {
     let project = matches!(mode, McpInjection::Workspace);
     match agent {
@@ -145,8 +127,6 @@ fn config_path(agent: &str, mode: McpInjection, cwd: &Path, home: &Path) -> Opti
         } else {
             home.join(".config").join("opencode").join("opencode.json")
         }),
-        // Pi has no project-scoped config — always its global agent dir.
-        "pi" => Some(home.join(".pi").join("agent").join("mcp.json")),
         _ => None,
     }
 }
@@ -169,14 +149,6 @@ fn json_entry(agent: &str, endpoint: &str) -> Option<(Vec<&'static str>, Value)>
         "opencode" => Some((
             vec!["mcp", SERVER_NAME],
             json!({ "type": "remote", "url": endpoint, "enabled": true, "headers": { "Authorization": bearer_brace } }),
-        )),
-        // FOR-DEV: Pi's HTTP-server + auth-header config shape is unverified upstream
-        // (no project config, only global `~/.pi/agent/mcp.json`). This is a
-        // best-guess `{url, headers:{Authorization}}` — verify against a real Pi
-        // install and fix the shape if needed. See `FOR-DEV.md` → browser MCP.
-        "pi" => Some((
-            vec!["mcpServers", SERVER_NAME],
-            json!({ "url": endpoint, "headers": { "Authorization": bearer_dollar } }),
         )),
         _ => None,
     }
@@ -473,7 +445,7 @@ mod tests {
 
     #[test]
     fn json_entry_never_inlines_the_token() {
-        for agent in ["claude", "gemini", "opencode", "pi"] {
+        for agent in ["claude", "gemini", "opencode"] {
             let (_, entry) = json_entry(agent, "http://x/mcp").unwrap();
             let s = entry.to_string();
             assert!(s.contains("Authorization"));
@@ -516,11 +488,6 @@ mod tests {
         assert_eq!(
             config_path("codex", McpInjection::Workspace, cwd, home).unwrap(),
             cwd.join(".codex").join("config.toml")
-        );
-        // Pi is global even in workspace mode.
-        assert_eq!(
-            config_path("pi", McpInjection::Workspace, cwd, home).unwrap(),
-            home.join(".pi").join("agent").join("mcp.json")
         );
         // Global paths.
         assert_eq!(
