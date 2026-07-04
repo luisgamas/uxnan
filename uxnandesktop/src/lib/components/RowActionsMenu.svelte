@@ -24,6 +24,7 @@
   import ActivityIcon from "@lucide/svelte/icons/activity";
   import FolderOpenIcon from "@lucide/svelte/icons/folder-open";
   import CopyIcon from "@lucide/svelte/icons/copy";
+  import ImageIcon from "@lucide/svelte/icons/image";
   import SettingsIcon from "@lucide/svelte/icons/settings";
   import Trash2Icon from "@lucide/svelte/icons/trash-2";
 
@@ -31,12 +32,15 @@
     path,
     removeLabel,
     onRemove,
+    onChangeIcon,
   }: {
     /** The worktree/project folder every action targets. */
     path: string;
     /** Label for the destructive item (remove worktree vs remove project). */
     removeLabel: string;
     onRemove: () => void;
+    /** When provided, adds a "Change branch icon…" item (worktree rows only). */
+    onChangeIcon?: () => void;
   } = $props();
 
   const profiles = $derived(app.terminalProfiles);
@@ -134,6 +138,12 @@
     <CopyIcon />
     {i18n.t("common.copyPath")}
   </ContextMenu.Item>
+  {#if onChangeIcon}
+    <ContextMenu.Item class={text.menu} onclick={onChangeIcon}>
+      <ImageIcon />
+      {i18n.t("worktree.changeIcon")}
+    </ContextMenu.Item>
+  {/if}
 
   <ContextMenu.Sub>
     <ContextMenu.SubTrigger class={text.menu}>
