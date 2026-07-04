@@ -80,10 +80,22 @@ pub fn agent_infos() -> Vec<AgentInfo> {
 /// The agents we currently know how to configure. Add a row here (plus a match arm
 /// in [`config_path`] and [`write_entry`]) to support a new agent.
 pub const AGENTS: &[McpAgent] = &[
-    McpAgent { id: "claude", label: "Claude Code" },
-    McpAgent { id: "codex", label: "Codex" },
-    McpAgent { id: "gemini", label: "Gemini CLI" },
-    McpAgent { id: "opencode", label: "OpenCode" },
+    McpAgent {
+        id: "claude",
+        label: "Claude Code",
+    },
+    McpAgent {
+        id: "codex",
+        label: "Codex",
+    },
+    McpAgent {
+        id: "gemini",
+        label: "Gemini CLI",
+    },
+    McpAgent {
+        id: "opencode",
+        label: "OpenCode",
+    },
 ];
 
 /// A config file we wrote, recorded so it can be undone on exit.
@@ -196,7 +208,11 @@ fn json_remove(mut doc: Value, pointer: &[&str]) -> Value {
                 if node.get(*head).is_some() {
                     remove(&mut node[*head], rest);
                     // Prune an emptied parent object.
-                    if node[*head].as_object().map(|o| o.is_empty()).unwrap_or(false) {
+                    if node[*head]
+                        .as_object()
+                        .map(|o| o.is_empty())
+                        .unwrap_or(false)
+                    {
                         if let Some(obj) = node.as_object_mut() {
                             obj.remove(*head);
                         }
@@ -212,12 +228,18 @@ fn json_remove(mut doc: Value, pointer: &[&str]) -> Value {
 /// Merge (or remove) our Codex server in a `config.toml`, preserving the user's
 /// other settings and formatting. `endpoint = Some` inserts; `None` removes.
 fn toml_codex(existing: &str, endpoint: Option<&str>) -> String {
-    let mut doc = existing.parse::<toml_edit::DocumentMut>().unwrap_or_default();
+    let mut doc = existing
+        .parse::<toml_edit::DocumentMut>()
+        .unwrap_or_default();
     match endpoint {
         Some(url) => {
             // Ensure `mcp_servers` is a real (header) table, then add our server as
             // a `[mcp_servers.<name>]` sub-table. Existing servers/keys are kept.
-            if !doc.get("mcp_servers").map(|i| i.is_table()).unwrap_or(false) {
+            if !doc
+                .get("mcp_servers")
+                .map(|i| i.is_table())
+                .unwrap_or(false)
+            {
                 doc["mcp_servers"] = toml_edit::Item::Table(toml_edit::Table::new());
             }
             let mut entry = toml_edit::Table::new();
@@ -230,10 +252,14 @@ fn toml_codex(existing: &str, endpoint: Option<&str>) -> String {
         None => {
             // Remove our entry whether `mcp_servers` is a header table or an inline
             // table, pruning it if it becomes empty.
-            let emptied = if let Some(t) = doc.get_mut("mcp_servers").and_then(|i| i.as_table_mut()) {
+            let emptied = if let Some(t) = doc.get_mut("mcp_servers").and_then(|i| i.as_table_mut())
+            {
                 t.remove(SERVER_NAME);
                 t.is_empty()
-            } else if let Some(t) = doc.get_mut("mcp_servers").and_then(|i| i.as_inline_table_mut()) {
+            } else if let Some(t) = doc
+                .get_mut("mcp_servers")
+                .and_then(|i| i.as_inline_table_mut())
+            {
                 t.remove(SERVER_NAME);
                 t.is_empty()
             } else {
@@ -270,13 +296,21 @@ fn write_entry(agent: &str, path: &Path, endpoint: &str) -> Option<Written> {
             .and_then(|s| serde_json::from_str(&s).ok())
             .unwrap_or_else(|| json!({}));
         let merged = json_set(current, &pointer, entry);
-        std::fs::write(path, format!("{}\n", serde_json::to_string_pretty(&merged).ok()?)).ok()?;
+        std::fs::write(
+            path,
+            format!("{}\n", serde_json::to_string_pretty(&merged).ok()?),
+        )
+        .ok()?;
     }
 
     if !existed {
         hide_from_git(path);
     }
-    Some(Written { path: path.to_path_buf(), agent: agent.to_string(), created: !existed })
+    Some(Written {
+        path: path.to_path_buf(),
+        agent: agent.to_string(),
+        created: !existed,
+    })
 }
 
 /// Undo one injected config: remove our server entry, deleting the file only if we
@@ -321,7 +355,12 @@ fn hide_from_git(path: &Path) {
         .workdir()
         .and_then(|wd| path.strip_prefix(wd).ok())
         .map(|p| p.to_string_lossy().replace('\\', "/"))
-        .unwrap_or_else(|| path.file_name().unwrap_or_default().to_string_lossy().into());
+        .unwrap_or_else(|| {
+            path.file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into()
+        });
     let existing = std::fs::read_to_string(&exclude).unwrap_or_default();
     if existing.lines().any(|l| l.trim() == entry) {
         return;
@@ -329,7 +368,11 @@ fn hide_from_git(path: &Path) {
     if let Some(parent) = exclude.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-    let sep = if existing.is_empty() || existing.ends_with('\n') { "" } else { "\n" };
+    let sep = if existing.is_empty() || existing.ends_with('\n') {
+        ""
+    } else {
+        "\n"
+    };
     let _ = std::fs::write(&exclude, format!("{existing}{sep}{entry}\n"));
 }
 
@@ -341,7 +384,11 @@ pub async fn prepare(app: &AppHandle, cwd: &str) {
         let state = app.state::<AppState>();
         let data = state.data.read().await;
         let b = &data.settings.browser;
-        (b.mcp_enabled, b.mcp_injection, b.mcp_disabled_agents.clone())
+        (
+            b.mcp_enabled,
+            b.mcp_injection,
+            b.mcp_disabled_agents.clone(),
+        )
     };
     if !enabled || mode == McpInjection::Off {
         return;

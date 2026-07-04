@@ -57,7 +57,10 @@ fn authorized(headers: &HeaderMap, token: &str) -> bool {
     let bearer = headers
         .get(header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.strip_prefix("Bearer ").or_else(|| v.strip_prefix("bearer ")))
+        .and_then(|v| {
+            v.strip_prefix("Bearer ")
+                .or_else(|| v.strip_prefix("bearer "))
+        })
         .map(|v| v.trim() == token)
         .unwrap_or(false);
     let legacy = headers
@@ -167,8 +170,7 @@ async fn call_tool(app: &AppHandle, name: &str, args: &Value) -> Value {
         },
         "browser_status" => {
             let status = crate::browser::status(app).await;
-            let text = serde_json::to_string(&status)
-                .unwrap_or_else(|_| "{\"open\":false}".into());
+            let text = serde_json::to_string(&status).unwrap_or_else(|_| "{\"open\":false}".into());
             text_result(text, false)
         }
         other => text_result(format!("unknown tool: {other}"), true),
@@ -298,7 +300,10 @@ mod tests {
             &headers_with("authorization", "Bearer secret"),
             "secret"
         ));
-        assert!(authorized(&headers_with("x-uxnan-token", "secret"), "secret"));
+        assert!(authorized(
+            &headers_with("x-uxnan-token", "secret"),
+            "secret"
+        ));
         assert!(!authorized(
             &headers_with("authorization", "Bearer wrong"),
             "secret"

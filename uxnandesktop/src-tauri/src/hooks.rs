@@ -215,7 +215,11 @@ async fn handle_browser(
 /// Handle a `POST /mcp`: the browser-control MCP endpoint. Thin wrapper that hands
 /// the app handle + token to [`crate::mcp::handle`] (which authorizes and runs the
 /// JSON-RPC handshake). Kept here so it shares the hook server's `HookCtx`/token.
-async fn handle_mcp(AxumState(ctx): AxumState<HookCtx>, headers: HeaderMap, body: Bytes) -> Response {
+async fn handle_mcp(
+    AxumState(ctx): AxumState<HookCtx>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
     crate::mcp::handle(ctx.app.clone(), ctx.token.clone(), headers, body).await
 }
 
