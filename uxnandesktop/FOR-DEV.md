@@ -15,7 +15,7 @@ which tracks assets only a human can provide.)
 standalone app** (three-panel shell, PTY terminals + splits, git worktrees, git
 status/diff/stage/commit/history, agent monitoring with the axum hook server +
 OSC/process layers, settings/themes/i18n, multi-agent orchestration,
-**in-app auto-updater**). 106 Rust backend tests + 25 frontend Vitest unit tests
+**in-app auto-updater**). 106 Rust backend tests + 45 frontend Vitest unit tests
 (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
 (developed on Windows; CI is `{ubuntu, windows}`). **Phase 6 (embedded bridge /
 mobile pairing) is NOT started.**
@@ -228,7 +228,7 @@ are **done** (see `CHANGELOG.md` + `architecture/02d` §3). Remaining follow-ups
 
 - ✅ **Verify** — `.github/workflows/ci-desktop.yml` runs svelte-check + `npm test`
   (Vitest) + vite build + cargo fmt/clippy/test on `{ubuntu, windows}` (macOS
-  deferred with Apple). 106 Rust + 25 Vitest tests.
+  deferred with Apple). 106 Rust + 45 Vitest tests.
 - ✅ **`release-desktop.yml`** — exists: `tauri-action` bundles on a `desktop-v*` tag
   → draft GitHub Release, **and signs the updater artifacts** when the signing
   secrets are set. **Windows ships without OS code-signing for now; macOS deferred.**

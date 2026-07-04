@@ -5,6 +5,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — batch theme import (multiple files + lists of themes)
+- **Theme import (Settings → Appearance, both Interface and Terminal) now imports
+  in batches.** The file picker accepts **multiple `.json` files at once**
+  (`multiple: true`), and — for both the file and the **Paste JSON** flows — each
+  document may hold a **single theme, a JSON array of themes, or a wrapper object**
+  (`{ "themes": [...] }` for interface, `{ "terminalThemes": [...] }` for
+  terminal). Previously only one theme from one file/paste could be imported.
+- New pure helpers `normalizeImportedThemes` / `normalizeImportedTerminalThemes`
+  in `src/lib/theme.ts` normalize one-or-many entries, each getting a fresh `id`
+  with missing colors backfilled from the built-in base. Malformed entries are
+  **skipped and reported** without aborting the rest of the batch; the last valid
+  entry becomes active, and a summary line ("Imported N themes", plus any skipped
+  count) is shown. Covered by 12 new Vitest cases in `src/lib/theme.test.ts`
+  (45 frontend tests total).
+- Docs: `docs/theming.md` gains an *Importing many themes at once* section; i18n
+  (EN/ES) gains `appearance.importedOne/Many`, `appearance.skippedOne/Many`, and
+  an updated `appearance.pasteDesc`.
+
 ## [0.0.5-alpha.20260703] - 2026-07-03
 
 ### Fixed — blank white screen on startup (0.0.4 regression)

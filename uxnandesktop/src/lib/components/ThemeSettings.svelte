@@ -20,8 +20,8 @@
     duplicateTheme,
     duplicateTerminalTheme,
     newTerminalThemeId,
-    normalizeImportedTheme,
-    normalizeImportedTerminalTheme,
+    normalizeImportedThemes,
+    normalizeImportedTerminalThemes,
     resolveTerminal,
     terminalTemplateFor,
     themeToJson,
@@ -51,6 +51,8 @@
   import CheckIcon from "@lucide/svelte/icons/check";
 
   let error = $state<string | null>(null);
+  // Transient success line for a completed import (e.g. "Imported 3 themes").
+  let notice = $state<string | null>(null);
 
   // Shared recipes so every appearance sub-block reads like the rest of Settings:
   // a soft card band for grouped rows, a selectable theme card in the app's
@@ -217,42 +219,90 @@
     pasteKind = kind;
     pasteText = "";
     error = null;
+    notice = null;
     pasteOpen = true;
   }
   async function importFile(kind: "theme" | "terminal") {
     error = null;
+    notice = null;
     try {
       const { open } = await import("@tauri-apps/plugin-dialog");
-      const path = await open({ multiple: false, filters: [{ name: "Theme JSON", extensions: ["json"] }] });
-      if (typeof path !== "string") return;
-      const { content } = await fsReadFile(path);
-      importJson(kind, content);
+      // Multi-select: each file may itself carry one theme or a whole list.
+      const picked = await open({ multiple: true, filters: [{ name: "Theme JSON", extensions: ["json"] }] });
+      if (picked == null) return;
+      const paths = Array.isArray(picked) ? picked : [picked];
+      if (!paths.length) return;
+      const raws: string[] = [];
+      for (const p of paths) {
+        const { content } = await fsReadFile(p);
+        raws.push(content);
+      }
+      importRaws(kind, raws);
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
     }
   }
+  /** Single-source paste import (one text blob that may hold one theme or a list). */
   function importJson(kind: "theme" | "terminal", raw: string) {
+    importRaws(kind, [raw]);
+  }
+  /** Import one or more JSON blobs (files or a pasted document). Each blob may be
+   *  a single theme, an array of themes, or a `{ themes: [...] }` wrapper; results
+   *  accumulate across every blob and the last valid one becomes active. */
+  function importRaws(kind: "theme" | "terminal", raws: string[]) {
     error = null;
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      error = i18n.t("appearance.invalidJson");
-      return;
-    }
+    notice = null;
+    const errors: string[] = [];
+    const parseEach = (raw: string): unknown | undefined => {
+      try {
+        return JSON.parse(raw);
+      } catch {
+        errors.push(i18n.t("appearance.invalidJson"));
+        return undefined;
+      }
+    };
     if (kind === "theme") {
-      const { theme, error: err } = normalizeImportedTheme(parsed);
-      if (err || !theme) return (error = err ?? i18n.t("appearance.invalidJson"));
-      app.settings.customThemes = [...customThemes, theme];
-      app.settings.activeThemeId = theme.id;
+      const added: Theme[] = [];
+      for (const raw of raws) {
+        const parsed = parseEach(raw);
+        if (parsed === undefined) continue;
+        const { themes, errors: errs } = normalizeImportedThemes(parsed);
+        added.push(...themes);
+        errors.push(...errs);
+      }
+      if (added.length) {
+        app.settings.customThemes = [...customThemes, ...added];
+        app.settings.activeThemeId = added[added.length - 1].id;
+        persist();
+      }
+      finishImport(added.length, errors);
     } else {
-      const { preset, error: err } = normalizeImportedTerminalTheme(parsed);
-      if (err || !preset) return (error = err ?? i18n.t("appearance.invalidJson"));
-      app.settings.terminalThemes = [...termThemes, preset];
-      app.settings.activeTerminalThemeId = preset.id;
+      const added: TerminalThemePreset[] = [];
+      for (const raw of raws) {
+        const parsed = parseEach(raw);
+        if (parsed === undefined) continue;
+        const { presets, errors: errs } = normalizeImportedTerminalThemes(parsed);
+        added.push(...presets);
+        errors.push(...errs);
+      }
+      if (added.length) {
+        app.settings.terminalThemes = [...termThemes, ...added];
+        app.settings.activeTerminalThemeId = added[added.length - 1].id;
+        persist();
+      }
+      finishImport(added.length, errors);
     }
-    persist();
-    pasteOpen = false;
+  }
+  /** Report the outcome of a batch import: a success line when anything landed
+   *  (with a soft warning for any skipped entries), else the first error. */
+  function finishImport(count: number, errors: string[]) {
+    if (count > 0) {
+      notice = i18n.plural(count, "appearance.importedOne", "appearance.importedMany");
+      if (errors.length) error = i18n.plural(errors.length, "appearance.skippedOne", "appearance.skippedMany");
+      pasteOpen = false;
+    } else {
+      error = errors[0] ?? i18n.t("appearance.invalidJson");
+    }
   }
   async function exportFile(name: string, json: string) {
     error = null;
@@ -293,6 +343,7 @@
 </script>
 
 <div class="flex flex-col gap-6">
+  {#if notice}<p class={cn("text-primary", text.body)}>{notice}</p>{/if}
   {#if error}<p class={cn("text-destructive", text.body)}>{error}</p>{/if}
 
   <!-- ===== Interface ===== -->
