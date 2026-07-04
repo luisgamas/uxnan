@@ -5,6 +5,39 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — project/branch icons, project settings & tab rename
+
+- **Project card ⋯ menu.** Each project header gains a three-dots overflow menu
+  (replacing the header right-click menu) with the project-level actions only —
+  *Project settings*, *Change icon*, *Reveal in file manager*, *Copy path*,
+  *Configure* (agents/terminals) and *Remove*. Launching terminals/agents stays on
+  the header's `+`. Right-clicking a **worktree row** still opens its full context
+  menu (cross-platform).
+- **Per-project settings dialog.** Rename a project (card label only — the folder
+  on disk keeps its real name) and change its icon, alongside read-only info
+  (location, git/folder type, remote owner, worktree count). Reachable from the ⋯
+  menu.
+- **Custom project & branch icons.** Pick from a curated built-in glyph set (with
+  an accent color), a local image file, an image URL, or — for a git project — the
+  `origin` host account avatar (GitHub/GitLab). Every image source is downloaded
+  (URLs/avatars are fetched in the Rust backend, sidestepping CORS) and rasterized
+  to a small square PNG stored **inline** in the app state, so icons persist and
+  work offline. Branch icons are set from the worktree row's right-click menu and
+  keyed per branch.
+- **Rename center-panel tabs.** A tab's context menu (all kinds) gains *Rename*:
+  terminals/diffs/commits get a free-form label; a **file tab renames the real
+  file on disk** (same folder) with a confirmation that states the file is being
+  renamed and warns when the extension changes or is dropped, re-pointing the open
+  editor without losing content. Terminal labels persist across restarts.
+- **Close all tabs.** A tab's context menu (and the terminal pane menu) gains
+  *Close all tabs*, which closes every tab in the **active** workspace (with a
+  single aggregated save/discard prompt for any unsaved files).
+
+New backend commands: `repo_update`, `repo_set_branch_icon`, `repo_remote_owner`,
+`fs_rename`, `image_fetch_data_url` (adds a `reqwest`/rustls dependency, already in
+the tree via the updater). `RepoData` gains `icon` + `branchIcons`; the persisted
+terminal tab gains an optional `customTitle`.
+
 ## [0.0.5-alpha.20260703] - 2026-07-03
 
 ### Fixed — blank white screen on startup (0.0.4 regression)
