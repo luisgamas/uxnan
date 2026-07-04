@@ -25,6 +25,8 @@ export const en = {
   "common.remove": "Remove",
   "common.add": "Add",
   "common.create": "Create",
+  "common.save": "Save",
+  "common.rename": "Rename",
   "common.new": "New",
   "common.more": "More",
   "common.close": "Close",
@@ -37,6 +39,39 @@ export const en = {
   "common.creating": "Creating…",
   "common.loading": "Loading…",
   "common.search": "Search…",
+
+  // Icon picker (project & branch icons)
+  "iconPicker.desc":
+    "Pick a built-in glyph or a custom image. Images are stored inline, so they keep working offline.",
+  "iconPicker.preview": "Preview",
+  "iconPicker.sourceBuiltin": "Built-in glyph",
+  "iconPicker.sourceImage": "Custom image",
+  "iconPicker.sourceDefault": "Default icon",
+  "iconPicker.builtin": "Built-in",
+  "iconPicker.custom": "Custom image",
+  "iconPicker.fromFile": "From file…",
+  "iconPicker.fromAvatar": "Use account avatar",
+  "iconPicker.urlPlaceholder": "Image URL (https://…)",
+  "iconPicker.fetch": "Fetch",
+  "iconPicker.reset": "Reset to default",
+  "iconPicker.fileError": "Couldn't read that image.",
+  "iconPicker.urlError": "Couldn't fetch that image.",
+  "iconPicker.color.default": "No color",
+  "iconPicker.color.custom": "Custom color",
+  "iconPicker.color.slate": "Slate",
+  "iconPicker.color.red": "Red",
+  "iconPicker.color.orange": "Orange",
+  "iconPicker.color.amber": "Amber",
+  "iconPicker.color.yellow": "Yellow",
+  "iconPicker.color.lime": "Lime",
+  "iconPicker.color.emerald": "Emerald",
+  "iconPicker.color.teal": "Teal",
+  "iconPicker.color.sky": "Sky",
+  "iconPicker.color.blue": "Blue",
+  "iconPicker.color.indigo": "Indigo",
+  "iconPicker.color.violet": "Violet",
+  "iconPicker.color.fuchsia": "Fuchsia",
+  "iconPicker.color.rose": "Rose",
 
   // Left sidebar
   "sidebar.search": "Search a project or worktree…",
@@ -67,6 +102,24 @@ export const en = {
   "project.worktreeOther": "{n} worktrees",
   "project.dirtyTooltip": "{n} uncommitted change(s) on main",
   "project.runningTooltip": "{n} terminal(s) running",
+  "project.menu": "Project options",
+  "project.settings": "Project settings…",
+  "project.changeIcon": "Change icon…",
+
+  // Project settings dialog
+  "projectSettings.title": "Project settings",
+  "projectSettings.desc": "Customize how this project appears — its folder on disk is untouched.",
+  "projectSettings.name": "Display name",
+  "projectSettings.nameDesc": "Shown on the card only; the folder on disk keeps its real name.",
+  "projectSettings.namePlaceholder": "Project name",
+  "projectSettings.changeIcon": "Change icon",
+  "projectSettings.iconTitle": "Project icon",
+  "projectSettings.location": "Location",
+  "projectSettings.type": "Type",
+  "projectSettings.typeGit": "Git repository",
+  "projectSettings.typeFolder": "Folder",
+  "projectSettings.remote": "Remote",
+  "projectSettings.worktrees": "Worktrees",
 
   // Worktree row
   "worktree.openTerminal": "Open a terminal here",
@@ -75,6 +128,8 @@ export const en = {
   "worktree.removeDesc":
     "Removes the worktree at {path}. Its branch “{branch}” is safe-deleted only if fully merged.",
   "worktree.forceRemove": "Force remove",
+  "worktree.changeIcon": "Change branch icon…",
+  "worktree.branchIconTitle": "Branch icon",
   "worktree.detached": "(detached)",
   "worktree.dirtyTooltip": "{n} uncommitted change(s)",
   "worktree.aheadTooltip": "ahead of upstream",
@@ -148,6 +203,20 @@ export const en = {
   "terminal.splitDown": "Split down",
   "terminal.closeTerminal": "Close terminal",
   "terminal.closeTab": "Close tab",
+
+  // Tab actions (rename / close all)
+  "tab.rename": "Rename…",
+  "tab.closeAll": "Close all tabs",
+  "tab.renameTabTitle": "Rename tab",
+  "tab.renameFileTitle": "Rename file",
+  "tab.namePlaceholder": "Tab name",
+  "tab.fileNamePlaceholder": "File name",
+  "tab.fileRenameNote": "This renames the file on disk (git will see it as a rename).",
+  "tab.extChangeWarning":
+    "You're changing the extension from {old} to {new} — this can change how the file is treated.",
+  "tab.extRemoveWarning":
+    "You're removing the file extension — this can change how the file is treated.",
+  "tab.renameError": "Couldn't rename the file.",
 
   // Directory picker
   "picker.title": "Add project",
