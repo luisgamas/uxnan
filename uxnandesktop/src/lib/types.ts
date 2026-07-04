@@ -221,6 +221,22 @@ export interface RepoData {
    *  Optional for back-compat with state persisted before this field existed
    *  (treated as git when absent). */
   isGit?: boolean;
+  /** User-chosen project icon: an inline `data:` URL (a file/URL/GitHub avatar
+   *  rasterized to a small square PNG), or null/undefined for the default folder
+   *  glyph. The project's real folder name is never touched; `name` is display. */
+  icon?: string | null;
+  /** Per-branch custom icons, keyed by branch name (or the worktree path when
+   *  detached). Same inline `data:` URL form as `icon`. Optional for back-compat. */
+  branchIcons?: Record<string, string>;
+}
+
+/** A git remote's hosting owner/org (mirror of Rust `RemoteOwner`), used to offer
+ *  the account avatar as a project icon. `avatarUrl` is set only for hosts whose
+ *  avatar URL we can build (GitHub, GitLab). */
+export interface RemoteOwner {
+  host: string;
+  owner: string;
+  avatarUrl: string | null;
 }
 
 /** A worktree as reported by `git worktree list` (ADE- or agent-created). */
@@ -429,7 +445,15 @@ export interface HookScripts {
  *  a descriptor with no `kind` (older saved layouts) is a terminal. Diff tabs are
  *  transient and never persisted. */
 export type SavedTab =
-  | { kind?: "terminal"; title: string; cwd?: string; shell?: string; args?: string[] }
+  | {
+      kind?: "terminal";
+      title: string;
+      /** User-set tab label ("Rename tab"); overrides the derived title. */
+      customTitle?: string;
+      cwd?: string;
+      shell?: string;
+      args?: string[];
+    }
   | { kind: "file"; title: string; path: string; worktree?: string | null };
 
 export type SavedTermNode =
