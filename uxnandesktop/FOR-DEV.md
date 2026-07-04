@@ -96,9 +96,6 @@ Spec synced: `architecture/02a` §4.2b documents the integrated browser, `02d` �
 the browser MCP; user guide in `docs/browser.md`.
 
 ### Still pending
-- [ ] **On-device validation.** The docked `WebviewWindow` (its gluing to the panel
-      on move/resize/DPI) and the agent `$BROWSER` shim end-to-end need a real run to
-      confirm. The explicit `curl` path is the reliable fallback for the shim.
 - [ ] **Browser MCP — add more agents.** The injector is a registry: to support a new
       CLI (e.g. `agy`/Antigravity, Cursor's `cursor-agent`, Grok, amp, Pi), add a row to
       `mcpinject::AGENTS` + a match arm in `config_path` (its config file path) and
