@@ -110,11 +110,12 @@ pub async fn pty_create(
     // (`UXNAN_BROWSER_URL` + `_TOKEN`), and point `$BROWSER` at the bundled shim so
     // tools that honor it (logins/previews) land in-app too. Honors the user's
     // link policy on arrival (see `browser::route_url`).
-    let (browser_enabled, allow_agents) = {
+    let (browser_enabled, allow_agents, mcp_enabled) = {
         let data = state.data.read().await;
         (
             data.settings.browser.enabled,
             data.settings.browser.allow_agents,
+            data.settings.browser.mcp_enabled,
         )
     };
     if browser_enabled && allow_agents {
@@ -135,6 +136,21 @@ pub async fn pty_create(
         }
     }
 
+    // Browser-control MCP (spec `02d` §1.6): expose the `/mcp` endpoint + token so
+    // the agent's injected MCP config (see `mcpinject.rs`) can reach it. The config
+    // reads the token from `UXNAN_MCP_TOKEN` (never written to a file). Then write
+    // that config for the terminal's cwd, per the user's injection mode.
+    if mcp_enabled {
+        if let Some(h) = &hook {
+            env.push((
+                "UXNAN_MCP_URL".to_string(),
+                crate::mcpinject::mcp_endpoint(&h.url),
+            ));
+            env.push((crate::mcpinject::TOKEN_ENV.to_string(), h.token.clone()));
+        }
+        crate::mcpinject::prepare(&app, cwd.as_deref().unwrap_or_default()).await;
+    }
+
     state
         .pty
         .create(
@@ -151,6 +167,39 @@ pub async fn pty_create(
             on_exit,
         )
         .map_err(CommandError::from)
+}
+
+/// Runtime info for the Settings → Browser MCP panel: the live `/mcp` endpoint +
+/// token (for the copy-paste config snippet) and the catalog of agents the ADE can
+/// auto-configure. `endpoint`/`token` are `None` until the hook server is listening.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpInfo {
+    pub endpoint: Option<String>,
+    pub token: Option<String>,
+    pub token_env: String,
+    pub server_name: String,
+    pub agents: Vec<crate::mcpinject::AgentInfo>,
+}
+
+/// Return the browser MCP server coordinates + supported-agent catalog for the
+/// Settings panel. The token is the app's own local loopback secret, surfaced only
+/// so the user can copy a ready-to-paste config for an agent the ADE doesn't
+/// auto-configure yet.
+#[tauri::command]
+pub async fn mcp_info(state: State<'_, AppState>) -> Result<McpInfo, CommandError> {
+    let hook = state.hook.read().await.clone();
+    let (endpoint, token) = match hook {
+        Some(h) => (Some(crate::mcpinject::mcp_endpoint(&h.url)), Some(h.token)),
+        None => (None, None),
+    };
+    Ok(McpInfo {
+        endpoint,
+        token,
+        token_env: crate::mcpinject::TOKEN_ENV.to_string(),
+        server_name: crate::mcpinject::SERVER_NAME.to_string(),
+        agents: crate::mcpinject::agent_infos(),
+    })
 }
 
 /// Send user input to a PTY's stdin.

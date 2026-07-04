@@ -20,8 +20,10 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use axum::{
+    body::Bytes,
     extract::State as AxumState,
     http::{HeaderMap, StatusCode},
+    response::Response,
     routing::{get, post},
     Json, Router,
 };
@@ -106,6 +108,9 @@ pub async fn start(app: AppHandle, token: String) -> std::io::Result<HookServerI
     let router = Router::new()
         .route("/hook", post(handle_hook))
         .route("/browser", post(handle_browser))
+        // Browser-control MCP server (spec `02d` §1.6): makes the integrated
+        // browser discoverable to agents as MCP tools. Same server + token.
+        .route("/mcp", post(handle_mcp).get(mcp_get))
         .route("/health", get(|| async { "ok" }))
         .with_state(ctx);
     tauri::async_runtime::spawn(async move {
@@ -205,6 +210,18 @@ async fn handle_browser(
         Ok(()) => StatusCode::NO_CONTENT,
         Err(_) => StatusCode::BAD_REQUEST,
     }
+}
+
+/// Handle a `POST /mcp`: the browser-control MCP endpoint. Thin wrapper that hands
+/// the app handle + token to [`crate::mcp::handle`] (which authorizes and runs the
+/// JSON-RPC handshake). Kept here so it shares the hook server's `HookCtx`/token.
+async fn handle_mcp(AxumState(ctx): AxumState<HookCtx>, headers: HeaderMap, body: Bytes) -> Response {
+    crate::mcp::handle(ctx.app.clone(), ctx.token.clone(), headers, body).await
+}
+
+/// Handle a `GET /mcp`: we don't offer the optional server→client SSE stream.
+async fn mcp_get() -> Response {
+    crate::mcp::handle_get().await
 }
 
 #[cfg(test)]

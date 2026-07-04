@@ -113,6 +113,12 @@ export interface AppSettings {
  *  the OS browser; `ask` prompts per link. */
 export type BrowserLinkPolicy = "internal" | "external" | "ask";
 
+/** How the browser-control MCP server is injected into agents (mirror of Rust
+ *  `McpInjection`). `workspace` writes a project-scoped config in the terminal's
+ *  cwd (default); `global` registers it in each CLI's global user config; `off`
+ *  injects nothing (wire it by hand from the copy-paste snippet). */
+export type McpInjection = "off" | "workspace" | "global";
+
 /** Integrated developer-browser preferences (mirror of Rust `BrowserSettings`). */
 export interface BrowserSettings {
   /** Master switch. Off → every link goes to the OS browser, no agent shim. */
@@ -125,6 +131,37 @@ export interface BrowserSettings {
   terminalLinks: boolean;
   /** Page opened when a fresh browser tab has no target URL. Empty = blank. */
   homepage: string;
+  /** Expose the browser-control MCP server to agents so they discover the
+   *  `browser_*` tools automatically. Default on. */
+  mcpEnabled: boolean;
+  /** How the MCP server is injected into agents. Default `workspace`. */
+  mcpInjection: McpInjection;
+  /** Agent ids (`claude`/`codex`/`gemini`/`opencode`/`pi`) to skip when injecting
+   *  the MCP config. Empty = all supported agents. */
+  mcpDisabledAgents: string[];
+}
+
+/** One agent the ADE can auto-configure for the browser MCP server (mirror of Rust
+ *  `mcpinject::AgentInfo`). */
+export interface McpAgentInfo {
+  id: string;
+  label: string;
+  /** True for agents with no project-scoped config (Global mode only, e.g. Pi). */
+  globalOnly: boolean;
+}
+
+/** Runtime MCP coordinates for the Settings panel (mirror of Rust `McpInfo`). */
+export interface McpInfo {
+  /** Live `/mcp` endpoint, or null until the hook server is listening. */
+  endpoint: string | null;
+  /** Local loopback token for the copy-paste snippet, or null. */
+  token: string | null;
+  /** Env var the injected configs read the token from (`UXNAN_MCP_TOKEN`). */
+  tokenEnv: string;
+  /** MCP server name agents register us under (`uxnan-browser`). */
+  serverName: string;
+  /** Supported-agent catalog. */
+  agents: McpAgentInfo[];
 }
 
 /** Release channel the updater follows (mirror of Rust `UpdateChannel`). Mapped

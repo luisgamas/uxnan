@@ -122,6 +122,24 @@ Para evitar que estados obsoletos contaminen la interfaz:
 
 ---
 
+### 1.6 Capa MCP: Navegador Controlable por Agentes
+
+El mismo servidor HTTP local (Capa 1) expone tambien un endpoint **`/mcp`**: un servidor **Model Context Protocol** (transporte Streamable HTTP) que hace **descubrible** el navegador integrado (`architecture/02a` §4.2b) para los agentes CLI. En lugar de que el agente tenga que *conocer* la convencion `$BROWSER`/`curl` al hook `/browser`, las herramientas del navegador aparecen en su lista de tools como cualquier capacidad nativa, y las usa sin leer documentacion.
+
+**Superficie de herramientas (solo control):** `browser_open`, `browser_navigate`, `browser_reload`, `browser_back`, `browser_forward`, `browser_status`. Reusan los mismos caminos del navegador (`browser::route_url` + comandos de ventana) y respetan la misma politica de enlaces que un enlace clicado. La inspeccion/interaccion de pagina (snapshot/evaluate/click/type) queda como fase posterior (requiere un canal de retorno JS desde la `WebviewWindow`).
+
+**Autenticacion y aislamiento:** el endpoint acepta el **mismo token por lanzamiento** que el hook server (`Authorization: Bearer <token>`, o el header legado `x-uxnan-token`). Los agentes reciben la configuracion MCP de su propio CLI apuntando a `/mcp`, pero el **token nunca se escribe en un archivo**: cada config lo referencia por la variable de entorno `UXNAN_MCP_TOKEN`, que el ADE inyecta en el PTY del agente. Consecuencia de diseno: la config inyectada **solo funciona dentro de una terminal lanzada por uxnan** — un agente ejecutado en otro entorno lee el mismo archivo pero no tiene la variable, no autentica y el servidor simplemente no carga para el (no puede secuestrar el navegador in-app).
+
+**Inyeccion por agente (`mcpinject.rs`):** el ADE escribe la config MCP nativa de cada CLI soportado (Claude Code, Codex, Gemini, OpenCode, Pi) en su ubicacion estandar, segun el modo elegido en Settings → Browser:
+
+- **`workspace`** (default): archivo con alcance de proyecto en el directorio de trabajo de la terminal (`.mcp.json`, `.codex/config.toml`, `.gemini/settings.json`, `opencode.json`); cubre agentes lanzados por el ADE y tecleados a mano ahi. Los archivos que el ADE crea se ocultan de Git (`info/exclude`, con soporte de worktrees via `git2`) y se eliminan al salir.
+- **`global`**: config global del usuario de cada CLI (aplica en todos los proyectos; mayor huella).
+- **`off`**: no inyecta nada (el endpoint `/mcp` sigue disponible para cableado manual desde el snippet copiable de Settings).
+
+El merge preserva el resto de la configuracion del usuario (JSON via `serde_json`, TOML de Codex via `toml_edit`). El registro es extensible: agregar un agente nuevo (p. ej. `agy`/Antigravity, Cursor, Grok, amp) es una fila en `AGENTS` + un brazo en `config_path`/`write_entry` (receta en `docs/browser.md`). Pi solo tiene config global y su forma HTTP+auth no esta verificada upstream, por lo que su inyeccion es best-effort.
+
+---
+
 ## 2. Notificaciones
 
 El sistema de notificaciones mantiene al usuario informado del progreso de los agentes, incluso cuando no esta mirando activamente la ventana del ADE.

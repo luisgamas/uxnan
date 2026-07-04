@@ -371,6 +371,9 @@
     allowAgents: true,
     terminalLinks: true,
     homepage: "",
+    mcpEnabled: true,
+    mcpInjection: "workspace",
+    mcpDisabledAgents: [],
   };
   const br = $derived<BrowserSettings>({
     ...BROWSER_DEFAULT,

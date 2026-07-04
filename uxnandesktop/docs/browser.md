@@ -74,6 +74,86 @@ browser (or your system browser / a prompt, depending on the setting).
 > in the browser"* — if it runs `$BROWSER <url>` or the `curl` above, the preview
 > shows up next to your terminal.
 
+## Agent browser MCP (discoverable tools)
+
+The `$BROWSER`/curl path above only works if the agent *knows* the convention. The
+**browser MCP** removes that: the ADE exposes the browser as **Model Context
+Protocol** tools and registers them in each agent it launches, so the tools appear
+in the agent's tool list automatically — it drives the browser with **no setup and
+no documentation**.
+
+### Tools
+
+| Tool | What it does |
+| --- | --- |
+| `browser_open` | Open the in-app browser and load a URL (routed through your link policy). |
+| `browser_navigate` | Navigate the browser to a URL (opening the panel first if needed). |
+| `browser_reload` | Reload the current page (e.g. after the agent changes code). |
+| `browser_back` / `browser_forward` | Move through history. |
+| `browser_status` | Report whether a page is open, the current URL, and how opens are routed. |
+
+They map onto the same in-app browser and the same link policy as a clicked link.
+(Page inspection/interaction — snapshot/click/type — is a planned follow-up; see
+`FOR-DEV.md`.)
+
+### How it connects
+
+The ADE runs a tiny MCP server at **`/mcp`** on the same local hook server the agent
+monitor already uses (`127.0.0.1`, ephemeral port, `Authorization: Bearer <token>`).
+When enabled, the ADE writes the agent CLI's **own** MCP config so it finds that
+server on launch. The bearer **token is never written to a file** — the config
+references the `UXNAN_MCP_TOKEN` environment variable, which the ADE injects into the
+terminal it spawns.
+
+That env-scoping is deliberate: **the injected config only works inside a terminal
+uxnan launched.** The same agent run in another IDE/terminal reads the same config
+file but has no `UXNAN_MCP_TOKEN`, so it can't authenticate — the server simply
+doesn't load for it (it won't hijack your in-app browser). The worst case outside
+uxnan is a harmless, non-connecting entry, and files uxnan *creates* are removed when
+it exits.
+
+### Settings → Browser → Agent browser MCP
+
+| Setting | What it does | Default |
+| --- | --- | --- |
+| **Agent browser MCP** | Master switch for exposing the `browser_*` tools to agents. Off → no MCP config is injected (the `/mcp` endpoint still exists for manual wiring). | On |
+| **Injection mode** | `Workspace` writes a project-scoped config into the terminal's working directory (covers hand-typed and app-launched agents there, removed on exit). `Global` registers it in each CLI's global user config (every project; more footprint). `Off` injects nothing. | Workspace |
+| **Per-agent** | Toggle injection per agent. | All on |
+| **Copy config** | Copy a ready-to-paste MCP-server config (endpoint + token) to wire an agent by hand — e.g. one the ADE doesn't auto-configure yet. | — |
+
+### Where each agent's config is written
+
+The ADE writes each CLI's native config in its standard location. The token is
+always referenced via `UXNAN_MCP_TOKEN` (never inlined):
+
+| Agent | Workspace file (`<cwd>/…`) | Global file | Shape |
+| --- | --- | --- | --- |
+| Claude Code | `.mcp.json` | `~/.claude.json` | `mcpServers.uxnan-browser` `{type:"http", url, headers}` |
+| Codex | `.codex/config.toml` | `~/.codex/config.toml` | `[mcp_servers.uxnan-browser]` `url` + `bearer_token_env_var` |
+| Gemini CLI | `.gemini/settings.json` | `~/.gemini/settings.json` | `mcpServers.uxnan-browser` `{httpUrl, headers}` |
+| OpenCode | `opencode.json` | `~/.config/opencode/opencode.json` | `mcp.uxnan-browser` `{type:"remote", url, headers, enabled}` |
+| Pi | — *(global only)* | `~/.pi/agent/mcp.json` | `mcpServers.uxnan-browser` `{url, headers}` — **best-effort** (unverified upstream) |
+
+Merges are non-destructive (your other keys/servers are preserved), and a file the
+ADE creates is added to the repo's local `info/exclude` so it doesn't show up in
+`git status`.
+
+### Adding another agent
+
+The injector is a small registry, so wiring a new CLI (e.g. `agy`/Antigravity,
+Cursor's `cursor-agent`, Grok, amp, …) is three edits in `src-tauri/src/mcpinject.rs`:
+
+1. Add a row to **`AGENTS`** — its stable id, label, and whether it has a
+   project-scoped config or only a global one (`Scope`).
+2. Add a match arm to **`config_path`** — where its MCP config file lives, relative
+   to the working directory (workspace mode) and to `$HOME` (global mode).
+3. Add its server shape to **`json_entry`** (JSON configs) or handle it in
+   **`write_entry`** (a non-JSON format, like Codex's TOML). Reference the token via
+   the CLI's own env-expansion syntax so it's never written to the file.
+
+Then add the agent's id to the frontend's per-agent toggle list. Nothing else
+changes — injection, merging, git-hiding and cleanup are format-driven.
+
 ## Performance
 
 The browser only consumes resources while the panel is open: the webview window is
