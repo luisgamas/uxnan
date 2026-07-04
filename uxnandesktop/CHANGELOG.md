@@ -20,6 +20,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   `requestNewWorktree`), `TerminalArea.svelte` (git-gated empty-state button +
   tab-strip menu + hint), EN/ES i18n (`terminal.worktreeNeedsGitRepo`).
 
+### Removed — redundant Cancel button in the project launcher dialog
+- **Removed the redundant Cancel button from the project launcher dialog**
+  (`LauncherDialog`) — the top-right ✕ and Esc already dismiss it, matching the
+  add-project dialogs.
+- **Files:** `LauncherDialog.svelte`.
+
 ## [0.0.5-alpha.20260703] - 2026-07-03
 
 ### Fixed — blank white screen on startup (0.0.4 regression)
