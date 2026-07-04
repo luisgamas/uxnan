@@ -15,6 +15,8 @@ export const en = {
   "toast.worktreeRemovedSquash": "Worktree removed · squash-merged branch cleaned up",
   "toast.aiCommitGenerated": "Commit message drafted",
   "toast.projectRemoved": "Project removed",
+  "toast.projectsAdded": "Added {added} projects",
+  "toast.projectsAddedSome": "Added {added} projects · {failed} skipped",
   "toast.agent": "Agent",
   "toast.agentDone": "{name} finished",
   "toast.agentBlocked": "{name} is blocked",
@@ -159,6 +161,19 @@ export const en = {
   "picker.open": "Open {name}",
   "picker.addFolder": "Add this folder",
   "picker.repoBadge": "repo",
+  "picker.bulkHint":
+    "{repos} git repos detected here — “Add this folder” lets you add them as separate projects.",
+  "picker.hintAdd": "Add folder",
+
+  // Add-project selection dialog (parent vs. sub-folders)
+  "addProject.title": "Add project",
+  "addProject.desc": "How do you want to add “{folder}”?",
+  "addProject.selectAll": "Select all sub-folders",
+  "addProject.subfolders": "Sub-folders ({count})",
+  "addProject.selectedCount": "{count} selected",
+  "addProject.noSubfolders": "This folder has no sub-folders.",
+  "addProject.addParent": "Add this folder",
+  "addProject.addSelected": "Add {count} separately",
 
   // Settings
   "settings.title": "Settings",
