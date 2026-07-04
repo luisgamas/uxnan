@@ -99,10 +99,10 @@ the browser MCP; user guide in `docs/browser.md`.
 - [ ] **On-device validation.** The docked `WebviewWindow` (its gluing to the panel
       on move/resize/DPI) and the agent `$BROWSER` shim end-to-end need a real run to
       confirm. The explicit `curl` path is the reliable fallback for the shim.
-- [ ] **Browser MCP — Settings UI.** The backend + `mcp_info` command are done; the
-      Settings → Browser panel controls (MCP master switch, injection-mode selector,
-      per-agent toggles, copy-paste snippet) are not built yet. Wire them in
-      `Settings.svelte` against `mcp_info` + `BrowserSettings.mcp*`.
+- [ ] **Browser MCP — Settings UI on-device review.** The Settings → Browser panel
+      controls are built (master switch, setup-mode selector, per-agent toggles,
+      copy-paste snippet, EN/ES; `svelte-check` + Vitest green) but not yet
+      visually reviewed in the Tauri app. Confirm layout/copy on-device and adjust.
 - [ ] **Browser MCP — Pi injection is best-effort.** Pi has no project-scoped MCP
       config (only global `~/.pi/agent/mcp.json`) and its HTTP-server + auth-header
       shape isn't documented upstream; `mcpinject::json_entry` writes a best-guess

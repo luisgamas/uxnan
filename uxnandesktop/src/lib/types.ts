@@ -552,6 +552,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
     allowAgents: true,
     terminalLinks: true,
     homepage: "",
+    mcpEnabled: true,
+    mcpInjection: "workspace",
+    mcpDisabledAgents: [],
   },
   browserPanelWidth: 520,
 };
