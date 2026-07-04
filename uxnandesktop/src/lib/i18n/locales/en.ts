@@ -723,7 +723,6 @@ export const en = {
   "browser.mcpModeOffDesc": "Don't inject anything — wire an agent by hand from the snippet below.",
   "browser.mcpAgents": "Agents",
   "browser.mcpAgentsDesc": "Which agents get the browser tools set up automatically.",
-  "browser.mcpGlobalOnly": "global only",
   "browser.mcpSnippet": "Manual config",
   "browser.mcpSnippetDesc":
     "Copy a ready-to-paste MCP server config to wire an agent yourself (e.g. one not listed above).",

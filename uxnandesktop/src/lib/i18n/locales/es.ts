@@ -724,7 +724,6 @@ export const es: Record<MessageKey, string> = {
   "browser.mcpModeOffDesc": "No inyectar nada — cablea un agente a mano con el snippet de abajo.",
   "browser.mcpAgents": "Agentes",
   "browser.mcpAgentsDesc": "Qué agentes reciben las herramientas del navegador automáticamente.",
-  "browser.mcpGlobalOnly": "solo global",
   "browser.mcpSnippet": "Config manual",
   "browser.mcpSnippetDesc":
     "Copia una config de servidor MCP lista para pegar y cablear un agente tú mismo (p. ej. uno no listado arriba).",

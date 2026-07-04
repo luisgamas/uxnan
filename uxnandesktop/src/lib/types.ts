@@ -146,8 +146,6 @@ export interface BrowserSettings {
 export interface McpAgentInfo {
   id: string;
   label: string;
-  /** True for agents with no project-scoped config (Global mode only, e.g. Pi). */
-  globalOnly: boolean;
 }
 
 /** Runtime MCP coordinates for the Settings panel (mirror of Rust `McpInfo`). */
