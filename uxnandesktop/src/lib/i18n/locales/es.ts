@@ -138,6 +138,8 @@ export const es: Record<MessageKey, string> = {
     "un nombre sin relación ni derivación de ningún producto existente.",
   "terminal.worktreeNeedsRepo":
     "Selecciona un proyecto o worktree en el panel izquierdo para habilitar esto.",
+  "terminal.worktreeNeedsGitRepo":
+    "Este proyecto no es un repositorio git, por lo que no tiene worktrees.",
   "terminal.newInRegion": "Nueva terminal en esta región",
   "terminal.copy": "Copiar",
   "terminal.paste": "Pegar",

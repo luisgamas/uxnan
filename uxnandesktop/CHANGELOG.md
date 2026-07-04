@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — "New worktree" is gated to git repos, not just the Global space
+- **"New worktree" affordances are now disabled for non-git project folders.**
+  Worktrees need a git repo, so for a registered folder that isn't one:
+  - the center empty-state **"New worktree"** button renders disabled (with a
+    tooltip explaining the folder isn't a git repo);
+  - the center tab-strip **"+"** launcher menu omits its **New worktree** option
+    (terminals / agents / browser stay available);
+  - the `newWorktree` keyboard shortcut and its empty-state hint are inert.
+  Backed by a new `projects.activeGitRepo` getter (the active repo only when
+  `isGit !== false`); `requestNewWorktree()` now checks it. The project card's
+  launcher dialog already hid the option for non-git folders.
+- **Files:** `state/projects.svelte.ts` (`activeGitRepo`, gated
+  `requestNewWorktree`), `TerminalArea.svelte` (git-gated empty-state button +
+  tab-strip menu + hint), EN/ES i18n (`terminal.worktreeNeedsGitRepo`).
+
 ## [0.0.5-alpha.20260703] - 2026-07-03
 
 ### Fixed — blank white screen on startup (0.0.4 regression)
