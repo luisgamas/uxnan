@@ -23,6 +23,7 @@
     HookInstall,
     HookScripts,
   } from "$lib/types";
+  import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
   import { clipboardWrite } from "$lib/clipboard";
@@ -253,19 +254,23 @@
         </Collapsible.Trigger>
         <Collapsible.Content>
           <div class="relative mt-2">
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              class={cn(iconButton.action, "absolute right-1 top-1 z-10")}
-              title={i18n.t("hooks.copy")}
-              onclick={() => scripts && copy("claude-json", scripts.claudeJson)}
-            >
+            <TooltipSimple title={i18n.t("hooks.copy")}>
+              {#snippet children(tp)}
+                <Button
+                  {...tp}
+                  variant="ghost"
+                  size="icon-sm"
+                  class={cn(iconButton.action, "absolute right-1 top-1 z-10")}
+                  onclick={() => scripts && copy("claude-json", scripts.claudeJson)}
+                >
               {#if copied["claude-json"]}
                 <CheckIcon class={icon.button} />
               {:else}
                 <CopyIcon class={icon.button} />
               {/if}
             </Button>
+            {/snippet}
+          </TooltipSimple>
             <pre
               class={cn(
                 "max-h-72 overflow-auto rounded-md border border-border bg-muted/40 p-2 pr-10",
@@ -306,19 +311,23 @@
       </div>
       <p class={cn("font-mono", text.meta)}>{wrapperUsage}</p>
       <div class="relative">
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          class={cn(iconButton.action, "absolute right-1 top-1 z-10")}
-          title={i18n.t("hooks.copy")}
-          onclick={() => copy(`wrapper-${platform}`, wrapperScript)}
-        >
-          {#if copied[`wrapper-${platform}`]}
-            <CheckIcon class={icon.button} />
-          {:else}
-            <CopyIcon class={icon.button} />
-          {/if}
-        </Button>
+        <TooltipSimple title={i18n.t("hooks.copy")}>
+          {#snippet children(tp)}
+            <Button
+              {...tp}
+              variant="ghost"
+              size="icon-sm"
+              class={cn(iconButton.action, "absolute right-1 top-1 z-10")}
+              onclick={() => copy(`wrapper-${platform}`, wrapperScript)}
+            >
+              {#if copied[`wrapper-${platform}`]}
+                <CheckIcon class={icon.button} />
+              {:else}
+                <CopyIcon class={icon.button} />
+              {/if}
+            </Button>
+          {/snippet}
+        </TooltipSimple>
         <pre
           class={cn(
             "max-h-72 overflow-auto rounded-md border border-border bg-muted/40 p-2 pr-10",

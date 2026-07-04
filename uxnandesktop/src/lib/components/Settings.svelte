@@ -22,6 +22,7 @@
   } from "$lib/terminalTemplates";
   import { AGENT_CATALOG, agentLogoKey, type CatalogAgent } from "$lib/agentCatalog";
   import { detectAgents } from "$lib/api";
+  import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { updater } from "$lib/state/updater.svelte";
   import { appVersion } from "$lib/api";
   import type {
@@ -498,16 +499,20 @@
       data-tauri-drag-region
       class={cn("flex h-9 shrink-0 items-center gap-2 px-3", divider.bottom)}
     >
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        class={iconButton.action}
-        title={i18n.t("common.close")}
-        aria-label={i18n.t("common.close")}
-        onclick={close}
-      >
-        <ArrowLeftIcon class={icon.button} />
-      </Button>
+      <TooltipSimple title={i18n.t("common.close")}>
+        {#snippet children(tp)}
+          <Button
+            {...tp}
+            variant="ghost"
+            size="icon-sm"
+            class={iconButton.action}
+            aria-label={i18n.t("common.close")}
+            onclick={close}
+          >
+            <ArrowLeftIcon class={icon.button} />
+          </Button>
+        {/snippet}
+      </TooltipSimple>
       <h1 class="text-sm font-semibold tracking-tight">
         {i18n.t("settings.title")}
       </h1>
@@ -586,46 +591,58 @@
                         <div class={text.body}>{i18n.t(action.labelKey)}</div>
                         <div class={cn("truncate", text.meta)}>{i18n.t(action.descKey)}</div>
                       </div>
-                      <button
-                        type="button"
-                        class={cn(
-                          "inline-flex h-7 min-w-24 shrink-0 items-center justify-center rounded-md border px-2 font-mono",
-                          text.body,
-                          isCapturing
-                            ? "border-primary text-primary"
-                            : "border-border hover:bg-accent/50",
-                        )}
-                        title={i18n.t("shortcuts.rebind")}
-                        onclick={() => (capturing = isCapturing ? null : action.id)}
-                      >
-                        {#if isCapturing}
-                          {i18n.t("shortcuts.press")}
-                        {:else if chord}
-                          {formatChord(chord)}
-                        {:else}
-                          <span class="text-muted-foreground">{i18n.t("shortcuts.disabled")}</span>
-                        {/if}
-                      </button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        class={iconButton.action}
-                        disabled={chord === ""}
-                        title={i18n.t("shortcuts.disable")}
-                        onclick={() => setBinding(action.id, "")}
-                      >
-                        <XIcon class={icon.button} />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        class={iconButton.action}
-                        disabled={chord === action.default}
-                        title={i18n.t("shortcuts.reset")}
-                        onclick={() => resetBinding(action.id)}
-                      >
-                        <RotateCcwIcon class={icon.button} />
-                      </Button>
+                      <TooltipSimple title={i18n.t("shortcuts.rebind")}>
+                        {#snippet children(tp)}
+                          <button
+                            {...tp}
+                            type="button"
+                            class={cn(
+                              "inline-flex h-7 min-w-24 shrink-0 items-center justify-center rounded-md border px-2 font-mono",
+                              text.body,
+                              isCapturing
+                                ? "border-primary text-primary"
+                                : "border-border hover:bg-accent/50",
+                            )}
+                            onclick={() => (capturing = isCapturing ? null : action.id)}
+                          >
+                            {#if isCapturing}
+                              {i18n.t("shortcuts.press")}
+                            {:else if chord}
+                              {formatChord(chord)}
+                            {:else}
+                              <span class="text-muted-foreground">{i18n.t("shortcuts.disabled")}</span>
+                            {/if}
+                          </button>
+                        {/snippet}
+                      </TooltipSimple>
+                      <TooltipSimple title={i18n.t("shortcuts.disable")}>
+                        {#snippet children(tp)}
+                          <Button
+                            {...tp}
+                            variant="ghost"
+                            size="icon"
+                            class={iconButton.action}
+                            disabled={chord === ""}
+                            onclick={() => setBinding(action.id, "")}
+                          >
+                            <XIcon class={icon.button} />
+                          </Button>
+                        {/snippet}
+                      </TooltipSimple>
+                      <TooltipSimple title={i18n.t("shortcuts.reset")}>
+                        {#snippet children(tp)}
+                          <Button
+                            {...tp}
+                            variant="ghost"
+                            size="icon"
+                            class={iconButton.action}
+                            disabled={chord === action.default}
+                            onclick={() => resetBinding(action.id)}
+                          >
+                            <RotateCcwIcon class={icon.button} />
+                          </Button>
+                        {/snippet}
+                      </TooltipSimple>
                     </div>
                   {/each}
                 </div>

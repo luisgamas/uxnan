@@ -12,6 +12,7 @@
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
   import { icon, iconButton, text } from "$lib/design";
+  import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { clipboardWrite } from "$lib/clipboard";
   import { toast } from "$lib/toast";
   import { computeGraph, type GraphRow, type GraphEdge } from "$lib/gitGraph";
@@ -204,14 +205,16 @@
 
 {#snippet commitRow(commit: CommitInfo, cindex: number)}
   {@const expanded = history.isExpanded(commit.hash)}
-  <div
-    class="group flex h-11 cursor-pointer items-center gap-1.5 rounded-md pr-1"
-    role="button"
-    tabindex="0"
-    title={i18n.t("history.showFiles")}
-    onclick={() => toggleCommit(commit)}
-    onkeydown={(e) => (e.key === "Enter" || e.key === " ") && toggleCommit(commit)}
-  >
+  <TooltipSimple title={i18n.t("history.showFiles")}>
+    {#snippet children(tp)}
+      <div
+        {...tp}
+        class="group flex h-11 cursor-pointer items-center gap-1.5 rounded-md pr-1"
+        role="button"
+        tabindex="0"
+        onclick={() => toggleCommit(commit)}
+        onkeydown={(e) => (e.key === "Enter" || e.key === " ") && toggleCommit(commit)}
+      >
     {#if layout && layout.rows[cindex]}
       {@render graphGutter(layout.rows[cindex])}
     {/if}
@@ -255,19 +258,25 @@
         {@render commitDetails(commit)}
       </HoverCard.Content>
     </HoverCard.Root>
-    <Button
-      variant="ghost"
-      size="icon"
-      class="size-6 shrink-0 opacity-0 group-hover:opacity-100"
-      title={i18n.t("history.copyHash")}
-      onclick={(e) => {
-        e.stopPropagation();
-        void copyHash(commit.hash);
-      }}
-    >
-      <CopyIcon class={icon.button} />
-    </Button>
+    <TooltipSimple title={i18n.t("history.copyHash")}>
+      {#snippet children(tp)}
+        <Button
+          {...tp}
+          variant="ghost"
+          size="icon"
+          class="size-6 shrink-0 opacity-0 group-hover:opacity-100"
+          onclick={(e) => {
+            e.stopPropagation();
+            void copyHash(commit.hash);
+          }}
+        >
+          <CopyIcon class={icon.button} />
+        </Button>
+      {/snippet}
+    </TooltipSimple>
   </div>
+  {/snippet}
+</TooltipSimple>
 {/snippet}
 
 {#snippet commitDetails(commit: CommitInfo)}
@@ -326,17 +335,19 @@
   {@const p = splitPath(entry.file.path)}
   {@const isOpen =
     history.path != null && terminals.isCommitOpen(history.path, entry.commit.hash, entry.file.path)}
-  <div
-    class={cn(
-      "group flex h-7 cursor-pointer items-center rounded-md",
-      isOpen ? "bg-primary/15 ring-1 ring-inset ring-primary/25" : "hover:bg-accent/40",
-    )}
-    role="button"
-    tabindex="0"
-    title={i18n.t("history.viewFileDiff")}
-    onclick={() => openFile(entry.commit, entry.file)}
-    onkeydown={(e) => (e.key === "Enter" || e.key === " ") && openFile(entry.commit, entry.file)}
-  >
+  <TooltipSimple title={i18n.t("history.viewFileDiff")}>
+    {#snippet children(tp)}
+      <div
+        {...tp}
+        class={cn(
+          "group flex h-7 cursor-pointer items-center rounded-md",
+          isOpen ? "bg-primary/15 ring-1 ring-inset ring-primary/25" : "hover:bg-accent/40",
+        )}
+        role="button"
+        tabindex="0"
+        onclick={() => openFile(entry.commit, entry.file)}
+        onkeydown={(e) => (e.key === "Enter" || e.key === " ") && openFile(entry.commit, entry.file)}
+      >
     {#if graphOn}
       <div class="shrink-0" style="width:{gutterWidth}px" aria-hidden="true"></div>
     {/if}
@@ -344,11 +355,17 @@
       <span class={cn("w-3 shrink-0 text-center font-mono font-semibold", text.indicator, s.class)}>
         {s.letter}
       </span>
-      <span class={cn("min-w-0 flex-1 truncate", text.body)} title={entry.file.path}>
-        {#if p.dir}<span class="text-muted-foreground">{p.dir}</span>{/if}{p.name}
-      </span>
+      <TooltipSimple title={entry.file.path}>
+        {#snippet children(tp)}
+          <span {...tp} class={cn("min-w-0 flex-1 truncate", text.body)}>
+            {#if p.dir}<span class="text-muted-foreground">{p.dir}</span>{/if}{p.name}
+          </span>
+        {/snippet}
+      </TooltipSimple>
     </div>
   </div>
+  {/snippet}
+</TooltipSimple>
 {/snippet}
 
 {#snippet statusRow(entry: Extract<Entry, { kind: "status" }>)}
@@ -376,9 +393,13 @@
         )}
         onkeydown={(e) => e.key === "Escape" && toggleSearch()}
       />
-      <Button variant="ghost" size="icon" class={iconButton.xs} title={i18n.t("common.close")} onclick={toggleSearch}>
-        <XIcon class={icon.action} />
-      </Button>
+      <TooltipSimple title={i18n.t("common.close")}>
+        {#snippet children(tp)}
+          <Button variant="ghost" size="icon" class={iconButton.xs} {...tp} onclick={toggleSearch}>
+            <XIcon class={icon.action} />
+          </Button>
+        {/snippet}
+      </TooltipSimple>
     {:else}
       <span class={cn("flex-1 truncate", text.section)}>
         {#if history.commits.length > 0}
@@ -386,32 +407,44 @@
         {/if}
       </span>
       {#if history.path}
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-pressed={history.showGraph}
-          class={cn(
-            iconButton.xs,
-            history.showGraph &&
-              "bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary",
-          )}
-          title={i18n.t(history.showGraph ? "history.hideGraph" : "history.showGraph")}
-          onclick={() => (history.showGraph = !history.showGraph)}
-        >
-          <GitBranchIcon class={icon.action} />
-        </Button>
-        <Button variant="ghost" size="icon" class={iconButton.xs} title={i18n.t("history.search")} onclick={toggleSearch}>
-          <SearchIcon class={icon.action} />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          class={iconButton.xs}
-          title={i18n.t("history.refresh")}
-          onclick={() => void history.refresh()}
-        >
-          <RefreshCwIcon class={cn(icon.action, history.loading && "animate-spin")} />
-        </Button>
+        <TooltipSimple title={i18n.t(history.showGraph ? "history.hideGraph" : "history.showGraph")}>
+          {#snippet children(tp)}
+            <Button
+              {...tp}
+              variant="ghost"
+              size="icon"
+              aria-pressed={history.showGraph}
+              class={cn(
+                iconButton.xs,
+                history.showGraph &&
+                  "bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary",
+              )}
+              onclick={() => (history.showGraph = !history.showGraph)}
+            >
+              <GitBranchIcon class={icon.action} />
+            </Button>
+          {/snippet}
+        </TooltipSimple>
+        <TooltipSimple title={i18n.t("history.search")}>
+          {#snippet children(tp)}
+            <Button variant="ghost" size="icon" class={iconButton.xs} {...tp} onclick={toggleSearch}>
+              <SearchIcon class={icon.action} />
+            </Button>
+          {/snippet}
+        </TooltipSimple>
+        <TooltipSimple title={i18n.t("history.refresh")}>
+          {#snippet children(tp)}
+            <Button
+              {...tp}
+              variant="ghost"
+              size="icon"
+              class={iconButton.xs}
+              onclick={() => void history.refresh()}
+            >
+              <RefreshCwIcon class={cn(icon.action, history.loading && "animate-spin")} />
+            </Button>
+          {/snippet}
+        </TooltipSimple>
       {/if}
     {/if}
   </header>

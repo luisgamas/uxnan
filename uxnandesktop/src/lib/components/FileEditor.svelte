@@ -31,6 +31,7 @@
   import { Button } from "$lib/components/ui/button";
   import { cn } from "$lib/utils";
   import { icon, text } from "$lib/design";
+  import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import FileIcon from "@lucide/svelte/icons/file";
   import SaveIcon from "@lucide/svelte/icons/save";
@@ -277,22 +278,36 @@
 <div class="flex h-full min-h-0 flex-col bg-background">
   <header class="flex h-9 shrink-0 items-center gap-2 border-b border-border/60 px-2">
     <FileIcon class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
-    <span class={cn("min-w-0 flex-1 truncate font-mono", text.body)} title={fileState.path}>
-      {fileState.rel || fileState.name}
-      {#if fileState.dirty}<span class="text-amber-600 dark:text-amber-400" title={i18n.t("editor.unsaved")}>●</span>{/if}
-    </span>
+    <TooltipSimple title={fileState.path}>
+      {#snippet children(tp)}
+        <span {...tp} class={cn("min-w-0 flex-1 truncate font-mono", text.body)}>
+          {fileState.rel || fileState.name}
+          {#if fileState.dirty}
+            <TooltipSimple title={i18n.t("editor.unsaved")}>
+              {#snippet children(tp2)}
+                <span {...tp2} class="text-amber-600 dark:text-amber-400">●</span>
+              {/snippet}
+            </TooltipSimple>
+          {/if}
+        </span>
+      {/snippet}
+    </TooltipSimple>
     {#if !fileState.binary && !fileState.tooLarge}
-      <Button
-        variant="ghost"
-        size="sm"
-        class={cn("h-6", text.body)}
-        disabled={!fileState.dirty || fileState.saving}
-        title={i18n.t("editor.save")}
-        onclick={doSave}
-      >
-        <SaveIcon data-icon="inline-start" />
-        {fileState.saving ? i18n.t("editor.saving") : i18n.t("editor.save")}
-      </Button>
+      <TooltipSimple title={i18n.t("editor.save")}>
+        {#snippet children(tp)}
+          <Button
+            {...tp}
+            variant="ghost"
+            size="sm"
+            class={cn("h-6", text.body)}
+            disabled={!fileState.dirty || fileState.saving}
+            onclick={doSave}
+          >
+            <SaveIcon data-icon="inline-start" />
+            {fileState.saving ? i18n.t("editor.saving") : i18n.t("editor.save")}
+          </Button>
+        {/snippet}
+      </TooltipSimple>
     {/if}
   </header>
 

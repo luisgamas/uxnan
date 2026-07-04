@@ -6,6 +6,7 @@
   import { app } from "$lib/state/app.svelte";
   import { cn } from "$lib/utils";
   import { text } from "$lib/design";
+  import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import ServerIcon from "@lucide/svelte/icons/server";
 
@@ -31,13 +32,17 @@
 </script>
 
 <Popover.Root>
-  <Popover.Trigger
-    class="flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-    title={state.label}
-    aria-label={state.label}
-  >
-    <ServerIcon class={cn("size-3.5", state.icon)} />
-  </Popover.Trigger>
+  <TooltipSimple title={state.label}>
+    {#snippet children(tp)}
+      <Popover.Trigger
+        {...tp}
+        class="flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+        aria-label={state.label}
+      >
+        <ServerIcon class={cn("size-3.5", state.icon)} />
+      </Popover.Trigger>
+    {/snippet}
+  </TooltipSimple>
   <Popover.Content align="end" side="top" class="w-64 p-3">
     <div class="flex flex-col gap-2">
       <div class="flex items-center gap-2">

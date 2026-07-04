@@ -10,6 +10,7 @@
   import { unread } from "$lib/state/unread.svelte";
   import { cn } from "$lib/utils";
   import { icon, iconButton, surface, text } from "$lib/design";
+  import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import WorktreeRow from "./WorktreeRow.svelte";
@@ -70,59 +71,79 @@
   <ContextMenu.Root>
     <ContextMenu.Trigger>
       {#snippet child({ props })}
-        <div
-          {...props}
-          class={cn(
-            "group/header flex min-h-9 items-center gap-2 rounded-md px-2 py-1.5 transition-colors",
-            projectActive && !isExpanded && surface.active,
-          )}
-          role="button"
-          tabindex="0"
-          title={repo.path}
-          onclick={onHeaderActivate}
-          onkeydown={(e) => (e.key === "Enter" || e.key === " ") && onHeaderActivate()}
-        >
-          {#if isGit}
-            <FolderGitIcon class={cn(icon.nav, "shrink-0 text-muted-foreground")} />
-          {:else}
-            <FolderIcon class={cn(icon.nav, "shrink-0 text-muted-foreground")} />
-          {/if}
-          <span class={cn("min-w-0 flex-1 truncate", text.title)} title={repo.name}>{repo.name}</span>
-          {#if hasUnread}
-            <span class="size-1.5 shrink-0 rounded-full bg-red-500" title={i18n.t("monitor.unread")}></span>
-          {/if}
+        <TooltipSimple title={repo.path}>
+          {#snippet children(tp)}
+            <div
+              {...tp}
+              {...props}
+              class={cn(
+                "group/header flex min-h-9 items-center gap-2 rounded-md px-2 py-1.5 transition-colors",
+                projectActive && !isExpanded && surface.active,
+              )}
+              role="button"
+              tabindex="0"
+              onclick={onHeaderActivate}
+              onkeydown={(e) => (e.key === "Enter" || e.key === " ") && onHeaderActivate()}
+            >
+              {#if isGit}
+                <FolderGitIcon class={cn(icon.nav, "shrink-0 text-muted-foreground")} />
+              {:else}
+                <FolderIcon class={cn(icon.nav, "shrink-0 text-muted-foreground")} />
+              {/if}
+              <TooltipSimple title={repo.name}>
+                {#snippet children(tp2)}
+                  <span {...tp2} class={cn("min-w-0 flex-1 truncate", text.title)}>{repo.name}</span>
+                {/snippet}
+              </TooltipSimple>
+              {#if hasUnread}
+                <TooltipSimple title={i18n.t("monitor.unread")}>
+                  {#snippet children(tp2)}
+                    <span {...tp2} class="size-1.5 shrink-0 rounded-full bg-red-500"></span>
+                  {/snippet}
+                </TooltipSimple>
+              {/if}
 
           <div class="flex shrink-0 items-center gap-0.5">
             {#if isGit}
-              <Button
-                variant="ghost"
-                size="icon"
-                class={cn(iconButton.xs, hoverReveal)}
-                title={isExpanded ? i18n.t("project.collapse") : i18n.t("project.expand")}
-                aria-label={isExpanded ? i18n.t("project.collapse") : i18n.t("project.expand")}
-                onclick={(e) => {
-                  e.stopPropagation();
-                  expanded = !isExpanded;
-                }}
-              >
-                <ChevronRightIcon class={cn(icon.action, "transition-transform", isExpanded && "rotate-90")} />
-              </Button>
+              <TooltipSimple title={isExpanded ? i18n.t("project.collapse") : i18n.t("project.expand")}>
+                {#snippet children(tp)}
+                  <Button
+                    {...tp}
+                    variant="ghost"
+                    size="icon"
+                    class={cn(iconButton.xs, hoverReveal)}
+                    aria-label={isExpanded ? i18n.t("project.collapse") : i18n.t("project.expand")}
+                    onclick={(e) => {
+                      e.stopPropagation();
+                      expanded = !isExpanded;
+                    }}
+                  >
+                    <ChevronRightIcon class={cn(icon.action, "transition-transform", isExpanded && "rotate-90")} />
+                  </Button>
+                {/snippet}
+              </TooltipSimple>
             {/if}
-            <Button
-              variant="ghost"
-              size="icon"
-              class={cn(iconButton.xs, hoverReveal)}
-              title={i18n.t("launcher.open", { name: repo.name })}
-              onclick={(e) => {
-                e.stopPropagation();
-                launcherOpen = true;
-              }}
-            >
-              <PlusIcon class={icon.action} />
-            </Button>
+            <TooltipSimple title={i18n.t("launcher.open", { name: repo.name })}>
+              {#snippet children(tp)}
+                <Button
+                  {...tp}
+                  variant="ghost"
+                  size="icon"
+                  class={cn(iconButton.xs, hoverReveal)}
+                  onclick={(e) => {
+                    e.stopPropagation();
+                    launcherOpen = true;
+                  }}
+                >
+                  <PlusIcon class={icon.action} />
+                </Button>
+              {/snippet}
+            </TooltipSimple>
           </div>
         </div>
       {/snippet}
+    </TooltipSimple>
+  {/snippet}
     </ContextMenu.Trigger>
     <RowActionsMenu
       path={mainPath}

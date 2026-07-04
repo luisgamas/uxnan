@@ -21,6 +21,7 @@
   import AgentStatusDot from "./AgentStatusDot.svelte";
   import { divider, icon, tab, text } from "$lib/design";
   import { cn } from "$lib/utils";
+  import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import { resolveBinding } from "$lib/keybindings";
   import KeyChord from "./KeyChord.svelte";
@@ -398,57 +399,81 @@
                           ? (e) => tabMenu(e, g.group.id, t.id)
                           : undefined}
                       >
-                        {#if t.kind === "terminal"}
+                          {#if t.kind === "terminal"}
                           {@const display = resolveAgentDisplay(t)}
                           {#if display}
                             <AgentStatusDot status={display.status} stale={display.stale} />
                           {/if}
-                          <span
-                            class="max-w-[120px] truncate {t.exited ? 'line-through' : ''}"
-                            title={t.agentName ?? t.title}
-                          >
-                            {t.agentName ?? t.title}
-                          </span>
+                          <TooltipSimple title={t.agentName ?? t.title}>
+                            {#snippet children(tp)}
+                              <span
+                                {...tp}
+                                class="max-w-[120px] truncate {t.exited ? 'line-through' : ''}"
+                              >
+                                {t.agentName ?? t.title}
+                              </span>
+                            {/snippet}
+                          </TooltipSimple>
                         {:else if t.kind === "file"}
                           <FileIcon class={cn(icon.decorative, "shrink-0")} />
-                          <span
-                            class="max-w-[120px] truncate"
-                            title={t.path}
-                          >
-                            {t.title}
-                          </span>
+                          <TooltipSimple title={t.path}>
+                            {#snippet children(tp)}
+                              <span
+                                {...tp}
+                                class="max-w-[120px] truncate"
+                              >
+                                {t.title}
+                              </span>
+                            {/snippet}
+                          </TooltipSimple>
                           {#if terminals.fileState(t.id)?.dirty}
-                            <span
-                              class="text-amber-600 dark:text-amber-400"
-                              title={i18n.t("editor.unsaved")}>●</span
-                            >
+                            <TooltipSimple title={i18n.t("editor.unsaved")}>
+                              {#snippet children(tp)}
+                                <span
+                                  {...tp}
+                                  class="text-amber-600 dark:text-amber-400">●</span
+                                >
+                              {/snippet}
+                            </TooltipSimple>
                           {/if}
                         {:else if t.kind === "diff"}
                           <FileDiffIcon class={cn(icon.decorative, "shrink-0")} />
-                          <span
-                            class="max-w-[120px] truncate"
-                            title={t.file}
-                          >
-                            {t.title}
-                          </span>
+                          <TooltipSimple title={t.file}>
+                            {#snippet children(tp)}
+                              <span
+                                {...tp}
+                                class="max-w-[120px] truncate"
+                              >
+                                {t.title}
+                              </span>
+                            {/snippet}
+                          </TooltipSimple>
                         {:else}
                           <GitCommitIcon class={cn(icon.decorative, "shrink-0")} />
-                          <span
-                            class="max-w-[120px] truncate font-mono"
-                            title={t.subject}
-                          >
-                            {t.title}
-                          </span>
+                          <TooltipSimple title={t.subject}>
+                            {#snippet children(tp)}
+                              <span
+                                {...tp}
+                                class="max-w-[120px] truncate font-mono"
+                              >
+                                {t.title}
+                              </span>
+                            {/snippet}
+                          </TooltipSimple>
                         {/if}
-                        <button
-                          class="rounded px-0.5 text-muted-foreground opacity-60 hover:bg-destructive/20 hover:text-foreground hover:opacity-100"
-                          title={i18n.t("terminal.closeTab")}
-                          aria-label={i18n.t("terminal.closeTab")}
-                          data-tab-close
-                          onclick={() => terminals.closeTab(g.group.id, t.id)}
-                        >
-                          ×
-                        </button>
+                        <TooltipSimple title={i18n.t("terminal.closeTab")}>
+                          {#snippet children(tp)}
+                            <button
+                              {...tp}
+                              class="rounded px-0.5 text-muted-foreground opacity-60 hover:bg-destructive/20 hover:text-foreground hover:opacity-100"
+                              aria-label={i18n.t("terminal.closeTab")}
+                              data-tab-close
+                              onclick={() => terminals.closeTab(g.group.id, t.id)}
+                            >
+                              ×
+                            </button>
+                          {/snippet}
+                        </TooltipSimple>
                       </div>
                     {/each}
                     <!-- Insertion marker after the last tab (append slot) -->
@@ -476,15 +501,19 @@
                         title={i18n.t("launcher.openHere")}
                       />
                     {:else}
-                      <button
-                        class="ml-0.5 shrink-0 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                        title={i18n.t("terminal.newInRegion")}
-                        aria-label={i18n.t("terminal.newTerminal")}
-                        onclick={() =>
-                          terminals.create({ groupId: g.group.id, ...defaultShellArgs() })}
-                      >
-                        +
-                      </button>
+                      <TooltipSimple title={i18n.t("terminal.newInRegion")}>
+                        {#snippet children(tp)}
+                          <button
+                            {...tp}
+                            class="ml-0.5 shrink-0 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                            aria-label={i18n.t("terminal.newTerminal")}
+                            onclick={() =>
+                              terminals.create({ groupId: g.group.id, ...defaultShellArgs() })}
+                          >
+                            +
+                          </button>
+                        {/snippet}
+                      </TooltipSimple>
                     {/if}
                     <!-- Split lives in each terminal's right-click menu (tab or
                          pane), not here — this stays a drag region. -->
@@ -624,17 +653,21 @@
                 {i18n.t("newWorktree.title")}
               </button>
             {:else}
-              <button
-                class={cn(
-                  "inline-flex cursor-not-allowed items-center gap-1.5 rounded-md border border-dashed border-border px-3 py-1.5 font-medium text-muted-foreground/70",
-                  text.body,
-                )}
-                disabled
-                title={i18n.t("terminal.worktreeNeedsRepo")}
-              >
-                <GitBranchIcon class={icon.button} />
-                {i18n.t("newWorktree.title")}
-              </button>
+              <TooltipSimple title={i18n.t("terminal.worktreeNeedsRepo")}>
+                {#snippet children(tp)}
+                  <button
+                    {...tp}
+                    class={cn(
+                      "inline-flex cursor-not-allowed items-center gap-1.5 rounded-md border border-dashed border-border px-3 py-1.5 font-medium text-muted-foreground/70",
+                      text.body,
+                    )}
+                    disabled
+                  >
+                    <GitBranchIcon class={icon.button} />
+                    {i18n.t("newWorktree.title")}
+                  </button>
+                {/snippet}
+              </TooltipSimple>
             {/if}
           </div>
 

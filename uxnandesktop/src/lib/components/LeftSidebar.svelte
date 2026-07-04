@@ -7,6 +7,7 @@
   import KeyChord from "./KeyChord.svelte";
   import { divider, icon, iconButton, text } from "$lib/design";
   import { cn } from "$lib/utils";
+  import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import { formatChord, resolveBinding } from "$lib/keybindings";
   import SearchIcon from "@lucide/svelte/icons/search";
@@ -81,38 +82,50 @@
     <span data-tauri-drag-region class="truncate text-sm font-semibold tracking-tight">
       Uxnan Desktop
     </span>
-    <span
-      class="rounded bg-muted px-1.5 py-px text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
-      title={i18n.t("titlebar.alphaTooltip")}
-    >
-      Alpha
-    </span>
+    <TooltipSimple title={i18n.t("titlebar.alphaTooltip")}>
+      {#snippet children(props)}
+        <span
+          {...props}
+          class="rounded bg-muted px-1.5 py-px text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
+        >
+          Alpha
+        </span>
+      {/snippet}
+    </TooltipSimple>
   </div>
 
   <!-- Region: Quick actions — borderless nav buttons (search + settings). -->
   <div class="flex shrink-0 flex-col gap-px px-2 pb-1 pt-2">
-    <button
-      class={cn(navBase, navIdle)}
-      title={i18n.t("sidebar.search")}
-      onclick={() => (projects.paletteOpen = true)}
-    >
-      <SearchIcon class={icon.button} />
-      <span class="flex-1 truncate text-left">{i18n.t("sidebar.search")}</span>
-      {#if searchBinding}
-        <KeyChord chord={searchBinding} />
-      {/if}
-    </button>
-    <button
-      class={cn(navBase, app.settingsOpen ? navActive : navIdle)}
-      title={i18n.t("settings.title")}
-      onclick={() => (app.settingsOpen = true)}
-    >
-      <SettingsIcon class={icon.button} />
-      <span class="flex-1 truncate text-left">{i18n.t("settings.title")}</span>
-      {#if settingsBinding}
-        <KeyChord chord={settingsBinding} />
-      {/if}
-    </button>
+    <TooltipSimple title={i18n.t("sidebar.search")}>
+      {#snippet children(props)}
+        <button
+          {...props}
+          class={cn(navBase, navIdle)}
+          onclick={() => (projects.paletteOpen = true)}
+        >
+          <SearchIcon class={icon.button} />
+          <span class="flex-1 truncate text-left">{i18n.t("sidebar.search")}</span>
+          {#if searchBinding}
+            <KeyChord chord={searchBinding} />
+          {/if}
+        </button>
+      {/snippet}
+    </TooltipSimple>
+    <TooltipSimple title={i18n.t("settings.title")}>
+      {#snippet children(props)}
+        <button
+          {...props}
+          class={cn(navBase, app.settingsOpen ? navActive : navIdle)}
+          onclick={() => (app.settingsOpen = true)}
+        >
+          <SettingsIcon class={icon.button} />
+          <span class="flex-1 truncate text-left">{i18n.t("settings.title")}</span>
+          {#if settingsBinding}
+            <KeyChord chord={settingsBinding} />
+          {/if}
+        </button>
+      {/snippet}
+    </TooltipSimple>
   </div>
 
   <!-- Region: Projects — header (label + actions) and the project tree. -->
@@ -121,30 +134,42 @@
       {i18n.t("sidebar.projects")}
       <span class="text-muted-foreground/60">({projects.filteredRepos.length})</span>
     </span>
-    <Button
-      variant="ghost"
-      size="icon"
-      class={iconButton.xs}
-      title={`${i18n.t("sidebar.addProject")} (${addChord})`}
-      onclick={() => (projects.pickerOpen = true)}
-    >
-      <FolderPlusIcon class={icon.action} />
-    </Button>
-    <Button
-      variant="ghost"
-      size="icon"
-      class={iconButton.xs}
-      title={i18n.t("sidebar.refresh")}
-      onclick={() => void projects.init()}
-    >
-      <RefreshCwIcon class={icon.action} />
-    </Button>
+    <TooltipSimple title={`${i18n.t("sidebar.addProject")} (${addChord})`}>
+      {#snippet children(props)}
+        <Button
+          {...props}
+          variant="ghost"
+          size="icon"
+          class={iconButton.xs}
+          onclick={() => (projects.pickerOpen = true)}
+        >
+          <FolderPlusIcon class={icon.action} />
+        </Button>
+      {/snippet}
+    </TooltipSimple>
+    <TooltipSimple title={i18n.t("sidebar.refresh")}>
+      {#snippet children(props)}
+        <Button
+          {...props}
+          variant="ghost"
+          size="icon"
+          class={iconButton.xs}
+          onclick={() => void projects.init()}
+        >
+          <RefreshCwIcon class={icon.action} />
+        </Button>
+      {/snippet}
+    </TooltipSimple>
     <DropdownMenu.Root>
       <DropdownMenu.Trigger>
         {#snippet child({ props })}
-          <Button variant="ghost" size="icon" class={iconButton.xs} title={i18n.t("sidebar.sort")} {...props}>
-            <ArrowUpDownIcon class={icon.action} />
-          </Button>
+          <TooltipSimple title={i18n.t("sidebar.sort")}>
+            {#snippet children(tp)}
+              <Button variant="ghost" size="icon" class={iconButton.xs} {...tp} {...props}>
+                <ArrowUpDownIcon class={icon.action} />
+              </Button>
+            {/snippet}
+          </TooltipSimple>
         {/snippet}
       </DropdownMenu.Trigger>
       <DropdownMenu.Content align="end" class="min-w-44">
@@ -161,9 +186,13 @@
     <DropdownMenu.Root>
       <DropdownMenu.Trigger>
         {#snippet child({ props })}
-          <Button variant="ghost" size="icon" class={iconButton.xs} title={i18n.t("terminal.newTerminal")} {...props}>
-            <PlusIcon class={icon.action} />
-          </Button>
+          <TooltipSimple title={i18n.t("terminal.newTerminal")}>
+            {#snippet children(tp)}
+              <Button variant="ghost" size="icon" class={iconButton.xs} {...tp} {...props}>
+                <PlusIcon class={icon.action} />
+              </Button>
+            {/snippet}
+          </TooltipSimple>
         {/snippet}
       </DropdownMenu.Trigger>
       <DropdownMenu.Content align="end" class="min-w-48">

@@ -11,6 +11,7 @@
   import { agentLogoKey } from "$lib/agentCatalog";
   import { cn } from "$lib/utils";
   import { icon, iconButton, text } from "$lib/design";
+  import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import type { RepoData } from "$lib/types";
   import AgentLogo from "./AgentLogo.svelte";

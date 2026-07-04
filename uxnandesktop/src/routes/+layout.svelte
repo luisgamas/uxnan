@@ -9,6 +9,7 @@
   import { anyAgentWorking } from "$lib/state/agentDisplay";
   import { unread } from "$lib/state/unread.svelte";
   import { setPreventSleep } from "$lib/api";
+  import { TooltipProvider } from "$lib/components/ui/tooltip";
 
   let { children } = $props();
 
@@ -60,4 +61,6 @@
   });
 </script>
 
-{@render children()}
+<TooltipProvider>
+  {@render children()}
+</TooltipProvider>

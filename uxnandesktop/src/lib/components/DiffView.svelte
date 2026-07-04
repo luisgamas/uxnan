@@ -14,6 +14,7 @@
   } from "@codemirror/view";
   import { EditorState, RangeSetBuilder } from "@codemirror/state";
   import { parseDiff, hunkPatch, toSideRows } from "$lib/diff";
+  import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
   import { text as textToken } from "$lib/design";
@@ -217,40 +218,56 @@
       <div class="uxnan-scroll flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
         {#each parsed.hunks as h (h.index)}
           <div class="flex shrink-0 items-center overflow-hidden rounded-md border border-border">
-            <button
-              type="button"
-              class={cn("px-1.5 py-0.5 text-muted-foreground hover:bg-accent hover:text-foreground", textToken.indicator)}
-              title={h.header}
-              onclick={() => scrollToHunk(h.index)}
-            >
-              #{h.index + 1}
-            </button>
+            <TooltipSimple title={h.header}>
+              {#snippet children(tp)}
+                <button
+                  {...tp}
+                  type="button"
+                  class={cn("px-1.5 py-0.5 text-muted-foreground hover:bg-accent hover:text-foreground", textToken.indicator)}
+                  onclick={() => scrollToHunk(h.index)}
+                >
+                  #{h.index + 1}
+                </button>
+              {/snippet}
+            </TooltipSimple>
             {#if area === "staged"}
-              <button
-                type="button"
-                class="border-l border-border/60 px-1 py-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
-                title={i18n.t("diff.unstageHunk")}
-                onclick={() => act(h.index, "unstage")}
-              >
-                <MinusIcon class="size-3.5" />
-              </button>
+              <TooltipSimple title={i18n.t("diff.unstageHunk")}>
+                {#snippet children(tp)}
+                  <button
+                    {...tp}
+                    type="button"
+                    class="border-l border-border/60 px-1 py-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+                    onclick={() => act(h.index, "unstage")}
+                  >
+                    <MinusIcon class="size-3.5" />
+                  </button>
+                {/snippet}
+              </TooltipSimple>
             {:else}
-              <button
-                type="button"
-                class="border-l border-border/60 px-1 py-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
-                title={i18n.t("diff.stageHunk")}
-                onclick={() => act(h.index, "stage")}
-              >
-                <PlusIcon class="size-3.5" />
-              </button>
-              <button
-                type="button"
-                class="border-l border-border/60 px-1 py-0.5 text-muted-foreground hover:bg-accent hover:text-destructive"
-                title={i18n.t("diff.discardHunk")}
-                onclick={() => act(h.index, "discard")}
-              >
-                <Undo2Icon class="size-3.5" />
-              </button>
+              <TooltipSimple title={i18n.t("diff.stageHunk")}>
+                {#snippet children(tp)}
+                  <button
+                    {...tp}
+                    type="button"
+                    class="border-l border-border/60 px-1 py-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+                    onclick={() => act(h.index, "stage")}
+                  >
+                    <PlusIcon class="size-3.5" />
+                  </button>
+                {/snippet}
+              </TooltipSimple>
+              <TooltipSimple title={i18n.t("diff.discardHunk")}>
+                {#snippet children(tp)}
+                  <button
+                    {...tp}
+                    type="button"
+                    class="border-l border-border/60 px-1 py-0.5 text-muted-foreground hover:bg-accent hover:text-destructive"
+                    onclick={() => act(h.index, "discard")}
+                  >
+                    <Undo2Icon class="size-3.5" />
+                  </button>
+                {/snippet}
+              </TooltipSimple>
             {/if}
           </div>
         {/each}
@@ -260,32 +277,40 @@
     {/if}
 
     <div class="inline-flex shrink-0 overflow-hidden rounded-md border border-border">
-      <button
-        type="button"
-        class={cn(
-          "flex items-center gap-1 px-2 py-0.5",
-          textToken.indicator,
-          mode === "unified" ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground",
-        )}
-        title={i18n.t("diff.unified")}
-        onclick={() => (mode = "unified")}
-      >
-        <AlignLeftIcon class="size-3.5" />
-        {i18n.t("diff.unified")}
-      </button>
-      <button
-        type="button"
-        class={cn(
-          "flex items-center gap-1 border-l border-border/60 px-2 py-0.5",
-          textToken.indicator,
-          mode === "side" ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground",
-        )}
-        title={i18n.t("diff.sideBySide")}
-        onclick={() => (mode = "side")}
-      >
-        <ColumnsIcon class="size-3.5" />
-        {i18n.t("diff.sideBySide")}
-      </button>
+      <TooltipSimple title={i18n.t("diff.unified")}>
+        {#snippet children(tp)}
+          <button
+            {...tp}
+            type="button"
+            class={cn(
+              "flex items-center gap-1 px-2 py-0.5",
+              textToken.indicator,
+              mode === "unified" ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground",
+            )}
+            onclick={() => (mode = "unified")}
+          >
+            <AlignLeftIcon class="size-3.5" />
+            {i18n.t("diff.unified")}
+          </button>
+        {/snippet}
+      </TooltipSimple>
+      <TooltipSimple title={i18n.t("diff.sideBySide")}>
+        {#snippet children(tp)}
+          <button
+            {...tp}
+            type="button"
+            class={cn(
+              "flex items-center gap-1 border-l border-border/60 px-2 py-0.5",
+              textToken.indicator,
+              mode === "side" ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground",
+            )}
+            onclick={() => (mode = "side")}
+          >
+            <ColumnsIcon class="size-3.5" />
+            {i18n.t("diff.sideBySide")}
+          </button>
+        {/snippet}
+      </TooltipSimple>
     </div>
   </div>
 

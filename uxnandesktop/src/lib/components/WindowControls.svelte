@@ -1,5 +1,6 @@
 <script lang="ts">
   import { getCurrentWindow } from "@tauri-apps/api/window";
+  import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import MinusIcon from "@lucide/svelte/icons/minus";
   import SquareIcon from "@lucide/svelte/icons/square";
@@ -24,28 +25,40 @@
      reachable even when that panel is hidden (otherwise hiding it would leave no
      way to close the window). -->
 <div class="fixed right-0 top-0 z-50 flex select-none items-center">
-  <button
-    class={btn}
-    title={i18n.t("titlebar.minimize")}
-    aria-label={i18n.t("titlebar.minimize")}
-    onclick={() => windowAction((w) => w.minimize())}
-  >
-    <MinusIcon class="size-4" />
-  </button>
-  <button
-    class={btn}
-    title={i18n.t("titlebar.maximize")}
-    aria-label={i18n.t("titlebar.maximize")}
-    onclick={() => windowAction((w) => w.toggleMaximize())}
-  >
-    <SquareIcon class="size-3.5" />
-  </button>
-  <button
-    class="flex h-9 w-11 items-center justify-center text-muted-foreground transition-colors hover:bg-destructive hover:text-white"
-    title={i18n.t("titlebar.close")}
-    aria-label={i18n.t("titlebar.close")}
-    onclick={() => windowAction((w) => w.close())}
-  >
-    <XIcon class="size-4" />
-  </button>
+  <TooltipSimple title={i18n.t("titlebar.minimize")}>
+    {#snippet children(tp)}
+      <button
+        {...tp}
+        class={btn}
+        aria-label={i18n.t("titlebar.minimize")}
+        onclick={() => windowAction((w) => w.minimize())}
+      >
+        <MinusIcon class="size-4" />
+      </button>
+    {/snippet}
+  </TooltipSimple>
+  <TooltipSimple title={i18n.t("titlebar.maximize")}>
+    {#snippet children(tp)}
+      <button
+        {...tp}
+        class={btn}
+        aria-label={i18n.t("titlebar.maximize")}
+        onclick={() => windowAction((w) => w.toggleMaximize())}
+      >
+        <SquareIcon class="size-3.5" />
+      </button>
+    {/snippet}
+  </TooltipSimple>
+  <TooltipSimple title={i18n.t("titlebar.close")}>
+    {#snippet children(tp)}
+      <button
+        {...tp}
+        class="flex h-9 w-11 items-center justify-center text-muted-foreground transition-colors hover:bg-destructive hover:text-white"
+        aria-label={i18n.t("titlebar.close")}
+        onclick={() => windowAction((w) => w.close())}
+      >
+        <XIcon class="size-4" />
+      </button>
+    {/snippet}
+  </TooltipSimple>
 </div>

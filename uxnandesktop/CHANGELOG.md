@@ -5,6 +5,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added
+- **`TooltipSimple` — reusable Bits UI tooltip wrapper.** Replaces native HTML
+  `title={...}` attributes across the entire desktop UI with styled Bits UI
+  tooltips (`bg-foreground text-background`, `text-[11px] font-medium`,
+  `rounded-md px-2 py-1`, `shadow-sm`, animation). Covers 30+ components
+  (status bar, sidebar, worktree/project cards, terminal tabs, file tree,
+  settings, window controls, agent panels, and more). To add a tooltip, use:
+  ```svelte
+  <TooltipSimple title="…">
+    {#snippet children(tp)}
+      <element {...tp}>…</element>
+    {/snippet}
+  </TooltipSimple>
+  ```
+- **`TooltipProvider` wrapper in `+layout.svelte`** — required by Bits UI v2
+  tooltip primitives for context.
+
 ## [0.0.5-alpha.20260703] - 2026-07-03
 
 ### Fixed — blank white screen on startup (0.0.4 regression)

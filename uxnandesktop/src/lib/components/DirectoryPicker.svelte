@@ -6,6 +6,7 @@
   import { projects } from "$lib/state/projects.svelte";
   import { cn } from "$lib/utils";
   import { icon, text } from "$lib/design";
+  import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import DialogHints from "./DialogHints.svelte";
   import type { DirListing } from "$lib/types";
@@ -100,16 +101,20 @@
     <!-- Location bar: a parent-up button + the current path as an editable field
          with a leading folder glyph, so it reads like a file-manager address. -->
     <div class="flex items-center gap-2 border-b border-border/60 px-4 py-3">
-      <Button
-        variant="outline"
-        size="icon-sm"
-        class="size-8 shrink-0"
-        title={i18n.t("picker.parent")}
-        disabled={!listing?.parent || loading}
-        onclick={() => listing?.parent && go(listing.parent)}
-      >
-        <CornerLeftUpIcon class={icon.button} />
-      </Button>
+      <TooltipSimple title={i18n.t("picker.parent")}>
+        {#snippet children(tp)}
+          <Button
+            {...tp}
+            variant="outline"
+            size="icon-sm"
+            class="size-8 shrink-0"
+            disabled={!listing?.parent || loading}
+            onclick={() => listing?.parent && go(listing.parent)}
+          >
+            <CornerLeftUpIcon class={icon.button} />
+          </Button>
+        {/snippet}
+      </TooltipSimple>
       <div class="relative min-w-0 flex-1">
         <FolderIcon
           class="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground/80"
@@ -144,11 +149,13 @@
             onmouseenter={() => (activeIdx = i)}
             role="presentation"
           >
-            <button
-              class={cn("flex min-w-0 flex-1 items-center gap-2.5 text-left", text.body)}
-              title={i18n.t("picker.open", { name: entry.name })}
-              onclick={() => go(entry.path)}
-            >
+            <TooltipSimple title={i18n.t("picker.open", { name: entry.name })}>
+              {#snippet children(tp)}
+                <button
+                  {...tp}
+                  class={cn("flex min-w-0 flex-1 items-center gap-2.5 text-left", text.body)}
+                  onclick={() => go(entry.path)}
+                >
               {#if entry.isRepo}
                 <FolderGitIcon class={cn(icon.button, "shrink-0 text-primary")} />
               {:else}
@@ -163,6 +170,8 @@
                 </span>
               {/if}
             </button>
+            {/snippet}
+          </TooltipSimple>
             <Button
               variant={entry.isRepo ? "secondary" : "ghost"}
               size="sm"

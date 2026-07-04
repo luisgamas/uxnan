@@ -7,6 +7,7 @@
   import * as Popover from "$lib/components/ui/popover";
   import * as Command from "$lib/components/ui/command";
   import { Button } from "$lib/components/ui/button";
+  import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import type { AgentModel } from "$lib/types";
   import ChevronsUpDownIcon from "@lucide/svelte/icons/chevrons-up-down";
@@ -93,7 +94,9 @@
               keywords={[m.displayName]}
               onSelect={() => choose(m.id)}
             >
-              <div class="flex min-w-0 flex-1 flex-col" title={m.id}>
+              <TooltipSimple title={m.id}>
+                {#snippet children(tp)}
+                  <div {...tp} class="flex min-w-0 flex-1 flex-col">
                 <span class="truncate">{modelName(m.displayName)}</span>
                 {#if modelProvider(m.displayName)}
                   <span class="truncate text-xs text-muted-foreground">
@@ -101,6 +104,8 @@
                   </span>
                 {/if}
               </div>
+                {/snippet}
+              </TooltipSimple>
             </Command.Item>
           {/each}
         </Command.Group>
