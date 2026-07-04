@@ -26,12 +26,13 @@ function relativeTo(abs: string, root: string): string {
 }
 
 export class FileEditorState {
-  /** Absolute (forward-slash) path of the file open in the editor. */
-  readonly path: string;
+  /** Absolute (forward-slash) path of the file open in the editor. Mutable so a
+   *  tab rename can re-point the same editor at the moved file (see `repoint`). */
+  path = $state("");
   /** Worktree root (forward-slash) of the open file, for git-relative ops. */
   readonly worktree: string | null;
   /** Worktree-relative path (forward-slash), for git diff + status matching. */
-  readonly rel: string;
+  rel = $state("");
   loading = $state(true);
   saving = $state(false);
   error = $state<string | null>(null);
@@ -64,6 +65,19 @@ export class FileEditorState {
   /** File name (last path segment) of the open file. */
   get name(): string {
     return this.path.split("/").pop() ?? this.path;
+  }
+
+  /** Re-point the editor at a moved file (a rename in the same folder). The bytes
+   *  are unchanged, so content/dirty state are preserved — only the path, the
+   *  git-relative path and the HEAD diff are refreshed (git sees a rename). */
+  async repoint(newPath: string): Promise<void> {
+    this.path = newPath;
+    this.rel = this.worktree
+      ? relativeTo(newPath, this.worktree)
+      : (newPath.split("/").pop() ?? newPath);
+    if (this.worktree && !this.binary && !this.tooLarge) {
+      this.headDiff = await gitDiffHead(this.worktree, this.rel).catch(() => "");
+    }
   }
 
   /** Read the file content + its `git diff HEAD` from disk, resetting dirty /
