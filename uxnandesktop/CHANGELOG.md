@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.6-alpha.20260704] - 2026-07-04
+
 ### Added — agents discover & drive the integrated browser via an MCP server
 - **The integrated developer browser is now exposed to agents as Model Context
   Protocol tools, so they discover it automatically — no docs, no prompt.** Before,
