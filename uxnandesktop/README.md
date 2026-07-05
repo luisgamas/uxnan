@@ -68,7 +68,9 @@ available today are:
   DevTools) to preview and debug what your agents build — `localhost` dev servers
   and any site — and to open the links they create. Links route by a policy you
   choose (in-app · system browser · ask); when allowed, agents open URLs in it
-  automatically. See [the integrated browser](./docs/browser.md).
+  automatically — and, via an injected **browser-control MCP server**, discover
+  `browser_*` tools to preview and test what they build with no setup. See
+  [the integrated browser](./docs/browser.md).
 - **Personalization and internationalization.** Full custom theming with design
   tokens and light/dark modes, terminal profiles, per-agent launch settings and
   environment variables, a configurable launch shell, and a completely translated

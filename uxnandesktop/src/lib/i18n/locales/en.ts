@@ -706,6 +706,29 @@ export const en = {
   "browser.addressPlaceholder": "Enter a URL",
   "browser.unavailable": "The integrated browser isn't available here.",
   "browser.askPrompt": "Open {url} in the integrated browser? (Cancel opens your system browser.)",
+  "browser.mcpHeading": "Agent browser MCP",
+  "browser.mcpEnabled": "Let agents drive the browser",
+  "browser.mcpEnabledDesc":
+    "Expose the browser as MCP tools so launched agents discover and drive it automatically — no setup, no docs.",
+  "browser.mcpInjection": "Setup mode",
+  "browser.mcpInjectionDesc":
+    "How agents receive the tools. The token stays in the terminal's environment — never written to a file.",
+  "browser.mcpModeWorkspace": "Per project (recommended)",
+  "browser.mcpModeWorkspaceDesc":
+    "Write a project-scoped config in the terminal's folder; covers hand-typed and app-launched agents, and is removed on exit.",
+  "browser.mcpModeGlobal": "Global",
+  "browser.mcpModeGlobalDesc":
+    "Register the server in each agent's global config, so it's available in every project (larger footprint).",
+  "browser.mcpModeOff": "Manual only",
+  "browser.mcpModeOffDesc": "Don't inject anything — wire an agent by hand from the snippet below.",
+  "browser.mcpAgents": "Agents",
+  "browser.mcpAgentsDesc": "Which agents get the browser tools set up automatically.",
+  "browser.mcpSnippet": "Manual config",
+  "browser.mcpSnippetDesc":
+    "Copy a ready-to-paste MCP server config to wire an agent yourself (e.g. one not listed above).",
+  "browser.mcpCopy": "Copy",
+  "browser.mcpCopied": "Copied",
+  "browser.mcpWaiting": "Available once the app's local server is running.",
 } as const;
 
 /** Union of every message key (drives `t()` and the locale type). */
