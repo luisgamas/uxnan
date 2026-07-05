@@ -99,6 +99,7 @@ release onward the workflow keeps `latest` current automatically.
 
 | Date (YYYY-MM-DD) | shared | bridge | relay | desktop | mobile |
 | ----------------- | ------ | ------ | ----- | ------- | ------ |
+| 2026-07-04 | — | — | — | 0.0.6-alpha.20260704 | — | <!-- desktop: browser MCP server for agents (PR #50) -->
 | 2026-07-03 | — | — | — | 0.0.5-alpha.20260703 | — | <!-- desktop-only hotfix: blank-screen (rune in plain .ts) -->
 | 2026-07-03 | 0.0.4-alpha.20260703 | 0.0.4-alpha.20260703 | — | 0.0.4-alpha.20260703 | 0.0.4-alpha.20260703+20260703 |
 | 2026-07-02 | 0.0.3-alpha.20260702 | 0.0.3-alpha.20260702 | — | 0.0.3-alpha.20260702 | 0.0.3-alpha.20260702+20260702 |
