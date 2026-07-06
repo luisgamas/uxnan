@@ -229,8 +229,9 @@ class ProjectsStore {
     return branchList(repoId);
   }
 
-  /** Register a git repository by path (from the in-app directory picker).
-   *  Returns false (with `error` set) when the path isn't a git repo. */
+  /** Register a project folder by path (from the in-app directory picker). Any
+   *  folder works — git or not; a non-git one simply has no worktrees. Returns
+   *  false (with `error` set) when the path can't be registered. */
   async addProjectPath(path: string): Promise<boolean> {
     this.error = null;
     try {
@@ -242,6 +243,40 @@ class ProjectsStore {
       this.error = msg(e);
       return false;
     }
+  }
+
+  /** Register several project folders at once (the picker's "add all separately"
+   *  action, one project per child folder). Adds them in order, skips ones that
+   *  fail, and returns how many were added / failed; `error` is set only when
+   *  every path failed. */
+  async addProjectPaths(
+    paths: string[],
+  ): Promise<{ added: number; failed: number }> {
+    this.error = null;
+    let added = 0;
+    let failed = 0;
+    let lastError: string | null = null;
+    for (const path of paths) {
+      try {
+        const repo = await repoAdd(path);
+        if (!app.repos.find((r) => r.id === repo.id)) app.repos.push(repo);
+        await this.loadWorktrees(repo.id);
+        added += 1;
+      } catch (e) {
+        failed += 1;
+        lastError = msg(e);
+      }
+    }
+    if (added === 0 && lastError) this.error = lastError;
+    if (added > 0) {
+      toast.success(
+        i18n.t(
+          failed > 0 ? "toast.projectsAddedSome" : "toast.projectsAdded",
+          { added: String(added), failed: String(failed) },
+        ),
+      );
+    }
+    return { added, failed };
   }
 
   async removeProject(id: string): Promise<void> {

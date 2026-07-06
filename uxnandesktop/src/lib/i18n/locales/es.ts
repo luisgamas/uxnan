@@ -12,6 +12,8 @@ export const es: Record<MessageKey, string> = {
   "toast.worktreeRemovedSquash": "Worktree eliminado · rama squash-merged depurada",
   "toast.aiCommitGenerated": "Mensaje de commit redactado",
   "toast.projectRemoved": "Proyecto eliminado",
+  "toast.projectsAdded": "Se agregaron {added} proyectos",
+  "toast.projectsAddedSome": "Se agregaron {added} proyectos · {failed} omitidos",
   "toast.agent": "Agente",
   "toast.agentDone": "{name} terminó",
   "toast.agentBlocked": "{name} está bloqueado",
@@ -158,6 +160,19 @@ export const es: Record<MessageKey, string> = {
   "picker.open": "Abrir {name}",
   "picker.addFolder": "Agregar esta carpeta",
   "picker.repoBadge": "repo",
+  "picker.bulkHint":
+    "Se detectaron {repos} repos git aquí — con «Agregar esta carpeta» puedes agregarlos como proyectos separados.",
+  "picker.hintAdd": "Agregar carpeta",
+
+  // Diálogo de selección al agregar proyecto (carpeta padre vs. subcarpetas)
+  "addProject.title": "Agregar proyecto",
+  "addProject.desc": "¿Cómo quieres agregar «{folder}»?",
+  "addProject.selectAll": "Seleccionar todas las subcarpetas",
+  "addProject.subfolders": "Subcarpetas ({count})",
+  "addProject.selectedCount": "{count} seleccionadas",
+  "addProject.noSubfolders": "Esta carpeta no tiene subcarpetas.",
+  "addProject.addParent": "Agregar esta carpeta",
+  "addProject.addSelected": "Agregar {count} por separado",
 
   // Settings
   "settings.title": "Configuración",

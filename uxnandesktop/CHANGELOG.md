@@ -5,6 +5,34 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — add several projects at once (parent vs. sub-folders) + reliable picker keyboard nav
+- **New two-step "Add project" flow.** The directory picker's primary
+  **"Add this folder"** now opens a second dialog (`AddProjectDialog.svelte`)
+  where you choose to add **this folder as one project** or **tick sub-folders to
+  add each as its own project** — repos are pre-checked, a select-all toggles the
+  lot, and only the ticked folders (repos **and** non-repos alike) are added.
+  When the browsed folder has no sub-folders, the primary action still adds it
+  directly (no empty dialog). Backed by a new `projects.addProjectPaths()` that
+  adds in order, skips failures, and toasts a summary (`toast.projectsAdded` /
+  `toast.projectsAddedSome`).
+- **The picker keeps its per-folder Add and gains an informational note.** Each
+  listed folder still has its own hover **Add** for one-off registration; when git
+  repos are detected among the children, a quiet banner notes it (no action of its
+  own — the choice lives in the new dialog).
+- **Keyboard navigation in the picker is fixed.** Arrow-key navigation is now
+  handled at the dialog level (not only the path field), so **↑/↓ keep working
+  regardless of which control has focus** — and the highlighted row now scrolls
+  into view, so selection no longer runs off-screen and appears to stall. Added
+  **`Ctrl/⌘+Enter`** to trigger the primary "Add this folder" action from the
+  keyboard.
+- **New `Checkbox` UI primitive** (`components/ui/checkbox`, bits-ui + lucide),
+  matching the existing shadcn-svelte components.
+- **Files:** `AddProjectDialog.svelte` (new), `components/ui/checkbox/*` (new),
+  `DirectoryPicker.svelte` (note banner, second-dialog trigger, dialog-level key
+  handling, scroll-into-view, `autocomplete="off"`), `state/projects.svelte.ts`
+  (`addProjectPaths`), EN/ES i18n (`picker.bulkHint`, `picker.hintAdd`,
+  `addProject.*`, `toast.projectsAdded*`).
+
 ### Changed — "New worktree" is gated to git repos, not just the Global space
 - **"New worktree" affordances are now disabled for non-git project folders.**
   Worktrees need a git repo, so for a registered folder that isn't one:
@@ -75,7 +103,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 - **Extensible** — a new agent (e.g. `agy`/Antigravity, Cursor, Grok, amp, Pi) is one
   row in `mcpinject::AGENTS` plus a match arm in `config_path`/`write_entry`; recipe
   in `docs/browser.md`.
->>>>>>> main
 
 ## [0.0.5-alpha.20260703] - 2026-07-03
 
