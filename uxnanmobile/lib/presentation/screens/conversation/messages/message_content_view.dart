@@ -171,7 +171,7 @@ class _ApprovalCard extends ConsumerWidget {
               const SizedBox(height: UxnanSpacing.xs),
               Text(request.detail!, style: UxnanTypography.codeSmall),
             ],
-            const SizedBox(height: UxnanSpacing.md),
+            const SizedBox(height: UxnanSpacing.sm),
             AnimatedSize(
               duration: const Duration(milliseconds: 220),
               curve: Curves.easeOutCubic,
