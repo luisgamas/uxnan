@@ -6,6 +6,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — wide tables in conversation messages now scroll horizontally instead of squeezing
+
+- **Root cause:** `_TextBlock` in `message_content_view.dart` used `MarkdownStyleSheet.fromTheme()` defaults, which set `tableColumnWidth` to `FlexColumnWidth` — columns squeezed to fit the viewport, wrapping every cell into a tall stack.
+- **Fix:** replaced the bare `fromTheme().copyWith()` with a full `MarkdownStyleSheet` using `IntrinsicColumnWidth()`, which sizes columns to their content. Wide tables now trigger `flutter_markdown_plus`' built-in horizontal scroll with a visible scrollbar.
+- **Refactor:** extracted the shared `uxnanMarkdownStyleSheet(context)` to `lib/presentation/theme/markdown.dart` so both the conversation `_TextBlock` and the file viewer `_MarkdownBody` use a single source of truth for markdown styling (headings, anchors, code blocks, blockquotes, tables, horizontal rules).
+
 ## [0.0.4-alpha.20260703] - 2026-07-03
 
 ### Fixed — model / agent / project lists now re-sync when the bridge changes

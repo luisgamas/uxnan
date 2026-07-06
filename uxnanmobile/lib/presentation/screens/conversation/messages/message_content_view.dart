@@ -20,6 +20,7 @@ import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/approval_providers.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
+import 'package:uxnan/presentation/theme/markdown.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
@@ -625,10 +626,7 @@ class _TextBlock extends StatelessWidget {
     return MarkdownBody(
       data: content.text.isEmpty ? '…' : content.text,
       selectable: selectable,
-      styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
-        p: Theme.of(context).textTheme.bodyMedium,
-        code: UxnanTypography.codeBody,
-      ),
+      styleSheet: uxnanMarkdownStyleSheet(context),
     );
   }
 }

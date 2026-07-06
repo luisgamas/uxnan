@@ -15,6 +15,7 @@ import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/file_browser_providers.dart';
 import 'package:uxnan/presentation/screens/conversation/files/widgets/file_diff_viewer.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
+import 'package:uxnan/presentation/theme/markdown.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
@@ -604,7 +605,7 @@ class _MarkdownBody extends StatelessWidget {
       child: MarkdownBody(
         data: text,
         selectable: true,
-        styleSheet: _styleSheet(context),
+        styleSheet: uxnanMarkdownStyleSheet(context),
         onTapLink: (linkText, href, title) => _onTapLink(context, href),
       ),
     );
@@ -619,78 +620,6 @@ class _MarkdownBody extends StatelessWidget {
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
       ..showSnackBar(SnackBar(content: Text(l10n.fileViewerLinkCopied(href))));
-  }
-
-  /// The Markdown style sheet, built from the app's M3 text theme + surface
-  /// tokens. The key fix over the framework default is
-  /// `tableColumnWidth: IntrinsicColumnWidth()`: it sizes columns to their
-  /// content and triggers `flutter_markdown_plus`' built-in horizontal scroll
-  /// for wide tables (the default `FlexColumnWidth` squeezes columns to fit
-  /// the viewport, which wraps every cell and stretches the table vertically).
-  MarkdownStyleSheet _styleSheet(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final codeSurface =
-        isDark ? colors.surfaceContainerHighest : colors.surfaceContainerHigh;
-    return MarkdownStyleSheet(
-      p: textTheme.bodyMedium,
-      h1: textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
-      h2: textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-      h3: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
-      h4: textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
-      h5: textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
-      h6: textTheme.labelMedium?.copyWith(
-        color: colors.onSurfaceVariant,
-        fontWeight: FontWeight.w600,
-      ),
-      a: textTheme.bodyMedium?.copyWith(
-        color: colors.primary,
-        decoration: TextDecoration.underline,
-        decorationColor: colors.primary,
-      ),
-      listBullet: textTheme.bodyMedium,
-      code: UxnanTypography.codeBody.copyWith(
-        backgroundColor: codeSurface,
-      ),
-      // Codeblocks use the same surface tone as elevated surfaces — never raw
-      // hex literals — so the M3 surface hierarchy stays intact. The builder
-      // already wraps code blocks in a horizontal scroll view, so long lines
-      // scroll instead of wrapping.
-      codeblockPadding: const EdgeInsets.all(UxnanSpacing.md),
-      codeblockDecoration: BoxDecoration(
-        color: codeSurface,
-        borderRadius: const BorderRadius.all(UxnanRadius.md),
-      ),
-      blockquotePadding: const EdgeInsets.symmetric(
-        horizontal: UxnanSpacing.md,
-        vertical: UxnanSpacing.sm,
-      ),
-      blockquoteDecoration: BoxDecoration(
-        color: colors.surfaceContainerHigh.withValues(alpha: 0.5),
-        border: Border(
-          left: BorderSide(color: colors.primary, width: 3),
-        ),
-        borderRadius: const BorderRadius.horizontal(right: UxnanRadius.md),
-      ),
-      horizontalRuleDecoration: BoxDecoration(
-        border: Border(
-          top: BorderSide(color: colors.outlineVariant),
-        ),
-      ),
-      // Intrinsic columns + a visible scrollbar give wide tables a proper
-      // horizontal scroll instead of vertically-stretched, wrapped cells.
-      tableColumnWidth: const IntrinsicColumnWidth(),
-      tableScrollbarThumbVisibility: true,
-      tablePadding: const EdgeInsets.only(bottom: UxnanSpacing.sm),
-      tableCellsPadding: const EdgeInsets.symmetric(
-        horizontal: UxnanSpacing.sm,
-        vertical: UxnanSpacing.xs,
-      ),
-      tableHead: textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
-      tableBody: textTheme.bodySmall,
-      tableBorder: TableBorder.all(color: colors.outlineVariant),
-    );
   }
 }
 
