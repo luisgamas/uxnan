@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.7-alpha.20260705] - 2026-07-05
+
 ### Changed
 - **Update toast redesigned as elevated card** (`UpdateToast.svelte`): solid
   `bg-[var(--ux-elevated)]` background with `border-border/70` border, replacing
