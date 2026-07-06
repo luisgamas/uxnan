@@ -662,42 +662,27 @@ class _PlanStepIcon extends StatelessWidget {
   }
 }
 
-/// Small circular badge showing a count, used in the PlanCard header.
-class _CountBadge extends StatelessWidget {
-  const _CountBadge({required this.count});
-  final int count;
-
-  @override
-  Widget build(BuildContext context) {
-    if (count < 2) return const SizedBox.shrink();
-    final colors = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-      decoration: BoxDecoration(
-        color: colors.primaryContainer,
-        borderRadius: const BorderRadius.all(UxnanRadius.full),
-      ),
-      child: Text(
-        '$count',
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-          color: colors.onPrimaryContainer,
-          fontSize: 10,
-        ),
-      ),
-    );
-  }
-}
-
 /// Renders a [SubagentContent]: the subagent name/status and its actions.
-class _SubagentCard extends StatelessWidget {
+/// Collapsed by default — shows the header (name + status + action count +
+/// chevron). Tap to expand and see all actions the subagent performed.
+class _SubagentCard extends StatefulWidget {
   const _SubagentCard({required this.content});
   final SubagentContent content;
+
+  @override
+  State<_SubagentCard> createState() => _SubagentCardState();
+}
+
+class _SubagentCardState extends State<_SubagentCard> {
+  bool _expanded = false;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-    final state = content.state;
+    final state = widget.content.state;
+    final actions = state.actions;
+    final hasActions = actions.isNotEmpty;
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -705,59 +690,118 @@ class _SubagentCard extends StatelessWidget {
         borderRadius: const BorderRadius.all(UxnanRadius.lg),
         border: Border.all(color: colors.outline),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(UxnanSpacing.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.account_tree_rounded,
-                  size: 16,
-                  color: colors.onSurfaceVariant,
-                ),
-                const SizedBox(width: UxnanSpacing.sm),
-                Expanded(
-                  child: Text(
-                    state.name.isEmpty ? 'Subagent' : state.name,
-                    style: textTheme.labelMedium,
-                    overflow: TextOverflow.ellipsis,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          InkWell(
+            borderRadius: const BorderRadius.all(UxnanRadius.lg),
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Padding(
+              padding: const EdgeInsets.all(UxnanSpacing.md),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.account_tree_rounded,
+                    size: 16,
+                    color: colors.onSurfaceVariant,
                   ),
-                ),
-                if (state.status != null && state.status!.isNotEmpty)
-                  Text(
-                    state.status!,
-                    style: textTheme.labelSmall
-                        ?.copyWith(color: colors.onSurfaceVariant),
+                  const SizedBox(width: UxnanSpacing.sm),
+                  Expanded(
+                    child: Text(
+                      state.name.isEmpty ? 'Subagent' : state.name,
+                      style: textTheme.labelMedium,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
-              ],
-            ),
-            if (state.actions.isNotEmpty)
-              const SizedBox(height: UxnanSpacing.sm),
-            for (final action in state.actions)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 2),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.only(top: 2),
-                      child: Icon(
-                        _subagentActionIcon(action.kind),
-                        size: 15,
-                        color: colors.onSurfaceVariant,
+                  if (state.status != null && state.status!.isNotEmpty)
+                    Container(
+                      margin: const EdgeInsets.only(right: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 1,
+                      ),
+                      decoration: BoxDecoration(
+                        color: colors.tertiaryContainer,
+                        borderRadius: const BorderRadius.all(UxnanRadius.full),
+                      ),
+                      child: Text(
+                        state.status!,
+                        style: textTheme.labelSmall?.copyWith(
+                          color: colors.onTertiaryContainer,
+                          fontSize: 10,
+                        ),
                       ),
                     ),
-                    const SizedBox(width: UxnanSpacing.sm),
-                    Expanded(
-                      child: Text(action.label, style: textTheme.bodySmall),
-                    ),
-                  ],
-                ),
+                  if (hasActions) _CountBadge(count: actions.length),
+                  const SizedBox(width: 2),
+                  Icon(
+                    _expanded
+                        ? Icons.expand_less_rounded
+                        : Icons.expand_more_rounded,
+                    size: 18,
+                    color: colors.onSurfaceVariant,
+                  ),
+                ],
               ),
-          ],
-        ),
+            ),
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.topCenter,
+            child: hasActions && _expanded
+                ? Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      UxnanSpacing.md,
+                      0,
+                      UxnanSpacing.md,
+                      UxnanSpacing.md,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        for (final action in actions)
+                          _SubagentActionRow(action: action),
+                      ],
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A single action row inside a collapsed/expanded [_SubagentCard].
+class _SubagentActionRow extends StatelessWidget {
+  const _SubagentActionRow({required this.action});
+  final SubagentAction action;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Icon(
+              _subagentActionIcon(action.kind),
+              size: 15,
+              color: colors.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(width: UxnanSpacing.sm),
+          Expanded(
+            child: Text(action.label, style: textTheme.bodySmall),
+          ),
+        ],
       ),
     );
   }
