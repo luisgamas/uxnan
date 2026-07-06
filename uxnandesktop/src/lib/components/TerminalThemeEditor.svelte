@@ -21,6 +21,7 @@
   } from "$lib/theme";
   import { cn } from "$lib/utils";
   import { text } from "$lib/design";
+  import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import CodeIcon from "@lucide/svelte/icons/code";
   import SlidersIcon from "@lucide/svelte/icons/sliders-horizontal";
@@ -98,10 +99,18 @@
 </script>
 
 {#snippet overrideDot(on: boolean)}
-  <span
-    class={cn("size-1.5 shrink-0 rounded-full", on ? "bg-primary" : "bg-transparent")}
-    title={on ? i18n.t("terminalTheme.overrides") : ""}
-  ></span>
+  {#if on}
+    <TooltipSimple title={i18n.t("terminalTheme.overrides")}>
+      {#snippet children(tp)}
+        <span
+          {...tp}
+          class={cn("size-1.5 shrink-0 rounded-full", on ? "bg-primary" : "bg-transparent")}
+        ></span>
+      {/snippet}
+    </TooltipSimple>
+  {:else}
+    <span class="size-1.5 shrink-0 rounded-full bg-transparent"></span>
+  {/if}
 {/snippet}
 
 <Dialog.Root bind:open onOpenChange={(o) => { if (!o) oncancel(); }}>
@@ -212,7 +221,11 @@
                 <div class="flex items-center gap-1.5">
                   {@render overrideDot(isSet(token))}
                   <span class="size-5 shrink-0 rounded border border-border" style:background-color={(inherited.theme as Record<string, string>)[token]}></span>
-                  <span class={cn("w-24 shrink-0 truncate font-mono", text.indicator)} title={token}>{token}</span>
+                  <TooltipSimple title={token}>
+                    {#snippet children(tp)}
+                      <span {...tp} class={cn("w-24 shrink-0 truncate font-mono", text.indicator)}>{token}</span>
+                    {/snippet}
+                  </TooltipSimple>
                   <Input class="h-7 min-w-0 flex-1 font-mono text-[11px]" value={(preset as unknown as Record<string, string>)[token] ?? ""} placeholder={(inherited.theme as Record<string, string>)[token]} oninput={(e) => setStr(token, e.currentTarget.value)} />
                 </div>
               {/each}

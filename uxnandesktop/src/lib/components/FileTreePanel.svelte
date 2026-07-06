@@ -14,6 +14,7 @@
   import { revealPath } from "$lib/api";
   import { cn } from "$lib/utils";
   import { icon, iconButton, text } from "$lib/design";
+  import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import { Button } from "$lib/components/ui/button";
   import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
@@ -129,27 +130,47 @@
         )}
         onkeydown={(e) => e.key === "Escape" && toggleSearch()}
       />
-      <Button variant="ghost" size="icon" class={iconButton.xs} title={i18n.t("common.close")} onclick={toggleSearch}>
-        <XIcon class={icon.action} />
-      </Button>
+      <TooltipSimple title={i18n.t("common.close")}>
+        {#snippet children(tp)}
+          <Button variant="ghost" size="icon" class={iconButton.xs} {...tp} onclick={toggleSearch}>
+            <XIcon class={icon.action} />
+          </Button>
+        {/snippet}
+      </TooltipSimple>
     {:else}
-      <span class={cn("flex-1 truncate", text.section)} title={root ?? ""}>{worktreeName}</span>
+      <span class={cn("flex-1 truncate", text.section)}>{worktreeName}</span>
       {#if root}
-        <Button variant="ghost" size="icon" class={iconButton.xs} title={i18n.t("fileTree.search")} onclick={toggleSearch}>
-          <SearchIcon class={icon.action} />
-        </Button>
-        <Button variant="ghost" size="icon" class={iconButton.xs} title={i18n.t("fileTree.collapseAll")} onclick={() => fileTree.collapseAll()}>
-          <FoldVerticalIcon class={icon.action} />
-        </Button>
+        <TooltipSimple title={i18n.t("fileTree.search")}>
+          {#snippet children(tp)}
+            <Button variant="ghost" size="icon" class={iconButton.xs} {...tp} onclick={toggleSearch}>
+              <SearchIcon class={icon.action} />
+            </Button>
+          {/snippet}
+        </TooltipSimple>
+        <TooltipSimple title={i18n.t("fileTree.collapseAll")}>
+          {#snippet children(tp)}
+            <Button variant="ghost" size="icon" class={iconButton.xs} {...tp} onclick={() => fileTree.collapseAll()}>
+              <FoldVerticalIcon class={icon.action} />
+            </Button>
+          {/snippet}
+        </TooltipSimple>
         <!-- "Expand all" (UnfoldVertical → fileTree.expandAll) is implemented but
              hidden for now: recursively loading a large tree is too slow. Re-enable
              once it's lazy/bounded enough to feel instant. FOR-DEV. -->
-        <Button variant="ghost" size="icon" class={iconButton.xs} title={i18n.t("fileTree.reveal")} onclick={reveal}>
-          <FolderOpenIcon class={icon.action} />
-        </Button>
-        <Button variant="ghost" size="icon" class={iconButton.xs} title={i18n.t("fileTree.refresh")} onclick={() => fileTree.refresh()}>
-          <RefreshCwIcon class={cn(icon.action, fileTree.loadingDir.size > 0 && "animate-spin")} />
-        </Button>
+        <TooltipSimple title={i18n.t("fileTree.reveal")}>
+          {#snippet children(tp)}
+            <Button variant="ghost" size="icon" class={iconButton.xs} {...tp} onclick={reveal}>
+              <FolderOpenIcon class={icon.action} />
+            </Button>
+          {/snippet}
+        </TooltipSimple>
+        <TooltipSimple title={i18n.t("fileTree.refresh")}>
+          {#snippet children(tp)}
+            <Button variant="ghost" size="icon" class={iconButton.xs} {...tp} onclick={() => fileTree.refresh()}>
+              <RefreshCwIcon class={cn(icon.action, fileTree.loadingDir.size > 0 && "animate-spin")} />
+            </Button>
+          {/snippet}
+        </TooltipSimple>
       {/if}
     {/if}
   </header>
@@ -183,16 +204,18 @@
               ? "text-amber-600 dark:text-amber-400"
               : ""
             : fileColor(changes.fileMap.get(rel))}
-          <button
-            type="button"
-            class={cn(
-              "flex h-7 w-full items-center gap-1 rounded-md pr-1 text-left",
-              isOpen ? "bg-primary/15 ring-1 ring-inset ring-primary/25" : "hover:bg-accent/40",
-            )}
-            style="padding-left: {r.depth * 12 + 2}px"
-            title={rel}
-            onclick={() => (r.entry.isDir ? fileTree.toggle(r.entry) : openFile(r.entry))}
-          >
+          <TooltipSimple title={rel}>
+            {#snippet children(tp)}
+              <button
+                {...tp}
+                type="button"
+                class={cn(
+                  "flex h-7 w-full items-center gap-1 rounded-md pr-1 text-left",
+                  isOpen ? "bg-primary/15 ring-1 ring-inset ring-primary/25" : "hover:bg-accent/40",
+                )}
+                style="padding-left: {r.depth * 12 + 2}px"
+                onclick={() => (r.entry.isDir ? fileTree.toggle(r.entry) : openFile(r.entry))}
+              >
             {#if r.entry.isDir}
               {#if isExpanded}
                 <ChevronDownIcon class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
@@ -219,6 +242,8 @@
               {r.entry.name}
             </span>
           </button>
+          {/snippet}
+        </TooltipSimple>
         {/each}
       </div>
     {/if}

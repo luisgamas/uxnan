@@ -15,6 +15,7 @@
   import { revealPath } from "$lib/api";
   import { cn } from "$lib/utils";
   import { icon, iconButton, surface, text } from "$lib/design";
+  import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import WorktreeRow from "./WorktreeRow.svelte";
@@ -99,44 +100,63 @@
     )}
     role="button"
     tabindex="0"
-    title={repo.path}
     onclick={onHeaderActivate}
     onkeydown={(e) => (e.key === "Enter" || e.key === " ") && onHeaderActivate()}
   >
-    <EntityIcon value={repo.icon} class={cn(icon.nav, "rounded-[4px]")} fallback={projectGlyph} />
-    <span class={cn("min-w-0 flex-1 truncate", text.title)} title={repo.name}>{repo.name}</span>
+    <TooltipSimple title={repo.path}>
+      {#snippet children(tp)}
+        <EntityIcon {...tp} value={repo.icon} class={cn(icon.nav, "rounded-[4px]")} fallback={projectGlyph} />
+      {/snippet}
+    </TooltipSimple>
+    <TooltipSimple title={repo.name}>
+      {#snippet children(tp2)}
+        <span {...tp2} class={cn("min-w-0 flex-1 truncate", text.title)}>{repo.name}</span>
+      {/snippet}
+    </TooltipSimple>
     {#if hasUnread}
-      <span class="size-1.5 shrink-0 rounded-full bg-red-500" title={i18n.t("monitor.unread")}></span>
+      <TooltipSimple title={i18n.t("monitor.unread")}>
+        {#snippet children(tp2)}
+          <span {...tp2} class="size-1.5 shrink-0 rounded-full bg-red-500"></span>
+        {/snippet}
+      </TooltipSimple>
     {/if}
 
     <div class="flex shrink-0 items-center gap-0.5">
       {#if isGit}
-        <Button
-          variant="ghost"
-          size="icon"
-          class={cn(iconButton.xs, hoverReveal)}
-          title={isExpanded ? i18n.t("project.collapse") : i18n.t("project.expand")}
-          aria-label={isExpanded ? i18n.t("project.collapse") : i18n.t("project.expand")}
-          onclick={(e) => {
-            e.stopPropagation();
-            expanded = !isExpanded;
-          }}
-        >
-          <ChevronRightIcon class={cn(icon.action, "transition-transform", isExpanded && "rotate-90")} />
-        </Button>
+        <TooltipSimple title={isExpanded ? i18n.t("project.collapse") : i18n.t("project.expand")}>
+          {#snippet children(tp)}
+            <Button
+              {...tp}
+              variant="ghost"
+              size="icon"
+              class={cn(iconButton.xs, hoverReveal)}
+              aria-label={isExpanded ? i18n.t("project.collapse") : i18n.t("project.expand")}
+              onclick={(e) => {
+                e.stopPropagation();
+                expanded = !isExpanded;
+              }}
+            >
+              <ChevronRightIcon class={cn(icon.action, "transition-transform", isExpanded && "rotate-90")} />
+            </Button>
+          {/snippet}
+        </TooltipSimple>
       {/if}
-      <Button
-        variant="ghost"
-        size="icon"
-        class={cn(iconButton.xs, hoverReveal)}
-        title={i18n.t("launcher.open", { name: repo.name })}
-        onclick={(e) => {
-          e.stopPropagation();
-          launcherOpen = true;
-        }}
-      >
-        <PlusIcon class={icon.action} />
-      </Button>
+      <TooltipSimple title={i18n.t("launcher.open", { name: repo.name })}>
+        {#snippet children(tp)}
+          <Button
+            {...tp}
+            variant="ghost"
+            size="icon"
+            class={cn(iconButton.xs, hoverReveal)}
+            onclick={(e) => {
+              e.stopPropagation();
+              launcherOpen = true;
+            }}
+          >
+            <PlusIcon class={icon.action} />
+          </Button>
+        {/snippet}
+      </TooltipSimple>
 
       <!-- Project actions (⋯) — replaces the header right-click menu. No terminal
            or agent launch here (that lives on "+"). -->
@@ -147,7 +167,6 @@
               variant="ghost"
               size="icon"
               class={cn(iconButton.xs, hoverReveal, "data-[state=open]:opacity-100")}
-              title={i18n.t("project.menu")}
               aria-label={i18n.t("project.menu")}
               onclick={(e: MouseEvent) => e.stopPropagation()}
               {...props}

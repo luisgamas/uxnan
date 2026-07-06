@@ -7,6 +7,7 @@
   import type { DiffViewerState } from "$lib/state/git.svelte";
   import { cn } from "$lib/utils";
   import { icon, text } from "$lib/design";
+  import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import DiffView from "./DiffView.svelte";
   import ImageDiffView from "./ImageDiffView.svelte";
@@ -18,7 +19,11 @@
 <div class="flex h-full min-h-0 flex-col bg-background">
   <header class="flex h-9 shrink-0 items-center gap-2 border-b border-border/60 px-2">
     <FileDiffIcon class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
-    <span class={cn("min-w-0 flex-1 truncate font-mono", text.body)} title={state.file}>{state.file}</span>
+    <TooltipSimple title={state.file}>
+      {#snippet children(tp)}
+        <span {...tp} class={cn("min-w-0 flex-1 truncate font-mono", text.body)}>{state.file}</span>
+      {/snippet}
+    </TooltipSimple>
     <span class={cn("shrink-0 rounded-sm bg-muted px-1.5 py-0.5", text.indicator)}>
       {state.staged ? i18n.t("rightPanel.diffStaged") : i18n.t("rightPanel.diffUnstaged")}
     </span>

@@ -7,6 +7,7 @@
   // solid background, border, release notes link, and consistent surface layering.
 
   import { updater } from "$lib/state/updater.svelte";
+  import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import { Button } from "$lib/components/ui/button";
   import { cn } from "$lib/utils";
@@ -120,15 +121,19 @@
     {/if}
 
     {#if updater.status !== "installing"}
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        title={i18n.t("updates.dismiss")}
-        aria-label={i18n.t("updates.dismiss")}
-        onclick={() => updater.dismiss()}
-      >
-        <XIcon class={icon.button} />
-      </Button>
+      <TooltipSimple title={i18n.t("updates.dismiss")}>
+        {#snippet children(tp)}
+          <Button
+            {...tp}
+            variant="ghost"
+            size="icon-sm"
+            aria-label={i18n.t("updates.dismiss")}
+            onclick={() => updater.dismiss()}
+          >
+            <XIcon class={icon.button} />
+          </Button>
+        {/snippet}
+      </TooltipSimple>
     {/if}
   </div>
 </div>

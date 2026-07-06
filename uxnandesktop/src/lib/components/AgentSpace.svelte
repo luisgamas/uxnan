@@ -9,6 +9,7 @@
   import { resolveAgentDisplay } from "$lib/state/agentDisplay";
   import { cn } from "$lib/utils";
   import { text } from "$lib/design";
+  import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import AgentLogo from "./AgentLogo.svelte";
   import AgentStatusDot from "./AgentStatusDot.svelte";
@@ -37,11 +38,13 @@
   <div class="flex flex-col">
     <!-- Compact section header: a quiet, small "Agents · n" toggle that recedes
          so the agent rows read as the content. -->
-    <button
-      class="flex items-center gap-1 rounded px-1 py-0.5 text-muted-foreground/70 transition-colors hover:text-foreground"
-      onclick={() => (expanded = !expanded)}
-      title={i18n.t(expanded ? "project.collapse" : "project.expand")}
-    >
+    <TooltipSimple title={i18n.t(expanded ? "project.collapse" : "project.expand")}>
+      {#snippet children(tp)}
+        <button
+          {...tp}
+          class="flex items-center gap-1 rounded px-1 py-0.5 text-muted-foreground/70 transition-colors hover:text-foreground"
+          onclick={() => (expanded = !expanded)}
+        >
       <ChevronRightIcon
         class={cn("size-3 shrink-0 transition-transform", expanded && "rotate-90")}
       />
@@ -51,6 +54,8 @@
         <AgentStatusDot status="working" />
       {/if}
     </button>
+  {/snippet}
+</TooltipSimple>
 
     {#if expanded}
       <!-- Agents live in the worktree's own (selected) surface, aligned under the
@@ -61,14 +66,16 @@
         {#each tabs as t (t.id)}
           {@const d = resolveAgentDisplay(t)}
           {@const isActive = revealedId === t.id}
-          <button
-            class={cn(
-              "flex items-center gap-2 rounded-md py-1 pl-1 pr-1 text-left transition-colors hover:bg-foreground/[0.04] dark:hover:bg-foreground/[0.05]",
-              isActive && "bg-foreground/[0.05] dark:bg-foreground/[0.06]",
-            )}
-            title={d ? `${t.agentName} · ${i18n.t(`monitor.${d.status}`)}` : t.agentName}
-            onclick={() => reveal(t.id)}
-          >
+          <TooltipSimple title={d ? `${t.agentName ?? ""} · ${i18n.t(`monitor.${d.status}`)}` : t.agentName ?? ""}>
+            {#snippet children(tp)}
+              <button
+                {...tp}
+                class={cn(
+                  "flex items-center gap-2 rounded-md py-1 pl-1 pr-1 text-left transition-colors hover:bg-foreground/[0.04] dark:hover:bg-foreground/[0.05]",
+                  isActive && "bg-foreground/[0.05] dark:bg-foreground/[0.06]",
+                )}
+                onclick={() => reveal(t.id)}
+              >
             <span class="flex size-3 shrink-0 items-center justify-center">
               {#if d}
                 <AgentStatusDot status={d.status} stale={d.stale} />
@@ -86,6 +93,8 @@
               {t.agentName}{#if t.exited}<span class={cn("ml-1", text.meta)}>· {i18n.t("terminal.exited")}</span>{/if}
             </span>
           </button>
+          {/snippet}
+        </TooltipSimple>
         {/each}
       </div>
     {/if}

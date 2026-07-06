@@ -15,6 +15,7 @@
   import { resolveAgentDisplay } from "$lib/state/agentDisplay";
   import { cn } from "$lib/utils";
   import { icon, surface, text } from "$lib/design";
+  import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import AgentSpace from "./AgentSpace.svelte";
   import AgentStatusDot from "./AgentStatusDot.svelte";
@@ -98,50 +99,70 @@
   <ContextMenu.Root>
     <ContextMenu.Trigger>
       {#snippet child({ props })}
-        <div
-          {...props}
-          class={cn(
-            "group flex items-center gap-2 rounded-md py-1 pl-2 pr-2 transition-colors",
-            !active && "hover:bg-foreground/[0.05]",
-          )}
-          role="button"
-          tabindex="0"
-          title={row.path}
-          onclick={activate}
-          onkeydown={(e) => (e.key === "Enter" || e.key === " ") && activate()}
-        >
-          <span class="flex size-4 shrink-0 items-center justify-center">
-            {#if agentStatus}
-              <AgentStatusDot status={agentStatus.status} stale={agentStatus.stale} />
-            {:else}
-              <EntityIcon value={branchIcon} class={cn(icon.decorative, "rounded-[3px]")} fallback={branchGlyph} />
-            {/if}
-          </span>
-          <div class="min-w-0 flex-1">
-            <div class="flex items-center gap-1.5">
-              <span class={cn("truncate", text.body, active && "font-medium")}>{label}</span>
-              {#if hasUnread}
-                <span class="size-1.5 shrink-0 rounded-full bg-red-500" title={i18n.t("monitor.unread")}></span>
-              {/if}
-              {#if status && status.dirty > 0}
-                <span
-                  class={cn("inline-flex shrink-0 items-center gap-0.5 text-amber-600 dark:text-amber-400", text.indicator)}
-                  title={i18n.t("worktree.dirtyTooltip", { n: status.dirty })}
-                >
-                  <span class="size-1.5 rounded-full bg-amber-500"></span>{status.dirty}
-                </span>
-              {/if}
-              {#if status && status.ahead > 0}
-                <span class={cn("shrink-0 text-muted-foreground", text.indicator)} title={i18n.t("worktree.aheadTooltip")}>↑{status.ahead}</span>
-              {/if}
-              {#if status && status.behind > 0}
-                <span class={cn("shrink-0 text-muted-foreground", text.indicator)} title={i18n.t("worktree.behindTooltip")}>↓{status.behind}</span>
-              {/if}
+        <TooltipSimple title={row.path}>
+          {#snippet children(tp)}
+            <div
+              {...tp}
+              {...props}
+              class={cn(
+                "group flex items-center gap-2 rounded-md py-1 pl-2 pr-2 transition-colors",
+                !active && "hover:bg-foreground/[0.05]",
+              )}
+              role="button"
+              tabindex="0"
+              onclick={activate}
+              onkeydown={(e) => (e.key === "Enter" || e.key === " ") && activate()}
+            >
+              <span class="flex size-4 shrink-0 items-center justify-center">
+                {#if agentStatus}
+                  <AgentStatusDot status={agentStatus.status} stale={agentStatus.stale} />
+                {:else}
+                  <EntityIcon value={branchIcon} class={cn(icon.decorative, "rounded-[3px]")} fallback={branchGlyph} />
+                {/if}
+              </span>
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-1.5">
+                  <span class={cn("truncate", text.body, active && "font-medium")}>{label}</span>
+                  {#if hasUnread}
+                    <TooltipSimple title={i18n.t("monitor.unread")}>
+                      {#snippet children(tp2)}
+                        <span {...tp2} class="size-1.5 shrink-0 rounded-full bg-red-500"></span>
+                      {/snippet}
+                    </TooltipSimple>
+                  {/if}
+                  {#if status && status.dirty > 0}
+                    <TooltipSimple title={i18n.t("worktree.dirtyTooltip", { n: status.dirty })}>
+                      {#snippet children(tp2)}
+                        <span
+                          {...tp2}
+                          class={cn("inline-flex shrink-0 items-center gap-0.5 text-amber-600 dark:text-amber-400", text.indicator)}
+                        >
+                          <span class="size-1.5 rounded-full bg-amber-500"></span>{status.dirty}
+                        </span>
+                      {/snippet}
+                    </TooltipSimple>
+                  {/if}
+                  {#if status && status.ahead > 0}
+                    <TooltipSimple title={i18n.t("worktree.aheadTooltip")}>
+                      {#snippet children(tp2)}
+                        <span {...tp2} class={cn("shrink-0 text-muted-foreground", text.indicator)}>↑{status.ahead}</span>
+                      {/snippet}
+                    </TooltipSimple>
+                  {/if}
+                  {#if status && status.behind > 0}
+                    <TooltipSimple title={i18n.t("worktree.behindTooltip")}>
+                      {#snippet children(tp2)}
+                        <span {...tp2} class={cn("shrink-0 text-muted-foreground", text.indicator)}>↓{status.behind}</span>
+                      {/snippet}
+                    </TooltipSimple>
+                  {/if}
             </div>
             <div class={cn("truncate", text.meta)}>{meta}</div>
           </div>
         </div>
       {/snippet}
+    </TooltipSimple>
+  {/snippet}
     </ContextMenu.Trigger>
 
     <RowActionsMenu

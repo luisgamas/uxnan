@@ -3,6 +3,7 @@
   //   working green (pulse) · blocked yellow · waiting orange (pulse) · done blue
   //   · idle gray. A stale report (no update >30 min) is dimmed.
   import { cn } from "$lib/utils";
+  import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import type { DisplayStatus } from "$lib/state/agentDisplay";
 
@@ -24,18 +25,22 @@
   const label = $derived(i18n.t(`monitor.${status}`));
 </script>
 
-<span
-  class={cn(
-    "relative inline-flex size-2 shrink-0 items-center justify-center",
-    stale && "opacity-40",
-    className,
-  )}
-  title={stale ? `${label} · ${i18n.t("monitor.stale")}` : label}
->
-  {#if pulse}
+<TooltipSimple title={stale ? `${label} · ${i18n.t("monitor.stale")}` : label}>
+  {#snippet children(tp)}
     <span
-      class={cn("absolute inline-flex size-full animate-ping rounded-full opacity-60", COLOR[status])}
-    ></span>
-  {/if}
-  <span class={cn("relative size-1.5 rounded-full", COLOR[status])}></span>
-</span>
+      {...tp}
+      class={cn(
+        "relative inline-flex size-2 shrink-0 items-center justify-center",
+        stale && "opacity-40",
+        className,
+      )}
+    >
+      {#if pulse}
+        <span
+          class={cn("absolute inline-flex size-full animate-ping rounded-full opacity-60", COLOR[status])}
+        ></span>
+      {/if}
+      <span class={cn("relative size-1.5 rounded-full", COLOR[status])}></span>
+    </span>
+  {/snippet}
+</TooltipSimple>

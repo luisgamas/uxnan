@@ -12,6 +12,7 @@
   import { terminals } from "$lib/state/terminals.svelte";
   import { cn } from "$lib/utils";
   import { icon, iconButton, text } from "$lib/design";
+  import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import VirtualList from "./VirtualList.svelte";
@@ -143,20 +144,22 @@
   {@const isOpen =
     git.path != null && terminals.isDiffOpen(git.path, f.path, area === "staged")}
   {@const ns = git.numstat[f.path]}
-  <div
-    class={cn(
-      "group flex h-8 cursor-pointer items-center gap-1.5 rounded-md pl-1.5 pr-1",
-      isOpen ? "bg-primary/15 ring-1 ring-inset ring-primary/25" : "hover:bg-accent/40",
-    )}
-    role="button"
-    tabindex="0"
-    title={i18n.t("rightPanel.viewDiff")}
-    onclick={() => git.path && terminals.openDiff(git.path, f.path, area === "staged")}
-    onkeydown={(e) =>
-      (e.key === "Enter" || e.key === " ") &&
-      git.path &&
-      terminals.openDiff(git.path, f.path, area === "staged")}
-  >
+  <TooltipSimple title={i18n.t("rightPanel.viewDiff")}>
+    {#snippet children(tp)}
+      <div
+        {...tp}
+        class={cn(
+          "group flex h-8 cursor-pointer items-center gap-1.5 rounded-md pl-1.5 pr-1",
+          isOpen ? "bg-primary/15 ring-1 ring-inset ring-primary/25" : "hover:bg-accent/40",
+        )}
+        role="button"
+        tabindex="0"
+        onclick={() => git.path && terminals.openDiff(git.path, f.path, area === "staged")}
+        onkeydown={(e) =>
+          (e.key === "Enter" || e.key === " ") &&
+          git.path &&
+          terminals.openDiff(git.path, f.path, area === "staged")}
+      >
     <span class={cn("w-3 shrink-0 text-center font-mono font-semibold", text.indicator, b.cls)}>
       {b.letter}
     </span>
@@ -173,50 +176,64 @@
       </span>
     {/if}
     <div class="flex shrink-0 items-center opacity-0 group-hover:opacity-100">
-      <Button
-        variant="ghost"
-        size="icon"
-        class={iconButton.action}
-        disabled={git.busy}
-        title={i18n.t("rightPanel.discard")}
-        onclick={(e) => {
-          e.stopPropagation();
-          askDiscard(f);
-        }}
-      >
-        <Undo2Icon class={icon.button} />
-      </Button>
+      <TooltipSimple title={i18n.t("rightPanel.discard")}>
+        {#snippet children(tp)}
+          <Button
+            {...tp}
+            variant="ghost"
+            size="icon"
+            class={iconButton.action}
+            disabled={git.busy}
+            onclick={(e) => {
+              e.stopPropagation();
+              askDiscard(f);
+            }}
+          >
+            <Undo2Icon class={icon.button} />
+          </Button>
+        {/snippet}
+      </TooltipSimple>
       {#if area === "staged"}
-        <Button
-          variant="ghost"
-          size="icon"
-          class={iconButton.action}
-          disabled={git.busy}
-          title={i18n.t("rightPanel.unstage")}
-          onclick={(e) => {
-            e.stopPropagation();
-            void git.unstage(f.path);
-          }}
-        >
-          <MinusIcon class={icon.button} />
-        </Button>
+        <TooltipSimple title={i18n.t("rightPanel.unstage")}>
+          {#snippet children(tp)}
+            <Button
+              {...tp}
+              variant="ghost"
+              size="icon"
+              class={iconButton.action}
+              disabled={git.busy}
+              onclick={(e) => {
+                e.stopPropagation();
+                void git.unstage(f.path);
+              }}
+            >
+              <MinusIcon class={icon.button} />
+            </Button>
+          {/snippet}
+        </TooltipSimple>
       {:else}
-        <Button
-          variant="ghost"
-          size="icon"
-          class={iconButton.action}
-          disabled={git.busy}
-          title={i18n.t("rightPanel.stage")}
-          onclick={(e) => {
-            e.stopPropagation();
-            void git.stage(f.path);
-          }}
-        >
-          <PlusIcon class={icon.button} />
-        </Button>
+        <TooltipSimple title={i18n.t("rightPanel.stage")}>
+          {#snippet children(tp)}
+            <Button
+              {...tp}
+              variant="ghost"
+              size="icon"
+              class={iconButton.action}
+              disabled={git.busy}
+              onclick={(e) => {
+                e.stopPropagation();
+                void git.stage(f.path);
+              }}
+            >
+              <PlusIcon class={icon.button} />
+            </Button>
+          {/snippet}
+        </TooltipSimple>
       {/if}
     </div>
   </div>
+  {/snippet}
+</TooltipSimple>
 {/snippet}
 
 {#snippet sectionHeader(area: Area, count: number)}
@@ -253,9 +270,13 @@
         )}
         onkeydown={(e) => e.key === "Escape" && toggleSearch()}
       />
-      <Button variant="ghost" size="icon" class={iconButton.xs} title={i18n.t("common.close")} onclick={toggleSearch}>
-        <XIcon class={icon.action} />
-      </Button>
+      <TooltipSimple title={i18n.t("common.close")}>
+        {#snippet children(tp)}
+          <Button variant="ghost" size="icon" class={iconButton.xs} {...tp} onclick={toggleSearch}>
+            <XIcon class={icon.action} />
+          </Button>
+        {/snippet}
+      </TooltipSimple>
     {:else}
       <span class={cn("flex-1 truncate", text.section)}>
         {#if changedCount > 0}
@@ -263,18 +284,26 @@
         {/if}
       </span>
       {#if git.path}
-        <Button variant="ghost" size="icon" class={iconButton.xs} title={i18n.t("rightPanel.search")} onclick={toggleSearch}>
-          <SearchIcon class={icon.action} />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          class={iconButton.xs}
-          title={i18n.t("rightPanel.refresh")}
-          onclick={() => void git.refresh()}
-        >
-          <RefreshCwIcon class={cn(icon.action, git.loading && "animate-spin")} />
-        </Button>
+        <TooltipSimple title={i18n.t("rightPanel.search")}>
+          {#snippet children(tp)}
+            <Button variant="ghost" size="icon" class={iconButton.xs} {...tp} onclick={toggleSearch}>
+              <SearchIcon class={icon.action} />
+            </Button>
+          {/snippet}
+        </TooltipSimple>
+        <TooltipSimple title={i18n.t("rightPanel.refresh")}>
+          {#snippet children(tp)}
+            <Button
+              {...tp}
+              variant="ghost"
+              size="icon"
+              class={iconButton.xs}
+              onclick={() => void git.refresh()}
+            >
+              <RefreshCwIcon class={cn(icon.action, git.loading && "animate-spin")} />
+            </Button>
+          {/snippet}
+        </TooltipSimple>
       {/if}
     {/if}
   </header>
@@ -306,20 +335,24 @@
     <div class="shrink-0 border-t border-sidebar-border/60 p-2">
       {#if aiEnabled}
         <div class="mb-1.5 flex justify-end">
-          <Button
-            variant="outline"
-            size="sm"
-            class={cn("h-6", text.body)}
-            disabled={git.aiGenerating || git.committing}
-            title={i18n.t("rightPanel.generateAiDesc")}
-            onclick={() => void git.generateMessage()}
-          >
-            <SparklesIcon
-              data-icon="inline-start"
-              class={cn(git.aiGenerating && "animate-pulse")}
-            />
-            {git.aiGenerating ? i18n.t("rightPanel.generating") : i18n.t("rightPanel.generateAi")}
-          </Button>
+          <TooltipSimple title={i18n.t("rightPanel.generateAiDesc")}>
+            {#snippet children(tp)}
+              <Button
+                {...tp}
+                variant="outline"
+                size="sm"
+                class={cn("h-6", text.body)}
+                disabled={git.aiGenerating || git.committing}
+                onclick={() => void git.generateMessage()}
+              >
+                <SparklesIcon
+                  data-icon="inline-start"
+                  class={cn(git.aiGenerating && "animate-pulse")}
+                />
+                {git.aiGenerating ? i18n.t("rightPanel.generating") : i18n.t("rightPanel.generateAi")}
+              </Button>
+            {/snippet}
+          </TooltipSimple>
         </div>
       {/if}
       <Textarea
@@ -369,15 +402,19 @@
                   value={coAuthor}
                   oninput={(e) => setCoAuthor(i, e.currentTarget.value)}
                 />
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  class={iconButton.action}
-                  title={i18n.t("rightPanel.removeCoAuthor")}
-                  onclick={() => removeCoAuthor(i)}
-                >
-                  <Trash2Icon class={icon.button} />
-                </Button>
+                <TooltipSimple title={i18n.t("rightPanel.removeCoAuthor")}>
+                  {#snippet children(tp)}
+                    <Button
+                      {...tp}
+                      variant="ghost"
+                      size="icon"
+                      class={iconButton.action}
+                      onclick={() => removeCoAuthor(i)}
+                    >
+                      <Trash2Icon class={icon.button} />
+                    </Button>
+                  {/snippet}
+                </TooltipSimple>
               </div>
             {/each}
             <Button
@@ -425,30 +462,38 @@
 
       {#if git.ahead > 0 || git.behind > 0}
         <div class="mt-1.5 flex gap-1.5">
-          <Button
-            variant="outline"
-            size="sm"
-            class="flex-1"
-            disabled={git.syncing || git.behind === 0}
-            title={i18n.t("rightPanel.pull")}
-            onclick={() => void git.pull()}
-          >
-            <ArrowDownIcon data-icon="inline-start" />
-            {i18n.t("rightPanel.pull")}
-            {#if git.behind > 0}<span class={text.indicator}>{git.behind}</span>{/if}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            class="flex-1"
-            disabled={git.syncing || git.ahead === 0}
-            title={i18n.t("rightPanel.push")}
-            onclick={() => void git.push()}
-          >
-            <ArrowUpIcon data-icon="inline-start" />
-            {i18n.t("rightPanel.push")}
-            {#if git.ahead > 0}<span class={text.indicator}>{git.ahead}</span>{/if}
-          </Button>
+          <TooltipSimple title={i18n.t("rightPanel.pull")}>
+            {#snippet children(tp)}
+              <Button
+                {...tp}
+                variant="outline"
+                size="sm"
+                class="flex-1"
+                disabled={git.syncing || git.behind === 0}
+                onclick={() => void git.pull()}
+              >
+                <ArrowDownIcon data-icon="inline-start" />
+                {i18n.t("rightPanel.pull")}
+                {#if git.behind > 0}<span class={text.indicator}>{git.behind}</span>{/if}
+              </Button>
+            {/snippet}
+          </TooltipSimple>
+          <TooltipSimple title={i18n.t("rightPanel.push")}>
+            {#snippet children(tp)}
+              <Button
+                {...tp}
+                variant="outline"
+                size="sm"
+                class="flex-1"
+                disabled={git.syncing || git.ahead === 0}
+                onclick={() => void git.push()}
+              >
+                <ArrowUpIcon data-icon="inline-start" />
+                {i18n.t("rightPanel.push")}
+                {#if git.ahead > 0}<span class={text.indicator}>{git.ahead}</span>{/if}
+              </Button>
+            {/snippet}
+          </TooltipSimple>
         </div>
       {/if}
     </div>
