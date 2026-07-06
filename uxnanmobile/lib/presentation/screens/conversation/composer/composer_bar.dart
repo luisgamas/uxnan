@@ -420,24 +420,31 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 // Inline suggestion panel floats above the pill while a mention
-                // or command is active.
-                if (_trigger != null)
-                  _SuggestionPanel(
-                    trigger: _trigger!,
-                    templates: templates,
-                    files: _fileMatches,
-                    listing: _listing,
-                    listError: _listError,
-                    searchMode: _searchMode,
-                    searchMatches: _searchMatches,
-                    searchTruncated: _searchTruncated,
-                    searching: _searching,
-                    searchError: _searchError,
-                    hasWorkspace: widget.cwd != null,
-                    onPickEntry: _pickEntry,
-                    onPickMatch: _pickMatch,
-                    onPickCommand: _pickCommand,
-                  ),
+                // or command is active. AnimatedSize smooths its appearance and
+                // dismissal so it doesn't pop in/out abruptly.
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOutCubic,
+                  alignment: Alignment.topCenter,
+                  child: _trigger != null
+                      ? _SuggestionPanel(
+                          trigger: _trigger!,
+                          templates: templates,
+                          files: _fileMatches,
+                          listing: _listing,
+                          listError: _listError,
+                          searchMode: _searchMode,
+                          searchMatches: _searchMatches,
+                          searchTruncated: _searchTruncated,
+                          searching: _searching,
+                          searchError: _searchError,
+                          hasWorkspace: widget.cwd != null,
+                          onPickEntry: _pickEntry,
+                          onPickMatch: _pickMatch,
+                          onPickCommand: _pickCommand,
+                        )
+                      : const SizedBox.shrink(),
+                ),
                 DecoratedBox(
                   decoration: BoxDecoration(
                     color: colors.surfaceContainerHighest,
