@@ -15,8 +15,7 @@ which tracks assets only a human can provide.)
 standalone app** (three-panel shell, PTY terminals + splits, git worktrees, git
 status/diff/stage/commit/history, agent monitoring with the axum hook server +
 OSC/process layers, settings/themes/i18n, multi-agent orchestration,
-**in-app auto-updater**). 106 Rust backend tests + 45 frontend Vitest unit tests
-(pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
+**in-app auto-updater**, **browser-control MCP for agents**). 117 Rust backend tests (+ 11 since 0.0.6: MCP server + project cards) + 45 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
 (developed on Windows; CI is `{ubuntu, windows}`). **Phase 6 (embedded bridge /
 mobile pairing) is NOT started.**
 
@@ -81,13 +80,31 @@ right-side panel + status-bar toggle; `open_url`/`open_external` routing (shared
 hook-server `/browser` route, gated on `enabled && allow_agents`); **Ctrl/Cmd-
 clickable terminal links** (`@xterm/addon-web-links`).
 
-Spec synced: `architecture/02a` §4.2b documents the integrated browser; user guide
-in `docs/browser.md`.
+**Done — browser-control MCP (backend, spec `02d` §1.6):** the browser is now
+**discoverable** to agents as MCP tools, not just via the `/browser` curl. `mcp.rs`
+serves a minimal Streamable-HTTP MCP endpoint at `/mcp` (control tools
+`browser_open/navigate/reload/back/forward/status`, same hook-server token);
+`mcpinject.rs` writes each launched CLI's native MCP config (Claude/Codex/Gemini/
+OpenCode) referencing the `UXNAN_MCP_TOKEN` env (token never in a file), merging
+without clobbering and cleaning up on exit; `BrowserSettings.mcp*` (enabled /
+injection mode `off|workspace|global` / disabled-agents) + `mcp_info` command. See
+`docs/browser.md` → *Agent browser MCP*.
+
+Spec synced: `architecture/02a` §4.2b documents the integrated browser, `02d` §1.6
+the browser MCP; user guide in `docs/browser.md`.
 
 ### Still pending
-- [ ] **On-device validation.** The docked `WebviewWindow` (its gluing to the panel
-      on move/resize/DPI) and the agent `$BROWSER` shim end-to-end need a real run to
-      confirm. The explicit `curl` path is the reliable fallback for the shim.
+- [ ] **Browser MCP — add more agents.** The injector is a registry: to support a new
+      CLI (e.g. `agy`/Antigravity, Cursor's `cursor-agent`, Grok, amp, Pi), add a row to
+      `mcpinject::AGENTS` + a match arm in `config_path` (its config file path) and
+      `write_entry`/`json_entry` (its MCP-server shape). Recipe + the per-agent table
+      in `docs/browser.md` → *Adding another agent*.
+- [ ] **Browser MCP — interaction tools (control-only for now).** The tool surface is
+      navigation-only. Page inspection/interaction (`browser_snapshot`,
+      `browser_evaluate`, `browser_click`, `browser_type`) needs a JS return-channel
+      from the docked `WebviewWindow` (`.eval()` is fire-and-forget) — an injected
+      init-script that posts results back, mindful of page CSP. Deferred as a second
+      pass (`FOR-DEV:` marker in `mcp.rs`).
 
 ## Phase 6 — Bridge integration (embedded bridge / mobile pairing) ☐
 

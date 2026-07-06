@@ -68,6 +68,18 @@ pub struct AppState {
     /// download and the (agent-stopping) install stay separate steps. `None`
     /// until a download finishes; cleared once installed. See `updater.rs`.
     pub staged_update: Arc<RwLock<Option<crate::updater::StagedUpdate>>>,
+    /// Last URL the integrated browser navigated to, tracked so the browser MCP
+    /// server's `browser_status` tool can report the live page to an agent
+    /// (updated on open/navigate + the window's own navigations — see
+    /// `browser.rs`). A plain `std::sync::Mutex` so the sync `on_navigation`
+    /// closure can update it without an async context. `None` = never opened.
+    pub browser_url: Arc<std::sync::Mutex<Option<String>>>,
+    /// Dedup keys for MCP config injection (`mcpinject.rs`), so a workspace's (or
+    /// the global) config is written at most once per session (`ws:<cwd>` /
+    /// `global`).
+    pub mcp_prepared: Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
+    /// MCP config files we wrote, recorded so they're undone on exit (best-effort).
+    pub mcp_written: Arc<std::sync::Mutex<Vec<crate::mcpinject::Written>>>,
 }
 
 impl AppState {
@@ -84,6 +96,9 @@ impl AppState {
             hook_install: Arc::new(RwLock::new(None)),
             power: SleepBlocker::new(),
             staged_update: Arc::new(RwLock::new(None)),
+            browser_url: Arc::new(std::sync::Mutex::new(None)),
+            mcp_prepared: Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())),
+            mcp_written: Arc::new(std::sync::Mutex::new(Vec::new())),
         }
     }
 }

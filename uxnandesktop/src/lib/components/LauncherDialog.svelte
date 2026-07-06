@@ -300,12 +300,9 @@
         <SettingsIcon class={icon.decorative} />
         {i18n.t("agent.configure")}
       </button>
-      <div class="flex items-center gap-2">
-        <Button variant="ghost" onclick={() => (open = false)}>{i18n.t("common.cancel")}</Button>
-        <Button onclick={submit} disabled={!canSubmit || busy || (isNew && loadingBranches)}>
-          {busy ? i18n.t("common.creating") : primaryLabel}
-        </Button>
-      </div>
+      <Button onclick={submit} disabled={!canSubmit || busy || (isNew && loadingBranches)}>
+        {busy ? i18n.t("common.creating") : primaryLabel}
+      </Button>
     </Dialog.Footer>
   </Dialog.Content>
 </Dialog.Root>

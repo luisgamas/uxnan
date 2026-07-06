@@ -1,6 +1,6 @@
 [package]
 name = "uxnan-desktop"
-version = "0.0.5"
+version = "0.0.7"
 description = "Uxnan Desktop — Agent Development Environment (ADE)."
 authors = ["Luis Donaldo Gamas Vazquez"]
 edition = "2021"
@@ -53,6 +53,10 @@ sysinfo = "0.33"
 # git CLI (git.rs); git2 is the fast path with a CLI fallback. Vendored libgit2.
 git2 = { version = "0.20", default-features = false }
 axum = { version = "0.8", default-features = false, features = ["json", "tokio", "http1"] }
+# Format-preserving TOML editor, used to merge our MCP server entry into an
+# agent's `config.toml` (Codex) without clobbering the user's other settings or
+# comments. Pure Rust; `serde` handles the JSON-config agents (Claude/Gemini/…).
+toml_edit = "0.22"
 # Filesystem watcher for the right-panel file tree + the open-file editor: a
 # debounced, cross-platform watch of the active worktree root that emits
 # `fs:changed` so the UI reflects files created/deleted/edited on disk without a
