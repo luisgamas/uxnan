@@ -52,14 +52,18 @@
   // from the shared store so the empty-state "New worktree" button, the global
   // shortcut and the page-mounted dialog all agree on the same repo + open state.
   const activeRepo = $derived(projects.activeRepo);
+  // Whether the active workspace is a real git repo — worktrees need git, so the
+  // "new worktree" affordances are disabled for a non-git project folder (and the
+  // Global space), just like they already are outside any repo.
+  const activeRepoIsGit = $derived(!!activeRepo && activeRepo.isGit !== false);
 
   // Keyboard hints listed under the empty-state buttons (informative only). "New
-  // worktree" appears only inside a repo; filtered to bound actions so a blank /
-  // disabled chord never renders an empty row.
+  // worktree" appears only inside a git repo; filtered to bound actions so a
+  // blank / disabled chord never renders an empty row.
   const emptyHints = $derived(
     [
       { label: i18n.t("shortcuts.newTerminal"), chord: resolveBinding("newTerminal") },
-      activeRepo
+      activeRepoIsGit
         ? { label: i18n.t("shortcuts.newWorktree"), chord: resolveBinding("newWorktree") }
         : null,
       { label: i18n.t("shortcuts.addProject"), chord: resolveBinding("addProject") },
@@ -470,7 +474,9 @@
                       <LauncherMenu
                         repo={activeRepo}
                         target={{ path: wsKey, branch: null }}
-                        onNewWorktree={() => (projects.newWorktreeOpen = true)}
+                        onNewWorktree={activeRepoIsGit
+                          ? () => (projects.newWorktreeOpen = true)
+                          : undefined}
                         align="start"
                         triggerClass="ml-0.5 size-6"
                         title={i18n.t("launcher.openHere")}
@@ -612,7 +618,7 @@
               <PlusIcon class={icon.button} />
               {i18n.t("terminal.newTerminal")}
             </button>
-            {#if activeRepo}
+            {#if activeRepoIsGit}
               <button
                 class={cn(
                   "inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 font-medium text-foreground hover:bg-accent hover:text-accent-foreground",
@@ -630,7 +636,9 @@
                   text.body,
                 )}
                 disabled
-                title={i18n.t("terminal.worktreeNeedsRepo")}
+                title={activeRepo
+                  ? i18n.t("terminal.worktreeNeedsGitRepo")
+                  : i18n.t("terminal.worktreeNeedsRepo")}
               >
                 <GitBranchIcon class={icon.button} />
                 {i18n.t("newWorktree.title")}

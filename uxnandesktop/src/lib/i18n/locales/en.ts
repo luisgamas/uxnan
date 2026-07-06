@@ -141,6 +141,8 @@ export const en = {
     "a name with no relation to, or derivation from, any existing product.",
   "terminal.worktreeNeedsRepo":
     "Pick a project or worktree in the left panel to enable this.",
+  "terminal.worktreeNeedsGitRepo":
+    "This project isn’t a git repository, so it has no worktrees.",
   "terminal.newInRegion": "New terminal in this region",
   "terminal.copy": "Copy",
   "terminal.paste": "Paste",
