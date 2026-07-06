@@ -641,6 +641,8 @@ export const es: Record<MessageKey, string> = {
   "updates.installNow": "Instalar ahora",
   "updates.installWhenIdle": "Instalar al quedar libre",
   "updates.dismiss": "Descartar",
+  "updates.releaseNotes": "Notas de versión",
+  "updates.releaseNotesTitle": "Ver novedades de {version}",
   "updates.agentsBusyWarning":
     "Hay un agente en ejecución — instalar lo detendrá",
   "updates.willInstallWhenIdle":

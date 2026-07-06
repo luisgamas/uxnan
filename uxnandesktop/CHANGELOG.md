@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed
+- **Update toast redesigned as elevated card** (`UpdateToast.svelte`): solid
+  `bg-[var(--ux-elevated)]` background with `border-border/70` border, replacing
+  the previous transparent/default card style. Added a **release notes link**
+  pointing to the version's GitHub Releases page. Per-thread activity indicator
+  preserved.
+- **i18n**: added `updates.releaseNotes` and `updates.releaseNotesTitle` keys (en
+  and es) for the new release notes link.
+- **FOR-HUMAN.md**: removed the "Updater minisign keypair" entry — the keypair is
+  already generated, configured in `tauri.conf.json`, and set as GitHub secrets.
+
 ## [0.0.6-alpha.20260704] - 2026-07-04
 
 ### Added — agents discover & drive the integrated browser via an MCP server
