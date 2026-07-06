@@ -21,6 +21,7 @@ import type {
   McpInfo,
   HookServerInfo,
   ImageDiff,
+  RemoteOwner,
   RemoveOutcome,
   RepoData,
   SavedTerminalLayout,
@@ -141,6 +142,38 @@ export function repoList(): Promise<RepoData[]> {
   return invoke<RepoData[]>("repo_list");
 }
 
+/** Update a project's display metadata (card `name` and/or `icon`) without
+ *  touching the folder on disk. Only the fields present in `changes` are applied
+ *  (an omitted field is left unchanged); pass an empty string to reset (`name`
+ *  → the folder name, `icon` → the default glyph). */
+export function repoUpdate(
+  id: string,
+  changes: { name?: string; icon?: string | null },
+): Promise<RepoData> {
+  return invoke<RepoData>("repo_update", {
+    id,
+    // Tauri omits `undefined` args → the backend sees `None` (leave unchanged);
+    // an empty string means "reset". `null` icon (clear) is normalized to "".
+    name: changes.name,
+    icon: "icon" in changes ? (changes.icon ?? "") : undefined,
+  });
+}
+
+/** Set (or clear with null) a per-branch custom icon for a project. */
+export function repoSetBranchIcon(
+  repoId: string,
+  branch: string,
+  icon: string | null,
+): Promise<RepoData> {
+  return invoke<RepoData>("repo_set_branch_icon", { id: repoId, branch, icon });
+}
+
+/** Resolve a git project's `origin` remote to its hosting owner/avatar, for the
+ *  "use the account avatar" icon option. Null when there's no parseable origin. */
+export function repoRemoteOwner(repoId: string): Promise<RemoteOwner | null> {
+  return invoke<RemoteOwner | null>("repo_remote_owner", { id: repoId });
+}
+
 /** List a repo's local branches + the resolved default base. */
 export function branchList(repoId: string): Promise<BranchList> {
   return invoke<BranchList>("branch_list", { repoId });
@@ -203,6 +236,19 @@ export function fsReadFile(path: string): Promise<FileContent> {
 /** Overwrite a file with the editor's content (atomic on the backend). */
 export function fsWriteFile(path: string, content: string): Promise<void> {
   return invoke("fs_write_file", { path, content });
+}
+
+/** Rename a file on disk to a new bare file name, keeping it in the same folder.
+ *  Returns the new absolute, forward-slash path. Rejects path separators,
+ *  traversal, and clobbering an existing sibling. */
+export function fsRename(path: string, newName: string): Promise<string> {
+  return invoke<string>("fs_rename", { path, newName });
+}
+
+/** Download an image from an http(s) URL into an inline `data:` URL (fetched in
+ *  the backend to sidestep CORS). Used for "icon from URL" and git-host avatars. */
+export function imageFetchDataUrl(url: string): Promise<string> {
+  return invoke<string>("image_fetch_data_url", { url });
 }
 
 /** Reveal a path in the OS file manager (Explorer / Finder / etc.). */

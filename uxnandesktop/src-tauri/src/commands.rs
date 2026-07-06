@@ -289,10 +289,91 @@ pub async fn repo_add(state: State<'_, AppState>, path: String) -> Result<RepoDa
         path,
         worktrees: Vec::new(),
         is_git,
+        icon: None,
+        branch_icons: std::collections::HashMap::new(),
     };
     data.repos.push(repo.clone());
     state.persistence.save(&data).map_err(CommandError::from)?;
     Ok(repo)
+}
+
+/// Update a project's display metadata: its card `name` and/or its `icon`. The
+/// project's real folder is never touched — `name` is display-only, so renaming
+/// only relabels the card. Both params follow the same convention: a missing arg
+/// (`None`) leaves that field unchanged; a present value sets it, where an empty
+/// string *resets* (name → the folder name, icon → the default glyph). Returns
+/// the updated repo so the frontend can reconcile.
+#[tauri::command]
+pub async fn repo_update(
+    state: State<'_, AppState>,
+    id: String,
+    name: Option<String>,
+    icon: Option<String>,
+) -> Result<RepoData, CommandError> {
+    let mut data = state.data.write().await;
+    let repo = data
+        .repos
+        .iter_mut()
+        .find(|r| r.id == id)
+        .ok_or_else(|| CommandError::from(AppError::NotFound(format!("repo {id}"))))?;
+    if let Some(name) = name {
+        let trimmed = name.trim();
+        // An empty rename resets the label back to the real folder name.
+        repo.name = if trimmed.is_empty() {
+            git::repo_name(&repo.path)
+        } else {
+            trimmed.to_string()
+        };
+    }
+    if let Some(icon) = icon {
+        // An empty icon clears it back to the default glyph.
+        repo.icon = Some(icon).filter(|s| !s.is_empty());
+    }
+    let updated = repo.clone();
+    state.persistence.save(&data).map_err(CommandError::from)?;
+    Ok(updated)
+}
+
+/// Set (or clear) a per-branch custom icon for a project. Keyed by branch name
+/// (or the worktree path when detached). Passing `None`/empty removes it. Returns
+/// the updated repo.
+#[tauri::command]
+pub async fn repo_set_branch_icon(
+    state: State<'_, AppState>,
+    id: String,
+    branch: String,
+    icon: Option<String>,
+) -> Result<RepoData, CommandError> {
+    let mut data = state.data.write().await;
+    let repo = data
+        .repos
+        .iter_mut()
+        .find(|r| r.id == id)
+        .ok_or_else(|| CommandError::from(AppError::NotFound(format!("repo {id}"))))?;
+    match icon.filter(|s| !s.is_empty()) {
+        Some(icon) => {
+            repo.branch_icons.insert(branch, icon);
+        }
+        None => {
+            repo.branch_icons.remove(&branch);
+        }
+    }
+    let updated = repo.clone();
+    state.persistence.save(&data).map_err(CommandError::from)?;
+    Ok(updated)
+}
+
+/// Resolve a git project's `origin` remote to its hosting owner/org so the UI can
+/// offer the account avatar (e.g. `https://github.com/<owner>.png`). Returns
+/// `None` when there's no parseable `origin` (non-git folder, no remote, or an
+/// unrecognized host).
+#[tauri::command]
+pub async fn repo_remote_owner(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Option<git::RemoteOwner>, CommandError> {
+    let repo_path = repo_path_of(&state, &id).await?;
+    Ok(git::remote_owner(&repo_path).await)
 }
 
 /// Remove a repository from the ADE (does not touch the repo on disk).
@@ -467,6 +548,100 @@ pub async fn fs_write_file(path: String, content: String) -> Result<(), CommandE
     crate::fs::write_file(&path, &content)
         .await
         .map_err(CommandError::from)
+}
+
+/// Rename a file on disk to a new bare file name, keeping it in the same folder
+/// (the real rename behind a file tab's "Rename"). Guards against path
+/// separators, traversal and clobbering (see [`crate::fs::rename_path`]). Returns
+/// the new absolute, forward-slash path so the frontend can re-point the tab.
+#[tauri::command]
+pub async fn fs_rename(path: String, new_name: String) -> Result<String, CommandError> {
+    crate::fs::rename_path(&path, &new_name)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Largest remote image the icon fetcher will inline (5 MiB). Icons are tiny;
+/// this only guards against a hostile/oversized URL streaming forever.
+const MAX_ICON_BYTES: u64 = 5 * 1024 * 1024;
+
+/// Download an image from an `http(s)` URL and return it as an inline
+/// `data:<mime>;base64,…` URL. Fetching in Rust (not the webview) sidesteps CORS
+/// and canvas-taint, so a project/branch icon picked "from URL" or a git-host
+/// avatar can be embedded and persisted offline. Rejects non-`http(s)` schemes,
+/// non-image content, and anything over [`MAX_ICON_BYTES`].
+#[tauri::command]
+pub async fn image_fetch_data_url(url: String) -> Result<String, CommandError> {
+    use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+
+    if !(url.starts_with("http://") || url.starts_with("https://")) {
+        return Err(CommandError::new(
+            "IMAGE_FETCH_FAILED",
+            "only http(s) image URLs are supported",
+        ));
+    }
+    let client = reqwest::Client::builder()
+        .user_agent("uxnan-desktop")
+        .build()
+        .map_err(|e| CommandError::new("IMAGE_FETCH_FAILED", e.to_string()))?;
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .and_then(|r| r.error_for_status())
+        .map_err(|e| CommandError::new("IMAGE_FETCH_FAILED", e.to_string()))?;
+
+    // Content-Length (when present) short-circuits an oversized download.
+    if let Some(len) = resp.content_length() {
+        if len > MAX_ICON_BYTES {
+            return Err(CommandError::new(
+                "IMAGE_FETCH_FAILED",
+                "the image is too large",
+            ));
+        }
+    }
+    let mime = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.split(';').next().unwrap_or(s).trim().to_string())
+        .filter(|m| m.starts_with("image/"));
+
+    let bytes = resp
+        .bytes()
+        .await
+        .map_err(|e| CommandError::new("IMAGE_FETCH_FAILED", e.to_string()))?;
+    if bytes.len() as u64 > MAX_ICON_BYTES {
+        return Err(CommandError::new(
+            "IMAGE_FETCH_FAILED",
+            "the image is too large",
+        ));
+    }
+    // Prefer the server's content-type; else sniff from magic bytes. Refuse
+    // anything that isn't a recognizable image so we never inline HTML/JSON.
+    let mime = mime
+        .or_else(|| sniff_image_mime(&bytes).map(str::to_string))
+        .ok_or_else(|| CommandError::new("IMAGE_FETCH_FAILED", "the URL is not an image"))?;
+
+    Ok(format!("data:{mime};base64,{}", BASE64.encode(&bytes)))
+}
+
+/// Best-effort image type detection from the leading magic bytes, for responses
+/// that omit a usable `Content-Type`.
+fn sniff_image_mime(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.starts_with(&[0x89, b'P', b'N', b'G']) {
+        Some("image/png")
+    } else if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        Some("image/jpeg")
+    } else if bytes.starts_with(b"GIF8") {
+        Some("image/gif")
+    } else if bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(b"WEBP") {
+        Some("image/webp")
+    } else if bytes.starts_with(b"<svg") || bytes.starts_with(b"<?xml") {
+        Some("image/svg+xml")
+    } else {
+        None
+    }
 }
 
 /// Set (or clear with `None`) the worktree root the filesystem watcher follows.

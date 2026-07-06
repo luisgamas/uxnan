@@ -15,7 +15,7 @@ which tracks assets only a human can provide.)
 standalone app** (three-panel shell, PTY terminals + splits, git worktrees, git
 status/diff/stage/commit/history, agent monitoring with the axum hook server +
 OSC/process layers, settings/themes/i18n, multi-agent orchestration,
-**in-app auto-updater**, **browser-control MCP for agents**). 117 Rust backend tests (+ 11 since 0.0.6: MCP server + project cards) + 45 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
+**in-app auto-updater**, **browser-control MCP for agents**). 125+ Rust backend tests + 45+ frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
 (developed on Windows; CI is `{ubuntu, windows}`). **Phase 6 (embedded bridge /
 mobile pairing) is NOT started.**
 
@@ -26,10 +26,18 @@ mobile pairing) is NOT started.**
 - **PTY terminals** (`portable-pty 0.9`, xterm WebGL + DOM fallback) — tabs +
   nested splits that never remount on split, drag-to-reorder / move tabs across
   regions, `Ctrl+Tab` MRU cycling, a backend output ring buffer that restores a
-  recreated pane's scrollback, and the Kitty/CSI-u keyboard protocol.
+  recreated pane's scrollback, and the Kitty/CSI-u keyboard protocol. Tabs can be
+  **renamed** (free-form label for terminals/diffs, persisted; on-disk rename for
+  file tabs via `fs_rename`, with an extension-change warning) and **closed all at
+  once** per active workspace.
 - **Git worktrees** — per-worktree terminal workspaces, hierarchical Projects
   tree, in-app directory picker, worktree palette (Ctrl/Cmd+P), squash-merged
-  branch cleanup on removal, WSL repos routed through `wsl.exe`.
+  branch cleanup on removal, WSL repos routed through `wsl.exe`. Projects carry a
+  **⋯ actions menu + per-project settings** (rename the card label without
+  touching the folder) and a **custom icon**; branches carry a **per-branch icon**
+  (both from a built-in glyph set, a file, a URL, or a git-host account avatar —
+  rasterized to an inline PNG via `image_fetch_data_url` / `repo_remote_owner` and
+  persisted in `RepoData.icon` / `branchIcons`).
 - **Full git review** — status / diff / stage / commit / push / pull with a 3 s
   focus-paused Tokio watcher, CodeMirror 6 diff viewer, hunk-level staging,
   side-by-side toggle, visual image diffs, and optional AI commit-message

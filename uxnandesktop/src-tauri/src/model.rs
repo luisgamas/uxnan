@@ -60,6 +60,16 @@ pub struct RepoData {
     /// repo back then was a git repo).
     #[serde(default = "default_true")]
     pub is_git: bool,
+    /// User-chosen project icon: an inline `data:` URL (a file/URL/GitHub avatar
+    /// rasterized to a small square PNG). `None` → the default folder glyph. The
+    /// project's real folder name is never touched; `name` is display-only.
+    #[serde(default)]
+    pub icon: Option<String>,
+    /// Per-branch custom icons, keyed by branch name (or the worktree path when
+    /// detached). Same inline `data:` URL form as [`RepoData::icon`]. Absent
+    /// branches fall back to the default branch glyph.
+    #[serde(default)]
+    pub branch_icons: std::collections::HashMap<String, String>,
 }
 
 /// An independent git worktree — the ADE's fundamental unit of isolation.

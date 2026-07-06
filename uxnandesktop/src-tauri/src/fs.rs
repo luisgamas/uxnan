@@ -159,6 +159,43 @@ pub async fn write_file(path: &str, content: &str) -> Result<(), AppError> {
     Ok(())
 }
 
+/// Rename a file (or directory) to `new_name`, keeping it in the same parent
+/// directory. This is the real on-disk rename behind a file tab's "Rename"
+/// action, so it deliberately refuses anything that could move or clobber a
+/// file: `new_name` must be a bare file name (no `/`, `\`, or `..`), the source
+/// must exist, and the destination must not already exist (case-sensitive-safe).
+/// Returns the new absolute, forward-slash-normalized path so the caller can
+/// re-point the open tab/editor at it.
+pub async fn rename_path(path: &str, new_name: &str) -> Result<String, AppError> {
+    let source = PathBuf::from(path);
+    let new_name = new_name.trim();
+    if new_name.is_empty() {
+        return Err(AppError::Invalid("the new name is empty".into()));
+    }
+    // A bare file name only — never a path fragment that could escape the folder.
+    if new_name.contains('/') || new_name.contains('\\') || new_name == ".." || new_name == "." {
+        return Err(AppError::Invalid(format!(
+            "\"{new_name}\" is not a valid file name"
+        )));
+    }
+    if !tokio::fs::try_exists(&source).await.unwrap_or(false) {
+        return Err(AppError::NotFound(format!("{path} does not exist")));
+    }
+    let parent = source
+        .parent()
+        .ok_or_else(|| AppError::Invalid(format!("{path} has no parent directory")))?;
+    let target = parent.join(new_name);
+    // Refuse to overwrite an existing sibling — unless it's the same path under a
+    // case-only rename (e.g. `Readme.md` → `README.md` on a case-insensitive FS).
+    if target != source && tokio::fs::try_exists(&target).await.unwrap_or(false) {
+        return Err(AppError::Invalid(format!(
+            "\"{new_name}\" already exists in this folder"
+        )));
+    }
+    tokio::fs::rename(&source, &target).await?;
+    Ok(normalize(&target))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -216,5 +253,34 @@ mod tests {
         // No temp file left behind.
         let leftover = tmp.path().join(".a.txt.uxnan-tmp");
         assert!(!leftover.exists());
+    }
+
+    #[tokio::test]
+    async fn renames_within_folder_and_guards_bad_input() {
+        let tmp = tempfile::tempdir().unwrap();
+        let a = tmp.path().join("a.txt");
+        std::fs::write(&a, "x").unwrap();
+
+        // Happy path: renamed in place, new normalized path returned.
+        let new_path = rename_path(&a.to_string_lossy(), "b.md").await.unwrap();
+        assert!(new_path.ends_with("/b.md"));
+        assert!(!a.exists());
+        assert!(tmp.path().join("b.md").exists());
+
+        // Path separators / traversal are refused (never move out of the folder).
+        assert!(rename_path(&new_path, "sub/c.txt").await.is_err());
+        assert!(rename_path(&new_path, "../c.txt").await.is_err());
+        assert!(rename_path(&new_path, "  ").await.is_err());
+
+        // Clobbering an existing sibling is refused.
+        std::fs::write(tmp.path().join("taken.txt"), "y").unwrap();
+        assert!(rename_path(&new_path, "taken.txt").await.is_err());
+
+        // A missing source errors instead of silently succeeding.
+        assert!(
+            rename_path(&tmp.path().join("nope.txt").to_string_lossy(), "z.txt")
+                .await
+                .is_err()
+        );
     }
 }

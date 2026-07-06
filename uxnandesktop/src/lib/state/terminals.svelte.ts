@@ -13,6 +13,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { fsRename } from "$lib/api";
 import type { FsChangedEvent, SavedTab, SavedTermNode, SavedTerminalLayout } from "$lib/types";
 import { i18n } from "$lib/i18n";
 import { saveDiscard } from "$lib/state/confirm.svelte";
@@ -30,6 +31,10 @@ interface BaseTab {
    *  channel suffix: `pty:output:{id}`). */
   id: string;
   title: string;
+  /** A user-set tab label that overrides the derived title (from "Rename tab").
+   *  For terminals it's persisted; for a file tab renaming instead renames the
+   *  file on disk, so this stays a label-only override for terminal/diff/commit. */
+  customTitle?: string;
 }
 
 /** A terminal tab, backed by a single PTY. */
@@ -96,6 +101,15 @@ export interface CommitTab extends BaseTab {
 }
 
 export type GroupTab = TerminalTab | FileTab | DiffTab | CommitTab;
+
+/** The label shown on a tab (strip + drag ghost): a user-set `customTitle` wins;
+ *  otherwise a terminal shows its running agent's name (else its own title), and
+ *  every other kind shows its derived title. */
+export function tabDisplayTitle(t: GroupTab): string {
+  if (t.customTitle) return t.customTitle;
+  if (t.kind === "terminal") return t.agentName ?? t.title;
+  return t.title;
+}
 
 /** A region: a tab strip over one-or-more terminals. */
 export interface TabGroup {
@@ -306,7 +320,14 @@ function serializeTab(t: GroupTab): SavedTab {
     return { kind: "file", title: t.title, path: t.path, worktree: t.worktree ?? undefined };
   }
   if (t.kind === "terminal") {
-    return { kind: "terminal", title: t.title, cwd: t.cwd, shell: t.shell, args: t.args };
+    return {
+      kind: "terminal",
+      title: t.title,
+      customTitle: t.customTitle,
+      cwd: t.cwd,
+      shell: t.shell,
+      args: t.args,
+    };
   }
   return { kind: "terminal", title: t.title };
 }
@@ -352,6 +373,7 @@ function buildTab(t: SavedTab): GroupTab {
     kind: "terminal",
     id: crypto.randomUUID(),
     title: t.title,
+    customTitle: t.customTitle,
     cwd: t.cwd,
     shell: t.shell,
     args: t.args,
@@ -1104,6 +1126,85 @@ class TerminalStore {
       this.disposeTab(tab.id);
     }
     this.collapseGroup(groupId);
+  }
+
+  /** Rename a terminal/diff/commit tab to a free-form label (an empty value
+   *  clears it back to the derived title). File tabs rename the file on disk
+   *  instead — see `renameFileTab`. */
+  renameTab(tabId: string, title: string): void {
+    const trimmed = title.trim();
+    for (const key of Object.keys(this.workspaces)) {
+      const tree = this.workspaces[key];
+      if (!tree) continue;
+      const tab = groupOfTab(tree, tabId)?.tabs.find((x) => x.id === tabId);
+      if (tab) {
+        tab.customTitle = trimmed || undefined;
+        return;
+      }
+    }
+  }
+
+  /** Rename a file tab's underlying file on disk (kept in the same folder) and
+   *  re-point the open editor at the new path — the bytes and any unsaved edits
+   *  are preserved. Throws (with the backend message) on failure so the caller
+   *  can surface it. Returns the new absolute path. */
+  async renameFileTab(tabId: string, newName: string): Promise<string> {
+    let target: FileTab | undefined;
+    for (const key of Object.keys(this.workspaces)) {
+      const tree = this.workspaces[key];
+      if (!tree) continue;
+      const tab = groupOfTab(tree, tabId)?.tabs.find((x) => x.id === tabId);
+      if (tab?.kind === "file") {
+        target = tab;
+        break;
+      }
+    }
+    if (!target) throw new Error("file tab not found");
+    const newPath = await fsRename(target.path, newName);
+    await this.fileStates.get(tabId)?.repoint(newPath);
+    target.path = newPath;
+    target.title = newPath.split("/").pop() ?? newPath;
+    return newPath;
+  }
+
+  /** Close every tab in the active workspace (the "Close all tabs" tab action):
+   *  one aggregated save/discard prompt for any unsaved files, then kill all the
+   *  PTYs, drop per-tab state and empty the workspace. A no-op when nothing is
+   *  open. */
+  async closeAllTabs(): Promise<void> {
+    const tree = this.root;
+    if (!tree) return;
+    const tabs = [...allTabs(tree)];
+    const dirty = tabs.filter(
+      (t) => t.kind === "file" && this.fileStates.get(t.id)?.dirty,
+    );
+    if (dirty.length > 0) {
+      const choice = await saveDiscard.request({
+        title: i18n.t("editor.unsavedTitle"),
+        description: i18n.t("editor.unsavedManyDesc", { n: dirty.length }),
+        saveLabel: i18n.t("editor.saveAllClose"),
+        discardLabel: i18n.t("editor.discardAllClose"),
+      });
+      if (choice === "cancel") return;
+      if (choice === "save") {
+        for (const t of dirty) {
+          const st = this.fileStates.get(t.id);
+          if (!st) continue;
+          try {
+            await st.save(st.content);
+          } catch {
+            return; // a save failed → abort so edits survive
+          }
+        }
+      }
+    }
+    for (const tab of tabs) {
+      if (tab.kind === "terminal") invoke("pty_close", { id: tab.id }).catch(() => {});
+      this.disposeTab(tab.id);
+    }
+    // Empty the active workspace's region tree (shows the empty-state canvas).
+    this.root = null;
+    this.activeGroupId = "";
   }
 
   private collapseGroup(groupId: string): void {

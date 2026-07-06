@@ -10,6 +10,8 @@ import {
   branchList,
   repoAdd,
   repoRemove,
+  repoSetBranchIcon,
+  repoUpdate,
   worktreeCreate,
   worktreeList,
   worktreeRemove,
@@ -243,6 +245,56 @@ class ProjectsStore {
       this.error = msg(e);
       return false;
     }
+  }
+
+  /** Update a project's display name and/or icon (card-only; never touches the
+   *  folder). Reconciles the returned repo into `app.repos` so the sidebar and
+   *  any open dialog re-render. Only the fields present in `changes` are applied. */
+  async updateProject(
+    id: string,
+    changes: { name?: string; icon?: string | null },
+  ): Promise<boolean> {
+    this.error = null;
+    try {
+      const updated = await repoUpdate(id, changes);
+      const i = app.repos.findIndex((r) => r.id === id);
+      if (i !== -1) app.repos[i] = updated;
+      return true;
+    } catch (e) {
+      this.error = msg(e);
+      toastError(e);
+      return false;
+    }
+  }
+
+  /** Set (or clear with null) a per-branch icon, keyed by branch name (or the
+   *  worktree path when detached). Reconciles the returned repo into `app.repos`. */
+  async setBranchIcon(
+    repoId: string,
+    branchKey: string,
+    icon: string | null,
+  ): Promise<boolean> {
+    this.error = null;
+    try {
+      const updated = await repoSetBranchIcon(repoId, branchKey, icon);
+      const i = app.repos.findIndex((r) => r.id === repoId);
+      if (i !== -1) app.repos[i] = updated;
+      return true;
+    } catch (e) {
+      this.error = msg(e);
+      toastError(e);
+      return false;
+    }
+  }
+
+  /** A worktree's stable icon key: its branch name, or its path when detached. */
+  branchIconKey(row: { branch: string | null; path: string }): string {
+    return row.branch ?? row.path;
+  }
+
+  /** The custom icon stored for a worktree's branch, or undefined. */
+  branchIcon(repoId: string, branchKey: string): string | undefined {
+    return app.repos.find((r) => r.id === repoId)?.branchIcons?.[branchKey];
   }
 
   /** Register several project folders at once (the picker's "add all separately"

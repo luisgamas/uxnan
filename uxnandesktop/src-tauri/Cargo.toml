@@ -41,8 +41,15 @@ tauri-plugin-window-state = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # Encodes image blobs as base64 data URLs for the visual image-diff viewer
-# (git.rs `image_diff`). Pure Rust, tiny, widely used.
+# (git.rs `image_diff`) and the project/branch icon fetcher (commands.rs
+# `image_fetch_data_url`). Pure Rust, tiny, widely used.
 base64 = "0.22"
+# HTTP client for downloading a project/branch icon from a URL or a git host
+# avatar into an inline data URL (commands.rs `image_fetch_data_url`). Doing the
+# GET in Rust sidesteps webview CORS/canvas-taint entirely. rustls (no OpenSSL);
+# the exact version is already in the tree via tauri-plugin-updater, so this adds
+# no new build cost. MIT/Apache-2.0.
+reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "fs", "process", "macros"] }
 thiserror = "2"
 uuid = { version = "1", features = ["v4"] }
