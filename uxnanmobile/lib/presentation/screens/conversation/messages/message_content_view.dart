@@ -441,15 +441,29 @@ Color _riskColor(ApprovalRisk risk) => switch (risk) {
     };
 
 /// Renders a [PlanContent]: an optional title and the plan steps with status.
-class _PlanCard extends StatelessWidget {
+/// Collapsed by default — shows the header (icon + title + count badge +
+/// expand chevron) and a preview of the first 2 steps. Expanding reveals all
+/// steps grouped with dynamic corner radii (Neural Expressive §4.6).
+class _PlanCard extends StatefulWidget {
   const _PlanCard({required this.content});
   final PlanContent content;
+
+  @override
+  State<_PlanCard> createState() => _PlanCardState();
+}
+
+class _PlanCardState extends State<_PlanCard> {
+  bool _expanded = false;
+  static const int _preview = 2;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-    final state = content.state;
+    final state = widget.content.state;
+    final steps = state.steps;
+    final shown = _expanded ? steps : steps.take(_preview).toList();
+    final extra = steps.length - shown.length;
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -457,48 +471,163 @@ class _PlanCard extends StatelessWidget {
         borderRadius: const BorderRadius.all(UxnanRadius.lg),
         border: Border.all(color: colors.outline),
       ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          InkWell(
+            borderRadius: const BorderRadius.all(UxnanRadius.lg),
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Padding(
+              padding: const EdgeInsets.all(UxnanSpacing.md),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.checklist_rounded,
+                    size: 16,
+                    color: colors.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: UxnanSpacing.sm),
+                  Text(
+                    state.title?.isNotEmpty ?? false ? state.title! : 'Plan',
+                    style: textTheme.labelMedium,
+                  ),
+                  const SizedBox(width: UxnanSpacing.xs),
+                  _CountBadge(count: steps.length),
+                  const Spacer(),
+                  if (!_expanded && extra > 0) ...[
+                    Text(
+                      '+$extra',
+                      style: textTheme.labelSmall
+                          ?.copyWith(color: colors.onSurfaceVariant),
+                    ),
+                    const SizedBox(width: UxnanSpacing.xs),
+                  ],
+                  Icon(
+                    _expanded
+                        ? Icons.expand_less_rounded
+                        : Icons.expand_more_rounded,
+                    size: 18,
+                    color: colors.onSurfaceVariant,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.topCenter,
+            child: shown.isNotEmpty
+                ? Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      UxnanSpacing.md,
+                      0,
+                      UxnanSpacing.md,
+                      UxnanSpacing.md,
+                    ),
+                    child: _PlanStepGroup(
+                      steps: shown,
+                      totalSteps: steps.length,
+                      isExpanded: _expanded,
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The step list inside a [_PlanCard], rendered as a grouped column with
+/// dynamic corner radii per Neural Expressive §4.6: the first item has
+/// larger top corners, the last has larger bottom corners, and middle
+/// items use a tight radius — creating a cohesive visual cluster.
+class _PlanStepGroup extends StatelessWidget {
+  const _PlanStepGroup({
+    required this.steps,
+    required this.totalSteps,
+    required this.isExpanded,
+  });
+  final List<PlanStep> steps;
+  final int totalSteps;
+  final bool isExpanded;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final count = steps.length;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var i = 0; i < count; i++) ...[
+          if (i > 0) const SizedBox(height: 3),
+          _buildStepRow(context, steps[i], i, count, colors, textTheme),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildStepRow(
+    BuildContext context,
+    PlanStep step,
+    int index,
+    int count,
+    ColorScheme colors,
+    TextTheme textTheme,
+  ) {
+    final isFirst = index == 0;
+    final isSingle = count == 1;
+    final isLast = index == count - 1;
+
+    final radius = isSingle
+        ? const BorderRadius.all(UxnanRadius.md)
+        : isFirst
+            ? const BorderRadius.only(
+                topLeft: UxnanRadius.md,
+                topRight: UxnanRadius.md,
+                bottomLeft: UxnanRadius.sm,
+                bottomRight: UxnanRadius.sm,
+              )
+            : isLast
+                ? const BorderRadius.only(
+                    topLeft: UxnanRadius.sm,
+                    topRight: UxnanRadius.sm,
+                    bottomLeft: UxnanRadius.md,
+                    bottomRight: UxnanRadius.md,
+                  )
+                : const BorderRadius.all(UxnanRadius.sm);
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerHigh.withValues(alpha: 0.5),
+        borderRadius: radius,
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(UxnanSpacing.md),
-        child: Column(
+        padding: const EdgeInsets.symmetric(
+          horizontal: UxnanSpacing.sm,
+          vertical: UxnanSpacing.sm,
+        ),
+        child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.checklist_rounded,
-                  size: 16,
-                  color: colors.onSurfaceVariant,
-                ),
-                const SizedBox(width: UxnanSpacing.sm),
-                Text(
-                  state.title?.isNotEmpty ?? false ? state.title! : 'Plan',
-                  style: textTheme.labelMedium,
-                ),
-              ],
-            ),
-            const SizedBox(height: UxnanSpacing.sm),
-            for (final step in state.steps)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 2),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _PlanStepIcon(status: step.status),
-                    const SizedBox(width: UxnanSpacing.sm),
-                    Expanded(
-                      child: Text(
-                        step.description,
-                        style: step.status == PlanStepStatus.completed
-                            ? textTheme.bodyMedium?.copyWith(
-                                color: colors.onSurfaceVariant,
-                                decoration: TextDecoration.lineThrough,
-                              )
-                            : textTheme.bodyMedium,
-                      ),
-                    ),
-                  ],
-                ),
+            _PlanStepIcon(status: step.status),
+            const SizedBox(width: UxnanSpacing.sm),
+            Expanded(
+              child: Text(
+                step.description,
+                style: step.status == PlanStepStatus.completed
+                    ? textTheme.bodyMedium?.copyWith(
+                        color: colors.onSurfaceVariant,
+                        decoration: TextDecoration.lineThrough,
+                      )
+                    : textTheme.bodyMedium,
               ),
+            ),
           ],
         ),
       ),
@@ -529,6 +658,32 @@ class _PlanStepIcon extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(top: 2),
       child: Icon(icon, size: 16, color: color),
+    );
+  }
+}
+
+/// Small circular badge showing a count, used in the PlanCard header.
+class _CountBadge extends StatelessWidget {
+  const _CountBadge({required this.count});
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    if (count < 2) return const SizedBox.shrink();
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+      decoration: BoxDecoration(
+        color: colors.primaryContainer,
+        borderRadius: const BorderRadius.all(UxnanRadius.full),
+      ),
+      child: Text(
+        '$count',
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+          color: colors.onPrimaryContainer,
+          fontSize: 10,
+        ),
+      ),
     );
   }
 }
