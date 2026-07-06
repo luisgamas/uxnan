@@ -26,7 +26,9 @@ wins over each theme's own fonts, so you can change fonts without switching them
 - **Edit** (custom themes) — a visual editor (per-token color inputs + fonts +
   base) and a **JSON** tab you can edit directly, with Save / Cancel.
 - **Duplicate / Delete**, and **Import** (`.json` file or pasted JSON) /
-  **Export** (`.json` file or clipboard).
+  **Export** (`.json` file or clipboard). Import accepts **multiple files at
+  once**, and each file (or the pasted text) may hold a **single theme or a whole
+  list** — see [Importing many themes at once](#importing-many-themes-at-once).
 
 **Terminal → Fonts** — a **global terminal typography** override (font family /
 size / line-height / letter-spacing / weight / ligatures) that wins over each
@@ -131,6 +133,33 @@ the app theme's terminal value.
   "brightWhite": "#ffffff"
 }
 ```
+
+## Importing many themes at once
+
+Both grids (Interface and Terminal) import the same two ways — a `.json` file
+or pasted JSON — and both accept **batches**:
+
+- **Multiple files** — the file picker allows selecting several `.json` files at
+  once; every file is imported in one pass.
+- **A list inside one file or paste** — instead of a single theme object, the
+  JSON may be an **array** of themes, or an **object wrapping an array** under
+  `themes` (interface) / `terminalThemes` (terminal). For example:
+
+  ```json
+  [
+    { "name": "Ocean", "base": "dark", "colors": { "primary": "oklch(0.6 0.2 250)" } },
+    { "name": "Sand",  "base": "light", "colors": { "primary": "oklch(0.8 0.1 90)" } }
+  ]
+  ```
+
+  ```json
+  { "themes": [ { "name": "Ocean", "base": "dark", "colors": {} } ] }
+  ```
+
+Each entry is normalized independently (its own fresh `id`, missing colors
+backfilled from the built-in base). The **last** valid theme in the batch becomes
+active. After importing you get a summary ("Imported N themes"); any malformed
+entries are skipped and reported without aborting the rest of the batch.
 
 ## How it's applied
 
