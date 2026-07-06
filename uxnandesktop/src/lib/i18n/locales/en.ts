@@ -642,6 +642,8 @@ export const en = {
   "updates.installNow": "Install now",
   "updates.installWhenIdle": "Install when idle",
   "updates.dismiss": "Dismiss",
+  "updates.releaseNotes": "Release notes",
+  "updates.releaseNotesTitle": "See what's new in {version}",
   "updates.agentsBusyWarning": "An agent is running — installing will stop it",
   "updates.willInstallWhenIdle": "Will install once all agents are idle",
   "updates.upToDate": "You're on the latest version",
