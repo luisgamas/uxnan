@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.8-alpha.20260705] - 2026-07-05
+
 ### Added
 - **`TooltipSimple` — reusable Bits UI tooltip wrapper.** Replaces native HTML
   `title={...}` attributes across the entire desktop UI with styled Bits UI
