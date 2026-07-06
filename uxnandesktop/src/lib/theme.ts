@@ -480,6 +480,37 @@ export function normalizeImportedTheme(raw: unknown): { theme?: Theme; error?: s
   };
 }
 
+/** Pull a flat list of candidate theme objects out of parsed import JSON, so a
+ *  single file or paste may carry one theme or many. Accepts a bare object (one
+ *  theme), a bare array (`[{…}, {…}]`), or a wrapper object holding an array
+ *  under one of `keys` (e.g. `{ "themes": [ … ] }`). Returns `[]` when the input
+ *  is neither an object nor an array. */
+function themeCandidates(parsed: unknown, keys: string[]): unknown[] {
+  if (Array.isArray(parsed)) return parsed;
+  if (parsed && typeof parsed === "object") {
+    const r = parsed as Record<string, unknown>;
+    for (const k of keys) if (Array.isArray(r[k])) return r[k] as unknown[];
+    return [parsed];
+  }
+  return [];
+}
+
+/** Batch variant of {@link normalizeImportedTheme}: normalizes one theme, an
+ *  array of themes, or a `{ themes: [...] }` wrapper. Returns every theme that
+ *  validated plus a per-item error list for the ones that didn't. */
+export function normalizeImportedThemes(raw: unknown): { themes: Theme[]; errors: string[] } {
+  const candidates = themeCandidates(raw, ["themes", "customThemes"]);
+  if (!candidates.length) return { themes: [], errors: ["Not a theme object."] };
+  const themes: Theme[] = [];
+  const errors: string[] = [];
+  for (const c of candidates) {
+    const { theme, error } = normalizeImportedTheme(c);
+    if (theme) themes.push(theme);
+    else if (error) errors.push(error);
+  }
+  return { themes, errors };
+}
+
 /** Serialize a theme to pretty JSON (for export / the JSON editor). */
 export function themeToJson(theme: Theme): string {
   return JSON.stringify(theme, null, 2);
@@ -550,6 +581,25 @@ export function normalizeImportedTerminalTheme(raw: unknown): {
     }
   }
   return { preset };
+}
+
+/** Batch variant of {@link normalizeImportedTerminalTheme}: normalizes one
+ *  preset, an array of presets, or a `{ terminalThemes: [...] }` wrapper.
+ *  Returns every preset that validated plus a per-item error list. */
+export function normalizeImportedTerminalThemes(raw: unknown): {
+  presets: TerminalThemePreset[];
+  errors: string[];
+} {
+  const candidates = themeCandidates(raw, ["terminalThemes", "presets", "themes"]);
+  if (!candidates.length) return { presets: [], errors: ["Not a terminal theme object."] };
+  const presets: TerminalThemePreset[] = [];
+  const errors: string[] = [];
+  for (const c of candidates) {
+    const { preset, error } = normalizeImportedTerminalTheme(c);
+    if (preset) presets.push(preset);
+    else if (error) errors.push(error);
+  }
+  return { presets, errors };
 }
 
 export function terminalThemeToJson(preset: TerminalThemePreset): string {

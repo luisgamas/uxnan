@@ -113,6 +113,12 @@ export interface AppSettings {
  *  the OS browser; `ask` prompts per link. */
 export type BrowserLinkPolicy = "internal" | "external" | "ask";
 
+/** How the browser-control MCP server is injected into agents (mirror of Rust
+ *  `McpInjection`). `workspace` writes a project-scoped config in the terminal's
+ *  cwd (default); `global` registers it in each CLI's global user config; `off`
+ *  injects nothing (wire it by hand from the copy-paste snippet). */
+export type McpInjection = "off" | "workspace" | "global";
+
 /** Integrated developer-browser preferences (mirror of Rust `BrowserSettings`). */
 export interface BrowserSettings {
   /** Master switch. Off → every link goes to the OS browser, no agent shim. */
@@ -125,6 +131,35 @@ export interface BrowserSettings {
   terminalLinks: boolean;
   /** Page opened when a fresh browser tab has no target URL. Empty = blank. */
   homepage: string;
+  /** Expose the browser-control MCP server to agents so they discover the
+   *  `browser_*` tools automatically. Default on. */
+  mcpEnabled: boolean;
+  /** How the MCP server is injected into agents. Default `workspace`. */
+  mcpInjection: McpInjection;
+  /** Agent ids (`claude`/`codex`/`gemini`/`opencode`/`pi`) to skip when injecting
+   *  the MCP config. Empty = all supported agents. */
+  mcpDisabledAgents: string[];
+}
+
+/** One agent the ADE can auto-configure for the browser MCP server (mirror of Rust
+ *  `mcpinject::AgentInfo`). */
+export interface McpAgentInfo {
+  id: string;
+  label: string;
+}
+
+/** Runtime MCP coordinates for the Settings panel (mirror of Rust `McpInfo`). */
+export interface McpInfo {
+  /** Live `/mcp` endpoint, or null until the hook server is listening. */
+  endpoint: string | null;
+  /** Local loopback token for the copy-paste snippet, or null. */
+  token: string | null;
+  /** Env var the injected configs read the token from (`UXNAN_MCP_TOKEN`). */
+  tokenEnv: string;
+  /** MCP server name agents register us under (`uxnan-browser`). */
+  serverName: string;
+  /** Supported-agent catalog. */
+  agents: McpAgentInfo[];
 }
 
 /** Release channel the updater follows (mirror of Rust `UpdateChannel`). Mapped
@@ -221,6 +256,22 @@ export interface RepoData {
    *  Optional for back-compat with state persisted before this field existed
    *  (treated as git when absent). */
   isGit?: boolean;
+  /** User-chosen project icon: an inline `data:` URL (a file/URL/GitHub avatar
+   *  rasterized to a small square PNG), or null/undefined for the default folder
+   *  glyph. The project's real folder name is never touched; `name` is display. */
+  icon?: string | null;
+  /** Per-branch custom icons, keyed by branch name (or the worktree path when
+   *  detached). Same inline `data:` URL form as `icon`. Optional for back-compat. */
+  branchIcons?: Record<string, string>;
+}
+
+/** A git remote's hosting owner/org (mirror of Rust `RemoteOwner`), used to offer
+ *  the account avatar as a project icon. `avatarUrl` is set only for hosts whose
+ *  avatar URL we can build (GitHub, GitLab). */
+export interface RemoteOwner {
+  host: string;
+  owner: string;
+  avatarUrl: string | null;
 }
 
 /** A worktree as reported by `git worktree list` (ADE- or agent-created). */
@@ -429,7 +480,15 @@ export interface HookScripts {
  *  a descriptor with no `kind` (older saved layouts) is a terminal. Diff tabs are
  *  transient and never persisted. */
 export type SavedTab =
-  | { kind?: "terminal"; title: string; cwd?: string; shell?: string; args?: string[] }
+  | {
+      kind?: "terminal";
+      title: string;
+      /** User-set tab label ("Rename tab"); overrides the derived title. */
+      customTitle?: string;
+      cwd?: string;
+      shell?: string;
+      args?: string[];
+    }
   | { kind: "file"; title: string; path: string; worktree?: string | null };
 
 export type SavedTermNode =
@@ -515,6 +574,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
     allowAgents: true,
     terminalLinks: true,
     homepage: "",
+    mcpEnabled: true,
+    mcpInjection: "workspace",
+    mcpDisabledAgents: [],
   },
   browserPanelWidth: 520,
 };

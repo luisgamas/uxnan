@@ -22,6 +22,156 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 - **`TooltipProvider` wrapper in `+layout.svelte`** — required by Bits UI v2
   tooltip primitives for context.
 
+### Added — project/branch icons, project settings & tab rename
+
+- **Project card ⋯ menu.** Each project header gains a three-dots overflow menu
+  (replacing the header right-click menu) with the project-level actions only —
+  *Project settings*, *Change icon*, *Reveal in file manager*, *Copy path*,
+  *Configure* (agents/terminals) and *Remove*. Launching terminals/agents stays on
+  the header's `+`. Right-clicking a **worktree row** still opens its full context
+  menu (cross-platform).
+- **Per-project settings dialog.** Rename a project (card label only — the folder
+  on disk keeps its real name) and change its icon, alongside read-only info
+  (location, git/folder type, remote owner, worktree count). Reachable from the ⋯
+  menu.
+- **Custom project & branch icons.** Pick from a curated built-in glyph set (with
+  an accent color), a local image file, an image URL, or — for a git project — the
+  `origin` host account avatar (GitHub/GitLab). Every image source is downloaded
+  (URLs/avatars are fetched in the Rust backend, sidestepping CORS) and rasterized
+  to a small square PNG stored **inline** in the app state, so icons persist and
+  work offline. Branch icons are set from the worktree row's right-click menu and
+  keyed per branch.
+- **Rename center-panel tabs.** A tab's context menu (all kinds) gains *Rename*:
+  terminals/diffs/commits get a free-form label; a **file tab renames the real
+  file on disk** (same folder) with a confirmation that states the file is being
+  renamed and warns when the extension changes or is dropped, re-pointing the open
+  editor without losing content. Terminal labels persist across restarts.
+- **Close all tabs.** A tab's context menu (and the terminal pane menu) gains
+  *Close all tabs*, which closes every tab in the **active** workspace (with a
+  single aggregated save/discard prompt for any unsaved files).
+
+New backend commands: `repo_update`, `repo_set_branch_icon`, `repo_remote_owner`,
+`fs_rename`, `image_fetch_data_url` (adds a `reqwest`/rustls dependency, already in
+the tree via the updater). `RepoData` gains `icon` + `branchIcons`; the persisted
+terminal tab gains an optional `customTitle`.
+
+### Added — batch theme import (multiple files + lists of themes)
+- **Theme import (Settings → Appearance, both Interface and Terminal) now imports
+  in batches.** The file picker accepts **multiple `.json` files at once**
+  (`multiple: true`), and — for both the file and the **Paste JSON** flows — each
+  document may hold a **single theme, a JSON array of themes, or a wrapper object**
+  (`{ "themes": [...] }` for interface, `{ "terminalThemes": [...] }` for
+  terminal). Previously only one theme from one file/paste could be imported.
+- New pure helpers `normalizeImportedThemes` / `normalizeImportedTerminalThemes`
+  in `src/lib/theme.ts` normalize one-or-many entries, each getting a fresh `id`
+  with missing colors backfilled from the built-in base. Malformed entries are
+  **skipped and reported** without aborting the rest of the batch; the last valid
+  entry becomes active, and a summary line ("Imported N themes", plus any skipped
+  count) is shown. Covered by 12 new Vitest cases in `src/lib/theme.test.ts`
+  (45 frontend tests total).
+- Docs: `docs/theming.md` gains an *Importing many themes at once* section; i18n
+  (EN/ES) gains `appearance.importedOne/Many`, `appearance.skippedOne/Many`, and
+  an updated `appearance.pasteDesc`.
+
+### Added — add several projects at once (parent vs. sub-folders) + reliable picker keyboard nav
+- **New two-step "Add project" flow.** The directory picker's primary
+  **"Add this folder"** now opens a second dialog (`AddProjectDialog.svelte`)
+  where you choose to add **this folder as one project** or **tick sub-folders to
+  add each as its own project** — repos are pre-checked, a select-all toggles the
+  lot, and only the ticked folders (repos **and** non-repos alike) are added.
+  When the browsed folder has no sub-folders, the primary action still adds it
+  directly (no empty dialog). Backed by a new `projects.addProjectPaths()` that
+  adds in order, skips failures, and toasts a summary (`toast.projectsAdded` /
+  `toast.projectsAddedSome`).
+- **The picker keeps its per-folder Add and gains an informational note.** Each
+  listed folder still has its own hover **Add** for one-off registration; when git
+  repos are detected among the children, a quiet banner notes it (no action of its
+  own — the choice lives in the new dialog).
+- **Keyboard navigation in the picker is fixed.** Arrow-key navigation is now
+  handled at the dialog level (not only the path field), so **↑/↓ keep working
+  regardless of which control has focus** — and the highlighted row now scrolls
+  into view, so selection no longer runs off-screen and appears to stall. Added
+  **`Ctrl/⌘+Enter`** to trigger the primary "Add this folder" action from the
+  keyboard.
+- **New `Checkbox` UI primitive** (`components/ui/checkbox`, bits-ui + lucide),
+  matching the existing shadcn-svelte components.
+- **Files:** `AddProjectDialog.svelte` (new), `components/ui/checkbox/*` (new),
+  `DirectoryPicker.svelte` (note banner, second-dialog trigger, dialog-level key
+  handling, scroll-into-view, `autocomplete="off"`), `state/projects.svelte.ts`
+  (`addProjectPaths`), EN/ES i18n (`picker.bulkHint`, `picker.hintAdd`,
+  `addProject.*`, `toast.projectsAdded*`).
+
+### Changed — "New worktree" is gated to git repos, not just the Global space
+- **"New worktree" affordances are now disabled for non-git project folders.**
+  Worktrees need a git repo, so for a registered folder that isn't one:
+  - the center empty-state **"New worktree"** button renders disabled (with a
+    tooltip explaining the folder isn't a git repo);
+  - the center tab-strip **"+"** launcher menu omits its **New worktree** option
+    (terminals / agents / browser stay available);
+  - the `newWorktree` keyboard shortcut and its empty-state hint are inert.
+  Backed by a new `projects.activeGitRepo` getter (the active repo only when
+  `isGit !== false`); `requestNewWorktree()` now checks it. The project card's
+  launcher dialog already hid the option for non-git folders.
+- **Files:** `state/projects.svelte.ts` (`activeGitRepo`, gated
+  `requestNewWorktree`), `TerminalArea.svelte` (git-gated empty-state button +
+  tab-strip menu + hint), EN/ES i18n (`terminal.worktreeNeedsGitRepo`).
+
+### Removed — redundant Cancel button in the project launcher dialog
+- **Removed the redundant Cancel button from the project launcher dialog**
+  (`LauncherDialog`) — the top-right ✕ and Esc already dismiss it, matching the
+  add-project dialogs.
+- **Files:** `LauncherDialog.svelte`.
+
+## [0.0.7-alpha.20260705] - 2026-07-05
+
+### Changed
+- **Update toast redesigned as elevated card** (`UpdateToast.svelte`): solid
+  `bg-[var(--ux-elevated)]` background with `border-border/70` border, replacing
+  the previous transparent/default card style. Added a **release notes link**
+  pointing to the version's GitHub Releases page. Per-thread activity indicator
+  preserved.
+- **i18n**: added `updates.releaseNotes` and `updates.releaseNotesTitle` keys (en
+  and es) for the new release notes link.
+- **FOR-HUMAN.md**: removed the "Updater minisign keypair" entry — the keypair is
+  already generated, configured in `tauri.conf.json`, and set as GitHub secrets.
+
+## [0.0.6-alpha.20260704] - 2026-07-04
+
+### Added — agents discover & drive the integrated browser via an MCP server
+- **The integrated developer browser is now exposed to agents as Model Context
+  Protocol tools, so they discover it automatically — no docs, no prompt.** Before,
+  an agent could only open a URL in the in-app browser if it *knew* to POST to the
+  `/browser` hook route (it had to read `docs/browser.md` first). Now the ADE runs a
+  small **browser-control MCP server** and registers it in each launched agent's own
+  MCP config, so `browser_*` tools show up in the agent's tool list like any native
+  capability.
+- **MCP server** (`src-tauri/src/mcp.rs`) — a minimal, spec-correct Streamable-HTTP
+  MCP endpoint mounted at **`/mcp`** on the existing local hook server (same
+  ephemeral `127.0.0.1` port), authorized with the same per-launch token
+  (`Authorization: Bearer <token>`, or the legacy `x-uxnan-token`). Control-only tool
+  surface: **`browser_open`**, **`browser_navigate`**, **`browser_reload`**,
+  **`browser_back`**, **`browser_forward`**, **`browser_status`**. `open`/`navigate`
+  reuse the existing link-policy path (`browser::route_url` → the frontend panel);
+  `status` reports the live open/URL/policy via a new `AppState.browser_url` tracker.
+- **Config injection** (`src-tauri/src/mcpinject.rs`) — writes each CLI's native MCP
+  config so it finds the server on startup, for **Claude Code, Codex, Gemini CLI and
+  OpenCode**. The **token is never written to a file**: every config references
+  the `UXNAN_MCP_TOKEN` env var (injected into the agent's PTY), so the secret stays
+  in the process env *and* the injected config is inert outside a uxnan-launched
+  terminal (an agent run elsewhere can't authenticate — it won't hijack the browser).
+  Merges into existing config files without clobbering (JSON via `serde_json`, Codex
+  TOML via the new `toml_edit` dep); files it creates are hidden from Git (added to
+  the repo's `info/exclude`, worktree-aware via `git2`) and removed on exit.
+- **Injection modes** (`BrowserSettings.mcpInjection`) — **`workspace`** (default:
+  a project-scoped config in the terminal's cwd, covering hand-typed and app-launched
+  agents there, cleaned on exit), **`global`** (each CLI's global user config), or
+  **`off`** (wire it by hand from the Settings copy-paste snippet). Per-agent opt-out
+  via `mcpDisabledAgents`; master switch `mcpEnabled` (default on). New `mcp_info`
+  command surfaces the endpoint + token + supported-agent catalog to Settings.
+- **Extensible** — a new agent (e.g. `agy`/Antigravity, Cursor, Grok, amp, Pi) is one
+  row in `mcpinject::AGENTS` plus a match arm in `config_path`/`write_entry`; recipe
+  in `docs/browser.md`.
+
 ## [0.0.5-alpha.20260703] - 2026-07-03
 
 ### Fixed — blank white screen on startup (0.0.4 regression)

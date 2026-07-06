@@ -34,8 +34,9 @@ npm run build                  # production SPA build must succeed
 
 **Vitest** covers the pure, framework-free logic modules (node env, no DOM):
 `shell.ts` (shell-aware agent-launch quoting), `orchestration.ts` (multi-agent
-routing + backpressure) and `updaterLogic.ts` (download-progress fraction +
-install-policy decision) — 25 tests in `src/lib/*.test.ts`, config in
+routing + backpressure), `updaterLogic.ts` (download-progress fraction +
+install-policy decision), `diffParse.ts` (unified-diff parsing) and `theme.ts`
+(batch theme-import normalization) — 45 tests in `src/lib/*.test.ts`, config in
 `vitest.config.ts`. **Component tests** (Vitest + jsdom) and **E2E**
 (Playwright/WebdriverIO + tauri-driver) are still to come — see
 [`../FOR-DEV.md`](../FOR-DEV.md).

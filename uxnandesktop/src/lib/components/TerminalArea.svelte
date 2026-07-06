@@ -8,8 +8,10 @@
   import {
     terminals,
     computeAreaLayout,
+    tabDisplayTitle,
     type AreaDivider,
     type AreaSplit,
+    type GroupTab,
     type Rect,
     type SplitDir,
   } from "$lib/state/terminals.svelte";
@@ -31,6 +33,7 @@
   import FileDiffIcon from "@lucide/svelte/icons/file-diff";
   import GitCommitIcon from "@lucide/svelte/icons/git-commit-horizontal";
   import LauncherMenu from "./LauncherMenu.svelte";
+  import TabRenameDialog from "./TabRenameDialog.svelte";
 
   /** Default profile's shell/args, for region-level + and splits. A blank
    *  command falls back to the backend's platform default shell. */
@@ -53,14 +56,18 @@
   // from the shared store so the empty-state "New worktree" button, the global
   // shortcut and the page-mounted dialog all agree on the same repo + open state.
   const activeRepo = $derived(projects.activeRepo);
+  // Whether the active workspace is a real git repo — worktrees need git, so the
+  // "new worktree" affordances are disabled for a non-git project folder (and the
+  // Global space), just like they already are outside any repo.
+  const activeRepoIsGit = $derived(!!activeRepo && activeRepo.isGit !== false);
 
   // Keyboard hints listed under the empty-state buttons (informative only). "New
-  // worktree" appears only inside a repo; filtered to bound actions so a blank /
-  // disabled chord never renders an empty row.
+  // worktree" appears only inside a git repo; filtered to bound actions so a
+  // blank / disabled chord never renders an empty row.
   const emptyHints = $derived(
     [
       { label: i18n.t("shortcuts.newTerminal"), chord: resolveBinding("newTerminal") },
-      activeRepo
+      activeRepoIsGit
         ? { label: i18n.t("shortcuts.newWorktree"), chord: resolveBinding("newWorktree") }
         : null,
       { label: i18n.t("shortcuts.addProject"), chord: resolveBinding("addProject") },
@@ -202,9 +209,18 @@
     ];
   }
 
-  function terminalMenu(e: MouseEvent, groupId: string, tabId: string) {
-    terminals.setActiveTab(groupId, tabId);
-    const ctrl = terminals.controller(tabId);
+  // Shared items available on every tab (and the terminal pane): rename the tab,
+  // and close every tab in the active workspace.
+  function renameItem(tab: GroupTab): MenuItem {
+    return { label: i18n.t("tab.rename"), action: () => openRename(tab) };
+  }
+  function closeAllItem(): MenuItem {
+    return { label: i18n.t("tab.closeAll"), action: () => void terminals.closeAllTabs() };
+  }
+
+  function terminalMenu(e: MouseEvent, groupId: string, tab: GroupTab) {
+    terminals.setActiveTab(groupId, tab.id);
+    const ctrl = terminals.controller(tab.id);
     openMenu(e, [
       {
         label: i18n.t("terminal.copy"),
@@ -214,13 +230,40 @@
       },
       { label: i18n.t("terminal.paste"), action: () => void ctrl?.paste(), chord: "Mod+V" },
       { separator: true },
+      renameItem(tab),
+      { separator: true },
       ...splitItems(groupId),
       { separator: true },
-      ...regionItems(groupId, tabId),
+      ...regionItems(groupId, tab.id),
+      closeAllItem(),
     ]);
   }
-  function tabMenu(e: MouseEvent, groupId: string, tabId: string) {
-    openMenu(e, [...splitItems(groupId), { separator: true }, ...regionItems(groupId, tabId)]);
+
+  // The tab-chip menu, for every tab kind: rename, split (terminals only), close,
+  // and close-all.
+  function tabMenu(e: MouseEvent, groupId: string, tab: GroupTab) {
+    terminals.setActiveTab(groupId, tab.id);
+    const items: MenuItem[] = [renameItem(tab), { separator: true }];
+    if (tab.kind === "terminal") items.push(...splitItems(groupId), { separator: true });
+    items.push(
+      {
+        label: i18n.t("terminal.closeTab"),
+        action: () => void terminals.closeTab(groupId, tab.id),
+        danger: true,
+        chord: resolveBinding("closeCenter"),
+      },
+      closeAllItem(),
+    );
+    openMenu(e, items);
+  }
+
+  // --- Tab rename ----------------------------------------------------------
+  // A file tab renames the real file on disk (with confirmation + an
+  // extension-change warning); every other kind is a free-form label.
+  let renameTarget = $state<GroupTab | null>(null);
+  function openRename(tab: GroupTab) {
+    menu = null;
+    renameTarget = tab;
   }
 
   // --- Tab drag (reorder within a region + move across regions) ------------
@@ -392,25 +435,23 @@
                         data-group-id={g.group.id}
                         data-tab-index={ti}
                         onpointerdown={(e) =>
-                          onChipPointerDown(e, g.group.id, t.id, t.kind === "terminal" ? (t.agentName ?? t.title) : t.title)}
+                          onChipPointerDown(e, g.group.id, t.id, tabDisplayTitle(t))}
                         onpointermove={onChipPointerMove}
                         onpointerup={onChipPointerUp}
-                        oncontextmenu={t.kind === "terminal"
-                          ? (e) => tabMenu(e, g.group.id, t.id)
-                          : undefined}
+                        oncontextmenu={(e) => tabMenu(e, g.group.id, t)}
                       >
                           {#if t.kind === "terminal"}
                           {@const display = resolveAgentDisplay(t)}
                           {#if display}
                             <AgentStatusDot status={display.status} stale={display.stale} />
                           {/if}
-                          <TooltipSimple title={t.agentName ?? t.title}>
+                          <TooltipSimple title={tabDisplayTitle(t)}>
                             {#snippet children(tp)}
                               <span
                                 {...tp}
                                 class="max-w-[120px] truncate {t.exited ? 'line-through' : ''}"
                               >
-                                {t.agentName ?? t.title}
+                                {tabDisplayTitle(t)}
                               </span>
                             {/snippet}
                           </TooltipSimple>
@@ -422,7 +463,7 @@
                                 {...tp}
                                 class="max-w-[120px] truncate"
                               >
-                                {t.title}
+                                {tabDisplayTitle(t)}
                               </span>
                             {/snippet}
                           </TooltipSimple>
@@ -444,7 +485,7 @@
                                 {...tp}
                                 class="max-w-[120px] truncate"
                               >
-                                {t.title}
+                                {tabDisplayTitle(t)}
                               </span>
                             {/snippet}
                           </TooltipSimple>
@@ -456,7 +497,7 @@
                                 {...tp}
                                 class="max-w-[120px] truncate font-mono"
                               >
-                                {t.title}
+                                {tabDisplayTitle(t)}
                               </span>
                             {/snippet}
                           </TooltipSimple>
@@ -495,7 +536,9 @@
                       <LauncherMenu
                         repo={activeRepo}
                         target={{ path: wsKey, branch: null }}
-                        onNewWorktree={() => (projects.newWorktreeOpen = true)}
+                        onNewWorktree={activeRepoIsGit
+                          ? () => (projects.newWorktreeOpen = true)
+                          : undefined}
                         align="start"
                         triggerClass="ml-0.5 size-6"
                         title={i18n.t("launcher.openHere")}
@@ -533,7 +576,7 @@
                         data-pty-id={t.kind === "terminal" ? t.id : undefined}
                         onpointerdown={() => terminals.setActiveTab(g.group.id, t.id)}
                         oncontextmenu={t.kind === "terminal"
-                          ? (e) => terminalMenu(e, g.group.id, t.id)
+                          ? (e) => terminalMenu(e, g.group.id, t)
                           : undefined}
                       >
                         {#if t.kind === "terminal"}
@@ -641,7 +684,7 @@
               <PlusIcon class={icon.button} />
               {i18n.t("terminal.newTerminal")}
             </button>
-            {#if activeRepo}
+            {#if activeRepoIsGit}
               <button
                 class={cn(
                   "inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 font-medium text-foreground hover:bg-accent hover:text-accent-foreground",
@@ -653,7 +696,7 @@
                 {i18n.t("newWorktree.title")}
               </button>
             {:else}
-              <TooltipSimple title={i18n.t("terminal.worktreeNeedsRepo")}>
+              <TooltipSimple title={activeRepo ? i18n.t("terminal.worktreeNeedsGitRepo") : i18n.t("terminal.worktreeNeedsRepo")}>
                 {#snippet children(tp)}
                   <button
                     {...tp}
@@ -753,4 +796,10 @@
       {/if}
     {/each}
   </div>
+{/if}
+
+<!-- Tab rename (label for terminals/diffs, on-disk rename for files). Mounted
+     only while a tab is being renamed so the field seeds cleanly each time. -->
+{#if renameTarget}
+  <TabRenameDialog tab={renameTarget} onclose={() => (renameTarget = null)} />
 {/if}

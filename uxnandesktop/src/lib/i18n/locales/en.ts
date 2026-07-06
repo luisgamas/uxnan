@@ -15,6 +15,8 @@ export const en = {
   "toast.worktreeRemovedSquash": "Worktree removed · squash-merged branch cleaned up",
   "toast.aiCommitGenerated": "Commit message drafted",
   "toast.projectRemoved": "Project removed",
+  "toast.projectsAdded": "Added {added} projects",
+  "toast.projectsAddedSome": "Added {added} projects · {failed} skipped",
   "toast.agent": "Agent",
   "toast.agentDone": "{name} finished",
   "toast.agentBlocked": "{name} is blocked",
@@ -25,6 +27,8 @@ export const en = {
   "common.remove": "Remove",
   "common.add": "Add",
   "common.create": "Create",
+  "common.save": "Save",
+  "common.rename": "Rename",
   "common.new": "New",
   "common.more": "More",
   "common.close": "Close",
@@ -37,6 +41,39 @@ export const en = {
   "common.creating": "Creating…",
   "common.loading": "Loading…",
   "common.search": "Search…",
+
+  // Icon picker (project & branch icons)
+  "iconPicker.desc":
+    "Pick a built-in glyph or a custom image. Images are stored inline, so they keep working offline.",
+  "iconPicker.preview": "Preview",
+  "iconPicker.sourceBuiltin": "Built-in glyph",
+  "iconPicker.sourceImage": "Custom image",
+  "iconPicker.sourceDefault": "Default icon",
+  "iconPicker.builtin": "Built-in",
+  "iconPicker.custom": "Custom image",
+  "iconPicker.fromFile": "From file…",
+  "iconPicker.fromAvatar": "Use account avatar",
+  "iconPicker.urlPlaceholder": "Image URL (https://…)",
+  "iconPicker.fetch": "Fetch",
+  "iconPicker.reset": "Reset to default",
+  "iconPicker.fileError": "Couldn't read that image.",
+  "iconPicker.urlError": "Couldn't fetch that image.",
+  "iconPicker.color.default": "No color",
+  "iconPicker.color.custom": "Custom color",
+  "iconPicker.color.slate": "Slate",
+  "iconPicker.color.red": "Red",
+  "iconPicker.color.orange": "Orange",
+  "iconPicker.color.amber": "Amber",
+  "iconPicker.color.yellow": "Yellow",
+  "iconPicker.color.lime": "Lime",
+  "iconPicker.color.emerald": "Emerald",
+  "iconPicker.color.teal": "Teal",
+  "iconPicker.color.sky": "Sky",
+  "iconPicker.color.blue": "Blue",
+  "iconPicker.color.indigo": "Indigo",
+  "iconPicker.color.violet": "Violet",
+  "iconPicker.color.fuchsia": "Fuchsia",
+  "iconPicker.color.rose": "Rose",
 
   // Left sidebar
   "sidebar.search": "Search a project or worktree…",
@@ -67,6 +104,24 @@ export const en = {
   "project.worktreeOther": "{n} worktrees",
   "project.dirtyTooltip": "{n} uncommitted change(s) on main",
   "project.runningTooltip": "{n} terminal(s) running",
+  "project.menu": "Project options",
+  "project.settings": "Project settings…",
+  "project.changeIcon": "Change icon…",
+
+  // Project settings dialog
+  "projectSettings.title": "Project settings",
+  "projectSettings.desc": "Customize how this project appears — its folder on disk is untouched.",
+  "projectSettings.name": "Display name",
+  "projectSettings.nameDesc": "Shown on the card only; the folder on disk keeps its real name.",
+  "projectSettings.namePlaceholder": "Project name",
+  "projectSettings.changeIcon": "Change icon",
+  "projectSettings.iconTitle": "Project icon",
+  "projectSettings.location": "Location",
+  "projectSettings.type": "Type",
+  "projectSettings.typeGit": "Git repository",
+  "projectSettings.typeFolder": "Folder",
+  "projectSettings.remote": "Remote",
+  "projectSettings.worktrees": "Worktrees",
 
   // Worktree row
   "worktree.openTerminal": "Open a terminal here",
@@ -75,6 +130,8 @@ export const en = {
   "worktree.removeDesc":
     "Removes the worktree at {path}. Its branch “{branch}” is safe-deleted only if fully merged.",
   "worktree.forceRemove": "Force remove",
+  "worktree.changeIcon": "Change branch icon…",
+  "worktree.branchIconTitle": "Branch icon",
   "worktree.detached": "(detached)",
   "worktree.dirtyTooltip": "{n} uncommitted change(s)",
   "worktree.aheadTooltip": "ahead of upstream",
@@ -141,6 +198,8 @@ export const en = {
     "a name with no relation to, or derivation from, any existing product.",
   "terminal.worktreeNeedsRepo":
     "Pick a project or worktree in the left panel to enable this.",
+  "terminal.worktreeNeedsGitRepo":
+    "This project isn’t a git repository, so it has no worktrees.",
   "terminal.newInRegion": "New terminal in this region",
   "terminal.copy": "Copy",
   "terminal.paste": "Paste",
@@ -148,6 +207,20 @@ export const en = {
   "terminal.splitDown": "Split down",
   "terminal.closeTerminal": "Close terminal",
   "terminal.closeTab": "Close tab",
+
+  // Tab actions (rename / close all)
+  "tab.rename": "Rename…",
+  "tab.closeAll": "Close all tabs",
+  "tab.renameTabTitle": "Rename tab",
+  "tab.renameFileTitle": "Rename file",
+  "tab.namePlaceholder": "Tab name",
+  "tab.fileNamePlaceholder": "File name",
+  "tab.fileRenameNote": "This renames the file on disk (git will see it as a rename).",
+  "tab.extChangeWarning":
+    "You're changing the extension from {old} to {new} — this can change how the file is treated.",
+  "tab.extRemoveWarning":
+    "You're removing the file extension — this can change how the file is treated.",
+  "tab.renameError": "Couldn't rename the file.",
 
   // Directory picker
   "picker.title": "Add project",
@@ -159,6 +232,19 @@ export const en = {
   "picker.open": "Open {name}",
   "picker.addFolder": "Add this folder",
   "picker.repoBadge": "repo",
+  "picker.bulkHint":
+    "{repos} git repos detected here — “Add this folder” lets you add them as separate projects.",
+  "picker.hintAdd": "Add folder",
+
+  // Add-project selection dialog (parent vs. sub-folders)
+  "addProject.title": "Add project",
+  "addProject.desc": "How do you want to add “{folder}”?",
+  "addProject.selectAll": "Select all sub-folders",
+  "addProject.subfolders": "Sub-folders ({count})",
+  "addProject.selectedCount": "{count} selected",
+  "addProject.noSubfolders": "This folder has no sub-folders.",
+  "addProject.addParent": "Add this folder",
+  "addProject.addSelected": "Add {count} separately",
 
   // Settings
   "settings.title": "Settings",
@@ -408,7 +494,11 @@ export const en = {
   "appearance.copyJson": "Copy JSON",
   "appearance.invalidJson": "Invalid theme JSON.",
   "appearance.pasteTitle": "Import theme from JSON",
-  "appearance.pasteDesc": "Paste a theme's JSON below.",
+  "appearance.pasteDesc": "Paste a single theme's JSON below, or a list of themes (a JSON array or a { \"themes\": [...] } object).",
+  "appearance.importedOne": "Imported {n} theme.",
+  "appearance.importedMany": "Imported {n} themes.",
+  "appearance.skippedOne": "{n} entry was skipped (invalid).",
+  "appearance.skippedMany": "{n} entries were skipped (invalid).",
   "appearance.editTheme": "Edit theme",
   "appearance.visual": "Visual",
   "appearance.name": "Name",
@@ -642,6 +732,8 @@ export const en = {
   "updates.installNow": "Install now",
   "updates.installWhenIdle": "Install when idle",
   "updates.dismiss": "Dismiss",
+  "updates.releaseNotes": "Release notes",
+  "updates.releaseNotesTitle": "See what's new in {version}",
   "updates.agentsBusyWarning": "An agent is running — installing will stop it",
   "updates.willInstallWhenIdle": "Will install once all agents are idle",
   "updates.upToDate": "You're on the latest version",
@@ -706,6 +798,29 @@ export const en = {
   "browser.addressPlaceholder": "Enter a URL",
   "browser.unavailable": "The integrated browser isn't available here.",
   "browser.askPrompt": "Open {url} in the integrated browser? (Cancel opens your system browser.)",
+  "browser.mcpHeading": "Agent browser MCP",
+  "browser.mcpEnabled": "Let agents drive the browser",
+  "browser.mcpEnabledDesc":
+    "Expose the browser as MCP tools so launched agents discover and drive it automatically — no setup, no docs.",
+  "browser.mcpInjection": "Setup mode",
+  "browser.mcpInjectionDesc":
+    "How agents receive the tools. The token stays in the terminal's environment — never written to a file.",
+  "browser.mcpModeWorkspace": "Per project (recommended)",
+  "browser.mcpModeWorkspaceDesc":
+    "Write a project-scoped config in the terminal's folder; covers hand-typed and app-launched agents, and is removed on exit.",
+  "browser.mcpModeGlobal": "Global",
+  "browser.mcpModeGlobalDesc":
+    "Register the server in each agent's global config, so it's available in every project (larger footprint).",
+  "browser.mcpModeOff": "Manual only",
+  "browser.mcpModeOffDesc": "Don't inject anything — wire an agent by hand from the snippet below.",
+  "browser.mcpAgents": "Agents",
+  "browser.mcpAgentsDesc": "Which agents get the browser tools set up automatically.",
+  "browser.mcpSnippet": "Manual config",
+  "browser.mcpSnippetDesc":
+    "Copy a ready-to-paste MCP server config to wire an agent yourself (e.g. one not listed above).",
+  "browser.mcpCopy": "Copy",
+  "browser.mcpCopied": "Copied",
+  "browser.mcpWaiting": "Available once the app's local server is running.",
 } as const;
 
 /** Union of every message key (drives `t()` and the locale type). */

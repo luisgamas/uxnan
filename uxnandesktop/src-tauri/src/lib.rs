@@ -18,6 +18,8 @@ mod fswatch;
 mod git;
 mod gitfast;
 mod hooks;
+mod mcp;
+mod mcpinject;
 mod model;
 mod persistence;
 mod power;
@@ -206,6 +208,7 @@ pub fn run() {
             commands::get_app_state,
             commands::update_settings,
             commands::ping,
+            commands::mcp_info,
             commands::pty_create,
             commands::pty_write,
             commands::pty_resize,
@@ -214,6 +217,9 @@ pub fn run() {
             commands::repo_add,
             commands::repo_remove,
             commands::repo_list,
+            commands::repo_update,
+            commands::repo_set_branch_icon,
+            commands::repo_remote_owner,
             commands::branch_list,
             commands::worktree_create,
             commands::worktree_remove,
@@ -223,6 +229,8 @@ pub fn run() {
             commands::fs_list_dir,
             commands::fs_read_file,
             commands::fs_write_file,
+            commands::fs_rename,
+            commands::image_fetch_data_url,
             commands::fs_set_watch,
             commands::reveal_path,
             fonts::list_system_fonts,
@@ -287,6 +295,10 @@ pub fn run() {
                     // systemd-inhibit on macOS/Linux) so none is left running.
                     state.power.set(false);
                 }
+                // Remove any MCP config files we injected into workspaces / global
+                // config so nothing stale is left behind (best-effort; see
+                // `mcpinject.rs`).
+                crate::mcpinject::cleanup(app_handle);
             }
         });
 }

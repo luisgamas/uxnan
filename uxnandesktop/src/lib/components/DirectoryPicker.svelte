@@ -8,11 +8,14 @@
   import { icon, text } from "$lib/design";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
-  import DialogHints from "./DialogHints.svelte";
+  import { isMac } from "$lib/keybindings";
+  import Kbd from "./Kbd.svelte";
+  import AddProjectDialog from "./AddProjectDialog.svelte";
   import type { DirListing } from "$lib/types";
   import FolderIcon from "@lucide/svelte/icons/folder";
   import FolderGitIcon from "@lucide/svelte/icons/folder-git-2";
   import CornerLeftUpIcon from "@lucide/svelte/icons/corner-left-up";
+  import LayersIcon from "@lucide/svelte/icons/layers";
 
   let { open = $bindable(false) }: { open?: boolean } = $props();
 
@@ -23,6 +26,20 @@
   let busy = $state(false);
   /** Highlighted sub-folder index, for keyboard navigation. */
   let activeIdx = $state(0);
+  /** The scroll region, so the active row can be kept in view. */
+  let listEl = $state<HTMLDivElement | null>(null);
+  /** Whether the add-project selection dialog (parent vs. sub-folders) is open. */
+  let selectOpen = $state(false);
+
+  /** Child folders that are git repos — when any exist, we surface a note that
+   *  this folder likely holds several projects (they can be added separately). */
+  const repoChildCount = $derived(
+    listing?.entries.filter((e) => e.isRepo).length ?? 0,
+  );
+  const hasRepoChildren = $derived(repoChildCount > 0);
+
+  const baseName = (p: string) =>
+    p.replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? p;
 
   const msg = (e: unknown) =>
     e && typeof e === "object" && "message" in e
@@ -49,10 +66,29 @@
     if (activeIdx >= n) activeIdx = Math.max(0, n - 1);
   });
 
-  /** Arrow/Enter navigation from the path field: ↑/↓ move the highlight, Enter
-   *  opens the highlighted folder (or goes to a typed path when it was edited). */
-  function onNavKey(e: KeyboardEvent) {
+  // Keep the highlighted row scrolled into view as the selection moves by
+  // keyboard, so navigation never runs "off screen" and appears to stall.
+  $effect(() => {
+    void activeIdx;
+    listEl
+      ?.querySelector('[data-active="true"]')
+      ?.scrollIntoView({ block: "nearest" });
+  });
+
+  /** Keyboard handling for the whole dialog (attached to the content, so arrows
+   *  keep working no matter which control holds focus — not just the path field):
+   *  ↑/↓ move the highlight, Enter opens the highlighted folder (or a typed path),
+   *  Mod+Enter runs the primary "add this folder" action. */
+  function onDialogKey(e: KeyboardEvent) {
+    if (busy || loading) return;
     const entries = listing?.entries ?? [];
+    const mod = e.metaKey || e.ctrlKey;
+
+    if (mod && e.key === "Enter") {
+      e.preventDefault();
+      addFolder();
+      return;
+    }
     if (e.key === "ArrowDown") {
       e.preventDefault();
       activeIdx = Math.min(entries.length - 1, activeIdx + 1);
@@ -60,6 +96,10 @@
       e.preventDefault();
       activeIdx = Math.max(0, activeIdx - 1);
     } else if (e.key === "Enter") {
+      // Enter submits from the path field (typed path or highlighted folder);
+      // from a button it stays a plain click, so don't hijack it there.
+      const el = e.target as HTMLElement | null;
+      if (el?.tagName === "BUTTON") return;
       e.preventDefault();
       const typed = pathInput.trim();
       if (typed && typed !== listing?.path) void go(typed);
@@ -78,6 +118,7 @@
     }
   });
 
+  /** Add a single folder as a project (the per-row "Add" action). */
   async function add(path: string) {
     busy = true;
     const ok = await projects.addProjectPath(path);
@@ -85,13 +126,22 @@
     if (ok) open = false;
     else error = projects.error;
   }
+
+  /** Primary action ("Add this folder"): with sub-folders present, open the
+   *  selection dialog so the user can add this folder OR pick sub-folders to add
+   *  separately; with none, just add the folder directly. */
+  function addFolder() {
+    if (!listing) return;
+    if (listing.entries.length === 0) void add(listing.path);
+    else selectOpen = true;
+  }
 </script>
 
 <Dialog.Root bind:open>
   <!-- Same shell as the quick-switch palette: overflow-hidden + p-0 so the
        rounded card clips every section (the scroll list and its scrollbar
        included) and nothing bleeds past the frame; each section owns its px-4. -->
-  <Dialog.Content class="gap-0 overflow-hidden p-0 sm:max-w-[560px]">
+  <Dialog.Content class="gap-0 overflow-hidden p-0 sm:max-w-[560px]" onkeydown={onDialogKey}>
     <!-- Header -->
     <div class="flex flex-col gap-1 border-b border-border/60 px-4 pb-3 pt-4 pr-10">
       <Dialog.Title class="text-[15px] font-semibold leading-none">{i18n.t("picker.title")}</Dialog.Title>
@@ -124,14 +174,26 @@
           placeholder={i18n.t("picker.pathPlaceholder")}
           bind:value={pathInput}
           spellcheck={false}
-          onkeydown={onNavKey}
+          autocomplete="off"
         />
       </div>
     </div>
 
+    <!-- Note (informational only): when child git repos are detected here, hint
+         that "Add this folder" lets you add them separately. No action of its
+         own — the choice happens in the add-project dialog. -->
+    {#if hasRepoChildren}
+      <div class="flex items-center gap-3 border-b border-border/60 bg-primary/5 px-4 py-2.5">
+        <LayersIcon class={cn(icon.button, "shrink-0 text-primary")} />
+        <p class="min-w-0 flex-1 text-xs text-muted-foreground">
+          {i18n.t("picker.bulkHint", { repos: String(repoChildCount) })}
+        </p>
+      </div>
+    {/if}
+
     <!-- Sub-folders scroll region. Each row is a folder glyph + name; repos are
          flagged with a git-folder icon and a quiet primary tag, plus a hover Add. -->
-    <div class="uxnan-scroll h-64 overflow-y-auto p-2">
+    <div bind:this={listEl} class="uxnan-scroll h-64 overflow-y-auto p-2">
       {#if loading}
         <div class={cn("py-10 text-center", text.meta)}>{i18n.t("common.loading")}</div>
       {:else if listing && listing.entries.length === 0}
@@ -142,6 +204,7 @@
       {:else if listing}
         {#each listing.entries as entry, i (entry.path)}
           <div
+            data-active={i === activeIdx}
             class={cn(
               "group flex h-9 items-center gap-2.5 rounded-md px-2",
               i === activeIdx ? "bg-accent" : "hover:bg-accent/50",
@@ -192,17 +255,44 @@
       </div>
     {/if}
 
-    <!-- Footer: hints + cancel / add, on a quiet band with a top hairline. -->
+    <!-- Footer: hints + cancel / add, on a quiet band with a top hairline. The
+         hint group shrinks and clips first (min-w-0 + overflow-hidden) so it can
+         never force the dialog wider than its max width; the actions stay put. -->
     <div
-      class="flex items-center justify-between gap-2 border-t border-border/60 bg-muted/30 px-4 py-2.5"
+      class="flex min-w-0 items-center justify-between gap-3 border-t border-border/60 bg-muted/30 px-4 py-2.5"
     >
-      <DialogHints class="hidden sm:flex" />
-      <div class="flex items-center gap-2">
-        <Button variant="ghost" size="sm" onclick={() => (open = false)}>{i18n.t("common.cancel")}</Button>
-        <Button size="sm" disabled={!listing || busy} onclick={() => listing && add(listing.path)}>
+      <div
+        class="hidden min-w-0 flex-1 items-center gap-4 overflow-hidden text-[11px] text-muted-foreground sm:flex"
+      >
+        <span class="flex shrink-0 items-center gap-1.5">
+          <span class="flex items-center gap-1"><Kbd>↑</Kbd><Kbd>↓</Kbd></span>
+          {i18n.t("palette.hintNavigate")}
+        </span>
+        <span class="flex shrink-0 items-center gap-1.5">
+          <span class="flex items-center gap-1"><Kbd>{isMac ? "⌘" : "Ctrl"}</Kbd><Kbd>↵</Kbd></span>
+          {i18n.t("picker.hintAdd")}
+        </span>
+        <span class="flex shrink-0 items-center gap-1.5">
+          <Kbd>Esc</Kbd>{i18n.t("palette.hintExit")}
+        </span>
+      </div>
+      <div class="flex shrink-0 items-center gap-2">
+        <Button size="sm" disabled={!listing || busy} onclick={addFolder}>
           {busy ? i18n.t("common.adding") : i18n.t("picker.addFolder")}
         </Button>
       </div>
     </div>
   </Dialog.Content>
 </Dialog.Root>
+
+<!-- Step 2: choose to add this folder as one project, or tick sub-folders to add
+     each separately. On success it closes the picker too. -->
+{#if listing}
+  <AddProjectDialog
+    bind:open={selectOpen}
+    folderPath={listing.path}
+    folderName={baseName(listing.path)}
+    entries={listing.entries}
+    onadded={() => (open = false)}
+  />
+{/if}

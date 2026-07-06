@@ -156,6 +156,8 @@ mod tests {
             path: "/tmp/demo".into(),
             worktrees: vec![],
             is_git: true,
+            icon: None,
+            branch_icons: std::collections::HashMap::new(),
         });
         mgr.save(&data).unwrap();
 

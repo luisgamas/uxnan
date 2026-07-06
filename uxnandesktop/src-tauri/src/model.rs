@@ -60,6 +60,16 @@ pub struct RepoData {
     /// repo back then was a git repo).
     #[serde(default = "default_true")]
     pub is_git: bool,
+    /// User-chosen project icon: an inline `data:` URL (a file/URL/GitHub avatar
+    /// rasterized to a small square PNG). `None` → the default folder glyph. The
+    /// project's real folder name is never touched; `name` is display-only.
+    #[serde(default)]
+    pub icon: Option<String>,
+    /// Per-branch custom icons, keyed by branch name (or the worktree path when
+    /// detached). Same inline `data:` URL form as [`RepoData::icon`]. Absent
+    /// branches fall back to the default branch glyph.
+    #[serde(default)]
+    pub branch_icons: std::collections::HashMap<String, String>,
 }
 
 /// An independent git worktree — the ADE's fundamental unit of isolation.
@@ -388,6 +398,23 @@ pub enum BrowserLinkPolicy {
     Ask,
 }
 
+/// How the browser-control MCP server (spec `02d` §1.6) is made discoverable to the
+/// CLI agents the ADE launches (see `mcpinject.rs`). `Workspace` is the default: it
+/// writes a project-scoped MCP config into the terminal's working directory so both
+/// app-launched and hand-typed agents there get the `browser_*` tools, and removes
+/// what it created on exit. `Global` registers the server in each CLI's global user
+/// config (works in every project; covers CLIs without a project config). `Off`
+/// injects nothing — the user can wire it manually from the copy-paste snippet in
+/// Settings → Browser.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum McpInjection {
+    Off,
+    #[default]
+    Workspace,
+    Global,
+}
+
 /// Integrated **developer** browser (Settings → Browser). A lightweight in-app
 /// webview tab for previewing/debugging the systems agents build and opening the
 /// links agents produce — deliberately not a general-purpose browser. The webview
@@ -414,6 +441,20 @@ pub struct BrowserSettings {
     /// Page opened when a fresh browser tab has no target URL. Empty = blank tab.
     #[serde(default)]
     pub homepage: String,
+    /// Expose the browser-control MCP server (spec `02d` §1.6) to agents, so they
+    /// discover the `browser_*` tools automatically. When off, no MCP config is
+    /// injected (the `/mcp` endpoint still exists for manual wiring). Default on.
+    #[serde(default = "default_true")]
+    pub mcp_enabled: bool,
+    /// How the MCP server is injected into agents (see [`McpInjection`]). Default
+    /// `workspace`.
+    #[serde(default)]
+    pub mcp_injection: McpInjection,
+    /// Agent ids (`claude`, `codex`, `gemini`, `opencode`, `pi`) to skip when
+    /// injecting the MCP config. Empty = every supported agent gets it. Default
+    /// empty.
+    #[serde(default)]
+    pub mcp_disabled_agents: Vec<String>,
 }
 
 impl Default for BrowserSettings {
@@ -424,6 +465,9 @@ impl Default for BrowserSettings {
             allow_agents: true,
             terminal_links: true,
             homepage: String::new(),
+            mcp_enabled: true,
+            mcp_injection: McpInjection::default(),
+            mcp_disabled_agents: Vec::new(),
         }
     }
 }

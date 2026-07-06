@@ -20,6 +20,8 @@
   import AgentSpace from "./AgentSpace.svelte";
   import AgentStatusDot from "./AgentStatusDot.svelte";
   import RowActionsMenu from "./RowActionsMenu.svelte";
+  import EntityIcon from "./EntityIcon.svelte";
+  import IconPicker from "./IconPicker.svelte";
   import GitBranchIcon from "@lucide/svelte/icons/git-branch";
 
   let {
@@ -58,6 +60,12 @@
     if (terminals.terminalCount(row.path) === 0) projects.openTerminalAt(row.path);
   }
 
+  // The stable per-branch icon key (branch name, or path when detached) + the
+  // custom icon stored for it (undefined → the default branch glyph).
+  const iconKey = $derived(projects.branchIconKey(row));
+  const branchIcon = $derived(projects.branchIcon(row.repoId, iconKey));
+
+  let iconPickerOpen = $state(false);
   let removeOpen = $state(false);
   let forceNeeded = $state(false);
   let removeError = $state<string | null>(null);
@@ -79,6 +87,10 @@
     }
   }
 </script>
+
+{#snippet branchGlyph()}
+  <GitBranchIcon class={cn(icon.decorative, "text-muted-foreground")} />
+{/snippet}
 
 <!-- The whole worktree block — its row AND its agents — sits inside one surface:
      when the worktree is selected the selection fill/ring wraps everything, so the
@@ -105,7 +117,7 @@
                 {#if agentStatus}
                   <AgentStatusDot status={agentStatus.status} stale={agentStatus.stale} />
                 {:else}
-                  <GitBranchIcon class={cn(icon.decorative, "text-muted-foreground")} />
+                  <EntityIcon value={branchIcon} class={cn(icon.decorative, "rounded-[3px]")} fallback={branchGlyph} />
                 {/if}
               </span>
               <div class="min-w-0 flex-1">
@@ -157,6 +169,7 @@
       path={row.path}
       removeLabel={row.isMain ? i18n.t("project.removeProject") : i18n.t("worktree.removeWorktree")}
       onRemove={row.isMain ? () => onRemoveProject?.() : openRemove}
+      onChangeIcon={() => (iconPickerOpen = true)}
     />
   </ContextMenu.Root>
 
@@ -199,3 +212,11 @@
     </Dialog.Footer>
   </Dialog.Content>
 </Dialog.Root>
+
+<IconPicker
+  bind:open={iconPickerOpen}
+  title={i18n.t("worktree.branchIconTitle")}
+  current={branchIcon}
+  fallback={branchGlyph}
+  onselect={(value) => void projects.setBranchIcon(row.repoId, iconKey, value)}
+/>
