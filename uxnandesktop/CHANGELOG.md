@@ -26,6 +26,57 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   add-project dialogs.
 - **Files:** `LauncherDialog.svelte`.
 
+## [0.0.7-alpha.20260705] - 2026-07-05
+
+### Changed
+- **Update toast redesigned as elevated card** (`UpdateToast.svelte`): solid
+  `bg-[var(--ux-elevated)]` background with `border-border/70` border, replacing
+  the previous transparent/default card style. Added a **release notes link**
+  pointing to the version's GitHub Releases page. Per-thread activity indicator
+  preserved.
+- **i18n**: added `updates.releaseNotes` and `updates.releaseNotesTitle` keys (en
+  and es) for the new release notes link.
+- **FOR-HUMAN.md**: removed the "Updater minisign keypair" entry — the keypair is
+  already generated, configured in `tauri.conf.json`, and set as GitHub secrets.
+
+## [0.0.6-alpha.20260704] - 2026-07-04
+
+### Added — agents discover & drive the integrated browser via an MCP server
+- **The integrated developer browser is now exposed to agents as Model Context
+  Protocol tools, so they discover it automatically — no docs, no prompt.** Before,
+  an agent could only open a URL in the in-app browser if it *knew* to POST to the
+  `/browser` hook route (it had to read `docs/browser.md` first). Now the ADE runs a
+  small **browser-control MCP server** and registers it in each launched agent's own
+  MCP config, so `browser_*` tools show up in the agent's tool list like any native
+  capability.
+- **MCP server** (`src-tauri/src/mcp.rs`) — a minimal, spec-correct Streamable-HTTP
+  MCP endpoint mounted at **`/mcp`** on the existing local hook server (same
+  ephemeral `127.0.0.1` port), authorized with the same per-launch token
+  (`Authorization: Bearer <token>`, or the legacy `x-uxnan-token`). Control-only tool
+  surface: **`browser_open`**, **`browser_navigate`**, **`browser_reload`**,
+  **`browser_back`**, **`browser_forward`**, **`browser_status`**. `open`/`navigate`
+  reuse the existing link-policy path (`browser::route_url` → the frontend panel);
+  `status` reports the live open/URL/policy via a new `AppState.browser_url` tracker.
+- **Config injection** (`src-tauri/src/mcpinject.rs`) — writes each CLI's native MCP
+  config so it finds the server on startup, for **Claude Code, Codex, Gemini CLI and
+  OpenCode**. The **token is never written to a file**: every config references
+  the `UXNAN_MCP_TOKEN` env var (injected into the agent's PTY), so the secret stays
+  in the process env *and* the injected config is inert outside a uxnan-launched
+  terminal (an agent run elsewhere can't authenticate — it won't hijack the browser).
+  Merges into existing config files without clobbering (JSON via `serde_json`, Codex
+  TOML via the new `toml_edit` dep); files it creates are hidden from Git (added to
+  the repo's `info/exclude`, worktree-aware via `git2`) and removed on exit.
+- **Injection modes** (`BrowserSettings.mcpInjection`) — **`workspace`** (default:
+  a project-scoped config in the terminal's cwd, covering hand-typed and app-launched
+  agents there, cleaned on exit), **`global`** (each CLI's global user config), or
+  **`off`** (wire it by hand from the Settings copy-paste snippet). Per-agent opt-out
+  via `mcpDisabledAgents`; master switch `mcpEnabled` (default on). New `mcp_info`
+  command surfaces the endpoint + token + supported-agent catalog to Settings.
+- **Extensible** — a new agent (e.g. `agy`/Antigravity, Cursor, Grok, amp, Pi) is one
+  row in `mcpinject::AGENTS` plus a match arm in `config_path`/`write_entry`; recipe
+  in `docs/browser.md`.
+>>>>>>> main
+
 ## [0.0.5-alpha.20260703] - 2026-07-03
 
 ### Fixed — blank white screen on startup (0.0.4 regression)

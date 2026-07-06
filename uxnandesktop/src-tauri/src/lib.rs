@@ -18,6 +18,8 @@ mod fswatch;
 mod git;
 mod gitfast;
 mod hooks;
+mod mcp;
+mod mcpinject;
 mod model;
 mod persistence;
 mod power;
@@ -206,6 +208,7 @@ pub fn run() {
             commands::get_app_state,
             commands::update_settings,
             commands::ping,
+            commands::mcp_info,
             commands::pty_create,
             commands::pty_write,
             commands::pty_resize,
@@ -287,6 +290,10 @@ pub fn run() {
                     // systemd-inhibit on macOS/Linux) so none is left running.
                     state.power.set(false);
                 }
+                // Remove any MCP config files we injected into workspaces / global
+                // config so nothing stale is left behind (best-effort; see
+                // `mcpinject.rs`).
+                crate::mcpinject::cleanup(app_handle);
             }
         });
 }
