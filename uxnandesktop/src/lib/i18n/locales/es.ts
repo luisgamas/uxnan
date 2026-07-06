@@ -140,6 +140,8 @@ export const es: Record<MessageKey, string> = {
     "un nombre sin relación ni derivación de ningún producto existente.",
   "terminal.worktreeNeedsRepo":
     "Selecciona un proyecto o worktree en el panel izquierdo para habilitar esto.",
+  "terminal.worktreeNeedsGitRepo":
+    "Este proyecto no es un repositorio git, por lo que no tiene worktrees.",
   "terminal.newInRegion": "Nueva terminal en esta región",
   "terminal.copy": "Copiar",
   "terminal.paste": "Pegar",
@@ -656,6 +658,8 @@ export const es: Record<MessageKey, string> = {
   "updates.installNow": "Instalar ahora",
   "updates.installWhenIdle": "Instalar al quedar libre",
   "updates.dismiss": "Descartar",
+  "updates.releaseNotes": "Notas de versión",
+  "updates.releaseNotesTitle": "Ver novedades de {version}",
   "updates.agentsBusyWarning":
     "Hay un agente en ejecución — instalar lo detendrá",
   "updates.willInstallWhenIdle":
@@ -722,4 +726,27 @@ export const es: Record<MessageKey, string> = {
   "browser.addressPlaceholder": "Escribe una URL",
   "browser.unavailable": "El navegador integrado no está disponible aquí.",
   "browser.askPrompt": "¿Abrir {url} en el navegador integrado? (Cancelar abre tu navegador del sistema.)",
+  "browser.mcpHeading": "MCP de navegador para agentes",
+  "browser.mcpEnabled": "Deja que los agentes usen el navegador",
+  "browser.mcpEnabledDesc":
+    "Expón el navegador como herramientas MCP para que los agentes que lances lo descubran y lo usen solos — sin configurar, sin documentación.",
+  "browser.mcpInjection": "Modo de configuración",
+  "browser.mcpInjectionDesc":
+    "Cómo reciben las herramientas los agentes. El token queda en el entorno de la terminal — nunca se escribe en un archivo.",
+  "browser.mcpModeWorkspace": "Por proyecto (recomendado)",
+  "browser.mcpModeWorkspaceDesc":
+    "Escribe una config con alcance de proyecto en la carpeta de la terminal; cubre agentes tecleados a mano y lanzados por la app, y se elimina al salir.",
+  "browser.mcpModeGlobal": "Global",
+  "browser.mcpModeGlobalDesc":
+    "Registra el servidor en la config global de cada agente, así está disponible en todos los proyectos (mayor huella).",
+  "browser.mcpModeOff": "Solo manual",
+  "browser.mcpModeOffDesc": "No inyectar nada — cablea un agente a mano con el snippet de abajo.",
+  "browser.mcpAgents": "Agentes",
+  "browser.mcpAgentsDesc": "Qué agentes reciben las herramientas del navegador automáticamente.",
+  "browser.mcpSnippet": "Config manual",
+  "browser.mcpSnippetDesc":
+    "Copia una config de servidor MCP lista para pegar y cablear un agente tú mismo (p. ej. uno no listado arriba).",
+  "browser.mcpCopy": "Copiar",
+  "browser.mcpCopied": "Copiado",
+  "browser.mcpWaiting": "Disponible cuando el servidor local de la app esté corriendo.",
 };

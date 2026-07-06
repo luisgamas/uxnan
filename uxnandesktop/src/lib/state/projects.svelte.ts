@@ -79,11 +79,19 @@ class ProjectsStore {
     return null;
   }
 
-  /** Open the "new worktree" dialog for the active repo. A no-op outside a repo
-   *  (Global space / nothing selected), so a shortcut does nothing rather than
-   *  prompting with no repo to branch from. */
+  /** The active repo only when it is a real git repository — worktrees need git,
+   *  so non-git project folders (and the Global space) resolve to null. Drives
+   *  every "new worktree" affordance's enabled state. */
+  get activeGitRepo(): RepoData | null {
+    const r = this.activeRepo;
+    return r && r.isGit !== false ? r : null;
+  }
+
+  /** Open the "new worktree" dialog for the active repo. A no-op outside a git
+   *  repo (Global space / a non-git folder / nothing selected), so a shortcut
+   *  does nothing rather than prompting with no repo to branch from. */
   requestNewWorktree(): void {
-    if (this.activeRepo) this.newWorktreeOpen = true;
+    if (this.activeGitRepo) this.newWorktreeOpen = true;
   }
 
   /** Projects visible for the search query: those whose name/path matches OR
