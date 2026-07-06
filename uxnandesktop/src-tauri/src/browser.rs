@@ -112,6 +112,60 @@ fn parse_url(raw: &str) -> Result<tauri::Url, CommandError> {
     tauri::Url::parse(raw).map_err(|e| CommandError::new("BROWSER_BAD_URL", e.to_string()))
 }
 
+/// Record the browser's live URL in shared state so the browser MCP server's
+/// `browser_status` tool can report the current page to an agent (see
+/// [`AppState::browser_url`]). Best-effort: a poisoned lock is ignored.
+fn track_url(app: &AppHandle, url: &str) {
+    let slot = app.state::<AppState>().browser_url.clone();
+    let mut guard = match slot.lock() {
+        Ok(g) => g,
+        Err(_) => return,
+    };
+    *guard = Some(url.to_string());
+}
+
+/// Snapshot of the integrated browser, returned by the browser MCP server's
+/// `browser_status` tool so an agent can see whether a page is open, which URL
+/// it's on, and how its opens will be routed (in-app vs OS browser).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrowserStatus {
+    /// Whether the docked browser window currently exists (a panel is open).
+    pub open: bool,
+    /// Last URL the browser navigated to, if any (`None` = never opened).
+    pub url: Option<String>,
+    /// Master switch — when off, an agent's opens go to the OS default browser.
+    pub enabled: bool,
+    /// Link routing policy in effect (`internal`/`external`/`ask`).
+    pub policy: BrowserLinkPolicy,
+}
+
+/// Read the live integrated-browser status (window open? current URL? settings?)
+/// for the browser MCP server's `browser_status` tool.
+pub async fn status(app: &AppHandle) -> BrowserStatus {
+    let open = app.get_webview_window(BROWSER_WINDOW).is_some();
+    let state = app.state::<AppState>();
+    let url = state
+        .browser_url
+        .clone()
+        .lock()
+        .ok()
+        .and_then(|s| s.clone());
+    let (enabled, policy) = {
+        let data = state.data.read().await;
+        (
+            data.settings.browser.enabled,
+            data.settings.browser.link_policy,
+        )
+    };
+    BrowserStatus {
+        open,
+        url,
+        enabled,
+        policy,
+    }
+}
+
 /// Fetch the docked browser window, or a clean "not open" error.
 fn window(app: &AppHandle) -> Result<tauri::WebviewWindow, CommandError> {
     app.get_webview_window(BROWSER_WINDOW)
@@ -156,6 +210,7 @@ pub async fn browser_window_open(
     height: f64,
 ) -> Result<(), CommandError> {
     let target = parse_url(&url)?;
+    track_url(&app, &url);
 
     if app.get_webview_window(BROWSER_WINDOW).is_some() {
         place(&app, x, y, width, height)?;
@@ -182,7 +237,9 @@ pub async fn browser_window_open(
         .shadow(false)
         .visible(false)
         .on_navigation(move |u| {
-            let _ = nav_app.emit("browser:navigated", NavigatedEvent { url: u.to_string() });
+            let url = u.to_string();
+            track_url(&nav_app, &url);
+            let _ = nav_app.emit("browser:navigated", NavigatedEvent { url });
             true
         });
     // Own the browser window to the main window: it stays above it and
@@ -216,6 +273,7 @@ pub fn browser_window_set_bounds(
 #[tauri::command]
 pub fn browser_window_navigate(app: AppHandle, url: String) -> Result<(), CommandError> {
     let target = parse_url(&url)?;
+    track_url(&app, &url);
     window(&app)?
         .navigate(target)
         .map_err(|e| CommandError::new("BROWSER_NAV_FAILED", e.to_string()))

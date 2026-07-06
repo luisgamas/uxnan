@@ -18,6 +18,7 @@ import type {
   FsEntry,
   HookInstall,
   HookScripts,
+  McpInfo,
   HookServerInfo,
   ImageDiff,
   RemoteOwner,
@@ -331,6 +332,12 @@ export function browserWindowClose(): Promise<void> {
 /** Open the browser window's DevTools. */
 export function browserWindowDevtools(): Promise<void> {
   return invoke("browser_window_devtools");
+}
+
+/** Browser-control MCP coordinates + supported-agent catalog for Settings →
+ *  Browser (the live `/mcp` endpoint + token for the copy-paste snippet). */
+export function mcpInfo(): Promise<McpInfo> {
+  return invoke("mcp_info");
 }
 
 /** Set (or clear with `null`) the worktree root the filesystem watcher follows.

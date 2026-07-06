@@ -81,11 +81,19 @@ class ProjectsStore {
     return null;
   }
 
-  /** Open the "new worktree" dialog for the active repo. A no-op outside a repo
-   *  (Global space / nothing selected), so a shortcut does nothing rather than
-   *  prompting with no repo to branch from. */
+  /** The active repo only when it is a real git repository — worktrees need git,
+   *  so non-git project folders (and the Global space) resolve to null. Drives
+   *  every "new worktree" affordance's enabled state. */
+  get activeGitRepo(): RepoData | null {
+    const r = this.activeRepo;
+    return r && r.isGit !== false ? r : null;
+  }
+
+  /** Open the "new worktree" dialog for the active repo. A no-op outside a git
+   *  repo (Global space / a non-git folder / nothing selected), so a shortcut
+   *  does nothing rather than prompting with no repo to branch from. */
   requestNewWorktree(): void {
-    if (this.activeRepo) this.newWorktreeOpen = true;
+    if (this.activeGitRepo) this.newWorktreeOpen = true;
   }
 
   /** Projects visible for the search query: those whose name/path matches OR
@@ -223,8 +231,9 @@ class ProjectsStore {
     return branchList(repoId);
   }
 
-  /** Register a git repository by path (from the in-app directory picker).
-   *  Returns false (with `error` set) when the path isn't a git repo. */
+  /** Register a project folder by path (from the in-app directory picker). Any
+   *  folder works — git or not; a non-git one simply has no worktrees. Returns
+   *  false (with `error` set) when the path can't be registered. */
   async addProjectPath(path: string): Promise<boolean> {
     this.error = null;
     try {
@@ -286,6 +295,40 @@ class ProjectsStore {
   /** The custom icon stored for a worktree's branch, or undefined. */
   branchIcon(repoId: string, branchKey: string): string | undefined {
     return app.repos.find((r) => r.id === repoId)?.branchIcons?.[branchKey];
+  }
+
+  /** Register several project folders at once (the picker's "add all separately"
+   *  action, one project per child folder). Adds them in order, skips ones that
+   *  fail, and returns how many were added / failed; `error` is set only when
+   *  every path failed. */
+  async addProjectPaths(
+    paths: string[],
+  ): Promise<{ added: number; failed: number }> {
+    this.error = null;
+    let added = 0;
+    let failed = 0;
+    let lastError: string | null = null;
+    for (const path of paths) {
+      try {
+        const repo = await repoAdd(path);
+        if (!app.repos.find((r) => r.id === repo.id)) app.repos.push(repo);
+        await this.loadWorktrees(repo.id);
+        added += 1;
+      } catch (e) {
+        failed += 1;
+        lastError = msg(e);
+      }
+    }
+    if (added === 0 && lastError) this.error = lastError;
+    if (added > 0) {
+      toast.success(
+        i18n.t(
+          failed > 0 ? "toast.projectsAddedSome" : "toast.projectsAdded",
+          { added: String(added), failed: String(failed) },
+        ),
+      );
+    }
+    return { added, failed };
   }
 
   async removeProject(id: string): Promise<void> {
