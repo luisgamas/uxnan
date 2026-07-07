@@ -120,6 +120,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   (`panel.settingsBody`) card — consistent spacing and sizing with the rest of the
   app. Collapsible agent/terminal profile cards get more vertical breathing room.
 
+### Changed — Settings → Appearance redesign (theme picker)
+- The app-theme and terminal-theme pickers are now a **scrollable name list + a
+  live preview**, replacing the swatch-card grids. **Interface**: clicking a theme
+  previews its palette in a themed card that lists every color role (background,
+  foreground, primary, …); **Use** applies it. **Terminal**: the preview is a
+  **non-interactive mini terminal** that recolors to the selected theme (prompt,
+  path, git, error, selection, code) so real color usage is visible — the
+  surrounding UI stays on the app theme. With "separate light/dark schemes" on,
+  the terminal shows two lists (dark / light), each with its own preview. Fonts and
+  the "Themes" action row are plain section items (label + description + controls);
+  containers use the standard `panel.settingsBody`. See [`docs/theming.md`](docs/theming.md).
+
 ## [0.0.8-alpha.20260705] - 2026-07-05
 
 ### Added
