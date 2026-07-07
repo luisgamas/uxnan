@@ -36,7 +36,7 @@
   }
 </script>
 
-<Collapsible.Root bind:open={expanded} class="flex flex-col gap-2 py-2.5">
+<Collapsible.Root bind:open={expanded} class="flex flex-col gap-2 py-3">
   <div class="flex items-center gap-2.5">
     <span class="flex size-7 shrink-0 items-center justify-center rounded-md border border-border/60 text-muted-foreground">
       <TerminalIcon class="size-3.5" />
@@ -76,7 +76,7 @@
       {/snippet}
     </TooltipSimple>
   </div>
-  <Collapsible.Content class="flex flex-col gap-2.5 pt-1">
+  <Collapsible.Content class="flex flex-col gap-2.5 pt-1.5">
     <Input
       class="h-8 text-xs"
       placeholder={i18n.t("profileEditor.namePlaceholder")}

@@ -87,7 +87,7 @@
   }
 </script>
 
-<Collapsible.Root bind:open={expanded} class="flex flex-col gap-2 py-2.5">
+<Collapsible.Root bind:open={expanded} class="flex flex-col gap-2 py-3">
   <div class="flex items-center gap-2.5">
     <div class="relative shrink-0">
       <TooltipSimple title={i18n.t("agentEditor.chooseLogo")}>
@@ -161,7 +161,7 @@
       {/snippet}
     </TooltipSimple>
   </div>
-  <Collapsible.Content class="flex flex-col gap-2.5 pt-1">
+  <Collapsible.Content class="flex flex-col gap-2.5 pt-1.5">
   <Input
     class="h-8 text-xs"
     placeholder={i18n.t("agentEditor.namePlaceholder")}

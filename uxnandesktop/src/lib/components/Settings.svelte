@@ -871,8 +871,8 @@
             <!-- One agents list: configured agents first (each row expands to its
                  command / args / shell / env config), then the remaining known
                  agents to add — greyed when not found on PATH. -->
-            <div class="flex flex-col gap-1.5">
-              <div class="flex items-center justify-between gap-2">
+            <div class="space-y-2">
+              <div class="flex flex-wrap items-center justify-between gap-2 px-1">
                 <span class={text.section}>{i18n.t("settings.yourAgents")}</span>
                 <div class="flex items-center gap-1.5">
                   {#if addableCount > 0}
@@ -888,9 +888,9 @@
                 </div>
               </div>
               {#if installed === null}
-                <p class={text.meta}>{i18n.t("settings.detecting")}</p>
+                <p class={cn("px-1", text.meta)}>{i18n.t("settings.detecting")}</p>
               {/if}
-              <div class="flex flex-col divide-y divide-border/60 rounded-xl border border-border/50 bg-card/50 px-5 shadow-xs">
+              <div class={cn("flex flex-col divide-y divide-border/60", panel.settingsBody)}>
                 {#each app.agentProfiles as agent (agent.id)}
                   <AgentProfileEditor
                     {agent}
@@ -900,7 +900,7 @@
                 {/each}
                 {#each AGENT_CATALOG.filter((c) => !isConfigured(c)) as c (c.id)}
                   {@const inst = isInstalled(c)}
-                  <div class={cn("flex items-center gap-2.5 py-2.5", !inst && "opacity-55")}>
+                  <div class={cn("flex items-center gap-2.5 py-3", !inst && "opacity-55")}>
                     <span class="flex size-7 shrink-0 items-center justify-center">
                       <AgentLogo logo={c.logo} class="size-5" />
                     </span>
@@ -1415,8 +1415,9 @@
             </div>
           </SettingsSection>
         {:else}
-          <SettingsSection bare title={i18n.t("settings.terminal")} description={i18n.t("settings.terminalDesc")}>
-            <div class="rounded-xl border border-border/50 bg-card/50 px-7 py-4 shadow-xs">
+          <div class="flex flex-col gap-6">
+          <SettingsSection title={i18n.t("settings.terminal")} description={i18n.t("settings.terminalDesc")}>
+            <div class="divide-y divide-border/60">
               <SettingsRow label={i18n.t("settings.defaultProfile")} description={i18n.t("settings.defaultProfileDesc")}>
                 {#snippet control()}
                   <Combobox
@@ -1430,9 +1431,11 @@
                 {/snippet}
               </SettingsRow>
             </div>
+          </SettingsSection>
 
-            <div class="flex items-center justify-between gap-1.5">
-              <span class={cn("font-medium", text.body)}>{i18n.t("settings.profiles")}</span>
+          <div class="space-y-2">
+            <div class="flex flex-wrap items-center justify-between gap-2 px-1">
+              <span class={text.section}>{i18n.t("settings.profiles")}</span>
               <div class="flex items-center gap-1.5">
                 {#if addableShellCount > 0}
                   <Button variant="outline" size="sm" onclick={addDetectedShells}>
@@ -1484,7 +1487,7 @@
 
             {#if app.terminalProfiles.length > 0}
               <!-- One list: each profile is a row that expands to its command/args. -->
-              <div class="flex flex-col divide-y divide-border/60 rounded-xl border border-border/50 bg-card/50 px-5 shadow-xs">
+              <div class={cn("flex flex-col divide-y divide-border/60", panel.settingsBody)}>
                 {#each app.terminalProfiles as profile (profile.id)}
                   <TerminalProfileEditor
                     {profile}
@@ -1494,11 +1497,12 @@
                 {/each}
               </div>
             {:else}
-              <p class={cn("text-muted-foreground", text.body)}>
+              <p class={cn("px-1", text.meta)}>
                 {i18n.t("settings.noProfiles")}
               </p>
             {/if}
-          </SettingsSection>
+          </div>
+          </div>
         {/if}
         </div>
       </div>
