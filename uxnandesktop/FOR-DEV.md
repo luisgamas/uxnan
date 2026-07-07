@@ -44,8 +44,17 @@ mobile pairing) is NOT started.**
   generation via a local CLI agent.
 - **Agent monitoring (Phase 4)** — Layer 1 local HTTP hook server (`axum`, precise
   `working/blocked/waiting/done` + persistent cache) + Layer 2 terminal-title
-  (OSC) + Layer 3 process-tree detection; colored status dots, unread/done badges,
-  custom agent logos, per-worktree agent override.
+  (OSC, path/word-boundary-hardened) + Layer 3 process-tree detection; colored
+  status dots, unread/done badges, custom agent logos, per-worktree agent override.
+- **Precise per-agent reporters (auto-installed, multi-shell)** — Claude Code +
+  Gemini CLI use a Node relay (`node` guaranteed; Claude in exec-form so no shell
+  is involved); Codex uses a `curl` hook + a reproduced `trusted_hash` in
+  `~/.codex/config.toml` (golden-vector-tested `codex_trust.rs`); OpenCode a
+  plugin, Pi an in-process extension. Per-event merge preserves user hooks; shell
+  reporters pass id/kind/state in headers (no JSON building); an endpoint file
+  (`UXNAN_ENDPOINT_FILE`) survives app restarts; `WSLENV` carries the vars into
+  WSL (WSL2 host-loopback is a documented gap). Settings → Agents → Hooks shows a
+  card per agent (incl. Pi) + a master install switch.
 - **Multi-agent orchestration** (spec `02d` §3) — a console (status bar, shown with
   ≥2 live agents) routing a message to all agents, one type (fan-out), or a
   coordinator's workers, with backpressure + an in-memory coordinator→workers task
