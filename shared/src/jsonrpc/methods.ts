@@ -40,6 +40,7 @@ import type { ApprovalResponse } from '../models/approval.js';
 import type { BridgeStatus, ConnectedPhone, TrustedDevice } from '../models/session.js';
 import type { PairingPayload } from '../e2ee/pairing-payload.js';
 import type { AgentDescriptor, AgentId, AgentModel } from '../agents/agent-capabilities.js';
+import type { UsageStatsParams, UsageStatsResult } from '../models/usage.js';
 import type { PushPlatform } from '../notifications/push-payload.js';
 
 // --- Param shapes -----------------------------------------------------------
@@ -337,6 +338,8 @@ export interface JsonRpcMethodRegistry {
   // Agents
   'agent/list': { params: void; result: AgentListResult };
   'agent/models': { params: AgentModelsParams; result: AgentModelsResult };
+  // Usage statistics (per-provider quota / credit / local token tally)
+  'agent/usageStats': { params: UsageStatsParams; result: UsageStatsResult };
 
   // Auth (sanitized — never carries tokens/keys; see AuthStatus)
   'auth/status': { params: { agentId: AgentId }; result: AuthStatus };
