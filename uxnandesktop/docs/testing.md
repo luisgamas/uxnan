@@ -36,7 +36,7 @@ npm run build                  # production SPA build must succeed
 `shell.ts` (shell-aware agent-launch quoting), `orchestration.ts` (multi-agent
 routing + backpressure), `updaterLogic.ts` (download-progress fraction +
 install-policy decision), `diffParse.ts` (unified-diff parsing) and `theme.ts`
-(batch theme-import normalization) — 45 tests in `src/lib/*.test.ts`, config in
+(batch theme-import normalization) — 57 tests in `src/lib/*.test.ts`, config in
 `vitest.config.ts`. **Component tests** (Vitest + jsdom) and **E2E**
 (Playwright/WebdriverIO + tauri-driver) are still to come — see
 [`../FOR-DEV.md`](../FOR-DEV.md).

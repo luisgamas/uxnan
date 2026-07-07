@@ -30,6 +30,7 @@
   import WorktreeSearch from "$lib/components/WorktreeSearch.svelte";
   import DirectoryPicker from "$lib/components/DirectoryPicker.svelte";
   import BackendStatus from "$lib/components/BackendStatus.svelte";
+  import UsageStatusButton from "$lib/components/UsageStatusButton.svelte";
   import { Toaster } from "$lib/components/ui/sonner";
   import { initUpdateToast } from "$lib/updateToast.svelte";
 
@@ -403,6 +404,9 @@
           {/snippet}
         </TooltipSimple>
       {/if}
+
+      <!-- Provider usage indicator (icon + popover; hidden when nothing pinned) -->
+      <UsageStatusButton />
 
       <!-- Backend status (icon + live popover) -->
       <BackendStatus />

@@ -63,6 +63,12 @@ available today are:
   message to all of them, to one agent type (fan-out), or to a coordinator's
   workers, applying backpressure so no agent receives a new message before it is
   free.
+- **AI-provider usage.** A **Providers** settings section shows how much of each
+  quota you've consumed — session / weekly / monthly windows (with resets), plan,
+  account and credit balance — for **Codex, Claude, Copilot and Gemini**. It reads
+  each CLI's own signed-in token and calls the provider's official usage API (never
+  cookies or pasted keys), polling **only the providers you activate**. A status-bar
+  gauge surfaces the meters you pick. See [provider usage](./docs/providers.md).
 - **Integrated developer browser.** A complete in-app browser in a right-side panel
   (a real system webview docked to the app, so it loads any site and has real
   DevTools) to preview and debug what your agents build — `localhost` dev servers
@@ -145,6 +151,7 @@ Detailed docs live in [`docs/`](./docs/):
 [theming & appearance](./docs/theming.md) ·
 [internationalization (i18n)](./docs/i18n.md) ·
 [agent launch & configuration](./docs/agent-launch.md) ·
+[provider usage statistics](./docs/providers.md) ·
 [multi-agent orchestration](./docs/orchestration.md) ·
 [agent hooks (precise states)](./docs/agent-hooks.md) ·
 [integrated browser](./docs/browser.md) ·
