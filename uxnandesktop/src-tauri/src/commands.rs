@@ -9,7 +9,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 use uuid::Uuid;
 
-use crate::agent_hooks::{self, ClaudeHooksStatus, HookInstall};
+use crate::agent_hooks::{self, AgentHooksStatus, HookInstall};
 use crate::error::{AppError, CommandError};
 use crate::git::{self, WorktreeEntry};
 use crate::model::{AgentStateEntry, AppData, AppSettings, RepoData};
@@ -98,12 +98,49 @@ pub async fn pty_create(
     // and thus win over any user key of the same name (later sets override).
     let mut env: Vec<(String, String)> = env.unwrap_or_default();
     env.retain(|(k, _)| !k.trim().is_empty());
+    // Preserve any WSLENV the user set so we can extend (not replace) it below.
+    let user_wslenv = env
+        .iter()
+        .rev()
+        .find(|(k, _)| k.eq_ignore_ascii_case("WSLENV"))
+        .map(|(_, v)| v.clone());
     env.push(("UXNAN_AGENT_ID".to_string(), id.clone()));
     let hook = state.hook.read().await.clone();
     if let Some(h) = &hook {
         env.push(("UXNAN_HOOK_URL".to_string(), h.url.clone()));
         env.push(("UXNAN_HOOK_TOKEN".to_string(), h.token.clone()));
+        // Restart survival: point hook scripts at the endpoint file so they can
+        // re-read live coordinates if this terminal outlives an app restart.
+        if let Some(ep) = &h.endpoint_file {
+            env.push(("UXNAN_ENDPOINT_FILE".to_string(), ep.clone()));
+        }
     }
+    // WSL (basic support): the hook vars don't cross the Windows→Linux boundary
+    // unless listed in `WSLENV`. Adding them here means an agent run inside a WSL
+    // shell still sees the coordinates (`/p` path-translates the endpoint file to
+    // its `/mnt/c/...` form). Harmless on non-WSL shells (only `wsl.exe` reads it).
+    // Note: WSL2's `127.0.0.1` still points at the WSL VM, not the Windows host,
+    // so reaching the server from WSL2 remains a documented limitation.
+    #[cfg(windows)]
+    {
+        let mut parts: Vec<String> = Vec::new();
+        if let Some(prev) = user_wslenv.filter(|s| !s.trim().is_empty()) {
+            parts.push(prev);
+        }
+        parts.push("UXNAN_HOOK_URL".to_string());
+        parts.push("UXNAN_HOOK_TOKEN".to_string());
+        parts.push("UXNAN_AGENT_ID".to_string());
+        if hook
+            .as_ref()
+            .and_then(|h| h.endpoint_file.as_ref())
+            .is_some()
+        {
+            parts.push("UXNAN_ENDPOINT_FILE/p".to_string());
+        }
+        env.push(("WSLENV".to_string(), parts.join(":")));
+    }
+    #[cfg(not(windows))]
+    let _ = user_wslenv;
 
     // Integrated browser: when enabled and agents are allowed, let an agent open a
     // URL in the in-app browser by POSTing it to the hook server's `/browser` route
@@ -970,9 +1007,12 @@ pub async fn set_prevent_sleep(
 pub struct HookScripts {
     /// The rendered `hooks` block ready to paste into `~/.claude/settings.json`.
     pub claude_json: String,
+    /// The shell-agnostic relay shared by Codex / Gemini / OpenCode.
+    pub status_relay_cjs: String,
     pub wrapper_bash: String,
     pub wrapper_powershell: String,
     pub wrapper_cmd: String,
+    pub wrapper_fish: String,
 }
 
 /// Paths of the bundled hook scripts the ADE writes to `<app-data>/hooks/`
@@ -990,39 +1030,128 @@ pub async fn get_hook_install(
 
 /// The current state of the Claude `settings.json` `hooks` block. Lets the
 /// UI render an honest "Installed" / "Not installed" / "Unavailable" badge
-/// (we never claim installed unless our `__uxnan_managed_hooks__` marker is
-/// actually present).
+/// (we never claim installed unless our managed reporter is actually present).
 #[tauri::command]
-pub async fn get_claude_hooks_status() -> Result<ClaudeHooksStatus, CommandError> {
+pub async fn get_claude_hooks_status() -> Result<AgentHooksStatus, CommandError> {
     Ok(agent_hooks::read_claude_status())
 }
 
-/// Add (or replace) the ADE-managed `hooks` block in
-/// `~/.claude/settings.json`, pointing at the installed script. Preserves
-/// every other top-level key — existing Claude settings are untouched.
-/// Returns the new status so the UI can refresh without a second round-trip.
+/// Merge the ADE-managed `hooks` block into `~/.claude/settings.json`, pointing
+/// at the installed relay (exec-form `node`, so it runs from any shell).
+/// Preserves every other hook and top-level key. Returns the new status so the
+/// UI can refresh without a second round-trip.
 #[tauri::command]
 pub async fn install_claude_hooks(
     state: State<'_, AppState>,
-) -> Result<ClaudeHooksStatus, CommandError> {
+) -> Result<AgentHooksStatus, CommandError> {
     let install = state.hook_install.read().await.clone().ok_or_else(|| {
         CommandError::new("HOOK_SCRIPTS_MISSING", "hook scripts are not installed")
     })?;
-    let script_path = std::path::PathBuf::from(install.claude_hook_script);
-    agent_hooks::install_claude_hooks(&script_path).map_err(CommandError::from)
+    agent_hooks::install_claude_hooks(&install.status_relay_script).map_err(CommandError::from)
 }
 
 /// Remove the ADE-managed `hooks` block from `~/.claude/settings.json` (no
 /// op if it's not ours). Idempotent: safe to call repeatedly.
 #[tauri::command]
-pub async fn uninstall_claude_hooks() -> Result<ClaudeHooksStatus, CommandError> {
+pub async fn uninstall_claude_hooks() -> Result<AgentHooksStatus, CommandError> {
     agent_hooks::uninstall_claude_hooks().map_err(CommandError::from)
+}
+
+/// Status of the managed Codex `hooks.json` (and its `config.toml` trust entry).
+#[tauri::command]
+pub async fn get_codex_hooks_status() -> Result<AgentHooksStatus, CommandError> {
+    Ok(agent_hooks::read_codex_hooks_status())
+}
+
+/// Install the ADE-managed hooks into `~/.codex/hooks.json` and trust the file
+/// in `~/.codex/config.toml`, so Codex reports precise state out of the box.
+#[tauri::command]
+pub async fn install_codex_hooks(
+    state: State<'_, AppState>,
+) -> Result<AgentHooksStatus, CommandError> {
+    let install = state.hook_install.read().await.clone().ok_or_else(|| {
+        CommandError::new("HOOK_SCRIPTS_MISSING", "hook scripts are not installed")
+    })?;
+    agent_hooks::install_codex_hooks(&install).map_err(CommandError::from)
+}
+
+#[tauri::command]
+pub async fn uninstall_codex_hooks() -> Result<AgentHooksStatus, CommandError> {
+    agent_hooks::uninstall_codex_hooks().map_err(CommandError::from)
+}
+
+/// Status of the managed Gemini CLI `settings.json` hooks block.
+#[tauri::command]
+pub async fn get_gemini_hooks_status() -> Result<AgentHooksStatus, CommandError> {
+    Ok(agent_hooks::read_gemini_hooks_status())
+}
+
+/// Install the ADE-managed hooks into `~/.gemini/settings.json`.
+#[tauri::command]
+pub async fn install_gemini_hooks(
+    state: State<'_, AppState>,
+) -> Result<AgentHooksStatus, CommandError> {
+    let install = state.hook_install.read().await.clone().ok_or_else(|| {
+        CommandError::new("HOOK_SCRIPTS_MISSING", "hook scripts are not installed")
+    })?;
+    agent_hooks::install_gemini_hooks(&install.status_relay_script).map_err(CommandError::from)
+}
+
+#[tauri::command]
+pub async fn uninstall_gemini_hooks() -> Result<AgentHooksStatus, CommandError> {
+    agent_hooks::uninstall_gemini_hooks().map_err(CommandError::from)
+}
+
+/// Status of the managed Pi/OMP status extension.
+#[tauri::command]
+pub async fn get_pi_hooks_status() -> Result<AgentHooksStatus, CommandError> {
+    Ok(agent_hooks::read_pi_hooks_status())
+}
+
+/// Install the ADE-managed Pi/OMP status extension into `~/.pi/agent/extensions`.
+#[tauri::command]
+pub async fn install_pi_hooks() -> Result<AgentHooksStatus, CommandError> {
+    agent_hooks::install_pi_hooks().map_err(CommandError::from)
+}
+
+#[tauri::command]
+pub async fn uninstall_pi_hooks() -> Result<AgentHooksStatus, CommandError> {
+    agent_hooks::uninstall_pi_hooks().map_err(CommandError::from)
+}
+
+/// Status of the managed OpenCode status plugin.
+#[tauri::command]
+pub async fn get_opencode_hooks_status() -> Result<AgentHooksStatus, CommandError> {
+    Ok(agent_hooks::read_opencode_hooks_status())
+}
+
+/// Install the ADE-managed OpenCode status plugin and register it.
+#[tauri::command]
+pub async fn install_opencode_hooks() -> Result<AgentHooksStatus, CommandError> {
+    agent_hooks::install_opencode_hooks().map_err(CommandError::from)
+}
+
+#[tauri::command]
+pub async fn uninstall_opencode_hooks() -> Result<AgentHooksStatus, CommandError> {
+    agent_hooks::uninstall_opencode_hooks().map_err(CommandError::from)
+}
+
+/// (Re)install the managed hooks for every supported agent. Used by the
+/// Settings → Agents → Hooks "Install all" action and at startup.
+#[tauri::command]
+pub async fn install_all_hooks(state: State<'_, AppState>) -> Result<(), CommandError> {
+    let install = state.hook_install.read().await.clone().ok_or_else(|| {
+        CommandError::new("HOOK_SCRIPTS_MISSING", "hook scripts are not installed")
+    })?;
+    agent_hooks::install_all(&install);
+    Ok(())
 }
 
 /// The textual content of every bundled hook script. The Settings UI uses
 /// this to show copy-pasteable snippets (rendered Claude `settings.json`,
-/// platform wrapper script). The Claude JSON is rendered against the
-/// installed script path so the user can copy it as-is.
+/// the shell-agnostic relay, and the per-platform launcher wrappers). The
+/// Claude JSON is rendered against the installed script path so the user can
+/// copy it as-is.
 #[tauri::command]
 pub async fn get_hook_scripts(
     state: State<'_, AppState>,
@@ -1031,13 +1160,14 @@ pub async fn get_hook_scripts(
         Some(install) => install,
         None => return Ok(None),
     };
-    let script_path = std::path::PathBuf::from(install.claude_hook_script);
-    let claude_json =
-        agent_hooks::render_claude_settings_json(&script_path).map_err(CommandError::from)?;
+    let claude_json = agent_hooks::render_claude_settings_json(&install.status_relay_script)
+        .map_err(CommandError::from)?;
     Ok(Some(HookScripts {
         claude_json,
+        status_relay_cjs: agent_hooks::STATUS_RELAY_SCRIPT.to_string(),
         wrapper_bash: agent_hooks::WRAPPER_BASH.to_string(),
         wrapper_powershell: agent_hooks::WRAPPER_POWERSHELL.to_string(),
         wrapper_cmd: agent_hooks::WRAPPER_CMD.to_string(),
+        wrapper_fish: agent_hooks::WRAPPER_FISH.to_string(),
     }))
 }

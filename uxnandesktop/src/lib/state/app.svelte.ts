@@ -20,7 +20,7 @@ import {
   DEFAULT_SETTINGS,
   type AgentProfile,
   type AppSettings,
-  type ClaudeHooksStatus,
+  type AgentHooksStatus,
   type HookInstall,
   type RepoData,
   type TerminalProfile,
@@ -98,7 +98,7 @@ class AppStore {
   /** On-disk hook scripts layout, or `null` if the startup install step failed. */
   hookInstall = $state<HookInstall | null>(null);
   /** Latest Claude hooks install status (read on startup + after a toggle). */
-  claudeHooks = $state<ClaudeHooksStatus | null>(null);
+  claudeHooks = $state<AgentHooksStatus | null>(null);
   /** Whether we've performed at least one hook-status check (so the indicator
    *  stays hidden until we actually know, instead of flashing on launch). */
   hooksChecked = $state(false);

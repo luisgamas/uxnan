@@ -653,13 +653,27 @@ export const es: Record<MessageKey, string> = {
     "Configs listas para usar que envían estados precisos del agente al servidor de hooks local del ADE, para que la sidebar y la barra de tabs muestren trabajando / esperando / listo sin configuración manual.",
   "hooks.claudeTitle": "Claude Code",
   "hooks.claudeDesc":
-    "Agrega un bloque `hooks` a `~/.claude/settings.json` que ejecuta el script incluido en cada evento de Claude. Conserva tu configuración existente.",
-  "hooks.claudeStatusInstalled": "Instalado en {path}",
-  "hooks.claudeStatusNotInstalled": "No instalado",
-  "hooks.claudeStatusUnavailable":
-    "~/.claude/settings.json no se puede escribir (léelo manualmente para obtener el JSON a pegar).",
-  "hooks.claudeStatusMissing":
-    "El archivo de configuración de Claude Code aún no existe — al instalarlo se creará.",
+    "Agrega un bloque `hooks` a `~/.claude/settings.json` que ejecuta el relay de Node incluido en cada evento de Claude (exec-form, así funciona desde cualquier shell). Conserva tus hooks existentes.",
+  "hooks.codexTitle": "Codex",
+  "hooks.codexDesc":
+    "Agrega hooks gestionados a `~/.codex/hooks.json` y registra su hash de confianza en `~/.codex/config.toml` (Codex 0.129+ lo exige), para que Codex reporte estados precisos automáticamente.",
+  "hooks.geminiTitle": "Gemini CLI",
+  "hooks.geminiDesc":
+    "Agrega hooks gestionados a `~/.gemini/settings.json` que ejecutan el relay incluido en cada evento de turno de Gemini. Conserva tus hooks existentes.",
+  "hooks.opencodeTitle": "OpenCode",
+  "hooks.opencodeDesc":
+    "Instala el plugin de estado del ADE en la configuración de OpenCode para reportar trabajando / esperando / listo / bloqueado.",
+  "hooks.piTitle": "Pi",
+  "hooks.piDesc":
+    "Instala la extensión de estado del ADE en `~/.pi/agent/extensions` para que Pi reporte trabajando / listo en el propio proceso (no tiene señal de permiso).",
+  "hooks.statusInstalled": "Instalado en {path}",
+  "hooks.statusInstalledShort": "Instalado",
+  "hooks.statusNotInstalled": "No instalado",
+  "hooks.enableToManage": "Activa «Instalar hooks de agentes» para gestionar este agente.",
+  "hooks.statusUnavailable":
+    "La configuración no se puede escribir (léela manualmente para obtener el comando a pegar).",
+  "hooks.statusMissing":
+    "El archivo de configuración aún no existe — al instalarlo se creará.",
   "hooks.autoInstall": "Instalar hooks de agentes",
   "hooks.autoInstallDesc":
     "Permite que los agentes reporten su estado preciso. Se instalan automáticamente al inicio; desactiva para quitarlos y mantenerlos desactivados.",
