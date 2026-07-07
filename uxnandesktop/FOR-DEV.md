@@ -15,7 +15,7 @@ which tracks assets only a human can provide.)
 standalone app** (three-panel shell, PTY terminals + splits, git worktrees, git
 status/diff/stage/commit/history, agent monitoring with the axum hook server +
 OSC/process layers, settings/themes/i18n, multi-agent orchestration,
-**in-app auto-updater**, **browser-control MCP for agents**). 125+ Rust backend tests + 45+ frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
+**in-app auto-updater**, **browser-control MCP for agents**). 126 Rust backend tests + 57 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
 (developed on Windows; CI is `{ubuntu, windows}`). **Phase 6 (embedded bridge /
 mobile pairing) is NOT started.**
 
@@ -70,6 +70,14 @@ mobile pairing) is NOT started.**
   waits for the safe window or explicit consent), banner UI, EN/ES i18n. Endpoint
   per channel + signing/CI in [`docs/updates.md`](docs/updates.md); signing key is
   a `FOR-HUMAN.md` item.
+- **AI-provider usage statistics (Settings → Providers)** — native Rust reader
+  (`src-tauri/src/usage.rs`, `usage_read`/`usage_detect`) for **Codex, Claude,
+  Copilot, Gemini**, reading each CLI's own stored token → the provider's official
+  usage API (never cookies / pasted keys). Tabbed UI with per-provider quota
+  windows ("% used"), plan/account ("Authenticated as …" with click-to-reveal
+  blur), credit, per-provider refresh interval + status-bar visibility, and a
+  status-bar gauge popover. Contract-first (`shared` `agent/usageStats`); the
+  bridge/mobile side is Phase 6 (see below).
 
 ## Integrated developer browser ☐
 
@@ -149,6 +157,14 @@ yet on either side** — the bridge's `desktop/*` handler is also an empty stub
       `tauri-plugin-updater`, but that updates the **desktop app**, not the
       pinned Node bridge version it ships — so the bridge's own check still
       matters. Unblocks with the sidecar above.
+
+- [ ] **Provider usage over the bridge (`agent/usageStats`).** The desktop already
+      reads AI-provider usage natively (`src-tauri/src/usage.rs`) and the `shared`
+      contract (`agent/usageStats` + `ProviderUsage`) exists. For the paired phone,
+      the embedded bridge must implement the same reader in TS and serve it — the
+      phone can't see the PC's disk directly (dual-reader, same contract; see
+      `architecture/02a` §5.8.10). Owed on the bridge (`bridge/FOR-DEV.md`) and the
+      mobile UI (`uxnanmobile/FOR-DEV.md`).
 
 ### Frontend (Svelte)
 - [ ] Settings → Mobile connection: QR pairing dialog, connected-phone indicator,
@@ -262,7 +278,7 @@ are **done** (see `CHANGELOG.md` + `architecture/02d` §3). Remaining follow-ups
 
 - ✅ **Verify** — `.github/workflows/ci-desktop.yml` runs svelte-check + `npm test`
   (Vitest) + vite build + cargo fmt/clippy/test on `{ubuntu, windows}` (macOS
-  deferred with Apple). 106 Rust + 45 Vitest tests.
+  deferred with Apple). 126 Rust + 57 Vitest tests.
 - ✅ **`release-desktop.yml`** — exists: `tauri-action` bundles on a `desktop-v*` tag
   → draft GitHub Release, **and signs the updater artifacts** when the signing
   secrets are set. **Windows ships without OS code-signing for now; macOS deferred.**

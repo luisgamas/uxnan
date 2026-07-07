@@ -260,6 +260,26 @@ pub async fn agents_detect(commands: Vec<String>) -> Result<Vec<String>, Command
         .collect())
 }
 
+/// Read usage statistics (quota windows / credit / local token tally) for the
+/// activated providers only. Never fails as a whole — each provider reports its
+/// own status, so a slow/broken one doesn't sink the rest.
+#[tauri::command]
+pub async fn usage_read(
+    providers: Vec<crate::usage::UsageProvider>,
+) -> Result<Vec<crate::usage::ProviderUsage>, CommandError> {
+    Ok(crate::usage::read_usage(providers).await)
+}
+
+/// The subset of `providers` whose CLI / config is present on this machine, so
+/// the Providers catalog can enable only the available ones (mirrors
+/// `agents_detect`).
+#[tauri::command]
+pub async fn usage_detect(
+    providers: Vec<crate::usage::UsageProvider>,
+) -> Result<Vec<crate::usage::UsageProvider>, CommandError> {
+    Ok(crate::usage::detect_present(&providers))
+}
+
 /// Resize a PTY when its pane changes size.
 #[tauri::command]
 pub async fn pty_resize(
