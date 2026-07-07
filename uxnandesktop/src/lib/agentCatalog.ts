@@ -52,12 +52,10 @@ export const AGENT_CATALOG: CatalogAgent[] = [
   { id: "commandcode", name: "Command Code", command: "command-code", logo: "commandcode", favicon: "commandcode.ai" },
   { id: "mimo", name: "MiMo Code", command: "mimo", logo: "mimo", favicon: "mimo.xiaomi.com" },
   { id: "devin", name: "Devin", command: "devin", logo: "devin", favicon: "devin.ai" },
-  { id: "hermes", name: "Hermes", command: "hermes", logo: "hermes", favicon: "nousresearch.com" },
   { id: "mistralvibe", name: "Mistral Vibe", command: "vibe", logo: "mistralvibe", favicon: "mistral.ai" },
   { id: "rovo", name: "Rovo Dev", command: "rovo", logo: "rovo", favicon: "atlassian.com" },
   { id: "autohand", name: "Autohand Code", command: "autohand", logo: "autohand", favicon: "autohand.ai" },
-  { id: "openclaude", name: "OpenClaude", command: "openclaude", logo: "openclaude" },
-  { id: "openclaw", name: "OpenClaw", command: "openclaw", logo: "openclaw", favicon: "openclaw.ai" },
+  { id: "openclaude", name: "OpenClaude", command: "openclaude", logo: "openclaude", favicon: "openclaude.gitlawb.com" },
   { id: "omp", name: "OMP", command: "omp", logo: "omp", favicon: "omp.sh" },
   { id: "ante", name: "Ante", command: "ante", logo: "ante", favicon: "antigma.ai" },
 ];
