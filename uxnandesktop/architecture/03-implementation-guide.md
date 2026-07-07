@@ -773,7 +773,7 @@ El componente de terminal encapsula xterm.js y gestiona su ciclo de vida:
 <script lang="ts">
   import { Terminal } from '@xterm/xterm';
   import { FitAddon } from '@xterm/addon-fit';
-  import { WebglAddon } from '@xterm/addon-webgl';
+  import { CanvasAddon } from '@xterm/addon-canvas';
   import { invoke } from '@tauri-apps/api/core';
   import { listen } from '@tauri-apps/api/event';
   import { onMount, onDestroy } from 'svelte';
@@ -788,11 +788,11 @@ El componente de terminal encapsula xterm.js y gestiona su ciclo de vida:
     term.loadAddon(fitAddon);
     term.open(terminalEl);
 
-    // GPU-accelerated rendering
+    // Accelerated 2D Canvas rendering (repaints cleanly on resize; DOM fallback)
     try {
-      term.loadAddon(new WebglAddon());
+      term.loadAddon(new CanvasAddon());
     } catch {
-      // Fallback a canvas renderer si WebGL no disponible
+      // Fallback al renderer DOM si el Canvas no esta disponible
     }
 
     fitAddon.fit();
@@ -845,9 +845,13 @@ const resizeObserver = new ResizeObserver(() => {
 resizeObserver.observe(terminalEl);
 ```
 
-#### Addon: xterm-addon-webgl
+#### Addon: xterm-addon-canvas
 
-`xterm-addon-webgl` usa WebGL para renderizar el terminal con aceleracion GPU. Esto mejora significativamente el rendimiento cuando hay output rapido y continuo (compilaciones, logs de agentes, etc.). Se carga con fallback al renderer canvas estandar si WebGL no esta disponible.
+`@xterm/addon-canvas` renderiza el terminal en un canvas 2D acelerado. Se prefiere
+sobre el addon WebGL porque repinta limpiamente al redimensionar (el canvas WebGL
+podia dejar un resto del frame anterior pegado en la orilla derecha sobre WebView2),
+y su rendimiento es de sobra para las TUIs de los agentes. Se carga con fallback al
+renderer DOM estandar si el Canvas no esta disponible; las ligaduras fuerzan DOM.
 
 #### Addon Personalizado: Deteccion de Estado de Agente
 

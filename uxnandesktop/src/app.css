@@ -182,27 +182,29 @@
   font-family: var(--ux-font-title);
 }
 
-/* Slim scrollbar for the xterm viewport — the terminal renders on its own
-   (usually dark) themed surface, so a light thumb reads well there. */
+/* Terminal (xterm) viewport scrollbar. The terminal renders on its own (usually
+   dark) themed surface, so a light thumb reads well there. A solid 10px thumb —
+   no transparent border eating into it — is wide enough to grab comfortably right
+   at the pane's right edge, where the flush inset places it. xterm forces the
+   viewport to `overflow-y: scroll`, so the FitAddon always reserves this width as
+   a column gutter (no wobble as content overflows) and glyphs never sit under it. */
 .xterm .xterm-viewport {
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+  scrollbar-color: rgba(255, 255, 255, 0.28) transparent;
 }
 .xterm .xterm-viewport::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
 }
 .xterm .xterm-viewport::-webkit-scrollbar-track {
   background: transparent;
 }
 .xterm .xterm-viewport::-webkit-scrollbar-thumb {
-  background-color: rgba(255, 255, 255, 0.18);
+  background-color: rgba(255, 255, 255, 0.28);
   border-radius: 9999px;
-  border: 2px solid transparent;
-  background-clip: padding-box;
 }
 .xterm .xterm-viewport::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(255, 255, 255, 0.32);
+  background-color: rgba(255, 255, 255, 0.45);
 }
 
 /* Slim, theme-aware scrollbar for dense panels & lists (8px). The thumb is a
