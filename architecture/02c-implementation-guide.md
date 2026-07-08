@@ -316,15 +316,12 @@ async function readTurnsFromJSONL(threadId, { cursor, limit = 20 }) {
 **Capacidades declaradas:**
 ```javascript
 capabilities: {
-  supportsGit: true,
-  supportsWorktrees: true,
-  supportsCheckpoints: true,
-  supportsVoice: false,
-  supportsSubagents: true,
-  supportsPlanMode: true,
-  supportsMultipleProjects: true,
-  supportsThreadFork: true,
-  sessionsFormat: 'jsonl',
+  planMode: true,
+  streaming: true,
+  approvals: true,
+  forking: true,
+  images: false,
+  reportsContextUsage: true,
 }
 ```
 
@@ -396,15 +393,13 @@ async function readSessionsFromSQLite(options) {
 **Capacidades declaradas:**
 ```javascript
 capabilities: {
-  supportsGit: true,
-  supportsWorktrees: false,         // OpenCode no tiene worktrees nativos
-  supportsCheckpoints: false,       // sin soporte nativo
-  supportsVoice: false,
-  supportsSubagents: false,
-  supportsPlanMode: true,           // OpenCode tiene Plan/Build mode
-  supportsMultipleProjects: true,
-  supportsThreadFork: false,
-  sessionsFormat: 'sqlite',
+  planMode: true,                   // OpenCode tiene Plan/Build mode
+  streaming: true,
+  approvals: false,                 // sin pre-tool channel headless
+  forking: true,
+  images: true,
+  reportsContextUsage: false,        // OpenCode no reporta usage
+  autonomous: false,
 }
 ```
 
@@ -453,15 +448,12 @@ async function readSessionFromJSONL(sessionId, { cursor, limit }) {
 **Capacidades declaradas:**
 ```javascript
 capabilities: {
-  supportsGit: true,
-  supportsWorktrees: false,
-  supportsCheckpoints: false,
-  supportsVoice: false,
-  supportsSubagents: true,          // Claude Code soporta subagentes
-  supportsPlanMode: false,
-  supportsMultipleProjects: true,
-  supportsThreadFork: false,
-  sessionsFormat: 'jsonl',
+  planMode: false,
+  streaming: true,
+  approvals: true,                  // Claude Code soporta subagentes + PreToolUse hook
+  forking: true,
+  images: true,
+  reportsContextUsage: true,
 }
 ```
 
@@ -529,15 +521,12 @@ function parseStreamJsonOutput(stdout) {
 **Capacidades declaradas:**
 ```javascript
 capabilities: {
-  supportsGit: false,               // Gemini CLI no tiene git integrado nativo
-  supportsWorktrees: false,
-  supportsCheckpoints: false,
-  supportsVoice: false,
-  supportsSubagents: false,
-  supportsPlanMode: false,
-  supportsMultipleProjects: true,
-  supportsThreadFork: false,
-  sessionsFormat: 'jsonl',          // sesiones en formato NDJSON por directorio
+  planMode: false,
+  streaming: true,
+  approvals: true,                  // Gemini CLI BeforeTool hook
+  forking: true,
+  images: true,
+  reportsContextUsage: false,        // ver contrato real
 }
 ```
 
@@ -595,15 +584,13 @@ async function readPiSession(sessionId, { cursor, limit = 20 }) {
 **Capacidades declaradas:**
 ```javascript
 capabilities: {
-  supportsGit: false,               // pi no tiene git integrado; usar git-handler del bridge
-  supportsWorktrees: false,
-  supportsCheckpoints: false,
-  supportsVoice: false,
-  supportsSubagents: false,         // pi no tiene subagentes nativos
-  supportsPlanMode: false,
-  supportsMultipleProjects: true,
-  supportsThreadFork: false,
-  sessionsFormat: 'jsonl',
+  planMode: false,
+  streaming: true,
+  approvals: false,                 // pi corre en modo autónomo (YOLO)
+  forking: false,
+  images: false,
+  reportsContextUsage: false,
+  autonomous: true,                 // pi-agent: YOLO headless, sin pre-tool channel
 }
 ```
 

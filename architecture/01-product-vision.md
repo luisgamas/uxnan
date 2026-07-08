@@ -197,16 +197,15 @@ Uxnan no se acopla a un agente específico. El Bridge implementa un **Agent Adap
 Todos los adaptadores exponen un modelo de capacidades que la app consulta para habilitar o deshabilitar features de la UI dinámicamente:
 
 ```typescript
+// Fuente de verdad: shared/src/agents/agent-capabilities.ts
 interface AgentCapabilities {
-  supportsGit: boolean;
-  supportsWorktrees: boolean;
-  supportsCheckpoints: boolean;
-  supportsVoice: boolean;
-  supportsSubagents: boolean;
-  supportsPlanMode: boolean;
-  supportsMultipleProjects: boolean;
-  supportsThreadFork: boolean;
-  sessionsFormat: "jsonrpc" | "jsonl" | "sqlite" | "custom";
+  planMode: boolean;                // agente soporta modo plan interactivo
+  streaming: boolean;               // emite deltas de tokens en streaming
+  approvals: boolean;               // emite content blocks `approval` (gating de tools)
+  forking: boolean;                 // soporta forking / reanudar threads
+  images: boolean;                  // acepta image attachments en sendTurn
+  reportsContextUsage?: boolean;    // emite `usage` en turn/completed
+  autonomous?: boolean;             // corre en modo autónomo ("YOLO") por defecto
 }
 ```
 
