@@ -32,6 +32,14 @@ export interface AgentCapabilities {
    * OpenCode) and the meter stays hidden.
    */
   reportsContextUsage?: boolean;
+  /**
+   * Agent runs in autonomous ("YOLO") mode by default — it acts and edits
+   * without per-action approval prompts because its headless CLI exposes no
+   * pre-tool approval channel. The phone surfaces this so the user knows Pi
+   * (and any such agent) will not ask before running tools. Optional; absent/
+   * false means the agent either gates tools or is pending approval wiring.
+   */
+  autonomous?: boolean;
 }
 
 /**
