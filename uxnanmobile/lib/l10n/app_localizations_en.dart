@@ -674,6 +674,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get newThreadCapImages => 'Images';
 
   @override
+  String get newThreadCapAutonomous => 'Autonomous mode';
+
+  @override
   String get newThreadCapabilities => 'Capabilities';
 
   @override
@@ -1842,6 +1845,10 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get conversationCwdMissing =>
       'This conversation\'s folder no longer exists. Reconnect or remove it.';
+
+  @override
+  String get conversationAutonomousMode =>
+      'This agent runs in autonomous mode — it acts and edits without asking for approval first.';
 
   @override
   String get fileBrowserTitle => 'Files';

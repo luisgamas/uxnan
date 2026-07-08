@@ -6,6 +6,19 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — autonomous-mode announcement for agents that run without per-action approval
+- New `autonomous` capability on `AgentCapabilities` (shared contract) and
+  `AgentDescriptor` (mobile entity), surfaced in the UI so the user knows up front
+  that an agent acts and edits without asking first:
+  - **New-conversation screen:** an "Autonomous mode" chip (`Icons.auto_awesome_outlined`) shown for agents whose capability `autonomous` is `true`.
+  - **Conversation screen:** a banner above the thread (`_AutonomousBanner`)
+    explaining the agent runs autonomously. EN/ES strings added
+    (`newThreadCapAutonomous`, `conversationAutonomousMode`).
+- Pi is the first agent to use this: `pi-adapter.ts` now advertises
+  `autonomous: true` (it runs headless in YOLO mode with no pre-tool approval
+  channel by design). OpenCode/Claude/Codex/Gemini keep `autonomous` unset
+  (false) — they expose real per-action approvals.
+
 ### Fixed — wide tables in conversation messages now scroll horizontally instead of squeezing
 
 - **Root cause:** `_TextBlock` in `message_content_view.dart` used `MarkdownStyleSheet.fromTheme()` defaults, which set `tableColumnWidth` to `FlexColumnWidth` — columns squeezed to fit the viewport, wrapping every cell into a tall stack.

@@ -310,6 +310,7 @@
   "newThreadCapPlan": "Plan mode",
   "newThreadCapApprovals": "Approvals",
   "newThreadCapImages": "Images",
+  "newThreadCapAutonomous": "Autonomous mode",
   "newThreadCapabilities": "Capabilities",
   "newThreadWorktree": "Run in a worktree",
   "newThreadWorktreeDesc": "Create an isolated branch checkout so this conversation can't touch your current working tree.",
@@ -882,6 +883,7 @@
   },
   "gitForceDelete": "Force delete",
   "conversationCwdMissing": "This conversation's folder no longer exists. Reconnect or remove it.",
+  "conversationAutonomousMode": "This agent runs in autonomous mode — it acts and edits without asking for approval first.",
 
   "fileBrowserTitle": "Files",
   "@fileBrowserTitle": {

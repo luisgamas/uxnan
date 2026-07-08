@@ -656,6 +656,8 @@ class _AgentCardState extends ConsumerState<_AgentCard> {
       if (c.planMode) (Icons.checklist_rtl_outlined, l10n.newThreadCapPlan),
       if (c.approvals)
         (Icons.verified_user_outlined, l10n.newThreadCapApprovals),
+      if (c.autonomous)
+        (Icons.auto_awesome_outlined, l10n.newThreadCapAutonomous),
       if (c.forking) (Icons.call_split_rounded, l10n.newThreadCapForking),
       if (c.images) (Icons.image_outlined, l10n.newThreadCapImages),
     ];

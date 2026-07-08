@@ -1346,6 +1346,12 @@ abstract class AppLocalizations {
   /// **'Images'**
   String get newThreadCapImages;
 
+  /// No description provided for @newThreadCapAutonomous.
+  ///
+  /// In en, this message translates to:
+  /// **'Autonomous mode'**
+  String get newThreadCapAutonomous;
+
   /// No description provided for @newThreadCapabilities.
   ///
   /// In en, this message translates to:
@@ -3457,6 +3463,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'This conversation\'s folder no longer exists. Reconnect or remove it.'**
   String get conversationCwdMissing;
+
+  /// No description provided for @conversationAutonomousMode.
+  ///
+  /// In en, this message translates to:
+  /// **'This agent runs in autonomous mode — it acts and edits without asking for approval first.'**
+  String get conversationAutonomousMode;
 
   /// Title of the workspace file browser and its top-bar tooltip.
   ///

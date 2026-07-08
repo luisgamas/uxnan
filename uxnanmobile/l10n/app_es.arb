@@ -219,6 +219,7 @@
   "newThreadCapPlan": "Modo plan",
   "newThreadCapApprovals": "Aprobaciones",
   "newThreadCapImages": "Imágenes",
+  "newThreadCapAutonomous": "Modo autónomo",
   "newThreadCapabilities": "Capacidades",
   "newThreadWorktree": "Usar un worktree",
   "newThreadWorktreeDesc": "Crea un checkout aislado en una rama para que esta conversación no toque tu árbol de trabajo actual.",
@@ -618,6 +619,7 @@
   "gitDeleteBranchForceBody": "\"{branch}\" no está completamente fusionada. ¿Forzar la eliminación y perder sus commits no fusionados?",
   "gitForceDelete": "Forzar eliminación",
   "conversationCwdMissing": "La carpeta de esta conversación ya no existe. Reconéctate o elimínala.",
+  "conversationAutonomousMode": "Este agente corre en modo autónomo: actúa y edita sin pedir aprobación primero.",
 
   "fileBrowserTitle": "Archivos",
   "fileBrowserShowExtensions": "Mostrar extensiones de archivo",

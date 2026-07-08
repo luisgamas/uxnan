@@ -645,6 +645,8 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                     // (not in the scrolling list) so they remain visible.
                     if (_cwdMissing)
                       const _Centered(child: _CwdMissingBanner()),
+                    if (caps?.autonomous ?? false)
+                      const _Centered(child: _AutonomousBanner()),
                     if (requiresLogin && thread != null)
                       _Centered(
                         child: _LoginRequiredBanner(agentId: thread.agentId),
@@ -1441,6 +1443,53 @@ class _CwdMissingBanner extends StatelessWidget {
                   l10n.conversationCwdMissing,
                   style: textTheme.bodySmall?.copyWith(
                     color: colors.onErrorContainer,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Informational banner shown above the composer for agents that run in
+/// autonomous ("YOLO") mode — they act and edit without a per-action approval
+/// prompt, because their headless CLI exposes no pre-tool approval channel.
+class _AutonomousBanner extends StatelessWidget {
+  const _AutonomousBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final l10n = AppLocalizations.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        UxnanSpacing.lg,
+        UxnanSpacing.xs,
+        UxnanSpacing.lg,
+        0,
+      ),
+      child: Material(
+        color: colors.secondaryContainer,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(UxnanSpacing.sm),
+          child: Row(
+            children: [
+              Icon(
+                Icons.auto_awesome_outlined,
+                size: 20,
+                color: colors.onSecondaryContainer,
+              ),
+              const SizedBox(width: UxnanSpacing.sm),
+              Expanded(
+                child: Text(
+                  l10n.conversationAutonomousMode,
+                  style: textTheme.bodySmall?.copyWith(
+                    color: colors.onSecondaryContainer,
                   ),
                 ),
               ),
