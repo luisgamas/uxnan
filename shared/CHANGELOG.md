@@ -5,6 +5,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — `agent/usageStats` method + provider-usage models
+- **New JSON-RPC method `agent/usageStats`** (`src/jsonrpc/methods.ts` +
+  `METHOD_NAMES`, now **62 entries**): read AI-provider usage statistics —
+  quota/rate windows (percent consumed + reset), plan/account, and credit
+  balance — for the providers the caller activated. Params
+  `{ providers: UsageProvider[] }` → `{ usage: ProviderUsage[] }`.
+- **Usage models** (`src/models/usage.ts`, exported from the package root):
+  `UsageProvider` (`codex`/`claude`/`copilot`/`gemini`), `UsageStatus`
+  (`ok`/`authRequired`/`notInstalled`/`error`), `UsageSource` (`token`),
+  `UsageWindow`, `CreditBalance`, `ProviderUsage`, and the
+  `UsageStatsParams`/`UsageStatsResult` request/response shapes.
+- **Posture:** the contract reads usage only from the CLI's own stored token
+  (→ the provider's official usage API) — never browser cookies or pasted API
+  keys. Access is per-runtime by design: the desktop reads these files natively
+  in Rust today; the bridge will read them in TS for the phone (Phase 6). See
+  `architecture/02a` §5.8.10 and `02b` (`ProviderUsage` contract). The bridge
+  and mobile handlers are owed follow-ups (their `FOR-DEV.md`).
+
 ## [0.0.4-alpha.20260703] - 2026-07-03
 
 ### Changed — npm releases publish to the `latest` dist-tag

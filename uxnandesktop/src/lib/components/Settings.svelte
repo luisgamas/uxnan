@@ -21,7 +21,13 @@
     type TerminalTemplate,
   } from "$lib/terminalTemplates";
   import { AGENT_CATALOG, agentLogoKey, type CatalogAgent } from "$lib/agentCatalog";
-  import { detectAgents } from "$lib/api";
+  import { USAGE_CATALOG, usageProvider, defaultStatusBarPick } from "$lib/usageCatalog";
+  import { statusMeta } from "$lib/usageFormat";
+  import { detectAgents, usageDetect } from "$lib/api";
+  import { usage } from "$lib/state/usage.svelte";
+  import type { UsageProvider } from "$lib/types";
+  import * as Tabs from "$lib/components/ui/tabs";
+  import ProviderUsageEditor from "./ProviderUsageEditor.svelte";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { updater } from "$lib/state/updater.svelte";
   import { appVersion } from "$lib/api";
@@ -52,10 +58,11 @@
     resolveBinding,
   } from "$lib/keybindings";
   import { cn } from "$lib/utils";
-  import { divider, icon, iconButton, panel, text } from "$lib/design";
+  import { divider, icon, iconButton, panel, tab, text } from "$lib/design";
   import PaletteIcon from "@lucide/svelte/icons/palette";
   import TerminalIcon from "@lucide/svelte/icons/terminal";
   import BotIcon from "@lucide/svelte/icons/bot";
+  import GaugeIcon from "@lucide/svelte/icons/gauge";
   import LanguagesIcon from "@lucide/svelte/icons/languages";
   import KeyboardIcon from "@lucide/svelte/icons/keyboard";
   import WebhookIcon from "@lucide/svelte/icons/webhook";
@@ -214,6 +221,85 @@
   const addableCount = $derived(
     AGENT_CATALOG.filter((c) => isInstalled(c) && !isConfigured(c)).length,
   );
+
+  // --- Providers (usage statistics) -----------------------------------------
+  // Which catalog providers are present on the machine (null = not checked yet).
+  let usagePresent = $state<Set<UsageProvider> | null>(null);
+  async function detectProviders() {
+    try {
+      usagePresent = new Set(await usageDetect(USAGE_CATALOG.map((p) => p.id)));
+    } catch {
+      usagePresent = new Set(); // backend unreachable (e.g. web preview)
+    }
+  }
+  // On opening the Providers pane: detect presence once, then load fresh usage.
+  $effect(() => {
+    if (app.settingsOpen && app.settingsSection === "providers") {
+      if (usagePresent === null) void detectProviders();
+      void usage.ensureFresh();
+    }
+  });
+
+  const usageConfigs = $derived(app.settings.usageProviders ?? []);
+  const isProviderActive = (id: UsageProvider) =>
+    usageConfigs.some((c) => c.provider === id);
+  const providerPresent = (id: UsageProvider) => usagePresent?.has(id) ?? false;
+
+  // The provider tab currently shown. Kept valid as the list changes.
+  let activeProviderTab = $state<string>("");
+  $effect(() => {
+    const ids = usageConfigs.map((c) => c.provider);
+    if (ids.length > 0 && !ids.includes(activeProviderTab as UsageProvider)) {
+      activeProviderTab = ids[0];
+    }
+  });
+
+  function addProvider(id: UsageProvider) {
+    const meta = usageProvider(id);
+    if (!meta || isProviderActive(id)) return;
+    if (!app.settings.usageProviders) app.settings.usageProviders = [];
+    app.settings.usageProviders.push({
+      provider: id,
+      refreshMinutes: null,
+      statusBar: defaultStatusBarPick(),
+    });
+    activeProviderTab = id; // jump to the newly added provider's tab
+    persistNow();
+    usage.reschedule();
+    void usage.refreshOne(id);
+  }
+  function removeProvider(id: UsageProvider) {
+    app.settings.usageProviders = usageConfigs.filter((c) => c.provider !== id);
+    persistNow();
+    usage.reschedule();
+  }
+  // A card edited a field (refresh interval / status-bar picks): persist soon.
+  const onProviderChange = () => schedulePersist();
+
+  // Combobox: providers not yet activated, with an "installed?" hint.
+  const addProviderGroups = $derived<ComboGroup[]>([
+    {
+      items: USAGE_CATALOG.filter((p) => !isProviderActive(p.id)).map((p) => ({
+        value: p.id,
+        label: p.name,
+        keywords: [p.id],
+        meta: providerPresent(p.id) ? undefined : i18n.t("providers.notDetected"),
+      })),
+    },
+  ]);
+
+  // Global refresh-interval options (the per-provider select adds a "Global").
+  const usageRefreshGroups: ComboGroup[] = [
+    {
+      items: [
+        { value: "1", label: i18n.t("providers.every1m") },
+        { value: "5", label: i18n.t("providers.every5m") },
+        { value: "15", label: i18n.t("providers.every15m") },
+        { value: "60", label: i18n.t("providers.every60m") },
+        { value: "0", label: i18n.t("providers.refreshManual") },
+      ],
+    },
+  ];
 
   // Default agent (auto-launched on worktree create); "__none__" = off.
   const NO_DEFAULT_AGENT = "__none__";
@@ -547,6 +633,7 @@
       titleKey: "settings.groupAgents",
       items: [
         { id: "agents", key: "settings.agents", icon: BotIcon },
+        { id: "providers", key: "settings.providers", icon: GaugeIcon },
         { id: "aicommit", key: "settings.aiCommit", icon: SparklesIcon },
         { id: "hooks", key: "settings.hooks", icon: WebhookIcon },
       ],
@@ -834,6 +921,103 @@
               </div>
             </div>
 
+          </div>
+        {:else if app.settingsSection === "providers"}
+          <div class="flex flex-col gap-6">
+            <SettingsSection title={i18n.t("settings.providers")} description={i18n.t("settings.providersDesc")}>
+              <div class="divide-y divide-border/60">
+                <SettingsRow label={i18n.t("providers.refreshInterval")} description={i18n.t("providers.refreshIntervalDesc")}>
+                  {#snippet control()}
+                    <Combobox
+                      value={String(app.settings.usageRefreshMinutes ?? 5)}
+                      groups={usageRefreshGroups}
+                      triggerClass="w-44"
+                      onChange={(v) => {
+                        app.settings.usageRefreshMinutes = Number(v);
+                        persistNow();
+                        usage.reschedule();
+                      }}
+                    />
+                  {/snippet}
+                </SettingsRow>
+                <SettingsRow label={i18n.t("providers.statusBarEnabled")} description={i18n.t("providers.statusBarEnabledDesc")}>
+                  {#snippet control()}
+                    <Switch
+                      checked={app.settings.usageStatusBarEnabled !== false}
+                      onCheckedChange={(c) => {
+                        app.settings.usageStatusBarEnabled = c;
+                        persistNow();
+                      }}
+                    />
+                  {/snippet}
+                </SettingsRow>
+              </div>
+            </SettingsSection>
+
+            <!-- Your providers: a section label OUTSIDE the container, then one
+                 coherent container holding the add-header (title · desc ·
+                 combobox), a subtle divider, and a tab per activated provider.
+                 Each tab shows that provider's live data + status-bar options. -->
+            {#snippet providerPrefix(item: ComboItem)}
+              <AgentLogo logo={usageProvider(item.value as UsageProvider)?.logo ?? item.value} class="size-4" />
+            {/snippet}
+            <section class="space-y-4">
+              <h2 class={text.pageTitle}>{i18n.t("providers.yourProviders")}</h2>
+              <div class={panel.settingsBody}>
+                <div class="flex flex-wrap items-start justify-between gap-4">
+                  <div class="min-w-0 space-y-1">
+                    <h3 class={text.heading}>{i18n.t("providers.addProvider")}</h3>
+                    <p class="max-w-md text-[13px] leading-5 text-muted-foreground">{i18n.t("providers.yourProvidersDesc")}</p>
+                  </div>
+                  <Combobox
+                    value=""
+                    groups={addProviderGroups}
+                    triggerClass="w-56"
+                    placeholder={i18n.t("providers.addPick")}
+                    searchPlaceholder={i18n.t("common.search")}
+                    itemPrefix={providerPrefix}
+                    onChange={(v) => addProvider(v as UsageProvider)}
+                  />
+                </div>
+                <div class="mt-5 border-t border-border/60 pt-5">
+                  {#if usagePresent === null && usageConfigs.length === 0}
+                    <p class={cn("py-2 text-center", text.meta)}>{i18n.t("settings.detecting")}</p>
+                  {:else if usageConfigs.length === 0}
+                    <p class={cn("py-2 text-center", text.meta)}>{i18n.t("providers.empty")}</p>
+                  {:else}
+                    <Tabs.Root bind:value={activeProviderTab} class="flex flex-col gap-5">
+                      <Tabs.List class={cn("h-8 shrink-0 justify-start gap-1 rounded-none bg-transparent p-0", divider.bottom)}>
+                        {#each usageConfigs as config (config.provider)}
+                          {@const m = usageProvider(config.provider)}
+                          {@const snap = usage.byProvider[config.provider]}
+                          {@const st = statusMeta(snap?.status ?? "notInstalled")}
+                          <Tabs.Trigger
+                            value={config.provider}
+                            class={cn("gap-1.5 px-3 text-[13px]", tab.base, activeProviderTab === config.provider ? tab.activeLine : tab.inactiveLine)}
+                          >
+                            <AgentLogo logo={m?.logo ?? config.provider} class="size-4" />
+                            {m?.name ?? config.provider}
+                            <span class={cn("size-1.5 shrink-0 rounded-full", st.dot)}></span>
+                          </Tabs.Trigger>
+                        {/each}
+                      </Tabs.List>
+                      {#each usageConfigs as config (config.provider)}
+                        <Tabs.Content value={config.provider}>
+                          <ProviderUsageEditor
+                            {config}
+                            snapshot={usage.byProvider[config.provider]}
+                            loading={usage.loading}
+                            onchange={onProviderChange}
+                            onremove={() => removeProvider(config.provider)}
+                            onrefresh={() => usage.refreshOne(config.provider)}
+                          />
+                        </Tabs.Content>
+                      {/each}
+                    </Tabs.Root>
+                  {/if}
+                </div>
+              </div>
+            </section>
           </div>
         {:else if app.settingsSection === "aicommit"}
           <SettingsSection title={i18n.t("settings.aiCommit")} description={i18n.t("settings.aiCommitDesc")}>

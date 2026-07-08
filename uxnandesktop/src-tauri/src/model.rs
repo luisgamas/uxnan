@@ -304,11 +304,28 @@ pub struct AppSettings {
     /// Width (px) of the integrated browser panel (the right-side "4th panel").
     #[serde(default = "default_browser_panel_width")]
     pub browser_panel_width: u32,
+    /// AI providers whose usage stats the user activated (Settings → Providers).
+    /// Frontend-owned shape (`UsageProviderConfig`), persisted opaquely. Only the
+    /// providers listed here are ever polled by `usage_read`.
+    #[serde(default)]
+    pub usage_providers: Vec<serde_json::Value>,
+    /// How often (minutes) activated providers refresh; a provider may override
+    /// it in its own config. `0` = manual only. Default 5.
+    #[serde(default = "default_usage_refresh_minutes")]
+    pub usage_refresh_minutes: u32,
+    /// Show the usage indicator + popover in the bottom status bar. Default on.
+    #[serde(default = "default_true")]
+    pub usage_status_bar_enabled: bool,
 }
 
 /// Default width of the integrated browser panel.
 fn default_browser_panel_width() -> u32 {
     520
+}
+
+/// Default usage-stats refresh interval, in minutes.
+fn default_usage_refresh_minutes() -> u32 {
+    5
 }
 
 /// Release channel the updater follows. Mapped to GitHub's only release
@@ -574,6 +591,9 @@ impl Default for AppSettings {
             updater: UpdaterSettings::default(),
             browser: BrowserSettings::default(),
             browser_panel_width: default_browser_panel_width(),
+            usage_providers: Vec::new(),
+            usage_refresh_minutes: default_usage_refresh_minutes(),
+            usage_status_bar_enabled: true,
         }
     }
 }

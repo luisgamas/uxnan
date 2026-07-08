@@ -49,6 +49,68 @@ export interface AgentProfile {
   icon?: string | null;
 }
 
+// --- AI-provider usage statistics (Settings → Providers) --------------------
+// Mirror of `shared/src/models/usage.ts` (the bridge serves the same shape to
+// the phone later). Read natively in Rust here via the `usage_read` command.
+
+/** A coding CLI whose usage we read from its own stored token. */
+export type UsageProvider = "codex" | "claude" | "copilot" | "gemini";
+
+/** Outcome of reading one provider's usage. */
+export type UsageStatus = "ok" | "authRequired" | "notInstalled" | "error";
+
+/** How the data was obtained, for the provenance label. */
+export type UsageSource = "token";
+
+/** A single quota/rate window, expressed as a used-percentage with a reset. */
+export interface UsageWindow {
+  id: string;
+  label: string;
+  usedPercent: number;
+  windowMinutes?: number;
+  resetsAt?: number;
+}
+
+/** A monetary / credit balance, separate from the percentage windows. */
+export interface CreditBalance {
+  used: number;
+  limit?: number;
+  currency: string;
+  period: string;
+  resetsAt?: number;
+}
+
+/** One provider's usage snapshot (result of `usage_read`). */
+export interface ProviderUsage {
+  provider: UsageProvider;
+  status: UsageStatus;
+  source?: UsageSource;
+  account?: { email?: string; organization?: string; plan?: string };
+  windows: UsageWindow[];
+  credit?: CreditBalance;
+  updatedAt: number;
+  message?: string;
+}
+
+/** What of a provider surfaces in the bottom status-bar popover. `windows` are
+ *  the window ids to show; the primary %-bar is opted-in by default when a
+ *  provider first activates (see `defaultStatusBarPick`). */
+export interface UsageStatusBarPick {
+  show: boolean;
+  windows: string[];
+  showCredit?: boolean;
+  showPlan?: boolean;
+}
+
+/** A provider the user activated in Settings → Providers. Only activated
+ *  providers are ever polled — inactive ones cost nothing. */
+export interface UsageProviderConfig {
+  provider: UsageProvider;
+  /** Per-provider refresh override in minutes; null/absent = the global value. */
+  refreshMinutes?: number | null;
+  statusBar: UsageStatusBarPick;
+}
+
 export interface AppSettings {
   theme: Theme;
   leftSidebarWidth: number;
@@ -106,6 +168,15 @@ export interface AppSettings {
   browser?: BrowserSettings;
   /** Width (px) of the integrated browser panel (the right-side "4th panel"). */
   browserPanelWidth?: number;
+  /** AI providers whose usage stats the user activated (Settings → Providers).
+   *  Only these are polled. Empty/absent = the feature is idle. */
+  usageProviders?: UsageProviderConfig[];
+  /** How often (minutes) activated providers refresh; a provider may override
+   *  it. 0 = manual only. Default 5. */
+  usageRefreshMinutes?: number;
+  /** Show the usage indicator + popover in the bottom status bar. Default true
+   *  once at least one provider is activated. */
+  usageStatusBarEnabled?: boolean;
 }
 
 /** Where a link opens when the integrated browser is enabled (mirror of Rust
@@ -553,6 +624,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   terminalProfiles: [],
   defaultProfileId: null,
   agentProfiles: [],
+  usageProviders: [],
+  usageRefreshMinutes: 5,
+  usageStatusBarEnabled: true,
   defaultAgentId: null,
   agentShellProfileId: null,
   agentNotifications: true,

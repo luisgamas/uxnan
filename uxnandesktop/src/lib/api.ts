@@ -23,9 +23,11 @@ import type {
   ImageDiff,
   RemoteOwner,
   RemoveOutcome,
+  ProviderUsage,
   RepoData,
   SavedTerminalLayout,
   UpdateInfo,
+  UsageProvider,
   WorktreeEntry,
   WorktreeStatus,
 } from "./types";
@@ -61,6 +63,19 @@ export function detectAgents(commands: string[]): Promise<string[]> {
 /** Set the agent commands the backend process-detection poll looks for. */
 export function setAgentCommands(commands: string[]): Promise<void> {
   return invoke("set_agent_commands", { commands });
+}
+
+/** Read usage stats (quota windows / credit / local token tally) for the given
+ *  providers — only the ones the user activated. Each provider carries its own
+ *  status, so a slow/broken one never sinks the rest. */
+export function usageRead(providers: UsageProvider[]): Promise<ProviderUsage[]> {
+  return invoke<ProviderUsage[]>("usage_read", { providers });
+}
+
+/** The subset of `providers` whose CLI / config is present on this machine, so
+ *  the Providers catalog can enable only the available ones. */
+export function usageDetect(providers: UsageProvider[]): Promise<UsageProvider[]> {
+  return invoke<UsageProvider[]>("usage_detect", { providers });
 }
 
 /** Coordinates of the local agent hook server (null until it's listening). */

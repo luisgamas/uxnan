@@ -28,6 +28,7 @@ mod procscan;
 mod pty;
 mod state;
 mod updater;
+mod usage;
 mod which;
 mod winproc;
 mod wsl;
@@ -210,6 +211,8 @@ pub fn run() {
             commands::get_app_state,
             commands::update_settings,
             commands::ping,
+            commands::usage_read,
+            commands::usage_detect,
             commands::mcp_info,
             commands::pty_create,
             commands::pty_write,
