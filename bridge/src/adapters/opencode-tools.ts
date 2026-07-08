@@ -15,9 +15,46 @@ import {
   editDiffBlock,
   extractPlanSteps,
   planBlock,
+  type PlanStepBlock,
   toolBlock,
   writeDiffBlock,
 } from './content-blocks.js';
+
+/**
+ * Rank of a plan step status, used to keep the most advanced state when OpenCode
+ * emits the same todo list twice per turn (`todowrite` fires once with
+ * `in_progress`/`pending` and again with `completed`). Higher = more advanced.
+ */
+const STATUS_RANK: Record<string, number> = {
+  pending: 0,
+  in_progress: 1,
+  completed: 2,
+};
+
+/**
+ * Merges OpenCode `todowrite` steps across the multiple emits a single turn
+ * produces. Steps are keyed by their (normalized) content so the same task is
+ * collapsed into one, keeping whichever status is most advanced. Returns the
+ * unified step list, or `[]` when no steps were parsed.
+ */
+export function mergePlanSteps(
+  prev: PlanStepBlock[],
+  next: PlanStepBlock[],
+): PlanStepBlock[] {
+  const byContent = new Map<string, PlanStepBlock>();
+  for (const step of [...prev, ...next]) {
+    const key = step.description.trim();
+    const existing = byContent.get(key);
+    if (!existing) {
+      byContent.set(key, { ...step });
+      continue;
+    }
+    const rank = STATUS_RANK[step.status] ?? 0;
+    const existingRank = STATUS_RANK[existing.status] ?? 0;
+    if (rank > existingRank) existing.status = step.status;
+  }
+  return [...byContent.values()];
+}
 
 function str(value: unknown): string {
   return typeof value === 'string' ? value : '';
@@ -42,9 +79,14 @@ export function opencodeToolBlock(
       );
     case 'write':
       return writeDiffBlock(str(input['filePath']), str(input['content']));
-    // OpenCode's to-do tool surfaces the plan/task list. FOR-DEV: tool name +
-    // input shape ASSUMED (`todowrite`/`todoread`, `{ todos:[…] }`) — verify
-    // against a real OpenCode plan turn; a mismatch yields no steps → no block.
+    // OpenCode's to-do tool surfaces the plan/task list. Verified against
+    // opencode 1.17.x: `todowrite` fires with `{ todos:[{content,status,priority}] }`
+    // up to twice per turn (an `in_progress`/`pending` pass and a `completed` pass),
+    // each with a distinct partId. The adapter accumulates these via
+    // `mergePlanSteps` and emits a single `plan` block at turn close, so the
+    // phone shows one plan card with the final states (not two). `todoread`/
+    // `todo` are treated the same. A mismatch (no parsed steps) falls back to a
+    // generic tool block.
     case 'todowrite':
     case 'todoread':
     case 'todo': {

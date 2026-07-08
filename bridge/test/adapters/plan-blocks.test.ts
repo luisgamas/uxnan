@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { extractPlanSteps, planBlock } from '../../src/adapters/content-blocks.js';
 import { toolUseToBlock } from '../../src/adapters/claude-tools.js';
-import { opencodeToolBlock } from '../../src/adapters/opencode-tools.js';
+import { opencodeToolBlock, mergePlanSteps } from '../../src/adapters/opencode-tools.js';
 import { piToolBlock } from '../../src/adapters/pi-tools.js';
 import { codexItemBlocks } from '../../src/adapters/codex-tools.js';
 
@@ -85,6 +85,51 @@ test('OpenCode todowrite maps to a plan block', () => {
   );
   assert.equal(block['type'], 'plan');
   assert.deepEqual(block['state'], { steps: [{ description: 'A', status: 'completed' }] });
+});
+
+test('mergePlanSteps collapses OpenCode double todowrite emit into one ordered step list', () => {
+  // OpenCode emits todowrite up to twice per turn. The second emit must not
+  // duplicate steps; statuses must advance (pending -> in_progress -> completed).
+  const first = extractPlanSteps({
+    todos: [
+      { content: 'Read the spec', status: 'pending' },
+      { content: 'Write the code', status: 'pending' },
+    ],
+  });
+  const second = extractPlanSteps({
+    todos: [
+      { content: 'Read the spec', status: 'in_progress' },
+      { content: 'Write the code', status: 'pending' },
+      { content: 'Test it', status: 'pending' },
+    ],
+  });
+  const merged = mergePlanSteps(mergePlanSteps([], first), second);
+  assert.deepEqual(merged, [
+    { description: 'Read the spec', status: 'in_progress' },
+    { description: 'Write the code', status: 'pending' },
+    { description: 'Test it', status: 'pending' },
+  ]);
+});
+
+test('mergePlanSteps only advances status forward, never backward', () => {
+  const a = mergePlanSteps([], [{ description: 'X', status: 'completed' }]);
+  const b = mergePlanSteps(a, [{ description: 'X', status: 'pending' }]);
+  assert.deepEqual(b, [{ description: 'X', status: 'completed' }]);
+});
+
+test('mergePlanSteps is order-stable for unchanged steps', () => {
+  const a = mergePlanSteps([], [
+    { description: 'first', status: 'pending' },
+    { description: 'second', status: 'pending' },
+  ]);
+  const b = mergePlanSteps(a, [
+    { description: 'second', status: 'in_progress' },
+    { description: 'first', status: 'in_progress' },
+  ]);
+  assert.deepEqual(b, [
+    { description: 'first', status: 'in_progress' },
+    { description: 'second', status: 'in_progress' },
+  ]);
 });
 
 test('pi todo tool maps to a plan block', () => {

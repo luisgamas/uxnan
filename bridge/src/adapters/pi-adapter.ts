@@ -47,6 +47,11 @@ const PI_CAPABILITIES: AgentCapabilities = {
   streaming: true,
   // pi runs its tools autonomously in `-p` mode (no per-turn approval RPC).
   approvals: false,
+  // pi operates in autonomous ("YOLO") mode by default: it acts and edits
+  // without per-action approval prompts because its headless CLI exposes no
+  // pre-tool approval channel. The phone surfaces this so the user knows pi
+  // won't ask before running tools.
+  autonomous: true,
   forking: true,
   images: true,
   reportsContextUsage: true,

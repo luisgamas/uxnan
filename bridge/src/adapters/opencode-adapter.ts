@@ -28,7 +28,8 @@ import type {
   SendTurnOptions,
 } from '@uxnan/shared';
 import { BaseAgentAdapter } from './base-adapter.js';
-import { opencodeToolBlock } from './opencode-tools.js';
+import { mergePlanSteps, opencodeToolBlock } from './opencode-tools.js';
+import { extractPlanSteps, planBlock } from './content-blocks.js';
 import { reasoningValue } from './run-options.js';
 import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
 
@@ -36,7 +37,7 @@ import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
 export type { SpawnFn, SpawnedProcess } from './spawn.js';
 
 const OPENCODE_CAPABILITIES: AgentCapabilities = {
-  planMode: false,
+  planMode: true,
   streaming: true,
   approvals: false,
   forking: true,
@@ -261,6 +262,9 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     const emittedTools = new Set<string>();
     let full = '';
     let errored = false;
+    // Accumulated plan steps from OpenCode `todowrite` (fires up to twice per
+    // turn). Merged at turn close into a single `plan` block — see mergePlanSteps.
+    let planSteps: import('./content-blocks.js').PlanStepBlock[] = [];
     // Latest per-step token count (`step_finish.part.tokens`); emitted as
     // `usage.tokens` on completion so the phone's context indicator fills in.
     let tokens: number | undefined;
@@ -284,10 +288,19 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
           this.emit({ type: 'thinking', threadId, turnId, data: { text: delta } });
         }
       } else if (event.kind === 'tool') {
-        // Emit the structured block once, when the tool reaches a terminal state.
         const id = event.partId ?? '';
         const status = event.toolStatus;
-        if ((status === 'completed' || status === 'error') && !emittedTools.has(id)) {
+        const toolName = (event.toolName ?? '').toLowerCase();
+        // OpenCode's to-do tool can fire several times per turn; accumulate its
+        // steps and emit a single merged `plan` block at turn close so the phone
+        // shows one plan card (not one per emit). Skip the generic tool block.
+        if (toolName === 'todowrite' || toolName === 'todoread' || toolName === 'todo') {
+          if (status === 'completed' || status === 'error') {
+            const steps = extractPlanSteps(event.toolInput ?? {});
+            if (steps.length > 0) planSteps = mergePlanSteps(planSteps, steps);
+          }
+        } else if ((status === 'completed' || status === 'error') && !emittedTools.has(id)) {
+          // Emit the structured block once, when the tool reaches a terminal state.
           emittedTools.add(id);
           this.emit({
             type: 'block',
@@ -335,6 +348,16 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     child.on('close', () => {
       reader.close();
       this.#active.delete(turnId);
+      // Flush the merged plan (accumulated from `todowrite` emits) as a single
+      // `plan` block so the phone shows one plan card with the final states.
+      if (!errored && planSteps.length > 0) {
+        this.emit({
+          type: 'block',
+          threadId,
+          turnId,
+          data: { content: planBlock(planSteps) },
+        });
+      }
       if (!errored) {
         const contextWindow =
           model !== undefined ? this.#contextWindowByModel.get(model) : undefined;

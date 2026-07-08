@@ -93,6 +93,18 @@ push validation (FOR-HUMAN).
       would need driving `opencode serve` (HTTP, per-thread server session — a
       rewrite) or pi's `--mode rpc` (two-way, adapter refactor). Revisit when either
       CLI ships a stable pre-tool channel on its headless entry point.
+      - **DONE (2026-07-08): OpenCode plan/todo mapping.** `todowrite`
+        (`{ todos:[{content,status,priority}] }`) fires up to twice per turn; the
+        adapter buffers steps in `planSteps` and merges via `mergePlanSteps`
+        (dedup by `description`, forward-only status, order-stable), emitting one
+        `plan` block at turn close; `planMode` capability set to `true` so the
+        mobile shows the chip + banner. Unit-tested in `plan-blocks.test.ts`.
+      - **DONE (2026-07-08): pi autonomous announcement.** pi runs in "YOLO" mode
+        headless with no pre-tool channel, so per-action approvals are
+        intentionally unavailable. The mobile now surfaces this via
+        `autonomous: true` (capability, added to `AgentCapabilities`) → chip on
+        new-conversation screen + conversation banner (`conversationAutonomousMode`
+        / `newThreadCapAutonomous` EN/ES). Left as-is per product decision.
 - [ ] **Codex access-mode — mid-thread per-turn re-apply.** The thread's
       `accessMode` is mapped to `(approvalPolicy, sandbox)` and sent on
       `thread/start` (`codex-adapter.ts` `#effectiveMode`), so it governs a Codex

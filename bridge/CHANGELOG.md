@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — OpenCode plan/todo now emits a single, status-advancing plan card
+- **Root cause:** OpenCode's `todowrite` tool fires **up to twice per turn** with
+  the same (or progressively-updated) todo list, and `planMode` was advertised as
+  `false`, so the mobile both rendered two near-duplicate plan cards and hid the
+  plan-mode capability chip.
+- **Fix (`opencode-adapter.ts` + `opencode-tools.ts`):** the adapter now collects
+  `todowrite` steps into a turn-scoped `planSteps` buffer and merges every emit via
+  the new `mergePlanSteps` (dedup by `description`, advance status strictly
+  forward `pending → in_progress → completed`, order-stable), then emits **one**
+  `plan` block at turn close (`finish`). `planMode` is now advertised `true` so the
+  mobile shows the plan-mode chip and banner. Added unit tests in
+  `test/adapters/plan-blocks.test.ts`.
+
 ## [0.0.4-alpha.20260703] - 2026-07-03
 
 ### Changed — npm releases now publish to the `latest` dist-tag
