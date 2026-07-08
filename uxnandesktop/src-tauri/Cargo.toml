@@ -64,6 +64,12 @@ axum = { version = "0.8", default-features = false, features = ["json", "tokio",
 # agent's `config.toml` (Codex) without clobbering the user's other settings or
 # comments. Pure Rust; `serde` handles the JSON-config agents (Claude/Gemini/…).
 toml_edit = "0.22"
+# SHA-256 (+ hex encoding) used only to reproduce Codex's per-hook `trusted_hash`
+# so the ADE-managed status hook is auto-trusted in `~/.codex/config.toml`
+# (Codex 0.129+ gates hooks on this trust). RustCrypto, pure Rust, tiny,
+# MIT/Apache-2.0. See `codex_trust.rs`.
+sha2 = "0.10"
+hex = "0.4"
 # Filesystem watcher for the right-panel file tree + the open-file editor: a
 # debounced, cross-platform watch of the active worktree root that emits
 # `fs:changed` so the UI reflects files created/deleted/edited on disk without a

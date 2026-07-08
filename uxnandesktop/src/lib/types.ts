@@ -440,22 +440,36 @@ export interface HookServerInfo {
 }
 
 /** Absolute paths of the bundled hook scripts the ADE wrote to
- *  `<app-data>/hooks/` at startup, plus the resolved `~/.claude/settings.json`
- *  path. `null` if the install-on-startup step failed. */
+ *  `<app-data>/hooks/` at startup, plus the resolved per-agent config paths.
+ *  `null` if the install-on-startup step failed. */
 export interface HookInstall {
   dir: string;
-  claudeHookScript: string;
+  /** The Node relay shared by Claude Code + Gemini CLI. */
+  statusRelayScript: string;
+  /** Codex `curl` hook (POSIX / Windows). */
+  codexHookSh: string;
+  codexHookCmd: string;
+  /** OpenCode plugin / Pi extension sources (in the hooks dir). */
+  opencodePluginScript: string;
+  piExtensionScript: string;
   wrapperBash: string;
   wrapperPowershell: string;
   wrapperCmd: string;
+  wrapperFish: string;
+  browserShimBash: string;
+  browserShimCmd: string;
+  /** Where each agent's managed config lives (shown in the UI). */
   claudeSettingsPath: string;
+  codexHooksPath: string;
+  geminiSettingsPath: string;
+  opencodePluginPath: string;
+  piExtensionPath: string;
 }
 
-/** The current state of the Claude `settings.json` `hooks` block. The UI
- *  uses this to render an honest "Installed" / "Not installed" /
- *  "Unavailable" badge — never claim installed unless the file actually
- *  carries our managed marker. */
-export interface ClaudeHooksStatus {
+/** The current install state of a managed agent hook (Claude Code, Codex,
+ *  Gemini CLI, OpenCode or Pi). The UI uses this to render an honest
+ *  "Installed" / "Not installed" / "Unavailable" badge. */
+export interface AgentHooksStatus {
   installed: boolean;
   fileExists: boolean;
   unavailable: boolean;
@@ -469,9 +483,11 @@ export interface ClaudeHooksStatus {
  *  startup failed. */
 export interface HookScripts {
   claudeJson: string;
+  statusRelayCjs: string;
   wrapperBash: string;
   wrapperPowershell: string;
   wrapperCmd: string;
+  wrapperFish: string;
 }
 
 /** Persisted terminal layout (structure only — fresh shells spawn on restore).

@@ -9,7 +9,7 @@ import type {
   AppData,
   AppSettings,
   BranchList,
-  ClaudeHooksStatus,
+  AgentHooksStatus,
   CommitInfo,
   DirListing,
   FileChange,
@@ -89,21 +89,79 @@ export function getHookInstall(): Promise<HookInstall | null> {
 /** Current state of the Claude `settings.json` `hooks` block. The UI uses
  *  this to render an honest "Installed" / "Not installed" / "Unavailable"
  *  badge — we never claim installed unless the file carries our marker. */
-export function getClaudeHooksStatus(): Promise<ClaudeHooksStatus> {
-  return invoke<ClaudeHooksStatus>("get_claude_hooks_status");
+export function getClaudeHooksStatus(): Promise<AgentHooksStatus> {
+  return invoke<AgentHooksStatus>("get_claude_hooks_status");
 }
 
 /** Add (or replace) the ADE-managed `hooks` block in `~/.claude/settings.json`,
  *  pointing at the installed script. Preserves every other top-level key.
  *  Returns the new status so the UI can refresh without a second round-trip. */
-export function installClaudeHooks(): Promise<ClaudeHooksStatus> {
-  return invoke<ClaudeHooksStatus>("install_claude_hooks");
+export function installClaudeHooks(): Promise<AgentHooksStatus> {
+  return invoke<AgentHooksStatus>("install_claude_hooks");
 }
 
 /** Remove the ADE-managed `hooks` block from `~/.claude/settings.json`.
  *  Idempotent; no-op if it's not ours. */
-export function uninstallClaudeHooks(): Promise<ClaudeHooksStatus> {
-  return invoke<ClaudeHooksStatus>("uninstall_claude_hooks");
+export function uninstallClaudeHooks(): Promise<AgentHooksStatus> {
+  return invoke<AgentHooksStatus>("uninstall_claude_hooks");
+}
+
+/** Status of the managed Codex `hooks.json` (+ `config.toml` trust entry). */
+export function getCodexHooksStatus(): Promise<AgentHooksStatus> {
+  return invoke<AgentHooksStatus>("get_codex_hooks_status");
+}
+
+/** Install the ADE-managed Codex hooks and trust the file in `config.toml`. */
+export function installCodexHooks(): Promise<AgentHooksStatus> {
+  return invoke<AgentHooksStatus>("install_codex_hooks");
+}
+
+export function uninstallCodexHooks(): Promise<AgentHooksStatus> {
+  return invoke<AgentHooksStatus>("uninstall_codex_hooks");
+}
+
+/** Status of the managed Gemini CLI `settings.json` hooks block. */
+export function getGeminiHooksStatus(): Promise<AgentHooksStatus> {
+  return invoke<AgentHooksStatus>("get_gemini_hooks_status");
+}
+
+export function installGeminiHooks(): Promise<AgentHooksStatus> {
+  return invoke<AgentHooksStatus>("install_gemini_hooks");
+}
+
+export function uninstallGeminiHooks(): Promise<AgentHooksStatus> {
+  return invoke<AgentHooksStatus>("uninstall_gemini_hooks");
+}
+
+/** Status of the managed Pi/OMP status extension. */
+export function getPiHooksStatus(): Promise<AgentHooksStatus> {
+  return invoke<AgentHooksStatus>("get_pi_hooks_status");
+}
+
+export function installPiHooks(): Promise<AgentHooksStatus> {
+  return invoke<AgentHooksStatus>("install_pi_hooks");
+}
+
+export function uninstallPiHooks(): Promise<AgentHooksStatus> {
+  return invoke<AgentHooksStatus>("uninstall_pi_hooks");
+}
+
+/** Status of the managed OpenCode status plugin. */
+export function getOpencodeHooksStatus(): Promise<AgentHooksStatus> {
+  return invoke<AgentHooksStatus>("get_opencode_hooks_status");
+}
+
+export function installOpencodeHooks(): Promise<AgentHooksStatus> {
+  return invoke<AgentHooksStatus>("install_opencode_hooks");
+}
+
+export function uninstallOpencodeHooks(): Promise<AgentHooksStatus> {
+  return invoke<AgentHooksStatus>("uninstall_opencode_hooks");
+}
+
+/** (Re)install the managed hooks for every supported agent at once. */
+export function installAllHooks(): Promise<void> {
+  return invoke("install_all_hooks");
 }
 
 /** Textual content of every bundled hook script (rendered Claude JSON +

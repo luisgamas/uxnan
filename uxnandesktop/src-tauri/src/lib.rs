@@ -10,6 +10,7 @@ mod agentcli;
 mod aicommit;
 mod browse;
 mod browser;
+mod codex_trust;
 mod commands;
 mod error;
 mod fonts;
@@ -82,11 +83,14 @@ pub fn run() {
             app.manage(state);
 
             // Start the local agent hook server (Layer 1). On success, publish its
-            // url + token so `pty_create` can inject them into every terminal.
+            // url + token (+ the endpoint-file path it writes to `<data>/hooks/`)
+            // so `pty_create` can inject them into every terminal.
             let hook_handle = app.handle().clone();
+            let hooks_dir = data_dir.join("hooks");
+            let hooks_dir_for_server = hooks_dir.clone();
             tauri::async_runtime::spawn(async move {
                 let token = uuid::Uuid::new_v4().to_string();
-                match crate::hooks::start(hook_handle, token).await {
+                match crate::hooks::start(hook_handle, token, hooks_dir_for_server).await {
                     Ok(info) => *hook_slot.write().await = Some(info),
                     Err(err) => {
                         eprintln!("[uxnan-desktop] agent hook server failed to start: {err}");
@@ -98,16 +102,14 @@ pub fn run() {
             // Settings → Agents → Hooks pane can install the ready-made configs.
             // Best-effort: a failure here doesn't break the app (precise hook
             // reporting still works; the one-click install is just unavailable).
-            let hooks_dir = data_dir.join("hooks");
             match crate::agent_hooks::install_scripts_to(&hooks_dir) {
                 Ok(install) => {
-                    // Auto-install the Claude hooks block (idempotent: re-points it
-                    // at the current script path) unless the user opted out.
+                    // Auto-install the managed hooks for every supported agent
+                    // (Claude Code, Codex, Gemini CLI, OpenCode) so precise states
+                    // work out of the box. Idempotent; a failure for one agent does
+                    // not abort the others. Skipped when the user opted out.
                     if auto_install_hooks {
-                        let script = std::path::PathBuf::from(&install.claude_hook_script);
-                        if let Err(e) = crate::agent_hooks::install_claude_hooks(&script) {
-                            eprintln!("[uxnan-desktop] auto-install of Claude hooks failed: {e}");
-                        }
+                        crate::agent_hooks::install_all(&install);
                     }
                     let slot = hook_install_slot;
                     tauri::async_runtime::spawn(async move {
@@ -276,6 +278,19 @@ pub fn run() {
             commands::get_claude_hooks_status,
             commands::install_claude_hooks,
             commands::uninstall_claude_hooks,
+            commands::get_codex_hooks_status,
+            commands::install_codex_hooks,
+            commands::uninstall_codex_hooks,
+            commands::get_gemini_hooks_status,
+            commands::install_gemini_hooks,
+            commands::uninstall_gemini_hooks,
+            commands::get_pi_hooks_status,
+            commands::install_pi_hooks,
+            commands::uninstall_pi_hooks,
+            commands::get_opencode_hooks_status,
+            commands::install_opencode_hooks,
+            commands::uninstall_opencode_hooks,
+            commands::install_all_hooks,
             commands::get_hook_scripts,
             updater::app_version,
             updater::updater_check,

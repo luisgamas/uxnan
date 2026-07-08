@@ -1,23 +1,17 @@
 @echo off
 REM Uxnan Desktop - generic agent hook wrapper (Windows cmd / batch).
 REM
-REM Wraps any CLI agent: POSTs `working` to the local hook server before exec,
-REM and `done` on exit (with `interrupted: true` if the agent crashed). Use this
-REM as the agent's launch command in Settings -> Agents when the agent itself
-REM has no hook system.
+REM Wraps any CLI agent that has no native hook system: reports `working` before
+REM it runs and `done` on exit (with `interrupted` when the exit code is
+REM non-zero). Register it as the agent's launch command in Settings -> Agents.
 REM
 REM Usage:
 REM   uxnan-hook-wrapper.cmd <agent-type> -- <agent-cli> [args...]
 REM
-REM Environment (set by the ADE when it spawns the terminal):
-REM   UXNAN_HOOK_URL    POST endpoint, e.g. http://127.0.0.1:51234/hook
-REM   UXNAN_HOOK_TOKEN  Shared secret for the X-Uxnan-Token header
-REM   UXNAN_AGENT_ID    Terminal id; echoed back in every report
-REM
-REM This is the no-PowerShell fallback; PowerShell users should use
-REM uxnan-hook-wrapper.ps1 instead (handles arg quoting and exit codes more
-REM reliably). If UXNAN_HOOK_URL is empty, the wrapper just runs the agent
-REM unchanged.
+REM The agent id / kind / state ride in HTTP headers, so the wrapper never builds
+REM JSON (brittle to quote in batch). The ADE injects UXNAN_HOOK_URL / _TOKEN /
+REM UXNAN_AGENT_ID; UXNAN_ENDPOINT_FILE holds the live coordinates after a
+REM restart. curl.exe is fully-qualified so a repo-local curl.exe can't hijack it.
 
 setlocal EnableDelayedExpansion
 
@@ -26,29 +20,29 @@ set "TYPE=%~1"
 shift
 if not "%~1"=="--" goto :usage
 shift
-
 if "%~1"=="" goto :usage
 
+if defined UXNAN_ENDPOINT_FILE if exist "%UXNAN_ENDPOINT_FILE%" call "%UXNAN_ENDPOINT_FILE%" 2>nul
+
 if defined UXNAN_HOOK_URL (
-  curl -fsS --max-time 3 -X POST "%UXNAN_HOOK_URL%" ^
-    -H "Content-Type: application/json" ^
+  "%SystemRoot%\System32\curl.exe" -fsS --max-time 3 -X POST "%UXNAN_HOOK_URL%" ^
     -H "X-Uxnan-Token: %UXNAN_HOOK_TOKEN%" ^
-    -d "{\"agentId\":\"%UXNAN_AGENT_ID%\",\"status\":\"working\",\"agentType\":\"%TYPE%\"}" >NUL 2>&1
+    -H "X-Uxnan-Agent-Id: %UXNAN_AGENT_ID%" ^
+    -H "X-Uxnan-Agent-Type: %TYPE%" ^
+    -H "X-Uxnan-Status: working" >nul 2>&1
 )
 
 "%~1" %2 %3 %4 %5 %6 %7 %8 %9
 set "EC=%ERRORLEVEL%"
 
 if defined UXNAN_HOOK_URL (
-  if not "%EC%"=="0" (
-    set "INTERRUPTED=true"
-  ) else (
-    set "INTERRUPTED=false"
-  )
-  curl -fsS --max-time 3 -X POST "%UXNAN_HOOK_URL%" ^
-    -H "Content-Type: application/json" ^
+  if not "%EC%"=="0" ( set "INT=true" ) else ( set "INT=false" )
+  "%SystemRoot%\System32\curl.exe" -fsS --max-time 3 -X POST "%UXNAN_HOOK_URL%" ^
     -H "X-Uxnan-Token: %UXNAN_HOOK_TOKEN%" ^
-    -d "{\"agentId\":\"%UXNAN_AGENT_ID%\",\"status\":\"done\",\"agentType\":\"%TYPE%\",\"interrupted\":!INTERRUPTED!}" >NUL 2>&1
+    -H "X-Uxnan-Agent-Id: %UXNAN_AGENT_ID%" ^
+    -H "X-Uxnan-Agent-Type: %TYPE%" ^
+    -H "X-Uxnan-Status: done" ^
+    -H "X-Uxnan-Interrupted: !INT!" >nul 2>&1
 )
 
 endlocal & exit /b %EC%

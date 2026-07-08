@@ -655,12 +655,26 @@ export const en = {
     "Out-of-the-box configs that POST precise agent states to the ADE’s local hook server, so the sidebar and tab bar show working / waiting / done without manual setup.",
   "hooks.claudeTitle": "Claude Code",
   "hooks.claudeDesc":
-    "Adds a `hooks` block to `~/.claude/settings.json` that runs the bundled script on every Claude event. Existing settings are preserved.",
-  "hooks.claudeStatusInstalled": "Installed at {path}",
-  "hooks.claudeStatusNotInstalled": "Not installed",
-  "hooks.claudeStatusUnavailable":
-    "~/.claude/settings.json is not writable (read it manually for the JSON to paste).",
-  "hooks.claudeStatusMissing": "Claude Code settings file not found yet — install will create it.",
+    "Adds a `hooks` block to `~/.claude/settings.json` that runs the bundled Node relay on every Claude event (exec-form, so it works from any shell). Existing hooks are preserved.",
+  "hooks.codexTitle": "Codex",
+  "hooks.codexDesc":
+    "Adds managed hooks to `~/.codex/hooks.json` and registers their trust hash in `~/.codex/config.toml` (Codex 0.129+ gates hooks on it), so Codex reports precise states out of the box.",
+  "hooks.geminiTitle": "Gemini CLI",
+  "hooks.geminiDesc":
+    "Adds managed hooks to `~/.gemini/settings.json` that run the bundled relay on every Gemini turn event. Existing hooks are preserved.",
+  "hooks.opencodeTitle": "OpenCode",
+  "hooks.opencodeDesc":
+    "Installs the ADE status plugin into OpenCode's config so it reports working / waiting / done / blocked.",
+  "hooks.piTitle": "Pi",
+  "hooks.piDesc":
+    "Installs the ADE status extension into `~/.pi/agent/extensions` so Pi reports working / done in-process (it has no permission signal).",
+  "hooks.statusInstalled": "Installed at {path}",
+  "hooks.statusInstalledShort": "Installed",
+  "hooks.statusNotInstalled": "Not installed",
+  "hooks.enableToManage": "Turn on Install agent hooks to manage this agent.",
+  "hooks.statusUnavailable":
+    "Config is not writable (read it manually for the command to paste).",
+  "hooks.statusMissing": "Config file not found yet — install will create it.",
   "hooks.autoInstall": "Install agent hooks",
   "hooks.autoInstallDesc":
     "Lets agents report precise states. Installed automatically on startup; turn off to remove and keep it off.",

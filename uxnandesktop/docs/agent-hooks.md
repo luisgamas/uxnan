@@ -2,7 +2,7 @@
 
 ![States](https://img.shields.io/badge/states-working_%7C_blocked_%7C_waiting_%7C_done-2ea44f?style=for-the-badge)
 ![Server](https://img.shields.io/badge/hook_server-127.0.0.1_(loopback)-0a0a0a?style=for-the-badge)
-![Claude](https://img.shields.io/badge/Claude_Code-auto--installed-D97757?style=for-the-badge)
+![Agents](https://img.shields.io/badge/precise-Claude_%7C_Codex_%7C_Gemini_%7C_OpenCode_%7C_Pi-D97757?style=for-the-badge)
 ![Others](https://img.shields.io/badge/other_agents-generic_wrapper-blue?style=for-the-badge)
 
 The ADE infers a coarse **working / idle** state from terminal output with no
@@ -10,15 +10,17 @@ setup. To get **precise** states — `working`, `blocked`, `waiting`, `done` —
 agent must actively report them to the ADE's local **hook server** (Layer 1 of
 the monitoring design, spec `architecture/02d-agent-monitoring.md` §1.1).
 
-The ADE provides the endpoint and the ready-made scripts. **Claude Code hooks are
-installed automatically on startup** (the ADE-managed block is merged into
-`~/.claude/settings.json`, preserving your other keys); you can turn that off any
-time. Every other agent is **opt-in**: point it at the generic wrapper.
+The ADE ships a reporter for each of its five most-used agents — **Claude Code,
+Codex, Gemini CLI, OpenCode and Pi** — and installs them **automatically on
+startup** (you can turn that off any time). Each reporter is picked to be robust
+across every shell you might launch the agent from (cmd, PowerShell, PowerShell
+7, Git Bash, WSL, bash, zsh, fish), because the agent's *own* hook runner
+executes it. Any other agent is **opt-in**: point it at the generic wrapper.
 
 > **TL;DR.** Open **Settings → Agents → Hooks**:
-> - **Claude Code** → already installed (auto on startup). The **Install agent
->   hooks** switch turns it off (removes the block, and it stays off next launch)
->   or back on.
+> - **Claude Code / Codex / Gemini / OpenCode / Pi** → already installed (auto on
+>   startup). The **Install agent hooks** switch turns them off (and keeps them
+>   off next launch) or back on; each agent also has its own Install/Uninstall.
 > - **Anything else** → use the **generic wrapper** as the agent's launch
 >   command (full step-by-step per OS below).
 
@@ -57,7 +59,7 @@ These states show up everywhere you track an agent:
 
 ## What does the ADE provide out of the box?
 
-On every startup the ADE writes four scripts to `<app-data>/hooks/`. The
+On every startup the ADE writes its reporter scripts to `<app-data>/hooks/`. The
 exact path is shown in **Settings → Agents → Hooks** ("Installed at …"):
 
 | OS | `<app-data>` |
@@ -66,16 +68,18 @@ exact path is shown in **Settings → Agents → Hooks** ("Installed at …"):
 | macOS | `~/Library/Application Support/dev.luisgamas.uxnandesktop/hooks/` |
 | Linux | `~/.local/share/dev.luisgamas.uxnandesktop/hooks/` |
 
-The four files:
+The reporters (one per agent, plus the generic wrapper) — full table in
+[`static/hooks/README.md`](../static/hooks/README.md):
 
-| File | What it's for |
-|---|---|
-| `uxnan-claude-hook.cjs` | The Node script Claude Code invokes on every event (no deps, cross-platform). Maps `UserPromptSubmit` / `PreToolUse` / `PreCompact` / `Notification` / `PermissionRequest` / `Stop` / `SessionEnd` to the ADE's `working` / `waiting` / `done` / `blocked` states. |
-| `uxnan-hook-wrapper.sh` | Bash wrapper for any CLI agent. Posts `working` before exec and `done` on exit. Unix + macOS + WSL + Git Bash on Windows. |
-| `uxnan-hook-wrapper.ps1` | PowerShell wrapper for any CLI agent (Windows). |
-| `uxnan-hook-wrapper.cmd` | cmd / batch wrapper for any CLI agent (Windows, no PowerShell). |
+| File | Agent(s) | What it's for |
+|---|---|---|
+| `uxnan-status-relay.cjs` | Claude Code, Gemini CLI | Node relay (both agents *are* Node, so `node` is guaranteed → works from any shell). Forwards the raw event; the server normalizes it. |
+| `uxnan-codex-hook.{sh,cmd}` | Codex | `curl` hook (Codex is a Rust binary — no Node). Paired with a `trusted_hash` in `~/.codex/config.toml`. |
+| `uxnan-opencode-status.js` | OpenCode | In-process plugin. |
+| `uxnan-pi-status.js` | Pi / OMP | In-process extension. |
+| `uxnan-hook-wrapper.{sh,ps1,cmd,fish}` | any CLI agent | Generic wrapper: `working` before exec, `done` on exit. |
 
-The ADE also injects three environment variables into **every** terminal it
+The ADE also injects these environment variables into **every** terminal it
 spawns (inherited by any agent run inside that terminal):
 
 | Variable | Meaning |
@@ -83,32 +87,43 @@ spawns (inherited by any agent run inside that terminal):
 | `UXNAN_HOOK_URL` | Full POST endpoint, e.g. `http://127.0.0.1:51234/hook` |
 | `UXNAN_HOOK_TOKEN` | Shared secret for this ADE launch (sent as `X-Uxnan-Token`) |
 | `UXNAN_AGENT_ID` | This terminal's id — echo it back as `agentId` |
+| `UXNAN_ENDPOINT_FILE` | Path to `endpoint.env` / `endpoint.cmd` — a file the ADE rewrites every launch with the live url + token. Reporters prefer it, so a terminal that outlived an app restart still reaches the live server. |
 
-You never need to set these by hand — the hook scripts pick them up from the
+You never need to set these by hand — the reporters pick them up from the
 environment, and so does anything else you write against the contract.
+
+> **WSL note (basic support).** The `UXNAN_*` vars are added to `WSLENV` so they
+> cross into a WSL shell (with `/p` path-translation for the endpoint file).
+> However, in **WSL2** `127.0.0.1` points at the WSL VM, not the Windows host, so
+> a hook running *inside* WSL2 can't reach the host's hook server — a known
+> limitation. WSL1 and native Windows/macOS/Linux shells work.
 
 ---
 
-## Install — Claude Code
+## Install — the five built-in agents (automatic)
 
-Automatic. On every startup (unless you turned it off) the ADE merges its
-`hooks` block into `~/.claude/settings.json`:
+On every startup (unless you turned it off) the ADE installs the managed reporter
+for each of Claude Code, Codex, Gemini CLI, OpenCode and Pi:
 
-- Your other settings are preserved verbatim. The block is marked with
-  `__uxnan_managed_hooks__: true` so removing it only touches ours.
-- The script path is auto-injected (the ADE substitutes the absolute path it
-  wrote to `<app-data>/hooks/`); re-installing self-heals a moved path.
-- Restart Claude Code afterward (it only re-reads `settings.json` on startup).
+- **Per-event merge, user-preserving.** For the JSON-config agents (Claude,
+  Codex, Gemini) the reporter is merged into each event of the agent's config
+  (`~/.claude/settings.json`, `~/.codex/hooks.json`, `~/.gemini/settings.json`)
+  **without touching your existing hooks**. A managed entry is recognised by the
+  script/relay it references, so re-installing self-heals a moved path and
+  Uninstall removes only ours.
+- **Codex trust.** Codex 0.129+ only runs a hook whose exact identity is trusted;
+  the ADE also writes the reproduced `trusted_hash` into `~/.codex/config.toml`,
+  so the hook actually fires (a raw `hooks.json` alone would sit un-run).
+- **OpenCode / Pi** install a plugin / extension file into the agent's own
+  plugin / extension directory (only overwriting a file the ADE itself manages).
+- **Restart the agent afterward** so it re-reads its config (Claude picks up
+  `settings.json` changes via a file watcher, but restarting is the sure path).
 
-In **Settings → Agents → Hooks**, the **Claude Code** card has an **Install agent
-hooks** switch:
-
-- **On** (default) — installs now and keeps it installed on startup.
-- **Off** — removes the ADE-managed block **and** stops re-installing it on the
-  next launch (the choice persists in `AppSettings.autoInstallHooks`).
-
-(Optional) **Show JSON config** inspects or copies the exact JSON, in case you'd
-rather paste it by hand.
+In **Settings → Agents → Hooks**, a master **Install agent hooks** switch installs
+/ removes all five and persists the choice (`AppSettings.autoInstallHooks`); each
+agent card also has its own **Install** / **Uninstall** and an honest status
+badge. The **Claude Code** card's **Show JSON config** inspects/copies the exact
+`hooks` block.
 
 **Verify.** Launch Claude Code in any terminal. The tab should show a colored
 dot from a precise state (working while it's thinking / using a tool, waiting

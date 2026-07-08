@@ -1,21 +1,19 @@
 #!/usr/bin/env bash
-# Uxnan Desktop — generic agent hook wrapper (Bash).
+# Uxnan Desktop — generic agent hook wrapper (Bash / zsh / WSL / Git Bash).
 #
-# Wraps any CLI agent: POSTs `working` to the local hook server before exec,
-# and `done` on exit (with `interrupted: true` if the agent crashed). Use this
-# as the agent's launch command in Settings → Agents when the agent itself has
-# no hook system.
+# Wraps any CLI agent that has no native hook system: reports `working` before it
+# runs and `done` on exit (with `interrupted` set when the exit code is non-zero
+# or you Ctrl-C it). Register it as the agent's launch command in Settings →
+# Agents when the agent itself can't report state.
 #
 # Usage:
 #   uxnan-hook-wrapper.sh <agent-type> -- <agent-cli> [args...]
 #
-# Environment (set by the ADE when it spawns the terminal):
-#   UXNAN_HOOK_URL    POST endpoint, e.g. http://127.0.0.1:51234/hook
-#   UXNAN_HOOK_TOKEN  Shared secret for the X-Uxnan-Token header
-#   UXNAN_AGENT_ID    Terminal id; echoed back in every report
-#
-# If UXNAN_HOOK_URL is empty (terminal not spawned by the ADE), the wrapper
-# just exec's the agent unchanged.
+# The agent id / kind / state ride in HTTP headers, so the wrapper never builds
+# JSON (which is brittle to quote across shells). The ADE injects
+# UXNAN_HOOK_URL / _TOKEN / UXNAN_AGENT_ID; UXNAN_ENDPOINT_FILE holds the live
+# coordinates if this terminal outlived an app restart. If none are set, the
+# wrapper just runs the agent unchanged.
 
 set -euo pipefail
 
@@ -24,28 +22,32 @@ shift || true
 [ "${1:-}" = "--" ] && shift || true
 [ "$#" -gt 0 ] || { echo "usage: uxnan-hook-wrapper.sh <agent-type> -- <cli> [args...]" >&2; exit 64; }
 
+if [ -n "${UXNAN_ENDPOINT_FILE:-}" ] && [ -r "${UXNAN_ENDPOINT_FILE:-}" ]; then
+  . "$UXNAN_ENDPOINT_FILE" 2>/dev/null || true
+fi
 URL="${UXNAN_HOOK_URL:-}"
 TOKEN="${UXNAN_HOOK_TOKEN:-}"
 ID="${UXNAN_AGENT_ID:-}"
 
 post() {
+  # $1 = status, $2 = interrupted. Fire-and-forget; never block the agent.
   [ -n "$URL" ] || return 0
-  # Fire-and-forget; never block the agent on a slow hook server.
-  curl -fsS --max-time 3 \
-    -X POST "$URL" \
-    -H 'Content-Type: application/json' \
+  curl -fsS --max-time 3 -X POST "$URL" \
     -H "X-Uxnan-Token: $TOKEN" \
-    -d "$1" >/dev/null 2>&1 || true
+    -H "X-Uxnan-Agent-Id: $ID" \
+    -H "X-Uxnan-Agent-Type: $TYPE" \
+    -H "X-Uxnan-Status: $1" \
+    -H "X-Uxnan-Interrupted: $2" \
+    >/dev/null 2>&1 || true
 }
 
-post "{\"agentId\":\"$ID\",\"status\":\"working\",\"agentType\":\"$TYPE\"}"
-
-cleanup() {
-  local code=$?
-  local interrupted='false'
-  [ "$code" -ne 0 ] && interrupted='true'
-  post "{\"agentId\":\"$ID\",\"status\":\"done\",\"agentType\":\"$TYPE\",\"interrupted\":$interrupted}"
-}
-trap cleanup EXIT
-
-exec "$@"
+post working false
+# Report `done` on an interrupt too (exec would drop the report, so we run the
+# agent as a child and report after it exits).
+trap 'post done true; exit 130' INT TERM
+set +e
+"$@"
+code=$?
+set -e
+if [ "$code" -ne 0 ]; then post done true; else post done false; fi
+exit "$code"
