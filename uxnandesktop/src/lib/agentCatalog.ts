@@ -55,9 +55,10 @@ export const AGENT_CATALOG: CatalogAgent[] = [
   { id: "mistralvibe", name: "Mistral Vibe", command: "vibe", logo: "mistralvibe", favicon: "mistral.ai" },
   { id: "rovo", name: "Rovo Dev", command: "rovo", logo: "rovo", favicon: "atlassian.com" },
   { id: "autohand", name: "Autohand Code", command: "autohand", logo: "autohand", favicon: "autohand.ai" },
-  { id: "openclaude", name: "OpenClaude", command: "openclaude", logo: "openclaude", favicon: "openclaude.gitlawb.com" },
+  { id: "openclaude", name: "OpenClaude by Gitlawb", command: "openclaude", logo: "openclaude", favicon: "gitlawb.com" },
   { id: "omp", name: "OMP", command: "omp", logo: "omp", favicon: "omp.sh" },
   { id: "ante", name: "Ante", command: "ante", logo: "ante", favicon: "antigma.ai" },
+  { id: "zero", name: "Zero by Gitlawb", command: "zero", logo: "zero", favicon: "gitlawb.com" },
 ];
 
 /** A site's favicon, via Google's public favicon service (64px, downscaled for

@@ -691,6 +691,8 @@ export const es: Record<MessageKey, string> = {
   "settings.agentsDesc":
     "Agentes de CLI que puedes lanzar en cualquier worktree — cada uno corre en la terminal que elijas, dentro del checkout de ese worktree.",
   "settings.agentsAvailable": "Agentes disponibles",
+  "settings.agentsDetected": "Detectados",
+  "settings.agentsNotDetected": "No instalados",
   "settings.addAllInstalled": "Agregar los instalados",
   "settings.agentAdded": "agregado",
   "settings.agentNotFound": "no encontrado",

@@ -694,6 +694,8 @@ export const en = {
   "settings.agentsDesc":
     "CLI coding agents you can launch into any worktree — each runs inside its chosen terminal in that worktree's checkout.",
   "settings.agentsAvailable": "Available agents",
+  "settings.agentsDetected": "Detected",
+  "settings.agentsNotDetected": "Not installed",
   "settings.addAllInstalled": "Add all installed",
   "settings.agentAdded": "added",
   "settings.agentNotFound": "not found",
