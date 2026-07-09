@@ -61,8 +61,18 @@ function runHook(args: {
   timeoutMs?: number;
 }): Promise<{ stdout: string; stderr: string; code: number | null }> {
   return new Promise((resolve) => {
+    // Start from the ambient env MINUS any UXNAN_HOOK_* the developer's machine
+    // may inject (e.g. a running uxnandesktop Layer-1 hook server sets
+    // UXNAN_HOOK_URL/_TOKEN in the shell). Each test sets exactly the hook env it
+    // means to exercise, so a leaked URL must not contaminate the "no URL"
+    // defensive case (which would otherwise try to reach the leaked bridge and
+    // deny instead of failing open).
+    const baseEnv = { ...process.env };
+    for (const key of Object.keys(baseEnv)) {
+      if (key.startsWith('UXNAN_HOOK_')) delete baseEnv[key];
+    }
     const child = spawn('node', [args.scriptPath], {
-      env: { ...process.env, ...args.env },
+      env: { ...baseEnv, ...args.env },
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
       shell: false,
