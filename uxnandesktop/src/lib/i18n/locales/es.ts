@@ -208,6 +208,8 @@ export const es: Record<MessageKey, string> = {
   // Acciones de pestaña (renombrar / cerrar todas)
   "tab.rename": "Renombrar…",
   "tab.closeAll": "Cerrar todas las pestañas",
+  "tab.closeAllConfirmTitle": "¿Cerrar todas las pestañas?",
+  "tab.closeAllConfirmDesc": "Esto cerrará todas las pestañas abiertas en este espacio de trabajo.",
   "tab.renameTabTitle": "Renombrar pestaña",
   "tab.renameFileTitle": "Renombrar archivo",
   "tab.namePlaceholder": "Nombre de la pestaña",

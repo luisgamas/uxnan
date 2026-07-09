@@ -211,6 +211,8 @@ export const en = {
   // Tab actions (rename / close all)
   "tab.rename": "Rename…",
   "tab.closeAll": "Close all tabs",
+  "tab.closeAllConfirmTitle": "Close all tabs?",
+  "tab.closeAllConfirmDesc": "This closes every open tab in this workspace.",
   "tab.renameTabTitle": "Rename tab",
   "tab.renameFileTitle": "Rename file",
   "tab.namePlaceholder": "Tab name",

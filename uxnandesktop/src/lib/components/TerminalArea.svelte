@@ -34,6 +34,7 @@
   import GitCommitIcon from "@lucide/svelte/icons/git-commit-horizontal";
   import LauncherMenu from "./LauncherMenu.svelte";
   import TabRenameDialog from "./TabRenameDialog.svelte";
+  import ConfirmDialog from "./ConfirmDialog.svelte";
 
   /** Default profile's shell/args, for region-level + and splits. A blank
    *  command falls back to the backend's platform default shell. */
@@ -215,7 +216,11 @@
     return { label: i18n.t("tab.rename"), action: () => openRename(tab) };
   }
   function closeAllItem(): MenuItem {
-    return { label: i18n.t("tab.closeAll"), action: () => void terminals.closeAllTabs() };
+    return {
+      label: i18n.t("tab.closeAll"),
+      action: () => (closeAllConfirm = true),
+      danger: true,
+    };
   }
 
   function terminalMenu(e: MouseEvent, groupId: string, tab: GroupTab) {
@@ -261,6 +266,10 @@
   // A file tab renames the real file on disk (with confirmation + an
   // extension-change warning); every other kind is a free-form label.
   let renameTarget = $state<GroupTab | null>(null);
+
+  // The "Close all tabs" menu item is destructive, so it asks for confirmation
+  // (in addition to the per-file save/discard prompt that closeAllTabs runs).
+  let closeAllConfirm = $state(false);
   function openRename(tab: GroupTab) {
     menu = null;
     renameTarget = tab;
@@ -803,3 +812,13 @@
 {#if renameTarget}
   <TabRenameDialog tab={renameTarget} onclose={() => (renameTarget = null)} />
 {/if}
+
+<!-- Confirmation for the destructive "Close all tabs" action. -->
+<ConfirmDialog
+  bind:open={closeAllConfirm}
+  danger
+  title={i18n.t("tab.closeAllConfirmTitle")}
+  description={i18n.t("tab.closeAllConfirmDesc")}
+  confirmLabel={i18n.t("tab.closeAll")}
+  onconfirm={() => void terminals.closeAllTabs()}
+/>
