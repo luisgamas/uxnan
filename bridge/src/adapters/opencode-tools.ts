@@ -37,10 +37,7 @@ const STATUS_RANK: Record<string, number> = {
  * collapsed into one, keeping whichever status is most advanced. Returns the
  * unified step list, or `[]` when no steps were parsed.
  */
-export function mergePlanSteps(
-  prev: PlanStepBlock[],
-  next: PlanStepBlock[],
-): PlanStepBlock[] {
+export function mergePlanSteps(prev: PlanStepBlock[], next: PlanStepBlock[]): PlanStepBlock[] {
   const byContent = new Map<string, PlanStepBlock>();
   for (const step of [...prev, ...next]) {
     const key = step.description.trim();

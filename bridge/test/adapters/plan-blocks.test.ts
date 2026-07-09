@@ -118,10 +118,13 @@ test('mergePlanSteps only advances status forward, never backward', () => {
 });
 
 test('mergePlanSteps is order-stable for unchanged steps', () => {
-  const a = mergePlanSteps([], [
-    { description: 'first', status: 'pending' },
-    { description: 'second', status: 'pending' },
-  ]);
+  const a = mergePlanSteps(
+    [],
+    [
+      { description: 'first', status: 'pending' },
+      { description: 'second', status: 'pending' },
+    ],
+  );
   const b = mergePlanSteps(a, [
     { description: 'second', status: 'in_progress' },
     { description: 'first', status: 'in_progress' },
