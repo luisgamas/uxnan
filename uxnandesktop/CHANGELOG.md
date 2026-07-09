@@ -5,6 +5,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — left-panel "agent view" (conversation title + collapsed logo strip) + Zero
+
+- Each agent under a worktree is now a **two-line row**: status dot + logo +
+  **conversation title** + relative time, with a muted **preview** line (the current
+  tool while working, else the latest reply, else the status). The title/preview come
+  from data the hook server **already captures** into `agentStatus` (`prompt` = the
+  user's latest prompt, `tool`, `summary`) — previously only used for notifications.
+  New `resolveAgentView` (`state/agentDisplay.ts`) composes it, falling back to the
+  agent's name + a status label when no prompt is known. New `AgentRow.svelte`; a
+  30 s-ticking `clock` + pure `relTime` (`time.svelte.ts` / `relTime.ts`).
+- **Collapsed**, the agent list shows a **compact strip** of each agent's logo ringed
+  by its status color (`AgentAvatar.svelte`) + the count; clicking an avatar reveals
+  that agent. (A distinct treatment, not a copy of any reference.)
+- **Zero** is now a first-class agent in the view: it reports no hook and sets no
+  terminal-title, so a native reader (`src-tauri/src/zero.rs`, `zero_session`) reads
+  its on-disk session (`~/.local/share/zero/sessions/<id>/metadata.json`) matched by
+  the worktree cwd and surfaces the **real conversation title** + a coarse status.
+  Polled by `state/zeroSessions.svelte.ts` while a Zero agent is open.
+
 ### Added — drag a file-tree entry onto a terminal to insert its path
 
 - A file/folder row in the **Files** tab can be **dragged onto any terminal**; its

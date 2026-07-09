@@ -103,7 +103,31 @@ muestra ningun indicador.
 Estos estados se muestran en dos lugares de la interfaz:
 
 - **Tarjeta del worktree** en la sidebar izquierda: como badge de color junto al nombre de la rama.
-- **Barra de tabs** del area central: como indicador en el tab del terminal donde corre el agente. La barra de tabs usa el mismo `AgentStatusDot` que la sidebar (resolucion reactiva `hook` › `title` › `activity`), de modo que un agente con hook server reportando estados muestra el estado preciso (`working` / `blocked` / `waiting` / `done`) y un agente sin hook configurado cae al fallback (output-activity o title-inference) con dot gris/idle cuando no hay movimiento.
+- **Barra de tabs** del area central: como indicador en el tab del terminal donde corre el agente.
+
+### Agent view (sidebar izquierda)
+
+Dentro de cada worktree, la lista de agentes (`AgentSpace.svelte`) es una **"agent
+view"**: cada agente es una **fila de dos lineas** — punto de estado
+(`AgentStatusDot`) + logo (`AgentLogo`) + **titulo de conversacion** + tiempo
+relativo en la 1a linea, y un **preview** atenuado en la 2a (la herramienta actual
+mientras trabaja, si no la ultima respuesta, si no la etiqueta de estado). El
+titulo/preview salen de datos que **ya** captura el hook server y viven en
+`agentStatus` (`prompt` = prompt de usuario mas reciente, `tool`, `summary`); antes
+solo alimentaban notificaciones. `resolveAgentView` (`state/agentDisplay.ts`)
+compone estado + titulo + preview con fallback al nombre del agente + etiqueta de
+estado cuando no hay prompt.
+
+**Contraida**, la lista muestra una **tira compacta**: el logo de cada agente
+rodeado por un anillo del color de su estado (`AgentAvatar.svelte`), + el contador;
+click en un avatar revela ese agente.
+
+**Zero** no reporta por hook ni fija el titulo OSC: su titulo de conversacion vive
+en su sesion en disco (`~/.local/share/zero/sessions/<id>/metadata.json`). El
+backend `zero_session(cwd)` (`src-tauri/src/zero.rs`) lee la sesion raiz mas
+reciente que coincide con el cwd del worktree y deriva un estado coarse de su
+`lastEventType`; el frontend (`state/zeroSessions.svelte.ts`) lo consulta por
+polling mientras haya un agente Zero abierto. La barra de tabs usa el mismo `AgentStatusDot` que la sidebar (resolucion reactiva `hook` › `title` › `activity`), de modo que un agente con hook server reportando estados muestra el estado preciso (`working` / `blocked` / `waiting` / `done`) y un agente sin hook configurado cae al fallback (output-activity o title-inference) con dot gris/idle cuando no hay movimiento.
 
 **Descubrimiento de hooks.** Cuando un tab de la barra es de un agente y su
 estado proviene de un fallback (no del hook server), se muestra al lado del
