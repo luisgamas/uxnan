@@ -289,6 +289,20 @@ commit/push/pull.
   mano. El watcher se apunta al worktree activo centralmente (`+page.svelte`).
 - **Abrir archivo**: un clic en un archivo lo abre como **pestaña de archivo**
   en el área central (ver §6.2).
+- **Menú contextual (clic derecho) por ítem**: cada archivo/carpeta ofrece
+  operaciones completas reutilizando `ui/context-menu`
+  (`FileTreeContextMenu.svelte`): New File · New Folder · Copiar ruta / ruta
+  relativa · Duplicar *(archivo)* · Añadir como proyecto *(carpeta)* · Abrir en
+  terminal *(carpeta)* · Ver archivo · Contraer carpeta · Buscar en la carpeta
+  *(acota la búsqueda a un subárbol, con chip limpiable)* · Revelar en el
+  explorador · Renombrar · Eliminar. Crear/renombrar pasan por un diálogo de
+  nombre (`FileNamePromptDialog.svelte`) con validación de nombre "desnudo" y
+  aviso de cambio de extensión. **Eliminar mueve a la papelera del SO** (crate
+  `trash`, recuperable) tras el `ConfirmDialog` destructivo compartido. Backend:
+  `fs_create_file` / `fs_create_dir` / `fs_delete` / `fs_duplicate`, con las
+  mismas guardas de nombre/no-clobber que `fs_rename` (`validate_bare_name`). Las
+  pestañas de archivo abiertas **siguen un renombrado o se cierran al eliminar**
+  (`terminals.repathTabs` / `closeTabsUnder`).
 
 ### 6.2 Editor de Archivos (panel central)
 

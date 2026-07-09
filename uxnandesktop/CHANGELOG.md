@@ -5,6 +5,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — file-tree context menu with full file operations
+
+- Every entry in the right panel's **Files** tab now has a **right-click context
+  menu** (reusing `ui/context-menu`, styled like the worktree row menu). Actions,
+  shown by entry kind: **New File**, **New Folder**, **Copy Path**, **Copy
+  Relative Path**, **Duplicate** (files), **Add as Project…** (folders not already
+  registered), **Open in Terminal** (folders — opens in the worktree workspace at
+  that folder), **View File** (files), **Collapse Folder** (expanded folders),
+  **Find in Folder** (scopes the search to one subtree, with a clearable chip in
+  the search bar), **Reveal in File Explorer**, **Rename**, and **Delete**.
+- **Delete moves to the OS trash** (Recycle Bin / Trash / freedesktop — recoverable)
+  behind the shared destructive `ConfirmDialog`; never a permanent unlink. New
+  `trash` crate; a `check_deletable` guard refuses a filesystem root.
+- New backend fs ops (`src-tauri/src/fs.rs` + commands): `fs_create_file`,
+  `fs_create_dir`, `fs_delete`, `fs_duplicate` — all reusing the bare-name /
+  no-clobber guards of `fs_rename` (extracted `validate_bare_name`), with unit
+  tests. Duplicate picks a unique "… copy" name.
+- Create / rename go through a shared `FileNamePromptDialog` (validation +
+  extension-change warning on rename); the tree reloads the affected folder and
+  **open editor tabs follow a rename or close on a delete** (new
+  `terminals.repathTabs` / `closeTabsUnder`). New EN/ES strings under `fileTree.*`.
+
 ### Changed — region tab strip scrolls via edge chevrons + wheel (no native scrollbar)
 
 - The center-pane region tab strip no longer shows a native scrollbar. When tabs
