@@ -31,6 +31,7 @@ import type {
   UsageProvider,
   WorktreeEntry,
   WorktreeStatus,
+  ZeroSession,
 } from "./types";
 
 /** Load the full persisted application state (called once at boot). */
@@ -355,6 +356,13 @@ export function fsSearchFiles(
   limit: number,
 ): Promise<FileSearch> {
   return invoke<FileSearch>("fs_search_files", { root, query, includeHidden, limit });
+}
+
+/** The current conversation (title + coarse status) of the Zero agent running in
+ *  `cwd` (a worktree path), read from Zero's on-disk session metadata. `null` when
+ *  no matching session exists. Powers the Zero row in the left-panel agent view. */
+export function zeroSession(cwd: string): Promise<ZeroSession | null> {
+  return invoke<ZeroSession | null>("zero_session", { cwd });
 }
 
 /** Download an image from an http(s) URL into an inline `data:` URL (fetched in

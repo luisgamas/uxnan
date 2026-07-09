@@ -672,6 +672,7 @@ export const en = {
   "monitor.detected": "Agent detected",
   "monitor.unread": "Agent finished — not yet reviewed",
   "agents.spaceLabel": "Agents",
+  "agentView.interrupted": "Interrupted",
   "settings.agentNotifications": "Idle notifications",
   "settings.agentNotificationsDesc":
     "Notify when an agent goes idle while you're looking at another space.",

@@ -408,6 +408,15 @@ export interface FileSearch {
   truncated: boolean;
 }
 
+/** The current on-disk conversation of a Zero agent (mirror of Rust `ZeroSession`).
+ *  `title` is the session name; `status` is a coarse agent-view state derived from
+ *  the session's last event. Read by cwd since Zero emits no hook/OSC. */
+export interface ZeroSession {
+  title: string;
+  status: "working" | "waiting" | "done" | "idle";
+  updatedAt: string;
+}
+
 /** A file opened in the center editor (mirror of Rust `FileContent`). `content`
  *  is empty when `binary` or `tooLarge`, which the editor surfaces as a notice. */
 export interface FileContent {
