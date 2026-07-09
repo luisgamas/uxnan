@@ -5,6 +5,7 @@
   import { app } from "$lib/state/app.svelte";
   import { projects } from "$lib/state/projects.svelte";
   import { setTerminalLayout } from "$lib/api";
+  import { dropPayload } from "$lib/terminal/terminalDrop";
   import {
     terminals,
     computeAreaLayout,
@@ -109,18 +110,18 @@
     }, 500);
   });
 
-  function quotePath(p: string): string {
-    return /\s/.test(p) ? `"${p}"` : p;
-  }
   function handleFileDrop(paths: string[], position: { x: number; y: number }) {
     if (!paths.length) return;
+    // OS drop coordinates are physical pixels; the DOM hit-test wants CSS px. This
+    // path keeps the active-terminal fallback (an OS drop can land anywhere in the
+    // app); the in-app file-tree drag instead requires a terminal target.
     const dpr = window.devicePixelRatio || 1;
     const el = document.elementFromPoint(position.x / dpr, position.y / dpr);
     const paneEl = el?.closest("[data-pty-id]") as HTMLElement | null;
     const ptyId = paneEl?.dataset.ptyId ?? terminals.activePtyId();
     if (!ptyId) return;
-    const text = paths.map(quotePath).join(" ") + " ";
-    invoke("pty_write", { id: ptyId, data: text }).catch(() => {});
+    invoke("pty_write", { id: ptyId, data: dropPayload(paths) }).catch(() => {});
+    terminals.controller(ptyId)?.focus(); // keep the cursor in the terminal
   }
 
   // --- Divider drag --------------------------------------------------------

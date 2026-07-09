@@ -15,6 +15,7 @@ import type {
   FileChange,
   FileContent,
   FileNumstat,
+  FileSearch,
   FsEntry,
   HookInstall,
   HookScripts,
@@ -341,6 +342,19 @@ export function fsDelete(path: string): Promise<void> {
  *  "Duplicate"). Directories are refused. Returns the new absolute path. */
 export function fsDuplicate(path: string): Promise<string> {
   return invoke<string>("fs_duplicate", { path });
+}
+
+/** Project-wide filename search for the Files tab: recursively find files under
+ *  `root` whose relative path matches every whitespace token of `query`. Honors
+ *  `.gitignore` and skips `.git`; `includeHidden` surfaces dotfiles; `limit` caps
+ *  the results (`truncated` flags an over-cap walk). */
+export function fsSearchFiles(
+  root: string,
+  query: string,
+  includeHidden: boolean,
+  limit: number,
+): Promise<FileSearch> {
+  return invoke<FileSearch>("fs_search_files", { root, query, includeHidden, limit });
 }
 
 /** Download an image from an http(s) URL into an inline `data:` URL (fetched in

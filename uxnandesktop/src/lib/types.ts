@@ -400,6 +400,14 @@ export interface FsEntry {
   ignored: boolean;
 }
 
+/** A page of project-wide file-tree search results (mirror of Rust `FileSearch`).
+ *  `entries` are matching files; `truncated` is true when the walk hit the result
+ *  cap before exhausting the tree. */
+export interface FileSearch {
+  entries: FsEntry[];
+  truncated: boolean;
+}
+
 /** A file opened in the center editor (mirror of Rust `FileContent`). `content`
  *  is empty when `binary` or `tooLarge`, which the editor surfaces as a notice. */
 export interface FileContent {

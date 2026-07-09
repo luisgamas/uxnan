@@ -6,12 +6,25 @@
 // access goes through `$lib/api`.
 
 import { listen } from "@tauri-apps/api/event";
-import { fsCreateDir, fsCreateFile, fsDelete, fsDuplicate, fsListDir, fsRename } from "$lib/api";
+import {
+  fsCreateDir,
+  fsCreateFile,
+  fsDelete,
+  fsDuplicate,
+  fsListDir,
+  fsRename,
+  fsSearchFiles,
+} from "$lib/api";
 import { terminals } from "$lib/state/terminals.svelte";
 import type { FsChangedEvent, FsEntry } from "$lib/types";
 
 /** Safety cap for "expand all" so it never tries to load an unbounded tree. */
 const EXPAND_ALL_CAP = 1500;
+
+/** Max project-wide search results to fetch (a prefix past this → `truncated`). */
+const SEARCH_LIMIT = 500;
+/** Debounce before firing a project-wide search as the query changes. */
+const SEARCH_DEBOUNCE_MS = 180;
 
 /** Parent directory of a forward-slash path (drops the last segment). */
 function parentOf(path: string): string {
@@ -38,7 +51,18 @@ class FileTreeStore {
   query = $state("");
   /** Folder the search is restricted to ("Find in Folder"); null = whole tree. */
   searchScope = $state<string | null>(null);
+  /** Whether dotfiles (hidden files) are shown in the tree + included in search. */
+  showHidden = $state(true);
+  /** Project-wide search results (files) for the current query; empty when idle. */
+  searchResults = $state<FsEntry[]>([]);
+  /** A search is in flight (drives the header spinner / "searching" state). */
+  searchLoading = $state(false);
+  /** The last search hit the result cap (its list is a prefix). */
+  searchTruncated = $state(false);
   private listening = false;
+  private searchTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Monotonic id so a slow search can't overwrite a newer one's results. */
+  private searchSeq = 0;
 
   /** Subscribe to the backend's `fs:changed` events (once) so files created,
    *  deleted or edited on disk reload the affected directories automatically.
@@ -81,6 +105,7 @@ class FileTreeStore {
     this.error = null;
     this.query = "";
     this.searchScope = null;
+    this.clearSearch();
     if (root) void this.loadDir(root);
   }
 
@@ -139,9 +164,68 @@ class FileTreeStore {
     this.expanded = next;
   }
 
-  /** Reload every already-loaded directory (keeps the expansion state). */
+  /** Reload every already-loaded directory (keeps the expansion state); also
+   *  re-runs an active project-wide search so its results reflect disk changes. */
   refresh(): void {
     for (const dir of Object.keys(this.childrenByDir)) void this.loadDir(dir, true);
+    if (this.query.trim()) void this.runSearch();
+  }
+
+  // --- Project-wide filename search ----------------------------------------
+  // Unlike the lazy tree (which only knows `childrenByDir`), this hits the backend
+  // `fs_search_files` walker so files in never-expanded folders are found. Driven
+  // by the panel: it calls `scheduleSearch()` whenever the query / scope / hidden
+  // toggle changes.
+
+  /** Debounced (re)search from the current query/scope/hidden state. An empty
+   *  query clears results immediately (no backend call). */
+  scheduleSearch(): void {
+    if (this.searchTimer) clearTimeout(this.searchTimer);
+    if (!this.query.trim() || !this.root) {
+      this.clearSearch();
+      return;
+    }
+    this.searchLoading = true;
+    this.searchTimer = setTimeout(() => void this.runSearch(), SEARCH_DEBOUNCE_MS);
+  }
+
+  /** Run the search now against `searchScope ?? root`. A monotonic sequence id
+   *  drops any response that a newer query has already superseded. */
+  private async runSearch(): Promise<void> {
+    const root = this.searchScope ?? this.root;
+    const q = this.query.trim();
+    if (!root || !q) {
+      this.clearSearch();
+      return;
+    }
+    const seq = ++this.searchSeq;
+    this.searchLoading = true;
+    try {
+      const res = await fsSearchFiles(root, q, this.showHidden, SEARCH_LIMIT);
+      if (seq !== this.searchSeq) return;
+      this.searchResults = res.entries;
+      this.searchTruncated = res.truncated;
+      this.error = null;
+    } catch (e) {
+      if (seq !== this.searchSeq) return;
+      this.error = msg(e);
+      this.searchResults = [];
+      this.searchTruncated = false;
+    } finally {
+      if (seq === this.searchSeq) this.searchLoading = false;
+    }
+  }
+
+  /** Cancel any pending/in-flight search and drop its results. */
+  private clearSearch(): void {
+    if (this.searchTimer) {
+      clearTimeout(this.searchTimer);
+      this.searchTimer = null;
+    }
+    this.searchSeq++; // invalidate any in-flight response
+    this.searchResults = [];
+    this.searchTruncated = false;
+    this.searchLoading = false;
   }
 
   // --- Context-menu file operations ----------------------------------------
