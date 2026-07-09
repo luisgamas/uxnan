@@ -37,6 +37,7 @@ import type {
 } from '../models/workspace.js';
 import type { AuthStatus, Project } from '../models/project.js';
 import type { ApprovalResponse } from '../models/approval.js';
+import type { QuestionResponse } from '../models/question.js';
 import type { BridgeStatus, ConnectedPhone, TrustedDevice } from '../models/session.js';
 import type { PairingPayload } from '../e2ee/pairing-payload.js';
 import type { AgentDescriptor, AgentId, AgentModel } from '../agents/agent-capabilities.js';
@@ -104,6 +105,12 @@ export interface TurnSendParams {
    * is not required.
    */
   approvalResponse?: ApprovalResponse;
+  /**
+   * Reply to a pending question the agent asked (no new turn is created). The
+   * bridge routes the chosen answers to the agent adapter. When present, `text`
+   * is not required.
+   */
+  questionResponse?: QuestionResponse;
 }
 export interface ThreadSetModelParams {
   threadId: string;
