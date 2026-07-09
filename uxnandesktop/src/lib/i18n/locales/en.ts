@@ -223,6 +223,8 @@ export const en = {
   "tab.extRemoveWarning":
     "You're removing the file extension — this can change how the file is treated.",
   "tab.renameError": "Couldn't rename the file.",
+  "tab.scrollLeft": "Scroll tabs left",
+  "tab.scrollRight": "Scroll tabs right",
 
   // Directory picker
   "picker.title": "Add project",

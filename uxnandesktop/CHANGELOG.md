@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — region tab strip scrolls via edge chevrons + wheel (no native scrollbar)
+
+- The center-pane region tab strip no longer shows a native scrollbar. When tabs
+  overflow, **edge chevrons (`<` / `>`)** appear at the strip's borders and the
+  strip scrolls with the **mouse wheel** (vertical delta → horizontal scroll).
+  The native bar was removed because grabbing it also started a window drag
+  (the strip's empty areas are a Tauri drag region), so it was unusable. The
+  drag region is kept — empty strip areas still move the window, while tabs and
+  the chevrons/`+` stay clickable (no-drag islands). Overflow state is tracked
+  **per region** and re-measured on scroll, wheel, resize and tab changes; the
+  active tab is auto-revealed when it scrolls out of view. Chevrons use the
+  standard `iconButton.action` footprint + `text-muted-foreground` hover/focus
+  tokens and the app's focus ring. Added `tab.scrollLeft` / `tab.scrollRight`
+  i18n strings (EN/ES). New `.uxnan-scrollbar-none` utility in `app.css`.
+
 ### Fixed — reporters must be silent on the agent's side (no warnings / prompts)
 
 - **Claude Code no longer warns on startup.** The pre-relay installer wrote a

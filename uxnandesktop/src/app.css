@@ -232,6 +232,19 @@
   background-color: color-mix(in srgb, var(--muted-foreground) 50%, transparent);
 }
 
+/* Hide the native scrollbar on a still-scrollable element (e.g. a region tab
+   strip scrolled via edge chevrons + wheel, not the bar itself). Mirrors
+   `.uxnan-scroll` minus the thumb, so content keeps overflowing cleanly. */
+.uxnan-scrollbar-none {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.uxnan-scrollbar-none::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
 /* Sleek, theme-aware scrollbars for general panels and popovers. The thumb is a
    muted-foreground tint that strengthens on hover; the track stays transparent
    so the gutter never reads louder than the content. */

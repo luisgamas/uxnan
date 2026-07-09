@@ -220,6 +220,8 @@ export const es: Record<MessageKey, string> = {
   "tab.extRemoveWarning":
     "Estás quitando la extensión del archivo; esto puede cambiar cómo se trata el archivo.",
   "tab.renameError": "No se pudo renombrar el archivo.",
+  "tab.scrollLeft": "Desplazar pestañas a la izquierda",
+  "tab.scrollRight": "Desplazar pestañas a la derecha",
 
   // Directory picker
   "picker.title": "Agregar proyecto",

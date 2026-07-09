@@ -21,7 +21,7 @@
   import CommitPane from "./CommitPane.svelte";
   import { resolveAgentDisplay } from "$lib/state/agentDisplay";
   import AgentStatusDot from "./AgentStatusDot.svelte";
-  import { divider, icon, tab, text } from "$lib/design";
+  import { divider, icon, iconButton, tab, text } from "$lib/design";
   import { cn } from "$lib/utils";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
@@ -32,6 +32,8 @@
   import FileIcon from "@lucide/svelte/icons/file";
   import FileDiffIcon from "@lucide/svelte/icons/file-diff";
   import GitCommitIcon from "@lucide/svelte/icons/git-commit-horizontal";
+  import ChevronLeftIcon from "@lucide/svelte/icons/chevron-left";
+  import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
   import LauncherMenu from "./LauncherMenu.svelte";
   import TabRenameDialog from "./TabRenameDialog.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
@@ -275,6 +277,79 @@
     renameTarget = tab;
   }
 
+  // --- Region tab-strip scroll (chevrons + wheel) -------------------------
+  // The strip hides its native scrollbar so the window can be dragged from its
+  // empty areas; tabs/buttons are not drag regions, and the strip itself is
+  // scrollable only via the edge chevrons and the mouse wheel. One overflow
+  // record per region keeps each strip's chevrons accurate as tabs come/go.
+  type StripOverflow = { hasOverflow: boolean; canScrollStart: boolean; canScrollEnd: boolean };
+  const stripOverflow = $state<Record<string, StripOverflow>>({});
+  const STRIP_SCROLL_FRACTION = 0.75;
+  const STRIP_MIN_STEP_PX = 120;
+
+  function scrollStripByStep(el: HTMLElement | null, dir: "start" | "end") {
+    if (!el) return;
+    const step = Math.max(STRIP_MIN_STEP_PX, el.clientWidth * STRIP_SCROLL_FRACTION);
+    el.scrollBy({ left: dir === "start" ? -step : step, behavior: "smooth" });
+  }
+  function measureStrip(groupId: string, el: HTMLElement | null) {
+    if (!el) return;
+    const maxLeft = Math.max(0, el.scrollWidth - el.clientWidth);
+    stripOverflow[groupId] = {
+      hasOverflow: maxLeft > 1,
+      canScrollStart: maxLeft > 1 && el.scrollLeft > 1,
+      canScrollEnd: maxLeft > 1 && el.scrollLeft < maxLeft - 1,
+    };
+  }
+  // Keep the active tab in view when it's scrolled out of the strip. Why: with
+  // no scrollbar the user can't nudge a far tab into view without the chevrons,
+  // so auto-reveal keeps the focused tab reachable.
+  function revealActiveInStrip(el: HTMLElement | null, activeTabId: string | null) {
+    if (!el || !activeTabId) return;
+    const chip = el.querySelector<HTMLElement>(`[data-tab-id="${activeTabId}"]`);
+    if (!chip) return;
+    const left = chip.offsetLeft;
+    const right = left + chip.offsetWidth;
+    if (left < el.scrollLeft) el.scrollLeft = left - 8;
+    else if (right > el.scrollLeft + el.clientWidth) el.scrollLeft = right - el.clientWidth + 8;
+  }
+
+  // One scrolling element per region. Plain $state map of HTMLElement refs;
+  // reading a key during render gives the current node (null until mounted).
+  const stripEls = $state<Record<string, HTMLElement | null>>({});
+  function stripEl(id: string): HTMLElement | null {
+    return stripEls[id] ?? null;
+  }
+  // Svelte action: observe the strip's content size (tabs added/removed,
+  // resize, reveal-active) and re-measure overflow + keep the active tab visible.
+  function stripObserver(
+    el: HTMLElement,
+    params: { groupId: string; activeTabId: string | null },
+  ) {
+    const measure = () => measureStrip(params.groupId, el);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    // Re-measure shortly after mount so freshly-laid-out tabs are counted.
+    const raf = requestAnimationFrame(() => {
+      measure();
+      revealActiveInStrip(el, params.activeTabId);
+    });
+    return {
+      update(p: { groupId: string; activeTabId: string | null }) {
+        params = p;
+        measure();
+        revealActiveInStrip(el, p.activeTabId);
+      },
+      destroy() {
+        ro.disconnect();
+        cancelAnimationFrame(raf);
+        delete stripOverflow[params.groupId];
+        delete stripEls[params.groupId];
+      },
+    };
+  }
+
   // --- Tab drag (reorder within a region + move across regions) ------------
   // Implemented with pointer events, not HTML5 drag-and-drop: Tauri's native
   // OS drag-drop (used for dropping files into a terminal) suppresses HTML5
@@ -410,18 +485,45 @@
                   role="group"
                   onpointerdown={() => terminals.setActiveGroup(g.group.id)}
                 >
-                  <!-- Region tab strip (pointer-driven tab drag target). It's the
-                       top band of the title-bar-less center, so its empty areas
-                       double as a window drag handle (Tauri checks the exact
-                       target, so tabs/buttons — which lack the attribute — stay
-                       clickable; the flex-1 spacer below is the main drag zone). -->
-                  <div
-                    data-tauri-drag-region
-                    class={cn("uxnan-scroll flex h-9 shrink-0 items-center overflow-x-auto bg-sidebar px-1", divider.bottom)}
-                    data-tab-strip
-                    data-group-id={g.group.id}
-                    data-tab-count={g.group.tabs.length}
-                  >
+                  <!-- Region tab strip. Its empty areas double as the window drag
+                       handle (Tauri checks the exact target, so tabs/buttons —
+                       which lack the attribute — stay clickable). The native
+                       scrollbar is hidden (`.uxnan-scrollbar-none`) so grabbing
+                       it never starts a window drag; the strip scrolls only via
+                       the edge chevrons and the mouse wheel. -->
+                  <div class="flex h-9 shrink-0 items-center bg-sidebar {divider.bottom}">
+                    {#if stripOverflow[g.group.id]?.hasOverflow}
+                      <button
+                        type="button"
+                        class={cn(
+                          iconButton.action,
+                          "no-drag z-[1] flex shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-foreground/10 hover:text-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+                          stripOverflow[g.group.id]?.canScrollStart ? "opacity-100" : "pointer-events-none opacity-0",
+                        )}
+                        title={i18n.t("tab.scrollLeft")}
+                        aria-label={i18n.t("tab.scrollLeft")}
+                        onclick={() => scrollStripByStep(stripEl(g.group.id), "start")}
+                      >
+                        <ChevronLeftIcon class={icon.action} />
+                      </button>
+                    {/if}
+                    <div
+                      data-tauri-drag-region
+                      use:stripObserver={{ groupId: g.group.id, activeTabId: g.group.activeTabId }}
+                      bind:this={stripEls[g.group.id]}
+                      class="uxnan-scrollbar-none relative flex h-full min-w-0 flex-1 items-center overflow-x-auto px-1"
+                      data-tab-strip
+                      data-group-id={g.group.id}
+                      data-tab-count={g.group.tabs.length}
+                      onscroll={(e) => measureStrip(g.group.id, e.currentTarget)}
+                      onwheel={(e) => {
+                        const el = e.currentTarget;
+                        if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+                        el.scrollLeft += e.deltaY;
+                        e.preventDefault();
+                        measureStrip(g.group.id, el);
+                      }}
+                    >
                     {#each g.group.tabs as t, ti (t.id)}
                       {@const activeChip = g.group.activeTabId === t.id}
                       <!-- Insertion marker before this tab: zero-width until it's
@@ -570,6 +672,22 @@
                     <!-- Split lives in each terminal's right-click menu (tab or
                          pane), not here — this stays a drag region. -->
                     <div data-tauri-drag-region class="flex-1"></div>
+                    </div>
+                    {#if stripOverflow[g.group.id]?.hasOverflow}
+                      <button
+                        type="button"
+                        class={cn(
+                          iconButton.action,
+                          "no-drag z-[1] flex shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-foreground/10 hover:text-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+                          stripOverflow[g.group.id]?.canScrollEnd ? "opacity-100" : "pointer-events-none opacity-0",
+                        )}
+                        title={i18n.t("tab.scrollRight")}
+                        aria-label={i18n.t("tab.scrollRight")}
+                        onclick={() => scrollStripByStep(stripEl(g.group.id), "end")}
+                      >
+                        <ChevronRightIcon class={icon.action} />
+                      </button>
+                    {/if}
                   </div>
 
                   <!-- Pane stack for this region (active tab shown). One pane per
