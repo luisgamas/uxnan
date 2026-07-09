@@ -81,6 +81,11 @@ notify-debouncer-full = "0.3"
 # cross-platform, pure-Rust API (`trash::delete`); the call is synchronous so it
 # runs on the blocking pool (fs.rs `delete_to_trash`).
 trash = "5"
+# ripgrep's directory walker: powers the file tree's project-wide search
+# (fs.rs `search_files`). Respects `.gitignore` / global excludes and can hide
+# dotfiles, so a recursive filename search skips `node_modules`/`.git`/ignored
+# paths without us re-implementing gitignore semantics. Synchronous → blocking pool.
+ignore = "0.4"
 
 # Windows-only: SetThreadExecutionState for the keep-awake feature (power.rs).
 [target.'cfg(windows)'.dependencies]

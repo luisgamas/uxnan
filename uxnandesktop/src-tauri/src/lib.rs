@@ -239,6 +239,7 @@ pub fn run() {
             commands::fs_create_dir,
             commands::fs_delete,
             commands::fs_duplicate,
+            commands::fs_search_files,
             commands::image_fetch_data_url,
             commands::fs_set_watch,
             commands::reveal_path,

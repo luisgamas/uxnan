@@ -655,6 +655,24 @@ pub async fn fs_duplicate(path: String) -> Result<String, CommandError> {
         .map_err(CommandError::from)
 }
 
+/// Project-wide filename search for the file tree: recursively find files under
+/// `root` whose relative path matches every token of `query` (see
+/// [`crate::fs::search_files`]). `include_hidden` surfaces dotfiles; `limit` caps
+/// the results. Runs the blocking walk on the blocking pool.
+#[tauri::command]
+pub async fn fs_search_files(
+    root: String,
+    query: String,
+    include_hidden: bool,
+    limit: usize,
+) -> Result<crate::fs::FileSearch, CommandError> {
+    tokio::task::spawn_blocking(move || {
+        crate::fs::search_files(&root, &query, include_hidden, limit)
+    })
+    .await
+    .map_err(|e| CommandError::new("SEARCH_FAILED", e.to_string()))
+}
+
 /// Largest remote image the icon fetcher will inline (5 MiB). Icons are tiny;
 /// this only guards against a hostile/oversized URL streaming forever.
 const MAX_ICON_BYTES: u64 = 5 * 1024 * 1024;

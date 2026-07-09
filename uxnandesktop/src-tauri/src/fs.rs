@@ -48,6 +48,17 @@ pub struct FileContent {
     pub too_large: bool,
 }
 
+/// A page of file-tree project-wide search results.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct FileSearch {
+    /// Matching files (absolute, forward-slash paths), sorted by path.
+    pub entries: Vec<FsEntry>,
+    /// The walk hit `limit` before exhausting the tree — results are a prefix and
+    /// the user should narrow the query.
+    pub truncated: bool,
+}
+
 fn normalize(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
@@ -324,6 +335,65 @@ pub async fn duplicate_file(path: &str) -> Result<String, AppError> {
     Ok(normalize(&target))
 }
 
+/// Recursively search `root` for files whose worktree-relative path contains every
+/// whitespace-separated token of `query` (case-insensitive substring; AND across
+/// tokens). This backs the file tree's **project-wide** filename search — unlike the
+/// lazy per-folder tree (`list_dir`), it walks the whole subtree. Uses the `ignore`
+/// walker so it honors `.gitignore` (+ global excludes) and skips `.git`; dotfiles
+/// are included only when `include_hidden`. Stops at `limit` matches, setting
+/// `truncated`. Synchronous (blocking I/O) — call it from the blocking pool.
+pub fn search_files(root: &str, query: &str, include_hidden: bool, limit: usize) -> FileSearch {
+    let tokens: Vec<String> = query.split_whitespace().map(|t| t.to_lowercase()).collect();
+    if tokens.is_empty() || limit == 0 {
+        return FileSearch {
+            entries: Vec::new(),
+            truncated: false,
+        };
+    }
+
+    let root_path = Path::new(root);
+    let mut entries: Vec<FsEntry> = Vec::new();
+    let mut truncated = false;
+
+    let walker = ignore::WalkBuilder::new(root_path)
+        .hidden(!include_hidden) // hide dotfiles unless the caller asks for them
+        .git_ignore(true)
+        .git_global(true)
+        .git_exclude(true)
+        .parents(true)
+        // never descend git's own store (kept even when include_hidden shows dotfiles)
+        .filter_entry(|e| e.file_name() != std::ffi::OsStr::new(".git"))
+        .build();
+
+    for dent in walker.flatten() {
+        if dent.depth() == 0 {
+            continue; // the root itself
+        }
+        if !dent.file_type().map(|t| t.is_file()).unwrap_or(false) {
+            continue; // surface files only
+        }
+        let path = dent.path();
+        let rel = path.strip_prefix(root_path).unwrap_or(path);
+        let rel_lower = rel.to_string_lossy().replace('\\', "/").to_lowercase();
+        if !tokens.iter().all(|t| rel_lower.contains(t.as_str())) {
+            continue;
+        }
+        entries.push(FsEntry {
+            path: normalize(path),
+            name: dent.file_name().to_string_lossy().to_string(),
+            is_dir: false,
+            ignored: false,
+        });
+        if entries.len() >= limit {
+            truncated = true;
+            break;
+        }
+    }
+
+    entries.sort_by_key(|e| e.path.to_lowercase());
+    FileSearch { entries, truncated }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -498,5 +568,75 @@ mod tests {
                 .await
                 .is_err()
         );
+    }
+
+    #[test]
+    fn search_files_walks_recursively_and_matches_tokens() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        std::fs::create_dir_all(root.join("src/deep/nested")).unwrap();
+        std::fs::write(root.join("src/deep/nested/widget.rs"), b"x").unwrap();
+        std::fs::write(root.join("src/main.rs"), b"x").unwrap();
+        std::fs::write(root.join("README.md"), b"x").unwrap();
+        let root_s = root.to_string_lossy();
+
+        // Finds a file inside a folder the lazy tree would never have expanded.
+        let r = search_files(&root_s, "widget", false, 100);
+        assert!(!r.truncated);
+        assert_eq!(r.entries.len(), 1);
+        assert!(r.entries[0].path.ends_with("/src/deep/nested/widget.rs"));
+        assert!(!r.entries[0].is_dir);
+
+        // Multi-token AND matches against the relative path (dir + name).
+        let r = search_files(&root_s, "deep rs", false, 100);
+        assert_eq!(r.entries.len(), 1);
+        assert!(r.entries[0].path.ends_with("/widget.rs"));
+
+        // ".rs" hits both rust files; results are path-sorted.
+        let r = search_files(&root_s, ".rs", false, 100);
+        let paths: Vec<&str> = r.entries.iter().map(|e| e.path.as_str()).collect();
+        assert_eq!(paths.len(), 2);
+        assert!(paths[0] < paths[1]);
+
+        // Empty query / zero limit → no walk, no results.
+        assert!(search_files(&root_s, "   ", false, 100).entries.is_empty());
+        assert!(search_files(&root_s, "rs", false, 0).entries.is_empty());
+    }
+
+    #[test]
+    fn search_files_honors_gitignore_and_hidden_toggle() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        // A `.git` dir makes the walker treat this as a repo so `.gitignore` applies.
+        std::fs::create_dir(root.join(".git")).unwrap();
+        std::fs::write(root.join(".git/HEAD"), b"ref: refs/heads/main\n").unwrap();
+        std::fs::write(root.join(".gitignore"), b"ignored.log\n").unwrap();
+        std::fs::write(root.join("ignored.log"), b"x").unwrap();
+        std::fs::write(root.join("kept.log"), b"x").unwrap();
+        std::fs::write(root.join(".secret.log"), b"x").unwrap(); // a dotfile
+        let root_s = root.to_string_lossy();
+
+        // Hidden off: gitignored + dotfiles excluded, git store never walked.
+        let r = search_files(&root_s, ".log", false, 100);
+        let names: Vec<&str> = r.entries.iter().map(|e| e.name.as_str()).collect();
+        assert_eq!(names, ["kept.log"]);
+
+        // include_hidden surfaces the dotfile but still respects .gitignore + skips .git.
+        let r = search_files(&root_s, ".log", true, 100);
+        let mut names: Vec<String> = r.entries.iter().map(|e| e.name.clone()).collect();
+        names.sort();
+        assert_eq!(names, [".secret.log", "kept.log"]);
+    }
+
+    #[test]
+    fn search_files_truncates_at_limit() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        for i in 0..5 {
+            std::fs::write(root.join(format!("file{i}.txt")), b"x").unwrap();
+        }
+        let r = search_files(&root.to_string_lossy(), ".txt", false, 3);
+        assert!(r.truncated);
+        assert_eq!(r.entries.len(), 3);
     }
 }
