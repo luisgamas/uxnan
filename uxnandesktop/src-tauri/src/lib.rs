@@ -32,6 +32,7 @@ mod usage;
 mod which;
 mod winproc;
 mod wsl;
+mod zero;
 
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -240,6 +241,7 @@ pub fn run() {
             commands::fs_delete,
             commands::fs_duplicate,
             commands::fs_search_files,
+            commands::zero_session,
             commands::image_fetch_data_url,
             commands::fs_set_watch,
             commands::reveal_path,

@@ -655,6 +655,19 @@ pub async fn fs_duplicate(path: String) -> Result<String, CommandError> {
         .map_err(CommandError::from)
 }
 
+/// The current conversation of the **Zero** agent running in `cwd` (worktree
+/// path): its session title + a coarse status, read from Zero's on-disk session
+/// metadata (see [`crate::zero::session_for`]). `None` when no matching session
+/// exists. Never errors — a missing/unreadable store just yields `None`.
+#[tauri::command]
+pub async fn zero_session(cwd: String) -> Result<Option<crate::zero::ZeroSession>, CommandError> {
+    Ok(
+        tokio::task::spawn_blocking(move || crate::zero::session_for(&cwd))
+            .await
+            .unwrap_or(None),
+    )
+}
+
 /// Project-wide filename search for the file tree: recursively find files under
 /// `root` whose relative path matches every token of `query` (see
 /// [`crate::fs::search_files`]). `include_hidden` surfaces dotfiles; `limit` caps
