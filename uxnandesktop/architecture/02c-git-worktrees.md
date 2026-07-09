@@ -289,6 +289,26 @@ commit/push/pull.
   mano. El watcher se apunta al worktree activo centralmente (`+page.svelte`).
 - **Abrir archivo**: un clic en un archivo lo abre como **pestaña de archivo**
   en el área central (ver §6.2).
+- **Búsqueda en todo el proyecto**: la lupa filtra recursivamente **todo** el
+  worktree (comando backend `fs_search_files`, walker `ignore` de ripgrep —
+  respeta `.gitignore` y salta `.git`), no solo las carpetas ya expandidas. Las
+  coincidencias se muestran **como árbol** (mismo diseño de carpetas/archivos que
+  el navegador — los archivos hallados anidados bajo sus carpetas ancestro
+  colapsables), no como lista plana. Debounced, con tope de resultados (aviso de
+  "afina la búsqueda") y guardia de secuencia para descartar respuestas obsoletas.
+  **"Buscar en la carpeta"** raíza la misma búsqueda en un subárbol (chip limpiable).
+- **Toolbar + archivos ocultos**: botones primarios (buscar · contraer · recargar)
+  + un menú de desbordamiento **`…`** (`ui/dropdown-menu`) con acciones secundarias —
+  **Revelar en el explorador** y un toggle **"Mostrar archivos ocultos"** (dotfiles)
+  que filtra tanto el árbol como la búsqueda. La fila del árbol vive en
+  `FileTreeRow.svelte` (compartida por el árbol y el árbol de resultados).
+- **Arrastrar a la terminal**: arrastrar una fila (archivo/carpeta) sobre una
+  terminal escribe su ruta (entre comillas si tiene espacios) en el PTY, **sin
+  ejecutarla**, y **pasa el foco a esa terminal** para seguir escribiendo ahí. Se
+  implementa con **eventos de puntero** (no dnd HTML5, que Tauri suprime en el
+  WebView — igual que el reordenamiento de pestañas): un umbral distingue clic de
+  arrastre y el destino se resuelve con `data-pty-id` bajo el puntero. Helper
+  compartido `terminal/terminalDrop.ts`, reutilizado también por el drop OS-nativo.
 - **Menú contextual (clic derecho) por ítem**: cada archivo/carpeta ofrece
   operaciones completas reutilizando `ui/context-menu`
   (`FileTreeContextMenu.svelte`): New File · New Folder · Copiar ruta / ruta

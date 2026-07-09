@@ -5,6 +5,37 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — drag a file-tree entry onto a terminal to insert its path
+
+- A file/folder row in the **Files** tab can be **dragged onto any terminal**; its
+  path (double-quoted when it contains spaces, space-separated for a future
+  multi-drop) is written to that terminal's PTY at the cursor — **not executed**
+  (no trailing newline) — and **focus moves to that terminal** so the user keeps
+  typing there. A short drag threshold keeps normal clicks (open/expand) working,
+  and a floating label follows the pointer while dragging.
+- Implemented with **pointer events**, not HTML5 drag-and-drop: Tauri's native
+  OS file-drop suppresses HTML5 dnd inside the webview (the same reason tab
+  reordering is pointer-based). The drop resolves the target terminal by
+  hit-testing `data-pty-id` under the pointer. Shared `terminalDrop.ts` helper
+  (`quoteDropPath` / `dropPayload` / `dropPathsIntoTerminal`); the native OS
+  file-drop path now reuses it too.
+
+### Changed — Files tab search is project-wide; toolbar reorganized
+
+- The Files-tab search now scans the **whole project recursively** (backend
+  `fs_search_files`, via ripgrep's `ignore` walker — respects `.gitignore` and
+  skips `.git`). Matches are shown **as a tree** (folders + files, same design as
+  the browser — matched files nested under collapsible ancestor folders), not a
+  flat list. Previously it only filtered folders that had already been expanded, so
+  a file in a never-opened folder could never be found. Debounced, capped (with a
+  "narrow your search" hint past the cap), and **"Find in Folder"** now roots the
+  same search at one subtree.
+- **Toolbar reorganized**: primary actions stay as icon buttons (search ·
+  collapse · refresh) and a new **"…" overflow menu** holds secondary actions —
+  **Reveal in file manager** and a **"Show hidden files"** toggle (dotfiles, which
+  filters both the tree and the search). The tree row was extracted to
+  `FileTreeRow.svelte` (shared by the tree + the search-results tree).
+
 ### Added — file-tree context menu with full file operations
 
 - Every entry in the right panel's **Files** tab now has a **right-click context
