@@ -52,6 +52,21 @@ fn normalize(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
 
+/// Validate that `name` is a usable *bare* file/directory name — never a path
+/// fragment that could move or escape the target folder. Trims, then rejects an
+/// empty name, any path separator, and the `.` / `..` specials. Returns the
+/// trimmed name so callers operate on the cleaned value.
+fn validate_bare_name(name: &str) -> Result<&str, AppError> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err(AppError::Invalid("the name is empty".into()));
+    }
+    if name.contains('/') || name.contains('\\') || name == ".." || name == "." {
+        return Err(AppError::Invalid(format!("\"{name}\" is not a valid name")));
+    }
+    Ok(name)
+}
+
 /// List the immediate children of `path`: sub-directories first, then files,
 /// each group sorted case-insensitively by name. The `.git` directory is hidden
 /// (its internals are never user-editable); every other entry — dotfiles
@@ -168,16 +183,8 @@ pub async fn write_file(path: &str, content: &str) -> Result<(), AppError> {
 /// re-point the open tab/editor at it.
 pub async fn rename_path(path: &str, new_name: &str) -> Result<String, AppError> {
     let source = PathBuf::from(path);
-    let new_name = new_name.trim();
-    if new_name.is_empty() {
-        return Err(AppError::Invalid("the new name is empty".into()));
-    }
     // A bare file name only — never a path fragment that could escape the folder.
-    if new_name.contains('/') || new_name.contains('\\') || new_name == ".." || new_name == "." {
-        return Err(AppError::Invalid(format!(
-            "\"{new_name}\" is not a valid file name"
-        )));
-    }
+    let new_name = validate_bare_name(new_name)?;
     if !tokio::fs::try_exists(&source).await.unwrap_or(false) {
         return Err(AppError::NotFound(format!("{path} does not exist")));
     }
@@ -193,6 +200,127 @@ pub async fn rename_path(path: &str, new_name: &str) -> Result<String, AppError>
         )));
     }
     tokio::fs::rename(&source, &target).await?;
+    Ok(normalize(&target))
+}
+
+/// Shared preflight for "New File" / "New Folder": validate the bare `name`,
+/// confirm `dir` is an existing directory, and confirm nothing named `name` is
+/// already there. Returns the target path to create.
+async fn prepare_new_entry(dir: &str, name: &str) -> Result<PathBuf, AppError> {
+    let name = validate_bare_name(name)?;
+    let base = PathBuf::from(dir);
+    let meta = tokio::fs::metadata(&base)
+        .await
+        .map_err(|_| AppError::NotFound(format!("{dir} does not exist")))?;
+    if !meta.is_dir() {
+        return Err(AppError::Invalid(format!("{dir} is not a directory")));
+    }
+    let target = base.join(name);
+    if tokio::fs::try_exists(&target).await.unwrap_or(false) {
+        return Err(AppError::Invalid(format!(
+            "\"{name}\" already exists in this folder"
+        )));
+    }
+    Ok(target)
+}
+
+/// Create a new, empty file `name` inside directory `dir` (the file tree's "New
+/// File"). `name` must be a bare name and must not already exist. Returns the new
+/// absolute, forward-slash-normalized path so the caller can reveal/open it.
+pub async fn create_file(dir: &str, name: &str) -> Result<String, AppError> {
+    let target = prepare_new_entry(dir, name).await?;
+    tokio::fs::File::create(&target).await?;
+    Ok(normalize(&target))
+}
+
+/// Create a new empty directory `name` inside `dir` (the file tree's "New
+/// Folder"). Only the single leaf is created (`name` is a bare name, so no
+/// intermediate components), never clobbering an existing entry.
+pub async fn create_dir(dir: &str, name: &str) -> Result<String, AppError> {
+    let target = prepare_new_entry(dir, name).await?;
+    tokio::fs::create_dir(&target).await?;
+    Ok(normalize(&target))
+}
+
+/// Safety preflight for a delete: the path must be non-empty, must exist, and must
+/// have a parent directory — so a filesystem root (`/`, `C:\`) can never be
+/// deleted even if the frontend is coerced into passing one. Returns the resolved
+/// path. Split out from [`delete_to_trash`] so the guard is unit-testable without
+/// actually trashing anything.
+pub async fn check_deletable(path: &str) -> Result<PathBuf, AppError> {
+    if path.trim().is_empty() {
+        return Err(AppError::Invalid("no path to delete".into()));
+    }
+    let target = PathBuf::from(path);
+    if target.parent().is_none() {
+        return Err(AppError::Invalid(format!(
+            "refusing to delete the filesystem root {path}"
+        )));
+    }
+    if !tokio::fs::try_exists(&target).await.unwrap_or(false) {
+        return Err(AppError::NotFound(format!("{path} does not exist")));
+    }
+    Ok(target)
+}
+
+/// Move `path` (a file or directory) to the OS trash — the file tree's "Delete".
+/// Recoverable by design (Recycle Bin / Trash / freedesktop), unlike an unlink.
+/// Guards via [`check_deletable`]; `trash::delete` is blocking, so it runs on the
+/// blocking pool.
+pub async fn delete_to_trash(path: &str) -> Result<(), AppError> {
+    let target = check_deletable(path).await?;
+    tokio::task::spawn_blocking(move || trash::delete(&target))
+        .await
+        .map_err(|e| AppError::Io(std::io::Error::other(format!("delete task failed: {e}"))))?
+        .map_err(|e| {
+            AppError::Io(std::io::Error::other(format!(
+                "could not move to trash: {e}"
+            )))
+        })
+}
+
+/// Build a unique "copy" name for `file_name` in a folder: `name copy.ext`, then
+/// `name copy 2.ext`, `name copy 3.ext`, … until `exists(candidate)` is false. The
+/// extension is split on the final dot so it's preserved (a leading-dot dotfile
+/// like `.env` is treated as having no extension). Pure — the collision check is
+/// injected — so it's directly testable.
+fn unique_copy_name(file_name: &str, exists: impl Fn(&str) -> bool) -> String {
+    let dot = file_name.rfind('.').filter(|&i| i > 0);
+    let (stem, ext) = match dot {
+        Some(i) => (&file_name[..i], &file_name[i..]), // `ext` includes the leading dot
+        None => (file_name, ""),
+    };
+    let mut candidate = format!("{stem} copy{ext}");
+    let mut n = 2;
+    while exists(&candidate) {
+        candidate = format!("{stem} copy {n}{ext}");
+        n += 1;
+    }
+    candidate
+}
+
+/// Duplicate a single file next to itself under a unique "… copy" name (the file
+/// tree's "Duplicate"). Directories are refused — a recursive copy is a heavier,
+/// separate concern. Returns the new absolute, forward-slash-normalized path.
+pub async fn duplicate_file(path: &str) -> Result<String, AppError> {
+    let source = PathBuf::from(path);
+    let meta = tokio::fs::metadata(&source)
+        .await
+        .map_err(|_| AppError::NotFound(format!("{path} does not exist")))?;
+    if meta.is_dir() {
+        return Err(AppError::Invalid("only files can be duplicated".into()));
+    }
+    let parent = source
+        .parent()
+        .ok_or_else(|| AppError::Invalid(format!("{path} has no parent directory")))?;
+    let file_name = source
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .ok_or_else(|| AppError::Invalid(format!("{path} has no file name")))?;
+    let target = parent.join(unique_copy_name(&file_name, |candidate| {
+        parent.join(candidate).exists()
+    }));
+    tokio::fs::copy(&source, &target).await?;
     Ok(normalize(&target))
 }
 
@@ -279,6 +407,94 @@ mod tests {
         // A missing source errors instead of silently succeeding.
         assert!(
             rename_path(&tmp.path().join("nope.txt").to_string_lossy(), "z.txt")
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn creates_file_and_folder_guarding_bad_input() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().to_string_lossy().to_string();
+
+        // Happy paths: file + folder land in `dir`, normalized paths returned.
+        let f = create_file(&dir, "notes.txt").await.unwrap();
+        assert!(f.ends_with("/notes.txt"));
+        assert!(tmp.path().join("notes.txt").is_file());
+        let d = create_dir(&dir, "sub").await.unwrap();
+        assert!(d.ends_with("/sub"));
+        assert!(tmp.path().join("sub").is_dir());
+
+        // Clobbering an existing entry is refused (either kind).
+        assert!(create_file(&dir, "notes.txt").await.is_err());
+        assert!(create_dir(&dir, "sub").await.is_err());
+
+        // Path separators / traversal / empties are refused — never escape `dir`.
+        assert!(create_file(&dir, "a/b.txt").await.is_err());
+        assert!(create_file(&dir, "..").await.is_err());
+        assert!(create_dir(&dir, "  ").await.is_err());
+
+        // A missing parent directory errors instead of creating anything.
+        let missing = tmp.path().join("nope").to_string_lossy().to_string();
+        assert!(create_file(&missing, "x.txt").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn check_deletable_guards_root_empty_and_missing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let f = tmp.path().join("a.txt");
+        std::fs::write(&f, "x").unwrap();
+
+        // A real, non-root path passes and resolves.
+        let ok = check_deletable(&f.to_string_lossy()).await.unwrap();
+        assert_eq!(ok, f);
+
+        // Empty, missing, and filesystem-root paths are all refused.
+        assert!(check_deletable("   ").await.is_err());
+        assert!(check_deletable(&tmp.path().join("ghost").to_string_lossy())
+            .await
+            .is_err());
+        let root = if cfg!(windows) { "C:\\" } else { "/" };
+        assert!(check_deletable(root).await.is_err());
+    }
+
+    #[test]
+    fn unique_copy_name_preserves_extension_and_increments() {
+        // First copy, then numbered copies once the earlier ones are taken.
+        let taken: std::collections::HashSet<&str> =
+            ["report copy.md", "report copy 2.md"].into_iter().collect();
+        assert_eq!(unique_copy_name("fresh.md", |_| false), "fresh copy.md");
+        assert_eq!(
+            unique_copy_name("report.md", |c| taken.contains(c)),
+            "report copy 3.md"
+        );
+        // No extension / dotfiles: the whole name is the stem.
+        assert_eq!(unique_copy_name("Makefile", |_| false), "Makefile copy");
+        assert_eq!(unique_copy_name(".env", |_| false), ".env copy");
+    }
+
+    #[tokio::test]
+    async fn duplicates_file_with_unique_names_refusing_dirs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let a = tmp.path().join("data.json");
+        std::fs::write(&a, "{}").unwrap();
+
+        // First duplicate → "… copy", contents preserved.
+        let c1 = duplicate_file(&a.to_string_lossy()).await.unwrap();
+        assert!(c1.ends_with("/data copy.json"));
+        assert_eq!(std::fs::read_to_string(&c1).unwrap(), "{}");
+        // Second duplicate of the same source → numbered, never clobbering.
+        let c2 = duplicate_file(&a.to_string_lossy()).await.unwrap();
+        assert!(c2.ends_with("/data copy 2.json"));
+        assert!(tmp.path().join("data copy.json").is_file());
+
+        // Directories are refused; a missing source errors.
+        std::fs::create_dir(tmp.path().join("folder")).unwrap();
+        assert!(duplicate_file(&tmp.path().join("folder").to_string_lossy())
+            .await
+            .is_err());
+        assert!(
+            duplicate_file(&tmp.path().join("nope.txt").to_string_lossy())
                 .await
                 .is_err()
         );

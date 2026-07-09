@@ -76,6 +76,11 @@ hex = "0.4"
 # manual refresh. `notify` is re-exported by the debouncer; pinned together.
 notify = "6"
 notify-debouncer-full = "0.3"
+# Moves a deleted file/folder to the OS trash (Recycle Bin / Trash / freedesktop)
+# instead of unlinking it, so the file-tree "Delete" action is recoverable. Thin,
+# cross-platform, pure-Rust API (`trash::delete`); the call is synchronous so it
+# runs on the blocking pool (fs.rs `delete_to_trash`).
+trash = "5"
 
 # Windows-only: SetThreadExecutionState for the keep-awake feature (power.rs).
 [target.'cfg(windows)'.dependencies]

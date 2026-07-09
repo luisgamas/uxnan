@@ -618,6 +618,43 @@ pub async fn fs_rename(path: String, new_name: String) -> Result<String, Command
         .map_err(CommandError::from)
 }
 
+/// Create a new, empty file in `dir` (the file tree's "New File"). `name` must be
+/// a bare name that doesn't already exist (see [`crate::fs::create_file`]). Returns
+/// the new absolute, forward-slash path.
+#[tauri::command]
+pub async fn fs_create_file(dir: String, name: String) -> Result<String, CommandError> {
+    crate::fs::create_file(&dir, &name)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Create a new empty directory in `dir` (the file tree's "New Folder"). Same bare
+/// name / no-clobber guards as [`fs_create_file`]. Returns the new path.
+#[tauri::command]
+pub async fn fs_create_dir(dir: String, name: String) -> Result<String, CommandError> {
+    crate::fs::create_dir(&dir, &name)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Move a file or directory to the OS trash (the file tree's "Delete"). Recoverable
+/// by design; guarded against filesystem roots (see [`crate::fs::delete_to_trash`]).
+#[tauri::command]
+pub async fn fs_delete(path: String) -> Result<(), CommandError> {
+    crate::fs::delete_to_trash(&path)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Duplicate a single file next to itself under a unique "… copy" name (the file
+/// tree's "Duplicate"). Directories are refused. Returns the new path.
+#[tauri::command]
+pub async fn fs_duplicate(path: String) -> Result<String, CommandError> {
+    crate::fs::duplicate_file(&path)
+        .await
+        .map_err(CommandError::from)
+}
+
 /// Largest remote image the icon fetcher will inline (5 MiB). Icons are tiny;
 /// this only guards against a hostile/oversized URL streaming forever.
 const MAX_ICON_BYTES: u64 = 5 * 1024 * 1024;
