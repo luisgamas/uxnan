@@ -7,8 +7,6 @@
   // menu (terminals · agents · reveal · configure · remove) — the row no longer
   // carries a persistent overflow button.
   import * as ContextMenu from "$lib/components/ui/context-menu";
-  import * as Dialog from "$lib/components/ui/dialog";
-  import { Button } from "$lib/components/ui/button";
   import { projects, type WorktreeRow } from "$lib/state/projects.svelte";
   import { unread } from "$lib/state/unread.svelte";
   import { terminals } from "$lib/state/terminals.svelte";
@@ -22,6 +20,7 @@
   import RowActionsMenu from "./RowActionsMenu.svelte";
   import EntityIcon from "./EntityIcon.svelte";
   import IconPicker from "./IconPicker.svelte";
+  import ConfirmDialog from "./ConfirmDialog.svelte";
   import GitBranchIcon from "@lucide/svelte/icons/git-branch";
 
   let {
@@ -69,7 +68,6 @@
   let removeOpen = $state(false);
   let forceNeeded = $state(false);
   let removeError = $state<string | null>(null);
-  let busy = $state(false);
 
   function openRemove() {
     forceNeeded = false;
@@ -77,14 +75,11 @@
     removeOpen = true;
   }
   async function doRemove(force: boolean) {
-    busy = true;
     const ok = await projects.removeWorktree(row, force);
-    busy = false;
-    if (ok) removeOpen = false;
-    else {
-      removeError = projects.error;
-      forceNeeded = true;
-    }
+    if (ok) return true;
+    removeError = projects.error;
+    forceNeeded = true;
+    return false;
   }
 </script>
 
@@ -178,40 +173,15 @@
   </div>
 </div>
 
-<Dialog.Root bind:open={removeOpen}>
-  <Dialog.Content class="sm:max-w-[440px]">
-    <Dialog.Header>
-      <Dialog.Title>{i18n.t("worktree.removeTitle")}</Dialog.Title>
-      <Dialog.Description>
-        {i18n.t("worktree.removeDesc", { path: row.path, branch: label })}
-      </Dialog.Description>
-    </Dialog.Header>
-
-    {#if removeError}
-      <div
-        class={cn(
-          "rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-destructive",
-          text.body,
-        )}
-      >
-        {removeError}
-      </div>
-    {/if}
-
-    <Dialog.Footer>
-      <Button variant="ghost" onclick={() => (removeOpen = false)}>{i18n.t("common.cancel")}</Button>
-      {#if forceNeeded}
-        <Button variant="destructive" disabled={busy} onclick={() => doRemove(true)}>
-          {busy ? i18n.t("common.removing") : i18n.t("worktree.forceRemove")}
-        </Button>
-      {:else}
-        <Button variant="destructive" disabled={busy} onclick={() => doRemove(false)}>
-          {busy ? i18n.t("common.removing") : i18n.t("common.remove")}
-        </Button>
-      {/if}
-    </Dialog.Footer>
-  </Dialog.Content>
-</Dialog.Root>
+<ConfirmDialog
+  bind:open={removeOpen}
+  danger
+  title={i18n.t("worktree.removeTitle")}
+  description={i18n.t("worktree.removeDesc", { path: row.path, branch: label })}
+  confirmLabel={forceNeeded ? i18n.t("worktree.forceRemove") : i18n.t("common.remove")}
+  error={removeError}
+  onconfirm={() => doRemove(forceNeeded)}
+/>
 
 <IconPicker
   bind:open={iconPickerOpen}

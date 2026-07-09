@@ -133,6 +133,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   containers use the standard `panel.settingsBody`. See [`docs/theming.md`](docs/theming.md).
 
 ### Fixed
+- **Destructive confirmation dialogs unified and overflow fixed.** Close-all-tabs,
+  remove-project and remove-worktree confirmations now share one canonical
+  `ConfirmDialog` (identical layout, danger hero icon, design tokens), so they no
+  longer drift apart in style. The remove-worktree dialog had its body and buttons
+  render *outside* the backdrop: `Dialog.Content` is a CSS grid, and a long worktree
+  path (or project name) grew the grid track past `max-width`, pushing content past
+  the padding. The content is now a flex column with `min-w-0` so `break-words`
+  wraps long paths inside the box. `ConfirmDialog` also gained an optional inline
+  error band and an `onconfirm` that can return `false` to keep the dialog open
+  (the remove-worktree force-remove flow reuses this).
 - **Center panel: terminal rendering, scrollbar and resize seams reworked.**
   A cluster of center-pane bugs (an ungrabbable / hidden terminal scrollbar, the
   terminal reading as if it sat "under" the right panel, excess empty space at the
