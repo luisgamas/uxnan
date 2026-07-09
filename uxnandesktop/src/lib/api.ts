@@ -318,6 +318,31 @@ export function fsRename(path: string, newName: string): Promise<string> {
   return invoke<string>("fs_rename", { path, newName });
 }
 
+/** Create a new empty file `name` inside directory `dir` (file tree "New File").
+ *  `name` must be a bare name that doesn't already exist. Returns the new
+ *  absolute, forward-slash path. */
+export function fsCreateFile(dir: string, name: string): Promise<string> {
+  return invoke<string>("fs_create_file", { dir, name });
+}
+
+/** Create a new empty directory `name` inside `dir` (file tree "New Folder").
+ *  Same bare-name / no-clobber guards as {@link fsCreateFile}. */
+export function fsCreateDir(dir: string, name: string): Promise<string> {
+  return invoke<string>("fs_create_dir", { dir, name });
+}
+
+/** Move a file or directory to the OS trash (file tree "Delete") — recoverable,
+ *  not a permanent unlink. Refuses a filesystem root. */
+export function fsDelete(path: string): Promise<void> {
+  return invoke("fs_delete", { path });
+}
+
+/** Duplicate a single file next to itself under a unique "… copy" name (file tree
+ *  "Duplicate"). Directories are refused. Returns the new absolute path. */
+export function fsDuplicate(path: string): Promise<string> {
+  return invoke<string>("fs_duplicate", { path });
+}
+
 /** Download an image from an http(s) URL into an inline `data:` URL (fetched in
  *  the backend to sidestep CORS). Used for "icon from URL" and git-host avatars. */
 export function imageFetchDataUrl(url: string): Promise<string> {

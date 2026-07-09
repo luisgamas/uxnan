@@ -6,11 +6,18 @@
 // access goes through `$lib/api`.
 
 import { listen } from "@tauri-apps/api/event";
-import { fsListDir } from "$lib/api";
+import { fsCreateDir, fsCreateFile, fsDelete, fsDuplicate, fsListDir, fsRename } from "$lib/api";
+import { terminals } from "$lib/state/terminals.svelte";
 import type { FsChangedEvent, FsEntry } from "$lib/types";
 
 /** Safety cap for "expand all" so it never tries to load an unbounded tree. */
 const EXPAND_ALL_CAP = 1500;
+
+/** Parent directory of a forward-slash path (drops the last segment). */
+function parentOf(path: string): string {
+  const i = path.lastIndexOf("/");
+  return i > 0 ? path.slice(0, i) : path;
+}
 
 const msg = (e: unknown) =>
   e && typeof e === "object" && "message" in e
@@ -29,6 +36,8 @@ class FileTreeStore {
   error = $state<string | null>(null);
   /** Live filter query for the tree (matches entry names; empty = no filter). */
   query = $state("");
+  /** Folder the search is restricted to ("Find in Folder"); null = whole tree. */
+  searchScope = $state<string | null>(null);
   private listening = false;
 
   /** Subscribe to the backend's `fs:changed` events (once) so files created,
@@ -71,6 +80,7 @@ class FileTreeStore {
     this.expanded = new Set();
     this.error = null;
     this.query = "";
+    this.searchScope = null;
     if (root) void this.loadDir(root);
   }
 
@@ -132,6 +142,77 @@ class FileTreeStore {
   /** Reload every already-loaded directory (keeps the expansion state). */
   refresh(): void {
     for (const dir of Object.keys(this.childrenByDir)) void this.loadDir(dir, true);
+  }
+
+  // --- Context-menu file operations ----------------------------------------
+  // Each mutates the disk via `$lib/api`, then reloads the affected folder so the
+  // tree reflects the change immediately (the fs watcher would also catch it, but
+  // only for currently-expanded folders and after a debounce). Failures throw so
+  // the calling dialog can surface the backend message inline.
+
+  /** Create a new file/folder `name` inside `dir`, then reveal it (expand +
+   *  reload `dir`). Returns the new absolute path. */
+  async createEntry(dir: string, name: string, kind: "file" | "folder"): Promise<string> {
+    const path = kind === "folder" ? await fsCreateDir(dir, name) : await fsCreateFile(dir, name);
+    this.expanded = new Set(this.expanded).add(dir);
+    await this.loadDir(dir, true);
+    return path;
+  }
+
+  /** Rename an entry (bare name, same folder) and re-point any open tabs. Reloads
+   *  the parent so the new name shows. Returns the new path; throws on failure. */
+  async renameEntry(entry: FsEntry, newName: string): Promise<string> {
+    const newPath = await fsRename(entry.path, newName);
+    await terminals.repathTabs(entry.path, newPath);
+    // A renamed folder's children now live under a different path — drop the stale
+    // expansion + cached listing so the reload rebuilds them under the new path.
+    if (entry.isDir) this.forgetSubtree(entry.path);
+    await this.loadDir(parentOf(entry.path), true);
+    return newPath;
+  }
+
+  /** Move an entry to the OS trash, closing any open tabs under it and reloading
+   *  the parent folder. Throws on failure so the confirm dialog shows the error. */
+  async deleteEntry(entry: FsEntry): Promise<void> {
+    await fsDelete(entry.path);
+    terminals.closeTabsUnder(entry.path);
+    if (entry.isDir) this.forgetSubtree(entry.path);
+    await this.loadDir(parentOf(entry.path), true);
+  }
+
+  /** Duplicate a file next to itself ("… copy"), reloading its folder. Returns the
+   *  new path. */
+  async duplicateEntry(entry: FsEntry): Promise<string> {
+    const newPath = await fsDuplicate(entry.path);
+    await this.loadDir(parentOf(entry.path), true);
+    return newPath;
+  }
+
+  /** Collapse a folder together with all of its descendants ("Collapse Folder"),
+   *  keeping their cached listings so re-expanding is instant. */
+  collapseSubtree(folderPath: string): void {
+    const prefix = folderPath + "/";
+    const next = new Set<string>();
+    for (const p of this.expanded) {
+      if (p !== folderPath && !p.startsWith(prefix)) next.add(p);
+    }
+    this.expanded = next;
+  }
+
+  /** Drop a folder and its descendants from the expanded set + the loaded-children
+   *  cache — their paths are gone/changed after a rename or delete. */
+  private forgetSubtree(folderPath: string): void {
+    const prefix = folderPath + "/";
+    const exp = new Set<string>();
+    for (const p of this.expanded) {
+      if (p !== folderPath && !p.startsWith(prefix)) exp.add(p);
+    }
+    this.expanded = exp;
+    const children: Record<string, FsEntry[]> = {};
+    for (const [dir, entries] of Object.entries(this.childrenByDir)) {
+      if (dir !== folderPath && !dir.startsWith(prefix)) children[dir] = entries;
+    }
+    this.childrenByDir = children;
   }
 }
 

@@ -1167,6 +1167,72 @@ class TerminalStore {
     return newPath;
   }
 
+  /** Re-point any open file tabs affected by a rename/move on disk (the file
+   *  tree's Rename). Handles a file rename (`oldPath` is the tab's own path) and a
+   *  folder rename (a tab whose path sits under `oldPath + "/"`): the path prefix
+   *  is rewritten and the editor repointed, so unsaved edits and the change gutter
+   *  follow the file to its new location. */
+  async repathTabs(oldPath: string, newPath: string): Promise<void> {
+    const prefix = oldPath + "/";
+    for (const { tab } of this.tabsWithWorkspace()) {
+      if (tab.kind !== "file") continue;
+      let next: string | null = null;
+      if (tab.path === oldPath) next = newPath;
+      else if (tab.path.startsWith(prefix)) next = newPath + tab.path.slice(oldPath.length);
+      if (next === null) continue;
+      tab.path = next;
+      tab.title = next.split("/").pop() ?? next;
+      await this.fileStates.get(tab.id)?.repoint(next);
+    }
+  }
+
+  /** Force-close any open file tabs at (or under) `path` — used when the file tree
+   *  deletes a file/folder. The bytes are already gone, so this skips the unsaved
+   *  changes prompt; each tab's state is disposed and an emptied region/workspace
+   *  is collapsed. */
+  closeTabsUnder(path: string): void {
+    const prefix = path + "/";
+    const ids: string[] = [];
+    for (const { tab } of this.tabsWithWorkspace()) {
+      if (tab.kind === "file" && (tab.path === path || tab.path.startsWith(prefix))) {
+        ids.push(tab.id);
+      }
+    }
+    for (const id of ids) this.forceRemoveTab(id);
+  }
+
+  /** Remove a file tab from wherever it lives with no save prompt or PTY (file
+   *  tabs have neither), disposing its state and collapsing an emptied
+   *  region/workspace. Mirrors the removal branch of `closeTabAnywhere`. */
+  private forceRemoveTab(tabId: string): void {
+    for (const key of Object.keys(this.workspaces)) {
+      const tree = this.workspaces[key];
+      if (!tree) continue;
+      const group = groupOfTab(tree, tabId);
+      if (!group) continue;
+      this.disposeTab(tabId);
+      if (group.tabs.length > 1) {
+        group.tabs = group.tabs.filter((t) => t.id !== tabId);
+        if (group.activeTabId === tabId) {
+          group.activeTabId = group.tabs[group.tabs.length - 1].id;
+        }
+      } else {
+        const newTree = removeGroup(tree, group.id);
+        this.workspaces = { ...this.workspaces, [key]: newTree };
+        if (newTree) {
+          const ag = this.activeGroups[key];
+          if (!ag || !findGroup(newTree, ag)) {
+            this.activeGroups = { ...this.activeGroups, [key]: firstGroup(newTree).id };
+          }
+        } else {
+          const { [key]: _drop, ...rest } = this.activeGroups;
+          this.activeGroups = rest;
+        }
+      }
+      return;
+    }
+  }
+
   /** Close every tab in the active workspace (the "Close all tabs" tab action):
    *  one aggregated save/discard prompt for any unsaved files, then kill all the
    *  PTYs, drop per-tab state and empty the workspace. A no-op when nothing is
