@@ -792,6 +792,30 @@ class AppLocalizationsEn extends AppLocalizations {
   String get approvalRiskUnknown => 'Risk unknown';
 
   @override
+  String get questionNeedsAnswer => 'Needs your answer';
+
+  @override
+  String get questionAnswered => 'Answer recorded';
+
+  @override
+  String get questionAnsweredAt => 'Answered';
+
+  @override
+  String get questionHeaderFallback => 'Question';
+
+  @override
+  String get questionSubmit => 'Submit';
+
+  @override
+  String get questionSkip => 'Skip';
+
+  @override
+  String get questionSkipped => 'Skipped';
+
+  @override
+  String get questionFailed => 'Couldn\'t send your answer — try again';
+
+  @override
   String get runOptionAuto => 'Auto';
 
   @override

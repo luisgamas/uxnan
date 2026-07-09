@@ -931,12 +931,8 @@ class ThreadManager {
   /// Responds to a pending approval ([approvalId]) on [threadId] with
   /// [decision], via `turn/send { approvalResponse }`. Returns true when the
   /// bridge accepts it. No local message is created — the response is control
-  /// data, not chat.
-  ///
-  /// FOR-DEV: the bridge does NOT yet emit approval requests nor accept
-  /// `approvalResponse` (the Claude adapter runs headless, Echo has
-  /// `approvals:false`). Wired ahead of the bridge against the documented
-  /// contract — see `FOR-DEV.md`; dormant until the bridge counterpart lands.
+  /// data, not chat. Live end-to-end (the bridge emits approvals for
+  /// Claude/Codex/Gemini/OpenCode and routes the decision back to the agent).
   Future<bool> respondApproval({
     required String threadId,
     required String approvalId,
@@ -957,6 +953,36 @@ class ThreadManager {
       return true;
     } on Object catch (error, stackTrace) {
       AppLogger.warn('approval response failed', error, stackTrace);
+      return false;
+    }
+  }
+
+  /// Answers a pending question set ([questionId]) on [threadId] with
+  /// [answers], via `turn/send { questionResponse }`. [answers] is one entry
+  /// per question, each a list of chosen option labels (a single value for
+  /// single-select, several for a `multiple` question, an empty list to skip
+  /// that question). Returns true when the bridge accepts it. No local message
+  /// is created — the response is control data, not chat.
+  Future<bool> respondQuestion({
+    required String threadId,
+    required String questionId,
+    required List<List<String>> answers,
+  }) async {
+    try {
+      final res = await _sendRequest('turn/send', {
+        'threadId': threadId,
+        'questionResponse': {
+          'questionId': questionId,
+          'answers': answers,
+        },
+      });
+      if (res.error != null) {
+        AppLogger.warn('question response rejected: ${res.error!.message}');
+        return false;
+      }
+      return true;
+    } on Object catch (error, stackTrace) {
+      AppLogger.warn('question response failed', error, stackTrace);
       return false;
     }
   }

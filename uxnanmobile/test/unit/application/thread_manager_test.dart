@@ -1073,4 +1073,27 @@ void main() {
     // It is control data, not chat: no text is sent.
     expect(turnSendParams?.containsKey('text'), isFalse);
   });
+
+  test('respondQuestion sends turn/send with the questionResponse', () async {
+    final ok = await manager.respondQuestion(
+      threadId: 'th1',
+      questionId: 'q1',
+      answers: [
+        ['Dart'],
+        ['A', 'B'],
+      ],
+    );
+
+    expect(ok, isTrue);
+    expect(sentMethods, contains('turn/send'));
+    expect(turnSendParams?['questionResponse'], {
+      'questionId': 'q1',
+      'answers': [
+        ['Dart'],
+        ['A', 'B'],
+      ],
+    });
+    // It is control data, not chat: no text is sent.
+    expect(turnSendParams?.containsKey('text'), isFalse);
+  });
 }

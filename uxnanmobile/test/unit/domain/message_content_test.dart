@@ -106,6 +106,26 @@ void main() {
       );
       expect(roundTrip(c), c);
     });
+
+    test('question', () {
+      const c = QuestionContent(
+        QuestionRequest(
+          questionId: 'q1',
+          questions: [
+            QuestionItem(
+              question: 'Which language?',
+              header: 'Language',
+              options: [
+                QuestionOption(label: 'Dart', description: 'typed'),
+                QuestionOption(label: 'JS'),
+              ],
+              multiple: true,
+            ),
+          ],
+        ),
+      );
+      expect(roundTrip(c), c);
+    });
   });
 
   group('advanced content tolerant parsing', () {
@@ -120,6 +140,30 @@ void main() {
       final request = (c as ApprovalContent).request;
       expect(request.approvalId, 'a1');
       expect(request.risk, ApprovalRisk.medium);
+    });
+
+    test('question accepts a flat payload and defaults missing fields', () {
+      final c = MessageContent.fromJson({
+        'type': 'question',
+        'questionId': 'q1',
+        'questions': [
+          {
+            'question': 'Pick one',
+            'options': [
+              {'label': 'A'},
+              {'label': 'B'},
+            ],
+          },
+        ],
+      });
+      expect(c, isA<QuestionContent>());
+      final request = (c as QuestionContent).request;
+      expect(request.questionId, 'q1');
+      final question = request.questions.single;
+      expect(question.options.length, 2);
+      expect(question.header, isNull);
+      // `multiple` defaults to single-select when the field is absent.
+      expect(question.multiple, isFalse);
     });
 
     test('plan maps the in_progress wire status', () {

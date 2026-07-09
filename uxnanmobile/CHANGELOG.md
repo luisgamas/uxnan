@@ -6,6 +6,34 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — interactive multiple-choice question card
+
+- The agent can now ask the user structured questions mid-turn via a new
+  `question` content block (`stream/content/block { type:'question', questionId,
+  questions }`), rendered as an interactive card that mirrors the approval card:
+  - **`QuestionContent`** (+ `QuestionRequest` / `QuestionItem` / `QuestionOption`
+    value objects) in `message_content.dart`, tolerant of both nested
+    (`{request:{…}}`) and flat payloads; added to the `MessageContent.fromJson`
+    dispatch and the `MessageContentView` renderer switch.
+  - **`_QuestionCard`** renders each question's header badge + text, then its
+    options as selectable rows — radio-style (single) or checkbox-style
+    (`multiple`) — with each option's optional description as a subtitle. A
+    primary **Submit** (disabled until every question with options has a
+    selection) sends the chosen labels; a secondary **Skip** sends empty
+    answers. Once answered the card morphs (`AnimatedSize`) into a settled state
+    showing the chosen labels + a relative time, with an inline spinner while
+    sending and re-enable on failure. Read-only when the thread / question id is
+    missing.
+  - **`respondQuestion`** on `ThreadManager` sends `turn/send { questionResponse:
+    { questionId, answers } }` where `answers` is one label-list per question.
+  - **`questionResponsesProvider`** tracks per-`questionId` phase (idle / sending
+    / resolved / failed) and persists answers on-device via **`QuestionResponseStore`**
+    (key `uxnan.question.responses`) so an answered card stays resolved across
+    scrolls and app restarts.
+  - EN/ES strings added (`questionNeedsAnswer`, `questionAnswered`,
+    `questionAnsweredAt`, `questionHeaderFallback`, `questionSubmit`,
+    `questionSkip`, `questionSkipped`, `questionFailed`).
+
 ### Added — autonomous-mode announcement for agents that run without per-action approval
 - New `autonomous` capability on `AgentCapabilities` (shared contract) and
   `AgentDescriptor` (mobile entity), surfaced in the UI so the user knows up front

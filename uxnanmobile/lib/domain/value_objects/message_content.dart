@@ -10,9 +10,10 @@ import 'package:uxnan/domain/enums/system_content_kind.dart';
 /// Serialized as JSON with a `type` discriminator. The central
 /// [MessageContent.fromJson] factory dispatches on `type`; any unrecognized
 /// type round-trips losslessly as an [UnknownContent], so newer bridge content
-/// never breaks decoding. The advanced `approval` / `plan` / `subagent` types
-/// decode into [ApprovalContent] / [PlanContent] / [SubagentContent] and are
-/// tolerant of both nested (`{request|state: {...}}`) and flat payloads.
+/// never breaks decoding. The advanced `approval` / `plan` / `subagent` /
+/// `question` types decode into [ApprovalContent] / [PlanContent] /
+/// [SubagentContent] / [QuestionContent] and are tolerant of both nested
+/// (`{request|state: {...}}`) and flat payloads.
 sealed class MessageContent {
   const MessageContent();
 
@@ -32,6 +33,7 @@ sealed class MessageContent {
       ApprovalContent.typeName => ApprovalContent.fromJson(json),
       PlanContent.typeName => PlanContent.fromJson(json),
       SubagentContent.typeName => SubagentContent.fromJson(json),
+      QuestionContent.typeName => QuestionContent.fromJson(json),
       _ => UnknownContent(
           type: json['type'] is String ? json['type'] as String : 'unknown',
           raw: json,
@@ -523,6 +525,118 @@ class ApprovalRequest extends Equatable {
   List<Object?> get props => [approvalId, action, risk, detail];
 }
 
+/// One selectable option within a [QuestionItem].
+class QuestionOption extends Equatable {
+  /// Creates a [QuestionOption].
+  const QuestionOption({required this.label, this.description});
+
+  /// Decodes a [QuestionOption].
+  factory QuestionOption.fromJson(Map<String, dynamic> json) => QuestionOption(
+        label: json['label'] as String? ?? '',
+        description: json['description'] as String?,
+      );
+
+  /// The option's value — this exact string is sent back as a chosen answer.
+  final String label;
+
+  /// Optional longer explanation, shown as a subtitle under the label.
+  final String? description;
+
+  /// Serializes this option.
+  Map<String, dynamic> toJson() => {
+        'label': label,
+        if (description != null) 'description': description,
+      };
+
+  @override
+  List<Object?> get props => [label, description];
+}
+
+/// A single question the agent asks, with its selectable [options].
+class QuestionItem extends Equatable {
+  /// Creates a [QuestionItem].
+  const QuestionItem({
+    required this.question,
+    this.header,
+    this.options = const [],
+    this.multiple = false,
+  });
+
+  /// Decodes a [QuestionItem].
+  factory QuestionItem.fromJson(Map<String, dynamic> json) => QuestionItem(
+        question: json['question'] as String? ?? '',
+        header: json['header'] as String?,
+        options: [
+          for (final raw in (json['options'] as List? ?? const []))
+            if (raw is Map)
+              QuestionOption.fromJson(raw.cast<String, dynamic>()),
+        ],
+        multiple: json['multiple'] as bool? ?? false,
+      );
+
+  /// The question text.
+  final String question;
+
+  /// Optional short label grouping the question (e.g. "Language"), rendered as
+  /// a small badge above the question text.
+  final String? header;
+
+  /// The options the user can choose from.
+  final List<QuestionOption> options;
+
+  /// Whether several options may be chosen (checkboxes) rather than one
+  /// (radio).
+  final bool multiple;
+
+  /// Serializes this question.
+  Map<String, dynamic> toJson() => {
+        'question': question,
+        if (header != null) 'header': header,
+        'options': [for (final option in options) option.toJson()],
+        'multiple': multiple,
+      };
+
+  @override
+  List<Object?> get props => [question, header, options, multiple];
+}
+
+/// A multiple-choice question set the agent asks before continuing (spec 02a
+/// §6.2; `stream/content/block { type:'question', questionId, questions }`).
+///
+/// Answered via `turn/send { questionResponse: { questionId, answers } }` where
+/// `answers` is one entry per question — each a list of chosen option labels
+/// (a single value for single-select, several for `multiple`, an empty list to
+/// skip that question).
+class QuestionRequest extends Equatable {
+  /// Creates a [QuestionRequest].
+  const QuestionRequest({required this.questionId, this.questions = const []});
+
+  /// Decodes a [QuestionRequest].
+  factory QuestionRequest.fromJson(Map<String, dynamic> json) =>
+      QuestionRequest(
+        questionId: json['questionId'] as String? ?? '',
+        questions: [
+          for (final raw in (json['questions'] as List? ?? const []))
+            if (raw is Map) QuestionItem.fromJson(raw.cast<String, dynamic>()),
+        ],
+      );
+
+  /// Bridge id used to answer this question set.
+  final String questionId;
+
+  /// The questions to answer, in order.
+  final List<QuestionItem> questions;
+
+  /// Serializes this request.
+  Map<String, dynamic> toJson() => {
+        'questionId': questionId,
+        'questions': [for (final question in questions) question.toJson()],
+      };
+
+  @override
+  List<Object?> get props => [questionId, questions];
+}
+
 /// One step of an agent plan (plan mode).
 class PlanStep extends Equatable {
   /// Creates a [PlanStep].
@@ -767,6 +881,48 @@ class SubagentContent extends MessageContent with EquatableMixin {
 
   @override
   List<Object?> get props => [state];
+}
+
+/// A multiple-choice question the agent asks before continuing.
+///
+/// Tolerant of both nested (`{type:'question', request:{...}}`) and flat
+/// (`{type:'question', questionId, questions}`) payloads.
+class QuestionContent extends MessageContent with EquatableMixin {
+  /// Creates a [QuestionContent].
+  const QuestionContent(this.request);
+
+  /// Decodes a [QuestionContent].
+  factory QuestionContent.fromJson(Map<String, dynamic> json) {
+    final req = json['request'] is Map
+        ? (json['request'] as Map).cast<String, dynamic>()
+        : json;
+    return QuestionContent(QuestionRequest.fromJson(req));
+  }
+
+  /// The question set awaiting an answer.
+  final QuestionRequest request;
+
+  /// Wire type discriminator.
+  static const String typeName = 'question';
+
+  @override
+  String get type => typeName;
+
+  @override
+  String get asPlainText {
+    final first =
+        request.questions.isNotEmpty ? request.questions.first.question : '';
+    return '[question: $first]';
+  }
+
+  @override
+  Map<String, dynamic> toJson() => {
+        'type': typeName,
+        'request': request.toJson(),
+      };
+
+  @override
+  List<Object?> get props => [request];
 }
 
 ApprovalRisk _riskFromName(String? name) {

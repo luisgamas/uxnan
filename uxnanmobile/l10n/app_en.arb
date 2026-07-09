@@ -358,6 +358,38 @@
   "approvalRiskMedium": "Medium risk",
   "approvalRiskHigh": "High risk",
   "approvalRiskUnknown": "Risk unknown",
+  "questionNeedsAnswer": "Needs your answer",
+  "@questionNeedsAnswer": {
+    "description": "Title shown on a pending question card while it is still actionable."
+  },
+  "questionAnswered": "Answer recorded",
+  "@questionAnswered": {
+    "description": "Title shown on a resolved question card (after the user has answered), replacing the actionable 'Needs your answer' headline so the settled state reads at a glance."
+  },
+  "questionAnsweredAt": "Answered",
+  "@questionAnsweredAt": {
+    "description": "Prefix for the timestamp on a resolved question card, formatted like 'Answered · 14:32' (today) or 'Answered · may 17 · 14:32' (older)."
+  },
+  "questionHeaderFallback": "Question",
+  "@questionHeaderFallback": {
+    "description": "Fallback badge label above a question when the agent did not provide a header."
+  },
+  "questionSubmit": "Submit",
+  "@questionSubmit": {
+    "description": "Primary button that sends the user's chosen answers on a question card."
+  },
+  "questionSkip": "Skip",
+  "@questionSkip": {
+    "description": "Secondary button that answers a question card with no selection (empty answers)."
+  },
+  "questionSkipped": "Skipped",
+  "@questionSkipped": {
+    "description": "Shown in place of the chosen labels on a resolved question card when the user skipped that question."
+  },
+  "questionFailed": "Couldn't send your answer — try again",
+  "@questionFailed": {
+    "description": "Inline error shown on a question card when the bridge rejected the answer; the options re-enable so the user can retry."
+  },
   "runOptionAuto": "Auto",
   "@runOptionAuto": {
     "description": "Run-option value meaning 'leave the agent's default' (no explicit choice)."

@@ -19,6 +19,7 @@ import 'package:uxnan/domain/value_objects/message_content.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/approval_providers.dart';
+import 'package:uxnan/presentation/providers/question_providers.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/markdown.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
@@ -43,8 +44,8 @@ class MessageContentView extends StatelessWidget {
   /// a tap on it toggles its copy affordance instead of placing a text cursor.
   final bool selectableText;
 
-  /// Owning thread, needed to respond to an [ApprovalContent]; null elsewhere
-  /// (e.g. the user's own bubble) leaves the approval card read-only.
+  /// Owning thread, needed to respond to an [ApprovalContent] / [QuestionContent];
+  /// null elsewhere (e.g. the user's own bubble) leaves those cards read-only.
   final String? threadId;
 
   @override
@@ -64,6 +65,7 @@ class MessageContentView extends StatelessWidget {
       final MermaidContent _ =>
         const _Placeholder(icon: Icons.account_tree_outlined, label: 'Diagram'),
       final ApprovalContent c => _ApprovalCard(content: c, threadId: threadId),
+      final QuestionContent c => _QuestionCard(content: c, threadId: threadId),
       final PlanContent c => _PlanCard(content: c),
       final SubagentContent c => _SubagentCard(content: c),
       final UnknownContent c =>
@@ -83,9 +85,8 @@ class MessageContentView extends StatelessWidget {
 /// `ApprovalResponseStore`) so the card stays in its resolved state across
 /// scrolls and app restarts — the action buttons never reappear.
 ///
-/// FOR-DEV: dormant until the bridge emits approval requests and accepts
-/// `turn/send { approvalResponse }` (see `FOR-DEV.md`); the wiring is complete
-/// on the app side against the documented contract.
+/// Live end-to-end: the bridge emits `approval` blocks (Claude/Codex/Gemini
+/// hooks, OpenCode via `opencode serve`) and accepts `turn/send { approvalResponse }`.
 class _ApprovalCard extends ConsumerWidget {
   const _ApprovalCard({required this.content, this.threadId});
   final ApprovalContent content;
@@ -367,6 +368,547 @@ class _ApprovalResolved extends StatelessWidget {
     final m = months[(when.month - 1).clamp(0, 11)];
     return '${l10n.approvalAnsweredAt} · $m ${when.day} · $hh:$mm';
   }
+}
+
+/// Renders a [QuestionContent]: one or more multiple-choice questions the
+/// agent asks before continuing. Each question shows its header badge + text,
+/// then its options as selectable rows — radio-style (single) or checkbox-style
+/// (`multiple`) — with each option's optional description as a subtitle. A
+/// primary "Submit" (disabled until every question with options has a
+/// selection) sends the chosen labels; a secondary "Skip" sends empty answers.
+///
+/// Once answered, the card morphs (spring `AnimatedSize`) into a settled state
+/// showing the chosen labels per question + a relative time, and stays resolved
+/// across scrolls and app restarts — the answers are persisted on-device (see
+/// `QuestionResponseStore`). Read-only when [threadId] is null or the request
+/// has no id.
+class _QuestionCard extends ConsumerStatefulWidget {
+  const _QuestionCard({required this.content, this.threadId});
+  final QuestionContent content;
+  final String? threadId;
+
+  @override
+  ConsumerState<_QuestionCard> createState() => _QuestionCardState();
+}
+
+class _QuestionCardState extends ConsumerState<_QuestionCard> {
+  /// The user's in-progress selections, one label-set per question (by index).
+  /// A `LinkedHashSet` preserves the tap order so multi-select answers keep the
+  /// order the user chose.
+  late List<Set<String>> _selected;
+
+  List<QuestionItem> get _questions => widget.content.request.questions;
+
+  @override
+  void initState() {
+    super.initState();
+    _selected = List.generate(_questions.length, (_) => <String>{});
+  }
+
+  @override
+  void didUpdateWidget(covariant _QuestionCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Re-sync the selection buffer if the question set is swapped under us.
+    if (_questions.length != _selected.length) {
+      _selected = List.generate(_questions.length, (_) => <String>{});
+    }
+  }
+
+  /// A question is satisfied once it has a selection — or trivially when it has
+  /// no options to pick from (a degenerate payload).
+  bool _satisfied(int i) =>
+      _questions[i].options.isEmpty || _selected[i].isNotEmpty;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final l10n = AppLocalizations.of(context);
+    final request = widget.content.request;
+    final questions = _questions;
+
+    final canRespond = widget.threadId != null && request.questionId.isNotEmpty;
+    final response = canRespond
+        ? ref.watch(
+            questionResponsesProvider.select((m) => m[request.questionId]),
+          )
+        : null;
+    final phase = response?.phase ?? QuestionResponsePhase.idle;
+    final resolved = phase == QuestionResponsePhase.resolved;
+    final sending = phase == QuestionResponsePhase.sending;
+    final interactive = canRespond && !resolved && !sending;
+
+    // The accent tints the card outline/fill: neutral primary while pending,
+    // a settled green once answered (mirrors the approval card).
+    final accent = resolved ? UxnanColors.success : colors.primary;
+
+    final canSubmit = interactive &&
+        questions.isNotEmpty &&
+        List.generate(questions.length, _satisfied).every((v) => v);
+
+    List<String> chosenFor(int i) {
+      final answers = response?.answers;
+      if (answers == null || i >= answers.length) return const [];
+      return answers[i];
+    }
+
+    void toggle(int qIndex, String label) {
+      if (!interactive) return;
+      setState(() {
+        final selection = _selected[qIndex];
+        if (questions[qIndex].multiple) {
+          selection.contains(label)
+              ? selection.remove(label)
+              : selection.add(label);
+        } else {
+          selection
+            ..clear()
+            ..add(label);
+        }
+      });
+    }
+
+    void submit() {
+      if (!canSubmit) return;
+      final answers = [
+        for (var i = 0; i < questions.length; i++) _selected[i].toList(),
+      ];
+      ref
+          .read(questionResponsesProvider.notifier)
+          .respond(widget.threadId!, request.questionId, answers);
+    }
+
+    void skip() {
+      if (!interactive) return;
+      final answers = List.generate(questions.length, (_) => <String>[]);
+      ref
+          .read(questionResponsesProvider.notifier)
+          .respond(widget.threadId!, request.questionId, answers);
+    }
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: resolved
+            ? accent.withValues(alpha: 0.08)
+            : colors.surfaceContainerHighest,
+        borderRadius: const BorderRadius.all(UxnanRadius.lg),
+        border: Border.all(
+          color:
+              resolved ? accent.withValues(alpha: 0.32) : colors.outlineVariant,
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(UxnanSpacing.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  resolved ? Icons.check_circle_rounded : Icons.quiz_outlined,
+                  size: 16,
+                  color: accent,
+                ),
+                const SizedBox(width: UxnanSpacing.sm),
+                Text(
+                  resolved ? l10n.questionAnswered : l10n.questionNeedsAnswer,
+                  style: textTheme.labelMedium,
+                ),
+                const Spacer(),
+                if (questions.length > 1) _CountBadge(count: questions.length),
+              ],
+            ),
+            for (var i = 0; i < questions.length; i++) ...[
+              const SizedBox(height: UxnanSpacing.md),
+              _QuestionBlock(
+                question: questions[i],
+                selected: _selected[i],
+                resolved: resolved,
+                chosen: chosenFor(i),
+                enabled: interactive,
+                onToggle: (label) => toggle(i, label),
+              ),
+            ],
+            const SizedBox(height: UxnanSpacing.sm),
+            AnimatedSize(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              alignment: Alignment.topLeft,
+              child: resolved
+                  ? _QuestionResolved(answeredAtMs: response!.answeredAtMs)
+                  : _QuestionActions(
+                      canSubmit: canSubmit,
+                      sending: sending,
+                      failed: phase == QuestionResponsePhase.failed,
+                      enabled: canRespond,
+                      onSubmit: submit,
+                      onSkip: skip,
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// One question inside a [_QuestionCard]: its header badge + text, then either
+/// the selectable option rows (while actionable) or a summary of the chosen
+/// labels (once resolved).
+class _QuestionBlock extends StatelessWidget {
+  const _QuestionBlock({
+    required this.question,
+    required this.selected,
+    required this.resolved,
+    required this.chosen,
+    required this.enabled,
+    required this.onToggle,
+  });
+
+  final QuestionItem question;
+  final Set<String> selected;
+  final bool resolved;
+  final List<String> chosen;
+  final bool enabled;
+  final ValueChanged<String> onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final l10n = AppLocalizations.of(context);
+    final header = (question.header?.isNotEmpty ?? false)
+        ? question.header!
+        : l10n.questionHeaderFallback;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: UxnanSpacing.sm,
+            vertical: 2,
+          ),
+          decoration: BoxDecoration(
+            color: colors.primary.withValues(alpha: 0.12),
+            borderRadius: const BorderRadius.all(UxnanRadius.sm),
+          ),
+          child: Text(
+            header,
+            style: textTheme.labelSmall?.copyWith(color: colors.primary),
+          ),
+        ),
+        const SizedBox(height: UxnanSpacing.xs),
+        Text(
+          question.question,
+          style: textTheme.bodyMedium?.copyWith(
+            color: resolved ? colors.onSurfaceVariant : colors.onSurface,
+          ),
+        ),
+        const SizedBox(height: UxnanSpacing.sm),
+        if (resolved)
+          _QuestionChosenSummary(labels: chosen)
+        else
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (var i = 0; i < question.options.length; i++) ...[
+                if (i > 0) const SizedBox(height: 4),
+                _QuestionOptionRow(
+                  option: question.options[i],
+                  selected: selected.contains(question.options[i].label),
+                  multiple: question.multiple,
+                  enabled: enabled,
+                  onTap: () => onToggle(question.options[i].label),
+                ),
+              ],
+            ],
+          ),
+      ],
+    );
+  }
+}
+
+/// A single selectable option row: a radio (single-select) or checkbox
+/// (`multiple`) glyph, the option label, and its optional description subtitle.
+/// The whole row is tappable; a selected row picks up a tonal fill + accent
+/// border so the choice reads at a glance.
+class _QuestionOptionRow extends StatelessWidget {
+  const _QuestionOptionRow({
+    required this.option,
+    required this.selected,
+    required this.multiple,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final QuestionOption option;
+  final bool selected;
+  final bool multiple;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final accent = colors.primary;
+    final icon = multiple
+        ? (selected
+            ? Icons.check_box_rounded
+            : Icons.check_box_outline_blank_rounded)
+        : (selected
+            ? Icons.radio_button_checked_rounded
+            : Icons.radio_button_unchecked_rounded);
+    final hasDescription =
+        option.description != null && option.description!.isNotEmpty;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: selected
+            ? accent.withValues(alpha: 0.10)
+            : colors.surfaceContainerHigh.withValues(alpha: 0.5),
+        borderRadius: const BorderRadius.all(UxnanRadius.md),
+        border: Border.all(
+          color: selected ? accent.withValues(alpha: 0.5) : Colors.transparent,
+        ),
+      ),
+      child: InkWell(
+        borderRadius: const BorderRadius.all(UxnanRadius.md),
+        onTap: enabled ? onTap : null,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: UxnanSpacing.sm,
+            vertical: UxnanSpacing.sm,
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 1),
+                child: Icon(
+                  icon,
+                  size: 18,
+                  color: selected ? accent : colors.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(width: UxnanSpacing.sm),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      option.label,
+                      style: textTheme.bodyMedium?.copyWith(
+                        fontWeight:
+                            selected ? FontWeight.w600 : FontWeight.w400,
+                      ),
+                    ),
+                    if (hasDescription) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        option.description!,
+                        style: textTheme.bodySmall?.copyWith(
+                          color: colors.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The chosen answers for one question, shown once the card is resolved: a
+/// wrap of small check-marked pills, or a muted "Skipped" note when the user
+/// answered with no selection.
+class _QuestionChosenSummary extends StatelessWidget {
+  const _QuestionChosenSummary({required this.labels});
+  final List<String> labels;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final l10n = AppLocalizations.of(context);
+    if (labels.isEmpty) {
+      return Text(
+        l10n.questionSkipped,
+        style: textTheme.bodySmall?.copyWith(
+          color: colors.onSurfaceVariant,
+          fontStyle: FontStyle.italic,
+        ),
+      );
+    }
+    return Wrap(
+      spacing: UxnanSpacing.xs,
+      runSpacing: UxnanSpacing.xs,
+      children: [
+        for (final label in labels)
+          Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: UxnanSpacing.sm,
+              vertical: 2,
+            ),
+            decoration: BoxDecoration(
+              color: UxnanColors.success.withValues(alpha: 0.12),
+              borderRadius: const BorderRadius.all(UxnanRadius.sm),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.check_rounded,
+                  size: 13,
+                  color: UxnanColors.success,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  label,
+                  style: textTheme.labelSmall
+                      ?.copyWith(color: UxnanColors.success),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// The action row of a [_QuestionCard]: Skip + Submit, with an inline spinner
+/// on Submit while the answer is in flight and a failure note above.
+class _QuestionActions extends StatelessWidget {
+  const _QuestionActions({
+    required this.canSubmit,
+    required this.sending,
+    required this.failed,
+    required this.enabled,
+    required this.onSubmit,
+    required this.onSkip,
+  });
+
+  final bool canSubmit;
+  final bool sending;
+  final bool failed;
+  final bool enabled;
+  final VoidCallback onSubmit;
+  final VoidCallback onSkip;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final l10n = AppLocalizations.of(context);
+    final acting = enabled && !sending;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (failed) ...[
+          Row(
+            children: [
+              Icon(Icons.error_outline_rounded, size: 14, color: colors.error),
+              const SizedBox(width: UxnanSpacing.xs),
+              Expanded(
+                child: Text(
+                  l10n.questionFailed,
+                  style: textTheme.bodySmall?.copyWith(color: colors.error),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: UxnanSpacing.sm),
+        ],
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: acting ? onSkip : null,
+                child: Text(l10n.questionSkip),
+              ),
+            ),
+            const SizedBox(width: UxnanSpacing.sm),
+            Expanded(
+              child: FilledButton(
+                onPressed: acting && canSubmit ? onSubmit : null,
+                child: sending
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Text(l10n.questionSubmit),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// The settled footer shown once a question card has been answered: a small
+/// check + a relative "Answered · 14:32" timestamp (the chosen labels live in
+/// each [_QuestionBlock]'s summary above).
+class _QuestionResolved extends StatelessWidget {
+  const _QuestionResolved({this.answeredAtMs});
+  final int? answeredAtMs;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final l10n = AppLocalizations.of(context);
+    if (answeredAtMs == null) return const SizedBox.shrink();
+    return Row(
+      children: [
+        const Icon(
+          Icons.check_circle_rounded,
+          size: 16,
+          color: UxnanColors.success,
+        ),
+        const SizedBox(width: UxnanSpacing.sm),
+        Text(
+          _formatAnsweredTimestamp(answeredAtMs!, l10n.questionAnsweredAt),
+          style: textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant),
+        ),
+      ],
+    );
+  }
+}
+
+/// Renders a compact "HH:MM" (today) or "MMM d · HH:MM" (older) timestamp,
+/// prefixed by the localized [prefix] (e.g. "Answered · 14:32").
+String _formatAnsweredTimestamp(int epochMs, String prefix) {
+  final when = DateTime.fromMillisecondsSinceEpoch(epochMs).toLocal();
+  final now = DateTime.now();
+  final sameDay =
+      when.year == now.year && when.month == now.month && when.day == now.day;
+  final hh = when.hour.toString().padLeft(2, '0');
+  final mm = when.minute.toString().padLeft(2, '0');
+  if (sameDay) return '$prefix · $hh:$mm';
+  const months = [
+    'jan',
+    'feb',
+    'mar',
+    'apr',
+    'may',
+    'jun',
+    'jul',
+    'aug',
+    'sep',
+    'oct',
+    'nov',
+    'dec',
+  ];
+  final m = months[(when.month - 1).clamp(0, 11)];
+  return '$prefix · $m ${when.day} · $hh:$mm';
 }
 
 /// Renders an [ImageContent]: an inline-base64 image as a bounded thumbnail, or

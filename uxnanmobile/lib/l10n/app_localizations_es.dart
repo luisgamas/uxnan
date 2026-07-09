@@ -794,6 +794,30 @@ class AppLocalizationsEs extends AppLocalizations {
   String get approvalRiskUnknown => 'Riesgo desconocido';
 
   @override
+  String get questionNeedsAnswer => 'Requiere tu respuesta';
+
+  @override
+  String get questionAnswered => 'Respuesta registrada';
+
+  @override
+  String get questionAnsweredAt => 'Respondido';
+
+  @override
+  String get questionHeaderFallback => 'Pregunta';
+
+  @override
+  String get questionSubmit => 'Enviar';
+
+  @override
+  String get questionSkip => 'Omitir';
+
+  @override
+  String get questionSkipped => 'Omitida';
+
+  @override
+  String get questionFailed => 'No se pudo enviar tu respuesta; reintenta';
+
+  @override
   String get runOptionAuto => 'Automático';
 
   @override
