@@ -32,8 +32,9 @@ payload; relay forwarding/rate-limit/health; daemon state, identity (keychain vi
 fake backend), lock file; the **autostart** plan per platform; git + workspace +
 **directory browsing** + checkpoints (real git in temp repos); conversation store;
 the AgentManager + echo agent end-to-end; the OpenCode / Claude Code / Codex / pi /
-Gemini adapter parsers + streaming against fake spawns; and router-level
-wiring/error mapping.
+Gemini adapter parsers + streaming (OpenCode against a fake `opencode serve`
+implementing the `IOpenCodeServer` surface incl. the `permission.asked` → approval
+round-trip; the others against fake spawns); and router-level wiring/error mapping.
 
 ### Environment notes / known flakes (Windows)
 - **Serialized runner:** several suites boot a full bridge or spawn real child

@@ -256,6 +256,46 @@ test('requestApproval emits an approval block and resolves on respondApproval (h
   await rm(baseDir, { recursive: true, force: true });
 });
 
+test('requestQuestion emits a question block and resolves on respondQuestion', async () => {
+  const baseDir = join(tmpdir(), `uxnan-am-q-${randomUUID()}`);
+  const store = new ThreadStore(new DaemonState(baseDir));
+  const blocks: { content: { type?: string; questionId?: string } }[] = [];
+  const manager = new AgentManager({
+    store,
+    notify: (message) => {
+      const m = message as { method: string; params?: unknown };
+      if (m.method === StreamNotification.ContentBlock) {
+        blocks.push(m.params as { content: { type?: string; questionId?: string } });
+      }
+    },
+    now: () => 1000,
+    logger: createLogger('test', 'error'),
+    defaultAgent: 'echo',
+  });
+  manager.register(new EchoAgentAdapter());
+
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  await manager.sendTurn(thread.id, 'approval-demo'); // keeps a turn in-flight
+  await waitFor(() => blocks.length > 0);
+
+  const answersPromise = manager.requestQuestion(thread.id, [
+    {
+      question: 'Which language?',
+      header: 'Language',
+      options: [{ label: 'Python' }, { label: 'JS' }],
+    },
+  ]);
+  await waitFor(() => blocks.some((b) => b.content.type === 'question'));
+  const qBlock = blocks.find((b) => b.content.type === 'question')!;
+  const questionId = qBlock.content.questionId!;
+  assert.ok(questionId.length > 0);
+
+  await manager.respondQuestion(thread.id, questionId, [['Python']]);
+  assert.deepEqual(await answersPromise, [['Python']]);
+
+  await rm(baseDir, { recursive: true, force: true });
+});
+
 test('requestApproval resolves deny on rejection', async () => {
   const baseDir = join(tmpdir(), `uxnan-am-hook2-${randomUUID()}`);
   const store = new ThreadStore(new DaemonState(baseDir));

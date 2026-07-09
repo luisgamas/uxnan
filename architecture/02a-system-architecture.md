@@ -140,7 +140,7 @@ interface IAgentAdapter {
   sendTurn(
     threadId: string,
     content: TurnContent,
-    options?: SendTurnOptions  // { cwd?, model?, options?: Record<string, string|boolean>, attachments?: TurnAttachment[], approvalResponse?: ApprovalResponse }
+    options?: SendTurnOptions  // { cwd?, model?, options?: Record<string, string|boolean>, attachments?: TurnAttachment[], approvalResponse?: ApprovalResponse, questionResponse?: QuestionResponse }
   ): Promise<TurnResult>;
 
   // Aprobaciones interactivas (opt-in por agente)
@@ -213,7 +213,7 @@ interface AgentCapabilities {
 // contrato vigente es el de arriba.
 
 // Agentes actualmente implementados (ver bridge/CHANGELOG.md):
-//   ✅ opencode  (default; per-turn `opencode run --format json`; --session para continuidad; planMode=true vía todowrite merge)
+//   ✅ opencode  (default; `opencode serve` HTTP/SSE; sesión de server por thread persistida para continuidad; planMode=true vía `todo.updated` nativo; **`permission.asked` real approvals**)
 //   ✅ claude-code (`claude -p --output-format stream-json`; --resume; **PreToolUse hook** real approvals)
 //   ✅ codex     (`codex app-server`; long-lived JSON-RPC over stdio; `thread/start`/`turn/start` + every elicitation)
 //   ✅ pi-agent  (`pi -p --mode json`; --session-id; **autonomous=true**: YOLO headless, no pre-tool protocol — see FOR-DEV)
@@ -1232,7 +1232,7 @@ SessionCoordinator.switchMac(device)
 
 ### 5.6 Modulo de timeline y turn handling
 
-> ✅ **Dominio + datos implementados** (rama `uxnanmobile`): jerarquía sellada `MessageContent` (+ codec JSON con fallback `UnknownContent`) en `lib/domain/value_objects/message_content.dart`; entidades `Message`/`Turn`; `IMessageRepository` + `DriftMessageRepository` (§6.2 / §10.3); `MessageDeduplicator` (§5.6.5) y `TurnTimelineSnapshot` con reducer de streaming/reconciliación/paginación (§5.4.6). Todo con tests. ⏳ **Pendiente (FOR-DEV):** contenido avanzado (`approval`/`plan`/`subagent`), managers de aplicación (`ThreadManager` de timeline, `IncomingMessageProcessor`), y la **UI** (`ConversationScreen`, renderers, composer) — siguiente incremento, para revisión visual. Ver `uxnanmobile/FOR-DEV.md`.
+> ✅ **Dominio + datos implementados** (rama `uxnanmobile`): jerarquía sellada `MessageContent` (+ codec JSON con fallback `UnknownContent`) en `lib/domain/value_objects/message_content.dart`; entidades `Message`/`Turn`; `IMessageRepository` + `DriftMessageRepository` (§6.2 / §10.3); `MessageDeduplicator` (§5.6.5) y `TurnTimelineSnapshot` con reducer de streaming/reconciliación/paginación (§5.4.6). Todo con tests. ✅ **UI + managers implementados y validados en dispositivo:** contenido avanzado (`approval` interactivo, `plan`/todo, `subagent`, y el `question` multiple-choice interactivo), managers de aplicación (`ThreadManager` de timeline, `IncomingMessageProcessor`), y la **UI** (`ConversationScreen`, renderers, composer). Ver `uxnanmobile/FOR-DEV.md`.
 
 **Objetivo:** presentar la conversacion activa de forma reactiva, eficiente y con soporte completo para streaming, diffs, planes, subagentes y adjuntos.
 
@@ -1528,7 +1528,7 @@ bridge/
 │   │                               #   mdns-advertiser, local-hosts, trust-store, ...
 │   ├── pairing/pairing-code-service.ts        # GET /pair/resolve?code=
 │   ├── adapters/                   # un adapter + *-tools.ts por agente:
-│   │                               #   opencode/claude/codex(+app-server,approval)/pi/gemini,
+│   │                               #   opencode(+serve,approval)/claude/codex(+app-server,approval)/pi/gemini,
 │   │                               #   echo, process-agent-adapter, content-blocks, run-options,
 │   │                               #   resolve-<agente>, spawn
 │   ├── agents/agent-manager.ts     # orquestacion de turnos/streaming + approvals
@@ -2253,6 +2253,13 @@ class CommandExecutionContent extends MessageContent {
 
 class ApprovalContent extends MessageContent {
   final ApprovalRequest request;
+}
+
+// El agente pregunta al usuario (multiple-choice). El telefono renderiza una card
+// con opciones y responde `turn/send { questionResponse: { questionId, answers } }`.
+class QuestionContent extends MessageContent {
+  final String questionId;
+  final List<QuestionItem> questions; // { question, header?, options:[{label,description?}], multiple? }
 }
 
 class PlanContent extends MessageContent {

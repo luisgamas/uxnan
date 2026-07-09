@@ -111,13 +111,13 @@ thread/resume           -> reanudar thread existente (best-effort)
 thread/fork             -> fork de un thread en uno nuevo
 thread/setModel         -> cambiar el modelo de un thread mid-conversacion
 thread/rename           -> renombrar thread (devuelve el Thread actualizado)
-thread/setAccessMode    -> persistir el modo de acceso/aprobacion por hilo. Params: { threadId, mode: AccessMode } (requestApproval | approveForMe | fullAccess). Devuelve el Thread actualizado; idempotente. El Thread expone `accessMode?` (fuente de verdad) y `agentSessionId?` (id de sesion nativo del agente, para "reanudar desde la CLI"). **Enforcement:** en cada `turn/send` el bridge lee `accessMode` del hilo y lo pasa al adapter (`SendTurnOptions.accessMode`); cada adapter que gatea herramientas lo mapea a su postura per-turn. **Claude:** requestApproval=hook `PreToolUse` interactivo, approveForMe=`--permission-mode acceptEdits`, fullAccess=`--dangerously-skip-permissions`. **Gemini CLI:** requestApproval=`--approval-mode default` + hook `BeforeTool` (cuando el endpoint del bridge es resoluble; si no, cae a la postura configurada), approveForMe=`auto_edit`, fullAccess=`yolo` (one-shot por turno → aplica siempre per-turn). **Codex:** requestApproval=`(on-request, workspace-write)`, approveForMe=`(never, workspace-write)`, fullAccess=`(never, danger-full-access)`, aplicado en `thread/start` — gobierna el hilo desde su primer turno; un cambio de modo a mitad de hilo solo afecta hilos nuevos (no re-emite `thread/start`). **pi/OpenCode:** sin canal de aprobación interactivo (modos headless ejecutan tools autónomamente), no mapean `accessMode`. Sin modo → postura configurada (sin cambio).
+thread/setAccessMode    -> persistir el modo de acceso/aprobacion por hilo. Params: { threadId, mode: AccessMode } (requestApproval | approveForMe | fullAccess). Devuelve el Thread actualizado; idempotente. El Thread expone `accessMode?` (fuente de verdad) y `agentSessionId?` (id de sesion nativo del agente, para "reanudar desde la CLI"). **Enforcement:** en cada `turn/send` el bridge lee `accessMode` del hilo y lo pasa al adapter (`SendTurnOptions.accessMode`); cada adapter que gatea herramientas lo mapea a su postura per-turn. **Claude:** requestApproval=hook `PreToolUse` interactivo, approveForMe=`--permission-mode acceptEdits`, fullAccess=`--dangerously-skip-permissions`. **Gemini CLI:** requestApproval=`--approval-mode default` + hook `BeforeTool` (cuando el endpoint del bridge es resoluble; si no, cae a la postura configurada), approveForMe=`auto_edit`, fullAccess=`yolo` (one-shot por turno → aplica siempre per-turn). **Codex:** requestApproval=`(on-request, workspace-write)`, approveForMe=`(never, workspace-write)`, fullAccess=`(never, danger-full-access)`, aplicado en `thread/start` — gobierna el hilo desde su primer turno; un cambio de modo a mitad de hilo solo afecta hilos nuevos (no re-emite `thread/start`). **OpenCode:** vía `opencode serve` — requestApproval (y sin modo) = ruleset de permisos con `action:ask` en las herramientas con efecto lateral (`edit`/`bash`/`webfetch`/`external_directory`) → cada `permission.asked` se enruta a la approval card; approveForMe/fullAccess = `action:allow` (sin prompts). El ruleset se fija al crear la sesión (`POST /session`), así que gobierna el hilo desde su primer turno; un cambio de modo a mitad de hilo solo afecta sesiones nuevas (mismo caveat que Codex). **pi:** sin canal de aprobación interactivo (modo headless YOLO ejecuta tools autónomamente), no mapea `accessMode`. Sin modo → postura configurada (sin cambio).
 thread/archive          -> archivar thread (status -> archived, reversible)
 thread/unarchive        -> restaurar thread archivado (status -> active)
 thread/delete           -> eliminar thread y sus turns
 turn/list               -> turnos de un thread; paginacion por cursor offset (oldest->newest). Params: { threadId, cursor?, limit?, fromEnd? }. Result: { turns, nextCursor?, total?, activeTurnId? }. `fromEnd:true` devuelve la pagina mas reciente (ultimos `limit` turnos); `total` permite paginar hacia atras (newest-first) calculando offsets sin traer todo el thread. **`activeTurnId?`**: el turno EN VUELO ahora mismo para el thread (estado vivo de `AgentManager.#activeTurnByThread`), presente solo si hay uno. Es la fuente autoritativa de "¿hay turno corriendo AHORA?" — a diferencia del `status:'streaming'` de un turno guardado, queda ausente tras un restart del bridge (el proceso del agente CLI murio). El telefono lo usa al reconectar/resync para **re-attachear** su vista de streaming (indicador "respondiendo…" + boton Stop) a un turno que dejo de rastrear estando en background, en vez de darlo por terminado.
 turn/read               -> datos de un turno especifico
-turn/send               -> enviar contenido a un turno activo (texto opcional, attachments, options, approvalResponse)
+turn/send               -> enviar contenido a un turno activo (texto opcional, attachments, options, approvalResponse, questionResponse)
 turn/cancel             -> cancelar turno en curso
 ```
 
@@ -350,11 +350,28 @@ interface TurnSendParams {
   text?: string;                              // OPCIONAL: un mensaje image-only es valido
   attachments?: TurnAttachment[];             // imagenes inline (base64, mime, width, height)
   options?: Record<string, string | boolean>; // per-model run-option knobs (ej. { reasoning: 'high' })
-  approvalResponse?: ApprovalResponse;        // control-only (no crea turno nuevo)
+  approvalResponse?: ApprovalResponse;        // control-only: responde a un approval (no crea turno nuevo)
+  questionResponse?: QuestionResponse;        // control-only: responde a un `question` del agente (no crea turno nuevo)
   service?: string;                           // override per-turn del modelo
   cwd?: string;                               // override per-turn del cwd
 }
 ```
+
+**`QuestionResponse`** / **`QuestionRequestBlock`** (el `question` tool interactivo):
+```typescript
+interface QuestionOption { label: string; description?: string }
+interface QuestionItem { question: string; header?: string; options: QuestionOption[]; multiple?: boolean }
+// content block que el bridge emite (stream/content/block) cuando el agente pregunta:
+interface QuestionRequestBlock { type: 'question'; questionId: string; questions: QuestionItem[] }
+// respuesta del telefono en turn/send: answers[i] = labels elegidas para questions[i]
+interface QuestionResponse { questionId: string; answers: string[][] }
+```
+Flujo (espejo de approvals, §6.2): el agente OpenCode usa su tool `question` → el
+adapter lo enruta por `AgentManager.requestQuestion` → el bridge emite un bloque
+`question` → el telefono muestra una card con opciones → responde
+`turn/send { questionResponse }` → `respondQuestion` resuelve → el adapter contesta
+a `/question/{id}/reply` y el agente continua con la eleccion (o se rechaza para
+desbloquear si el usuario omite / expira).
 
 **`TurnAttachment`** (adjunto inline en `turn/send`):
 ```typescript

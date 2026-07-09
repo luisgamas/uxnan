@@ -8,7 +8,12 @@
  * shape is defined in exactly one place and stays in lock-step with the Dart
  * `MessageContent` types.
  */
-import type { ApprovalRequestBlock, ApprovalRisk } from '@uxnan/shared';
+import type {
+  ApprovalRequestBlock,
+  ApprovalRisk,
+  QuestionItem,
+  QuestionRequestBlock,
+} from '@uxnan/shared';
 
 /** Cap tool/command output carried on the wire so a big read doesn't bloat it. */
 const MAX_OUTPUT = 4000;
@@ -144,6 +149,16 @@ export function approvalBlock(
     ...(opts.risk !== undefined ? { risk: opts.risk } : {}),
     ...(opts.detail !== undefined && opts.detail.length > 0 ? { detail: opts.detail } : {}),
   };
+}
+
+/**
+ * A `question` content block: the agent is asking the user to choose among
+ * options. The phone renders it as an interactive picker and replies via
+ * `turn/send { questionResponse }`. `questionId` is the bridge handle the adapter
+ * uses to deliver the chosen answers back to the agent.
+ */
+export function questionBlock(questionId: string, questions: QuestionItem[]): QuestionRequestBlock {
+  return { type: 'question', questionId, questions };
 }
 
 /** One step of an agent plan / to-do list, on the wire (matches Dart `PlanStep`). */

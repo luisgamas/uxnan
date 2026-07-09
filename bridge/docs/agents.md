@@ -18,18 +18,21 @@ process and talks to it over stdio — exactly as you would in a terminal. It do
 Each CLI runs under whatever account/subscription **you** already authenticated it
 with (`claude`, `codex login`, OpenCode, `pi`, `gemini`). The bridge stores no tokens;
 auth and billing are the CLI's own. This is the supported *headless* use of each
-CLI (`claude -p`, `codex exec`, `opencode run`) — so it does not require a separate
-paid account beyond what that CLI already has, and it is not an unofficial API
-wrapper. Rate limits are whatever your plan allows.
+CLI (`claude -p`, `codex app-server`, `opencode serve`) — so it does not require a
+separate paid account beyond what that CLI already has, and it is not an unofficial
+API wrapper. Rate limits are whatever your plan allows.
 
 Prompts are passed as argv elements with `shell:false` (no shell injection); stdin
-is closed (these CLIs hang on an open stdin pipe).
+is closed (the one-shot CLIs hang on an open stdin pipe). The two server-based
+adapters are the exception: **Codex** speaks JSON-RPC over a long-lived
+`codex app-server` stdio, and **OpenCode** speaks HTTP + SSE to a long-lived
+`opencode serve` process (the prompt travels in the request body, never argv).
 
 ## Wired agents
 
 | Agent | CLI invocation | Continuity | Permission posture | Models |
 |---|---|---|---|---|
-| **OpenCode** (default) | `opencode run --format json` | `--session <id>` | n/a | `opencode models` (real list) |
+| **OpenCode** (default) | `opencode serve` (local HTTP + SSE) | persisted server session id | `accessMode` → per-session permission ruleset: `ask` on `edit`/`bash`/`webfetch`/`external_directory` (real `permission.asked` approvals) / `allow` for approveForMe·fullAccess | `opencode models` (real list) |
 | **Claude Code** | `claude -p --output-format stream-json --verbose --include-partial-messages` | `--resume <session_id>` | `permissionMode` → `--permission-mode acceptEdits` / none / `--dangerously-skip-permissions` | `opus`/`sonnet`/`haiku` aliases (latest) **+ `agents.claude-code.models`** |
 | **Codex** | `codex exec --json --skip-git-repo-check` | `exec resume <thread_id>` | `permissionMode` → `-s workspace-write` / `-s read-only` / `--dangerously-bypass-approvals-and-sandbox` (+ `interactive` via `codex app-server`) | `codex app-server` → `model/list` (account-aware) → `~/.codex/config.toml` fallback |
 | **pi** | `pi -p --mode json` | `--session-id <id>` | `permissionMode` → built-in read/bash/edit/write / `--tools read,grep,find,ls` / `--approve` | `pi --list-models` (real list; reasoning knob per model) |
@@ -55,8 +58,16 @@ the phone renders them generically — Codex discovers them from the app-server
 `model/list` (`supportedReasoningEfforts`), Claude/pi from their own flag sets.
 
 **Interactive approvals** are wired for Echo, Claude Code (`PreToolUse` hook),
-Codex (`app-server` elicitations) and Gemini (`BeforeTool` hook); OpenCode/pi have
-no headless pre-tool channel yet (see [`../FOR-DEV.md`](../FOR-DEV.md)).
+Codex (`app-server` elicitations), OpenCode (`opencode serve` `permission.asked`)
+and Gemini (`BeforeTool` hook); only **pi** has no headless pre-tool channel yet
+(it runs autonomously — see [`../FOR-DEV.md`](../FOR-DEV.md)).
+
+**Interactive questions** — OpenCode's `question` tool (the agent asks a
+multiple-choice question) surfaces as a `question` content block the phone answers
+via `turn/send { questionResponse }`; the bridge (`AgentManager.requestQuestion`)
+replies to `/question/{id}/reply` so the agent continues with the choice. The
+`permission.v2.asked` elicitation shape is routed through the same approval path as
+`permission.asked`.
 
 ## Claude Code models: latest aliases + pinned versions
 
@@ -116,9 +127,12 @@ today that's Claude Code (OpenCode and Codex enumerate their own models).
 ## Adding a new agent (e.g. Aider)
 
 Follow the recipe in [`../FOR-DEV.md`](../FOR-DEV.md) (Agent adapters): capture the
-real CLI's machine-readable stream once, copy `claude-adapter.ts`/`opencode-adapter.ts`,
-adjust the args builder + line parser, register it in `startBridge`, then wire it
-into `agent/models` (discovery), the `*-tools.ts` block mapper (structured content),
-`SessionHistoryReader` (on-disk `turn/list` fallback), and approvals if the CLI
-exposes a pre-tool channel. Test it like the existing adapters and validate per
-[`testing.md`](./testing.md).
+real CLI's machine-readable stream once, then copy the closest template — a
+**one-shot per-turn CLI** (`gemini-adapter.ts`/`pi-adapter.ts`, which spawn the CLI
+once per turn) or a **long-lived server** (`codex-adapter.ts` over stdio JSON-RPC,
+`opencode-adapter.ts` over `opencode serve` HTTP/SSE, when the CLI exposes a pre-tool
+approval channel). Adjust the args/request builder + event parser, register it in
+`startBridge`, then wire it into `agent/models` (discovery), the `*-tools.ts` block
+mapper (structured content), `SessionHistoryReader` (on-disk `turn/list` fallback),
+and approvals if the CLI exposes a pre-tool channel. Test it like the existing
+adapters and validate per [`testing.md`](./testing.md).

@@ -12,7 +12,7 @@ only a human can provide.)
 ## Status
 
 The bridge is **alpha-functional** on its primary path (LAN/Tailscale-direct,
-standalone). It builds clean and the suite is green (bridge 378, shared 36, relay
+standalone). It builds clean and the suite is green (bridge 398, shared 36, relay
 27). The **npm releases shipped** — `uxnan-bridge` is published to npm; releases
 publish to the **`latest`** dist-tag (`@uxnan/shared` pinned to the same version by
 the release workflow). Nothing below blocks LAN/Tailscale-direct use; the remaining
@@ -36,11 +36,13 @@ push validation (FOR-HUMAN).
   production order) so a `turn/list` re-sync renders the work log inline with
   the response instead of stacking all activity above one merged paragraph.
 - **5 real agents wired** — OpenCode (default), Claude Code, Codex, pi, and
-  Gemini CLI. Each spawns its **official local CLI** over stdio with
-  `shell:false`, parses the native stream, and emits structured
-  `stream/content/block` events (command / diff / tool) plus
-  `stream/thinking/delta` (reasoning). **Aider** is the only remaining agent
-  (recipe below).
+  Gemini CLI. Each drives its **official local CLI** with `shell:false`, parses
+  the native stream, and emits structured `stream/content/block` events
+  (command / diff / tool) plus `stream/thinking/delta` (reasoning). Most spawn
+  the CLI over stdio; the two server-based adapters run a long-lived local
+  process instead — **Codex** JSON-RPC over `codex app-server` stdio, **OpenCode**
+  HTTP + SSE over `opencode serve` (loopback). **Aider** is the only remaining
+  agent (recipe below).
 - **Per-thread agent/project selection** + per-project agent/model pins
   (`projectAgents` config); per-model run-option knobs advertised on
   `agent/models`; per-turn token usage on `stream/turn/completed`.
@@ -53,9 +55,9 @@ push validation (FOR-HUMAN).
 - **Sanitized per-agent `auth/status`** — never tokens; login detected by
   auth-file existence only.
 - **Interactive approval intake** — Echo demo + Claude Code opt-in `PreToolUse`
-  hook + Codex via the `codex app-server` turn protocol + Gemini `BeforeTool`
-  hook; all routed through one `requestApproval` round-trip, validated
-  end-to-end.
+  hook + Codex via the `codex app-server` turn protocol + OpenCode via
+  `opencode serve` `permission.asked` + Gemini `BeforeTool` hook; all routed
+  through one `requestApproval` round-trip, validated end-to-end.
 - **Image attachments** — CLI-agnostic file-path, sandbox-safe.
 - **On-disk `turn/list` history fallback** for Claude / Codex / OpenCode / pi /
   Gemini JSONL/JSON stores.
@@ -84,27 +86,22 @@ push validation (FOR-HUMAN).
 - [ ] **Checkpoints on an unborn branch** — `capture` requires at least one commit
       (no HEAD → `-32003`). Support checkpoints on an unborn branch if a use case
       appears. Low priority.
-- [ ] **Interactive approvals — OpenCode / pi gap.** The headless modes the bridge
-      drives (`opencode run --format json`, `pi -p --mode json`) run tools
-      autonomously and emit tool events only **after** the tool ran — no way to gate
-      them. Echo + Claude (`PreToolUse` hook) + Codex (`app-server`) + Gemini
-      (`BeforeTool` hook) have real per-action approvals; OpenCode/pi get only the
-      coarse `default`/`acceptEdits`/`bypassPermissions` posture. Real approvals
-      would need driving `opencode serve` (HTTP, per-thread server session — a
-      rewrite) or pi's `--mode rpc` (two-way, adapter refactor). Revisit when either
-      CLI ships a stable pre-tool channel on its headless entry point.
-      - **DONE (2026-07-08): OpenCode plan/todo mapping.** `todowrite`
-        (`{ todos:[{content,status,priority}] }`) fires up to twice per turn; the
-        adapter buffers steps in `planSteps` and merges via `mergePlanSteps`
-        (dedup by `description`, forward-only status, order-stable), emitting one
-        `plan` block at turn close; `planMode` capability set to `true` so the
-        mobile shows the chip + banner. Unit-tested in `plan-blocks.test.ts`.
-      - **DONE (2026-07-08): pi autonomous announcement.** pi runs in "YOLO" mode
-        headless with no pre-tool channel, so per-action approvals are
-        intentionally unavailable. The mobile now surfaces this via
-        `autonomous: true` (capability, added to `AgentCapabilities`) → chip on
-        new-conversation screen + conversation banner (`conversationAutonomousMode`
-        / `newThreadCapAutonomous` EN/ES). Left as-is per product decision.
+- [ ] **Interactive approvals — pi gap.** pi's headless mode (`pi -p --mode json`)
+      runs tools autonomously and emits tool events only **after** the tool ran — no
+      pre-tool channel to gate them, so pi surfaces `autonomous: true` (chip + banner)
+      instead of approvals. Echo + Claude (`PreToolUse` hook) + Codex (`app-server`) +
+      OpenCode (`opencode serve` `permission.asked`) + Gemini (`BeforeTool` hook) all
+      have real per-action approvals. Real pi approvals would need its `--mode rpc`
+      (two-way, adapter refactor); revisit when pi ships a stable pre-tool channel on
+      a headless entry point.
+- [ ] **OpenCode access-mode — mid-thread per-turn re-apply.** The thread's
+      `accessMode` is mapped to a permission ruleset and passed on `POST /session`
+      (`opencode-adapter.ts` `#rulesetFor`), so it governs an OpenCode thread from its
+      first turn. A mid-thread access-mode change does NOT recreate the session, so
+      the new posture only applies to threads started after the change (same shape as
+      the Codex caveat below). Resolve by confirming whether `opencode serve` accepts
+      a per-turn permission override (or `PATCH /session/{id}`), or recreate the
+      session when the mode changes.
 - [ ] **Codex access-mode — mid-thread per-turn re-apply.** The thread's
       `accessMode` is mapped to `(approvalPolicy, sandbox)` and sent on
       `thread/start` (`codex-adapter.ts` `#effectiveMode`), so it governs a Codex
@@ -168,14 +165,19 @@ push validation (FOR-HUMAN).
 
 ### Adding the next agent (recipe — do these one by one)
 
-The OpenCode adapter is the template for any "one-shot per-turn CLI" agent:
+Pick the template that matches the CLI's headless surface. For a **one-shot
+per-turn CLI** (spawns once per turn) copy `gemini-adapter.ts` or `pi-adapter.ts`;
+for a **long-lived server** with a pre-tool approval channel copy `codex-adapter.ts`
+(JSON-RPC over stdio) or `opencode-adapter.ts` (HTTP/SSE over `opencode serve`).
 
 1. Run the real CLI by hand once and capture a turn's machine-readable stream
-   (`<cli> ... --json|--format json`). **Watch for stdin:** OpenCode hangs on an
-   open stdin pipe — spawn with `stdio:['ignore','pipe','pipe']`.
-2. Copy `opencode-adapter.ts`; adjust the args builder (`run/exec`, model flag,
-   session/continue flag, cwd flag) and `parseLine` for that CLI's event shape.
-   Keep `shell:false` and pass the prompt as an argv element (no injection).
+   (a `--json|--format json` one-shot, or the server's event stream). **Watch for
+   stdin:** the one-shot CLIs hang on an open stdin pipe — spawn with
+   `stdio:['ignore','pipe','pipe']`.
+2. Copy the closest template; adjust the args/request builder (subcommand, model
+   flag, session/continue flag, cwd) and the event parser for that CLI's shape.
+   Keep `shell:false` and pass the prompt as an argv element / request body (no
+   injection).
 3. Register it in `startBridge` with display metadata + availability. Then wire it
    into `agent/models` (discovery), the `*-tools.ts` block mapper (structured
    content), `SessionHistoryReader` (on-disk `turn/list` fallback), and approvals if

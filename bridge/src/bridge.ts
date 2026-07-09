@@ -169,12 +169,21 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   });
   // Echo: built-in reference agent (no external CLI), useful for development.
   agentManager.register(new EchoAgentAdapter(), { displayName: 'Echo (dev)' });
-  // OpenCode: real agent driven via `opencode run --format json` (see FOR-DEV.md).
+  // OpenCode: real agent driven via the `opencode serve` HTTP/SSE protocol (the
+  // bridge speaks HTTP to a local `opencode serve` process; approvals go through
+  // the bridge's `requestApproval` flow — see `opencode-server.ts`).
   const openCodeSettings = config.agents.opencode ?? {};
   const openCode = resolveOpenCodeBinary(openCodeSettings.binaryPath);
   agentManager.register(
     new OpenCodeAdapter({
       binaryPath: openCode.binaryPath,
+      // Route OpenCode's `permission.asked` elicitations to the bridge's shared
+      // approval round-trip (the same one the Claude PreToolUse hook, Codex
+      // app-server, and Echo demo use).
+      onApprovalRequest: (threadId, info) => agentManager.requestApproval(threadId, info),
+      // Route OpenCode's `question.asked` (the agent's multiple-choice tool) to
+      // the phone's question card and back.
+      onQuestionRequest: (threadId, questions) => agentManager.requestQuestion(threadId, questions),
       ...(openCodeSettings.model !== undefined ? { defaultModel: openCodeSettings.model } : {}),
     }),
     {

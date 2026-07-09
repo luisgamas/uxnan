@@ -5,6 +5,60 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — OpenCode now runs via `opencode serve` (real interactive approvals)
+- **Why:** the old adapter drove `opencode run --format json`, a one-shot,
+  non-interactive process that ran tools autonomously and emitted tool events only
+  *after* the tool ran — so the bridge could never gate a sensitive action
+  (`approvals` was `false`), plan/to-do arrived as a doubly-emitted `todowrite` we
+  de-duped by hand, and every turn respawned the CLI.
+- **What:** the adapter now speaks HTTP + Server-Sent-Events to a long-lived,
+  loopback-bound `opencode serve` process (one per working directory, spawned
+  lazily), mirroring the Codex `app-server` adapter. New `opencode-server.ts` is a
+  dependency-free HTTP/SSE client (`IOpenCodeServer`); the adapter maps the `/event`
+  bus onto bridge events:
+  - **Streaming** — `message.part.delta`/`message.part.updated`, routed to assistant
+    text vs `thinking` by the part's *type* (both stream as `field:"text"`), and
+    filtered to the assistant message (the user's echoed text part no longer leaks).
+  - **Real approvals** — `permission.asked` is routed through the bridge's shared
+    `requestApproval` round-trip (the same one Claude/Codex/Gemini use); the reply
+    maps `approve|approveSession|reject` → `once|always|reject`. `accessMode`
+    becomes a per-session permission ruleset: `ask` on `edit`/`bash`/`webfetch`/
+    `external_directory` (interactive by default), `allow` for approveForMe·fullAccess.
+    `approvals` capability is now **`true`**.
+  - **Plan mode** — native `todo.updated` replaces the `todowrite` double-emit hack
+    (still merged into one plan card at turn close).
+  - **Completion / usage** — `session.idle` completes the turn; per-turn tokens come
+    from `step-finish.tokens` / the assistant message; `session.error` → `turn_error`.
+  - **Continuity** — one server session per thread, persisted (survives a server
+    restart; still feeds the on-disk `turn/list` history fallback). Cancellation via
+    `POST /session/{id}/abort`.
+  - **Race-free startup** — the server's `start()` now AWAITS the `/event` SSE
+    subscription being established before the first session/prompt. The bus only
+    delivers events emitted after a subscriber connects, so a fire-and-forget
+    subscription dropped the entire first turn on slower/remote setups ("first turn
+    shows nothing", and the stuck turn then confused follow-ups); found in on-device
+    testing. A superseded, never-idled run is also retired when a new turn starts.
+  - **All elicitation channels handled (no hangs)** — besides `permission.asked`
+    (v1), the adapter routes `permission.v2.asked` (`action`/`resources` shape)
+    through the same approval round-trip, and surfaces `question.asked` /
+    `question.v2.asked` (the agent's multiple-choice `question` tool) as a new
+    **interactive question** flow: the bridge emits a `question` content block
+    (`{ questionId, questions:[{question,header?,options:[{label,description?}],multiple?}] }`),
+    the phone answers via `turn/send { questionResponse: { questionId, answers } }`,
+    and the adapter replies to `/question/{id}/reply` so the agent continues with
+    the user's choice (an empty/timed-out answer rejects the question to unblock).
+    New shared contract `QuestionRequestBlock`/`QuestionResponse`;
+    `AgentManager.requestQuestion`/`respondQuestion` mirror the approval round-trip.
+    Validated end-to-end against a live `opencode serve` (agent asks → phone answers
+    → agent uses the answer → turn completes).
+  - **Debug tracing** — set `UXNAN_OPENCODE_DEBUG=1` to log the turn/event/approval
+    flow to stderr (session/prompt, each meaningful `/event`, the `permission.asked`
+    → decision → reply round-trip, completion) for diagnosing a stuck turn.
+- Model discovery + context windows keep the short-lived `opencode models`
+  (`--verbose`) spawns (unchanged). Validated end-to-end against a live
+  `opencode serve` (streaming + a real `edit` approval → file written). New unit
+  tests: `opencode-adapter.test.ts` (16) + `opencode-server.test.ts` (6).
+
 ### Fixed — OpenCode plan/todo now emits a single, status-advancing plan card
 - **Root cause:** OpenCode's `todowrite` tool fires **up to twice per turn** with
   the same (or progressively-updated) todo list, and `planMode` was advertised as
