@@ -10,8 +10,10 @@ import {
   branchList,
   repoAdd,
   repoRemove,
+  repoReorder as apiRepoReorder,
   repoSetBranchIcon,
   repoUpdate,
+  setWorktreeOrder as apiSetWorktreeOrder,
   worktreeCreate,
   worktreeList,
   worktreeRemove,
@@ -21,12 +23,22 @@ import type {
   AgentProfile,
   BranchList,
   RepoData,
+  SortMode,
   WorktreeEntry,
   WorktreeStatus,
 } from "$lib/types";
 import { app } from "$lib/state/app.svelte";
 import { terminals, GLOBAL_WORKSPACE } from "$lib/state/terminals.svelte";
 import { unread } from "$lib/state/unread.svelte";
+import { agentStatus } from "$lib/state/agentStatus.svelte";
+import { resolveAgentDisplay } from "$lib/state/agentDisplay";
+import {
+  applyManualOrder,
+  mostUrgentStatus,
+  partitionPinned,
+  sortItems,
+  type SortMeta,
+} from "$lib/sidebar-sort";
 import { toast, toastError } from "$lib/toast";
 import { i18n } from "$lib/i18n";
 
@@ -182,6 +194,177 @@ class ProjectsStore {
   worktreeCount(repoId: string): number {
     return this.worktreesByRepo[repoId]?.length ?? 0;
   }
+
+  // --- Sorting (left sidebar) ----------------------------------------------
+
+  /** Current sort mode for the project cards (persisted; defaults to manual). */
+  get projectSort(): SortMode {
+    return app.settings.projectSort ?? "manual";
+  }
+
+  /** Current sort mode for the worktree rows within each project (persisted). */
+  get worktreeSort(): SortMode {
+    return app.settings.worktreeSort ?? "manual";
+  }
+
+  /** Change the project-card sort mode and persist it. */
+  setProjectSort(mode: SortMode): void {
+    app.settings.projectSort = mode;
+    void app.persistSettings();
+  }
+
+  /** Change the worktree-row sort mode and persist it. */
+  setWorktreeSort(mode: SortMode): void {
+    app.settings.worktreeSort = mode;
+    void app.persistSettings();
+  }
+
+  /** Sort metadata for a workspace path — the agent status/unread/recency the
+   *  comparators read, aggregated across the agents running in it. */
+  private workspaceMeta(path: string, name: string): SortMeta {
+    const tabs = terminals.agentTabs(path);
+    const status = mostUrgentStatus(
+      tabs.map((t) => resolveAgentDisplay(t)?.status ?? null),
+    );
+    let activityAt = 0;
+    for (const t of tabs) {
+      const hook = agentStatus.get(t.id);
+      if (hook?.lastUpdate) activityAt = Math.max(activityAt, hook.lastUpdate);
+    }
+    return {
+      name,
+      lastActive: app.settings.workspaceLastActive?.[path] ?? 0,
+      status,
+      unread: unread.has(path),
+      activityAt,
+    };
+  }
+
+  /** Sort metadata for a single worktree row. */
+  private worktreeSortMeta(w: WorktreeEntry): SortMeta {
+    return this.workspaceMeta(w.path, w.branch ?? baseName(w.path));
+  }
+
+  /** Sort metadata for a project card — the most-urgent/most-recent aggregate
+   *  across its main worktree and children, so a project bubbles up when any of
+   *  its worktrees needs attention. */
+  private repoSortMeta(repo: RepoData): SortMeta {
+    const main = this.mainWorktree(repo.id);
+    const metas = [this.workspaceMeta(main?.path ?? repo.path, repo.name)];
+    for (const w of this.childWorktrees(repo.id)) {
+      metas.push(this.workspaceMeta(w.path, w.branch ?? baseName(w.path)));
+    }
+    return {
+      name: repo.name,
+      lastActive: Math.max(0, ...metas.map((m) => m.lastActive)),
+      status: mostUrgentStatus(metas.map((m) => m.status)),
+      unread: metas.some((m) => m.unread),
+      activityAt: Math.max(0, ...metas.map((m) => m.activityAt)),
+    };
+  }
+
+  /** Whether a project is pinned (shown first regardless of sort). */
+  isProjectPinned(id: string): boolean {
+    return app.settings.pinnedProjects?.includes(id) ?? false;
+  }
+
+  /** Whether a worktree (by path) is pinned. */
+  isWorktreePinned(path: string): boolean {
+    return app.settings.pinnedWorktrees?.includes(path) ?? false;
+  }
+
+  /** Toggle a project's pinned state and persist. */
+  toggleProjectPin(id: string): void {
+    const cur = app.settings.pinnedProjects ?? [];
+    app.settings.pinnedProjects = cur.includes(id)
+      ? cur.filter((x) => x !== id)
+      : [...cur, id];
+    void app.persistSettings();
+  }
+
+  /** Toggle a worktree's pinned state and persist. */
+  toggleWorktreePin(path: string): void {
+    const cur = app.settings.pinnedWorktrees ?? [];
+    app.settings.pinnedWorktrees = cur.includes(path)
+      ? cur.filter((x) => x !== path)
+      : [...cur, path];
+    void app.persistSettings();
+  }
+
+  /** The project cards in their effective order: pinned first, then the active
+   *  sort ("manual" keeps the persisted `app.repos` order; the rest compute). */
+  sortedRepos(): RepoData[] {
+    const sorted = sortItems(this.filteredRepos, this.projectSort, (r) =>
+      this.repoSortMeta(r),
+    );
+    return partitionPinned(sorted, (r) => this.isProjectPinned(r.id));
+  }
+
+  /** A project's child worktrees in their effective order: pinned first, then the
+   *  active sort ("manual" applies the persisted `worktreeOrder`; the rest
+   *  compute). The card renders the main worktree ahead of all of these. */
+  orderedChildWorktrees(repoId: string): WorktreeEntry[] {
+    const children = this.visibleChildWorktrees(repoId);
+    const ordered =
+      this.worktreeSort === "manual"
+        ? applyManualOrder(
+            children,
+            app.repos.find((r) => r.id === repoId)?.worktreeOrder ?? [],
+            (w) => w.path,
+          )
+        : sortItems(children, this.worktreeSort, (w) => this.worktreeSortMeta(w));
+    return partitionPinned(ordered, (w) => this.isWorktreePinned(w.path));
+  }
+
+  /** Apply a manual reorder of the project cards: reorder `app.repos` optimistically
+   *  and persist it, then switch the mode to manual (a drag is an explicit request
+   *  for the user's own order). Unlisted repos keep their place after the listed. */
+  async reorderProjects(orderedIds: string[]): Promise<void> {
+    const rank = new Map(orderedIds.map((id, i) => [id, i] as const));
+    app.repos = [...app.repos].sort(
+      (a, b) =>
+        (rank.get(a.id) ?? Number.MAX_SAFE_INTEGER) -
+        (rank.get(b.id) ?? Number.MAX_SAFE_INTEGER),
+    );
+    this.setProjectSort("manual");
+    try {
+      await apiRepoReorder(orderedIds);
+    } catch (e) {
+      this.error = msg(e);
+      toastError(e);
+    }
+  }
+
+  /** Apply a manual reorder of a project's child worktrees: persist the path order,
+   *  reconcile the repo, and switch the worktree sort to manual. */
+  async reorderWorktrees(repoId: string, orderedPaths: string[]): Promise<void> {
+    this.setWorktreeSort("manual");
+    const i = app.repos.findIndex((r) => r.id === repoId);
+    if (i !== -1) app.repos[i] = { ...app.repos[i], worktreeOrder: orderedPaths };
+    try {
+      const updated = await apiSetWorktreeOrder(repoId, orderedPaths);
+      const j = app.repos.findIndex((r) => r.id === repoId);
+      if (j !== -1) app.repos[j] = updated;
+    } catch (e) {
+      this.error = msg(e);
+      toastError(e);
+    }
+  }
+
+  /** Record *now* as a workspace's last-active time (feeds the "recent" sort),
+   *  persisted with a short debounce so rapid switching doesn't hammer the disk. */
+  private stampActive(path: string): void {
+    app.settings.workspaceLastActive = {
+      ...(app.settings.workspaceLastActive ?? {}),
+      [path]: Date.now(),
+    };
+    if (this.persistTimer) clearTimeout(this.persistTimer);
+    this.persistTimer = setTimeout(() => {
+      this.persistTimer = null;
+      void app.persistSettings();
+    }, 1500);
+  }
+  private persistTimer: ReturnType<typeof setTimeout> | null = null;
 
   /** Load every repo's worktrees (called once after the app hydrates). */
   async init(): Promise<void> {
@@ -413,12 +596,14 @@ class ProjectsStore {
     this.activeWorktreePath = path;
     terminals.setWorkspace(path);
     unread.clear(path);
+    this.stampActive(path);
   }
 
   /** Open a terminal in `path`'s workspace (and switch to it). An optional
    *  `profileId` opens that terminal profile instead of the default shell. */
   openTerminalAt(path: string, profileId?: string): void {
     this.activeWorktreePath = path;
+    this.stampActive(path);
     app.openTerminal({ cwd: path, title: baseName(path), workspace: path, profileId });
   }
 

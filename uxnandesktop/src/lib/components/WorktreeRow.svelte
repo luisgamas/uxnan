@@ -21,15 +21,24 @@
   import EntityIcon from "./EntityIcon.svelte";
   import IconPicker from "./IconPicker.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
+  import type { DragReorder } from "$lib/state/dragReorder.svelte";
   import GitBranchIcon from "@lucide/svelte/icons/git-branch";
+  import PinIcon from "@lucide/svelte/icons/pin";
 
   let {
     row,
     onRemoveProject,
+    drag,
+    dragIndex,
   }: {
     row: WorktreeRow;
     /** Main worktree only: "remove" removes the whole project (the card owns it). */
     onRemoveProject?: () => void;
+    /** Reorder controller for child worktrees; undefined for the main worktree
+     *  (which always renders first and isn't reorderable). */
+    drag?: DragReorder;
+    /** This child's index among the reorderable worktrees (for the drop marker). */
+    dragIndex?: number;
   } = $props();
 
   const active = $derived(projects.activeWorktreePath === row.path);
@@ -55,6 +64,8 @@
   // terminal only when the workspace has none (so repeated clicks don't stack
   // duplicate terminals).
   function activate() {
+    // Swallow the click a just-finished drag would otherwise fire.
+    if (drag?.consumeClick()) return;
     projects.setActiveWorktree(row.path);
     if (terminals.terminalCount(row.path) === 0) projects.openTerminalAt(row.path);
   }
@@ -91,6 +102,10 @@
      when the worktree is selected the selection fill/ring wraps everything, so the
      agents read as living in that worktree's space (not floating below it). -->
 <div class={cn("flex flex-col rounded-md", active && surface.active)}>
+  <!-- Insertion marker for a worktree-reorder drop at this position. -->
+  {#if drag && dragIndex != null && drag.isDropAt(dragIndex)}
+    <div class="ml-4 mr-2 mb-0.5 h-0.5 rounded-full bg-primary/70"></div>
+  {/if}
   <ContextMenu.Root>
     <ContextMenu.Trigger>
       {#snippet child({ props })}
@@ -99,12 +114,18 @@
             <div
               {...tp}
               {...props}
+              data-drag-key={drag ? row.path : undefined}
+              data-drag-index={drag ? dragIndex : undefined}
               class={cn(
                 "group flex items-center gap-2 rounded-md py-1 pl-2 pr-2 transition-colors",
                 !active && "hover:bg-foreground/[0.05]",
+                drag?.draggingKey === row.path && "opacity-40",
               )}
               role="button"
               tabindex="0"
+              onpointerdown={(e) => drag?.pointerDown(e, row.path)}
+              onpointermove={drag ? drag.pointerMove : undefined}
+              onpointerup={drag ? drag.pointerUp : undefined}
               onclick={activate}
               onkeydown={(e) => (e.key === "Enter" || e.key === " ") && activate()}
             >
@@ -118,6 +139,9 @@
               <div class="min-w-0 flex-1">
                 <div class="flex items-center gap-1.5">
                   <span class={cn("truncate", text.body, active && "font-medium")}>{label}</span>
+                  {#if !row.isMain && projects.isWorktreePinned(row.path)}
+                    <PinIcon class={cn(icon.decorative, "shrink-0 text-muted-foreground/70")} />
+                  {/if}
                   {#if hasUnread}
                     <TooltipSimple title={i18n.t("monitor.unread")}>
                       {#snippet children(tp2)}
@@ -165,6 +189,8 @@
       removeLabel={row.isMain ? i18n.t("project.removeProject") : i18n.t("worktree.removeWorktree")}
       onRemove={row.isMain ? () => onRemoveProject?.() : openRemove}
       onChangeIcon={() => (iconPickerOpen = true)}
+      onTogglePin={row.isMain ? undefined : () => projects.toggleWorktreePin(row.path)}
+      pinned={projects.isWorktreePinned(row.path)}
     />
   </ContextMenu.Root>
 

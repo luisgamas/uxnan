@@ -5,6 +5,10 @@
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import ProjectCard from "./ProjectCard.svelte";
   import KeyChord from "./KeyChord.svelte";
+  import { createStableOrder } from "$lib/state/sidebarOrder.svelte";
+  import { createDragReorder } from "$lib/state/dragReorder.svelte";
+  import { isStaticSortMode } from "$lib/sidebar-sort";
+  import type { SortMode } from "$lib/types";
   import { divider, icon, iconButton, text } from "$lib/design";
   import { cn } from "$lib/utils";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
@@ -18,8 +22,16 @@
   import PlusIcon from "@lucide/svelte/icons/plus";
   import TerminalIcon from "@lucide/svelte/icons/terminal";
 
-  type Sort = "manual" | "name-asc" | "name-desc";
-  let sort = $state<Sort>("manual");
+  // The five sort modes offered for each axis (projects and worktrees). "manual"
+  // and the two "name" modes don't drift over time; "recent"/"attention" do (they
+  // read agent state), so the rendered order is frozen between settle windows.
+  const SORT_MODES: { value: SortMode; label: () => string }[] = [
+    { value: "manual", label: () => i18n.t("sidebar.sortManual") },
+    { value: "name-asc", label: () => i18n.t("sidebar.sortNameAsc") },
+    { value: "name-desc", label: () => i18n.t("sidebar.sortNameDesc") },
+    { value: "recent", label: () => i18n.t("sidebar.sortRecent") },
+    { value: "attention", label: () => i18n.t("sidebar.sortAttention") },
+  ];
 
   // Raw bindings (for the split keycaps via KeyChord) + their formatted strings
   // (for tooltips / presence guards) for the shortcut hints on the quick actions.
@@ -49,13 +61,22 @@
     }
   });
 
-  const sortedRepos = $derived.by(() => {
-    const repos = [...projects.filteredRepos];
-    if (sort === "name-asc") repos.sort((a, b) => a.name.localeCompare(b.name));
-    else if (sort === "name-desc")
-      repos.sort((a, b) => b.name.localeCompare(a.name));
-    return repos;
+  // The rendered project order — frozen against jumping for the drifting modes
+  // (recent/attention) — plus the pointer-drag reorder that feeds "manual".
+  const stableRepos = createStableOrder({
+    compute: () => projects.sortedRepos(),
+    keyOf: (r) => r.id,
+    immediate: () => isStaticSortMode(projects.projectSort),
   });
+  const cardDrag = createDragReorder({
+    keys: () => stableRepos.items.map((r) => r.id),
+    onCommit: (ids) => void projects.reorderProjects(ids),
+  });
+  const draggedRepo = $derived(
+    cardDrag.draggingKey
+      ? projects.filteredRepos.find((r) => r.id === cardDrag.draggingKey)
+      : null,
+  );
 </script>
 
 <div class="scrollbar-sleek-parent flex h-full min-h-0 flex-col">
@@ -172,12 +193,25 @@
           </TooltipSimple>
         {/snippet}
       </DropdownMenu.Trigger>
-      <DropdownMenu.Content align="end" class="min-w-44">
-        <DropdownMenu.Label class={text.menuLabel}>{i18n.t("sidebar.sortBy")}</DropdownMenu.Label>
-        <DropdownMenu.RadioGroup bind:value={sort}>
-          <DropdownMenu.RadioItem class={text.menu} value="manual">{i18n.t("sidebar.sortManual")}</DropdownMenu.RadioItem>
-          <DropdownMenu.RadioItem class={text.menu} value="name-asc">{i18n.t("sidebar.sortNameAsc")}</DropdownMenu.RadioItem>
-          <DropdownMenu.RadioItem class={text.menu} value="name-desc">{i18n.t("sidebar.sortNameDesc")}</DropdownMenu.RadioItem>
+      <DropdownMenu.Content align="end" class="min-w-52">
+        <DropdownMenu.Label class={text.menuLabel}>{i18n.t("sidebar.sortProjects")}</DropdownMenu.Label>
+        <DropdownMenu.RadioGroup
+          value={projects.projectSort}
+          onValueChange={(v) => projects.setProjectSort(v as SortMode)}
+        >
+          {#each SORT_MODES as m (m.value)}
+            <DropdownMenu.RadioItem class={text.menu} value={m.value}>{m.label()}</DropdownMenu.RadioItem>
+          {/each}
+        </DropdownMenu.RadioGroup>
+        <DropdownMenu.Separator />
+        <DropdownMenu.Label class={text.menuLabel}>{i18n.t("sidebar.sortWorktrees")}</DropdownMenu.Label>
+        <DropdownMenu.RadioGroup
+          value={projects.worktreeSort}
+          onValueChange={(v) => projects.setWorktreeSort(v as SortMode)}
+        >
+          {#each SORT_MODES as m (m.value)}
+            <DropdownMenu.RadioItem class={text.menu} value={m.value}>{m.label()}</DropdownMenu.RadioItem>
+          {/each}
         </DropdownMenu.RadioGroup>
       </DropdownMenu.Content>
     </DropdownMenu.Root>
@@ -217,7 +251,7 @@
   <!-- Project tree: each project is selectable (= its main worktree) and
        expands to show its non-main worktrees as sub-rows. -->
   <div class="scrollbar-sleek worktree-sidebar-scrollbar min-h-0 flex-1 overflow-y-auto px-2.5 pb-2.5 pt-1">
-    {#if sortedRepos.length === 0}
+    {#if stableRepos.items.length === 0}
       <div class="flex flex-col items-center gap-2 px-2 py-6 text-center">
         <p class="text-xs text-muted-foreground">
           {projects.query ? i18n.t("sidebar.noMatch") : i18n.t("sidebar.empty")}
@@ -234,10 +268,24 @@
       </div>
     {:else}
       <div class="flex flex-col gap-2">
-        {#each sortedRepos as repo (repo.id)}
-          <ProjectCard {repo} />
+        {#each stableRepos.items as repo, i (repo.id)}
+          <ProjectCard {repo} index={i} drag={cardDrag} />
         {/each}
+        <!-- Insertion marker for a drop appended at the very end. -->
+        {#if cardDrag.isDropAt(stableRepos.items.length)}
+          <div class="mx-2 h-0.5 rounded-full bg-primary/70"></div>
+        {/if}
       </div>
     {/if}
   </div>
 </div>
+
+<!-- Floating label that follows the pointer while dragging a project card. -->
+{#if cardDrag.active && draggedRepo}
+  <div
+    class="pointer-events-none fixed z-50 max-w-48 truncate rounded-md border border-border bg-popover px-2 py-1 text-xs font-medium text-popover-foreground shadow-md"
+    style="left: {cardDrag.x + 12}px; top: {cardDrag.y + 8}px;"
+  >
+    {draggedRepo.name}
+  </div>
+{/if}
