@@ -225,6 +225,8 @@ pub fn run() {
             commands::repo_list,
             commands::repo_update,
             commands::repo_set_branch_icon,
+            commands::repo_reorder,
+            commands::repo_set_worktree_order,
             commands::repo_remote_owner,
             commands::branch_list,
             commands::worktree_create,

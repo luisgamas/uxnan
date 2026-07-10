@@ -177,7 +177,34 @@ export interface AppSettings {
   /** Show the usage indicator + popover in the bottom status bar. Default true
    *  once at least one provider is activated. */
   usageStatusBarEnabled?: boolean;
+  /** Sort mode for the project cards in the left sidebar. "manual" follows the
+   *  persisted repo order (`repoReorder`); the rest are computed client-side. */
+  projectSort?: SortMode;
+  /** Sort mode for the worktree rows within each project (same enum). "manual"
+   *  follows each repo's `worktreeOrder`. */
+  worktreeSort?: SortMode;
+  /** Last-active timestamps (epoch ms) keyed by workspace path, stamped when a
+   *  workspace is opened. Feeds the "recent" sort mode; self-heals (stale paths
+   *  are ignored). */
+  workspaceLastActive?: Record<string, number>;
+  /** Pinned projects (repo ids) — shown first regardless of sort. Self-healing. */
+  pinnedProjects?: string[];
+  /** Pinned worktrees (paths) — shown first within their project. Self-healing. */
+  pinnedWorktrees?: string[];
 }
+
+/** How the left-sidebar project cards / worktree rows are ordered.
+ *  - `manual`   — the user's own drag-and-drop arrangement (persisted).
+ *  - `name-asc` / `name-desc` — alphabetical by display name / branch.
+ *  - `recent`   — most-recently-opened first (via `workspaceLastActive`).
+ *  - `attention`— agents that need you first (blocked/waiting → done → working →
+ *    idle), then most-recent within each class. */
+export type SortMode =
+  | "manual"
+  | "name-asc"
+  | "name-desc"
+  | "recent"
+  | "attention";
 
 /** Where a link opens when the integrated browser is enabled (mirror of Rust
  *  `BrowserLinkPolicy`). `internal` uses the in-app tab; `external` hands off to
@@ -334,6 +361,11 @@ export interface RepoData {
   /** Per-branch custom icons, keyed by branch name (or the worktree path when
    *  detached). Same inline `data:` URL form as `icon`. Optional for back-compat. */
   branchIcons?: Record<string, string>;
+  /** User's manual order for this project's child worktrees, as their absolute
+   *  paths. The primary worktree is always shown first regardless. Paths no longer
+   *  present are ignored and freshly-seen ones fall to the end (self-healing).
+   *  Absent/empty → the git listing order. Set via `setWorktreeOrder`. */
+  worktreeOrder?: string[];
 }
 
 /** A git remote's hosting owner/org (mirror of Rust `RemoteOwner`), used to offer
@@ -686,4 +718,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
     mcpDisabledAgents: [],
   },
   browserPanelWidth: 520,
+  projectSort: "manual",
+  worktreeSort: "manual",
+  workspaceLastActive: {},
+  pinnedProjects: [],
+  pinnedWorktrees: [],
 };

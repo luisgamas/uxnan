@@ -243,6 +243,23 @@ export function repoSetBranchIcon(
   return invoke<RepoData>("repo_set_branch_icon", { id: repoId, branch, icon });
 }
 
+/** Reorder the registered projects to the user's manual arrangement. `orderedIds`
+ *  is the desired front-to-back order; any repo omitted keeps its position after
+ *  the listed ones, so a stale list never drops a project. Persists the order. */
+export function repoReorder(orderedIds: string[]): Promise<void> {
+  return invoke("repo_reorder", { orderedIds });
+}
+
+/** Set a project's manual worktree order (child worktree paths, front-to-back).
+ *  The primary worktree is always shown first regardless. Returns the updated
+ *  repo so the caller can reconcile `app.repos`. */
+export function setWorktreeOrder(
+  repoId: string,
+  paths: string[],
+): Promise<RepoData> {
+  return invoke<RepoData>("repo_set_worktree_order", { id: repoId, paths });
+}
+
 /** Resolve a git project's `origin` remote to its hosting owner/avatar, for the
  *  "use the account avatar" icon option. Null when there's no parseable origin. */
 export function repoRemoteOwner(repoId: string): Promise<RemoteOwner | null> {

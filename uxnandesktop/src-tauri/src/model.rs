@@ -70,6 +70,13 @@ pub struct RepoData {
     /// branches fall back to the default branch glyph.
     #[serde(default)]
     pub branch_icons: std::collections::HashMap<String, String>,
+    /// User's manual order for this project's child worktrees, as their absolute
+    /// paths. Worktrees are read live from git (no stable id), so the order is
+    /// keyed by path; the primary worktree is always listed first regardless.
+    /// Paths no longer present are ignored, and freshly-seen ones fall to the end,
+    /// so the list self-heals. Empty (the default) → the git listing order.
+    #[serde(default)]
+    pub worktree_order: Vec<String>,
 }
 
 /// An independent git worktree — the ADE's fundamental unit of isolation.
@@ -316,6 +323,36 @@ pub struct AppSettings {
     /// Show the usage indicator + popover in the bottom status bar. Default on.
     #[serde(default = "default_true")]
     pub usage_status_bar_enabled: bool,
+    /// Sort mode for the project cards in the left sidebar. Frontend-owned enum:
+    /// `"manual" | "name-asc" | "name-desc" | "recent" | "attention"`. `"manual"`
+    /// follows the persisted repo order (see `repo_reorder`); the rest are computed
+    /// in the frontend. Unknown values fall back to manual there.
+    #[serde(default = "default_sort_mode")]
+    pub project_sort: String,
+    /// Sort mode for the worktree rows within each project (same enum as
+    /// [`AppSettings::project_sort`]). `"manual"` follows each repo's
+    /// [`RepoData::worktree_order`]; the rest are computed in the frontend.
+    #[serde(default = "default_sort_mode")]
+    pub worktree_sort: String,
+    /// Last-active timestamps (epoch ms) keyed by workspace path (a project's main
+    /// worktree, or a child worktree), stamped when a workspace is opened. Feeds
+    /// the "recent" sort mode. Unknown/stale paths are ignored, so it self-heals.
+    #[serde(default)]
+    pub workspace_last_active: std::collections::HashMap<String, i64>,
+    /// Pinned projects (repo ids) — rendered first in the sidebar regardless of
+    /// the active sort. Unknown ids are ignored (self-healing).
+    #[serde(default)]
+    pub pinned_projects: Vec<String>,
+    /// Pinned worktrees (paths) — rendered first within their project regardless
+    /// of the active sort. Unknown paths are ignored (self-healing).
+    #[serde(default)]
+    pub pinned_worktrees: Vec<String>,
+}
+
+/// Default left-sidebar sort mode: `"manual"` (the user's own order), matching the
+/// pre-existing behavior where cards followed their insertion order.
+fn default_sort_mode() -> String {
+    "manual".to_string()
 }
 
 /// Default width of the integrated browser panel.
@@ -594,6 +631,11 @@ impl Default for AppSettings {
             usage_providers: Vec::new(),
             usage_refresh_minutes: default_usage_refresh_minutes(),
             usage_status_bar_enabled: true,
+            project_sort: default_sort_mode(),
+            worktree_sort: default_sort_mode(),
+            workspace_last_active: std::collections::HashMap::new(),
+            pinned_projects: Vec::new(),
+            pinned_worktrees: Vec::new(),
         }
     }
 }

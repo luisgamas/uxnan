@@ -348,6 +348,7 @@ pub async fn repo_add(state: State<'_, AppState>, path: String) -> Result<RepoDa
         is_git,
         icon: None,
         branch_icons: std::collections::HashMap::new(),
+        worktree_order: Vec::new(),
     };
     data.repos.push(repo.clone());
     state.persistence.save(&data).map_err(CommandError::from)?;
@@ -415,6 +416,56 @@ pub async fn repo_set_branch_icon(
             repo.branch_icons.remove(&branch);
         }
     }
+    let updated = repo.clone();
+    state.persistence.save(&data).map_err(CommandError::from)?;
+    Ok(updated)
+}
+
+/// Reorder the registered projects to match the user's manual arrangement in the
+/// sidebar. `ordered_ids` is the desired front-to-back order; any registered repo
+/// not named in it keeps its relative order *after* the listed ones (so a stale
+/// list from a concurrent add/remove never drops a project). Unknown ids are
+/// ignored. Persists the new `repos` order, which is itself the manual order.
+#[tauri::command]
+pub async fn repo_reorder(
+    state: State<'_, AppState>,
+    ordered_ids: Vec<String>,
+) -> Result<(), CommandError> {
+    let mut data = state.data.write().await;
+    reorder_by_ids(&mut data.repos, &ordered_ids, |r| r.id.as_str());
+    state.persistence.save(&data).map_err(CommandError::from)
+}
+
+/// Reorder `items` in place to match `ordered_ids` (front-to-back). Any item whose
+/// key is absent from `ordered_ids` keeps its position *after* the listed ones, in
+/// its original relative order (the sort is stable). Unknown ids are ignored. This
+/// makes a stale order list from a concurrent add/remove safe: nothing is dropped.
+fn reorder_by_ids<T>(items: &mut [T], ordered_ids: &[String], key_of: impl Fn(&T) -> &str) {
+    let rank: std::collections::HashMap<&str, usize> = ordered_ids
+        .iter()
+        .enumerate()
+        .map(|(i, id)| (id.as_str(), i))
+        .collect();
+    items.sort_by_key(|it| rank.get(key_of(it)).copied().unwrap_or(usize::MAX));
+}
+
+/// Set a project's manual worktree order (child worktree paths, front-to-back).
+/// The primary worktree is always rendered first regardless, so it need not be
+/// included; unknown/removed paths are harmless (the frontend ignores them and
+/// self-heals). Returns the updated repo so the frontend can reconcile.
+#[tauri::command]
+pub async fn repo_set_worktree_order(
+    state: State<'_, AppState>,
+    id: String,
+    paths: Vec<String>,
+) -> Result<RepoData, CommandError> {
+    let mut data = state.data.write().await;
+    let repo = data
+        .repos
+        .iter_mut()
+        .find(|r| r.id == id)
+        .ok_or_else(|| CommandError::from(AppError::NotFound(format!("repo {id}"))))?;
+    repo.worktree_order = paths;
     let updated = repo.clone();
     state.persistence.save(&data).map_err(CommandError::from)?;
     Ok(updated)
@@ -1258,4 +1309,58 @@ pub async fn get_hook_scripts(
         wrapper_cmd: agent_hooks::WRAPPER_CMD.to_string(),
         wrapper_fish: agent_hooks::WRAPPER_FISH.to_string(),
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::reorder_by_ids;
+
+    /// A minimal keyed item, so `reorder_by_ids` is exercised without building a
+    /// full `RepoData`.
+    #[derive(Debug)]
+    struct Item {
+        id: &'static str,
+    }
+
+    fn ids(items: &[Item]) -> Vec<&'static str> {
+        items.iter().map(|i| i.id).collect()
+    }
+
+    #[test]
+    fn reorder_applies_requested_order() {
+        let mut items = vec![Item { id: "a" }, Item { id: "b" }, Item { id: "c" }];
+        reorder_by_ids(&mut items, &["c".into(), "a".into(), "b".into()], |i| i.id);
+        assert_eq!(ids(&items), vec!["c", "a", "b"]);
+    }
+
+    #[test]
+    fn reorder_keeps_unlisted_items_after_in_original_order() {
+        // Only "c" and "a" are listed; "b" and "d" are unlisted and must stay after
+        // the listed ones in their original relative order (stable sort).
+        let mut items = vec![
+            Item { id: "a" },
+            Item { id: "b" },
+            Item { id: "c" },
+            Item { id: "d" },
+        ];
+        reorder_by_ids(&mut items, &["c".into(), "a".into()], |i| i.id);
+        assert_eq!(ids(&items), vec!["c", "a", "b", "d"]);
+    }
+
+    #[test]
+    fn reorder_ignores_unknown_ids() {
+        let mut items = vec![Item { id: "a" }, Item { id: "b" }];
+        // "zzz" isn't present and must be ignored; the known ids still reorder.
+        reorder_by_ids(&mut items, &["zzz".into(), "b".into(), "a".into()], |i| {
+            i.id
+        });
+        assert_eq!(ids(&items), vec!["b", "a"]);
+    }
+
+    #[test]
+    fn reorder_empty_order_is_noop() {
+        let mut items = vec![Item { id: "a" }, Item { id: "b" }];
+        reorder_by_ids(&mut items, &[], |i| i.id);
+        assert_eq!(ids(&items), vec!["a", "b"]);
+    }
 }
