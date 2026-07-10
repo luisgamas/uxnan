@@ -41,8 +41,11 @@
     /** The worktree/project folder every action targets. */
     path: string;
     /** Label for the destructive item (remove worktree vs remove project). */
-    removeLabel: string;
-    onRemove: () => void;
+    removeLabel?: string;
+    /** Destructive action. Omit it to hide the item entirely (e.g. the primary
+     *  worktree in the flattened status view, where project removal lives on the
+     *  tree's project card instead). */
+    onRemove?: () => void;
     /** When provided, adds a "Change branch icon…" item (worktree rows only). */
     onChangeIcon?: () => void;
     /** When provided, adds a pin/unpin item (reorderable child worktrees only). */
@@ -183,10 +186,12 @@
     </ContextMenu.SubContent>
   </ContextMenu.Sub>
 
-  <ContextMenu.Separator />
+  {#if onRemove}
+    <ContextMenu.Separator />
 
-  <ContextMenu.Item variant="destructive" class={text.menu} onclick={onRemove}>
-    <Trash2Icon />
-    {removeLabel}
-  </ContextMenu.Item>
+    <ContextMenu.Item variant="destructive" class={text.menu} onclick={onRemove}>
+      <Trash2Icon />
+      {removeLabel}
+    </ContextMenu.Item>
+  {/if}
 </ContextMenu.Content>

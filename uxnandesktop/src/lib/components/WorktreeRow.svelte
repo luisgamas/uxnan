@@ -206,7 +206,7 @@
     <RowActionsMenu
       path={row.path}
       removeLabel={row.isMain ? i18n.t("project.removeProject") : i18n.t("worktree.removeWorktree")}
-      onRemove={row.isMain ? () => onRemoveProject?.() : openRemove}
+      onRemove={row.isMain ? onRemoveProject : openRemove}
       onChangeIcon={() => (iconPickerOpen = true)}
       onTogglePin={row.isMain ? undefined : () => projects.toggleWorktreePin(row.path)}
       pinned={projects.isWorktreePinned(row.path)}
