@@ -1238,6 +1238,12 @@ abstract class AppLocalizations {
   /// **'Agent'**
   String get newThreadAgent;
 
+  /// No description provided for @newThreadAgentHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Select an agent'**
+  String get newThreadAgentHint;
+
   /// No description provided for @newThreadModel.
   ///
   /// In en, this message translates to:
@@ -1255,6 +1261,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Start conversation'**
   String get newThreadStart;
+
+  /// No description provided for @agentPickerTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Select agent'**
+  String get agentPickerTitle;
+
+  /// No description provided for @agentPickerSearchHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Search agents'**
+  String get agentPickerSearchHint;
 
   /// No description provided for @modelPickerTitle.
   ///

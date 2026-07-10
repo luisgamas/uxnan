@@ -292,9 +292,12 @@
     "description": "Tooltip on the button that ascends to the parent folder in the workspace browser."
   },
   "newThreadAgent": "Agent",
+  "newThreadAgentHint": "Select an agent",
   "newThreadModel": "Model (optional)",
   "newThreadModelHint": "Default model",
   "newThreadStart": "Start conversation",
+  "agentPickerTitle": "Select agent",
+  "agentPickerSearchHint": "Search agents",
   "modelPickerTitle": "Select model",
   "modelPickerSearchHint": "Search models",
   "modelPickerLoadFailed": "Couldn't load models",

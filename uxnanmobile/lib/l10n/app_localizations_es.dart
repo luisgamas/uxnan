@@ -622,6 +622,9 @@ class AppLocalizationsEs extends AppLocalizations {
   String get newThreadAgent => 'Agente';
 
   @override
+  String get newThreadAgentHint => 'Elige un agente';
+
+  @override
   String get newThreadModel => 'Modelo (opcional)';
 
   @override
@@ -629,6 +632,12 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get newThreadStart => 'Iniciar conversación';
+
+  @override
+  String get agentPickerTitle => 'Seleccionar agente';
+
+  @override
+  String get agentPickerSearchHint => 'Buscar agentes';
 
   @override
   String get modelPickerTitle => 'Seleccionar modelo';

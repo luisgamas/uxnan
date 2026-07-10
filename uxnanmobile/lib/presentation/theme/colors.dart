@@ -144,6 +144,9 @@ class UxnanColors {
   /// Brand color for the pi-agent.
   static const Color piAgentColor = Color(0xFF2563EB);
 
+  /// Brand color for the Zero agent (teal).
+  static const Color zeroAgent = Color(0xFF14B8A6);
+
   /// Returns the surface text color for [brightness].
   static Color onSurfaceFor(Brightness brightness) {
     return brightness == Brightness.dark ? onSurface : lightOnSurface;

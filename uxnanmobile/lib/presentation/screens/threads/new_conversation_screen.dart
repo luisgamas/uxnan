@@ -9,6 +9,7 @@ import 'package:uxnan/domain/value_objects/git/git_action_io.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/screens/conversation/support/model_picker_sheet.dart';
+import 'package:uxnan/presentation/screens/threads/agent_picker_sheet.dart';
 import 'package:uxnan/presentation/screens/threads/workspace_browser_sheet.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
@@ -274,16 +275,10 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
                         if (visible.isEmpty) {
                           return _Empty(message: l10n.newThreadNoAgents);
                         }
-                        return Column(
-                          children: [
-                            for (final a in visible)
-                              _AgentCard(
-                                agent: a,
-                                selected: a.agentId == _agent?.agentId,
-                                onTap:
-                                    a.available ? () => _selectAgent(a) : null,
-                              ),
-                          ],
+                        return _AgentSelector(
+                          agents: visible,
+                          selected: _agent,
+                          onSelect: _selectAgent,
                         );
                       },
                     ),
@@ -481,187 +476,180 @@ class _WorktreeCard extends StatelessWidget {
   }
 }
 
-/// An agent option: a **collapsible** card. The header always shows the logo,
-/// name and the right-side widgets (the "Check sign-in" verify button for an
-/// installed-but-not-signed-in agent, the selected check, and an expand
-/// chevron); expanding reveals the agent's capability chips (streaming, plan
-/// mode, approvals, forking, images). Tapping the card selects the agent;
-/// unavailable agents are dimmed and not selectable. A not-signed-in agent gets
-/// a soft error tint and re-queries `auth/status` so the user can sign in on
-/// the PC and re-verify without leaving the dialog.
-class _AgentCard extends ConsumerStatefulWidget {
-  const _AgentCard({
-    required this.agent,
+/// The agent selector: a combobox-style field (mirroring [`_ModelField`]) that
+/// opens the searchable, alphabetical [AgentPickerSheet], with the SELECTED
+/// agent's capability chips + sign-in status shown inline **below** it. This
+/// keeps everything on one screen and scales as the agent list grows (the old
+/// per-agent card stack didn't).
+class _AgentSelector extends StatelessWidget {
+  const _AgentSelector({
+    required this.agents,
     required this.selected,
-    required this.onTap,
+    required this.onSelect,
   });
 
-  final AgentDescriptor agent;
-  final bool selected;
-  final VoidCallback? onTap;
+  final List<AgentDescriptor> agents;
+  final AgentDescriptor? selected;
+  final ValueChanged<AgentDescriptor> onSelect;
 
-  @override
-  ConsumerState<_AgentCard> createState() => _AgentCardState();
-}
-
-class _AgentCardState extends ConsumerState<_AgentCard> {
-  bool _expanded = false;
+  Future<void> _pick(BuildContext context) async {
+    final picked = await AgentPickerSheet.show(
+      context,
+      agents: agents,
+      selectedId: selected?.agentId,
+    );
+    if (picked == null) return;
+    for (final a in agents) {
+      if (a.agentId == picked) {
+        onSelect(a);
+        return;
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final agent = widget.agent;
-    final selected = widget.selected;
+    final agent = selected;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _AgentField(agent: agent, onTap: () => _pick(context)),
+        if (agent != null) ...[
+          const SizedBox(height: UxnanSpacing.md),
+          _AgentDetail(agent: agent),
+        ],
+      ],
+    );
+  }
+}
+
+/// The combobox field showing the selected agent (logo + name) or a hint, with
+/// an unfold chevron; tapping opens the [AgentPickerSheet].
+class _AgentField extends StatelessWidget {
+  const _AgentField({required this.agent, required this.onTap});
+
+  final AgentDescriptor? agent;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final l10n = AppLocalizations.of(context);
-    final caps = _capabilities(agent, l10n);
+    final a = agent;
 
-    final auth = ref.watch(authStatusProvider(agent.agentId));
-    final requiresLogin =
-        agent.available && (auth.value?.requiresLogin ?? false);
-    // Keep the previous value while a re-check is in flight (Riverpod retains
-    // it across an invalidate), so we swap the button for a spinner.
-    final checking = requiresLogin && auth.isLoading;
-    final hasCaps = agent.available && caps.isNotEmpty;
-
-    // Soft but noticeable error tint for an installed, not-signed-in agent.
-    final notSignedInTint = Color.alphaBlend(
-      colors.error.withValues(alpha: 0.09),
-      colors.surfaceContainerHighest,
-    );
-    final background = requiresLogin
-        ? notSignedInTint
-        : selected
-            ? colors.primaryContainer.withValues(alpha: 0.45)
-            : colors.surfaceContainerHighest;
-    final borderSide = selected
-        ? BorderSide(color: colors.primary, width: 1.5)
-        : BorderSide(
-            color: requiresLogin
-                ? colors.error.withValues(alpha: 0.5)
-                : colors.outlineVariant,
-          );
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: UxnanSpacing.sm),
-      child: Opacity(
-        opacity: agent.available ? 1 : 0.5,
-        child: Material(
-          color: background,
-          shape: RoundedRectangleBorder(
-            borderRadius: const BorderRadius.all(UxnanRadius.lg),
-            side: borderSide,
-          ),
-          child: InkWell(
-            borderRadius: const BorderRadius.all(UxnanRadius.lg),
-            onTap: widget.onTap,
-            child: Padding(
-              padding: const EdgeInsets.all(UxnanSpacing.md),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      _AgentLeading(agentId: agent.agentId),
-                      const SizedBox(width: UxnanSpacing.md),
-                      Expanded(
-                        child: Text(
-                          agent.displayName,
-                          style: textTheme.titleMedium,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      if (!agent.available)
-                        Text(
-                          l10n.newThreadAgentUnavailable,
-                          style: textTheme.bodySmall?.copyWith(
-                            color: UxnanColors.disconnected,
-                          ),
-                        )
-                      else ...[
-                        if (requiresLogin)
-                          _CheckSignInButton(
-                            checking: checking,
-                            onPressed: () => ref
-                                .invalidate(authStatusProvider(agent.agentId)),
-                          ),
-                        if (selected)
-                          Padding(
-                            padding: const EdgeInsets.only(
-                              left: UxnanSpacing.xs,
-                            ),
-                            child: Icon(
-                              Icons.check_circle_rounded,
-                              color: colors.primary,
-                            ),
-                          ),
-                        // Expand chevron reveals the capability chips. Its own
-                        // tap toggles details without selecting the agent.
-                        if (hasCaps)
-                          IconButton(
-                            visualDensity: VisualDensity.compact,
-                            tooltip: l10n.newThreadCapabilities,
-                            icon: Icon(
-                              _expanded
-                                  ? Icons.expand_less_rounded
-                                  : Icons.expand_more_rounded,
-                              color: colors.onSurfaceVariant,
-                            ),
-                            onPressed: () =>
-                                setState(() => _expanded = !_expanded),
-                          ),
-                      ],
-                    ],
+    return Material(
+      color: colors.surfaceContainerHighest,
+      shape: RoundedRectangleBorder(
+        borderRadius: const BorderRadius.all(UxnanRadius.lg),
+        side: BorderSide(color: colors.outline),
+      ),
+      child: InkWell(
+        borderRadius: const BorderRadius.all(UxnanRadius.lg),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(UxnanSpacing.md),
+          child: Row(
+            children: [
+              if (a != null)
+                _AgentLeading(agentId: a.agentId)
+              else
+                Icon(
+                  Icons.smart_toy_outlined,
+                  size: 20,
+                  color: colors.onSurfaceVariant,
+                ),
+              const SizedBox(width: UxnanSpacing.md),
+              Expanded(
+                child: Text(
+                  a?.displayName ?? l10n.newThreadAgentHint,
+                  style: textTheme.bodyLarge?.copyWith(
+                    color: a == null ? colors.onSurfaceVariant : null,
                   ),
-                  if (hasCaps)
-                    AnimatedSize(
-                      duration: const Duration(milliseconds: 180),
-                      curve: Curves.easeOutCubic,
-                      alignment: Alignment.topLeft,
-                      child: _expanded
-                          ? Padding(
-                              padding: const EdgeInsets.only(
-                                top: UxnanSpacing.md,
-                              ),
-                              child: Wrap(
-                                spacing: UxnanSpacing.xs,
-                                runSpacing: UxnanSpacing.xs,
-                                children: [
-                                  for (final cap in caps)
-                                    _CapabilityChip(
-                                      icon: cap.$1,
-                                      label: cap.$2,
-                                    ),
-                                ],
-                              ),
-                            )
-                          : const SizedBox(width: double.infinity),
-                    ),
-                ],
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-            ),
+              const SizedBox(width: UxnanSpacing.sm),
+              Icon(
+                Icons.unfold_more_rounded,
+                size: 20,
+                color: colors.onSurfaceVariant,
+              ),
+            ],
           ),
         ),
       ),
     );
   }
+}
 
-  static List<(IconData, String)> _capabilities(
-    AgentDescriptor agent,
-    AppLocalizations l10n,
-  ) {
-    final c = agent.capabilities;
-    return [
-      if (c.streaming) (Icons.bolt_outlined, l10n.newThreadCapStreaming),
-      if (c.planMode) (Icons.checklist_rtl_outlined, l10n.newThreadCapPlan),
-      if (c.approvals)
-        (Icons.verified_user_outlined, l10n.newThreadCapApprovals),
-      if (c.autonomous)
-        (Icons.auto_awesome_outlined, l10n.newThreadCapAutonomous),
-      if (c.forking) (Icons.call_split_rounded, l10n.newThreadCapForking),
-      if (c.images) (Icons.image_outlined, l10n.newThreadCapImages),
-    ];
+/// Below the combobox: the selected agent's capability chips, plus the sign-in
+/// status (a "Check sign-in" action for an installed-but-not-signed-in agent,
+/// re-querying `auth/status`, or an "unavailable" note).
+class _AgentDetail extends ConsumerWidget {
+  const _AgentDetail({required this.agent});
+
+  final AgentDescriptor agent;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final textTheme = Theme.of(context).textTheme;
+    final l10n = AppLocalizations.of(context);
+    final caps = _agentCapabilities(agent, l10n);
+
+    final auth = ref.watch(authStatusProvider(agent.agentId));
+    final requiresLogin =
+        agent.available && (auth.value?.requiresLogin ?? false);
+    final checking = requiresLogin && auth.isLoading;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (!agent.available)
+          Text(
+            l10n.newThreadAgentUnavailable,
+            style: textTheme.bodySmall
+                ?.copyWith(color: UxnanColors.disconnected),
+          )
+        else if (requiresLogin)
+          Padding(
+            padding: const EdgeInsets.only(bottom: UxnanSpacing.sm),
+            child: _CheckSignInButton(
+              checking: checking,
+              onPressed: () =>
+                  ref.invalidate(authStatusProvider(agent.agentId)),
+            ),
+          ),
+        if (agent.available && caps.isNotEmpty)
+          Wrap(
+            spacing: UxnanSpacing.xs,
+            runSpacing: UxnanSpacing.xs,
+            children: [
+              for (final cap in caps)
+                _CapabilityChip(icon: cap.$1, label: cap.$2),
+            ],
+          ),
+      ],
+    );
   }
+}
+
+/// The agent's capabilities as (icon, label) pairs, in a stable order.
+List<(IconData, String)> _agentCapabilities(
+  AgentDescriptor agent,
+  AppLocalizations l10n,
+) {
+  final c = agent.capabilities;
+  return [
+    if (c.streaming) (Icons.bolt_outlined, l10n.newThreadCapStreaming),
+    if (c.planMode) (Icons.checklist_rtl_outlined, l10n.newThreadCapPlan),
+    if (c.approvals)
+      (Icons.verified_user_outlined, l10n.newThreadCapApprovals),
+    if (c.autonomous)
+      (Icons.auto_awesome_outlined, l10n.newThreadCapAutonomous),
+    if (c.forking) (Icons.call_split_rounded, l10n.newThreadCapForking),
+    if (c.images) (Icons.image_outlined, l10n.newThreadCapImages),
+  ];
 }
 
 /// Trailing action on a not-signed-in agent card: an error-toned [TextButton]

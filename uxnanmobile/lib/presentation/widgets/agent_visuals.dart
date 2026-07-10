@@ -17,6 +17,7 @@ class AgentVisuals {
         AgentId.claudeCode => AgentLogos.claude,
         AgentId.geminiCli => AgentLogos.gemini,
         AgentId.piAgent => AgentLogos.pi,
+        AgentId.zero => AgentLogos.zero,
         AgentId.custom => null,
       };
 
@@ -27,6 +28,7 @@ class AgentVisuals {
         AgentId.claudeCode => 'Claude Code',
         AgentId.geminiCli => 'Gemini CLI',
         AgentId.piAgent => 'pi',
+        AgentId.zero => 'Zero',
         AgentId.custom => 'Agent',
       };
 
@@ -37,6 +39,7 @@ class AgentVisuals {
         AgentId.claudeCode => UxnanColors.claudeCodeAgent,
         AgentId.geminiCli => UxnanColors.geminiCliAgent,
         AgentId.piAgent => UxnanColors.piAgentColor,
+        AgentId.zero => UxnanColors.zeroAgent,
         AgentId.custom => UxnanColors.onSurfaceMuted,
       };
 }

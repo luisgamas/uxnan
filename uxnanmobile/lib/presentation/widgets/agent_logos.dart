@@ -31,6 +31,9 @@ class AgentLogos {
   /// OpenCode logo (monochrome).
   static const String opencode = '$_base/opencode.svg';
 
+  /// Zero logo.
+  static const String zero = '$_base/zero.svg';
+
   /// Goose logo (monochrome).
   static const String goose = '$_base/goose.svg';
 

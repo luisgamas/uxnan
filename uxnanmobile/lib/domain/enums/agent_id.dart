@@ -19,6 +19,9 @@ enum AgentId {
   /// earendil-works/pi agent.
   piAgent,
 
+  /// Zero — open-source Go coding agent (driven over the ACP).
+  zero,
+
   /// A custom or future agent exposed through the extensible adapter interface.
   custom,
 }
@@ -38,6 +41,8 @@ extension AgentIdWire on AgentId {
         return 'gemini-cli';
       case AgentId.piAgent:
         return 'pi-agent';
+      case AgentId.zero:
+        return 'zero';
       case AgentId.custom:
         return 'custom';
     }
@@ -60,6 +65,8 @@ extension AgentIdParsing on AgentId {
         return AgentId.geminiCli;
       case 'pi-agent':
         return AgentId.piAgent;
+      case 'zero':
+        return AgentId.zero;
       default:
         return AgentId.custom;
     }
