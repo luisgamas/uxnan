@@ -18,7 +18,9 @@
     path,
     content = "",
     kind,
-  }: { path: string; content?: string; kind: "image" | "markdown" } = $props();
+    active = false,
+  }: { path: string; content?: string; kind: "image" | "markdown"; active?: boolean } =
+    $props();
 
   const baseDir = $derived(path.slice(0, path.lastIndexOf("/")) || null);
 
@@ -66,7 +68,34 @@
     if (dir > 0) zoom = ZOOM_STEPS.find((s) => s > cur + 1e-6) ?? cur;
     else zoom = [...ZOOM_STEPS].reverse().find((s) => s < cur - 1e-6) ?? cur;
   }
+
+  /** Mouse-wheel zoom over the image (plain or Ctrl+wheel); prevents the page from
+   *  scrolling so the gesture reads as a zoom. */
+  function onWheel(e: WheelEvent): void {
+    if (kind !== "image" || !dataUrl) return;
+    e.preventDefault();
+    zoomBy(e.deltaY < 0 ? 1 : -1);
+  }
+
+  /** Keyboard zoom (Ctrl/Cmd + "+" / "-" / "0"), active only while this image
+   *  preview is the visible view so it never fights other panes. */
+  function onKey(e: KeyboardEvent): void {
+    if (!active || kind !== "image" || !dataUrl) return;
+    if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+    if (e.key === "+" || e.key === "=") {
+      e.preventDefault();
+      zoomBy(1);
+    } else if (e.key === "-" || e.key === "_") {
+      e.preventDefault();
+      zoomBy(-1);
+    } else if (e.key === "0") {
+      e.preventDefault();
+      zoom = null;
+    }
+  }
 </script>
+
+<svelte:window onkeydown={onKey} />
 
 {#if kind === "markdown"}
   <div class="h-full min-h-0 bg-background">
@@ -74,7 +103,10 @@
   </div>
 {:else}
   <div class="relative flex h-full min-h-0 flex-col bg-background">
-    <div class="ux-checker uxnan-scroll flex min-h-0 flex-1 items-center justify-center overflow-auto p-4">
+    <div
+      class="ux-checker uxnan-scroll flex min-h-0 flex-1 items-center justify-center overflow-auto p-4"
+      onwheel={onWheel}
+    >
       {#if loadError}
         <p class={cn("p-4 text-center", text.meta)}>{loadError}</p>
       {:else if !dataUrl}

@@ -184,7 +184,12 @@
     {/if}
     {#if previewKind && (shown === "preview" || mounted.has("preview"))}
       <div class="absolute inset-0" style:display={shown === "preview" ? "block" : "none"}>
-        <FilePreview path={tab.path} content={fileState.content} kind={previewKind} />
+        <FilePreview
+          path={tab.path}
+          content={fileState.content}
+          kind={previewKind}
+          active={active && shown === "preview"}
+        />
       </div>
     {/if}
     {#if shown === "changes" || mounted.has("changes")}

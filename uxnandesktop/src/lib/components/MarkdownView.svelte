@@ -177,6 +177,11 @@
     font-size: 13px;
     line-height: 1.65;
     color: var(--foreground);
+    /* The app shell sets `user-select: none`; re-enable it here so the rendered
+       document can be selected and copied (with its formatting) like a real doc. */
+    -webkit-user-select: text;
+    user-select: text;
+    cursor: auto;
   }
   .md :global(.md-h) {
     font-weight: 600;
