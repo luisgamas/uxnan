@@ -11,9 +11,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   **Tree** (project → worktree) and **By status** — every worktree flattened into
   **collapsible lanes by agent attention**: **Needs you** (blocked/waiting) ·
   **Done** (unreviewed) · **Working** · **Idle**. Empty lanes are omitted and each
-  row is labeled by its project (rows leave their tree). The mode is persisted
-  (`sidebarGroupBy`); pinned worktrees float to the top of their lane. Pure,
-  unit-tested `buildStatusGroups`; a plain collapsible lane list (no board view).
+  row is labeled by its project (rows leave their tree) with a short project-
+  relative path tooltip. The mode **and each lane's collapse state** persist
+  (`sidebarGroupBy` / `sidebarCollapsedLanes`); pinned worktrees float to the top
+  of their lane. Pure, unit-tested `buildStatusGroups`; a plain collapsible lane
+  list (no board view).
 
 ### Added — sidebar sort modes, manual drag-reorder + agent-attention smart sort
 

@@ -353,6 +353,10 @@ pub struct AppSettings {
     /// to `"none"` in the frontend.
     #[serde(default = "default_group_by")]
     pub sidebar_group_by: String,
+    /// Attention lanes the user collapsed in the "group by status" view (the lane's
+    /// attention class, 1–4). Persisted so the collapse survives a restart.
+    #[serde(default)]
+    pub sidebar_collapsed_lanes: Vec<u32>,
 }
 
 /// Default left-sidebar grouping: `"none"` (the project → worktree tree).
@@ -648,6 +652,7 @@ impl Default for AppSettings {
             pinned_projects: Vec::new(),
             pinned_worktrees: Vec::new(),
             sidebar_group_by: default_group_by(),
+            sidebar_collapsed_lanes: Vec::new(),
         }
     }
 }

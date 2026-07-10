@@ -239,6 +239,20 @@ class ProjectsStore {
     void app.persistSettings();
   }
 
+  /** Whether an attention lane is collapsed in the status view (persisted). */
+  isLaneCollapsed(lane: number): boolean {
+    return app.settings.sidebarCollapsedLanes?.includes(lane) ?? false;
+  }
+
+  /** Toggle a status-view lane's collapse state and persist it. */
+  toggleLane(lane: number): void {
+    const cur = app.settings.sidebarCollapsedLanes ?? [];
+    app.settings.sidebarCollapsedLanes = cur.includes(lane)
+      ? cur.filter((x) => x !== lane)
+      : [...cur, lane];
+    void app.persistSettings();
+  }
+
   /** Every visible worktree (each project's main + its children) flattened into
    *  attention lanes for the "group by status" view. Empty lanes are omitted;
    *  within a lane, pinned worktrees float to the top, then the freshest/most-

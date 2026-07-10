@@ -80,12 +80,8 @@
       : null,
   );
 
-  // "Group by status" view: per-lane collapse state (local to the session) and
-  // the human label for each attention lane.
-  let collapsedLanes = $state<Record<number, boolean>>({});
-  function toggleLane(c: AttentionClass) {
-    collapsedLanes = { ...collapsedLanes, [c]: !collapsedLanes[c] };
-  }
+  // "Group by status" view: the human label for each attention lane. The collapse
+  // state lives in the store (persisted across restarts).
   function laneLabel(c: AttentionClass): string {
     switch (c) {
       case 1:
@@ -311,15 +307,15 @@
               <!-- Lane header — collapsible; the attention label + a count. -->
               <button
                 class="flex w-full items-center gap-1 rounded px-1 py-1 text-left transition-colors hover:bg-accent/40"
-                onclick={() => toggleLane(lane.attention)}
+                onclick={() => projects.toggleLane(lane.attention)}
               >
                 <ChevronRightIcon
-                  class={cn("size-3 shrink-0 text-muted-foreground/70 transition-transform", !collapsedLanes[lane.attention] && "rotate-90")}
+                  class={cn("size-3 shrink-0 text-muted-foreground/70 transition-transform", !projects.isLaneCollapsed(lane.attention) && "rotate-90")}
                 />
                 <span class={cn("flex-1 truncate", text.section)}>{laneLabel(lane.attention)}</span>
                 <span class="text-xs tabular-nums text-muted-foreground/60">{lane.items.length}</span>
               </button>
-              {#if !collapsedLanes[lane.attention]}
+              {#if !projects.isLaneCollapsed(lane.attention)}
                 <div class="flex flex-col">
                   {#each lane.items as row (row.path)}
                     <WorktreeRow {row} showRepo />

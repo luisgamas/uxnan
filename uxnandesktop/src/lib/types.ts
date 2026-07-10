@@ -194,6 +194,9 @@ export interface AppSettings {
   /** How the left sidebar groups its rows: the project→worktree tree, or every
    *  worktree flattened into lanes by agent attention. */
   sidebarGroupBy?: SidebarGroupBy;
+  /** Attention lanes (class 1–4) the user collapsed in the "group by status"
+   *  view; persisted so the collapse survives a restart. */
+  sidebarCollapsedLanes?: number[];
 }
 
 /** Left-sidebar grouping mode.
@@ -733,4 +736,5 @@ export const DEFAULT_SETTINGS: AppSettings = {
   pinnedProjects: [],
   pinnedWorktrees: [],
   sidebarGroupBy: "none",
+  sidebarCollapsedLanes: [],
 };
