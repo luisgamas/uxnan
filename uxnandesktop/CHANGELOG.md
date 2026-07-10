@@ -5,6 +5,45 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — sidebar sort modes, manual drag-reorder + agent-attention smart sort
+
+- The **Projects** header sort menu now drives **two independent axes** — the
+  project cards and the worktree rows — each offering **Manual · Name (A–Z / Z–A) ·
+  Recent · Agent activity**. The chosen mode is persisted per axis (`projectSort` /
+  `worktreeSort`).
+- **Manual order is now real drag-and-drop** (it was a no-op before): press-and-drag
+  a project card or a worktree row to reorder it, with a floating label and an
+  insertion marker. It uses pointer events (Tauri suppresses HTML5 dnd in the
+  webview — the same approach as the terminal tab-strip), promotes to a drag only
+  past a small threshold so taps still select, and swallows the trailing click.
+  A drag switches that axis to "manual". Project order persists via the new
+  `repo_reorder` command (reorders the `Vec<RepoData>`; repos absent from the list
+  keep their place *after* the listed ones, so a stale list never drops one); a
+  project's worktree order persists in the new `RepoData.worktree_order` (paths) via
+  `repo_set_worktree_order`. Both self-heal — removed items drop out, newly-seen
+  ones fall to the end.
+- **"Agent activity" (smart) sort** surfaces the workspaces that need you: agents
+  that are **blocked/waiting** first, then **done** (unreviewed), then **working**,
+  then **idle** — tie-broken by the freshest signal and recency. It reuses the hook
+  server's precise states (`resolveAgentDisplay`); a project aggregates the
+  most-urgent state across its worktrees. **Recent** sort is fed by a per-workspace
+  last-opened timestamp (`workspaceLastActive`, stamped on open, debounced persist).
+- **Anti-jump layer** (`createStableOrder`): the time-varying modes freeze their
+  rendered order and only reshuffle after a short settle delay (or immediately on a
+  structural add/remove), so rows don't jump while you read; static modes
+  (manual/name) apply instantly.
+- Pure, unit-tested ordering logic in `sidebar-sort.ts`; reusable
+  `createDragReorder` / `createStableOrder` helpers; `reorder_by_ids` covered by
+  Rust tests.
+
+### Added — pin (favorite) projects and worktrees
+
+- **Pin** a project (its ⋯ menu) or a worktree (its right-click menu; child
+  worktrees only — the primary always leads) to float it to the **top** of the
+  list, on top of whatever sort is active; pinned rows carry a pin glyph. Persisted
+  in `pinnedProjects` / `pinnedWorktrees` (self-healing). Pure `partitionPinned`,
+  unit-tested.
+
 ### Fixed — agent misidentification + black terminals on launch
 
 - **Wrapper agents no longer show the wrong name/icon.** Process detection matched

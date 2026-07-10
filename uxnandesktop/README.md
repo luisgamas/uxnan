@@ -46,6 +46,10 @@ available today are:
   terminal workspace, and its own agent, so one agent's work never collides with
   another's, and switching between them is a single click rather than a `git
   stash` / `git checkout` cycle.
+- **A sidebar you can order your way.** Sort the project cards and the worktree
+  rows independently — manually (**drag to reorder**), by name, by most-recent, or
+  by **agent activity** (workspaces whose agents are blocked/waiting bubble to the
+  top) — and **pin** the ones you live in so they always lead.
 - **A full terminal multiplexer.** Tabs, nested splits, drag-to-reorder and the
   ability to move tabs across panes, `Ctrl+Tab` MRU cycling, hardware-accelerated
   Canvas rendering, and scrollback that survives recreating a pane — built on
