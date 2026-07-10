@@ -148,6 +148,35 @@ export function sortItems<T>(
     .map((d) => d.item);
 }
 
+/** A lane of the "group by status" sidebar view: an attention class and its
+ *  items, already sorted within the lane by the attention comparator. */
+export interface StatusLane<T> {
+  attention: AttentionClass;
+  items: T[];
+}
+
+/** Lane order for the status view — most urgent first (needs-you · done · working
+ *  · idle). */
+const LANE_ORDER: readonly AttentionClass[] = [1, 2, 3, 4];
+
+/** Group `items` into attention lanes for the "group by status" view. Empty lanes
+ *  are omitted; each lane's items are ordered by the attention comparator (freshest
+ *  signal, then recency, then name). Pure, so it's unit-testable. */
+export function buildStatusGroups<T>(
+  items: readonly T[],
+  metaOf: (item: T) => SortMeta,
+): StatusLane<T>[] {
+  const lanes: StatusLane<T>[] = [];
+  for (const attention of LANE_ORDER) {
+    const inLane = items.filter(
+      (it) => attentionClass(metaOf(it).status, metaOf(it).unread) === attention,
+    );
+    if (inLane.length === 0) continue;
+    lanes.push({ attention, items: sortItems(inLane, "attention", metaOf) });
+  }
+  return lanes;
+}
+
 /** Partition `items` so pinned ones lead, each group keeping its incoming order.
  *  Applied *after* a sort, so pinned rows float to the top while staying sorted
  *  among themselves the same way as the rest. */

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyManualOrder,
   attentionClass,
+  buildStatusGroups,
   compareBy,
   mostUrgentStatus,
   partitionPinned,
@@ -181,6 +182,33 @@ describe("reorderByDrag", () => {
 
   it("ignores an unknown key", () => {
     expect(reorderByDrag(["a", "b"], "zzz", 0)).toEqual(["a", "b"]);
+  });
+});
+
+describe("buildStatusGroups", () => {
+  it("groups items into non-empty attention lanes, most urgent first", () => {
+    const items = [
+      meta({ name: "idle1", status: "idle" }),
+      meta({ name: "work1", status: "working" }),
+      meta({ name: "block1", status: "blocked" }),
+      meta({ name: "done1", status: "done", unread: true }),
+      meta({ name: "work2", status: "working" }),
+    ];
+    const lanes = buildStatusGroups(items, (m) => m);
+    expect(lanes.map((l) => l.attention)).toEqual([1, 2, 3, 4]);
+    expect(lanes[0].items.map((m) => m.name)).toEqual(["block1"]);
+    expect(lanes[3].items.map((m) => m.name)).toEqual(["idle1"]);
+    expect([...lanes[2].items.map((m) => m.name)].sort()).toEqual(["work1", "work2"]);
+  });
+
+  it("omits empty lanes", () => {
+    const items = [meta({ status: "working" }), meta({ status: "working" })];
+    const lanes = buildStatusGroups(items, (m) => m);
+    expect(lanes.map((l) => l.attention)).toEqual([3]);
+  });
+
+  it("returns nothing for no items", () => {
+    expect(buildStatusGroups([], (m: SortMeta) => m)).toEqual([]);
   });
 });
 

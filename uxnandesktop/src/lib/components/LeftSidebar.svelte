@@ -4,11 +4,13 @@
   import { Button } from "$lib/components/ui/button";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import ProjectCard from "./ProjectCard.svelte";
+  import WorktreeRow from "./WorktreeRow.svelte";
   import KeyChord from "./KeyChord.svelte";
   import { createStableOrder } from "$lib/state/sidebarOrder.svelte";
   import { createDragReorder } from "$lib/state/dragReorder.svelte";
-  import { isStaticSortMode } from "$lib/sidebar-sort";
-  import type { SortMode } from "$lib/types";
+  import { isStaticSortMode, type AttentionClass } from "$lib/sidebar-sort";
+  import type { SidebarGroupBy, SortMode } from "$lib/types";
+  import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
   import { divider, icon, iconButton, text } from "$lib/design";
   import { cn } from "$lib/utils";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
@@ -77,6 +79,25 @@
       ? projects.filteredRepos.find((r) => r.id === cardDrag.draggingKey)
       : null,
   );
+
+  // "Group by status" view: per-lane collapse state (local to the session) and
+  // the human label for each attention lane.
+  let collapsedLanes = $state<Record<number, boolean>>({});
+  function toggleLane(c: AttentionClass) {
+    collapsedLanes = { ...collapsedLanes, [c]: !collapsedLanes[c] };
+  }
+  function laneLabel(c: AttentionClass): string {
+    switch (c) {
+      case 1:
+        return i18n.t("sidebar.laneNeedsYou");
+      case 2:
+        return i18n.t("sidebar.laneDone");
+      case 3:
+        return i18n.t("sidebar.laneWorking");
+      default:
+        return i18n.t("sidebar.laneIdle");
+    }
+  }
 </script>
 
 <div class="scrollbar-sleek-parent flex h-full min-h-0 flex-col">
@@ -194,6 +215,15 @@
         {/snippet}
       </DropdownMenu.Trigger>
       <DropdownMenu.Content align="end" class="min-w-52">
+        <DropdownMenu.Label class={text.menuLabel}>{i18n.t("sidebar.view")}</DropdownMenu.Label>
+        <DropdownMenu.RadioGroup
+          value={projects.groupBy}
+          onValueChange={(v) => projects.setGroupBy(v as SidebarGroupBy)}
+        >
+          <DropdownMenu.RadioItem class={text.menu} value="none">{i18n.t("sidebar.viewTree")}</DropdownMenu.RadioItem>
+          <DropdownMenu.RadioItem class={text.menu} value="status">{i18n.t("sidebar.viewStatus")}</DropdownMenu.RadioItem>
+        </DropdownMenu.RadioGroup>
+        <DropdownMenu.Separator />
         <DropdownMenu.Label class={text.menuLabel}>{i18n.t("sidebar.sortProjects")}</DropdownMenu.Label>
         <DropdownMenu.RadioGroup
           value={projects.projectSort}
@@ -248,10 +278,10 @@
     </DropdownMenu.Root>
   </header>
 
-  <!-- Project tree: each project is selectable (= its main worktree) and
-       expands to show its non-main worktrees as sub-rows. -->
+  <!-- Project rows: either the project → worktree tree, or (group by status) every
+       worktree flattened into attention lanes. -->
   <div class="scrollbar-sleek worktree-sidebar-scrollbar min-h-0 flex-1 overflow-y-auto px-2.5 pb-2.5 pt-1">
-    {#if stableRepos.items.length === 0}
+    {#snippet emptyState()}
       <div class="flex flex-col items-center gap-2 px-2 py-6 text-center">
         <p class="text-xs text-muted-foreground">
           {projects.query ? i18n.t("sidebar.noMatch") : i18n.t("sidebar.empty")}
@@ -266,6 +296,40 @@
           </Button>
         {/if}
       </div>
+    {/snippet}
+
+    {#if projects.filteredRepos.length === 0}
+      {@render emptyState()}
+    {:else if projects.groupBy === "status"}
+      {@const lanes = projects.statusGroups()}
+      {#if lanes.length === 0}
+        {@render emptyState()}
+      {:else}
+        <div class="flex flex-col gap-3">
+          {#each lanes as lane (lane.attention)}
+            <div class="flex flex-col">
+              <!-- Lane header — collapsible; the attention label + a count. -->
+              <button
+                class="flex w-full items-center gap-1 rounded px-1 py-1 text-left transition-colors hover:bg-accent/40"
+                onclick={() => toggleLane(lane.attention)}
+              >
+                <ChevronRightIcon
+                  class={cn("size-3 shrink-0 text-muted-foreground/70 transition-transform", !collapsedLanes[lane.attention] && "rotate-90")}
+                />
+                <span class={cn("flex-1 truncate", text.section)}>{laneLabel(lane.attention)}</span>
+                <span class="text-xs tabular-nums text-muted-foreground/60">{lane.items.length}</span>
+              </button>
+              {#if !collapsedLanes[lane.attention]}
+                <div class="flex flex-col">
+                  {#each lane.items as row (row.path)}
+                    <WorktreeRow {row} showRepo />
+                  {/each}
+                </div>
+              {/if}
+            </div>
+          {/each}
+        </div>
+      {/if}
     {:else}
       <div class="flex flex-col gap-2">
         {#each stableRepos.items as repo, i (repo.id)}

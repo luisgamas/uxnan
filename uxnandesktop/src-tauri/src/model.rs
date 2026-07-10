@@ -347,6 +347,17 @@ pub struct AppSettings {
     /// of the active sort. Unknown paths are ignored (self-healing).
     #[serde(default)]
     pub pinned_worktrees: Vec<String>,
+    /// How the left sidebar groups its rows (frontend-owned enum):
+    /// `"none"` = the project → worktree tree (default); `"status"` = every
+    /// worktree flattened into lanes by agent attention. Unknown values fall back
+    /// to `"none"` in the frontend.
+    #[serde(default = "default_group_by")]
+    pub sidebar_group_by: String,
+}
+
+/// Default left-sidebar grouping: `"none"` (the project → worktree tree).
+fn default_group_by() -> String {
+    "none".to_string()
 }
 
 /// Default left-sidebar sort mode: `"manual"` (the user's own order), matching the
@@ -636,6 +647,7 @@ impl Default for AppSettings {
             workspace_last_active: std::collections::HashMap::new(),
             pinned_projects: Vec::new(),
             pinned_worktrees: Vec::new(),
+            sidebar_group_by: default_group_by(),
         }
     }
 }

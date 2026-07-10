@@ -30,6 +30,7 @@
     onRemoveProject,
     drag,
     dragIndex,
+    showRepo = false,
   }: {
     row: WorktreeRow;
     /** Main worktree only: "remove" removes the whole project (the card owns it). */
@@ -39,6 +40,10 @@
     drag?: DragReorder;
     /** This child's index among the reorderable worktrees (for the drop marker). */
     dragIndex?: number;
+    /** In the "group by status" view, show the owning project as the meta line
+     *  (rows there are flattened out of their project, so the branch alone is
+     *  ambiguous). */
+    showRepo?: boolean;
   } = $props();
 
   const active = $derived(projects.activeWorktreePath === row.path);
@@ -48,7 +53,9 @@
   const dirName = $derived(
     row.path.replace(/\\/g, "/").replace(/\/+$/, "").split("/").pop() ?? row.path,
   );
-  const meta = $derived(dirName);
+  // In the status view the project name is the useful context (rows are flattened
+  // out of their project tree); otherwise the worktree's folder name.
+  const meta = $derived(showRepo ? row.repoName : dirName);
 
   // Aggregate agent status for the leading dot: a working agent wins, else the
   // first one; null when the worktree has no agents (show the branch icon).

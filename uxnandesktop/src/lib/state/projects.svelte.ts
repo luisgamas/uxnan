@@ -23,6 +23,7 @@ import type {
   AgentProfile,
   BranchList,
   RepoData,
+  SidebarGroupBy,
   SortMode,
   WorktreeEntry,
   WorktreeStatus,
@@ -34,10 +35,12 @@ import { agentStatus } from "$lib/state/agentStatus.svelte";
 import { resolveAgentDisplay } from "$lib/state/agentDisplay";
 import {
   applyManualOrder,
+  buildStatusGroups,
   mostUrgentStatus,
   partitionPinned,
   sortItems,
   type SortMeta,
+  type StatusLane,
 } from "$lib/sidebar-sort";
 import { toast, toastError } from "$lib/toast";
 import { i18n } from "$lib/i18n";
@@ -217,6 +220,38 @@ class ProjectsStore {
   setWorktreeSort(mode: SortMode): void {
     app.settings.worktreeSort = mode;
     void app.persistSettings();
+  }
+
+  /** Current sidebar grouping mode (persisted; defaults to the project tree). */
+  get groupBy(): SidebarGroupBy {
+    return app.settings.sidebarGroupBy ?? "none";
+  }
+
+  /** Change the sidebar grouping mode and persist it. */
+  setGroupBy(mode: SidebarGroupBy): void {
+    app.settings.sidebarGroupBy = mode;
+    void app.persistSettings();
+  }
+
+  /** Every visible worktree (each project's main + its children) flattened into
+   *  attention lanes for the "group by status" view. Empty lanes are omitted;
+   *  within a lane, pinned worktrees float to the top, then the freshest/most-
+   *  recent. Each row keeps its `repoId`/`repoName` so the view can label it. */
+  statusGroups(): StatusLane<WorktreeRow>[] {
+    const all: WorktreeRow[] = [];
+    for (const repo of this.filteredRepos) {
+      const main = this.mainWorktree(repo.id);
+      if (main) {
+        all.push({ ...main, isMain: true, repoId: repo.id, repoName: repo.name });
+      }
+      for (const w of this.visibleChildWorktrees(repo.id)) {
+        all.push({ ...w, repoId: repo.id, repoName: repo.name });
+      }
+    }
+    return buildStatusGroups(all, (w) => this.worktreeSortMeta(w)).map((lane) => ({
+      attention: lane.attention,
+      items: partitionPinned(lane.items, (w) => this.isWorktreePinned(w.path)),
+    }));
   }
 
   /** Sort metadata for a workspace path — the agent status/unread/recency the

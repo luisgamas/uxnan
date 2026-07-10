@@ -191,7 +191,16 @@ export interface AppSettings {
   pinnedProjects?: string[];
   /** Pinned worktrees (paths) — shown first within their project. Self-healing. */
   pinnedWorktrees?: string[];
+  /** How the left sidebar groups its rows: the project→worktree tree, or every
+   *  worktree flattened into lanes by agent attention. */
+  sidebarGroupBy?: SidebarGroupBy;
 }
+
+/** Left-sidebar grouping mode.
+ *  - `none`   — the project → worktree tree (default).
+ *  - `status` — every worktree flattened into lanes by agent attention
+ *    (needs-you · done · working · idle), empty lanes omitted. */
+export type SidebarGroupBy = "none" | "status";
 
 /** How the left-sidebar project cards / worktree rows are ordered.
  *  - `manual`   — the user's own drag-and-drop arrangement (persisted).
@@ -723,4 +732,5 @@ export const DEFAULT_SETTINGS: AppSettings = {
   workspaceLastActive: {},
   pinnedProjects: [],
   pinnedWorktrees: [],
+  sidebarGroupBy: "none",
 };
