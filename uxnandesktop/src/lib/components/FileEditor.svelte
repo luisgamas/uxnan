@@ -13,6 +13,7 @@
     EditorView,
     GutterMarker,
     WidgetType,
+    drawSelection,
     gutter,
     keymap,
     lineNumbers,
@@ -185,8 +186,17 @@
       lineHeight: "1.5",
       overflow: "auto",
     },
-    ".cm-content": { padding: "4px 0" },
+    ".cm-content": { padding: "4px 0", caretColor: "var(--foreground)" },
     ".cm-gutters": { backgroundColor: "transparent", border: "none" },
+    // A firm, theme-aware caret (drawn by `drawSelection`) so the cursor is
+    // clearly visible in both light and dark — never a black caret lost on a dark
+    // background.
+    ".cm-cursor, .cm-cursor-primary": {
+      borderLeftColor: "var(--foreground)",
+      borderLeftWidth: "2px",
+    },
+    ".cm-selectionBackground": { backgroundColor: "rgba(128,128,128,0.3)" },
+    "&.cm-focused .cm-selectionBackground": { backgroundColor: "rgba(128,128,128,0.42)" },
   });
 
   let host = $state<HTMLDivElement>();
@@ -211,6 +221,7 @@
       doc: content,
       extensions: [
         lineNumbers(),
+        drawSelection(),
         history(),
         keymap.of([
           ...(saveKey
