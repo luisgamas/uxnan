@@ -10,7 +10,8 @@ export type AgentId =
   | 'claude-code'
   | 'gemini-cli'
   | 'pi-agent'
-  | 'aider'
+  /** Zero — open-source Go coding agent, driven over the Agent Client Protocol. */
+  | 'zero'
   /** Built-in reference/dev agent that echoes the prompt (no external CLI). */
   | 'echo';
 
