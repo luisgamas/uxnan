@@ -198,6 +198,12 @@ class ProjectsStore {
     return this.worktreesByRepo[repoId]?.length ?? 0;
   }
 
+  /** A registered repo's folder path by id (used e.g. for a short, relative-path
+   *  worktree label in the flattened status view). */
+  repoPath(repoId: string): string | undefined {
+    return app.repos.find((r) => r.id === repoId)?.path;
+  }
+
   // --- Sorting (left sidebar) ----------------------------------------------
 
   /** Current sort mode for the project cards (persisted; defaults to manual). */

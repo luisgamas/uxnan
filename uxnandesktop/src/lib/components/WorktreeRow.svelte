@@ -57,6 +57,18 @@
   // out of their project tree); otherwise the worktree's folder name.
   const meta = $derived(showRepo ? row.repoName : dirName);
 
+  // Tooltip: the full absolute path in the tree, but a short **relative** path in
+  // the flattened status view (relative to the project root, else the folder
+  // name) — the absolute path there was long enough to overflow the tooltip.
+  const shortLocation = $derived.by(() => {
+    const norm = (p: string) => p.replace(/\\/g, "/").replace(/\/+$/, "");
+    const p = norm(row.path);
+    const base = norm(projects.repoPath(row.repoId) ?? "");
+    if (base && p.startsWith(base + "/")) return p.slice(base.length + 1);
+    return p.split("/").pop() ?? p;
+  });
+  const tipText = $derived(showRepo ? shortLocation : row.path);
+
   // Aggregate agent status for the leading dot: a working agent wins, else the
   // first one; null when the worktree has no agents (show the branch icon).
   const agentStatus = $derived.by(() => {
@@ -116,7 +128,7 @@
   <ContextMenu.Root>
     <ContextMenu.Trigger>
       {#snippet child({ props })}
-        <TooltipSimple title={row.path}>
+        <TooltipSimple title={tipText}>
           {#snippet children(tp)}
             <div
               {...tp}
