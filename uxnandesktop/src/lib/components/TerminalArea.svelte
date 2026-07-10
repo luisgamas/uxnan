@@ -17,8 +17,7 @@
     type SplitDir,
   } from "$lib/state/terminals.svelte";
   import Terminal from "./Terminal.svelte";
-  import FileEditor from "./FileEditor.svelte";
-  import DiffPane from "./DiffPane.svelte";
+  import FileTabView from "./FileTabView.svelte";
   import CommitPane from "./CommitPane.svelte";
   import { resolveAgentDisplay } from "$lib/state/agentDisplay";
   import AgentStatusDot from "./AgentStatusDot.svelte";
@@ -31,7 +30,6 @@
   import PlusIcon from "@lucide/svelte/icons/plus";
   import GitBranchIcon from "@lucide/svelte/icons/git-branch";
   import FileIcon from "@lucide/svelte/icons/file";
-  import FileDiffIcon from "@lucide/svelte/icons/file-diff";
   import GitCommitIcon from "@lucide/svelte/icons/git-commit-horizontal";
   import ChevronLeftIcon from "@lucide/svelte/icons/chevron-left";
   import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
@@ -589,18 +587,6 @@
                               {/snippet}
                             </TooltipSimple>
                           {/if}
-                        {:else if t.kind === "diff"}
-                          <FileDiffIcon class={cn(icon.decorative, "shrink-0")} />
-                          <TooltipSimple title={t.file}>
-                            {#snippet children(tp)}
-                              <span
-                                {...tp}
-                                class="max-w-[120px] truncate"
-                              >
-                                {tabDisplayTitle(t)}
-                              </span>
-                            {/snippet}
-                          </TooltipSimple>
                         {:else}
                           <GitCommitIcon class={cn(icon.decorative, "shrink-0")} />
                           <TooltipSimple title={t.subject}>
@@ -727,12 +713,7 @@
                         {:else if t.kind === "file"}
                           {@const st = terminals.fileState(t.id)}
                           {#if st}
-                            <FileEditor fileState={st} active={activeRegion && paneActive} />
-                          {/if}
-                        {:else if t.kind === "diff"}
-                          {@const st = terminals.diffState(t.id)}
-                          {#if st}
-                            <DiffPane state={st} />
+                            <FileTabView tab={t} fileState={st} active={activeRegion && paneActive} />
                           {/if}
                         {:else}
                           {@const st = terminals.commitState(t.id)}

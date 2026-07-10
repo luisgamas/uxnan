@@ -56,6 +56,41 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   in `pinnedProjects` / `pinnedWorktrees` (self-healing). Pure `partitionPinned`,
   unit-tested.
 
+### Added — unified file viewer: image/Markdown preview + one tab per file (diff folded in)
+
+- **The center file tab is now multimodal, with view modes.** Opening a file gives a
+  single tab with an **Edit / Preview / Changes** switch (only the views a file
+  supports appear): the CodeMirror editor, a rendered **Markdown preview** or **image
+  viewer**, and the file's **working diff** (unified/side-by-side + hunk staging + a
+  staged/unstaged toggle). New `FileTabView.svelte` owns the one header; each visited
+  view stays mounted, so switching never remounts the editor (losing unsaved edits)
+  or re-reads git. `FileEditor`/`DiffPane` are now header-less bodies of this shell.
+- **Images render instead of the "binary" dead-end.** New backend `fs_read_data_url`
+  (`fs.rs`, registered in `commands.rs`/`lib.rs`) reads a local image into an inline
+  `data:` URL (extension MIME via `git::image_mime` + a shared magic-byte sniff, 25 MiB
+  cap); `FilePreview.svelte` shows it on a checkerboard with fit / zoom / actual-size
+  and a dimensions·size readout. SVG previews as an image *and* stays editable as
+  source. Rust unit tests cover the image / non-image / oversized paths.
+- **Markdown preview, in-house, with zero new dependencies.** `markdown.ts` parses
+  GitHub-flavored Markdown with the already-installed Lezer parser (`@lezer/markdown`)
+  into a typed AST that `MarkdownView.svelte` renders with plain Svelte markup —
+  **never `{@html}`**, so a document from any repo can't script the webview; raw HTML
+  blocks are shown as escaped text. Covers headings, lists + task lists, tables,
+  blockquotes, fenced code, links (opened externally) and images (local ones resolved
+  via `fs_read_data_url`). `.md` opens source-first with a one-click Preview toggle.
+  13 unit tests.
+- **One tab per file — the diff is no longer a second tab.** Clicking a changed file
+  in the Changes panel now **focuses that file's tab and flips it to the Changes view**
+  (with the staged/unstaged toggle) instead of opening a separate diff tab — so a
+  single file no longer sprawls across an editor tab plus a staged and an unstaged
+  diff tab, and it is read from git once, not twice. The standalone `diff` tab kind is
+  removed; the working diff is now a lazily-built sub-state of the file tab (keyed by
+  the tab id, so it's freed when the tab closes). Renames/moves re-point it, and
+  emptying the diff (staging/discarding the last hunk) falls back to the editor
+  instead of closing a possibly-dirty tab. Commit (History) tabs stay separate.
+- **i18n:** EN/ES strings for the view switch, the preview/image controls, the
+  staged/unstaged toggle and the empty states.
+
 ### Fixed — agent misidentification + black terminals on launch
 
 - **Wrapper agents no longer show the wrong name/icon.** Process detection matched

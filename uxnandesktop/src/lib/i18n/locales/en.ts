@@ -573,6 +573,19 @@ export const en = {
   "editor.saveAllClose": "Save all & close",
   "editor.discardAllClose": "Discard all & close",
 
+  // File viewer — view switch, preview & changes
+  "view.edit": "Edit",
+  "view.preview": "Preview",
+  "view.changes": "Changes",
+  "preview.staged": "Staged",
+  "preview.unstaged": "Unstaged",
+  "preview.zoomIn": "Zoom in",
+  "preview.zoomOut": "Zoom out",
+  "preview.fit": "Fit to view",
+  "preview.actualSize": "Actual size",
+  "preview.markdownEmpty": "Nothing to preview.",
+  "changes.none": "No changes to show.",
+
   // Appearance — themes
   "appearance.import": "Import",
   "appearance.paste": "Paste JSON",

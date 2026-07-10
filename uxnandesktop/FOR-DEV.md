@@ -220,7 +220,14 @@ are **done** (see `CHANGELOG.md` + `architecture/02d` §3). Remaining follow-ups
       `trash` crate). Open tabs follow a rename / close on a delete. See `CHANGELOG.md`.
 - [ ] Multi-worktree external-change watching (the watcher follows the active
       worktree only).
-- [ ] Tab/region reorder + drag for the mixed `terminal|file|diff` tabs.
+- [ ] Tab/region reorder + drag for the mixed `terminal|file|commit` tabs.
+- [ ] **Markdown preview polish (non-blocking).** The in-house renderer
+      (`markdown.ts` / `MarkdownView.svelte`) covers the common GFM surface; two
+      deferred niceties: (1) syntax-highlight fenced code per language — today code
+      blocks are plain monospace, though the Lezer language parsers are already
+      installed; (2) resolve in-document / relative *links* (heading anchors, and
+      links to sibling files → open that file's tab). Today only external links
+      open (via the OS) and only local *images* are resolved (`fs_read_data_url`).
 
 **Workspace / context menu**
 - [ ] **"Open with" external editors/IDEs + customization.** The worktree row's

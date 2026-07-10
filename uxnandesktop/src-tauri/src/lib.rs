@@ -236,6 +236,7 @@ pub fn run() {
             commands::browse_dirs,
             commands::fs_list_dir,
             commands::fs_read_file,
+            commands::fs_read_data_url,
             commands::fs_write_file,
             commands::fs_rename,
             commands::fs_create_file,

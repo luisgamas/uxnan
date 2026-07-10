@@ -325,6 +325,12 @@ export function fsReadFile(path: string): Promise<FileContent> {
   return invoke<FileContent>("fs_read_file", { path });
 }
 
+/** Read a local image file as an inline `data:<mime>;base64,…` URL for the
+ *  editor's image preview. Rejects non-images and anything over the size cap. */
+export function fsReadDataUrl(path: string): Promise<string> {
+  return invoke<string>("fs_read_data_url", { path });
+}
+
 /** Overwrite a file with the editor's content (atomic on the backend). */
 export function fsWriteFile(path: string, content: string): Promise<void> {
   return invoke("fs_write_file", { path, content });

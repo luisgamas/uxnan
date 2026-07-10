@@ -570,6 +570,19 @@ export const es: Record<MessageKey, string> = {
   "editor.saveAllClose": "Guardar todo y cerrar",
   "editor.discardAllClose": "Descartar todo y cerrar",
 
+  // Visor de archivos — cambio de vista, previsualización y cambios
+  "view.edit": "Editar",
+  "view.preview": "Vista previa",
+  "view.changes": "Cambios",
+  "preview.staged": "En stage",
+  "preview.unstaged": "Sin stage",
+  "preview.zoomIn": "Acercar",
+  "preview.zoomOut": "Alejar",
+  "preview.fit": "Ajustar a la vista",
+  "preview.actualSize": "Tamaño real",
+  "preview.markdownEmpty": "Nada que previsualizar.",
+  "changes.none": "No hay cambios que mostrar.",
+
   // Appearance — temas
   "appearance.import": "Importar",
   "appearance.paste": "Pegar JSON",

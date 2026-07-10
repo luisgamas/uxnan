@@ -142,7 +142,7 @@
 {#snippet fileRow(f: FileEntry, area: Area)}
   {@const b = badge(f, area)}
   {@const isOpen =
-    git.path != null && terminals.isDiffOpen(git.path, f.path, area === "staged")}
+    git.path != null && terminals.isFileChangesOpen(git.path, f.path, area === "staged")}
   {@const ns = git.numstat[f.path]}
   <TooltipSimple title={i18n.t("rightPanel.viewDiff")}>
     {#snippet children(tp)}
@@ -154,11 +154,11 @@
         )}
         role="button"
         tabindex="0"
-        onclick={() => git.path && terminals.openDiff(git.path, f.path, area === "staged")}
+        onclick={() => git.path && terminals.openFileChanges(git.path, f.path, area === "staged")}
         onkeydown={(e) =>
           (e.key === "Enter" || e.key === " ") &&
           git.path &&
-          terminals.openDiff(git.path, f.path, area === "staged")}
+          terminals.openFileChanges(git.path, f.path, area === "staged")}
       >
     <span class={cn("w-3 shrink-0 text-center font-mono font-semibold", text.indicator, b.cls)}>
       {b.letter}

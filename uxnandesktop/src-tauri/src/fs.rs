@@ -18,6 +18,10 @@ use crate::error::AppError;
 /// shows a "too large to edit" notice instead.
 const MAX_EDIT_BYTES: u64 = 2 * 1024 * 1024;
 
+/// Largest image the preview will inline as a `data:` URL (25 MiB). Past this we
+/// refuse rather than base64-encode a huge blob into the webview.
+const MAX_IMAGE_BYTES: u64 = 25 * 1024 * 1024;
+
 /// One entry in a directory listing (a sub-directory or a file).
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -160,6 +164,48 @@ pub async fn read_file(path: &str) -> Result<FileContent, AppError> {
             binary: true,
             too_large: false,
         }),
+    }
+}
+
+/// Read a local **image** file and return it as an inline `data:<mime>;base64,…`
+/// URL for the editor's image preview (multimodal file viewer). The MIME is
+/// resolved from the extension ([`crate::git::image_mime`]) and, failing that,
+/// sniffed from the leading magic bytes ([`sniff_image_mime`]); a file that is
+/// neither is refused, so we never inline a non-image as one. Refuses anything
+/// over [`MAX_IMAGE_BYTES`]. Reading in Rust (not the webview) keeps this working
+/// regardless of the asset-protocol scope.
+pub async fn read_data_url(path: &str) -> Result<String, AppError> {
+    use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+
+    let meta = tokio::fs::metadata(path).await?;
+    if meta.len() > MAX_IMAGE_BYTES {
+        return Err(AppError::Invalid(
+            "the image is too large to preview".into(),
+        ));
+    }
+    let bytes = tokio::fs::read(path).await?;
+    let mime = crate::git::image_mime(path)
+        .or_else(|| sniff_image_mime(&bytes))
+        .ok_or_else(|| AppError::Invalid(format!("{path} is not a recognized image")))?;
+    Ok(format!("data:{mime};base64,{}", BASE64.encode(&bytes)))
+}
+
+/// Best-effort image-type detection from the leading magic bytes, for files whose
+/// extension is missing or unknown. Shared by [`read_data_url`] and the URL
+/// fetcher in [`crate::commands`].
+pub(crate) fn sniff_image_mime(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.starts_with(&[0x89, b'P', b'N', b'G']) {
+        Some("image/png")
+    } else if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        Some("image/jpeg")
+    } else if bytes.starts_with(b"GIF8") {
+        Some("image/gif")
+    } else if bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(b"WEBP") {
+        Some("image/webp")
+    } else if bytes.starts_with(b"<svg") || bytes.starts_with(b"<?xml") {
+        Some("image/svg+xml")
+    } else {
+        None
     }
 }
 
@@ -437,6 +483,38 @@ mod tests {
         std::fs::write(&big, vec![b'a'; (MAX_EDIT_BYTES + 1) as usize]).unwrap();
         let r = read_file(&big.to_string_lossy()).await.unwrap();
         assert!(r.too_large && r.content.is_empty());
+    }
+
+    #[tokio::test]
+    async fn reads_image_as_data_url_by_extension_and_by_sniff() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        // MIME from the extension — the payload need not be a real PNG.
+        let named = tmp.path().join("logo.png");
+        std::fs::write(&named, [1u8, 2, 3, 4]).unwrap();
+        let url = read_data_url(&named.to_string_lossy()).await.unwrap();
+        assert!(url.starts_with("data:image/png;base64,"));
+
+        // MIME sniffed from magic bytes when the extension is missing/unknown.
+        let sniffed = tmp.path().join("noext");
+        std::fs::write(&sniffed, [0x89, b'P', b'N', b'G', 0, 1, 2]).unwrap();
+        let url = read_data_url(&sniffed.to_string_lossy()).await.unwrap();
+        assert!(url.starts_with("data:image/png;base64,"));
+    }
+
+    #[tokio::test]
+    async fn data_url_refuses_non_image_and_oversized() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        // Plain text is neither by extension nor by magic bytes → refused.
+        let txt = tmp.path().join("notes.txt");
+        std::fs::write(&txt, b"just text").unwrap();
+        assert!(read_data_url(&txt.to_string_lossy()).await.is_err());
+
+        // Over the size cap → refused before any encoding (checked on metadata).
+        let big = tmp.path().join("huge.png");
+        std::fs::write(&big, vec![0u8; (MAX_IMAGE_BYTES + 1) as usize]).unwrap();
+        assert!(read_data_url(&big.to_string_lossy()).await.is_err());
     }
 
     #[tokio::test]

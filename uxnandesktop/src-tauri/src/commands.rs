@@ -650,6 +650,16 @@ pub async fn fs_read_file(path: String) -> Result<crate::fs::FileContent, Comman
         .map_err(CommandError::from)
 }
 
+/// Read a local image file as an inline `data:<mime>;base64,…` URL for the
+/// editor's image preview (multimodal file viewer). Refuses non-images and
+/// anything over the preview size cap (see [`crate::fs::read_data_url`]).
+#[tauri::command]
+pub async fn fs_read_data_url(path: String) -> Result<String, CommandError> {
+    crate::fs::read_data_url(&path)
+        .await
+        .map_err(CommandError::from)
+}
+
 /// Overwrite a file with the editor's content (atomic temp-write + rename).
 #[tauri::command]
 pub async fn fs_write_file(path: String, content: String) -> Result<(), CommandError> {
@@ -796,28 +806,10 @@ pub async fn image_fetch_data_url(url: String) -> Result<String, CommandError> {
     // Prefer the server's content-type; else sniff from magic bytes. Refuse
     // anything that isn't a recognizable image so we never inline HTML/JSON.
     let mime = mime
-        .or_else(|| sniff_image_mime(&bytes).map(str::to_string))
+        .or_else(|| crate::fs::sniff_image_mime(&bytes).map(str::to_string))
         .ok_or_else(|| CommandError::new("IMAGE_FETCH_FAILED", "the URL is not an image"))?;
 
     Ok(format!("data:{mime};base64,{}", BASE64.encode(&bytes)))
-}
-
-/// Best-effort image type detection from the leading magic bytes, for responses
-/// that omit a usable `Content-Type`.
-fn sniff_image_mime(bytes: &[u8]) -> Option<&'static str> {
-    if bytes.starts_with(&[0x89, b'P', b'N', b'G']) {
-        Some("image/png")
-    } else if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
-        Some("image/jpeg")
-    } else if bytes.starts_with(b"GIF8") {
-        Some("image/gif")
-    } else if bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(b"WEBP") {
-        Some("image/webp")
-    } else if bytes.starts_with(b"<svg") || bytes.starts_with(b"<?xml") {
-        Some("image/svg+xml")
-    } else {
-        None
-    }
 }
 
 /// Set (or clear with `None`) the worktree root the filesystem watcher follows.

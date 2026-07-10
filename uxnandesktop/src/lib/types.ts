@@ -625,8 +625,8 @@ export interface HookScripts {
 /** Persisted terminal layout (structure only — fresh shells spawn on restore).
  *  Mirrors the serialized form produced by the terminals store. */
 /** One persisted tab descriptor. `kind` is optional for backward compatibility:
- *  a descriptor with no `kind` (older saved layouts) is a terminal. Diff tabs are
- *  transient and never persisted. */
+ *  a descriptor with no `kind` (older saved layouts) is a terminal. Commit tabs
+ *  are transient and never persisted; a file tab's diff is now one of its views. */
 export type SavedTab =
   | {
       kind?: "terminal";
@@ -637,7 +637,16 @@ export type SavedTab =
       shell?: string;
       args?: string[];
     }
-  | { kind: "file"; title: string; path: string; worktree?: string | null };
+  | {
+      kind: "file";
+      title: string;
+      path: string;
+      worktree?: string | null;
+      /** Which view the tab last showed: editor, rendered preview, or working diff. */
+      view?: "edit" | "preview" | "changes";
+      /** In the `changes` view: staged (index-vs-HEAD) vs unstaged (worktree-vs-index). */
+      staged?: boolean;
+    };
 
 export type SavedTermNode =
   | {
