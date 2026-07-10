@@ -1,6 +1,6 @@
 # Bridge — how agents are driven
 
-![Agents](https://img.shields.io/badge/wired_agents-5-2ea44f?style=for-the-badge)
+![Agents](https://img.shields.io/badge/wired_agents-6-2ea44f?style=for-the-badge)
 ![Transport](https://img.shields.io/badge/driven_via-official_local_CLI-339933?style=for-the-badge&logo=gnometerminal&logoColor=white)
 ![No keys](https://img.shields.io/badge/no_API_%7C_no_SDK_%7C_no_keys-0a0a0a?style=for-the-badge)
 
@@ -23,10 +23,12 @@ separate paid account beyond what that CLI already has, and it is not an unoffic
 API wrapper. Rate limits are whatever your plan allows.
 
 Prompts are passed as argv elements with `shell:false` (no shell injection); stdin
-is closed (the one-shot CLIs hang on an open stdin pipe). The two server-based
+is closed (the one-shot CLIs hang on an open stdin pipe). The server-based
 adapters are the exception: **Codex** speaks JSON-RPC over a long-lived
-`codex app-server` stdio, and **OpenCode** speaks HTTP + SSE to a long-lived
-`opencode serve` process (the prompt travels in the request body, never argv).
+`codex app-server` stdio, **Zero** speaks JSON-RPC (the Agent Client Protocol,
+NDJSON) over a long-lived `zero acp` stdio process, and **OpenCode** speaks
+HTTP + SSE to a long-lived `opencode serve` process (their prompts travel in the
+request body / session request, never argv).
 
 ## Wired agents
 
@@ -37,9 +39,10 @@ adapters are the exception: **Codex** speaks JSON-RPC over a long-lived
 | **Codex** | `codex exec --json --skip-git-repo-check` | `exec resume <thread_id>` | `permissionMode` → `-s workspace-write` / `-s read-only` / `--dangerously-bypass-approvals-and-sandbox` (+ `interactive` via `codex app-server`) | `codex app-server` → `model/list` (account-aware) → `~/.codex/config.toml` fallback |
 | **pi** | `pi -p --mode json` | `--session-id <id>` | `permissionMode` → built-in read/bash/edit/write / `--tools read,grep,find,ls` / `--approve` | `pi --list-models` (real list; reasoning knob per model) |
 | **Gemini CLI** | `gemini -p --output-format stream-json --approval-mode <mode> --skip-trust` | `--resume <uuid>` | `permissionMode` → `--approval-mode auto_edit` / `plan` / `yolo` (+ `interactive` via a `BeforeTool` hook) | curated set (the `auto` alias + the CLI's `VALID_GEMINI_MODELS`) |
+| **Zero** | `zero acp` (ACP JSON-RPC over stdio) | persisted ACP session id (`session/load`) | `accessMode` → ACP session mode: `ask` (real `session/request_permission` approvals) / `auto` for approveForMe·fullAccess | `zero models list` (real list; `contextWindow` from `ctx=`) |
 
-All five agents are wired; **Aider** is the only remaining planned adapter
-(recipe in [`../FOR-DEV.md`](../FOR-DEV.md)).
+All six agents are wired; no further agent is planned right now (the recipe for
+wiring a new one is in [`../FOR-DEV.md`](../FOR-DEV.md)).
 
 Each runs in the thread's `cwd`. Codex's `exec-server`/`mcp-server` modes are
 **not** used for turns — the one-shot `codex exec` entry point drives them — but
@@ -58,9 +61,10 @@ the phone renders them generically — Codex discovers them from the app-server
 `model/list` (`supportedReasoningEfforts`), Claude/pi from their own flag sets.
 
 **Interactive approvals** are wired for Echo, Claude Code (`PreToolUse` hook),
-Codex (`app-server` elicitations), OpenCode (`opencode serve` `permission.asked`)
-and Gemini (`BeforeTool` hook); only **pi** has no headless pre-tool channel yet
-(it runs autonomously — see [`../FOR-DEV.md`](../FOR-DEV.md)).
+Codex (`app-server` elicitations), OpenCode (`opencode serve` `permission.asked`),
+Gemini (`BeforeTool` hook) and Zero (`zero acp` `session/request_permission`);
+only **pi** has no headless pre-tool channel yet (it runs autonomously — see
+[`../FOR-DEV.md`](../FOR-DEV.md)).
 
 **Interactive questions** — OpenCode's `question` tool (the agent asks a
 multiple-choice question) surfaces as a `question` content block the phone answers
@@ -124,14 +128,14 @@ selection. Use only ids Claude Code accepts (`claude --model <id>` validates
 them). The same `models` field works for any agent the adapter honors it for;
 today that's Claude Code (OpenCode and Codex enumerate their own models).
 
-## Adding a new agent (e.g. Aider)
+## Adding a new agent
 
 Follow the recipe in [`../FOR-DEV.md`](../FOR-DEV.md) (Agent adapters): capture the
 real CLI's machine-readable stream once, then copy the closest template — a
 **one-shot per-turn CLI** (`gemini-adapter.ts`/`pi-adapter.ts`, which spawn the CLI
-once per turn) or a **long-lived server** (`codex-adapter.ts` over stdio JSON-RPC,
-`opencode-adapter.ts` over `opencode serve` HTTP/SSE, when the CLI exposes a pre-tool
-approval channel). Adjust the args/request builder + event parser, register it in
+once per turn) or a **long-lived server** (`codex-adapter.ts`/`zero-adapter.ts` over
+stdio JSON-RPC, `opencode-adapter.ts` over `opencode serve` HTTP/SSE, when the CLI
+exposes a pre-tool approval channel). Adjust the args/request builder + event parser, register it in
 `startBridge`, then wire it into `agent/models` (discovery), the `*-tools.ts` block
 mapper (structured content), `SessionHistoryReader` (on-disk `turn/list` fallback),
 and approvals if the CLI exposes a pre-tool channel. Test it like the existing

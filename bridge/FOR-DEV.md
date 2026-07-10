@@ -12,7 +12,7 @@ only a human can provide.)
 ## Status
 
 The bridge is **alpha-functional** on its primary path (LAN/Tailscale-direct,
-standalone). It builds clean and the suite is green (bridge 398, shared 36, relay
+standalone). It builds clean and the suite is green (bridge 408, shared 36, relay
 27). The **npm releases shipped** — `uxnan-bridge` is published to npm; releases
 publish to the **`latest`** dist-tag (`@uxnan/shared` pinned to the same version by
 the release workflow). Nothing below blocks LAN/Tailscale-direct use; the remaining
@@ -35,14 +35,16 @@ push validation (FOR-HUMAN).
   `Message.segments` interleave (text runs + work-log/diff/tool blocks in
   production order) so a `turn/list` re-sync renders the work log inline with
   the response instead of stacking all activity above one merged paragraph.
-- **5 real agents wired** — OpenCode (default), Claude Code, Codex, pi, and
-  Gemini CLI. Each drives its **official local CLI** with `shell:false`, parses
-  the native stream, and emits structured `stream/content/block` events
+- **6 real agents wired** — OpenCode (default), Claude Code, Codex, pi,
+  Gemini CLI, and Zero. Each drives its **official local CLI** with `shell:false`,
+  parses the native stream, and emits structured `stream/content/block` events
   (command / diff / tool) plus `stream/thinking/delta` (reasoning). Most spawn
-  the CLI over stdio; the two server-based adapters run a long-lived local
-  process instead — **Codex** JSON-RPC over `codex app-server` stdio, **OpenCode**
-  HTTP + SSE over `opencode serve` (loopback). **Aider** is the only remaining
-  agent (recipe below).
+  the CLI over stdio; the server-based adapters run a long-lived local process
+  instead — **Codex** JSON-RPC over `codex app-server` stdio, **Zero** JSON-RPC
+  over `zero acp` (the Agent Client Protocol, NDJSON over stdio — reusing the
+  Codex NDJSON transport, with **real `session/request_permission` approvals**),
+  and **OpenCode** HTTP + SSE over `opencode serve` (loopback). No further agent
+  is planned right now.
 - **Per-thread agent/project selection** + per-project agent/model pins
   (`projectAgents` config); per-model run-option knobs advertised on
   `agent/models`; per-turn token usage on `stream/turn/completed`.
@@ -56,8 +58,9 @@ push validation (FOR-HUMAN).
   auth-file existence only.
 - **Interactive approval intake** — Echo demo + Claude Code opt-in `PreToolUse`
   hook + Codex via the `codex app-server` turn protocol + OpenCode via
-  `opencode serve` `permission.asked` + Gemini `BeforeTool` hook; all routed
-  through one `requestApproval` round-trip, validated end-to-end.
+  `opencode serve` `permission.asked` + Gemini `BeforeTool` hook + Zero via
+  `zero acp` `session/request_permission`; all routed through one
+  `requestApproval` round-trip, validated end-to-end.
 - **Image attachments** — CLI-agnostic file-path, sandbox-safe.
 - **On-disk `turn/list` history fallback** for Claude / Codex / OpenCode / pi /
   Gemini JSONL/JSON stores.
@@ -90,8 +93,9 @@ push validation (FOR-HUMAN).
       runs tools autonomously and emits tool events only **after** the tool ran — no
       pre-tool channel to gate them, so pi surfaces `autonomous: true` (chip + banner)
       instead of approvals. Echo + Claude (`PreToolUse` hook) + Codex (`app-server`) +
-      OpenCode (`opencode serve` `permission.asked`) + Gemini (`BeforeTool` hook) all
-      have real per-action approvals. Real pi approvals would need its `--mode rpc`
+      OpenCode (`opencode serve` `permission.asked`) + Gemini (`BeforeTool` hook) +
+      Zero (`zero acp` `session/request_permission`) all have real per-action
+      approvals. Real pi approvals would need its `--mode rpc`
       (two-way, adapter refactor); revisit when pi ships a stable pre-tool channel on
       a headless entry point.
 - [ ] **OpenCode access-mode — mid-thread per-turn re-apply.** The thread's
@@ -162,13 +166,33 @@ push validation (FOR-HUMAN).
 - [ ] **pi context-window %** — pi reports raw `totalTokens` (shown as a count like
       Codex). Map the resolved model's context window (pi `--list-models` exposes it)
       so the phone can render a `%` ring instead of a count.
+- [ ] **Zero token usage** — the Agent Client Protocol carries no per-turn
+      token/context usage, so `ZeroAdapter` reports `reportsContextUsage:false` and the
+      phone shows no context meter for Zero. Read usage from `zero usage` (or Zero's
+      on-disk session store) and emit `usage` on `stream/turn/completed` so the meter
+      lights up. See the `FOR-DEV:` marker in `zero-adapter.ts`.
+- [ ] **Zero on-disk history fallback** — there is no `SessionHistoryReader` for
+      Zero's ACP sessions yet, so a `turn/list` after a bridge restart returns nothing
+      for a Zero thread (live/in-memory history still works). Parse Zero's on-disk ACP
+      session store (via `session/load`) and wire it into `session-history.ts` like the
+      Claude/Codex/OpenCode/pi/Gemini readers.
+- [ ] **Interactive `ask_user` for Zero** — Zero's `ask_user` tool is **non-interactive
+      over ACP**: Zero's ACP agent (`internal/acp/agent.go`) wires no `OnAskUser` handler,
+      so the loop auto-completes the call with "proceed with your best assumption" and
+      never routes it to the client. The bridge therefore can't turn it into the
+      interactive question card (the way OpenCode's `question` tool works); it only
+      renders the questions legibly (`zero-tools.ts` `formatAskUser`). Making it
+      answerable needs Zero to route `ask_user` to the ACP client (an **upstream** change,
+      e.g. a vendor `_zero/ask_user` request or reusing `session/request_permission`);
+      once it does, wire it into the existing `requestQuestion` round-trip.
 
 ### Adding the next agent (recipe — do these one by one)
 
 Pick the template that matches the CLI's headless surface. For a **one-shot
 per-turn CLI** (spawns once per turn) copy `gemini-adapter.ts` or `pi-adapter.ts`;
 for a **long-lived server** with a pre-tool approval channel copy `codex-adapter.ts`
-(JSON-RPC over stdio) or `opencode-adapter.ts` (HTTP/SSE over `opencode serve`).
+or `zero-adapter.ts` (JSON-RPC over stdio) or `opencode-adapter.ts` (HTTP/SSE over
+`opencode serve`).
 
 1. Run the real CLI by hand once and capture a turn's machine-readable stream
    (a `--json|--format json` one-shot, or the server's event stream). **Watch for
@@ -183,7 +207,6 @@ for a **long-lived server** with a pre-tool approval channel copy `codex-adapter
    content), `SessionHistoryReader` (on-disk `turn/list` fallback), and approvals if
    the CLI exposes a pre-tool channel.
 
-- [ ] **Aider** — the only remaining planned agent. Follow the recipe above.
 - [ ] **Antigravity CLI (`agy`) — investigated, deliberately NOT integrated**
       (decided 2026-06-19; validated against `agy` 1.0.3 — trust the binary, the web
       docs are unreliable). `agy` is a distinct binary from Gemini CLI (own exe/state

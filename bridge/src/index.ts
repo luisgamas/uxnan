@@ -148,6 +148,16 @@ export {
   type PermissionReply,
 } from './adapters/opencode-server.js';
 export { resolveOpenCodeBinary, type ResolvedOpenCode } from './adapters/resolve-opencode.js';
+export {
+  ZeroAdapter,
+  parseZeroModels,
+  mergeZeroProviderModels,
+  type ZeroAdapterOptions,
+  type SpawnedAcp,
+  type ZeroProvider,
+} from './adapters/zero-adapter.js';
+export { zeroToolBlock, zeroPlanSteps, type ZeroToolCall } from './adapters/zero-tools.js';
+export { resolveZeroBinary, type ResolvedZero } from './adapters/resolve-zero.js';
 export { defaultSpawn, type SpawnFn, type SpawnedProcess } from './adapters/spawn.js';
 export {
   ClaudeCodeAdapter,

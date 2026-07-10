@@ -5,6 +5,50 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — Zero agent wired over the Agent Client Protocol (ACP)
+- **What:** **Zero** (https://github.com/Gitlawb/zero), an open-source Go coding
+  agent, is now a real wired agent (AgentId `zero`, display name `Zero`) — the
+  sixth alongside OpenCode, Claude Code, Codex, pi and Gemini CLI. New adapter
+  `src/adapters/zero-adapter.ts` (+ `zero-tools.ts`, `resolve-zero.ts`), registered
+  in `startBridge`. There is **no remaining planned agent** (the previously-listed
+  Aider is no longer planned).
+- **Transport (ACP):** the bridge drives `zero acp`, which speaks **JSON-RPC 2.0
+  over newline-delimited stdio** (the Agent Client Protocol) — the bridge is the
+  ACP *client*, like an editor. The adapter reuses the Codex NDJSON transport; turns
+  run as ACP `session/new` + `session/prompt`, with `session/load` restoring a
+  persisted session for continuity.
+- **Real interactive approvals:** ACP `session/request_permission` is routed through
+  the bridge's shared `requestApproval` round-trip (the same one Claude / Codex /
+  OpenCode / Gemini use); the phone's decision maps by the ACP option `kind` to
+  `allow_once` / `allow_always` / `reject_once`. The thread's `accessMode` selects
+  the ACP **session mode**: `requestApproval` → `ask` (interactive), while
+  `approveForMe` / `fullAccess` → `auto` (answered without the phone). The
+  `approvals` capability is **`true`**.
+- **Plan + streaming:** `planMode`, `streaming`, `forking` and `images` are `true` —
+  plan updates and streamed content/thinking are re-emitted as the same structured
+  `stream/*` shape as the other agents (`zero-tools.ts` maps ACP tool calls / plan
+  steps to content blocks).
+- **Model discovery (real, per-install):** the model list is Zero's **own configured
+  providers**, not a built-in registry — `zero providers list --json` enumerates the
+  configured providers and, per available provider, `zero providers models <name>
+  --json` lists its models; the results are unioned and de-duplicated into
+  `AgentModel[]` (with `contextWindow`). If the structured probe yields nothing it
+  falls back to parsing `zero models list` text. The list is cached per adapter.
+- **Interactive questions (`ask_user`):** Zero's `ask_user` tool is **non-interactive
+  over ACP** — Zero's ACP agent wires no answer handler, so the call auto-completes
+  with "proceed with your best assumption" and the turn continues. The bridge can't
+  answer it, but renders the questions/options it asked **legibly** (instead of a raw
+  args dump) so the user still sees what was asked. Making it answerable needs an
+  upstream Zero change (tracked in `FOR-DEV.md`).
+- **No context usage over ACP:** ACP carries no per-turn token usage, so Zero reports
+  `reportsContextUsage:false` and the phone shows no context meter for it (tracked in
+  `FOR-DEV.md`, together with the still-missing on-disk `turn/list` history reader for
+  Zero's ACP sessions).
+- **Validated:** end-to-end against the real `zero.exe` (streaming + a real
+  shell-command approval + completion + real per-install model discovery) plus **9
+  unit tests** in `test/adapters/zero-adapter.test.ts`. The bridge suite is green at
+  **408 tests**.
+
 ### Changed — OpenCode now runs via `opencode serve` (real interactive approvals)
 - **Why:** the old adapter drove `opencode run --format json`, a one-shot,
   non-interactive process that ran tools autonomously and emitted tool events only

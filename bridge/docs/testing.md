@@ -32,9 +32,11 @@ payload; relay forwarding/rate-limit/health; daemon state, identity (keychain vi
 fake backend), lock file; the **autostart** plan per platform; git + workspace +
 **directory browsing** + checkpoints (real git in temp repos); conversation store;
 the AgentManager + echo agent end-to-end; the OpenCode / Claude Code / Codex / pi /
-Gemini adapter parsers + streaming (OpenCode against a fake `opencode serve`
+Gemini / Zero adapter parsers + streaming (OpenCode against a fake `opencode serve`
 implementing the `IOpenCodeServer` surface incl. the `permission.asked` → approval
-round-trip; the others against fake spawns); and router-level wiring/error mapping.
+round-trip; Zero against a fake `zero acp` ACP process incl. a
+`session/request_permission` → approval round-trip; the others against fake spawns);
+and router-level wiring/error mapping.
 
 ### Environment notes / known flakes (Windows)
 - **Serialized runner:** several suites boot a full bridge or spawn real child
@@ -74,14 +76,17 @@ pairing QR = Base64 of the UTF-8 JSON.
 ## 3. Validating agent adapters
 
 - **Echo:** fully tested; use it for the streaming path with no creds.
-- **OpenCode / Claude Code / Codex / pi / Gemini CLI (all wired):** see
+- **OpenCode / Claude Code / Codex / pi / Gemini CLI / Zero (all wired):** see
   [`agents.md`](./agents.md) for how each is driven. To run for real, set a working
-  `model` (and `permissionMode`) in `agents.<id>` + a real project dir, then drive a
-  turn from the app and watch the streamed deltas. Capture a CLI stream directly
-  with stdin closed, e.g. `cmd /c "<cli> ... < NUL"` (these CLIs hang on an open
-  stdin pipe). Adapter unit tests live in `test/adapters/`.
-- **Next (Aider):** the only remaining planned adapter — follow the recipe in
-  [`../FOR-DEV.md`](../FOR-DEV.md).
+  `model` (and `permissionMode`/`accessMode`) in `agents.<id>` + a real project dir,
+  then drive a turn from the app and watch the streamed deltas. Capture a CLI stream
+  directly with stdin closed, e.g. `cmd /c "<cli> ... < NUL"` (the one-shot CLIs hang
+  on an open stdin pipe; the server-based ones — Codex, Zero, OpenCode — keep stdin
+  open for their protocol). Adapter unit tests live in `test/adapters/`; Zero was also
+  validated end-to-end against the real `zero.exe` (streaming + a real
+  shell-command approval + completion).
+- **No next planned agent.** The wired set is complete for now; the recipe for
+  wiring a new one is in [`../FOR-DEV.md`](../FOR-DEV.md).
 
 ## 4. Push notifications (implemented, gated)
 

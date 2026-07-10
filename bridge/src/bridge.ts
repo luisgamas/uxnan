@@ -46,6 +46,8 @@ import { PiAdapter } from './adapters/pi-adapter.js';
 import { resolvePiBinary } from './adapters/resolve-pi.js';
 import { GeminiAdapter } from './adapters/gemini-adapter.js';
 import { resolveGeminiBinary } from './adapters/resolve-gemini.js';
+import { ZeroAdapter } from './adapters/zero-adapter.js';
+import { resolveZeroBinary } from './adapters/resolve-zero.js';
 import { ProjectRegistry } from './projects/project-registry.js';
 import { BrowseService } from './workspace/browse-service.js';
 import { PushService } from './push/push-service.js';
@@ -324,6 +326,24 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       displayName: 'Gemini',
       available: gemini.available,
       ...(geminiSettings.model !== undefined ? { defaultModel: geminiSettings.model } : {}),
+    },
+  );
+  // Zero: open-source Go agent driven over the Agent Client Protocol (`zero acp`
+  // — two-way JSON-RPC over stdio; approvals go through the bridge's
+  // `requestApproval` flow, mapped onto ACP `session/request_permission`).
+  const zeroSettings = config.agents.zero ?? {};
+  const zero = resolveZeroBinary(zeroSettings.binaryPath);
+  agentManager.register(
+    new ZeroAdapter({
+      binaryPath: zero.binaryPath,
+      prependArgs: zero.prependArgs,
+      onApprovalRequest: (threadId, info) => agentManager.requestApproval(threadId, info),
+      ...(zeroSettings.model !== undefined ? { defaultModel: zeroSettings.model } : {}),
+    }),
+    {
+      displayName: 'Zero',
+      available: zero.available,
+      ...(zeroSettings.model !== undefined ? { defaultModel: zeroSettings.model } : {}),
     },
   );
   const startedAt = now();
