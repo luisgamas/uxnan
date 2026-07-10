@@ -704,6 +704,7 @@ export const en = {
 
   // Terminal tab state
   "terminal.exited": "exited",
+  "terminal.spawnFailed": "Failed to start the terminal — check the shell profile.",
 
   // Settings — terminal section
   "settings.defaultProfile": "Default profile",

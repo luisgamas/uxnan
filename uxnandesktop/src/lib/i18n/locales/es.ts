@@ -701,6 +701,7 @@ export const es: Record<MessageKey, string> = {
 
   // Terminal tab state
   "terminal.exited": "finalizada",
+  "terminal.spawnFailed": "No se pudo iniciar la terminal — revisa el perfil de shell.",
 
   // Settings — terminal section
   "settings.defaultProfile": "Perfil predeterminado",

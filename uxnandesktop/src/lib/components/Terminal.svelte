@@ -24,6 +24,7 @@
   import { WebLinksAddon } from "@xterm/addon-web-links";
   import "@xterm/xterm/css/xterm.css";
   import { openUrl } from "$lib/api";
+  import { i18n } from "$lib/i18n";
   import { clipboardRead, clipboardWrite } from "$lib/clipboard";
   import { terminals } from "$lib/state/terminals.svelte";
   import { agentMonitor } from "$lib/state/agentMonitor.svelte";
@@ -411,15 +412,33 @@
     // *remount* onto a live session (e.g. the tab was dragged to another region,
     // which recreates its Svelte component). Default to true on failure (web
     // preview) so we don't chase a snapshot that can't exist.
-    const created = await invoke<boolean>("pty_create", {
-      id,
-      cwd,
-      shell,
-      args,
-      env,
-      cols: term.cols || 80,
-      rows: term.rows || 24,
-    }).catch(() => true);
+    let created = true;
+    let spawnFailed = false;
+    try {
+      created = await invoke<boolean>("pty_create", {
+        id,
+        cwd,
+        shell,
+        args,
+        env,
+        cols: term.cols || 80,
+        rows: term.rows || 24,
+      });
+    } catch (e) {
+      // Only a real backend rejection means the shell failed to spawn (a missing
+      // shell / bad profile). Surface it in the pane instead of a silent black
+      // screen, and don't type the agent command into a dead PTY. In a plain web
+      // preview there's no Tauri backend at all — keep `created = true` there.
+      if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
+        spawnFailed = true;
+        const msg =
+          e && typeof e === "object" && "message" in e
+            ? String((e as { message: unknown }).message)
+            : String(e);
+        term?.writeln(`\r\n\x1b[31m${i18n.t("terminal.spawnFailed")}\x1b[0m`);
+        term?.writeln(`\x1b[90m${msg}\x1b[0m`);
+      }
+    }
 
     // Remount: replay the backend's retained output so the fresh xterm shows the
     // scrollback it had before, instead of an empty screen until the next byte.
@@ -438,7 +457,7 @@
     // Agent launch: type the command into the freshly-started shell. Running it
     // inside the shell (rather than as the PTY process) lets PATH/PATHEXT shims
     // resolve (`codex.cmd`/`.ps1`), which spawning the bare command cannot.
-    if (runCommand && !launchedIds.has(id)) {
+    if (runCommand && !spawnFailed && !launchedIds.has(id)) {
       launchedIds.add(id);
       setTimeout(() => {
         invoke("pty_write", { id, data: `${runCommand}\r` }).catch(() => {});
