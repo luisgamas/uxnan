@@ -441,3 +441,57 @@ test('sendTurn for an unregistered agent rejects with AgentNotRunning', async ()
   await assert.rejects(manager.sendTurn(thread.id, 'hi'));
   await rm(baseDir, { recursive: true, force: true });
 });
+
+/**
+ * Records every cancelTurn it receives, so a test can assert the manager routed
+ * a cancel to the RIGHT adapter. `agentId` is a constructor param so one class
+ * can stand in for both the default and a non-default agent.
+ */
+class SpyAdapter extends BaseAgentAdapter {
+  readonly capabilities = CONTROLLED_CAPS;
+  readonly canceled: { threadId: string; turnId: string }[] = [];
+  constructor(readonly agentId: AgentId) {
+    super();
+  }
+  start(): Promise<void> {
+    return Promise.resolve();
+  }
+  stop(): Promise<void> {
+    return Promise.resolve();
+  }
+  sendTurn(options: SendTurnOptions): Promise<void> {
+    this.emit({ type: 'turn_started', threadId: options.threadId, turnId: options.turnId });
+    return Promise.resolve();
+  }
+  cancelTurn(threadId: string, turnId: string): Promise<void> {
+    this.canceled.push({ threadId, turnId });
+    return Promise.resolve();
+  }
+}
+
+test('cancelTurn routes to the THREAD’s agent, not the default (global stop-turn bug)', async () => {
+  const baseDir = join(tmpdir(), `uxnan-am-cancel-${randomUUID()}`);
+  const store = new ThreadStore(new DaemonState(baseDir));
+  const manager = new AgentManager({
+    store,
+    notify: () => {},
+    now: () => 1,
+    logger: createLogger('test', 'error'),
+    defaultAgent: 'echo',
+  });
+  const def = new SpyAdapter('echo');
+  const other = new SpyAdapter('zero');
+  manager.register(def);
+  manager.register(other);
+
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  // Turn runs on the NON-default agent — mirrors turn/send passing runtime.agentId.
+  const { turnId } = await manager.sendTurn(thread.id, 'hi', { agentId: 'zero' });
+
+  // turn/cancel does NOT pass agentId; the manager must resolve the thread's own.
+  await manager.cancelTurn(thread.id, turnId);
+
+  assert.deepEqual(other.canceled, [{ threadId: thread.id, turnId }]);
+  assert.deepEqual(def.canceled, []);
+  await rm(baseDir, { recursive: true, force: true });
+});

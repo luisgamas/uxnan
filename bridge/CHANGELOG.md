@@ -116,6 +116,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   mobile shows the plan-mode chip and banner. Added unit tests in
   `test/adapters/plan-blocks.test.ts`.
 
+### Fixed — stop-turn now cancels turns on non-default agents
+- **Root cause:** `AgentManager.cancelTurn` resolved the adapter from the configured
+  `defaultAgent`, but `turn/cancel` never passes an `agentId`. A thread running on
+  any **non-default** agent (Zero, OpenCode, …) had its cancel routed to the wrong
+  adapter, which no-oped — so the phone's Stop button did nothing and the turn kept
+  running. It only appeared to work when the thread happened to be on the default
+  agent.
+- **Fix (`agent-manager.ts`):** `cancelTurn` now resolves the thread's **own** agent
+  from `#agentByThread` (the same lookup `respondApproval` / `respondQuestion` use),
+  falling back to the default only when the thread has no recorded agent. Added a
+  regression test in `test/agents/agent-manager.test.ts`.
+
 ## [0.0.4-alpha.20260703] - 2026-07-03
 
 ### Changed — npm releases now publish to the `latest` dist-tag

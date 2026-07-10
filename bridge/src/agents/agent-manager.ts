@@ -483,7 +483,12 @@ export class AgentManager {
   }
 
   async cancelTurn(threadId: string, turnId: string, agentId?: AgentId): Promise<void> {
-    const adapter = this.#adapters.get(agentId ?? this.#options.defaultAgent);
+    // Resolve the thread's OWN agent (as respondApproval/respondQuestion do), not
+    // the default: a cancel for a thread running on a non-default agent must reach
+    // that agent's adapter, otherwise the wrong adapter no-ops and the turn keeps
+    // running. Explicit agentId wins; then the per-thread agent; then the default.
+    const resolved = agentId ?? this.#agentByThread.get(threadId) ?? this.#options.defaultAgent;
+    const adapter = this.#adapters.get(resolved);
     if (adapter) {
       await adapter.cancelTurn(threadId, turnId);
     }
