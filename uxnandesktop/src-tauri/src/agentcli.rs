@@ -128,8 +128,69 @@ fn resolve_claude() -> Option<Resolved> {
     resolve_node_cli(&["@anthropic-ai", "claude-code", "cli.js"], "claude")
 }
 
+const IMAGE_FILE_MACHINE_I386: u16 = 0x014c;
+const IMAGE_FILE_MACHINE_AMD64: u16 = 0x8664;
+const IMAGE_FILE_MACHINE_ARM64: u16 = 0xAA64;
+
+/// Read the PE COFF **machine type** from a DOS/PE image, or `None` if it isn't a
+/// PE (MZ → `e_lfanew` → `PE\0\0` → 2-byte machine). Generic over the reader so it
+/// unit-tests against an in-memory buffer.
+fn read_pe_machine<R: std::io::Read + std::io::Seek>(r: &mut R) -> Option<u16> {
+    use std::io::SeekFrom;
+    let mut mz = [0u8; 2];
+    r.read_exact(&mut mz).ok()?;
+    if &mz != b"MZ" {
+        return None;
+    }
+    r.seek(SeekFrom::Start(0x3C)).ok()?;
+    let mut lfa = [0u8; 4];
+    r.read_exact(&mut lfa).ok()?;
+    r.seek(SeekFrom::Start(u32::from_le_bytes(lfa) as u64))
+        .ok()?;
+    let mut sig = [0u8; 4];
+    r.read_exact(&mut sig).ok()?;
+    if &sig != b"PE\0\0" {
+        return None;
+    }
+    let mut machine = [0u8; 2];
+    r.read_exact(&mut machine).ok()?;
+    Some(u16::from_le_bytes(machine))
+}
+
+/// Whether the current host can execute a PE of this machine type (best-effort:
+/// x64 runs x64 + x86 via WOW64; ARM64 Windows also emulates x64/x86).
+fn host_runs_machine(machine: u16) -> bool {
+    let runnable: &[u16] = if cfg!(target_arch = "aarch64") {
+        &[
+            IMAGE_FILE_MACHINE_ARM64,
+            IMAGE_FILE_MACHINE_AMD64,
+            IMAGE_FILE_MACHINE_I386,
+        ]
+    } else if cfg!(target_arch = "x86_64") {
+        &[IMAGE_FILE_MACHINE_AMD64, IMAGE_FILE_MACHINE_I386]
+    } else {
+        &[IMAGE_FILE_MACHINE_I386]
+    };
+    runnable.contains(&machine)
+}
+
+/// Best-effort guard against handing a **wrong-architecture** `.exe` to `spawn()`
+/// (which fails with Windows' "not compatible with the version of Windows you're
+/// running" — e.g. an x64 `opencode.exe` installed by npm on an ARM64 host). An
+/// unreadable or non-PE file returns `true` — never over-reject; let the OS report
+/// the real error in that case.
+fn exe_runnable(path: &std::path::Path) -> bool {
+    match std::fs::File::open(path) {
+        Ok(mut f) => read_pe_machine(&mut f)
+            .map(host_runs_machine)
+            .unwrap_or(true),
+        Err(_) => true,
+    }
+}
+
 /// Resolve OpenCode: its native `.exe` (the npm shim forwards to it) on Windows,
-/// else the launcher on PATH.
+/// else the launcher on PATH. Wrong-arch `.exe` candidates are skipped so we don't
+/// spawn a binary Windows can't run.
 fn resolve_opencode() -> Option<Resolved> {
     if cfg!(windows) {
         let mut candidates: Vec<PathBuf> = Vec::new();
@@ -150,7 +211,7 @@ fn resolve_opencode() -> Option<Resolved> {
             candidates.push(PathBuf::from(local).join("opencode").join("opencode.exe"));
         }
         for c in candidates {
-            if c.is_file() {
+            if c.is_file() && exe_runnable(&c) {
                 return Some(Resolved {
                     program: c.to_string_lossy().to_string(),
                     prepend: vec![],
@@ -163,7 +224,7 @@ fn resolve_opencode() -> Option<Resolved> {
                 .extension()
                 .map(|e| e.eq_ignore_ascii_case("exe") || e.eq_ignore_ascii_case("com"))
                 .unwrap_or(false);
-            if is_exe {
+            if is_exe && exe_runnable(&p) {
                 return Some(Resolved {
                     program: p.to_string_lossy().to_string(),
                     prepend: vec![],
@@ -496,5 +557,31 @@ mod tests {
     #[test]
     fn unknown_agent_resolves_to_none() {
         assert!(resolve("definitely-not-an-agent").is_none());
+    }
+
+    #[test]
+    fn reads_pe_machine_and_gates_by_arch() {
+        // Minimal DOS+PE header: "MZ", e_lfanew=0x40, "PE\0\0", machine = AMD64.
+        let mut buf = vec![0u8; 0x48];
+        buf[0] = b'M';
+        buf[1] = b'Z';
+        buf[0x3C..0x40].copy_from_slice(&0x40u32.to_le_bytes());
+        buf[0x40..0x44].copy_from_slice(b"PE\0\0");
+        buf[0x44..0x46].copy_from_slice(&IMAGE_FILE_MACHINE_AMD64.to_le_bytes());
+        assert_eq!(
+            read_pe_machine(&mut std::io::Cursor::new(buf)),
+            Some(IMAGE_FILE_MACHINE_AMD64)
+        );
+        // A non-PE blob → None (exe_runnable treats that as runnable, not a reject).
+        assert_eq!(
+            read_pe_machine(&mut std::io::Cursor::new(b"not an exe".to_vec())),
+            None
+        );
+        // x86 runs on every current Windows arch; the rest depends on the test host.
+        assert!(host_runs_machine(IMAGE_FILE_MACHINE_I386));
+        if cfg!(target_arch = "x86_64") {
+            assert!(host_runs_machine(IMAGE_FILE_MACHINE_AMD64));
+            assert!(!host_runs_machine(IMAGE_FILE_MACHINE_ARM64)); // wrong-arch → skipped
+        }
     }
 }
