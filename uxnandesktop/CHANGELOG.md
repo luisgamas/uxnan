@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — group the sidebar by agent attention
+
+- A new **View** control in the Projects sort menu switches the sidebar between the
+  **Tree** (project → worktree) and **By status** — every worktree flattened into
+  **collapsible lanes by agent attention**: **Needs you** (blocked/waiting) ·
+  **Done** (unreviewed) · **Working** · **Idle**. Empty lanes are omitted and each
+  row is labeled by its project (rows leave their tree). The mode is persisted
+  (`sidebarGroupBy`); pinned worktrees float to the top of their lane. Pure,
+  unit-tested `buildStatusGroups`; a plain collapsible lane list (no board view).
+
 ### Added — sidebar sort modes, manual drag-reorder + agent-attention smart sort
 
 - The **Projects** header sort menu now drives **two independent axes** — the
