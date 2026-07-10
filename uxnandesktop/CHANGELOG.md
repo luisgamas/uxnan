@@ -5,6 +5,31 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — agent misidentification + black terminals on launch
+
+- **Wrapper agents no longer show the wrong name/icon.** Process detection matched
+  a running process to the *first* configured command by list order and by loose
+  substring, so `openclaude` (which contains `claude`) resolved to Claude Code, and
+  a Zero run intermittently resolved to Antigravity. `procscan` now scores matches
+  by specificity (exact ▸ `cmd-`/`cmd_` variant ▸ substring, longer wins) and walks
+  **breadth-first**, so the process nearest the shell — the agent you launched —
+  wins deterministically. And a uxnan-launched tab already knows its identity, so
+  process detection **no longer overrides** it (it only names hand-started agents).
+- **Surface PTY spawn failures instead of a silent black pane.** A failed
+  `pty_create` was swallowed (`.catch(() => true)`), leaving an empty terminal; a
+  real backend spawn failure (missing shell / bad profile) is now written into the
+  pane (new `terminal.spawnFailed` string) and the agent command isn't typed into a
+  dead PTY. Separately, on Windows with no shell profile configured, agent launch
+  now spawns **cmd.exe** explicitly (matching the cmd-style quoting + the documented
+  default) instead of falling through to the backend's PowerShell default, whose
+  execution policy trips npm `.ps1` shims.
+- **Defensive arch check for OpenCode's binary.** The AI-commit resolver
+  (`agentcli.rs`) now verifies an `opencode.exe` candidate's PE machine type against
+  the host before using it, so a wrong-architecture binary npm may have installed
+  (the "not compatible with the version of Windows" error) is skipped in favor of a
+  runnable install. *(The interactive-launch form of that error is an external
+  opencode packaging issue — reinstall opencode for your architecture.)*
+
 ### Added — left-panel "agent view" (conversation title + collapsed logo strip) + Zero
 
 - Each agent under a worktree is now a **two-line row**: status dot + logo +

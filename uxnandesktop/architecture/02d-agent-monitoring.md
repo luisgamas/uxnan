@@ -151,6 +151,7 @@ Como **fallback** para agentes que no soportan hooks HTTP nativos, el ADE analiz
 El ADE detecta **que proceso esta corriendo en primer plano** en cada PTY:
 
 - Si el proceso coincide con un agente conocido (por nombre del ejecutable, por ejemplo `claude`, `codex`, `aider`, `opencode`), se activa el **tracking automatico**.
+- El matching (`procscan.rs`) puntua por **especificidad** (exacto ▸ variante `cmd-`/`cmd_` ▸ substring; el comando mas largo gana) y recorre el arbol de procesos **en anchura**, quedandose con la coincidencia del proceso **mas cercano al shell**. Asi un agente "envoltorio" (p. ej. `openclaude`, que contiene `claude`) no se confunde con el que envuelve, de forma determinista. Ademas, un tab **lanzado** por el ADE ya conoce su identidad y la deteccion **no la sobrescribe** (solo nombra agentes iniciados a mano).
 - Esta capa no determina el estado especifico del agente, pero confirma que un agente esta activo en un PTY determinado y habilita el monitoreo por las capas superiores.
 - Es la capa mas basica: solo detecta presencia, no estado detallado.
 
