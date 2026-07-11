@@ -136,7 +136,7 @@ Uxnan no es un agente. Es el **cliente móvil** que permite al desarrollador con
 | **App móvil Uxnan** | Flutter / Dart | Cliente móvil: UI, transporte, estado |
 | **Uxnan Bridge** | Node.js daemon | Plano de control local en la PC; corre agentes y expone la API JSON-RPC al móvil |
 | **Uxnan Relay** | Node.js HTTP/WS | (Opcional, self-hosted) Relay de envelopes E2EE opacos como fallback off-LAN; push enviado por el bridge directamente |
-| **Agent Adapters** | Node.js | Adaptadores por agente (Codex, OpenCode, Claude Code, pi, Gemini CLI, Zero) |
+| **Agent Adapters** | Node.js | Adaptadores por agente (Codex, OpenCode, Claude Code, pi, Gemini CLI, Zero, Grok) |
 
 ### 3.3 Topologías de conexión
 

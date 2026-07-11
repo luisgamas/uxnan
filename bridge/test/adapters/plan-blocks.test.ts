@@ -5,6 +5,8 @@ import { toolUseToBlock } from '../../src/adapters/claude-tools.js';
 import { opencodeToolBlock, mergePlanSteps } from '../../src/adapters/opencode-tools.js';
 import { piToolBlock } from '../../src/adapters/pi-tools.js';
 import { codexItemBlocks } from '../../src/adapters/codex-tools.js';
+import { zeroToolBlock, zeroPlanSteps } from '../../src/adapters/zero-tools.js';
+import { grokToolBlock, grokPlanSteps } from '../../src/adapters/grok-tools.js';
 
 test('extractPlanSteps reads the Claude/OpenCode `todos` shape', () => {
   const steps = extractPlanSteps({
@@ -163,4 +165,77 @@ test('Codex update_plan item maps to a plan block', () => {
       { description: 'Two', status: 'in_progress' },
     ],
   });
+});
+
+// The ACP agents (Zero, Grok) report their plan via `session/update`'s `plan`
+// entries, which the adapter turns into a plan block. Both must produce the SAME
+// canonical `plan` shape as the CLI agents above, so the phone renders one
+// PlanCard widget regardless of which agent (or tool name) produced it.
+test('Zero plan entries map to the same plan block', () => {
+  const steps = zeroPlanSteps([
+    { content: 'One', priority: 'high', status: 'completed' },
+    { content: 'Two', priority: 'medium', status: 'in_progress' },
+  ]);
+  assert.deepEqual(planBlock(steps), {
+    type: 'plan',
+    state: {
+      steps: [
+        { description: 'One', status: 'completed' },
+        { description: 'Two', status: 'in_progress' },
+      ],
+    },
+  });
+});
+
+test('Grok plan entries map to the same plan block', () => {
+  const steps = grokPlanSteps([
+    { content: 'One', priority: 'high', status: 'completed' },
+    { content: 'Two', priority: 'medium', status: 'in_progress' },
+  ]);
+  assert.deepEqual(planBlock(steps), {
+    type: 'plan',
+    state: {
+      steps: [
+        { description: 'One', status: 'completed' },
+        { description: 'Two', status: 'in_progress' },
+      ],
+    },
+  });
+});
+
+// A shell/execute tool must normalize to the SAME `command_execution` block for
+// every agent, regardless of the agent's own tool name (Claude `Bash`, OpenCode
+// `bash`, ACP `execute`), so the phone renders one CommandCard for all of them.
+test('execute/bash tools normalize to a command_execution block across agents', () => {
+  const claude = toolUseToBlock(
+    { id: 'c1', name: 'Bash', input: { command: 'ls' } },
+    { toolUseId: 'c1', text: 'a.txt', isError: false },
+  );
+  const opencode = opencodeToolBlock('bash', 'o1', { command: 'ls' }, 'a.txt', false);
+  const zero = zeroToolBlock({
+    toolCallId: 'z1',
+    title: 'shell',
+    kind: 'execute',
+    status: 'completed',
+    rawInput: { cmd: 'ls' },
+    content: [{ type: 'content', content: { type: 'text', text: 'a.txt' } }],
+  });
+  const grok = grokToolBlock({
+    toolCallId: 'g1',
+    title: 'shell',
+    kind: 'execute',
+    status: 'completed',
+    rawInput: { command: 'ls' },
+    content: [{ type: 'content', content: { type: 'text', text: 'a.txt' } }],
+  });
+  const expected = {
+    type: 'command_execution',
+    command: 'ls',
+    status: 'completed',
+    output: 'a.txt',
+  };
+  assert.deepEqual(claude, expected);
+  assert.deepEqual(opencode, expected);
+  assert.deepEqual(zero, expected);
+  assert.deepEqual(grok, expected);
 });

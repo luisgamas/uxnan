@@ -115,7 +115,7 @@ Todos los adaptadores deben implementar la interfaz `IAgentAdapter` en el Bridge
 ```typescript
 interface IAgentAdapter {
   // Identidad
-  readonly agentId: string;          // "codex" | "opencode" | "claude-code" | "gemini-cli" | "pi-agent" | "zero" | custom
+  readonly agentId: string;          // "codex" | "opencode" | "claude-code" | "gemini-cli" | "pi-agent" | "zero" | "grok" | custom
   readonly displayName: string;
   readonly version: string;
   readonly capabilities: AgentCapabilities;
@@ -219,6 +219,7 @@ interface AgentCapabilities {
 //   ✅ pi-agent  (`pi -p --mode json`; --session-id; **autonomous=true**: YOLO headless, no pre-tool protocol — see FOR-DEV)
 //   ✅ gemini-cli (`gemini -p --output-format stream-json`; --session-id + --resume; **BeforeTool hook** real approvals)
 //   ✅ zero      (`zero acp` ACP JSON-RPC over stdio; session/prompt turns; **session/request_permission real approvals**; plan; models via `zero models list`)
+//   ✅ grok      (`grok agent stdio` ACP JSON-RPC over stdio; session/prompt turns; **session/request_permission real approvals**; plan; models via own discovery)
 ```
 
 ---
@@ -1528,7 +1529,7 @@ bridge/
 │   │                               #   mdns-advertiser, local-hosts, trust-store, ...
 │   ├── pairing/pairing-code-service.ts        # GET /pair/resolve?code=
 │   ├── adapters/                   # un adapter + *-tools.ts por agente:
-│   │                               #   opencode(+serve,approval)/claude/codex(+app-server,approval)/pi/gemini/zero(+acp,approval),
+│   │                               #   opencode(+serve,approval)/claude/codex(+app-server,approval)/pi/gemini/zero(+acp,approval)/grok(+acp,approval),
 │   │                               #   echo, process-agent-adapter, content-blocks, run-options,
 │   │                               #   resolve-<agente>, spawn
 │   ├── agents/agent-manager.ts     # orquestacion de turnos/streaming + approvals

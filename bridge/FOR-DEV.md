@@ -35,16 +35,17 @@ push validation (FOR-HUMAN).
   `Message.segments` interleave (text runs + work-log/diff/tool blocks in
   production order) so a `turn/list` re-sync renders the work log inline with
   the response instead of stacking all activity above one merged paragraph.
-- **6 real agents wired** — OpenCode (default), Claude Code, Codex, pi,
-  Gemini CLI, and Zero. Each drives its **official local CLI** with `shell:false`,
-  parses the native stream, and emits structured `stream/content/block` events
-  (command / diff / tool) plus `stream/thinking/delta` (reasoning). Most spawn
-  the CLI over stdio; the server-based adapters run a long-lived local process
-  instead — **Codex** JSON-RPC over `codex app-server` stdio, **Zero** JSON-RPC
-  over `zero acp` (the Agent Client Protocol, NDJSON over stdio — reusing the
-  Codex NDJSON transport, with **real `session/request_permission` approvals**),
-  and **OpenCode** HTTP + SSE over `opencode serve` (loopback). No further agent
-  is planned right now.
+- **7 real agents wired** — OpenCode (default), Claude Code, Codex, pi,
+  Gemini CLI, Zero, and Grok. Each drives its **official local CLI** with
+  `shell:false`, parses the native stream, and emits structured
+  `stream/content/block` events (command / diff / tool) plus
+  `stream/thinking/delta` (reasoning). Most spawn the CLI over stdio; the
+  server-based adapters run a long-lived local process instead — **Codex**
+  JSON-RPC over `codex app-server` stdio, **Zero** and **Grok** JSON-RPC over the
+  Agent Client Protocol (`zero acp` / `grok agent stdio`, NDJSON over stdio —
+  reusing the Codex NDJSON transport, with **real `session/request_permission`
+  approvals**), and **OpenCode** HTTP + SSE over `opencode serve` (loopback). No
+  further agent is planned right now.
 - **Per-thread agent/project selection** + per-project agent/model pins
   (`projectAgents` config); per-model run-option knobs advertised on
   `agent/models`; per-turn token usage on `stream/turn/completed`.
@@ -58,9 +59,9 @@ push validation (FOR-HUMAN).
   auth-file existence only.
 - **Interactive approval intake** — Echo demo + Claude Code opt-in `PreToolUse`
   hook + Codex via the `codex app-server` turn protocol + OpenCode via
-  `opencode serve` `permission.asked` + Gemini `BeforeTool` hook + Zero via
-  `zero acp` `session/request_permission`; all routed through one
-  `requestApproval` round-trip, validated end-to-end.
+  `opencode serve` `permission.asked` + Gemini `BeforeTool` hook + Zero and Grok
+  via ACP `session/request_permission`; all routed through one `requestApproval`
+  round-trip, validated end-to-end.
 - **Image attachments** — CLI-agnostic file-path, sandbox-safe.
 - **On-disk `turn/list` history fallback** for Claude / Codex / OpenCode / pi /
   Gemini JSONL/JSON stores.
@@ -185,7 +186,25 @@ push validation (FOR-HUMAN).
       answerable needs Zero to route `ask_user` to the ACP client (an **upstream** change,
       e.g. a vendor `_zero/ask_user` request or reusing `session/request_permission`);
       once it does, wire it into the existing `requestQuestion` round-trip.
-
+- [ ] **Grok live-turn verification (balance-blocked)** — the ACP envelope,
+      handshake and model discovery were exercised against a live `grok 0.2.93`, but
+      a real turn could **not** be run because the test account's Grok Build balance
+      was exhausted (HTTP 402 from `cli-chat-proxy.grok.com`). Re-verify against a
+      funded account: the per-turn `session/update` `tool_call`/`plan` shapes and
+      arg names (`grok-tools.ts` assumes ACP-standard `kind`/`rawInput`/`content`),
+      the `session/request_permission` option `kind`s, whether Grok emits token
+      usage, and whether `session/set_mode { modeId: <effort> }` actually applies the
+      reasoning effort (it accepts any modeId without error). See the FOR-DEV notes
+      in `grok-adapter.ts` / `grok-tools.ts`.
+- [ ] **Grok token usage** — like Zero, `GrokAdapter` reports
+      `reportsContextUsage:false` (no per-turn usage was observed over ACP). If Grok
+      exposes usage (its `/context` command implies it tracks it), emit `usage` on
+      `stream/turn/completed` so the phone's context meter lights up.
+- [ ] **Grok on-disk history fallback** — there is no `SessionHistoryReader` for
+      Grok's ACP sessions yet, so a `turn/list` after a bridge restart returns nothing
+      for a Grok thread (live/in-memory history still works). Parse Grok's on-disk
+      session store (`~/.grok/…`, via `session/load`) and wire it into
+      `session-history.ts` like the Claude/Codex/OpenCode/pi/Gemini readers.
 ### Adding the next agent (recipe — do these one by one)
 
 Pick the template that matches the CLI's headless surface. For a **one-shot

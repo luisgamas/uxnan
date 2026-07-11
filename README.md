@@ -132,7 +132,7 @@ one's **official local CLI** exactly as you would in a terminal. No provider API
 no SDK, no keys: every agent runs under the account you already signed it in
 with.
 
-**Real agents wired:** OpenCode, Claude Code, Codex, pi, Gemini CLI, Zero.
+**Real agents wired:** OpenCode, Claude Code, Codex, pi, Gemini CLI, Zero, Grok.
 
 → **[Read the bridge README](bridge/README.md)**
 
@@ -197,8 +197,8 @@ If you find a vulnerability, please don't open a public issue — see
 ![Phase](https://img.shields.io/badge/PHASE-ALPHA_(MVP_in_progress)-orange?style=for-the-badge)
 
 Uxnan is in **alpha**, and the core loop already works end to end. From the phone
-I can pair with the bridge and hold a real, streaming conversation with **six
-agents** — OpenCode, Claude Code, Codex, pi, Gemini CLI and Zero — over the
+I can pair with the bridge and hold a real, streaming conversation with **seven
+agents** — OpenCode, Claude Code, Codex, pi, Gemini CLI, Zero and Grok — over the
 encrypted channel. The desktop app is alpha-functional on its own. Push notifications are
 live on Android (iOS depends on Apple assets).
 
@@ -209,7 +209,7 @@ lives in its own `FOR-DEV.md`:
 |---|---|---|
 | [`uxnanmobile/`](uxnanmobile/README.md) | MVP wired, Android alpha-ready; iOS pending Apple assets | [status](uxnanmobile/FOR-DEV.md) |
 | [`uxnandesktop/`](uxnandesktop/README.md) | Alpha-functional as a standalone app | [status](uxnandesktop/FOR-DEV.md) |
-| [`bridge/`](bridge/README.md) | Implemented; 6 real agents wired | [status](bridge/FOR-DEV.md) |
+| [`bridge/`](bridge/README.md) | Implemented; 7 real agents wired | [status](bridge/FOR-DEV.md) |
 | [`relay/`](relay/README.md) | Implemented; optional / self-hosted | [status](relay/FOR-DEV.md) |
 | [`shared/`](shared/README.md) | Implemented; contracts locked in CI | [README](shared/README.md) |
 

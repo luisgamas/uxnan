@@ -158,6 +158,9 @@ export {
 } from './adapters/zero-adapter.js';
 export { zeroToolBlock, zeroPlanSteps, type ZeroToolCall } from './adapters/zero-tools.js';
 export { resolveZeroBinary, type ResolvedZero } from './adapters/resolve-zero.js';
+export { GrokAdapter, mapGrokModels, type GrokAdapterOptions } from './adapters/grok-adapter.js';
+export { grokToolBlock, grokPlanSteps, type GrokToolCall } from './adapters/grok-tools.js';
+export { resolveGrokBinary, type ResolvedGrok } from './adapters/resolve-grok.js';
 export { defaultSpawn, type SpawnFn, type SpawnedProcess } from './adapters/spawn.js';
 export {
   ClaudeCodeAdapter,

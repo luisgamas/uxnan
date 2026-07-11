@@ -11,7 +11,7 @@ How to install, run, and auto-start the uxnan bridge daemon on a PC.
 - **Node.js ≥ 18** (developed/tested on Node 24).
 - One or more **agent CLIs**, installed and logged in with your own account —
   see [`agents.md`](./agents.md) / [`../FOR-HUMAN.md`](../FOR-HUMAN.md) (OpenCode,
-  Claude Code, Codex, pi, Gemini CLI, Zero). A
+  Claude Code, Codex, pi, Gemini CLI, Zero, Grok). A
   missing/logged-out agent just shows as `available: false`; the others keep
   working.
 

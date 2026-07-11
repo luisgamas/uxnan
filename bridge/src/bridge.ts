@@ -48,6 +48,8 @@ import { GeminiAdapter } from './adapters/gemini-adapter.js';
 import { resolveGeminiBinary } from './adapters/resolve-gemini.js';
 import { ZeroAdapter } from './adapters/zero-adapter.js';
 import { resolveZeroBinary } from './adapters/resolve-zero.js';
+import { GrokAdapter } from './adapters/grok-adapter.js';
+import { resolveGrokBinary } from './adapters/resolve-grok.js';
 import { ProjectRegistry } from './projects/project-registry.js';
 import { BrowseService } from './workspace/browse-service.js';
 import { PushService } from './push/push-service.js';
@@ -344,6 +346,24 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       displayName: 'Zero',
       available: zero.available,
       ...(zeroSettings.model !== undefined ? { defaultModel: zeroSettings.model } : {}),
+    },
+  );
+  // Grok: xAI's coding CLI driven over the Agent Client Protocol (`grok agent
+  // stdio` — two-way JSON-RPC over stdio; approvals go through the bridge's
+  // `requestApproval` flow, mapped onto ACP `session/request_permission`).
+  const grokSettings = config.agents.grok ?? {};
+  const grok = resolveGrokBinary(grokSettings.binaryPath);
+  agentManager.register(
+    new GrokAdapter({
+      binaryPath: grok.binaryPath,
+      prependArgs: grok.prependArgs,
+      onApprovalRequest: (threadId, info) => agentManager.requestApproval(threadId, info),
+      ...(grokSettings.model !== undefined ? { defaultModel: grokSettings.model } : {}),
+    }),
+    {
+      displayName: 'Grok',
+      available: grok.available,
+      ...(grokSettings.model !== undefined ? { defaultModel: grokSettings.model } : {}),
     },
   );
   const startedAt = now();

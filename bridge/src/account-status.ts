@@ -24,6 +24,7 @@ const PROVIDER_BY_AGENT: Partial<Record<AgentId, string>> = {
   codex: 'openai',
   'claude-code': 'anthropic',
   opencode: 'opencode',
+  grok: 'xai',
 };
 
 /**
@@ -39,6 +40,8 @@ const AUTH_FILES: Partial<Record<AgentId, string[]>> = {
   // existence means at least one provider is logged in. pi is multi-provider, so
   // no single public provider name is surfaced.
   'pi-agent': ['.pi/agent/auth.json'],
+  // Grok caches its xAI token at ~/.grok/auth.json (its existence means signed in).
+  grok: ['.grok/auth.json'],
 };
 
 export interface AccountStatusDeps {

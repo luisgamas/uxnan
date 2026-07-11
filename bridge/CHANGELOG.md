@@ -5,6 +5,51 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — Grok agent wired over the Agent Client Protocol (ACP)
+- **What:** **Grok** (xAI's coding CLI, `grok`) is now a real wired agent (AgentId
+  `grok`, display name `Grok`) — the **seventh** alongside OpenCode, Claude Code,
+  Codex, pi, Gemini CLI and Zero. New adapter `src/adapters/grok-adapter.ts` (+
+  `grok-tools.ts`, `resolve-grok.ts`), registered in `startBridge`.
+- **Transport (ACP):** the bridge drives `grok agent stdio`, which speaks
+  **JSON-RPC 2.0 over newline-delimited stdio** (the Agent Client Protocol, the
+  same protocol as Zero) — the bridge is the ACP *client*, like an editor. The
+  adapter reuses the Codex NDJSON transport; turns run as ACP `session/new` +
+  `session/prompt`, with `session/load` restoring a persisted session for
+  continuity. The native `grok` executable (`~/.grok/bin/grok`) spawns directly
+  with `shell:false` (no shell shim), resolved by `resolve-grok.ts`.
+- **Real interactive approvals:** ACP `session/request_permission` is routed
+  through the bridge's shared `requestApproval` round-trip (the same one Claude /
+  Codex / OpenCode / Gemini / Zero use); the phone's decision maps by the ACP
+  option `kind` to `allow_once` / `allow_always` / `reject_once`. The thread's
+  `accessMode` selects the posture (`requestApproval` asks the phone;
+  `approveForMe` / `fullAccess` answer without it). `approvals` capability **`true`**.
+- **Plan + streaming:** `planMode`, `streaming` and `forking` are `true` — plan
+  updates and streamed content/thinking are re-emitted as the same structured
+  `stream/*` shape as every other agent (`grok-tools.ts` maps ACP tool calls / plan
+  steps to the shared content blocks, so the phone renders **the same widgets** —
+  PlanCard, DiffBlock, CommandCard — regardless of Grok's own tool names). `images`
+  is **`false`** (Grok's ACP `promptCapabilities.image` is false).
+- **Model discovery (real, from the handshake):** Grok reports its models —
+  **with context window (`totalContextTokens`) and per-model reasoning-effort
+  knobs (`reasoningEfforts`)** — directly in the `initialize` handshake's
+  `_meta.modelState`, so `agent/models` needs no extra CLI call or session. The
+  chosen model is applied via the standard ACP `session/set_model`; the chosen
+  reasoning effort via `session/set_mode` (Grok exposes effort as its ACP "modes").
+- **Sign-in status:** `auth/status` reports Grok via the presence of
+  `~/.grok/auth.json` (provider `xai`), never reading the token.
+- **Verification caveat:** the ACP envelope, handshake and model discovery were
+  exercised against a live `grok 0.2.93`. The per-turn streaming shapes
+  (`tool_call` / `plan` / `session/request_permission`), whether Grok reports token
+  usage, and whether `session/set_mode` actually applies the effort could **not** be
+  exercised end-to-end because the test account's Grok Build balance was exhausted
+  (HTTP 402) — tracked in `FOR-DEV.md`. `reportsContextUsage` is `false` pending
+  that check.
+- **Validated:** **18 unit tests** in `test/adapters/grok-adapter.test.ts` (model
+  mapping, streaming, effort, interactive/auto approvals, plan blocks, session reuse,
+  cancel) + cross-agent consistency assertions in `plan-blocks.test.ts` (Grok/Zero
+  plan + execute blocks normalize identically to the CLI agents) + `account-status`
+  coverage. The bridge suite is green at **424 tests**.
+
 ### Added — Zero agent wired over the Agent Client Protocol (ACP)
 - **What:** **Zero** (https://github.com/Gitlawb/zero), an open-source Go coding
   agent, is now a real wired agent (AgentId `zero`, display name `Zero`) — the
