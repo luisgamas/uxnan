@@ -45,8 +45,9 @@ quitting the app), so nothing is killed mid-write.
     `https://github.com/luisgamas/uxnan/releases/download/desktop-updater-<channel>/latest.json`
     (`<channel>` is `stable` or `nightly`; the plugin has no `{{channel}}` URL
     variable, so we set the endpoint at runtime from the user's channel).
-  - `app_version` returns the **full** release name for display (e.g.
-    `0.0.5-alpha.20260628`); the bundled/compared version is the numeric base.
+  - `app_version` returns the **full** release name for display (for example,
+    `0.0.10` or `0.0.11-nightly.20260712.1`); the bundled/compared version is
+    the numeric base.
   - `updater_check` → returns `UpdateInfo` or `null`.
   - `updater_download` → downloads + **stages the installer bytes in memory**
     (`AppState.staged_update`), emitting `updater:download-progress` and
@@ -64,10 +65,11 @@ quitting the app), so nothing is killed mid-write.
   `src-tauri/tauri.conf.json`. This is a **free minisign key**, unrelated to OS
   code-signing (the paid Authenticode/Apple cert that removes "unknown publisher"
   warnings — see `FOR-HUMAN.md`).
-- **Channel = GitHub's `prerelease` flag** — not the tag. A normal Release feeds
-  `stable`; a Release marked **pre-release** feeds `nightly`. The tag can say
-  anything (e.g. `desktop-v0.0.5-alpha.20260628`) and still ship to stable as
-  long as the Release isn't flagged pre-release.
+- **Channel = the release tag, enforced by CI.** A
+  `desktop-stable-v0.0.PATCH` tag creates a normal Release and feeds `stable`.
+  A `desktop-nightly-v0.0.PATCH-nightly.YYYYMMDD.N` tag creates a GitHub
+  pre-release and feeds `nightly`. The manifest workflow validates the matching
+  GitHub pre-release flag and fails rather than silently crossing channels.
 - **Version comparison** — the updater compares the **numeric base** version
   (`0.0.5`), which CI bundles (the Windows MSI rejects a non-numeric pre-release
   id). So bump that base each release (e.g. `0.0.5` → `0.0.6`) for the updater to
@@ -103,13 +105,17 @@ app starts; replace it with your own (free):
 
 ## Cutting a release on a channel
 
-Tag a green commit. The channel is chosen later, when you publish, by the
-Release's **pre-release** checkbox — not by the tag. Bump the numeric base each
-time (the part before any `-`) so the updater detects the new version.
+Tag a green commit with the channel encoded in the tag. Bump the numeric base
+for **every** Desktop build, regardless of channel, so the updater detects it.
 
 ```bash
-git tag desktop-v0.0.6-alpha.20260701   # tag can say anything
-git push origin desktop-v0.0.6-alpha.20260701
+# Stable: a normal GitHub Release and the stable updater manifest.
+git tag desktop-stable-v0.0.10
+git push origin desktop-stable-v0.0.10
+
+# Nightly: a GitHub pre-release and the nightly updater manifest.
+git tag desktop-nightly-v0.0.11-nightly.20260712.1
+git push origin desktop-nightly-v0.0.11-nightly.20260712.1
 ```
 
 Then:
@@ -117,16 +123,16 @@ Then:
 1. `release-desktop.yml` runs (verify → build → sign), creating a **draft**
    GitHub Release named after the version, with the installers, their `.sig`
    files, and a merged `latest.json`.
-2. Review the draft, decide the channel, then **Publish**:
-   - leave **"Set as a pre-release" unchecked** → ships to **stable**;
-   - **check it** → ships to **nightly**.
-3. Publishing fires `release-desktop-manifest.yml`, which reads that flag and
-   copies `latest.json` onto the rolling `desktop-updater-stable` /
-   `desktop-updater-nightly` release (created on first use — don't delete it).
-   Apps on that channel pick up the update on their next check.
+2. Review the draft body and assets, but **do not change its pre-release
+   checkbox**: the workflow already set it from the tag. Publish it as-is.
+3. Publishing fires `release-desktop-manifest.yml`, which validates the tag ↔
+   pre-release invariant, then copies `latest.json` onto the matching rolling
+   `desktop-updater-stable` / `desktop-updater-nightly` release (created on first
+   use — don't delete it). Apps on that channel pick up the update on their next
+   check.
 
-> What puts an app on nightly is the GitHub **pre-release flag**, not the tag.
-> A `…-alpha.…` tag published as a normal release still ships to **stable**.
+> A tag with the wrong shape is rejected before installers are built. A manually
+> altered GitHub pre-release flag is rejected before the updater manifest changes.
 
 ## Without the signing key
 

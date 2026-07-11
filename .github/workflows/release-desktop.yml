@@ -1,10 +1,14 @@
 name: Release — Desktop (Tauri installers)
 
-# Builds desktop installers on a `desktop-v<version>` tag and attaches them to a
+# Builds desktop installers from an explicit channel tag and attaches them to a
 # DRAFT GitHub Release, together with the updater artifacts (`.sig` signatures +
-# a merged `latest.json`) when the signing secrets are present. Publishing that
-# draft fires `release-desktop-manifest.yml`, which copies `latest.json` onto the
-# rolling per-channel release the in-app updater polls (see uxnandesktop/docs/updates.md).
+# a merged `latest.json`) when the signing secrets are present. The tag is the
+# source of truth for the channel, so a stable build cannot accidentally become a
+# nightly (or vice versa) by changing a GitHub checkbox after the build:
+#   desktop-stable-v0.0.PATCH
+#   desktop-nightly-v0.0.PATCH-nightly.YYYYMMDD.N
+# Publishing that draft fires `release-desktop-manifest.yml`, which copies
+# `latest.json` onto the matching rolling updater release.
 #
 # Windows ships without OS code-signing for now (SmartScreen warning) — that is a
 # SEPARATE, paid certificate, unrelated to the free updater signature below.
@@ -21,7 +25,8 @@ name: Release — Desktop (Tauri installers)
 on:
   push:
     tags:
-      - "desktop-v*"
+      - 'desktop-stable-v*'
+      - 'desktop-nightly-v*'
 
 permissions:
   contents: write # create/upload the GitHub Release
@@ -43,11 +48,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Resolve version from tag
-        id: meta
-        shell: bash
-        run: echo "version=${GITHUB_REF_NAME#desktop-v}" >> "$GITHUB_OUTPUT"
-
       - name: Install Linux deps (Tauri/WebKitGTK)
         if: runner.os == 'Linux'
         run: |
@@ -60,9 +60,14 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: '22'
           cache: npm
           cache-dependency-path: uxnandesktop/package-lock.json
+
+      - name: Resolve and validate release channel from tag
+        id: meta
+        shell: bash
+        run: node uxnandesktop/scripts/desktop-release-tag.mjs "$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
@@ -76,7 +81,7 @@ jobs:
         shell: bash
         working-directory: uxnandesktop
         run: |
-          V="${{ steps.meta.outputs.version }}"   # full, e.g. 0.0.1-alpha.20260621
+          V="${{ steps.meta.outputs.version }}"   # stable: 0.0.10; nightly: 0.0.11-nightly.20260712.1
           # The Windows MSI target rejects a non-numeric pre-release identifier
           # (and any number > 65535), so the BUNDLE version is the numeric base
           # only. The full version still names the GitHub Release + tag.
@@ -106,6 +111,6 @@ jobs:
         with:
           projectPath: uxnandesktop
           tagName: ${{ github.ref_name }}
-          releaseName: "Uxnan Desktop ${{ steps.meta.outputs.version }}"
+          releaseName: 'Uxnan Desktop ${{ steps.meta.outputs.version }}'
           releaseDraft: true
-          prerelease: true
+          prerelease: ${{ steps.meta.outputs.prerelease }}

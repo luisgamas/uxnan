@@ -3,6 +3,19 @@
 All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Changed — Desktop stable and nightly releases now have separate, enforced tags
+
+- **Stable:** `desktop-stable-v0.0.PATCH` produces a normal GitHub Release and
+  updates only the stable updater manifest.
+- **Nightly:** `desktop-nightly-v0.0.PATCH-nightly.YYYYMMDD.N` produces a GitHub
+  pre-release and updates only the nightly updater manifest.
+- A shared tag parser validates both forms in CI; the release workflow derives
+  the draft's pre-release flag from it, and the manifest workflow rejects a
+  manually altered flag. This removes the former ambiguous `desktop-v…-alpha…`
+  convention and prevents stable/nightly cross-publication.
+
 ## [0.0.9-alpha.20260711] - 2026-07-11
 
 ### Added — group the sidebar by agent attention
