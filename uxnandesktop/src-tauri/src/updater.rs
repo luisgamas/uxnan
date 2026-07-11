@@ -115,7 +115,8 @@ fn info_of(update: &tauri_plugin_updater::Update) -> UpdateInfo {
     }
 }
 
-/// The full human-facing app version for display (e.g. `0.0.5-alpha.20260628`).
+/// The full human-facing app version for display (e.g. `0.0.10` or
+/// `0.0.11-nightly.20260712.1`).
 ///
 /// The bundled version in `tauri.conf.json` is the **numeric base** only
 /// (`0.0.5`) because the Windows MSI target rejects a non-numeric pre-release

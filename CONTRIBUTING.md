@@ -76,10 +76,13 @@ first re-runs the verification and only builds/publishes if it's green.
 | Tag | Result |
 | --- | ------ |
 | `shared-v*` / `bridge-v*` / `relay-v*` | publish to **npm** (publish `shared` first) |
-| `desktop-v*` | build installers → **GitHub Release** (draft) |
+| `desktop-stable-v0.0.PATCH` | stable installers → **GitHub Release** (draft) |
+| `desktop-nightly-v0.0.PATCH-nightly.YYYYMMDD.N` | nightly installers → **GitHub pre-release** (draft) |
 | `mobile-v*[+build]` | signed AAB → **Google Play** (open testing / beta) |
 
-Versions follow `0.0.PATCH-alpha.YYYYMMDD` (see [`VERSIONS.md`](VERSIONS.md)).
+Versions follow `0.0.PATCH-alpha.YYYYMMDD` for the npm/mobile alpha line. Desktop
+uses explicit stable/nightly tag forms so its updater channels cannot be mixed;
+see [`VERSIONS.md`](VERSIONS.md).
 
 ### Non-negotiable rule — mobile release notes
 

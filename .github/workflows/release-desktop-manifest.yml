@@ -4,17 +4,13 @@ name: Release — Desktop updater manifest
 # a STABLE url per channel:
 #   https://github.com/<owner>/<repo>/releases/download/desktop-updater-<channel>/latest.json
 # (see uxnandesktop/src-tauri/src/updater.rs `endpoint_for`). This workflow keeps
-# that file current: when you PUBLISH a `desktop-v*` GitHub Release (the draft
-# `release-desktop.yml` created), it reads the merged `latest.json` tauri-action
-# attached to that release and copies it onto the rolling channel release,
-# creating that release on first use.
-#
-# Channel mirrors GitHub's only release distinction — the `prerelease` flag —
-# NOT the tag's contents:
-#   a normal Release            -> stable
-#   a Release marked prerelease -> nightly
-# So a tag like `desktop-v0.0.5-alpha.20260628` still ships to STABLE as long as
-# the Release isn't flagged pre-release.
+# that file current: when you PUBLISH an explicitly-channelled Desktop Release
+# (the draft `release-desktop.yml` created), it reads the merged `latest.json`
+# attached to that release and copies it onto the matching rolling channel
+# release, creating that release on first use. The tag determines the channel;
+# this workflow rejects a Release whose GitHub pre-release flag disagrees:
+#   desktop-stable-v0.0.PATCH                       -> stable, prerelease=false
+#   desktop-nightly-v0.0.PATCH-nightly.YYYYMMDD.N   -> nightly, prerelease=true
 #
 # Trigger is `release: published` (not the tag push) so the version release's
 # assets are already public — the URLs inside latest.json resolve. Until the
@@ -30,26 +26,36 @@ permissions:
 
 jobs:
   publish-manifest:
-    # Only desktop releases; ignore the rolling channel releases themselves and
-    # every other component's tags.
-    if: startsWith(github.event.release.tag_name, 'desktop-v')
+    # Only explicitly-channelled desktop releases; ignore the rolling channel
+    # releases themselves, legacy tags, and every other component's tags.
+    if: startsWith(github.event.release.tag_name, 'desktop-stable-v') || startsWith(github.event.release.tag_name, 'desktop-nightly-v')
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       TAG: ${{ github.event.release.tag_name }}
       IS_PRERELEASE: ${{ github.event.release.prerelease }}
     steps:
-      - name: Resolve channel from the release's prerelease flag
+      - name: Checkout the tagged release contract
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Resolve and validate channel from tag
         id: meta
         shell: bash
         run: |
-          if [ "$IS_PRERELEASE" = "true" ]; then
-            channel="nightly"
-          else
-            channel="stable"
+          node uxnandesktop/scripts/desktop-release-tag.mjs "$TAG" >> "$GITHUB_OUTPUT"
+          . "$GITHUB_OUTPUT"
+          if [ "$IS_PRERELEASE" != "$prerelease" ]; then
+            echo "::error::Release $TAG declares channel '$channel', which requires prerelease=$prerelease; GitHub Release has prerelease=$IS_PRERELEASE."
+            exit 1
           fi
-          echo "channel=$channel" >> "$GITHUB_OUTPUT"
-          echo "Release $TAG (prerelease=$IS_PRERELEASE) -> channel '$channel'"
+          echo "Release $TAG validated as channel '$channel' (prerelease=$IS_PRERELEASE)."
 
       - name: Download latest.json from the published release
         id: fetch

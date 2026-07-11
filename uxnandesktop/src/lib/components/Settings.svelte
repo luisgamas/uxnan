@@ -477,7 +477,7 @@
     { value: "manual", labelKey: "updates.policyManual" },
   ];
   // The running app's full version name (shown in the Updates pane). This is the
-  // complete release name (e.g. 0.0.5-alpha.20260628), not the numeric MSI base.
+  // complete release name (e.g. 0.0.10 or 0.0.11-nightly.20260712.1), not the numeric MSI base.
   let currentVersion = $state("");
   $effect(() => {
     if (app.settingsOpen && app.settingsSection === "updates" && !currentVersion) {

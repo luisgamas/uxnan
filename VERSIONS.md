@@ -10,8 +10,23 @@ which versions "go together".
 - Base SemVer starts at `0.0.1` (pre-1.0 = unstable; breaking changes allowed).
 - Alpha builds use `0.0.PATCH-alpha.YYYYMMDD`. The `YYYYMMDD` date orders
   correctly under SemVer/npm.
+- **Desktop channels are intentionally different.** The tag is the channel's
+  source of truth, not a manual GitHub Release checkbox:
+  - **Stable:** `desktop-stable-v0.0.PATCH` (for example,
+    `desktop-stable-v0.0.10`). It produces a normal GitHub Release and feeds the
+    stable updater manifest.
+  - **Nightly:** `desktop-nightly-v0.0.PATCH-nightly.YYYYMMDD.N` (for example,
+    `desktop-nightly-v0.0.11-nightly.20260712.1`). `N` starts at `1` and only
+    distinguishes multiple nightlies cut on the same date. It produces a GitHub
+    pre-release and feeds the nightly updater manifest.
+  - The numeric `0.0.PATCH` base must be **new for every Desktop build in either
+    channel**. Windows MSI and Tauri's updater compare only that numeric base, so
+    reusing it would make a newer nightly invisible. Choose a base greater than
+    every already-shipped Desktop build; switching from a higher nightly build to
+    an older stable build is a downgrade and is intentionally not automatic.
 - Per-component git tags drive releases:
-  `shared-v*`, `bridge-v*`, `relay-v*`, `desktop-v*`, `mobile-v*`
+  `shared-v*`, `bridge-v*`, `relay-v*`, `desktop-stable-v*`,
+  `desktop-nightly-v*`, `mobile-v*`
   (mobile may append `+<buildNumber>`, e.g. `mobile-v0.0.1-alpha.20260621+5`).
 - **Source tracks the tag — bump EVERY version file AND its lockfile in the same
   commit.** A stale lockfile is silent drift: the npm/desktop release workflows
@@ -47,7 +62,8 @@ which versions "go together".
 
 ## Release checklist
 
-Cutting a release for component `<comp>` (tag `<comp>-v<version>`):
+Cutting a release for component `<comp>` (tag `<comp>-v<version>`; Desktop uses
+the channel-specific forms above):
 
 1. **Pre-flight** — the commit you will tag is green on CI (`ci-*.yml`) and its
    `CHANGELOG.md [Unreleased]` accurately describes what ships.
