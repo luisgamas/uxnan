@@ -17,6 +17,7 @@
   import GlobeIcon from "@lucide/svelte/icons/globe";
   import LayersIcon from "@lucide/svelte/icons/layers";
   import WorkflowIcon from "@lucide/svelte/icons/workflow";
+  import { TooltipSimple } from "$lib/components/ui/tooltip";
   import TerminalArea from "$lib/components/TerminalArea.svelte";
   import SaveDiscardDialog from "$lib/components/SaveDiscardDialog.svelte";
   import WindowControls from "$lib/components/WindowControls.svelte";
@@ -29,6 +30,7 @@
   import WorktreeSearch from "$lib/components/WorktreeSearch.svelte";
   import DirectoryPicker from "$lib/components/DirectoryPicker.svelte";
   import BackendStatus from "$lib/components/BackendStatus.svelte";
+  import UsageStatusButton from "$lib/components/UsageStatusButton.svelte";
   import { Toaster } from "$lib/components/ui/sonner";
   import { initUpdateToast } from "$lib/updateToast.svelte";
 
@@ -237,20 +239,31 @@
 <svelte:window oncontextmenu={onContextMenu} onkeydown={onKeyDown} />
 
 <!-- Reusable column resize handle. Zero-width in layout so adjacent panels sit
-     flush (no visible seam, even behind split terminals); a wider absolute strip
-     straddles the boundary for grabbing, with a hairline that only shows on hover. -->
+     flush (no visible seam, even behind split terminals). The grab strip is
+     offset to the *adjacent panel* side of the seam — never over the center
+     pane's right edge, where the terminal scrollbar lives — so dragging the
+     divider can't block the scrollbar or read as the panel overlapping the
+     center. A hairline centered on the seam only shows on hover. -->
 {#snippet resizeHandle(side: Side)}
-  <div class="relative w-0 shrink-0">
+  <div class="group relative w-0 shrink-0">
+    <!-- Grab strip: on the left seam it sits over the left sidebar; on the
+         right/browser seams over the panel to the right. Either way it stays off
+         the center pane's scrollbar-bearing right edge. -->
     <div
-      class="group absolute inset-y-0 left-1/2 z-20 w-1.5 -translate-x-1/2 cursor-col-resize"
+      class={cn(
+        "absolute inset-y-0 z-20 w-1.5 cursor-col-resize",
+        side === "left" ? "right-0" : "left-0",
+      )}
       role="separator"
       aria-orientation="vertical"
       onpointerdown={(e) => onHandleDown(side, e)}
       onpointermove={onHandleMove}
       onpointerup={onHandleUp}
-    >
-      <div class="mx-auto h-full w-px bg-transparent transition-colors group-hover:bg-ring/50"></div>
-    </div>
+    ></div>
+    <!-- Seam hairline (visual only), centered on the boundary; shows on hover. -->
+    <div
+      class="pointer-events-none absolute inset-y-0 left-1/2 z-20 w-px -translate-x-1/2 bg-transparent transition-colors group-hover:bg-ring/50"
+    ></div>
   </div>
 {/snippet}
 
@@ -339,101 +352,132 @@
       class={cn("flex h-7 shrink-0 items-center gap-2 px-2 text-xs text-muted-foreground", divider.top)}
     >
       <!-- Active workspace breadcrumb -->
-      <div class="inline-flex min-w-0 items-center gap-1" title={i18n.t("terminal.context")}>
-        <LayersIcon class="size-3 shrink-0" />
-        {#if ctx.repo}
-          <span class="truncate">{ctx.repo}</span>
-          <span class="text-muted-foreground/50">/</span>
-        {/if}
-        <span class="truncate font-medium text-foreground">{ctx.name}</span>
-      </div>
+      <TooltipSimple title={i18n.t("terminal.context")}>
+        {#snippet children(props)}
+          <div {...props} class="inline-flex min-w-0 items-center gap-1">
+            <LayersIcon class="size-3 shrink-0" />
+            {#if ctx.repo}
+              <span class="truncate">{ctx.repo}</span>
+              <span class="text-muted-foreground/50">/</span>
+            {/if}
+            <span class="truncate font-medium text-foreground">{ctx.name}</span>
+          </div>
+        {/snippet}
+      </TooltipSimple>
 
       <div class="flex-1"></div>
 
       {#if isUntestedPlatform}
-        <span
-          class="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400"
-          title={i18n.t("status.untestedTooltip", { os: osLabel() })}
-        >
-          <TriangleAlertIcon class="size-3.5" />
-          {i18n.t("status.untested", { os: osLabel() })}
-        </span>
+        <TooltipSimple title={i18n.t("status.untestedTooltip", { os: osLabel() })}>
+          {#snippet children(props)}
+            <span
+              {...props}
+              class="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400"
+            >
+              <TriangleAlertIcon class="size-3.5" />
+              {i18n.t("status.untested", { os: osLabel() })}
+            </span>
+          {/snippet}
+        </TooltipSimple>
       {/if}
       {#if app.hooksNeedAttention}
-        <button
-          class="inline-flex items-center gap-1 text-amber-600 hover:text-amber-500 dark:text-amber-400"
-          title={i18n.t("status.hooksIssueTooltip")}
-          onclick={() => app.openSettings("hooks")}
-        >
-          <WebhookIcon class="size-3.5" />
-          {i18n.t("status.hooksIssue")}
-        </button>
+        <TooltipSimple title={i18n.t("status.hooksIssueTooltip")}>
+          {#snippet children(props)}
+            <button
+              {...props}
+              class="inline-flex items-center gap-1 text-amber-600 hover:text-amber-500 dark:text-amber-400"
+              onclick={() => app.openSettings("hooks")}
+            >
+              <WebhookIcon class="size-3.5" />
+              {i18n.t("status.hooksIssue")}
+            </button>
+          {/snippet}
+        </TooltipSimple>
       {/if}
 
       <!-- Multi-agent orchestration: route messages across running agents. Shown
            only when ≥2 agents are live (fan-out needs more than one). -->
       {#if orchestratable}
-        <button
-          class="inline-flex items-center gap-1 rounded px-1 text-muted-foreground hover:text-foreground"
-          title={i18n.t("orchestration.open")}
-          aria-label={i18n.t("orchestration.open")}
-          onclick={() => (app.orchestrationOpen = true)}
-        >
-          <WorkflowIcon class="size-3.5" />
-          {liveAgents.length}
-          {#if orchestration.pendingTotal > 0}
-            <span class="size-1.5 shrink-0 rounded-full bg-primary"></span>
-          {/if}
-        </button>
+        <TooltipSimple title={i18n.t("orchestration.open")}>
+          {#snippet children(props)}
+            <button
+              {...props}
+              class="inline-flex items-center gap-1 rounded px-1 text-muted-foreground hover:text-foreground"
+              aria-label={i18n.t("orchestration.open")}
+              onclick={() => (app.orchestrationOpen = true)}
+            >
+              <WorkflowIcon class="size-3.5" />
+              {liveAgents.length}
+              {#if orchestration.pendingTotal > 0}
+                <span class="size-1.5 shrink-0 rounded-full bg-primary"></span>
+              {/if}
+            </button>
+          {/snippet}
+        </TooltipSimple>
       {/if}
+
+      <!-- Provider usage indicator (icon + popover; hidden when nothing pinned) -->
+      <UsageStatusButton />
 
       <!-- Backend status (icon + live popover) -->
       <BackendStatus />
 
       <!-- Show/hide panels — selected = panel visible (neutral lifted segment) -->
-      <button
-        class={cn(
-          "flex size-6 items-center justify-center rounded",
-          app.settings.leftSidebarOpen
-            ? "bg-accent text-foreground"
-            : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-        )}
-        title={i18n.t("titlebar.toggleLeft")}
-        aria-label={i18n.t("titlebar.toggleLeft")}
-        aria-pressed={app.settings.leftSidebarOpen}
-        onclick={toggleLeftSidebar}
-      >
-        <PanelLeftIcon class="size-3.5" />
-      </button>
-      <button
-        class={cn(
-          "flex size-6 items-center justify-center rounded",
-          app.settings.rightSidebarOpen
-            ? "bg-accent text-foreground"
-            : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-        )}
-        title={i18n.t("terminal.toggleRight")}
-        aria-label={i18n.t("terminal.toggleRight")}
-        aria-pressed={app.settings.rightSidebarOpen}
-        onclick={toggleRightSidebar}
-      >
-        <PanelRightIcon class="size-3.5" />
-      </button>
+      <TooltipSimple title={i18n.t("titlebar.toggleLeft")}>
+        {#snippet children(props)}
+          <button
+            {...props}
+            class={cn(
+              "flex size-6 items-center justify-center rounded",
+              app.settings.leftSidebarOpen
+                ? "bg-accent text-foreground"
+                : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+            )}
+            aria-label={i18n.t("titlebar.toggleLeft")}
+            aria-pressed={app.settings.leftSidebarOpen}
+            onclick={toggleLeftSidebar}
+          >
+            <PanelLeftIcon class="size-3.5" />
+          </button>
+        {/snippet}
+      </TooltipSimple>
+      <TooltipSimple title={i18n.t("terminal.toggleRight")}>
+        {#snippet children(props)}
+          <button
+            {...props}
+            class={cn(
+              "flex size-6 items-center justify-center rounded",
+              app.settings.rightSidebarOpen
+                ? "bg-accent text-foreground"
+                : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+            )}
+            aria-label={i18n.t("terminal.toggleRight")}
+            aria-pressed={app.settings.rightSidebarOpen}
+            onclick={toggleRightSidebar}
+          >
+            <PanelRightIcon class="size-3.5" />
+          </button>
+        {/snippet}
+      </TooltipSimple>
       {#if app.settings.browser?.enabled ?? true}
-        <button
-          class={cn(
-            "flex size-6 items-center justify-center rounded",
-            app.browserOpen
-              ? "bg-accent text-foreground"
-              : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-          )}
-          title={i18n.t("browser.toggle")}
-          aria-label={i18n.t("browser.toggle")}
-          aria-pressed={app.browserOpen}
-          onclick={() => app.toggleBrowser()}
-        >
-          <GlobeIcon class="size-3.5" />
-        </button>
+        <TooltipSimple title={i18n.t("browser.toggle")}>
+          {#snippet children(props)}
+            <button
+              {...props}
+              class={cn(
+                "flex size-6 items-center justify-center rounded",
+                app.browserOpen
+                  ? "bg-accent text-foreground"
+                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+              )}
+              aria-label={i18n.t("browser.toggle")}
+              aria-pressed={app.browserOpen}
+              onclick={() => app.toggleBrowser()}
+            >
+              <GlobeIcon class="size-3.5" />
+            </button>
+          {/snippet}
+        </TooltipSimple>
       {/if}
     </footer>
 

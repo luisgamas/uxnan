@@ -1,6 +1,6 @@
 [package]
 name = "uxnan-desktop"
-version = "0.0.6"
+version = "0.0.8"
 description = "Uxnan Desktop — Agent Development Environment (ADE)."
 authors = ["Luis Donaldo Gamas Vazquez"]
 edition = "2021"
@@ -41,8 +41,15 @@ tauri-plugin-window-state = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # Encodes image blobs as base64 data URLs for the visual image-diff viewer
-# (git.rs `image_diff`). Pure Rust, tiny, widely used.
+# (git.rs `image_diff`) and the project/branch icon fetcher (commands.rs
+# `image_fetch_data_url`). Pure Rust, tiny, widely used.
 base64 = "0.22"
+# HTTP client for downloading a project/branch icon from a URL or a git host
+# avatar into an inline data URL (commands.rs `image_fetch_data_url`). Doing the
+# GET in Rust sidesteps webview CORS/canvas-taint entirely. rustls (no OpenSSL);
+# the exact version is already in the tree via tauri-plugin-updater, so this adds
+# no new build cost. MIT/Apache-2.0.
+reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "fs", "process", "macros"] }
 thiserror = "2"
 uuid = { version = "1", features = ["v4"] }
@@ -57,12 +64,28 @@ axum = { version = "0.8", default-features = false, features = ["json", "tokio",
 # agent's `config.toml` (Codex) without clobbering the user's other settings or
 # comments. Pure Rust; `serde` handles the JSON-config agents (Claude/Gemini/…).
 toml_edit = "0.22"
+# SHA-256 (+ hex encoding) used only to reproduce Codex's per-hook `trusted_hash`
+# so the ADE-managed status hook is auto-trusted in `~/.codex/config.toml`
+# (Codex 0.129+ gates hooks on this trust). RustCrypto, pure Rust, tiny,
+# MIT/Apache-2.0. See `codex_trust.rs`.
+sha2 = "0.10"
+hex = "0.4"
 # Filesystem watcher for the right-panel file tree + the open-file editor: a
 # debounced, cross-platform watch of the active worktree root that emits
 # `fs:changed` so the UI reflects files created/deleted/edited on disk without a
 # manual refresh. `notify` is re-exported by the debouncer; pinned together.
 notify = "6"
 notify-debouncer-full = "0.3"
+# Moves a deleted file/folder to the OS trash (Recycle Bin / Trash / freedesktop)
+# instead of unlinking it, so the file-tree "Delete" action is recoverable. Thin,
+# cross-platform, pure-Rust API (`trash::delete`); the call is synchronous so it
+# runs on the blocking pool (fs.rs `delete_to_trash`).
+trash = "5"
+# ripgrep's directory walker: powers the file tree's project-wide search
+# (fs.rs `search_files`). Respects `.gitignore` / global excludes and can hide
+# dotfiles, so a recursive filename search skips `node_modules`/`.git`/ignored
+# paths without us re-implementing gitignore semantics. Synchronous → blocking pool.
+ignore = "0.4"
 
 # Windows-only: SetThreadExecutionState for the keep-awake feature (power.rs).
 [target.'cfg(windows)'.dependencies]

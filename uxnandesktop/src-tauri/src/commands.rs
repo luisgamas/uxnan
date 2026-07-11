@@ -9,7 +9,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 use uuid::Uuid;
 
-use crate::agent_hooks::{self, ClaudeHooksStatus, HookInstall};
+use crate::agent_hooks::{self, AgentHooksStatus, HookInstall};
 use crate::error::{AppError, CommandError};
 use crate::git::{self, WorktreeEntry};
 use crate::model::{AgentStateEntry, AppData, AppSettings, RepoData};
@@ -98,12 +98,49 @@ pub async fn pty_create(
     // and thus win over any user key of the same name (later sets override).
     let mut env: Vec<(String, String)> = env.unwrap_or_default();
     env.retain(|(k, _)| !k.trim().is_empty());
+    // Preserve any WSLENV the user set so we can extend (not replace) it below.
+    let user_wslenv = env
+        .iter()
+        .rev()
+        .find(|(k, _)| k.eq_ignore_ascii_case("WSLENV"))
+        .map(|(_, v)| v.clone());
     env.push(("UXNAN_AGENT_ID".to_string(), id.clone()));
     let hook = state.hook.read().await.clone();
     if let Some(h) = &hook {
         env.push(("UXNAN_HOOK_URL".to_string(), h.url.clone()));
         env.push(("UXNAN_HOOK_TOKEN".to_string(), h.token.clone()));
+        // Restart survival: point hook scripts at the endpoint file so they can
+        // re-read live coordinates if this terminal outlives an app restart.
+        if let Some(ep) = &h.endpoint_file {
+            env.push(("UXNAN_ENDPOINT_FILE".to_string(), ep.clone()));
+        }
     }
+    // WSL (basic support): the hook vars don't cross the Windows→Linux boundary
+    // unless listed in `WSLENV`. Adding them here means an agent run inside a WSL
+    // shell still sees the coordinates (`/p` path-translates the endpoint file to
+    // its `/mnt/c/...` form). Harmless on non-WSL shells (only `wsl.exe` reads it).
+    // Note: WSL2's `127.0.0.1` still points at the WSL VM, not the Windows host,
+    // so reaching the server from WSL2 remains a documented limitation.
+    #[cfg(windows)]
+    {
+        let mut parts: Vec<String> = Vec::new();
+        if let Some(prev) = user_wslenv.filter(|s| !s.trim().is_empty()) {
+            parts.push(prev);
+        }
+        parts.push("UXNAN_HOOK_URL".to_string());
+        parts.push("UXNAN_HOOK_TOKEN".to_string());
+        parts.push("UXNAN_AGENT_ID".to_string());
+        if hook
+            .as_ref()
+            .and_then(|h| h.endpoint_file.as_ref())
+            .is_some()
+        {
+            parts.push("UXNAN_ENDPOINT_FILE/p".to_string());
+        }
+        env.push(("WSLENV".to_string(), parts.join(":")));
+    }
+    #[cfg(not(windows))]
+    let _ = user_wslenv;
 
     // Integrated browser: when enabled and agents are allowed, let an agent open a
     // URL in the in-app browser by POSTing it to the hook server's `/browser` route
@@ -223,6 +260,26 @@ pub async fn agents_detect(commands: Vec<String>) -> Result<Vec<String>, Command
         .collect())
 }
 
+/// Read usage statistics (quota windows / credit / local token tally) for the
+/// activated providers only. Never fails as a whole — each provider reports its
+/// own status, so a slow/broken one doesn't sink the rest.
+#[tauri::command]
+pub async fn usage_read(
+    providers: Vec<crate::usage::UsageProvider>,
+) -> Result<Vec<crate::usage::ProviderUsage>, CommandError> {
+    Ok(crate::usage::read_usage(providers).await)
+}
+
+/// The subset of `providers` whose CLI / config is present on this machine, so
+/// the Providers catalog can enable only the available ones (mirrors
+/// `agents_detect`).
+#[tauri::command]
+pub async fn usage_detect(
+    providers: Vec<crate::usage::UsageProvider>,
+) -> Result<Vec<crate::usage::UsageProvider>, CommandError> {
+    Ok(crate::usage::detect_present(&providers))
+}
+
 /// Resize a PTY when its pane changes size.
 #[tauri::command]
 pub async fn pty_resize(
@@ -289,10 +346,142 @@ pub async fn repo_add(state: State<'_, AppState>, path: String) -> Result<RepoDa
         path,
         worktrees: Vec::new(),
         is_git,
+        icon: None,
+        branch_icons: std::collections::HashMap::new(),
+        worktree_order: Vec::new(),
     };
     data.repos.push(repo.clone());
     state.persistence.save(&data).map_err(CommandError::from)?;
     Ok(repo)
+}
+
+/// Update a project's display metadata: its card `name` and/or its `icon`. The
+/// project's real folder is never touched — `name` is display-only, so renaming
+/// only relabels the card. Both params follow the same convention: a missing arg
+/// (`None`) leaves that field unchanged; a present value sets it, where an empty
+/// string *resets* (name → the folder name, icon → the default glyph). Returns
+/// the updated repo so the frontend can reconcile.
+#[tauri::command]
+pub async fn repo_update(
+    state: State<'_, AppState>,
+    id: String,
+    name: Option<String>,
+    icon: Option<String>,
+) -> Result<RepoData, CommandError> {
+    let mut data = state.data.write().await;
+    let repo = data
+        .repos
+        .iter_mut()
+        .find(|r| r.id == id)
+        .ok_or_else(|| CommandError::from(AppError::NotFound(format!("repo {id}"))))?;
+    if let Some(name) = name {
+        let trimmed = name.trim();
+        // An empty rename resets the label back to the real folder name.
+        repo.name = if trimmed.is_empty() {
+            git::repo_name(&repo.path)
+        } else {
+            trimmed.to_string()
+        };
+    }
+    if let Some(icon) = icon {
+        // An empty icon clears it back to the default glyph.
+        repo.icon = Some(icon).filter(|s| !s.is_empty());
+    }
+    let updated = repo.clone();
+    state.persistence.save(&data).map_err(CommandError::from)?;
+    Ok(updated)
+}
+
+/// Set (or clear) a per-branch custom icon for a project. Keyed by branch name
+/// (or the worktree path when detached). Passing `None`/empty removes it. Returns
+/// the updated repo.
+#[tauri::command]
+pub async fn repo_set_branch_icon(
+    state: State<'_, AppState>,
+    id: String,
+    branch: String,
+    icon: Option<String>,
+) -> Result<RepoData, CommandError> {
+    let mut data = state.data.write().await;
+    let repo = data
+        .repos
+        .iter_mut()
+        .find(|r| r.id == id)
+        .ok_or_else(|| CommandError::from(AppError::NotFound(format!("repo {id}"))))?;
+    match icon.filter(|s| !s.is_empty()) {
+        Some(icon) => {
+            repo.branch_icons.insert(branch, icon);
+        }
+        None => {
+            repo.branch_icons.remove(&branch);
+        }
+    }
+    let updated = repo.clone();
+    state.persistence.save(&data).map_err(CommandError::from)?;
+    Ok(updated)
+}
+
+/// Reorder the registered projects to match the user's manual arrangement in the
+/// sidebar. `ordered_ids` is the desired front-to-back order; any registered repo
+/// not named in it keeps its relative order *after* the listed ones (so a stale
+/// list from a concurrent add/remove never drops a project). Unknown ids are
+/// ignored. Persists the new `repos` order, which is itself the manual order.
+#[tauri::command]
+pub async fn repo_reorder(
+    state: State<'_, AppState>,
+    ordered_ids: Vec<String>,
+) -> Result<(), CommandError> {
+    let mut data = state.data.write().await;
+    reorder_by_ids(&mut data.repos, &ordered_ids, |r| r.id.as_str());
+    state.persistence.save(&data).map_err(CommandError::from)
+}
+
+/// Reorder `items` in place to match `ordered_ids` (front-to-back). Any item whose
+/// key is absent from `ordered_ids` keeps its position *after* the listed ones, in
+/// its original relative order (the sort is stable). Unknown ids are ignored. This
+/// makes a stale order list from a concurrent add/remove safe: nothing is dropped.
+fn reorder_by_ids<T>(items: &mut [T], ordered_ids: &[String], key_of: impl Fn(&T) -> &str) {
+    let rank: std::collections::HashMap<&str, usize> = ordered_ids
+        .iter()
+        .enumerate()
+        .map(|(i, id)| (id.as_str(), i))
+        .collect();
+    items.sort_by_key(|it| rank.get(key_of(it)).copied().unwrap_or(usize::MAX));
+}
+
+/// Set a project's manual worktree order (child worktree paths, front-to-back).
+/// The primary worktree is always rendered first regardless, so it need not be
+/// included; unknown/removed paths are harmless (the frontend ignores them and
+/// self-heals). Returns the updated repo so the frontend can reconcile.
+#[tauri::command]
+pub async fn repo_set_worktree_order(
+    state: State<'_, AppState>,
+    id: String,
+    paths: Vec<String>,
+) -> Result<RepoData, CommandError> {
+    let mut data = state.data.write().await;
+    let repo = data
+        .repos
+        .iter_mut()
+        .find(|r| r.id == id)
+        .ok_or_else(|| CommandError::from(AppError::NotFound(format!("repo {id}"))))?;
+    repo.worktree_order = paths;
+    let updated = repo.clone();
+    state.persistence.save(&data).map_err(CommandError::from)?;
+    Ok(updated)
+}
+
+/// Resolve a git project's `origin` remote to its hosting owner/org so the UI can
+/// offer the account avatar (e.g. `https://github.com/<owner>.png`). Returns
+/// `None` when there's no parseable `origin` (non-git folder, no remote, or an
+/// unrecognized host).
+#[tauri::command]
+pub async fn repo_remote_owner(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Option<git::RemoteOwner>, CommandError> {
+    let repo_path = repo_path_of(&state, &id).await?;
+    Ok(git::remote_owner(&repo_path).await)
 }
 
 /// Remove a repository from the ADE (does not touch the repo on disk).
@@ -461,12 +650,166 @@ pub async fn fs_read_file(path: String) -> Result<crate::fs::FileContent, Comman
         .map_err(CommandError::from)
 }
 
+/// Read a local image file as an inline `data:<mime>;base64,…` URL for the
+/// editor's image preview (multimodal file viewer). Refuses non-images and
+/// anything over the preview size cap (see [`crate::fs::read_data_url`]).
+#[tauri::command]
+pub async fn fs_read_data_url(path: String) -> Result<String, CommandError> {
+    crate::fs::read_data_url(&path)
+        .await
+        .map_err(CommandError::from)
+}
+
 /// Overwrite a file with the editor's content (atomic temp-write + rename).
 #[tauri::command]
 pub async fn fs_write_file(path: String, content: String) -> Result<(), CommandError> {
     crate::fs::write_file(&path, &content)
         .await
         .map_err(CommandError::from)
+}
+
+/// Rename a file on disk to a new bare file name, keeping it in the same folder
+/// (the real rename behind a file tab's "Rename"). Guards against path
+/// separators, traversal and clobbering (see [`crate::fs::rename_path`]). Returns
+/// the new absolute, forward-slash path so the frontend can re-point the tab.
+#[tauri::command]
+pub async fn fs_rename(path: String, new_name: String) -> Result<String, CommandError> {
+    crate::fs::rename_path(&path, &new_name)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Create a new, empty file in `dir` (the file tree's "New File"). `name` must be
+/// a bare name that doesn't already exist (see [`crate::fs::create_file`]). Returns
+/// the new absolute, forward-slash path.
+#[tauri::command]
+pub async fn fs_create_file(dir: String, name: String) -> Result<String, CommandError> {
+    crate::fs::create_file(&dir, &name)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Create a new empty directory in `dir` (the file tree's "New Folder"). Same bare
+/// name / no-clobber guards as [`fs_create_file`]. Returns the new path.
+#[tauri::command]
+pub async fn fs_create_dir(dir: String, name: String) -> Result<String, CommandError> {
+    crate::fs::create_dir(&dir, &name)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Move a file or directory to the OS trash (the file tree's "Delete"). Recoverable
+/// by design; guarded against filesystem roots (see [`crate::fs::delete_to_trash`]).
+#[tauri::command]
+pub async fn fs_delete(path: String) -> Result<(), CommandError> {
+    crate::fs::delete_to_trash(&path)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Duplicate a single file next to itself under a unique "… copy" name (the file
+/// tree's "Duplicate"). Directories are refused. Returns the new path.
+#[tauri::command]
+pub async fn fs_duplicate(path: String) -> Result<String, CommandError> {
+    crate::fs::duplicate_file(&path)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// The current conversation of the **Zero** agent running in `cwd` (worktree
+/// path): its session title + a coarse status, read from Zero's on-disk session
+/// metadata (see [`crate::zero::session_for`]). `None` when no matching session
+/// exists. Never errors — a missing/unreadable store just yields `None`.
+#[tauri::command]
+pub async fn zero_session(cwd: String) -> Result<Option<crate::zero::ZeroSession>, CommandError> {
+    Ok(
+        tokio::task::spawn_blocking(move || crate::zero::session_for(&cwd))
+            .await
+            .unwrap_or(None),
+    )
+}
+
+/// Project-wide filename search for the file tree: recursively find files under
+/// `root` whose relative path matches every token of `query` (see
+/// [`crate::fs::search_files`]). `include_hidden` surfaces dotfiles; `limit` caps
+/// the results. Runs the blocking walk on the blocking pool.
+#[tauri::command]
+pub async fn fs_search_files(
+    root: String,
+    query: String,
+    include_hidden: bool,
+    limit: usize,
+) -> Result<crate::fs::FileSearch, CommandError> {
+    tokio::task::spawn_blocking(move || {
+        crate::fs::search_files(&root, &query, include_hidden, limit)
+    })
+    .await
+    .map_err(|e| CommandError::new("SEARCH_FAILED", e.to_string()))
+}
+
+/// Largest remote image the icon fetcher will inline (5 MiB). Icons are tiny;
+/// this only guards against a hostile/oversized URL streaming forever.
+const MAX_ICON_BYTES: u64 = 5 * 1024 * 1024;
+
+/// Download an image from an `http(s)` URL and return it as an inline
+/// `data:<mime>;base64,…` URL. Fetching in Rust (not the webview) sidesteps CORS
+/// and canvas-taint, so a project/branch icon picked "from URL" or a git-host
+/// avatar can be embedded and persisted offline. Rejects non-`http(s)` schemes,
+/// non-image content, and anything over [`MAX_ICON_BYTES`].
+#[tauri::command]
+pub async fn image_fetch_data_url(url: String) -> Result<String, CommandError> {
+    use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+
+    if !(url.starts_with("http://") || url.starts_with("https://")) {
+        return Err(CommandError::new(
+            "IMAGE_FETCH_FAILED",
+            "only http(s) image URLs are supported",
+        ));
+    }
+    let client = reqwest::Client::builder()
+        .user_agent("uxnan-desktop")
+        .build()
+        .map_err(|e| CommandError::new("IMAGE_FETCH_FAILED", e.to_string()))?;
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .and_then(|r| r.error_for_status())
+        .map_err(|e| CommandError::new("IMAGE_FETCH_FAILED", e.to_string()))?;
+
+    // Content-Length (when present) short-circuits an oversized download.
+    if let Some(len) = resp.content_length() {
+        if len > MAX_ICON_BYTES {
+            return Err(CommandError::new(
+                "IMAGE_FETCH_FAILED",
+                "the image is too large",
+            ));
+        }
+    }
+    let mime = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.split(';').next().unwrap_or(s).trim().to_string())
+        .filter(|m| m.starts_with("image/"));
+
+    let bytes = resp
+        .bytes()
+        .await
+        .map_err(|e| CommandError::new("IMAGE_FETCH_FAILED", e.to_string()))?;
+    if bytes.len() as u64 > MAX_ICON_BYTES {
+        return Err(CommandError::new(
+            "IMAGE_FETCH_FAILED",
+            "the image is too large",
+        ));
+    }
+    // Prefer the server's content-type; else sniff from magic bytes. Refuse
+    // anything that isn't a recognizable image so we never inline HTML/JSON.
+    let mime = mime
+        .or_else(|| crate::fs::sniff_image_mime(&bytes).map(str::to_string))
+        .ok_or_else(|| CommandError::new("IMAGE_FETCH_FAILED", "the URL is not an image"))?;
+
+    Ok(format!("data:{mime};base64,{}", BASE64.encode(&bytes)))
 }
 
 /// Set (or clear with `None`) the worktree root the filesystem watcher follows.
@@ -795,9 +1138,12 @@ pub async fn set_prevent_sleep(
 pub struct HookScripts {
     /// The rendered `hooks` block ready to paste into `~/.claude/settings.json`.
     pub claude_json: String,
+    /// The shell-agnostic relay shared by Codex / Gemini / OpenCode.
+    pub status_relay_cjs: String,
     pub wrapper_bash: String,
     pub wrapper_powershell: String,
     pub wrapper_cmd: String,
+    pub wrapper_fish: String,
 }
 
 /// Paths of the bundled hook scripts the ADE writes to `<app-data>/hooks/`
@@ -815,39 +1161,128 @@ pub async fn get_hook_install(
 
 /// The current state of the Claude `settings.json` `hooks` block. Lets the
 /// UI render an honest "Installed" / "Not installed" / "Unavailable" badge
-/// (we never claim installed unless our `__uxnan_managed_hooks__` marker is
-/// actually present).
+/// (we never claim installed unless our managed reporter is actually present).
 #[tauri::command]
-pub async fn get_claude_hooks_status() -> Result<ClaudeHooksStatus, CommandError> {
+pub async fn get_claude_hooks_status() -> Result<AgentHooksStatus, CommandError> {
     Ok(agent_hooks::read_claude_status())
 }
 
-/// Add (or replace) the ADE-managed `hooks` block in
-/// `~/.claude/settings.json`, pointing at the installed script. Preserves
-/// every other top-level key — existing Claude settings are untouched.
-/// Returns the new status so the UI can refresh without a second round-trip.
+/// Merge the ADE-managed `hooks` block into `~/.claude/settings.json`, pointing
+/// at the installed relay (exec-form `node`, so it runs from any shell).
+/// Preserves every other hook and top-level key. Returns the new status so the
+/// UI can refresh without a second round-trip.
 #[tauri::command]
 pub async fn install_claude_hooks(
     state: State<'_, AppState>,
-) -> Result<ClaudeHooksStatus, CommandError> {
+) -> Result<AgentHooksStatus, CommandError> {
     let install = state.hook_install.read().await.clone().ok_or_else(|| {
         CommandError::new("HOOK_SCRIPTS_MISSING", "hook scripts are not installed")
     })?;
-    let script_path = std::path::PathBuf::from(install.claude_hook_script);
-    agent_hooks::install_claude_hooks(&script_path).map_err(CommandError::from)
+    agent_hooks::install_claude_hooks(&install.status_relay_script).map_err(CommandError::from)
 }
 
 /// Remove the ADE-managed `hooks` block from `~/.claude/settings.json` (no
 /// op if it's not ours). Idempotent: safe to call repeatedly.
 #[tauri::command]
-pub async fn uninstall_claude_hooks() -> Result<ClaudeHooksStatus, CommandError> {
+pub async fn uninstall_claude_hooks() -> Result<AgentHooksStatus, CommandError> {
     agent_hooks::uninstall_claude_hooks().map_err(CommandError::from)
+}
+
+/// Status of the managed Codex `hooks.json` (and its `config.toml` trust entry).
+#[tauri::command]
+pub async fn get_codex_hooks_status() -> Result<AgentHooksStatus, CommandError> {
+    Ok(agent_hooks::read_codex_hooks_status())
+}
+
+/// Install the ADE-managed hooks into `~/.codex/hooks.json` and trust the file
+/// in `~/.codex/config.toml`, so Codex reports precise state out of the box.
+#[tauri::command]
+pub async fn install_codex_hooks(
+    state: State<'_, AppState>,
+) -> Result<AgentHooksStatus, CommandError> {
+    let install = state.hook_install.read().await.clone().ok_or_else(|| {
+        CommandError::new("HOOK_SCRIPTS_MISSING", "hook scripts are not installed")
+    })?;
+    agent_hooks::install_codex_hooks(&install).map_err(CommandError::from)
+}
+
+#[tauri::command]
+pub async fn uninstall_codex_hooks() -> Result<AgentHooksStatus, CommandError> {
+    agent_hooks::uninstall_codex_hooks().map_err(CommandError::from)
+}
+
+/// Status of the managed Gemini CLI `settings.json` hooks block.
+#[tauri::command]
+pub async fn get_gemini_hooks_status() -> Result<AgentHooksStatus, CommandError> {
+    Ok(agent_hooks::read_gemini_hooks_status())
+}
+
+/// Install the ADE-managed hooks into `~/.gemini/settings.json`.
+#[tauri::command]
+pub async fn install_gemini_hooks(
+    state: State<'_, AppState>,
+) -> Result<AgentHooksStatus, CommandError> {
+    let install = state.hook_install.read().await.clone().ok_or_else(|| {
+        CommandError::new("HOOK_SCRIPTS_MISSING", "hook scripts are not installed")
+    })?;
+    agent_hooks::install_gemini_hooks(&install.status_relay_script).map_err(CommandError::from)
+}
+
+#[tauri::command]
+pub async fn uninstall_gemini_hooks() -> Result<AgentHooksStatus, CommandError> {
+    agent_hooks::uninstall_gemini_hooks().map_err(CommandError::from)
+}
+
+/// Status of the managed Pi/OMP status extension.
+#[tauri::command]
+pub async fn get_pi_hooks_status() -> Result<AgentHooksStatus, CommandError> {
+    Ok(agent_hooks::read_pi_hooks_status())
+}
+
+/// Install the ADE-managed Pi/OMP status extension into `~/.pi/agent/extensions`.
+#[tauri::command]
+pub async fn install_pi_hooks() -> Result<AgentHooksStatus, CommandError> {
+    agent_hooks::install_pi_hooks().map_err(CommandError::from)
+}
+
+#[tauri::command]
+pub async fn uninstall_pi_hooks() -> Result<AgentHooksStatus, CommandError> {
+    agent_hooks::uninstall_pi_hooks().map_err(CommandError::from)
+}
+
+/// Status of the managed OpenCode status plugin.
+#[tauri::command]
+pub async fn get_opencode_hooks_status() -> Result<AgentHooksStatus, CommandError> {
+    Ok(agent_hooks::read_opencode_hooks_status())
+}
+
+/// Install the ADE-managed OpenCode status plugin and register it.
+#[tauri::command]
+pub async fn install_opencode_hooks() -> Result<AgentHooksStatus, CommandError> {
+    agent_hooks::install_opencode_hooks().map_err(CommandError::from)
+}
+
+#[tauri::command]
+pub async fn uninstall_opencode_hooks() -> Result<AgentHooksStatus, CommandError> {
+    agent_hooks::uninstall_opencode_hooks().map_err(CommandError::from)
+}
+
+/// (Re)install the managed hooks for every supported agent. Used by the
+/// Settings → Agents → Hooks "Install all" action and at startup.
+#[tauri::command]
+pub async fn install_all_hooks(state: State<'_, AppState>) -> Result<(), CommandError> {
+    let install = state.hook_install.read().await.clone().ok_or_else(|| {
+        CommandError::new("HOOK_SCRIPTS_MISSING", "hook scripts are not installed")
+    })?;
+    agent_hooks::install_all(&install);
+    Ok(())
 }
 
 /// The textual content of every bundled hook script. The Settings UI uses
 /// this to show copy-pasteable snippets (rendered Claude `settings.json`,
-/// platform wrapper script). The Claude JSON is rendered against the
-/// installed script path so the user can copy it as-is.
+/// the shell-agnostic relay, and the per-platform launcher wrappers). The
+/// Claude JSON is rendered against the installed script path so the user can
+/// copy it as-is.
 #[tauri::command]
 pub async fn get_hook_scripts(
     state: State<'_, AppState>,
@@ -856,13 +1291,68 @@ pub async fn get_hook_scripts(
         Some(install) => install,
         None => return Ok(None),
     };
-    let script_path = std::path::PathBuf::from(install.claude_hook_script);
-    let claude_json =
-        agent_hooks::render_claude_settings_json(&script_path).map_err(CommandError::from)?;
+    let claude_json = agent_hooks::render_claude_settings_json(&install.status_relay_script)
+        .map_err(CommandError::from)?;
     Ok(Some(HookScripts {
         claude_json,
+        status_relay_cjs: agent_hooks::STATUS_RELAY_SCRIPT.to_string(),
         wrapper_bash: agent_hooks::WRAPPER_BASH.to_string(),
         wrapper_powershell: agent_hooks::WRAPPER_POWERSHELL.to_string(),
         wrapper_cmd: agent_hooks::WRAPPER_CMD.to_string(),
+        wrapper_fish: agent_hooks::WRAPPER_FISH.to_string(),
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::reorder_by_ids;
+
+    /// A minimal keyed item, so `reorder_by_ids` is exercised without building a
+    /// full `RepoData`.
+    #[derive(Debug)]
+    struct Item {
+        id: &'static str,
+    }
+
+    fn ids(items: &[Item]) -> Vec<&'static str> {
+        items.iter().map(|i| i.id).collect()
+    }
+
+    #[test]
+    fn reorder_applies_requested_order() {
+        let mut items = vec![Item { id: "a" }, Item { id: "b" }, Item { id: "c" }];
+        reorder_by_ids(&mut items, &["c".into(), "a".into(), "b".into()], |i| i.id);
+        assert_eq!(ids(&items), vec!["c", "a", "b"]);
+    }
+
+    #[test]
+    fn reorder_keeps_unlisted_items_after_in_original_order() {
+        // Only "c" and "a" are listed; "b" and "d" are unlisted and must stay after
+        // the listed ones in their original relative order (stable sort).
+        let mut items = vec![
+            Item { id: "a" },
+            Item { id: "b" },
+            Item { id: "c" },
+            Item { id: "d" },
+        ];
+        reorder_by_ids(&mut items, &["c".into(), "a".into()], |i| i.id);
+        assert_eq!(ids(&items), vec!["c", "a", "b", "d"]);
+    }
+
+    #[test]
+    fn reorder_ignores_unknown_ids() {
+        let mut items = vec![Item { id: "a" }, Item { id: "b" }];
+        // "zzz" isn't present and must be ignored; the known ids still reorder.
+        reorder_by_ids(&mut items, &["zzz".into(), "b".into(), "a".into()], |i| {
+            i.id
+        });
+        assert_eq!(ids(&items), vec!["b", "a"]);
+    }
+
+    #[test]
+    fn reorder_empty_order_is_noop() {
+        let mut items = vec![Item { id: "a" }, Item { id: "b" }];
+        reorder_by_ids(&mut items, &[], |i| i.id);
+        assert_eq!(ids(&items), vec!["a", "b"]);
+    }
 }

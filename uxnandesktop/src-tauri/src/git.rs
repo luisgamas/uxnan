@@ -178,6 +178,78 @@ pub fn repo_name(path: &str) -> String {
         .unwrap_or_else(|| path.to_string())
 }
 
+/// A git remote's hosting owner/org, resolved from `origin` so the UI can offer
+/// the account avatar as a project icon. `avatar_url` is set only for hosts whose
+/// per-account avatar URL we know how to build (GitHub, GitLab); otherwise it's
+/// `None` and the caller just shows the parsed owner.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteOwner {
+    /// The remote host, e.g. `github.com`.
+    pub host: String,
+    /// The owner / organization segment, e.g. `luisgamas`.
+    pub owner: String,
+    /// A directly-fetchable avatar URL for the owner, when the host supports one.
+    pub avatar_url: Option<String>,
+}
+
+/// Resolve `origin` to its hosting owner/org for the avatar option. Returns
+/// `None` when there's no `origin` remote or its URL can't be parsed.
+pub async fn remote_owner(repo_path: &str) -> Option<RemoteOwner> {
+    let url = git(repo_path, &["remote", "get-url", "origin"])
+        .await
+        .ok()?;
+    parse_remote_owner(url.trim())
+}
+
+/// Parse a git remote URL (SSH `git@host:owner/repo.git`, `ssh://…`, or
+/// `https://host/owner/repo.git`, optionally with `user@`/token) into its host +
+/// owner, deriving a known avatar URL where possible. Pure so it's unit-tested.
+fn parse_remote_owner(url: &str) -> Option<RemoteOwner> {
+    if url.is_empty() {
+        return None;
+    }
+    // Split off the scheme / user, leaving `host<sep>path`. SCP-like SSH URLs use
+    // `host:owner/repo`; URL forms use `host/owner/repo`.
+    let rest = if let Some(idx) = url.find("://") {
+        // scheme://[user@]host/owner/repo
+        let after = &url[idx + 3..];
+        after.rsplit_once('@').map(|(_, h)| h).unwrap_or(after)
+    } else if let Some((before, after)) = url.split_once(':') {
+        // git@host:owner/repo (SCP-like). Guard against a `host:port/...` URL
+        // without a scheme by requiring the pre-colon part to carry a user.
+        if before.contains('@') {
+            let host_and_path = format!("{}/{after}", before.rsplit_once('@').unwrap().1);
+            return split_host_owner(&host_and_path);
+        }
+        after
+    } else {
+        url
+    };
+    split_host_owner(rest)
+}
+
+/// From a `host/owner/repo[...]` string, take the host and the first path
+/// segment (the owner), building the avatar URL for known hosts.
+fn split_host_owner(host_and_path: &str) -> Option<RemoteOwner> {
+    let mut segs = host_and_path.split('/').filter(|s| !s.is_empty());
+    let host = segs.next()?.to_lowercase();
+    let owner = segs.next()?.trim_end_matches(".git").to_string();
+    if host.is_empty() || owner.is_empty() {
+        return None;
+    }
+    let avatar_url = match host.as_str() {
+        "github.com" => Some(format!("https://github.com/{owner}.png?size=200")),
+        "gitlab.com" => Some(format!("https://gitlab.com/{owner}.png")),
+        _ => None,
+    };
+    Some(RemoteOwner {
+        host,
+        owner,
+        avatar_url,
+    })
+}
+
 /// Where a new worktree for `branch` is created: a sibling of the repo named
 /// `<repo>--<branch>` (branch separators flattened so it's a valid folder).
 ///
@@ -1098,6 +1170,44 @@ mod tests {
     #[test]
     fn repo_name_is_final_component() {
         assert_eq!(repo_name("/home/u/myrepo"), "myrepo");
+    }
+
+    #[test]
+    fn parses_remote_owner_across_url_forms() {
+        // SCP-like SSH.
+        let r = parse_remote_owner("git@github.com:luisgamas/uxnan.git").unwrap();
+        assert_eq!(r.host, "github.com");
+        assert_eq!(r.owner, "luisgamas");
+        assert_eq!(
+            r.avatar_url.as_deref(),
+            Some("https://github.com/luisgamas.png?size=200")
+        );
+
+        // HTTPS with the `.git` suffix.
+        let r = parse_remote_owner("https://github.com/luisgamas/uxnan.git").unwrap();
+        assert_eq!(r.owner, "luisgamas");
+
+        // HTTPS with an embedded token/user is stripped to the host.
+        let r = parse_remote_owner("https://x-token:secret@github.com/acme/app").unwrap();
+        assert_eq!(r.host, "github.com");
+        assert_eq!(r.owner, "acme");
+
+        // ssh:// scheme form.
+        let r = parse_remote_owner("ssh://git@gitlab.com/group/proj.git").unwrap();
+        assert_eq!(r.host, "gitlab.com");
+        assert_eq!(
+            r.avatar_url.as_deref(),
+            Some("https://gitlab.com/group.png")
+        );
+
+        // Unknown host: parsed, but no avatar URL.
+        let r = parse_remote_owner("https://bitbucket.org/team/repo.git").unwrap();
+        assert_eq!(r.host, "bitbucket.org");
+        assert!(r.avatar_url.is_none());
+
+        // Garbage / empty return None rather than a bogus owner.
+        assert!(parse_remote_owner("").is_none());
+        assert!(parse_remote_owner("not-a-url").is_none());
     }
 
     #[test]

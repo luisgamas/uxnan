@@ -316,10 +316,14 @@ export const git = new GitStore();
  *  registered in the terminals store and rendered by `DiffPane.svelte`. */
 export class DiffViewerState {
   readonly worktree: string;
-  readonly file: string;
-  /** Image files are diffed visually (before/after) instead of as text. */
-  readonly isImage: boolean;
+  /** Worktree-relative path being diffed. Mutable so a file-tab rename/move can
+   *  re-point the same Changes view at the file's new location (see `repoint`). */
+  file = $state("");
   staged = $state(false);
+  /** Image files are diffed visually (before/after) instead of as text. */
+  get isImage(): boolean {
+    return isImagePath(this.file);
+  }
   diff = $state("");
   /** Before/after image data URLs (image diffs only); null = that side absent. */
   imageOld = $state<string | null>(null);
@@ -333,9 +337,23 @@ export class DiffViewerState {
   constructor(worktree: string, file: string, staged: boolean, onEmpty: () => void) {
     this.worktree = worktree;
     this.file = file;
-    this.isImage = isImagePath(file);
     this.staged = staged;
     this.onEmpty = onEmpty;
+    void this.reload();
+  }
+
+  /** Switch between the staged (index-vs-HEAD) and unstaged (worktree-vs-index)
+   *  diff, reloading. No-op when already on that side. */
+  setStaged(staged: boolean): void {
+    if (this.staged === staged) return;
+    this.staged = staged;
+    void this.reload();
+  }
+
+  /** Re-point at a moved file (a file-tab rename/folder-move within the same
+   *  worktree) and reload, so the Changes view survives the rename. */
+  repoint(file: string): void {
+    this.file = file;
     void this.reload();
   }
 

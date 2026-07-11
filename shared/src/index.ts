@@ -36,6 +36,7 @@ export * from './models/project.js';
 export * from './models/session.js';
 export * from './models/approval.js';
 export * from './models/question.js';
+export * from './models/usage.js';
 
 // Validators
 export * from './validators/validate.js';

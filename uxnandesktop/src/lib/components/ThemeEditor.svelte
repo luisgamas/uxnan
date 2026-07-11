@@ -8,6 +8,7 @@
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import { Textarea } from "$lib/components/ui/textarea";
+  import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { Label } from "$lib/components/ui/label";
   import {
     THEME_TOKENS,
@@ -149,7 +150,11 @@
               {#each THEME_TOKENS as token (token)}
                 <div class="flex items-center gap-1.5">
                   <span class="size-5 shrink-0 rounded border border-border" style:background-color={theme.colors[token]}></span>
-                  <span class={cn("w-28 shrink-0 truncate font-mono", text.indicator)} title={token}>{token}</span>
+                  <TooltipSimple title={token}>
+                    {#snippet children(tp)}
+                      <span {...tp} class={cn("w-28 shrink-0 truncate font-mono", text.indicator)}>{token}</span>
+                    {/snippet}
+                  </TooltipSimple>
                   <Input class="h-7 min-w-0 flex-1 font-mono text-[11px]" bind:value={theme.colors[token as keyof ThemeColors]} />
                 </div>
               {/each}

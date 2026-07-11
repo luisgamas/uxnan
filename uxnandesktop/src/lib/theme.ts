@@ -354,6 +354,29 @@ const DEFAULT_ANSI: Record<string, string> = {
   brightWhite: "#ffffff",
 };
 
+/** ANSI palette for a **light** background (Primer-inspired): the standard dark
+ *  palette's yellow/green/cyan/white are illegible on white, so a light terminal
+ *  needs darker, higher-contrast hues. Used as the inherit default when the app
+ *  theme is light, and shared by the light terminal starter template. */
+const LIGHT_ANSI: Record<string, string> = {
+  black: "#24292f",
+  red: "#cf222e",
+  green: "#116329",
+  yellow: "#4d2d00",
+  blue: "#0969da",
+  magenta: "#8250df",
+  cyan: "#1b7c83",
+  white: "#6e7781",
+  brightBlack: "#57606a",
+  brightRed: "#a40e26",
+  brightGreen: "#1a7f37",
+  brightYellow: "#633c01",
+  brightBlue: "#218bff",
+  brightMagenta: "#a475f1",
+  brightCyan: "#3192aa",
+  brightWhite: "#8c959f",
+};
+
 /** Resolved terminal options for xterm (font + ITheme), merging the general
  *  theme's base defaults with the user's terminal overrides. */
 export interface ResolvedTerminal {
@@ -374,16 +397,20 @@ export function resolveTerminal(base: "light" | "dark", ov: TerminalTheme | null
   const dark = base === "dark";
   const bg = dark ? "#0b0b0c" : "#ffffff";
   const fg = dark ? "#e6e6e6" : "#1f2328";
+  // A distinct, saturated caret (not the text color) so the cursor is always easy
+  // to find at a shell prompt or inside a TUI editor, in both themes.
+  const cursorDefault = dark ? "#58a6ff" : "#0969da";
+  const ansi = dark ? DEFAULT_ANSI : LIGHT_ANSI;
   const o = ov ?? {};
   const theme: Record<string, string> = {
     background: o.background || bg,
     foreground: o.foreground || fg,
-    cursor: o.cursor || o.foreground || fg,
+    cursor: o.cursor || cursorDefault,
     cursorAccent: o.cursorAccent || o.background || bg,
     selectionBackground: o.selectionBackground || "rgba(128,128,128,0.35)",
   };
   for (const key of ANSI_TOKENS) {
-    theme[key] = (o[key] as string) || DEFAULT_ANSI[key];
+    theme[key] = (o[key] as string) || ansi[key];
   }
   return {
     // Compose so a custom terminal family still falls back to the full mono
@@ -480,6 +507,37 @@ export function normalizeImportedTheme(raw: unknown): { theme?: Theme; error?: s
   };
 }
 
+/** Pull a flat list of candidate theme objects out of parsed import JSON, so a
+ *  single file or paste may carry one theme or many. Accepts a bare object (one
+ *  theme), a bare array (`[{…}, {…}]`), or a wrapper object holding an array
+ *  under one of `keys` (e.g. `{ "themes": [ … ] }`). Returns `[]` when the input
+ *  is neither an object nor an array. */
+function themeCandidates(parsed: unknown, keys: string[]): unknown[] {
+  if (Array.isArray(parsed)) return parsed;
+  if (parsed && typeof parsed === "object") {
+    const r = parsed as Record<string, unknown>;
+    for (const k of keys) if (Array.isArray(r[k])) return r[k] as unknown[];
+    return [parsed];
+  }
+  return [];
+}
+
+/** Batch variant of {@link normalizeImportedTheme}: normalizes one theme, an
+ *  array of themes, or a `{ themes: [...] }` wrapper. Returns every theme that
+ *  validated plus a per-item error list for the ones that didn't. */
+export function normalizeImportedThemes(raw: unknown): { themes: Theme[]; errors: string[] } {
+  const candidates = themeCandidates(raw, ["themes", "customThemes"]);
+  if (!candidates.length) return { themes: [], errors: ["Not a theme object."] };
+  const themes: Theme[] = [];
+  const errors: string[] = [];
+  for (const c of candidates) {
+    const { theme, error } = normalizeImportedTheme(c);
+    if (theme) themes.push(theme);
+    else if (error) errors.push(error);
+  }
+  return { themes, errors };
+}
+
 /** Serialize a theme to pretty JSON (for export / the JSON editor). */
 export function themeToJson(theme: Theme): string {
   return JSON.stringify(theme, null, 2);
@@ -552,6 +610,25 @@ export function normalizeImportedTerminalTheme(raw: unknown): {
   return { preset };
 }
 
+/** Batch variant of {@link normalizeImportedTerminalTheme}: normalizes one
+ *  preset, an array of presets, or a `{ terminalThemes: [...] }` wrapper.
+ *  Returns every preset that validated plus a per-item error list. */
+export function normalizeImportedTerminalThemes(raw: unknown): {
+  presets: TerminalThemePreset[];
+  errors: string[];
+} {
+  const candidates = themeCandidates(raw, ["terminalThemes", "presets", "themes"]);
+  if (!candidates.length) return { presets: [], errors: ["Not a terminal theme object."] };
+  const presets: TerminalThemePreset[] = [];
+  const errors: string[] = [];
+  for (const c of candidates) {
+    const { preset, error } = normalizeImportedTerminalTheme(c);
+    if (preset) presets.push(preset);
+    else if (error) errors.push(error);
+  }
+  return { presets, errors };
+}
+
 export function terminalThemeToJson(preset: TerminalThemePreset): string {
   return JSON.stringify(preset, null, 2);
 }
@@ -595,22 +672,7 @@ export const TERMINAL_TEMPLATE_LIGHT: TerminalThemePreset = {
   cursor: "#1f2328",
   cursorAccent: "#ffffff",
   selectionBackground: "rgba(128,128,128,0.35)",
-  black: "#24292f",
-  red: "#cf222e",
-  green: "#116329",
-  yellow: "#4d2d00",
-  blue: "#0969da",
-  magenta: "#8250df",
-  cyan: "#1b7c83",
-  white: "#6e7781",
-  brightBlack: "#57606a",
-  brightRed: "#a40e26",
-  brightGreen: "#1a7f37",
-  brightYellow: "#633c01",
-  brightBlue: "#218bff",
-  brightMagenta: "#a475f1",
-  brightCyan: "#3192aa",
-  brightWhite: "#8c959f",
+  ...LIGHT_ANSI,
 };
 
 /** Pick the coherent terminal starter for a given base (dark | light). */

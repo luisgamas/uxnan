@@ -2,6 +2,7 @@
   import { untrack } from "svelte";
   import { Input } from "$lib/components/ui/input";
   import { Button } from "$lib/components/ui/button";
+  import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
   import { icon, text } from "$lib/design";
@@ -35,7 +36,7 @@
   }
 </script>
 
-<Collapsible.Root bind:open={expanded} class="flex flex-col gap-2 py-2.5">
+<Collapsible.Root bind:open={expanded} class="flex flex-col gap-2 py-3">
   <div class="flex items-center gap-2.5">
     <span class="flex size-7 shrink-0 items-center justify-center rounded-md border border-border/60 text-muted-foreground">
       <TerminalIcon class="size-3.5" />
@@ -52,22 +53,30 @@
         <span class="block truncate font-mono text-[11px] leading-4 text-muted-foreground">{profile.command}</span>
       {/if}
     </button>
-    <Collapsible.Trigger
-      class="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
-      title={i18n.t(expanded ? "project.collapse" : "project.expand")}
-    >
-      <ChevronDownIcon class={cn(icon.button, "transition-transform", expanded && "rotate-180")} />
-    </Collapsible.Trigger>
-    <Button
-      variant="ghost"
-      size="icon-sm"
-      title={i18n.t("profileEditor.removeProfile")}
-      onclick={onremove}
-    >
-      <Trash2Icon class={icon.button} />
-    </Button>
+    <TooltipSimple title={i18n.t(expanded ? "project.collapse" : "project.expand")}>
+      {#snippet children(tp)}
+        <Collapsible.Trigger
+          {...tp}
+          class="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+        >
+          <ChevronDownIcon class={cn(icon.button, "transition-transform", expanded && "rotate-180")} />
+        </Collapsible.Trigger>
+      {/snippet}
+    </TooltipSimple>
+    <TooltipSimple title={i18n.t("profileEditor.removeProfile")}>
+      {#snippet children(tp)}
+        <Button
+          {...tp}
+          variant="ghost"
+          size="icon-sm"
+          onclick={onremove}
+        >
+          <Trash2Icon class={icon.button} />
+        </Button>
+      {/snippet}
+    </TooltipSimple>
   </div>
-  <Collapsible.Content class="flex flex-col gap-2.5 pt-1">
+  <Collapsible.Content class="flex flex-col gap-2.5 pt-1.5">
     <Input
       class="h-8 text-xs"
       placeholder={i18n.t("profileEditor.namePlaceholder")}

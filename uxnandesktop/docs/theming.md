@@ -12,38 +12,46 @@ override layer on top.
 ## Where
 
 Everything lives under **Settings → Appearance** — a single scrolling page with
-an **Interface** heading on top and a **Terminal** heading below. Each starts
-with its **Fonts** section, then its **Themes**.
+an **Interface** section on top and a **Terminal** section below. Each holds its
+**Fonts** and a **Themes** item, followed by a scrollable **theme name list** and
+a **live preview** of the selected theme.
 
 **Interface → Fonts** — a **global font override** (title / body / mono) that
 wins over each theme's own fonts, so you can change fonts without switching theme.
 
 **Interface → Themes**
 
-- **Theme grid** — pick System, a built-in, or a custom theme (applies live).
+- **Theme list + live preview** — a scrollable list of theme names (System,
+  built-ins, custom); clicking a name previews its colors in the side panel (a
+  themed card listing each color role), and **Use** applies it live. The active
+  theme is checked.
 - **New theme** — opens an editable **draft** (previewed live); it is only saved
   when you press **Save** (Cancel / closing discards it).
 - **Edit** (custom themes) — a visual editor (per-token color inputs + fonts +
   base) and a **JSON** tab you can edit directly, with Save / Cancel.
 - **Duplicate / Delete**, and **Import** (`.json` file or pasted JSON) /
-  **Export** (`.json` file or clipboard).
+  **Export** (`.json` file or clipboard). Import accepts **multiple files at
+  once**, and each file (or the pasted text) may hold a **single theme or a whole
+  list** — see [Importing many themes at once](#importing-many-themes-at-once).
 
 **Terminal → Fonts** — a **global terminal typography** override (font family /
 size / line-height / letter-spacing / weight / ligatures) that wins over each
 terminal theme's font. Leave empty to use the theme's.
 
-**Terminal → Themes** — saved presets (cards with color swatches) that
-**override the app theme in the terminal only**. Pick **Inherit** to follow the
-app theme, or a preset.
+**Terminal → Themes** — saved presets that **override the app theme in the
+terminal only**, shown as a scrollable **name list** beside a **live mini-terminal
+preview** (a non-interactive sample that recolors to the selected theme so you see
+real color usage). Pick **Inherit** to follow the app theme, or a preset; the
+surrounding UI stays on the app theme — only the mini terminal recolors.
 
 A **switch** — "separate terminal themes for light / dark app themes":
 
-- **Off** (default) — one grid; the chosen terminal theme applies regardless of
-  the app being light or dark.
-- **On** — the presets split into two subsections, **for the dark app theme** and
-  **for the light app theme**; you pick one in each, and it applies by the
-  resolved app-theme base. Presets are grouped by their **base** tag (light/dark),
-  set in the editor (default dark).
+- **Off** (default) — one list + preview; the chosen terminal theme applies
+  regardless of the app being light or dark.
+- **On** — two lists, **dark themes** and **light themes**, each with its own
+  mini-terminal preview; you pick one in each, and it applies by the resolved
+  app-theme base. Presets are grouped by their **base** tag (light/dark), set in
+  the editor (default dark).
 
 Each preset is a draft (Save / Cancel) and import/exports as JSON. In the editor
 every field set is marked with an **overrides** dot and shows the inherited value
@@ -131,6 +139,33 @@ the app theme's terminal value.
   "brightWhite": "#ffffff"
 }
 ```
+
+## Importing many themes at once
+
+Both grids (Interface and Terminal) import the same two ways — a `.json` file
+or pasted JSON — and both accept **batches**:
+
+- **Multiple files** — the file picker allows selecting several `.json` files at
+  once; every file is imported in one pass.
+- **A list inside one file or paste** — instead of a single theme object, the
+  JSON may be an **array** of themes, or an **object wrapping an array** under
+  `themes` (interface) / `terminalThemes` (terminal). For example:
+
+  ```json
+  [
+    { "name": "Ocean", "base": "dark", "colors": { "primary": "oklch(0.6 0.2 250)" } },
+    { "name": "Sand",  "base": "light", "colors": { "primary": "oklch(0.8 0.1 90)" } }
+  ]
+  ```
+
+  ```json
+  { "themes": [ { "name": "Ocean", "base": "dark", "colors": {} } ] }
+  ```
+
+Each entry is normalized independently (its own fresh `id`, missing colors
+backfilled from the built-in base). The **last** valid theme in the batch becomes
+active. After importing you get a summary ("Imported N themes"); any malformed
+entries are skipped and reported without aborting the rest of the batch.
 
 ## How it's applied
 

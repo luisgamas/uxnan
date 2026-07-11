@@ -289,42 +289,94 @@ commit/push/pull.
   mano. El watcher se apunta al worktree activo centralmente (`+page.svelte`).
 - **Abrir archivo**: un clic en un archivo lo abre como **pestaña de archivo**
   en el área central (ver §6.2).
+- **Búsqueda en todo el proyecto**: la lupa filtra recursivamente **todo** el
+  worktree (comando backend `fs_search_files`, walker `ignore` de ripgrep —
+  respeta `.gitignore` y salta `.git`), no solo las carpetas ya expandidas. Las
+  coincidencias se muestran **como árbol** (mismo diseño de carpetas/archivos que
+  el navegador — los archivos hallados anidados bajo sus carpetas ancestro
+  colapsables), no como lista plana. Debounced, con tope de resultados (aviso de
+  "afina la búsqueda") y guardia de secuencia para descartar respuestas obsoletas.
+  **"Buscar en la carpeta"** raíza la misma búsqueda en un subárbol (chip limpiable).
+- **Toolbar + archivos ocultos**: botones primarios (buscar · contraer · recargar)
+  + un menú de desbordamiento **`…`** (`ui/dropdown-menu`) con acciones secundarias —
+  **Revelar en el explorador** y un toggle **"Mostrar archivos ocultos"** (dotfiles)
+  que filtra tanto el árbol como la búsqueda. La fila del árbol vive en
+  `FileTreeRow.svelte` (compartida por el árbol y el árbol de resultados).
+- **Arrastrar a la terminal**: arrastrar una fila (archivo/carpeta) sobre una
+  terminal escribe su ruta (entre comillas si tiene espacios) en el PTY, **sin
+  ejecutarla**, y **pasa el foco a esa terminal** para seguir escribiendo ahí. Se
+  implementa con **eventos de puntero** (no dnd HTML5, que Tauri suprime en el
+  WebView — igual que el reordenamiento de pestañas): un umbral distingue clic de
+  arrastre y el destino se resuelve con `data-pty-id` bajo el puntero. Helper
+  compartido `terminal/terminalDrop.ts`, reutilizado también por el drop OS-nativo.
+- **Menú contextual (clic derecho) por ítem**: cada archivo/carpeta ofrece
+  operaciones completas reutilizando `ui/context-menu`
+  (`FileTreeContextMenu.svelte`): New File · New Folder · Copiar ruta / ruta
+  relativa · Duplicar *(archivo)* · Añadir como proyecto *(carpeta)* · Abrir en
+  terminal *(carpeta)* · Ver archivo · Contraer carpeta · Buscar en la carpeta
+  *(acota la búsqueda a un subárbol, con chip limpiable)* · Revelar en el
+  explorador · Renombrar · Eliminar. Crear/renombrar pasan por un diálogo de
+  nombre (`FileNamePromptDialog.svelte`) con validación de nombre "desnudo" y
+  aviso de cambio de extensión. **Eliminar mueve a la papelera del SO** (crate
+  `trash`, recuperable) tras el `ConfirmDialog` destructivo compartido. Backend:
+  `fs_create_file` / `fs_create_dir` / `fs_delete` / `fs_duplicate`, con las
+  mismas guardas de nombre/no-clobber que `fs_rename` (`validate_bare_name`). Las
+  pestañas de archivo abiertas **siguen un renombrado o se cierran al eliminar**
+  (`terminals.repathTabs` / `closeTabsUnder`).
 
-### 6.2 Editor de Archivos (panel central)
+### 6.2 Visor de Archivos (panel central)
 
-`FileEditor.svelte` se renderiza como una **pestaña de archivo** en el árbol de
-regiones del área central — ya no como un overlay superpuesto. Editores, diffs y
-terminales son pestañas del mismo `TabGroup` (ver `02b-terminal-engine.md`
-§3.1/§3.3), por lo que conviven entre pestañas y permiten **splits mixtos** (p.
-ej. terminal a la izquierda / editor a la derecha). El estado vivo de cada
-pestaña (contenido, dirty, diff) vive en un registro por id en el store de
-terminales, no en el árbol serializado, así CodeMirror/xterm nunca se remontan al
-dividir/reordenar y escribir no ensucia el layout persistido. Las pestañas de
-archivo se restauran al reiniciar (por ruta); las de diff son transitorias.
-Características:
+Al abrir un archivo se crea **una sola pestaña** en el árbol de regiones del área
+central (`FileTabView.svelte`), con un **selector de vista Editar / Vista previa /
+Cambios** — solo aparecen las vistas que el archivo admite. Previsualizaciones,
+editores y terminales son pestañas del mismo `TabGroup` (ver `02b-terminal-engine.md`
+§3.1/§3.3), por lo que conviven y permiten **splits mixtos** (p. ej. terminal a la
+izquierda / editor a la derecha). El estado vivo de cada pestaña (contenido, dirty, y
+—perezosamente— el diff de trabajo) vive en registros por id en el store de terminales,
+no en el árbol serializado, así CodeMirror/xterm nunca se remontan al dividir/reordenar
+y escribir no ensucia el layout persistido. **Cada vista visitada permanece montada**
+(se alterna la visibilidad), de modo que cambiar de vista no remonta el editor ni vuelve
+a leer git. Las pestañas de archivo se restauran al reiniciar (por ruta, con su vista);
+las de commit son transitorias.
 
-- **Edición real con CodeMirror 6** + **resaltado de sintaxis** por extensión de
-  archivo (`editorLang.ts`: JS/TS/JSON/CSS/HTML/Markdown/Rust/Python/YAML/XML/
-  C++/Java/PHP/SQL/Go), números de línea e historial (undo/redo).
-- **Medianil de cambios git** (no el diff completo): las **líneas añadidas** vs
-  `HEAD` se resaltan con un color claro; un **marcador pequeño en la orilla
-  izquierda** despliega bajo demanda **solo las líneas eliminadas** (peek), sin
-  mostrar el diff completo. El medianil se deriva de `git diff HEAD -- <archivo>`
-  (comando `git_diff_head`), parseado en `diff.ts` (`parseHeadDiff`).
-- **Guardado**: botón **Guardar** o atajo **Ctrl/Cmd+S** → escribe el archivo
-  (`fs_write_file`, escritura atómica temp+rename en el backend) y refresca el
-  medianil + el estado git. Indicador de cambios sin guardar en la cabecera.
-- **Guardas**: archivos binarios o demasiado grandes (> 2 MiB) no se editan; se
-  muestra un aviso en lugar de cargar contenido (`fs_read_file` reporta los
-  flags `binary` / `tooLarge`).
-- **Aviso de cambios sin guardar**: cerrar una pestaña de archivo con ediciones
-  pendientes pregunta **Guardar / Descartar / Cancelar** (`SaveDiscardDialog`
-  + el servicio `confirm.svelte.ts`); cerrar una región con varios archivos
-  sucios pregunta una sola vez. Aplica en todas las rutas de cierre.
-- **Cambio externo en disco**: si el archivo abierto cambia en disco (evento
-  `fs:changed`) mientras hay ediciones sin guardar, el editor muestra una barra
-  **Recargar / Mantener mis cambios**; si la pestaña está limpia, recarga sola.
-  Los visores de diff recargan su contenido.
+La pestaña reúne lo que antes eran pestañas separadas: **abrir un archivo y revisar su
+diff ya no crean dos pestañas**. Al hacer clic en un archivo cambiado del panel de
+Cambios se **enfoca su pestaña y salta a la vista Cambios** (`terminals.openFileChanges`)
+en lugar de abrir un diff aparte, y el diff se lee de git **una sola vez**. Vistas:
+
+- **Editar** — edición real con CodeMirror 6 + **resaltado de sintaxis** por extensión
+  (`editorLang.ts`: JS/TS/JSON/CSS/HTML/Markdown/Rust/Python/YAML/XML/C++/Java/PHP/
+  SQL/Go), números de línea, historial y el **medianil de cambios git** (líneas
+  añadidas resaltadas + *peek* de líneas eliminadas bajo demanda, derivado de
+  `git_diff_head` → `parseHeadDiff`). **Guardado**: botón **Guardar** en la cabecera
+  de la pestaña o **Ctrl/Cmd+S** (`fs_write_file`, atómico temp+rename). Indicador de
+  cambios sin guardar. No disponible para imágenes ráster (binarias) ni archivos
+  > 2 MiB (`fs_read_file` reporta `binary` / `tooLarge`).
+- **Vista previa** — **multimodal**:
+  - **Imágenes** (`png/jpg/gif/webp/bmp/ico/svg/avif/tif`) se renderizan sobre un
+    fondo ajedrezado con **ajustar / zoom / tamaño real** y una línea de metadatos
+    (dimensiones · tamaño). El backend `fs_read_data_url` lee el archivo local a un
+    `data:` URL (MIME por extensión + *sniff* de bytes mágicos, tope 25 MiB). SVG se
+    previsualiza como imagen y **también** se edita como código.
+  - **Markdown** se renderiza con un parser propio sobre `@lezer/markdown`
+    (`markdown.ts` → AST tipado; `MarkdownView.svelte` con marcado Svelte, **sin
+    `{@html}`** — el HTML crudo se muestra como texto escapado, sin superficie XSS).
+    `.md` abre en la fuente con un botón de Vista previa; los enlaces se abren
+    externamente y las imágenes locales se resuelven vía `fs_read_data_url`.
+- **Cambios** — el diff de trabajo del archivo (unificado / lado a lado, staging por
+  hunk, diff visual de imágenes), con un toggle **staged / sin stage** (`DiffPane.svelte`
+  + `DiffViewerState`, sub-estado perezoso keyed por el id de la pestaña, liberado con
+  ella). Vaciar el diff (stagear/descartar el último hunk) **no cierra** la pestaña:
+  vuelve a Editar cuando esa vista existe (nunca cierra un editor con cambios sin
+  guardar). Un archivo **eliminado** en disco abre directo en Cambios (Editar/Vista
+  previa deshabilitadas).
+
+- **Aviso de cambios sin guardar** al cerrar: pregunta **Guardar / Descartar / Cancelar**
+  (`SaveDiscardDialog` + `confirm.svelte.ts`) en todas las rutas de cierre; cerrar una
+  región con varios archivos sucios pregunta una sola vez.
+- **Cambio externo en disco** (`fs:changed`): con ediciones sin guardar muestra una
+  barra **Recargar / Mantener mis cambios**; una pestaña limpia recarga sola; la vista
+  Cambios recarga su diff.
 
 ### 6.3 Comandos Tauri (sistema de archivos)
 
@@ -332,6 +384,7 @@ Características:
 |---|---|
 | `fs_list_dir(path)` | Lista un nivel de directorio (carpetas primero, luego archivos; `.git` oculto). |
 | `fs_read_file(path)` | Lee un archivo de texto para el editor (flags `binary` / `tooLarge`). |
+| `fs_read_data_url(path)` | Lee un archivo de imagen local a un `data:<mime>;base64,…` para la vista previa (MIME por extensión + sniff; tope 25 MiB; rechaza no-imágenes). |
 | `fs_write_file(path, content)` | Sobrescribe un archivo (atómico: temp + rename). |
 | `git_diff_head(path, file)` | Diff working-tree-vs-`HEAD` de un archivo, para el medianil del editor. |
 | `reveal_path(path)` | Revela una ruta en el explorador de archivos del SO (plugin opener). |

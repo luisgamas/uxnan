@@ -21,7 +21,14 @@
     type TerminalTemplate,
   } from "$lib/terminalTemplates";
   import { AGENT_CATALOG, agentLogoKey, type CatalogAgent } from "$lib/agentCatalog";
-  import { detectAgents } from "$lib/api";
+  import { USAGE_CATALOG, usageProvider, defaultStatusBarPick } from "$lib/usageCatalog";
+  import { statusMeta } from "$lib/usageFormat";
+  import { detectAgents, usageDetect } from "$lib/api";
+  import { usage } from "$lib/state/usage.svelte";
+  import type { UsageProvider } from "$lib/types";
+  import * as Tabs from "$lib/components/ui/tabs";
+  import ProviderUsageEditor from "./ProviderUsageEditor.svelte";
+  import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { updater } from "$lib/state/updater.svelte";
   import { appVersion } from "$lib/api";
   import type {
@@ -51,10 +58,11 @@
     resolveBinding,
   } from "$lib/keybindings";
   import { cn } from "$lib/utils";
-  import { divider, icon, iconButton, panel, text } from "$lib/design";
+  import { divider, icon, iconButton, panel, tab, text } from "$lib/design";
   import PaletteIcon from "@lucide/svelte/icons/palette";
   import TerminalIcon from "@lucide/svelte/icons/terminal";
   import BotIcon from "@lucide/svelte/icons/bot";
+  import GaugeIcon from "@lucide/svelte/icons/gauge";
   import LanguagesIcon from "@lucide/svelte/icons/languages";
   import KeyboardIcon from "@lucide/svelte/icons/keyboard";
   import WebhookIcon from "@lucide/svelte/icons/webhook";
@@ -173,8 +181,6 @@
   });
 
   const isInstalled = (c: CatalogAgent) => installed?.has(c.command) ?? false;
-  const isConfigured = (c: CatalogAgent) =>
-    app.agentProfiles.some((a) => a.command === c.command);
 
   function addCatalogAgent(c: CatalogAgent) {
     app.settings.agentProfiles.push({
@@ -213,6 +219,125 @@
   const addableCount = $derived(
     AGENT_CATALOG.filter((c) => isInstalled(c) && !isConfigured(c)).length,
   );
+
+  // Single, deduplicated agents list (the original flat layout): detected
+  // catalog agents you can add come first, then your configured agents, then the
+  // rest of the catalog (not installed). Each group is alphabetical; configured
+  // agents appear exactly once, so the catalog never shows a duplicate "add"
+  // row for the same command. The match key is case/space-insensitive because
+  // profiles the user typed may differ in casing or surrounding spaces from the
+  // catalog `command`.
+  const profileKey = (command: string) =>
+    command.trim().toLowerCase().replace(/\s+/g, "");
+  const configuredByKey = $derived(
+    new Map(app.agentProfiles.map((a) => [profileKey(a.command), a] as const)),
+  );
+  const isConfigured = (c: CatalogAgent) =>
+    configuredByKey.has(profileKey(c.command));
+  const byName = (a: { name: string }, b: { name: string }) =>
+    a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+  type AgentRow =
+    | { kind: "catalog"; agent: CatalogAgent }
+    | { kind: "profile"; agent: (typeof app.agentProfiles)[number] };
+  const agentRows = $derived.by<AgentRow[]>(() => {
+    const detectedUnadded = AGENT_CATALOG.filter(
+      (c) => isInstalled(c) && !isConfigured(c),
+    ).sort(byName);
+    const configured = [...app.agentProfiles].sort((a, b) =>
+      (a.name.trim() || a.command).localeCompare(
+        b.name.trim() || b.command,
+        undefined,
+        { sensitivity: "base" },
+      ),
+    );
+    const notDetected = AGENT_CATALOG.filter(
+      (c) => !isInstalled(c) && !isConfigured(c),
+    ).sort(byName);
+    return [
+      ...detectedUnadded.map((c) => ({ kind: "catalog" as const, agent: c })),
+      ...configured.map((a) => ({ kind: "profile" as const, agent: a })),
+      ...notDetected.map((c) => ({ kind: "catalog" as const, agent: c })),
+    ];
+  });
+
+  // --- Providers (usage statistics) -----------------------------------------
+  // Which catalog providers are present on the machine (null = not checked yet).
+  let usagePresent = $state<Set<UsageProvider> | null>(null);
+  async function detectProviders() {
+    try {
+      usagePresent = new Set(await usageDetect(USAGE_CATALOG.map((p) => p.id)));
+    } catch {
+      usagePresent = new Set(); // backend unreachable (e.g. web preview)
+    }
+  }
+  // On opening the Providers pane: detect presence once, then load fresh usage.
+  $effect(() => {
+    if (app.settingsOpen && app.settingsSection === "providers") {
+      if (usagePresent === null) void detectProviders();
+      void usage.ensureFresh();
+    }
+  });
+
+  const usageConfigs = $derived(app.settings.usageProviders ?? []);
+  const isProviderActive = (id: UsageProvider) =>
+    usageConfigs.some((c) => c.provider === id);
+  const providerPresent = (id: UsageProvider) => usagePresent?.has(id) ?? false;
+
+  // The provider tab currently shown. Kept valid as the list changes.
+  let activeProviderTab = $state<string>("");
+  $effect(() => {
+    const ids = usageConfigs.map((c) => c.provider);
+    if (ids.length > 0 && !ids.includes(activeProviderTab as UsageProvider)) {
+      activeProviderTab = ids[0];
+    }
+  });
+
+  function addProvider(id: UsageProvider) {
+    const meta = usageProvider(id);
+    if (!meta || isProviderActive(id)) return;
+    if (!app.settings.usageProviders) app.settings.usageProviders = [];
+    app.settings.usageProviders.push({
+      provider: id,
+      refreshMinutes: null,
+      statusBar: defaultStatusBarPick(),
+    });
+    activeProviderTab = id; // jump to the newly added provider's tab
+    persistNow();
+    usage.reschedule();
+    void usage.refreshOne(id);
+  }
+  function removeProvider(id: UsageProvider) {
+    app.settings.usageProviders = usageConfigs.filter((c) => c.provider !== id);
+    persistNow();
+    usage.reschedule();
+  }
+  // A card edited a field (refresh interval / status-bar picks): persist soon.
+  const onProviderChange = () => schedulePersist();
+
+  // Combobox: providers not yet activated, with an "installed?" hint.
+  const addProviderGroups = $derived<ComboGroup[]>([
+    {
+      items: USAGE_CATALOG.filter((p) => !isProviderActive(p.id)).map((p) => ({
+        value: p.id,
+        label: p.name,
+        keywords: [p.id],
+        meta: providerPresent(p.id) ? undefined : i18n.t("providers.notDetected"),
+      })),
+    },
+  ]);
+
+  // Global refresh-interval options (the per-provider select adds a "Global").
+  const usageRefreshGroups: ComboGroup[] = [
+    {
+      items: [
+        { value: "1", label: i18n.t("providers.every1m") },
+        { value: "5", label: i18n.t("providers.every5m") },
+        { value: "15", label: i18n.t("providers.every15m") },
+        { value: "60", label: i18n.t("providers.every60m") },
+        { value: "0", label: i18n.t("providers.refreshManual") },
+      ],
+    },
+  ];
 
   // Default agent (auto-launched on worktree create); "__none__" = off.
   const NO_DEFAULT_AGENT = "__none__";
@@ -546,6 +671,7 @@
       titleKey: "settings.groupAgents",
       items: [
         { id: "agents", key: "settings.agents", icon: BotIcon },
+        { id: "providers", key: "settings.providers", icon: GaugeIcon },
         { id: "aicommit", key: "settings.aiCommit", icon: SparklesIcon },
         { id: "hooks", key: "settings.hooks", icon: WebhookIcon },
       ],
@@ -574,16 +700,20 @@
       data-tauri-drag-region
       class={cn("flex h-9 shrink-0 items-center gap-2 px-3", divider.bottom)}
     >
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        class={iconButton.action}
-        title={i18n.t("common.close")}
-        aria-label={i18n.t("common.close")}
-        onclick={close}
-      >
-        <ArrowLeftIcon class={icon.button} />
-      </Button>
+      <TooltipSimple title={i18n.t("common.close")}>
+        {#snippet children(tp)}
+          <Button
+            {...tp}
+            variant="ghost"
+            size="icon-sm"
+            class={iconButton.action}
+            aria-label={i18n.t("common.close")}
+            onclick={close}
+          >
+            <ArrowLeftIcon class={icon.button} />
+          </Button>
+        {/snippet}
+      </TooltipSimple>
       <h1 class="text-sm font-semibold tracking-tight">
         {i18n.t("settings.title")}
       </h1>
@@ -662,46 +792,58 @@
                         <div class={text.body}>{i18n.t(action.labelKey)}</div>
                         <div class={cn("truncate", text.meta)}>{i18n.t(action.descKey)}</div>
                       </div>
-                      <button
-                        type="button"
-                        class={cn(
-                          "inline-flex h-7 min-w-24 shrink-0 items-center justify-center rounded-md border px-2 font-mono",
-                          text.body,
-                          isCapturing
-                            ? "border-primary text-primary"
-                            : "border-border hover:bg-accent/50",
-                        )}
-                        title={i18n.t("shortcuts.rebind")}
-                        onclick={() => (capturing = isCapturing ? null : action.id)}
-                      >
-                        {#if isCapturing}
-                          {i18n.t("shortcuts.press")}
-                        {:else if chord}
-                          {formatChord(chord)}
-                        {:else}
-                          <span class="text-muted-foreground">{i18n.t("shortcuts.disabled")}</span>
-                        {/if}
-                      </button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        class={iconButton.action}
-                        disabled={chord === ""}
-                        title={i18n.t("shortcuts.disable")}
-                        onclick={() => setBinding(action.id, "")}
-                      >
-                        <XIcon class={icon.button} />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        class={iconButton.action}
-                        disabled={chord === action.default}
-                        title={i18n.t("shortcuts.reset")}
-                        onclick={() => resetBinding(action.id)}
-                      >
-                        <RotateCcwIcon class={icon.button} />
-                      </Button>
+                      <TooltipSimple title={i18n.t("shortcuts.rebind")}>
+                        {#snippet children(tp)}
+                          <button
+                            {...tp}
+                            type="button"
+                            class={cn(
+                              "inline-flex h-7 min-w-24 shrink-0 items-center justify-center rounded-md border px-2 font-mono",
+                              text.body,
+                              isCapturing
+                                ? "border-primary text-primary"
+                                : "border-border hover:bg-accent/50",
+                            )}
+                            onclick={() => (capturing = isCapturing ? null : action.id)}
+                          >
+                            {#if isCapturing}
+                              {i18n.t("shortcuts.press")}
+                            {:else if chord}
+                              {formatChord(chord)}
+                            {:else}
+                              <span class="text-muted-foreground">{i18n.t("shortcuts.disabled")}</span>
+                            {/if}
+                          </button>
+                        {/snippet}
+                      </TooltipSimple>
+                      <TooltipSimple title={i18n.t("shortcuts.disable")}>
+                        {#snippet children(tp)}
+                          <Button
+                            {...tp}
+                            variant="ghost"
+                            size="icon"
+                            class={iconButton.action}
+                            disabled={chord === ""}
+                            onclick={() => setBinding(action.id, "")}
+                          >
+                            <XIcon class={icon.button} />
+                          </Button>
+                        {/snippet}
+                      </TooltipSimple>
+                      <TooltipSimple title={i18n.t("shortcuts.reset")}>
+                        {#snippet children(tp)}
+                          <Button
+                            {...tp}
+                            variant="ghost"
+                            size="icon"
+                            class={iconButton.action}
+                            disabled={chord === action.default}
+                            onclick={() => resetBinding(action.id)}
+                          >
+                            <RotateCcwIcon class={icon.button} />
+                          </Button>
+                        {/snippet}
+                      </TooltipSimple>
                     </div>
                   {/each}
                 </div>
@@ -764,11 +906,14 @@
               </div>
             </SettingsSection>
 
-            <!-- One agents list: configured agents first (each row expands to its
-                 command / args / shell / env config), then the remaining known
-                 agents to add — greyed when not found on PATH. -->
-            <div class="flex flex-col gap-1.5">
-              <div class="flex items-center justify-between gap-2">
+            <!-- Single agents list (the original flat layout): detected catalog
+                 agents you can add first, then your configured agents (each row
+                 expands to its command / args / shell / env config), then the
+                 remainder of the catalog (greyed when not on PATH), each group
+                 alphabetical. Configured agents appear once, so the catalog never
+                 shows a duplicate "add" row for the same command. -->
+            <div class="space-y-2">
+              <div class="flex flex-wrap items-center justify-between gap-2 px-1">
                 <span class={text.section}>{i18n.t("settings.yourAgents")}</span>
                 <div class="flex items-center gap-1.5">
                   {#if addableCount > 0}
@@ -784,39 +929,138 @@
                 </div>
               </div>
               {#if installed === null}
-                <p class={text.meta}>{i18n.t("settings.detecting")}</p>
+                <p class={cn("px-1", text.meta)}>{i18n.t("settings.detecting")}</p>
               {/if}
-              <div class="flex flex-col divide-y divide-border/60 rounded-xl border border-border/50 bg-card/50 px-5 shadow-xs">
-                {#each app.agentProfiles as agent (agent.id)}
-                  <AgentProfileEditor
-                    {agent}
-                    onchange={schedulePersist}
-                    onremove={() => removeAgent(agent.id)}
-                  />
-                {/each}
-                {#each AGENT_CATALOG.filter((c) => !isConfigured(c)) as c (c.id)}
-                  {@const inst = isInstalled(c)}
-                  <div class={cn("flex items-center gap-2.5 py-2.5", !inst && "opacity-55")}>
-                    <span class="flex size-7 shrink-0 items-center justify-center">
-                      <AgentLogo logo={c.logo} class="size-5" />
-                    </span>
-                    <div class="min-w-0 flex-1">
-                      <div class={cn("truncate font-medium text-foreground", text.body)}>{c.name}</div>
-                      <div class="truncate font-mono text-[11px] leading-4 text-muted-foreground">{c.command}</div>
+              <div class={cn("flex flex-col divide-y divide-border/60", panel.settingsBody)}>
+                {#each agentRows as row (row.kind === "profile" ? row.agent.id : row.agent.id)}
+                  {#if row.kind === "profile"}
+                    <AgentProfileEditor
+                      agent={row.agent}
+                      onchange={schedulePersist}
+                      onremove={() => removeAgent(row.agent.id)}
+                    />
+                  {:else}
+                    {@const c = row.agent}
+                    {@const inst = isInstalled(c)}
+                    <div class={cn("flex items-center gap-2.5 px-1 py-3", !inst && "opacity-55")}>
+                      <span class="flex size-7 shrink-0 items-center justify-center">
+                        <AgentLogo logo={c.logo} class="size-5" />
+                      </span>
+                      <div class="min-w-0 flex-1">
+                        <div class={cn("truncate font-medium text-foreground", text.body)}>{c.name}</div>
+                        <div class="truncate font-mono text-[11px] leading-4 text-muted-foreground">{c.command}</div>
+                      </div>
+                      {#if inst}
+                        <Button variant="ghost" size="sm" class="h-7 shrink-0 gap-1" onclick={() => addCatalogAgent(c)}>
+                          <PlusIcon class={icon.button} />
+                          {i18n.t("common.add")}
+                        </Button>
+                      {:else}
+                        <span class={cn("shrink-0", text.meta)}>{i18n.t("settings.agentNotFound")}</span>
+                      {/if}
                     </div>
-                    {#if inst}
-                      <Button variant="ghost" size="sm" class="h-7 shrink-0 gap-1" onclick={() => addCatalogAgent(c)}>
-                        <PlusIcon class={icon.button} />
-                        {i18n.t("common.add")}
-                      </Button>
-                    {:else}
-                      <span class={cn("shrink-0", text.meta)}>{i18n.t("settings.agentNotFound")}</span>
-                    {/if}
-                  </div>
+                  {/if}
                 {/each}
               </div>
             </div>
 
+          </div>
+        {:else if app.settingsSection === "providers"}
+          <div class="flex flex-col gap-6">
+            <SettingsSection title={i18n.t("settings.providers")} description={i18n.t("settings.providersDesc")}>
+              <div class="divide-y divide-border/60">
+                <SettingsRow label={i18n.t("providers.refreshInterval")} description={i18n.t("providers.refreshIntervalDesc")}>
+                  {#snippet control()}
+                    <Combobox
+                      value={String(app.settings.usageRefreshMinutes ?? 5)}
+                      groups={usageRefreshGroups}
+                      triggerClass="w-44"
+                      onChange={(v) => {
+                        app.settings.usageRefreshMinutes = Number(v);
+                        persistNow();
+                        usage.reschedule();
+                      }}
+                    />
+                  {/snippet}
+                </SettingsRow>
+                <SettingsRow label={i18n.t("providers.statusBarEnabled")} description={i18n.t("providers.statusBarEnabledDesc")}>
+                  {#snippet control()}
+                    <Switch
+                      checked={app.settings.usageStatusBarEnabled !== false}
+                      onCheckedChange={(c) => {
+                        app.settings.usageStatusBarEnabled = c;
+                        persistNow();
+                      }}
+                    />
+                  {/snippet}
+                </SettingsRow>
+              </div>
+            </SettingsSection>
+
+            <!-- Your providers: a section label OUTSIDE the container, then one
+                 coherent container holding the add-header (title · desc ·
+                 combobox), a subtle divider, and a tab per activated provider.
+                 Each tab shows that provider's live data + status-bar options. -->
+            {#snippet providerPrefix(item: ComboItem)}
+              <AgentLogo logo={usageProvider(item.value as UsageProvider)?.logo ?? item.value} class="size-4" />
+            {/snippet}
+            <section class="space-y-4">
+              <h2 class={text.pageTitle}>{i18n.t("providers.yourProviders")}</h2>
+              <div class={panel.settingsBody}>
+                <div class="flex flex-wrap items-start justify-between gap-4">
+                  <div class="min-w-0 space-y-1">
+                    <h3 class={text.heading}>{i18n.t("providers.addProvider")}</h3>
+                    <p class="max-w-md text-[13px] leading-5 text-muted-foreground">{i18n.t("providers.yourProvidersDesc")}</p>
+                  </div>
+                  <Combobox
+                    value=""
+                    groups={addProviderGroups}
+                    triggerClass="w-56"
+                    placeholder={i18n.t("providers.addPick")}
+                    searchPlaceholder={i18n.t("common.search")}
+                    itemPrefix={providerPrefix}
+                    onChange={(v) => addProvider(v as UsageProvider)}
+                  />
+                </div>
+                <div class="mt-5 border-t border-border/60 pt-5">
+                  {#if usagePresent === null && usageConfigs.length === 0}
+                    <p class={cn("py-2 text-center", text.meta)}>{i18n.t("settings.detecting")}</p>
+                  {:else if usageConfigs.length === 0}
+                    <p class={cn("py-2 text-center", text.meta)}>{i18n.t("providers.empty")}</p>
+                  {:else}
+                    <Tabs.Root bind:value={activeProviderTab} class="flex flex-col gap-5">
+                      <Tabs.List class={cn("h-8 shrink-0 justify-start gap-1 rounded-none bg-transparent p-0", divider.bottom)}>
+                        {#each usageConfigs as config (config.provider)}
+                          {@const m = usageProvider(config.provider)}
+                          {@const snap = usage.byProvider[config.provider]}
+                          {@const st = statusMeta(snap?.status ?? "notInstalled")}
+                          <Tabs.Trigger
+                            value={config.provider}
+                            class={cn("gap-1.5 px-3 text-[13px]", tab.base, activeProviderTab === config.provider ? tab.activeLine : tab.inactiveLine)}
+                          >
+                            <AgentLogo logo={m?.logo ?? config.provider} class="size-4" />
+                            {m?.name ?? config.provider}
+                            <span class={cn("size-1.5 shrink-0 rounded-full", st.dot)}></span>
+                          </Tabs.Trigger>
+                        {/each}
+                      </Tabs.List>
+                      {#each usageConfigs as config (config.provider)}
+                        <Tabs.Content value={config.provider}>
+                          <ProviderUsageEditor
+                            {config}
+                            snapshot={usage.byProvider[config.provider]}
+                            loading={usage.loading}
+                            onchange={onProviderChange}
+                            onremove={() => removeProvider(config.provider)}
+                            onrefresh={() => usage.refreshOne(config.provider)}
+                          />
+                        </Tabs.Content>
+                      {/each}
+                    </Tabs.Root>
+                  {/if}
+                </div>
+              </div>
+            </section>
           </div>
         {:else if app.settingsSection === "aicommit"}
           <SettingsSection title={i18n.t("settings.aiCommit")} description={i18n.t("settings.aiCommitDesc")}>
@@ -1214,8 +1458,9 @@
             </div>
           </SettingsSection>
         {:else}
-          <SettingsSection bare title={i18n.t("settings.terminal")} description={i18n.t("settings.terminalDesc")}>
-            <div class="rounded-xl border border-border/50 bg-card/50 px-7 py-4 shadow-xs">
+          <div class="flex flex-col gap-6">
+          <SettingsSection title={i18n.t("settings.terminal")} description={i18n.t("settings.terminalDesc")}>
+            <div class="divide-y divide-border/60">
               <SettingsRow label={i18n.t("settings.defaultProfile")} description={i18n.t("settings.defaultProfileDesc")}>
                 {#snippet control()}
                   <Combobox
@@ -1229,9 +1474,11 @@
                 {/snippet}
               </SettingsRow>
             </div>
+          </SettingsSection>
 
-            <div class="flex items-center justify-between gap-1.5">
-              <span class={cn("font-medium", text.body)}>{i18n.t("settings.profiles")}</span>
+          <div class="space-y-2">
+            <div class="flex flex-wrap items-center justify-between gap-2 px-1">
+              <span class={text.section}>{i18n.t("settings.profiles")}</span>
               <div class="flex items-center gap-1.5">
                 {#if addableShellCount > 0}
                   <Button variant="outline" size="sm" onclick={addDetectedShells}>
@@ -1283,7 +1530,7 @@
 
             {#if app.terminalProfiles.length > 0}
               <!-- One list: each profile is a row that expands to its command/args. -->
-              <div class="flex flex-col divide-y divide-border/60 rounded-xl border border-border/50 bg-card/50 px-5 shadow-xs">
+              <div class={cn("flex flex-col divide-y divide-border/60", panel.settingsBody)}>
                 {#each app.terminalProfiles as profile (profile.id)}
                   <TerminalProfileEditor
                     {profile}
@@ -1293,11 +1540,12 @@
                 {/each}
               </div>
             {:else}
-              <p class={cn("text-muted-foreground", text.body)}>
+              <p class={cn("px-1", text.meta)}>
                 {i18n.t("settings.noProfiles")}
               </p>
             {/if}
-          </SettingsSection>
+          </div>
+          </div>
         {/if}
         </div>
       </div>

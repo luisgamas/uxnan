@@ -46,10 +46,16 @@ available today are:
   terminal workspace, and its own agent, so one agent's work never collides with
   another's, and switching between them is a single click rather than a `git
   stash` / `git checkout` cycle.
+- **A sidebar you can order your way.** Sort the project cards and the worktree
+  rows independently — manually (**drag to reorder**), by name, by most-recent, or
+  by **agent activity** (workspaces whose agents are blocked/waiting bubble to the
+  top) — and **pin** the ones you live in so they always lead. Or flip to a
+  **by-status** view that pools every worktree into lanes by what its agent is
+  doing (needs you · done · working · idle).
 - **A full terminal multiplexer.** Tabs, nested splits, drag-to-reorder and the
-  ability to move tabs across panes, `Ctrl+Tab` MRU cycling, WebGL rendering, and
-  scrollback that survives recreating a pane — built on `portable-pty` and
-  xterm.js.
+  ability to move tabs across panes, `Ctrl+Tab` MRU cycling, hardware-accelerated
+  Canvas rendering, and scrollback that survives recreating a pane — built on
+  `portable-pty` and xterm.js.
 - **Integrated Git review.** Status, stage, commit, push and pull, with a unified
   or side-by-side diff viewer (CodeMirror 6), **hunk-level staging**, visual image
   diffs, squash-merged branch cleanup on worktree removal, WSL repositories routed
@@ -63,6 +69,12 @@ available today are:
   message to all of them, to one agent type (fan-out), or to a coordinator's
   workers, applying backpressure so no agent receives a new message before it is
   free.
+- **AI-provider usage.** A **Providers** settings section shows how much of each
+  quota you've consumed — session / weekly / monthly windows (with resets), plan,
+  account and credit balance — for **Codex, Claude, Copilot and Gemini**. It reads
+  each CLI's own signed-in token and calls the provider's official usage API (never
+  cookies or pasted keys), polling **only the providers you activate**. A status-bar
+  gauge surfaces the meters you pick. See [provider usage](./docs/providers.md).
 - **Integrated developer browser.** A complete in-app browser in a right-side panel
   (a real system webview docked to the app, so it loads any site and has real
   DevTools) to preview and debug what your agents build — `localhost` dev servers
@@ -145,6 +157,7 @@ Detailed docs live in [`docs/`](./docs/):
 [theming & appearance](./docs/theming.md) ·
 [internationalization (i18n)](./docs/i18n.md) ·
 [agent launch & configuration](./docs/agent-launch.md) ·
+[provider usage statistics](./docs/providers.md) ·
 [multi-agent orchestration](./docs/orchestration.md) ·
 [agent hooks (precise states)](./docs/agent-hooks.md) ·
 [integrated browser](./docs/browser.md) ·

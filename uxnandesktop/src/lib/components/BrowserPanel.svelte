@@ -30,6 +30,7 @@
     openExternal,
   } from "$lib/api";
   import { app } from "$lib/state/app.svelte";
+  import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import ArrowLeftIcon from "@lucide/svelte/icons/arrow-left";
   import ArrowRightIcon from "@lucide/svelte/icons/arrow-right";
@@ -196,30 +197,42 @@
 
   <!-- Toolbar / address bar (lives in the main window; the page window docks below) -->
   <div class="flex shrink-0 items-center gap-1 border-b border-border/60 px-1.5 py-1">
-    <button
-      class="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
-      title={i18n.t("browser.back")}
-      aria-label={i18n.t("browser.back")}
-      onclick={() => void browserWindowBack().catch(() => {})}
-    >
-      <ArrowLeftIcon class="size-4" />
-    </button>
-    <button
-      class="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
-      title={i18n.t("browser.forward")}
-      aria-label={i18n.t("browser.forward")}
-      onclick={() => void browserWindowForward().catch(() => {})}
-    >
-      <ArrowRightIcon class="size-4" />
-    </button>
-    <button
-      class="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
-      title={i18n.t("browser.reload")}
-      aria-label={i18n.t("browser.reload")}
-      onclick={() => void browserWindowReload().catch(() => {})}
-    >
-      <RotateCwIcon class="size-4" />
-    </button>
+    <TooltipSimple title={i18n.t("browser.back")}>
+      {#snippet children(tp)}
+        <button
+          {...tp}
+          class="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+          aria-label={i18n.t("browser.back")}
+          onclick={() => void browserWindowBack().catch(() => {})}
+        >
+          <ArrowLeftIcon class="size-4" />
+        </button>
+      {/snippet}
+    </TooltipSimple>
+    <TooltipSimple title={i18n.t("browser.forward")}>
+      {#snippet children(tp)}
+        <button
+          {...tp}
+          class="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+          aria-label={i18n.t("browser.forward")}
+          onclick={() => void browserWindowForward().catch(() => {})}
+        >
+          <ArrowRightIcon class="size-4" />
+        </button>
+      {/snippet}
+    </TooltipSimple>
+    <TooltipSimple title={i18n.t("browser.reload")}>
+      {#snippet children(tp)}
+        <button
+          {...tp}
+          class="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+          aria-label={i18n.t("browser.reload")}
+          onclick={() => void browserWindowReload().catch(() => {})}
+        >
+          <RotateCwIcon class="size-4" />
+        </button>
+      {/snippet}
+    </TooltipSimple>
     <input
       class="min-w-0 flex-1 rounded border border-input bg-card px-2 py-1 text-xs outline-none focus:border-ring"
       type="text"
@@ -230,30 +243,42 @@
       bind:value={address}
       onkeydown={onKey}
     />
-    <button
-      class="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
-      title={i18n.t("browser.openExternal")}
-      aria-label={i18n.t("browser.openExternal")}
-      onclick={() => void openExternal(address).catch(() => {})}
-    >
-      <ExternalLinkIcon class="size-4" />
-    </button>
-    <button
-      class="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
-      title={i18n.t("browser.devtools")}
-      aria-label={i18n.t("browser.devtools")}
-      onclick={() => void browserWindowDevtools().catch(() => {})}
-    >
-      <BugIcon class="size-4" />
-    </button>
-    <button
-      class="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
-      title={i18n.t("browser.close")}
-      aria-label={i18n.t("browser.close")}
-      onclick={() => app.closeBrowser()}
-    >
-      <XIcon class="size-4" />
-    </button>
+    <TooltipSimple title={i18n.t("browser.openExternal")}>
+      {#snippet children(tp)}
+        <button
+          {...tp}
+          class="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+          aria-label={i18n.t("browser.openExternal")}
+          onclick={() => void openExternal(address).catch(() => {})}
+        >
+          <ExternalLinkIcon class="size-4" />
+        </button>
+      {/snippet}
+    </TooltipSimple>
+    <TooltipSimple title={i18n.t("browser.devtools")}>
+      {#snippet children(tp)}
+        <button
+          {...tp}
+          class="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+          aria-label={i18n.t("browser.devtools")}
+          onclick={() => void browserWindowDevtools().catch(() => {})}
+        >
+          <BugIcon class="size-4" />
+        </button>
+      {/snippet}
+    </TooltipSimple>
+    <TooltipSimple title={i18n.t("browser.close")}>
+      {#snippet children(tp)}
+        <button
+          {...tp}
+          class="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+          aria-label={i18n.t("browser.close")}
+          onclick={() => app.closeBrowser()}
+        >
+          <XIcon class="size-4" />
+        </button>
+      {/snippet}
+    </TooltipSimple>
   </div>
 
   <!-- Content slot: the docked browser window is positioned over this element. -->

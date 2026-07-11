@@ -15,9 +15,7 @@ which tracks assets only a human can provide.)
 standalone app** (three-panel shell, PTY terminals + splits, git worktrees, git
 status/diff/stage/commit/history, agent monitoring with the axum hook server +
 OSC/process layers, settings/themes/i18n, multi-agent orchestration,
-**in-app auto-updater**, **browser-control MCP for agents**). 117 Rust backend tests
-+ 25 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests
-yet**. macOS is **unvalidated**
+**in-app auto-updater**, **browser-control MCP for agents**). 126 Rust backend tests + 57 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
 (developed on Windows; CI is `{ubuntu, windows}`). **Phase 6 (embedded bridge /
 mobile pairing) is NOT started.**
 
@@ -25,21 +23,38 @@ mobile pairing) is NOT started.**
 
 - **Three-panel resizable shell** with atomic JSON persistence (5 rotating
   backups + sequential schema migrations).
-- **PTY terminals** (`portable-pty 0.9`, xterm WebGL + DOM fallback) — tabs +
+- **PTY terminals** (`portable-pty 0.9`, xterm Canvas + DOM fallback) — tabs +
   nested splits that never remount on split, drag-to-reorder / move tabs across
   regions, `Ctrl+Tab` MRU cycling, a backend output ring buffer that restores a
-  recreated pane's scrollback, and the Kitty/CSI-u keyboard protocol.
+  recreated pane's scrollback, and the Kitty/CSI-u keyboard protocol. Tabs can be
+  **renamed** (free-form label for terminals/diffs, persisted; on-disk rename for
+  file tabs via `fs_rename`, with an extension-change warning) and **closed all at
+  once** per active workspace.
 - **Git worktrees** — per-worktree terminal workspaces, hierarchical Projects
   tree, in-app directory picker, worktree palette (Ctrl/Cmd+P), squash-merged
-  branch cleanup on removal, WSL repos routed through `wsl.exe`.
+  branch cleanup on removal, WSL repos routed through `wsl.exe`. Projects carry a
+  **⋯ actions menu + per-project settings** (rename the card label without
+  touching the folder) and a **custom icon**; branches carry a **per-branch icon**
+  (both from a built-in glyph set, a file, a URL, or a git-host account avatar —
+  rasterized to an inline PNG via `image_fetch_data_url` / `repo_remote_owner` and
+  persisted in `RepoData.icon` / `branchIcons`).
 - **Full git review** — status / diff / stage / commit / push / pull with a 3 s
   focus-paused Tokio watcher, CodeMirror 6 diff viewer, hunk-level staging,
   side-by-side toggle, visual image diffs, and optional AI commit-message
   generation via a local CLI agent.
 - **Agent monitoring (Phase 4)** — Layer 1 local HTTP hook server (`axum`, precise
   `working/blocked/waiting/done` + persistent cache) + Layer 2 terminal-title
-  (OSC) + Layer 3 process-tree detection; colored status dots, unread/done badges,
-  custom agent logos, per-worktree agent override.
+  (OSC, path/word-boundary-hardened) + Layer 3 process-tree detection; colored
+  status dots, unread/done badges, custom agent logos, per-worktree agent override.
+- **Precise per-agent reporters (auto-installed, multi-shell)** — Claude Code +
+  Gemini CLI use a Node relay (`node` guaranteed; Claude in exec-form so no shell
+  is involved); Codex uses a `curl` hook + a reproduced `trusted_hash` in
+  `~/.codex/config.toml` (golden-vector-tested `codex_trust.rs`); OpenCode a
+  plugin, Pi an in-process extension. Per-event merge preserves user hooks; shell
+  reporters pass id/kind/state in headers (no JSON building); an endpoint file
+  (`UXNAN_ENDPOINT_FILE`) survives app restarts; `WSLENV` carries the vars into
+  WSL (WSL2 host-loopback is a documented gap). Settings → Agents → Hooks shows a
+  card per agent (incl. Pi) + a master install switch.
 - **Multi-agent orchestration** (spec `02d` §3) — a console (status bar, shown with
   ≥2 live agents) routing a message to all agents, one type (fan-out), or a
   coordinator's workers, with backpressure + an in-memory coordinator→workers task
@@ -55,6 +70,14 @@ mobile pairing) is NOT started.**
   waits for the safe window or explicit consent), banner UI, EN/ES i18n. Endpoint
   per channel + signing/CI in [`docs/updates.md`](docs/updates.md); signing key is
   a `FOR-HUMAN.md` item.
+- **AI-provider usage statistics (Settings → Providers)** — native Rust reader
+  (`src-tauri/src/usage.rs`, `usage_read`/`usage_detect`) for **Codex, Claude,
+  Copilot, Gemini**, reading each CLI's own stored token → the provider's official
+  usage API (never cookies / pasted keys). Tabbed UI with per-provider quota
+  windows ("% used"), plan/account ("Authenticated as …" with click-to-reveal
+  blur), credit, per-provider refresh interval + status-bar visibility, and a
+  status-bar gauge popover. Contract-first (`shared` `agent/usageStats`); the
+  bridge/mobile side is Phase 6 (see below).
 
 ## Integrated developer browser ☐
 
@@ -135,6 +158,14 @@ yet on either side** — the bridge's `desktop/*` handler is also an empty stub
       pinned Node bridge version it ships — so the bridge's own check still
       matters. Unblocks with the sidecar above.
 
+- [ ] **Provider usage over the bridge (`agent/usageStats`).** The desktop already
+      reads AI-provider usage natively (`src-tauri/src/usage.rs`) and the `shared`
+      contract (`agent/usageStats` + `ProviderUsage`) exists. For the paired phone,
+      the embedded bridge must implement the same reader in TS and serve it — the
+      phone can't see the PC's disk directly (dual-reader, same contract; see
+      `architecture/02a` §5.8.10). Owed on the bridge (`bridge/FOR-DEV.md`) and the
+      mobile UI (`uxnanmobile/FOR-DEV.md`).
+
 ### Frontend (Svelte)
 - [ ] Settings → Mobile connection: QR pairing dialog, connected-phone indicator,
       trusted-device management (reuses the bridge's `bridge/removeTrustedDevice`).
@@ -183,10 +214,20 @@ are **done** (see `CHANGELOG.md` + `architecture/02d` §3). Remaining follow-ups
 
 **File tree / mixed tabs**
 - [ ] Tree virtualization (TanStack Virtual) for very large folders.
-- [ ] File ops from the tree (create / rename / delete / new folder).
+- [x] File ops from the tree (create / rename / delete / new folder) — **done**: a
+      per-entry right-click context menu (`FileTreeContextMenu` + `FileNamePromptDialog`,
+      `fs_create_file`/`_dir`/`_delete`/`_duplicate`; delete → OS trash via the
+      `trash` crate). Open tabs follow a rename / close on a delete. See `CHANGELOG.md`.
 - [ ] Multi-worktree external-change watching (the watcher follows the active
       worktree only).
-- [ ] Tab/region reorder + drag for the mixed `terminal|file|diff` tabs.
+- [ ] Tab/region reorder + drag for the mixed `terminal|file|commit` tabs.
+- [ ] **Markdown preview polish (non-blocking).** The in-house renderer
+      (`markdown.ts` / `MarkdownView.svelte`) covers the common GFM surface; two
+      deferred niceties: (1) syntax-highlight fenced code per language — today code
+      blocks are plain monospace, though the Lezer language parsers are already
+      installed; (2) resolve in-document / relative *links* (heading anchors, and
+      links to sibling files → open that file's tab). Today only external links
+      open (via the OS) and only local *images* are resolved (`fs_read_data_url`).
 
 **Workspace / context menu**
 - [ ] **"Open with" external editors/IDEs + customization.** The worktree row's
@@ -247,7 +288,7 @@ are **done** (see `CHANGELOG.md` + `architecture/02d` §3). Remaining follow-ups
 
 - ✅ **Verify** — `.github/workflows/ci-desktop.yml` runs svelte-check + `npm test`
   (Vitest) + vite build + cargo fmt/clippy/test on `{ubuntu, windows}` (macOS
-  deferred with Apple). 106 Rust + 25 Vitest tests.
+  deferred with Apple). 126 Rust + 57 Vitest tests.
 - ✅ **`release-desktop.yml`** — exists: `tauri-action` bundles on a `desktop-v*` tag
   → draft GitHub Release, **and signs the updater artifacts** when the signing
   secrets are set. **Windows ships without OS code-signing for now; macOS deferred.**

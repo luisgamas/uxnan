@@ -49,6 +49,12 @@ class AgentMonitor {
       await listen<AgentDetected>("agent:detected", (e) => {
         const tab = terminals.findTab(e.payload.ptyId);
         if (!tab || tab.kind !== "terminal") return;
+        // A tab launched via uxnan already carries its true identity (set from the
+        // agent profile). Process detection can misidentify a wrapper agent by an
+        // inner helper it spawns (e.g. OpenClaude→claude, Zero→a child), so never
+        // let detection override a known launch identity — it only names tabs where
+        // the user started an agent by hand (no `agentCommand`).
+        if (tab.agentCommand) return;
         if (e.payload.command) {
           const a = app.resolveAgent(e.payload.command);
           tab.agentName = a.name;

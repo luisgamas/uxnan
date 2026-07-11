@@ -1,20 +1,16 @@
-# Uxnan Desktop — generic agent hook wrapper (PowerShell).
+# Uxnan Desktop — generic agent hook wrapper (PowerShell / PowerShell 7).
 #
-# Wraps any CLI agent: POSTs `working` to the local hook server before exec,
-# and `done` on exit (with `interrupted: true` if the agent crashed). Use this
-# as the agent's launch command in Settings → Agents when the agent itself has
-# no hook system.
+# Wraps any CLI agent that has no native hook system: reports `working` before it
+# runs and `done` on exit (with `interrupted` when the exit code is non-zero).
+# Register it as the agent's launch command in Settings → Agents.
 #
 # Usage (from PowerShell):
 #   uxnan-hook-wrapper.ps1 -Type <agent-type> -Command <cli> [-Args <arg1>, <arg2>, ...]
 #
-# Environment (set by the ADE when it spawns the terminal):
-#   $env:UXNAN_HOOK_URL    POST endpoint, e.g. http://127.0.0.1:51234/hook
-#   $env:UXNAN_HOOK_TOKEN  Shared secret for the X-Uxnan-Token header
-#   $env:UXNAN_AGENT_ID    Terminal id; echoed back in every report
-#
-# If $UXNAN_HOOK_URL is empty (terminal not spawned by the ADE), the wrapper
-# just runs the agent unchanged.
+# The agent id / kind / state ride in HTTP headers, so the wrapper never builds
+# JSON. The ADE injects $env:UXNAN_HOOK_URL / _TOKEN / UXNAN_AGENT_ID;
+# $env:UXNAN_ENDPOINT_FILE holds the live coordinates after an app restart. If
+# none are set, the wrapper just runs the agent unchanged.
 
 [CmdletBinding()]
 param(
@@ -29,19 +25,30 @@ $url = $env:UXNAN_HOOK_URL
 $token = $env:UXNAN_HOOK_TOKEN
 $id = $env:UXNAN_AGENT_ID
 
+# Prefer the endpoint file (rewritten every launch) for live coordinates.
+if ($env:UXNAN_ENDPOINT_FILE -and (Test-Path -LiteralPath $env:UXNAN_ENDPOINT_FILE)) {
+  try {
+    foreach ($line in Get-Content -LiteralPath $env:UXNAN_ENDPOINT_FILE) {
+      $m = [regex]::Match($line, '^(?:set\s+)?([A-Za-z0-9_]+)=(.*)$')
+      if ($m.Success) {
+        if ($m.Groups[1].Value -eq 'UXNAN_HOOK_URL') { $url = $m.Groups[2].Value.TrimEnd("`r") }
+        if ($m.Groups[1].Value -eq 'UXNAN_HOOK_TOKEN') { $token = $m.Groups[2].Value.TrimEnd("`r") }
+      }
+    }
+  } catch { }
+}
+
 function Post-State {
   param([string]$Status, [bool]$Interrupted)
   if (-not $url) { return }
-  $body = @{
-    agentId    = $id
-    status     = $Status
-    agentType  = $Type
-    interrupted = $Interrupted
-  } | ConvertTo-Json -Compress
   try {
-    Invoke-RestMethod -Uri $url -Method Post -TimeoutSec 3 `
-      -Headers @{ 'X-Uxnan-Token' = $token; 'Content-Type' = 'application/json' } `
-      -Body $body -ErrorAction Stop | Out-Null
+    Invoke-RestMethod -Uri $url -Method Post -TimeoutSec 3 -Headers @{
+      'X-Uxnan-Token'       = $token
+      'X-Uxnan-Agent-Id'    = $id
+      'X-Uxnan-Agent-Type'  = $Type
+      'X-Uxnan-Status'      = $Status
+      'X-Uxnan-Interrupted' = ($Interrupted.ToString().ToLower())
+    } -ErrorAction Stop | Out-Null
   } catch {
     # Fire-and-forget; never block the agent on a slow hook server.
   }
@@ -49,8 +56,7 @@ function Post-State {
 
 Post-State -Status 'working' -Interrupted $false
 
-$proc = Start-Process -FilePath $Command -ArgumentList $Args `
-  -NoNewWindow -PassThru -Wait
+$proc = Start-Process -FilePath $Command -ArgumentList $Args -NoNewWindow -PassThru -Wait
 $code = $proc.ExitCode
 
 Post-State -Status 'done' -Interrupted ($code -ne 0)

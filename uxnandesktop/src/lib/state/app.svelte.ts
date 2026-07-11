@@ -20,7 +20,7 @@ import {
   DEFAULT_SETTINGS,
   type AgentProfile,
   type AppSettings,
-  type ClaudeHooksStatus,
+  type AgentHooksStatus,
   type HookInstall,
   type RepoData,
   type TerminalProfile,
@@ -58,6 +58,7 @@ export type SettingsSection =
   | "language"
   | "shortcuts"
   | "agents"
+  | "providers"
   | "aicommit"
   | "hooks"
   | "terminal"
@@ -98,7 +99,7 @@ class AppStore {
   /** On-disk hook scripts layout, or `null` if the startup install step failed. */
   hookInstall = $state<HookInstall | null>(null);
   /** Latest Claude hooks install status (read on startup + after a toggle). */
-  claudeHooks = $state<ClaudeHooksStatus | null>(null);
+  claudeHooks = $state<AgentHooksStatus | null>(null);
   /** Whether we've performed at least one hook-status check (so the indicator
    *  stays hidden until we actually know, instead of flashing on launch). */
   hooksChecked = $state(false);
@@ -433,8 +434,13 @@ class AppStore {
     const shellProfile = agent.terminalProfileId
       ? this.profile(agent.terminalProfileId)
       : this.agentShellProfile();
-    const shell = shellProfile?.command?.trim() || undefined;
-    const kind = shellKind(shell ?? (currentOS() === "windows" ? "cmd.exe" : undefined));
+    // With no profile configured on Windows, spawn cmd.exe explicitly — the backend
+    // default is PowerShell, which mismatches the cmd-style quoting below and trips
+    // npm `.ps1` shims on the default execution policy (agents land in a dead pane).
+    const shell =
+      shellProfile?.command?.trim() ||
+      (currentOS() === "windows" ? "cmd.exe" : undefined);
+    const kind = shellKind(shell);
     const runCommand = buildRunCommand(command, agent.args, kind);
     // Per-agent env vars → real environment on the spawned shell (inherited by
     // the agent). Blank keys are dropped; the backend prepends them before its

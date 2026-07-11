@@ -119,8 +119,10 @@ Representa un repositorio git (o carpeta no-git). Cada repositorio almacena:
 | Campo | Descripcion |
 |-------|-------------|
 | Ruta en el filesystem | Ruta absoluta al directorio del repositorio en disco |
-| Nombre visible | Nombre que el usuario ve en la sidebar (editable) |
+| Nombre visible | Nombre que el usuario ve en la sidebar (editable vía `repo_update`; **solo** cambia la etiqueta de la tarjeta, la carpeta en disco conserva su nombre real) |
 | Tipo | `git` (repositorio git) o `folder` (carpeta simple sin git) |
+| Icono del proyecto | Icono opcional de la tarjeta (`icon`): un `data:` URL incrustado (imagen de archivo/URL/avatar de la cuenta del host git, rasterizada a un PNG cuadrado pequeño) o vacío = icono por defecto. Se fija con `repo_update`; el avatar del host se resuelve con `repo_remote_owner` + `image_fetch_data_url` |
+| Iconos por rama | Mapa `branchIcons` (rama → `data:` URL o clave de icono integrado), fijado con `repo_set_branch_icon`; permite un icono distinto por worktree/rama |
 | Configuracion de worktrees | Donde se crean los worktrees asociados (directorio destino) |
 | Grupo | Referencia al Grupo de Proyectos al que pertenece (opcional) |
 
@@ -148,6 +150,7 @@ Cada tab vive dentro de un TabGroup y representa una unidad de contenido en el a
 | Campo | Descripcion |
 |-------|-------------|
 | Tipo de contenido | `terminal` (emulador PTY), `editor` (CodeMirror 6), `diff` (visor de comparacion). El navegador integrado (`browser`) **no** es un tab central: vive en un panel lateral derecho — ver §4.2b |
+| Nombre visible | Etiqueta mostrada en la pestaña. Renombrable desde el menú contextual de la pestaña: terminales/diff/commit usan una etiqueta libre (`customTitle`, persistida en terminales); un tab de **archivo** renombra el archivo real en disco (`fs_rename`, misma carpeta) con confirmación y aviso de cambio de extensión. "Cerrar todas las pestañas" cierra las del workspace activo |
 | TabGroup padre | A que TabGroup pertenece este tab |
 
 ### 2.6 TabGroup
@@ -551,9 +554,11 @@ Este diagrama muestra como **todos los modulos se conectan** para formar el ADE 
 |                 BACKEND RUST (Tauri Core)                       |
 |                                                                 |
 |  [Tauri Commands (#[tauri::command])]                          |
-|     |-- repo_add / repo_remove / repo_list                     |
+|     |-- repo_add / repo_remove / repo_list / repo_update       |
+|     |-- repo_set_branch_icon / repo_remote_owner               |
 |     |-- worktree_create / worktree_remove / worktree_list      |
 |     |-- pty_create / pty_write / pty_resize / pty_close        |
+|     |-- fs_rename / image_fetch_data_url                       |
 |     |-- git_stage / git_unstage / git_discard / git_commit     |
 |     +-- agent_status_get / settings_update                     |
 |                                                                 |

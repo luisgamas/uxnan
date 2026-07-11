@@ -49,6 +49,68 @@ export interface AgentProfile {
   icon?: string | null;
 }
 
+// --- AI-provider usage statistics (Settings → Providers) --------------------
+// Mirror of `shared/src/models/usage.ts` (the bridge serves the same shape to
+// the phone later). Read natively in Rust here via the `usage_read` command.
+
+/** A coding CLI whose usage we read from its own stored token. */
+export type UsageProvider = "codex" | "claude" | "copilot" | "gemini";
+
+/** Outcome of reading one provider's usage. */
+export type UsageStatus = "ok" | "authRequired" | "notInstalled" | "error";
+
+/** How the data was obtained, for the provenance label. */
+export type UsageSource = "token";
+
+/** A single quota/rate window, expressed as a used-percentage with a reset. */
+export interface UsageWindow {
+  id: string;
+  label: string;
+  usedPercent: number;
+  windowMinutes?: number;
+  resetsAt?: number;
+}
+
+/** A monetary / credit balance, separate from the percentage windows. */
+export interface CreditBalance {
+  used: number;
+  limit?: number;
+  currency: string;
+  period: string;
+  resetsAt?: number;
+}
+
+/** One provider's usage snapshot (result of `usage_read`). */
+export interface ProviderUsage {
+  provider: UsageProvider;
+  status: UsageStatus;
+  source?: UsageSource;
+  account?: { email?: string; organization?: string; plan?: string };
+  windows: UsageWindow[];
+  credit?: CreditBalance;
+  updatedAt: number;
+  message?: string;
+}
+
+/** What of a provider surfaces in the bottom status-bar popover. `windows` are
+ *  the window ids to show; the primary %-bar is opted-in by default when a
+ *  provider first activates (see `defaultStatusBarPick`). */
+export interface UsageStatusBarPick {
+  show: boolean;
+  windows: string[];
+  showCredit?: boolean;
+  showPlan?: boolean;
+}
+
+/** A provider the user activated in Settings → Providers. Only activated
+ *  providers are ever polled — inactive ones cost nothing. */
+export interface UsageProviderConfig {
+  provider: UsageProvider;
+  /** Per-provider refresh override in minutes; null/absent = the global value. */
+  refreshMinutes?: number | null;
+  statusBar: UsageStatusBarPick;
+}
+
 export interface AppSettings {
   theme: Theme;
   leftSidebarWidth: number;
@@ -106,7 +168,55 @@ export interface AppSettings {
   browser?: BrowserSettings;
   /** Width (px) of the integrated browser panel (the right-side "4th panel"). */
   browserPanelWidth?: number;
+  /** AI providers whose usage stats the user activated (Settings → Providers).
+   *  Only these are polled. Empty/absent = the feature is idle. */
+  usageProviders?: UsageProviderConfig[];
+  /** How often (minutes) activated providers refresh; a provider may override
+   *  it. 0 = manual only. Default 5. */
+  usageRefreshMinutes?: number;
+  /** Show the usage indicator + popover in the bottom status bar. Default true
+   *  once at least one provider is activated. */
+  usageStatusBarEnabled?: boolean;
+  /** Sort mode for the project cards in the left sidebar. "manual" follows the
+   *  persisted repo order (`repoReorder`); the rest are computed client-side. */
+  projectSort?: SortMode;
+  /** Sort mode for the worktree rows within each project (same enum). "manual"
+   *  follows each repo's `worktreeOrder`. */
+  worktreeSort?: SortMode;
+  /** Last-active timestamps (epoch ms) keyed by workspace path, stamped when a
+   *  workspace is opened. Feeds the "recent" sort mode; self-heals (stale paths
+   *  are ignored). */
+  workspaceLastActive?: Record<string, number>;
+  /** Pinned projects (repo ids) — shown first regardless of sort. Self-healing. */
+  pinnedProjects?: string[];
+  /** Pinned worktrees (paths) — shown first within their project. Self-healing. */
+  pinnedWorktrees?: string[];
+  /** How the left sidebar groups its rows: the project→worktree tree, or every
+   *  worktree flattened into lanes by agent attention. */
+  sidebarGroupBy?: SidebarGroupBy;
+  /** Attention lanes (class 1–4) the user collapsed in the "group by status"
+   *  view; persisted so the collapse survives a restart. */
+  sidebarCollapsedLanes?: number[];
 }
+
+/** Left-sidebar grouping mode.
+ *  - `none`   — the project → worktree tree (default).
+ *  - `status` — every worktree flattened into lanes by agent attention
+ *    (needs-you · done · working · idle), empty lanes omitted. */
+export type SidebarGroupBy = "none" | "status";
+
+/** How the left-sidebar project cards / worktree rows are ordered.
+ *  - `manual`   — the user's own drag-and-drop arrangement (persisted).
+ *  - `name-asc` / `name-desc` — alphabetical by display name / branch.
+ *  - `recent`   — most-recently-opened first (via `workspaceLastActive`).
+ *  - `attention`— agents that need you first (blocked/waiting → done → working →
+ *    idle), then most-recent within each class. */
+export type SortMode =
+  | "manual"
+  | "name-asc"
+  | "name-desc"
+  | "recent"
+  | "attention";
 
 /** Where a link opens when the integrated browser is enabled (mirror of Rust
  *  `BrowserLinkPolicy`). `internal` uses the in-app tab; `external` hands off to
@@ -256,6 +366,27 @@ export interface RepoData {
    *  Optional for back-compat with state persisted before this field existed
    *  (treated as git when absent). */
   isGit?: boolean;
+  /** User-chosen project icon: an inline `data:` URL (a file/URL/GitHub avatar
+   *  rasterized to a small square PNG), or null/undefined for the default folder
+   *  glyph. The project's real folder name is never touched; `name` is display. */
+  icon?: string | null;
+  /** Per-branch custom icons, keyed by branch name (or the worktree path when
+   *  detached). Same inline `data:` URL form as `icon`. Optional for back-compat. */
+  branchIcons?: Record<string, string>;
+  /** User's manual order for this project's child worktrees, as their absolute
+   *  paths. The primary worktree is always shown first regardless. Paths no longer
+   *  present are ignored and freshly-seen ones fall to the end (self-healing).
+   *  Absent/empty → the git listing order. Set via `setWorktreeOrder`. */
+  worktreeOrder?: string[];
+}
+
+/** A git remote's hosting owner/org (mirror of Rust `RemoteOwner`), used to offer
+ *  the account avatar as a project icon. `avatarUrl` is set only for hosts whose
+ *  avatar URL we can build (GitHub, GitLab). */
+export interface RemoteOwner {
+  host: string;
+  owner: string;
+  avatarUrl: string | null;
 }
 
 /** A worktree as reported by `git worktree list` (ADE- or agent-created). */
@@ -311,6 +442,23 @@ export interface FsEntry {
    *  (muted + italic) — independent of git *status* (ignored entries never show
    *  in the review panel). */
   ignored: boolean;
+}
+
+/** A page of project-wide file-tree search results (mirror of Rust `FileSearch`).
+ *  `entries` are matching files; `truncated` is true when the walk hit the result
+ *  cap before exhausting the tree. */
+export interface FileSearch {
+  entries: FsEntry[];
+  truncated: boolean;
+}
+
+/** The current on-disk conversation of a Zero agent (mirror of Rust `ZeroSession`).
+ *  `title` is the session name; `status` is a coarse agent-view state derived from
+ *  the session's last event. Read by cwd since Zero emits no hook/OSC. */
+export interface ZeroSession {
+  title: string;
+  status: "working" | "waiting" | "done" | "idle";
+  updatedAt: string;
 }
 
 /** A file opened in the center editor (mirror of Rust `FileContent`). `content`
@@ -424,22 +572,36 @@ export interface HookServerInfo {
 }
 
 /** Absolute paths of the bundled hook scripts the ADE wrote to
- *  `<app-data>/hooks/` at startup, plus the resolved `~/.claude/settings.json`
- *  path. `null` if the install-on-startup step failed. */
+ *  `<app-data>/hooks/` at startup, plus the resolved per-agent config paths.
+ *  `null` if the install-on-startup step failed. */
 export interface HookInstall {
   dir: string;
-  claudeHookScript: string;
+  /** The Node relay shared by Claude Code + Gemini CLI. */
+  statusRelayScript: string;
+  /** Codex `curl` hook (POSIX / Windows). */
+  codexHookSh: string;
+  codexHookCmd: string;
+  /** OpenCode plugin / Pi extension sources (in the hooks dir). */
+  opencodePluginScript: string;
+  piExtensionScript: string;
   wrapperBash: string;
   wrapperPowershell: string;
   wrapperCmd: string;
+  wrapperFish: string;
+  browserShimBash: string;
+  browserShimCmd: string;
+  /** Where each agent's managed config lives (shown in the UI). */
   claudeSettingsPath: string;
+  codexHooksPath: string;
+  geminiSettingsPath: string;
+  opencodePluginPath: string;
+  piExtensionPath: string;
 }
 
-/** The current state of the Claude `settings.json` `hooks` block. The UI
- *  uses this to render an honest "Installed" / "Not installed" /
- *  "Unavailable" badge — never claim installed unless the file actually
- *  carries our managed marker. */
-export interface ClaudeHooksStatus {
+/** The current install state of a managed agent hook (Claude Code, Codex,
+ *  Gemini CLI, OpenCode or Pi). The UI uses this to render an honest
+ *  "Installed" / "Not installed" / "Unavailable" badge. */
+export interface AgentHooksStatus {
   installed: boolean;
   fileExists: boolean;
   unavailable: boolean;
@@ -453,19 +615,38 @@ export interface ClaudeHooksStatus {
  *  startup failed. */
 export interface HookScripts {
   claudeJson: string;
+  statusRelayCjs: string;
   wrapperBash: string;
   wrapperPowershell: string;
   wrapperCmd: string;
+  wrapperFish: string;
 }
 
 /** Persisted terminal layout (structure only — fresh shells spawn on restore).
  *  Mirrors the serialized form produced by the terminals store. */
 /** One persisted tab descriptor. `kind` is optional for backward compatibility:
- *  a descriptor with no `kind` (older saved layouts) is a terminal. Diff tabs are
- *  transient and never persisted. */
+ *  a descriptor with no `kind` (older saved layouts) is a terminal. Commit tabs
+ *  are transient and never persisted; a file tab's diff is now one of its views. */
 export type SavedTab =
-  | { kind?: "terminal"; title: string; cwd?: string; shell?: string; args?: string[] }
-  | { kind: "file"; title: string; path: string; worktree?: string | null };
+  | {
+      kind?: "terminal";
+      title: string;
+      /** User-set tab label ("Rename tab"); overrides the derived title. */
+      customTitle?: string;
+      cwd?: string;
+      shell?: string;
+      args?: string[];
+    }
+  | {
+      kind: "file";
+      title: string;
+      path: string;
+      worktree?: string | null;
+      /** Which view the tab last showed: editor, rendered preview, or working diff. */
+      view?: "edit" | "preview" | "changes";
+      /** In the `changes` view: staged (index-vs-HEAD) vs unstaged (worktree-vs-index). */
+      staged?: boolean;
+    };
 
 export type SavedTermNode =
   | {
@@ -513,6 +694,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   terminalProfiles: [],
   defaultProfileId: null,
   agentProfiles: [],
+  usageProviders: [],
+  usageRefreshMinutes: 5,
+  usageStatusBarEnabled: true,
   defaultAgentId: null,
   agentShellProfileId: null,
   agentNotifications: true,
@@ -555,4 +739,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
     mcpDisabledAgents: [],
   },
   browserPanelWidth: 520,
+  projectSort: "manual",
+  worktreeSort: "manual",
+  workspaceLastActive: {},
+  pinnedProjects: [],
+  pinnedWorktrees: [],
+  sidebarGroupBy: "none",
+  sidebarCollapsedLanes: [],
 };

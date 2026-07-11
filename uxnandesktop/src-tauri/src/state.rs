@@ -30,6 +30,13 @@ pub struct HookServerInfo {
     /// Shared secret required in the `X-Uxnan-Token` header (rejects stray local
     /// processes). Generated fresh each launch.
     pub token: String,
+    /// Absolute path of the "endpoint file" the server (re)writes on start with
+    /// the live url + token (`endpoint.env` on POSIX / `endpoint.cmd` on
+    /// Windows). Injected into every terminal as `UXNAN_ENDPOINT_FILE` so a
+    /// long-lived hook script re-reads fresh coordinates after an app restart
+    /// instead of POSTing to a dead port. `None` if it couldn't be written.
+    #[serde(default)]
+    pub endpoint_file: Option<String>,
 }
 
 /// Process-wide state shared across all Tauri commands.

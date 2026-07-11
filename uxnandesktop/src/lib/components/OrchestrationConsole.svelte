@@ -17,6 +17,7 @@
   import type { DisplayStatus } from "$lib/state/agentDisplay";
   import { cn } from "$lib/utils";
   import { icon, iconButton, text } from "$lib/design";
+  import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import AgentLogo from "./AgentLogo.svelte";
   import AgentStatusDot from "./AgentStatusDot.svelte";
@@ -148,36 +149,48 @@
                     {i18n.t("orchestration.queued", { n: queued })}
                   </Badge>
                 {/if}
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  class={cn(iconButton.action, isCoord && "text-primary")}
-                  title={i18n.t(isCoord ? "orchestration.unsetCoordinator" : "orchestration.setCoordinator")}
-                  aria-pressed={isCoord}
-                  onclick={() => orchestration.setCoordinator(a.tabId)}
-                >
-                  <CrownIcon class={icon.button} />
-                </Button>
+                <TooltipSimple title={i18n.t(isCoord ? "orchestration.unsetCoordinator" : "orchestration.setCoordinator")}>
+                  {#snippet children(tp)}
+                    <Button
+                      {...tp}
+                      variant="ghost"
+                      size="icon"
+                      class={cn(iconButton.action, isCoord && "text-primary")}
+                      aria-pressed={isCoord}
+                      onclick={() => orchestration.setCoordinator(a.tabId)}
+                    >
+                      <CrownIcon class={icon.button} />
+                    </Button>
+                  {/snippet}
+                </TooltipSimple>
                 {#if queued > 0}
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    class={iconButton.action}
-                    title={i18n.t("orchestration.clearQueue")}
-                    onclick={() => orchestration.clearQueue(a.tabId)}
-                  >
-                    <EraserIcon class={icon.button} />
-                  </Button>
+                  <TooltipSimple title={i18n.t("orchestration.clearQueue")}>
+                    {#snippet children(tp)}
+                      <Button
+                        {...tp}
+                        variant="ghost"
+                        size="icon"
+                        class={iconButton.action}
+                        onclick={() => orchestration.clearQueue(a.tabId)}
+                      >
+                        <EraserIcon class={icon.button} />
+                      </Button>
+                    {/snippet}
+                  </TooltipSimple>
                 {/if}
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  class={iconButton.action}
-                  title={i18n.t("orchestration.reveal")}
-                  onclick={() => reveal(a.workspace, a.tabId)}
-                >
-                  <ExternalLinkIcon class={icon.button} />
-                </Button>
+                <TooltipSimple title={i18n.t("orchestration.reveal")}>
+                  {#snippet children(tp)}
+                    <Button
+                      {...tp}
+                      variant="ghost"
+                      size="icon"
+                      class={iconButton.action}
+                      onclick={() => reveal(a.workspace, a.tabId)}
+                    >
+                      <ExternalLinkIcon class={icon.button} />
+                    </Button>
+                  {/snippet}
+                </TooltipSimple>
               </div>
             {/each}
           </div>

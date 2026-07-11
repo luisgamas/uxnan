@@ -10,6 +10,10 @@ import {
   branchList,
   repoAdd,
   repoRemove,
+  repoReorder as apiRepoReorder,
+  repoSetBranchIcon,
+  repoUpdate,
+  setWorktreeOrder as apiSetWorktreeOrder,
   worktreeCreate,
   worktreeList,
   worktreeRemove,
@@ -19,12 +23,25 @@ import type {
   AgentProfile,
   BranchList,
   RepoData,
+  SidebarGroupBy,
+  SortMode,
   WorktreeEntry,
   WorktreeStatus,
 } from "$lib/types";
 import { app } from "$lib/state/app.svelte";
 import { terminals, GLOBAL_WORKSPACE } from "$lib/state/terminals.svelte";
 import { unread } from "$lib/state/unread.svelte";
+import { agentStatus } from "$lib/state/agentStatus.svelte";
+import { resolveAgentDisplay } from "$lib/state/agentDisplay";
+import {
+  applyManualOrder,
+  buildStatusGroups,
+  mostUrgentStatus,
+  partitionPinned,
+  sortItems,
+  type SortMeta,
+  type StatusLane,
+} from "$lib/sidebar-sort";
 import { toast, toastError } from "$lib/toast";
 import { i18n } from "$lib/i18n";
 
@@ -79,11 +96,19 @@ class ProjectsStore {
     return null;
   }
 
-  /** Open the "new worktree" dialog for the active repo. A no-op outside a repo
-   *  (Global space / nothing selected), so a shortcut does nothing rather than
-   *  prompting with no repo to branch from. */
+  /** The active repo only when it is a real git repository — worktrees need git,
+   *  so non-git project folders (and the Global space) resolve to null. Drives
+   *  every "new worktree" affordance's enabled state. */
+  get activeGitRepo(): RepoData | null {
+    const r = this.activeRepo;
+    return r && r.isGit !== false ? r : null;
+  }
+
+  /** Open the "new worktree" dialog for the active repo. A no-op outside a git
+   *  repo (Global space / a non-git folder / nothing selected), so a shortcut
+   *  does nothing rather than prompting with no repo to branch from. */
   requestNewWorktree(): void {
-    if (this.activeRepo) this.newWorktreeOpen = true;
+    if (this.activeGitRepo) this.newWorktreeOpen = true;
   }
 
   /** Projects visible for the search query: those whose name/path matches OR
@@ -173,6 +198,229 @@ class ProjectsStore {
     return this.worktreesByRepo[repoId]?.length ?? 0;
   }
 
+  /** A registered repo's folder path by id (used e.g. for a short, relative-path
+   *  worktree label in the flattened status view). */
+  repoPath(repoId: string): string | undefined {
+    return app.repos.find((r) => r.id === repoId)?.path;
+  }
+
+  // --- Sorting (left sidebar) ----------------------------------------------
+
+  /** Current sort mode for the project cards (persisted; defaults to manual). */
+  get projectSort(): SortMode {
+    return app.settings.projectSort ?? "manual";
+  }
+
+  /** Current sort mode for the worktree rows within each project (persisted). */
+  get worktreeSort(): SortMode {
+    return app.settings.worktreeSort ?? "manual";
+  }
+
+  /** Change the project-card sort mode and persist it. */
+  setProjectSort(mode: SortMode): void {
+    app.settings.projectSort = mode;
+    void app.persistSettings();
+  }
+
+  /** Change the worktree-row sort mode and persist it. */
+  setWorktreeSort(mode: SortMode): void {
+    app.settings.worktreeSort = mode;
+    void app.persistSettings();
+  }
+
+  /** Current sidebar grouping mode (persisted; defaults to the project tree). */
+  get groupBy(): SidebarGroupBy {
+    return app.settings.sidebarGroupBy ?? "none";
+  }
+
+  /** Change the sidebar grouping mode and persist it. */
+  setGroupBy(mode: SidebarGroupBy): void {
+    app.settings.sidebarGroupBy = mode;
+    void app.persistSettings();
+  }
+
+  /** Whether an attention lane is collapsed in the status view (persisted). */
+  isLaneCollapsed(lane: number): boolean {
+    return app.settings.sidebarCollapsedLanes?.includes(lane) ?? false;
+  }
+
+  /** Toggle a status-view lane's collapse state and persist it. */
+  toggleLane(lane: number): void {
+    const cur = app.settings.sidebarCollapsedLanes ?? [];
+    app.settings.sidebarCollapsedLanes = cur.includes(lane)
+      ? cur.filter((x) => x !== lane)
+      : [...cur, lane];
+    void app.persistSettings();
+  }
+
+  /** Every visible worktree (each project's main + its children) flattened into
+   *  attention lanes for the "group by status" view. Empty lanes are omitted;
+   *  within a lane, pinned worktrees float to the top, then the freshest/most-
+   *  recent. Each row keeps its `repoId`/`repoName` so the view can label it. */
+  statusGroups(): StatusLane<WorktreeRow>[] {
+    const all: WorktreeRow[] = [];
+    for (const repo of this.filteredRepos) {
+      const main = this.mainWorktree(repo.id);
+      if (main) {
+        all.push({ ...main, isMain: true, repoId: repo.id, repoName: repo.name });
+      }
+      for (const w of this.visibleChildWorktrees(repo.id)) {
+        all.push({ ...w, repoId: repo.id, repoName: repo.name });
+      }
+    }
+    return buildStatusGroups(all, (w) => this.worktreeSortMeta(w)).map((lane) => ({
+      attention: lane.attention,
+      items: partitionPinned(lane.items, (w) => this.isWorktreePinned(w.path)),
+    }));
+  }
+
+  /** Sort metadata for a workspace path — the agent status/unread/recency the
+   *  comparators read, aggregated across the agents running in it. */
+  private workspaceMeta(path: string, name: string): SortMeta {
+    const tabs = terminals.agentTabs(path);
+    const status = mostUrgentStatus(
+      tabs.map((t) => resolveAgentDisplay(t)?.status ?? null),
+    );
+    let activityAt = 0;
+    for (const t of tabs) {
+      const hook = agentStatus.get(t.id);
+      if (hook?.lastUpdate) activityAt = Math.max(activityAt, hook.lastUpdate);
+    }
+    return {
+      name,
+      lastActive: app.settings.workspaceLastActive?.[path] ?? 0,
+      status,
+      unread: unread.has(path),
+      activityAt,
+    };
+  }
+
+  /** Sort metadata for a single worktree row. */
+  private worktreeSortMeta(w: WorktreeEntry): SortMeta {
+    return this.workspaceMeta(w.path, w.branch ?? baseName(w.path));
+  }
+
+  /** Sort metadata for a project card — the most-urgent/most-recent aggregate
+   *  across its main worktree and children, so a project bubbles up when any of
+   *  its worktrees needs attention. */
+  private repoSortMeta(repo: RepoData): SortMeta {
+    const main = this.mainWorktree(repo.id);
+    const metas = [this.workspaceMeta(main?.path ?? repo.path, repo.name)];
+    for (const w of this.childWorktrees(repo.id)) {
+      metas.push(this.workspaceMeta(w.path, w.branch ?? baseName(w.path)));
+    }
+    return {
+      name: repo.name,
+      lastActive: Math.max(0, ...metas.map((m) => m.lastActive)),
+      status: mostUrgentStatus(metas.map((m) => m.status)),
+      unread: metas.some((m) => m.unread),
+      activityAt: Math.max(0, ...metas.map((m) => m.activityAt)),
+    };
+  }
+
+  /** Whether a project is pinned (shown first regardless of sort). */
+  isProjectPinned(id: string): boolean {
+    return app.settings.pinnedProjects?.includes(id) ?? false;
+  }
+
+  /** Whether a worktree (by path) is pinned. */
+  isWorktreePinned(path: string): boolean {
+    return app.settings.pinnedWorktrees?.includes(path) ?? false;
+  }
+
+  /** Toggle a project's pinned state and persist. */
+  toggleProjectPin(id: string): void {
+    const cur = app.settings.pinnedProjects ?? [];
+    app.settings.pinnedProjects = cur.includes(id)
+      ? cur.filter((x) => x !== id)
+      : [...cur, id];
+    void app.persistSettings();
+  }
+
+  /** Toggle a worktree's pinned state and persist. */
+  toggleWorktreePin(path: string): void {
+    const cur = app.settings.pinnedWorktrees ?? [];
+    app.settings.pinnedWorktrees = cur.includes(path)
+      ? cur.filter((x) => x !== path)
+      : [...cur, path];
+    void app.persistSettings();
+  }
+
+  /** The project cards in their effective order: pinned first, then the active
+   *  sort ("manual" keeps the persisted `app.repos` order; the rest compute). */
+  sortedRepos(): RepoData[] {
+    const sorted = sortItems(this.filteredRepos, this.projectSort, (r) =>
+      this.repoSortMeta(r),
+    );
+    return partitionPinned(sorted, (r) => this.isProjectPinned(r.id));
+  }
+
+  /** A project's child worktrees in their effective order: pinned first, then the
+   *  active sort ("manual" applies the persisted `worktreeOrder`; the rest
+   *  compute). The card renders the main worktree ahead of all of these. */
+  orderedChildWorktrees(repoId: string): WorktreeEntry[] {
+    const children = this.visibleChildWorktrees(repoId);
+    const ordered =
+      this.worktreeSort === "manual"
+        ? applyManualOrder(
+            children,
+            app.repos.find((r) => r.id === repoId)?.worktreeOrder ?? [],
+            (w) => w.path,
+          )
+        : sortItems(children, this.worktreeSort, (w) => this.worktreeSortMeta(w));
+    return partitionPinned(ordered, (w) => this.isWorktreePinned(w.path));
+  }
+
+  /** Apply a manual reorder of the project cards: reorder `app.repos` optimistically
+   *  and persist it, then switch the mode to manual (a drag is an explicit request
+   *  for the user's own order). Unlisted repos keep their place after the listed. */
+  async reorderProjects(orderedIds: string[]): Promise<void> {
+    const rank = new Map(orderedIds.map((id, i) => [id, i] as const));
+    app.repos = [...app.repos].sort(
+      (a, b) =>
+        (rank.get(a.id) ?? Number.MAX_SAFE_INTEGER) -
+        (rank.get(b.id) ?? Number.MAX_SAFE_INTEGER),
+    );
+    this.setProjectSort("manual");
+    try {
+      await apiRepoReorder(orderedIds);
+    } catch (e) {
+      this.error = msg(e);
+      toastError(e);
+    }
+  }
+
+  /** Apply a manual reorder of a project's child worktrees: persist the path order,
+   *  reconcile the repo, and switch the worktree sort to manual. */
+  async reorderWorktrees(repoId: string, orderedPaths: string[]): Promise<void> {
+    this.setWorktreeSort("manual");
+    const i = app.repos.findIndex((r) => r.id === repoId);
+    if (i !== -1) app.repos[i] = { ...app.repos[i], worktreeOrder: orderedPaths };
+    try {
+      const updated = await apiSetWorktreeOrder(repoId, orderedPaths);
+      const j = app.repos.findIndex((r) => r.id === repoId);
+      if (j !== -1) app.repos[j] = updated;
+    } catch (e) {
+      this.error = msg(e);
+      toastError(e);
+    }
+  }
+
+  /** Record *now* as a workspace's last-active time (feeds the "recent" sort),
+   *  persisted with a short debounce so rapid switching doesn't hammer the disk. */
+  private stampActive(path: string): void {
+    app.settings.workspaceLastActive = {
+      ...(app.settings.workspaceLastActive ?? {}),
+      [path]: Date.now(),
+    };
+    if (this.persistTimer) clearTimeout(this.persistTimer);
+    this.persistTimer = setTimeout(() => {
+      this.persistTimer = null;
+      void app.persistSettings();
+    }, 1500);
+  }
+  private persistTimer: ReturnType<typeof setTimeout> | null = null;
+
   /** Load every repo's worktrees (called once after the app hydrates). */
   async init(): Promise<void> {
     await Promise.all(app.repos.map((r) => this.loadWorktrees(r.id)));
@@ -221,8 +469,9 @@ class ProjectsStore {
     return branchList(repoId);
   }
 
-  /** Register a git repository by path (from the in-app directory picker).
-   *  Returns false (with `error` set) when the path isn't a git repo. */
+  /** Register a project folder by path (from the in-app directory picker). Any
+   *  folder works — git or not; a non-git one simply has no worktrees. Returns
+   *  false (with `error` set) when the path can't be registered. */
   async addProjectPath(path: string): Promise<boolean> {
     this.error = null;
     try {
@@ -234,6 +483,90 @@ class ProjectsStore {
       this.error = msg(e);
       return false;
     }
+  }
+
+  /** Update a project's display name and/or icon (card-only; never touches the
+   *  folder). Reconciles the returned repo into `app.repos` so the sidebar and
+   *  any open dialog re-render. Only the fields present in `changes` are applied. */
+  async updateProject(
+    id: string,
+    changes: { name?: string; icon?: string | null },
+  ): Promise<boolean> {
+    this.error = null;
+    try {
+      const updated = await repoUpdate(id, changes);
+      const i = app.repos.findIndex((r) => r.id === id);
+      if (i !== -1) app.repos[i] = updated;
+      return true;
+    } catch (e) {
+      this.error = msg(e);
+      toastError(e);
+      return false;
+    }
+  }
+
+  /** Set (or clear with null) a per-branch icon, keyed by branch name (or the
+   *  worktree path when detached). Reconciles the returned repo into `app.repos`. */
+  async setBranchIcon(
+    repoId: string,
+    branchKey: string,
+    icon: string | null,
+  ): Promise<boolean> {
+    this.error = null;
+    try {
+      const updated = await repoSetBranchIcon(repoId, branchKey, icon);
+      const i = app.repos.findIndex((r) => r.id === repoId);
+      if (i !== -1) app.repos[i] = updated;
+      return true;
+    } catch (e) {
+      this.error = msg(e);
+      toastError(e);
+      return false;
+    }
+  }
+
+  /** A worktree's stable icon key: its branch name, or its path when detached. */
+  branchIconKey(row: { branch: string | null; path: string }): string {
+    return row.branch ?? row.path;
+  }
+
+  /** The custom icon stored for a worktree's branch, or undefined. */
+  branchIcon(repoId: string, branchKey: string): string | undefined {
+    return app.repos.find((r) => r.id === repoId)?.branchIcons?.[branchKey];
+  }
+
+  /** Register several project folders at once (the picker's "add all separately"
+   *  action, one project per child folder). Adds them in order, skips ones that
+   *  fail, and returns how many were added / failed; `error` is set only when
+   *  every path failed. */
+  async addProjectPaths(
+    paths: string[],
+  ): Promise<{ added: number; failed: number }> {
+    this.error = null;
+    let added = 0;
+    let failed = 0;
+    let lastError: string | null = null;
+    for (const path of paths) {
+      try {
+        const repo = await repoAdd(path);
+        if (!app.repos.find((r) => r.id === repo.id)) app.repos.push(repo);
+        await this.loadWorktrees(repo.id);
+        added += 1;
+      } catch (e) {
+        failed += 1;
+        lastError = msg(e);
+      }
+    }
+    if (added === 0 && lastError) this.error = lastError;
+    if (added > 0) {
+      toast.success(
+        i18n.t(
+          failed > 0 ? "toast.projectsAddedSome" : "toast.projectsAdded",
+          { added: String(added), failed: String(failed) },
+        ),
+      );
+    }
+    return { added, failed };
   }
 
   async removeProject(id: string): Promise<void> {
@@ -318,12 +651,14 @@ class ProjectsStore {
     this.activeWorktreePath = path;
     terminals.setWorkspace(path);
     unread.clear(path);
+    this.stampActive(path);
   }
 
   /** Open a terminal in `path`'s workspace (and switch to it). An optional
    *  `profileId` opens that terminal profile instead of the default shell. */
   openTerminalAt(path: string, profileId?: string): void {
     this.activeWorktreePath = path;
+    this.stampActive(path);
     app.openTerminal({ cwd: path, title: baseName(path), workspace: path, profileId });
   }
 

@@ -29,22 +29,40 @@ El ADE levanta un **servidor HTTP en localhost** que los agentes pueden usar par
     transcript de la sesión).
 - **Cache persistente:** El ultimo estado de cada agente se guarda en disco con un **TTL de 7 dias**. Esto permite que al reiniciar el ADE, la sidebar muestre el estado correcto de cada agente sin necesidad de que estos re-reporten.
 - **Broadcast:** Cada cambio de estado se difunde al frontend via **Tauri events** para actualizacion inmediata de la UI. El evento `agent:status-changed` se emite con el nuevo estado normalizado.
-- **Configs listas para usar:** El ADE embebe en su binario cuatro scripts
+- **Reporters listos para usar (multi-shell):** El ADE embebe sus scripts
   (`src-tauri/src/agent_hooks.rs` + `static/hooks/`) y los escribe a
-  `<app-data>/hooks/` en cada arranque, de forma idempotente:
-  - `uxnan-claude-hook.cjs` — script CJS sin dependencias, invocable por la
-    `hooks` block de Claude Code. Mapea los eventos `UserPromptSubmit`,
-    `PreToolUse`, `PreCompact`, `Notification`, `PermissionRequest`, `Stop`
-    y `SessionEnd` a los estados del servidor (`working` / `waiting` /
-    `done` / `blocked`).
-  - `uxnan-hook-wrapper.{sh,ps1,cmd}` — envoltorio generico para cualquier
-    CLI: postea `working` antes del `exec` y `done` al exit (con
-    `interrupted: true` si el codigo es != 0).
-  **Settings → Agents → Hooks** expone el path absoluto de cada script y un
-  boton **Install** que mergea la `hooks` block del ADE (marcada con
-  `__uxnan_managed_hooks__`) en `~/.claude/settings.json` sin tocar el
-  resto de la configuracion. Uninstall es su reverso idempotente. Asi los
-  estados precisos funcionan out-of-the-box sin edicion manual de JSON.
+  `<app-data>/hooks/` en cada arranque, idempotente. Cada agente usa el reporter
+  que mejor evita el problema de "¿qué shell ejecuta el hook?" (el runner de
+  hooks del propio agente lo ejecuta, así que debe funcionar sea cual sea la
+  shell del usuario: cmd, PowerShell, PowerShell 7, Git Bash, WSL, bash, zsh,
+  fish):
+  - **Claude Code** y **Gemini CLI** — un relay Node sin dependencias
+    (`uxnan-status-relay.cjs`). Ambos *son* programas Node, así que `node` está
+    garantizado; Claude lo invoca en **exec form** (`command:"node", args:[…]`,
+    sin shell) y Gemini como `node "<relay>"`. Se mergea **por evento** en
+    `~/.claude/settings.json` / `~/.gemini/settings.json` preservando los hooks
+    del usuario. El servidor normaliza el evento y, para el `done` de Claude, lee
+    el transcript server-side para el preview.
+  - **Codex** — un hook `curl` (`uxnan-codex-hook.{sh,cmd}`; Codex es un binario
+    Rust sin garantía de Node) en `~/.codex/hooks.json`, **más un `trusted_hash`
+    reproducido** en `~/.codex/config.toml` (`codex_trust.rs`): Codex 0.129+
+    exige ese hash o el hook nunca dispara.
+  - **OpenCode** — un plugin in-process depositado en su directorio `plugins/`
+    (`~/.config/opencode/plugins/uxnan-status.js`); OpenCode lo auto-descubre, así
+    que **no** se toca `opencode.json` (no tiene key `plugins` en su schema).
+  - **Pi / OMP** — una extensión in-process en `~/.pi/agent/extensions/`.
+  - **Wrapper genérico** (`uxnan-hook-wrapper.{sh,ps1,cmd,fish}`) — para
+    cualquier CLI sin superficie de hooks: postea `working` antes de correr y
+    `done` al salir (con `interrupted` si el código es != 0).
+  Los reporters de shell **no construyen JSON**: el `agentId`/`agentType`/`status`
+  viajan en headers HTTP (`X-Uxnan-Agent-Id` / `-Type` / `-Status`) y el evento
+  crudo va en el body — eliminando una clase de bugs de escaping entre shells.
+  **Endpoint file:** el servidor escribe `endpoint.env`/`endpoint.cmd` (url+token
+  vivos) al arrancar e inyecta `UXNAN_ENDPOINT_FILE`; cada reporter lo prefiere,
+  así una terminal que sobrevive a un reinicio del ADE alcanza al servidor vivo.
+  **Settings → Agents → Hooks** expone un botón **Install** por agente (mergea de
+  forma idempotente, marcando lo gestionado por el nombre del script/relay);
+  Uninstall es su reverso. Así los estados precisos funcionan out-of-the-box.
 
 **Diagrama de flujo del hook HTTP:**
 
@@ -85,7 +103,31 @@ muestra ningun indicador.
 Estos estados se muestran en dos lugares de la interfaz:
 
 - **Tarjeta del worktree** en la sidebar izquierda: como badge de color junto al nombre de la rama.
-- **Barra de tabs** del area central: como indicador en el tab del terminal donde corre el agente. La barra de tabs usa el mismo `AgentStatusDot` que la sidebar (resolucion reactiva `hook` › `title` › `activity`), de modo que un agente con hook server reportando estados muestra el estado preciso (`working` / `blocked` / `waiting` / `done`) y un agente sin hook configurado cae al fallback (output-activity o title-inference) con dot gris/idle cuando no hay movimiento.
+- **Barra de tabs** del area central: como indicador en el tab del terminal donde corre el agente.
+
+### Agent view (sidebar izquierda)
+
+Dentro de cada worktree, la lista de agentes (`AgentSpace.svelte`) es una **"agent
+view"**: cada agente es una **fila de dos lineas** — punto de estado
+(`AgentStatusDot`) + logo (`AgentLogo`) + **titulo de conversacion** + tiempo
+relativo en la 1a linea, y un **preview** atenuado en la 2a (la herramienta actual
+mientras trabaja, si no la ultima respuesta, si no la etiqueta de estado). El
+titulo/preview salen de datos que **ya** captura el hook server y viven en
+`agentStatus` (`prompt` = prompt de usuario mas reciente, `tool`, `summary`); antes
+solo alimentaban notificaciones. `resolveAgentView` (`state/agentDisplay.ts`)
+compone estado + titulo + preview con fallback al nombre del agente + etiqueta de
+estado cuando no hay prompt.
+
+**Contraida**, la lista muestra una **tira compacta**: el logo de cada agente
+rodeado por un anillo del color de su estado (`AgentAvatar.svelte`), + el contador;
+click en un avatar revela ese agente.
+
+**Zero** no reporta por hook ni fija el titulo OSC: su titulo de conversacion vive
+en su sesion en disco (`~/.local/share/zero/sessions/<id>/metadata.json`). El
+backend `zero_session(cwd)` (`src-tauri/src/zero.rs`) lee la sesion raiz mas
+reciente que coincide con el cwd del worktree y deriva un estado coarse de su
+`lastEventType`; el frontend (`state/zeroSessions.svelte.ts`) lo consulta por
+polling mientras haya un agente Zero abierto. La barra de tabs usa el mismo `AgentStatusDot` que la sidebar (resolucion reactiva `hook` › `title` › `activity`), de modo que un agente con hook server reportando estados muestra el estado preciso (`working` / `blocked` / `waiting` / `done`) y un agente sin hook configurado cae al fallback (output-activity o title-inference) con dot gris/idle cuando no hay movimiento.
 
 **Descubrimiento de hooks.** Cuando un tab de la barra es de un agente y su
 estado proviene de un fallback (no del hook server), se muestra al lado del
@@ -109,6 +151,7 @@ Como **fallback** para agentes que no soportan hooks HTTP nativos, el ADE analiz
 El ADE detecta **que proceso esta corriendo en primer plano** en cada PTY:
 
 - Si el proceso coincide con un agente conocido (por nombre del ejecutable, por ejemplo `claude`, `codex`, `aider`, `opencode`), se activa el **tracking automatico**.
+- El matching (`procscan.rs`) puntua por **especificidad** (exacto ▸ variante `cmd-`/`cmd_` ▸ substring; el comando mas largo gana) y recorre el arbol de procesos **en anchura**, quedandose con la coincidencia del proceso **mas cercano al shell**. Asi un agente "envoltorio" (p. ej. `openclaude`, que contiene `claude`) no se confunde con el que envuelve, de forma determinista. Ademas, un tab **lanzado** por el ADE ya conoce su identidad y la deteccion **no la sobrescribe** (solo nombra agentes iniciados a mano).
 - Esta capa no determina el estado especifico del agente, pero confirma que un agente esta activo en un PTY determinado y habilita el monitoreo por las capas superiores.
 - Es la capa mas basica: solo detecta presencia, no estado detallado.
 

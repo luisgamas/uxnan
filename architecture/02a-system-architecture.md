@@ -1771,6 +1771,30 @@ async function readHistoryFromDisk(threadId, { cursor, limit }) {
 }
 ```
 
+#### 5.8.10 Estadisticas de uso por proveedor (`agent/usageStats`)
+
+Metodo `agent/usageStats` (contrato `ProviderUsage[]` en `shared/src/models/usage.ts`;
+ver 02b). Surface las ventanas de cuota (% consumido + reinicio), plan/cuenta y
+saldo de credito de los CLIs de IA que el usuario **activo** — nunca de todos, para
+ahorrar recursos.
+
+**Postura de datos:** solo se leen los **archivos locales del CLI** (su token OAuth
+ya guardado) y se llama a la **API oficial de uso** de cada proveedor. **Nunca**
+cookies del navegador ni API keys pegadas por el usuario. Proveedores wired:
+**Codex** (`~/.codex/auth.json` → chatgpt backend), **Claude** (`~/.claude/.credentials.json`
+→ `api.anthropic.com/api/oauth/usage`), **Copilot** (token de `gh` → `api.github.com`),
+**Gemini** (`~/.gemini/oauth_creds.json` → cloudcode-pa). Cada proveedor degrada a un
+`status` (`ok`/`authRequired`/`notInstalled`/`error`); uno lento o roto no tumba a
+los demas.
+
+**Lectura per-runtime (dual-reader, mismo contrato):** el acceso al disco de la PC
+es intrinsecamente por-runtime, asi que se unifica por **contrato**, no por codigo:
+- **Desktop (standalone, hoy):** lo lee **nativo en Rust** (`src-tauri/src/usage.rs`,
+  comando `usage_read`), sin dependencia de Node — Settings → Providers.
+- **Bridge (Fase 6):** lo leera en **TS** y lo servira por `agent/usageStats` al
+  telefono, que no ve el disco de la PC directamente. Piloto natural del bridge
+  embebido (ver `uxnandesktop/architecture/02e` y los `FOR-DEV.md` de bridge/mobile).
+
 ---
 
 ### 5.9 Transporte seguro y mensajeria E2EE

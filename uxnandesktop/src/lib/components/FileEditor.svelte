@@ -1,17 +1,19 @@
 <script lang="ts">
-  // Editable file viewer on CodeMirror 6, rendered inside a center **file tab**
+  // Editable file viewer on CodeMirror 6 — the **Edit** view of a center file tab
   // (one instance per open file; its state is the `FileEditorState` passed in).
-  // Syntax-highlighted, with a git change gutter: added lines get a light
-  // highlight, and a small left-edge marker peeks the *removed* lines on demand
-  // (we never show the full diff inline). Save with the button or Ctrl/Cmd+S →
-  // writes to disk and refreshes the change indicators. A banner appears when the
-  // file changes on disk while you hold unsaved edits (reload vs keep).
+  // The tab's chrome (name, dirty dot, Save, view switch) is owned by the shell
+  // `FileTabView`; this component is just the editor body. Syntax-highlighted,
+  // with a git change gutter: added lines get a light highlight, and a small
+  // left-edge marker peeks the *removed* lines on demand (the full diff lives in
+  // the tab's Changes view). Ctrl/Cmd+S saves. A banner appears when the file
+  // changes on disk while you hold unsaved edits (reload vs keep).
   import { onDestroy, untrack } from "svelte";
   import {
     Decoration,
     EditorView,
     GutterMarker,
     WidgetType,
+    drawSelection,
     gutter,
     keymap,
     lineNumbers,
@@ -28,12 +30,10 @@
   import { languageFor, syntaxHighlight } from "$lib/editorLang";
   import { resolveBinding, toCodeMirrorKey } from "$lib/keybindings";
   import { parseHeadDiff } from "$lib/diff";
-  import { Button } from "$lib/components/ui/button";
   import { cn } from "$lib/utils";
   import { icon, text } from "$lib/design";
+  import { Button } from "$lib/components/ui/button";
   import { i18n } from "$lib/i18n";
-  import FileIcon from "@lucide/svelte/icons/file";
-  import SaveIcon from "@lucide/svelte/icons/save";
   import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
 
   let { fileState, active = false }: { fileState: FileEditorState; active?: boolean } =
@@ -186,8 +186,17 @@
       lineHeight: "1.5",
       overflow: "auto",
     },
-    ".cm-content": { padding: "4px 0" },
+    ".cm-content": { padding: "4px 0", caretColor: "var(--foreground)" },
     ".cm-gutters": { backgroundColor: "transparent", border: "none" },
+    // A firm, theme-aware caret (drawn by `drawSelection`) so the cursor is
+    // clearly visible in both light and dark — never a black caret lost on a dark
+    // background.
+    ".cm-cursor, .cm-cursor-primary": {
+      borderLeftColor: "var(--foreground)",
+      borderLeftWidth: "2px",
+    },
+    ".cm-selectionBackground": { backgroundColor: "rgba(128,128,128,0.3)" },
+    "&.cm-focused .cm-selectionBackground": { backgroundColor: "rgba(128,128,128,0.42)" },
   });
 
   let host = $state<HTMLDivElement>();
@@ -212,6 +221,7 @@
       doc: content,
       extensions: [
         lineNumbers(),
+        drawSelection(),
         history(),
         keymap.of([
           ...(saveKey
@@ -275,27 +285,6 @@
 </script>
 
 <div class="flex h-full min-h-0 flex-col bg-background">
-  <header class="flex h-9 shrink-0 items-center gap-2 border-b border-border/60 px-2">
-    <FileIcon class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
-    <span class={cn("min-w-0 flex-1 truncate font-mono", text.body)} title={fileState.path}>
-      {fileState.rel || fileState.name}
-      {#if fileState.dirty}<span class="text-amber-600 dark:text-amber-400" title={i18n.t("editor.unsaved")}>●</span>{/if}
-    </span>
-    {#if !fileState.binary && !fileState.tooLarge}
-      <Button
-        variant="ghost"
-        size="sm"
-        class={cn("h-6", text.body)}
-        disabled={!fileState.dirty || fileState.saving}
-        title={i18n.t("editor.save")}
-        onclick={doSave}
-      >
-        <SaveIcon data-icon="inline-start" />
-        {fileState.saving ? i18n.t("editor.saving") : i18n.t("editor.save")}
-      </Button>
-    {/if}
-  </header>
-
   {#if fileState.externallyChanged}
     <div
       class="flex shrink-0 items-center gap-2 border-b border-amber-500/40 bg-amber-500/10 px-3 py-1.5"

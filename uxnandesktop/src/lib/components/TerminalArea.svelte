@@ -5,31 +5,37 @@
   import { app } from "$lib/state/app.svelte";
   import { projects } from "$lib/state/projects.svelte";
   import { setTerminalLayout } from "$lib/api";
+  import { dropPayload } from "$lib/terminal/terminalDrop";
   import {
     terminals,
     computeAreaLayout,
+    tabDisplayTitle,
     type AreaDivider,
     type AreaSplit,
+    type GroupTab,
     type Rect,
     type SplitDir,
   } from "$lib/state/terminals.svelte";
   import Terminal from "./Terminal.svelte";
-  import FileEditor from "./FileEditor.svelte";
-  import DiffPane from "./DiffPane.svelte";
+  import FileTabView from "./FileTabView.svelte";
   import CommitPane from "./CommitPane.svelte";
   import { resolveAgentDisplay } from "$lib/state/agentDisplay";
   import AgentStatusDot from "./AgentStatusDot.svelte";
-  import { divider, icon, tab, text } from "$lib/design";
+  import { divider, icon, iconButton, tab, text } from "$lib/design";
   import { cn } from "$lib/utils";
+  import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import { resolveBinding } from "$lib/keybindings";
   import KeyChord from "./KeyChord.svelte";
   import PlusIcon from "@lucide/svelte/icons/plus";
   import GitBranchIcon from "@lucide/svelte/icons/git-branch";
   import FileIcon from "@lucide/svelte/icons/file";
-  import FileDiffIcon from "@lucide/svelte/icons/file-diff";
   import GitCommitIcon from "@lucide/svelte/icons/git-commit-horizontal";
+  import ChevronLeftIcon from "@lucide/svelte/icons/chevron-left";
+  import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
   import LauncherMenu from "./LauncherMenu.svelte";
+  import TabRenameDialog from "./TabRenameDialog.svelte";
+  import ConfirmDialog from "./ConfirmDialog.svelte";
 
   /** Default profile's shell/args, for region-level + and splits. A blank
    *  command falls back to the backend's platform default shell. */
@@ -52,14 +58,18 @@
   // from the shared store so the empty-state "New worktree" button, the global
   // shortcut and the page-mounted dialog all agree on the same repo + open state.
   const activeRepo = $derived(projects.activeRepo);
+  // Whether the active workspace is a real git repo — worktrees need git, so the
+  // "new worktree" affordances are disabled for a non-git project folder (and the
+  // Global space), just like they already are outside any repo.
+  const activeRepoIsGit = $derived(!!activeRepo && activeRepo.isGit !== false);
 
   // Keyboard hints listed under the empty-state buttons (informative only). "New
-  // worktree" appears only inside a repo; filtered to bound actions so a blank /
-  // disabled chord never renders an empty row.
+  // worktree" appears only inside a git repo; filtered to bound actions so a
+  // blank / disabled chord never renders an empty row.
   const emptyHints = $derived(
     [
       { label: i18n.t("shortcuts.newTerminal"), chord: resolveBinding("newTerminal") },
-      activeRepo
+      activeRepoIsGit
         ? { label: i18n.t("shortcuts.newWorktree"), chord: resolveBinding("newWorktree") }
         : null,
       { label: i18n.t("shortcuts.addProject"), chord: resolveBinding("addProject") },
@@ -98,18 +108,18 @@
     }, 500);
   });
 
-  function quotePath(p: string): string {
-    return /\s/.test(p) ? `"${p}"` : p;
-  }
   function handleFileDrop(paths: string[], position: { x: number; y: number }) {
     if (!paths.length) return;
+    // OS drop coordinates are physical pixels; the DOM hit-test wants CSS px. This
+    // path keeps the active-terminal fallback (an OS drop can land anywhere in the
+    // app); the in-app file-tree drag instead requires a terminal target.
     const dpr = window.devicePixelRatio || 1;
     const el = document.elementFromPoint(position.x / dpr, position.y / dpr);
     const paneEl = el?.closest("[data-pty-id]") as HTMLElement | null;
     const ptyId = paneEl?.dataset.ptyId ?? terminals.activePtyId();
     if (!ptyId) return;
-    const text = paths.map(quotePath).join(" ") + " ";
-    invoke("pty_write", { id: ptyId, data: text }).catch(() => {});
+    invoke("pty_write", { id: ptyId, data: dropPayload(paths) }).catch(() => {});
+    terminals.controller(ptyId)?.focus(); // keep the cursor in the terminal
   }
 
   // --- Divider drag --------------------------------------------------------
@@ -201,9 +211,22 @@
     ];
   }
 
-  function terminalMenu(e: MouseEvent, groupId: string, tabId: string) {
-    terminals.setActiveTab(groupId, tabId);
-    const ctrl = terminals.controller(tabId);
+  // Shared items available on every tab (and the terminal pane): rename the tab,
+  // and close every tab in the active workspace.
+  function renameItem(tab: GroupTab): MenuItem {
+    return { label: i18n.t("tab.rename"), action: () => openRename(tab) };
+  }
+  function closeAllItem(): MenuItem {
+    return {
+      label: i18n.t("tab.closeAll"),
+      action: () => (closeAllConfirm = true),
+      danger: true,
+    };
+  }
+
+  function terminalMenu(e: MouseEvent, groupId: string, tab: GroupTab) {
+    terminals.setActiveTab(groupId, tab.id);
+    const ctrl = terminals.controller(tab.id);
     openMenu(e, [
       {
         label: i18n.t("terminal.copy"),
@@ -213,13 +236,117 @@
       },
       { label: i18n.t("terminal.paste"), action: () => void ctrl?.paste(), chord: "Mod+V" },
       { separator: true },
+      renameItem(tab),
+      { separator: true },
       ...splitItems(groupId),
       { separator: true },
-      ...regionItems(groupId, tabId),
+      ...regionItems(groupId, tab.id),
+      closeAllItem(),
     ]);
   }
-  function tabMenu(e: MouseEvent, groupId: string, tabId: string) {
-    openMenu(e, [...splitItems(groupId), { separator: true }, ...regionItems(groupId, tabId)]);
+
+  // The tab-chip menu, for every tab kind: rename, split (terminals only), close,
+  // and close-all.
+  function tabMenu(e: MouseEvent, groupId: string, tab: GroupTab) {
+    terminals.setActiveTab(groupId, tab.id);
+    const items: MenuItem[] = [renameItem(tab), { separator: true }];
+    if (tab.kind === "terminal") items.push(...splitItems(groupId), { separator: true });
+    items.push(
+      {
+        label: i18n.t("terminal.closeTab"),
+        action: () => void terminals.closeTab(groupId, tab.id),
+        danger: true,
+        chord: resolveBinding("closeCenter"),
+      },
+      closeAllItem(),
+    );
+    openMenu(e, items);
+  }
+
+  // --- Tab rename ----------------------------------------------------------
+  // A file tab renames the real file on disk (with confirmation + an
+  // extension-change warning); every other kind is a free-form label.
+  let renameTarget = $state<GroupTab | null>(null);
+
+  // The "Close all tabs" menu item is destructive, so it asks for confirmation
+  // (in addition to the per-file save/discard prompt that closeAllTabs runs).
+  let closeAllConfirm = $state(false);
+  function openRename(tab: GroupTab) {
+    menu = null;
+    renameTarget = tab;
+  }
+
+  // --- Region tab-strip scroll (chevrons + wheel) -------------------------
+  // The strip hides its native scrollbar so the window can be dragged from its
+  // empty areas; tabs/buttons are not drag regions, and the strip itself is
+  // scrollable only via the edge chevrons and the mouse wheel. One overflow
+  // record per region keeps each strip's chevrons accurate as tabs come/go.
+  type StripOverflow = { hasOverflow: boolean; canScrollStart: boolean; canScrollEnd: boolean };
+  const stripOverflow = $state<Record<string, StripOverflow>>({});
+  const STRIP_SCROLL_FRACTION = 0.75;
+  const STRIP_MIN_STEP_PX = 120;
+
+  function scrollStripByStep(el: HTMLElement | null, dir: "start" | "end") {
+    if (!el) return;
+    const step = Math.max(STRIP_MIN_STEP_PX, el.clientWidth * STRIP_SCROLL_FRACTION);
+    el.scrollBy({ left: dir === "start" ? -step : step, behavior: "smooth" });
+  }
+  function measureStrip(groupId: string, el: HTMLElement | null) {
+    if (!el) return;
+    const maxLeft = Math.max(0, el.scrollWidth - el.clientWidth);
+    stripOverflow[groupId] = {
+      hasOverflow: maxLeft > 1,
+      canScrollStart: maxLeft > 1 && el.scrollLeft > 1,
+      canScrollEnd: maxLeft > 1 && el.scrollLeft < maxLeft - 1,
+    };
+  }
+  // Keep the active tab in view when it's scrolled out of the strip. Why: with
+  // no scrollbar the user can't nudge a far tab into view without the chevrons,
+  // so auto-reveal keeps the focused tab reachable.
+  function revealActiveInStrip(el: HTMLElement | null, activeTabId: string | null) {
+    if (!el || !activeTabId) return;
+    const chip = el.querySelector<HTMLElement>(`[data-tab-id="${activeTabId}"]`);
+    if (!chip) return;
+    const left = chip.offsetLeft;
+    const right = left + chip.offsetWidth;
+    if (left < el.scrollLeft) el.scrollLeft = left - 8;
+    else if (right > el.scrollLeft + el.clientWidth) el.scrollLeft = right - el.clientWidth + 8;
+  }
+
+  // One scrolling element per region. Plain $state map of HTMLElement refs;
+  // reading a key during render gives the current node (null until mounted).
+  const stripEls = $state<Record<string, HTMLElement | null>>({});
+  function stripEl(id: string): HTMLElement | null {
+    return stripEls[id] ?? null;
+  }
+  // Svelte action: observe the strip's content size (tabs added/removed,
+  // resize, reveal-active) and re-measure overflow + keep the active tab visible.
+  function stripObserver(
+    el: HTMLElement,
+    params: { groupId: string; activeTabId: string | null },
+  ) {
+    const measure = () => measureStrip(params.groupId, el);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    // Re-measure shortly after mount so freshly-laid-out tabs are counted.
+    const raf = requestAnimationFrame(() => {
+      measure();
+      revealActiveInStrip(el, params.activeTabId);
+    });
+    return {
+      update(p: { groupId: string; activeTabId: string | null }) {
+        params = p;
+        measure();
+        revealActiveInStrip(el, p.activeTabId);
+      },
+      destroy() {
+        ro.disconnect();
+        cancelAnimationFrame(raf);
+        delete stripOverflow[params.groupId];
+        delete stripEls[params.groupId];
+      },
+    };
   }
 
   // --- Tab drag (reorder within a region + move across regions) ------------
@@ -357,18 +484,45 @@
                   role="group"
                   onpointerdown={() => terminals.setActiveGroup(g.group.id)}
                 >
-                  <!-- Region tab strip (pointer-driven tab drag target). It's the
-                       top band of the title-bar-less center, so its empty areas
-                       double as a window drag handle (Tauri checks the exact
-                       target, so tabs/buttons — which lack the attribute — stay
-                       clickable; the flex-1 spacer below is the main drag zone). -->
-                  <div
-                    data-tauri-drag-region
-                    class={cn("uxnan-scroll flex h-9 shrink-0 items-center overflow-x-auto bg-sidebar px-1", divider.bottom)}
-                    data-tab-strip
-                    data-group-id={g.group.id}
-                    data-tab-count={g.group.tabs.length}
-                  >
+                  <!-- Region tab strip. Its empty areas double as the window drag
+                       handle (Tauri checks the exact target, so tabs/buttons —
+                       which lack the attribute — stay clickable). The native
+                       scrollbar is hidden (`.uxnan-scrollbar-none`) so grabbing
+                       it never starts a window drag; the strip scrolls only via
+                       the edge chevrons and the mouse wheel. -->
+                  <div class="flex h-9 shrink-0 items-center bg-sidebar {divider.bottom}">
+                    {#if stripOverflow[g.group.id]?.hasOverflow}
+                      <button
+                        type="button"
+                        class={cn(
+                          iconButton.action,
+                          "no-drag z-[1] flex shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-foreground/10 hover:text-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+                          stripOverflow[g.group.id]?.canScrollStart ? "opacity-100" : "pointer-events-none opacity-0",
+                        )}
+                        title={i18n.t("tab.scrollLeft")}
+                        aria-label={i18n.t("tab.scrollLeft")}
+                        onclick={() => scrollStripByStep(stripEl(g.group.id), "start")}
+                      >
+                        <ChevronLeftIcon class={icon.action} />
+                      </button>
+                    {/if}
+                    <div
+                      data-tauri-drag-region
+                      use:stripObserver={{ groupId: g.group.id, activeTabId: g.group.activeTabId }}
+                      bind:this={stripEls[g.group.id]}
+                      class="uxnan-scrollbar-none relative flex h-full min-w-0 flex-1 items-center overflow-x-auto px-1"
+                      data-tab-strip
+                      data-group-id={g.group.id}
+                      data-tab-count={g.group.tabs.length}
+                      onscroll={(e) => measureStrip(g.group.id, e.currentTarget)}
+                      onwheel={(e) => {
+                        const el = e.currentTarget;
+                        if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+                        el.scrollLeft += e.deltaY;
+                        e.preventDefault();
+                        measureStrip(g.group.id, el);
+                      }}
+                    >
                     {#each g.group.tabs as t, ti (t.id)}
                       {@const activeChip = g.group.activeTabId === t.id}
                       <!-- Insertion marker before this tab: zero-width until it's
@@ -391,64 +545,74 @@
                         data-group-id={g.group.id}
                         data-tab-index={ti}
                         onpointerdown={(e) =>
-                          onChipPointerDown(e, g.group.id, t.id, t.kind === "terminal" ? (t.agentName ?? t.title) : t.title)}
+                          onChipPointerDown(e, g.group.id, t.id, tabDisplayTitle(t))}
                         onpointermove={onChipPointerMove}
                         onpointerup={onChipPointerUp}
-                        oncontextmenu={t.kind === "terminal"
-                          ? (e) => tabMenu(e, g.group.id, t.id)
-                          : undefined}
+                        oncontextmenu={(e) => tabMenu(e, g.group.id, t)}
                       >
-                        {#if t.kind === "terminal"}
+                          {#if t.kind === "terminal"}
                           {@const display = resolveAgentDisplay(t)}
                           {#if display}
                             <AgentStatusDot status={display.status} stale={display.stale} />
                           {/if}
-                          <span
-                            class="max-w-[120px] truncate {t.exited ? 'line-through' : ''}"
-                            title={t.agentName ?? t.title}
-                          >
-                            {t.agentName ?? t.title}
-                          </span>
+                          <TooltipSimple title={tabDisplayTitle(t)}>
+                            {#snippet children(tp)}
+                              <span
+                                {...tp}
+                                class="max-w-[120px] truncate {t.exited ? 'line-through' : ''}"
+                              >
+                                {tabDisplayTitle(t)}
+                              </span>
+                            {/snippet}
+                          </TooltipSimple>
                         {:else if t.kind === "file"}
                           <FileIcon class={cn(icon.decorative, "shrink-0")} />
-                          <span
-                            class="max-w-[120px] truncate"
-                            title={t.path}
-                          >
-                            {t.title}
-                          </span>
+                          <TooltipSimple title={t.path}>
+                            {#snippet children(tp)}
+                              <span
+                                {...tp}
+                                class="max-w-[120px] truncate"
+                              >
+                                {tabDisplayTitle(t)}
+                              </span>
+                            {/snippet}
+                          </TooltipSimple>
                           {#if terminals.fileState(t.id)?.dirty}
-                            <span
-                              class="text-amber-600 dark:text-amber-400"
-                              title={i18n.t("editor.unsaved")}>●</span
-                            >
+                            <TooltipSimple title={i18n.t("editor.unsaved")}>
+                              {#snippet children(tp)}
+                                <span
+                                  {...tp}
+                                  class="text-amber-600 dark:text-amber-400">●</span
+                                >
+                              {/snippet}
+                            </TooltipSimple>
                           {/if}
-                        {:else if t.kind === "diff"}
-                          <FileDiffIcon class={cn(icon.decorative, "shrink-0")} />
-                          <span
-                            class="max-w-[120px] truncate"
-                            title={t.file}
-                          >
-                            {t.title}
-                          </span>
                         {:else}
                           <GitCommitIcon class={cn(icon.decorative, "shrink-0")} />
-                          <span
-                            class="max-w-[120px] truncate font-mono"
-                            title={t.subject}
-                          >
-                            {t.title}
-                          </span>
+                          <TooltipSimple title={t.subject}>
+                            {#snippet children(tp)}
+                              <span
+                                {...tp}
+                                class="max-w-[120px] truncate font-mono"
+                              >
+                                {tabDisplayTitle(t)}
+                              </span>
+                            {/snippet}
+                          </TooltipSimple>
                         {/if}
-                        <button
-                          class="rounded px-0.5 text-muted-foreground opacity-60 hover:bg-destructive/20 hover:text-foreground hover:opacity-100"
-                          title={i18n.t("terminal.closeTab")}
-                          aria-label={i18n.t("terminal.closeTab")}
-                          data-tab-close
-                          onclick={() => terminals.closeTab(g.group.id, t.id)}
-                        >
-                          ×
-                        </button>
+                        <TooltipSimple title={i18n.t("terminal.closeTab")}>
+                          {#snippet children(tp)}
+                            <button
+                              {...tp}
+                              class="rounded px-0.5 text-muted-foreground opacity-60 hover:bg-destructive/20 hover:text-foreground hover:opacity-100"
+                              aria-label={i18n.t("terminal.closeTab")}
+                              data-tab-close
+                              onclick={() => terminals.closeTab(g.group.id, t.id)}
+                            >
+                              ×
+                            </button>
+                          {/snippet}
+                        </TooltipSimple>
                       </div>
                     {/each}
                     <!-- Insertion marker after the last tab (append slot) -->
@@ -470,25 +634,47 @@
                       <LauncherMenu
                         repo={activeRepo}
                         target={{ path: wsKey, branch: null }}
-                        onNewWorktree={() => (projects.newWorktreeOpen = true)}
+                        onNewWorktree={activeRepoIsGit
+                          ? () => (projects.newWorktreeOpen = true)
+                          : undefined}
                         align="start"
                         triggerClass="ml-0.5 size-6"
                         title={i18n.t("launcher.openHere")}
                       />
                     {:else}
-                      <button
-                        class="ml-0.5 shrink-0 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                        title={i18n.t("terminal.newInRegion")}
-                        aria-label={i18n.t("terminal.newTerminal")}
-                        onclick={() =>
-                          terminals.create({ groupId: g.group.id, ...defaultShellArgs() })}
-                      >
-                        +
-                      </button>
+                      <TooltipSimple title={i18n.t("terminal.newInRegion")}>
+                        {#snippet children(tp)}
+                          <button
+                            {...tp}
+                            class="ml-0.5 shrink-0 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                            aria-label={i18n.t("terminal.newTerminal")}
+                            onclick={() =>
+                              terminals.create({ groupId: g.group.id, ...defaultShellArgs() })}
+                          >
+                            +
+                          </button>
+                        {/snippet}
+                      </TooltipSimple>
                     {/if}
                     <!-- Split lives in each terminal's right-click menu (tab or
                          pane), not here — this stays a drag region. -->
                     <div data-tauri-drag-region class="flex-1"></div>
+                    </div>
+                    {#if stripOverflow[g.group.id]?.hasOverflow}
+                      <button
+                        type="button"
+                        class={cn(
+                          iconButton.action,
+                          "no-drag z-[1] flex shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-foreground/10 hover:text-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+                          stripOverflow[g.group.id]?.canScrollEnd ? "opacity-100" : "pointer-events-none opacity-0",
+                        )}
+                        title={i18n.t("tab.scrollRight")}
+                        aria-label={i18n.t("tab.scrollRight")}
+                        onclick={() => scrollStripByStep(stripEl(g.group.id), "end")}
+                      >
+                        <ChevronRightIcon class={icon.action} />
+                      </button>
+                    {/if}
                   </div>
 
                   <!-- Pane stack for this region (active tab shown). One pane per
@@ -504,7 +690,7 @@
                         data-pty-id={t.kind === "terminal" ? t.id : undefined}
                         onpointerdown={() => terminals.setActiveTab(g.group.id, t.id)}
                         oncontextmenu={t.kind === "terminal"
-                          ? (e) => terminalMenu(e, g.group.id, t.id)
+                          ? (e) => terminalMenu(e, g.group.id, t)
                           : undefined}
                       >
                         {#if t.kind === "terminal"}
@@ -527,12 +713,7 @@
                         {:else if t.kind === "file"}
                           {@const st = terminals.fileState(t.id)}
                           {#if st}
-                            <FileEditor fileState={st} active={activeRegion && paneActive} />
-                          {/if}
-                        {:else if t.kind === "diff"}
-                          {@const st = terminals.diffState(t.id)}
-                          {#if st}
-                            <DiffPane state={st} />
+                            <FileTabView tab={t} fileState={st} active={activeRegion && paneActive} />
                           {/if}
                         {:else}
                           {@const st = terminals.commitState(t.id)}
@@ -612,7 +793,7 @@
               <PlusIcon class={icon.button} />
               {i18n.t("terminal.newTerminal")}
             </button>
-            {#if activeRepo}
+            {#if activeRepoIsGit}
               <button
                 class={cn(
                   "inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 font-medium text-foreground hover:bg-accent hover:text-accent-foreground",
@@ -624,17 +805,21 @@
                 {i18n.t("newWorktree.title")}
               </button>
             {:else}
-              <button
-                class={cn(
-                  "inline-flex cursor-not-allowed items-center gap-1.5 rounded-md border border-dashed border-border px-3 py-1.5 font-medium text-muted-foreground/70",
-                  text.body,
-                )}
-                disabled
-                title={i18n.t("terminal.worktreeNeedsRepo")}
-              >
-                <GitBranchIcon class={icon.button} />
-                {i18n.t("newWorktree.title")}
-              </button>
+              <TooltipSimple title={activeRepo ? i18n.t("terminal.worktreeNeedsGitRepo") : i18n.t("terminal.worktreeNeedsRepo")}>
+                {#snippet children(tp)}
+                  <button
+                    {...tp}
+                    class={cn(
+                      "inline-flex cursor-not-allowed items-center gap-1.5 rounded-md border border-dashed border-border px-3 py-1.5 font-medium text-muted-foreground/70",
+                      text.body,
+                    )}
+                    disabled
+                  >
+                    <GitBranchIcon class={icon.button} />
+                    {i18n.t("newWorktree.title")}
+                  </button>
+                {/snippet}
+              </TooltipSimple>
             {/if}
           </div>
 
@@ -721,3 +906,19 @@
     {/each}
   </div>
 {/if}
+
+<!-- Tab rename (label for terminals/diffs, on-disk rename for files). Mounted
+     only while a tab is being renamed so the field seeds cleanly each time. -->
+{#if renameTarget}
+  <TabRenameDialog tab={renameTarget} onclose={() => (renameTarget = null)} />
+{/if}
+
+<!-- Confirmation for the destructive "Close all tabs" action. -->
+<ConfirmDialog
+  bind:open={closeAllConfirm}
+  danger
+  title={i18n.t("tab.closeAllConfirmTitle")}
+  description={i18n.t("tab.closeAllConfirmDesc")}
+  confirmLabel={i18n.t("tab.closeAll")}
+  onconfirm={() => void terminals.closeAllTabs()}
+/>

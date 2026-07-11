@@ -90,14 +90,14 @@ Toda la comunicacion entre la app movil y el bridge usa **JSON-RPC 2.0** sobre W
 ### 1.2 Metodos JSON-RPC completos
 
 > **Lista canonica:** la fuente de verdad en TypeScript es
-> `../../shared/src/jsonrpc/method-registry.ts` (`METHOD_NAMES`, 61 entradas).
+> `../../shared/src/jsonrpc/method-registry.ts` (`METHOD_NAMES`, 62 entradas).
 > El telefono mantiene una copia Dart sincronizada a mano
 > (`uxnanmobile/lib/domain/value_objects/...`); el bridge y el relay consumen
 > el paquete compartido directamente. Los nombres siguen la convencion
 > `domain/action` (lowercase) en singular para acciones discretas
 > (`git/commit`) y plural para lecturas (`git/branches`).
 >
-> **Total: 60 metodos request/response** + 8 notificaciones de streaming
+> **Total: 61 metodos request/response** + 8 notificaciones de streaming
 > (ver §1.4). El bridge tambien expone el endpoint HTTP local
 > `GET /pair/resolve?code=<code>` para manual-code pairing (ver
 > `02a` §5.5.3) — fuera del canal JSON-RPC, vive en su `http.Server`.
@@ -165,10 +165,11 @@ project/list            -> lista de proyectos configurados (Project { id, name, 
 project/resolve         -> resolver proyecto por cwd (sintetiza uno si el cwd no esta en workspaceRoots)
 ```
 
-**Agentes (2):**
+**Agentes (3):**
 ```
 agent/list              -> agentes registrados (IAgentAdapter.agentId, displayName, capabilities, available)
 agent/models            -> modelos disponibles del agente activo (AgentModel[] estructurado: id, displayName, description?, version?, isDefault?, options?, contextWindow?, isLatestAlias?)
+agent/usageStats        -> estadisticas de uso por proveedor (ProviderUsage[]: ventanas de cuota %, plan/cuenta, saldo). Lectura per-runtime: el desktop la lee nativa en Rust; el bridge la leera en TS para el movil (Fase 6). Solo se leen los proveedores solicitados (los que el usuario activo).
 ```
 
 **Auth (3):**
@@ -460,6 +461,33 @@ interface TurnUsage {
   contextWindow?: number;     // ventana del modelo cuando se conoce (Claude tiers)
 }
 // Si `contextWindow` esta presente, el telefono muestra %; si no, token count crudo.
+```
+
+**`ProviderUsage`** (item de `agent/usageStats`, `shared/src/models/usage.ts`):
+```typescript
+type UsageProvider = 'codex' | 'claude' | 'copilot' | 'gemini';
+type UsageStatus = 'ok' | 'authRequired' | 'notInstalled' | 'error';
+
+interface UsageWindow {
+  id: string; label: string;
+  usedPercent: number;          // 0-100 consumido de la ventana
+  windowMinutes?: number;       // 300=5h, 10080=7d, 43200=30d
+  resetsAt?: number;            // epoch ms
+}
+interface CreditBalance { used: number; limit?: number; currency: string; period: string; resetsAt?: number }
+
+interface ProviderUsage {
+  provider: UsageProvider;
+  status: UsageStatus;
+  source?: 'token';             // se lee del token del CLI (nunca cookies ni keys pegadas)
+  account?: { email?: string; organization?: string; plan?: string };
+  windows: UsageWindow[];       // ventanas de cuota (%)
+  credit?: CreditBalance;       // saldo cuando el proveedor lo expone (Codex/Claude)
+  updatedAt: number;            // epoch ms
+  message?: string;             // hint/error para estados != ok
+}
+// Postura: solo el token que el propio CLI guardo localmente + su API oficial de uso.
+// Cada proveedor degrada a un `status`; uno lento/roto no tumba a los demas.
 ```
 
 **`ApprovalRequestBlock`** (forma de un `approval` content block):

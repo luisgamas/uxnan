@@ -9,24 +9,29 @@ import type {
   AppData,
   AppSettings,
   BranchList,
-  ClaudeHooksStatus,
+  AgentHooksStatus,
   CommitInfo,
   DirListing,
   FileChange,
   FileContent,
   FileNumstat,
+  FileSearch,
   FsEntry,
   HookInstall,
   HookScripts,
   McpInfo,
   HookServerInfo,
   ImageDiff,
+  RemoteOwner,
   RemoveOutcome,
+  ProviderUsage,
   RepoData,
   SavedTerminalLayout,
   UpdateInfo,
+  UsageProvider,
   WorktreeEntry,
   WorktreeStatus,
+  ZeroSession,
 } from "./types";
 
 /** Load the full persisted application state (called once at boot). */
@@ -62,6 +67,19 @@ export function setAgentCommands(commands: string[]): Promise<void> {
   return invoke("set_agent_commands", { commands });
 }
 
+/** Read usage stats (quota windows / credit / local token tally) for the given
+ *  providers — only the ones the user activated. Each provider carries its own
+ *  status, so a slow/broken one never sinks the rest. */
+export function usageRead(providers: UsageProvider[]): Promise<ProviderUsage[]> {
+  return invoke<ProviderUsage[]>("usage_read", { providers });
+}
+
+/** The subset of `providers` whose CLI / config is present on this machine, so
+ *  the Providers catalog can enable only the available ones. */
+export function usageDetect(providers: UsageProvider[]): Promise<UsageProvider[]> {
+  return invoke<UsageProvider[]>("usage_detect", { providers });
+}
+
 /** Coordinates of the local agent hook server (null until it's listening). */
 export function getHookInfo(): Promise<HookServerInfo | null> {
   return invoke<HookServerInfo | null>("get_hook_info");
@@ -88,21 +106,79 @@ export function getHookInstall(): Promise<HookInstall | null> {
 /** Current state of the Claude `settings.json` `hooks` block. The UI uses
  *  this to render an honest "Installed" / "Not installed" / "Unavailable"
  *  badge — we never claim installed unless the file carries our marker. */
-export function getClaudeHooksStatus(): Promise<ClaudeHooksStatus> {
-  return invoke<ClaudeHooksStatus>("get_claude_hooks_status");
+export function getClaudeHooksStatus(): Promise<AgentHooksStatus> {
+  return invoke<AgentHooksStatus>("get_claude_hooks_status");
 }
 
 /** Add (or replace) the ADE-managed `hooks` block in `~/.claude/settings.json`,
  *  pointing at the installed script. Preserves every other top-level key.
  *  Returns the new status so the UI can refresh without a second round-trip. */
-export function installClaudeHooks(): Promise<ClaudeHooksStatus> {
-  return invoke<ClaudeHooksStatus>("install_claude_hooks");
+export function installClaudeHooks(): Promise<AgentHooksStatus> {
+  return invoke<AgentHooksStatus>("install_claude_hooks");
 }
 
 /** Remove the ADE-managed `hooks` block from `~/.claude/settings.json`.
  *  Idempotent; no-op if it's not ours. */
-export function uninstallClaudeHooks(): Promise<ClaudeHooksStatus> {
-  return invoke<ClaudeHooksStatus>("uninstall_claude_hooks");
+export function uninstallClaudeHooks(): Promise<AgentHooksStatus> {
+  return invoke<AgentHooksStatus>("uninstall_claude_hooks");
+}
+
+/** Status of the managed Codex `hooks.json` (+ `config.toml` trust entry). */
+export function getCodexHooksStatus(): Promise<AgentHooksStatus> {
+  return invoke<AgentHooksStatus>("get_codex_hooks_status");
+}
+
+/** Install the ADE-managed Codex hooks and trust the file in `config.toml`. */
+export function installCodexHooks(): Promise<AgentHooksStatus> {
+  return invoke<AgentHooksStatus>("install_codex_hooks");
+}
+
+export function uninstallCodexHooks(): Promise<AgentHooksStatus> {
+  return invoke<AgentHooksStatus>("uninstall_codex_hooks");
+}
+
+/** Status of the managed Gemini CLI `settings.json` hooks block. */
+export function getGeminiHooksStatus(): Promise<AgentHooksStatus> {
+  return invoke<AgentHooksStatus>("get_gemini_hooks_status");
+}
+
+export function installGeminiHooks(): Promise<AgentHooksStatus> {
+  return invoke<AgentHooksStatus>("install_gemini_hooks");
+}
+
+export function uninstallGeminiHooks(): Promise<AgentHooksStatus> {
+  return invoke<AgentHooksStatus>("uninstall_gemini_hooks");
+}
+
+/** Status of the managed Pi/OMP status extension. */
+export function getPiHooksStatus(): Promise<AgentHooksStatus> {
+  return invoke<AgentHooksStatus>("get_pi_hooks_status");
+}
+
+export function installPiHooks(): Promise<AgentHooksStatus> {
+  return invoke<AgentHooksStatus>("install_pi_hooks");
+}
+
+export function uninstallPiHooks(): Promise<AgentHooksStatus> {
+  return invoke<AgentHooksStatus>("uninstall_pi_hooks");
+}
+
+/** Status of the managed OpenCode status plugin. */
+export function getOpencodeHooksStatus(): Promise<AgentHooksStatus> {
+  return invoke<AgentHooksStatus>("get_opencode_hooks_status");
+}
+
+export function installOpencodeHooks(): Promise<AgentHooksStatus> {
+  return invoke<AgentHooksStatus>("install_opencode_hooks");
+}
+
+export function uninstallOpencodeHooks(): Promise<AgentHooksStatus> {
+  return invoke<AgentHooksStatus>("uninstall_opencode_hooks");
+}
+
+/** (Re)install the managed hooks for every supported agent at once. */
+export function installAllHooks(): Promise<void> {
+  return invoke("install_all_hooks");
 }
 
 /** Textual content of every bundled hook script (rendered Claude JSON +
@@ -139,6 +215,55 @@ export function repoRemove(id: string): Promise<void> {
 /** List registered repositories. */
 export function repoList(): Promise<RepoData[]> {
   return invoke<RepoData[]>("repo_list");
+}
+
+/** Update a project's display metadata (card `name` and/or `icon`) without
+ *  touching the folder on disk. Only the fields present in `changes` are applied
+ *  (an omitted field is left unchanged); pass an empty string to reset (`name`
+ *  → the folder name, `icon` → the default glyph). */
+export function repoUpdate(
+  id: string,
+  changes: { name?: string; icon?: string | null },
+): Promise<RepoData> {
+  return invoke<RepoData>("repo_update", {
+    id,
+    // Tauri omits `undefined` args → the backend sees `None` (leave unchanged);
+    // an empty string means "reset". `null` icon (clear) is normalized to "".
+    name: changes.name,
+    icon: "icon" in changes ? (changes.icon ?? "") : undefined,
+  });
+}
+
+/** Set (or clear with null) a per-branch custom icon for a project. */
+export function repoSetBranchIcon(
+  repoId: string,
+  branch: string,
+  icon: string | null,
+): Promise<RepoData> {
+  return invoke<RepoData>("repo_set_branch_icon", { id: repoId, branch, icon });
+}
+
+/** Reorder the registered projects to the user's manual arrangement. `orderedIds`
+ *  is the desired front-to-back order; any repo omitted keeps its position after
+ *  the listed ones, so a stale list never drops a project. Persists the order. */
+export function repoReorder(orderedIds: string[]): Promise<void> {
+  return invoke("repo_reorder", { orderedIds });
+}
+
+/** Set a project's manual worktree order (child worktree paths, front-to-back).
+ *  The primary worktree is always shown first regardless. Returns the updated
+ *  repo so the caller can reconcile `app.repos`. */
+export function setWorktreeOrder(
+  repoId: string,
+  paths: string[],
+): Promise<RepoData> {
+  return invoke<RepoData>("repo_set_worktree_order", { id: repoId, paths });
+}
+
+/** Resolve a git project's `origin` remote to its hosting owner/avatar, for the
+ *  "use the account avatar" icon option. Null when there's no parseable origin. */
+export function repoRemoteOwner(repoId: string): Promise<RemoteOwner | null> {
+  return invoke<RemoteOwner | null>("repo_remote_owner", { id: repoId });
 }
 
 /** List a repo's local branches + the resolved default base. */
@@ -200,9 +325,73 @@ export function fsReadFile(path: string): Promise<FileContent> {
   return invoke<FileContent>("fs_read_file", { path });
 }
 
+/** Read a local image file as an inline `data:<mime>;base64,…` URL for the
+ *  editor's image preview. Rejects non-images and anything over the size cap. */
+export function fsReadDataUrl(path: string): Promise<string> {
+  return invoke<string>("fs_read_data_url", { path });
+}
+
 /** Overwrite a file with the editor's content (atomic on the backend). */
 export function fsWriteFile(path: string, content: string): Promise<void> {
   return invoke("fs_write_file", { path, content });
+}
+
+/** Rename a file on disk to a new bare file name, keeping it in the same folder.
+ *  Returns the new absolute, forward-slash path. Rejects path separators,
+ *  traversal, and clobbering an existing sibling. */
+export function fsRename(path: string, newName: string): Promise<string> {
+  return invoke<string>("fs_rename", { path, newName });
+}
+
+/** Create a new empty file `name` inside directory `dir` (file tree "New File").
+ *  `name` must be a bare name that doesn't already exist. Returns the new
+ *  absolute, forward-slash path. */
+export function fsCreateFile(dir: string, name: string): Promise<string> {
+  return invoke<string>("fs_create_file", { dir, name });
+}
+
+/** Create a new empty directory `name` inside `dir` (file tree "New Folder").
+ *  Same bare-name / no-clobber guards as {@link fsCreateFile}. */
+export function fsCreateDir(dir: string, name: string): Promise<string> {
+  return invoke<string>("fs_create_dir", { dir, name });
+}
+
+/** Move a file or directory to the OS trash (file tree "Delete") — recoverable,
+ *  not a permanent unlink. Refuses a filesystem root. */
+export function fsDelete(path: string): Promise<void> {
+  return invoke("fs_delete", { path });
+}
+
+/** Duplicate a single file next to itself under a unique "… copy" name (file tree
+ *  "Duplicate"). Directories are refused. Returns the new absolute path. */
+export function fsDuplicate(path: string): Promise<string> {
+  return invoke<string>("fs_duplicate", { path });
+}
+
+/** Project-wide filename search for the Files tab: recursively find files under
+ *  `root` whose relative path matches every whitespace token of `query`. Honors
+ *  `.gitignore` and skips `.git`; `includeHidden` surfaces dotfiles; `limit` caps
+ *  the results (`truncated` flags an over-cap walk). */
+export function fsSearchFiles(
+  root: string,
+  query: string,
+  includeHidden: boolean,
+  limit: number,
+): Promise<FileSearch> {
+  return invoke<FileSearch>("fs_search_files", { root, query, includeHidden, limit });
+}
+
+/** The current conversation (title + coarse status) of the Zero agent running in
+ *  `cwd` (a worktree path), read from Zero's on-disk session metadata. `null` when
+ *  no matching session exists. Powers the Zero row in the left-panel agent view. */
+export function zeroSession(cwd: string): Promise<ZeroSession | null> {
+  return invoke<ZeroSession | null>("zero_session", { cwd });
+}
+
+/** Download an image from an http(s) URL into an inline `data:` URL (fetched in
+ *  the backend to sidestep CORS). Used for "icon from URL" and git-host avatars. */
+export function imageFetchDataUrl(url: string): Promise<string> {
+  return invoke<string>("image_fetch_data_url", { url });
 }
 
 /** Reveal a path in the OS file manager (Explorer / Finder / etc.). */

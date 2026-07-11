@@ -5,6 +5,7 @@
   //  - Terminal: terminal theme grid (Inherit + presets) that overrides the app
   //    theme in the terminal only, plus the terminal theme editor.
   // New/Edit open a DRAFT in the editor (previewed live, saved only on Save).
+  import { untrack } from "svelte";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import * as Dialog from "$lib/components/ui/dialog";
   import { Button } from "$lib/components/ui/button";
@@ -20,8 +21,8 @@
     duplicateTheme,
     duplicateTerminalTheme,
     newTerminalThemeId,
-    normalizeImportedTheme,
-    normalizeImportedTerminalTheme,
+    normalizeImportedThemes,
+    normalizeImportedTerminalThemes,
     resolveTerminal,
     terminalTemplateFor,
     themeToJson,
@@ -33,7 +34,7 @@
   import { fsReadFile, fsWriteFile } from "$lib/api";
   import { clipboardWrite } from "$lib/clipboard";
   import { cn } from "$lib/utils";
-  import { icon, iconButton, surface, text } from "$lib/design";
+  import { icon, iconButton, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
   import ThemeEditor from "./ThemeEditor.svelte";
   import TerminalThemeEditor from "./TerminalThemeEditor.svelte";
@@ -51,18 +52,9 @@
   import CheckIcon from "@lucide/svelte/icons/check";
 
   let error = $state<string | null>(null);
+  // Transient success line for a completed import (e.g. "Imported 3 themes").
+  let notice = $state<string | null>(null);
 
-  // Shared recipes so every appearance sub-block reads like the rest of Settings:
-  // a soft card band for grouped rows, a selectable theme card in the app's
-  // neutral selection language (`surface.active`), and the theme-card grid.
-  const band = "rounded-xl border border-border/50 bg-card/50 px-5 py-1.5 shadow-xs";
-  const grid = "grid grid-cols-2 gap-2.5 sm:grid-cols-3";
-  function cardClass(selected: boolean): string {
-    return cn(
-      "flex flex-col gap-2 rounded-lg border p-2 text-left transition-colors",
-      selected ? cn(surface.active, "border-transparent") : "border-border/60 hover:bg-foreground/[0.04]",
-    );
-  }
 
   function persist() {
     void app.persistSettings();
@@ -93,7 +85,6 @@
   const customThemes = $derived(app.settings.customThemes ?? []);
   const activeTermId = $derived(app.settings.activeTerminalThemeId ?? TERMINAL_INHERIT_ID);
   const termThemes = $derived(app.settings.terminalThemes ?? []);
-  const swatchKeys = ["background", "primary", "accent", "secondary", "foreground"] as const;
 
   function selectTheme(id: string) {
     app.settings.activeThemeId = id;
@@ -217,42 +208,90 @@
     pasteKind = kind;
     pasteText = "";
     error = null;
+    notice = null;
     pasteOpen = true;
   }
   async function importFile(kind: "theme" | "terminal") {
     error = null;
+    notice = null;
     try {
       const { open } = await import("@tauri-apps/plugin-dialog");
-      const path = await open({ multiple: false, filters: [{ name: "Theme JSON", extensions: ["json"] }] });
-      if (typeof path !== "string") return;
-      const { content } = await fsReadFile(path);
-      importJson(kind, content);
+      // Multi-select: each file may itself carry one theme or a whole list.
+      const picked = await open({ multiple: true, filters: [{ name: "Theme JSON", extensions: ["json"] }] });
+      if (picked == null) return;
+      const paths = Array.isArray(picked) ? picked : [picked];
+      if (!paths.length) return;
+      const raws: string[] = [];
+      for (const p of paths) {
+        const { content } = await fsReadFile(p);
+        raws.push(content);
+      }
+      importRaws(kind, raws);
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
     }
   }
+  /** Single-source paste import (one text blob that may hold one theme or a list). */
   function importJson(kind: "theme" | "terminal", raw: string) {
+    importRaws(kind, [raw]);
+  }
+  /** Import one or more JSON blobs (files or a pasted document). Each blob may be
+   *  a single theme, an array of themes, or a `{ themes: [...] }` wrapper; results
+   *  accumulate across every blob and the last valid one becomes active. */
+  function importRaws(kind: "theme" | "terminal", raws: string[]) {
     error = null;
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      error = i18n.t("appearance.invalidJson");
-      return;
-    }
+    notice = null;
+    const errors: string[] = [];
+    const parseEach = (raw: string): unknown | undefined => {
+      try {
+        return JSON.parse(raw);
+      } catch {
+        errors.push(i18n.t("appearance.invalidJson"));
+        return undefined;
+      }
+    };
     if (kind === "theme") {
-      const { theme, error: err } = normalizeImportedTheme(parsed);
-      if (err || !theme) return (error = err ?? i18n.t("appearance.invalidJson"));
-      app.settings.customThemes = [...customThemes, theme];
-      app.settings.activeThemeId = theme.id;
+      const added: Theme[] = [];
+      for (const raw of raws) {
+        const parsed = parseEach(raw);
+        if (parsed === undefined) continue;
+        const { themes, errors: errs } = normalizeImportedThemes(parsed);
+        added.push(...themes);
+        errors.push(...errs);
+      }
+      if (added.length) {
+        app.settings.customThemes = [...customThemes, ...added];
+        app.settings.activeThemeId = added[added.length - 1].id;
+        persist();
+      }
+      finishImport(added.length, errors);
     } else {
-      const { preset, error: err } = normalizeImportedTerminalTheme(parsed);
-      if (err || !preset) return (error = err ?? i18n.t("appearance.invalidJson"));
-      app.settings.terminalThemes = [...termThemes, preset];
-      app.settings.activeTerminalThemeId = preset.id;
+      const added: TerminalThemePreset[] = [];
+      for (const raw of raws) {
+        const parsed = parseEach(raw);
+        if (parsed === undefined) continue;
+        const { presets, errors: errs } = normalizeImportedTerminalThemes(parsed);
+        added.push(...presets);
+        errors.push(...errs);
+      }
+      if (added.length) {
+        app.settings.terminalThemes = [...termThemes, ...added];
+        app.settings.activeTerminalThemeId = added[added.length - 1].id;
+        persist();
+      }
+      finishImport(added.length, errors);
     }
-    persist();
-    pasteOpen = false;
+  }
+  /** Report the outcome of a batch import: a success line when anything landed
+   *  (with a soft warning for any skipped entries), else the first error. */
+  function finishImport(count: number, errors: string[]) {
+    if (count > 0) {
+      notice = i18n.plural(count, "appearance.importedOne", "appearance.importedMany");
+      if (errors.length) error = i18n.plural(errors.length, "appearance.skippedOne", "appearance.skippedMany");
+      pasteOpen = false;
+    } else {
+      error = errors[0] ?? i18n.t("appearance.invalidJson");
+    }
   }
   async function exportFile(name: string, json: string) {
     error = null;
@@ -266,12 +305,6 @@
     }
   }
 
-  /** Swatch colors for a terminal preset (Inherit = null), resolved against a
-   *  base, for the card color bars. */
-  function termSwatches(preset: TerminalThemePreset | null, base: "light" | "dark"): string[] {
-    const t = resolveTerminal(base, preset).theme;
-    return [t.background, t.foreground, t.green, t.blue, t.red];
-  }
   const appBase = $derived(app.resolveActiveTheme().base);
 
   // --- Terminal selection: one theme, or a separate one per light/dark -------
@@ -288,240 +321,312 @@
     persist();
   }
   const presetBase = (p: TerminalThemePreset): "light" | "dark" => (p.base === "light" ? "light" : "dark");
+
+  // --- Name list + live color preview (local; does NOT apply to the whole app) --
+  // The theme lists show one name per row; clicking a row previews its colors in
+  // the side panel, and "Use" applies it. Preview ids default to the active
+  // selection and are kept valid as the lists change.
+  const SYSTEM_ID = "system";
+  let previewThemeId = $state<string>(untrack(() => activeId));
+  $effect(() => {
+    const known = previewThemeId === SYSTEM_ID || app.allThemes().some((t) => t.id === previewThemeId);
+    if (!known) previewThemeId = activeId;
+  });
+  const previewTheme = $derived(app.allThemes().find((t) => t.id === previewThemeId));
+  // System has no single palette — preview the OS-resolved light/dark theme.
+  const previewAppColors = $derived(
+    previewThemeId === SYSTEM_ID ? app.resolveActiveTheme().colors : previewTheme?.colors,
+  );
+  const previewAppName = $derived(
+    previewThemeId === SYSTEM_ID ? i18n.t("settings.theme.system") : (previewTheme?.name ?? ""),
+  );
+
   const darkThemes = $derived(termThemes.filter((p) => presetBase(p) === "dark"));
   const lightThemes = $derived(termThemes.filter((p) => presetBase(p) === "light"));
+
+  // Per-scope terminal preview: single mode has one list+preview; "separate
+  // schemes" mode has a dark and a light list, each with its own preview terminal
+  // (the surrounding UI stays on the app theme — only the mini terminal recolors).
+  type TermScope = "single" | "dark" | "light";
+  let previewTermSingle = $state<string>(untrack(() => activeTermId));
+  let previewTermDark = $state<string>(untrack(() => termDarkId));
+  let previewTermLight = $state<string>(untrack(() => termLightId));
+  $effect(() => { if (previewTermSingle !== TERMINAL_INHERIT_ID && !termThemes.some((p) => p.id === previewTermSingle)) previewTermSingle = activeTermId; });
+  $effect(() => { if (previewTermDark !== TERMINAL_INHERIT_ID && !termThemes.some((p) => p.id === previewTermDark)) previewTermDark = termDarkId; });
+  $effect(() => { if (previewTermLight !== TERMINAL_INHERIT_ID && !termThemes.some((p) => p.id === previewTermLight)) previewTermLight = termLightId; });
+
+  const termPreviewId = (scope: TermScope) =>
+    scope === "dark" ? previewTermDark : scope === "light" ? previewTermLight : previewTermSingle;
+  function setTermPreview(scope: TermScope, id: string) {
+    if (scope === "dark") previewTermDark = id;
+    else if (scope === "light") previewTermLight = id;
+    else previewTermSingle = id;
+  }
+  const termActiveId = (scope: TermScope) =>
+    scope === "dark" ? termDarkId : scope === "light" ? termLightId : activeTermId;
+  function useTerm(scope: TermScope, id: string) {
+    if (scope === "single") selectTerm(id);
+    else setTermScheme(scope, id);
+    setTermPreview(scope, id);
+  }
+  function termColorsFor(id: string) {
+    const p = termThemes.find((x) => x.id === id) ?? null;
+    return resolveTerminal(p ? presetBase(p) : appBase, p).theme;
+  }
+  const termNameFor = (id: string) =>
+    termThemes.find((x) => x.id === id)?.name ?? i18n.t("appearance.inherit");
+
+  // The color roles listed under the app-theme preview (label i18n key → color key).
+  const APP_SWATCHES = [
+    ["appearance.color.background", "background"],
+    ["appearance.color.foreground", "foreground"],
+    ["appearance.color.primary", "primary"],
+    ["appearance.color.secondary", "secondary"],
+    ["appearance.color.accent", "accent"],
+    ["appearance.color.muted", "muted"],
+    ["appearance.color.destructive", "destructive"],
+    ["appearance.color.border", "border"],
+  ] as const;
 </script>
 
 <div class="flex flex-col gap-6">
+  {#if notice}<p class={cn("text-primary", text.body)}>{notice}</p>{/if}
   {#if error}<p class={cn("text-destructive", text.body)}>{error}</p>{/if}
 
   <!-- ===== Interface ===== -->
-  <SettingsSection bare title={i18n.t("appearance.tabInterface")} description={i18n.t("appearance.interfaceDesc")}>
-    <div class="flex flex-col gap-6">
-
-      <!-- Fonts (override every theme's fonts) -->
-      <div class="space-y-2">
-        <div class="space-y-0.5 px-1">
-          <span class={text.section}>{i18n.t("appearance.fonts")}</span>
-          <p class={text.meta}>{i18n.t("appearance.fontsDesc")}</p>
-        </div>
-        <div class={band}>
-          <div class="divide-y divide-border/60">
-            {#each [["title", "appearance.fontTitle", "appearance.fontTitleDesc"], ["body", "appearance.fontBody", "appearance.fontBodyDesc"], ["mono", "appearance.fontMono", "appearance.fontMonoDesc"]] as [key, labelKey, descKey] (key)}
-              {@const k = key as "title" | "body" | "mono"}
-              <SettingsRow label={i18n.t(labelKey as never)} description={i18n.t(descKey as never)}>
-                {#snippet control()}
-                  <FontPicker
-                    value={app.settings.fonts?.[k]}
-                    placeholder={DEFAULT_FONTS[k].split(",")[0].replace(/"/g, "")}
-                    bundled={k === "mono" ? [] : [...BUNDLED_FONTS]}
-                    clearLabel={i18n.t("appearance.fontDefault")}
-                    triggerClass="w-64"
-                    onChange={(v) => { ensureFonts()[k] = v; persist(); }}
-                  />
-                {/snippet}
-              </SettingsRow>
-            {/each}
-          </div>
-        </div>
-      </div>
-
-      <!-- Themes -->
-      <div class="space-y-2">
-        <div class="flex items-center justify-between gap-2 px-1">
-          <span class={text.section}>{i18n.t("appearance.themesLabel")}</span>
-          <div class="flex items-center gap-1.5">
+  <SettingsSection title={i18n.t("appearance.tabInterface")} description={i18n.t("appearance.interfaceDesc")}>
+    <!-- Fonts + Themes as section items (label left, controls right) -->
+    <div class="divide-y divide-border/60">
+      {#each [["title", "appearance.fontTitle", "appearance.fontTitleDesc"], ["body", "appearance.fontBody", "appearance.fontBodyDesc"], ["mono", "appearance.fontMono", "appearance.fontMonoDesc"]] as [key, labelKey, descKey] (key)}
+        {@const k = key as "title" | "body" | "mono"}
+        <SettingsRow label={i18n.t(labelKey as never)} description={i18n.t(descKey as never)}>
+          {#snippet control()}
+            <FontPicker
+              value={app.settings.fonts?.[k]}
+              placeholder={DEFAULT_FONTS[k].split(",")[0].replace(/"/g, "")}
+              bundled={k === "mono" ? [] : [...BUNDLED_FONTS]}
+              clearLabel={i18n.t("appearance.fontDefault")}
+              triggerClass="w-64"
+              onChange={(v) => { ensureFonts()[k] = v; persist(); }}
+            />
+          {/snippet}
+        </SettingsRow>
+      {/each}
+      <SettingsRow label={i18n.t("appearance.themesLabel")} description={i18n.t("appearance.themesRowDesc")}>
+        {#snippet control()}
+          <div class="flex flex-wrap items-center justify-end gap-1.5">
             <Button variant="outline" size="sm" onclick={() => importFile("theme")}><UploadIcon data-icon="inline-start" />{i18n.t("appearance.import")}</Button>
             <Button variant="outline" size="sm" onclick={() => openPaste("theme")}><ClipboardPasteIcon data-icon="inline-start" />{i18n.t("appearance.paste")}</Button>
             <Button size="sm" onclick={newTheme}><PlusIcon data-icon="inline-start" />{i18n.t("appearance.newTheme")}</Button>
           </div>
-        </div>
-        <!-- Scroll-capped so a large collection stays bounded, not a runaway grid. -->
-        <div class="uxnan-scroll max-h-[22rem] overflow-y-auto">
-          <div class={grid}>
-            <button type="button" class={cardClass(activeId === "system")} onclick={() => selectTheme("system")}>
-              <div class="flex h-8 overflow-hidden rounded border border-border/70">
-                <div class="flex-1 bg-white"></div>
-                <div class="flex-1 bg-neutral-900"></div>
-              </div>
-              <div class="flex items-center gap-1">
-                <span class={cn("flex-1 truncate", text.body)}>{i18n.t("settings.theme.system")}</span>
-                {#if activeId === "system"}<CheckIcon class={cn(icon.decorative, "text-primary")} />{/if}
-              </div>
-            </button>
+        {/snippet}
+      </SettingsRow>
+    </div>
 
-            {#each app.allThemes() as theme (theme.id)}
-              {@const isActive = activeId === theme.id}
-              {@const isCustom = !BUILTIN_IDS.has(theme.id)}
-              <div class={cardClass(isActive)}>
-                <button type="button" class="flex flex-col gap-2 text-left" onclick={() => selectTheme(theme.id)}>
-                  <div class="flex h-8 overflow-hidden rounded border border-border/70">
-                    {#each swatchKeys as k (k)}<div class="flex-1" style:background-color={theme.colors[k]}></div>{/each}
-                  </div>
-                </button>
-                <div class="flex items-center gap-1">
-                  <button type="button" class={cn("min-w-0 flex-1 truncate text-left", text.body)} onclick={() => selectTheme(theme.id)}>{theme.name}</button>
-                  {#if isActive}<CheckIcon class={cn(icon.decorative, "shrink-0 text-primary")} />{/if}
-                  <DropdownMenu.Root>
-                    <DropdownMenu.Trigger>
-                      {#snippet child({ props })}
-                        <Button variant="ghost" size="icon" class={cn(iconButton.action, "shrink-0")} title={i18n.t("common.more")} {...props}><MoreVerticalIcon class={icon.button} /></Button>
-                      {/snippet}
-                    </DropdownMenu.Trigger>
-                    <DropdownMenu.Content align="end" class="min-w-44">
-                      {#if isCustom}<DropdownMenu.Item class={text.menu} onclick={() => editTheme(theme)}><PencilIcon class={icon.button} />{i18n.t("appearance.edit")}</DropdownMenu.Item>{/if}
-                      <DropdownMenu.Item class={text.menu} onclick={() => duplicateThemeAction(theme)}><CopyIcon class={icon.button} />{i18n.t("appearance.duplicate")}</DropdownMenu.Item>
-                      <DropdownMenu.Item class={text.menu} onclick={() => exportFile(theme.name, themeToJson(theme))}><DownloadIcon class={icon.button} />{i18n.t("appearance.exportFile")}</DropdownMenu.Item>
-                      <DropdownMenu.Item class={text.menu} onclick={() => void clipboardWrite(themeToJson(theme))}><CopyIcon class={icon.button} />{i18n.t("appearance.copyJson")}</DropdownMenu.Item>
-                      {#if isCustom}
-                        <DropdownMenu.Separator />
-                        <DropdownMenu.Item variant="destructive" class={text.menu} onclick={() => removeTheme(theme.id)}><Trash2Icon class={icon.button} />{i18n.t("common.remove")}</DropdownMenu.Item>
-                      {/if}
-                    </DropdownMenu.Content>
-                  </DropdownMenu.Root>
-                </div>
-              </div>
-            {/each}
-          </div>
+    <!-- Theme name list (scrolls) + a live color preview -->
+    <div class="mt-4 grid items-start gap-3 lg:grid-cols-2">
+      <div class="uxnan-scroll max-h-80 overflow-y-auto rounded-lg border border-border/50 bg-background/40">
+        <div class="divide-y divide-border/50">
+          {@render themeRow(SYSTEM_ID, i18n.t("settings.theme.system"), null)}
+          {#each app.allThemes() as theme (theme.id)}
+            {@render themeRow(theme.id, theme.name, theme)}
+          {/each}
         </div>
       </div>
-
+      {@render appPreview()}
     </div>
-  </SettingsSection>
+    </SettingsSection>
 
   <!-- ===== Terminal ===== -->
-  <SettingsSection bare title={i18n.t("appearance.tabTerminal")} description={i18n.t("appearance.terminalDesc")}>
-    <div class="flex flex-col gap-6">
-
-      <!-- Typography (terminal font override — wins over each terminal theme) -->
-      <div class="space-y-2">
-        <div class="space-y-0.5 px-1">
-          <span class={text.section}>{i18n.t("appearance.fonts")}</span>
-          <p class={text.meta}>{i18n.t("appearance.terminalFontsDesc")}</p>
-        </div>
-        <div class={band}>
-          <div class="divide-y divide-border/60">
-            <SettingsRow label={i18n.t("terminalTheme.font")} description={i18n.t("appearance.termFamilyDesc")}>
-              {#snippet control()}
-                <FontPicker
-                  value={tf.fontFamily ?? undefined}
-                  placeholder={termFontBase.fontFamily.split(",")[0].replace(/"/g, "")}
-                  clearLabel={i18n.t("appearance.fontInherit")}
-                  triggerClass="w-64"
-                  onChange={(v) => setTermFontStr("fontFamily", v ?? "")}
-                />
-              {/snippet}
-            </SettingsRow>
-            <SettingsRow label={i18n.t("terminalTheme.size")} description={i18n.t("appearance.termSizeDesc")}>
-              {#snippet control()}
-                <Input type="number" class="w-24" value={tf.fontSize ?? ""} placeholder={String(termFontBase.fontSize)} oninput={(e) => setTermFontNum("fontSize", e.currentTarget.value)} />
-              {/snippet}
-            </SettingsRow>
-            <SettingsRow label={i18n.t("terminalTheme.lineHeight")} description={i18n.t("appearance.termLineHeightDesc")}>
-              {#snippet control()}
-                <Input type="number" step="0.05" class="w-24" value={tf.lineHeight ?? ""} placeholder={String(termFontBase.lineHeight)} oninput={(e) => setTermFontNum("lineHeight", e.currentTarget.value)} />
-              {/snippet}
-            </SettingsRow>
-            <SettingsRow label={i18n.t("terminalTheme.letterSpacing")} description={i18n.t("appearance.termLetterSpacingDesc")}>
-              {#snippet control()}
-                <Input type="number" step="0.5" class="w-24" value={tf.letterSpacing ?? ""} placeholder={String(termFontBase.letterSpacing)} oninput={(e) => setTermFontNum("letterSpacing", e.currentTarget.value)} />
-              {/snippet}
-            </SettingsRow>
-            <SettingsRow label={i18n.t("terminalTheme.ligatures")} description={i18n.t("appearance.termLigaturesDesc")}>
-              {#snippet control()}
-                <Switch checked={tf.ligatures ?? false} onCheckedChange={(c) => { ensureTermFonts().ligatures = c; persist(); }} />
-              {/snippet}
-            </SettingsRow>
-          </div>
-        </div>
-      </div>
-
-      <!-- Terminal themes -->
-      <div class="space-y-2">
-        <div class="flex items-center justify-between gap-2 px-1">
-          <span class={text.section}>{i18n.t("appearance.themesLabel")}</span>
-          <div class="flex items-center gap-1.5">
+  <SettingsSection title={i18n.t("appearance.tabTerminal")} description={i18n.t("appearance.terminalDesc")}>
+    <!-- Typography + Themes as section items -->
+    <div class="divide-y divide-border/60">
+      <SettingsRow label={i18n.t("terminalTheme.font")} description={i18n.t("appearance.termFamilyDesc")}>
+        {#snippet control()}
+          <FontPicker
+            value={tf.fontFamily ?? undefined}
+            placeholder={termFontBase.fontFamily.split(",")[0].replace(/"/g, "")}
+            clearLabel={i18n.t("appearance.fontInherit")}
+            triggerClass="w-64"
+            onChange={(v) => setTermFontStr("fontFamily", v ?? "")}
+          />
+        {/snippet}
+      </SettingsRow>
+      <SettingsRow label={i18n.t("terminalTheme.size")} description={i18n.t("appearance.termSizeDesc")}>
+        {#snippet control()}
+          <Input type="number" class="w-24" value={tf.fontSize ?? ""} placeholder={String(termFontBase.fontSize)} oninput={(e) => setTermFontNum("fontSize", e.currentTarget.value)} />
+        {/snippet}
+      </SettingsRow>
+      <SettingsRow label={i18n.t("terminalTheme.lineHeight")} description={i18n.t("appearance.termLineHeightDesc")}>
+        {#snippet control()}
+          <Input type="number" step="0.05" class="w-24" value={tf.lineHeight ?? ""} placeholder={String(termFontBase.lineHeight)} oninput={(e) => setTermFontNum("lineHeight", e.currentTarget.value)} />
+        {/snippet}
+      </SettingsRow>
+      <SettingsRow label={i18n.t("terminalTheme.letterSpacing")} description={i18n.t("appearance.termLetterSpacingDesc")}>
+        {#snippet control()}
+          <Input type="number" step="0.5" class="w-24" value={tf.letterSpacing ?? ""} placeholder={String(termFontBase.letterSpacing)} oninput={(e) => setTermFontNum("letterSpacing", e.currentTarget.value)} />
+        {/snippet}
+      </SettingsRow>
+      <SettingsRow label={i18n.t("terminalTheme.ligatures")} description={i18n.t("appearance.termLigaturesDesc")}>
+        {#snippet control()}
+          <Switch checked={tf.ligatures ?? false} onCheckedChange={(c) => { ensureTermFonts().ligatures = c; persist(); }} />
+        {/snippet}
+      </SettingsRow>
+      <SettingsRow label={i18n.t("appearance.themesLabel")} description={i18n.t("appearance.termThemesRowDesc")}>
+        {#snippet control()}
+          <div class="flex flex-wrap items-center justify-end gap-1.5">
             <Button variant="outline" size="sm" onclick={() => importFile("terminal")}><UploadIcon data-icon="inline-start" />{i18n.t("appearance.import")}</Button>
             <Button variant="outline" size="sm" onclick={() => openPaste("terminal")}><ClipboardPasteIcon data-icon="inline-start" />{i18n.t("appearance.paste")}</Button>
             <Button size="sm" onclick={newTermTheme}><PlusIcon data-icon="inline-start" />{i18n.t("appearance.newTheme")}</Button>
           </div>
-        </div>
-        <p class={cn("px-1", text.meta)}>{i18n.t("appearance.terminalThemesDesc")}</p>
-
-        <!-- Optional: a separate terminal theme per light/dark app theme -->
-        <div class={band}>
-          <SettingsRow label={i18n.t("appearance.separateSchemes")} description={i18n.t("appearance.separateSchemesDesc")}>
-            {#snippet control()}
-              <Switch checked={termMode === "scheme"} onCheckedChange={setTermMode} />
-            {/snippet}
-          </SettingsRow>
-        </div>
-
-        {#if termMode === "single"}
-          <div class="uxnan-scroll max-h-[22rem] overflow-y-auto">
-            <div class={grid}>
-              {@render termCard(null, "single", appBase)}
-              {#each termThemes as preset (preset.id)}{@render termCard(preset, "single", presetBase(preset))}{/each}
-            </div>
-          </div>
-        {:else}
-          <div class="space-y-1.5">
-            <span class={cn("px-1", text.section)}>{i18n.t("appearance.darkThemes")}</span>
-            <div class="uxnan-scroll max-h-[22rem] overflow-y-auto">
-              <div class={grid}>
-                {@render termCard(null, "dark", "dark")}
-                {#each darkThemes as preset (preset.id)}{@render termCard(preset, "dark", "dark")}{/each}
-              </div>
-            </div>
-          </div>
-          <div class="space-y-1.5">
-            <span class={cn("px-1", text.section)}>{i18n.t("appearance.lightThemes")}</span>
-            <div class="uxnan-scroll max-h-[22rem] overflow-y-auto">
-              <div class={grid}>
-                {@render termCard(null, "light", "light")}
-                {#each lightThemes as preset (preset.id)}{@render termCard(preset, "light", "light")}{/each}
-              </div>
-            </div>
-          </div>
-        {/if}
-      </div>
-
+        {/snippet}
+      </SettingsRow>
     </div>
-  </SettingsSection>
+
+    <!-- Optional: a separate terminal theme per light/dark app theme -->
+    <label class="mt-4 flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-card/50 px-3.5 py-2.5">
+      <div class="min-w-0">
+        <div class={cn("text-foreground", text.body)}>{i18n.t("appearance.separateSchemes")}</div>
+        <p class={text.meta}>{i18n.t("appearance.separateSchemesDesc")}</p>
+      </div>
+      <Switch checked={termMode === "scheme"} onCheckedChange={setTermMode} />
+    </label>
+
+    <!-- Theme lists (scroll) + live mini-terminal previews -->
+    {#if termMode === "single"}
+      <div class="mt-4">{@render termBlock("single", termThemes)}</div>
+    {:else}
+      <div class="mt-4 space-y-1.5">
+        <span class={cn("px-1", text.section)}>{i18n.t("appearance.darkThemes")}</span>
+        {@render termBlock("dark", darkThemes)}
+      </div>
+      <div class="mt-5 space-y-1.5">
+        <span class={cn("px-1", text.section)}>{i18n.t("appearance.lightThemes")}</span>
+        {@render termBlock("light", lightThemes)}
+      </div>
+    {/if}
+    </SettingsSection>
 </div>
 
-{#snippet termCard(preset: TerminalThemePreset | null, scope: "single" | "dark" | "light", base: "light" | "dark")}
-  {@const id = preset ? preset.id : TERMINAL_INHERIT_ID}
-  {@const selected = scope === "single" ? activeTermId === id : scope === "dark" ? termDarkId === id : termLightId === id}
-  <div class={cardClass(selected)}>
-    <button type="button" class="flex flex-col gap-2 text-left" onclick={() => (scope === "single" ? selectTerm(id) : setTermScheme(scope, id))}>
-      <div class="flex h-8 overflow-hidden rounded border border-border/70">
-        {#each termSwatches(preset, base) as c, i (i)}<div class="flex-1" style:background-color={c}></div>{/each}
+{#snippet appPreview()}
+  {@const c = previewAppColors}
+  {#if c}
+    <div class="overflow-hidden rounded-lg border" style:background-color={c.background} style:border-color={c.border} style:color={c.foreground}>
+      <div class="flex flex-col gap-3.5 p-4">
+        <div class="flex items-center justify-between gap-2">
+          <span class="truncate text-sm font-semibold" style:color={c.foreground}>{previewAppName}</span>
+          <span class="shrink-0 rounded px-2 py-0.5 text-[10px]" style:background-color={c.muted} style:color={c.mutedForeground}>{i18n.t("appearance.previewLabel")}</span>
+        </div>
+        <p class="text-[13px]" style:color={c.mutedForeground}>The quick brown fox jumps over the lazy dog.</p>
+        <div class="grid grid-cols-4 gap-2.5">
+          {#each APP_SWATCHES as [labelKey, colorKey] (colorKey)}
+            <div class="flex flex-col gap-1">
+              <span class="h-10 rounded-md" style:background-color={c[colorKey]} style="box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 18%, transparent)"></span>
+              <span class="truncate text-[10px]" style:color={c.mutedForeground}>{i18n.t(labelKey as never)}</span>
+            </div>
+          {/each}
+        </div>
       </div>
-    </button>
-    <div class="flex items-center gap-1">
-      <button type="button" class={cn("min-w-0 flex-1 truncate text-left", text.body)} onclick={() => (scope === "single" ? selectTerm(id) : setTermScheme(scope, id))}>
-        {preset ? preset.name : i18n.t("appearance.inherit")}
-      </button>
-      {#if selected}<CheckIcon class={cn(icon.decorative, "shrink-0 text-primary")} />{/if}
-      {#if preset}
-        <DropdownMenu.Root>
-          <DropdownMenu.Trigger>
-            {#snippet child({ props })}
-              <Button variant="ghost" size="icon" class={cn(iconButton.action, "shrink-0")} title={i18n.t("common.more")} {...props}><MoreVerticalIcon class={icon.button} /></Button>
-            {/snippet}
-          </DropdownMenu.Trigger>
-          <DropdownMenu.Content align="end" class="min-w-44">
-            <DropdownMenu.Item class={text.menu} onclick={() => editTermTheme(preset)}><PencilIcon class={icon.button} />{i18n.t("appearance.edit")}</DropdownMenu.Item>
-            <DropdownMenu.Item class={text.menu} onclick={() => duplicateTermAction(preset)}><CopyIcon class={icon.button} />{i18n.t("appearance.duplicate")}</DropdownMenu.Item>
-            <DropdownMenu.Item class={text.menu} onclick={() => exportFile(preset.name, terminalThemeToJson(preset))}><DownloadIcon class={icon.button} />{i18n.t("appearance.exportFile")}</DropdownMenu.Item>
-            <DropdownMenu.Item class={text.menu} onclick={() => void clipboardWrite(terminalThemeToJson(preset))}><CopyIcon class={icon.button} />{i18n.t("appearance.copyJson")}</DropdownMenu.Item>
-            <DropdownMenu.Separator />
-            <DropdownMenu.Item variant="destructive" class={text.menu} onclick={() => removeTermTheme(preset.id)}><Trash2Icon class={icon.button} />{i18n.t("common.remove")}</DropdownMenu.Item>
-          </DropdownMenu.Content>
-        </DropdownMenu.Root>
-      {/if}
     </div>
+  {:else}
+    <p class={cn("rounded-lg border border-border/50 py-10 text-center", text.meta)}>{i18n.t("appearance.selectToPreview")}</p>
+  {/if}
+{/snippet}
+
+{#snippet themeMenu(theme: Theme)}
+  {@const isCustom = !BUILTIN_IDS.has(theme.id)}
+  <DropdownMenu.Root>
+    <DropdownMenu.Trigger>
+      {#snippet child({ props })}
+        <Button variant="ghost" size="icon" class={cn(iconButton.action, "shrink-0")} title={i18n.t("common.more")} {...props}><MoreVerticalIcon class={icon.button} /></Button>
+      {/snippet}
+    </DropdownMenu.Trigger>
+    <DropdownMenu.Content align="end" class="min-w-44">
+      {#if isCustom}<DropdownMenu.Item class={text.menu} onclick={() => editTheme(theme)}><PencilIcon class={icon.button} />{i18n.t("appearance.edit")}</DropdownMenu.Item>{/if}
+      <DropdownMenu.Item class={text.menu} onclick={() => duplicateThemeAction(theme)}><CopyIcon class={icon.button} />{i18n.t("appearance.duplicate")}</DropdownMenu.Item>
+      <DropdownMenu.Item class={text.menu} onclick={() => exportFile(theme.name, themeToJson(theme))}><DownloadIcon class={icon.button} />{i18n.t("appearance.exportFile")}</DropdownMenu.Item>
+      <DropdownMenu.Item class={text.menu} onclick={() => void clipboardWrite(themeToJson(theme))}><CopyIcon class={icon.button} />{i18n.t("appearance.copyJson")}</DropdownMenu.Item>
+      {#if isCustom}
+        <DropdownMenu.Separator />
+        <DropdownMenu.Item variant="destructive" class={text.menu} onclick={() => removeTheme(theme.id)}><Trash2Icon class={icon.button} />{i18n.t("common.remove")}</DropdownMenu.Item>
+      {/if}
+    </DropdownMenu.Content>
+  </DropdownMenu.Root>
+{/snippet}
+
+{#snippet termMenu(preset: TerminalThemePreset)}
+  <DropdownMenu.Root>
+    <DropdownMenu.Trigger>
+      {#snippet child({ props })}
+        <Button variant="ghost" size="icon" class={cn(iconButton.action, "shrink-0")} title={i18n.t("common.more")} {...props}><MoreVerticalIcon class={icon.button} /></Button>
+      {/snippet}
+    </DropdownMenu.Trigger>
+    <DropdownMenu.Content align="end" class="min-w-44">
+      <DropdownMenu.Item class={text.menu} onclick={() => editTermTheme(preset)}><PencilIcon class={icon.button} />{i18n.t("appearance.edit")}</DropdownMenu.Item>
+      <DropdownMenu.Item class={text.menu} onclick={() => duplicateTermAction(preset)}><CopyIcon class={icon.button} />{i18n.t("appearance.duplicate")}</DropdownMenu.Item>
+      <DropdownMenu.Item class={text.menu} onclick={() => exportFile(preset.name, terminalThemeToJson(preset))}><DownloadIcon class={icon.button} />{i18n.t("appearance.exportFile")}</DropdownMenu.Item>
+      <DropdownMenu.Item class={text.menu} onclick={() => void clipboardWrite(terminalThemeToJson(preset))}><CopyIcon class={icon.button} />{i18n.t("appearance.copyJson")}</DropdownMenu.Item>
+      <DropdownMenu.Separator />
+      <DropdownMenu.Item variant="destructive" class={text.menu} onclick={() => removeTermTheme(preset.id)}><Trash2Icon class={icon.button} />{i18n.t("common.remove")}</DropdownMenu.Item>
+    </DropdownMenu.Content>
+  </DropdownMenu.Root>
+{/snippet}
+
+{#snippet termPreview(scope: TermScope)}
+  {@const t = termColorsFor(termPreviewId(scope))}
+  <div class="overflow-hidden rounded-lg border border-border/50 font-mono text-[11px] leading-5" style:background-color={t.background} style:color={t.foreground}>
+    <div class="flex items-center gap-1.5 border-b px-3 py-1.5" style="border-color: color-mix(in srgb, currentColor 15%, transparent)">
+      <span class="size-2 rounded-full" style:background-color={t.red}></span>
+      <span class="size-2 rounded-full" style:background-color={t.yellow}></span>
+      <span class="size-2 rounded-full" style:background-color={t.green}></span>
+      <span class="ml-1 truncate text-[10px] opacity-70">{termNameFor(termPreviewId(scope))}</span>
+    </div>
+    <div class="flex select-none flex-col gap-0.5 p-3">
+      <div><span style:color={t.green}>➜</span> <span style:color={t.cyan}>~/uxnan</span> <span style:color={t.blue}>git:(</span><span style:color={t.red}>main</span><span style:color={t.blue}>)</span> npm run build</div>
+      <div>Compiling <span style:color={t.yellow}>uxnan-desktop</span>…</div>
+      <div><span style:color={t.green}>✓</span> built in 1.2s</div>
+      <div><span style:color={t.red}>error</span>: could not resolve <span style:color={t.magenta}>./missing</span></div>
+      <div><span style:background-color={t.selectionBackground ?? t.blue} style:color={t.background}>selected text</span> plain output</div>
+      <div><span style:color={t.magenta}>const</span> answer = <span style:color={t.yellow}>42</span>;</div>
+    </div>
+  </div>
+{/snippet}
+
+{#snippet termRow(scope: TermScope, id: string, name: string, preset: TerminalThemePreset | null)}
+  {@const isActive = termActiveId(scope) === id}
+  <div class={cn("flex items-center gap-2 px-3 py-2 transition-colors", termPreviewId(scope) === id ? "bg-accent/60" : "hover:bg-foreground/[0.04]")}>
+    <button type="button" class="min-w-0 flex-1 truncate text-left text-[13px] text-foreground" onclick={() => setTermPreview(scope, id)}>{name}</button>
+    {#if isActive}<CheckIcon class={cn(icon.decorative, "shrink-0 text-primary")} />{/if}
+    <Button variant={isActive ? "ghost" : "outline"} size="sm" class="h-7 shrink-0 px-2.5 text-xs" disabled={isActive} onclick={() => useTerm(scope, id)}>
+      {i18n.t(isActive ? "appearance.inUse" : "appearance.use")}
+    </Button>
+    {#if preset}{@render termMenu(preset)}{/if}
+  </div>
+{/snippet}
+
+{#snippet themeRow(id: string, name: string, theme: Theme | null)}
+  {@const isActive = activeId === id}
+  <div class={cn("flex items-center gap-2 px-3 py-2 transition-colors", previewThemeId === id ? "bg-accent/60" : "hover:bg-foreground/[0.04]")}>
+    <button type="button" class="min-w-0 flex-1 truncate text-left text-[13px] text-foreground" onclick={() => (previewThemeId = id)}>{name}</button>
+    {#if isActive}<CheckIcon class={cn(icon.decorative, "shrink-0 text-primary")} />{/if}
+    <Button variant={isActive ? "ghost" : "outline"} size="sm" class="h-7 shrink-0 px-2.5 text-xs" disabled={isActive} onclick={() => { selectTheme(id); previewThemeId = id; }}>
+      {i18n.t(isActive ? "appearance.inUse" : "appearance.use")}
+    </Button>
+    {#if theme}{@render themeMenu(theme)}{/if}
+  </div>
+{/snippet}
+
+{#snippet termBlock(scope: TermScope, presets: TerminalThemePreset[])}
+  <div class="grid items-start gap-3 lg:grid-cols-2">
+    <div class="uxnan-scroll max-h-80 overflow-y-auto rounded-lg border border-border/50 bg-background/40">
+      <div class="divide-y divide-border/50">
+        {@render termRow(scope, TERMINAL_INHERIT_ID, i18n.t("appearance.inherit"), null)}
+        {#each presets as preset (preset.id)}
+          {@render termRow(scope, preset.id, preset.name, preset)}
+        {/each}
+      </div>
+    </div>
+    {@render termPreview(scope)}
   </div>
 {/snippet}
 

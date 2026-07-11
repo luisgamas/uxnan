@@ -24,19 +24,34 @@
   import ActivityIcon from "@lucide/svelte/icons/activity";
   import FolderOpenIcon from "@lucide/svelte/icons/folder-open";
   import CopyIcon from "@lucide/svelte/icons/copy";
+  import ImageIcon from "@lucide/svelte/icons/image";
   import SettingsIcon from "@lucide/svelte/icons/settings";
   import Trash2Icon from "@lucide/svelte/icons/trash-2";
+  import PinIcon from "@lucide/svelte/icons/pin";
+  import PinOffIcon from "@lucide/svelte/icons/pin-off";
 
   let {
     path,
     removeLabel,
     onRemove,
+    onChangeIcon,
+    onTogglePin,
+    pinned = false,
   }: {
     /** The worktree/project folder every action targets. */
     path: string;
     /** Label for the destructive item (remove worktree vs remove project). */
-    removeLabel: string;
-    onRemove: () => void;
+    removeLabel?: string;
+    /** Destructive action. Omit it to hide the item entirely (e.g. the primary
+     *  worktree in the flattened status view, where project removal lives on the
+     *  tree's project card instead). */
+    onRemove?: () => void;
+    /** When provided, adds a "Change branch icon…" item (worktree rows only). */
+    onChangeIcon?: () => void;
+    /** When provided, adds a pin/unpin item (reorderable child worktrees only). */
+    onTogglePin?: () => void;
+    /** Whether the target is currently pinned (drives the item's label/icon). */
+    pinned?: boolean;
   } = $props();
 
   const profiles = $derived(app.terminalProfiles);
@@ -122,6 +137,19 @@
 
   <ContextMenu.Separator />
 
+  {#if onTogglePin}
+    <ContextMenu.Item class={text.menu} onclick={onTogglePin}>
+      {#if pinned}
+        <PinOffIcon />
+        {i18n.t("common.unpin")}
+      {:else}
+        <PinIcon />
+        {i18n.t("common.pin")}
+      {/if}
+    </ContextMenu.Item>
+    <ContextMenu.Separator />
+  {/if}
+
   <!-- FOR-DEV: add an "Open with" submenu (external text editors / IDEs) + a
        customizable editor list here, once an external-editor registry and a
        backend "open path in app" command exist. Only reveal-in-file-manager
@@ -134,6 +162,12 @@
     <CopyIcon />
     {i18n.t("common.copyPath")}
   </ContextMenu.Item>
+  {#if onChangeIcon}
+    <ContextMenu.Item class={text.menu} onclick={onChangeIcon}>
+      <ImageIcon />
+      {i18n.t("worktree.changeIcon")}
+    </ContextMenu.Item>
+  {/if}
 
   <ContextMenu.Sub>
     <ContextMenu.SubTrigger class={text.menu}>
@@ -152,10 +186,12 @@
     </ContextMenu.SubContent>
   </ContextMenu.Sub>
 
-  <ContextMenu.Separator />
+  {#if onRemove}
+    <ContextMenu.Separator />
 
-  <ContextMenu.Item variant="destructive" class={text.menu} onclick={onRemove}>
-    <Trash2Icon />
-    {removeLabel}
-  </ContextMenu.Item>
+    <ContextMenu.Item variant="destructive" class={text.menu} onclick={onRemove}>
+      <Trash2Icon />
+      {removeLabel}
+    </ContextMenu.Item>
+  {/if}
 </ContextMenu.Content>

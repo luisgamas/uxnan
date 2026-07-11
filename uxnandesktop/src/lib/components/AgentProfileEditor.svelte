@@ -6,6 +6,7 @@
   import { app } from "$lib/state/app.svelte";
   import { agentLogoKey } from "$lib/agentCatalog";
   import { fileToLogoDataUrl, isCustomLogo } from "$lib/logo";
+  import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
   import { icon, text } from "$lib/design";
@@ -86,28 +87,36 @@
   }
 </script>
 
-<Collapsible.Root bind:open={expanded} class="flex flex-col gap-2 py-2.5">
+<Collapsible.Root bind:open={expanded} class="flex flex-col gap-2 py-3">
   <div class="flex items-center gap-2.5">
     <div class="relative shrink-0">
-      <button
-        type="button"
-        class="flex size-7 items-center justify-center rounded-md border border-border/60 hover:bg-accent/50"
-        title={i18n.t("agentEditor.chooseLogo")}
-        aria-label={i18n.t("agentEditor.chooseLogo")}
-        onclick={() => fileInput?.click()}
-      >
-        <AgentLogo logo={agentLogoKey(agent.icon, agent.command)} />
-      </button>
+      <TooltipSimple title={i18n.t("agentEditor.chooseLogo")}>
+        {#snippet children(tp)}
+          <button
+            {...tp}
+            type="button"
+            class="flex size-7 items-center justify-center rounded-md border border-border/60 hover:bg-accent/50"
+            aria-label={i18n.t("agentEditor.chooseLogo")}
+            onclick={() => fileInput?.click()}
+          >
+            <AgentLogo logo={agentLogoKey(agent.icon, agent.command)} />
+          </button>
+        {/snippet}
+      </TooltipSimple>
       {#if hasCustomLogo}
-        <button
-          type="button"
-          class="absolute -right-1.5 -top-1.5 flex size-3.5 items-center justify-center rounded-full border border-border bg-background text-muted-foreground hover:text-foreground"
-          title={i18n.t("agentEditor.resetLogo")}
-          aria-label={i18n.t("agentEditor.resetLogo")}
-          onclick={resetLogo}
-        >
-          <XIcon class="size-2.5" />
-        </button>
+        <TooltipSimple title={i18n.t("agentEditor.resetLogo")}>
+          {#snippet children(tp)}
+            <button
+              {...tp}
+              type="button"
+              class="absolute -right-1.5 -top-1.5 flex size-3.5 items-center justify-center rounded-full border border-border bg-background text-muted-foreground hover:text-foreground"
+              aria-label={i18n.t("agentEditor.resetLogo")}
+              onclick={resetLogo}
+            >
+              <XIcon class="size-2.5" />
+            </button>
+          {/snippet}
+        </TooltipSimple>
       {/if}
       <input
         bind:this={fileInput}
@@ -129,22 +138,30 @@
         <span class="block truncate font-mono text-[11px] leading-4 text-muted-foreground">{agent.command}</span>
       {/if}
     </button>
-    <Collapsible.Trigger
-      class="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
-      title={i18n.t(expanded ? "project.collapse" : "project.expand")}
-    >
-      <ChevronDownIcon class={cn(icon.button, "transition-transform", expanded && "rotate-180")} />
-    </Collapsible.Trigger>
-    <Button
-      variant="ghost"
-      size="icon-sm"
-      title={i18n.t("agentEditor.removeAgent")}
-      onclick={onremove}
-    >
-      <Trash2Icon class={icon.button} />
-    </Button>
+    <TooltipSimple title={i18n.t(expanded ? "project.collapse" : "project.expand")}>
+      {#snippet children(tp)}
+        <Collapsible.Trigger
+          {...tp}
+          class="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+        >
+          <ChevronDownIcon class={cn(icon.button, "transition-transform", expanded && "rotate-180")} />
+        </Collapsible.Trigger>
+      {/snippet}
+    </TooltipSimple>
+    <TooltipSimple title={i18n.t("agentEditor.removeAgent")}>
+      {#snippet children(tp)}
+        <Button
+          {...tp}
+          variant="ghost"
+          size="icon-sm"
+          onclick={onremove}
+        >
+          <Trash2Icon class={icon.button} />
+        </Button>
+      {/snippet}
+    </TooltipSimple>
   </div>
-  <Collapsible.Content class="flex flex-col gap-2.5 pt-1">
+  <Collapsible.Content class="flex flex-col gap-2.5 pt-1.5">
   <Input
     class="h-8 text-xs"
     placeholder={i18n.t("agentEditor.namePlaceholder")}
@@ -192,15 +209,19 @@
   <div class="flex flex-col gap-1.5">
     <div class="flex items-center justify-between">
       <span class={cn("shrink-0", text.meta)}>{i18n.t("agentEditor.envTitle")}</span>
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        title={i18n.t("agentEditor.addEnvVar")}
-        aria-label={i18n.t("agentEditor.addEnvVar")}
-        onclick={addEnvVar}
-      >
-        <PlusIcon class={icon.button} />
-      </Button>
+      <TooltipSimple title={i18n.t("agentEditor.addEnvVar")}>
+        {#snippet children(tp)}
+          <Button
+            {...tp}
+            variant="ghost"
+            size="icon-sm"
+            aria-label={i18n.t("agentEditor.addEnvVar")}
+            onclick={addEnvVar}
+          >
+            <PlusIcon class={icon.button} />
+          </Button>
+        {/snippet}
+      </TooltipSimple>
     </div>
     {#each envVars as envVar, i (i)}
       <div class="flex items-center gap-1.5">
@@ -217,15 +238,19 @@
           bind:value={envVar.value}
           oninput={onchange}
         />
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          title={i18n.t("agentEditor.removeEnvVar")}
-          aria-label={i18n.t("agentEditor.removeEnvVar")}
-          onclick={() => removeEnvVar(i)}
-        >
-          <XIcon class={icon.button} />
-        </Button>
+        <TooltipSimple title={i18n.t("agentEditor.removeEnvVar")}>
+          {#snippet children(tp)}
+            <Button
+              {...tp}
+              variant="ghost"
+              size="icon-sm"
+              aria-label={i18n.t("agentEditor.removeEnvVar")}
+              onclick={() => removeEnvVar(i)}
+            >
+              <XIcon class={icon.button} />
+            </Button>
+          {/snippet}
+        </TooltipSimple>
       </div>
     {/each}
   </div>

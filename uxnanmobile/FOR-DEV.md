@@ -149,6 +149,15 @@ shipping.
 - [ ] **Automated integration test against a real bridge** — today the tests drive
       a simulated in-memory bridge. Add a real-bridge integration test for
       regression safety.
+- [ ] **OpenCode/pi interactive approvals** — blocked on the bridge side (their
+      headless modes expose no pre-tool channel; see `bridge/FOR-DEV.md`). The app
+      already renders approvals for Echo/Claude/Codex/Gemini.
+- [ ] **AI-provider usage stats (`agent/usageStats`)** — the desktop ships this
+      natively (Settings → Providers: quota windows, plan/account, credit). The
+      `shared` contract (`ProviderUsage`) exists; once the bridge implements the
+      handler (`bridge/FOR-DEV.md`), add a mobile view that calls `agent/usageStats`
+      and renders the per-provider quota windows / plan / credit for the paired PC.
+      Blocked on the bridge handler + a live bridge to verify.
 
 ## iOS (all blocked on the first macOS build + FOR-HUMAN assets)
 

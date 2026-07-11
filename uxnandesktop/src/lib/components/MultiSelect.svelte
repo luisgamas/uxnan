@@ -11,6 +11,7 @@
   import * as Command from "$lib/components/ui/command";
   import { Button } from "$lib/components/ui/button";
   import { cn } from "$lib/utils";
+  import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { text } from "$lib/design";
   import type { ComboGroup, ComboItem } from "./Combobox.svelte";
   import PlusIcon from "@lucide/svelte/icons/plus";
@@ -67,15 +68,19 @@
     >
       {#if itemPrefix}{@render itemPrefix(item)}{/if}
       <span class="truncate">{item.label}</span>
-      <button
-        type="button"
-        class="rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
-        title={item.label}
-        aria-label={item.label}
-        onclick={() => onToggle(item.value)}
-      >
-        <XIcon class="size-3" />
-      </button>
+      <TooltipSimple title={item.label}>
+        {#snippet children(tp)}
+          <button
+            {...tp}
+            type="button"
+            class="rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
+            aria-label={item.label}
+            onclick={() => onToggle(item.value)}
+          >
+            <XIcon class="size-3" />
+          </button>
+        {/snippet}
+      </TooltipSimple>
     </span>
   {/each}
 
