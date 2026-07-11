@@ -107,8 +107,14 @@ void main() {
     expect(find.text('High risk'), findsOneWidget);
     expect(find.text('Write tests'), findsOneWidget);
     expect(find.text('reviewer'), findsOneWidget);
+    // The SubagentCard is collapsed by default: its actions are revealed only
+    // after tapping the header to expand it.
+    expect(find.text('Read main.dart'), findsNothing);
+    await tester.tap(find.text('reviewer'));
+    await tester.pumpAndSettle();
     expect(find.text('Read main.dart'), findsOneWidget);
-    // Approve/Reject are present but disabled (FOR-DEV).
+    // The approval card renders its interactive Approve action (disabled here
+    // only because this bubble has no owning thread to respond through).
     expect(find.widgetWithText(FilledButton, 'Approve'), findsOneWidget);
   });
 
@@ -203,6 +209,115 @@ void main() {
       expect(find.text('Approved'), findsNothing);
       expect(find.text('Rejected'), findsOneWidget);
       expect(find.widgetWithText(FilledButton, 'Approve'), findsNothing);
+    },
+  );
+
+  testWidgets('renders a question card with its options and actions',
+      (tester) async {
+    final message = Message(
+      id: 'm-question',
+      threadId: 'th1',
+      turnId: 't1',
+      role: MessageRole.assistant,
+      contents: const [
+        QuestionContent(
+          QuestionRequest(
+            questionId: 'q1',
+            questions: [
+              QuestionItem(
+                question: 'Which language do you prefer?',
+                header: 'Language',
+                options: [
+                  QuestionOption(label: 'Python', description: 'batteries'),
+                  QuestionOption(label: 'JavaScript'),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+      deliveryState: MessageDeliveryState.delivered,
+      orderIndex: 0,
+      createdAt: DateTime(2026),
+    );
+
+    await tester.pumpWidget(_wrap(MessageBubble(message: message)));
+    await tester.pump();
+
+    expect(find.text('Needs your answer'), findsOneWidget);
+    expect(find.text('Language'), findsOneWidget);
+    expect(find.text('Which language do you prefer?'), findsOneWidget);
+    expect(find.text('Python'), findsOneWidget);
+    expect(find.text('JavaScript'), findsOneWidget);
+    expect(find.text('batteries'), findsOneWidget);
+    // Submit is present but disabled until an option is chosen; Skip enabled.
+    expect(find.widgetWithText(FilledButton, 'Submit'), findsOneWidget);
+    expect(find.widgetWithText(OutlinedButton, 'Skip'), findsOneWidget);
+    final submit = tester
+        .widget<FilledButton>(find.widgetWithText(FilledButton, 'Submit'));
+    expect(submit.onPressed, isNull, reason: 'disabled with no selection');
+
+    // Picking an option enables Submit.
+    await tester.tap(find.text('Python'));
+    await tester.pump();
+    final submitAfter = tester
+        .widget<FilledButton>(find.widgetWithText(FilledButton, 'Submit'));
+    expect(submitAfter.onPressed, isNotNull, reason: 'enabled once chosen');
+  });
+
+  testWidgets(
+    'a resolved question card stays resolved after restart '
+    '(options gone, chosen labels shown, answers persist in the store)',
+    (tester) async {
+      // Pre-seed the store as if the user already answered in a prior session.
+      SharedPreferences.setMockInitialValues({
+        'uxnan.question.responses':
+            '{"q1":{"answers":[["Python"]],"answeredAtMs":1700000000000}}',
+      });
+      addTearDown(() => SharedPreferences.setMockInitialValues({}));
+
+      final message = Message(
+        id: 'm-q-resolved',
+        threadId: 'th1',
+        turnId: 't1',
+        role: MessageRole.assistant,
+        contents: const [
+          QuestionContent(
+            QuestionRequest(
+              questionId: 'q1',
+              questions: [
+                QuestionItem(
+                  question: 'Which language do you prefer?',
+                  header: 'Language',
+                  options: [
+                    QuestionOption(label: 'Python'),
+                    QuestionOption(label: 'JavaScript'),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+        deliveryState: MessageDeliveryState.delivered,
+        orderIndex: 0,
+        createdAt: DateTime(2026),
+      );
+
+      await tester.pumpWidget(_wrap(MessageBubble(message: message)));
+      // Two pumps: build, then let hydrate() resolve and rebuild resolved.
+      await tester.pump();
+      await tester.pump();
+
+      // The "Answer recorded" title replaces the actionable headline.
+      expect(find.text('Needs your answer'), findsNothing);
+      expect(find.text('Answer recorded'), findsOneWidget);
+      // The action buttons are GONE — an answered card can't be re-answered.
+      expect(find.widgetWithText(FilledButton, 'Submit'), findsNothing);
+      expect(find.widgetWithText(OutlinedButton, 'Skip'), findsNothing);
+      // The chosen label + the "Answered" timestamp are shown; the unchosen
+      // option is no longer an interactive row.
+      expect(find.text('Python'), findsOneWidget);
+      expect(find.textContaining('Answered'), findsOneWidget);
     },
   );
 

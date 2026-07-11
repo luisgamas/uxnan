@@ -1238,6 +1238,12 @@ abstract class AppLocalizations {
   /// **'Agent'**
   String get newThreadAgent;
 
+  /// No description provided for @newThreadAgentHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Select an agent'**
+  String get newThreadAgentHint;
+
   /// No description provided for @newThreadModel.
   ///
   /// In en, this message translates to:
@@ -1255,6 +1261,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Start conversation'**
   String get newThreadStart;
+
+  /// No description provided for @agentPickerTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Select agent'**
+  String get agentPickerTitle;
+
+  /// No description provided for @agentPickerSearchHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Search agents'**
+  String get agentPickerSearchHint;
 
   /// No description provided for @modelPickerTitle.
   ///
@@ -1345,6 +1363,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Images'**
   String get newThreadCapImages;
+
+  /// No description provided for @newThreadCapAutonomous.
+  ///
+  /// In en, this message translates to:
+  /// **'Autonomous mode'**
+  String get newThreadCapAutonomous;
 
   /// No description provided for @newThreadCapabilities.
   ///
@@ -1567,6 +1591,60 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Risk unknown'**
   String get approvalRiskUnknown;
+
+  /// Title shown on a pending question card while it is still actionable.
+  ///
+  /// In en, this message translates to:
+  /// **'Needs your answer'**
+  String get questionNeedsAnswer;
+
+  /// Title shown on a resolved question card (after the user has answered), replacing the actionable 'Needs your answer' headline so the settled state reads at a glance.
+  ///
+  /// In en, this message translates to:
+  /// **'Answer recorded'**
+  String get questionAnswered;
+
+  /// Prefix for the timestamp on a resolved question card, formatted like 'Answered · 14:32' (today) or 'Answered · may 17 · 14:32' (older).
+  ///
+  /// In en, this message translates to:
+  /// **'Answered'**
+  String get questionAnsweredAt;
+
+  /// Fallback badge label above a question when the agent did not provide a header.
+  ///
+  /// In en, this message translates to:
+  /// **'Question'**
+  String get questionHeaderFallback;
+
+  /// Primary button that sends the user's chosen answers on a question card.
+  ///
+  /// In en, this message translates to:
+  /// **'Submit'**
+  String get questionSubmit;
+
+  /// Secondary button that answers a question card with no selection (empty answers).
+  ///
+  /// In en, this message translates to:
+  /// **'Skip'**
+  String get questionSkip;
+
+  /// Shown in place of the chosen labels on a resolved question card when the user skipped that question.
+  ///
+  /// In en, this message translates to:
+  /// **'Skipped'**
+  String get questionSkipped;
+
+  /// Inline error shown on a question card when the bridge rejected the answer; the options re-enable so the user can retry.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t send your answer — try again'**
+  String get questionFailed;
+
+  /// Fallback shown inline on a failed agent turn when the bridge sent no error text.
+  ///
+  /// In en, this message translates to:
+  /// **'The agent turn failed'**
+  String get turnFailed;
 
   /// Run-option value meaning 'leave the agent's default' (no explicit choice).
   ///
@@ -3457,6 +3535,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'This conversation\'s folder no longer exists. Reconnect or remove it.'**
   String get conversationCwdMissing;
+
+  /// No description provided for @conversationAutonomousMode.
+  ///
+  /// In en, this message translates to:
+  /// **'This agent runs in autonomous mode — it acts and edits without asking for approval first.'**
+  String get conversationAutonomousMode;
 
   /// Title of the workspace file browser and its top-bar tooltip.
   ///

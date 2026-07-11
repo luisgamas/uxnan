@@ -8,7 +8,12 @@
  * shape is defined in exactly one place and stays in lock-step with the Dart
  * `MessageContent` types.
  */
-import type { ApprovalRequestBlock, ApprovalRisk } from '@uxnan/shared';
+import type {
+  ApprovalRequestBlock,
+  ApprovalRisk,
+  QuestionItem,
+  QuestionRequestBlock,
+} from '@uxnan/shared';
 
 /** Cap tool/command output carried on the wire so a big read doesn't bloat it. */
 const MAX_OUTPUT = 4000;
@@ -146,6 +151,16 @@ export function approvalBlock(
   };
 }
 
+/**
+ * A `question` content block: the agent is asking the user to choose among
+ * options. The phone renders it as an interactive picker and replies via
+ * `turn/send { questionResponse }`. `questionId` is the bridge handle the adapter
+ * uses to deliver the chosen answers back to the agent.
+ */
+export function questionBlock(questionId: string, questions: QuestionItem[]): QuestionRequestBlock {
+  return { type: 'question', questionId, questions };
+}
+
 /** One step of an agent plan / to-do list, on the wire (matches Dart `PlanStep`). */
 export interface PlanStepBlock {
   description: string;
@@ -238,6 +253,17 @@ export function planBlock(steps: PlanStepBlock[], title?: string): Record<string
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * A `system` content block of kind `error` — the reason a turn failed (e.g. a
+ * quota / "usage balance exhausted" error). Persisted to the turn's history on
+ * `turn_error` so the phone can render the failure inline (via its `SystemContent`
+ * error banner) both live and after a `turn/list` re-sync. Matches the Dart
+ * `SystemContent` wire shape (`{ type:'system', text, kind:'error' }`).
+ */
+export function errorBlock(text: string): Record<string, unknown> {
+  return { type: 'system', text: truncateOutput(text), kind: 'error' };
 }
 
 /** A generic `tool` block (a non-shell, non-edit tool call and its output). */

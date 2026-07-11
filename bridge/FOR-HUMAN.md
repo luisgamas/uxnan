@@ -28,7 +28,7 @@ These are not pending dev work — they're per-machine setup. Full how-to is in
 - **Agent CLIs — install + login** — the bridge spawns each vendor's **official
   local CLI** over stdio and uses **your** existing login/billing; it stores no API
   keys. Install + log into each agent you want (OpenCode, Claude Code, Codex, pi,
-  Gemini); a missing/logged-out CLI just shows `available: false`. Per-agent details
+  Gemini, Zero, Grok); a missing/logged-out CLI just shows `available: false`. Per-agent details
   + overrides: [`docs/agents.md`](docs/agents.md), [`docs/installation.md`](docs/installation.md).
 - **`browseRoots`** — the folder(s) the phone may browse (e.g. your `Documents`).
   The browse API is root-confined, but the agent process is not OS-sandboxed beyond

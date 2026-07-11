@@ -25,6 +25,7 @@ import 'package:uxnan/infrastructure/storage/local_database.dart';
 import 'package:uxnan/infrastructure/storage/notification_preferences_store.dart';
 import 'package:uxnan/infrastructure/storage/phone_identity_store.dart';
 import 'package:uxnan/infrastructure/storage/prompt_templates_store.dart';
+import 'package:uxnan/infrastructure/storage/question_response_store.dart';
 import 'package:uxnan/infrastructure/storage/secure_store.dart';
 import 'package:uxnan/infrastructure/storage/thread_list_preferences_store.dart';
 import 'package:uxnan/infrastructure/storage/update_preferences_store.dart';
@@ -105,6 +106,13 @@ final threadListPreferencesStoreProvider = Provider<ThreadListPreferencesStore>(
 /// stays in its resolved state across scrolls and app restarts.
 final approvalResponseStoreProvider = Provider<ApprovalResponseStore>(
   (ref) => ApprovalResponseStore(),
+);
+
+/// Persists the user's answers to agent question prompts (non-sensitive,
+/// on-device). Drives the in-conversation question card so an answered card
+/// stays in its resolved state across scrolls and app restarts.
+final questionResponseStoreProvider = Provider<QuestionResponseStore>(
+  (ref) => QuestionResponseStore(),
 );
 
 /// Firebase Cloud Messaging + local notifications, fully guarded so the app

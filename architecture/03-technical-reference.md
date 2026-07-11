@@ -1208,15 +1208,13 @@ class MiAgenteAdapter extends BaseAgentAdapter {
     this.agentId = 'mi-agente';           // identificador unico
     this.displayName = 'Mi Agente CLI';
     this.capabilities = {
-      supportsGit: false,                 // el bridge gestiona git
-      supportsWorktrees: false,
-      supportsCheckpoints: false,
-      supportsVoice: false,
-      supportsSubagents: false,
-      supportsPlanMode: false,
-      supportsMultipleProjects: true,
-      supportsThreadFork: false,
-      sessionsFormat: 'jsonl',
+      planMode: false,                    // ver shared/src/agents/agent-capabilities.ts
+      streaming: true,
+      approvals: false,
+      forking: false,
+      images: false,
+      reportsContextUsage: false,
+      // autonomous: false,               // opcional; ausente = false
     };
   }
 

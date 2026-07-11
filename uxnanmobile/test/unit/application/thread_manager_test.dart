@@ -11,6 +11,7 @@ import 'package:uxnan/domain/enums/approval_mode.dart';
 import 'package:uxnan/domain/enums/command_status.dart';
 import 'package:uxnan/domain/enums/message_delivery_state.dart';
 import 'package:uxnan/domain/enums/message_role.dart';
+import 'package:uxnan/domain/enums/system_content_kind.dart';
 import 'package:uxnan/domain/enums/thread_activity.dart';
 import 'package:uxnan/domain/enums/thread_status.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
@@ -475,6 +476,38 @@ void main() {
     final streamed =
         manager.timeline.messages.firstWhere((m) => m.id == 'stream-turnZ');
     expect((streamed.contents.last as TextContent).text, 'Found it. done');
+  });
+
+  test('a failed turn appends an inline error banner with the bridge message',
+      () async {
+    await manager.selectThread('th1');
+    await _settle();
+    events.add(
+      const MessageDeltaEvent(
+        turnId: 'turnE',
+        threadId: 'th1',
+        delta: 'working…',
+      ),
+    );
+    await _settle();
+    events.add(
+      const TurnErrorEvent(
+        turnId: 'turnE',
+        threadId: 'th1',
+        message: 'API error (status 402): Grok Build usage balance exhausted',
+      ),
+    );
+    await _settle();
+
+    final failed =
+        manager.timeline.messages.firstWhere((m) => m.id == 'stream-turnE');
+    expect(failed.deliveryState, MessageDeliveryState.failed);
+    // The bridge's reason is surfaced as an inline error banner (a
+    // SystemContent of kind error, rendered in red by _SystemBanner) so the
+    // user sees *why* the turn failed instead of the cue silently vanishing.
+    final banner = failed.contents.whereType<SystemContent>().single;
+    expect(banner.kind, SystemContentKind.error);
+    expect(banner.text, contains('usage balance exhausted'));
   });
 
   test('finalizes with the bridge text when re-attached without streamed text',
@@ -1069,6 +1102,29 @@ void main() {
     expect(turnSendParams?['approvalResponse'], {
       'approvalId': 'ap1',
       'decision': 'approveSession',
+    });
+    // It is control data, not chat: no text is sent.
+    expect(turnSendParams?.containsKey('text'), isFalse);
+  });
+
+  test('respondQuestion sends turn/send with the questionResponse', () async {
+    final ok = await manager.respondQuestion(
+      threadId: 'th1',
+      questionId: 'q1',
+      answers: [
+        ['Dart'],
+        ['A', 'B'],
+      ],
+    );
+
+    expect(ok, isTrue);
+    expect(sentMethods, contains('turn/send'));
+    expect(turnSendParams?['questionResponse'], {
+      'questionId': 'q1',
+      'answers': [
+        ['Dart'],
+        ['A', 'B'],
+      ],
     });
     // It is control data, not chat: no text is sent.
     expect(turnSendParams?.containsKey('text'), isFalse);

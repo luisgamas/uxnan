@@ -17,6 +17,12 @@ void main() {
       expect(AgentIdParsing.fromWireId('pi-agent'), AgentId.piAgent);
     });
 
+    test('grok has a logo, label and accent color', () {
+      expect(AgentVisuals.logoFor(AgentId.grok), AgentLogos.grok);
+      expect(AgentVisuals.labelFor(AgentId.grok), 'Grok');
+      expect(AgentVisuals.colorFor(AgentId.grok), isNotNull);
+    });
+
     test('every known agent has a label', () {
       for (final id in AgentId.values) {
         expect(AgentVisuals.labelFor(id), isNotEmpty);

@@ -15,6 +15,7 @@ import 'package:uxnan/domain/enums/approval_decision.dart';
 import 'package:uxnan/domain/enums/approval_mode.dart';
 import 'package:uxnan/domain/enums/message_delivery_state.dart';
 import 'package:uxnan/domain/enums/message_role.dart';
+import 'package:uxnan/domain/enums/system_content_kind.dart';
 import 'package:uxnan/domain/enums/thread_activity.dart';
 import 'package:uxnan/domain/enums/thread_status.dart';
 import 'package:uxnan/domain/enums/thread_sync_state.dart';
@@ -931,12 +932,8 @@ class ThreadManager {
   /// Responds to a pending approval ([approvalId]) on [threadId] with
   /// [decision], via `turn/send { approvalResponse }`. Returns true when the
   /// bridge accepts it. No local message is created — the response is control
-  /// data, not chat.
-  ///
-  /// FOR-DEV: the bridge does NOT yet emit approval requests nor accept
-  /// `approvalResponse` (the Claude adapter runs headless, Echo has
-  /// `approvals:false`). Wired ahead of the bridge against the documented
-  /// contract — see `FOR-DEV.md`; dormant until the bridge counterpart lands.
+  /// data, not chat. Live end-to-end (the bridge emits approvals for
+  /// Claude/Codex/Gemini/OpenCode and routes the decision back to the agent).
   Future<bool> respondApproval({
     required String threadId,
     required String approvalId,
@@ -957,6 +954,36 @@ class ThreadManager {
       return true;
     } on Object catch (error, stackTrace) {
       AppLogger.warn('approval response failed', error, stackTrace);
+      return false;
+    }
+  }
+
+  /// Answers a pending question set ([questionId]) on [threadId] with
+  /// [answers], via `turn/send { questionResponse }`. [answers] is one entry
+  /// per question, each a list of chosen option labels (a single value for
+  /// single-select, several for a `multiple` question, an empty list to skip
+  /// that question). Returns true when the bridge accepts it. No local message
+  /// is created — the response is control data, not chat.
+  Future<bool> respondQuestion({
+    required String threadId,
+    required String questionId,
+    required List<List<String>> answers,
+  }) async {
+    try {
+      final res = await _sendRequest('turn/send', {
+        'threadId': threadId,
+        'questionResponse': {
+          'questionId': questionId,
+          'answers': answers,
+        },
+      });
+      if (res.error != null) {
+        AppLogger.warn('question response rejected: ${res.error!.message}');
+        return false;
+      }
+      return true;
+    } on Object catch (error, stackTrace) {
+      AppLogger.warn('question response failed', error, stackTrace);
       return false;
     }
   }
@@ -1041,8 +1068,10 @@ class ThreadManager {
         unawaited(
           _finishTurn(threadId, turnId, failed: false, finalText: text),
         );
-      case TurnErrorEvent(:final turnId):
-        unawaited(_finishTurn(threadId, turnId, failed: true));
+      case TurnErrorEvent(:final turnId, :final message):
+        unawaited(
+          _finishTurn(threadId, turnId, failed: true, errorText: message),
+        );
       case TurnAbortedEvent(:final turnId):
         unawaited(_finishTurn(threadId, turnId, failed: false));
       case GitProgressEvent() || ModelResolvedEvent() || UnknownDomainEvent():
@@ -1078,6 +1107,7 @@ class ThreadManager {
     String turnId, {
     required bool failed,
     String? finalText,
+    String? errorText,
   }) async {
     final live = _live.remove(threadId);
     _setActivity(threadId, failed ? ThreadActivity.error : ThreadActivity.idle);
@@ -1089,18 +1119,33 @@ class ThreadManager {
     // [finalText] so the bubble is never empty/partial, keeping live blocks.
     final liveHasText =
         live.segments.any((c) => c is TextContent && c.text.isNotEmpty);
-    final contents = (!liveHasText && finalText != null && finalText.isNotEmpty)
-        ? _assistantContents(
-            finalText,
-            live.thinking,
-            live.segments.where((c) => c is! TextContent).toList(),
-            streaming: false,
-          )
-        : _assistantContentsOrdered(
-            live.thinking,
-            live.segments,
-            streaming: false,
-          );
+    final baseContents =
+        (!liveHasText && finalText != null && finalText.isNotEmpty)
+            ? _assistantContents(
+                finalText,
+                live.thinking,
+                live.segments.where((c) => c is! TextContent).toList(),
+                streaming: false,
+              )
+            : _assistantContentsOrdered(
+                live.thinking,
+                live.segments,
+                streaming: false,
+              );
+    // On a failed turn, surface the bridge's error text as an inline error
+    // banner so the user sees *why* the turn ended (e.g. a quota / "usage
+    // balance exhausted" error) instead of the "responding…" cue just
+    // vanishing. Empty text falls back to a localized label at render time
+    // (see `_SystemBanner`).
+    final contents = failed
+        ? [
+            ...baseContents,
+            SystemContent(
+              (errorText ?? '').trim(),
+              kind: SystemContentKind.error,
+            ),
+          ]
+        : baseContents;
     final finalized = Message(
       id: _streamId(turnId),
       threadId: threadId,

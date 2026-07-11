@@ -11,6 +11,7 @@ import type {
   AgentId,
   ApprovalDecision,
   ApprovalResponse,
+  QuestionResponse,
   Turn,
   TurnAttachment,
   TurnList,
@@ -121,11 +122,15 @@ export function registerThreadHandlers(router: HandlerRouter): void {
   );
   router.register('turn/send', async (p, ctx: BridgeContext) => {
     const threadId = requireString(p, 'threadId');
-    // A `turn/send` may instead be a control-only reply to a pending approval:
-    // no new turn is created — the decision is routed to the agent adapter.
+    // A `turn/send` may instead be a control-only reply to a pending approval or
+    // question: no new turn is created — it is routed to the agent adapter.
     const approval = optionalApprovalResponse(p);
     if (approval) {
       return ctx.agentManager.respondApproval(threadId, approval.approvalId, approval.decision);
+    }
+    const question = optionalQuestionResponse(p);
+    if (question) {
+      return ctx.agentManager.respondQuestion(threadId, question.questionId, question.answers);
     }
     // `text` is OPTIONAL: an image-only message (empty text + attachments) is
     // valid, so we no longer hard-require a non-empty string. Reject only when
@@ -215,6 +220,34 @@ function optionalApprovalResponse(params: unknown): ApprovalResponse | undefined
     );
   }
   return { approvalId, decision: decision as ApprovalDecision };
+}
+
+/**
+ * Extracts the `questionResponse` from `turn/send` params, or `undefined` when
+ * absent. Validates the shape (`questionId` non-empty + `answers` an array of
+ * string arrays) and throws `invalidParams` on a malformed one — like an
+ * approval reply, a garbled question answer is control data that should surface.
+ */
+function optionalQuestionResponse(params: unknown): QuestionResponse | undefined {
+  if (!params || typeof params !== 'object') return undefined;
+  const raw = (params as Record<string, unknown>)['questionResponse'];
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw !== 'object') {
+    throw RpcError.invalidParams('questionResponse must be an object');
+  }
+  const obj = raw as Record<string, unknown>;
+  const questionId = obj['questionId'];
+  const answers = obj['answers'];
+  if (typeof questionId !== 'string' || questionId.length === 0) {
+    throw RpcError.invalidParams('questionResponse.questionId must be a non-empty string');
+  }
+  if (
+    !Array.isArray(answers) ||
+    !answers.every((a) => Array.isArray(a) && a.every((label) => typeof label === 'string'))
+  ) {
+    throw RpcError.invalidParams('questionResponse.answers must be an array of string arrays');
+  }
+  return { questionId, answers: answers as string[][] };
 }
 
 /**

@@ -239,8 +239,8 @@ test('returns null for unknown agent, missing session id, or absent file', async
   const { home, cleanup } = await fakeHome();
   try {
     const reader = new SessionHistoryReader({ homeDir: home });
-    // Aider is the only wired agent without an on-disk history reader yet.
-    assert.equal(await reader.readTurns({ agentId: 'aider', agentSessionId: 'x' }, 't'), null);
+    // Zero has no on-disk history reader yet (its ACP sessions aren't parsed).
+    assert.equal(await reader.readTurns({ agentId: 'zero', agentSessionId: 'x' }, 't'), null);
     assert.equal(await reader.readTurns({ agentId: 'claude-code' }, 't'), null);
     assert.equal(await reader.readTurns({ agentSessionId: 'x' }, 't'), null);
     assert.equal(

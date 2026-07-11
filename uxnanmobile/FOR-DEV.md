@@ -48,8 +48,13 @@ connected to live bridge data, validated on-device against a real bridge.
   auto-refresh on app resume.
 - **Interactive approval** (Approve / Reject / "always allow this session") with a
   spring `AnimatedSize` morph; validated end-to-end against Echo, Claude Code
-  (`PreToolUse` hook), Codex (`app-server`) and Gemini (`BeforeTool` hook).
-  OpenCode/pi have no headless pre-tool channel yet.
+  (`PreToolUse` hook), Codex (`app-server`), Gemini (`BeforeTool` hook) and
+  OpenCode (`opencode serve` `permission.asked`). Only pi has no pre-tool channel
+  (it runs autonomously).
+- **Interactive question** (the agent's multiple-choice `question` tool) —
+  single/multi-select option card that morphs to a resolved summary, persisted
+  per `questionId`; answered via `turn/send { questionResponse }`. Validated
+  end-to-end against OpenCode's `question` tool.
 - **Composer** — bottom-anchored bar; **stop-the-turn** mid-run; **voice → text**
   (`speech_to_text`); **image attachments** (photo library / camera, downscaled to
   2048 px / q85, image-only message allowed, gated by the agent's `images`

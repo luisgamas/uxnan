@@ -6,6 +6,84 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — Grok agent support
+- **Grok** (xAI's coding CLI) is now a selectable agent. New `AgentId.grok` (wire
+  id `grok`) in `agent_id.dart`, with its logo, `'Grok'` label and accent color
+  wired in `AgentVisuals` (`grok.svg` asset + `UxnanColors.grokAgent`). The agent
+  picker, conversation header and capability-gated controls pick it up
+  automatically from the bridge's `agent/list` (name, availability, capabilities)
+  and `agent/models` (models, context window, reasoning-effort knob).
+- No block-rendering change was needed: Grok's tools stream as the same canonical
+  content blocks as every other agent (plan → PlanCard, diffs → DiffBlock, shell →
+  CommandCard, approvals → the interactive approval card), because the renderer is
+  purely block-`type`-driven and the bridge normalizes each agent's own tool names
+  to those shared blocks.
+
+### Fixed — failed agent turns now show the error in the conversation
+- A turn that ends in `stream/turn/error` (e.g. a quota / "usage balance
+  exhausted" error) now surfaces the bridge's error message as an inline red
+  error banner at the end of the turn, instead of the "responding…" cue silently
+  vanishing with no explanation. Three fixes along the path:
+  - **`IncomingMessageProcessor`** now reads the reason from the contract's
+    **nested `error.message`** (`TurnErrorParams: error: { code, message }`); it
+    was reading a non-existent top-level `message`, so `TurnErrorEvent.message`
+    was always `null`. A flat `message` is still tolerated for back-compat.
+  - **`ThreadManager._finishTurn`** carries the message through and appends a
+    `SystemContent(kind: error)` block to the failed assistant message (keeping any
+    thinking/text/work-log that streamed before the failure).
+  - **`_SystemBanner`** renders an empty error as a localized fallback
+    (`turnFailed`, EN/ES). Reuses the existing red error-banner widget — no new UI
+    component. Works both live and on re-sync: the bridge now persists the failure
+    reason as a `system`/`error` content block in history, so reopening a thread
+    (or a bridge restart) still shows the banner.
+
+### Added — interactive multiple-choice question card
+
+- The agent can now ask the user structured questions mid-turn via a new
+  `question` content block (`stream/content/block { type:'question', questionId,
+  questions }`), rendered as an interactive card that mirrors the approval card:
+  - **`QuestionContent`** (+ `QuestionRequest` / `QuestionItem` / `QuestionOption`
+    value objects) in `message_content.dart`, tolerant of both nested
+    (`{request:{…}}`) and flat payloads; added to the `MessageContent.fromJson`
+    dispatch and the `MessageContentView` renderer switch.
+  - **`_QuestionCard`** renders each question's header badge + text, then its
+    options as selectable rows — radio-style (single) or checkbox-style
+    (`multiple`) — with each option's optional description as a subtitle. A
+    primary **Submit** (disabled until every question with options has a
+    selection) sends the chosen labels; a secondary **Skip** sends empty
+    answers. Once answered the card morphs (`AnimatedSize`) into a settled state
+    showing the chosen labels + a relative time, with an inline spinner while
+    sending and re-enable on failure. Read-only when the thread / question id is
+    missing.
+  - **`respondQuestion`** on `ThreadManager` sends `turn/send { questionResponse:
+    { questionId, answers } }` where `answers` is one label-list per question.
+  - **`questionResponsesProvider`** tracks per-`questionId` phase (idle / sending
+    / resolved / failed) and persists answers on-device via **`QuestionResponseStore`**
+    (key `uxnan.question.responses`) so an answered card stays resolved across
+    scrolls and app restarts.
+  - EN/ES strings added (`questionNeedsAnswer`, `questionAnswered`,
+    `questionAnsweredAt`, `questionHeaderFallback`, `questionSubmit`,
+    `questionSkip`, `questionSkipped`, `questionFailed`).
+
+### Added — autonomous-mode announcement for agents that run without per-action approval
+- New `autonomous` capability on `AgentCapabilities` (shared contract) and
+  `AgentDescriptor` (mobile entity), surfaced in the UI so the user knows up front
+  that an agent acts and edits without asking first:
+  - **New-conversation screen:** an "Autonomous mode" chip (`Icons.auto_awesome_outlined`) shown for agents whose capability `autonomous` is `true`.
+  - **Conversation screen:** a banner above the thread (`_AutonomousBanner`)
+    explaining the agent runs autonomously. EN/ES strings added
+    (`newThreadCapAutonomous`, `conversationAutonomousMode`).
+- Pi is the first agent to use this: `pi-adapter.ts` now advertises
+  `autonomous: true` (it runs headless in YOLO mode with no pre-tool approval
+  channel by design). OpenCode/Claude/Codex/Gemini keep `autonomous` unset
+  (false) — they expose real per-action approvals.
+
+### Fixed — wide tables in conversation messages now scroll horizontally instead of squeezing
+
+- **Root cause:** `_TextBlock` in `message_content_view.dart` used `MarkdownStyleSheet.fromTheme()` defaults, which set `tableColumnWidth` to `FlexColumnWidth` — columns squeezed to fit the viewport, wrapping every cell into a tall stack.
+- **Fix:** replaced the bare `fromTheme().copyWith()` with a full `MarkdownStyleSheet` using `IntrinsicColumnWidth()`, which sizes columns to their content. Wide tables now trigger `flutter_markdown_plus`' built-in horizontal scroll with a visible scrollbar.
+- **Refactor:** extracted the shared `uxnanMarkdownStyleSheet(context)` to `lib/presentation/theme/markdown.dart` so both the conversation `_TextBlock` and the file viewer `_MarkdownBody` use a single source of truth for markdown styling (headings, anchors, code blocks, blockquotes, tables, horizontal rules).
+
 ## [0.0.4-alpha.20260703] - 2026-07-03
 
 ### Fixed — model / agent / project lists now re-sync when the bridge changes

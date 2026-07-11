@@ -46,6 +46,10 @@ import { PiAdapter } from './adapters/pi-adapter.js';
 import { resolvePiBinary } from './adapters/resolve-pi.js';
 import { GeminiAdapter } from './adapters/gemini-adapter.js';
 import { resolveGeminiBinary } from './adapters/resolve-gemini.js';
+import { ZeroAdapter } from './adapters/zero-adapter.js';
+import { resolveZeroBinary } from './adapters/resolve-zero.js';
+import { GrokAdapter } from './adapters/grok-adapter.js';
+import { resolveGrokBinary } from './adapters/resolve-grok.js';
 import { ProjectRegistry } from './projects/project-registry.js';
 import { BrowseService } from './workspace/browse-service.js';
 import { PushService } from './push/push-service.js';
@@ -169,12 +173,21 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   });
   // Echo: built-in reference agent (no external CLI), useful for development.
   agentManager.register(new EchoAgentAdapter(), { displayName: 'Echo (dev)' });
-  // OpenCode: real agent driven via `opencode run --format json` (see FOR-DEV.md).
+  // OpenCode: real agent driven via the `opencode serve` HTTP/SSE protocol (the
+  // bridge speaks HTTP to a local `opencode serve` process; approvals go through
+  // the bridge's `requestApproval` flow — see `opencode-server.ts`).
   const openCodeSettings = config.agents.opencode ?? {};
   const openCode = resolveOpenCodeBinary(openCodeSettings.binaryPath);
   agentManager.register(
     new OpenCodeAdapter({
       binaryPath: openCode.binaryPath,
+      // Route OpenCode's `permission.asked` elicitations to the bridge's shared
+      // approval round-trip (the same one the Claude PreToolUse hook, Codex
+      // app-server, and Echo demo use).
+      onApprovalRequest: (threadId, info) => agentManager.requestApproval(threadId, info),
+      // Route OpenCode's `question.asked` (the agent's multiple-choice tool) to
+      // the phone's question card and back.
+      onQuestionRequest: (threadId, questions) => agentManager.requestQuestion(threadId, questions),
       ...(openCodeSettings.model !== undefined ? { defaultModel: openCodeSettings.model } : {}),
     }),
     {
@@ -315,6 +328,42 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       displayName: 'Gemini',
       available: gemini.available,
       ...(geminiSettings.model !== undefined ? { defaultModel: geminiSettings.model } : {}),
+    },
+  );
+  // Zero: open-source Go agent driven over the Agent Client Protocol (`zero acp`
+  // — two-way JSON-RPC over stdio; approvals go through the bridge's
+  // `requestApproval` flow, mapped onto ACP `session/request_permission`).
+  const zeroSettings = config.agents.zero ?? {};
+  const zero = resolveZeroBinary(zeroSettings.binaryPath);
+  agentManager.register(
+    new ZeroAdapter({
+      binaryPath: zero.binaryPath,
+      prependArgs: zero.prependArgs,
+      onApprovalRequest: (threadId, info) => agentManager.requestApproval(threadId, info),
+      ...(zeroSettings.model !== undefined ? { defaultModel: zeroSettings.model } : {}),
+    }),
+    {
+      displayName: 'Zero',
+      available: zero.available,
+      ...(zeroSettings.model !== undefined ? { defaultModel: zeroSettings.model } : {}),
+    },
+  );
+  // Grok: xAI's coding CLI driven over the Agent Client Protocol (`grok agent
+  // stdio` — two-way JSON-RPC over stdio; approvals go through the bridge's
+  // `requestApproval` flow, mapped onto ACP `session/request_permission`).
+  const grokSettings = config.agents.grok ?? {};
+  const grok = resolveGrokBinary(grokSettings.binaryPath);
+  agentManager.register(
+    new GrokAdapter({
+      binaryPath: grok.binaryPath,
+      prependArgs: grok.prependArgs,
+      onApprovalRequest: (threadId, info) => agentManager.requestApproval(threadId, info),
+      ...(grokSettings.model !== undefined ? { defaultModel: grokSettings.model } : {}),
+    }),
+    {
+      displayName: 'Grok',
+      available: grok.available,
+      ...(grokSettings.model !== undefined ? { defaultModel: grokSettings.model } : {}),
     },
   );
   const startedAt = now();

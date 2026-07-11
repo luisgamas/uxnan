@@ -28,7 +28,8 @@ import { rm } from 'node:fs/promises';
 import type { ThreadStore } from '../conversation/thread-store.js';
 import type { Logger } from '../logger.js';
 import { materializeAttachments } from './attachments.js';
-import { approvalBlock } from '../adapters/content-blocks.js';
+import { approvalBlock, errorBlock, questionBlock } from '../adapters/content-blocks.js';
+import type { QuestionItem } from '@uxnan/shared';
 
 /** How long a tool approval waits for the user before defaulting to deny. */
 const APPROVAL_TIMEOUT_MS = 5 * 60 * 1000;
@@ -140,6 +141,17 @@ export class AgentManager {
     }
   >();
   #approvalSeq = 0;
+  /** questionId → resolver for a pending question (the agent's `question` tool);
+   * resolves with the chosen answers per question, or `[]` on timeout/skip. Same
+   * shape as the approval pending map so `respondQuestion` mirrors `respondApproval`. */
+  readonly #pendingQuestions = new Map<
+    string,
+    {
+      resolve: (answers: string[][]) => void;
+      timer: ReturnType<typeof setTimeout> | undefined;
+    }
+  >();
+  #questionSeq = 0;
   readonly #options: AgentManagerOptions;
   /** Whether a phone is connected to see/answer approvals (see options). */
   readonly #isPhoneConnected: () => boolean;
@@ -334,16 +346,23 @@ export class AgentManager {
     for (const approvalId of this.#pendingHookApprovals.keys()) {
       this.#armApprovalTimeout(approvalId);
     }
+    for (const questionId of this.#pendingQuestions.keys()) {
+      this.#armQuestionTimeout(questionId);
+    }
   }
 
   /**
-   * The last phone disconnected: stop every approval's auto-reject countdown so
-   * a pending approval waits for the user to return instead of defaulting to
-   * reject on a card they never saw. No-op while any phone is still connected.
+   * The last phone disconnected: stop every approval/question auto-resolve
+   * countdown so a pending elicitation waits for the user to return instead of
+   * defaulting on a card they never saw. No-op while any phone is still connected.
    */
   onPhoneDisconnected(): void {
     if (this.#isPhoneConnected()) return;
     for (const pending of this.#pendingHookApprovals.values()) {
+      if (pending.timer) clearTimeout(pending.timer);
+      pending.timer = undefined;
+    }
+    for (const pending of this.#pendingQuestions.values()) {
       if (pending.timer) clearTimeout(pending.timer);
       pending.timer = undefined;
     }
@@ -390,6 +409,67 @@ export class AgentManager {
   }
 
   /**
+   * Ask the user (via the phone) to answer the agent's multiple-choice
+   * {@link QuestionItem}s. Emits a `question` content block on the thread's
+   * in-flight turn and resolves once {@link respondQuestion} arrives with the
+   * chosen answers (or after {@link APPROVAL_TIMEOUT_MS} → `[]`, i.e. no answer,
+   * so the adapter can skip/reject and unblock the turn). Mirrors
+   * {@link requestApproval}; the caller (the OpenCode adapter) translates the
+   * returned answers into its CLI's reply shape.
+   */
+  async requestQuestion(threadId: string, questions: QuestionItem[]): Promise<string[][]> {
+    const turnId = this.#activeTurnByThread.get(threadId);
+    if (!turnId) return []; // no in-flight turn to attach the question to
+    const questionId = `qst-${turnId}-${(this.#questionSeq += 1)}`;
+    const messageId = this.#assistantByTurn.get(turnId) ?? '';
+    const content = questionBlock(questionId, questions);
+    try {
+      await this.#options.store.appendBlock(threadId, turnId, content, this.#options.now());
+    } catch {
+      /* best-effort persistence */
+    }
+    this.#options.notify(
+      makeNotification(StreamNotification.ContentBlock, { threadId, turnId, messageId, content }),
+    );
+    return new Promise<string[][]>((resolve) => {
+      this.#pendingQuestions.set(questionId, { resolve, timer: undefined });
+      // Same offline posture as approvals: only run the auto-skip countdown while
+      // a phone is connected to see and answer the card (see onPhoneConnected).
+      if (this.#isPhoneConnected()) this.#armQuestionTimeout(questionId);
+    });
+  }
+
+  /** (Re)arms the auto-skip countdown for a pending question. Idempotent. */
+  #armQuestionTimeout(questionId: string): void {
+    const pending = this.#pendingQuestions.get(questionId);
+    if (!pending) return;
+    if (pending.timer) clearTimeout(pending.timer);
+    pending.timer = setTimeout(() => {
+      this.#pendingQuestions.delete(questionId);
+      pending.resolve([]);
+    }, this.#approvalTimeoutMs);
+  }
+
+  /**
+   * Route a user's answer to a pending question (resolves the `requestQuestion`
+   * promise). No new turn is created. Returns the in-flight turn id (or `''`) so
+   * the `turn/send` reply still carries a `turnId`.
+   */
+  respondQuestion(
+    threadId: string,
+    questionId: string,
+    answers: string[][],
+  ): Promise<{ turnId: string }> {
+    const pending = this.#pendingQuestions.get(questionId);
+    if (pending) {
+      clearTimeout(pending.timer);
+      this.#pendingQuestions.delete(questionId);
+      pending.resolve(answers);
+    }
+    return Promise.resolve({ turnId: this.#activeTurnByThread.get(threadId) ?? '' });
+  }
+
+  /**
    * The turn currently in-flight for [threadId] (an agent is actively producing
    * it in THIS bridge process), or `undefined` when the thread is idle. Reflects
    * LIVE state: set on `sendTurn`, cleared on turn completion/error/abort, and
@@ -403,7 +483,12 @@ export class AgentManager {
   }
 
   async cancelTurn(threadId: string, turnId: string, agentId?: AgentId): Promise<void> {
-    const adapter = this.#adapters.get(agentId ?? this.#options.defaultAgent);
+    // Resolve the thread's OWN agent (as respondApproval/respondQuestion do), not
+    // the default: a cancel for a thread running on a non-default agent must reach
+    // that agent's adapter, otherwise the wrong adapter no-ops and the turn keeps
+    // running. Explicit agentId wins; then the per-thread agent; then the default.
+    const resolved = agentId ?? this.#agentByThread.get(threadId) ?? this.#options.defaultAgent;
+    const adapter = this.#adapters.get(resolved);
     if (adapter) {
       await adapter.cancelTurn(threadId, turnId);
     }
@@ -503,6 +588,16 @@ export class AgentManager {
         }
         case 'turn_error': {
           const message = readOptionalText(event.data) ?? 'agent error';
+          // Persist the reason as an error content block in the turn's history so
+          // a `turn/list` re-sync (e.g. after a bridge restart) still shows *why*
+          // the turn failed. NOT broadcast as a `stream/content/block` — the phone
+          // renders the failure live from the `turn/error` notification below, so
+          // notifying here too would double the banner. Best-effort.
+          try {
+            await this.#options.store.appendBlock(threadId, turnId, errorBlock(message), now);
+          } catch {
+            /* best-effort persistence */
+          }
           await this.#options.store.failTurn(threadId, turnId, now);
           this.#options.notify(
             makeNotification(StreamNotification.TurnError, {

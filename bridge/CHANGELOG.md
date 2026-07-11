@@ -5,6 +5,190 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — turn errors are surfaced with the real reason and survive re-sync
+- **Real error detail (ACP adapters):** when an ACP turn fails (Grok / Zero), the
+  useful reason (e.g. a 402 `API error (status 402 Payment Required): … usage
+  balance exhausted`) lives in the JSON-RPC error's **`data.message`**; the
+  adapters were surfacing only the generic top-level `message` ("Internal error").
+  `errorMessage()` in `grok-adapter.ts` and `zero-adapter.ts` now prefers
+  `data.message` when present, so the `stream/turn/error` the phone renders tells
+  the user *why* the turn failed.
+- **Persisted for re-sync:** on `turn_error` the `AgentManager` now appends a
+  `system`/`error` content block (`errorBlock` in `content-blocks.ts`) to the
+  turn's history (via `store.appendBlock`), so a `turn/list` re-sync — e.g. after a
+  bridge restart — still shows the failure reason. It is **not** broadcast as a
+  `stream/content/block` (the phone renders the failure live from `turn/error`, so
+  notifying too would double the banner). Covered by new `grok-adapter` +
+  `agent-manager` tests.
+
+### Added — Grok agent wired over the Agent Client Protocol (ACP)
+- **What:** **Grok** (xAI's coding CLI, `grok`) is now a real wired agent (AgentId
+  `grok`, display name `Grok`) — the **seventh** alongside OpenCode, Claude Code,
+  Codex, pi, Gemini CLI and Zero. New adapter `src/adapters/grok-adapter.ts` (+
+  `grok-tools.ts`, `resolve-grok.ts`), registered in `startBridge`.
+- **Transport (ACP):** the bridge drives `grok agent stdio`, which speaks
+  **JSON-RPC 2.0 over newline-delimited stdio** (the Agent Client Protocol, the
+  same protocol as Zero) — the bridge is the ACP *client*, like an editor. The
+  adapter reuses the Codex NDJSON transport; turns run as ACP `session/new` +
+  `session/prompt`, with `session/load` restoring a persisted session for
+  continuity. The native `grok` executable (`~/.grok/bin/grok`) spawns directly
+  with `shell:false` (no shell shim), resolved by `resolve-grok.ts`.
+- **Real interactive approvals:** ACP `session/request_permission` is routed
+  through the bridge's shared `requestApproval` round-trip (the same one Claude /
+  Codex / OpenCode / Gemini / Zero use); the phone's decision maps by the ACP
+  option `kind` to `allow_once` / `allow_always` / `reject_once`. The thread's
+  `accessMode` selects the posture (`requestApproval` asks the phone;
+  `approveForMe` / `fullAccess` answer without it). `approvals` capability **`true`**.
+- **Plan + streaming:** `planMode`, `streaming` and `forking` are `true` — plan
+  updates and streamed content/thinking are re-emitted as the same structured
+  `stream/*` shape as every other agent (`grok-tools.ts` maps ACP tool calls / plan
+  steps to the shared content blocks, so the phone renders **the same widgets** —
+  PlanCard, DiffBlock, CommandCard — regardless of Grok's own tool names). `images`
+  is **`false`** (Grok's ACP `promptCapabilities.image` is false).
+- **Model discovery (real, from the handshake):** Grok reports its models —
+  **with context window (`totalContextTokens`) and per-model reasoning-effort
+  knobs (`reasoningEfforts`)** — directly in the `initialize` handshake's
+  `_meta.modelState`, so `agent/models` needs no extra CLI call or session. The
+  chosen model is applied via the standard ACP `session/set_model`; the chosen
+  reasoning effort via `session/set_mode` (Grok exposes effort as its ACP "modes").
+- **Sign-in status:** `auth/status` reports Grok via the presence of
+  `~/.grok/auth.json` (provider `xai`), never reading the token.
+- **Verification caveat:** the ACP envelope, handshake and model discovery were
+  exercised against a live `grok 0.2.93`. The per-turn streaming shapes
+  (`tool_call` / `plan` / `session/request_permission`), whether Grok reports token
+  usage, and whether `session/set_mode` actually applies the effort could **not** be
+  exercised end-to-end because the test account's Grok Build balance was exhausted
+  (HTTP 402) — tracked in `FOR-DEV.md`. `reportsContextUsage` is `false` pending
+  that check.
+- **Validated:** **18 unit tests** in `test/adapters/grok-adapter.test.ts` (model
+  mapping, streaming, effort, interactive/auto approvals, plan blocks, session reuse,
+  cancel) + cross-agent consistency assertions in `plan-blocks.test.ts` (Grok/Zero
+  plan + execute blocks normalize identically to the CLI agents) + `account-status`
+  coverage. The bridge suite is green at **424 tests**.
+
+### Added — Zero agent wired over the Agent Client Protocol (ACP)
+- **What:** **Zero** (https://github.com/Gitlawb/zero), an open-source Go coding
+  agent, is now a real wired agent (AgentId `zero`, display name `Zero`) — the
+  sixth alongside OpenCode, Claude Code, Codex, pi and Gemini CLI. New adapter
+  `src/adapters/zero-adapter.ts` (+ `zero-tools.ts`, `resolve-zero.ts`), registered
+  in `startBridge`. There is **no remaining planned agent** (the previously-listed
+  Aider is no longer planned).
+- **Transport (ACP):** the bridge drives `zero acp`, which speaks **JSON-RPC 2.0
+  over newline-delimited stdio** (the Agent Client Protocol) — the bridge is the
+  ACP *client*, like an editor. The adapter reuses the Codex NDJSON transport; turns
+  run as ACP `session/new` + `session/prompt`, with `session/load` restoring a
+  persisted session for continuity.
+- **Real interactive approvals:** ACP `session/request_permission` is routed through
+  the bridge's shared `requestApproval` round-trip (the same one Claude / Codex /
+  OpenCode / Gemini use); the phone's decision maps by the ACP option `kind` to
+  `allow_once` / `allow_always` / `reject_once`. The thread's `accessMode` selects
+  the ACP **session mode**: `requestApproval` → `ask` (interactive), while
+  `approveForMe` / `fullAccess` → `auto` (answered without the phone). The
+  `approvals` capability is **`true`**.
+- **Plan + streaming:** `planMode`, `streaming`, `forking` and `images` are `true` —
+  plan updates and streamed content/thinking are re-emitted as the same structured
+  `stream/*` shape as the other agents (`zero-tools.ts` maps ACP tool calls / plan
+  steps to content blocks).
+- **Model discovery (real, per-install):** the model list is Zero's **own configured
+  providers**, not a built-in registry — `zero providers list --json` enumerates the
+  configured providers and, per available provider, `zero providers models <name>
+  --json` lists its models; the results are unioned and de-duplicated into
+  `AgentModel[]` (with `contextWindow`). If the structured probe yields nothing it
+  falls back to parsing `zero models list` text. The list is cached per adapter.
+- **Interactive questions (`ask_user`):** Zero's `ask_user` tool is **non-interactive
+  over ACP** — Zero's ACP agent wires no answer handler, so the call auto-completes
+  with "proceed with your best assumption" and the turn continues. The bridge can't
+  answer it, but renders the questions/options it asked **legibly** (instead of a raw
+  args dump) so the user still sees what was asked. Making it answerable needs an
+  upstream Zero change (tracked in `FOR-DEV.md`).
+- **No context usage over ACP:** ACP carries no per-turn token usage, so Zero reports
+  `reportsContextUsage:false` and the phone shows no context meter for it (tracked in
+  `FOR-DEV.md`, together with the still-missing on-disk `turn/list` history reader for
+  Zero's ACP sessions).
+- **Validated:** end-to-end against the real `zero.exe` (streaming + a real
+  shell-command approval + completion + real per-install model discovery) plus **9
+  unit tests** in `test/adapters/zero-adapter.test.ts`. The bridge suite is green at
+  **408 tests**.
+
+### Changed — OpenCode now runs via `opencode serve` (real interactive approvals)
+- **Why:** the old adapter drove `opencode run --format json`, a one-shot,
+  non-interactive process that ran tools autonomously and emitted tool events only
+  *after* the tool ran — so the bridge could never gate a sensitive action
+  (`approvals` was `false`), plan/to-do arrived as a doubly-emitted `todowrite` we
+  de-duped by hand, and every turn respawned the CLI.
+- **What:** the adapter now speaks HTTP + Server-Sent-Events to a long-lived,
+  loopback-bound `opencode serve` process (one per working directory, spawned
+  lazily), mirroring the Codex `app-server` adapter. New `opencode-server.ts` is a
+  dependency-free HTTP/SSE client (`IOpenCodeServer`); the adapter maps the `/event`
+  bus onto bridge events:
+  - **Streaming** — `message.part.delta`/`message.part.updated`, routed to assistant
+    text vs `thinking` by the part's *type* (both stream as `field:"text"`), and
+    filtered to the assistant message (the user's echoed text part no longer leaks).
+  - **Real approvals** — `permission.asked` is routed through the bridge's shared
+    `requestApproval` round-trip (the same one Claude/Codex/Gemini use); the reply
+    maps `approve|approveSession|reject` → `once|always|reject`. `accessMode`
+    becomes a per-session permission ruleset: `ask` on `edit`/`bash`/`webfetch`/
+    `external_directory` (interactive by default), `allow` for approveForMe·fullAccess.
+    `approvals` capability is now **`true`**.
+  - **Plan mode** — native `todo.updated` replaces the `todowrite` double-emit hack
+    (still merged into one plan card at turn close).
+  - **Completion / usage** — `session.idle` completes the turn; per-turn tokens come
+    from `step-finish.tokens` / the assistant message; `session.error` → `turn_error`.
+  - **Continuity** — one server session per thread, persisted (survives a server
+    restart; still feeds the on-disk `turn/list` history fallback). Cancellation via
+    `POST /session/{id}/abort`.
+  - **Race-free startup** — the server's `start()` now AWAITS the `/event` SSE
+    subscription being established before the first session/prompt. The bus only
+    delivers events emitted after a subscriber connects, so a fire-and-forget
+    subscription dropped the entire first turn on slower/remote setups ("first turn
+    shows nothing", and the stuck turn then confused follow-ups); found in on-device
+    testing. A superseded, never-idled run is also retired when a new turn starts.
+  - **All elicitation channels handled (no hangs)** — besides `permission.asked`
+    (v1), the adapter routes `permission.v2.asked` (`action`/`resources` shape)
+    through the same approval round-trip, and surfaces `question.asked` /
+    `question.v2.asked` (the agent's multiple-choice `question` tool) as a new
+    **interactive question** flow: the bridge emits a `question` content block
+    (`{ questionId, questions:[{question,header?,options:[{label,description?}],multiple?}] }`),
+    the phone answers via `turn/send { questionResponse: { questionId, answers } }`,
+    and the adapter replies to `/question/{id}/reply` so the agent continues with
+    the user's choice (an empty/timed-out answer rejects the question to unblock).
+    New shared contract `QuestionRequestBlock`/`QuestionResponse`;
+    `AgentManager.requestQuestion`/`respondQuestion` mirror the approval round-trip.
+    Validated end-to-end against a live `opencode serve` (agent asks → phone answers
+    → agent uses the answer → turn completes).
+  - **Debug tracing** — set `UXNAN_OPENCODE_DEBUG=1` to log the turn/event/approval
+    flow to stderr (session/prompt, each meaningful `/event`, the `permission.asked`
+    → decision → reply round-trip, completion) for diagnosing a stuck turn.
+- Model discovery + context windows keep the short-lived `opencode models`
+  (`--verbose`) spawns (unchanged). Validated end-to-end against a live
+  `opencode serve` (streaming + a real `edit` approval → file written). New unit
+  tests: `opencode-adapter.test.ts` (16) + `opencode-server.test.ts` (6).
+
+### Fixed — OpenCode plan/todo now emits a single, status-advancing plan card
+- **Root cause:** OpenCode's `todowrite` tool fires **up to twice per turn** with
+  the same (or progressively-updated) todo list, and `planMode` was advertised as
+  `false`, so the mobile both rendered two near-duplicate plan cards and hid the
+  plan-mode capability chip.
+- **Fix (`opencode-adapter.ts` + `opencode-tools.ts`):** the adapter now collects
+  `todowrite` steps into a turn-scoped `planSteps` buffer and merges every emit via
+  the new `mergePlanSteps` (dedup by `description`, advance status strictly
+  forward `pending → in_progress → completed`, order-stable), then emits **one**
+  `plan` block at turn close (`finish`). `planMode` is now advertised `true` so the
+  mobile shows the plan-mode chip and banner. Added unit tests in
+  `test/adapters/plan-blocks.test.ts`.
+
+### Fixed — stop-turn now cancels turns on non-default agents
+- **Root cause:** `AgentManager.cancelTurn` resolved the adapter from the configured
+  `defaultAgent`, but `turn/cancel` never passes an `agentId`. A thread running on
+  any **non-default** agent (Zero, OpenCode, …) had its cancel routed to the wrong
+  adapter, which no-oped — so the phone's Stop button did nothing and the turn kept
+  running. It only appeared to work when the thread happened to be on the default
+  agent.
+- **Fix (`agent-manager.ts`):** `cancelTurn` now resolves the thread's **own** agent
+  from `#agentByThread` (the same lookup `respondApproval` / `respondQuestion` use),
+  falling back to the default only when the thread has no recorded agent. Added a
+  regression test in `test/agents/agent-manager.test.ts`.
+
 ## [0.0.4-alpha.20260703] - 2026-07-03
 
 ### Changed — npm releases now publish to the `latest` dist-tag

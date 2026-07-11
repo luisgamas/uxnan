@@ -130,14 +130,37 @@ export {
 export { resolveGeminiBinary, type ResolvedGemini } from './adapters/resolve-gemini.js';
 export {
   OpenCodeAdapter,
-  parseOpenCodeLine,
   parseModelList,
   parseOpenCodeModelWindows,
   openCodeUsageTokens,
+  splitOpenCodeModel,
+  decisionToPermissionReply,
   type OpenCodeAdapterOptions,
-  type OpenCodeEvent,
 } from './adapters/opencode-adapter.js';
+export {
+  OpenCodeServer,
+  parseSseRecord,
+  parseServeUrl,
+  type IOpenCodeServer,
+  type OpenCodeServerEvent,
+  type OpenCodePermissionRule,
+  type OpenCodePromptBody,
+  type PermissionReply,
+} from './adapters/opencode-server.js';
 export { resolveOpenCodeBinary, type ResolvedOpenCode } from './adapters/resolve-opencode.js';
+export {
+  ZeroAdapter,
+  parseZeroModels,
+  mergeZeroProviderModels,
+  type ZeroAdapterOptions,
+  type SpawnedAcp,
+  type ZeroProvider,
+} from './adapters/zero-adapter.js';
+export { zeroToolBlock, zeroPlanSteps, type ZeroToolCall } from './adapters/zero-tools.js';
+export { resolveZeroBinary, type ResolvedZero } from './adapters/resolve-zero.js';
+export { GrokAdapter, mapGrokModels, type GrokAdapterOptions } from './adapters/grok-adapter.js';
+export { grokToolBlock, grokPlanSteps, type GrokToolCall } from './adapters/grok-tools.js';
+export { resolveGrokBinary, type ResolvedGrok } from './adapters/resolve-grok.js';
 export { defaultSpawn, type SpawnFn, type SpawnedProcess } from './adapters/spawn.js';
 export {
   ClaudeCodeAdapter,

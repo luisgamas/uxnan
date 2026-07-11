@@ -1,8 +1,6 @@
 /// The decision the user sends back for a pending approval request
-/// (spec 02a §6.2). Returned to the bridge via `turn/send { approvalResponse }`.
-///
-/// FOR-DEV: the wire names below are the contract the bridge must accept; the
-/// bridge does not yet implement the intake (see `FOR-DEV.md`).
+/// (spec 02a §6.2). Returned to the bridge via `turn/send { approvalResponse }`,
+/// which the bridge routes to the agent (Claude/Codex/Gemini/OpenCode).
 enum ApprovalDecision {
   /// Allow this single action.
   approve,

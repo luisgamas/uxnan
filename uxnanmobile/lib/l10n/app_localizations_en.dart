@@ -620,6 +620,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get newThreadAgent => 'Agent';
 
   @override
+  String get newThreadAgentHint => 'Select an agent';
+
+  @override
   String get newThreadModel => 'Model (optional)';
 
   @override
@@ -627,6 +630,12 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get newThreadStart => 'Start conversation';
+
+  @override
+  String get agentPickerTitle => 'Select agent';
+
+  @override
+  String get agentPickerSearchHint => 'Search agents';
 
   @override
   String get modelPickerTitle => 'Select model';
@@ -672,6 +681,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get newThreadCapImages => 'Images';
+
+  @override
+  String get newThreadCapAutonomous => 'Autonomous mode';
 
   @override
   String get newThreadCapabilities => 'Capabilities';
@@ -787,6 +799,33 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get approvalRiskUnknown => 'Risk unknown';
+
+  @override
+  String get questionNeedsAnswer => 'Needs your answer';
+
+  @override
+  String get questionAnswered => 'Answer recorded';
+
+  @override
+  String get questionAnsweredAt => 'Answered';
+
+  @override
+  String get questionHeaderFallback => 'Question';
+
+  @override
+  String get questionSubmit => 'Submit';
+
+  @override
+  String get questionSkip => 'Skip';
+
+  @override
+  String get questionSkipped => 'Skipped';
+
+  @override
+  String get questionFailed => 'Couldn\'t send your answer — try again';
+
+  @override
+  String get turnFailed => 'The agent turn failed';
 
   @override
   String get runOptionAuto => 'Auto';
@@ -1842,6 +1881,10 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get conversationCwdMissing =>
       'This conversation\'s folder no longer exists. Reconnect or remove it.';
+
+  @override
+  String get conversationAutonomousMode =>
+      'This agent runs in autonomous mode — it acts and edits without asking for approval first.';
 
   @override
   String get fileBrowserTitle => 'Files';

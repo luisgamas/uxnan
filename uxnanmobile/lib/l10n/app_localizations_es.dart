@@ -622,6 +622,9 @@ class AppLocalizationsEs extends AppLocalizations {
   String get newThreadAgent => 'Agente';
 
   @override
+  String get newThreadAgentHint => 'Elige un agente';
+
+  @override
   String get newThreadModel => 'Modelo (opcional)';
 
   @override
@@ -629,6 +632,12 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get newThreadStart => 'Iniciar conversación';
+
+  @override
+  String get agentPickerTitle => 'Seleccionar agente';
+
+  @override
+  String get agentPickerSearchHint => 'Buscar agentes';
 
   @override
   String get modelPickerTitle => 'Seleccionar modelo';
@@ -674,6 +683,9 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get newThreadCapImages => 'Imágenes';
+
+  @override
+  String get newThreadCapAutonomous => 'Modo autónomo';
 
   @override
   String get newThreadCapabilities => 'Capacidades';
@@ -789,6 +801,33 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get approvalRiskUnknown => 'Riesgo desconocido';
+
+  @override
+  String get questionNeedsAnswer => 'Requiere tu respuesta';
+
+  @override
+  String get questionAnswered => 'Respuesta registrada';
+
+  @override
+  String get questionAnsweredAt => 'Respondido';
+
+  @override
+  String get questionHeaderFallback => 'Pregunta';
+
+  @override
+  String get questionSubmit => 'Enviar';
+
+  @override
+  String get questionSkip => 'Omitir';
+
+  @override
+  String get questionSkipped => 'Omitida';
+
+  @override
+  String get questionFailed => 'No se pudo enviar tu respuesta; reintenta';
+
+  @override
+  String get turnFailed => 'El turno del agente falló';
 
   @override
   String get runOptionAuto => 'Automático';
@@ -1852,6 +1891,10 @@ class AppLocalizationsEs extends AppLocalizations {
   @override
   String get conversationCwdMissing =>
       'La carpeta de esta conversación ya no existe. Reconéctate o elimínala.';
+
+  @override
+  String get conversationAutonomousMode =>
+      'Este agente corre en modo autónomo: actúa y edita sin pedir aprobación primero.';
 
   @override
   String get fileBrowserTitle => 'Archivos';

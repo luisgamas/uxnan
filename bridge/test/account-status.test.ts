@@ -44,6 +44,25 @@ test('an unavailable agent always requires login and never probes files', async 
   assert.equal(probed, false);
 });
 
+test('Grok reports its xai provider when ~/.grok/auth.json exists', async () => {
+  const status = await getAuthStatus(
+    'grok',
+    deps({
+      // Match the grok auth file regardless of the OS path separator.
+      fileExists: async (p) => p.replace(/\\/g, '/').endsWith('/.grok/auth.json'),
+    }),
+  );
+  assert.equal(status.agentId, 'grok');
+  assert.equal(status.requiresLogin, false);
+  assert.equal(status.authenticatedProvider, 'xai');
+});
+
+test('Grok without its auth file requires login (provider withheld)', async () => {
+  const status = await getAuthStatus('grok', deps({ fileExists: async () => false }));
+  assert.equal(status.requiresLogin, true);
+  assert.equal(status.authenticatedProvider, undefined);
+});
+
 test('an agent with no auth-file mapping falls back to availability', async () => {
   const status = await getAuthStatus('echo', deps({ isAvailable: () => true }));
   assert.equal(status.requiresLogin, false);

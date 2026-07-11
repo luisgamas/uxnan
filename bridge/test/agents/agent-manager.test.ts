@@ -50,6 +50,9 @@ class ControlledAdapter extends BaseAgentAdapter {
   complete(threadId: string, turnId: string, text: string): void {
     this.emit({ type: 'turn_completed', threadId, turnId, data: { text } });
   }
+  error(threadId: string, turnId: string, text: string): void {
+    this.emit({ type: 'turn_error', threadId, turnId, data: { text } });
+  }
 }
 
 // FOR-DEV: this whole suite drives the echo agent over a real subprocess + an
@@ -109,6 +112,41 @@ test('sendTurn drives the echo agent: persists the reply and broadcasts stream e
   assert.ok(methods.includes(StreamNotification.TurnStarted));
   assert.ok(methods.includes(StreamNotification.MessageDelta));
   assert.ok(methods.includes(StreamNotification.TurnCompleted));
+  await rm(baseDir, { recursive: true, force: true });
+});
+
+baseTest('a failed turn persists an error content block into history', async () => {
+  const baseDir = join(tmpdir(), `uxnan-am-err-${randomUUID()}`);
+  const store = new ThreadStore(new DaemonState(baseDir));
+  const notifications: { method: string }[] = [];
+  const manager = new AgentManager({
+    store,
+    notify: (m) => notifications.push(m as { method: string }),
+    now: () => 1000,
+    logger: createLogger('test', 'error'),
+    defaultAgent: 'echo',
+  });
+  const adapter = new ControlledAdapter();
+  manager.register(adapter);
+
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  const { turnId } = await manager.sendTurn(thread.id, 'go');
+  adapter.error(thread.id, turnId, 'API error (status 402): usage balance exhausted');
+  await waitFor(async () => (await store.getTurn(turnId)).status === 'error');
+
+  // The failure reason is persisted as a system/error content block so a
+  // `turn/list` re-sync (after a restart) still shows why the turn failed.
+  const turn = await store.getTurn(turnId);
+  const assistant = turn.messages.find((m) => m.role === 'assistant');
+  const blocks = (assistant?.blocks ?? []) as { type?: string; kind?: string; text?: string }[];
+  const errBlock = blocks.find((b) => b.type === 'system' && b.kind === 'error');
+  assert.ok(errBlock, 'the failure reason is persisted as a system/error block');
+  assert.match(errBlock?.text ?? '', /usage balance exhausted/);
+  // NOT broadcast as a content block (the phone renders it live from the
+  // turn/error notification, so a content-block would double the banner).
+  assert.ok(!notifications.some((n) => n.method === StreamNotification.ContentBlock));
+  assert.ok(notifications.some((n) => n.method === StreamNotification.TurnError));
+
   await rm(baseDir, { recursive: true, force: true });
 });
 
@@ -256,6 +294,46 @@ test('requestApproval emits an approval block and resolves on respondApproval (h
   await rm(baseDir, { recursive: true, force: true });
 });
 
+test('requestQuestion emits a question block and resolves on respondQuestion', async () => {
+  const baseDir = join(tmpdir(), `uxnan-am-q-${randomUUID()}`);
+  const store = new ThreadStore(new DaemonState(baseDir));
+  const blocks: { content: { type?: string; questionId?: string } }[] = [];
+  const manager = new AgentManager({
+    store,
+    notify: (message) => {
+      const m = message as { method: string; params?: unknown };
+      if (m.method === StreamNotification.ContentBlock) {
+        blocks.push(m.params as { content: { type?: string; questionId?: string } });
+      }
+    },
+    now: () => 1000,
+    logger: createLogger('test', 'error'),
+    defaultAgent: 'echo',
+  });
+  manager.register(new EchoAgentAdapter());
+
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  await manager.sendTurn(thread.id, 'approval-demo'); // keeps a turn in-flight
+  await waitFor(() => blocks.length > 0);
+
+  const answersPromise = manager.requestQuestion(thread.id, [
+    {
+      question: 'Which language?',
+      header: 'Language',
+      options: [{ label: 'Python' }, { label: 'JS' }],
+    },
+  ]);
+  await waitFor(() => blocks.some((b) => b.content.type === 'question'));
+  const qBlock = blocks.find((b) => b.content.type === 'question')!;
+  const questionId = qBlock.content.questionId!;
+  assert.ok(questionId.length > 0);
+
+  await manager.respondQuestion(thread.id, questionId, [['Python']]);
+  assert.deepEqual(await answersPromise, [['Python']]);
+
+  await rm(baseDir, { recursive: true, force: true });
+});
+
 test('requestApproval resolves deny on rejection', async () => {
   const baseDir = join(tmpdir(), `uxnan-am-hook2-${randomUUID()}`);
   const store = new ThreadStore(new DaemonState(baseDir));
@@ -399,5 +477,59 @@ test('sendTurn for an unregistered agent rejects with AgentNotRunning', async ()
   });
   const thread = await store.startThread({ projectId: 'p' }, 1);
   await assert.rejects(manager.sendTurn(thread.id, 'hi'));
+  await rm(baseDir, { recursive: true, force: true });
+});
+
+/**
+ * Records every cancelTurn it receives, so a test can assert the manager routed
+ * a cancel to the RIGHT adapter. `agentId` is a constructor param so one class
+ * can stand in for both the default and a non-default agent.
+ */
+class SpyAdapter extends BaseAgentAdapter {
+  readonly capabilities = CONTROLLED_CAPS;
+  readonly canceled: { threadId: string; turnId: string }[] = [];
+  constructor(readonly agentId: AgentId) {
+    super();
+  }
+  start(): Promise<void> {
+    return Promise.resolve();
+  }
+  stop(): Promise<void> {
+    return Promise.resolve();
+  }
+  sendTurn(options: SendTurnOptions): Promise<void> {
+    this.emit({ type: 'turn_started', threadId: options.threadId, turnId: options.turnId });
+    return Promise.resolve();
+  }
+  cancelTurn(threadId: string, turnId: string): Promise<void> {
+    this.canceled.push({ threadId, turnId });
+    return Promise.resolve();
+  }
+}
+
+test('cancelTurn routes to the THREAD’s agent, not the default (global stop-turn bug)', async () => {
+  const baseDir = join(tmpdir(), `uxnan-am-cancel-${randomUUID()}`);
+  const store = new ThreadStore(new DaemonState(baseDir));
+  const manager = new AgentManager({
+    store,
+    notify: () => {},
+    now: () => 1,
+    logger: createLogger('test', 'error'),
+    defaultAgent: 'echo',
+  });
+  const def = new SpyAdapter('echo');
+  const other = new SpyAdapter('zero');
+  manager.register(def);
+  manager.register(other);
+
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  // Turn runs on the NON-default agent — mirrors turn/send passing runtime.agentId.
+  const { turnId } = await manager.sendTurn(thread.id, 'hi', { agentId: 'zero' });
+
+  // turn/cancel does NOT pass agentId; the manager must resolve the thread's own.
+  await manager.cancelTurn(thread.id, turnId);
+
+  assert.deepEqual(other.canceled, [{ threadId: thread.id, turnId }]);
+  assert.deepEqual(def.canceled, []);
   await rm(baseDir, { recursive: true, force: true });
 });
