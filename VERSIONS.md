@@ -99,6 +99,7 @@ release onward the workflow keeps `latest` current automatically.
 
 | Date (YYYY-MM-DD) | shared | bridge | relay | desktop | mobile |
 | ----------------- | ------ | ------ | ----- | ------- | ------ |
+| 2026-07-11 | 0.0.5-alpha.20260711 | 0.0.5-alpha.20260711 | — | 0.0.9-alpha.20260711 | 0.0.5-alpha.20260711+20260711 | <!-- shared/bridge: interactive ACP question/approval workflows plus Zero and Grok; desktop: file workspace, smart sidebar, agent views and provider usage; mobile: Zero/Grok, question cards and clearer turn errors (PRs #56-#58) -->
 | 2026-07-05 | — | — | — | 0.0.8-alpha.20260705 | — | <!-- desktop: tooltip system, project cards/icons/tabs, batch theme import, bulk add projects, worktree gating (PRs #47-#52) -->
 | 2026-07-05 | — | — | — | 0.0.7-alpha.20260705 | — | <!-- desktop: update toast redesign with elevated card + release notes link (PR #53) -->
 | 2026-07-04 | — | — | — | 0.0.6-alpha.20260704 | — | <!-- desktop: browser MCP server for agents (PR #50) -->
