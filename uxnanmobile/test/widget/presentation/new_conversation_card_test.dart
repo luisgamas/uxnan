@@ -41,6 +41,16 @@ Widget _wrap({required bool requiresLogin}) {
   );
 }
 
+/// The redesigned agent selector is a combobox that starts unselected: open the
+/// searchable [AgentPickerSheet] (tap the "Select an agent" field) and pick
+/// Codex, so its capability chips + sign-in status render inline below.
+Future<void> _selectCodex(WidgetTester tester) async {
+  await tester.tap(find.text('Select an agent'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Codex'));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   testWidgets('a not-signed-in agent shows the Check sign-in action', (
     tester,
@@ -52,6 +62,7 @@ void main() {
 
     await tester.pumpWidget(_wrap(requiresLogin: true));
     await tester.pumpAndSettle();
+    await _selectCodex(tester);
 
     expect(find.text('Codex'), findsOneWidget);
     // The warning text is replaced by an actionable re-check button.
@@ -68,6 +79,7 @@ void main() {
 
     await tester.pumpWidget(_wrap(requiresLogin: false));
     await tester.pumpAndSettle();
+    await _selectCodex(tester);
 
     expect(find.text('Codex'), findsOneWidget);
     expect(find.text('Check sign-in'), findsNothing);
