@@ -12,6 +12,8 @@ export type AgentId =
   | 'pi-agent'
   /** Zero — open-source Go coding agent, driven over the Agent Client Protocol. */
   | 'zero'
+  /** Grok — xAI's coding CLI, driven over the Agent Client Protocol (`grok agent stdio`). */
+  | 'grok'
   /** Built-in reference/dev agent that echoes the prompt (no external CLI). */
   | 'echo';
 

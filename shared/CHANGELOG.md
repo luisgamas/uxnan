@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — `grok` in the `AgentId` union
+- **`AgentId`** (`src/agents/agent-capabilities.ts`) gains **`'grok'`** — xAI's
+  coding CLI, driven by the bridge over the Agent Client Protocol (`grok agent
+  stdio`). Additive change; no other contract shape changes (the per-agent config,
+  capabilities, model and auth contracts are already keyed generically by
+  `AgentId`). Consumers that don't recognize the id degrade gracefully (the mobile
+  app maps unknown wire ids to `custom`).
+
 ## [0.0.4-alpha.20260703] - 2026-07-03
 
 ### Changed — npm releases publish to the `latest` dist-tag
