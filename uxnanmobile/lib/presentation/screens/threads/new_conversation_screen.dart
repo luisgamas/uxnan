@@ -608,8 +608,8 @@ class _AgentDetail extends ConsumerWidget {
         if (!agent.available)
           Text(
             l10n.newThreadAgentUnavailable,
-            style: textTheme.bodySmall
-                ?.copyWith(color: UxnanColors.disconnected),
+            style:
+                textTheme.bodySmall?.copyWith(color: UxnanColors.disconnected),
           )
         else if (requiresLogin)
           Padding(
@@ -643,8 +643,7 @@ List<(IconData, String)> _agentCapabilities(
   return [
     if (c.streaming) (Icons.bolt_outlined, l10n.newThreadCapStreaming),
     if (c.planMode) (Icons.checklist_rtl_outlined, l10n.newThreadCapPlan),
-    if (c.approvals)
-      (Icons.verified_user_outlined, l10n.newThreadCapApprovals),
+    if (c.approvals) (Icons.verified_user_outlined, l10n.newThreadCapApprovals),
     if (c.autonomous)
       (Icons.auto_awesome_outlined, l10n.newThreadCapAutonomous),
     if (c.forking) (Icons.call_split_rounded, l10n.newThreadCapForking),
