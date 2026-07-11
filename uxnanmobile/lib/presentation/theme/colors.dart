@@ -147,6 +147,9 @@ class UxnanColors {
   /// Brand color for the Zero agent (teal).
   static const Color zeroAgent = Color(0xFF14B8A6);
 
+  /// Brand color for the Grok agent (xAI slate; monochrome brand).
+  static const Color grokAgent = Color(0xFF64748B);
+
   /// Returns the surface text color for [brightness].
   static Color onSurfaceFor(Brightness brightness) {
     return brightness == Brightness.dark ? onSurface : lightOnSurface;

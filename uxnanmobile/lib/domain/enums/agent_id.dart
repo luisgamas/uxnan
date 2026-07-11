@@ -22,6 +22,9 @@ enum AgentId {
   /// Zero — open-source Go coding agent (driven over the ACP).
   zero,
 
+  /// Grok — xAI's coding CLI (driven over the ACP).
+  grok,
+
   /// A custom or future agent exposed through the extensible adapter interface.
   custom,
 }
@@ -43,6 +46,8 @@ extension AgentIdWire on AgentId {
         return 'pi-agent';
       case AgentId.zero:
         return 'zero';
+      case AgentId.grok:
+        return 'grok';
       case AgentId.custom:
         return 'custom';
     }
@@ -67,6 +72,8 @@ extension AgentIdParsing on AgentId {
         return AgentId.piAgent;
       case 'zero':
         return AgentId.zero;
+      case 'grok':
+        return AgentId.grok;
       default:
         return AgentId.custom;
     }

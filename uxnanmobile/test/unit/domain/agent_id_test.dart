@@ -15,6 +15,11 @@ void main() {
       expect(AgentIdParsing.fromWireId('pi-agent'), AgentId.piAgent);
     });
 
+    test('grok round-trips through its wire id', () {
+      expect(AgentId.grok.wireId, 'grok');
+      expect(AgentIdParsing.fromWireId('grok'), AgentId.grok);
+    });
+
     test('unknown wire ids degrade to custom', () {
       expect(AgentIdParsing.fromWireId('some-future-agent'), AgentId.custom);
     });

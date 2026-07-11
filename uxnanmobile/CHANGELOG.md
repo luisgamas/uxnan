@@ -6,6 +6,19 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — Grok agent support
+- **Grok** (xAI's coding CLI) is now a selectable agent. New `AgentId.grok` (wire
+  id `grok`) in `agent_id.dart`, with its logo, `'Grok'` label and accent color
+  wired in `AgentVisuals` (`grok.svg` asset + `UxnanColors.grokAgent`). The agent
+  picker, conversation header and capability-gated controls pick it up
+  automatically from the bridge's `agent/list` (name, availability, capabilities)
+  and `agent/models` (models, context window, reasoning-effort knob).
+- No block-rendering change was needed: Grok's tools stream as the same canonical
+  content blocks as every other agent (plan → PlanCard, diffs → DiffBlock, shell →
+  CommandCard, approvals → the interactive approval card), because the renderer is
+  purely block-`type`-driven and the bridge normalizes each agent's own tool names
+  to those shared blocks.
+
 ### Added — interactive multiple-choice question card
 
 - The agent can now ask the user structured questions mid-turn via a new
