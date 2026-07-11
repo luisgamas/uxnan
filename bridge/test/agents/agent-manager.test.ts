@@ -50,6 +50,9 @@ class ControlledAdapter extends BaseAgentAdapter {
   complete(threadId: string, turnId: string, text: string): void {
     this.emit({ type: 'turn_completed', threadId, turnId, data: { text } });
   }
+  error(threadId: string, turnId: string, text: string): void {
+    this.emit({ type: 'turn_error', threadId, turnId, data: { text } });
+  }
 }
 
 // FOR-DEV: this whole suite drives the echo agent over a real subprocess + an
@@ -109,6 +112,41 @@ test('sendTurn drives the echo agent: persists the reply and broadcasts stream e
   assert.ok(methods.includes(StreamNotification.TurnStarted));
   assert.ok(methods.includes(StreamNotification.MessageDelta));
   assert.ok(methods.includes(StreamNotification.TurnCompleted));
+  await rm(baseDir, { recursive: true, force: true });
+});
+
+baseTest('a failed turn persists an error content block into history', async () => {
+  const baseDir = join(tmpdir(), `uxnan-am-err-${randomUUID()}`);
+  const store = new ThreadStore(new DaemonState(baseDir));
+  const notifications: { method: string }[] = [];
+  const manager = new AgentManager({
+    store,
+    notify: (m) => notifications.push(m as { method: string }),
+    now: () => 1000,
+    logger: createLogger('test', 'error'),
+    defaultAgent: 'echo',
+  });
+  const adapter = new ControlledAdapter();
+  manager.register(adapter);
+
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  const { turnId } = await manager.sendTurn(thread.id, 'go');
+  adapter.error(thread.id, turnId, 'API error (status 402): usage balance exhausted');
+  await waitFor(async () => (await store.getTurn(turnId)).status === 'error');
+
+  // The failure reason is persisted as a system/error content block so a
+  // `turn/list` re-sync (after a restart) still shows why the turn failed.
+  const turn = await store.getTurn(turnId);
+  const assistant = turn.messages.find((m) => m.role === 'assistant');
+  const blocks = (assistant?.blocks ?? []) as { type?: string; kind?: string; text?: string }[];
+  const errBlock = blocks.find((b) => b.type === 'system' && b.kind === 'error');
+  assert.ok(errBlock, 'the failure reason is persisted as a system/error block');
+  assert.match(errBlock?.text ?? '', /usage balance exhausted/);
+  // NOT broadcast as a content block (the phone renders it live from the
+  // turn/error notification, so a content-block would double the banner).
+  assert.ok(!notifications.some((n) => n.method === StreamNotification.ContentBlock));
+  assert.ok(notifications.some((n) => n.method === StreamNotification.TurnError));
+
   await rm(baseDir, { recursive: true, force: true });
 });
 

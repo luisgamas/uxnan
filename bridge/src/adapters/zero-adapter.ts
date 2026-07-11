@@ -735,6 +735,19 @@ function str(value: unknown): string {
   return typeof value === 'string' ? value : '';
 }
 
+/**
+ * Best human-facing text for a failed ACP request. For an {@link RpcError} the
+ * generic JSON-RPC `message` is often unhelpful ("Internal error"); the real
+ * reason (an API/quota/auth error) is usually in the error's `data.message`, so we
+ * surface that when present. This is what the phone shows on the errored turn.
+ */
 function errorMessage(err: unknown): string {
+  if (err instanceof RpcError) {
+    const data = err.data;
+    if (isRecord(data) && typeof data['message'] === 'string' && data['message'].length > 0) {
+      return data['message'];
+    }
+    return err.message;
+  }
   return err instanceof Error ? err.message : String(err);
 }

@@ -825,6 +825,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get questionFailed => 'Couldn\'t send your answer — try again';
 
   @override
+  String get turnFailed => 'The agent turn failed';
+
+  @override
   String get runOptionAuto => 'Auto';
 
   @override

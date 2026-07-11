@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — turn errors are surfaced with the real reason and survive re-sync
+- **Real error detail (ACP adapters):** when an ACP turn fails (Grok / Zero), the
+  useful reason (e.g. a 402 `API error (status 402 Payment Required): … usage
+  balance exhausted`) lives in the JSON-RPC error's **`data.message`**; the
+  adapters were surfacing only the generic top-level `message` ("Internal error").
+  `errorMessage()` in `grok-adapter.ts` and `zero-adapter.ts` now prefers
+  `data.message` when present, so the `stream/turn/error` the phone renders tells
+  the user *why* the turn failed.
+- **Persisted for re-sync:** on `turn_error` the `AgentManager` now appends a
+  `system`/`error` content block (`errorBlock` in `content-blocks.ts`) to the
+  turn's history (via `store.appendBlock`), so a `turn/list` re-sync — e.g. after a
+  bridge restart — still shows the failure reason. It is **not** broadcast as a
+  `stream/content/block` (the phone renders the failure live from `turn/error`, so
+  notifying too would double the banner). Covered by new `grok-adapter` +
+  `agent-manager` tests.
+
 ### Added — Grok agent wired over the Agent Client Protocol (ACP)
 - **What:** **Grok** (xAI's coding CLI, `grok`) is now a real wired agent (AgentId
   `grok`, display name `Grok`) — the **seventh** alongside OpenCode, Claude Code,

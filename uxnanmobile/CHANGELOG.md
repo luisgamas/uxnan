@@ -19,6 +19,24 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   purely block-`type`-driven and the bridge normalizes each agent's own tool names
   to those shared blocks.
 
+### Fixed — failed agent turns now show the error in the conversation
+- A turn that ends in `stream/turn/error` (e.g. a quota / "usage balance
+  exhausted" error) now surfaces the bridge's error message as an inline red
+  error banner at the end of the turn, instead of the "responding…" cue silently
+  vanishing with no explanation. Three fixes along the path:
+  - **`IncomingMessageProcessor`** now reads the reason from the contract's
+    **nested `error.message`** (`TurnErrorParams: error: { code, message }`); it
+    was reading a non-existent top-level `message`, so `TurnErrorEvent.message`
+    was always `null`. A flat `message` is still tolerated for back-compat.
+  - **`ThreadManager._finishTurn`** carries the message through and appends a
+    `SystemContent(kind: error)` block to the failed assistant message (keeping any
+    thinking/text/work-log that streamed before the failure).
+  - **`_SystemBanner`** renders an empty error as a localized fallback
+    (`turnFailed`, EN/ES). Reuses the existing red error-banner widget — no new UI
+    component. Works both live and on re-sync: the bridge now persists the failure
+    reason as a `system`/`error` content block in history, so reopening a thread
+    (or a bridge restart) still shows the banner.
+
 ### Added — interactive multiple-choice question card
 
 - The agent can now ask the user structured questions mid-turn via a new

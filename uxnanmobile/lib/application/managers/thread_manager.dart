@@ -15,6 +15,7 @@ import 'package:uxnan/domain/enums/approval_decision.dart';
 import 'package:uxnan/domain/enums/approval_mode.dart';
 import 'package:uxnan/domain/enums/message_delivery_state.dart';
 import 'package:uxnan/domain/enums/message_role.dart';
+import 'package:uxnan/domain/enums/system_content_kind.dart';
 import 'package:uxnan/domain/enums/thread_activity.dart';
 import 'package:uxnan/domain/enums/thread_status.dart';
 import 'package:uxnan/domain/enums/thread_sync_state.dart';
@@ -1067,8 +1068,10 @@ class ThreadManager {
         unawaited(
           _finishTurn(threadId, turnId, failed: false, finalText: text),
         );
-      case TurnErrorEvent(:final turnId):
-        unawaited(_finishTurn(threadId, turnId, failed: true));
+      case TurnErrorEvent(:final turnId, :final message):
+        unawaited(
+          _finishTurn(threadId, turnId, failed: true, errorText: message),
+        );
       case TurnAbortedEvent(:final turnId):
         unawaited(_finishTurn(threadId, turnId, failed: false));
       case GitProgressEvent() || ModelResolvedEvent() || UnknownDomainEvent():
@@ -1104,6 +1107,7 @@ class ThreadManager {
     String turnId, {
     required bool failed,
     String? finalText,
+    String? errorText,
   }) async {
     final live = _live.remove(threadId);
     _setActivity(threadId, failed ? ThreadActivity.error : ThreadActivity.idle);
@@ -1115,18 +1119,33 @@ class ThreadManager {
     // [finalText] so the bubble is never empty/partial, keeping live blocks.
     final liveHasText =
         live.segments.any((c) => c is TextContent && c.text.isNotEmpty);
-    final contents = (!liveHasText && finalText != null && finalText.isNotEmpty)
-        ? _assistantContents(
-            finalText,
-            live.thinking,
-            live.segments.where((c) => c is! TextContent).toList(),
-            streaming: false,
-          )
-        : _assistantContentsOrdered(
-            live.thinking,
-            live.segments,
-            streaming: false,
-          );
+    final baseContents =
+        (!liveHasText && finalText != null && finalText.isNotEmpty)
+            ? _assistantContents(
+                finalText,
+                live.thinking,
+                live.segments.where((c) => c is! TextContent).toList(),
+                streaming: false,
+              )
+            : _assistantContentsOrdered(
+                live.thinking,
+                live.segments,
+                streaming: false,
+              );
+    // On a failed turn, surface the bridge's error text as an inline error
+    // banner so the user sees *why* the turn ended (e.g. a quota / "usage
+    // balance exhausted" error) instead of the "responding…" cue just
+    // vanishing. Empty text falls back to a localized label at render time
+    // (see `_SystemBanner`).
+    final contents = failed
+        ? [
+            ...baseContents,
+            SystemContent(
+              (errorText ?? '').trim(),
+              kind: SystemContentKind.error,
+            ),
+          ]
+        : baseContents;
     final finalized = Message(
       id: _streamId(turnId),
       threadId: threadId,

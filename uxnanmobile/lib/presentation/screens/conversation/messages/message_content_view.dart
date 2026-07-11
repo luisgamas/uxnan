@@ -1503,6 +1503,13 @@ class _SystemBanner extends StatelessWidget {
           colors.onSurfaceVariant
         ),
     };
+    // A failed turn may carry no error text from the bridge; show a localized
+    // fallback so the banner is never blank.
+    final text = content.text.isNotEmpty
+        ? content.text
+        : (content.kind == SystemContentKind.error
+            ? AppLocalizations.of(context).turnFailed
+            : content.text);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1510,7 +1517,7 @@ class _SystemBanner extends StatelessWidget {
         const SizedBox(width: UxnanSpacing.sm),
         Expanded(
           child: Text(
-            content.text,
+            text,
             style: textTheme.bodySmall?.copyWith(color: color),
           ),
         ),

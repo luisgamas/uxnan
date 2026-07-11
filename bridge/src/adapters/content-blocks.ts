@@ -255,6 +255,17 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/**
+ * A `system` content block of kind `error` — the reason a turn failed (e.g. a
+ * quota / "usage balance exhausted" error). Persisted to the turn's history on
+ * `turn_error` so the phone can render the failure inline (via its `SystemContent`
+ * error banner) both live and after a `turn/list` re-sync. Matches the Dart
+ * `SystemContent` wire shape (`{ type:'system', text, kind:'error' }`).
+ */
+export function errorBlock(text: string): Record<string, unknown> {
+  return { type: 'system', text: truncateOutput(text), kind: 'error' };
+}
+
 /** A generic `tool` block (a non-shell, non-edit tool call and its output). */
 export function toolBlock(
   toolName: string,

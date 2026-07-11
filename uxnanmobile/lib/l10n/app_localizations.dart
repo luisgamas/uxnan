@@ -1640,6 +1640,12 @@ abstract class AppLocalizations {
   /// **'Couldn\'t send your answer — try again'**
   String get questionFailed;
 
+  /// Fallback shown inline on a failed agent turn when the bridge sent no error text.
+  ///
+  /// In en, this message translates to:
+  /// **'The agent turn failed'**
+  String get turnFailed;
+
   /// Run-option value meaning 'leave the agent's default' (no explicit choice).
   ///
   /// In en, this message translates to:

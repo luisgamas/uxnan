@@ -278,6 +278,7 @@
   "questionSkip": "Omitir",
   "questionSkipped": "Omitida",
   "questionFailed": "No se pudo enviar tu respuesta; reintenta",
+  "turnFailed": "El turno del agente falló",
   "runOptionAuto": "Automático",
 
   "authRequiresLoginTitle": "Agente sin sesión iniciada",

@@ -98,12 +98,24 @@ void main() {
       expect(event.contextWindow, isNull);
     });
 
-    test('stream/turn/error carries the message', () {
+    test('stream/turn/error carries the message (flat, back-compat)', () {
       final event = processor.classify(
         note('stream/turn/error', {'turnId': 't1', 'message': 'boom'}),
       );
       expect(event, isA<TurnErrorEvent>());
       expect((event as TurnErrorEvent).message, 'boom');
+    });
+
+    test('stream/turn/error reads the nested error.message (contract shape)',
+        () {
+      final event = processor.classify(
+        note('stream/turn/error', {
+          'turnId': 't1',
+          'error': {'code': -32603, 'message': 'usage balance exhausted'},
+        }),
+      );
+      expect(event, isA<TurnErrorEvent>());
+      expect((event as TurnErrorEvent).message, 'usage balance exhausted');
     });
 
     test('stream/turn/aborted', () {

@@ -28,7 +28,7 @@ import { rm } from 'node:fs/promises';
 import type { ThreadStore } from '../conversation/thread-store.js';
 import type { Logger } from '../logger.js';
 import { materializeAttachments } from './attachments.js';
-import { approvalBlock, questionBlock } from '../adapters/content-blocks.js';
+import { approvalBlock, errorBlock, questionBlock } from '../adapters/content-blocks.js';
 import type { QuestionItem } from '@uxnan/shared';
 
 /** How long a tool approval waits for the user before defaulting to deny. */
@@ -588,6 +588,16 @@ export class AgentManager {
         }
         case 'turn_error': {
           const message = readOptionalText(event.data) ?? 'agent error';
+          // Persist the reason as an error content block in the turn's history so
+          // a `turn/list` re-sync (e.g. after a bridge restart) still shows *why*
+          // the turn failed. NOT broadcast as a `stream/content/block` — the phone
+          // renders the failure live from the `turn/error` notification below, so
+          // notifying here too would double the banner. Best-effort.
+          try {
+            await this.#options.store.appendBlock(threadId, turnId, errorBlock(message), now);
+          } catch {
+            /* best-effort persistence */
+          }
           await this.#options.store.failTurn(threadId, turnId, now);
           this.#options.notify(
             makeNotification(StreamNotification.TurnError, {

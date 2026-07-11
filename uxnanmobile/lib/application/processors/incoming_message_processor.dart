@@ -45,7 +45,11 @@ class IncomingMessageProcessor {
       'stream/turn/error' => TurnErrorEvent(
           turnId: turnId,
           threadId: threadId,
-          message: params['message'] as String?,
+          // The contract nests the reason under `error` (`TurnErrorParams`:
+          // `error: { code, message }`); tolerate a flat `message` too.
+          message: params['error'] is Map
+              ? (params['error'] as Map)['message'] as String?
+              : params['message'] as String?,
         ),
       'stream/turn/aborted' =>
         TurnAbortedEvent(turnId: turnId, threadId: threadId),
