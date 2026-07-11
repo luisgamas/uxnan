@@ -124,7 +124,7 @@ Esto es lo que hace posible el paralelismo real. Sin worktrees, multiples agente
 | Fase | Tema | Estado | Notas |
 |---|---|---|---|
 | **0** | Base infrastructure (3-panel shell, IPC, persistencia) | ✅ Hecho | Tauri 2 + SvelteKit SPA + persistencia atomica Serde + 5 rotating backups + sequential schema migrations |
-| **1** | Terminal core (PTY, tabs, splits) | ✅ Hecho | `portable-pty 0.9`, xterm.js + WebGL fallback, recursive `AreaNode` region layout, copy/paste, file-drop, layout persistence, kill-on-exit |
+| **1** | Terminal core (PTY, tabs, splits) | ✅ Hecho | `portable-pty 0.9`, xterm.js + Canvas renderer (DOM fallback), recursive `AreaNode` region layout, copy/paste, file-drop, layout persistence, kill-on-exit |
 | **2** | Git & worktrees | ✅ Hecho | Hierarchical Projects tree, create/list/safe-remove, in-app directory picker, per-worktree terminal workspaces, status badges, agents track (manual + auto-launch) |
 | **3** | Git status & diffs | ✅ Hecho | Live status watcher (3s, focus-paused), push/pull, CodeMirror 6 diff viewer (unified + side-by-side), hunk-level staging |
 | **4** | Agent monitoring | ✅ Hecho | Three layers: Layer 1 axum HTTP hook server (precise working/blocked/waiting/done, persistent cache TTL 7d) + Layer 2 terminal-title OSC inference + Layer 3 process-tree detection (`procscan` + `sysinfo`); colored status dots, unread/done badges, custom logos, per-worktree agent override |

@@ -4,7 +4,13 @@
   import { Button } from "$lib/components/ui/button";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import ProjectCard from "./ProjectCard.svelte";
+  import WorktreeRow from "./WorktreeRow.svelte";
   import KeyChord from "./KeyChord.svelte";
+  import { createStableOrder } from "$lib/state/sidebarOrder.svelte";
+  import { createDragReorder } from "$lib/state/dragReorder.svelte";
+  import { isStaticSortMode, type AttentionClass } from "$lib/sidebar-sort";
+  import type { SidebarGroupBy, SortMode } from "$lib/types";
+  import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
   import { divider, icon, iconButton, text } from "$lib/design";
   import { cn } from "$lib/utils";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
@@ -18,8 +24,16 @@
   import PlusIcon from "@lucide/svelte/icons/plus";
   import TerminalIcon from "@lucide/svelte/icons/terminal";
 
-  type Sort = "manual" | "name-asc" | "name-desc";
-  let sort = $state<Sort>("manual");
+  // The five sort modes offered for each axis (projects and worktrees). "manual"
+  // and the two "name" modes don't drift over time; "recent"/"attention" do (they
+  // read agent state), so the rendered order is frozen between settle windows.
+  const SORT_MODES: { value: SortMode; label: () => string }[] = [
+    { value: "manual", label: () => i18n.t("sidebar.sortManual") },
+    { value: "name-asc", label: () => i18n.t("sidebar.sortNameAsc") },
+    { value: "name-desc", label: () => i18n.t("sidebar.sortNameDesc") },
+    { value: "recent", label: () => i18n.t("sidebar.sortRecent") },
+    { value: "attention", label: () => i18n.t("sidebar.sortAttention") },
+  ];
 
   // Raw bindings (for the split keycaps via KeyChord) + their formatted strings
   // (for tooltips / presence guards) for the shortcut hints on the quick actions.
@@ -49,13 +63,37 @@
     }
   });
 
-  const sortedRepos = $derived.by(() => {
-    const repos = [...projects.filteredRepos];
-    if (sort === "name-asc") repos.sort((a, b) => a.name.localeCompare(b.name));
-    else if (sort === "name-desc")
-      repos.sort((a, b) => b.name.localeCompare(a.name));
-    return repos;
+  // The rendered project order — frozen against jumping for the drifting modes
+  // (recent/attention) — plus the pointer-drag reorder that feeds "manual".
+  const stableRepos = createStableOrder({
+    compute: () => projects.sortedRepos(),
+    keyOf: (r) => r.id,
+    immediate: () => isStaticSortMode(projects.projectSort),
   });
+  const cardDrag = createDragReorder({
+    keys: () => stableRepos.items.map((r) => r.id),
+    onCommit: (ids) => void projects.reorderProjects(ids),
+  });
+  const draggedRepo = $derived(
+    cardDrag.draggingKey
+      ? projects.filteredRepos.find((r) => r.id === cardDrag.draggingKey)
+      : null,
+  );
+
+  // "Group by status" view: the human label for each attention lane. The collapse
+  // state lives in the store (persisted across restarts).
+  function laneLabel(c: AttentionClass): string {
+    switch (c) {
+      case 1:
+        return i18n.t("sidebar.laneNeedsYou");
+      case 2:
+        return i18n.t("sidebar.laneDone");
+      case 3:
+        return i18n.t("sidebar.laneWorking");
+      default:
+        return i18n.t("sidebar.laneIdle");
+    }
+  }
 </script>
 
 <div class="scrollbar-sleek-parent flex h-full min-h-0 flex-col">
@@ -172,12 +210,34 @@
           </TooltipSimple>
         {/snippet}
       </DropdownMenu.Trigger>
-      <DropdownMenu.Content align="end" class="min-w-44">
-        <DropdownMenu.Label class={text.menuLabel}>{i18n.t("sidebar.sortBy")}</DropdownMenu.Label>
-        <DropdownMenu.RadioGroup bind:value={sort}>
-          <DropdownMenu.RadioItem class={text.menu} value="manual">{i18n.t("sidebar.sortManual")}</DropdownMenu.RadioItem>
-          <DropdownMenu.RadioItem class={text.menu} value="name-asc">{i18n.t("sidebar.sortNameAsc")}</DropdownMenu.RadioItem>
-          <DropdownMenu.RadioItem class={text.menu} value="name-desc">{i18n.t("sidebar.sortNameDesc")}</DropdownMenu.RadioItem>
+      <DropdownMenu.Content align="end" class="min-w-52">
+        <DropdownMenu.Label class={text.menuLabel}>{i18n.t("sidebar.view")}</DropdownMenu.Label>
+        <DropdownMenu.RadioGroup
+          value={projects.groupBy}
+          onValueChange={(v) => projects.setGroupBy(v as SidebarGroupBy)}
+        >
+          <DropdownMenu.RadioItem class={text.menu} value="none">{i18n.t("sidebar.viewTree")}</DropdownMenu.RadioItem>
+          <DropdownMenu.RadioItem class={text.menu} value="status">{i18n.t("sidebar.viewStatus")}</DropdownMenu.RadioItem>
+        </DropdownMenu.RadioGroup>
+        <DropdownMenu.Separator />
+        <DropdownMenu.Label class={text.menuLabel}>{i18n.t("sidebar.sortProjects")}</DropdownMenu.Label>
+        <DropdownMenu.RadioGroup
+          value={projects.projectSort}
+          onValueChange={(v) => projects.setProjectSort(v as SortMode)}
+        >
+          {#each SORT_MODES as m (m.value)}
+            <DropdownMenu.RadioItem class={text.menu} value={m.value}>{m.label()}</DropdownMenu.RadioItem>
+          {/each}
+        </DropdownMenu.RadioGroup>
+        <DropdownMenu.Separator />
+        <DropdownMenu.Label class={text.menuLabel}>{i18n.t("sidebar.sortWorktrees")}</DropdownMenu.Label>
+        <DropdownMenu.RadioGroup
+          value={projects.worktreeSort}
+          onValueChange={(v) => projects.setWorktreeSort(v as SortMode)}
+        >
+          {#each SORT_MODES as m (m.value)}
+            <DropdownMenu.RadioItem class={text.menu} value={m.value}>{m.label()}</DropdownMenu.RadioItem>
+          {/each}
         </DropdownMenu.RadioGroup>
       </DropdownMenu.Content>
     </DropdownMenu.Root>
@@ -214,10 +274,10 @@
     </DropdownMenu.Root>
   </header>
 
-  <!-- Project tree: each project is selectable (= its main worktree) and
-       expands to show its non-main worktrees as sub-rows. -->
+  <!-- Project rows: either the project → worktree tree, or (group by status) every
+       worktree flattened into attention lanes. -->
   <div class="scrollbar-sleek worktree-sidebar-scrollbar min-h-0 flex-1 overflow-y-auto px-2.5 pb-2.5 pt-1">
-    {#if sortedRepos.length === 0}
+    {#snippet emptyState()}
       <div class="flex flex-col items-center gap-2 px-2 py-6 text-center">
         <p class="text-xs text-muted-foreground">
           {projects.query ? i18n.t("sidebar.noMatch") : i18n.t("sidebar.empty")}
@@ -232,12 +292,60 @@
           </Button>
         {/if}
       </div>
+    {/snippet}
+
+    {#if projects.filteredRepos.length === 0}
+      {@render emptyState()}
+    {:else if projects.groupBy === "status"}
+      {@const lanes = projects.statusGroups()}
+      {#if lanes.length === 0}
+        {@render emptyState()}
+      {:else}
+        <div class="flex flex-col gap-3">
+          {#each lanes as lane (lane.attention)}
+            <div class="flex flex-col">
+              <!-- Lane header — collapsible; the attention label + a count. -->
+              <button
+                class="flex w-full items-center gap-1 rounded px-1 py-1 text-left transition-colors hover:bg-accent/40"
+                onclick={() => projects.toggleLane(lane.attention)}
+              >
+                <ChevronRightIcon
+                  class={cn("size-3 shrink-0 text-muted-foreground/70 transition-transform", !projects.isLaneCollapsed(lane.attention) && "rotate-90")}
+                />
+                <span class={cn("flex-1 truncate", text.section)}>{laneLabel(lane.attention)}</span>
+                <span class="text-xs tabular-nums text-muted-foreground/60">{lane.items.length}</span>
+              </button>
+              {#if !projects.isLaneCollapsed(lane.attention)}
+                <div class="flex flex-col">
+                  {#each lane.items as row (row.path)}
+                    <WorktreeRow {row} showRepo />
+                  {/each}
+                </div>
+              {/if}
+            </div>
+          {/each}
+        </div>
+      {/if}
     {:else}
       <div class="flex flex-col gap-2">
-        {#each sortedRepos as repo (repo.id)}
-          <ProjectCard {repo} />
+        {#each stableRepos.items as repo, i (repo.id)}
+          <ProjectCard {repo} index={i} drag={cardDrag} />
         {/each}
+        <!-- Insertion marker for a drop appended at the very end. -->
+        {#if cardDrag.isDropAt(stableRepos.items.length)}
+          <div class="mx-2 h-0.5 rounded-full bg-primary/70"></div>
+        {/if}
       </div>
     {/if}
   </div>
 </div>
+
+<!-- Floating label that follows the pointer while dragging a project card. -->
+{#if cardDrag.active && draggedRepo}
+  <div
+    class="pointer-events-none fixed z-50 max-w-48 truncate rounded-md border border-border bg-popover px-2 py-1 text-xs font-medium text-popover-foreground shadow-md"
+    style="left: {cardDrag.x + 12}px; top: {cardDrag.y + 8}px;"
+  >
+    {draggedRepo.name}
+  </div>
+{/if}

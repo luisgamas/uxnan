@@ -33,6 +33,8 @@ export const es: Record<MessageKey, string> = {
   "common.on": "Activadas",
   "common.off": "Desactivadas",
   "common.copyPath": "Copiar ruta",
+  "common.pin": "Fijar",
+  "common.unpin": "Quitar de fijados",
   "common.removing": "Eliminando…",
   "common.adding": "Agregando…",
   "common.creating": "Creando…",
@@ -79,9 +81,20 @@ export const es: Record<MessageKey, string> = {
   "sidebar.refresh": "Actualizar worktrees y estado",
   "sidebar.sort": "Ordenar",
   "sidebar.sortBy": "Ordenar por",
-  "sidebar.sortManual": "Predeterminado",
+  "sidebar.sortProjects": "Proyectos",
+  "sidebar.sortWorktrees": "Worktrees",
+  "sidebar.sortManual": "Manual",
   "sidebar.sortNameAsc": "Nombre (A–Z)",
   "sidebar.sortNameDesc": "Nombre (Z–A)",
+  "sidebar.sortRecent": "Recientes",
+  "sidebar.sortAttention": "Actividad del agente",
+  "sidebar.view": "Vista",
+  "sidebar.viewTree": "Árbol",
+  "sidebar.viewStatus": "Por estado",
+  "sidebar.laneNeedsYou": "Te necesita",
+  "sidebar.laneDone": "Terminó",
+  "sidebar.laneWorking": "Trabajando",
+  "sidebar.laneIdle": "Inactivo",
   "sidebar.noMatch": "Ningún proyecto coincide con tu búsqueda.",
   "sidebar.empty": "Aún no hay proyectos.",
   "sidebar.addRepo": "Agregar una carpeta",
@@ -208,6 +221,8 @@ export const es: Record<MessageKey, string> = {
   // Acciones de pestaña (renombrar / cerrar todas)
   "tab.rename": "Renombrar…",
   "tab.closeAll": "Cerrar todas las pestañas",
+  "tab.closeAllConfirmTitle": "¿Cerrar todas las pestañas?",
+  "tab.closeAllConfirmDesc": "Esto cerrará todas las pestañas abiertas en este espacio de trabajo.",
   "tab.renameTabTitle": "Renombrar pestaña",
   "tab.renameFileTitle": "Renombrar archivo",
   "tab.namePlaceholder": "Nombre de la pestaña",
@@ -218,6 +233,8 @@ export const es: Record<MessageKey, string> = {
   "tab.extRemoveWarning":
     "Estás quitando la extensión del archivo; esto puede cambiar cómo se trata el archivo.",
   "tab.renameError": "No se pudo renombrar el archivo.",
+  "tab.scrollLeft": "Desplazar pestañas a la izquierda",
+  "tab.scrollRight": "Desplazar pestañas a la derecha",
 
   // Directory picker
   "picker.title": "Agregar proyecto",
@@ -456,11 +473,39 @@ export const es: Record<MessageKey, string> = {
   "fileTree.refresh": "Actualizar árbol de archivos",
   "fileTree.empty": "Esta carpeta está vacía.",
   "fileTree.search": "Buscar archivos",
-  "fileTree.searchPlaceholder": "Filtrar archivos…",
   "fileTree.collapseAll": "Contraer todas las carpetas",
   "fileTree.expandAll": "Expandir todas las carpetas",
   "fileTree.reveal": "Abrir en el explorador de archivos",
   "fileTree.noMatch": "Ningún archivo coincide.",
+
+  // File-tree context menu + file operations
+  "fileTree.newFile": "Nuevo archivo",
+  "fileTree.newFolder": "Nueva carpeta",
+  "fileTree.copyRelativePath": "Copiar ruta relativa",
+  "fileTree.duplicate": "Duplicar",
+  "fileTree.addAsProject": "Añadir como proyecto…",
+  "fileTree.openInTerminal": "Abrir en terminal",
+  "fileTree.viewFile": "Ver archivo",
+  "fileTree.collapseFolder": "Contraer carpeta",
+  "fileTree.findInFolder": "Buscar en la carpeta",
+  "fileTree.delete": "Eliminar",
+  "fileTree.newFileTitle": "Nuevo archivo",
+  "fileTree.newFolderTitle": "Nueva carpeta",
+  "fileTree.renameTitle": "Renombrar",
+  "fileTree.namePlaceholder": "Nombre…",
+  "fileTree.invalidName": "Ese nombre no es válido.",
+  "fileTree.searchProjectPlaceholder": "Buscar archivos en el proyecto…",
+  "fileTree.searchInFolder": "Buscar en esta carpeta…",
+  "fileTree.clearScope": "Buscar en todo el proyecto",
+  "fileTree.searching": "Buscando…",
+  "fileTree.searchNoMatch": "Ningún archivo coincide con la búsqueda.",
+  "fileTree.searchTruncated": "Mostrando las primeras coincidencias; afina la búsqueda.",
+  "fileTree.moreActions": "Más acciones",
+  "fileTree.showHidden": "Mostrar archivos ocultos",
+  "fileTree.deleteTitle": "¿Mover a la papelera?",
+  "fileTree.deleteFileDesc": "«{name}» se moverá a la papelera; podrás restaurarlo desde ahí.",
+  "fileTree.deleteFolderDesc": "La carpeta «{name}» y todo su contenido se moverán a la papelera; podrás restaurarlo desde ahí.",
+  "fileTree.deleteConfirm": "Mover a la papelera",
 
   // Keyboard shortcuts
   "shortcuts.rebind": "Haz clic para grabar un nuevo atajo",
@@ -524,6 +569,19 @@ export const es: Record<MessageKey, string> = {
   "editor.discardClose": "Descartar y cerrar",
   "editor.saveAllClose": "Guardar todo y cerrar",
   "editor.discardAllClose": "Descartar todo y cerrar",
+
+  // Visor de archivos — cambio de vista, previsualización y cambios
+  "view.edit": "Editar",
+  "view.preview": "Vista previa",
+  "view.changes": "Cambios",
+  "preview.staged": "En stage",
+  "preview.unstaged": "Sin stage",
+  "preview.zoomIn": "Acercar",
+  "preview.zoomOut": "Alejar",
+  "preview.fit": "Ajustar a la vista",
+  "preview.actualSize": "Tamaño real",
+  "preview.markdownEmpty": "Nada que previsualizar.",
+  "changes.none": "No hay cambios que mostrar.",
 
   // Appearance — temas
   "appearance.import": "Importar",
@@ -637,6 +695,7 @@ export const es: Record<MessageKey, string> = {
   "monitor.detected": "Agente detectado",
   "monitor.unread": "El agente terminó — sin revisar",
   "agents.spaceLabel": "Agentes",
+  "agentView.interrupted": "Interrumpido",
   "settings.preventSleep": "Evitar suspensión al trabajar",
   "settings.preventSleepDesc":
     "Mantén el sistema despierto mientras un agente trabaja (se libera solo a las 2 h). El soporte de macOS/Linux está implementado pero sin probar.",
@@ -668,6 +727,7 @@ export const es: Record<MessageKey, string> = {
 
   // Terminal tab state
   "terminal.exited": "finalizada",
+  "terminal.spawnFailed": "No se pudo iniciar la terminal — revisa el perfil de shell.",
 
   // Settings — terminal section
   "settings.defaultProfile": "Perfil predeterminado",
@@ -691,6 +751,8 @@ export const es: Record<MessageKey, string> = {
   "settings.agentsDesc":
     "Agentes de CLI que puedes lanzar en cualquier worktree — cada uno corre en la terminal que elijas, dentro del checkout de ese worktree.",
   "settings.agentsAvailable": "Agentes disponibles",
+  "settings.agentsDetected": "Detectados",
+  "settings.agentsNotDetected": "No instalados",
   "settings.addAllInstalled": "Agregar los instalados",
   "settings.agentAdded": "agregado",
   "settings.agentNotFound": "no encontrado",

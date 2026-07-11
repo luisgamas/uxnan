@@ -36,6 +36,8 @@ export const en = {
   "common.on": "On",
   "common.off": "Off",
   "common.copyPath": "Copy path",
+  "common.pin": "Pin",
+  "common.unpin": "Unpin",
   "common.removing": "Removing…",
   "common.adding": "Adding…",
   "common.creating": "Creating…",
@@ -82,9 +84,20 @@ export const en = {
   "sidebar.refresh": "Refresh worktrees & status",
   "sidebar.sort": "Sort",
   "sidebar.sortBy": "Sort by",
-  "sidebar.sortManual": "Default",
+  "sidebar.sortProjects": "Projects",
+  "sidebar.sortWorktrees": "Worktrees",
+  "sidebar.sortManual": "Manual",
   "sidebar.sortNameAsc": "Name (A–Z)",
   "sidebar.sortNameDesc": "Name (Z–A)",
+  "sidebar.sortRecent": "Recent",
+  "sidebar.sortAttention": "Agent activity",
+  "sidebar.view": "View",
+  "sidebar.viewTree": "Tree",
+  "sidebar.viewStatus": "By status",
+  "sidebar.laneNeedsYou": "Needs you",
+  "sidebar.laneDone": "Done",
+  "sidebar.laneWorking": "Working",
+  "sidebar.laneIdle": "Idle",
   "sidebar.noMatch": "No projects match your search.",
   "sidebar.empty": "No projects yet.",
   "sidebar.addRepo": "Add a folder",
@@ -211,6 +224,8 @@ export const en = {
   // Tab actions (rename / close all)
   "tab.rename": "Rename…",
   "tab.closeAll": "Close all tabs",
+  "tab.closeAllConfirmTitle": "Close all tabs?",
+  "tab.closeAllConfirmDesc": "This closes every open tab in this workspace.",
   "tab.renameTabTitle": "Rename tab",
   "tab.renameFileTitle": "Rename file",
   "tab.namePlaceholder": "Tab name",
@@ -221,6 +236,8 @@ export const en = {
   "tab.extRemoveWarning":
     "You're removing the file extension — this can change how the file is treated.",
   "tab.renameError": "Couldn't rename the file.",
+  "tab.scrollLeft": "Scroll tabs left",
+  "tab.scrollRight": "Scroll tabs right",
 
   // Directory picker
   "picker.title": "Add project",
@@ -459,11 +476,39 @@ export const en = {
   "fileTree.refresh": "Refresh file tree",
   "fileTree.empty": "This folder is empty.",
   "fileTree.search": "Search files",
-  "fileTree.searchPlaceholder": "Filter files…",
   "fileTree.collapseAll": "Collapse all folders",
   "fileTree.expandAll": "Expand all folders",
   "fileTree.reveal": "Reveal in file manager",
   "fileTree.noMatch": "No files match.",
+
+  // File-tree context menu + file operations
+  "fileTree.newFile": "New file",
+  "fileTree.newFolder": "New folder",
+  "fileTree.copyRelativePath": "Copy relative path",
+  "fileTree.duplicate": "Duplicate",
+  "fileTree.addAsProject": "Add as project…",
+  "fileTree.openInTerminal": "Open in terminal",
+  "fileTree.viewFile": "View file",
+  "fileTree.collapseFolder": "Collapse folder",
+  "fileTree.findInFolder": "Find in folder",
+  "fileTree.delete": "Delete",
+  "fileTree.newFileTitle": "New file",
+  "fileTree.newFolderTitle": "New folder",
+  "fileTree.renameTitle": "Rename",
+  "fileTree.namePlaceholder": "Name…",
+  "fileTree.invalidName": "That name isn't valid.",
+  "fileTree.searchProjectPlaceholder": "Search files in project…",
+  "fileTree.searchInFolder": "Search in this folder…",
+  "fileTree.clearScope": "Search the whole project",
+  "fileTree.searching": "Searching…",
+  "fileTree.searchNoMatch": "No files match your search.",
+  "fileTree.searchTruncated": "Showing the first matches — narrow your search.",
+  "fileTree.moreActions": "More actions",
+  "fileTree.showHidden": "Show hidden files",
+  "fileTree.deleteTitle": "Move to trash?",
+  "fileTree.deleteFileDesc": "“{name}” will be moved to the trash — you can restore it from there.",
+  "fileTree.deleteFolderDesc": "The folder “{name}” and everything inside it will be moved to the trash — you can restore it from there.",
+  "fileTree.deleteConfirm": "Move to trash",
 
   // Keyboard shortcuts
   "shortcuts.rebind": "Click to record a new shortcut",
@@ -527,6 +572,19 @@ export const en = {
   "editor.discardClose": "Discard & close",
   "editor.saveAllClose": "Save all & close",
   "editor.discardAllClose": "Discard all & close",
+
+  // File viewer — view switch, preview & changes
+  "view.edit": "Edit",
+  "view.preview": "Preview",
+  "view.changes": "Changes",
+  "preview.staged": "Staged",
+  "preview.unstaged": "Unstaged",
+  "preview.zoomIn": "Zoom in",
+  "preview.zoomOut": "Zoom out",
+  "preview.fit": "Fit to view",
+  "preview.actualSize": "Actual size",
+  "preview.markdownEmpty": "Nothing to preview.",
+  "changes.none": "No changes to show.",
 
   // Appearance — themes
   "appearance.import": "Import",
@@ -640,6 +698,7 @@ export const en = {
   "monitor.detected": "Agent detected",
   "monitor.unread": "Agent finished — not yet reviewed",
   "agents.spaceLabel": "Agents",
+  "agentView.interrupted": "Interrupted",
   "settings.agentNotifications": "Idle notifications",
   "settings.agentNotificationsDesc":
     "Notify when an agent goes idle while you're looking at another space.",
@@ -671,6 +730,7 @@ export const en = {
 
   // Terminal tab state
   "terminal.exited": "exited",
+  "terminal.spawnFailed": "Failed to start the terminal — check the shell profile.",
 
   // Settings — terminal section
   "settings.defaultProfile": "Default profile",
@@ -694,6 +754,8 @@ export const en = {
   "settings.agentsDesc":
     "CLI coding agents you can launch into any worktree — each runs inside its chosen terminal in that worktree's checkout.",
   "settings.agentsAvailable": "Available agents",
+  "settings.agentsDetected": "Detected",
+  "settings.agentsNotDetected": "Not installed",
   "settings.addAllInstalled": "Add all installed",
   "settings.agentAdded": "added",
   "settings.agentNotFound": "not found",

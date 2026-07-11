@@ -348,6 +348,7 @@ pub async fn repo_add(state: State<'_, AppState>, path: String) -> Result<RepoDa
         is_git,
         icon: None,
         branch_icons: std::collections::HashMap::new(),
+        worktree_order: Vec::new(),
     };
     data.repos.push(repo.clone());
     state.persistence.save(&data).map_err(CommandError::from)?;
@@ -415,6 +416,56 @@ pub async fn repo_set_branch_icon(
             repo.branch_icons.remove(&branch);
         }
     }
+    let updated = repo.clone();
+    state.persistence.save(&data).map_err(CommandError::from)?;
+    Ok(updated)
+}
+
+/// Reorder the registered projects to match the user's manual arrangement in the
+/// sidebar. `ordered_ids` is the desired front-to-back order; any registered repo
+/// not named in it keeps its relative order *after* the listed ones (so a stale
+/// list from a concurrent add/remove never drops a project). Unknown ids are
+/// ignored. Persists the new `repos` order, which is itself the manual order.
+#[tauri::command]
+pub async fn repo_reorder(
+    state: State<'_, AppState>,
+    ordered_ids: Vec<String>,
+) -> Result<(), CommandError> {
+    let mut data = state.data.write().await;
+    reorder_by_ids(&mut data.repos, &ordered_ids, |r| r.id.as_str());
+    state.persistence.save(&data).map_err(CommandError::from)
+}
+
+/// Reorder `items` in place to match `ordered_ids` (front-to-back). Any item whose
+/// key is absent from `ordered_ids` keeps its position *after* the listed ones, in
+/// its original relative order (the sort is stable). Unknown ids are ignored. This
+/// makes a stale order list from a concurrent add/remove safe: nothing is dropped.
+fn reorder_by_ids<T>(items: &mut [T], ordered_ids: &[String], key_of: impl Fn(&T) -> &str) {
+    let rank: std::collections::HashMap<&str, usize> = ordered_ids
+        .iter()
+        .enumerate()
+        .map(|(i, id)| (id.as_str(), i))
+        .collect();
+    items.sort_by_key(|it| rank.get(key_of(it)).copied().unwrap_or(usize::MAX));
+}
+
+/// Set a project's manual worktree order (child worktree paths, front-to-back).
+/// The primary worktree is always rendered first regardless, so it need not be
+/// included; unknown/removed paths are harmless (the frontend ignores them and
+/// self-heals). Returns the updated repo so the frontend can reconcile.
+#[tauri::command]
+pub async fn repo_set_worktree_order(
+    state: State<'_, AppState>,
+    id: String,
+    paths: Vec<String>,
+) -> Result<RepoData, CommandError> {
+    let mut data = state.data.write().await;
+    let repo = data
+        .repos
+        .iter_mut()
+        .find(|r| r.id == id)
+        .ok_or_else(|| CommandError::from(AppError::NotFound(format!("repo {id}"))))?;
+    repo.worktree_order = paths;
     let updated = repo.clone();
     state.persistence.save(&data).map_err(CommandError::from)?;
     Ok(updated)
@@ -599,6 +650,16 @@ pub async fn fs_read_file(path: String) -> Result<crate::fs::FileContent, Comman
         .map_err(CommandError::from)
 }
 
+/// Read a local image file as an inline `data:<mime>;base64,…` URL for the
+/// editor's image preview (multimodal file viewer). Refuses non-images and
+/// anything over the preview size cap (see [`crate::fs::read_data_url`]).
+#[tauri::command]
+pub async fn fs_read_data_url(path: String) -> Result<String, CommandError> {
+    crate::fs::read_data_url(&path)
+        .await
+        .map_err(CommandError::from)
+}
+
 /// Overwrite a file with the editor's content (atomic temp-write + rename).
 #[tauri::command]
 pub async fn fs_write_file(path: String, content: String) -> Result<(), CommandError> {
@@ -616,6 +677,74 @@ pub async fn fs_rename(path: String, new_name: String) -> Result<String, Command
     crate::fs::rename_path(&path, &new_name)
         .await
         .map_err(CommandError::from)
+}
+
+/// Create a new, empty file in `dir` (the file tree's "New File"). `name` must be
+/// a bare name that doesn't already exist (see [`crate::fs::create_file`]). Returns
+/// the new absolute, forward-slash path.
+#[tauri::command]
+pub async fn fs_create_file(dir: String, name: String) -> Result<String, CommandError> {
+    crate::fs::create_file(&dir, &name)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Create a new empty directory in `dir` (the file tree's "New Folder"). Same bare
+/// name / no-clobber guards as [`fs_create_file`]. Returns the new path.
+#[tauri::command]
+pub async fn fs_create_dir(dir: String, name: String) -> Result<String, CommandError> {
+    crate::fs::create_dir(&dir, &name)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Move a file or directory to the OS trash (the file tree's "Delete"). Recoverable
+/// by design; guarded against filesystem roots (see [`crate::fs::delete_to_trash`]).
+#[tauri::command]
+pub async fn fs_delete(path: String) -> Result<(), CommandError> {
+    crate::fs::delete_to_trash(&path)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Duplicate a single file next to itself under a unique "… copy" name (the file
+/// tree's "Duplicate"). Directories are refused. Returns the new path.
+#[tauri::command]
+pub async fn fs_duplicate(path: String) -> Result<String, CommandError> {
+    crate::fs::duplicate_file(&path)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// The current conversation of the **Zero** agent running in `cwd` (worktree
+/// path): its session title + a coarse status, read from Zero's on-disk session
+/// metadata (see [`crate::zero::session_for`]). `None` when no matching session
+/// exists. Never errors — a missing/unreadable store just yields `None`.
+#[tauri::command]
+pub async fn zero_session(cwd: String) -> Result<Option<crate::zero::ZeroSession>, CommandError> {
+    Ok(
+        tokio::task::spawn_blocking(move || crate::zero::session_for(&cwd))
+            .await
+            .unwrap_or(None),
+    )
+}
+
+/// Project-wide filename search for the file tree: recursively find files under
+/// `root` whose relative path matches every token of `query` (see
+/// [`crate::fs::search_files`]). `include_hidden` surfaces dotfiles; `limit` caps
+/// the results. Runs the blocking walk on the blocking pool.
+#[tauri::command]
+pub async fn fs_search_files(
+    root: String,
+    query: String,
+    include_hidden: bool,
+    limit: usize,
+) -> Result<crate::fs::FileSearch, CommandError> {
+    tokio::task::spawn_blocking(move || {
+        crate::fs::search_files(&root, &query, include_hidden, limit)
+    })
+    .await
+    .map_err(|e| CommandError::new("SEARCH_FAILED", e.to_string()))
 }
 
 /// Largest remote image the icon fetcher will inline (5 MiB). Icons are tiny;
@@ -677,28 +806,10 @@ pub async fn image_fetch_data_url(url: String) -> Result<String, CommandError> {
     // Prefer the server's content-type; else sniff from magic bytes. Refuse
     // anything that isn't a recognizable image so we never inline HTML/JSON.
     let mime = mime
-        .or_else(|| sniff_image_mime(&bytes).map(str::to_string))
+        .or_else(|| crate::fs::sniff_image_mime(&bytes).map(str::to_string))
         .ok_or_else(|| CommandError::new("IMAGE_FETCH_FAILED", "the URL is not an image"))?;
 
     Ok(format!("data:{mime};base64,{}", BASE64.encode(&bytes)))
-}
-
-/// Best-effort image type detection from the leading magic bytes, for responses
-/// that omit a usable `Content-Type`.
-fn sniff_image_mime(bytes: &[u8]) -> Option<&'static str> {
-    if bytes.starts_with(&[0x89, b'P', b'N', b'G']) {
-        Some("image/png")
-    } else if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
-        Some("image/jpeg")
-    } else if bytes.starts_with(b"GIF8") {
-        Some("image/gif")
-    } else if bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(b"WEBP") {
-        Some("image/webp")
-    } else if bytes.starts_with(b"<svg") || bytes.starts_with(b"<?xml") {
-        Some("image/svg+xml")
-    } else {
-        None
-    }
 }
 
 /// Set (or clear with `None`) the worktree root the filesystem watcher follows.
@@ -1190,4 +1301,58 @@ pub async fn get_hook_scripts(
         wrapper_cmd: agent_hooks::WRAPPER_CMD.to_string(),
         wrapper_fish: agent_hooks::WRAPPER_FISH.to_string(),
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::reorder_by_ids;
+
+    /// A minimal keyed item, so `reorder_by_ids` is exercised without building a
+    /// full `RepoData`.
+    #[derive(Debug)]
+    struct Item {
+        id: &'static str,
+    }
+
+    fn ids(items: &[Item]) -> Vec<&'static str> {
+        items.iter().map(|i| i.id).collect()
+    }
+
+    #[test]
+    fn reorder_applies_requested_order() {
+        let mut items = vec![Item { id: "a" }, Item { id: "b" }, Item { id: "c" }];
+        reorder_by_ids(&mut items, &["c".into(), "a".into(), "b".into()], |i| i.id);
+        assert_eq!(ids(&items), vec!["c", "a", "b"]);
+    }
+
+    #[test]
+    fn reorder_keeps_unlisted_items_after_in_original_order() {
+        // Only "c" and "a" are listed; "b" and "d" are unlisted and must stay after
+        // the listed ones in their original relative order (stable sort).
+        let mut items = vec![
+            Item { id: "a" },
+            Item { id: "b" },
+            Item { id: "c" },
+            Item { id: "d" },
+        ];
+        reorder_by_ids(&mut items, &["c".into(), "a".into()], |i| i.id);
+        assert_eq!(ids(&items), vec!["c", "a", "b", "d"]);
+    }
+
+    #[test]
+    fn reorder_ignores_unknown_ids() {
+        let mut items = vec![Item { id: "a" }, Item { id: "b" }];
+        // "zzz" isn't present and must be ignored; the known ids still reorder.
+        reorder_by_ids(&mut items, &["zzz".into(), "b".into(), "a".into()], |i| {
+            i.id
+        });
+        assert_eq!(ids(&items), vec!["b", "a"]);
+    }
+
+    #[test]
+    fn reorder_empty_order_is_noop() {
+        let mut items = vec![Item { id: "a" }, Item { id: "b" }];
+        reorder_by_ids(&mut items, &[], |i| i.id);
+        assert_eq!(ids(&items), vec!["a", "b"]);
+    }
 }

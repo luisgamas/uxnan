@@ -15,6 +15,7 @@ import type {
   FileChange,
   FileContent,
   FileNumstat,
+  FileSearch,
   FsEntry,
   HookInstall,
   HookScripts,
@@ -30,6 +31,7 @@ import type {
   UsageProvider,
   WorktreeEntry,
   WorktreeStatus,
+  ZeroSession,
 } from "./types";
 
 /** Load the full persisted application state (called once at boot). */
@@ -241,6 +243,23 @@ export function repoSetBranchIcon(
   return invoke<RepoData>("repo_set_branch_icon", { id: repoId, branch, icon });
 }
 
+/** Reorder the registered projects to the user's manual arrangement. `orderedIds`
+ *  is the desired front-to-back order; any repo omitted keeps its position after
+ *  the listed ones, so a stale list never drops a project. Persists the order. */
+export function repoReorder(orderedIds: string[]): Promise<void> {
+  return invoke("repo_reorder", { orderedIds });
+}
+
+/** Set a project's manual worktree order (child worktree paths, front-to-back).
+ *  The primary worktree is always shown first regardless. Returns the updated
+ *  repo so the caller can reconcile `app.repos`. */
+export function setWorktreeOrder(
+  repoId: string,
+  paths: string[],
+): Promise<RepoData> {
+  return invoke<RepoData>("repo_set_worktree_order", { id: repoId, paths });
+}
+
 /** Resolve a git project's `origin` remote to its hosting owner/avatar, for the
  *  "use the account avatar" icon option. Null when there's no parseable origin. */
 export function repoRemoteOwner(repoId: string): Promise<RemoteOwner | null> {
@@ -306,6 +325,12 @@ export function fsReadFile(path: string): Promise<FileContent> {
   return invoke<FileContent>("fs_read_file", { path });
 }
 
+/** Read a local image file as an inline `data:<mime>;base64,…` URL for the
+ *  editor's image preview. Rejects non-images and anything over the size cap. */
+export function fsReadDataUrl(path: string): Promise<string> {
+  return invoke<string>("fs_read_data_url", { path });
+}
+
 /** Overwrite a file with the editor's content (atomic on the backend). */
 export function fsWriteFile(path: string, content: string): Promise<void> {
   return invoke("fs_write_file", { path, content });
@@ -316,6 +341,51 @@ export function fsWriteFile(path: string, content: string): Promise<void> {
  *  traversal, and clobbering an existing sibling. */
 export function fsRename(path: string, newName: string): Promise<string> {
   return invoke<string>("fs_rename", { path, newName });
+}
+
+/** Create a new empty file `name` inside directory `dir` (file tree "New File").
+ *  `name` must be a bare name that doesn't already exist. Returns the new
+ *  absolute, forward-slash path. */
+export function fsCreateFile(dir: string, name: string): Promise<string> {
+  return invoke<string>("fs_create_file", { dir, name });
+}
+
+/** Create a new empty directory `name` inside `dir` (file tree "New Folder").
+ *  Same bare-name / no-clobber guards as {@link fsCreateFile}. */
+export function fsCreateDir(dir: string, name: string): Promise<string> {
+  return invoke<string>("fs_create_dir", { dir, name });
+}
+
+/** Move a file or directory to the OS trash (file tree "Delete") — recoverable,
+ *  not a permanent unlink. Refuses a filesystem root. */
+export function fsDelete(path: string): Promise<void> {
+  return invoke("fs_delete", { path });
+}
+
+/** Duplicate a single file next to itself under a unique "… copy" name (file tree
+ *  "Duplicate"). Directories are refused. Returns the new absolute path. */
+export function fsDuplicate(path: string): Promise<string> {
+  return invoke<string>("fs_duplicate", { path });
+}
+
+/** Project-wide filename search for the Files tab: recursively find files under
+ *  `root` whose relative path matches every whitespace token of `query`. Honors
+ *  `.gitignore` and skips `.git`; `includeHidden` surfaces dotfiles; `limit` caps
+ *  the results (`truncated` flags an over-cap walk). */
+export function fsSearchFiles(
+  root: string,
+  query: string,
+  includeHidden: boolean,
+  limit: number,
+): Promise<FileSearch> {
+  return invoke<FileSearch>("fs_search_files", { root, query, includeHidden, limit });
+}
+
+/** The current conversation (title + coarse status) of the Zero agent running in
+ *  `cwd` (a worktree path), read from Zero's on-disk session metadata. `null` when
+ *  no matching session exists. Powers the Zero row in the left-panel agent view. */
+export function zeroSession(cwd: string): Promise<ZeroSession | null> {
+  return invoke<ZeroSession | null>("zero_session", { cwd });
 }
 
 /** Download an image from an http(s) URL into an inline `data:` URL (fetched in

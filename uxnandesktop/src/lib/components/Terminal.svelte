@@ -19,11 +19,12 @@
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { Terminal } from "@xterm/xterm";
   import { FitAddon } from "@xterm/addon-fit";
-  import { WebglAddon } from "@xterm/addon-webgl";
+  import { CanvasAddon } from "@xterm/addon-canvas";
   import { LigaturesAddon } from "@xterm/addon-ligatures";
   import { WebLinksAddon } from "@xterm/addon-web-links";
   import "@xterm/xterm/css/xterm.css";
   import { openUrl } from "$lib/api";
+  import { i18n } from "$lib/i18n";
   import { clipboardRead, clipboardWrite } from "$lib/clipboard";
   import { terminals } from "$lib/state/terminals.svelte";
   import { agentMonitor } from "$lib/state/agentMonitor.svelte";
@@ -63,12 +64,20 @@
   let el: HTMLDivElement;
   let term: Terminal | undefined;
   let fit: FitAddon | undefined;
+  // Kept when the Canvas renderer is active so a resize/reveal can force a clean
+  // repaint (clearing the glyph atlas) and drop any stale frame.
+  let renderer: CanvasAddon | undefined;
   // Kitty/CSI-u keyboard protocol state for this terminal. Dormant until an app
   // running in the PTY negotiates it; see `keyboardProtocol.ts`.
   const kbd = new KeyboardProtocol();
   let unlisteners: UnlistenFn[] = [];
   let resizeObserver: ResizeObserver | undefined;
-  let fitTimer: ReturnType<typeof setTimeout> | undefined;
+  // Pending animation frames: the settled-grid fit loop, and the post-fit repaint.
+  let stableFitRaf: number | null = null;
+  let repaintRaf: number | null = null;
+  // Tracks display:none → shown transitions so a revealed pane repaints even when
+  // its grid size is unchanged (a hidden canvas can keep its pre-hide pixels).
+  let wasVisible = false;
   // Last size sent to the PTY — we only resize on a real change, so a redundant
   // resize doesn't fire SIGWINCH and make a full-screen agent TUI repaint/jump.
   let lastCols = 0;
@@ -85,21 +94,104 @@
   }
   const hasSelection = () => !!term?.getSelection();
 
-  // Re-fit (and resize the PTY) only when the pane is actually visible.
-  function fitToPane() {
-    if (!term || !fit || el.offsetParent === null) return;
+  // Minimum measured pane size we'll fit to. Below this (a transient near-zero
+  // measurement mid-layout, or a collapsed pane) the fit is skipped so the PTY is
+  // never pinned to a 2-column grid that a full-screen agent would reflow to.
+  const MIN_FIT_WIDTH_PX = 40;
+  const MIN_FIT_HEIGHT_PX = 24;
+
+  function hasVisibleGeometry(): boolean {
+    const r = el.getBoundingClientRect();
+    return r.width >= MIN_FIT_WIDTH_PX && r.height >= MIN_FIT_HEIGHT_PX;
+  }
+
+  function proposeDimensions(): { cols: number; rows: number } | null {
+    try {
+      return fit?.proposeDimensions() ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  // Force one clean repaint of the whole viewport on the next frame. When a pane
+  // is revealed from display:none, a canvas renderer can keep compositing its
+  // pre-hide pixels for cells it deems unchanged; clearing the glyph atlas and
+  // refreshing every row rebuilds the frame from the buffer. A cheap safety net —
+  // the Canvas renderer already repaints cleanly on a normal resize.
+  function forceRepaint() {
+    if (repaintRaf !== null) cancelAnimationFrame(repaintRaf);
+    repaintRaf = requestAnimationFrame(() => {
+      repaintRaf = null;
+      if (!term) return;
+      try {
+        renderer?.clearTextureAtlas();
+      } catch {
+        // Renderer swapped or disposed — the refresh below still repaints.
+      }
+      try {
+        term.refresh(0, Math.max(0, term.rows - 1));
+      } catch {
+        // Terminal may have been disposed; ignore.
+      }
+    });
+  }
+
+  // Fit the xterm grid to the pane, resize the PTY only on a real grid change,
+  // and repaint whenever the canvas dimensions actually changed.
+  function applyFit() {
+    if (!term || !fit || !hasVisibleGeometry()) return;
+    const beforeCols = term.cols;
+    const beforeRows = term.rows;
     try {
       fit.fit();
-      if (term.cols !== lastCols || term.rows !== lastRows) {
-        lastCols = term.cols;
-        lastRows = term.rows;
-        invoke("pty_resize", { id, cols: term.cols, rows: term.rows }).catch(
-          () => {},
-        );
-      }
     } catch {
       // Container not measurable yet; a later resize will retry.
+      return;
     }
+    if (term.cols !== lastCols || term.rows !== lastRows) {
+      lastCols = term.cols;
+      lastRows = term.rows;
+      invoke("pty_resize", { id, cols: term.cols, rows: term.rows }).catch(
+        () => {},
+      );
+    }
+    if (term.cols !== beforeCols || term.rows !== beforeRows) forceRepaint();
+  }
+
+  // Re-fit only once the proposed grid stops changing between animation frames.
+  // A divider drag or window resize fires many intermediate sizes; applying each
+  // one spams the PTY with SIGWINCH and briefly wobbles the scrollbar (a
+  // one-column anchor). Waiting for the proposed grid to repeat across two frames
+  // (capped at MAX_STABILITY_FRAMES) applies only the settled size. The
+  // ResizeObserver restarts this wait on every layout change.
+  const MAX_STABILITY_FRAMES = 8;
+  function fitToPane() {
+    if (stableFitRaf !== null) cancelAnimationFrame(stableFitRaf);
+    let frames = 0;
+    let previous: { cols: number; rows: number } | null = null;
+    const tick = () => {
+      stableFitRaf = null;
+      if (!term || !fit || !hasVisibleGeometry()) return;
+      const next = proposeDimensions();
+      if (!next) {
+        applyFit();
+        return;
+      }
+      // Proposed grid already matches the live terminal — nothing to do.
+      if (term.cols === next.cols && term.rows === next.rows) return;
+      // Same proposal two frames running — the layout has settled; apply it.
+      if (previous && previous.cols === next.cols && previous.rows === next.rows) {
+        applyFit();
+        return;
+      }
+      previous = next;
+      if (++frames >= MAX_STABILITY_FRAMES) {
+        applyFit();
+        return;
+      }
+      stableFitRaf = requestAnimationFrame(tick);
+    };
+    stableFitRaf = requestAnimationFrame(tick);
   }
 
   onMount(async () => {
@@ -121,7 +213,10 @@
     fit = new FitAddon();
     term.loadAddon(fit);
     term.open(el);
-    // Ligatures need the DOM renderer, so they're mutually exclusive with WebGL.
+    // Ligatures need the DOM renderer, so they're mutually exclusive with the
+    // Canvas renderer. Canvas is preferred over WebGL here: it repaints cleanly
+    // on resize (WebGL could leave a stale sliver of the previous frame stuck at
+    // the right edge on WebView2), and is plenty fast for agent TUIs.
     if (t.ligatures) {
       try {
         term.loadAddon(new LigaturesAddon());
@@ -130,9 +225,11 @@
       }
     } else {
       try {
-        term.loadAddon(new WebglAddon());
+        renderer = new CanvasAddon();
+        term.loadAddon(renderer);
       } catch {
-        // WebGL unavailable — xterm falls back to the DOM renderer.
+        // Canvas renderer unavailable — xterm falls back to the DOM renderer.
+        renderer = undefined;
       }
     }
 
@@ -315,15 +412,33 @@
     // *remount* onto a live session (e.g. the tab was dragged to another region,
     // which recreates its Svelte component). Default to true on failure (web
     // preview) so we don't chase a snapshot that can't exist.
-    const created = await invoke<boolean>("pty_create", {
-      id,
-      cwd,
-      shell,
-      args,
-      env,
-      cols: term.cols || 80,
-      rows: term.rows || 24,
-    }).catch(() => true);
+    let created = true;
+    let spawnFailed = false;
+    try {
+      created = await invoke<boolean>("pty_create", {
+        id,
+        cwd,
+        shell,
+        args,
+        env,
+        cols: term.cols || 80,
+        rows: term.rows || 24,
+      });
+    } catch (e) {
+      // Only a real backend rejection means the shell failed to spawn (a missing
+      // shell / bad profile). Surface it in the pane instead of a silent black
+      // screen, and don't type the agent command into a dead PTY. In a plain web
+      // preview there's no Tauri backend at all — keep `created = true` there.
+      if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
+        spawnFailed = true;
+        const msg =
+          e && typeof e === "object" && "message" in e
+            ? String((e as { message: unknown }).message)
+            : String(e);
+        term?.writeln(`\r\n\x1b[31m${i18n.t("terminal.spawnFailed")}\x1b[0m`);
+        term?.writeln(`\x1b[90m${msg}\x1b[0m`);
+      }
+    }
 
     // Remount: replay the backend's retained output so the fresh xterm shows the
     // scrollback it had before, instead of an empty screen until the next byte.
@@ -342,7 +457,7 @@
     // Agent launch: type the command into the freshly-started shell. Running it
     // inside the shell (rather than as the PTY process) lets PATH/PATHEXT shims
     // resolve (`codex.cmd`/`.ps1`), which spawning the bare command cannot.
-    if (runCommand && !launchedIds.has(id)) {
+    if (runCommand && !spawnFailed && !launchedIds.has(id)) {
       launchedIds.add(id);
       setTimeout(() => {
         invoke("pty_write", { id, data: `${runCommand}\r` }).catch(() => {});
@@ -353,11 +468,15 @@
       invoke("pty_write", { id, data }).catch(() => {});
     });
 
-    // Debounce refits: coalesce a burst of layout changes (divider drag, window
-    // resize) into one resize so the PTY isn't spammed with SIGWINCH.
+    // Coalesce a burst of layout changes (divider drag, window resize) into a
+    // single settled-grid fit, so the PTY isn't spammed with SIGWINCH and the
+    // scrollbar doesn't wobble mid-resize. A display:none → shown transition also
+    // forces a repaint, since a hidden canvas can keep compositing stale pixels.
     resizeObserver = new ResizeObserver(() => {
-      clearTimeout(fitTimer);
-      fitTimer = setTimeout(fitToPane, 100);
+      const visible = hasVisibleGeometry();
+      if (visible && !wasVisible) forceRepaint();
+      wasVisible = visible;
+      fitToPane();
     });
     resizeObserver.observe(el);
     term.focus();
@@ -403,16 +522,24 @@
     terminals.unregisterController(id);
     unlisteners.forEach((fn) => fn());
     resizeObserver?.disconnect();
-    clearTimeout(fitTimer);
+    if (stableFitRaf !== null) cancelAnimationFrame(stableFitRaf);
+    if (repaintRaf !== null) cancelAnimationFrame(repaintRaf);
     term?.dispose();
   });
 </script>
 
-<!-- p-2 gives the terminal content breathing room; the FitAddon subtracts this
-     padding so cols/rows still fit. The background matches the xterm theme so
-     the padding blends seamlessly. -->
+<!-- Inset the terminal a few px from the top and left edges for breathing room
+     while keeping the right and bottom edges flush with the pane: the width is
+     reduced by exactly the left margin (and the height by the top margin), so the
+     xterm viewport — and its scrollbar — sit hard against the right seam with no
+     wasted gutter. The FitAddon reserves the scrollbar's width as a column gutter,
+     so glyphs never slide under the scrollbar or the right panel. The background
+     matches the xterm theme so the inset blends seamlessly. -->
 <div
   bind:this={el}
-  class="h-full w-full p-2"
+  style:width="calc(100% - 4px)"
+  style:height="calc(100% - 4px)"
+  style:margin-top="4px"
+  style:margin-left="4px"
   style:background-color={termOpts.theme.background}
 ></div>

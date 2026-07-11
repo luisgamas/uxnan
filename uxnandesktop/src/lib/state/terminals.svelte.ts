@@ -14,6 +14,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { fsRename } from "$lib/api";
+import { isImagePath } from "$lib/diff";
 import type { FsChangedEvent, SavedTab, SavedTermNode, SavedTerminalLayout } from "$lib/types";
 import { i18n } from "$lib/i18n";
 import { saveDiscard } from "$lib/state/confirm.svelte";
@@ -33,7 +34,7 @@ interface BaseTab {
   title: string;
   /** A user-set tab label that overrides the derived title (from "Rename tab").
    *  For terminals it's persisted; for a file tab renaming instead renames the
-   *  file on disk, so this stays a label-only override for terminal/diff/commit. */
+   *  file on disk, so this stays a label-only override for terminal/commit. */
   customTitle?: string;
 }
 
@@ -65,24 +66,25 @@ export interface TerminalTab extends BaseTab {
   exited: boolean;
 }
 
-/** A file-editor tab. Its live state (content/dirty/diff) lives in the store's
- *  per-tab registry, keyed by `id` (see `fileState`). */
+/** Which view a file tab is showing. `edit` is the CodeMirror editor, `preview`
+ *  the rendered Markdown / image viewer, `changes` the file's working diff (with a
+ *  staged/unstaged toggle + hunk staging). The diff that used to be a *separate*
+ *  tab is now this `changes` mode of the one file tab — so a file never occupies
+ *  more than one tab. */
+export type FileView = "edit" | "preview" | "changes";
+
+/** A file tab. Its live state — the editor (`fileState`) and, lazily, the working
+ *  diff (`fileDiffState`) — lives in the store's per-tab registries, both keyed by
+ *  this tab's `id`, so closing the tab frees both. */
 export interface FileTab extends BaseTab {
   kind: "file";
   /** Absolute, forward-slash path of the open file. */
   path: string;
   /** Worktree root for git-relative ops + the change gutter (null = none). */
   worktree: string | null;
-}
-
-/** A diff-viewer tab. Its live state lives in the per-tab registry (`diffState`).
- *  Self-contained: carries its own `worktree` so it's independent of the right
- *  panel's active worktree. */
-export interface DiffTab extends BaseTab {
-  kind: "diff";
-  worktree: string;
-  /** Worktree-relative file path. */
-  file: string;
+  /** The active view (editor / preview / working diff). */
+  view: FileView;
+  /** In the `changes` view: staged (index-vs-HEAD) vs unstaged (worktree-vs-index). */
   staged: boolean;
 }
 
@@ -100,7 +102,7 @@ export interface CommitTab extends BaseTab {
   file?: string;
 }
 
-export type GroupTab = TerminalTab | FileTab | DiffTab | CommitTab;
+export type GroupTab = TerminalTab | FileTab | CommitTab;
 
 /** The label shown on a tab (strip + drag ghost): a user-set `customTitle` wins;
  *  otherwise a terminal shows its running agent's name (else its own title), and
@@ -109,6 +111,23 @@ export function tabDisplayTitle(t: GroupTab): string {
   if (t.customTitle) return t.customTitle;
   if (t.kind === "terminal") return t.agentName ?? t.title;
   return t.title;
+}
+
+/** The view a freshly-opened file lands on: an image opens in Preview, everything
+ *  else in the editor (Markdown too — source-first, with a Preview toggle). */
+function defaultFileView(path: string): FileView {
+  return isImagePath(path) ? "preview" : "edit";
+}
+
+/** Worktree-relative, forward-slash path of `absPath` under `worktree` (falls back
+ *  to the file name when it isn't under the root). Mirrors the editor's own
+ *  relativization so the diff view's keys line up with git status. */
+function relOf(absPath: string, worktree: string): string {
+  const base = worktree.replace(/\\/g, "/").replace(/\/+$/, "");
+  const abs = absPath.replace(/\\/g, "/");
+  if (abs === base) return abs.split("/").pop() ?? abs;
+  if (abs.startsWith(base + "/")) return abs.slice(base.length + 1);
+  return abs.split("/").pop() ?? abs;
 }
 
 /** A region: a tab strip over one-or-more terminals. */
@@ -293,31 +312,38 @@ export function computeAreaLayout(root: AreaNode): {
 
 // --- Persistence (structure only; fresh shells spawn on restore) ----------
 
-/** Drop **diff** and **commit** tabs from a cloned tree (both transient — never
- *  persisted) and collapse any region/split left empty, so serialization only
- *  ever sees terminal + file tabs in non-empty groups. Returns null when nothing
- *  remains. */
-function pruneDiffs(node: AreaNode): AreaNode | null {
+/** Drop **commit** tabs from a cloned tree (transient — never persisted) and
+ *  collapse any region/split left empty, so serialization only ever sees terminal
+ *  + file tabs in non-empty groups. (A file tab persists in whatever view it was
+ *  in, its diff being just one of its views.) Returns null when nothing remains. */
+function pruneTransient(node: AreaNode): AreaNode | null {
   if (node.kind === "group") {
-    const tabs = node.tabs.filter((t) => t.kind !== "diff" && t.kind !== "commit");
+    const tabs = node.tabs.filter((t) => t.kind !== "commit");
     if (tabs.length === 0) return null;
     const activeTabId = tabs.some((t) => t.id === node.activeTabId)
       ? node.activeTabId
       : tabs[tabs.length - 1].id;
     return { kind: "group", id: node.id, tabs, activeTabId };
   }
-  const a = pruneDiffs(node.a);
-  const b = pruneDiffs(node.b);
+  const a = pruneTransient(node.a);
+  const b = pruneTransient(node.b);
   if (!a) return b;
   if (!b) return a;
   return { ...node, a, b };
 }
 
-/** Serialize one tab to its persisted descriptor. Diff tabs are pruned before
- *  this runs (the diff arm is an unreachable safety net). */
+/** Serialize one tab to its persisted descriptor. Commit tabs are pruned before
+ *  this runs (the terminal fallback arm is then an unreachable safety net). */
 function serializeTab(t: GroupTab): SavedTab {
   if (t.kind === "file") {
-    return { kind: "file", title: t.title, path: t.path, worktree: t.worktree ?? undefined };
+    return {
+      kind: "file",
+      title: t.title,
+      path: t.path,
+      worktree: t.worktree ?? undefined,
+      view: t.view,
+      staged: t.staged,
+    };
   }
   if (t.kind === "terminal") {
     return {
@@ -333,7 +359,8 @@ function serializeTab(t: GroupTab): SavedTab {
 }
 
 /** Serialize one area tree to a structure-only snapshot (no PTY ids / live
- *  state). Run on a `pruneDiffs`'d tree so no diff tabs or empty groups appear. */
+ *  state). Run on a `pruneTransient`'d tree so no commit tabs or empty groups
+ *  appear. */
 export function serializeArea(node: AreaNode): SavedTermNode {
   if (node.kind === "group") {
     const activeTab = Math.max(
@@ -366,6 +393,8 @@ function buildTab(t: SavedTab): GroupTab {
       title: t.title,
       path: t.path,
       worktree: t.worktree ?? null,
+      view: t.view ?? "edit",
+      staged: t.staged ?? false,
     };
   }
   termCount += 1;
@@ -514,27 +543,30 @@ class TerminalStore {
   }
 
   /** Create the per-tab editor state for every restored `file` tab (the tree
-   *  carries only the path; the live content loads lazily). */
+   *  carries only the path; the live content loads lazily), and eagerly build the
+   *  diff sub-state for any tab restored into its Changes view. */
   private registerFileStates(): void {
     for (const key of Object.keys(this.workspaces)) {
       const tree = this.workspaces[key];
       if (!tree) continue;
       for (const tab of allTabs(tree)) {
-        if (tab.kind === "file" && !this.fileStates.has(tab.id)) {
+        if (tab.kind !== "file") continue;
+        if (!this.fileStates.has(tab.id)) {
           this.fileStates.set(tab.id, new FileEditorState(tab.path, tab.worktree));
         }
+        if (tab.view === "changes") this.ensureDiff(tab);
       }
     }
   }
 
   /** Snapshot of every non-empty workspace + the active key (for persistence).
-   *  Diff tabs are pruned (transient); empty regions are collapsed. */
+   *  Commit tabs are pruned (transient); empty regions are collapsed. */
   serialize(): SavedTerminalLayout {
     const workspaces: Record<string, SavedTermNode> = {};
     for (const key of Object.keys(this.workspaces)) {
       const tree = this.workspaces[key];
       if (!tree) continue;
-      const pruned = pruneDiffs(tree);
+      const pruned = pruneTransient(tree);
       if (pruned) workspaces[key] = serializeArea(pruned);
     }
     return { active: this.activeWorkspace, workspaces };
@@ -656,41 +688,71 @@ class TerminalStore {
       title: absPath.split("/").pop() ?? absPath,
       path: absPath,
       worktree,
+      view: defaultFileView(absPath),
+      staged: false,
     };
     this.fileStates.set(id, new FileEditorState(absPath, worktree));
     this.insertTab(tab, opts?.groupId);
     return id;
   }
 
-  /** Open a diff-viewer tab for `file` in `worktree` (or focus it if already
-   *  open). The diff carries its own worktree, independent of the right panel. */
-  openDiff(
+  /** Open (or focus) the file tab for a worktree-relative `file` and switch it to
+   *  its **Changes** view showing the `staged`/unstaged diff — the single entry
+   *  point the right-panel Changes list uses, so reviewing a diff and editing a
+   *  file share one tab instead of spawning a second. Works for a deleted file too
+   *  (the editor pane degrades to an error; Changes still shows the diff). */
+  openFileChanges(
     worktree: string,
     file: string,
     staged: boolean,
     opts?: { workspace?: string; groupId?: string },
   ): string {
-    const existing = this.findDiffTab(worktree, file, staged);
-    if (existing) {
-      this.revealTab(existing.workspace, existing.tab.id);
-      return existing.tab.id;
-    }
-    if (opts?.workspace !== undefined) this.setWorkspace(opts.workspace);
-    const id = crypto.randomUUID();
-    const tab: DiffTab = {
-      kind: "diff",
-      id,
-      title: file.split("/").pop() ?? file,
-      worktree,
-      file,
-      staged,
-    };
-    this.diffStates.set(
-      id,
-      new DiffViewerState(worktree, file, staged, () => void this.closeTabById(id)),
-    );
-    this.insertTab(tab, opts?.groupId);
+    const abs = `${worktree.replace(/\\/g, "/").replace(/\/+$/, "")}/${file}`;
+    const id = this.openFile(abs, worktree, opts);
+    const tab = this.findFileTabById(id);
+    if (tab) tab.staged = staged;
+    this.setFileView(id, "changes");
     return id;
+  }
+
+  /** Switch a file tab's view. Entering `changes` lazily builds its diff sub-state. */
+  setFileView(id: string, view: FileView): void {
+    const tab = this.findFileTabById(id);
+    if (!tab) return;
+    tab.view = view;
+    if (view === "changes") this.ensureDiff(tab);
+  }
+
+  /** Toggle a file tab's Changes view between staged and unstaged, reloading the
+   *  diff (building it first if the view hasn't been opened yet). */
+  setFileChangesStaged(id: string, staged: boolean): void {
+    const tab = this.findFileTabById(id);
+    if (!tab) return;
+    tab.staged = staged;
+    const st = this.diffStates.get(id);
+    if (st) st.setStaged(staged);
+    else this.ensureDiff(tab);
+  }
+
+  /** Build the working-diff sub-state for a file tab (once), keyed by the tab id so
+   *  the standard `disposeTab` frees it. No-op for a file outside any worktree. */
+  private ensureDiff(tab: FileTab): void {
+    const wt = tab.worktree;
+    if (!wt || this.diffStates.has(tab.id)) return;
+    const rel = this.fileStates.get(tab.id)?.rel || relOf(tab.path, wt);
+    this.diffStates.set(
+      tab.id,
+      new DiffViewerState(wt, rel, tab.staged, () => this.onDiffEmpty(tab.id)),
+    );
+  }
+
+  /** A file tab's diff went empty (its last hunk was staged/discarded). Unlike a
+   *  standalone diff tab, we must NOT close it — it may hold an editable,
+   *  possibly-dirty document. Fall back to the editor where that view exists; an
+   *  image tab just keeps its (now empty) Changes view. */
+  private onDiffEmpty(id: string): void {
+    const tab = this.findFileTabById(id);
+    if (tab && !isImagePath(tab.path)) tab.view = "edit";
   }
 
   /** Open a read-only commit-viewer tab for `hash` in `worktree` (or focus it if
@@ -727,8 +789,9 @@ class TerminalStore {
   fileState(id: string): FileEditorState | undefined {
     return this.fileStates.get(id);
   }
-  /** The live diff state for a diff tab (undefined for other kinds). */
-  diffState(id: string): DiffViewerState | undefined {
+  /** The live working-diff state for a file tab's Changes view (undefined until the
+   *  Changes view has been opened, or for a file outside a worktree). */
+  fileDiffState(id: string): DiffViewerState | undefined {
     return this.diffStates.get(id);
   }
   /** The live commit-viewer state for a commit tab (undefined for other kinds). */
@@ -751,14 +814,11 @@ class TerminalStore {
     }
     return undefined;
   }
-  private findDiffTab(
-    worktree: string,
-    file: string,
-    staged: boolean,
-  ): { tab: DiffTab; workspace: string } | undefined {
-    for (const { tab, workspace } of this.tabsWithWorkspace()) {
-      if (tab.kind === "diff" && tab.worktree === worktree && tab.file === file && tab.staged === staged)
-        return { tab, workspace };
+  /** The file tab with this id, wherever it lives (for the merged-tab view/staged
+   *  mutators). */
+  private findFileTabById(id: string): FileTab | undefined {
+    for (const { tab } of this.tabsWithWorkspace()) {
+      if (tab.kind === "file" && tab.id === id) return tab;
     }
     return undefined;
   }
@@ -782,9 +842,12 @@ class TerminalStore {
   isFileOpen(path: string): boolean {
     return this.findFileTab(path) !== undefined;
   }
-  /** Whether a diff is already open in some tab (for the changes-list mark). */
-  isDiffOpen(worktree: string, file: string, staged: boolean): boolean {
-    return this.findDiffTab(worktree, file, staged) !== undefined;
+  /** Whether a file's Changes view is the one currently showing this `staged` side
+   *  (for the right-panel changed-file "open" mark). */
+  isFileChangesOpen(worktree: string, file: string, staged: boolean): boolean {
+    const abs = `${worktree.replace(/\\/g, "/").replace(/\/+$/, "")}/${file}`;
+    const found = this.findFileTab(abs);
+    return found?.tab.view === "changes" && found.tab.staged === staged;
   }
   /** Whether a commit (optionally a specific file's slice) is already open in some
    *  tab (for the history-list open mark). */
@@ -910,11 +973,6 @@ class TerminalStore {
     if (!this.root) return;
     const group = findGroup(this.root, this.activeGroupId) ?? firstGroup(this.root);
     if (group) void this.closeTab(group.id, group.activeTabId);
-  }
-
-  /** Close a tab by id wherever it lives (used by a diff tab closing itself). */
-  closeTabById(tabId: string): Promise<void> {
-    return this.closeTabAnywhere(tabId);
   }
 
   /** Close a tab in whichever workspace holds it (even a hidden one): kill its
@@ -1162,9 +1220,77 @@ class TerminalStore {
     if (!target) throw new Error("file tab not found");
     const newPath = await fsRename(target.path, newName);
     await this.fileStates.get(tabId)?.repoint(newPath);
+    if (target.worktree) this.diffStates.get(tabId)?.repoint(relOf(newPath, target.worktree));
     target.path = newPath;
     target.title = newPath.split("/").pop() ?? newPath;
     return newPath;
+  }
+
+  /** Re-point any open file tabs affected by a rename/move on disk (the file
+   *  tree's Rename). Handles a file rename (`oldPath` is the tab's own path) and a
+   *  folder rename (a tab whose path sits under `oldPath + "/"`): the path prefix
+   *  is rewritten and the editor repointed, so unsaved edits and the change gutter
+   *  follow the file to its new location. */
+  async repathTabs(oldPath: string, newPath: string): Promise<void> {
+    const prefix = oldPath + "/";
+    for (const { tab } of this.tabsWithWorkspace()) {
+      if (tab.kind !== "file") continue;
+      let next: string | null = null;
+      if (tab.path === oldPath) next = newPath;
+      else if (tab.path.startsWith(prefix)) next = newPath + tab.path.slice(oldPath.length);
+      if (next === null) continue;
+      tab.path = next;
+      tab.title = next.split("/").pop() ?? next;
+      await this.fileStates.get(tab.id)?.repoint(next);
+      if (tab.worktree) this.diffStates.get(tab.id)?.repoint(relOf(next, tab.worktree));
+    }
+  }
+
+  /** Force-close any open file tabs at (or under) `path` — used when the file tree
+   *  deletes a file/folder. The bytes are already gone, so this skips the unsaved
+   *  changes prompt; each tab's state is disposed and an emptied region/workspace
+   *  is collapsed. */
+  closeTabsUnder(path: string): void {
+    const prefix = path + "/";
+    const ids: string[] = [];
+    for (const { tab } of this.tabsWithWorkspace()) {
+      if (tab.kind === "file" && (tab.path === path || tab.path.startsWith(prefix))) {
+        ids.push(tab.id);
+      }
+    }
+    for (const id of ids) this.forceRemoveTab(id);
+  }
+
+  /** Remove a file tab from wherever it lives with no save prompt or PTY (file
+   *  tabs have neither), disposing its state and collapsing an emptied
+   *  region/workspace. Mirrors the removal branch of `closeTabAnywhere`. */
+  private forceRemoveTab(tabId: string): void {
+    for (const key of Object.keys(this.workspaces)) {
+      const tree = this.workspaces[key];
+      if (!tree) continue;
+      const group = groupOfTab(tree, tabId);
+      if (!group) continue;
+      this.disposeTab(tabId);
+      if (group.tabs.length > 1) {
+        group.tabs = group.tabs.filter((t) => t.id !== tabId);
+        if (group.activeTabId === tabId) {
+          group.activeTabId = group.tabs[group.tabs.length - 1].id;
+        }
+      } else {
+        const newTree = removeGroup(tree, group.id);
+        this.workspaces = { ...this.workspaces, [key]: newTree };
+        if (newTree) {
+          const ag = this.activeGroups[key];
+          if (!ag || !findGroup(newTree, ag)) {
+            this.activeGroups = { ...this.activeGroups, [key]: firstGroup(newTree).id };
+          }
+        } else {
+          const { [key]: _drop, ...rest } = this.activeGroups;
+          this.activeGroups = rest;
+        }
+      }
+      return;
+    }
   }
 
   /** Close every tab in the active workspace (the "Close all tabs" tab action):

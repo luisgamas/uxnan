@@ -181,8 +181,6 @@
   });
 
   const isInstalled = (c: CatalogAgent) => installed?.has(c.command) ?? false;
-  const isConfigured = (c: CatalogAgent) =>
-    app.agentProfiles.some((a) => a.command === c.command);
 
   function addCatalogAgent(c: CatalogAgent) {
     app.settings.agentProfiles.push({
@@ -221,6 +219,46 @@
   const addableCount = $derived(
     AGENT_CATALOG.filter((c) => isInstalled(c) && !isConfigured(c)).length,
   );
+
+  // Single, deduplicated agents list (the original flat layout): detected
+  // catalog agents you can add come first, then your configured agents, then the
+  // rest of the catalog (not installed). Each group is alphabetical; configured
+  // agents appear exactly once, so the catalog never shows a duplicate "add"
+  // row for the same command. The match key is case/space-insensitive because
+  // profiles the user typed may differ in casing or surrounding spaces from the
+  // catalog `command`.
+  const profileKey = (command: string) =>
+    command.trim().toLowerCase().replace(/\s+/g, "");
+  const configuredByKey = $derived(
+    new Map(app.agentProfiles.map((a) => [profileKey(a.command), a] as const)),
+  );
+  const isConfigured = (c: CatalogAgent) =>
+    configuredByKey.has(profileKey(c.command));
+  const byName = (a: { name: string }, b: { name: string }) =>
+    a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+  type AgentRow =
+    | { kind: "catalog"; agent: CatalogAgent }
+    | { kind: "profile"; agent: (typeof app.agentProfiles)[number] };
+  const agentRows = $derived.by<AgentRow[]>(() => {
+    const detectedUnadded = AGENT_CATALOG.filter(
+      (c) => isInstalled(c) && !isConfigured(c),
+    ).sort(byName);
+    const configured = [...app.agentProfiles].sort((a, b) =>
+      (a.name.trim() || a.command).localeCompare(
+        b.name.trim() || b.command,
+        undefined,
+        { sensitivity: "base" },
+      ),
+    );
+    const notDetected = AGENT_CATALOG.filter(
+      (c) => !isInstalled(c) && !isConfigured(c),
+    ).sort(byName);
+    return [
+      ...detectedUnadded.map((c) => ({ kind: "catalog" as const, agent: c })),
+      ...configured.map((a) => ({ kind: "profile" as const, agent: a })),
+      ...notDetected.map((c) => ({ kind: "catalog" as const, agent: c })),
+    ];
+  });
 
   // --- Providers (usage statistics) -----------------------------------------
   // Which catalog providers are present on the machine (null = not checked yet).
@@ -868,9 +906,12 @@
               </div>
             </SettingsSection>
 
-            <!-- One agents list: configured agents first (each row expands to its
-                 command / args / shell / env config), then the remaining known
-                 agents to add — greyed when not found on PATH. -->
+            <!-- Single agents list (the original flat layout): detected catalog
+                 agents you can add first, then your configured agents (each row
+                 expands to its command / args / shell / env config), then the
+                 remainder of the catalog (greyed when not on PATH), each group
+                 alphabetical. Configured agents appear once, so the catalog never
+                 shows a duplicate "add" row for the same command. -->
             <div class="space-y-2">
               <div class="flex flex-wrap items-center justify-between gap-2 px-1">
                 <span class={text.section}>{i18n.t("settings.yourAgents")}</span>
@@ -891,32 +932,34 @@
                 <p class={cn("px-1", text.meta)}>{i18n.t("settings.detecting")}</p>
               {/if}
               <div class={cn("flex flex-col divide-y divide-border/60", panel.settingsBody)}>
-                {#each app.agentProfiles as agent (agent.id)}
-                  <AgentProfileEditor
-                    {agent}
-                    onchange={schedulePersist}
-                    onremove={() => removeAgent(agent.id)}
-                  />
-                {/each}
-                {#each AGENT_CATALOG.filter((c) => !isConfigured(c)) as c (c.id)}
-                  {@const inst = isInstalled(c)}
-                  <div class={cn("flex items-center gap-2.5 py-3", !inst && "opacity-55")}>
-                    <span class="flex size-7 shrink-0 items-center justify-center">
-                      <AgentLogo logo={c.logo} class="size-5" />
-                    </span>
-                    <div class="min-w-0 flex-1">
-                      <div class={cn("truncate font-medium text-foreground", text.body)}>{c.name}</div>
-                      <div class="truncate font-mono text-[11px] leading-4 text-muted-foreground">{c.command}</div>
+                {#each agentRows as row (row.kind === "profile" ? row.agent.id : row.agent.id)}
+                  {#if row.kind === "profile"}
+                    <AgentProfileEditor
+                      agent={row.agent}
+                      onchange={schedulePersist}
+                      onremove={() => removeAgent(row.agent.id)}
+                    />
+                  {:else}
+                    {@const c = row.agent}
+                    {@const inst = isInstalled(c)}
+                    <div class={cn("flex items-center gap-2.5 px-1 py-3", !inst && "opacity-55")}>
+                      <span class="flex size-7 shrink-0 items-center justify-center">
+                        <AgentLogo logo={c.logo} class="size-5" />
+                      </span>
+                      <div class="min-w-0 flex-1">
+                        <div class={cn("truncate font-medium text-foreground", text.body)}>{c.name}</div>
+                        <div class="truncate font-mono text-[11px] leading-4 text-muted-foreground">{c.command}</div>
+                      </div>
+                      {#if inst}
+                        <Button variant="ghost" size="sm" class="h-7 shrink-0 gap-1" onclick={() => addCatalogAgent(c)}>
+                          <PlusIcon class={icon.button} />
+                          {i18n.t("common.add")}
+                        </Button>
+                      {:else}
+                        <span class={cn("shrink-0", text.meta)}>{i18n.t("settings.agentNotFound")}</span>
+                      {/if}
                     </div>
-                    {#if inst}
-                      <Button variant="ghost" size="sm" class="h-7 shrink-0 gap-1" onclick={() => addCatalogAgent(c)}>
-                        <PlusIcon class={icon.button} />
-                        {i18n.t("common.add")}
-                      </Button>
-                    {:else}
-                      <span class={cn("shrink-0", text.meta)}>{i18n.t("settings.agentNotFound")}</span>
-                    {/if}
-                  </div>
+                  {/if}
                 {/each}
               </div>
             </div>

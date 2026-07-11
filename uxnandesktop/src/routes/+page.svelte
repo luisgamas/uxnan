@@ -239,20 +239,31 @@
 <svelte:window oncontextmenu={onContextMenu} onkeydown={onKeyDown} />
 
 <!-- Reusable column resize handle. Zero-width in layout so adjacent panels sit
-     flush (no visible seam, even behind split terminals); a wider absolute strip
-     straddles the boundary for grabbing, with a hairline that only shows on hover. -->
+     flush (no visible seam, even behind split terminals). The grab strip is
+     offset to the *adjacent panel* side of the seam — never over the center
+     pane's right edge, where the terminal scrollbar lives — so dragging the
+     divider can't block the scrollbar or read as the panel overlapping the
+     center. A hairline centered on the seam only shows on hover. -->
 {#snippet resizeHandle(side: Side)}
-  <div class="relative w-0 shrink-0">
+  <div class="group relative w-0 shrink-0">
+    <!-- Grab strip: on the left seam it sits over the left sidebar; on the
+         right/browser seams over the panel to the right. Either way it stays off
+         the center pane's scrollbar-bearing right edge. -->
     <div
-      class="group absolute inset-y-0 left-1/2 z-20 w-1.5 -translate-x-1/2 cursor-col-resize"
+      class={cn(
+        "absolute inset-y-0 z-20 w-1.5 cursor-col-resize",
+        side === "left" ? "right-0" : "left-0",
+      )}
       role="separator"
       aria-orientation="vertical"
       onpointerdown={(e) => onHandleDown(side, e)}
       onpointermove={onHandleMove}
       onpointerup={onHandleUp}
-    >
-      <div class="mx-auto h-full w-px bg-transparent transition-colors group-hover:bg-ring/50"></div>
-    </div>
+    ></div>
+    <!-- Seam hairline (visual only), centered on the boundary; shows on hover. -->
+    <div
+      class="pointer-events-none absolute inset-y-0 left-1/2 z-20 w-px -translate-x-1/2 bg-transparent transition-colors group-hover:bg-ring/50"
+    ></div>
   </div>
 {/snippet}
 

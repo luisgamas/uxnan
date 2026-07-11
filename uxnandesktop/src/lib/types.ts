@@ -177,7 +177,46 @@ export interface AppSettings {
   /** Show the usage indicator + popover in the bottom status bar. Default true
    *  once at least one provider is activated. */
   usageStatusBarEnabled?: boolean;
+  /** Sort mode for the project cards in the left sidebar. "manual" follows the
+   *  persisted repo order (`repoReorder`); the rest are computed client-side. */
+  projectSort?: SortMode;
+  /** Sort mode for the worktree rows within each project (same enum). "manual"
+   *  follows each repo's `worktreeOrder`. */
+  worktreeSort?: SortMode;
+  /** Last-active timestamps (epoch ms) keyed by workspace path, stamped when a
+   *  workspace is opened. Feeds the "recent" sort mode; self-heals (stale paths
+   *  are ignored). */
+  workspaceLastActive?: Record<string, number>;
+  /** Pinned projects (repo ids) — shown first regardless of sort. Self-healing. */
+  pinnedProjects?: string[];
+  /** Pinned worktrees (paths) — shown first within their project. Self-healing. */
+  pinnedWorktrees?: string[];
+  /** How the left sidebar groups its rows: the project→worktree tree, or every
+   *  worktree flattened into lanes by agent attention. */
+  sidebarGroupBy?: SidebarGroupBy;
+  /** Attention lanes (class 1–4) the user collapsed in the "group by status"
+   *  view; persisted so the collapse survives a restart. */
+  sidebarCollapsedLanes?: number[];
 }
+
+/** Left-sidebar grouping mode.
+ *  - `none`   — the project → worktree tree (default).
+ *  - `status` — every worktree flattened into lanes by agent attention
+ *    (needs-you · done · working · idle), empty lanes omitted. */
+export type SidebarGroupBy = "none" | "status";
+
+/** How the left-sidebar project cards / worktree rows are ordered.
+ *  - `manual`   — the user's own drag-and-drop arrangement (persisted).
+ *  - `name-asc` / `name-desc` — alphabetical by display name / branch.
+ *  - `recent`   — most-recently-opened first (via `workspaceLastActive`).
+ *  - `attention`— agents that need you first (blocked/waiting → done → working →
+ *    idle), then most-recent within each class. */
+export type SortMode =
+  | "manual"
+  | "name-asc"
+  | "name-desc"
+  | "recent"
+  | "attention";
 
 /** Where a link opens when the integrated browser is enabled (mirror of Rust
  *  `BrowserLinkPolicy`). `internal` uses the in-app tab; `external` hands off to
@@ -334,6 +373,11 @@ export interface RepoData {
   /** Per-branch custom icons, keyed by branch name (or the worktree path when
    *  detached). Same inline `data:` URL form as `icon`. Optional for back-compat. */
   branchIcons?: Record<string, string>;
+  /** User's manual order for this project's child worktrees, as their absolute
+   *  paths. The primary worktree is always shown first regardless. Paths no longer
+   *  present are ignored and freshly-seen ones fall to the end (self-healing).
+   *  Absent/empty → the git listing order. Set via `setWorktreeOrder`. */
+  worktreeOrder?: string[];
 }
 
 /** A git remote's hosting owner/org (mirror of Rust `RemoteOwner`), used to offer
@@ -398,6 +442,23 @@ export interface FsEntry {
    *  (muted + italic) — independent of git *status* (ignored entries never show
    *  in the review panel). */
   ignored: boolean;
+}
+
+/** A page of project-wide file-tree search results (mirror of Rust `FileSearch`).
+ *  `entries` are matching files; `truncated` is true when the walk hit the result
+ *  cap before exhausting the tree. */
+export interface FileSearch {
+  entries: FsEntry[];
+  truncated: boolean;
+}
+
+/** The current on-disk conversation of a Zero agent (mirror of Rust `ZeroSession`).
+ *  `title` is the session name; `status` is a coarse agent-view state derived from
+ *  the session's last event. Read by cwd since Zero emits no hook/OSC. */
+export interface ZeroSession {
+  title: string;
+  status: "working" | "waiting" | "done" | "idle";
+  updatedAt: string;
 }
 
 /** A file opened in the center editor (mirror of Rust `FileContent`). `content`
@@ -564,8 +625,8 @@ export interface HookScripts {
 /** Persisted terminal layout (structure only — fresh shells spawn on restore).
  *  Mirrors the serialized form produced by the terminals store. */
 /** One persisted tab descriptor. `kind` is optional for backward compatibility:
- *  a descriptor with no `kind` (older saved layouts) is a terminal. Diff tabs are
- *  transient and never persisted. */
+ *  a descriptor with no `kind` (older saved layouts) is a terminal. Commit tabs
+ *  are transient and never persisted; a file tab's diff is now one of its views. */
 export type SavedTab =
   | {
       kind?: "terminal";
@@ -576,7 +637,16 @@ export type SavedTab =
       shell?: string;
       args?: string[];
     }
-  | { kind: "file"; title: string; path: string; worktree?: string | null };
+  | {
+      kind: "file";
+      title: string;
+      path: string;
+      worktree?: string | null;
+      /** Which view the tab last showed: editor, rendered preview, or working diff. */
+      view?: "edit" | "preview" | "changes";
+      /** In the `changes` view: staged (index-vs-HEAD) vs unstaged (worktree-vs-index). */
+      staged?: boolean;
+    };
 
 export type SavedTermNode =
   | {
@@ -669,4 +739,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
     mcpDisabledAgents: [],
   },
   browserPanelWidth: 520,
+  projectSort: "manual",
+  worktreeSort: "manual",
+  workspaceLastActive: {},
+  pinnedProjects: [],
+  pinnedWorktrees: [],
+  sidebarGroupBy: "none",
+  sidebarCollapsedLanes: [],
 };

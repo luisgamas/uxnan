@@ -32,6 +32,7 @@ mod usage;
 mod which;
 mod winproc;
 mod wsl;
+mod zero;
 
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -224,6 +225,8 @@ pub fn run() {
             commands::repo_list,
             commands::repo_update,
             commands::repo_set_branch_icon,
+            commands::repo_reorder,
+            commands::repo_set_worktree_order,
             commands::repo_remote_owner,
             commands::branch_list,
             commands::worktree_create,
@@ -233,8 +236,15 @@ pub fn run() {
             commands::browse_dirs,
             commands::fs_list_dir,
             commands::fs_read_file,
+            commands::fs_read_data_url,
             commands::fs_write_file,
             commands::fs_rename,
+            commands::fs_create_file,
+            commands::fs_create_dir,
+            commands::fs_delete,
+            commands::fs_duplicate,
+            commands::fs_search_files,
+            commands::zero_session,
             commands::image_fetch_data_url,
             commands::fs_set_watch,
             commands::reveal_path,

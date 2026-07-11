@@ -434,8 +434,13 @@ class AppStore {
     const shellProfile = agent.terminalProfileId
       ? this.profile(agent.terminalProfileId)
       : this.agentShellProfile();
-    const shell = shellProfile?.command?.trim() || undefined;
-    const kind = shellKind(shell ?? (currentOS() === "windows" ? "cmd.exe" : undefined));
+    // With no profile configured on Windows, spawn cmd.exe explicitly — the backend
+    // default is PowerShell, which mismatches the cmd-style quoting below and trips
+    // npm `.ps1` shims on the default execution policy (agents land in a dead pane).
+    const shell =
+      shellProfile?.command?.trim() ||
+      (currentOS() === "windows" ? "cmd.exe" : undefined);
+    const kind = shellKind(shell);
     const runCommand = buildRunCommand(command, agent.args, kind);
     // Per-agent env vars → real environment on the spawned shell (inherited by
     // the agent). Blank keys are dropped; the backend prepends them before its

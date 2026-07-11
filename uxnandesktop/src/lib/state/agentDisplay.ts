@@ -12,6 +12,7 @@
 import { terminals, type GroupTab } from "./terminals.svelte";
 import { agentStatus } from "./agentStatus.svelte";
 import { agentMonitor } from "./agentMonitor.svelte";
+import { zeroSessions, isZeroAgent } from "./zeroSessions.svelte";
 import type { AgentStatus } from "$lib/types";
 
 /** Display state: the four reported states plus "idle" (an agent at rest with no
@@ -48,6 +49,61 @@ export function resolveAgentDisplay(tab: GroupTab): AgentDisplay | null {
   if (tab.working) return { status: "working", source: "activity", stale: false };
   if (tab.agentName) return { status: "idle", source: "activity", stale: false };
   return null;
+}
+
+/** The richer per-agent state the left-panel **agent view** renders: the effective
+ *  status plus the conversation title + a preview line. Built on top of
+ *  [`resolveAgentDisplay`]. */
+export interface AgentView {
+  status: DisplayStatus;
+  stale: boolean;
+  /** Conversation title — the user's latest prompt (hook) or Zero's session title;
+   *  falls back to the agent's product name when unknown. */
+  title: string;
+  /** Raw secondary text (current tool while working, else the latest reply preview),
+   *  or null when there's none — the row then shows the status label. */
+  preview: string | null;
+  /** The current turn was interrupted by the user (render a distinct preview). */
+  interrupted: boolean;
+  /** Epoch ms of the last hook update, for a relative timestamp (null if unknown). */
+  lastUpdate: number | null;
+}
+
+/** Resolve the agent-view state for a terminal tab in `workspacePath` (its worktree
+ *  cwd). Surfaces the conversation title/preview that already flow through the hook
+ *  store (`prompt`/`tool`/`summary`), and reads Zero's on-disk session for agents
+ *  that report no hook. Reactive: reads the monitoring stores. */
+export function resolveAgentView(tab: GroupTab, workspacePath: string): AgentView | null {
+  if (tab.kind !== "terminal") return null;
+  const base = resolveAgentDisplay(tab);
+  const hook = agentStatus.get(tab.id);
+  const zero = isZeroAgent(tab) ? zeroSessions.get(workspacePath) : null;
+  const name = tab.agentName ?? tab.title ?? "";
+
+  let status: DisplayStatus = base?.status ?? "idle";
+  let title = "";
+  let preview: string | null = null;
+  let interrupted = false;
+  let lastUpdate: number | null = null;
+
+  if (hook) {
+    // Hook agents (Claude/Codex/OpenCode/Pi): the conversation title is the user's
+    // latest prompt; the preview is the current tool while working, else the reply.
+    title = (hook.prompt ?? "").trim();
+    interrupted = hook.interrupted;
+    lastUpdate = hook.lastUpdate;
+    preview =
+      hook.status === "working"
+        ? (hook.tool ?? "").trim() || null
+        : (hook.summary ?? "").trim() || null;
+  } else if (zero) {
+    // Zero has no hook — its title + status come from the on-disk session.
+    status = zero.status;
+    title = zero.title.trim();
+  }
+
+  if (!title) title = name;
+  return { status, stale: base?.stale ?? false, title, preview, interrupted, lastUpdate };
 }
 
 /** Whether any open terminal currently resolves to a "working" agent — drives

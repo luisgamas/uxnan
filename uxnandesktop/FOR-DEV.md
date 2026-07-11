@@ -23,7 +23,7 @@ mobile pairing) is NOT started.**
 
 - **Three-panel resizable shell** with atomic JSON persistence (5 rotating
   backups + sequential schema migrations).
-- **PTY terminals** (`portable-pty 0.9`, xterm WebGL + DOM fallback) — tabs +
+- **PTY terminals** (`portable-pty 0.9`, xterm Canvas + DOM fallback) — tabs +
   nested splits that never remount on split, drag-to-reorder / move tabs across
   regions, `Ctrl+Tab` MRU cycling, a backend output ring buffer that restores a
   recreated pane's scrollback, and the Kitty/CSI-u keyboard protocol. Tabs can be
@@ -214,10 +214,20 @@ are **done** (see `CHANGELOG.md` + `architecture/02d` §3). Remaining follow-ups
 
 **File tree / mixed tabs**
 - [ ] Tree virtualization (TanStack Virtual) for very large folders.
-- [ ] File ops from the tree (create / rename / delete / new folder).
+- [x] File ops from the tree (create / rename / delete / new folder) — **done**: a
+      per-entry right-click context menu (`FileTreeContextMenu` + `FileNamePromptDialog`,
+      `fs_create_file`/`_dir`/`_delete`/`_duplicate`; delete → OS trash via the
+      `trash` crate). Open tabs follow a rename / close on a delete. See `CHANGELOG.md`.
 - [ ] Multi-worktree external-change watching (the watcher follows the active
       worktree only).
-- [ ] Tab/region reorder + drag for the mixed `terminal|file|diff` tabs.
+- [ ] Tab/region reorder + drag for the mixed `terminal|file|commit` tabs.
+- [ ] **Markdown preview polish (non-blocking).** The in-house renderer
+      (`markdown.ts` / `MarkdownView.svelte`) covers the common GFM surface; two
+      deferred niceties: (1) syntax-highlight fenced code per language — today code
+      blocks are plain monospace, though the Lezer language parsers are already
+      installed; (2) resolve in-document / relative *links* (heading anchors, and
+      links to sibling files → open that file's tab). Today only external links
+      open (via the OS) and only local *images* are resolved (`fs_read_data_url`).
 
 **Workspace / context menu**
 - [ ] **"Open with" external editors/IDEs + customization.** The worktree row's

@@ -76,6 +76,16 @@ hex = "0.4"
 # manual refresh. `notify` is re-exported by the debouncer; pinned together.
 notify = "6"
 notify-debouncer-full = "0.3"
+# Moves a deleted file/folder to the OS trash (Recycle Bin / Trash / freedesktop)
+# instead of unlinking it, so the file-tree "Delete" action is recoverable. Thin,
+# cross-platform, pure-Rust API (`trash::delete`); the call is synchronous so it
+# runs on the blocking pool (fs.rs `delete_to_trash`).
+trash = "5"
+# ripgrep's directory walker: powers the file tree's project-wide search
+# (fs.rs `search_files`). Respects `.gitignore` / global excludes and can hide
+# dotfiles, so a recursive filename search skips `node_modules`/`.git`/ignored
+# paths without us re-implementing gitignore semantics. Synchronous → blocking pool.
+ignore = "0.4"
 
 # Windows-only: SetThreadExecutionState for the keep-awake feature (power.rs).
 [target.'cfg(windows)'.dependencies]
