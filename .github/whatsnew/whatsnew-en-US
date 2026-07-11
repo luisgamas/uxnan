@@ -1,8 +1,7 @@
 What's new in this update:
 
-• The model picker now refreshes when you reconnect, plus a manual refresh button — new AI models show up without restarting the app.
-• You'll get a heads-up when your PC's Uxnan bridge needs updating.
-• Redesigned Settings, grouped into clear sections, with a new About screen and open-source licenses.
-• Improved updates: see download progress and install right from the app, and choose how often to check.
+• Choose Zero and Grok when starting a new AI conversation.
+• Agents can now ask you questions, show plans, and request approval directly in the chat.
+• Clearer error messages when an agent cannot finish a task, plus smoother Markdown and table reading.
 
 Thanks for testing this alpha!

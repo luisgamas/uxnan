@@ -3,7 +3,7 @@
 All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.0.9-alpha.20260711] - 2026-07-11
 
 ### Added — group the sidebar by agent attention
 

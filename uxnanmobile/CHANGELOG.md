@@ -4,7 +4,7 @@ All notable changes to the `uxnanmobile` app are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.0.5-alpha.20260711] - 2026-07-11
 
 ### Added — Grok agent support
 - **Grok** (xAI's coding CLI) is now a selectable agent. New `AgentId.grok` (wire

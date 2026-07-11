@@ -3,7 +3,7 @@
 All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.0.5-alpha.20260711] - 2026-07-11
 
 ### Fixed — turn errors are surfaced with the real reason and survive re-sync
 - **Real error detail (ACP adapters):** when an ACP turn fails (Grok / Zero), the

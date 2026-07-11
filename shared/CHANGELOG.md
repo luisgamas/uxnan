@@ -3,7 +3,7 @@
 All notable changes to the shared contracts package are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.0.5-alpha.20260711] - 2026-07-11
 
 ### Added — `grok` in the `AgentId` union
 - **`AgentId`** (`src/agents/agent-capabilities.ts`) gains **`'grok'`** — xAI's
