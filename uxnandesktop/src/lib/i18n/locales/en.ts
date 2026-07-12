@@ -859,6 +859,97 @@ export const en = {
   "orchestration.backpressureHint":
     "Messages are delivered one at a time per agent; the next waits until that agent reports idle.",
 
+  // Orchestration — tabs + run engine (spec 02d §3)
+  "orchestration.tabBroadcast": "Broadcast",
+  "orchestration.tabRuns": "Runs",
+  "orchestration.runsDesc":
+    "Chain agents into a run: outputs feed the next step; independent steps run in parallel.",
+  "orchestration.newRun": "New run",
+  "orchestration.newRunDefault": "Untitled run",
+  "orchestration.runsEmptyTitle": "No runs yet",
+  "orchestration.runsEmptyDesc":
+    "Build a run from steps: each step targets an agent, and one step's output can feed the next via a {{steps.s1.output}} reference. Steps with no dependency run at the same time.",
+  "orchestration.runsActive": "Active",
+  "orchestration.runsDrafts": "Drafts",
+  "orchestration.runsPast": "Past",
+  "orchestration.stepsProgress": "{done}/{total} steps done",
+  "orchestration.runTitlePlaceholder": "Run name",
+  "orchestration.start": "Start",
+  "orchestration.pause": "Pause",
+  "orchestration.resume": "Resume",
+  "orchestration.cancel": "Cancel",
+  "orchestration.rerun": "Re-run",
+  "orchestration.deleteRun": "Delete run",
+  "orchestration.deleteRunTitle": "Delete this run?",
+  "orchestration.deleteRunDesc": "“{name}” and its captured outputs will be removed. This can’t be undone.",
+  "orchestration.validationTitle": "Fix these before starting:",
+  "orchestration.noSteps": "No steps yet. Add the first step to build the run.",
+  "orchestration.addStep": "Add step",
+  "orchestration.runsAfter": "after {steps}",
+  "orchestration.stepOutput": "Output",
+  "orchestration.stepNoAgent": "No agent",
+  // Step editor
+  "orchestration.stepTitle": "Step name",
+  "orchestration.stepTitlePlaceholder": "e.g. Analyze the failing test",
+  "orchestration.stepAgent": "Agent",
+  "orchestration.stepAgentPlaceholder": "Pick an agent",
+  "orchestration.noAgentsHint": "Launch at least one agent to target it in a step.",
+  "orchestration.stepPrompt": "Prompt",
+  "orchestration.stepPromptPlaceholder":
+    "What this agent should do. Insert a previous step's output with the chips below.",
+  "orchestration.insertRefLabel": "Insert output:",
+  "orchestration.stepDependsOn": "Runs after",
+  "orchestration.stepDependsHint":
+    "Pick which steps must finish first. Leave empty to run immediately (in parallel).",
+  "orchestration.stepOnFailure": "On failure",
+  "orchestration.onFailureStop": "Stop the run",
+  "orchestration.onFailureRetry": "Retry the step",
+  "orchestration.cancelEdit": "Cancel",
+  "orchestration.save": "Save",
+  // Step kind + headless target
+  "orchestration.stepKind": "Type",
+  "orchestration.kindInteractive": "Interactive",
+  "orchestration.kindHeadless": "Headless",
+  "orchestration.kindInteractiveHint":
+    "Types the prompt into a live agent's terminal. Its output is the agent's short status summary.",
+  "orchestration.kindHeadlessHint":
+    "Runs an installed CLI in print-mode in a worktree. The ADE owns the process, so the full output is captured and completion is verified by the exit code.",
+  "orchestration.stepModel": "Model",
+  "orchestration.modelDefault": "Default model",
+  "orchestration.stepWorkspace": "Worktree",
+  "orchestration.workspacePlaceholder": "Pick a worktree",
+  "orchestration.noInstalledAgents": "No supported CLI is installed for headless runs.",
+  "orchestration.noWorkspaces": "Add a project to pick a worktree to run in.",
+  "orchestration.maxAttempts": "Max attempts",
+  // HITL gate (human-in-the-loop)
+  "orchestration.kindGate": "Human gate",
+  "orchestration.kindGateHint":
+    "Pauses the run for your decision: Approve to continue (your note feeds later steps), or Reject to stop.",
+  "orchestration.gateQuestion": "Question",
+  "orchestration.gateQuestionPlaceholder":
+    "What should the reviewer decide? e.g. Approve the migration plan before applying it.",
+  "orchestration.gateNotePlaceholder": "Optional note (feeds later steps)…",
+  "orchestration.gateApprove": "Approve",
+  "orchestration.gateReject": "Reject",
+  "orchestration.gateApproved": "Approved",
+  "orchestration.gateRejected": "Rejected by reviewer",
+  "orchestration.gateNotifyTitle": "A run needs your approval — {run}",
+  // Step statuses
+  "orchestration.stepPending": "Pending",
+  "orchestration.stepReady": "Ready",
+  "orchestration.stepRunning": "Running",
+  "orchestration.stepBlocked": "Waiting for agent",
+  "orchestration.stepCompleted": "Done",
+  "orchestration.stepFailed": "Failed",
+  "orchestration.stepSkipped": "Skipped",
+  // Run statuses
+  "orchestration.statusDraft": "Draft",
+  "orchestration.statusRunning": "Running",
+  "orchestration.statusPaused": "Paused",
+  "orchestration.statusCompleted": "Completed",
+  "orchestration.statusFailed": "Failed",
+  "orchestration.statusCancelled": "Cancelled",
+
   // Updates (auto-updater banner + Settings → Updates)
   "updates.bannerAvailable": "Version {version} is available",
   "updates.bannerDownloading": "Downloading version {version}…",

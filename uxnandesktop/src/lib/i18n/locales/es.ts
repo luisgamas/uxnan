@@ -858,6 +858,97 @@ export const es: Record<MessageKey, string> = {
   "orchestration.backpressureHint":
     "Los mensajes se entregan de uno en uno por agente; el siguiente espera hasta que ese agente reporte inactividad.",
 
+  // Orquestación — pestañas + motor de corridas (spec 02d §3)
+  "orchestration.tabBroadcast": "Difusión",
+  "orchestration.tabRuns": "Corridas",
+  "orchestration.runsDesc":
+    "Encadena agentes en una corrida: la salida alimenta el siguiente paso; los pasos independientes corren en paralelo.",
+  "orchestration.newRun": "Nueva corrida",
+  "orchestration.newRunDefault": "Corrida sin título",
+  "orchestration.runsEmptyTitle": "Aún no hay corridas",
+  "orchestration.runsEmptyDesc":
+    "Arma una corrida con pasos: cada paso apunta a un agente, y la salida de un paso puede alimentar al siguiente con una referencia {{steps.s1.output}}. Los pasos sin dependencia corren al mismo tiempo.",
+  "orchestration.runsActive": "Activas",
+  "orchestration.runsDrafts": "Borradores",
+  "orchestration.runsPast": "Anteriores",
+  "orchestration.stepsProgress": "{done}/{total} pasos listos",
+  "orchestration.runTitlePlaceholder": "Nombre de la corrida",
+  "orchestration.start": "Iniciar",
+  "orchestration.pause": "Pausar",
+  "orchestration.resume": "Reanudar",
+  "orchestration.cancel": "Cancelar",
+  "orchestration.rerun": "Repetir",
+  "orchestration.deleteRun": "Eliminar corrida",
+  "orchestration.deleteRunTitle": "¿Eliminar esta corrida?",
+  "orchestration.deleteRunDesc": "«{name}» y sus salidas capturadas se eliminarán. Esto no se puede deshacer.",
+  "orchestration.validationTitle": "Corrige esto antes de iniciar:",
+  "orchestration.noSteps": "Aún no hay pasos. Agrega el primero para armar la corrida.",
+  "orchestration.addStep": "Agregar paso",
+  "orchestration.runsAfter": "después de {steps}",
+  "orchestration.stepOutput": "Salida",
+  "orchestration.stepNoAgent": "Sin agente",
+  // Editor de paso
+  "orchestration.stepTitle": "Nombre del paso",
+  "orchestration.stepTitlePlaceholder": "p. ej. Analizar el test que falla",
+  "orchestration.stepAgent": "Agente",
+  "orchestration.stepAgentPlaceholder": "Elige un agente",
+  "orchestration.noAgentsHint": "Lanza al menos un agente para poder apuntarlo en un paso.",
+  "orchestration.stepPrompt": "Prompt",
+  "orchestration.stepPromptPlaceholder":
+    "Qué debe hacer este agente. Inserta la salida de un paso previo con los chips de abajo.",
+  "orchestration.insertRefLabel": "Insertar salida:",
+  "orchestration.stepDependsOn": "Corre después de",
+  "orchestration.stepDependsHint":
+    "Elige qué pasos deben terminar primero. Déjalo vacío para correr de inmediato (en paralelo).",
+  "orchestration.stepOnFailure": "Si falla",
+  "orchestration.onFailureStop": "Detener la corrida",
+  "orchestration.onFailureRetry": "Reintentar el paso",
+  "orchestration.cancelEdit": "Cancelar",
+  "orchestration.save": "Guardar",
+  // Tipo de paso + objetivo headless
+  "orchestration.stepKind": "Tipo",
+  "orchestration.kindInteractive": "Interactivo",
+  "orchestration.kindHeadless": "Headless",
+  "orchestration.kindInteractiveHint":
+    "Escribe el prompt en la terminal de un agente vivo. Su salida es el breve resumen de estado del agente.",
+  "orchestration.kindHeadlessHint":
+    "Ejecuta un CLI instalado en modo print dentro de un worktree. El ADE posee el proceso, así que se captura toda la salida y el completado se verifica por el código de salida.",
+  "orchestration.stepModel": "Modelo",
+  "orchestration.modelDefault": "Modelo por defecto",
+  "orchestration.stepWorkspace": "Worktree",
+  "orchestration.workspacePlaceholder": "Elige un worktree",
+  "orchestration.noInstalledAgents": "No hay un CLI compatible instalado para correr headless.",
+  "orchestration.noWorkspaces": "Agrega un proyecto para elegir un worktree donde correr.",
+  "orchestration.maxAttempts": "Intentos máx.",
+  // Compuerta HITL (humano en el bucle)
+  "orchestration.kindGate": "Compuerta humana",
+  "orchestration.kindGateHint":
+    "Pausa la corrida para tu decisión: Aprobar para continuar (tu nota alimenta pasos posteriores) o Rechazar para detener.",
+  "orchestration.gateQuestion": "Pregunta",
+  "orchestration.gateQuestionPlaceholder":
+    "¿Qué debe decidir el revisor? p. ej. Aprobar el plan de migración antes de aplicarlo.",
+  "orchestration.gateNotePlaceholder": "Nota opcional (alimenta pasos posteriores)…",
+  "orchestration.gateApprove": "Aprobar",
+  "orchestration.gateReject": "Rechazar",
+  "orchestration.gateApproved": "Aprobado",
+  "orchestration.gateRejected": "Rechazado por el revisor",
+  "orchestration.gateNotifyTitle": "Una corrida necesita tu aprobación — {run}",
+  // Estados de paso
+  "orchestration.stepPending": "Pendiente",
+  "orchestration.stepReady": "Listo",
+  "orchestration.stepRunning": "En curso",
+  "orchestration.stepBlocked": "Esperando agente",
+  "orchestration.stepCompleted": "Hecho",
+  "orchestration.stepFailed": "Falló",
+  "orchestration.stepSkipped": "Omitido",
+  // Estados de corrida
+  "orchestration.statusDraft": "Borrador",
+  "orchestration.statusRunning": "En curso",
+  "orchestration.statusPaused": "Pausada",
+  "orchestration.statusCompleted": "Completada",
+  "orchestration.statusFailed": "Falló",
+  "orchestration.statusCancelled": "Cancelada",
+
   // Updates (banner del auto-updater + Ajustes → Actualizaciones)
   "updates.bannerAvailable": "Versión {version} disponible",
   "updates.bannerDownloading": "Descargando versión {version}…",

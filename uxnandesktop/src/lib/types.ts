@@ -8,6 +8,12 @@ import type {
   TerminalThemePreset,
   ThemeFonts,
 } from "$lib/theme";
+// `SavedRun` is the plain-data shape the orchestration engine persists (see
+// `$lib/orchestration/run`). `import type` is erased at build time, and `run.ts`
+// is self-contained (it never imports this module), so there is no import cycle.
+// Re-exported so consumers can import it from `$lib/types` alongside `AppData`.
+import type { SavedRun } from "$lib/orchestration/run";
+export type { SavedRun } from "$lib/orchestration/run";
 
 export type Theme = "light" | "dark" | "system";
 
@@ -675,6 +681,10 @@ export interface AppData {
   settings: AppSettings;
   agentCache: AgentStateEntry[];
   terminalLayout?: SavedTerminalLayout | null;
+  /** Opaque, frontend-owned orchestration runs blob (the `Run[]` graph — spec
+   *  `02d` §3). Persisted as-is; typed as `SavedRun[]` where the engine reads it
+   *  (see `$lib/orchestration/run`). */
+  orchestrationRuns?: SavedRun[] | null;
 }
 
 /** Mirror of the Rust `CommandError` returned across the command boundary. */

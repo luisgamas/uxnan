@@ -3,6 +3,7 @@
   import { terminals } from "$lib/state/terminals.svelte";
   import { projects } from "$lib/state/projects.svelte";
   import { orchestration } from "$lib/state/orchestration.svelte";
+  import { orchestrationRun } from "$lib/state/orchestrationRun.svelte";
   import { git } from "$lib/state/git.svelte";
   import { fsSetWatch } from "$lib/api";
   import { i18n } from "$lib/i18n";
@@ -94,10 +95,11 @@
   // Active workspace breadcrumb (repo / branch), shown at the left of the status bar.
   const ctx = $derived(projects.activeContext);
 
-  // Live agents drive the orchestration entry point (hidden until ≥2 agents run,
-  // since routing/fan-out only makes sense across multiple agents).
+  // Live agents drive the orchestration entry point. Shown once ≥2 agents run
+  // (fan-out/routing needs more than one) — or whenever any run exists, so a
+  // saved run stays reachable to build, drive or review even with fewer agents.
   const liveAgents = $derived(orchestration.agents);
-  const orchestratable = $derived(liveAgents.length >= 2);
+  const orchestratable = $derived(liveAgents.length >= 2 || orchestrationRun.runs.length > 0);
 
   function toggleLeftSidebar() {
     app.settings.leftSidebarOpen = !app.settings.leftSidebarOpen;
