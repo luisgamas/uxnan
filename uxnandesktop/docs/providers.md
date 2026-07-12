@@ -17,6 +17,7 @@ into Uxnan — only the token the CLI already stored on disk.
 | **Claude Code** | `~/.claude/.credentials.json` | session (5h) / weekly / model-scoped windows, plan |
 | **GitHub Copilot** | `gh auth token` | premium/chat/completions quotas, plan, GitHub login |
 | **Gemini CLI** | `~/.gemini/oauth_creds.json` | per-model quota (best-effort), email |
+| **Grok** | `~/.grok/auth.json` | credit-usage window, reset, plan, email |
 
 A provider that isn't set up, isn't signed in, or errors shows a clear status
 (`Not set up` / `Sign in required` / `Unavailable`) instead of failing the rest —

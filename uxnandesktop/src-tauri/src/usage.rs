@@ -21,6 +21,7 @@ pub enum UsageProvider {
     Claude,
     Copilot,
     Gemini,
+    Grok,
 }
 
 /// Outcome of reading one provider's usage.
@@ -177,6 +178,7 @@ async fn read_one(provider: UsageProvider, home: &Path) -> ProviderUsage {
         UsageProvider::Claude => read_claude(home).await,
         UsageProvider::Copilot => read_copilot().await,
         UsageProvider::Gemini => read_gemini(home).await,
+        UsageProvider::Grok => read_grok(home).await,
     }
 }
 
@@ -189,6 +191,115 @@ fn is_present(provider: UsageProvider, home: &Path) -> bool {
         }
         UsageProvider::Gemini => home.join(".gemini").join("oauth_creds.json").exists(),
         UsageProvider::Copilot => crate::which::is_command_available("gh"),
+        UsageProvider::Grok => home.join(".grok").join("auth.json").exists(),
+    }
+}
+
+// --- Grok -------------------------------------------------------------------
+
+async fn read_grok(home: &Path) -> ProviderUsage {
+    let auth_path = home.join(".grok").join("auth.json");
+    let Some(auth) = read_json(&auth_path) else {
+        return ProviderUsage::base(UsageProvider::Grok, UsageStatus::NotInstalled)
+            .with_message("Grok is not set up on this PC (~/.grok/auth.json missing)");
+    };
+    // Grok stores accounts under an issuer/client key. Select the first usable
+    // signed-in account without exposing its key in errors or logs.
+    let account = auth.as_object().and_then(|entries| {
+        entries
+            .values()
+            .find(|entry| entry.get("key").and_then(|v| v.as_str()).is_some())
+    });
+    let Some(token) = account
+        .and_then(|entry| entry.get("key"))
+        .and_then(|v| v.as_str())
+    else {
+        return ProviderUsage::base(UsageProvider::Grok, UsageStatus::AuthRequired)
+            .with_message("Grok has no usable signed-in credential — run `grok login`");
+    };
+    let email = account
+        .and_then(|entry| entry.get("email"))
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+
+    let client = match http_client() {
+        Ok(c) => c,
+        Err(e) => return errored(UsageProvider::Grok, e),
+    };
+    let req = client
+        .get("https://cli-chat-proxy.grok.com/v1/billing?format=credits")
+        .bearer_auth(token)
+        .header("accept", "application/json");
+    let body = match fetch_json(req).await {
+        Ok(v) => v,
+        Err(HttpError::Unauthorized) => {
+            return ProviderUsage::base(UsageProvider::Grok, UsageStatus::AuthRequired)
+                .with_account(Account {
+                    email,
+                    ..Default::default()
+                })
+                .with_message("Grok credential expired — run the Grok CLI to refresh it");
+        }
+        Err(e) => {
+            return http_error(UsageProvider::Grok, e).with_account(Account {
+                email,
+                ..Default::default()
+            });
+        }
+    };
+
+    let config = body.get("config").unwrap_or(&body);
+    let plan = config
+        .get("subscriptionTier")
+        .or_else(|| config.get("subscription_tier"))
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    let mut usage =
+        ProviderUsage::base(UsageProvider::Grok, UsageStatus::Ok).with_account(Account {
+            email,
+            plan,
+            ..Default::default()
+        });
+    usage.source = Some(UsageSource::Token);
+
+    if let Some(percent) = config
+        .get("creditUsagePercent")
+        .or_else(|| config.get("credit_usage_percent"))
+        .and_then(number)
+    {
+        let period = config.get("currentPeriod");
+        usage.windows.push(UsageWindow {
+            id: "credits".to_string(),
+            label: grok_period_label(period),
+            used_percent: clamp_pct(percent),
+            window_minutes: grok_period_minutes(period),
+            resets_at: period
+                .and_then(|p| p.get("end"))
+                .and_then(epoch_ms)
+                .or_else(|| config.get("billingPeriodEnd").and_then(epoch_ms)),
+        });
+    }
+    if usage.windows.is_empty() {
+        usage = usage.with_message("signed in, but the Grok billing API returned no quota window");
+    }
+    usage
+}
+
+fn grok_period_label(period: Option<&serde_json::Value>) -> String {
+    match period.and_then(|p| p.get("type")).and_then(|v| v.as_str()) {
+        Some("USAGE_PERIOD_TYPE_DAILY") => "Daily".to_string(),
+        Some("USAGE_PERIOD_TYPE_WEEKLY") => "Weekly".to_string(),
+        Some("USAGE_PERIOD_TYPE_MONTHLY") => "Monthly".to_string(),
+        _ => "Usage".to_string(),
+    }
+}
+
+fn grok_period_minutes(period: Option<&serde_json::Value>) -> Option<u32> {
+    match period.and_then(|p| p.get("type")).and_then(|v| v.as_str()) {
+        Some("USAGE_PERIOD_TYPE_DAILY") => Some(1440),
+        Some("USAGE_PERIOD_TYPE_WEEKLY") => Some(10080),
+        Some("USAGE_PERIOD_TYPE_MONTHLY") => Some(43200),
+        _ => None,
     }
 }
 
@@ -937,6 +1048,7 @@ mod tests {
         let empty = std::path::Path::new("/nonexistent-uxnan-home-xyz");
         assert!(!is_present(UsageProvider::Codex, empty));
         assert!(!is_present(UsageProvider::Gemini, empty));
+        assert!(!is_present(UsageProvider::Grok, empty));
     }
 
     #[test]
@@ -978,5 +1090,14 @@ mod tests {
             claude_limit_label("weekly_scoped", "weekly", Some("Fable")),
             "Fable (weekly)"
         );
+    }
+
+    #[test]
+    fn grok_period_helpers_map_known_windows() {
+        let weekly = serde_json::json!({"type": "USAGE_PERIOD_TYPE_WEEKLY"});
+        assert_eq!(grok_period_label(Some(&weekly)), "Weekly");
+        assert_eq!(grok_period_minutes(Some(&weekly)), Some(10080));
+        assert_eq!(grok_period_label(None), "Usage");
+        assert_eq!(grok_period_minutes(None), None);
     }
 }
