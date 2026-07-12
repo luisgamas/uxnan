@@ -56,6 +56,20 @@ pub async fn set_terminal_layout(
     state.persistence.save(&data).map_err(CommandError::from)
 }
 
+/// Persist the frontend-owned orchestration runs (opaque JSON — the `Run` graph,
+/// step states + captured outputs; spec `02d` §3). The frontend debounces these
+/// writes; restored on next startup via `get_app_state` so a run survives a
+/// restart and the engine re-attaches. Mirror of `set_terminal_layout`.
+#[tauri::command]
+pub async fn set_orchestration_runs(
+    state: State<'_, AppState>,
+    runs: serde_json::Value,
+) -> Result<(), CommandError> {
+    let mut data = state.data.write().await;
+    data.orchestration_runs = Some(runs);
+    state.persistence.save(&data).map_err(CommandError::from)
+}
+
 // --- Terminals (PTY) -------------------------------------------------------
 //
 // The frontend chooses `id` (so it can subscribe to `pty:output:{id}` before
@@ -1069,6 +1083,25 @@ pub async fn ai_commit_models(
     agent_id: String,
 ) -> Result<Vec<crate::agentcli::AgentModel>, CommandError> {
     crate::aicommit::list_models(&agent_id)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Run an agent **headless** (print-mode) for one orchestration-run step (spec
+/// `02d` §3): drive the installed CLI non-interactively against `prompt` in `cwd`
+/// and return its captured stdout/stderr + the verified exit code. `model` empty
+/// → the CLI's default; `timeoutMs` overrides the default budget. Errors only on
+/// a spawn failure / timeout / unsupported agent — a non-zero exit comes back in
+/// `exitCode` so the engine can gate on it.
+#[tauri::command]
+pub async fn agent_run_headless(
+    agent: String,
+    model: String,
+    prompt: String,
+    cwd: String,
+    timeout_ms: Option<u64>,
+) -> Result<crate::agentrun::HeadlessResult, CommandError> {
+    crate::agentrun::run_headless(&agent, &model, &prompt, &cwd, timeout_ms)
         .await
         .map_err(CommandError::from)
 }
