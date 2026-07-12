@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [0.0.5-alpha.20260711] - 2026-07-11
 
+### Changed — Grok usage provider
+
+- Extended the `agent/usageStats` `UsageProvider` union with `grok` for the
+  desktop's Grok CLI billing reader and future bridge/mobile consumers.
+
 ### Added — `grok` in the `AgentId` union
 - **`AgentId`** (`src/agents/agent-capabilities.ts`) gains **`'grok'`** — xAI's
   coding CLI, driven by the bridge over the Agent Client Protocol (`grok agent
@@ -20,7 +25,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   balance — for the providers the caller activated. Params
   `{ providers: UsageProvider[] }` → `{ usage: ProviderUsage[] }`.
 - **Usage models** (`src/models/usage.ts`, exported from the package root):
-  `UsageProvider` (`codex`/`claude`/`copilot`/`gemini`), `UsageStatus`
+  `UsageProvider` (`codex`/`claude`/`copilot`/`gemini`/`grok`), `UsageStatus`
   (`ok`/`authRequired`/`notInstalled`/`error`), `UsageSource` (`token`),
   `UsageWindow`, `CreditBalance`, `ProviderUsage`, and the
   `UsageStatsParams`/`UsageStatsResult` request/response shapes.

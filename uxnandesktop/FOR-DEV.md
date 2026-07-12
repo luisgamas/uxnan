@@ -72,7 +72,7 @@ mobile pairing) is NOT started.**
   a `FOR-HUMAN.md` item.
 - **AI-provider usage statistics (Settings → Providers)** — native Rust reader
   (`src-tauri/src/usage.rs`, `usage_read`/`usage_detect`) for **Codex, Claude,
-  Copilot, Gemini**, reading each CLI's own stored token → the provider's official
+  Copilot, Gemini, Grok**, reading each CLI's own stored token → the provider's official
   usage API (never cookies / pasted keys). Tabbed UI with per-provider quota
   windows ("% used"), plan/account ("Authenticated as …" with click-to-reveal
   blur), credit, per-provider refresh interval + status-bar visibility, and a
