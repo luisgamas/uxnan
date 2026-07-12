@@ -1,174 +1,240 @@
 # Multi-agent orchestration
 
-![Routing](https://img.shields.io/badge/route-all_%7C_by_type_%7C_workers-2ea44f?style=for-the-badge)
-![Backpressure](https://img.shields.io/badge/delivery-backpressured-blue?style=for-the-badge)
-![Scope](https://img.shields.io/badge/needs-%E2%89%A52_live_agents-lightgrey?style=for-the-badge)
+![Surfaces](https://img.shields.io/badge/surfaces-broadcast_%2B_run_engine-2ea44f?style=for-the-badge)
+![Passing](https://img.shields.io/badge/context-A%E2%86%92B%E2%86%92C-blue?style=for-the-badge)
+![Verified](https://img.shields.io/badge/headless-verified_by_exit_code-8957e5?style=for-the-badge)
 
-Run several CLI agents at once and **drive them from one place**: send a message
-to every agent, to all agents of one type, or to a coordinator's workers — and
-let the ADE deliver it to each one **only when it's free** (backpressure), so a
-slow agent is never flooded.
+Run several CLI agents at once and **drive them from one place**. The orchestration
+console (spec `architecture/02d-agent-monitoring.md` §3) has **two tabs**:
 
-This is the implementation of `architecture/02d-agent-monitoring.md` §3.
+- **Broadcast** — the fan-out router: send a message to every agent, to all agents
+  of one type, or to a coordinator's workers, delivered under **backpressure** (one
+  at a time per agent). Fire-and-forget; nothing is chained or persisted.
+- **Runs** — the **run engine**: build a **run** (a small graph of **steps**) where
+  one step's output can feed the next (`{{steps.s1.output}}`), independent steps run
+  **in parallel**, a step can pause for **your approval** (a gate), and the whole run
+  is **durable** — it survives a restart and the engine re-attaches on load.
 
-> **TL;DR.**
-> 1. Launch **2 or more agents** (any worktrees — see
->    [agent launch](./agent-launch.md)).
-> 2. A **workflow icon + agent count** appears in the **status bar** (bottom
->    right). Click it.
-> 3. Type a message, pick a **target** (All / a type / the coordinator's
->    workers), and **Send** (or `Ctrl+Enter`).
-> 4. Each agent gets the message typed into its terminal; if it's busy, the
->    message waits in that agent's queue until it reports idle.
-
----
-
-## When would I use this?
-
-Whenever you have more than one agent working in parallel and want to coordinate
-them without clicking into each terminal:
-
-- **Broadcast a context update** to every agent ("the API base URL changed to
-  …").
-- **Fan a task out to one type** — e.g. tell *every* `claude` to run its test
-  suite, or *every* `codex` to rebase.
-- **Coordinator pattern** — keep one agent as the "lead" and push instructions to
-  its workers, one at a time, as each frees up.
-
-Each "agent" is simply a terminal tab running an agent CLI (identified by the
-command you launched it with, e.g. `claude`, `codex`). Delivery is the ADE typing
-your message into that terminal and pressing Enter — exactly what you'd do by
-hand, just routed and backpressured.
+> **TL;DR — Broadcast.** Launch **2+ agents** → a **workflow icon + count** appears
+> in the **status bar** (bottom right) → click it → **Broadcast** tab → type a
+> message, pick a target (All / a type / workers), **Send** (`Ctrl+Enter`).
+>
+> **TL;DR — Runs.** Open the console → **Runs** tab → **New run** → **Add step**
+> (pick a type + agent + prompt, and which steps it *runs after*) → repeat →
+> **Start**. Watch each step light up, and expand a step to read its captured output.
 
 ---
 
 ## Where it is / how to open it
 
-The orchestration entry point lives in the **status bar** (the thin bar at the
-bottom of the window):
+The entry point lives in the **status bar** (the thin bar at the bottom):
 
-- It appears **only when ≥ 2 agents are running** (routing/fan-out needs more
-  than one agent). With zero or one agent it stays hidden.
-- It shows a **workflow icon** followed by the **number of live agents**, and a
-  small **primary-colored dot** when there are messages still queued.
-- **Click it** to open the orchestration console (a modal). You can also reach it
-  any time the icon is visible; closing the console does **not** stop in-flight
-  delivery — queued messages keep draining in the background.
+- It shows a **workflow icon** + the **number of live agents**, with a small dot when
+  broadcast messages are still queued.
+- It appears when **≥ 2 agents are running** *or* whenever **any run exists** (so a
+  saved run stays reachable to build, drive or review even with fewer agents).
+- **Click it** to open the console (a modal). Closing the console does **not** stop
+  anything — queued broadcast messages keep draining and active runs keep advancing
+  in the background while the app is open.
 
 ---
 
-## The console
+# Part 1 — Broadcast (fan-out router)
 
-The console has two parts: the **agent list** (top) and the **composer**
-(bottom).
+The original "difusión" surface. Use it to push the same instruction to many agents
+without clicking into each terminal.
 
-### Agent list
+## The agent list
 
-Agents are grouped by **type** (their command — `claude`, `codex`, …). Each row
-shows:
+Agents are grouped by **type** (their command — `claude`, `codex`, …). Each row shows:
 
 | Element | Meaning |
 |---|---|
-| **Status dot** | The agent's state — precise (`working` / `blocked` / `waiting` / `done`) if it reports [hooks](./agent-hooks.md), else coarse `working` / `idle` inferred from output. |
+| **Status dot** | Precise hook state (`working` / `blocked` / `waiting` / `done`) if the agent reports [hooks](./agent-hooks.md), else coarse `working` / `idle` from output. |
 | **Logo + name** | The agent and the worktree/branch it runs in. |
-| **`N queued` badge** | How many messages are waiting in this agent's backpressure queue (not counting one already delivered). |
-| **Crown** | Mark this agent as the **coordinator** (click again to unset). Highlights the row and unlocks the "workers" target. |
-| **Eraser** | Drop this agent's queued (undelivered) messages. Only shown when it has a queue. |
-| **↗ (go to terminal)** | Jump to that agent's terminal and close the console. |
-
-### Composer
-
-- **Message box** — what to send. Single-line prompts work best (see
-  [caveats](#caveats)); `Ctrl/⌘+Enter` sends.
-- **Target selector** — who receives it (below).
-- **Send button** — shows the resolved recipient count, e.g. *Send to 3*. It's
-  disabled when the message is empty or the target currently matches no agent.
-
----
+| **`N queued`** | Messages waiting in this agent's backpressure queue. |
+| **Crown** | Mark this agent the **coordinator** (unlocks the "workers" target). |
+| **Eraser** | Drop this agent's queued (undelivered) messages. |
+| **↗** | Jump to that agent's terminal. |
 
 ## Routing targets
 
 | Target | Who gets the message |
 |---|---|
-| **All agents** | Every live agent, of any type (fan-out). |
-| **All `<type>`** | Every live agent of that type — e.g. *All Claude Code* hits every running `claude` (fan-out by type). One option appears per type currently running. |
-| **Coordinator's workers** | Every live agent **except** the coordinator. Only shown once you've set a coordinator (crown). |
+| **All agents** | Every live agent (fan-out). |
+| **All `<type>`** | Every live agent of that type (fan-out by type). |
+| **Coordinator's workers** | Every live agent except the coordinator (needs a crown set). |
 
-A single send enqueues **one copy per matched agent**, so a fan-out to five
-agents queues five messages (one each), each delivered independently under
-backpressure.
+A single send enqueues **one copy per matched agent**. Delivery is **backpressured**:
+the ADE delivers the head of each agent's FIFO queue **only when that agent is free**,
+then waits for it to go busy before considering its next message — so a slow agent is
+never flooded. With hooks installed this is precise; without, it's inferred from
+output activity (with a short grace window so the queue still drains).
 
----
-
-## Coordinator & workers (the task graph)
-
-The ADE keeps an **in-memory** coordinator → workers relationship (it is **not**
-saved; it resets when you close the app):
-
-- Click the **crown** on any agent to make it the **coordinator**.
-- Its **workers** are every other live agent. The **Coordinator's workers**
-  target fans out to all of them — handy for a "lead drives the team" pattern.
-- Click the crown again (or on another agent) to unset/move it.
-
-> The original design imagined a coordinator that *creates* worker worktrees on
-> its own. That needs an agent→ADE control channel that doesn't exist yet (agents
-> are opaque CLIs), so today **you** create the worktrees/agents and just
-> *designate* the coordinator. The relationship is shown in this console rather
-> than nested in the left sidebar — see the spec note in
-> `architecture/02d-agent-monitoring.md` §3.4.
+The coordinator → workers link is **in-memory** (it resets when you close the app);
+it's a designation, not automation.
 
 ---
 
-## Backpressure (how delivery is paced)
+# Part 2 — Runs (the run engine)
 
-The whole point is to **not overwhelm an agent**. For each agent the ADE keeps a
-**FIFO queue** and delivers messages one at a time:
+A **run** is a graph (DAG) of **steps**. Each step targets an agent, has a prompt, and
+declares which steps it **runs after**. The engine promotes ready steps (dependencies
+met), dispatches them (respecting a concurrency cap), captures each step's output onto
+the run's shared "blackboard", and detects completion — then opens the next steps.
 
-1. You send → a copy is queued for every matched agent.
-2. The ADE delivers the **head** of a queue **only when that agent is free**.
-3. After delivering, it waits for the agent to go busy (it picked the work up)
-   **before** considering that agent's next message.
-4. When the agent reports free again, the next message goes — and so on until the
-   queue empties.
+## Step types
 
-"Free" is judged from the agent's state:
+| Type | What it does | Output it captures | Completion signal |
+|---|---|---|---|
+| **Interactive** | Types the prompt into a **live agent's terminal** (like Broadcast). | The agent's coarse hook **summary** (or a structured result if the agent reports one via MCP — see below). | The hook `done`/idle signal (best-effort without hooks). |
+| **Headless** | Runs an **installed CLI in print-mode** (`agent -p …`) in a chosen worktree. The ADE owns the process. | The agent's **full stdout**. | The **process exit code** — `0` = done, non-zero = failed. **Verified**, not cooperative. |
+| **Human gate** | Pauses the run for **your** decision. | Your optional **note**. | You click **Approve** or **Reject**. |
 
-- **With [hooks](./agent-hooks.md) installed** — precise: `working` and `blocked`
-  count as busy; `waiting` / `done` / idle count as free. This is the most
-  reliable backpressure.
-- **Without hooks** — coarse: the ADE infers busy/idle from terminal **output
-  activity**. It's approximate but works for most agents. As a safety net, if an
-  agent never reports busy after a delivery, a short grace window releases its
-  next message so the queue still drains.
+> **Interactive vs Headless — which to use?** Interactive keeps a human-visible agent
+> in the loop and reuses an agent you already launched, but its captured output is only
+> the short hook summary. Headless is for robust **chaining**: it captures the complete
+> answer and verifies completion by exit code, at the cost of spawning a fresh one-shot
+> process (no live conversation). Prefer **headless** when a later step needs the
+> previous step's full output.
 
-> **Tip:** install hooks for the agents you orchestrate ([guide](./agent-hooks.md))
-> — precise states make backpressure exact instead of best-effort.
+## Passing context between steps (A → B → C)
 
-You can watch this live: send several messages to one busy agent and its
-`N queued` badge counts down as it works through them.
+Every completed step stores its `output` (and a short `summary`) on the run. A later
+step's prompt can plant them with a template reference:
+
+- `{{steps.s1.output}}` → step `s1`'s captured output
+- `{{steps.s1.summary}}` → its short summary
+- `{{steps.s1.title}}` → its title
+
+In the step editor, the **Insert output** chips add these for you (and automatically
+make the step *run after* the one it references). Step ids are short and stable
+(`s1`, `s2`, …), so a reference never breaks when you reorder steps.
+
+## Dependencies, parallelism & fan-in
+
+Each step's **Runs after** toggles are the DAG edges:
+
+- **Sequence** — `s2` runs after `s1`, `s3` after `s2` (a new step defaults to running
+  after the previous one).
+- **Parallel** — give two steps **no** dependency and they dispatch at the same time
+  (up to the concurrency cap of 4).
+- **Fan-in** — a step that runs after **both** `A` and `B` opens only when *both*
+  complete. That's the classic "A and B in parallel, then C".
+
+If any step a dependent needs **fails** or is **skipped**, the dependent is **skipped**
+(it can never run). Cycles are rejected when you Start.
+
+## Human gates (approval before a stage)
+
+A **Human gate** step pauses the run and shows its question inline with **Approve** /
+**Reject** buttons and an optional note. A **native notification** fires so you're
+alerted even if you're elsewhere. Approving completes the gate (your note becomes its
+output, so later steps can quote `{{steps.g1.output}}`); rejecting fails it (its
+dependents skip). Independent branches that don't depend on the gate keep running.
+
+## Auto-repair (retry)
+
+Each agent step has an **On failure** policy:
+
+- **Stop the run** (default) — a failure fails the run.
+- **Retry the step** — on failure the step is re-dispatched, up to **Max attempts**
+  (2–9). An interactive retry may re-bind to another live agent of the same type; a
+  headless retry re-spawns the process.
+
+## Durability & restart
+
+The run graph, step states **and captured outputs** are persisted (as an opaque blob,
+via `set_orchestration_runs`, the same way the terminal layout is). On the next launch
+the engine **re-attaches**: completed outputs are kept (the context chain survives),
+and any step left mid-flight drops back to *ready* so it re-dispatches. The run
+advances **while the app is open**; a background engine is a future hardening step.
+
+## Structured reports over MCP (interactive steps)
+
+The ADE injects an **orchestration MCP tool** into each agent it launches (alongside
+the browser tools — see [browser](./browser.md)): `orchestration_report_result`. When
+an interactive step's agent calls it (passing its `UXNAN_AGENT_ID`), the run captures
+that **structured result verbatim** as the step's output — better than the coarse hook
+summary — and completes the step immediately. There's also `orchestration_report_progress`
+for a live one-line status. This is *cooperation when it helps*; the hook/idle signal
+remains the fallback when the agent doesn't report. (Requires the browser MCP injection
+to be on — Settings → Browser.)
+
+---
+
+## How to test it (end-to-end)
+
+Run the app in dev (`npm run tauri dev` — see [development](./development.md)). The
+scenarios below map to Stages E1–E3 of the plan.
+
+### E1 — interactive chain + persistence
+
+1. Add a project and launch **two agents** into worktrees (see [agent launch](./agent-launch.md)).
+   Install [hooks](./agent-hooks.md) for tighter completion detection.
+2. Open the console → **Runs** → **New run** → **Add step**:
+   - Step 1 (**Interactive**, agent A): prompt *"Summarize the README in 3 bullets."*
+   - Step 2 (**Interactive**, agent B): click the **Insert output** chip for step 1,
+     then *"Turn these into a checklist:"* — it now *runs after* step 1.
+3. **Start**. Watch step 1 go **Running → Done**, then step 2 dispatch with step 1's
+   summary planted in its prompt (visible in agent B's terminal).
+4. **Persistence:** while the run is active (or after it finishes), quit and relaunch
+   the app. Reopen the console → the run is still listed with its captured outputs;
+   a mid-flight step is back at *Ready*.
+
+### E2 — headless chain + verified completion
+
+1. Add a step of type **Headless**, pick an installed CLI, a model, and a **worktree**.
+   Prompt: *"List the top 3 files by size in this repo."*
+2. Add a second **Headless** step that references `{{steps.s1.output}}`.
+3. **Start**. Step 1 captures the CLI's **full stdout**; step 2 receives it verbatim.
+4. **Failure:** make a headless step fail (e.g. an unsupported model id) and confirm it
+   goes **Failed** with the CLI's stderr shown, and (if *On failure = Retry*) that it
+   re-attempts up to Max attempts.
+
+### E3 — gate + parallel fan-in
+
+1. Build: step A and step B with **no dependency** (they run in parallel), a **Human
+   gate** that runs after both, and a final step that runs after the gate.
+2. **Start**. A and B dispatch together; when both finish, the gate appears with
+   **Approve / Reject** (and a native notification fires).
+3. **Approve** → the final step runs, with the gate's note available as
+   `{{steps.<gate>.output}}`. Re-run and **Reject** → the final step is **skipped**.
+
+### Automated checks
+
+- **Frontend:** `npm test` — the pure engine logic (`src/lib/orchestration/run.ts`) is
+  unit-tested in `run.test.ts` (DAG readiness, template substitution, cycle detection,
+  validation, status derivation).
+- **Backend:** the headless runner (`src-tauri/src/agentrun.rs`) and the persistence
+  field are unit-tested; run `cargo test` in `src-tauri/`.
+- **Types/lint:** `npm run check` (svelte-check) and `cargo clippy` / `cargo fmt`.
 
 ---
 
 ## Caveats
 
-- **Single-line prompts.** A message is typed into the terminal followed by
-  Enter. Most agent prompts submit on Enter, so embedded newlines may submit
-  early — keep each message to one line for predictable results.
-- **The agent must be at its input prompt.** Delivery types into the terminal; if
-  the agent is mid-question or showing a menu, the text lands wherever the cursor
-  is. Backpressure waits for *idle*, which usually means "back at the prompt", but
-  agents without hooks can be misjudged — prefer hooks for tight loops.
-- **Exited agents are skipped.** A delivery to a terminal whose agent has exited
-  is silently dropped (the queue entry is consumed).
-- **Nothing is persisted.** Queues and the coordinator are in-memory; closing the
-  app clears them.
+- **Interactive output is thin.** Without a structured MCP report, an interactive
+  step's output is only the agent's short hook summary. For full context, use a
+  **headless** step or have the agent call `orchestration_report_result`.
+- **Interactive completion is best-effort without hooks.** The engine watches the
+  target agent go busy then idle; a hook-less agent it never catches busy completes
+  after a short grace window. Install [hooks](./agent-hooks.md) for tight loops.
+- **Cancelling doesn't stop a subprocess/agent already working.** The engine lets go
+  (marks remaining steps skipped), but an already-typed interactive agent or an
+  in-flight headless process keeps running to completion.
+- **Large context via a CLI argument.** A headless prompt is passed as an argument and
+  capped (~28 KB) to stay within the OS command-line limit; very large chained context
+  is clipped. (Streaming large prompts via stdin is a tracked follow-up.)
+- **Headless in a WSL worktree** runs the Windows-side CLI against the `\\wsl$` share
+  (functional but slow); native in-distro headless routing is a tracked follow-up.
 
 ---
 
 ## See also
 
-- [Agent launch & configuration](./agent-launch.md) — register agents, per-agent
-  env vars, the launch shell, auto-launch on worktree create.
-- [Agent hooks — precise states](./agent-hooks.md) — make backpressure exact.
-- Spec: [`architecture/02d-agent-monitoring.md`](../architecture/02d-agent-monitoring.md)
-  §3 (orchestration), §1 (monitoring layers that feed idle detection).
+- [Agent launch & configuration](./agent-launch.md) — register agents, per-agent env,
+  the launch shell, auto-launch on worktree create.
+- [Agent hooks — precise states](./agent-hooks.md) — make interactive completion exact.
+- [Browser](./browser.md) — the injected MCP channel the orchestration tools ride on.
+- Spec: [`architecture/02d-agent-monitoring.md`](../architecture/02d-agent-monitoring.md) §3.

@@ -65,10 +65,12 @@ available today are:
   inference, and process-tree detection — drive colored status dots, unread / done
   badges, and native idle notifications, so you always know whether an agent is
   working, blocked, waiting, or done.
-- **Multi-agent orchestration.** With two or more live agents, a console routes a
-  message to all of them, to one agent type (fan-out), or to a coordinator's
-  workers, applying backpressure so no agent receives a new message before it is
-  free.
+- **Multi-agent orchestration.** A console with two surfaces: **Broadcast** routes a
+  message to all live agents, to one agent type (fan-out), or to a coordinator's
+  workers, with backpressure; and a **run engine** (**Runs**) chains agents into a
+  durable graph of steps — one step's output feeds the next, independent steps run in
+  parallel, headless steps capture full output verified by exit code, and a step can
+  pause for your approval. See [`docs/orchestration.md`](docs/orchestration.md).
 - **AI-provider usage.** A **Providers** settings section shows how much of each
   quota you've consumed — session / weekly / monthly windows (with resets), plan,
   account and credit balance — for **Codex, Claude, Copilot and Gemini**. It reads

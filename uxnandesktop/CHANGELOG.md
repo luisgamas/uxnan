@@ -5,6 +5,44 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — Orchestration run engine (chaining, headless, HITL gates, MCP)
+
+- The multi-agent orchestration console gains a second surface. It is now two tabs:
+  **Broadcast** (the existing fan-out router — route a message to all agents / one
+  type / the coordinator's workers, backpressured) and **Runs** (a new deterministic
+  **run engine**).
+- **Runs** are a graph (DAG) of **steps**. Build a run in the console (New run → Add
+  step), then Start / Pause / Resume / Cancel / Re-run it. Each step targets an agent,
+  carries a prompt, and declares which steps it **runs after** — so steps chain,
+  fan out in parallel, and fan in.
+- **Context passing (A → B → C).** A step's prompt can plant a prior step's captured
+  output with `{{steps.s1.output}}` / `.summary` / `.title` (insert-chips in the
+  editor auto-add the dependency). Interactive output is the agent's hook summary (or
+  a structured MCP report); headless output is the full stdout.
+- **Three step types.** *Interactive* types the prompt into a live agent's terminal
+  (completes on the hook/idle signal). *Headless* runs an installed CLI in print-mode
+  in a chosen worktree — the ADE **owns the process**, so it captures the full stdout
+  and **verifies completion by exit code** (new `agent_run_headless` backend command,
+  reusing `agentcli`). *Human gate* pauses the run for an Approve/Reject decision
+  (with a note that feeds later steps + a native notification).
+- **Auto-repair.** Per-step *On failure* policy: **Stop the run** or **Retry** (up to
+  a configurable Max attempts; an interactive retry may re-bind to another live agent
+  of the same type, a headless retry re-spawns).
+- **Durable + re-attachable.** The run graph, step states and captured outputs persist
+  across restarts (opaque `orchestrationRuns` blob via the new `set_orchestration_runs`
+  command, mirroring `terminal_layout`); the engine re-attaches on load, keeping
+  completed outputs and returning a mid-flight step to *ready*.
+- **Cooperative agent→ADE channel.** New orchestration MCP tools
+  (`orchestration_report_result` / `orchestration_report_progress`) on the injected
+  MCP server let an interactive agent report its **structured result** (attributed by
+  `UXNAN_AGENT_ID`), captured verbatim as the step output — better than the coarse
+  hook summary.
+- The status-bar entry point now also appears when any run exists (not only with ≥2
+  live agents), so a saved run stays reachable. Pure engine logic
+  (`src/lib/orchestration/run.ts`) is unit-tested (23 Vitest cases); the headless
+  runner (`src-tauri/src/agentrun.rs`) and the persistence field are unit-tested too.
+  Full EN/ES i18n. Spec: `architecture/02d-agent-monitoring.md` §3.
+
 ### Changed — Desktop stable and nightly releases now have separate, enforced tags
 
 - **Stable:** `desktop-stable-v0.0.PATCH` produces a normal GitHub Release and
