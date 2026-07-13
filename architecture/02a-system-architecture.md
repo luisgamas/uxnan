@@ -1697,7 +1697,15 @@ fuzzy de archivos en todo el repositorio** (respeta `.gitignore`, excluye
 `git ls-files` (tracked + untracked no ignorados) mas las carpetas ancestro
 derivadas; fuera de un repo, un walk recursivo acotado. El ranking es
 basename-substring > path-substring > subsecuencia. Lo consume el picker `@`
-del composer movil, y queda listo para un buscador en el visor de archivos.
+del composer movil y el buscador de `FileBrowserScreen`. Este último muestra
+el nombre como información principal y la ruta relativa al workspace como
+información secundaria; al abrir un resultado expande de forma perezosa sólo
+sus carpetas ancestro para revelar su ubicación al volver del visor. Cerrar la
+búsqueda sin seleccionar un resultado no modifica el árbol. Mientras la vista
+de búsqueda aún cubre el árbol, el móvil pre-posiciona la fila seleccionada
+cerca del centro del viewport (limitada por los extremos normales del scroll),
+de modo que el usuario no ve una animación de desplazamiento y al volver del
+visor encuentra el archivo inmediatamente.
 
 Las RPCs `workspace/list`, `workspace/searchFiles`, `workspace/readFile` y
 `workspace/readImage` son consumidas hoy por:
@@ -1706,7 +1714,8 @@ Las RPCs `workspace/list`, `workspace/searchFiles`, `workspace/readFile` y
   `workspace_browser.dart`) — el selector de root + breadcrumb.
 - **Visor de archivos del workspace** (`FileBrowserScreen` +
   `FileViewerScreen` en `presentation/screens/conversation/files/`,
-  manageado por `FileBrowserManager`) — el árbol perezoso y el
+  manageado por `FileBrowserManager`) — el árbol perezoso, la búsqueda fuzzy
+  repo-wide con revelado de ancestros y el
   viewer por extensión (image / markdown preview vs source /
   code-highlighted + diff overlay / binary placeholder), accesado
   desde un `IconSurface` `folder_open_rounded` en la app-bar de

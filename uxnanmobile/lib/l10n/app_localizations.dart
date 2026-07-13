@@ -3572,6 +3572,30 @@ abstract class AppLocalizations {
   /// **'Files'**
   String get fileBrowserTitle;
 
+  /// No description provided for @fileBrowserSearch.
+  ///
+  /// In en, this message translates to:
+  /// **'Search files'**
+  String get fileBrowserSearch;
+
+  /// No description provided for @fileBrowserSearchHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Search files in this project'**
+  String get fileBrowserSearchHint;
+
+  /// No description provided for @fileBrowserSearchEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No matching files'**
+  String get fileBrowserSearchEmpty;
+
+  /// No description provided for @fileBrowserSearchFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t search files'**
+  String get fileBrowserSearchFailed;
+
   /// Settings-menu toggle that controls whether file extensions are visible in the file browser list.
   ///
   /// In en, this message translates to:

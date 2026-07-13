@@ -944,6 +944,10 @@
   "@fileBrowserTitle": {
     "description": "Title of the workspace file browser and its top-bar tooltip."
   },
+  "fileBrowserSearch": "Search files",
+  "fileBrowserSearchHint": "Search files in this project",
+  "fileBrowserSearchEmpty": "No matching files",
+  "fileBrowserSearchFailed": "Couldn't search files",
   "fileBrowserShowExtensions": "Show file extensions",
   "@fileBrowserShowExtensions": {
     "description": "Settings-menu toggle that controls whether file extensions are visible in the file browser list."

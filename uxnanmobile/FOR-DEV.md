@@ -35,6 +35,10 @@ connected to live bridge data, validated on-device against a real bridge.
   composer; **Thinking** section (settings-gated, default off).
 - **New conversation flow** — `project/list` + `agent/list` + `agent/models` +
   **folder browser** (`workspace/browseDirs`) to root a thread anywhere.
+- **Workspace file browser + viewer** — lazy git-aware tree, repo-wide fuzzy
+  search with relative-path results, ancestor reveal and hidden pre-positioning
+  of the selected row, text/image/Markdown viewing, inline editing and diff
+  overlays.
 - **Structured model picker** (readable names, default badge, Claude alias
   "(latest)" + pinned versions + resolved-version row, `thread/setModel`), with
   a **Settings ▸ Models** switch to hide Claude Code's `isLatestAlias` "(latest)"
@@ -123,14 +127,6 @@ shipping.
       rebuilds the settings landing + adds About/Licenses screens). **Unblocks
       when that overhaul merges:** add the row to the new About section, reading
       `bridgeUpdateProvider` (no new data/contract work needed).
-- [ ] **File-browser search (reuse `workspace/searchFiles`).** The repo-wide
-      fuzzy search is **ready end-to-end** — the bridge method `workspace/
-      searchFiles` and `FileBrowserManager.searchFiles(cwd, query)` already exist
-      (they back the composer's `@` picker). What's missing is the UI: add a
-      search affordance to `FileBrowserScreen` (presentation/conversation/files)
-      that calls `searchFiles` and shows the flat path matches (tap → open in the
-      file viewer), mirroring the threads/commit-history search style. No
-      bridge/contract work — purely the mobile screen.
 - [ ] **Project drift repository** — the `projects` table exists; the repository +
       `AgentConfig` wiring lands with the projects module.
 - [ ] **Work-log auto-expand while streaming; tap Last-edits strip to jump.** Low.

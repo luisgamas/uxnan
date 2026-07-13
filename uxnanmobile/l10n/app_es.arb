@@ -638,6 +638,10 @@
   "conversationAutonomousModeDismiss": "Descartar",
 
   "fileBrowserTitle": "Archivos",
+  "fileBrowserSearch": "Buscar archivos",
+  "fileBrowserSearchHint": "Buscar archivos en este proyecto",
+  "fileBrowserSearchEmpty": "No hay archivos coincidentes",
+  "fileBrowserSearchFailed": "No se pudieron buscar archivos",
   "fileBrowserShowExtensions": "Mostrar extensiones de archivo",
   "fileBrowserShowHidden": "Mostrar archivos ocultos",
   "fileBrowserShowDetails": "Mostrar detalles del archivo",

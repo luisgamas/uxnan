@@ -6,6 +6,18 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — repo-wide search in the workspace file browser
+- The workspace file browser now exposes the same full-screen Material search
+  pattern used by threads and Git history, backed by the existing
+  `workspace/searchFiles` fuzzy search. Results emphasize the filename and
+  show its workspace-relative path beneath it.
+- Opening a search result lazily expands only that file's ancestor folders in
+  the underlying tree and positions its row near the middle of the viewport
+  while search still covers the tree. The viewer then opens, so returning
+  reveals the file immediately without exposing a scroll animation. Root-level
+  files near the end naturally clamp to the maximum scroll extent. Dismissing
+  search without choosing a result leaves the tree unchanged.
+
 ### Changed — the autonomous-mode banner is dismissible + a settings toggle
 - The autonomous ("YOLO") mode banner (shown for agents like pi) now has a
   **close button** that dismisses it for the current visit; it reappears the

@@ -1914,6 +1914,18 @@ class AppLocalizationsEs extends AppLocalizations {
   String get fileBrowserTitle => 'Archivos';
 
   @override
+  String get fileBrowserSearch => 'Buscar archivos';
+
+  @override
+  String get fileBrowserSearchHint => 'Buscar archivos en este proyecto';
+
+  @override
+  String get fileBrowserSearchEmpty => 'No hay archivos coincidentes';
+
+  @override
+  String get fileBrowserSearchFailed => 'No se pudieron buscar archivos';
+
+  @override
   String get fileBrowserShowExtensions => 'Mostrar extensiones de archivo';
 
   @override
