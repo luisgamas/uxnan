@@ -24,7 +24,7 @@ El área central del ADE es donde ocurre la interacción directa con los agentes
 
 ### Renderizado con xterm.js
 
-xterm.js renderiza la salida del proceso PTY en un **canvas/WebGL** dentro del webview de Tauri. Esto proporciona emulación de terminal completa:
+xterm.js renderiza la salida del proceso PTY con **WebGLAddon** dentro del webview de Tauri, la ruta acelerada recomendada por xterm y usada por VS Code. Su superficie se reconstruye después de revelar un pane oculto o cambiar la cuadrícula para evitar frames obsoletos en WebView2. DOM se usa como fallback o cuando se activan ligaduras. Esto proporciona emulación de terminal completa:
 
 - **Colores**: Soporte completo de colores ANSI (16 colores, 256 colores, true color 24-bit).
 - **Cursor**: Movimiento, estilos (bloque, barra, underline), parpadeo configurable.
@@ -65,7 +65,7 @@ Usuario teclea en terminal
     emit('pty:output:{id}', bytes)         ← Tauri event (backend → frontend)
         |
         v
-    xterm.js (renderiza output en canvas/WebGL)
+    xterm.js (renderiza output con WebGLAddon)
 ```
 
 **Diferencia clave con Electron**: En Tauri 2, se usan **Tauri commands** (`#[tauri::command]` en Rust, `invoke()` en JS) para request/response, y **Tauri events** (`emit()`/`listen()`) para streaming unidireccional. Los events de Tauri son más eficientes porque evitan el overhead de serializar respuestas completas, lo cual es ideal para streaming de bytes de PTY.

@@ -19,7 +19,7 @@
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { Terminal } from "@xterm/xterm";
   import { FitAddon } from "@xterm/addon-fit";
-  import { CanvasAddon } from "@xterm/addon-canvas";
+  import { WebglAddon } from "@xterm/addon-webgl";
   import { LigaturesAddon } from "@xterm/addon-ligatures";
   import { WebLinksAddon } from "@xterm/addon-web-links";
   import "@xterm/xterm/css/xterm.css";
@@ -57,16 +57,17 @@
     onexit?: () => void;
   } = $props();
 
-  // Give an interactive shell a moment to load its profile and draw a prompt
-  // before we type the agent command into it (otherwise it can land mid-init).
-  const RUN_COMMAND_DELAY_MS = 400;
+  // Shell output is debounced before typing an agent command so profile scripts
+  // can finish drawing their prompt. Quiet shells still launch via the fallback.
+  const RUN_COMMAND_QUIET_MS = 160;
+  const RUN_COMMAND_FALLBACK_MS = 1800;
 
   let el: HTMLDivElement;
   let term: Terminal | undefined;
   let fit: FitAddon | undefined;
-  // Kept when the Canvas renderer is active so a resize/reveal can force a clean
+  // Kept when the WebGL renderer is active so a resize/reveal can force a clean
   // repaint (clearing the glyph atlas) and drop any stale frame.
-  let renderer: CanvasAddon | undefined;
+  let renderer: WebglAddon | undefined;
   // Kitty/CSI-u keyboard protocol state for this terminal. Dormant until an app
   // running in the PTY negotiates it; see `keyboardProtocol.ts`.
   const kbd = new KeyboardProtocol();
@@ -82,6 +83,8 @@
   // resize doesn't fire SIGWINCH and make a full-screen agent TUI repaint/jump.
   let lastCols = 0;
   let lastRows = 0;
+  let launchTimer: ReturnType<typeof setTimeout> | undefined;
+  let ptyReady = false;
 
   // --- Copy / paste --------------------------------------------------------
   function copySelection() {
@@ -117,7 +120,7 @@
   // is revealed from display:none, a canvas renderer can keep compositing its
   // pre-hide pixels for cells it deems unchanged; clearing the glyph atlas and
   // refreshing every row rebuilds the frame from the buffer. A cheap safety net —
-  // the Canvas renderer already repaints cleanly on a normal resize.
+  // the accelerated renderer already repaints cleanly on a normal resize.
   function forceRepaint() {
     if (repaintRaf !== null) cancelAnimationFrame(repaintRaf);
     repaintRaf = requestAnimationFrame(() => {
@@ -136,12 +139,28 @@
     });
   }
 
+  // WebglAddon owns a render surface whose pixel geometry can outlive the pane
+  // geometry WebView2 composited it with. Recreate only that surface (the xterm
+  // buffer and PTY stay untouched) after a hidden reveal or a real grid resize.
+  function rebuildAcceleratedRenderer() {
+    if (!renderer || !term) return;
+    try {
+      renderer.dispose();
+      renderer = new WebglAddon();
+      term.loadAddon(renderer);
+    } catch {
+      renderer = undefined;
+    }
+    forceRepaint();
+  }
+
   // Fit the xterm grid to the pane, resize the PTY only on a real grid change,
   // and repaint whenever the canvas dimensions actually changed.
   function applyFit() {
     if (!term || !fit || !hasVisibleGeometry()) return;
     const beforeCols = term.cols;
     const beforeRows = term.rows;
+    const distanceFromBottom = term.buffer.active.baseY - term.buffer.active.viewportY;
     try {
       fit.fit();
     } catch {
@@ -155,7 +174,24 @@
         () => {},
       );
     }
-    if (term.cols !== beforeCols || term.rows !== beforeRows) forceRepaint();
+    if (term.cols !== beforeCols || term.rows !== beforeRows) rebuildAcceleratedRenderer();
+    if (distanceFromBottom > 0) {
+      term.scrollToLine(Math.max(0, term.buffer.active.baseY - distanceFromBottom));
+    }
+  }
+
+  function scheduleAgentLaunch(delay = RUN_COMMAND_QUIET_MS) {
+    if (!runCommand || !ptyReady || launchedIds.has(id)) return;
+    if (launchTimer) clearTimeout(launchTimer);
+    launchTimer = setTimeout(async () => {
+      launchTimer = undefined;
+      try {
+        await invoke("pty_write", { id, data: `${runCommand}\r` });
+        launchedIds.add(id);
+      } catch {
+        // Leave the id retryable if the backend was not ready for this write.
+      }
+    }, delay);
   }
 
   // Re-fit only once the proposed grid stops changing between animation frames.
@@ -214,9 +250,8 @@
     term.loadAddon(fit);
     term.open(el);
     // Ligatures need the DOM renderer, so they're mutually exclusive with the
-    // Canvas renderer. Canvas is preferred over WebGL here: it repaints cleanly
-    // on resize (WebGL could leave a stale sliver of the previous frame stuck at
-    // the right edge on WebView2), and is plenty fast for agent TUIs.
+    // WebGL renderer. WebGL is xterm's recommended accelerated renderer and is
+    // the same path used by VS Code; DOM remains the supported fallback.
     if (t.ligatures) {
       try {
         term.loadAddon(new LigaturesAddon());
@@ -225,10 +260,10 @@
       }
     } else {
       try {
-        renderer = new CanvasAddon();
+        renderer = new WebglAddon();
         term.loadAddon(renderer);
       } catch {
-        // Canvas renderer unavailable — xterm falls back to the DOM renderer.
+        // WebGL unavailable — xterm falls back to the DOM renderer.
         renderer = undefined;
       }
     }
@@ -396,6 +431,7 @@
       await listen<number[]>(`pty:output:${id}`, (e) => {
         term?.write(new Uint8Array(e.payload));
         agentMonitor.noteOutput(id);
+        scheduleAgentLaunch();
       }),
     );
     unlisteners.push(
@@ -424,6 +460,7 @@
         cols: term.cols || 80,
         rows: term.rows || 24,
       });
+      ptyReady = true;
     } catch (e) {
       // Only a real backend rejection means the shell failed to spawn (a missing
       // shell / bad profile). Surface it in the pane instead of a silent black
@@ -454,14 +491,10 @@
       }
     }
 
-    // Agent launch: type the command into the freshly-started shell. Running it
-    // inside the shell (rather than as the PTY process) lets PATH/PATHEXT shims
-    // resolve (`codex.cmd`/`.ps1`), which spawning the bare command cannot.
+    // Wait for shell output to settle before typing. PowerShell profiles often
+    // take longer than a fixed delay; the fallback covers a silent prompt.
     if (runCommand && !spawnFailed && !launchedIds.has(id)) {
-      launchedIds.add(id);
-      setTimeout(() => {
-        invoke("pty_write", { id, data: `${runCommand}\r` }).catch(() => {});
-      }, RUN_COMMAND_DELAY_MS);
+      scheduleAgentLaunch(RUN_COMMAND_FALLBACK_MS);
     }
 
     term.onData((data) => {
@@ -474,7 +507,7 @@
     // forces a repaint, since a hidden canvas can keep compositing stale pixels.
     resizeObserver = new ResizeObserver(() => {
       const visible = hasVisibleGeometry();
-      if (visible && !wasVisible) forceRepaint();
+      if (visible && !wasVisible) rebuildAcceleratedRenderer();
       wasVisible = visible;
       fitToPane();
     });
@@ -524,6 +557,7 @@
     resizeObserver?.disconnect();
     if (stableFitRaf !== null) cancelAnimationFrame(stableFitRaf);
     if (repaintRaf !== null) cancelAnimationFrame(repaintRaf);
+    if (launchTimer) clearTimeout(launchTimer);
     term?.dispose();
   });
 </script>

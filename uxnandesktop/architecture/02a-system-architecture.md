@@ -349,7 +349,7 @@ En este ejemplo:
 
 | Tipo | Tecnologia | Descripcion |
 |------|-----------|-------------|
-| **Terminal** | xterm.js + portable-pty | Emulador de terminal completo conectado a un proceso PTY. Renderiza en canvas/WebGL. |
+| **Terminal** | xterm.js + portable-pty | Emulador de terminal completo conectado a un proceso PTY. Renderiza con WebGLAddon (DOM fallback). |
 | **Editor** | CodeMirror 6 | Editor de codigo para edicion rapida. Mas ligero que Monaco (~300KB vs ~5MB). Extensible con plugins. |
 | **Visor de Diff** | CodeMirror 6 + extension de diff | Comparador de cambios inline o side-by-side. |
 | **Navegador Embebido** | Webview | Para previsualizar aplicaciones web en desarrollo. |
@@ -642,7 +642,7 @@ Evento de teclado en xterm.js (webview)
     --> Backend Rust escribe al PTY stdin
       --> PTY responde con output
         --> Tauri event 'pty:output:{ptyId}' con bytes
-          --> xterm.js renderiza en canvas/WebGL
+          --> xterm.js renderiza con WebGLAddon
 ```
 
 Se usa Tauri command (`invoke`) para el input porque es request/response — el frontend envia datos y el backend confirma. Se usa Tauri event (`emit`) para el output porque es streaming continuo — el PTY puede producir output en cualquier momento sin que el frontend lo pida.

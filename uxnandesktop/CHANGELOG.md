@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed
+
+- Stabilized terminals by waiting for interactive shell startup before launching agents, preserving scrollback position across pane fits, and rebuilding the accelerated render surface after pane reveals or grid changes.
+
+### Changed
+
+- Restored xterm's recommended WebGL renderer (the same accelerated path used by VS Code), with DOM fallback. This fixes CanvasAddon's offset and hidden-edge selection artifacts across Windows, macOS, and Linux while retaining explicit surface rebuilds that prevent stale frames after pane resize or reveal.
+
 ### Fixed — updater notification phases and responsive layout
 
 - The update notification no longer shows release notes while the installer is

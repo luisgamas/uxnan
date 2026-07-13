@@ -33,7 +33,7 @@
 
 | Tecnologia | Capa | Proposito |
 |------------|------|-----------|
-| **xterm.js** | Frontend | Emulador de terminal en el webview. Renderiza output de PTY en canvas/WebGL. |
+| **xterm.js** | Frontend | Emulador de terminal en el webview. Renderiza output de PTY con WebGLAddon (DOM fallback). |
 | **CodeMirror 6** | Frontend | Editor de codigo y visor de diffs. Mas ligero que Monaco (~300KB vs ~5MB). Extensible con plugins. |
 | **portable-pty** (crate) | Backend Rust | Crear y gestionar pseudoterminales multiplataforma (Windows/macOS/Linux). |
 | **git2** (crate) | Backend Rust | Operaciones git de alta frecuencia (status, diff, stage, log) sin crear subprocesos. Bindings de libgit2. |
@@ -773,7 +773,7 @@ El componente de terminal encapsula xterm.js y gestiona su ciclo de vida:
 <script lang="ts">
   import { Terminal } from '@xterm/xterm';
   import { FitAddon } from '@xterm/addon-fit';
-  import { CanvasAddon } from '@xterm/addon-canvas';
+  import { WebglAddon } from '@xterm/addon-webgl';
   import { invoke } from '@tauri-apps/api/core';
   import { listen } from '@tauri-apps/api/event';
   import { onMount, onDestroy } from 'svelte';
@@ -788,9 +788,9 @@ El componente de terminal encapsula xterm.js y gestiona su ciclo de vida:
     term.loadAddon(fitAddon);
     term.open(terminalEl);
 
-    // Accelerated 2D Canvas rendering (repaints cleanly on resize; DOM fallback)
+    // Recommended accelerated WebGL rendering (DOM fallback)
     try {
-      term.loadAddon(new CanvasAddon());
+      term.loadAddon(new WebglAddon());
     } catch {
       // Fallback al renderer DOM si el Canvas no esta disponible
     }
@@ -845,13 +845,13 @@ const resizeObserver = new ResizeObserver(() => {
 resizeObserver.observe(terminalEl);
 ```
 
-#### Addon: xterm-addon-canvas
+#### Addon: xterm-addon-webgl
 
-`@xterm/addon-canvas` renderiza el terminal en un canvas 2D acelerado. Se prefiere
-sobre el addon WebGL porque repinta limpiamente al redimensionar (el canvas WebGL
-podia dejar un resto del frame anterior pegado en la orilla derecha sobre WebView2),
-y su rendimiento es de sobra para las TUIs de los agentes. Se carga con fallback al
-renderer DOM estandar si el Canvas no esta disponible; las ligaduras fuerzan DOM.
+`@xterm/addon-webgl` es la ruta acelerada recomendada por xterm y usada por VS Code.
+Se carga con fallback al renderer DOM estandar si WebGL no esta disponible; las
+ligaduras fuerzan DOM. Al revelar un pane oculto o cambiar su cuadrícula, Uxnan
+reconstruye la superficie WebGL para evitar que WebView2 conserve un resto del
+frame anterior en la orilla del terminal.
 
 #### Addon Personalizado: Deteccion de Estado de Agente
 

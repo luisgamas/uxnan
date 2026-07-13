@@ -54,7 +54,7 @@ available today are:
   doing (needs you · done · working · idle).
 - **A full terminal multiplexer.** Tabs, nested splits, drag-to-reorder and the
   ability to move tabs across panes, `Ctrl+Tab` MRU cycling, hardware-accelerated
-  Canvas rendering, and scrollback that survives recreating a pane — built on
+  WebGL rendering with DOM fallback, and scrollback that survives recreating a pane — built on
   `portable-pty` and xterm.js.
 - **Integrated Git review.** Status, stage, commit, push and pull, with a unified
   or side-by-side diff viewer (CodeMirror 6), **hunk-level staging**, visual image

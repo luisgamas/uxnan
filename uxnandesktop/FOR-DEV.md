@@ -23,7 +23,7 @@ mobile pairing) is NOT started.**
 
 - **Three-panel resizable shell** with atomic JSON persistence (5 rotating
   backups + sequential schema migrations).
-- **PTY terminals** (`portable-pty 0.9`, xterm Canvas + DOM fallback) — tabs +
+- **PTY terminals** (`portable-pty 0.9`, xterm WebGL + DOM fallback) — tabs +
   nested splits that never remount on split, drag-to-reorder / move tabs across
   regions, `Ctrl+Tab` MRU cycling, a backend output ring buffer that restores a
   recreated pane's scrollback, and the Kitty/CSI-u keyboard protocol. Tabs can be
