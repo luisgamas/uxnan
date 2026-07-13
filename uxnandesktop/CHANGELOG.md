@@ -35,6 +35,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   card (description + comments) with a **comment field** and a colored open/closed
   pill. Comments post through `gh pr comment` / `gh issue comment`
   (`github_pr_comment`, `github_issue_comment`).
+- **GitHub-style timeline.** The PR/issue conversation is now a single **chronological
+  vertical rail** (like GitHub) that interleaves *everything* — the opening
+  description, comments, review verdicts, commits, and smaller events (labeled,
+  assigned, closed, merged, reopened, renamed, review-requested, force-pushed,
+  cross-referenced, ready-for-review, …). Comments and text reviews render as cards on
+  the rail; the rest are compact one-line events with a per-type icon and color.
+  Backed by GitHub's **Timeline Events API** via a new `github_pr_timeline`
+  (`gh api repos/{owner}/{repo}/issues/{n}/timeline --paginate`, serving both PRs and
+  issues); if that call fails it falls back to the reviews/comments already in the
+  detail, so the conversation is never lost. The separate collapsible commits list is
+  gone (commits now live in the timeline).
 - **Worktree-native GitHub:** **check out a PR into a new worktree**
   (`gh pr checkout` → `git worktree`) and **start work on an issue** as a new worktree
   (`gh issue develop`). PRs/issues become first-class citizens of the sidebar tree.
@@ -65,7 +76,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   — `gh` owns it in the OS keychain; the app only reads sanitized status
   (login/scopes/host). Every agent-automatable action has an identical manual path, so
   GitHub features keep working with zero agent quota. Backend: `src-tauri/src/github.rs`
-  (23 commands) + `AppSettings.github` (`GithubSettings`, all fields default). User guide:
+  (24 commands) + `AppSettings.github` (`GithubSettings`, all fields default). User guide:
   [`docs/github.md`](docs/github.md).
 
 ### Changed — Desktop stable and nightly releases now have separate, enforced tags

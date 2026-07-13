@@ -15,7 +15,7 @@ which tracks assets only a human can provide.)
 standalone app** (three-panel shell, PTY terminals + splits, git worktrees, git
 status/diff/stage/commit/history, agent monitoring with the axum hook server +
 OSC/process layers, settings/themes/i18n, multi-agent orchestration,
-**in-app auto-updater**, **browser-control MCP for agents**, **GitHub integration (`gh`-backed)**). 167 Rust backend tests + 117 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
+**in-app auto-updater**, **browser-control MCP for agents**, **GitHub integration (`gh`-backed)**). 168 Rust backend tests + 117 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
 (developed on Windows; CI is `{ubuntu, windows}`). **Phase 6 (embedded bridge /
 mobile pairing) is NOT started.**
 
@@ -84,15 +84,16 @@ mobile pairing) is NOT started.**
   **status-bar button** (rate-limit gauge + optional notifications), and a post-push
   **"Create PR"** toast. PR **review** (approve/request-changes/comment) + **merge** +
   the unified **diff** (**split per file**, collapsed by default + expand/collapse-all);
-  **conversation** (comments + review verdicts) with **comment fields** on both PRs and
-  issues; a **commits** list, **reviewers**, colored **state pills**, and a **checks**
-  list on PRs, with merge/approve/request-changes **gated to open PRs**; **issue**
-  triage/create; **Actions** logs + re-run/cancel; **worktree-native** `gh pr checkout` /
-  `gh issue develop`; optional **AI PR-body drafting** (the `aicommit` one-shot runner).
-  All via the local **`gh` CLI** (incl. `gh api` for rate-limit/notifications) — **no
-  token stored/read by the app**; every agent action has a manual twin. Backend
-  `src-tauri/src/github.rs` (23 commands) + `AppSettings.github`. See
-  [`docs/github.md`](docs/github.md).
+  a **GitHub-style timeline** (a chronological vertical rail interleaving description +
+  comments + review verdicts + commits + events — labeled/assigned/closed/merged/…, via
+  the Timeline Events API) with **comment fields** on both PRs and issues; **reviewers**,
+  colored **state pills**, and a **checks** list on PRs, with merge/approve/request-changes
+  **gated to open PRs**; **issue** triage/create; **Actions** logs + re-run/cancel;
+  **worktree-native** `gh pr checkout` / `gh issue develop`; optional **AI PR-body
+  drafting** (the `aicommit` one-shot runner). All via the local **`gh` CLI** (incl.
+  `gh api` for rate-limit/notifications/timeline) — **no token stored/read by the app**;
+  every agent action has a manual twin. Backend `src-tauri/src/github.rs` (24 commands) +
+  `AppSettings.github`. See [`docs/github.md`](docs/github.md).
 
 ## GitHub integration — follow-ups ☐
 
@@ -119,13 +120,13 @@ The `gh`-backed integration above is complete for the standalone desktop app. De
 - [ ] **Eager per-worktree PR badges.** Sidebar PR badges are shown for *visited*
       worktrees (context cache), not eagerly for every worktree (that would poll a PR
       per worktree). A batched/GraphQL "my PRs for these branches" query could fill it.
-- [ ] **Rich comment/body rendering.** PR & issue bodies and comments render as plain
-      text today (`whitespace-pre-wrap`). Render **Markdown** (reuse the CodeMirror/Lezer
-      Markdown pipeline) and **inline images/screenshots** (fetch attachment URLs) so
-      pasted screenshots show inline instead of as raw links.
+- [ ] **Rich comment/body rendering.** PR & issue bodies, comments and timeline events
+      render as plain text today (`whitespace-pre-wrap`). Render **Markdown** (reuse the
+      CodeMirror/Lezer Markdown pipeline) and **inline images/screenshots** (fetch
+      attachment URLs) so pasted screenshots show inline instead of as raw links.
 - [ ] **Per-commit CI signals + inline diff comments.** The PR-level checks roll-up
-      ships; a per-commit status dot in the commits list (`gh api` per SHA) and
-      **line-level review comments** on the per-file diff are deferred.
+      ships and commits now appear in the timeline; a per-commit status dot (`gh api`
+      per SHA) and **line-level review comments** on the per-file diff are deferred.
 - [ ] **P2/P3 niceties:** mark-files-as-viewed during review, `#`/`@` autocomplete +
       hover cards, a unified **notifications inbox**, **releases** (list/create), a
       write-only **Actions secrets/variables** setter, and native **conditional-request
@@ -133,7 +134,7 @@ The `gh`-backed integration above is complete for the standalone desktop app. De
 - [ ] **Cross-component (mobile):** surface PR/CI/issue status on the paired phone via
       new `shared` `github/*` JSON-RPC methods served by the embedded bridge (Phase 6).
 - [ ] **Svelte component tests** for the GitHub UI (part of the standing component-test
-      TODO below); the pure backend logic is unit-tested in `github.rs` (13 tests).
+      TODO below); the pure backend logic is unit-tested in `github.rs` (14 tests).
 
 ## Integrated developer browser ☐
 
@@ -344,7 +345,7 @@ are **done** (see `CHANGELOG.md` + `architecture/02d` §3). Remaining follow-ups
 
 - ✅ **Verify** — `.github/workflows/ci-desktop.yml` runs svelte-check + `npm test`
   (Vitest) + vite build + cargo fmt/clippy/test on `{ubuntu, windows}` (macOS
-  deferred with Apple). 167 Rust + 117 Vitest tests.
+  deferred with Apple). 168 Rust + 117 Vitest tests.
 - ✅ **`release-desktop.yml`** — exists: `tauri-action` bundles on a `desktop-v*` tag
   → draft GitHub Release, **and signs the updater artifacts** when the signing
   secrets are set. **Windows ships without OS code-signing for now; macOS deferred.**

@@ -127,10 +127,12 @@ Estas son las funcionalidades **estrictamente necesarias** para un ADE ligero qu
 - [~] Integracion con PRs de GitHub/GitLab. — **GitHub: hecho** (integración
       `gh`-backed: seccion GitHub full-screen + tab contextual del panel derecho +
       review/merge/checks de PRs con **diff separado por archivo** (colapsado por
-      defecto + expandir/contraer todo), **conversación** (comentarios + veredictos
-      de review) con **campos para comentar** en PRs e issues, lista de **commits**,
-      **reviewers** y **pills de estado** con color, y merge/approve/request-changes
-      **restringidos a PRs abiertos**; issues, Actions logs, PR/issue↔worktree,
+      defecto + expandir/contraer todo), un **timeline estilo GitHub** (riel vertical
+      cronológico que intercala descripción + comentarios + veredictos de review +
+      commits + eventos — labeled/assigned/closed/merged/… vía la Timeline Events API)
+      con **campos para comentar** en PRs e issues, **reviewers** y **pills de estado**
+      con color, y merge/approve/request-changes **restringidos a PRs abiertos**;
+      issues, Actions logs, PR/issue↔worktree,
       badges y boton de status bar; `src-tauri/src/github.rs`, `docs/github.md`).
       **GitLab: pendiente** (el enfoque `gh`-centrico es
       GitHub-only; ver `FOR-DEV.md → "GitHub integration — follow-ups"`).
