@@ -8,17 +8,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ### Added — Orchestration run engine (chaining, headless, HITL gates, MCP)
 
 - The multi-agent orchestration console gains a second surface. It is now two tabs:
-  **Broadcast** (the existing fan-out router — route a message to all agents / one
-  type / the coordinator's workers, backpressured) and **Runs** (a new deterministic
-  **run engine**).
+  **Broadcast** (the fan-out router — **pick recipients explicitly** and route a
+  message to them, backpressured) and **Runs** (a new deterministic **run engine**).
 - **Runs** are a graph (DAG) of **steps**. Build a run in the console (New run → Add
   step), then Start / Pause / Resume / Cancel / Re-run it. Each step targets an agent,
   carries a prompt, and declares which steps it **runs after** — so steps chain,
   fan out in parallel, and fan in.
 - **Context passing (A → B → C).** A step's prompt can plant a prior step's captured
   output with `{{steps.s1.output}}` / `.summary` / `.title` (insert-chips in the
-  editor auto-add the dependency). Interactive output is the agent's hook summary (or
-  a structured MCP report); headless output is the full stdout.
+  editor auto-add the dependency). Headless output is the full stdout; interactive
+  output is the agent's hook summary or — when the step feeds a later one and the
+  agent is MCP-capable — a structured report the ADE nudges it to send.
 - **Three step types.** *Interactive* types the prompt into a live agent's terminal
   (completes on the hook/idle signal). *Headless* runs an installed CLI in print-mode
   in a chosen worktree — the ADE **owns the process**, so it captures the full stdout
@@ -42,6 +42,27 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   (`src/lib/orchestration/run.ts`) is unit-tested (23 Vitest cases); the headless
   runner (`src-tauri/src/agentrun.rs`) and the persistence field are unit-tested too.
   Full EN/ES i18n. Spec: `architecture/02d-agent-monitoring.md` §3.
+
+### Changed — Broadcast: explicit recipient selection (coordinator retired)
+
+- The Broadcast tab now picks recipients **explicitly**: a checkbox per running
+  agent (grouped by type, with a per-type "all") plus **All / None** presets and a
+  live "N of M selected" count. The **coordinator / workers** concept (the crown) is
+  **removed** — you choose exactly who receives, so "everyone" no longer implicitly
+  bundled a designated coordinator.
+
+### Fixed — reliable prompt delivery to agent terminals
+
+- Prompts are typed into an agent's PTY as a **paste** and submitted with a
+  **separate** Enter (new `pty_paste_submit` command). Fixes agents that left the
+  message sitting in their composer (so a second send concatenated into
+  "message1message2"), and keeps multi-line prompts from submitting at the first
+  newline (multi-line goes via bracketed paste; single-line verbatim, so
+  paste-guarding agents still submit).
+- Backpressure no longer wedges on an agent that reads **busy** forever (no hooks /
+  a stuck status): a queued message — or a blocked interactive step — is
+  **force-delivered** after a 12 s hold cap, and the Broadcast list shows a
+  "waiting for the agent to be free…" hint meanwhile.
 
 ### Changed — Desktop stable and nightly releases now have separate, enforced tags
 

@@ -300,15 +300,27 @@ agentes** corriendo **o** cuando existe alguna corrida):
   agente pasa su `UXNAN_AGENT_ID`; el handler en `mcp.rs` emite un evento
   `agent:orchestration` que el motor frontend atribuye al paso interactivo en curso
   (backend tonto; el modelo de corrida vive 100% en TS). Esto da **salida
-  estructurada** de agentes interactivos, mejor que el `summary` grueso.
+  estructurada** de agentes interactivos, mejor que el `summary` grueso. Para que el
+  caso comun funcione sin que el usuario conozca la tool, el motor **anexa un
+  recordatorio corto al prompt** de un paso interactivo — pero **solo** cuando ese
+  paso alimenta a otro *y* el agente realmente tiene la tool (inyeccion MCP activa y
+  es uno de los agentes inyectados: claude/codex/gemini/opencode). Para cualquier
+  otro agente no se menciona MCP, asi que ningun CLI recibe la instruccion de usar
+  una tool que no tiene.
 
 ### 3.8 Difusion (fan-out) — el router de entrada
 
-- Se envia un mensaje a **todos** los agentes, a **todos los de un tipo**
-  (`agentType()`), o a los **workers del coordinador** (un agente designado con una
-  corona; relacion en memoria, no persistida). Fan-out = una copia por agente,
-  entregada bajo backpressure. Es la superficie original ("difusion"), ahora una
-  pestaña distinta del motor de corridas.
+- Se elige **explicitamente** a los destinatarios: cada agente en ejecucion es una
+  **casilla** (agrupadas por tipo, con una casilla "todos" por tipo) mas atajos
+  **Todos / Ninguno**. Fan-out = una copia por agente seleccionado, entregada bajo
+  backpressure. (No hay coordinador/workers: se retiro la corona para eliminar la
+  ambiguedad de que "todos" incluyera a un agente designado.) Es la superficie
+  original ("difusion"), ahora una pestaña distinta del motor de corridas.
+- **Entrega robusta:** los prompts se teclean como **pegado** y se envian con un
+  Enter **aparte** (`pty_paste_submit`), asi no queda texto a medias en el composer
+  del agente ni se concatenan envios, y lo multilinea no se envia en el primer salto.
+  Un agente que se lee **ocupado** indefinidamente (sin hooks / lector clavado) no
+  atasca la cola: tras un tope de espera se **fuerza la entrega** (mejor esfuerzo).
 
 ---
 

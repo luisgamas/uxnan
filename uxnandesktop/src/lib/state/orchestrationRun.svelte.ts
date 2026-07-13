@@ -19,6 +19,7 @@ import { agentRunHeadless, setOrchestrationRuns, type HeadlessResult } from "$li
 import { terminals } from "./terminals.svelte";
 import { agentStatus } from "./agentStatus.svelte";
 import { orchestration } from "./orchestration.svelte";
+import { app } from "./app.svelte";
 import { notify } from "$lib/notify";
 import { i18n } from "$lib/i18n";
 import type { OrchestratorAgent } from "$lib/orchestration";
@@ -59,6 +60,23 @@ const PICKUP_GRACE_MS = 6000;
 /** Max steps a single run runs concurrently (backpressure across the DAG). */
 const MAX_CONCURRENCY = 4;
 
+/** How long an interactive step waits for its (busy) target agent to free up
+ *  before it is force-dispatched anyway. Backpressure is a courtesy, not a gate —
+ *  an agent whose busy signal is stuck/unreliable must not wedge the step forever
+ *  (mirrors the broadcast console's `MAX_HOLD_MS`). */
+const MAX_HOLD_MS = 12000;
+
+/** Agent routing types uxnan injects the orchestration MCP tools into (mirror of
+ *  `mcpinject::AGENTS`). Only these can be nudged to call `orchestration_report_result`;
+ *  for any other agent we never mention MCP, so a CLI is never told to use a tool
+ *  it doesn't have. */
+const INJECTABLE_MCP_TYPES: ReadonlySet<string> = new Set([
+  "claude",
+  "codex",
+  "gemini",
+  "opencode",
+]);
+
 class OrchestrationRunStore {
   /** All runs (draft / active / past), most-recent last. Durable. */
   runs = $state<Run[]>([]);
@@ -73,6 +91,9 @@ class OrchestrationRunStore {
   /** Gate steps we've already fired a "needs you" notification for (keyed
    *  `runId/stepId`) — so a waiting gate alerts the user only once. */
   private notifiedGates = new Set<string>();
+  /** Interactive steps blocked on a busy target since (epoch ms, keyed
+   *  `runId/stepId`) — gates the force-dispatch after `MAX_HOLD_MS`. Runtime-only. */
+  private blockedSince = new Map<string, number>();
   private eventBridgeStarted = false;
 
   // --- Derived views (for the UI) ------------------------------------------
@@ -314,6 +335,7 @@ class OrchestrationRunStore {
     const prefix = `${runId}/`;
     for (const k of this.sawBusy) if (k.startsWith(prefix)) this.sawBusy.delete(k);
     for (const k of this.notifiedGates) if (k.startsWith(prefix)) this.notifiedGates.delete(k);
+    for (const k of this.blockedSince.keys()) if (k.startsWith(prefix)) this.blockedSince.delete(k);
   }
 
   private resetStep(s: RunStep): void {
@@ -445,8 +467,9 @@ class OrchestrationRunStore {
   }
 
   /** Try to dispatch an interactive step. Returns true when the prompt was typed
-   *  into a live, free agent (step → running); otherwise the step is `blocked`
-   *  (no live target, or the agent is busy) and will be retried next tick. */
+   *  into a live agent (step → running); otherwise the step is `blocked` (no live
+   *  target, or the agent is busy and hasn't waited past the hold cap) and will be
+   *  retried next tick. */
   private dispatchInteractive(
     run: Run,
     step: RunStep,
@@ -454,23 +477,61 @@ class OrchestrationRunStore {
     occupied: Set<string>,
     now: number,
   ): boolean {
+    const k = this.key(run.id, step.id);
     const agent = this.resolveTarget(step, agents, occupied);
-    if (!agent || agent.busy) {
+    if (!agent) {
       step.status = "blocked";
+      this.blockedSince.delete(k); // no target at all — reset the busy clock
       return false;
     }
+    if (agent.busy) {
+      // Hold for a free agent, but not forever: force-dispatch once it has waited
+      // past the cap (its busy signal may be stuck/unreliable).
+      const since = this.blockedSince.get(k) ?? now;
+      this.blockedSince.set(k, since);
+      if (now - since < MAX_HOLD_MS) {
+        step.status = "blocked";
+        return false;
+      }
+    }
+    this.blockedSince.delete(k);
     const { text } = resolveTemplate(step.prompt, stepsById(run));
     step.target.tabId = agent.tabId;
     step.status = "running";
     step.attempts += 1;
     step.startedAt = now;
     step.error = undefined;
-    this.sawBusy.delete(this.key(run.id, step.id));
+    this.sawBusy.delete(k);
     occupied.add(agent.tabId);
-    // Best-effort: a dead PTY simply drops the write (handled as failure next
-    // tick when the tab is gone).
-    void invoke("pty_write", { id: agent.tabId, data: `${text}\r` }).catch(() => {});
+    const payload = this.withAutoReport(text, step, run, agent);
+    // Paste + submit as a distinct Enter (see `pty_paste_submit`): no leftover text
+    // in the composer, no concatenation, multi-line prompts stay intact. Best-effort:
+    // a dead PTY drops the write (handled as failure next tick when the tab is gone).
+    void invoke("pty_paste_submit", { id: agent.tabId, text: payload }).catch(() => {});
     return true;
+  }
+
+  /** Append a short "report your result via MCP" nudge to an interactive prompt —
+   *  but only when it is genuinely useful *and* safe (question 2 + the MCP concern):
+   *   · the step's output actually feeds a later step (don't touch non-chaining
+   *     prompts), and
+   *   · the target agent truly has the orchestration MCP tool — injection is on and
+   *     the agent is one uxnan injects into (and not disabled).
+   *  Otherwise the prompt is returned untouched, so a CLI is never told to use a
+   *  tool it doesn't have. When it applies, a compliant agent's structured result
+   *  is captured verbatim via `agent:orchestration` (see `applyAgentReport`),
+   *  giving real A→B context even for an interactive step. */
+  private withAutoReport(text: string, step: RunStep, run: Run, agent: OrchestratorAgent): string {
+    const feedsLater = run.steps.some((s) => s.id !== step.id && s.dependsOn.includes(step.id));
+    if (!feedsLater) return text;
+    const br = app.settings.browser;
+    if (!br || br.enabled === false || br.mcpEnabled === false || br.mcpInjection === "off") {
+      return text;
+    }
+    if (!INJECTABLE_MCP_TYPES.has(agent.type)) return text;
+    if ((br.mcpDisabledAgents ?? []).includes(agent.type)) return text;
+    const nudge = i18n.t("orchestration.autoReportNudge", { id: agent.tabId });
+    return `${text}\n\n${nudge}`;
   }
 
   /** Dispatch a headless step: resolve its prompt, flip it to `running`, and

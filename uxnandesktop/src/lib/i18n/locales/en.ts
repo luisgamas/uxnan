@@ -841,19 +841,19 @@ export const en = {
   // Multi-agent orchestration console
   "orchestration.title": "Orchestration",
   "orchestration.desc":
-    "Route a message to your running agents — to everyone, to one type (fan-out), or to the coordinator’s workers. Each agent gets its next message only once it’s free.",
+    "Send a message to your running agents — pick exactly who receives it. Each agent gets its next message only once it’s free.",
   "orchestration.open": "Orchestrate running agents",
   "orchestration.queued": "{n} queued",
   "orchestration.emptyTitle": "No running agents",
   "orchestration.emptyDesc": "Launch agents into your worktrees, then route messages to them from here.",
-  "orchestration.setCoordinator": "Make coordinator",
-  "orchestration.unsetCoordinator": "Unset coordinator",
+  "orchestration.recipients": "Recipients",
+  "orchestration.selectAll": "All",
+  "orchestration.selectNone": "None",
+  "orchestration.selectedCount": "{n} of {total} selected",
+  "orchestration.waitingForFree": "waiting for the agent to be free…",
   "orchestration.clearQueue": "Clear queued messages",
   "orchestration.reveal": "Go to terminal",
-  "orchestration.messagePlaceholder": "Message to route to agents… (Ctrl+Enter to send)",
-  "orchestration.targetAll": "All agents",
-  "orchestration.targetWorkers": "Coordinator’s workers",
-  "orchestration.targetType": "All {type}",
+  "orchestration.messagePlaceholder": "Message to send to the selected agents… (Ctrl+Enter to send)",
   "orchestration.send": "Send",
   "orchestration.sendN": "Send to {n}",
   "orchestration.backpressureHint":
@@ -934,6 +934,10 @@ export const en = {
   "orchestration.gateApproved": "Approved",
   "orchestration.gateRejected": "Rejected by reviewer",
   "orchestration.gateNotifyTitle": "A run needs your approval — {run}",
+  // Appended to an interactive step's prompt (only for MCP-capable agents that
+  // feed a later step) so the agent hands its result back for context passing.
+  "orchestration.autoReportNudge":
+    "When you finish, call the orchestration_report_result tool with agentId \"{id}\" and result set to your full answer, so this run can pass it to the next step.",
   // Step statuses
   "orchestration.stepPending": "Pending",
   "orchestration.stepReady": "Ready",

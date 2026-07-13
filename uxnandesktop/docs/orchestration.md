@@ -7,9 +7,9 @@
 Run several CLI agents at once and **drive them from one place**. The orchestration
 console (spec `architecture/02d-agent-monitoring.md` §3) has **two tabs**:
 
-- **Broadcast** — the fan-out router: send a message to every agent, to all agents
-  of one type, or to a coordinator's workers, delivered under **backpressure** (one
-  at a time per agent). Fire-and-forget; nothing is chained or persisted.
+- **Broadcast** — the fan-out router: tick the agents that should receive a message
+  (check individuals, whole types, or All), delivered under **backpressure** (one at
+  a time per agent). Fire-and-forget; nothing is chained or persisted.
 - **Runs** — the **run engine**: build a **run** (a small graph of **steps**) where
   one step's output can feed the next (`{{steps.s1.output}}`), independent steps run
   **in parallel**, a step can pause for **your approval** (a gate), and the whole run
@@ -17,7 +17,7 @@ console (spec `architecture/02d-agent-monitoring.md` §3) has **two tabs**:
 
 > **TL;DR — Broadcast.** Launch **2+ agents** → a **workflow icon + count** appears
 > in the **status bar** (bottom right) → click it → **Broadcast** tab → type a
-> message, pick a target (All / a type / workers), **Send** (`Ctrl+Enter`).
+> message, **tick who receives it** (All / a type / individuals), **Send** (`Ctrl+Enter`).
 >
 > **TL;DR — Runs.** Open the console → **Runs** tab → **New run** → **Add step**
 > (pick a type + agent + prompt, and which steps it *runs after*) → repeat →
@@ -44,35 +44,34 @@ The entry point lives in the **status bar** (the thin bar at the bottom):
 The original "difusión" surface. Use it to push the same instruction to many agents
 without clicking into each terminal.
 
-## The agent list
+## Pick recipients
 
-Agents are grouped by **type** (their command — `claude`, `codex`, …). Each row shows:
+Agents are grouped by **type** (their command — `claude`, `codex`, …), and each is a
+**checkbox**: tick exactly who should receive the message. A per-type checkbox toggles
+a whole group, and the header carries **All / None** presets plus a live "**N of M
+selected**" count. New agents you launch are auto-included (so "everyone" stays the
+default); ones you close drop out. Each row shows:
 
 | Element | Meaning |
 |---|---|
+| **Checkbox** | Whether this agent is a recipient of the next send. |
 | **Status dot** | Precise hook state (`working` / `blocked` / `waiting` / `done`) if the agent reports [hooks](./agent-hooks.md), else coarse `working` / `idle` from output. |
 | **Logo + name** | The agent and the worktree/branch it runs in. |
 | **`N queued`** | Messages waiting in this agent's backpressure queue. |
-| **Crown** | Mark this agent the **coordinator** (unlocks the "workers" target). |
-| **Eraser** | Drop this agent's queued (undelivered) messages. |
+| **Eraser** | Drop this agent's queued (undelivered) messages (shown when queued). |
 | **↗** | Jump to that agent's terminal. |
 
-## Routing targets
-
-| Target | Who gets the message |
-|---|---|
-| **All agents** | Every live agent (fan-out). |
-| **All `<type>`** | Every live agent of that type (fan-out by type). |
-| **Coordinator's workers** | Every live agent except the coordinator (needs a crown set). |
-
-A single send enqueues **one copy per matched agent**. Delivery is **backpressured**:
+A single send enqueues **one copy per selected agent**. Delivery is **backpressured**:
 the ADE delivers the head of each agent's FIFO queue **only when that agent is free**,
 then waits for it to go busy before considering its next message — so a slow agent is
 never flooded. With hooks installed this is precise; without, it's inferred from
 output activity (with a short grace window so the queue still drains).
 
-The coordinator → workers link is **in-memory** (it resets when you close the app);
-it's a designation, not automation.
+An agent whose busy signal never clears (no hooks, or a stuck reader) doesn't wedge
+the queue: after a short hold cap its message is **force-delivered**, and its row
+shows a "**waiting for the agent to be free…**" hint until then. Prompts are typed as
+a **paste** and submitted with a **separate Enter**, so nothing is left half-typed in
+the agent's composer and multi-line messages aren't cut at the first newline.
 
 ---
 
@@ -158,8 +157,15 @@ an interactive step's agent calls it (passing its `UXNAN_AGENT_ID`), the run cap
 that **structured result verbatim** as the step's output — better than the coarse hook
 summary — and completes the step immediately. There's also `orchestration_report_progress`
 for a live one-line status. This is *cooperation when it helps*; the hook/idle signal
-remains the fallback when the agent doesn't report. (Requires the browser MCP injection
-to be on — Settings → Browser.)
+remains the fallback when the agent doesn't report.
+
+To make the common case work without you knowing the tool exists, the ADE **appends a
+short nudge to an interactive step's prompt** asking the agent to report its result —
+but **only** when the step's output actually feeds a later step *and* the agent
+genuinely has the tool (MCP injection is on and it's one of the injected agents:
+Claude Code / Codex / Gemini / OpenCode). For any other agent it never mentions MCP,
+so no CLI is ever told to use a tool it doesn't have. (Injection is Settings →
+Browser.) For robust chaining regardless, prefer a **headless** step.
 
 ---
 

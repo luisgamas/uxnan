@@ -1,7 +1,7 @@
 <script lang="ts">
   // Multi-agent orchestration console (spec 02d §3). Two surfaces, one modal:
-  //  · Broadcast — the fan-out router (route a message to all / one type /
-  //    the coordinator's workers, backpressured). The original "difusión".
+  //  · Broadcast — the fan-out router (pick recipients explicitly and route a
+  //    message to them, backpressured). The original "difusión".
   //  · Runs — the deterministic run engine: a DAG of steps where one step's
   //    output can feed the next, steps with no dependency run in parallel, and
   //    the run is durable (survives a restart).

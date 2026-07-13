@@ -57,12 +57,14 @@ mobile pairing) is NOT started.**
   WSL (WSL2 host-loopback is a documented gap). Settings → Agents → Hooks shows a
   card per agent (incl. Pi) + a master install switch.
 - **Multi-agent orchestration** (spec `02d` §3) — a two-tab console (status bar,
-  shown with ≥2 live agents or any saved run): **Broadcast** (route a message to all
-  agents / one type / a coordinator's workers, backpressured) + a **run engine**
+  shown with ≥2 live agents or any saved run): **Broadcast** (**explicit recipient
+  selection** — tick individuals / whole types / all; coordinator retired — with
+  robust paste+submit delivery and a busy-agent hold cap) + a **run engine**
   (**Runs**): a DAG of steps with context passing (`{{steps.s1.output}}`),
   parallel/fan-in dependencies, **headless** steps (print-mode, verified by exit
   code), **HITL gates**, per-step **retry**, durable persistence + re-attach, and
-  orchestration **MCP tools** for structured agent reports.
+  orchestration **MCP tools** for structured agent reports (auto-nudged into
+  chaining interactive steps when the agent has the tool).
 - **Cross-cutting (S)** — Settings (theme + terminal profiles w/ OS templates),
   design tokens, full EN/ES i18n + Language picker, agents registry + install
   detection + manual + auto-launch, per-agent env vars, a configurable agent

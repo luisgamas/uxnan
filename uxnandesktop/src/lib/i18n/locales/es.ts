@@ -840,19 +840,19 @@ export const es: Record<MessageKey, string> = {
   // Consola de orquestación multi-agente
   "orchestration.title": "Orquestación",
   "orchestration.desc":
-    "Envía un mensaje a tus agentes en ejecución: a todos, a un tipo (fan-out) o a los trabajadores del coordinador. Cada agente recibe su siguiente mensaje solo cuando queda libre.",
+    "Envía un mensaje a tus agentes en ejecución: elige exactamente quién lo recibe. Cada agente recibe su siguiente mensaje solo cuando queda libre.",
   "orchestration.open": "Orquestar agentes en ejecución",
   "orchestration.queued": "{n} en cola",
   "orchestration.emptyTitle": "Sin agentes en ejecución",
   "orchestration.emptyDesc": "Lanza agentes en tus worktrees y luego enrútales mensajes desde aquí.",
-  "orchestration.setCoordinator": "Marcar como coordinador",
-  "orchestration.unsetCoordinator": "Quitar coordinador",
+  "orchestration.recipients": "Destinatarios",
+  "orchestration.selectAll": "Todos",
+  "orchestration.selectNone": "Ninguno",
+  "orchestration.selectedCount": "{n} de {total} seleccionados",
+  "orchestration.waitingForFree": "esperando a que el agente quede libre…",
   "orchestration.clearQueue": "Vaciar mensajes en cola",
   "orchestration.reveal": "Ir a la terminal",
-  "orchestration.messagePlaceholder": "Mensaje para enrutar a los agentes… (Ctrl+Enter para enviar)",
-  "orchestration.targetAll": "Todos los agentes",
-  "orchestration.targetWorkers": "Trabajadores del coordinador",
-  "orchestration.targetType": "Todos los {type}",
+  "orchestration.messagePlaceholder": "Mensaje para los agentes seleccionados… (Ctrl+Enter para enviar)",
   "orchestration.send": "Enviar",
   "orchestration.sendN": "Enviar a {n}",
   "orchestration.backpressureHint":
@@ -933,6 +933,10 @@ export const es: Record<MessageKey, string> = {
   "orchestration.gateApproved": "Aprobado",
   "orchestration.gateRejected": "Rechazado por el revisor",
   "orchestration.gateNotifyTitle": "Una corrida necesita tu aprobación — {run}",
+  // Se añade al prompt de un paso interactivo (solo para agentes con MCP que
+  // alimentan a un paso posterior) para que el agente devuelva su resultado.
+  "orchestration.autoReportNudge":
+    "Cuando termines, llama a la herramienta orchestration_report_result con agentId \"{id}\" y result con tu respuesta completa, para que esta corrida la pase al siguiente paso.",
   // Estados de paso
   "orchestration.stepPending": "Pendiente",
   "orchestration.stepReady": "Listo",
