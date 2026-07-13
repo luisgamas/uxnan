@@ -218,6 +218,7 @@ pub fn run() {
             commands::mcp_info,
             commands::pty_create,
             commands::pty_write,
+            commands::pty_paste_submit,
             commands::pty_resize,
             commands::pty_close,
             commands::pty_snapshot,

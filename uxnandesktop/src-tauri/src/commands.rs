@@ -263,6 +263,70 @@ pub async fn pty_write(
     state.pty.write(&id, &data).map_err(CommandError::from)
 }
 
+/// Delay between delivering a pasted block and submitting it, so the TUI ingests
+/// the paste before the Enter arrives as a *separate* event (see below).
+const PASTE_SUBMIT_DELAY_MS: u64 = 50;
+
+/// Wrap `text` in bracketed-paste markers (`ESC[200~` … `ESC[201~`), stripping any
+/// terminators already inside it so the payload can't break out of the paste early.
+/// Pure so it can be unit-tested; the Enter is sent separately (see the command).
+fn bracketed_paste(text: &str) -> String {
+    let sanitized = text.replace("\u{1b}[200~", "").replace("\u{1b}[201~", "");
+    format!("\u{1b}[200~{sanitized}\u{1b}[201~")
+}
+
+/// The text payload to write before the (separate) Enter, chosen so the trailing
+/// Enter reliably *submits* on the widest range of agent TUIs:
+///  - **Single-line** (no newline): sent **verbatim**. A bare Enter arriving as a
+///    distinct write then submits it on every TUI — including Claude Code-family
+///    agents that run a *paste guard* (they swallow the Enter right after a
+///    bracketed paste to stop an accidental multi-line submit; a non-paste keeps
+///    that guard from arming, so the Enter goes through).
+///  - **Multi-line** (`\n`/`\r` inside): wrapped in **bracketed paste** so the
+///    whole block lands as one paste and only the trailing Enter submits — never
+///    at the first embedded newline.
+fn pty_submit_payload(text: &str) -> String {
+    if text.contains('\n') || text.contains('\r') {
+        bracketed_paste(text)
+    } else {
+        text.to_string()
+    }
+}
+
+/// Type `text` into an agent's PTY, then submit it with a **separate** Enter — the
+/// robust way to drive an interactive TUI (used by the orchestration broadcast +
+/// run engine). Solves two problems a plain `pty_write("{text}\r")` does not:
+///  1. **Concatenation / no-submit.** Many TUIs treat a `\r` arriving in the *same*
+///     input burst as part of the composer content (a literal newline, or a paste),
+///     not "submit" — so the text is left in the box and the next message appends
+///     to it. Sending the `\r` as a distinct write ~50 ms later makes the app read
+///     it as a real keypress = submit.
+///  2. **Multi-line prompts** (a chained `{{steps…}}` value, a multi-line message)
+///     would otherwise submit at the first embedded `\n`. Multi-line text is sent
+///     as **bracketed paste** so the whole block is one paste unit — see
+///     [`pty_submit_payload`] for why single-line stays verbatim.
+///
+/// Best-effort like `pty_write`: a dead PTY drops it.
+///
+// FOR-DEV: bracketed paste assumes the agent enabled DECSET 2004 (every modern
+// coding TUI — Claude Code, Codex, Gemini, OpenCode, Pi — does). A multi-line
+// submit into an agent with a *long* post-paste Enter guard may still not fire; if
+// one is found, add a per-agent submit strategy (delay / key) here. See FOR-DEV.md.
+#[tauri::command]
+pub async fn pty_paste_submit(
+    state: State<'_, AppState>,
+    id: String,
+    text: String,
+) -> Result<(), CommandError> {
+    state
+        .pty
+        .write(&id, &pty_submit_payload(&text))
+        .map_err(CommandError::from)?;
+    tokio::time::sleep(std::time::Duration::from_millis(PASTE_SUBMIT_DELAY_MS)).await;
+    state.pty.write(&id, "\r").map_err(CommandError::from)?;
+    Ok(())
+}
+
 /// Return the subset of `commands` that resolve to an installed executable
 /// (PATH + PATHEXT). Used by the Settings agent catalog to enable only the
 /// agents actually present on the machine.
@@ -1338,7 +1402,26 @@ pub async fn get_hook_scripts(
 
 #[cfg(test)]
 mod tests {
-    use super::reorder_by_ids;
+    use super::{bracketed_paste, pty_submit_payload, reorder_by_ids};
+
+    #[test]
+    fn bracketed_paste_wraps_and_sanitizes() {
+        // Plain multi-line text is wrapped verbatim between the paste markers.
+        assert_eq!(bracketed_paste("a\nb"), "\u{1b}[200~a\nb\u{1b}[201~");
+        // Any embedded terminators are stripped so the payload can't escape early.
+        let sneaky = "x\u{1b}[201~ then \u{1b}[200~y";
+        assert_eq!(bracketed_paste(sneaky), "\u{1b}[200~x then y\u{1b}[201~");
+    }
+
+    #[test]
+    fn submit_payload_wraps_only_multiline() {
+        // Single-line goes verbatim (a separate Enter then submits on every TUI,
+        // incl. Claude Code-family paste guards).
+        assert_eq!(pty_submit_payload("hello world"), "hello world");
+        // Multi-line (\n or \r) is wrapped so only the trailing Enter submits.
+        assert_eq!(pty_submit_payload("a\nb"), "\u{1b}[200~a\nb\u{1b}[201~");
+        assert_eq!(pty_submit_payload("a\rb"), "\u{1b}[200~a\rb\u{1b}[201~");
+    }
 
     /// A minimal keyed item, so `reorder_by_ids` is exercised without building a
     /// full `RepoData`.
