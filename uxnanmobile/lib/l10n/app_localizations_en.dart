@@ -1961,15 +1961,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get fileViewerHideDiff => 'Hide diff';
 
   @override
-  String get fileViewerCopy => 'Copy file';
-
-  @override
-  String get fileViewerCopied => 'File copied';
-
-  @override
-  String get fileViewerCopyFailed => 'Couldn\'t copy this file';
-
-  @override
   String fileViewerLinkCopied(String href) {
     return 'Link copied: $href';
   }

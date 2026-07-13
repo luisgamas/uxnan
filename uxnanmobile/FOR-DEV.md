@@ -37,8 +37,8 @@ connected to live bridge data, validated on-device against a real bridge.
   **folder browser** (`workspace/browseDirs`) to root a thread anywhere.
 - **Workspace file browser + viewer** — lazy git-aware tree, repo-wide fuzzy
   search with relative-path results, ancestor reveal and hidden pre-positioning
-  of the selected row, text/image/Markdown viewing, inline editing and diff
-  overlays.
+  of the selected row, selectable text/Markdown/diff viewing, inline editing,
+  diff overlays and full-surface fit-to-screen image zoom.
 - **Structured model picker** (readable names, default badge, Claude alias
   "(latest)" + pinned versions + resolved-version row, `thread/setModel`), with
   a **Settings ▸ Models** switch to hide Claude Code's `isLatestAlias` "(latest)"

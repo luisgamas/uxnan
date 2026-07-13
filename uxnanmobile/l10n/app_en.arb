@@ -1009,18 +1009,6 @@
   "@fileViewerHideDiff": {
     "description": "Tooltip on the action that disables the git diff overlay in the file viewer."
   },
-  "fileViewerCopy": "Copy file",
-  "@fileViewerCopy": {
-    "description": "Tooltip on the action that copies the file's content to the clipboard."
-  },
-  "fileViewerCopied": "File copied",
-  "@fileViewerCopied": {
-    "description": "Snackbar shown when the file content is copied to the clipboard."
-  },
-  "fileViewerCopyFailed": "Couldn't copy this file",
-  "@fileViewerCopyFailed": {
-    "description": "Snackbar shown when the file content cannot be copied (e.g. a binary read returned no payload)."
-  },
   "fileViewerLinkCopied": "Link copied: {href}",
   "@fileViewerLinkCopied": {
     "description": "Snackbar shown when a link tapped in the Markdown preview is copied to the clipboard (the viewer never opens an external browser).",

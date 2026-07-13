@@ -3686,24 +3686,6 @@ abstract class AppLocalizations {
   /// **'Hide diff'**
   String get fileViewerHideDiff;
 
-  /// Tooltip on the action that copies the file's content to the clipboard.
-  ///
-  /// In en, this message translates to:
-  /// **'Copy file'**
-  String get fileViewerCopy;
-
-  /// Snackbar shown when the file content is copied to the clipboard.
-  ///
-  /// In en, this message translates to:
-  /// **'File copied'**
-  String get fileViewerCopied;
-
-  /// Snackbar shown when the file content cannot be copied (e.g. a binary read returned no payload).
-  ///
-  /// In en, this message translates to:
-  /// **'Couldn\'t copy this file'**
-  String get fileViewerCopyFailed;
-
   /// Snackbar shown when a link tapped in the Markdown preview is copied to the clipboard (the viewer never opens an external browser).
   ///
   /// In en, this message translates to:

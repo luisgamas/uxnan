@@ -31,6 +31,7 @@ dependencies:
   flutter:
     sdk: flutter
   flutter_highlight: ^0.7.0 # code syntax highlighting
+  highlight: ^0.7.0 # parser used to build selectable highlighted source spans
   flutter_local_notifications: ^17.2.3 # local notification display
   flutter_localizations:
     sdk: flutter

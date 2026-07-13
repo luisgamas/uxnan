@@ -1716,8 +1716,10 @@ Las RPCs `workspace/list`, `workspace/searchFiles`, `workspace/readFile` y
   `FileViewerScreen` en `presentation/screens/conversation/files/`,
   manageado por `FileBrowserManager`) — el árbol perezoso, la búsqueda fuzzy
   repo-wide con revelado de ancestros y el
-  viewer por extensión (image / markdown preview vs source /
-  code-highlighted + diff overlay / binary placeholder), accesado
+  viewer por extensión (imagen inicialmente completa con `BoxFit.contain` y
+  zoom/pan en toda la superficie / Markdown preview vs source seleccionable /
+  código resaltado y seleccionable + diff overlay seleccionable / binary
+  placeholder), accesado
   desde un `IconSurface` `folder_open_rounded` en la app-bar de
   `ConversationScreen` al lado del botón de `GitScreen`. Las
   rutas se validan en el bridge por `path-guard`

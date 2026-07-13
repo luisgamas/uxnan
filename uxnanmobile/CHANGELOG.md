@@ -6,6 +6,15 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — selectable text and full-surface image previews
+- Removed the file-wide copy action from the viewer app bar. Markdown preview,
+  syntax-highlighted source and git diff text now support native selection and
+  contextual copying; the inline editor retains the platform `TextField`
+  selection/copy controls.
+- Image previews now occupy the complete viewer surface. They start with the
+  whole image visible (`BoxFit.contain`) and pinch zoom/pan use the full screen
+  instead of the former horizontally padded preview rectangle.
+
 ### Added — repo-wide search in the workspace file browser
 - The workspace file browser now exposes the same full-screen Material search
   pattern used by threads and Git history, backed by the existing
