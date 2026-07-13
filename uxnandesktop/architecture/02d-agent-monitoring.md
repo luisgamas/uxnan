@@ -215,61 +215,118 @@ El sistema de notificaciones mantiene al usuario informado del progreso de los a
 
 ## 3. Orquestacion Multi-Agente
 
-Para escenarios avanzados donde un **agente coordinador** gestiona multiples **agentes trabajadores** (workers), el ADE soporta orquestacion multi-agente con las siguientes capacidades.
+La orquestacion tiene **dos superficies** en una sola consola
+(`OrchestrationConsole.svelte`, abierta desde la barra de estado cuando hay **≥2
+agentes** corriendo **o** cuando existe alguna corrida):
 
-> **Estado: IMPLEMENTADO** (consola de orquestacion). Logica pura de routing/cola
-> en `src/lib/orchestration.ts` (con tests unitarios); store reactivo (agentes
-> vivos, timers de backpressure, entrega al PTY) en
-> `src/lib/state/orchestration.svelte.ts`; UI en `OrchestrationConsole.svelte`,
-> abierta desde la barra de estado cuando hay **≥2 agentes** corriendo. Un
-> "agente" orquestable es cualquier pestaña de terminal que corre un agente
-> (identificada por su `agentCommand`); la entrega es escribir el mensaje en el
-> PTY de la pestaña y enviar Enter.
+- **Difusion** (pestaña *Broadcast*): el router de entrada por fan-out.
+- **Motor de corridas** (pestaña *Runs*): un scheduler determinista sobre un grafo
+  (DAG) de pasos, con paso de contexto, dependencias, compuertas humanas y
+  persistencia durable.
 
-### 3.1 Grafo de Tareas
+> **Estado: IMPLEMENTADO** (difusion + motor de corridas). La difusion mantiene la
+> logica pura de routing/cola en `src/lib/orchestration.ts` (tests unitarios) + el
+> store reactivo `src/lib/state/orchestration.svelte.ts`. El motor de corridas vive
+> en `src/lib/orchestration/run.ts` (**puro, unit-testeado**: prontitud del DAG,
+> plantillas de contexto, deteccion de ciclos, validacion, derivacion de estado) +
+> el store reactivo `src/lib/state/orchestrationRun.svelte.ts` (agentes vivos,
+> despacho, timers, persistencia). Backend: `set_orchestration_runs` (persistencia
+> opaca, patron `terminal_layout`), `agent_run_headless` (modo print con exit code
+> verificado, reusa `agentcli`) y tools MCP de orquestacion en `mcp.rs`.
 
-- Se mantiene un **grafo en memoria** (no se persiste): un agente coordinador
-  designado por el usuario y sus workers (el resto de los agentes vivos).
-- **Aclaracion respecto del diseno original:** la creacion *automatica* de
-  workers por parte del coordinador (que el coordinador genere worktrees nuevos)
-  requiere un canal de control agente→ADE que aun no existe — los agentes son
-  CLIs opacos. Hoy el usuario crea los worktrees/agentes y **designa** cual es el
-  coordinador (un click en la consola); el ADE rastrea el estado de cada worker
-  en relacion a el. La automatizacion queda como follow-up (`FOR-DEV.md`).
+### 3.1 Modelo: corrida (`Run`) = grafo de pasos (`Step`)
 
-### 3.2 Routing de Mensajes
+- Una **corrida** es un DAG de **pasos**. Cada paso apunta a un agente, tiene un
+  prompt (con plantilla de contexto), declara `dependsOn`, y lleva su propio estado
+  + salida capturada. Ids de paso cortos y estables (`s1`, `s2`, …).
+- **Tipos de paso** (`kind`): `interactive` (escribe en el PTY de un agente vivo),
+  `headless` (corre un CLI instalado en modo print), `gate` (compuerta HITL).
+- El motor es un **scheduler determinista** (tick ~700 ms + eventos): promueve
+  `pending`→`ready` cuando todas las dependencias estan `completed` (o `skipped` si
+  una fallo/omitio), despacha `ready` hasta un tope de concurrencia (4), detecta
+  completado, y deriva el estado de la corrida. **La logica de control vive en el
+  frontend** porque necesita el estado vivo de agentes; el backend aporta primitivos.
+- **Plantillas de ejemplo**: el UI ofrece corridas listas (secuencial, paralelo/
+  fan-in, gate) con pasos **headless** preconfigurados a un agente instalado, para
+  arrancar sin construir desde cero (`orchestration/examples.ts`, builder puro).
 
-- Se puede enviar un mensaje a **agentes especificos por tipo** (por ejemplo,
-  todos los `claude`, todos los `codex`), a **todos** los agentes, o a los
-  **workers del coordinador**.
-- **Fan-out:** un mensaje se distribuye a **todos los agentes de un tipo** (o a
-  todos) simultaneamente, encolando una copia por agente.
-- El routing se basa en el tipo de agente, normalizado desde el comando del
-  agente registrado en la pestaña/terminal (`agentType()` en
-  `src/lib/orchestration.ts`).
+### 3.2 Paso de contexto (pizarra A→B→C)
 
-### 3.3 Backpressure
+- Cada paso completado guarda `output` (+ `summary`) en la corrida. El prompt de un
+  paso resuelve `{{steps.<id>.output|summary|title}}` contra pasos previos
+  (`resolveTemplate`). Referenciar un paso lo agrega como dependencia automatica.
+- **Interactivo** → output = el `summary` del hook (delgado, puede venir vacio), o el
+  **resultado estructurado** que el agente reporte por MCP — posible solo en los
+  agentes inyectables (claude/codex/gemini/opencode). **Headless** → output = **stdout
+  completo** (robusto, verificado). Por eso un paso nuevo **defaultea a headless** para
+  encadenar. En el editor, un **selector de contexto** lista los pasos previos y sus
+  campos (con vista previa del valor capturado) e inserta el token en el cursor.
 
-- El orquestador **no entrega el siguiente mensaje** a un agente hasta que este
-  vuelva a estar libre (no `working`/`blocked`).
-- Cada agente tiene una **cola FIFO**; se entrega solo la cabeza cuando el agente
-  esta disponible, evitando la sobrecarga de agentes lentos.
-- La disponibilidad usa el **estado preciso del hook** cuando existe
-  (`working`/`blocked` = ocupado) y, como fallback para agentes sin hooks, la
-  **inferencia gruesa de actividad de salida** (`tab.working`). Tras entregar, se
-  espera a ver al agente reportar ocupado (ventana de gracia configurable) antes
-  de considerar su siguiente mensaje, para no duplicar la entrega.
+### 3.3 Dependencias, paralelo y fan-in
 
-### 3.4 Linaje (Coordinador → Workers)
+- `dependsOn` + promocion-al-completar = paralelo + fan-in ("A y B en paralelo → C
+  cuando ambos terminen"). Pasos sin dependencia se despachan a la vez (hasta el
+  tope). El aislamiento por worktree es nativo: un paso headless corre con
+  `current_dir=worktree`; uno interactivo apunta a un agente en su worktree.
 
-- La jerarquia coordinador→workers se visualiza en la **consola de orquestacion**
-  (`OrchestrationConsole.svelte`): el coordinador se marca con una corona y queda
-  resaltado, y el target "workers" hace fan-out a todos los demas.
-- **Cambio respecto del diseno original (justificado para ALPHA):** el linaje se
-  muestra en la consola en vez de anidar los worktrees hijos en la **sidebar
-  izquierda**. Anidar el arbol de worktrees del proyecto es un refactor mayor de
-  la sidebar y se difiere (`FOR-DEV.md`); la consola entrega el mismo valor
-  funcional (ver y dirigir la jerarquia) con mucho menos riesgo.
+### 3.4 Completado verificado (difusion vs headless)
+
+- **Difusion / interactivo:** disponibilidad y completado por el **estado preciso
+  del hook** (`working`/`blocked` = ocupado; `done`/idle = libre) con fallback a la
+  inferencia gruesa de actividad (`tab.working`) + una ventana de gracia. La entrega
+  es escribir en el PTY y enviar Enter, con **backpressure** (cola FIFO por agente,
+  no se entrega el siguiente hasta que el agente reporte libre).
+- **Headless:** el ADE **posee el proceso**, asi que el completado se **verifica por
+  exit code** (`0` = hecho; ≠0 = fallo, con stderr). Esta es la ventaja sobre el
+  estado del arte: verificacion en vez de confianza en un reporte cooperativo.
+
+### 3.5 Compuertas humanas (HITL) + auto-reparacion
+
+- Un paso `gate` **pausa** la corrida y espera tu decision en la consola (con
+  notificacion nativa): **Aprobar** (su nota alimenta pasos posteriores) o
+  **Rechazar** (los dependientes se omiten). Las ramas independientes siguen.
+- **Auto-reparacion:** `onFailure` = `stop` (default) o `retry` (reintenta hasta
+  `maxAttempts`; un interactivo puede re-vincularse a otro agente del mismo tipo, un
+  headless re-lanza el proceso). Remediacion (`remediate:<stepId>`) y paso `eval`
+  (evaluador-optimizador) quedan como follow-up (`FOR-DEV.md`).
+
+### 3.6 Persistencia durable + re-enganche
+
+- El grafo, estados y **salidas** se persisten como JSON opaco
+  (`set_orchestration_runs`) → la corrida sobrevive a un reinicio. Al cargar, el
+  motor **se re-engancha**: conserva las salidas `completed` (la cadena de contexto
+  sobrevive) y devuelve a `ready` cualquier paso que quedo en vuelo (su PTY se
+  perdio). La corrida avanza **mientras la app esta abierta**; un motor de fondo
+  (Tokio) es endurecimiento futuro.
+
+### 3.7 Canal cooperativo agente→ADE (tools MCP de orquestacion)
+
+- El ADE inyecta a cada agente lanzado (junto a las tools del navegador, §1.6) las
+  tools MCP `orchestration_report_result` / `orchestration_report_progress`. El
+  agente pasa su `UXNAN_AGENT_ID`; el handler en `mcp.rs` emite un evento
+  `agent:orchestration` que el motor frontend atribuye al paso interactivo en curso
+  (backend tonto; el modelo de corrida vive 100% en TS). Esto da **salida
+  estructurada** de agentes interactivos, mejor que el `summary` grueso. Para que el
+  caso comun funcione sin que el usuario conozca la tool, el motor **anexa un
+  recordatorio corto al prompt** de un paso interactivo — pero **solo** cuando ese
+  paso alimenta a otro *y* el agente realmente tiene la tool (inyeccion MCP activa y
+  es uno de los agentes inyectados: claude/codex/gemini/opencode). Para cualquier
+  otro agente no se menciona MCP, asi que ningun CLI recibe la instruccion de usar
+  una tool que no tiene.
+
+### 3.8 Difusion (fan-out) — el router de entrada
+
+- Se elige **explicitamente** a los destinatarios: cada agente en ejecucion es una
+  **casilla** (agrupadas por tipo, con una casilla "todos" por tipo) mas atajos
+  **Todos / Ninguno**. Fan-out = una copia por agente seleccionado, entregada bajo
+  backpressure. (No hay coordinador/workers: se retiro la corona para eliminar la
+  ambiguedad de que "todos" incluyera a un agente designado.) Es la superficie
+  original ("difusion"), ahora una pestaña distinta del motor de corridas.
+- **Entrega robusta:** los prompts se teclean como **pegado** y se envian con un
+  Enter **aparte** (`pty_paste_submit`), asi no queda texto a medias en el composer
+  del agente ni se concatenan envios, y lo multilinea no se envia en el primer salto.
+  Un agente que se lee **ocupado** indefinidamente (sin hooks / lector clavado) no
+  atasca la cola: tras un tope de espera se **fuerza la entrega** (mejor esfuerzo).
 
 ---
 

@@ -5,6 +5,93 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — Orchestration run engine (chaining, headless, HITL gates, MCP)
+
+- The multi-agent orchestration console gains a second surface. It is now two tabs:
+  **Broadcast** (the fan-out router — **pick recipients explicitly** and route a
+  message to them, backpressured) and **Runs** (a new deterministic **run engine**).
+- **Runs** are a graph (DAG) of **steps**. Build a run in the console (New run → Add
+  step), then Start / Pause / Resume / Cancel / Re-run it. Each step targets an agent,
+  carries a prompt, and declares which steps it **runs after** — so steps chain,
+  fan out in parallel, and fan in.
+- **Context passing (A → B → C).** A step's prompt can plant a prior step's captured
+  output with `{{steps.s1.output}}` / `.summary` / `.title` (insert-chips in the
+  editor auto-add the dependency). Headless output is the full stdout; interactive
+  output is the agent's hook summary or — when the step feeds a later one and the
+  agent is MCP-capable — a structured report the ADE nudges it to send.
+- **Three step types.** *Interactive* types the prompt into a live agent's terminal
+  (completes on the hook/idle signal). *Headless* runs an installed CLI in print-mode
+  in a chosen worktree — the ADE **owns the process**, so it captures the full stdout
+  and **verifies completion by exit code** (new `agent_run_headless` backend command,
+  reusing `agentcli`). *Human gate* pauses the run for an Approve/Reject decision
+  (with a note that feeds later steps + a native notification).
+- **Auto-repair.** Per-step *On failure* policy: **Stop the run** or **Retry** (up to
+  a configurable Max attempts; an interactive retry may re-bind to another live agent
+  of the same type, a headless retry re-spawns).
+- **Durable + re-attachable.** The run graph, step states and captured outputs persist
+  across restarts (opaque `orchestrationRuns` blob via the new `set_orchestration_runs`
+  command, mirroring `terminal_layout`); the engine re-attaches on load, keeping
+  completed outputs and returning a mid-flight step to *ready*.
+- **Cooperative agent→ADE channel.** New orchestration MCP tools
+  (`orchestration_report_result` / `orchestration_report_progress`) on the injected
+  MCP server let an interactive agent report its **structured result** (attributed by
+  `UXNAN_AGENT_ID`), captured verbatim as the step output — better than the coarse
+  hook summary.
+- The status-bar entry point now also appears when any run exists (not only with ≥2
+  live agents), so a saved run stays reachable. Pure engine logic
+  (`src/lib/orchestration/run.ts`) is unit-tested (23 Vitest cases); the headless
+  runner (`src-tauri/src/agentrun.rs`) and the persistence field are unit-tested too.
+  Full EN/ES i18n. Spec: `architecture/02d-agent-monitoring.md` §3.
+
+### Changed — Broadcast: explicit recipient selection (coordinator retired)
+
+- The Broadcast tab now picks recipients **explicitly**: a checkbox per running
+  agent (grouped by type, with a per-type "all") plus **All / None** presets and a
+  live "N of M selected" count. The **coordinator / workers** concept (the crown) is
+  **removed** — you choose exactly who receives, so "everyone" no longer implicitly
+  bundled a designated coordinator.
+
+### Fixed — reliable prompt delivery to agent terminals
+
+- Prompts are typed into an agent's PTY as a **paste** and submitted with a
+  **separate** Enter (new `pty_paste_submit` command). Fixes agents that left the
+  message sitting in their composer (so a second send concatenated into
+  "message1message2"), and keeps multi-line prompts from submitting at the first
+  newline (multi-line goes via bracketed paste; single-line verbatim, so
+  paste-guarding agents still submit).
+- Backpressure no longer wedges on an agent that reads **busy** forever (no hooks /
+  a stuck status): a queued message — or a blocked interactive step — is
+  **force-delivered** after a 12 s hold cap, and the Broadcast list shows a
+  "waiting for the agent to be free…" hint meanwhile.
+- A **multi-line** paste now waits longer (150 ms vs 50 ms) before its Enter, so
+  Claude Code-family agents that briefly *guard* the post-paste Enter still submit.
+
+### Changed — Run builder: clearer authoring + ready-made examples
+
+- **Contextual variable picker.** The step editor's cryptic "insert output" chips
+  are replaced by an **Insert from context** picker that lists the prior steps and,
+  per field (`output` / `summary` / `title`), shows a description **and a live
+  preview** of the captured value once the step has run. **Insert** drops the token
+  **at the cursor** and auto-adds the dependency — no more guessing `{{steps.s1.…}}`.
+- **Step type as cards, headless first.** The type is chosen from three cards
+  (Headless / Interactive / Human gate); a new step defaults to **headless** (full
+  output, verified — best for chaining). A visible hint + the context picker state
+  that an **interactive** step's output is a thin summary — real content only if the
+  agent reports via MCP (Claude / Codex / Gemini / OpenCode) — so use headless for
+  full chaining.
+- **Searchable pickers.** Agent / model / worktree now use the shared **Combobox**
+  (and **AiModelPicker** for models: searchable, `provider/model` split, a **loading
+  state** for CLIs queried live) instead of a plain Select that could overflow.
+- **Roomier console.** The modal is wider and uses the full height, so the builder
+  isn't cramped.
+- **Examples.** A new **Examples** menu adds ready-made runs — *Read & summarize*
+  (A→B), *Parallel review → merge* (fan-in), *Draft → approve → polish* (gate) — as
+  editable drafts with **headless** steps preset to an installed agent (paid like
+  Claude/Codex, else free like OpenCode/Pi). Pure builder unit-tested
+  (`orchestration/examples.test.ts`).
+- **Status-bar attention.** The orchestration entry point highlights subtly when it
+  (re)appears, clearing when you open the console.
+
 ### Added — Grok provider usage
 
 - Added Grok to Settings → Providers, using the Grok CLI's own

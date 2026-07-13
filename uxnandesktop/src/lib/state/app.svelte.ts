@@ -26,6 +26,7 @@ import {
   type TerminalProfile,
 } from "$lib/types";
 import { terminals, GLOBAL_WORKSPACE, type SplitDir } from "$lib/state/terminals.svelte";
+import { orchestrationRun } from "$lib/state/orchestrationRun.svelte";
 import { primeNotifications } from "$lib/notify";
 import { buildRunCommand, shellKind } from "$lib/shell";
 import { currentOS } from "$lib/platform";
@@ -243,6 +244,8 @@ class AppStore {
       this.backend = "ready";
       this.errorMessage = null;
       terminals.restore(data.terminalLayout ?? null);
+      // Re-attach the orchestration engine to its durable runs (spec 02d §3).
+      orchestrationRun.hydrate(data.orchestrationRuns ?? null);
       this.syncAgentCommands();
       // Check hook health in the background (drives the status-bar indicator).
       void this.refreshHooksStatus();

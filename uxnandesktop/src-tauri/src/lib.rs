@@ -7,6 +7,7 @@
 
 mod agent_hooks;
 mod agentcli;
+mod agentrun;
 mod aicommit;
 mod browse;
 mod browser;
@@ -217,6 +218,7 @@ pub fn run() {
             commands::mcp_info,
             commands::pty_create,
             commands::pty_write,
+            commands::pty_paste_submit,
             commands::pty_resize,
             commands::pty_close,
             commands::pty_snapshot,
@@ -263,6 +265,7 @@ pub fn run() {
             browser::browser_window_devtools,
             commands::git_diff_head,
             commands::set_terminal_layout,
+            commands::set_orchestration_runs,
             commands::agents_detect,
             commands::git_status,
             commands::git_numstat,
@@ -283,6 +286,7 @@ pub fn run() {
             commands::git_generate_commit_message,
             commands::ai_commit_agents,
             commands::ai_commit_models,
+            commands::agent_run_headless,
             commands::set_agent_commands,
             commands::get_hook_info,
             commands::agent_states,

@@ -5,8 +5,7 @@
 // `$lib/orchestration`. Routes a message to agents by type (`@claude`), to all
 // agents (fan-out), or to an explicit selection; holds each message in a
 // per-agent FIFO and only delivers the next once that agent is free again
-// (backpressure). The coordinator/worker relationship is an in-memory task
-// graph — nothing here is persisted.
+// (backpressure). Nothing here is persisted.
 
 import { invoke } from "@tauri-apps/api/core";
 import { terminals } from "./terminals.svelte";
@@ -33,13 +32,20 @@ const PUMP_INTERVAL_MS = 800;
  *  queue still drains — best-effort backpressure for unmonitored agents. */
 const PICKUP_GRACE_MS = 4000;
 
+/** Hard cap on how long a queued message is held back solely because its agent
+ *  reads *busy*. Backpressure is a courtesy (don't flood a working agent), not a
+ *  gate — an agent whose busy signal is unreliable or stuck (no hooks, perpetual
+ *  output activity, a stale status reader) would otherwise wedge its queue
+ *  forever. Past this, the head is force-delivered (best-effort). */
+const MAX_HOLD_MS = 12000;
+
 class OrchestrationStore {
   /** Per-agent message queues (backpressure), keyed by tab id. */
   queues = $state<Queues>({});
   /** Tab id → deadline (epoch ms) while a just-delivered message awaits pickup. */
   private pending: Record<string, number> = {};
-  /** Optional task-graph root: the coordinator agent's tab id. */
-  coordinatorId = $state<string | null>(null);
+  /** Tab id → epoch ms the current queue head began waiting (for the hold cap). */
+  private headSince: Record<string, number> = {};
   private idSeq = 0;
   private timer: ReturnType<typeof setInterval> | undefined;
 
@@ -65,19 +71,6 @@ class OrchestrationStore {
     return out;
   }
 
-  /** The coordinator agent, if one is set and still live. */
-  get coordinator(): OrchestratorAgent | undefined {
-    if (!this.coordinatorId) return undefined;
-    return this.agents.find((a) => a.tabId === this.coordinatorId);
-  }
-
-  /** The worker agents = every live agent except the coordinator (the targets a
-   *  `@workers` fan-out reaches). When no coordinator is set, all agents. */
-  get workers(): OrchestratorAgent[] {
-    const id = this.coordinatorId;
-    return this.agents.filter((a) => a.tabId !== id);
-  }
-
   /** Total messages still held in backpressure across all agents (console badge). */
   get pendingTotal(): number {
     return pendingCount(this.queues);
@@ -86,11 +79,6 @@ class OrchestrationStore {
   /** Queue length for one agent (waiting, not counting the one in flight). */
   pendingFor(tabId: string): number {
     return this.queues[tabId]?.length ?? 0;
-  }
-
-  /** Mark/clear the coordinator (toggles off if the same agent is chosen). */
-  setCoordinator(tabId: string | null): void {
-    this.coordinatorId = this.coordinatorId === tabId ? null : tabId;
   }
 
   /** Route a message to a target (by type, all, or an explicit selection),
@@ -107,20 +95,25 @@ class OrchestrationStore {
     return tabIds.length;
   }
 
-  /** Convenience: fan a message out to the coordinator's workers. */
-  sendToWorkers(message: string): number {
-    return this.send({ kind: "tabs", tabIds: this.workers.map((w) => w.tabId) }, message);
-  }
-
   /** Drop queued (not-yet-delivered) messages for one agent, or all agents. */
   clearQueue(tabId?: string): void {
     if (tabId) {
       const { [tabId]: _drop, ...rest } = this.queues;
       this.queues = rest;
+      delete this.headSince[tabId];
     } else {
       this.queues = {};
+      this.headSince = {};
     }
     if (this.pendingTotal === 0) this.stopTimer();
+  }
+
+  /** True when an agent has queued work not moving right now because it currently
+   *  reads busy — so the UI can show a "waiting for the agent to be free" hint
+   *  instead of a silent stall (the hold cap will force it through eventually). */
+  waitingForFree(tabId: string): boolean {
+    if ((this.queues[tabId]?.length ?? 0) === 0) return false;
+    return !!this.agents.find((a) => a.tabId === tabId)?.busy;
   }
 
   /** Backpressure pump: deliver the head of every queue whose agent is free, then
@@ -136,11 +129,27 @@ class OrchestrationStore {
       if (!a || a.busy || now >= this.pending[id]) delete this.pending[id];
     }
 
+    // Track how long each queue's head has been waiting, so a head held back only
+    // by a busy signal can be force-delivered past the hold cap. Empty queues drop
+    // their clock; a consumed head re-clocks on the next pump.
+    for (const [id, q] of Object.entries(this.queues)) {
+      if (q.length > 0) {
+        if (this.headSince[id] === undefined) this.headSince[id] = now;
+      } else {
+        delete this.headSince[id];
+      }
+    }
+
     const available = (tabId: string): boolean => {
       const a = byId.get(tabId);
-      if (!a || a.busy) return false;
+      if (!a) return false; // agent gone — nothing to deliver to
       const deadline = this.pending[tabId];
-      return !(deadline && now < deadline);
+      if (deadline && now < deadline) return false; // just delivered, awaiting pickup
+      if (!a.busy) return true; // free → deliver now
+      // Busy: hold, but not forever — force it through once the head has waited
+      // past the cap (the busy signal may be unreliable/stuck).
+      const since = this.headSince[tabId];
+      return since !== undefined && now - since >= MAX_HOLD_MS;
     };
 
     const { dispatch, queues } = drainAvailable(this.queues, available);
@@ -151,15 +160,19 @@ class OrchestrationStore {
     this.queues = queues;
     for (const d of dispatch) {
       this.pending[d.tabId] = now + PICKUP_GRACE_MS;
+      delete this.headSince[d.tabId]; // head consumed; the next one re-clocks
       this.deliver(d.tabId, d.queued.message);
     }
     if (this.pendingTotal === 0 && Object.keys(this.pending).length === 0) this.stopTimer();
   }
 
-  /** Type a message into an agent's PTY and submit it (Enter). Best-effort:
-   *  a dead PTY (agent exited) simply drops the write. */
+  /** Type a message into an agent's PTY as a paste and submit it (Enter). Routed
+   *  through `pty_paste_submit` so the text lands as one block and the Enter
+   *  arrives as a distinct event (see that command): no leftover text in the
+   *  composer, no "message1+message2" concatenation, and multi-line messages
+   *  aren't cut at the first newline. Best-effort: a dead PTY drops the write. */
   private deliver(tabId: string, message: string): void {
-    void invoke("pty_write", { id: tabId, data: `${message}\r` }).catch(() => {});
+    void invoke("pty_paste_submit", { id: tabId, text: message }).catch(() => {});
   }
 
   private ensureTimer(): void {
