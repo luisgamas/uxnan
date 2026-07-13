@@ -59,6 +59,7 @@ export const METHOD_NAMES = [
   // Agents
   'agent/list',
   'agent/models',
+  'agent/commands',
   'agent/usageStats',
   // Auth
   'auth/status',

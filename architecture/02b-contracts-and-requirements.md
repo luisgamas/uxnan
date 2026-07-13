@@ -90,14 +90,14 @@ Toda la comunicacion entre la app movil y el bridge usa **JSON-RPC 2.0** sobre W
 ### 1.2 Metodos JSON-RPC completos
 
 > **Lista canonica:** la fuente de verdad en TypeScript es
-> `../../shared/src/jsonrpc/method-registry.ts` (`METHOD_NAMES`, 62 entradas).
+> `../../shared/src/jsonrpc/method-registry.ts` (`METHOD_NAMES`, 63 entradas).
 > El telefono mantiene una copia Dart sincronizada a mano
 > (`uxnanmobile/lib/domain/value_objects/...`); el bridge y el relay consumen
 > el paquete compartido directamente. Los nombres siguen la convencion
 > `domain/action` (lowercase) en singular para acciones discretas
 > (`git/commit`) y plural para lecturas (`git/branches`).
 >
-> **Total: 61 metodos request/response** + 8 notificaciones de streaming
+> **Total: 63 metodos request/response** + 8 notificaciones de streaming
 > (ver §1.4). El bridge tambien expone el endpoint HTTP local
 > `GET /pair/resolve?code=<code>` para manual-code pairing (ver
 > `02a` §5.5.3) — fuera del canal JSON-RPC, vive en su `http.Server`.
@@ -117,7 +117,7 @@ thread/unarchive        -> restaurar thread archivado (status -> active)
 thread/delete           -> eliminar thread y sus turns
 turn/list               -> turnos de un thread; paginacion por cursor offset (oldest->newest). Params: { threadId, cursor?, limit?, fromEnd? }. Result: { turns, nextCursor?, total?, activeTurnId? }. `fromEnd:true` devuelve la pagina mas reciente (ultimos `limit` turnos); `total` permite paginar hacia atras (newest-first) calculando offsets sin traer todo el thread. **`activeTurnId?`**: el turno EN VUELO ahora mismo para el thread (estado vivo de `AgentManager.#activeTurnByThread`), presente solo si hay uno. Es la fuente autoritativa de "¿hay turno corriendo AHORA?" — a diferencia del `status:'streaming'` de un turno guardado, queda ausente tras un restart del bridge (el proceso del agente CLI murio). El telefono lo usa al reconectar/resync para **re-attachear** su vista de streaming (indicador "respondiendo…" + boton Stop) a un turno que dejo de rastrear estando en background, en vez de darlo por terminado.
 turn/read               -> datos de un turno especifico
-turn/send               -> enviar contenido a un turno activo (texto opcional, attachments, options, approvalResponse, questionResponse)
+turn/send               -> enviar contenido a un turno activo (texto opcional, attachments, options, approvalResponse, questionResponse, command). `command` ({ name, args? }) invoca un comando anunciado por `agent/commands` en vez de texto libre: el bridge lo resuelve al prompt que corre el agente (plantilla custom expandida, o la forma nativa `/name args`). Cuando hay `command`, `text` es opcional.
 turn/cancel             -> cancelar turno en curso
 ```
 
@@ -165,10 +165,11 @@ project/list            -> lista de proyectos configurados (Project { id, name, 
 project/resolve         -> resolver proyecto por cwd (sintetiza uno si el cwd no esta en workspaceRoots)
 ```
 
-**Agentes (3):**
+**Agentes (4):**
 ```
 agent/list              -> agentes registrados (IAgentAdapter.agentId, displayName, capabilities, available)
 agent/models            -> modelos disponibles del agente activo (AgentModel[] estructurado: id, displayName, description?, version?, isDefault?, options?, contextWindow?, isLatestAlias?)
+agent/commands          -> comandos especiales ("slash") del agente (AgentCommand[]: name, description?, argumentHint?, source: 'acp'|'builtin'|'custom', headlessSupported?). Params { agentId, cwd? } (cwd descubre comandos custom scoped al proyecto). Descubrimiento por adapter: Claude (slash_commands del system/init cacheado ∪ builtins curados ∪ .claude/commands), ACP Zero/Grok (available_commands_update capturado), Codex/Gemini/OpenCode (escaneo de sus dirs de prompts/commands). Invocacion via `turn/send` `command`.
 agent/usageStats        -> estadisticas de uso por proveedor (ProviderUsage[]: ventanas de cuota %, plan/cuenta, saldo). Lectura per-runtime: el desktop la lee nativa en Rust; el bridge la leera en TS para el movil (Fase 6). Solo se leen los proveedores solicitados (los que el usuario activo).
 ```
 

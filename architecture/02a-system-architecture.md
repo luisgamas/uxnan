@@ -107,6 +107,9 @@ domestico. El bridge lo anuncia en el QR solo si `relayEnabled = true`
 > para aprobaciones interactivas, `nativeSessionId()` para que el bridge
 > localice la sesion on-disk del agente, y `attachments` en `sendTurn()`.
 > `AgentCapabilities` ahora incluye `reportsContextUsage` y `images`.
+> **(2026-07)** se agregaron `listCommands()`/`expandCommand()` para los
+> comandos "slash" del agente (`agent/commands`), `command?` en `sendTurn()`
+> para invocarlos, y `commands?` en `AgentCapabilities`.
 > Ver `shared/src/agents/agent-adapter.ts` para la fuente de verdad
 > TypeScript; esta seccion documenta el contrato, no la sintaxis.
 
@@ -140,7 +143,7 @@ interface IAgentAdapter {
   sendTurn(
     threadId: string,
     content: TurnContent,
-    options?: SendTurnOptions  // { cwd?, model?, options?: Record<string, string|boolean>, attachments?: TurnAttachment[], approvalResponse?: ApprovalResponse, questionResponse?: QuestionResponse }
+    options?: SendTurnOptions  // { cwd?, model?, options?: Record<string, string|boolean>, attachments?: TurnAttachment[], approvalResponse?: ApprovalResponse, questionResponse?: QuestionResponse, command?: AgentCommandInvocation }
   ): Promise<TurnResult>;
 
   // Aprobaciones interactivas (opt-in por agente)
@@ -151,6 +154,10 @@ interface IAgentAdapter {
 
   // Modelo discovery (retorna AgentModel[] estructurado, no string[])
   listModels?(): Promise<AgentModel[]>;   // id, displayName, description?, version?, isDefault?, options?: AgentModelOption[]
+
+  // Command discovery + expansion (comandos "slash" del agente → agent/commands)
+  listCommands?(cwd?: string): Promise<AgentCommand[]>;         // name, description?, argumentHint?, source, headlessSupported?
+  expandCommand?(name: string, args?: string, cwd?: string): Promise<string>;  // solo custom prompt-template agents; nativos (Claude/ACP) no lo implementan
 
   // Identidad de la sesion nativa del agente (para fallback on-disk en turn/list)
   nativeSessionId?(threadId: string): string | null;

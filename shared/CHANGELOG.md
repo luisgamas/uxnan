@@ -3,6 +3,24 @@
 All notable changes to the shared contracts package are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added — agent commands (`agent/commands`) contract
+- **New JSON-RPC method `agent/commands`** (`src/jsonrpc/methods.ts` +
+  `METHOD_NAMES`, now **63 entries**): discover an agent's special ("slash")
+  commands. Params `{ agentId, cwd? }` → `{ commands: AgentCommand[] }` (`cwd`
+  scopes discovery so a project's own custom commands are included).
+- **New models** (`src/agents/agent-capabilities.ts`): `AgentCommand =
+  { name, description?, argumentHint?, source: 'acp'|'builtin'|'custom',
+  headlessSupported? }` and `AgentCommandInvocation = { name, args? }`.
+- **`turn/send` gains `command?: AgentCommandInvocation`** — invoke a discovered
+  command instead of free-form `text`; the bridge resolves it to the prompt the
+  agent runs (an expanded custom template, or the CLI's native `/name args`
+  form). `text` is optional when `command` is present.
+- **`AgentCapabilities` gains `commands?: boolean`.** The adapter contract
+  (`src/agents/agent-adapter.ts`) gains optional `listCommands?(cwd?)` and
+  `expandCommand?(name, args?, cwd?)`, and `SendTurnOptions` gains `command?`.
+
 ## [0.0.5-alpha.20260711] - 2026-07-11
 
 ### Changed — Grok usage provider
