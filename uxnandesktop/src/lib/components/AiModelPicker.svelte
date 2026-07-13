@@ -8,6 +8,7 @@
   import * as Command from "$lib/components/ui/command";
   import { Button } from "$lib/components/ui/button";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
+  import { cn } from "$lib/utils";
   import { i18n } from "$lib/i18n";
   import type { AgentModel } from "$lib/types";
   import ChevronsUpDownIcon from "@lucide/svelte/icons/chevrons-up-down";
@@ -17,6 +18,7 @@
     value,
     loading = false,
     onSelect,
+    triggerClass = "w-56",
   }: {
     /** Models the agent reports (Default is added by this component). */
     models: AgentModel[];
@@ -25,6 +27,8 @@
     /** A model-list query is in flight. */
     loading?: boolean;
     onSelect: (id: string) => void;
+    /** Trigger width/size (defaults to the Settings sizing). */
+    triggerClass?: string;
   } = $props();
 
   // Command needs a non-empty value for the Default item; map "" ↔ this sentinel.
@@ -67,7 +71,7 @@
         variant="outline"
         role="combobox"
         aria-expanded={open}
-        class="w-56 justify-between font-normal"
+        class={cn(triggerClass, "justify-between font-normal")}
       >
         <span class="truncate">
           {loading ? i18n.t("settings.aiCommitModelLoading") : label}

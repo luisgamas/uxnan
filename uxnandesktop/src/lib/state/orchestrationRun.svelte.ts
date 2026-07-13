@@ -23,6 +23,7 @@ import { app } from "./app.svelte";
 import { notify } from "$lib/notify";
 import { i18n } from "$lib/i18n";
 import type { OrchestratorAgent } from "$lib/orchestration";
+import { buildExampleRun, type ExampleStepSpec } from "$lib/orchestration/examples";
 import {
   addStep,
   createRun,
@@ -208,6 +209,24 @@ class OrchestrationRunStore {
   /** Create a fresh draft run and return it. */
   createDraft(title: string): Run {
     const run = createRun(crypto.randomUUID(), title.trim() || "Untitled run", Date.now());
+    this.runs = [...this.runs, run];
+    this.schedulePersist();
+    return run;
+  }
+
+  /** Register a ready-made **example** run (built from a template) as a new draft,
+   *  with the chosen headless `agent` + `workspace` planted into its steps. */
+  createExampleRun(
+    title: string,
+    steps: ExampleStepSpec[],
+    agent: string,
+    workspace: string,
+  ): Run {
+    const run = buildExampleRun(crypto.randomUUID(), title, steps, {
+      agent,
+      workspace,
+      now: Date.now(),
+    });
     this.runs = [...this.runs, run];
     this.schedulePersist();
     return run;

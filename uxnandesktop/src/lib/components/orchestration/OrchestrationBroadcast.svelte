@@ -140,7 +140,7 @@
   </div>
 
   <!-- Live agents, grouped by type, each a checkbox recipient -->
-  <div class="flex max-h-[42vh] flex-col gap-3 overflow-auto pr-1">
+  <div class="flex min-h-0 flex-1 flex-col gap-3 overflow-auto pr-1">
     {#each types as type (type)}
       {@const group = agents.filter((a) => a.type === type)}
       <div class="flex flex-col gap-1">

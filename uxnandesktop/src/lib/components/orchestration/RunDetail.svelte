@@ -110,7 +110,7 @@
   }
 </script>
 
-<div class="flex min-h-0 flex-col gap-3">
+<div class="flex min-h-0 flex-1 flex-col gap-3">
   <!-- Header -->
   <div class="flex items-center gap-2">
     <Button variant="ghost" size="icon" class={iconButton.action} onclick={onback}>
@@ -181,7 +181,7 @@
   {/if}
 
   <!-- Steps -->
-  <div class="flex max-h-[46vh] flex-col gap-2 overflow-auto pr-1">
+  <div class="flex min-h-0 flex-1 flex-col gap-2 overflow-auto pr-1">
     {#if run.steps.length === 0 && !adding}
       <p class={cn(text.meta, "py-4 text-center")}>{i18n.t("orchestration.noSteps")}</p>
     {/if}

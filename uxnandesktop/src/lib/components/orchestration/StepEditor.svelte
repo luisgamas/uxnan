@@ -1,28 +1,40 @@
 <script lang="ts">
-  // Inline editor for one run step (add or edit). A step is either:
-  //  · Interactive — types the prompt into a live agent's PTY; output is the
-  //    coarse hook summary.
-  //  · Headless — runs an installed CLI in print-mode in a chosen worktree; the
-  //    ADE owns the process, so output is the full stdout and completion is
-  //    verified by the exit code (robust chaining).
-  // The prompt can plant a prior step's output via `{{steps.s1.output}}` chips,
-  // and "runs after" toggles declare the DAG edges. Referenced steps are
-  // auto-added as dependencies on save, so a step never runs before what it quotes.
-  import { untrack } from "svelte";
+  // Inline editor for one run step (add or edit). A step is one of:
+  //  · Headless — runs an installed CLI in print-mode in a chosen worktree; the ADE
+  //    owns the process, so output is the full stdout and completion is verified by
+  //    the exit code (the default: robust chaining).
+  //  · Interactive — types the prompt into a live agent's PTY; output is the agent's
+  //    hook summary or its MCP report.
+  //  · Human gate — pauses the run for an Approve/Reject decision.
+  // The prompt can plant a prior step's captured output; the contextual picker
+  // (StepContextPicker) shows which steps exist, what each field holds, and inserts
+  // the `{{steps.s1.output}}` token at the cursor (auto-adding the dependency).
+  // Advanced knobs (failure policy) live behind a collapsible so the common path
+  // stays uncluttered.
+  import { untrack, tick } from "svelte";
   import { Input } from "$lib/components/ui/input";
   import { Textarea } from "$lib/components/ui/textarea";
   import { Button } from "$lib/components/ui/button";
   import * as Select from "$lib/components/ui/select";
+  import * as Collapsible from "$lib/components/ui/collapsible";
   import { cn } from "$lib/utils";
-  import { text } from "$lib/design";
+  import { icon, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
   import { app } from "$lib/state/app.svelte";
   import { projects } from "$lib/state/projects.svelte";
   import { orchestrationRun } from "$lib/state/orchestrationRun.svelte";
   import { aiCommitAgents, aiCommitModels } from "$lib/api";
+  import { TooltipSimple } from "$lib/components/ui/tooltip";
   import type { AgentModel } from "$lib/types";
   import { referencedStepIds, type Run, type RunStep, type StepKind, type StepTarget } from "$lib/orchestration/run";
   import AgentLogo from "../AgentLogo.svelte";
+  import Combobox from "../Combobox.svelte";
+  import AiModelPicker from "../AiModelPicker.svelte";
+  import StepContextPicker from "./StepContextPicker.svelte";
+  import TerminalIcon from "@lucide/svelte/icons/square-terminal";
+  import MessageIcon from "@lucide/svelte/icons/message-square";
+  import HandIcon from "@lucide/svelte/icons/hand";
+  import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
 
   let {
     run,
@@ -38,10 +50,13 @@
 
   const liveAgents = $derived(orchestrationRun.liveAgents);
 
-  // Local, uncommitted edit state (seeded once from the step being edited).
-  let kind = $state<string>(untrack(() => step?.kind ?? "interactive"));
+  // Local, uncommitted edit state (seeded once from the step being edited). A new
+  // step defaults to **headless** — the robust way to chain (full stdout + verified
+  // completion).
+  let kind = $state<string>(untrack(() => step?.kind ?? "headless"));
   let title = $state(untrack(() => step?.title ?? ""));
   let prompt = $state(untrack(() => step?.prompt ?? (step?.gate?.question ?? "")));
+  let promptEl = $state<HTMLTextAreaElement | null>(null);
   let onFailure = $state<string>(untrack(() => step?.onFailure ?? "stop"));
   // String-backed so it binds cleanly to the numeric `<Input>`; parsed on save.
   let maxAttempts = $state(untrack(() => String(step?.maxAttempts ?? 2)));
@@ -51,13 +66,18 @@
   let hAgent = $state(untrack(() => step?.target.agent ?? ""));
   let hModel = $state(untrack(() => step?.target.model ?? ""));
   let hWorkspace = $state(untrack(() => step?.target.workspace ?? ""));
-  // Dependencies default to the most recent existing step (a sequence by
-  // default); the user can toggle to run in parallel or fan in from several.
+  // Dependencies default to the most recent existing step (a sequence by default);
+  // the user can toggle to run in parallel or fan in from several.
   let dependsOn = $state<string[]>(untrack(() => step?.dependsOn ?? defaultDeps()));
+  // Advanced options open when the step already customizes them.
+  let advancedOpen = $state(untrack(() => step?.onFailure === "retry"));
 
   // Installed CLIs + their models for the headless picker (lazy-loaded).
   let installedAgents = $state<string[]>([]);
   let headlessModels = $state<AgentModel[]>([]);
+  // True while an agent's models are being fetched (OpenCode/Pi/Codex query the CLI
+  // live, which takes a moment) — surfaced in the model picker.
+  let modelsLoading = $state(false);
 
   function defaultDeps(): string[] {
     const last = run.steps[run.steps.length - 1];
@@ -82,6 +102,8 @@
     void loadModels(a);
   });
   async function loadModels(a: string): Promise<void> {
+    modelsLoading = true;
+    headlessModels = []; // clear the previous agent's list while we fetch
     try {
       const models = await aiCommitModels(a);
       headlessModels = models;
@@ -90,15 +112,34 @@
       if (hModel && !models.some((m) => m.id === hModel)) hModel = "";
     } catch {
       headlessModels = [];
+    } finally {
+      modelsLoading = false;
     }
   }
 
-  // Interactive: the selected live agent + its label.
-  const selectedAgent = $derived(liveAgents.find((a) => a.tabId === tabId));
-  const agentLabel = $derived.by(() => {
-    if (!selectedAgent) return i18n.t("orchestration.stepAgentPlaceholder");
-    return `${selectedAgent.name} · ${projects.contextLabel(selectedAgent.workspace).name}`;
-  });
+  function wsLabel(path: string): string {
+    const c = projects.contextLabel(path);
+    return c.repo ? `${c.repo} · ${c.name}` : c.name;
+  }
+
+  // Combobox option groups for the target pickers (searchable, tokenized, reusing
+  // the shared Combobox / AiModelPicker instead of a bare Select).
+  const interactiveAgentGroups = $derived([
+    {
+      items: liveAgents.map((a) => ({
+        value: a.tabId,
+        label: a.name,
+        meta: projects.contextLabel(a.workspace).name,
+        keywords: [a.type],
+      })),
+    },
+  ]);
+  // tabId → logo, for the interactive picker's row/trigger prefix.
+  const interactiveIcons = $derived(new Map(liveAgents.map((a) => [a.tabId, a.icon ?? null])));
+
+  const headlessAgentGroups = $derived([
+    { items: installedAgents.map((id) => ({ value: id, label: app.resolveAgent(id).name })) },
+  ]);
 
   // Headless: workspace options (registered worktrees ∪ live agents' worktrees).
   const workspaceOptions = $derived.by(() => {
@@ -107,41 +148,42 @@
     for (const a of liveAgents) if (a.workspace) map.set(a.workspace, wsLabel(a.workspace));
     return [...map.entries()].map(([path, label]) => ({ path, label }));
   });
-  function wsLabel(path: string): string {
-    const c = projects.contextLabel(path);
-    return c.repo ? `${c.repo} · ${c.name}` : c.name;
-  }
+  const workspaceGroups = $derived([
+    { items: workspaceOptions.map((w) => ({ value: w.path, label: w.label, keywords: [w.path] })) },
+  ]);
 
-  const headlessAgentLabel = $derived(
-    hAgent ? app.resolveAgent(hAgent).name : i18n.t("orchestration.stepAgentPlaceholder"),
-  );
-  const modelLabel = $derived(
-    headlessModels.find((m) => m.id === hModel)?.displayName ?? i18n.t("orchestration.modelDefault"),
-  );
-  const workspaceLabel = $derived(
-    hWorkspace ? wsLabel(hWorkspace) : i18n.t("orchestration.workspacePlaceholder"),
-  );
+  // Step-type cards (the primary choice, headless first).
+  const KINDS = [
+    { value: "headless", icon: TerminalIcon, label: "orchestration.kindHeadless", hint: "orchestration.kindHeadlessHint" },
+    { value: "interactive", icon: MessageIcon, label: "orchestration.kindInteractive", hint: "orchestration.kindInteractiveHint" },
+    { value: "gate", icon: HandIcon, label: "orchestration.kindGate", hint: "orchestration.kindGateHint" },
+  ] as const;
 
   function toggleDep(id: string) {
     dependsOn = dependsOn.includes(id) ? dependsOn.filter((d) => d !== id) : [...dependsOn, id];
   }
 
-  function insertRef(id: string) {
-    const token = `{{steps.${id}.output}}`;
-    prompt = prompt ? `${prompt}\n\n${token}` : token;
-    if (!dependsOn.includes(id)) dependsOn = [...dependsOn, id];
+  /** Insert a `{{steps.<id>.<field>}}` token at the prompt cursor and add the
+   *  dependency (so the step never runs before what it quotes). */
+  async function insertToken(stepId: string, field: "output" | "summary" | "title") {
+    const token = `{{steps.${stepId}.${field}}}`;
+    const el = promptEl;
+    const start = el?.selectionStart ?? prompt.length;
+    const end = el?.selectionEnd ?? prompt.length;
+    prompt = prompt.slice(0, start) + token + prompt.slice(end);
+    if (!dependsOn.includes(stepId)) dependsOn = [...dependsOn, stepId];
+    await tick();
+    if (el) {
+      el.focus();
+      const pos = start + token.length;
+      el.setSelectionRange(pos, pos);
+    }
   }
 
   const canSave = $derived(
     prompt.trim().length > 0 &&
       (kind === "gate" || (kind === "interactive" ? !!tabId : !!hAgent && !!hWorkspace)),
   );
-
-  function kindLabel(k: string): string {
-    if (k === "headless") return i18n.t("orchestration.kindHeadless");
-    if (k === "gate") return i18n.t("orchestration.kindGate");
-    return i18n.t("orchestration.kindInteractive");
-  }
 
   function save() {
     if (!canSave) return;
@@ -169,42 +211,52 @@
 </script>
 
 <div class="flex flex-col gap-3 rounded-lg border border-border/70 bg-card/40 p-3">
-  <!-- Kind + title -->
-  <div class="flex items-end gap-2">
-    <div class="flex flex-col gap-1">
-      <span class={text.section}>{i18n.t("orchestration.stepKind")}</span>
-      <Select.Root type="single" bind:value={kind}>
-        <Select.Trigger class="h-8 w-40 text-[13px]">{kindLabel(kind)}</Select.Trigger>
-        <Select.Content>
-          <Select.Item value="interactive" label={i18n.t("orchestration.kindInteractive")}>
-            {i18n.t("orchestration.kindInteractive")}
-          </Select.Item>
-          <Select.Item value="headless" label={i18n.t("orchestration.kindHeadless")}>
-            {i18n.t("orchestration.kindHeadless")}
-          </Select.Item>
-          <Select.Item value="gate" label={i18n.t("orchestration.kindGate")}>
-            {i18n.t("orchestration.kindGate")}
-          </Select.Item>
-        </Select.Content>
-      </Select.Root>
+  <!-- Step type — the primary choice, as cards -->
+  <div class="flex flex-col gap-1">
+    <span class={text.section}>{i18n.t("orchestration.stepKind")}</span>
+    <div class="grid grid-cols-3 gap-1.5">
+      {#each KINDS as k (k.value)}
+        {@const Icon = k.icon}
+        {@const on = kind === k.value}
+        <TooltipSimple title={i18n.t(k.hint)}>
+          {#snippet children(tp)}
+            <button
+              {...tp}
+              type="button"
+              aria-pressed={on}
+              class={cn(
+                "flex items-center gap-1.5 rounded-md border px-2 py-1.5 text-left transition-colors",
+                on
+                  ? "border-primary/60 bg-primary/5"
+                  : "border-border/60 hover:border-border hover:bg-accent/40",
+              )}
+              onclick={() => (kind = k.value)}
+            >
+              <Icon class={cn("size-3.5 shrink-0", on ? "text-primary" : "text-muted-foreground")} />
+              <span class={cn("truncate", text.body, on && "font-medium")}>{i18n.t(k.label)}</span>
+            </button>
+          {/snippet}
+        </TooltipSimple>
+      {/each}
     </div>
-    <div class="flex flex-1 flex-col gap-1">
-      <span class={text.section}>{i18n.t("orchestration.stepTitle")}</span>
-      <Input
-        bind:value={title}
-        placeholder={i18n.t("orchestration.stepTitlePlaceholder")}
-        class="h-8 text-[13px]"
-      />
-    </div>
+    <p class={text.meta}>
+      {kind === "headless"
+        ? i18n.t("orchestration.kindHeadlessHint")
+        : kind === "gate"
+          ? i18n.t("orchestration.kindGateHint")
+          : i18n.t("orchestration.kindInteractiveHint")}
+    </p>
   </div>
 
-  <p class={text.meta}>
-    {kind === "headless"
-      ? i18n.t("orchestration.kindHeadlessHint")
-      : kind === "gate"
-        ? i18n.t("orchestration.kindGateHint")
-        : i18n.t("orchestration.kindInteractiveHint")}
-  </p>
+  <!-- Title -->
+  <div class="flex flex-col gap-1">
+    <span class={text.section}>{i18n.t("orchestration.stepTitle")}</span>
+    <Input
+      bind:value={title}
+      placeholder={i18n.t("orchestration.stepTitlePlaceholder")}
+      class="h-8 text-[13px]"
+    />
+  </div>
 
   <!-- Target -->
   {#if kind === "gate"}
@@ -215,27 +267,18 @@
       {#if liveAgents.length === 0}
         <p class={text.meta}>{i18n.t("orchestration.noAgentsHint")}</p>
       {:else}
-        <Select.Root type="single" bind:value={tabId}>
-          <Select.Trigger class="h-8 text-[13px]">
-            <span class="flex min-w-0 items-center gap-2">
-              {#if selectedAgent}
-                <AgentLogo logo={selectedAgent.icon} class="size-4 shrink-0" />
-              {/if}
-              <span class="truncate">{agentLabel}</span>
-            </span>
-          </Select.Trigger>
-          <Select.Content>
-            {#each liveAgents as a (a.tabId)}
-              {@const label = `${a.name} · ${projects.contextLabel(a.workspace).name}`}
-              <Select.Item value={a.tabId} {label}>
-                <span class="flex min-w-0 items-center gap-2">
-                  <AgentLogo logo={a.icon} class="size-4 shrink-0" />
-                  <span class="truncate">{label}</span>
-                </span>
-              </Select.Item>
-            {/each}
-          </Select.Content>
-        </Select.Root>
+        <Combobox
+          value={tabId}
+          groups={interactiveAgentGroups}
+          placeholder={i18n.t("orchestration.stepAgentPlaceholder")}
+          searchPlaceholder={i18n.t("orchestration.stepAgentPlaceholder")}
+          onChange={(v) => (tabId = v)}
+          triggerClass="h-8 text-[13px]"
+        >
+          {#snippet itemPrefix(item)}
+            <AgentLogo logo={interactiveIcons.get(item.value) ?? null} class="size-4 shrink-0" />
+          {/snippet}
+        </Combobox>
       {/if}
     </div>
   {:else}
@@ -246,58 +289,45 @@
         {#if installedAgents.length === 0}
           <p class={text.meta}>{i18n.t("orchestration.noInstalledAgents")}</p>
         {:else}
-          <Select.Root type="single" bind:value={hAgent}>
-            <Select.Trigger class="h-8 text-[13px]">
-              <span class="flex min-w-0 items-center gap-2">
-                {#if hAgent}
-                  <AgentLogo logo={app.resolveAgent(hAgent).icon} class="size-4 shrink-0" />
-                {/if}
-                <span class="truncate">{headlessAgentLabel}</span>
-              </span>
-            </Select.Trigger>
-            <Select.Content>
-              {#each installedAgents as id (id)}
-                {@const label = app.resolveAgent(id).name}
-                <Select.Item value={id} {label}>
-                  <span class="flex min-w-0 items-center gap-2">
-                    <AgentLogo logo={app.resolveAgent(id).icon} class="size-4 shrink-0" />
-                    <span class="truncate">{label}</span>
-                  </span>
-                </Select.Item>
-              {/each}
-            </Select.Content>
-          </Select.Root>
+          <Combobox
+            value={hAgent}
+            groups={headlessAgentGroups}
+            placeholder={i18n.t("orchestration.stepAgentPlaceholder")}
+            searchPlaceholder={i18n.t("orchestration.stepAgentPlaceholder")}
+            onChange={(v) => (hAgent = v)}
+            triggerClass="h-8 text-[13px]"
+          >
+            {#snippet itemPrefix(item)}
+              <AgentLogo logo={app.resolveAgent(item.value).icon} class="size-4 shrink-0" />
+            {/snippet}
+          </Combobox>
         {/if}
       </div>
       <div class="flex flex-col gap-1">
         <span class={text.section}>{i18n.t("orchestration.stepModel")}</span>
-        <Select.Root type="single" bind:value={hModel} disabled={!hAgent}>
-          <Select.Trigger class="h-8 text-[13px]"><span class="truncate">{modelLabel}</span></Select.Trigger>
-          <Select.Content>
-            <Select.Item value="" label={i18n.t("orchestration.modelDefault")}>
-              {i18n.t("orchestration.modelDefault")}
-            </Select.Item>
-            {#each headlessModels as m (m.id)}
-              <Select.Item value={m.id} label={m.displayName}>{m.displayName}</Select.Item>
-            {/each}
-          </Select.Content>
-        </Select.Root>
+        <AiModelPicker
+          models={headlessModels}
+          value={hModel}
+          loading={modelsLoading}
+          onSelect={(id) => (hModel = id)}
+          triggerClass="h-8 w-full text-[13px]"
+        />
       </div>
-    </div>
-    <div class="flex flex-col gap-1">
-      <span class={text.section}>{i18n.t("orchestration.stepWorkspace")}</span>
-      {#if workspaceOptions.length === 0}
-        <p class={text.meta}>{i18n.t("orchestration.noWorkspaces")}</p>
-      {:else}
-        <Select.Root type="single" bind:value={hWorkspace}>
-          <Select.Trigger class="h-8 text-[13px]"><span class="truncate">{workspaceLabel}</span></Select.Trigger>
-          <Select.Content>
-            {#each workspaceOptions as w (w.path)}
-              <Select.Item value={w.path} label={w.label}>{w.label}</Select.Item>
-            {/each}
-          </Select.Content>
-        </Select.Root>
-      {/if}
+      <div class="col-span-2 flex flex-col gap-1">
+        <span class={text.section}>{i18n.t("orchestration.stepWorkspace")}</span>
+        {#if workspaceOptions.length === 0}
+          <p class={text.meta}>{i18n.t("orchestration.noWorkspaces")}</p>
+        {:else}
+          <Combobox
+            value={hWorkspace}
+            groups={workspaceGroups}
+            placeholder={i18n.t("orchestration.workspacePlaceholder")}
+            searchPlaceholder={i18n.t("orchestration.workspacePlaceholder")}
+            onChange={(v) => (hWorkspace = v)}
+            triggerClass="h-8 text-[13px]"
+          />
+        {/if}
+      </div>
     </div>
   {/if}
 
@@ -308,26 +338,18 @@
     </span>
     <Textarea
       bind:value={prompt}
+      bind:ref={promptEl}
       placeholder={kind === "gate"
         ? i18n.t("orchestration.gateQuestionPlaceholder")
         : i18n.t("orchestration.stepPromptPlaceholder")}
       class="min-h-20 text-[13px]"
     />
-    {#if candidates.length > 0}
-      <div class="flex flex-wrap items-center gap-1 pt-0.5">
-        <span class={cn(text.meta, "mr-1")}>{i18n.t("orchestration.insertRefLabel")}</span>
-        {#each candidates as c (c.id)}
-          <button
-            type="button"
-            class="rounded border border-border/70 bg-background px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:border-primary/60 hover:text-foreground"
-            onclick={() => insertRef(c.id)}
-          >
-            {c.title || c.id}
-          </button>
-        {/each}
-      </div>
-    {/if}
   </div>
+
+  <!-- Contextual variable picker (only when prior steps exist and this can chain) -->
+  {#if candidates.length > 0 && kind !== "gate"}
+    <StepContextPicker {candidates} oninsert={insertToken} />
+  {/if}
 
   <!-- Dependencies (runs after) -->
   {#if candidates.length > 0}
@@ -355,38 +377,48 @@
     </div>
   {/if}
 
-  <!-- On failure (agent steps only; a gate "fails" only when rejected) -->
+  <!-- Advanced options (agent steps only; a gate "fails" only when rejected) -->
   {#if kind !== "gate"}
-    <div class="flex items-center justify-between gap-2">
-      <span class={text.section}>{i18n.t("orchestration.stepOnFailure")}</span>
-      <div class="flex items-center gap-2">
-        {#if onFailure === "retry"}
-          <Input
-            type="number"
-            min="2"
-            max="9"
-            bind:value={maxAttempts}
-            class="h-8 w-16 text-[13px]"
-            aria-label={i18n.t("orchestration.maxAttempts")}
-          />
-        {/if}
-        <Select.Root type="single" bind:value={onFailure}>
-          <Select.Trigger class="h-8 w-44 text-[13px]">
-            {onFailure === "retry"
-              ? i18n.t("orchestration.onFailureRetry")
-              : i18n.t("orchestration.onFailureStop")}
-          </Select.Trigger>
-          <Select.Content>
-            <Select.Item value="stop" label={i18n.t("orchestration.onFailureStop")}>
-              {i18n.t("orchestration.onFailureStop")}
-            </Select.Item>
-            <Select.Item value="retry" label={i18n.t("orchestration.onFailureRetry")}>
-              {i18n.t("orchestration.onFailureRetry")}
-            </Select.Item>
-          </Select.Content>
-        </Select.Root>
-      </div>
-    </div>
+    <Collapsible.Root bind:open={advancedOpen}>
+      <Collapsible.Trigger
+        class={cn("flex items-center gap-1 text-left", text.meta, "hover:text-foreground")}
+      >
+        <ChevronDownIcon class={cn("size-3 transition-transform", !advancedOpen && "-rotate-90")} />
+        {i18n.t("orchestration.advancedOptions")}
+      </Collapsible.Trigger>
+      <Collapsible.Content>
+        <div class="flex items-center justify-between gap-2 pt-2">
+          <span class={text.section}>{i18n.t("orchestration.stepOnFailure")}</span>
+          <div class="flex items-center gap-2">
+            {#if onFailure === "retry"}
+              <Input
+                type="number"
+                min="2"
+                max="9"
+                bind:value={maxAttempts}
+                class="h-8 w-16 text-[13px]"
+                aria-label={i18n.t("orchestration.maxAttempts")}
+              />
+            {/if}
+            <Select.Root type="single" bind:value={onFailure}>
+              <Select.Trigger class="h-8 w-44 text-[13px]">
+                {onFailure === "retry"
+                  ? i18n.t("orchestration.onFailureRetry")
+                  : i18n.t("orchestration.onFailureStop")}
+              </Select.Trigger>
+              <Select.Content class="max-h-72">
+                <Select.Item value="stop" label={i18n.t("orchestration.onFailureStop")}>
+                  {i18n.t("orchestration.onFailureStop")}
+                </Select.Item>
+                <Select.Item value="retry" label={i18n.t("orchestration.onFailureRetry")}>
+                  {i18n.t("orchestration.onFailureRetry")}
+                </Select.Item>
+              </Select.Content>
+            </Select.Root>
+          </div>
+        </div>
+      </Collapsible.Content>
+    </Collapsible.Root>
   {/if}
 
   <!-- Actions -->

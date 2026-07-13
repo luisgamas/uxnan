@@ -21,7 +21,7 @@
 </script>
 
 <Dialog.Root bind:open={app.orchestrationOpen}>
-  <Dialog.Content class="sm:max-w-[720px]">
+  <Dialog.Content class="flex max-h-[88vh] w-[94vw] flex-col overflow-hidden sm:max-w-[900px]">
     <Dialog.Header>
       <Dialog.Title class="flex items-center gap-2">
         {i18n.t("orchestration.title")}
@@ -33,7 +33,7 @@
       </Dialog.Title>
     </Dialog.Header>
 
-    <Tabs.Root bind:value={tab} class="flex min-h-0 flex-col gap-3">
+    <Tabs.Root bind:value={tab} class="flex min-h-0 flex-1 flex-col gap-3">
       <Tabs.List class={cn("h-8 shrink-0 justify-start gap-3 rounded-none bg-transparent p-0", divider.bottom)}>
         <Tabs.Trigger
           value="broadcast"
@@ -49,10 +49,10 @@
         </Tabs.Trigger>
       </Tabs.List>
 
-      <Tabs.Content value="broadcast" class="flex min-h-0 flex-col gap-2">
+      <Tabs.Content value="broadcast" class="flex min-h-0 flex-1 flex-col gap-2">
         <OrchestrationBroadcast />
       </Tabs.Content>
-      <Tabs.Content value="runs" class="flex min-h-0 flex-col gap-2">
+      <Tabs.Content value="runs" class="flex min-h-0 flex-1 flex-col gap-2">
         <OrchestrationRuns />
       </Tabs.Content>
     </Tabs.Root>
