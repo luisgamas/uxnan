@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import { app } from "$lib/state/app.svelte";
   import { terminals } from "$lib/state/terminals.svelte";
   import { projects } from "$lib/state/projects.svelte";
@@ -100,6 +101,24 @@
   // saved run stays reachable to build, drive or review even with fewer agents.
   const liveAgents = $derived(orchestration.agents);
   const orchestratable = $derived(liveAgents.length >= 2 || orchestrationRun.runs.length > 0);
+
+  // Give the entry point a quiet "attention" cue when it (re)appears, cleared once
+  // the user opens the console — so a newly-available orchestration surface is
+  // noticeable without being loud, and returns to normal after a click.
+  let orchestrationAck = $state(false);
+  let prevOrchestratable = false;
+  $effect(() => {
+    const o = orchestratable;
+    untrack(() => {
+      if (o && !prevOrchestratable) orchestrationAck = false;
+      prevOrchestratable = o;
+    });
+  });
+  const orchestrationAttention = $derived(orchestratable && !orchestrationAck);
+  function openOrchestration() {
+    orchestrationAck = true;
+    app.orchestrationOpen = true;
+  }
 
   function toggleLeftSidebar() {
     app.settings.leftSidebarOpen = !app.settings.leftSidebarOpen;
@@ -404,9 +423,14 @@
           {#snippet children(props)}
             <button
               {...props}
-              class="inline-flex items-center gap-1 rounded px-1 text-muted-foreground hover:text-foreground"
+              class={cn(
+                "inline-flex items-center gap-1 rounded px-1 transition-colors",
+                orchestrationAttention
+                  ? "text-foreground ring-1 ring-primary/40 bg-primary/5"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
               aria-label={i18n.t("orchestration.open")}
-              onclick={() => (app.orchestrationOpen = true)}
+              onclick={openOrchestration}
             >
               <WorkflowIcon class="size-3.5" />
               {liveAgents.length}
