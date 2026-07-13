@@ -828,8 +828,10 @@ mod tests {
         .unwrap();
         assert!(legacy.orchestration_runs.is_none());
         // The opaque runs blob round-trips under the camelCase key, untouched.
-        let mut data = AppData::default();
-        data.orchestration_runs = Some(serde_json::json!([{ "id": "r1", "steps": [] }]));
+        let data = AppData {
+            orchestration_runs: Some(serde_json::json!([{ "id": "r1", "steps": [] }])),
+            ..Default::default()
+        };
         let json = serde_json::to_string(&data).unwrap();
         assert!(json.contains("orchestrationRuns"));
         let back: AppData = serde_json::from_str(&json).unwrap();
