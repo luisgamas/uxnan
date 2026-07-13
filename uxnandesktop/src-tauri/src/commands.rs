@@ -1354,6 +1354,18 @@ pub async fn github_pr_diff(worktree_path: String, number: String) -> Result<Str
         .map_err(CommandError::from)
 }
 
+/// The chronological timeline of a PR or issue (comments, reviews, commits, and
+/// smaller events — labels, assignments, merges, cross-references, …).
+#[tauri::command]
+pub async fn github_pr_timeline(
+    worktree_path: String,
+    number: String,
+) -> Result<Vec<crate::github::TimelineEvent>, CommandError> {
+    crate::github::pr_timeline(&worktree_path, &number)
+        .await
+        .map_err(CommandError::from)
+}
+
 /// Create a PR from the worktree's current branch. Returns the new PR URL.
 #[tauri::command]
 pub async fn github_pr_create(

@@ -11,7 +11,7 @@
 //!   pass `--show-token` and never store a secret.
 //! - **The manual path == the agent path.** Anything an agent could automate here
 //!   is the same `gh` command a human triggers, so GitHub features keep working
-//!   with zero agent quota (see `GITHUB_INTEGRATION.md` §7).
+//!   with zero agent quota.
 //! - **Minimal surface.** No provider SDK, no bundled API client.
 //!
 //! `gh` resolves the repo from the working directory, so repo-scoped calls run with
@@ -575,6 +575,8 @@ pub struct PrDetail {
     pub mergeable: Option<String>,
     pub merge_state_status: Option<String>,
     pub review_decision: Option<String>,
+    /// When the PR was opened — the timestamp on the timeline's opening bubble.
+    pub created_at: Option<String>,
     pub labels: Vec<String>,
     pub files: Vec<PrFile>,
     pub checks: Vec<CheckItem>,
@@ -629,6 +631,41 @@ pub struct PrCommit {
     pub committed_at: Option<String>,
 }
 
+/// One normalized entry in a PR/issue **timeline** (GitHub's Timeline Events API,
+/// `GET /repos/{owner}/{repo}/issues/{n}/timeline`). Every rendered event kind is
+/// flattened into this shape; the frontend renders an icon + verb per `event`.
+/// Only fields relevant to a given kind are populated (the rest are `None`).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TimelineEvent {
+    /// The event kind, e.g. `commented`, `reviewed`, `committed`, `labeled`,
+    /// `assigned`, `closed`, `merged`, `reopened`, `renamed`, `review_requested`,
+    /// `head_ref_force_pushed`, `cross-referenced`, `ready_for_review`, …
+    pub event: String,
+    /// Who performed the action (a GitHub login, or a git author name for commits).
+    pub actor: Option<String>,
+    /// ISO-8601 timestamp used to sort the timeline.
+    pub created_at: Option<String>,
+    /// Comment / review body (for `commented` and `reviewed`).
+    pub body: Option<String>,
+    /// Uppercase review verdict for `reviewed`
+    /// (`APPROVED` / `CHANGES_REQUESTED` / `COMMENTED` / `DISMISSED`).
+    pub state: Option<String>,
+    /// Label name (for `labeled` / `unlabeled`).
+    pub label: Option<String>,
+    /// Label hex color without `#` (for `labeled` / `unlabeled`).
+    pub label_color: Option<String>,
+    /// Short commit hash (for `committed` / `merged` / `referenced`).
+    pub commit_sha: Option<String>,
+    /// First line of a commit message (for `committed`).
+    pub commit_message: Option<String>,
+    /// The action's target: assignee/reviewer login, rename destination, milestone
+    /// title, or a cross-referenced issue/PR title.
+    pub subject: Option<String>,
+    /// A cross-referenced issue/PR number (for `cross-referenced`).
+    pub ref_number: Option<i64>,
+}
+
 /// Fetch full detail for one PR.
 pub async fn pr_view(worktree_path: &str, number: &str) -> Result<PrDetail, AppError> {
     let number = validate_number(number)?;
@@ -653,6 +690,7 @@ pub async fn pr_view(worktree_path: &str, number: &str) -> Result<PrDetail, AppE
         mergeable: opt_str_field(&v, "mergeable"),
         merge_state_status: opt_str_field(&v, "mergeStateStatus"),
         review_decision: opt_str_field(&v, "reviewDecision"),
+        created_at: opt_str_field(&v, "createdAt"),
         labels: name_list(&v, "labels"),
         files: files_from_json(v.get("files")),
         checks: check_items_from_rollup(v.get("statusCheckRollup")),
@@ -972,6 +1010,165 @@ pub async fn issue_view(worktree_path: &str, number: &str) -> Result<IssueDetail
         updated_at: opt_str_field(&v, "updatedAt"),
         comments: comments_from_json(v.get("comments")),
     })
+}
+
+/// Fetch the **timeline** of a PR or issue — GitHub's Timeline Events API. Since a
+/// PR *is* an issue in the REST API, one endpoint serves both:
+/// `GET /repos/{owner}/{repo}/issues/{n}/timeline`. `gh api` fills the
+/// `{owner}`/`{repo}` placeholders from the repo at `worktree_path`, and
+/// `--paginate` merges every page into a single JSON array. Events are returned
+/// oldest-first (already the API's order) and normalized into `TimelineEvent`s;
+/// unrecognized event kinds are dropped rather than shown as noise.
+pub async fn pr_timeline(
+    worktree_path: &str,
+    number: &str,
+) -> Result<Vec<TimelineEvent>, AppError> {
+    let number = validate_number(number)?;
+    let path = format!("repos/{{owner}}/{{repo}}/issues/{number}/timeline");
+    let v = gh_json(
+        Some(worktree_path),
+        &["api", &path, "--paginate", "--cache", "20s"],
+    )
+    .await?;
+    Ok(timeline_events_from_json(&v))
+}
+
+/// Normalize the Timeline Events API array into rendered `TimelineEvent`s,
+/// skipping kinds we don't surface.
+fn timeline_events_from_json(v: &serde_json::Value) -> Vec<TimelineEvent> {
+    v.as_array()
+        .map(|arr| arr.iter().filter_map(map_timeline_event).collect())
+        .unwrap_or_default()
+}
+
+/// Map one raw timeline event object to a `TimelineEvent`, or `None` to drop it.
+fn map_timeline_event(e: &serde_json::Value) -> Option<TimelineEvent> {
+    let event = str_field(e, "event");
+    // The actor is `actor.login` for most events, `user.login` for comments/reviews,
+    // and the git author name for commits.
+    let actor = login_field(e, "actor")
+        .or_else(|| login_field(e, "user"))
+        .or_else(|| {
+            e.get("author")
+                .and_then(|a| a.get("name"))
+                .and_then(|s| s.as_str())
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+        });
+    // Timestamp: `created_at` for most, `submitted_at` for reviews, the git author
+    // date for commits.
+    let created_at = opt_str_field(e, "created_at")
+        .or_else(|| opt_str_field(e, "submitted_at"))
+        .or_else(|| {
+            e.get("author")
+                .and_then(|a| a.get("date"))
+                .and_then(|s| s.as_str())
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+        });
+
+    let mut ev = TimelineEvent {
+        event: event.clone(),
+        actor,
+        created_at,
+        body: None,
+        state: None,
+        label: None,
+        label_color: None,
+        commit_sha: None,
+        commit_message: None,
+        subject: None,
+        ref_number: None,
+    };
+
+    match event.as_str() {
+        "commented" => {
+            ev.body = opt_str_field(e, "body");
+        }
+        "reviewed" => {
+            // Drop empty "commented" reviews (a review with no verdict and no text is
+            // pure noise). Verdicts arrive lowercase here; uppercase for parity with
+            // `pr view --json reviews` and the `github.review.*` labels.
+            let state = str_field(e, "state").to_uppercase();
+            let body = opt_str_field(e, "body");
+            if state == "COMMENTED" && body.as_deref().map(str::trim).unwrap_or("").is_empty() {
+                return None;
+            }
+            ev.state = Some(state);
+            ev.body = body;
+        }
+        "committed" => {
+            ev.commit_sha = opt_str_field(e, "sha").map(|s| s.chars().take(7).collect());
+            ev.commit_message = e
+                .get("message")
+                .and_then(|s| s.as_str())
+                .map(|m| m.lines().next().unwrap_or("").to_string());
+        }
+        "labeled" | "unlabeled" => {
+            ev.label = e
+                .get("label")
+                .and_then(|l| l.get("name"))
+                .and_then(|s| s.as_str())
+                .map(str::to_string);
+            ev.label_color = e
+                .get("label")
+                .and_then(|l| l.get("color"))
+                .and_then(|s| s.as_str())
+                .filter(|s| !s.is_empty())
+                .map(str::to_string);
+        }
+        "assigned" | "unassigned" => {
+            ev.subject = login_field(e, "assignee");
+        }
+        "review_requested" | "review_request_removed" => {
+            ev.subject = login_field(e, "requested_reviewer").or_else(|| {
+                e.get("requested_team")
+                    .and_then(|t| t.get("name"))
+                    .and_then(|s| s.as_str())
+                    .map(str::to_string)
+            });
+        }
+        "renamed" => {
+            ev.subject = e
+                .get("rename")
+                .and_then(|r| r.get("to"))
+                .and_then(|s| s.as_str())
+                .map(str::to_string);
+        }
+        "milestoned" | "demilestoned" => {
+            ev.subject = e
+                .get("milestone")
+                .and_then(|m| m.get("title"))
+                .and_then(|s| s.as_str())
+                .map(str::to_string);
+        }
+        "cross-referenced" => {
+            let issue = e.get("source").and_then(|s| s.get("issue"));
+            ev.subject = issue
+                .and_then(|i| i.get("title"))
+                .and_then(|s| s.as_str())
+                .map(str::to_string);
+            ev.ref_number = issue.and_then(|i| i.get("number")).and_then(|n| n.as_i64());
+        }
+        "merged" | "referenced" => {
+            ev.commit_sha = opt_str_field(e, "commit_id").map(|s| s.chars().take(7).collect());
+        }
+        // Rendered with just actor + verb + time.
+        "closed"
+        | "reopened"
+        | "head_ref_force_pushed"
+        | "head_ref_deleted"
+        | "head_ref_restored"
+        | "ready_for_review"
+        | "convert_to_draft"
+        | "locked"
+        | "unlocked"
+        | "pinned"
+        | "unpinned" => {}
+        // Everything else (subscribed, mentioned, …) is noise — drop it.
+        _ => return None,
+    }
+    Some(ev)
 }
 
 /// Post a comment on an issue (`gh issue comment <n> --body`).
@@ -1385,6 +1582,43 @@ mod tests {
         assert_eq!(c[0].author.as_deref(), Some("alice"));
         assert_eq!(c[0].body, "hi");
         assert_eq!(c[0].created_at.as_deref(), Some("2026-01-01T00:00:00Z"));
+    }
+
+    #[test]
+    fn timeline_maps_kinds_and_drops_noise() {
+        let v = serde_json::json!([
+            { "event": "commented", "user": {"login": "alice"}, "body": "hi", "created_at": "2026-01-01T00:00:00Z" },
+            { "event": "reviewed", "user": {"login": "bob"}, "state": "approved", "body": "", "submitted_at": "2026-01-02T00:00:00Z" },
+            { "event": "reviewed", "user": {"login": "carol"}, "state": "commented", "body": "", "submitted_at": "2026-01-03T00:00:00Z" },
+            { "event": "committed", "sha": "abc1234567", "message": "feat: thing\n\nbody", "author": {"name": "Dev", "date": "2026-01-04T00:00:00Z"} },
+            { "event": "labeled", "actor": {"login": "alice"}, "label": {"name": "bug", "color": "d73a4a"}, "created_at": "2026-01-05T00:00:00Z" },
+            { "event": "cross-referenced", "actor": {"login": "eve"}, "created_at": "2026-01-06T00:00:00Z", "source": {"issue": {"number": 42, "title": "Related"}} },
+            { "event": "subscribed", "actor": {"login": "noise"}, "created_at": "2026-01-07T00:00:00Z" },
+        ]);
+        let t = timeline_events_from_json(&v);
+        // The empty COMMENTED review and the `subscribed` noise are dropped → 5 kept.
+        assert_eq!(t.len(), 5);
+
+        assert_eq!(t[0].event, "commented");
+        assert_eq!(t[0].actor.as_deref(), Some("alice"));
+        assert_eq!(t[0].body.as_deref(), Some("hi"));
+
+        assert_eq!(t[1].event, "reviewed");
+        assert_eq!(t[1].state.as_deref(), Some("APPROVED")); // uppercased
+
+        assert_eq!(t[2].event, "committed");
+        assert_eq!(t[2].actor.as_deref(), Some("Dev")); // git author name
+        assert_eq!(t[2].commit_sha.as_deref(), Some("abc1234")); // 7-char short
+        assert_eq!(t[2].commit_message.as_deref(), Some("feat: thing")); // first line
+        assert_eq!(t[2].created_at.as_deref(), Some("2026-01-04T00:00:00Z"));
+
+        assert_eq!(t[3].event, "labeled");
+        assert_eq!(t[3].label.as_deref(), Some("bug"));
+        assert_eq!(t[3].label_color.as_deref(), Some("d73a4a"));
+
+        assert_eq!(t[4].event, "cross-referenced");
+        assert_eq!(t[4].subject.as_deref(), Some("Related"));
+        assert_eq!(t[4].ref_number, Some(42));
     }
 
     #[test]

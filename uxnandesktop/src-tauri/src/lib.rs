@@ -316,6 +316,7 @@ pub fn run() {
             commands::github_pr_list,
             commands::github_pr_view,
             commands::github_pr_diff,
+            commands::github_pr_timeline,
             commands::github_pr_create,
             commands::github_pr_comment,
             commands::github_pr_review,
