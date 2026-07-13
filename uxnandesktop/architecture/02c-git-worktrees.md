@@ -254,8 +254,8 @@ El siguiente diagrama muestra cómo se conectan los módulos de Git, diffs y wor
 
 ## 6. Pestaña de Archivos y Editor
 
-El panel derecho expone **tres vistas mediante pestañas** (`RightPanel.svelte` con
-`shadcn-svelte` Tabs). De izquierda a derecha:
+El panel derecho expone **hasta cuatro vistas mediante pestañas** (`RightPanel.svelte`
+con `shadcn-svelte` Tabs). De izquierda a derecha:
 
 1. **Archivos** (`FileTreePanel.svelte`): el árbol de archivos completo del
    worktree/proyecto activo, no solo los archivos con cambios.
@@ -263,6 +263,12 @@ El panel derecho expone **tres vistas mediante pestañas** (`RightPanel.svelte` 
    en las secciones 3–4 (estado/diff/stage/commit/push/pull).
 3. **Historial** (`HistoryPanel.svelte`): el log de commits del worktree activo,
    con un grafo de ramas opcional (ver §6.4).
+4. **GitHub** (`GithubPanel.svelte`, opcional): vista contextual del worktree activo
+   con el PR de su rama (resumen de checks + acciones rápidas) y los runs de CI de
+   esa rama. Solo aparece cuando el repo es de GitHub y el tab está habilitado
+   (`AppSettings.github.rightPanelTab`). Las vistas grandes (review/diff/logs) se
+   abren en la **sección GitHub** de pantalla completa (integración `gh`-backed; ver
+   `docs/github.md`).
 
 El estado git del worktree activo se carga en el padre `RightPanel` (siempre
 montado), de modo que la pestaña Archivos colorea su árbol aunque la pestaña

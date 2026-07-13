@@ -121,9 +121,19 @@ Estas son las funcionalidades **estrictamente necesarias** para un ADE ligero qu
 #### T3.2 - Revision Avanzada
 
 - [ ] Comentarios inline en diffs (anotaciones del usuario).
-- [ ] Diffs de imagenes (antes/despues visual).
-- [ ] Vista de diff de branch completa (no solo uncommitted).
-- [ ] Integracion con PRs de GitHub/GitLab.
+- [x] Diffs de imagenes (antes/despues visual). — Hecho (ver `02c` §4.2).
+- [x] Vista de diff de branch completa (no solo uncommitted). — Hecho (fuente de
+      diff `branch`, `02c` §4.6; y el diff completo de un PR vía `gh pr diff`).
+- [~] Integracion con PRs de GitHub/GitLab. — **GitHub: hecho** (integración
+      `gh`-backed: seccion GitHub full-screen + tab contextual del panel derecho +
+      review/merge/checks de PRs con **diff separado por archivo** (colapsado por
+      defecto + expandir/contraer todo), **conversación** (comentarios + veredictos
+      de review) con **campos para comentar** en PRs e issues, lista de **commits**,
+      **reviewers** y **pills de estado** con color, y merge/approve/request-changes
+      **restringidos a PRs abiertos**; issues, Actions logs, PR/issue↔worktree,
+      badges y boton de status bar; `src-tauri/src/github.rs`, `docs/github.md`).
+      **GitLab: pendiente** (el enfoque `gh`-centrico es
+      GitHub-only; ver `FOR-DEV.md → "GitHub integration — follow-ups"`).
 
 #### T3.3 - Navegador Embebido
 

@@ -15,7 +15,7 @@ which tracks assets only a human can provide.)
 standalone app** (three-panel shell, PTY terminals + splits, git worktrees, git
 status/diff/stage/commit/history, agent monitoring with the axum hook server +
 OSC/process layers, settings/themes/i18n, multi-agent orchestration,
-**in-app auto-updater**, **browser-control MCP for agents**). 126 Rust backend tests + 57 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
+**in-app auto-updater**, **browser-control MCP for agents**, **GitHub integration (`gh`-backed)**). 167 Rust backend tests + 117 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
 (developed on Windows; CI is `{ubuntu, windows}`). **Phase 6 (embedded bridge /
 mobile pairing) is NOT started.**
 
@@ -78,6 +78,62 @@ mobile pairing) is NOT started.**
   blur), credit, per-provider refresh interval + status-bar visibility, and a
   status-bar gauge popover. Contract-first (`shared` `agent/usageStats`); the
   bridge/mobile side is Phase 6 (see below).
+- **GitHub integration (`gh`-backed)** — a full-screen **GitHub section** (Overview /
+  Pull Requests / Issues / Actions / Account / Settings), a configurable **right-panel
+  GitHub tab** (per-worktree PR + checks + CI runs), **sidebar-card PR badges**, a
+  **status-bar button** (rate-limit gauge + optional notifications), and a post-push
+  **"Create PR"** toast. PR **review** (approve/request-changes/comment) + **merge** +
+  the unified **diff** (**split per file**, collapsed by default + expand/collapse-all);
+  **conversation** (comments + review verdicts) with **comment fields** on both PRs and
+  issues; a **commits** list, **reviewers**, colored **state pills**, and a **checks**
+  list on PRs, with merge/approve/request-changes **gated to open PRs**; **issue**
+  triage/create; **Actions** logs + re-run/cancel; **worktree-native** `gh pr checkout` /
+  `gh issue develop`; optional **AI PR-body drafting** (the `aicommit` one-shot runner).
+  All via the local **`gh` CLI** (incl. `gh api` for rate-limit/notifications) — **no
+  token stored/read by the app**; every agent action has a manual twin. Backend
+  `src-tauri/src/github.rs` (23 commands) + `AppSettings.github`. See
+  [`docs/github.md`](docs/github.md).
+
+## GitHub integration — follow-ups ☐
+
+The `gh`-backed integration above is complete for the standalone desktop app. Deferred:
+- [ ] **Native (no-`gh`) sign-in.** An OAuth **device-flow** login (public `client_id`,
+      no secret) + **OS-keychain** token storage (the `keyring` crate), so GitHub works
+      without `gh` installed. Closes the T2.4 / keyring item below. Needs a registered
+      GitHub OAuth App `client_id` (a `FOR-HUMAN.md` item).
+- [ ] **GitLab / other hosts.** The `gh`-centric approach is GitHub-only. GitLab would
+      need `glab` or a native API layer. Out of scope for now (the remote parser already
+      recognizes GitLab hosts).
+- [ ] **PR review as a dockable center tab.** Today review/diff/issue/log open as a
+      master-detail inside the GitHub section (full-screen). Making them **center tabs**
+      that coexist with terminals needs a new tab kind across the terminals tab system
+      (`terminals.svelte.ts` + `TerminalArea.svelte` rendering + serialization) — a
+      larger, riskier change deferred as a UX refinement.
+- [ ] **WSL repos.** A Windows `gh` can't see a `\\wsl.localhost\…` checkout, so GitHub
+      features degrade to "not a GitHub repo" there (same class of gap as the WSL2
+      hook-loopback limitation). Would need routing `gh` through `wsl.exe`.
+- [ ] **"Clone from GitHub" UI entry.** The backend command + api wrapper exist
+      (`github_clone` / `githubClone`, `gh repo clone`), but no UI surface calls them
+      yet. Wire a small entry (a repo field + destination dir → clone → `repo_add`),
+      e.g. from the Add-project dialog or the GitHub section.
+- [ ] **Eager per-worktree PR badges.** Sidebar PR badges are shown for *visited*
+      worktrees (context cache), not eagerly for every worktree (that would poll a PR
+      per worktree). A batched/GraphQL "my PRs for these branches" query could fill it.
+- [ ] **Rich comment/body rendering.** PR & issue bodies and comments render as plain
+      text today (`whitespace-pre-wrap`). Render **Markdown** (reuse the CodeMirror/Lezer
+      Markdown pipeline) and **inline images/screenshots** (fetch attachment URLs) so
+      pasted screenshots show inline instead of as raw links.
+- [ ] **Per-commit CI signals + inline diff comments.** The PR-level checks roll-up
+      ships; a per-commit status dot in the commits list (`gh api` per SHA) and
+      **line-level review comments** on the per-file diff are deferred.
+- [ ] **P2/P3 niceties:** mark-files-as-viewed during review, `#`/`@` autocomplete +
+      hover cards, a unified **notifications inbox**, **releases** (list/create), a
+      write-only **Actions secrets/variables** setter, and native **conditional-request
+      (ETag/304) polling** to make the status layer quota-cheaper (today it re-calls `gh`).
+- [ ] **Cross-component (mobile):** surface PR/CI/issue status on the paired phone via
+      new `shared` `github/*` JSON-RPC methods served by the embedded bridge (Phase 6).
+- [ ] **Svelte component tests** for the GitHub UI (part of the standing component-test
+      TODO below); the pure backend logic is unit-tested in `github.rs` (13 tests).
 
 ## Integrated developer browser ☐
 
@@ -288,7 +344,7 @@ are **done** (see `CHANGELOG.md` + `architecture/02d` §3). Remaining follow-ups
 
 - ✅ **Verify** — `.github/workflows/ci-desktop.yml` runs svelte-check + `npm test`
   (Vitest) + vite build + cargo fmt/clippy/test on `{ubuntu, windows}` (macOS
-  deferred with Apple). 126 Rust + 57 Vitest tests.
+  deferred with Apple). 167 Rust + 117 Vitest tests.
 - ✅ **`release-desktop.yml`** — exists: `tauri-action` bundles on a `desktop-v*` tag
   → draft GitHub Release, **and signs the updater artifacts** when the signing
   secrets are set. **Windows ships without OS code-signing for now; macOS deferred.**

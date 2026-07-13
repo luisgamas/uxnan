@@ -5,6 +5,69 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — GitHub integration (dedicated section + right-panel tab), `gh`-backed
+
+- A brand-new **GitHub section** — a full-screen overlay (like Settings, entered from
+  the left sidebar or the status bar) with its own left nav: **Overview**, **Pull
+  Requests**, **Issues**, **Actions** and **Settings** (Account/Session folded into
+  Settings). A **repository selector** at the top of the section's left nav picks which
+  registered project the section acts on, so it works **without** an active worktree
+  (defaulting to the active worktree's repo, then the active project, then the first git
+  repo). The right-panel GitHub tab, by contrast, stays bound to the **active worktree**
+  (empty state when none, like the other tabs). PR detail rendering keys its checks list
+  by index (matrix CI can emit duplicate check names, which would otherwise crash the
+  detail view), and the diff renderer is wrapped in an error boundary. Pull requests
+  open a full **review view** (metadata + files + checks roll-up + the unified diff
+  via the existing `DiffView`) with **approve / request-changes / comment** reviews
+  and **merge** (squash/rebase/merge + delete-branch); issues open a detail view;
+  Actions runs open their **logs** with re-run / re-run-failed / cancel.
+- **Richer PR & issue detail views.** PRs now render a **colored state pill**
+  (open = green / merged = purple / closed = red / draft = muted) plus summary pills
+  (review decision, checks roll-up, `+/−`, commit & file counts, labels), a
+  **reviewers** row, a **conversation** card (the description + every comment and
+  review verdict, oldest-first) with a **comment field**, a collapsible **commits
+  list**, a **checks** list (colored status dots + workflow name + link to the run),
+  and a **per-file diff**: one collapsible row per changed file, **collapsed by
+  default** (each `DiffView` mounts only while expanded, so a huge PR stays cheap),
+  with **Expand all / Collapse all**. **Merge / approve / request-changes are gated
+  to open PRs** — a closed/merged PR shows a read-only notice (checkout still
+  available) instead of dead action buttons. Issues gain the same **conversation**
+  card (description + comments) with a **comment field** and a colored open/closed
+  pill. Comments post through `gh pr comment` / `gh issue comment`
+  (`github_pr_comment`, `github_issue_comment`).
+- **Worktree-native GitHub:** **check out a PR into a new worktree**
+  (`gh pr checkout` → `git worktree`) and **start work on an issue** as a new worktree
+  (`gh issue develop`). PRs/issues become first-class citizens of the sidebar tree.
+- A configurable **right-panel "GitHub" tab** (4th tab) scoped to the active worktree:
+  its PR (with a colored **checks roll-up**), quick actions, this branch's CI runs, and
+  a full **create-PR form** (title + body, manual or AI-drafted) right in the panel. The
+  tab stays put whenever enabled (toggle in GitHub → Settings) and shows a "connect" /
+  "not a GitHub repo" state instead of appearing/disappearing; the right-panel **tab
+  strip now scrolls horizontally** (never clips) and the panel has a min width that keeps
+  the four tabs visible.
+- **Confirmation for PR actions** (create / merge) — on by default, configurable in
+  GitHub → Settings, applied in **both** the section and the right-panel tab.
+- Opens with a keyboard shortcut (**`Ctrl/Cmd+G`**, rebindable in Settings → Keyboard
+  shortcuts, with its keycap shown on the sidebar button). The section header reserves
+  the window-controls zone, and detail views (PR / issue / run log) surface a clear
+  error + retry instead of hanging — every `gh` call is bounded by a 60 s timeout, and
+  the PR-view field set is trimmed to what all `gh`/GHES versions accept. UI aligned to
+  the app's design tokens & clean-desktop patterns (section headers, framed cards,
+  status pills, proper empty states).
+- **Sidebar-card PR badge** on worktree rows (colored by CI checks), a **status-bar
+  GitHub button** (opens the section; shows the API rate-limit remaining + an optional
+  unread-notifications count), and a post-push **"Create PR"** toast (the Zed pattern).
+- **Optional AI PR-body drafting** — draft a PR description from the branch diff with an
+  installed CLI agent (the same one-shot, non-interactive runner as AI commit messages;
+  configured in GitHub → Settings). Manual typing is always available.
+- **Posture:** everything is backed by the local **GitHub CLI (`gh`)** (including
+  `gh api` for rate-limit/notifications). **No token is ever stored or read by the app**
+  — `gh` owns it in the OS keychain; the app only reads sanitized status
+  (login/scopes/host). Every agent-automatable action has an identical manual path, so
+  GitHub features keep working with zero agent quota. Backend: `src-tauri/src/github.rs`
+  (23 commands) + `AppSettings.github` (`GithubSettings`, all fields default). User guide:
+  [`docs/github.md`](docs/github.md).
+
 ### Changed — Desktop stable and nightly releases now have separate, enforced tags
 
 - **Stable:** `desktop-stable-v0.0.PATCH` produces a normal GitHub Release and

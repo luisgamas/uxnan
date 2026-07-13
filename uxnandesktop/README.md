@@ -161,6 +161,7 @@ Detailed docs live in [`docs/`](./docs/):
 [multi-agent orchestration](./docs/orchestration.md) ·
 [agent hooks (precise states)](./docs/agent-hooks.md) ·
 [integrated browser](./docs/browser.md) ·
+[GitHub integration](./docs/github.md) ·
 [updates & release channels](./docs/updates.md).
 
 The full product/engineering specification is in
