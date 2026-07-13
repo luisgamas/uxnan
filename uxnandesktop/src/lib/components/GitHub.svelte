@@ -30,7 +30,7 @@
     aiCommitModels,
     openExternal,
   } from "$lib/api";
-  import type { PrDetail, IssueDetail, TimelineEvent } from "$lib/types";
+  import type { PrDetail, IssueDetail, TimelineEvent, CheckItem, CheckSummary } from "$lib/types";
   import { splitCommitDiff } from "$lib/diffParse";
   import { relTime } from "$lib/relTime";
   import { Button } from "$lib/components/ui/button";
@@ -42,6 +42,8 @@
   import SettingsRow from "$lib/components/SettingsRow.svelte";
   import DiffView from "$lib/components/DiffView.svelte";
   import CreatePrForm from "$lib/components/CreatePrForm.svelte";
+  import MarkdownView from "$lib/components/MarkdownView.svelte";
+  import * as Popover from "$lib/components/ui/popover";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import ArrowLeftIcon from "@lucide/svelte/icons/arrow-left";
   import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
@@ -50,6 +52,8 @@
   import GitBranchIcon from "@lucide/svelte/icons/git-branch";
   import CircleDotIcon from "@lucide/svelte/icons/circle-dot";
   import CheckCircle2Icon from "@lucide/svelte/icons/check-circle-2";
+  import XCircleIcon from "@lucide/svelte/icons/circle-x";
+  import CircleDashedIcon from "@lucide/svelte/icons/circle-dashed";
   import PlayIcon from "@lucide/svelte/icons/play";
   import LayoutDashboardIcon from "@lucide/svelte/icons/layout-dashboard";
   import SettingsIcon from "@lucide/svelte/icons/settings";
@@ -537,6 +541,32 @@
     if (state === "pending") return "bg-amber-500";
     return "bg-muted-foreground/50";
   }
+  /** The CI status icon for a roll-up state (matches GitHub's ✓ / ✕ / • / dot). */
+  function ciIcon(state: string) {
+    if (state === "success") return CheckCircle2Icon;
+    if (state === "failure") return XCircleIcon;
+    if (state === "pending") return CircleDashedIcon;
+    return CircleDotIcon;
+  }
+  function ciToneClass(state: string): string {
+    if (state === "success") return "text-emerald-500";
+    if (state === "failure") return "text-red-500";
+    if (state === "pending") return "text-amber-500";
+    return "text-muted-foreground";
+  }
+  /** A short headline for a checks roll-up ("All checks passed" / "2 failing"). */
+  function checksHeadline(s: CheckSummary): string {
+    if (s.state === "success") return i18n.t("github.checks.allPassed");
+    if (s.state === "failure") return i18n.t("github.checks.someFailing", { n: s.failed });
+    if (s.state === "pending") return i18n.t("github.checks.running", { n: s.pending });
+    return i18n.t("github.pr.checks");
+  }
+  function checkBucketDot(bucket: string): string {
+    if (bucket === "pass") return "bg-emerald-500";
+    if (bucket === "fail") return "bg-red-500";
+    if (bucket === "pending") return "bg-amber-500";
+    return "bg-muted-foreground/50";
+  }
   function checkTextClass(state: string): string {
     if (state === "success") return "text-emerald-600 dark:text-emerald-400";
     if (state === "failure") return "text-red-600 dark:text-red-400";
@@ -879,36 +909,38 @@
 {#snippet timelineNode(ev: TimelineEvent)}
   {@const Icon = eventIcon(ev)}
   {#if eventIsBig(ev)}
-    <div class="relative flex gap-3">
-      <span class={cn("relative z-10 mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full border border-border bg-background", eventToneClass(ev))}>
-        <Icon class="size-3.5" />
+    <div class="relative flex gap-3.5">
+      <span class={cn("relative z-10 mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full border border-border bg-card", eventToneClass(ev))}>
+        <Icon class="size-4" />
       </span>
-      <div class="min-w-0 flex-1 overflow-hidden rounded-lg border border-border/60 bg-card">
-        <div class={cn("flex flex-wrap items-center gap-2 border-b border-border/50 bg-muted/30 px-3 py-1.5", text.meta)}>
+      <div class="min-w-0 flex-1 overflow-hidden rounded-lg border border-border/60">
+        <div class={cn("flex flex-wrap items-center gap-2 border-b border-border/50 bg-muted/40 px-4 py-2.5", text.meta)}>
           <span class="font-medium text-foreground">{ev.actor ?? "—"}</span>
           {#if ev.event === "reviewed" && ev.state}{@render pill(reviewLabel(ev.state), reviewTone(ev.state))}{/if}
           {#if ev.createdAt}<span>{ago(ev.createdAt)}</span>{/if}
         </div>
         {#if ev.body?.trim()}
-          <div class={cn("whitespace-pre-wrap px-3 py-2.5", text.body)}>{ev.body}</div>
+          <div class={cn("px-4 py-3.5", text.body)}>
+            <MarkdownView source={ev.body} inline />
+          </div>
         {/if}
       </div>
     </div>
   {:else}
-    <div class="relative flex items-center gap-3">
-      <span class={cn("relative z-10 flex size-7 shrink-0 items-center justify-center rounded-full border border-border bg-background", eventToneClass(ev))}>
-        <Icon class="size-3.5" />
+    <div class="relative flex min-h-8 items-center gap-3.5">
+      <span class={cn("relative z-10 flex size-8 shrink-0 items-center justify-center rounded-full border border-border bg-card", eventToneClass(ev))}>
+        <Icon class="size-4" />
       </span>
-      <div class={cn("flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 gap-y-0.5", text.meta)}>
+      <div class={cn("flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 gap-y-1", text.body)}>
         {#if ev.actor}<span class="font-medium text-foreground">{ev.actor}</span>{/if}
         <span class="text-muted-foreground">{eventVerb(ev)}</span>
         {#if ev.label}
-          <span class="inline-flex items-center rounded-full border px-1.5 py-px text-[11px]" style={labelStyle(ev.labelColor)}>{ev.label}</span>
+          <span class="inline-flex items-center rounded-full border px-2 py-0.5 text-[11px]" style={labelStyle(ev.labelColor)}>{ev.label}</span>
         {/if}
         {#if ev.subject}<span class="min-w-0 truncate font-medium text-foreground">{ev.subject}</span>{/if}
         {#if ev.refNumber}<span class="font-mono text-muted-foreground">#{ev.refNumber}</span>{/if}
         {#if ev.commitMessage}<span class="min-w-0 truncate text-foreground">{ev.commitMessage}</span>{/if}
-        {#if ev.commitSha}<span class="shrink-0 rounded bg-muted px-1 py-px font-mono text-[11px] text-muted-foreground">{ev.commitSha}</span>{/if}
+        {#if ev.commitSha}<span class="shrink-0 rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">{ev.commitSha}</span>{/if}
         {#if ev.createdAt}<span class="whitespace-nowrap text-muted-foreground">· {ago(ev.createdAt)}</span>{/if}
       </div>
     </div>
@@ -916,22 +948,66 @@
 {/snippet}
 
 <!-- The vertical-rail timeline: a chronological node list (comments/reviews as
-     cards, everything else as compact one-line events). -->
+     cards, everything else as compact one-line events). The rail line is inset so
+     its ends tuck behind the first/last node icons. -->
 {#snippet timelineRail(nodes: TimelineEvent[], loading: boolean)}
   {#if loading}
     {@render loadingRow()}
   {:else if nodes.length === 0}
-    <p class={cn("px-3.5 py-4 text-muted-foreground", text.meta)}>{i18n.t("github.pr.noComments")}</p>
+    <p class={cn("px-4 py-6 text-muted-foreground", text.meta)}>{i18n.t("github.pr.noComments")}</p>
   {:else}
-    <div class="relative px-3.5 py-3">
-      <div class="absolute bottom-4 left-[27px] top-4 w-px bg-border/60"></div>
-      <div class="space-y-3">
+    <div class="relative px-4 py-5">
+      <div class="absolute inset-y-8 left-[31px] w-px bg-border/60"></div>
+      <div class="space-y-5">
         {#each nodes as ev, ni (ni)}
           {@render timelineNode(ev)}
         {/each}
       </div>
     </div>
   {/if}
+{/snippet}
+
+<!-- The list of individual checks, shown inside a popover (PR-detail CI box). -->
+{#snippet checksRows(checks: CheckItem[])}
+  <div class="uxnan-scroll max-h-[50vh] divide-y divide-border/50 overflow-auto">
+    {#each checks as c, ci (ci)}
+      <div class="flex items-center gap-2.5 px-3.5 py-2.5">
+        <span class={cn("size-2 shrink-0 rounded-full", checkBucketDot(c.bucket))}></span>
+        <span class={cn("min-w-0 flex-1 truncate", text.body)}>{c.name}</span>
+        {#if c.workflow}<span class={cn("shrink-0 truncate text-muted-foreground", text.indicator)}>{c.workflow}</span>{/if}
+        {#if c.link}
+          <Button variant="ghost" size="icon-sm" class={iconButton.xs} onclick={() => c.link && openExternal(c.link)} aria-label={i18n.t("github.openOnGitHub")}>
+            <ExternalLinkIcon class="size-3" />
+          </Button>
+        {/if}
+      </div>
+    {/each}
+  </div>
+{/snippet}
+
+<!-- A compact CI badge for a PR-list row: a status icon that opens a popover with
+     the checks roll-up breakdown (the list query only carries the summary). -->
+{#snippet checksBadge(summary: CheckSummary)}
+  {@const Ci = ciIcon(summary.state)}
+  <Popover.Root>
+    <Popover.Trigger
+      class={cn("inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 transition-colors hover:bg-accent", ciToneClass(summary.state))}
+      aria-label={i18n.t("github.pr.checks")}
+    >
+      <Ci class="size-4" />
+    </Popover.Trigger>
+    <Popover.Content align="end" side="bottom" class="w-64 p-3.5">
+      <div class="flex items-center gap-2">
+        <Ci class={cn("size-4", ciToneClass(summary.state))} />
+        <span class={cn(text.body, "font-medium")}>{checksHeadline(summary)}</span>
+      </div>
+      <div class="mt-2.5 flex flex-wrap gap-x-3 gap-y-1 text-[12px]">
+        <span class="text-emerald-600 dark:text-emerald-400">{summary.passed} {i18n.t("github.checks.passed")}</span>
+        {#if summary.failed > 0}<span class="text-red-600 dark:text-red-400">{summary.failed} {i18n.t("github.checks.failing")}</span>{/if}
+        {#if summary.pending > 0}<span class="text-amber-600 dark:text-amber-400">{summary.pending} {i18n.t("github.checks.pending")}</span>{/if}
+      </div>
+    </Popover.Content>
+  </Popover.Root>
 {/snippet}
 
 {#snippet emptyState(Icon: typeof PlusIcon, title: string, desc: string)}
@@ -1109,22 +1185,29 @@
         {:else}
           <div class={cn("divide-y divide-border/50 overflow-hidden", panel.card)}>
             {#each github.prs as pr (pr.number)}
-              <button class="flex w-full items-center gap-3 px-3.5 py-2.5 text-left transition-colors hover:bg-accent/50" onclick={() => selectPr(pr.number)}>
+              <!-- Row is a div (not a button) so the CI popover trigger can be a real
+                   sibling button — the title area handles opening the PR. -->
+              <div class="group flex w-full items-center gap-3 px-4 py-3 transition-colors hover:bg-accent/50">
                 <GitPullRequestIcon class={cn("size-4 shrink-0", pr.isDraft ? "text-muted-foreground" : "text-emerald-500")} />
-                <div class="min-w-0 flex-1">
+                <button class="min-w-0 flex-1 text-left" onclick={() => selectPr(pr.number)}>
                   <div class={cn("truncate", text.bodyStrong)}>{pr.title}</div>
                   <div class={cn("truncate text-muted-foreground", text.meta)}>
                     #{pr.number}{pr.author ? ` · ${pr.author}` : ""}{pr.headRefName ? ` · ${pr.headRefName}` : ""}
                   </div>
-                </div>
+                </button>
                 {#if pr.isDraft}
                   {@render pill(i18n.t("github.pr.draft"), "muted")}
                 {/if}
                 {#if pr.reviewDecision}
                   {@render pill(prettyDecision(pr.reviewDecision), reviewTone(pr.reviewDecision) === "ok" ? "ok" : reviewTone(pr.reviewDecision) === "warn" ? "warn" : "info")}
                 {/if}
-                <ChevronRightIcon class="size-4 shrink-0 text-muted-foreground/50" />
-              </button>
+                {#if pr.checksSummary.total > 0}
+                  {@render checksBadge(pr.checksSummary)}
+                {/if}
+                <button class="shrink-0" onclick={() => selectPr(pr.number)} aria-label={pr.title} tabindex="-1">
+                  <ChevronRightIcon class="size-4 text-muted-foreground/50 transition-colors group-hover:text-muted-foreground" />
+                </button>
+              </div>
             {/each}
           </div>
         {/if}
@@ -1252,7 +1335,7 @@
           timelineNodes(pr.body, pr.author, pr.createdAt, prTimeline, prTimelineFailed, fallbackNodes(pr)),
           prTimelineLoading,
         )}
-        <div class="space-y-2 border-t border-border/50 p-3">
+        <div class="space-y-2.5 border-t border-border/50 p-4">
           <Textarea placeholder={i18n.t("github.pr.commentPlaceholder")} bind:value={commentBody} rows={2} />
           <div class="flex justify-end">
             <Button size="sm" disabled={busy || !commentBody.trim()} onclick={postComment}>{i18n.t("github.pr.postComment")}</Button>
@@ -1260,36 +1343,32 @@
         </div>
       </div>
 
-      <!-- Checks -->
+      <!-- CI status for the head (last) commit — a compact GitHub-style status box
+           that opens the full checks list in a popover, instead of a long card. -->
       {#if pr.checks.length > 0}
-        <div class={cn("overflow-hidden", panel.card)}>
-          <div class={cn("flex items-center gap-1.5 border-b border-border/50 px-3.5 py-2", text.section)}>
-            <span class={cn("size-2 rounded-full", checkDotClass(pr.checksSummary.state))}></span>
-            {i18n.t("github.pr.checks")}
-          </div>
-          <div class="divide-y divide-border/50">
-            <!-- Index key: matrix CI can emit multiple checks with the SAME name
-                 (e.g. `pr-comment-on-failure`), which would crash a name-keyed each. -->
-            {#each pr.checks as c, ci (ci)}
-              <div class="flex items-center gap-2 px-3.5 py-2">
-                <span class={cn("size-2 shrink-0 rounded-full", c.bucket === "pass" ? "bg-emerald-500" : c.bucket === "fail" ? "bg-red-500" : c.bucket === "pending" ? "bg-amber-500" : "bg-muted-foreground/50")}></span>
-                <span class={cn("min-w-0 flex-1 truncate", text.body)}>{c.name}</span>
-                {#if c.workflow}<span class={cn("shrink-0 truncate text-muted-foreground", text.indicator)}>{c.workflow}</span>{/if}
-                {#if c.link}
-                  <Button variant="ghost" size="icon-sm" class={iconButton.xs} onclick={() => c.link && openExternal(c.link)} aria-label={i18n.t("github.openOnGitHub")}>
-                    <ExternalLinkIcon class="size-3" />
-                  </Button>
-                {/if}
-              </div>
-            {/each}
-          </div>
-        </div>
+        {@const Ci = ciIcon(pr.checksSummary.state)}
+        <Popover.Root>
+          <Popover.Trigger class={cn("flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-accent/30", panel.card)}>
+            <span class={cn("flex size-9 shrink-0 items-center justify-center rounded-full border border-border", ciToneClass(pr.checksSummary.state))}>
+              <Ci class="size-5" />
+            </span>
+            <div class="min-w-0 flex-1">
+              <div class={cn(text.body, "font-medium")}>{checksHeadline(pr.checksSummary)}</div>
+              <div class={text.meta}>{i18n.t("github.checks.summaryLine", { passed: pr.checksSummary.passed, total: pr.checksSummary.total })}</div>
+            </div>
+            <span class={cn("text-muted-foreground", text.meta)}>{i18n.t("github.checks.viewAll")}</span>
+            <ChevronDownIcon class="size-4 shrink-0 text-muted-foreground/60" />
+          </Popover.Trigger>
+          <Popover.Content align="start" side="bottom" class="w-[26rem] max-w-[calc(100vw-3rem)] overflow-hidden p-0">
+            {@render checksRows(pr.checks)}
+          </Popover.Content>
+        </Popover.Root>
       {/if}
 
       <!-- Files changed: one collapsible diff per file (collapsed by default; each
            DiffView renders only while expanded, so a huge PR stays cheap). -->
       <div class={cn("overflow-hidden", panel.card)}>
-        <div class="flex flex-wrap items-center justify-between gap-2 border-b border-border/50 px-3.5 py-2">
+        <div class="flex flex-wrap items-center justify-between gap-2 border-b border-border/50 px-4 py-2.5">
           <span class={cn(text.section)}>
             {i18n.t("github.pr.filesChanged")} · {pr.changedFiles} · <span class="text-emerald-600 dark:text-emerald-400">+{pr.additions}</span> <span class="text-red-600 dark:text-red-400">−{pr.deletions}</span>
           </span>
@@ -1303,12 +1382,12 @@
         {#if prDiffLoading}
           {@render loadingRow()}
         {:else if prFiles.length === 0}
-          <p class={cn("px-3.5 py-4", text.meta)}>{i18n.t("github.none")}</p>
+          <p class={cn("px-4 py-5", text.meta)}>{i18n.t("github.none")}</p>
         {:else}
           <div class="divide-y divide-border/50">
             {#each prFiles as f, fi (fi)}
               <div>
-                <button class="flex w-full items-center gap-2 px-3.5 py-2 text-left transition-colors hover:bg-accent/40" onclick={() => toggleFile(f.path)}>
+                <button class="flex w-full items-center gap-2.5 px-4 py-3 text-left transition-colors hover:bg-accent/40" onclick={() => toggleFile(f.path)}>
                   {#if expandedFiles[f.path]}
                     <ChevronDownIcon class="size-3.5 shrink-0 text-muted-foreground" />
                   {:else}
@@ -1319,7 +1398,7 @@
                   <span class={cn("shrink-0", text.indicator, fileStatusClass(f.status))}>{fileStatusLabel(f.status)}</span>
                 </button>
                 {#if expandedFiles[f.path]}
-                  <div class="max-h-[70vh] overflow-auto border-t border-border/50 p-2">
+                  <div class="max-h-[72vh] min-h-[200px] overflow-auto border-t border-border/50 p-3">
                     <svelte:boundary>
                       <DiffView diff={f.diff} />
                       {#snippet failed()}
@@ -1466,7 +1545,7 @@
           ),
           issueTimelineLoading,
         )}
-        <div class="space-y-2 border-t border-border/50 p-3">
+        <div class="space-y-2.5 border-t border-border/50 p-4">
           <Textarea placeholder={i18n.t("github.pr.commentPlaceholder")} bind:value={issueCommentBody} rows={2} />
           <div class="flex justify-end">
             <Button size="sm" disabled={busy || !issueCommentBody.trim()} onclick={postIssueComment}>{i18n.t("github.pr.postComment")}</Button>

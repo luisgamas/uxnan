@@ -843,6 +843,7 @@ export interface PrListItem {
   baseRefName: string | null;
   reviewDecision: string | null;
   updatedAt: string | null;
+  checksSummary: CheckSummary;
 }
 
 /** A changed file within a PR. */

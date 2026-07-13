@@ -11,7 +11,14 @@
   import { text } from "$lib/design";
   import { i18n } from "$lib/i18n";
 
-  let { source, baseDir = null }: { source: string; baseDir?: string | null } = $props();
+  // `inline` renders the document as a compact fragment (no full-height scroller,
+  // no centered max-width, tighter rhythm) for embedding inside a card — e.g. a
+  // GitHub PR/issue comment. The default (document) mode is unchanged.
+  let {
+    source,
+    baseDir = null,
+    inline = false,
+  }: { source: string; baseDir?: string | null; inline?: boolean } = $props();
 
   const blocks = $derived(renderMarkdown(source));
 
@@ -158,9 +165,9 @@
 {/snippet}
 
 {#if blocks.length === 0}
-  <p class={cn("p-4", text.meta)}>{i18n.t("preview.markdownEmpty")}</p>
+  {#if !inline}<p class={cn("p-4", text.meta)}>{i18n.t("preview.markdownEmpty")}</p>{/if}
 {:else}
-  <div class="md uxnan-scroll">
+  <div class={cn("md", inline ? "md-inline" : "uxnan-scroll")}>
     {@render blockList(blocks)}
   </div>
 {/if}
@@ -182,6 +189,44 @@
     -webkit-user-select: text;
     user-select: text;
     cursor: auto;
+  }
+  /* Inline (embedded-in-a-card) variant: a plain fragment that flows with its
+     container — no full-height scroller, no centered max-width, no outer padding,
+     and a tighter rhythm with headings scaled down for a comment context. */
+  .md.md-inline {
+    height: auto;
+    overflow: visible;
+    padding: 0;
+    max-width: none;
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  .md.md-inline > :global(:first-child) {
+    margin-top: 0;
+  }
+  .md.md-inline > :global(:last-child) {
+    margin-bottom: 0;
+  }
+  .md.md-inline :global(.md-h) {
+    margin: 0.9em 0 0.4em;
+  }
+  .md.md-inline :global(.md-h1) {
+    font-size: 1.3em;
+  }
+  .md.md-inline :global(.md-h2) {
+    font-size: 1.2em;
+  }
+  .md.md-inline :global(.md-h3) {
+    font-size: 1.1em;
+  }
+  .md.md-inline :global(.md-h4),
+  .md.md-inline :global(.md-h5),
+  .md.md-inline :global(.md-h6) {
+    font-size: 1em;
+  }
+  .md.md-inline :global(.md-p) {
+    margin: 0.5em 0;
   }
   .md :global(.md-h) {
     font-weight: 600;
