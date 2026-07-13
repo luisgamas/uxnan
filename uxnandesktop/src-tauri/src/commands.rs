@@ -263,9 +263,15 @@ pub async fn pty_write(
     state.pty.write(&id, &data).map_err(CommandError::from)
 }
 
-/// Delay between delivering a pasted block and submitting it, so the TUI ingests
-/// the paste before the Enter arrives as a *separate* event (see below).
+/// Delay between delivering input and submitting it, so the TUI ingests it before
+/// the Enter arrives as a *separate* event (see below).
 const PASTE_SUBMIT_DELAY_MS: u64 = 50;
+
+/// Longer gap before Enter for a **multi-line** (bracketed) paste: some TUIs
+/// (Claude Code-family agents) briefly *guard* the Enter right after a paste — to
+/// stop an accidental multi-line submit — so a too-quick Enter is swallowed and the
+/// text is left in the composer. This gives that guard time to clear.
+const BRACKETED_SUBMIT_DELAY_MS: u64 = 150;
 
 /// Wrap `text` in bracketed-paste markers (`ESC[200~` … `ESC[201~`), stripping any
 /// terminators already inside it so the payload can't break out of the paste early.
@@ -318,11 +324,17 @@ pub async fn pty_paste_submit(
     id: String,
     text: String,
 ) -> Result<(), CommandError> {
+    let multiline = text.contains('\n') || text.contains('\r');
     state
         .pty
         .write(&id, &pty_submit_payload(&text))
         .map_err(CommandError::from)?;
-    tokio::time::sleep(std::time::Duration::from_millis(PASTE_SUBMIT_DELAY_MS)).await;
+    let delay = if multiline {
+        BRACKETED_SUBMIT_DELAY_MS
+    } else {
+        PASTE_SUBMIT_DELAY_MS
+    };
+    tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
     state.pty.write(&id, "\r").map_err(CommandError::from)?;
     Ok(())
 }
