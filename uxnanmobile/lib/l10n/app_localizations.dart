@@ -2642,6 +2642,24 @@ abstract class AppLocalizations {
   /// **'The “(latest)” aliases always route to the newest version of each tier your account can use, so you don\'t have to pick an exact one. Turn this off to hide them and choose only pinned, exact versions. Conversations already using an alias keep working.'**
   String get settingsClaudeLatestHint;
 
+  /// Title of the toggle controlling the autonomous-mode banner shown in conversations.
+  ///
+  /// In en, this message translates to:
+  /// **'Autonomous-mode banner'**
+  String get settingsAutonomousBannerTitle;
+
+  /// Subtitle of the autonomous-mode banner toggle.
+  ///
+  /// In en, this message translates to:
+  /// **'Show it each time you open a conversation with an autonomous agent.'**
+  String get settingsAutonomousBannerSubtitle;
+
+  /// Explanatory note under the autonomous-mode banner toggle.
+  ///
+  /// In en, this message translates to:
+  /// **'When on, a close button dismisses the banner just for the current visit and it reappears next time you open the conversation. Turn it off to hide the banner permanently.'**
+  String get settingsAutonomousBannerHint;
+
   /// No description provided for @settingsAppearanceSection.
   ///
   /// In en, this message translates to:
@@ -3542,6 +3560,12 @@ abstract class AppLocalizations {
   /// **'This agent runs in autonomous mode — it acts and edits without asking for approval first.'**
   String get conversationAutonomousMode;
 
+  /// Tooltip for the close button on the autonomous-mode banner; hides it for the current visit.
+  ///
+  /// In en, this message translates to:
+  /// **'Dismiss'**
+  String get conversationAutonomousModeDismiss;
+
   /// Title of the workspace file browser and its top-bar tooltip.
   ///
   /// In en, this message translates to:
@@ -4081,6 +4105,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Claude'**
   String get settingsConversationClaudeGroup;
+
+  /// Conversation section sub-group for Pi agent options (the autonomous-mode banner).
+  ///
+  /// In en, this message translates to:
+  /// **'Pi Agent'**
+  String get settingsConversationPiGroup;
 
   /// Conversation section sub-group for chat behaviour (scroll, templates).
   ///

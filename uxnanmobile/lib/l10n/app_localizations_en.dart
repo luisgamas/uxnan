@@ -1383,6 +1383,17 @@ class AppLocalizationsEn extends AppLocalizations {
       'The “(latest)” aliases always route to the newest version of each tier your account can use, so you don\'t have to pick an exact one. Turn this off to hide them and choose only pinned, exact versions. Conversations already using an alias keep working.';
 
   @override
+  String get settingsAutonomousBannerTitle => 'Autonomous-mode banner';
+
+  @override
+  String get settingsAutonomousBannerSubtitle =>
+      'Show it each time you open a conversation with an autonomous agent.';
+
+  @override
+  String get settingsAutonomousBannerHint =>
+      'When on, a close button dismisses the banner just for the current visit and it reappears next time you open the conversation. Turn it off to hide the banner permanently.';
+
+  @override
   String get settingsAppearanceSection => 'Appearance';
 
   @override
@@ -1887,6 +1898,9 @@ class AppLocalizationsEn extends AppLocalizations {
       'This agent runs in autonomous mode — it acts and edits without asking for approval first.';
 
   @override
+  String get conversationAutonomousModeDismiss => 'Dismiss';
+
+  @override
   String get fileBrowserTitle => 'Files';
 
   @override
@@ -2185,6 +2199,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsConversationClaudeGroup => 'Claude';
+
+  @override
+  String get settingsConversationPiGroup => 'Pi Agent';
 
   @override
   String get settingsConversationChatGroup => 'Conversation';

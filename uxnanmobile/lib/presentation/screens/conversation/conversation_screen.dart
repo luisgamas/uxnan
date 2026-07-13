@@ -67,6 +67,10 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   // disables the composer (sending into a dead cwd errors on every action).
   String? _checkedCwd;
   bool _cwdMissing = false;
+  // Whether the user closed the autonomous-mode banner on THIS visit. Local to
+  // the State, so it resets every time the conversation is (re)opened — the
+  // banner reappears on re-entry unless hidden permanently in settings.
+  bool _autonomousBannerDismissed = false;
   // Set when the user sends a message and the "scroll to latest on send"
   // setting is on: forces the next timeline update to jump to the bottom if the
   // user had scrolled up. Cleared once that scroll happens.
@@ -470,6 +474,9 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     final caps = thread != null
         ? ref.watch(agentCapabilitiesProvider(thread.agentId))
         : null;
+    // The autonomous-mode banner shows for YOLO agents (e.g. pi) unless hidden
+    // permanently in settings or closed for this visit.
+    final showAutonomousBanner = ref.watch(showAutonomousBannerProvider);
     // The active agent's sign-in status on the PC (only meaningful while we
     // hold this thread's channel). `.value` is null while offline or on an
     // older bridge, so a missing status simply shows no banner.
@@ -656,8 +663,16 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                     // (not in the scrolling list) so they remain visible.
                     if (_cwdMissing)
                       const _Centered(child: _CwdMissingBanner()),
-                    if (caps?.autonomous ?? false)
-                      const _Centered(child: _AutonomousBanner()),
+                    if ((caps?.autonomous ?? false) &&
+                        showAutonomousBanner &&
+                        !_autonomousBannerDismissed)
+                      _Centered(
+                        child: _AutonomousBanner(
+                          onClose: () => setState(
+                            () => _autonomousBannerDismissed = true,
+                          ),
+                        ),
+                      ),
                     if (requiresLogin && thread != null)
                       _Centered(
                         child: _LoginRequiredBanner(agentId: thread.agentId),
@@ -1476,7 +1491,10 @@ class _CwdMissingBanner extends StatelessWidget {
 /// autonomous ("YOLO") mode — they act and edit without a per-action approval
 /// prompt, because their headless CLI exposes no pre-tool approval channel.
 class _AutonomousBanner extends StatelessWidget {
-  const _AutonomousBanner();
+  const _AutonomousBanner({required this.onClose});
+
+  /// Dismisses the banner for the current visit (it reappears on re-entry).
+  final VoidCallback onClose;
 
   @override
   Widget build(BuildContext context) {
@@ -1494,7 +1512,12 @@ class _AutonomousBanner extends StatelessWidget {
         color: colors.secondaryContainer,
         borderRadius: BorderRadius.circular(12),
         child: Padding(
-          padding: const EdgeInsets.all(UxnanSpacing.sm),
+          padding: const EdgeInsets.fromLTRB(
+            UxnanSpacing.sm,
+            UxnanSpacing.sm,
+            UxnanSpacing.xs,
+            UxnanSpacing.sm,
+          ),
           child: Row(
             children: [
               Icon(
@@ -1510,6 +1533,14 @@ class _AutonomousBanner extends StatelessWidget {
                     color: colors.onSecondaryContainer,
                   ),
                 ),
+              ),
+              const SizedBox(width: UxnanSpacing.xs),
+              IconButton(
+                icon: const Icon(Icons.close_rounded, size: 18),
+                color: colors.onSecondaryContainer,
+                visualDensity: VisualDensity.compact,
+                tooltip: l10n.conversationAutonomousModeDismiss,
+                onPressed: onClose,
               ),
             ],
           ),

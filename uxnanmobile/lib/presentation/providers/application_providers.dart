@@ -570,6 +570,38 @@ class ScrollToBottomOnSend extends Notifier<bool> {
 final scrollToBottomOnSendProvider =
     NotifierProvider<ScrollToBottomOnSend, bool>(ScrollToBottomOnSend.new);
 
+/// Whether the autonomous ("YOLO") mode banner (shown for agents like pi that
+/// act without per-action approval) appears each time a conversation opens.
+/// Persisted; defaults to on — a close button then dismisses it for the current
+/// visit and it reappears next time. Off hides it permanently.
+class ShowAutonomousBanner extends Notifier<bool> {
+  @override
+  bool build() {
+    unawaited(_hydrate());
+    return true;
+  }
+
+  Future<void> _hydrate() async {
+    final stored = await ref
+        .read(conversationPreferencesStoreProvider)
+        .readShowAutonomousBanner();
+    if (stored != null && stored != state) state = stored;
+  }
+
+  /// Persists and applies the show-autonomous-banner preference.
+  Future<void> set({required bool value}) async {
+    if (value == state) return;
+    state = value;
+    await ref
+        .read(conversationPreferencesStoreProvider)
+        .writeShowAutonomousBanner(value: value);
+  }
+}
+
+/// Whether the autonomous-mode banner is shown per conversation (persisted).
+final showAutonomousBannerProvider =
+    NotifierProvider<ShowAutonomousBanner, bool>(ShowAutonomousBanner.new);
+
 /// What the conversation's context indicator shows: the context-window
 /// percentage, the raw token count, or both. Persisted; defaults to
 /// [ContextIndicatorMode.percentage] (the prior behaviour).

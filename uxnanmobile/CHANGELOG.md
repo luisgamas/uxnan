@@ -6,6 +6,15 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — the autonomous-mode banner is dismissible + a settings toggle
+- The autonomous ("YOLO") mode banner (shown for agents like pi) now has a
+  **close button** that dismisses it for the current visit; it reappears the
+  next time the conversation is opened (per-visit `State`, not persisted).
+- New **Settings ▸ Conversation ▸ Pi Agent** sub-section with an
+  Autonomous-mode banner toggle to hide the banner **permanently** vs. see it
+  each time (the default, now with the close button). Persisted via
+  `ConversationPreferencesStore` + `showAutonomousBannerProvider`.
+
 ### Added — agent slash commands in the composer `/` palette
 - The composer's `/` palette now lists the **agent's own special ("slash")
   commands** the bridge advertises via the new `agent/commands` method (e.g.

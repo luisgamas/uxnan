@@ -1388,6 +1388,17 @@ class AppLocalizationsEs extends AppLocalizations {
       'Los alias «(latest)» siempre usan la versión más reciente de cada nivel que tu cuenta puede utilizar, así no tienes que elegir una exacta. Desactívalo para ocultarlos y elegir solo versiones fijas y exactas. Las conversaciones que ya usan un alias siguen funcionando.';
 
   @override
+  String get settingsAutonomousBannerTitle => 'Banner de modo autónomo';
+
+  @override
+  String get settingsAutonomousBannerSubtitle =>
+      'Muéstralo cada vez que abras una conversación con un agente autónomo.';
+
+  @override
+  String get settingsAutonomousBannerHint =>
+      'Cuando está activado, un botón de cerrar descarta el banner solo por esta visita y reaparece la próxima vez que abras la conversación. Desactívalo para ocultar el banner permanentemente.';
+
+  @override
   String get settingsAppearanceSection => 'Apariencia';
 
   @override
@@ -1897,6 +1908,9 @@ class AppLocalizationsEs extends AppLocalizations {
       'Este agente corre en modo autónomo: actúa y edita sin pedir aprobación primero.';
 
   @override
+  String get conversationAutonomousModeDismiss => 'Descartar';
+
+  @override
   String get fileBrowserTitle => 'Archivos';
 
   @override
@@ -2198,6 +2212,9 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get settingsConversationClaudeGroup => 'Claude';
+
+  @override
+  String get settingsConversationPiGroup => 'Pi Agent';
 
   @override
   String get settingsConversationChatGroup => 'Conversación';
