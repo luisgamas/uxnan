@@ -24,7 +24,7 @@ El área central del ADE es donde ocurre la interacción directa con los agentes
 
 ### Renderizado con xterm.js
 
-xterm.js renderiza la salida del proceso PTY con **WebGLAddon** dentro del webview de Tauri, la ruta acelerada recomendada por xterm y usada por VS Code. Su superficie se reconstruye después de revelar un pane oculto o cambiar la cuadrícula para evitar frames obsoletos en WebView2. DOM se usa como fallback o cuando se activan ligaduras. Esto proporciona emulación de terminal completa:
+xterm.js renderiza la salida del proceso PTY con **WebGLAddon** dentro del webview de Tauri, la ruta acelerada recomendada por xterm y usada por VS Code. Se usa para **todas** las terminales —incluidas las que activan ligaduras, que se dibujan a través del *character joiner* del propio renderer WebGL (no del renderer DOM)—, de modo que los glifos siempre quedan alineados a la cuadrícula monoespaciada y la selección de texto con el mouse cae exactamente donde corresponde. Ante una pérdida del contexto GPU en WebView2 el addon se reinstala vía `onContextLoss`; los cambios de cuadrícula y los *reveals* de un pane oculto fuerzan un repintado completo (que limpia el atlas de glifos y el modelo de celdas) para descartar frames obsoletos, sin destruir el contexto. DOM queda solo como fallback automático cuando WebGL no está disponible. Esto proporciona emulación de terminal completa:
 
 - **Colores**: Soporte completo de colores ANSI (16 colores, 256 colores, true color 24-bit).
 - **Cursor**: Movimiento, estilos (bloque, barra, underline), parpadeo configurable.

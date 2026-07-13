@@ -675,7 +675,7 @@ export const es: Record<MessageKey, string> = {
   "terminalTheme.cursorBar": "Barra",
   "terminalTheme.cursorBlink": "Parpadeo de cursor",
   "terminalTheme.ligatures": "Ligaduras",
-  "terminalTheme.ligaturesNote": "Las ligaduras usan el renderizador DOM (WebGL se desactiva); aplica en la próxima terminal que abras.",
+  "terminalTheme.ligaturesNote": "Las ligaduras se renderizan con WebGL; aplica en la próxima terminal que abras.",
   "terminalTheme.overrides": "Sobreescribe el tema general",
   "terminalTheme.overrideNote": "Cada campo aquí sobreescribe el tema general — solo en la terminal. Los campos vacíos lo heredan.",
   "terminalTheme.colors": "Colores",

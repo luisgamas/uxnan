@@ -116,11 +116,12 @@
     }
   }
 
-  // Force one clean repaint of the whole viewport on the next frame. When a pane
-  // is revealed from display:none, a canvas renderer can keep compositing its
-  // pre-hide pixels for cells it deems unchanged; clearing the glyph atlas and
-  // refreshing every row rebuilds the frame from the buffer. A cheap safety net —
-  // the accelerated renderer already repaints cleanly on a normal resize.
+  // Force one clean repaint of the whole viewport on the next frame. The WebGL
+  // renderer diffs against a cached cell model and skips cells it deems unchanged,
+  // so after a resize/reveal it can keep compositing stale pixels for those cells
+  // (a leftover sliver of the previous frame). `clearTextureAtlas()` resets that
+  // model and requests a full redraw; the `refresh` covers the DOM fallback. This
+  // is the repaint used on every ordinary resize — no context teardown needed.
   function forceRepaint() {
     if (repaintRaf !== null) cancelAnimationFrame(repaintRaf);
     repaintRaf = requestAnimationFrame(() => {
@@ -139,19 +140,44 @@
     });
   }
 
-  // WebglAddon owns a render surface whose pixel geometry can outlive the pane
-  // geometry WebView2 composited it with. Recreate only that surface (the xterm
-  // buffer and PTY stay untouched) after a hidden reveal or a real grid resize.
-  function rebuildAcceleratedRenderer() {
-    if (!renderer || !term) return;
+  // Load the WebGL renderer and wire GPU context-loss recovery. WebView2 can drop
+  // the GL context under heavy compositing (e.g. while dragging a panel divider);
+  // without this handler the addon keeps compositing a frozen/garbage frame — the
+  // "stale frame" artifact. On a real loss we dispose the dead addon (xterm falls
+  // back to the DOM renderer) and reattach a fresh WebGL surface on the next frame,
+  // staying on DOM only if WebGL won't come back. Mirrors xterm's recommended setup
+  // (and VS Code's). Ordinary resizes/reveals just forceRepaint — they never tear
+  // the context down, which is both cheaper and avoids the disposer-throws race.
+  function attachRenderer() {
+    if (!term) return;
     try {
-      renderer.dispose();
-      renderer = new WebglAddon();
-      term.loadAddon(renderer);
+      const webgl = new WebglAddon();
+      webgl.onContextLoss(() => {
+        disposeRenderer(webgl);
+        requestAnimationFrame(() => {
+          if (term && !renderer) attachRenderer();
+          forceRepaint();
+        });
+      });
+      term.loadAddon(webgl);
+      renderer = webgl;
     } catch {
+      // WebGL unavailable — xterm falls back to the DOM renderer.
       renderer = undefined;
     }
-    forceRepaint();
+  }
+
+  // Dispose the accelerated addon defensively. xterm's WebGL disposer reaches into
+  // the terminal core (to swap back to the DOM renderer), which throws if the core
+  // is mid-teardown (unmount / HMR races); an uncaught throw there would leave xterm
+  // with no renderer at all — a blank pane. Swallow it and clear our handle.
+  function disposeRenderer(target: WebglAddon | undefined = renderer) {
+    if (renderer === target) renderer = undefined;
+    try {
+      target?.dispose();
+    } catch {
+      // Already disposed or core torn down — nothing else to clean up.
+    }
   }
 
   // Fit the xterm grid to the pane, resize the PTY only on a real grid change,
@@ -174,7 +200,7 @@
         () => {},
       );
     }
-    if (term.cols !== beforeCols || term.rows !== beforeRows) rebuildAcceleratedRenderer();
+    if (term.cols !== beforeCols || term.rows !== beforeRows) forceRepaint();
     if (distanceFromBottom > 0) {
       term.scrollToLine(Math.max(0, term.buffer.active.baseY - distanceFromBottom));
     }
@@ -249,22 +275,20 @@
     fit = new FitAddon();
     term.loadAddon(fit);
     term.open(el);
-    // Ligatures need the DOM renderer, so they're mutually exclusive with the
-    // WebGL renderer. WebGL is xterm's recommended accelerated renderer and is
-    // the same path used by VS Code; DOM remains the supported fallback.
+    // WebGL is the primary renderer in every case. The ligatures addon renders
+    // through WebGL's character joiner (the WebGL renderer resolves joined ranges
+    // itself — the same path VS Code uses), so ligatures are NOT mutually exclusive
+    // with the accelerated renderer. Falling back to the DOM renderer for ligatures
+    // is what let the browser shape text off the monospace grid, drifting glyphs
+    // away from their cells and breaking mouse selection (it anchored to the grid
+    // while glyphs sat elsewhere). Load WebGL first, then stack ligatures on top;
+    // DOM stays the fallback only when WebGL itself is unavailable.
+    attachRenderer();
     if (t.ligatures) {
       try {
         term.loadAddon(new LigaturesAddon());
       } catch {
-        // Ligatures addon unavailable — plain DOM rendering still works.
-      }
-    } else {
-      try {
-        renderer = new WebglAddon();
-        term.loadAddon(renderer);
-      } catch {
-        // WebGL unavailable — xterm falls back to the DOM renderer.
-        renderer = undefined;
+        // Ligatures addon unavailable — glyphs still render, just without ligatures.
       }
     }
 
@@ -507,7 +531,7 @@
     // forces a repaint, since a hidden canvas can keep compositing stale pixels.
     resizeObserver = new ResizeObserver(() => {
       const visible = hasVisibleGeometry();
-      if (visible && !wasVisible) rebuildAcceleratedRenderer();
+      if (visible && !wasVisible) forceRepaint();
       wasVisible = visible;
       fitToPane();
     });
@@ -535,8 +559,8 @@
   });
 
   // Re-apply appearance live when the theme or terminal overrides change. Font
-  // and color changes apply in place; toggling ligatures needs a new terminal
-  // (the renderer addon can't swap live), so that takes effect on next open.
+  // and color changes apply in place; toggling ligatures is only wired at mount
+  // (the ligatures addon isn't hot-swapped here), so that takes effect on next open.
   $effect(() => {
     const t = termOpts;
     if (!term) return;

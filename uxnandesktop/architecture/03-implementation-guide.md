@@ -763,9 +763,9 @@ Los componentes de shadcn-svelte ya incluyen variantes `dark:` en sus estilos. P
 
 ### 3.4 Terminal Rendering (xterm.js)
 
-xterm.js es el emulador de terminal que corre dentro del webview de Tauri. Renderiza la salida del PTY en un canvas con soporte de aceleracion GPU.
+xterm.js es el emulador de terminal que corre dentro del webview de Tauri. Renderiza la salida del PTY en una superficie acelerada por GPU (WebGL).
 
-#### Renderizado Canvas/WebGL en Componente Svelte
+#### Renderizado WebGL en Componente Svelte
 
 El componente de terminal encapsula xterm.js y gestiona su ciclo de vida:
 
@@ -788,11 +788,14 @@ El componente de terminal encapsula xterm.js y gestiona su ciclo de vida:
     term.loadAddon(fitAddon);
     term.open(terminalEl);
 
-    // Recommended accelerated WebGL rendering (DOM fallback)
+    // Recommended accelerated WebGL rendering (DOM fallback). Recover from a lost
+    // GPU context so WebView2 never keeps compositing a frozen frame.
     try {
-      term.loadAddon(new WebglAddon());
+      const webgl = new WebglAddon();
+      webgl.onContextLoss(() => webgl.dispose());
+      term.loadAddon(webgl);
     } catch {
-      // Fallback al renderer DOM si el Canvas no esta disponible
+      // Fallback al renderer DOM si WebGL no esta disponible
     }
 
     fitAddon.fit();
@@ -848,10 +851,13 @@ resizeObserver.observe(terminalEl);
 #### Addon: xterm-addon-webgl
 
 `@xterm/addon-webgl` es la ruta acelerada recomendada por xterm y usada por VS Code.
-Se carga con fallback al renderer DOM estandar si WebGL no esta disponible; las
-ligaduras fuerzan DOM. Al revelar un pane oculto o cambiar su cuadrícula, Uxnan
-reconstruye la superficie WebGL para evitar que WebView2 conserve un resto del
-frame anterior en la orilla del terminal.
+Se carga con fallback automático al renderer DOM solo si WebGL no está disponible.
+Las ligaduras se renderizan a través del *character joiner* del propio WebGL (no
+fuerzan el renderer DOM), así los glifos permanecen alineados a la cuadrícula y la
+selección de texto no se desfasa. Si WebView2 pierde el contexto GPU, el addon se
+reinstala vía `onContextLoss`; al revelar un pane oculto o cambiar su cuadrícula,
+Uxnan fuerza un repintado completo (que limpia el atlas de glifos y el modelo de
+celdas) para descartar cualquier resto del frame anterior, sin destruir el contexto.
 
 #### Addon Personalizado: Deteccion de Estado de Agente
 

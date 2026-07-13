@@ -69,7 +69,8 @@ export interface TerminalTheme {
   lineHeight?: number;
   letterSpacing?: number;
   fontWeight?: number | string;
-  /** Enable programming ligatures (forces the DOM renderer instead of WebGL). */
+  /** Enable programming ligatures (rendered through the WebGL renderer's character
+   *  joiner — no DOM-renderer fallback, so glyphs stay on the monospace grid). */
   ligatures?: boolean;
   cursorStyle?: "block" | "underline" | "bar";
   cursorBlink?: boolean;

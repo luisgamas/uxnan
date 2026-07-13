@@ -678,7 +678,7 @@ export const en = {
   "terminalTheme.cursorBar": "Bar",
   "terminalTheme.cursorBlink": "Cursor blink",
   "terminalTheme.ligatures": "Ligatures",
-  "terminalTheme.ligaturesNote": "Ligatures use the DOM renderer (WebGL is disabled); applies on the next terminal you open.",
+  "terminalTheme.ligaturesNote": "Ligatures render through the WebGL renderer; applies on the next terminal you open.",
   "terminalTheme.overrides": "Overrides the app theme",
   "terminalTheme.overrideNote": "Every field set here overrides the app theme — in the terminal only. Empty fields inherit it.",
   "terminalTheme.colors": "Colors",

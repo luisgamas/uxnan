@@ -7,11 +7,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Fixed
 
-- Stabilized terminals by waiting for interactive shell startup before launching agents, preserving scrollback position across pane fits, and rebuilding the accelerated render surface after pane reveals or grid changes.
+- Terminal text selection no longer starts one or two columns before the click, and the selection highlight no longer appears to sit on top of the glyphs. With ligatures enabled the terminal was falling back to xterm's DOM renderer, which shapes text off the fixed monospace grid while the mouse maps selection to the grid; ligatures now render through the WebGL renderer's character joiner (as in VS Code), so every terminal stays on the grid-aligned accelerated renderer.
+- Terminals no longer leave ghosted/stale frames after resizing an adjacent panel: the WebGL renderer now recovers from a lost GPU context (`onContextLoss`) instead of compositing a frozen frame, and a grid change or pane reveal forces a single full repaint (clearing the glyph atlas and cell model) instead of tearing down and recreating the render surface each time (which also removes a disposer race that could leave a pane blank).
+- Stabilized agent launch by waiting for interactive shell startup before typing the command, and preserved scrollback position across pane fits.
 
 ### Changed
 
-- Restored xterm's recommended WebGL renderer (the same accelerated path used by VS Code), with DOM fallback. This fixes CanvasAddon's offset and hidden-edge selection artifacts across Windows, macOS, and Linux while retaining explicit surface rebuilds that prevent stale frames after pane resize or reveal.
+- The terminal always uses xterm's WebGL renderer (the accelerated path VS Code uses), including when ligatures are enabled; the DOM renderer remains only as an automatic fallback when WebGL is unavailable.
 
 ### Fixed — updater notification phases and responsive layout
 
