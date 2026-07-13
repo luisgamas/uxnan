@@ -503,7 +503,8 @@
     terminalLinks: true,
     homepage: "",
     mcpEnabled: true,
-    mcpInjection: "workspace",
+    mcpInjection: "managed",
+    frictionFree: true,
     mcpDisabledAgents: [],
   };
   const br = $derived<BrowserSettings>({
@@ -596,7 +597,7 @@
     if (app.settingsSection === "browser" && !mcpLoaded) void loadMcp();
   });
   const MCP_MODES: { value: McpInjection; labelKey: MessageKey; descKey: MessageKey }[] = [
-    { value: "workspace", labelKey: "browser.mcpModeWorkspace", descKey: "browser.mcpModeWorkspaceDesc" },
+    { value: "managed", labelKey: "browser.mcpModeManaged", descKey: "browser.mcpModeManagedDesc" },
     { value: "global", labelKey: "browser.mcpModeGlobal", descKey: "browser.mcpModeGlobalDesc" },
     { value: "off", labelKey: "browser.mcpModeOff", descKey: "browser.mcpModeOffDesc" },
   ];
@@ -1406,6 +1407,16 @@
                         triggerClass="w-56"
                         searchPlaceholder={i18n.t("common.search")}
                         onChange={(v) => { setBr({ mcpInjection: v as McpInjection }); persistNow(); }}
+                      />
+                    {/snippet}
+                  </SettingsRow>
+
+                  <SettingsRow label={i18n.t("browser.frictionFree")} description={i18n.t("browser.frictionFreeDesc")}>
+                    {#snippet control()}
+                      <Switch
+                        checked={br.frictionFree}
+                        disabled={!br.enabled || !br.mcpEnabled || br.mcpInjection !== "managed"}
+                        onCheckedChange={(c) => { setBr({ frictionFree: c }); persistNow(); }}
                       />
                     {/snippet}
                   </SettingsRow>

@@ -804,8 +804,8 @@ export const es: Record<MessageKey, string> = {
   "hooks.uninstall": "Desinstalar",
   "hooks.installing": "Instalando…",
   "hooks.uninstalling": "Desinstalando…",
-  "hooks.showJson": "Mostrar JSON de configuración",
-  "hooks.hideJson": "Ocultar JSON de configuración",
+  "hooks.showConfig": "Mostrar configuración",
+  "hooks.hideConfig": "Ocultar configuración",
   "hooks.wrapperTitle": "Envoltorio genérico",
   "hooks.wrapperDesc":
     "Envuelve cualquier agente CLI: envía `working` antes del `exec` y `done` al salir (con `interrupted: true` si el agente falló). Úsalo como comando de lanzamiento cuando el agente no tenga sistema de hooks propio.",
@@ -943,14 +943,17 @@ export const es: Record<MessageKey, string> = {
   "browser.mcpInjection": "Modo de configuración",
   "browser.mcpInjectionDesc":
     "Cómo reciben las herramientas los agentes. El token queda en el entorno de la terminal — nunca se escribe en un archivo.",
-  "browser.mcpModeWorkspace": "Por proyecto (recomendado)",
-  "browser.mcpModeWorkspaceDesc":
-    "Escribe una config con alcance de proyecto en la carpeta de la terminal; cubre agentes tecleados a mano y lanzados por la app, y se elimina al salir.",
-  "browser.mcpModeGlobal": "Global",
+  "browser.mcpModeManaged": "Gestionado (recomendado)",
+  "browser.mcpModeManagedDesc":
+    "Registra el servidor en la config global de usuario de cada agente — nunca en la carpeta de tu proyecto, así no aparece nada en tus archivos ni sale ningún aviso de aprobación. Los agentes tecleados a mano también lo reciben.",
+  "browser.mcpModeGlobal": "Solo config global",
   "browser.mcpModeGlobalDesc":
-    "Registra el servidor en la config global de cada agente, así está disponible en todos los proyectos (mayor huella).",
+    "La misma config global de usuario que Gestionado, pero sin el salto de confianza — los CLI conservan sus propios avisos de confianza de carpeta.",
   "browser.mcpModeOff": "Solo manual",
   "browser.mcpModeOffDesc": "No inyectar nada — cablea un agente a mano con el snippet de abajo.",
+  "browser.frictionFree": "Lanzamiento sin fricción",
+  "browser.frictionFreeDesc":
+    "Omite el aviso «¿confiar en esta carpeta?» del CLI para los agentes lanzados por la app (Gemini y Codex). Solo en modo Gestionado.",
   "browser.mcpAgents": "Agentes",
   "browser.mcpAgentsDesc": "Qué agentes reciben las herramientas del navegador automáticamente.",
   "browser.mcpSnippet": "Config manual",

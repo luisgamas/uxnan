@@ -5,6 +5,39 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — agent MCP/trust setup no longer writes to your project or prompts
+
+- The browser-control MCP server is now injected **only** into each CLI's
+  **user-global** config (`~/.claude.json`, `~/.codex/config.toml`,
+  `~/.gemini/settings.json`, `~/.config/opencode/opencode.json`) — **never a file in
+  your project folder**. User-global config isn't project-approval-gated, so no CLI
+  shows an "approve this MCP server?" prompt. This replaces the old project-scoped
+  `Workspace` mode, which was the only thing that dropped files in the working
+  directory and triggered per-project approval. The injection setting is now
+  `Off | Managed (default) | Global`; a saved `Workspace` choice migrates to
+  `Managed`.
+- Gemini's injected entry now carries `trust: true`, so it no longer asks for
+  per-tool confirmation of the browser server.
+- New **Frictionless launch** setting (Settings → Browser → Agent browser MCP;
+  default on, Managed mode only): app-launched agents skip the CLI's "trust this
+  folder?" prompt — Gemini via the `GEMINI_CLI_TRUST_WORKSPACE` env var
+  (version-robust; an unknown env var is a no-op, unlike the `--skip-trust` flag that
+  newer Gemini rejects), Codex via a per-folder
+  `[projects."<cwd>"].trust_level = "trusted"` seed — keyed with **forward slashes**
+  as Codex itself stores project paths (even on Windows), canonicalized, and
+  respecting any explicit user choice. Turn it off to keep the CLIs' native prompts.
+- Agent status **hooks** are unchanged — they were already written to user-global
+  config (`~/.claude/settings.json`, `~/.gemini/settings.json`, `~/.codex/hooks.json`)
+  and the OpenCode/Pi plugin dirs, never the project.
+
+### Added
+
+- Settings → Agents → Hooks: **every** agent card now has a **Show config**
+  disclosure (previously Claude Code only) that inspects and copies the exact config
+  the ADE installs — the `hooks` block for Claude Code / Gemini CLI, the
+  `~/.codex/hooks.json` body for Codex, and the plugin / extension source for
+  OpenCode / Pi.
+
 ### Fixed
 
 - Terminal text selection no longer starts one or two columns before the click, and the selection highlight no longer appears to sit on top of the glyphs. With ligatures enabled the terminal was falling back to xterm's DOM renderer, which shapes text off the fixed monospace grid while the mouse maps selection to the grid; ligatures now render through the WebGL renderer's character joiner (as in VS Code), so every terminal stays on the grid-aligned accelerated renderer.

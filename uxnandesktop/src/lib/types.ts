@@ -224,10 +224,14 @@ export type SortMode =
 export type BrowserLinkPolicy = "internal" | "external" | "ask";
 
 /** How the browser-control MCP server is injected into agents (mirror of Rust
- *  `McpInjection`). `workspace` writes a project-scoped config in the terminal's
- *  cwd (default); `global` registers it in each CLI's global user config; `off`
- *  injects nothing (wire it by hand from the copy-paste snippet). */
-export type McpInjection = "off" | "workspace" | "global";
+ *  `McpInjection`). `managed` (default) registers it in each CLI's **user-global**
+ *  config only — never the project folder — so no files land in the user's project
+ *  and there's no "approve this MCP server?" prompt; with `frictionFree` on,
+ *  app-launched agents also skip the CLIs' folder-trust prompt. `global` is the same
+ *  user-global config but leaves native trust prompts intact. `off` injects nothing
+ *  (wire it by hand from the copy-paste snippet). The legacy `workspace` mode
+ *  (project-scoped files) was removed; a persisted `workspace` maps to `managed`. */
+export type McpInjection = "off" | "managed" | "global";
 
 /** Integrated developer-browser preferences (mirror of Rust `BrowserSettings`). */
 export interface BrowserSettings {
@@ -244,8 +248,13 @@ export interface BrowserSettings {
   /** Expose the browser-control MCP server to agents so they discover the
    *  `browser_*` tools automatically. Default on. */
   mcpEnabled: boolean;
-  /** How the MCP server is injected into agents. Default `workspace`. */
+  /** How the MCP server is injected into agents. Default `managed`. */
   mcpInjection: McpInjection;
+  /** Frictionless agent setup. When on (default) and injection is `managed`,
+   *  app-launched agents skip the CLIs' workspace/folder-trust prompt (Gemini via
+   *  `GEMINI_CLI_TRUST_WORKSPACE`, Codex via a per-folder `trust_level` seed).
+   *  Applies only in `managed` mode. Default on. */
+  frictionFree: boolean;
   /** Agent ids (`claude`/`codex`/`gemini`/`opencode`/`pi`) to skip when injecting
    *  the MCP config. Empty = all supported agents. */
   mcpDisabledAgents: string[];
@@ -615,6 +624,10 @@ export interface AgentHooksStatus {
  *  startup failed. */
 export interface HookScripts {
   claudeJson: string;
+  geminiJson: string;
+  codexJson: string;
+  opencodePluginJs: string;
+  piExtensionJs: string;
   statusRelayCjs: string;
   wrapperBash: string;
   wrapperPowershell: string;
@@ -735,7 +748,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
     terminalLinks: true,
     homepage: "",
     mcpEnabled: true,
-    mcpInjection: "workspace",
+    mcpInjection: "managed",
+    frictionFree: true,
     mcpDisabledAgents: [],
   },
   browserPanelWidth: 520,

@@ -805,8 +805,8 @@ export const en = {
   "hooks.uninstall": "Uninstall",
   "hooks.installing": "Installing…",
   "hooks.uninstalling": "Uninstalling…",
-  "hooks.showJson": "Show JSON config",
-  "hooks.hideJson": "Hide JSON config",
+  "hooks.showConfig": "Show config",
+  "hooks.hideConfig": "Hide config",
   "hooks.wrapperTitle": "Generic wrapper",
   "hooks.wrapperDesc":
     "Wraps any agent CLI: posts `working` before exec and `done` on exit (with `interrupted: true` if the agent crashed). Use as the agent’s launch command when the agent itself has no hook system.",
@@ -942,14 +942,17 @@ export const en = {
   "browser.mcpInjection": "Setup mode",
   "browser.mcpInjectionDesc":
     "How agents receive the tools. The token stays in the terminal's environment — never written to a file.",
-  "browser.mcpModeWorkspace": "Per project (recommended)",
-  "browser.mcpModeWorkspaceDesc":
-    "Write a project-scoped config in the terminal's folder; covers hand-typed and app-launched agents, and is removed on exit.",
-  "browser.mcpModeGlobal": "Global",
+  "browser.mcpModeManaged": "Managed (recommended)",
+  "browser.mcpModeManagedDesc":
+    "Register the server in each agent's user-global config — never your project folder, so nothing shows up in your files and no approval prompt appears. Hand-typed agents pick it up too.",
+  "browser.mcpModeGlobal": "Global config only",
   "browser.mcpModeGlobalDesc":
-    "Register the server in each agent's global config, so it's available in every project (larger footprint).",
+    "Same user-global config as Managed, but with the frictionless trust-skip off — the CLIs keep their own folder-trust prompts.",
   "browser.mcpModeOff": "Manual only",
   "browser.mcpModeOffDesc": "Don't inject anything — wire an agent by hand from the snippet below.",
+  "browser.frictionFree": "Frictionless launch",
+  "browser.frictionFreeDesc":
+    "Skip the CLI's “trust this folder?” prompt for app-launched agents (Gemini and Codex). Managed mode only.",
   "browser.mcpAgents": "Agents",
   "browser.mcpAgentsDesc": "Which agents get the browser tools set up automatically.",
   "browser.mcpSnippet": "Manual config",

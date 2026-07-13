@@ -122,8 +122,11 @@ for each of Claude Code, Codex, Gemini CLI, OpenCode and Pi:
 In **Settings → Agents → Hooks**, a master **Install agent hooks** switch installs
 / removes all five and persists the choice (`AppSettings.autoInstallHooks`); each
 agent card also has its own **Install** / **Uninstall** and an honest status
-badge. The **Claude Code** card's **Show JSON config** inspects/copies the exact
-`hooks` block.
+badge. Every agent card has a **Show config** disclosure that inspects/copies the
+exact config the ADE installs — the `hooks` block for **Claude Code** / **Gemini
+CLI**, the `~/.codex/hooks.json` body for **Codex** (its `trusted_hash` in
+`config.toml` is managed automatically), and the plugin / extension source for
+**OpenCode** / **Pi**.
 
 **Verify.** Launch Claude Code in any terminal. The tab should show a colored
 dot from a precise state (working while it's thinking / using a tool, waiting

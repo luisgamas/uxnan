@@ -634,9 +634,34 @@ pub fn uninstall_gemini_hooks() -> Result<AgentHooksStatus, AppError> {
     Ok(read_gemini_hooks_status())
 }
 
+/// Render the Gemini `hooks` block the ADE installs (for the Settings "Show config"
+/// affordance), against the given relay path. Mirrors the merge used at install so
+/// what's shown equals what's written into `~/.gemini/settings.json`.
+pub fn render_gemini_settings_json(relay: &str) -> Result<String, AppError> {
+    let mut doc = json!({ "hooks": {} });
+    let entry = gemini_hook_entry(relay);
+    for event in GEMINI_EVENTS {
+        merge_event(&mut doc, event, None, &entry, AgentKind::Gemini);
+    }
+    serde_json::to_string_pretty(&doc["hooks"]).map_err(AppError::Serde)
+}
+
 // ---------------------------------------------------------------------------
 // Codex (hooks.json + config.toml trust)
 // ---------------------------------------------------------------------------
+
+/// Render the full `~/.codex/hooks.json` body the ADE installs (for the Settings
+/// "Show config" affordance). The matching `trusted_hash` in `config.toml` is
+/// written automatically by the ADE (`codex_trust`), so it isn't shown here.
+pub fn render_codex_hooks_json(install: &HookInstall) -> Result<String, AppError> {
+    let command = codex_command(install);
+    let entry = json!({ "type": "command", "command": command });
+    let mut doc = json!({ "hooks": {} });
+    for (event, _label) in codex_trust::CODEX_EVENTS {
+        merge_event(&mut doc, event, None, &entry, AgentKind::Codex);
+    }
+    serde_json::to_string_pretty(&doc).map_err(AppError::Serde)
+}
 
 pub fn read_codex_hooks_status() -> AgentHooksStatus {
     status_from_config(codex_hooks_path(), AgentKind::Codex, "hooks.json")
@@ -1036,6 +1061,30 @@ mod tests {
         let out = std::fs::read_to_string(&cfg).unwrap();
         assert!(!out.contains("plugins"), "invalid key removed");
         assert!(out.contains("theme"), "user config preserved");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn render_gemini_json_is_valid_and_references_the_relay() {
+        let json = render_gemini_settings_json("/x/uxnan-status-relay.cjs").unwrap();
+        // Valid JSON, carries our relay + a Gemini turn event, tagged gemini.
+        let _: Value = serde_json::from_str(&json).unwrap();
+        assert!(json.contains("uxnan-status-relay.cjs"));
+        assert!(json.contains("gemini"));
+        assert!(json.contains("BeforeAgent"));
+    }
+
+    #[test]
+    fn render_codex_json_is_valid_and_has_hooks_and_command() {
+        let tmp = std::env::temp_dir().join(format!("uxnan-codexrender-{}", uuid::Uuid::new_v4()));
+        let install = install_scripts_to(&tmp).expect("install succeeds");
+        let json = render_codex_hooks_json(&install).unwrap();
+        let doc: Value = serde_json::from_str(&json).unwrap();
+        assert!(doc.get("hooks").is_some(), "hooks.json body");
+        assert!(
+            json.contains("uxnan-codex-hook"),
+            "references the curl hook"
+        );
         let _ = std::fs::remove_dir_all(&tmp);
     }
 }

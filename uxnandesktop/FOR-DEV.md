@@ -15,7 +15,7 @@ which tracks assets only a human can provide.)
 standalone app** (three-panel shell, PTY terminals + splits, git worktrees, git
 status/diff/stage/commit/history, agent monitoring with the axum hook server +
 OSC/process layers, settings/themes/i18n, multi-agent orchestration,
-**in-app auto-updater**, **browser-control MCP for agents**). 126 Rust backend tests + 57 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
+**in-app auto-updater**, **browser-control MCP for agents**). 159 Rust backend tests + 117 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
 (developed on Windows; CI is `{ubuntu, windows}`). **Phase 6 (embedded bridge /
 mobile pairing) is NOT started.**
 
@@ -110,10 +110,15 @@ clickable terminal links** (`@xterm/addon-web-links`).
 serves a minimal Streamable-HTTP MCP endpoint at `/mcp` (control tools
 `browser_open/navigate/reload/back/forward/status`, same hook-server token);
 `mcpinject.rs` writes each launched CLI's native MCP config (Claude/Codex/Gemini/
-OpenCode) referencing the `UXNAN_MCP_TOKEN` env (token never in a file), merging
-without clobbering and cleaning up on exit; `BrowserSettings.mcp*` (enabled /
-injection mode `off|workspace|global` / disabled-agents) + `mcp_info` command. See
-`docs/browser.md` → *Agent browser MCP*.
+OpenCode) into its **user-global** config only (never the project dir) referencing
+the `UXNAN_MCP_TOKEN` env (token never in a file), merging without clobbering and
+cleaning up on exit; Gemini's entry carries `trust: true`. `BrowserSettings.mcp*`
+(enabled / injection mode `off|managed|global` / `friction_free` / disabled-agents)
++ `mcp_info` command. **Frictionless** (managed + `friction_free`): app-launched
+agents skip the CLI folder-trust prompt — Gemini via `GEMINI_CLI_TRUST_WORKSPACE`
+(`commands.rs`), Codex via `codex_trust::ensure_project_trust` seeding
+`[projects."<cwd>"].trust_level`. The legacy project-scoped `workspace` mode was
+removed. See `docs/browser.md` → *Agent browser MCP*.
 
 Spec synced: `architecture/02a` §4.2b documents the integrated browser, `02d` §1.6
 the browser MCP; user guide in `docs/browser.md`.

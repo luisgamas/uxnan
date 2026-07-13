@@ -468,19 +468,30 @@ pub enum BrowserLinkPolicy {
 }
 
 /// How the browser-control MCP server (spec `02d` §1.6) is made discoverable to the
-/// CLI agents the ADE launches (see `mcpinject.rs`). `Workspace` is the default: it
-/// writes a project-scoped MCP config into the terminal's working directory so both
-/// app-launched and hand-typed agents there get the `browser_*` tools, and removes
-/// what it created on exit. `Global` registers the server in each CLI's global user
-/// config (works in every project; covers CLIs without a project config). `Off`
-/// injects nothing — the user can wire it manually from the copy-paste snippet in
-/// Settings → Browser.
+/// CLI agents the ADE launches (see `mcpinject.rs`). `Managed` is the default: it
+/// registers the server in each CLI's **user-global** config only — never the
+/// project working directory. User-global config is not project-approval-gated for
+/// any supported CLI, so there is no "approve this MCP server?" prompt and nothing
+/// lands in the user's project folder (which they'd notice and delete). Hand-typed
+/// agents in any folder still pick the server up, because every CLI reads its
+/// user-global config too. With the frictionless setting on
+/// ([`BrowserSettings::friction_free`]), app-launched agents additionally receive
+/// first-party trust-skip flags so the CLI never prompts to trust the folder (see
+/// `mcpinject.rs`). `Global` writes the same user-global config but leaves the CLIs'
+/// own trust prompts intact. `Off` injects nothing — the user can wire it manually
+/// from the copy-paste snippet in Settings → Browser.
+///
+/// The legacy `Workspace` mode (a project-scoped config in the working directory)
+/// was **removed**: it was the sole source of both the project-dir files and the
+/// project-approval prompts, and user-global config covers hand-typed agents just as
+/// well. A persisted `"workspace"` value deserializes to `Managed` via the alias.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub enum McpInjection {
     Off,
     #[default]
-    Workspace,
+    #[serde(alias = "workspace")]
+    Managed,
     Global,
 }
 
@@ -516,9 +527,17 @@ pub struct BrowserSettings {
     #[serde(default = "default_true")]
     pub mcp_enabled: bool,
     /// How the MCP server is injected into agents (see [`McpInjection`]). Default
-    /// `workspace`.
+    /// `managed`.
     #[serde(default)]
     pub mcp_injection: McpInjection,
+    /// Frictionless agent setup. When on (default) and injection mode is `managed`,
+    /// app-launched agents receive first-party trust-skip flags so the CLI never
+    /// prompts to trust the workspace/folder on launch (e.g. Gemini `--skip-trust`),
+    /// and per-folder trust is pre-seeded where the CLI supports it (e.g. Codex
+    /// `projects."<cwd>".trust_level`). Turn off to keep the CLIs' native trust
+    /// prompts. Applies only in `managed` mode.
+    #[serde(default = "default_true")]
+    pub friction_free: bool,
     /// Agent ids (`claude`, `codex`, `gemini`, `opencode`, `pi`) to skip when
     /// injecting the MCP config. Empty = every supported agent gets it. Default
     /// empty.
@@ -536,6 +555,7 @@ impl Default for BrowserSettings {
             homepage: String::new(),
             mcp_enabled: true,
             mcp_injection: McpInjection::default(),
+            friction_free: true,
             mcp_disabled_agents: Vec::new(),
         }
     }
