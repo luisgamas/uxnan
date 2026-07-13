@@ -48,6 +48,11 @@ instantly; edits to `src-tauri/**` rebuild and restart the app.
 Element* (or your platform's devtools shortcut) to debug the Svelte UI, console,
 and network.
 
+The Projects sidebar performs a lightweight worktree reconciliation every 3
+seconds while the shell is mounted. This also discovers worktrees created by an
+agent CLI or another Git process; the manual refresh button remains available
+for an immediate pass.
+
 ## Iterate on UI only (fast, in a browser)
 
 For pure visual/layout work you don't need the Rust backend:

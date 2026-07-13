@@ -420,10 +420,50 @@ class ProjectsStore {
     }, 1500);
   }
   private persistTimer: ReturnType<typeof setTimeout> | null = null;
+  private worktreeRefreshInFlight = false;
 
   /** Load every repo's worktrees (called once after the app hydrates). */
   async init(): Promise<void> {
     await Promise.all(app.repos.map((r) => this.loadWorktrees(r.id)));
+  }
+
+  /**
+   * Reconcile worktrees that may have been created outside the ADE (for example
+   * by an agent CLI). The backend has no reliable cross-platform worktree
+   * filesystem event, so the sidebar uses a small polling pass. Only changed
+   * lists are assigned, which keeps the sort settle window and row rendering
+   * stable while still making externally-created worktrees appear promptly.
+   */
+  async refreshWorktrees(): Promise<void> {
+    if (this.worktreeRefreshInFlight) return;
+    this.worktreeRefreshInFlight = true;
+    try {
+      await Promise.all(
+        app.repos.map(async (repo) => {
+          try {
+            const list = await worktreeList(repo.id);
+            const current = this.worktreesByRepo[repo.id] ?? [];
+            const same =
+              current.length === list.length &&
+              current.every(
+                (entry, index) =>
+                  entry.path === list[index]?.path &&
+                  entry.branch === list[index]?.branch &&
+                  entry.isMain === list[index]?.isMain,
+              );
+            if (!same) {
+              this.worktreesByRepo = { ...this.worktreesByRepo, [repo.id]: list };
+              await this.refreshStatuses(list.map((w) => w.path));
+            }
+          } catch {
+            // A repository can briefly be unavailable while an agent creates a
+            // worktree; the next polling pass will reconcile it.
+          }
+        }),
+      );
+    } finally {
+      this.worktreeRefreshInFlight = false;
+    }
   }
 
   async loadWorktrees(repoId: string): Promise<void> {

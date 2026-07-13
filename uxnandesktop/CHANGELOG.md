@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — provider usage popover focus and live worktree discovery
+
+- The status-bar provider-usage popover no longer moves focus to **Refresh** on
+  open or restores focus to the status-bar trigger on close, preventing tooltips
+  from appearing while the pointer is elsewhere. Any pending gauge or Refresh
+  tooltip is also cancelled when the popover closes.
+- The Projects sidebar now reconciles each registered repository's worktree list
+  every 3 seconds. Worktrees created externally by an agent or Git therefore
+  appear automatically in the project card and in the **By status** view; only
+  changed lists are applied to keep ordering stable.
+
 ### Changed — Desktop stable and nightly releases now have separate, enforced tags
 
 - **Stable:** `desktop-stable-v0.0.PATCH` produces a normal GitHub Release and

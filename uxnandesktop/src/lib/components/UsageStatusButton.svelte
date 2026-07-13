@@ -59,6 +59,14 @@
 
   // Controlled so navigating to settings can close it explicitly.
   let open = $state(false);
+  let statusTooltipOpen = $state(false);
+  let refreshTooltipOpen = $state(false);
+
+  function closeTooltips(): void {
+    statusTooltipOpen = false;
+    refreshTooltipOpen = false;
+  }
+
   function onOpenChange(next: boolean) {
     if (next) void usage.ensureFresh();
   }
@@ -66,7 +74,7 @@
 
 {#if enabled}
   <Popover.Root bind:open {onOpenChange}>
-    <TooltipSimple title={i18n.t("providers.statusBarTooltip")}>
+    <TooltipSimple bind:open={statusTooltipOpen} title={i18n.t("providers.statusBarTooltip")}>
       {#snippet children(tp)}
         <Popover.Trigger
           {...tp}
@@ -77,13 +85,23 @@
         </Popover.Trigger>
       {/snippet}
     </TooltipSimple>
-    <Popover.Content align="end" side="top" class="w-72 p-0">
+    <Popover.Content
+      align="end"
+      side="top"
+      class="w-72 p-0"
+      onOpenAutoFocus={(event) => event.preventDefault()}
+      onCloseAutoFocus={(event) => {
+        event.preventDefault();
+        closeTooltips();
+        (document.activeElement as HTMLElement | null)?.blur();
+      }}
+    >
       <div class="flex items-start justify-between gap-2 border-b border-border/60 px-3 py-2">
         <div class="min-w-0 space-y-0.5">
           <div class="text-sm font-medium leading-tight text-foreground">{i18n.t("providers.usageTitle")}</div>
           <div class={text.meta}>{i18n.t("providers.usedCaption")}</div>
         </div>
-        <TooltipSimple title={i18n.t("providers.refreshNow")}>
+        <TooltipSimple bind:open={refreshTooltipOpen} title={i18n.t("providers.refreshNow")}>
           {#snippet children(tp)}
             <Button
               {...tp}
