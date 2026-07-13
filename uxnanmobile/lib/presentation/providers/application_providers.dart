@@ -12,6 +12,7 @@ import 'package:uxnan/application/managers/workspace_browser.dart';
 import 'package:uxnan/application/processors/incoming_message_processor.dart';
 import 'package:uxnan/application/services/git_status_bus.dart';
 import 'package:uxnan/core/utils/logger.dart';
+import 'package:uxnan/domain/entities/agent_command.dart';
 import 'package:uxnan/domain/entities/agent_descriptor.dart';
 import 'package:uxnan/domain/entities/agent_model.dart';
 import 'package:uxnan/domain/entities/auth_status.dart';
@@ -289,6 +290,21 @@ final agentModelsProvider = FutureProvider.family<List<AgentModel>, String>(
   (ref, agentId) {
     ref.watch(connectedDeviceProvider);
     return ref.watch(threadManagerProvider).loadModels(agentId);
+  },
+);
+
+/// The special ("slash") commands a given agent reports (`agent/commands`), for
+/// the composer's `/` palette. Keyed by agent + the thread/project `cwd` so a
+/// project's own custom commands are discovered alongside user-level ones.
+/// Re-fetched whenever the connected device changes so commands added on the
+/// bridge appear after a reconnect — mirroring [agentModelsProvider].
+final agentCommandsProvider =
+    FutureProvider.family<List<AgentCommand>, ({String agentId, String? cwd})>(
+  (ref, arg) {
+    ref.watch(connectedDeviceProvider);
+    return ref
+        .watch(threadManagerProvider)
+        .loadCommands(arg.agentId, cwd: arg.cwd);
   },
 );
 

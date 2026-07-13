@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:uxnan/domain/entities/agent_command.dart';
 import 'package:uxnan/domain/entities/agent_model.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/enums/agent_id.dart';
@@ -21,6 +22,7 @@ import 'package:uxnan/presentation/providers/conversation_scroll_store.dart';
 import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_bar.dart';
+import 'package:uxnan/presentation/screens/conversation/composer/composer_commands.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/turn_tools_sheet.dart';
 import 'package:uxnan/presentation/screens/conversation/files/file_browser_screen.dart';
 import 'package:uxnan/presentation/screens/conversation/git/git_screen.dart';
@@ -492,6 +494,15 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
       showContext: caps?.reportsContextUsage ?? false,
     );
     final cwd = thread?.cwd;
+    // The agent's slash commands (agent/commands): drives the `/` palette rows
+    // and routes a matching `/name args` send as a real command.
+    final agentId = thread?.agentId;
+    final agentCommands = agentId == null
+        ? const <AgentCommand>[]
+        : ref
+                .watch(agentCommandsProvider((agentId: agentId, cwd: cwd)))
+                .value ??
+            const <AgentCommand>[];
     final snapshot = timelineAsync.value;
     // If the timeline already has content at first build (no later emission to
     // drive the listener below), restore the saved scroll position now. Guarded
@@ -674,6 +685,8 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                       hasAttachments: _attachments.isNotEmpty,
                       // Backs the inline `@` file/folder mention picker.
                       cwd: cwd,
+                      // The agent's slash commands, rendered in the `/` palette.
+                      agentCommands: agentCommands,
                       // While the agent is producing a turn, Send becomes
                       // Stop — cancels the turn (without closing the thread).
                       running: running,
@@ -697,11 +710,16 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                         final options =
                             ref.read(threadRunOptionsProvider(widget.threadId));
                         final attachments = List<ImageContent>.of(_attachments);
+                        // Route `/name args` for an advertised agent command as a
+                        // real command (turn/send `command`); anything else is
+                        // sent verbatim as text.
+                        final command = parseAgentCommand(text, agentCommands);
                         ref.read(threadManagerProvider).sendUserMessage(
                               widget.threadId,
                               text,
                               options: options,
                               attachments: attachments,
+                              command: command,
                             );
                         if (_attachments.isNotEmpty) {
                           setState(_attachments.clear);

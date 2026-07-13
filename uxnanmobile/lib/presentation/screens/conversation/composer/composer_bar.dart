@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/application/managers/file_browser_manager.dart';
 import 'package:uxnan/core/extensions/string_ext.dart';
+import 'package:uxnan/domain/entities/agent_command.dart';
 import 'package:uxnan/domain/entities/file_browser.dart';
 import 'package:uxnan/domain/value_objects/prompt_template.dart';
 import 'package:uxnan/infrastructure/speech/speech_to_text_service.dart';
@@ -38,6 +39,7 @@ class ComposerBar extends ConsumerStatefulWidget {
     this.running = false,
     this.hasAttachments = false,
     this.cwd,
+    this.agentCommands = const [],
     this.onStop,
     this.onPlus,
     super.key,
@@ -59,6 +61,10 @@ class ComposerBar extends ConsumerStatefulWidget {
   /// The thread's working directory, used to back the `@` file-mention picker.
   /// When null the `@` picker reports "no folder" (the `/` palette still works).
   final String? cwd;
+
+  /// The agent's slash commands (`agent/commands`) for the `/` palette. Empty →
+  /// only the client-side entries (file hand-off + templates) are shown.
+  final List<AgentCommand> agentCommands;
 
   /// Cancels the in-flight turn. Required when [running] is true.
   final VoidCallback? onStop;
@@ -330,6 +336,9 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
     final replacement = switch (command.kind) {
       ComposerCommandKind.startFileMention => '@',
       ComposerCommandKind.insertTemplate => command.template ?? '',
+      // Inserts `/<name> ` so the user can add args; routed as a real agent
+      // command on send (see parseAgentCommand in the conversation screen).
+      ComposerCommandKind.invokeAgentCommand => command.template ?? '',
     };
     _applyEdit(
       applyCommand(_controller.text, trigger, replacement: replacement),
@@ -399,7 +408,8 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
     final l10n = AppLocalizations.of(context);
     final showSend = _hasText || widget.hasAttachments;
     final canSend = showSend && widget.enabled;
-    // The `/` palette is the built-in file hand-off + the user's templates.
+    // The `/` palette is the agent's own slash commands (agent/commands) plus
+    // the built-in file hand-off + the user's templates.
     final templates = ref.watch(promptTemplatesLibraryProvider);
 
     return SafeArea(
@@ -430,6 +440,7 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
                       ? _SuggestionPanel(
                           trigger: _trigger!,
                           templates: templates,
+                          agentCommands: widget.agentCommands,
                           files: _fileMatches,
                           listing: _listing,
                           listError: _listError,
@@ -538,6 +549,7 @@ class _SuggestionPanel extends StatelessWidget {
   const _SuggestionPanel({
     required this.trigger,
     required this.templates,
+    required this.agentCommands,
     required this.files,
     required this.listing,
     required this.listError,
@@ -554,6 +566,7 @@ class _SuggestionPanel extends StatelessWidget {
 
   final ComposerTriggerContext trigger;
   final List<PromptTemplate> templates;
+  final List<AgentCommand> agentCommands;
   final List<FileEntry> files;
   final bool listing;
   final bool listError;
@@ -575,7 +588,12 @@ class _SuggestionPanel extends StatelessWidget {
     final isCommand = trigger.trigger == ComposerTrigger.command;
     final commands = isCommand
         ? matchComposerCommands(
-            composerCommands(l10n, templates),
+            [
+              // The agent's own slash commands first, then the client-side
+              // file hand-off + the user's prompt templates.
+              ...agentComposerCommands(agentCommands),
+              ...composerCommands(l10n, templates),
+            ],
             trigger.query,
           )
         : const <ComposerCommand>[];

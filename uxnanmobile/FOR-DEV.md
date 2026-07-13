@@ -41,6 +41,12 @@ connected to live bridge data, validated on-device against a real bridge.
   entries and show only pinned versions (display-only; persisted locally).
 - **Per-model run-option knobs** (data-driven: `enum` / `toggle`, generic
   renderer).
+- **Agent slash commands in the `/` palette** — the agent's own commands
+  (`agent/commands`, `AgentCommand` + `agentCommandsProvider`) are listed above
+  the client-side entries; picking one inserts `/<name> ` and a matching
+  `/name args` send is routed as a real command (`turn/send` `command`), any
+  other text sent verbatim. Generic renderer (unknown/`headlessSupported:false`
+  hidden), so new agent commands appear with no app change.
 - **Context-usage indicator** (percentage when the model window is known, raw
   token count otherwise; **0 baseline** for agents with `reportsContextUsage`).
 - **Per-agent sign-in status** (`auth/status`) — banner above the composer, red

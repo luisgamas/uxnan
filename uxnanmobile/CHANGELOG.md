@@ -4,6 +4,24 @@ All notable changes to the `uxnanmobile` app are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added — agent slash commands in the composer `/` palette
+- The composer's `/` palette now lists the **agent's own special ("slash")
+  commands** the bridge advertises via the new `agent/commands` method (e.g.
+  Claude Code's `/compact`, an ACP agent's advertised commands, or a project's
+  custom `.gemini/commands` / `.opencode/command` / `~/.codex/prompts`
+  templates), above the existing client-side entries (file hand-off + prompt
+  templates). New `AgentCommand` entity + `agentCommandsProvider` +
+  `ThreadManager.loadCommands`.
+- Picking a command inserts `/<name> ` so arguments can be added; on send a
+  `/name args` that matches an advertised command is routed as a real command
+  (`turn/send` `command`) — the bridge resolves and runs it — while any other
+  text is sent verbatim as before. `AgentCapabilities` gains a `commands` flag.
+- Generic renderer: the palette shows whatever the bridge advertises, so new
+  agent commands appear with no app change; commands the agent can't run
+  headless (`headlessSupported: false`) are hidden.
+
 ## [0.0.5-alpha.20260711] - 2026-07-11
 
 ### Added — Grok agent support
