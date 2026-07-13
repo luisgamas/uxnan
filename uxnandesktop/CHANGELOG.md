@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — updater notification phases and responsive layout
+
+- The update notification no longer shows release notes while the installer is
+  downloading; that link appears only in the persistent ready-to-install state.
+- The pinned update card now uses a compact vertical layout aligned with the app
+  tokens: a larger title, normal-sized supporting text, top-right dismissal, and
+  full-width actions at the bottom.
+- Release-note URLs now follow the selected stable/nightly release tag.
+
 ### Fixed — provider usage popover focus and live worktree discovery
 
 - The status-bar provider-usage popover no longer moves focus to **Refresh** on

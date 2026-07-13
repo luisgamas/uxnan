@@ -276,7 +276,7 @@ are **done** (see `CHANGELOG.md` + `architecture/02d` §3). Remaining follow-ups
       (`power.rs`); Windows works.
 - [ ] **Update UI (pinned sonner toast + in-Settings download/install) — visual +
       functional validation pending.** The former top banner is now a pinned
-      sonner toast (`UpdateToast.svelte` + `updateToast.ts`) and the
+      sonner toast (`UpdateToast.svelte` + `updateToast.svelte.ts`) and the
       download/install actions were surfaced inline in **Settings → Updates**.
       `svelte-check` + Vitest pass, but the toast's on-screen appearance and the
       end-to-end download → install flow haven't been exercised in a running build
