@@ -35,9 +35,10 @@ const GH_TIMEOUT: Duration = Duration::from_secs(60);
 const PR_SUMMARY_FIELDS: &str =
     "number,title,state,isDraft,url,mergeable,reviewDecision,statusCheckRollup,headRefName";
 
-/// Fields requested from `gh pr list`.
-const PR_LIST_FIELDS: &str =
-    "number,title,state,isDraft,url,author,headRefName,baseRefName,reviewDecision,updatedAt";
+/// Fields requested from `gh pr list`. Includes `statusCheckRollup` so each row can
+/// show a CI status icon + a checks-summary popover without a per-row extra call.
+const PR_LIST_FIELDS: &str = "number,title,state,isDraft,url,author,headRefName,\
+    baseRefName,reviewDecision,updatedAt,statusCheckRollup";
 
 /// Fields requested from `gh pr view <n>` for the full review tab. Kept to fields
 /// valid across gh versions/GHES — a single unknown field makes gh reject the whole
@@ -508,6 +509,8 @@ pub struct PrListItem {
     pub base_ref_name: Option<String>,
     pub review_decision: Option<String>,
     pub updated_at: Option<String>,
+    /// CI roll-up for the row's status icon + popover.
+    pub checks_summary: CheckSummary,
 }
 
 /// List PRs for a repo (resolved from `worktree_path`'s origin). `search` is an
@@ -552,6 +555,7 @@ fn pr_list_item_from_json(v: &serde_json::Value) -> PrListItem {
         base_ref_name: opt_str_field(v, "baseRefName"),
         review_decision: opt_str_field(v, "reviewDecision"),
         updated_at: opt_str_field(v, "updatedAt"),
+        checks_summary: check_summary_from_rollup(v.get("statusCheckRollup")),
     }
 }
 
