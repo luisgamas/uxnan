@@ -197,6 +197,31 @@ export interface AppSettings {
   /** Attention lanes (class 1–4) the user collapsed in the "group by status"
    *  view; persisted so the collapse survives a restart. */
   sidebarCollapsedLanes?: number[];
+  /** GitHub integration (the GitHub section + the right-panel GitHub tab). */
+  github?: GithubSettings;
+}
+
+/** GitHub integration preferences (mirror of Rust `GithubSettings`). The token is
+ *  never stored here — `gh` owns it. */
+export interface GithubSettings {
+  /** Show the contextual GitHub tab in the right panel (per-worktree PR/CI); it
+   *  only appears for GitHub repos. Default true. */
+  rightPanelTab?: boolean;
+  /** Show the GitHub status/quota button in the bottom status bar. Default true. */
+  statusBarEnabled?: boolean;
+  /** How often (seconds) the active worktree's PR/CI context refreshes while the
+   *  window is focused. 0 = manual only. Default 45. */
+  pollSeconds?: number;
+  /** Poll the notifications count for the status-bar badge. Default false. */
+  notificationsEnabled?: boolean;
+  /** Ask for confirmation before creating or merging a PR (both surfaces). Default
+   *  true. */
+  confirmPr?: boolean;
+  /** Agent id used to draft PR bodies / review summaries from a diff (same catalog
+   *  as AI commit). Undefined = the AI button is hidden. */
+  aiAgentId?: string;
+  /** Model for the AI-authoring agent (undefined = the CLI's default). */
+  aiModel?: string;
 }
 
 /** Left-sidebar grouping mode.
@@ -746,4 +771,192 @@ export const DEFAULT_SETTINGS: AppSettings = {
   pinnedWorktrees: [],
   sidebarGroupBy: "none",
   sidebarCollapsedLanes: [],
+  github: {
+    rightPanelTab: true,
+    statusBarEnabled: true,
+    pollSeconds: 45,
+    notificationsEnabled: false,
+    confirmPr: true,
+  },
 };
+
+// --- GitHub integration (wire shapes; mirror of Rust `github.rs`) -----------
+
+/** Sanitized GitHub sign-in status. Never carries the token. */
+export interface GithubStatus {
+  ghInstalled: boolean;
+  authenticated: boolean;
+  login: string | null;
+  host: string | null;
+  scopes: string[];
+  message: string | null;
+}
+
+/** Rolled-up CI checks summary for a PR. `state` is one word. */
+export interface CheckSummary {
+  total: number;
+  passed: number;
+  failed: number;
+  pending: number;
+  state: "success" | "failure" | "pending" | "none";
+}
+
+/** A single check/status row (drill-down). */
+export interface CheckItem {
+  name: string;
+  bucket: "pass" | "fail" | "pending" | "skip";
+  link: string | null;
+  workflow: string | null;
+}
+
+/** A compact PR summary for the worktree card / right-panel tab. */
+export interface PrSummary {
+  number: number;
+  title: string;
+  state: string;
+  isDraft: boolean;
+  url: string;
+  reviewDecision: string | null;
+  mergeable: string | null;
+  checks: CheckSummary;
+}
+
+/** The active worktree's GitHub context. */
+export interface RepoContext {
+  host: string;
+  owner: string;
+  repo: string;
+  nameWithOwner: string;
+  branch: string | null;
+  pr: PrSummary | null;
+}
+
+/** One row in the PR list. */
+export interface PrListItem {
+  number: number;
+  title: string;
+  state: string;
+  isDraft: boolean;
+  url: string;
+  author: string | null;
+  headRefName: string | null;
+  baseRefName: string | null;
+  reviewDecision: string | null;
+  updatedAt: string | null;
+}
+
+/** A changed file within a PR. */
+export interface PrFile {
+  path: string;
+  additions: number;
+  deletions: number;
+}
+
+/** A submitted PR review (approve / request-changes / comment). */
+export interface PrReview {
+  author: string | null;
+  /** `APPROVED` | `CHANGES_REQUESTED` | `COMMENTED` | `DISMISSED`. */
+  state: string;
+  body: string;
+  submittedAt: string | null;
+}
+
+/** An issue-level comment on the PR (the conversation). */
+export interface PrComment {
+  author: string | null;
+  body: string;
+  createdAt: string | null;
+}
+
+/** A commit within the PR. */
+export interface PrCommit {
+  oid: string;
+  message: string;
+  author: string | null;
+  committedAt: string | null;
+}
+
+/** Full PR detail for the review center tab. */
+export interface PrDetail {
+  number: number;
+  title: string;
+  body: string;
+  state: string;
+  isDraft: boolean;
+  url: string;
+  author: string | null;
+  baseRefName: string | null;
+  headRefName: string | null;
+  additions: number;
+  deletions: number;
+  changedFiles: number;
+  mergeable: string | null;
+  mergeStateStatus: string | null;
+  reviewDecision: string | null;
+  labels: string[];
+  files: PrFile[];
+  checks: CheckItem[];
+  checksSummary: CheckSummary;
+  reviewers: string[];
+  reviews: PrReview[];
+  comments: PrComment[];
+  commits: PrCommit[];
+}
+
+/** Options for creating a PR. */
+export interface PrCreateOptions {
+  title: string;
+  body?: string;
+  base?: string | null;
+  draft?: boolean;
+}
+
+/** One row in the issue list. */
+export interface IssueListItem {
+  number: number;
+  title: string;
+  state: string;
+  url: string;
+  author: string | null;
+  labels: string[];
+  assignees: string[];
+  updatedAt: string | null;
+  comments: number;
+}
+
+/** Full detail for one issue. */
+export interface IssueDetail {
+  number: number;
+  title: string;
+  body: string;
+  state: string;
+  url: string;
+  author: string | null;
+  labels: string[];
+  assignees: string[];
+  createdAt: string | null;
+  updatedAt: string | null;
+  comments: PrComment[];
+}
+
+/** One workflow run row. */
+export interface RunListItem {
+  databaseId: number;
+  name: string;
+  displayTitle: string;
+  status: string;
+  conclusion: string | null;
+  headBranch: string | null;
+  workflowName: string | null;
+  event: string | null;
+  createdAt: string | null;
+  url: string;
+}
+
+/** The core REST rate-limit window (status-bar gauge). */
+export interface RateLimit {
+  limit: number;
+  remaining: number;
+  used: number;
+  reset: number;
+}

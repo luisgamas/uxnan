@@ -17,13 +17,22 @@ import type {
   FileNumstat,
   FileSearch,
   FsEntry,
+  GithubStatus,
+  IssueDetail,
+  IssueListItem,
   HookInstall,
   HookScripts,
   McpInfo,
   HookServerInfo,
   ImageDiff,
+  PrCreateOptions,
+  PrDetail,
+  PrListItem,
+  RateLimit,
   RemoteOwner,
   RemoveOutcome,
+  RepoContext,
+  RunListItem,
   ProviderUsage,
   RepoData,
   SavedTerminalLayout,
@@ -659,4 +668,175 @@ export function updaterStaged(): Promise<string | null> {
  *  running agent** (the app restarts) — call only when it's safe to do so. */
 export function updaterInstall(): Promise<void> {
   return invoke("updater_install");
+}
+
+// --- GitHub integration (all `gh`-backed; see src-tauri/src/github.rs) ------
+
+/** Current GitHub sign-in status (never the token). */
+export function githubStatus(): Promise<GithubStatus> {
+  return invoke<GithubStatus>("github_status");
+}
+
+/** The active worktree's GitHub context (repo + branch + current-branch PR).
+ *  Resolves to `null` when it isn't a GitHub repo. */
+export function githubRepoContext(
+  worktreePath: string,
+): Promise<RepoContext | null> {
+  return invoke<RepoContext | null>("github_repo_context", { worktreePath });
+}
+
+/** List PRs for the worktree's repo. `state` is `open|closed|merged|all`. */
+export function githubPrList(
+  worktreePath: string,
+  state: string,
+  search: string | null,
+  limit: number,
+): Promise<PrListItem[]> {
+  return invoke<PrListItem[]>("github_pr_list", { worktreePath, state, search, limit });
+}
+
+/** Full detail for one PR (metadata + files + checks). */
+export function githubPrView(worktreePath: string, number: string): Promise<PrDetail> {
+  return invoke<PrDetail>("github_pr_view", { worktreePath, number });
+}
+
+/** The unified diff of a PR. */
+export function githubPrDiff(worktreePath: string, number: string): Promise<string> {
+  return invoke<string>("github_pr_diff", { worktreePath, number });
+}
+
+/** Create a PR from the worktree's current branch; resolves to its URL. */
+export function githubPrCreate(
+  worktreePath: string,
+  options: PrCreateOptions,
+): Promise<string> {
+  return invoke<string>("github_pr_create", { worktreePath, options });
+}
+
+/** Post a conversation comment on a PR (not a review verdict). */
+export function githubPrComment(
+  worktreePath: string,
+  number: string,
+  body: string,
+): Promise<void> {
+  return invoke("github_pr_comment", { worktreePath, number, body });
+}
+
+/** Submit a review (`approve|request-changes|comment`) on a PR. */
+export function githubPrReview(
+  worktreePath: string,
+  number: string,
+  verb: "approve" | "request-changes" | "comment",
+  body: string | null,
+): Promise<void> {
+  return invoke("github_pr_review", { worktreePath, number, verb, body });
+}
+
+/** Merge a PR (`method` = `merge|squash|rebase`). */
+export function githubPrMerge(
+  worktreePath: string,
+  number: string,
+  method: "merge" | "squash" | "rebase",
+  deleteBranch: boolean,
+): Promise<void> {
+  return invoke("github_pr_merge", { worktreePath, number, method, deleteBranch });
+}
+
+/** Check out a PR into a new worktree; resolves to the new entry. */
+export function githubPrCheckout(repoId: string, number: string): Promise<WorktreeEntry> {
+  return invoke<WorktreeEntry>("github_pr_checkout", { repoId, number });
+}
+
+/** List issues for the worktree's repo. */
+export function githubIssueList(
+  worktreePath: string,
+  state: string,
+  search: string | null,
+  limit: number,
+): Promise<IssueListItem[]> {
+  return invoke<IssueListItem[]>("github_issue_list", { worktreePath, state, search, limit });
+}
+
+/** Full detail for one issue. */
+export function githubIssueView(worktreePath: string, number: string): Promise<IssueDetail> {
+  return invoke<IssueDetail>("github_issue_view", { worktreePath, number });
+}
+
+/** Post a comment on an issue. */
+export function githubIssueComment(
+  worktreePath: string,
+  number: string,
+  body: string,
+): Promise<void> {
+  return invoke("github_issue_comment", { worktreePath, number, body });
+}
+
+/** Create an issue; resolves to its URL. */
+export function githubIssueCreate(
+  worktreePath: string,
+  title: string,
+  body: string,
+): Promise<string> {
+  return invoke<string>("github_issue_create", { worktreePath, title, body });
+}
+
+/** Start work on an issue: create + link a branch and add it as a new worktree. */
+export function githubIssueDevelop(repoId: string, number: string): Promise<WorktreeEntry> {
+  return invoke<WorktreeEntry>("github_issue_develop", { repoId, number });
+}
+
+/** List recent workflow runs (optionally for a branch). */
+export function githubRunList(
+  worktreePath: string,
+  branch: string | null,
+  limit: number,
+): Promise<RunListItem[]> {
+  return invoke<RunListItem[]>("github_run_list", { worktreePath, branch, limit });
+}
+
+/** The log of a workflow run (`failed` = failed steps only). */
+export function githubRunLog(
+  worktreePath: string,
+  runId: string,
+  failed: boolean,
+): Promise<string> {
+  return invoke<string>("github_run_log", { worktreePath, runId, failed });
+}
+
+/** Re-run a workflow run (`failed` = only failed jobs). */
+export function githubRunRerun(
+  worktreePath: string,
+  runId: string,
+  failed: boolean,
+): Promise<void> {
+  return invoke("github_run_rerun", { worktreePath, runId, failed });
+}
+
+/** Cancel an in-progress workflow run. */
+export function githubRunCancel(worktreePath: string, runId: string): Promise<void> {
+  return invoke("github_run_cancel", { worktreePath, runId });
+}
+
+/** The authenticated core REST rate limit (status-bar gauge). */
+export function githubRateLimit(): Promise<RateLimit> {
+  return invoke<RateLimit>("github_rate_limit");
+}
+
+/** Count of unread GitHub notifications. */
+export function githubNotificationsCount(): Promise<number> {
+  return invoke<number>("github_notifications_count");
+}
+
+/** Clone a GitHub repo into `dest`; resolves to the destination path. */
+export function githubClone(repo: string, dest: string): Promise<string> {
+  return invoke<string>("github_clone", { repo, dest });
+}
+
+/** Draft a PR description from the branch diff via a local CLI agent. */
+export function githubAiDraftPr(
+  worktreePath: string,
+  agentId: string,
+  model: string,
+): Promise<string> {
+  return invoke<string>("github_ai_draft_pr", { worktreePath, agentId, model });
 }

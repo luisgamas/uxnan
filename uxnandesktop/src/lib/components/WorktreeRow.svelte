@@ -9,6 +9,7 @@
   import * as ContextMenu from "$lib/components/ui/context-menu";
   import { projects, type WorktreeRow } from "$lib/state/projects.svelte";
   import { unread } from "$lib/state/unread.svelte";
+  import { github } from "$lib/state/github.svelte";
   import { terminals } from "$lib/state/terminals.svelte";
   import { resolveAgentDisplay } from "$lib/state/agentDisplay";
   import { cn } from "$lib/utils";
@@ -23,6 +24,7 @@
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import type { DragReorder } from "$lib/state/dragReorder.svelte";
   import GitBranchIcon from "@lucide/svelte/icons/git-branch";
+  import GitPullRequestIcon from "@lucide/svelte/icons/git-pull-request";
   import PinIcon from "@lucide/svelte/icons/pin";
 
   let {
@@ -48,6 +50,9 @@
 
   const active = $derived(projects.activeWorktreePath === row.path);
   const label = $derived(row.branch ?? i18n.t("worktree.detached"));
+  // The cached GitHub PR for this worktree's branch (for the sidebar-card badge),
+  // colored by its CI checks. Cheap: read from the store's per-path cache.
+  const prBadge = $derived(github.contextFor(row.path)?.pr ?? null);
   const status = $derived(projects.status(row.path));
   const hasUnread = $derived(unread.has(row.path));
   const dirName = $derived(
@@ -191,6 +196,29 @@
                     <TooltipSimple title={i18n.t("worktree.behindTooltip")}>
                       {#snippet children(tp2)}
                         <span {...tp2} class={cn("shrink-0 text-muted-foreground", text.indicator)}>↓{status.behind}</span>
+                      {/snippet}
+                    </TooltipSimple>
+                  {/if}
+                  {#if prBadge}
+                    <TooltipSimple title={i18n.t("github.panel.openPr", { n: prBadge.number })}>
+                      {#snippet children(tp2)}
+                        <span
+                          {...tp2}
+                          class={cn(
+                            "shrink-0",
+                            prBadge.checks.state === "success"
+                              ? "text-emerald-500"
+                              : prBadge.checks.state === "failure"
+                                ? "text-red-500"
+                                : prBadge.checks.state === "pending"
+                                  ? "text-amber-500"
+                                  : prBadge.isDraft
+                                    ? "text-muted-foreground"
+                                    : "text-emerald-500",
+                          )}
+                        >
+                          <GitPullRequestIcon class="size-3" />
+                        </span>
                       {/snippet}
                     </TooltipSimple>
                   {/if}

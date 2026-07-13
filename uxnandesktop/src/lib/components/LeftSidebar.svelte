@@ -1,6 +1,7 @@
 <script lang="ts">
   import { app } from "$lib/state/app.svelte";
   import { projects } from "$lib/state/projects.svelte";
+  import { github } from "$lib/state/github.svelte";
   import { Button } from "$lib/components/ui/button";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import ProjectCard from "./ProjectCard.svelte";
@@ -18,6 +19,7 @@
   import { formatChord, resolveBinding } from "$lib/keybindings";
   import SearchIcon from "@lucide/svelte/icons/search";
   import SettingsIcon from "@lucide/svelte/icons/settings";
+  import GithubIcon from "@lucide/svelte/icons/git-pull-request";
   import FolderPlusIcon from "@lucide/svelte/icons/folder-plus";
   import ArrowUpDownIcon from "@lucide/svelte/icons/arrow-up-down";
   import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
@@ -40,6 +42,7 @@
   const searchBinding = $derived(resolveBinding("worktreePalette"));
   const addBinding = $derived(resolveBinding("addProject"));
   const settingsBinding = $derived(resolveBinding("openSettings"));
+  const githubBinding = $derived(resolveBinding("openGitHub"));
   const addChord = $derived(formatChord(addBinding));
 
   // Borderless nav button (mirrors the Settings section nav): no chrome until
@@ -145,6 +148,27 @@
           <span class="flex-1 truncate text-left">{i18n.t("sidebar.search")}</span>
           {#if searchBinding}
             <KeyChord chord={searchBinding} />
+          {/if}
+        </button>
+      {/snippet}
+    </TooltipSimple>
+    <TooltipSimple title={i18n.t("github.open")}>
+      {#snippet children(props)}
+        <button
+          {...props}
+          class={cn(navBase, app.githubOpen ? navActive : navIdle)}
+          onclick={() => (app.githubOpen = true)}
+        >
+          <GithubIcon class={icon.button} />
+          <span class="flex-1 truncate text-left">{i18n.t("github.title")}</span>
+          {#if github.notifications > 0}
+            <span
+              class="inline-flex min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground"
+            >
+              {github.notifications}
+            </span>
+          {:else if githubBinding}
+            <KeyChord chord={githubBinding} />
           {/if}
         </button>
       {/snippet}

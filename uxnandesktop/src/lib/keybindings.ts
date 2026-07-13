@@ -49,6 +49,13 @@ export const KEY_ACTIONS: KeyAction[] = [
     default: "Mod+,",
   },
   {
+    id: "openGitHub",
+    labelKey: "shortcuts.openGitHub",
+    descKey: "shortcuts.openGitHubDesc",
+    category: "general",
+    default: "Mod+G",
+  },
+  {
     id: "worktreePalette",
     labelKey: "shortcuts.worktreePalette",
     descKey: "shortcuts.worktreePaletteDesc",

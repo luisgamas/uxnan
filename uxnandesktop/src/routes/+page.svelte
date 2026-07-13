@@ -4,6 +4,7 @@
   import { projects } from "$lib/state/projects.svelte";
   import { orchestration } from "$lib/state/orchestration.svelte";
   import { git } from "$lib/state/git.svelte";
+  import { github } from "$lib/state/github.svelte";
   import { fsSetWatch } from "$lib/api";
   import { i18n } from "$lib/i18n";
   import { matchAction } from "$lib/keybindings";
@@ -26,18 +27,22 @@
   import BrowserPanel from "$lib/components/BrowserPanel.svelte";
   import NewWorktreeDialog from "$lib/components/NewWorktreeDialog.svelte";
   import Settings from "$lib/components/Settings.svelte";
+  import GitHub from "$lib/components/GitHub.svelte";
   import OrchestrationConsole from "$lib/components/OrchestrationConsole.svelte";
   import WorktreeSearch from "$lib/components/WorktreeSearch.svelte";
   import DirectoryPicker from "$lib/components/DirectoryPicker.svelte";
   import BackendStatus from "$lib/components/BackendStatus.svelte";
   import UsageStatusButton from "$lib/components/UsageStatusButton.svelte";
+  import GithubStatusButton from "$lib/components/GithubStatusButton.svelte";
   import { Toaster } from "$lib/components/ui/sonner";
   import { initUpdateToast } from "$lib/updateToast.svelte";
 
   // Resize bounds for each sidebar (px).
   const LEFT_MIN = 200;
   const LEFT_MAX = 480;
-  const RIGHT_MIN = 240;
+  // Floor keeps the four right-panel tabs (Files/Changes/History/GitHub) visible;
+  // longer/localized labels overflow into the tab strip's horizontal scroll.
+  const RIGHT_MIN = 300;
   const RIGHT_MAX = 560;
   const BROWSER_MIN = 320;
   const BROWSER_MAX = 900;
@@ -130,6 +135,23 @@
     void git.load(projects.activeWorktreePath);
   });
 
+  // GitHub integration: read sign-in status once the backend is ready, load the
+  // active worktree's context (re-running when auth becomes available or the
+  // worktree changes), and poll on the configured interval (paused when hidden).
+  $effect(() => {
+    if (app.backend !== "ready") return;
+    void github.refreshStatus();
+  });
+  $effect(() => {
+    void github.available;
+    void github.loadContext(projects.activeWorktreePath);
+  });
+  $effect(() => {
+    // Restart the poll when the interval setting changes; cleanup stops it.
+    void app.settings.github?.pollSeconds;
+    return github.startPolling();
+  });
+
   // Drive the pinned, persistent update toast (replaces the old fixed banner):
   // shown while the updater has something actionable, re-shown on reload when a
   // staged download is restored, dismissed via the store. Native OS
@@ -148,8 +170,8 @@
 
   // Global keyboard shortcuts (configurable in Settings → Keyboard shortcuts).
   function onKeyDown(e: KeyboardEvent) {
-    // Settings (full-screen) owns its own keys, including shortcut rebinding.
-    if (app.settingsOpen) return;
+    // Settings / the GitHub section (full-screen) own their own keys.
+    if (app.settingsOpen || app.githubOpen) return;
     // Never steal keys while typing in a terminal — the shell owns Ctrl+W/J/etc.
     const el = e.target as HTMLElement | null;
     if (el?.closest(".xterm")) return;
@@ -223,6 +245,10 @@
       case "openSettings":
         e.preventDefault();
         app.openSettings();
+        return;
+      case "openGitHub":
+        e.preventDefault();
+        app.openGitHub();
         return;
       case "toggleLeftSidebar":
         e.preventDefault();
@@ -326,7 +352,7 @@
 
         <aside
           class="flex shrink-0 flex-col overflow-hidden bg-sidebar text-sidebar-foreground"
-          style="width: {app.settings.rightSidebarWidth}px"
+          style="width: {clamp(app.settings.rightSidebarWidth, RIGHT_MIN, RIGHT_MAX)}px"
         >
           <RightPanel />
         </aside>
@@ -416,6 +442,10 @@
         </TooltipSimple>
       {/if}
 
+      <!-- GitHub: opens the section; shows notifications + rate limit (hidden when
+           disabled / not signed in) -->
+      <GithubStatusButton />
+
       <!-- Provider usage indicator (icon + popover; hidden when nothing pinned) -->
       <UsageStatusButton />
 
@@ -485,6 +515,13 @@
     {#if app.settingsOpen}
       <div class="absolute inset-0 z-30">
         <Settings />
+      </div>
+    {/if}
+
+    <!-- The GitHub section overlays the body the same way (its own full screen). -->
+    {#if app.githubOpen}
+      <div class="absolute inset-0 z-30">
+        <GitHub />
       </div>
     {/if}
   </div>

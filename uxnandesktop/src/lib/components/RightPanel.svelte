@@ -7,14 +7,26 @@
   import FileTreePanel from "./FileTreePanel.svelte";
   import ChangesPanel from "./ChangesPanel.svelte";
   import HistoryPanel from "./HistoryPanel.svelte";
+  import GithubPanel from "./GithubPanel.svelte";
+  import { app } from "$lib/state/app.svelte";
   import { i18n } from "$lib/i18n";
   import { divider, icon, tab as tabStyle } from "$lib/design";
   import { cn } from "$lib/utils";
   import FolderTreeIcon from "@lucide/svelte/icons/folder-tree";
   import GitCompareIcon from "@lucide/svelte/icons/git-compare-arrows";
   import GitBranchIcon from "@lucide/svelte/icons/git-branch";
+  import GitPullRequestIcon from "@lucide/svelte/icons/git-pull-request";
 
-  let tab = $state<"files" | "changes" | "history">("files");
+  let tab = $state<"files" | "changes" | "history" | "github">("files");
+
+  // The GitHub tab is shown whenever it's enabled in settings — it stays put
+  // regardless of the repo/sign-in state (the panel itself renders the right
+  // "connect" / "not a GitHub repo" state). Keeping it always-mounted avoids the
+  // tab appearing/disappearing (a layout jump) as the context resolves.
+  const showGithub = $derived(app.settings.github?.rightPanelTab ?? true);
+  $effect(() => {
+    if (!showGithub && tab === "github") tab = "changes";
+  });
 
   // Git status for the active worktree is loaded by the always-mounted shell
   // (`+page.svelte`), so the file-tree coloring, project-card badges and the
@@ -26,30 +38,42 @@
        float over its right (fixed overlay rendered in +page.svelte). -->
   <div data-tauri-drag-region class={cn("h-9 shrink-0", divider.bottom)}></div>
   <Tabs.Root bind:value={tab} class="flex min-h-0 w-full flex-1 flex-col gap-0">
+  <!-- Tabs never wrap or get clipped: when the panel is narrower than the tab
+       strip, it scrolls horizontally (like the center panel's tab bar). Each
+       trigger keeps its width (`shrink-0`) instead of shrinking away. -->
   <Tabs.List
-    class={cn("h-8 shrink-0 justify-start gap-1 rounded-none bg-transparent px-2 py-0", divider.bottom)}
+    class={cn("scrollbar-sleek h-8 shrink-0 justify-start gap-1 overflow-x-auto rounded-none bg-transparent px-2 py-0", divider.bottom)}
   >
     <Tabs.Trigger
       value="files"
-      class={cn("px-3 text-[13px]", tabStyle.base, tab === "files" ? tabStyle.activeLine : tabStyle.inactiveLine)}
+      class={cn("shrink-0 whitespace-nowrap px-3 text-[13px]", tabStyle.base, tab === "files" ? tabStyle.activeLine : tabStyle.inactiveLine)}
     >
       <FolderTreeIcon data-icon="inline-start" class={cn(icon.decorative)} />
       {i18n.t("fileTree.tab")}
     </Tabs.Trigger>
     <Tabs.Trigger
       value="changes"
-      class={cn("px-3 text-[13px]", tabStyle.base, tab === "changes" ? tabStyle.activeLine : tabStyle.inactiveLine)}
+      class={cn("shrink-0 whitespace-nowrap px-3 text-[13px]", tabStyle.base, tab === "changes" ? tabStyle.activeLine : tabStyle.inactiveLine)}
     >
       <GitCompareIcon data-icon="inline-start" class={cn(icon.decorative)} />
       {i18n.t("rightPanel.changesTab")}
     </Tabs.Trigger>
     <Tabs.Trigger
       value="history"
-      class={cn("px-3 text-[13px]", tabStyle.base, tab === "history" ? tabStyle.activeLine : tabStyle.inactiveLine)}
+      class={cn("shrink-0 whitespace-nowrap px-3 text-[13px]", tabStyle.base, tab === "history" ? tabStyle.activeLine : tabStyle.inactiveLine)}
     >
       <GitBranchIcon data-icon="inline-start" class={cn(icon.decorative)} />
       {i18n.t("history.tab")}
     </Tabs.Trigger>
+    {#if showGithub}
+      <Tabs.Trigger
+        value="github"
+        class={cn("shrink-0 whitespace-nowrap px-3 text-[13px]", tabStyle.base, tab === "github" ? tabStyle.activeLine : tabStyle.inactiveLine)}
+      >
+        <GitPullRequestIcon data-icon="inline-start" class={cn(icon.decorative)} />
+        {i18n.t("github.panel.tab")}
+      </Tabs.Trigger>
+    {/if}
   </Tabs.List>
   <Tabs.Content value="files" class="min-h-0 flex-1 overflow-hidden">
     <FileTreePanel />
@@ -60,5 +84,10 @@
   <Tabs.Content value="history" class="min-h-0 flex-1 overflow-hidden">
     <HistoryPanel />
   </Tabs.Content>
+  {#if showGithub}
+    <Tabs.Content value="github" class="min-h-0 flex-1 overflow-hidden">
+      <GithubPanel />
+    </Tabs.Content>
+  {/if}
   </Tabs.Root>
 </div>
