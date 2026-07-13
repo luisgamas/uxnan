@@ -196,10 +196,51 @@ pub struct RemoteOwner {
 /// Resolve `origin` to its hosting owner/org for the avatar option. Returns
 /// `None` when there's no `origin` remote or its URL can't be parsed.
 pub async fn remote_owner(repo_path: &str) -> Option<RemoteOwner> {
-    let url = git(repo_path, &["remote", "get-url", "origin"])
-        .await
-        .ok()?;
+    let url = remote_url(repo_path, "origin").await.ok()?;
     parse_remote_owner(url.trim())
+}
+
+/// The configured URL of a named remote (`git remote get-url <remote>`). Used by
+/// the GitHub layer to derive `owner/repo`.
+pub async fn remote_url(repo_path: &str, remote: &str) -> Result<String, AppError> {
+    git(repo_path, &["remote", "get-url", remote])
+        .await
+        .map(|s| s.trim().to_string())
+}
+
+/// The short name of the branch currently checked out in `repo_path`
+/// (`git rev-parse --abbrev-ref HEAD`; `HEAD` when detached).
+pub async fn current_branch(repo_path: &str) -> Result<String, AppError> {
+    git(repo_path, &["rev-parse", "--abbrev-ref", "HEAD"])
+        .await
+        .map(|s| s.trim().to_string())
+}
+
+/// Fetch a refspec from `origin` (e.g. `pull/42/head`) into `FETCH_HEAD`. Used to
+/// materialize a PR's head commit before adding a worktree at it.
+pub async fn fetch(repo_path: &str, refspec: &str) -> Result<(), AppError> {
+    git(repo_path, &["fetch", "origin", refspec])
+        .await
+        .map(|_| ())
+}
+
+/// The diff of the current branch against `base` (`git diff <base>...HEAD`), used
+/// to feed the AI PR-body drafter. Tolerant of a non-zero exit.
+pub async fn branch_diff(repo_path: &str, base: &str) -> Result<String, AppError> {
+    git_diff_tolerant(repo_path, &["diff", &format!("{base}...HEAD")]).await
+}
+
+/// Add a worktree checking out an **existing** local branch
+/// (`git worktree add <path> <branch>`). Used for the issue→worktree flow after
+/// `gh issue develop` created the linked branch.
+pub async fn add_worktree_existing(
+    repo_path: &str,
+    branch: &str,
+    worktree_path: &str,
+) -> Result<(), AppError> {
+    git(repo_path, &["worktree", "add", worktree_path, branch])
+        .await
+        .map(|_| ())
 }
 
 /// Parse a git remote URL (SSH `git@host:owner/repo.git`, `ssh://…`, or

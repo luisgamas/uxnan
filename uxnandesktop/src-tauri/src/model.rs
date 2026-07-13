@@ -357,6 +357,62 @@ pub struct AppSettings {
     /// attention class, 1–4). Persisted so the collapse survives a restart.
     #[serde(default)]
     pub sidebar_collapsed_lanes: Vec<u32>,
+    /// GitHub integration (the GitHub section + the right-panel GitHub tab). All
+    /// fields default, so older state loads unchanged; the token itself is never
+    /// stored here — `gh` owns it (see `github.rs`).
+    #[serde(default)]
+    pub github: GithubSettings,
+}
+
+/// GitHub integration settings (Settings live in the GitHub section → Settings).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GithubSettings {
+    /// Show the contextual GitHub tab in the right panel (per-worktree PR/CI). When
+    /// `true` it appears only for GitHub repos; `false` hides it everywhere.
+    #[serde(default = "default_true")]
+    pub right_panel_tab: bool,
+    /// Show the GitHub status/quota button in the bottom status bar. Default on.
+    #[serde(default = "default_true")]
+    pub status_bar_enabled: bool,
+    /// How often (seconds) the active worktree's PR/CI context refreshes while the
+    /// window is focused. `0` = manual only. Default 45.
+    #[serde(default = "default_github_poll_seconds")]
+    pub poll_seconds: u32,
+    /// Poll the GitHub notifications count for the status-bar badge. Default off (an
+    /// extra request; opt-in).
+    #[serde(default)]
+    pub notifications_enabled: bool,
+    /// Ask for confirmation before creating or merging a pull request (from both the
+    /// GitHub section and the right-panel tab). Default on.
+    #[serde(default = "default_true")]
+    pub confirm_pr: bool,
+    /// Agent id used to draft PR bodies / review summaries from a diff (same catalog
+    /// as AI commit). `None` = the feature's AI button is hidden.
+    #[serde(default)]
+    pub ai_agent_id: Option<String>,
+    /// Model for the AI-authoring agent (`None` = the CLI's default).
+    #[serde(default)]
+    pub ai_model: Option<String>,
+}
+
+impl Default for GithubSettings {
+    fn default() -> Self {
+        Self {
+            right_panel_tab: true,
+            status_bar_enabled: true,
+            poll_seconds: default_github_poll_seconds(),
+            notifications_enabled: false,
+            confirm_pr: true,
+            ai_agent_id: None,
+            ai_model: None,
+        }
+    }
+}
+
+/// Default GitHub context poll interval (seconds).
+fn default_github_poll_seconds() -> u32 {
+    45
 }
 
 /// Default left-sidebar grouping: `"none"` (the project → worktree tree).
@@ -653,6 +709,7 @@ impl Default for AppSettings {
             pinned_worktrees: Vec::new(),
             sidebar_group_by: default_group_by(),
             sidebar_collapsed_lanes: Vec::new(),
+            github: GithubSettings::default(),
         }
     }
 }

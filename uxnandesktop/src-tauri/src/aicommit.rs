@@ -107,6 +107,49 @@ pub async fn generate(worktree_path: &str, cfg: &AiCommitSettings) -> Result<Str
     Ok(message)
 }
 
+/// Draft a GitHub pull-request description (Markdown) from a branch `diff`, using
+/// `agent_id` + `model` (the GitHub-settings AI agent). Reuses the same one-shot,
+/// non-interactive agent runner as commit generation — no provider API/keys. The
+/// caller supplies the diff (branch-vs-base). Returns the sanitized body.
+pub async fn draft_pr(
+    worktree_path: &str,
+    agent_id: &str,
+    model: &str,
+    diff: &str,
+) -> Result<String, AppError> {
+    let agent = agent_id.trim();
+    if agent.is_empty() {
+        return Err(AppError::Invalid("no AI agent configured".to_string()));
+    }
+    let Some(resolved) = agentcli::resolve(agent) else {
+        return Err(AppError::Agent(format!(
+            "the selected agent ('{agent}') isn't installed"
+        )));
+    };
+    if diff.trim().is_empty() {
+        return Err(AppError::Invalid(
+            "no changes to summarize for the PR".to_string(),
+        ));
+    }
+    let capped: String = diff.chars().take(24_000).collect();
+    let prompt = format!(
+        "Write a GitHub pull request description in Markdown for the following \
+         changes. Start with a one-sentence summary, then a short bullet list of \
+         what changed and why. Do not include a title line or a code fence around \
+         the whole thing. Output only the description.\n\n{capped}"
+    );
+    let args = agentcli::build_args(agent, model, &prompt)
+        .ok_or_else(|| AppError::Agent(format!("unsupported agent '{agent}'")))?;
+    let raw = run_generate(&resolved, &args, worktree_path).await?;
+    let body = sanitize_message(&raw);
+    if body.is_empty() {
+        return Err(AppError::Agent(
+            "the agent returned an empty description".to_string(),
+        ));
+    }
+    Ok(body)
+}
+
 /// Run the resolved agent for a generation turn (stdin closed, hard timeout,
 /// `kill_on_drop`); return stdout. Maps spawn / non-zero exit / timeout to
 /// [`AppError::Agent`].
