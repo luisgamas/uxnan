@@ -46,6 +46,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   issues); if that call fails it falls back to the reviews/comments already in the
   detail, so the conversation is never lost. The separate collapsible commits list is
   gone (commits now live in the timeline).
+- **Markdown rendering in the timeline.** PR/issue descriptions, comments and reviews
+  now render as **Markdown** (headings, lists, task lists, tables, code blocks,
+  blockquotes, links that open externally, and **inline images/screenshots**) via the
+  existing in-house Lezer renderer (`MarkdownView`, new compact `inline` variant) —
+  never `{@html}`, so untrusted repo content can't script the webview. The timeline
+  cards were also given more breathing room (roomier padding, larger nodes, more
+  vertical rhythm) to match Uxnan's spacing.
+- **CI as a popover (GitHub-style).** The PR detail's long checks card is replaced by a
+  compact **CI status box** for the head (last) commit — "All checks passed" / "N
+  failing" with the full check list in a **popover**. Each **PR-list row** now shows a
+  colored **CI status icon** whose popover breaks down passed/failing/pending (the list
+  query now carries `statusCheckRollup`). The checks / files / diff sections were also
+  loosened (roomier headers, rows and diff padding).
 - **Worktree-native GitHub:** **check out a PR into a new worktree**
   (`gh pr checkout` → `git worktree`) and **start work on an issue** as a new worktree
   (`gh issue develop`). PRs/issues become first-class citizens of the sidebar tree.

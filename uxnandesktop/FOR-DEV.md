@@ -86,8 +86,10 @@ mobile pairing) is NOT started.**
   the unified **diff** (**split per file**, collapsed by default + expand/collapse-all);
   a **GitHub-style timeline** (a chronological vertical rail interleaving description +
   comments + review verdicts + commits + events — labeled/assigned/closed/merged/…, via
-  the Timeline Events API) with **comment fields** on both PRs and issues; **reviewers**,
-  colored **state pills**, and a **checks** list on PRs, with merge/approve/request-changes
+  the Timeline Events API; bodies/comments/reviews rendered as **Markdown** incl. inline
+  images) with **comment fields** on both PRs and issues; **reviewers**,
+  colored **state pills**, and a **CI status popover** (head-commit box in the detail +
+  a per-row icon in the PR list), with merge/approve/request-changes
   **gated to open PRs**; **issue** triage/create; **Actions** logs + re-run/cancel;
   **worktree-native** `gh pr checkout` / `gh issue develop`; optional **AI PR-body
   drafting** (the `aicommit` one-shot runner). All via the local **`gh` CLI** (incl.
@@ -120,13 +122,9 @@ The `gh`-backed integration above is complete for the standalone desktop app. De
 - [ ] **Eager per-worktree PR badges.** Sidebar PR badges are shown for *visited*
       worktrees (context cache), not eagerly for every worktree (that would poll a PR
       per worktree). A batched/GraphQL "my PRs for these branches" query could fill it.
-- [ ] **Rich comment/body rendering.** PR & issue bodies, comments and timeline events
-      render as plain text today (`whitespace-pre-wrap`). Render **Markdown** (reuse the
-      CodeMirror/Lezer Markdown pipeline) and **inline images/screenshots** (fetch
-      attachment URLs) so pasted screenshots show inline instead of as raw links.
-- [ ] **Per-commit CI signals + inline diff comments.** The PR-level checks roll-up
-      ships and commits now appear in the timeline; a per-commit status dot (`gh api`
-      per SHA) and **line-level review comments** on the per-file diff are deferred.
+- [ ] **Inline diff comments.** CI ships as a popover on the head commit (PR detail)
+      and a per-row icon+popover in the PR list; **line-level review comments** on the
+      per-file diff are still deferred.
 - [ ] **P2/P3 niceties:** mark-files-as-viewed during review, `#`/`@` autocomplete +
       hover cards, a unified **notifications inbox**, **releases** (list/create), a
       write-only **Actions secrets/variables** setter, and native **conditional-request

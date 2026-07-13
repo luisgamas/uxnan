@@ -28,16 +28,19 @@ registered git repo). Panes:
 
 - **Overview** — the active repo, its branch, and that branch's PR at a glance.
 - **Pull Requests** — filter by `open / closed / merged / all` (defaults to **open**;
-  when a repo has no open PRs the empty state offers a **View all** shortcut). Open a
-  PR for a full **review view**: a colored **state pill** (open / merged / closed /
+  when a repo has no open PRs the empty state offers a **View all** shortcut). Each row
+  shows a colored **CI status icon** with a popover breaking down passed / failing /
+  pending. Open a PR for a full **review view**: a colored **state pill** (open / merged / closed /
   draft) and summary pills (review decision, checks roll-up, `+/−`, commit & file
   counts, labels), a **reviewers** row, a **GitHub-style timeline** (a single
   chronological vertical rail interleaving the description, comments, review verdicts,
   commits, and smaller events — labeled / assigned / closed / merged / renamed /
   review-requested / force-pushed / cross-referenced / …) with a **comment field**, a
-  **checks** list (colored status dots + link to each run), and the **diff split per
+  compact **CI status box** for the head commit (a colored icon + "All checks passed" /
+  "N failing", with the full check list in a **popover**), and the **diff split per
   file** — one collapsible row per changed file, **collapsed by default** (each file's
-  diff loads only when expanded), with **Expand all / Collapse all**.
+  diff loads only when expanded), with **Expand all / Collapse all**. Descriptions,
+  comments and reviews render as **Markdown** (incl. inline images/screenshots).
   From there: **approve / request changes / comment**, **merge** (squash / rebase /
   merge, optionally deleting the branch), **check out into a new worktree**, and
   **create a PR** (with an optional AI-drafted body). **Merge / approve /

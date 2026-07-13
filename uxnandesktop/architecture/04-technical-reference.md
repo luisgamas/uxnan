@@ -126,10 +126,12 @@ Estas son las funcionalidades **estrictamente necesarias** para un ADE ligero qu
       diff `branch`, `02c` §4.6; y el diff completo de un PR vía `gh pr diff`).
 - [~] Integracion con PRs de GitHub/GitLab. — **GitHub: hecho** (integración
       `gh`-backed: seccion GitHub full-screen + tab contextual del panel derecho +
-      review/merge/checks de PRs con **diff separado por archivo** (colapsado por
+      review/merge de PRs con **CI en popover** (caja del head-commit en el detalle +
+      icono por fila en la lista de PRs), **diff separado por archivo** (colapsado por
       defecto + expandir/contraer todo), un **timeline estilo GitHub** (riel vertical
       cronológico que intercala descripción + comentarios + veredictos de review +
-      commits + eventos — labeled/assigned/closed/merged/… vía la Timeline Events API)
+      commits + eventos — labeled/assigned/closed/merged/… vía la Timeline Events API;
+      bodies/comentarios/reviews como **Markdown** con imágenes inline)
       con **campos para comentar** en PRs e issues, **reviewers** y **pills de estado**
       con color, y merge/approve/request-changes **restringidos a PRs abiertos**;
       issues, Actions logs, PR/issue↔worktree,
