@@ -74,6 +74,30 @@ replies to `/question/{id}/reply` so the agent continues with the choice. The
 `permission.v2.asked` elicitation shape is routed through the same approval path as
 `permission.asked`.
 
+## Agent commands (`agent/commands` + `turn/send` `command`)
+
+The bridge discovers each agent's special ("slash") commands (`agent/commands` →
+`AgentCommand[]`) and runs them via the normal streaming turn (`turn/send`
+`command: { name, args? }`). There are **two classes**, unified through one path —
+`AgentManager.sendTurn` resolves a `command` to the prompt the agent runs (the
+`/name args` form is what history persists):
+
+| Agent | How commands are discovered | How they run |
+|---|---|---|
+| **Claude Code** | `slash_commands` from the `system/init` line (cached per turn) ∪ curated headless-safe built-ins (`compact`, `context`, `status`, `cost`, `usage`) ∪ `.claude/commands/*.md` scan | native — sent as `/name args`, resolved against the thread's `--resume` session |
+| **Zero**, **Grok** (ACP) | the ACP `available_commands_update` notification (captured, previously dropped) | native — via `session/prompt` |
+| **Codex** | scan `~/.codex/prompts/*.md` | bridge expands the template (`expandCommand`) — the app-server has no slash/compaction RPC |
+| **Gemini** | scan `.gemini/commands/*.toml` (+ `~/.gemini/commands`) | bridge expands (`--prompt` mode does not) |
+| **OpenCode** | scan `.opencode/command(s)/*.md` (+ `~/.config/opencode/command`) | bridge expands |
+| **pi** | — (no documented command surface) | — |
+
+Custom prompt-template scanning + expansion is shared in
+`src/adapters/command-scan.ts` (dependency-free markdown-front-matter + minimal
+TOML parsers; argument substitution only — `@file`/`` !`shell` `` placeholders
+are passed through literally). The five command-capable adapters set
+`capabilities.commands = true`; `cwd` on `agent/commands`/`listCommands` scopes
+discovery to a project's own custom commands.
+
 ## Claude Code models: latest aliases + pinned versions
 
 Claude Code has **no enumerate command** — `--model` accepts either a stable

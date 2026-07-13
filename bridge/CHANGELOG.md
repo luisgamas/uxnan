@@ -3,6 +3,34 @@
 All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added — agent commands: discovery (`agent/commands`) + invocation (`turn/send` `command`)
+- **What:** the bridge now discovers each agent's special ("slash") commands and
+  runs them remotely. New handler `agent/commands` (`src/handlers/agent-handler.ts`)
+  → `AgentManager.getCommands(agentId, cwd?)`; `turn/send` accepts a `command`
+  (`{ name, args? }`) which `AgentManager.sendTurn` resolves to the prompt the
+  agent runs. **63 JSON-RPC methods** now (`METHOD_NAMES`).
+- **Two command classes, one invocation path** — every command runs through the
+  existing streaming turn:
+  - **Custom prompt-template commands** (`source: 'custom'`) — the bridge scans
+    the agent's command directories and **expands the template itself** (argument
+    substitution) via `expandCommand`, so they work even though the CLI's headless
+    mode does not expand them. New shared helper `src/adapters/command-scan.ts`
+    (dependency-free markdown-front-matter + TOML parsers; **Codex**
+    `~/.codex/prompts/*.md`, **Gemini** `.gemini/commands/*.toml`, **OpenCode**
+    `.opencode/command(s)/*.md`).
+  - **Native control commands** — sent as the CLI's `/name args` form: **Claude
+    Code** (advertised from the `system/init` `slash_commands` list captured per
+    turn, ∪ a curated headless-safe built-in set ∪ `.claude/commands/*.md`; run
+    against the thread's `--resume` session), and the **ACP agents Zero/Grok**
+    (advertised from the ACP `available_commands_update` notification the adapters
+    now capture instead of dropping; invoked via `session/prompt`).
+- **Capability:** the five command-capable adapters set `capabilities.commands =
+  true`. `pi` advertises none (no documented command surface).
+- **History:** a command turn persists the `/name args` form (not the expansion)
+  as the user message. Covered by new `command-scan` + `agent-manager` tests.
+
 ## [0.0.5-alpha.20260711] - 2026-07-11
 
 ### Fixed — turn errors are surfaced with the real reason and survive re-sync

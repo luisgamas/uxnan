@@ -50,6 +50,7 @@ import { spawn } from 'node:child_process';
 import type { Readable, Writable } from 'node:stream';
 import type {
   AgentCapabilities,
+  AgentCommand,
   AgentConfig,
   AgentId,
   AgentModel,
@@ -76,6 +77,8 @@ const GROK_CAPABILITIES: AgentCapabilities = {
   // ACP `session/prompt` returns only `{ stopReason }`; no per-turn token usage
   // was observed (FOR-DEV: verify once a Grok turn can run — balance-blocked).
   reportsContextUsage: false,
+  // ACP advertises slash commands via `available_commands_update` (captured below).
+  commands: true,
 };
 
 /** How a run should answer Grok's permission prompts. */
@@ -179,6 +182,8 @@ export class GrokAdapter extends BaseAgentAdapter {
   readonly #modelBySession = new Map<string, string>();
   /** sessionId → last reasoning effort we set. */
   readonly #effortBySession = new Map<string, string>();
+  /** Slash commands from the latest ACP `available_commands_update` (see listCommands). */
+  #commands: AgentCommand[] = [];
   /** Model list, captured from the `initialize` handshake (cached for the process). */
   #modelsCache: AgentModel[] | null = null;
   #rpc: NdjsonRpc | null = null;
@@ -409,9 +414,15 @@ export class GrokAdapter extends BaseAgentAdapter {
   #onNotification(method: string, params: unknown): void {
     if (method !== 'session/update') return;
     const p = isRecord(params) ? params : {};
+    const update = isRecord(p['update']) ? p['update'] : {};
+    // Slash-command availability is session-scoped and can arrive before any
+    // turn — capture it regardless of an active run (see listCommands).
+    if (str(update['sessionUpdate']) === 'available_commands_update') {
+      this.#captureCommands(update['availableCommands'] ?? update['available_commands']);
+      return;
+    }
     const run = this.#runBySession.get(str(p['sessionId']));
     if (!run || run.finished) return;
-    const update = isRecord(p['update']) ? p['update'] : {};
     switch (str(update['sessionUpdate'])) {
       case 'agent_message_chunk': {
         const text = contentText(update['content']);
@@ -447,9 +458,37 @@ export class GrokAdapter extends BaseAgentAdapter {
         return;
       }
       default:
-        // current_mode_update / available_commands_update / model_changed: ignore.
+        // current_mode_update / model_changed: ignore.
         return;
     }
+  }
+
+  /** Record an ACP `available_commands_update` payload for `agent/commands`. */
+  #captureCommands(raw: unknown): void {
+    if (!Array.isArray(raw)) return;
+    const commands: AgentCommand[] = [];
+    for (const item of raw) {
+      if (!isRecord(item)) continue;
+      const name = str(item['name']);
+      if (!name) continue;
+      const description = str(item['description']);
+      commands.push({
+        name,
+        source: 'acp',
+        headlessSupported: true,
+        ...(description ? { description } : {}),
+      });
+    }
+    this.#commands = commands;
+  }
+
+  /**
+   * Slash commands Grok advertised over ACP (`available_commands_update`),
+   * invoked natively through `session/prompt`. Empty until a session is
+   * established and the agent has advertised its commands.
+   */
+  listCommands(): Promise<AgentCommand[]> {
+    return Promise.resolve(this.#commands.map((c) => ({ ...c })));
   }
 
   /** Merge a tool_call / tool_call_update; emit a block once it terminates. */

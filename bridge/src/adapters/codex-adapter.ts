@@ -61,6 +61,7 @@ import { homedir } from 'node:os';
 import { join, relative } from 'node:path';
 import type {
   AgentCapabilities,
+  AgentCommand,
   AgentConfig,
   AgentId,
   AgentModel,
@@ -68,6 +69,7 @@ import type {
   ApprovalDecision,
   SendTurnOptions,
 } from '@uxnan/shared';
+import { expandCustomCommand, scanCustomCommands, type CustomCommandSource } from './command-scan.js';
 import { runGit } from '../git/git-runner.js';
 import { BaseAgentAdapter } from './base-adapter.js';
 import {
@@ -95,6 +97,7 @@ const CODEX_CAPABILITIES: AgentCapabilities = {
   forking: true,
   images: true,
   reportsContextUsage: true,
+  commands: true,
 };
 
 /**
@@ -920,6 +923,24 @@ export class CodexAdapter extends BaseAgentAdapter {
         )
         .catch(() => finish([]));
     });
+  }
+
+  /**
+   * Codex's custom prompts live user-level under `~/.codex/prompts/*.md`
+   * (project scope is not supported by Codex). The app-server exposes no
+   * slash-command or compaction RPC headless, so only these prompt templates are
+   * advertised — expanded by {@link expandCommand} rather than run natively.
+   */
+  #commandSource(): CustomCommandSource {
+    return { dirs: [join(homedir(), '.codex', 'prompts')], ext: '.md', format: 'markdown' };
+  }
+
+  listCommands(): Promise<AgentCommand[]> {
+    return scanCustomCommands(this.#commandSource());
+  }
+
+  expandCommand(name: string, args?: string): Promise<string> {
+    return expandCustomCommand(this.#commandSource(), name, args);
   }
 
   /** Fallback model list read straight from `~/.codex/config.toml`. */

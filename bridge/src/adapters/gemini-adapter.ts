@@ -49,14 +49,17 @@
 import { randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline';
 import { mkdir, writeFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type {
   AgentCapabilities,
+  AgentCommand,
   AgentConfig,
   AgentId,
   AgentModel,
   SendTurnOptions,
 } from '@uxnan/shared';
+import { expandCustomCommand, scanCustomCommands, type CustomCommandSource } from './command-scan.js';
 import { BaseAgentAdapter } from './base-adapter.js';
 import { geminiToolBlock, isInternalGeminiTool } from './gemini-tools.js';
 import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
@@ -69,6 +72,7 @@ const GEMINI_CAPABILITIES: AgentCapabilities = {
   forking: true,
   images: true,
   reportsContextUsage: true,
+  commands: true,
 };
 
 /** Gemini context window (all current 2.5/3.x models are ~1M tokens). */
@@ -691,6 +695,28 @@ export class GeminiAdapter extends BaseAgentAdapter {
    */
   listModels(): Promise<AgentModel[]> {
     return Promise.resolve(GEMINI_MODELS.map((m) => ({ ...m })));
+  }
+
+  /**
+   * Gemini's custom commands are `.gemini/commands/*.toml` files (project scope
+   * first, then user-level `~/.gemini/commands`). Its non-interactive `--prompt`
+   * mode does NOT expand them, so the bridge scans + expands them itself.
+   */
+  #commandSource(cwd?: string): CustomCommandSource {
+    const dir = cwd ?? this.#defaultCwd;
+    return {
+      dirs: [join(dir, '.gemini', 'commands'), join(homedir(), '.gemini', 'commands')],
+      ext: '.toml',
+      format: 'toml',
+    };
+  }
+
+  listCommands(cwd?: string): Promise<AgentCommand[]> {
+    return scanCustomCommands(this.#commandSource(cwd));
+  }
+
+  expandCommand(name: string, args?: string, cwd?: string): Promise<string> {
+    return expandCustomCommand(this.#commandSource(cwd), name, args);
   }
 }
 
