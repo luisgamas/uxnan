@@ -465,7 +465,7 @@ interface TurnUsage {
 
 **`ProviderUsage`** (item de `agent/usageStats`, `shared/src/models/usage.ts`):
 ```typescript
-type UsageProvider = 'codex' | 'claude' | 'copilot' | 'gemini';
+type UsageProvider = 'codex' | 'claude' | 'copilot' | 'gemini' | 'grok';
 type UsageStatus = 'ok' | 'authRequired' | 'notInstalled' | 'error';
 
 interface UsageWindow {

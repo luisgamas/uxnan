@@ -28,6 +28,7 @@ export const USAGE_CATALOG: UsageCatalogProvider[] = [
   { id: "claude", name: "Claude Code", logo: "claudecode", favicon: "claude.ai", hasCredit: true },
   { id: "copilot", name: "GitHub Copilot", logo: "copilot", favicon: "github.com" },
   { id: "gemini", name: "Gemini CLI", logo: "gemini", favicon: "gemini.google.com" },
+  { id: "grok", name: "Grok", logo: "grok", favicon: "x.ai" },
 ];
 
 export function usageProvider(id: UsageProvider): UsageCatalogProvider | undefined {

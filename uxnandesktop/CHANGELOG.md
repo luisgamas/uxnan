@@ -92,6 +92,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 - **Status-bar attention.** The orchestration entry point highlights subtly when it
   (re)appears, clearing when you open the console.
 
+### Added — Grok provider usage
+
+- Added Grok to Settings → Providers, using the Grok CLI's own
+  `~/.grok/auth.json` credential and official billing endpoint to show the
+  current credit-usage window, reset time, plan and account without storing or
+  logging the credential.
+- Added native parsing and detection tests; expired credentials degrade to a
+  sign-in-required state without affecting other providers.
+
 ### Changed — Desktop stable and nightly releases now have separate, enforced tags
 
 - **Stable:** `desktop-stable-v0.0.PATCH` produces a normal GitHub Release and

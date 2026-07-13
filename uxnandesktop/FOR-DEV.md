@@ -16,7 +16,7 @@ standalone app** (three-panel shell, PTY terminals + splits, git worktrees, git
 status/diff/stage/commit/history, agent monitoring with the axum hook server +
 OSC/process layers, settings/themes/i18n, multi-agent orchestration,
 **in-app auto-updater**, **browser-control MCP for agents**, **orchestration run
-engine**). 160 Rust backend tests + 142 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
+engine**). 161 Rust backend tests + 142 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
 (developed on Windows; CI is `{ubuntu, windows}`). **Phase 6 (embedded bridge /
 mobile pairing) is NOT started.**
 
@@ -81,7 +81,7 @@ mobile pairing) is NOT started.**
   a `FOR-HUMAN.md` item.
 - **AI-provider usage statistics (Settings → Providers)** — native Rust reader
   (`src-tauri/src/usage.rs`, `usage_read`/`usage_detect`) for **Codex, Claude,
-  Copilot, Gemini**, reading each CLI's own stored token → the provider's official
+  Copilot, Gemini, Grok**, reading each CLI's own stored token → the provider's official
   usage API (never cookies / pasted keys). Tabbed UI with per-provider quota
   windows ("% used"), plan/account ("Authenticated as …" with click-to-reveal
   blur), credit, per-provider refresh interval + status-bar visibility, and a
@@ -319,7 +319,7 @@ durable persistence, orchestration MCP tools) — are **done** (see `CHANGELOG.m
 
 - ✅ **Verify** — `.github/workflows/ci-desktop.yml` runs svelte-check + `npm test`
   (Vitest) + vite build + cargo fmt/clippy/test on `{ubuntu, windows}` (macOS
-  deferred with Apple). 160 Rust + 142 Vitest tests.
+  deferred with Apple). 161 Rust + 142 Vitest tests.
 - ✅ **`release-desktop.yml`** — exists: `tauri-action` bundles on a `desktop-v*` tag
   → draft GitHub Release, **and signs the updater artifacts** when the signing
   secrets are set. **Windows ships without OS code-signing for now; macOS deferred.**

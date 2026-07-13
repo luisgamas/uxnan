@@ -60,7 +60,7 @@ export interface AgentProfile {
 // the phone later). Read natively in Rust here via the `usage_read` command.
 
 /** A coding CLI whose usage we read from its own stored token. */
-export type UsageProvider = "codex" | "claude" | "copilot" | "gemini";
+export type UsageProvider = "codex" | "claude" | "copilot" | "gemini" | "grok";
 
 /** Outcome of reading one provider's usage. */
 export type UsageStatus = "ok" | "authRequired" | "notInstalled" | "error";
