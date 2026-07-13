@@ -876,6 +876,33 @@ export interface PrCommit {
   committedAt: string | null;
 }
 
+/**
+ * One normalized entry in a PR/issue timeline (GitHub's Timeline Events API).
+ * Only the fields relevant to a given `event` kind are populated.
+ */
+export interface TimelineEvent {
+  /** `commented` | `reviewed` | `committed` | `labeled` | `unlabeled` | `assigned`
+   *  | `unassigned` | `closed` | `merged` | `reopened` | `renamed`
+   *  | `review_requested` | `review_request_removed` | `head_ref_force_pushed`
+   *  | `cross-referenced` | `ready_for_review` | `convert_to_draft` | … */
+  event: string;
+  actor: string | null;
+  createdAt: string | null;
+  /** Comment / review body. */
+  body: string | null;
+  /** Uppercase review verdict (APPROVED / CHANGES_REQUESTED / COMMENTED / DISMISSED). */
+  state: string | null;
+  label: string | null;
+  /** Label hex color without `#`. */
+  labelColor: string | null;
+  commitSha: string | null;
+  commitMessage: string | null;
+  /** Assignee/reviewer login, rename destination, milestone title, or cross-ref title. */
+  subject: string | null;
+  /** A cross-referenced issue/PR number. */
+  refNumber: number | null;
+}
+
 /** Full PR detail for the review center tab. */
 export interface PrDetail {
   number: number;
@@ -893,6 +920,7 @@ export interface PrDetail {
   mergeable: string | null;
   mergeStateStatus: string | null;
   reviewDecision: string | null;
+  createdAt: string | null;
   labels: string[];
   files: PrFile[];
   checks: CheckItem[];

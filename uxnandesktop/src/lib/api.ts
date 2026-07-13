@@ -36,6 +36,7 @@ import type {
   ProviderUsage,
   RepoData,
   SavedTerminalLayout,
+  TimelineEvent,
   UpdateInfo,
   UsageProvider,
   WorktreeEntry,
@@ -703,6 +704,14 @@ export function githubPrView(worktreePath: string, number: string): Promise<PrDe
 /** The unified diff of a PR. */
 export function githubPrDiff(worktreePath: string, number: string): Promise<string> {
   return invoke<string>("github_pr_diff", { worktreePath, number });
+}
+
+/** The chronological timeline of a PR or issue (comments, reviews, commits, events). */
+export function githubPrTimeline(
+  worktreePath: string,
+  number: string,
+): Promise<TimelineEvent[]> {
+  return invoke<TimelineEvent[]>("github_pr_timeline", { worktreePath, number });
 }
 
 /** Create a PR from the worktree's current branch; resolves to its URL. */

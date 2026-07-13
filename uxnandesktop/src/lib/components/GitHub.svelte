@@ -14,6 +14,7 @@
   import {
     githubPrView,
     githubPrDiff,
+    githubPrTimeline,
     githubPrComment,
     githubPrReview,
     githubPrMerge,
@@ -29,7 +30,7 @@
     aiCommitModels,
     openExternal,
   } from "$lib/api";
-  import type { PrDetail, IssueDetail } from "$lib/types";
+  import type { PrDetail, IssueDetail, TimelineEvent } from "$lib/types";
   import { splitCommitDiff } from "$lib/diffParse";
   import { relTime } from "$lib/relTime";
   import { Button } from "$lib/components/ui/button";
@@ -59,9 +60,16 @@
   import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
   import TriangleAlertIcon from "@lucide/svelte/icons/triangle-alert";
   import GitCommitIcon from "@lucide/svelte/icons/git-commit-horizontal";
+  import GitMergeIcon from "@lucide/svelte/icons/git-merge";
   import MessageSquareIcon from "@lucide/svelte/icons/message-square";
   import FileDiffIcon from "@lucide/svelte/icons/file-diff";
   import UsersIcon from "@lucide/svelte/icons/users";
+  import UserIcon from "@lucide/svelte/icons/user";
+  import TagIcon from "@lucide/svelte/icons/tag";
+  import EyeIcon from "@lucide/svelte/icons/eye";
+  import PencilIcon from "@lucide/svelte/icons/pencil";
+  import LinkIcon from "@lucide/svelte/icons/link";
+  import CircleSlashIcon from "@lucide/svelte/icons/circle-slash";
 
   // The section acts on the explicitly-SELECTED repo (not the active worktree).
   const path = () => github.sectionRepoPath;
@@ -169,7 +177,12 @@
   let mergeConfirmOpen = $state(false);
   let selectedPrNumber = $state<number | null>(null);
   let commentBody = $state("");
-  let commitsOpen = $state(false);
+  // The PR timeline (comments + reviews + commits + events). Loaded separately from
+  // the detail so the overview paints first. `prTimelineFailed` falls back to the
+  // reviews/comments already in `prDetail` so the conversation is never lost.
+  let prTimeline = $state<TimelineEvent[]>([]);
+  let prTimelineLoading = $state(false);
+  let prTimelineFailed = $state(false);
   // Which per-file diffs are expanded (path → true). All collapsed by default; the
   // DiffView for a file is only rendered while expanded (lazy, so a huge PR is cheap).
   let expandedFiles = $state<Record<string, boolean>>({});
@@ -211,8 +224,10 @@
     prError = null;
     prDiffLoading = true;
     expandedFiles = {};
-    commitsOpen = false;
     commentBody = "";
+    prTimeline = [];
+    prTimelineFailed = false;
+    prTimelineLoading = true;
     // 1) The PR overview (metadata + checks + files) — shown as soon as it lands.
     try {
       prDetail = await githubPrView(p, String(n));
@@ -220,10 +235,22 @@
       prError = errText(e);
       prLoading = false;
       prDiffLoading = false;
+      prTimelineLoading = false;
       return;
     }
     prLoading = false;
-    // 2) The diff, loaded separately so a large/slow diff never blocks the view.
+    // 2) The timeline + diff, each loaded separately so a slow one never blocks the
+    //    view. The timeline drives the conversation rail (falls back to the reviews
+    //    already in prDetail if the Timeline API call fails).
+    void (async () => {
+      try {
+        prTimeline = await githubPrTimeline(p, String(n));
+      } catch {
+        prTimelineFailed = true;
+      } finally {
+        prTimelineLoading = false;
+      }
+    })();
     try {
       prDiff = await githubPrDiff(p, String(n));
     } catch {
@@ -303,6 +330,10 @@
   let newIssueTitle = $state("");
   let newIssueBody = $state("");
   let issueCommentBody = $state("");
+  // The issue timeline (comments + events). Same fallback posture as the PR one.
+  let issueTimeline = $state<TimelineEvent[]>([]);
+  let issueTimelineLoading = $state(false);
+  let issueTimelineFailed = $state(false);
 
   function selectedIssueRetry() {
     if (selectedIssueNumber) void selectIssue(selectedIssueNumber);
@@ -332,12 +363,24 @@
     issueDetail = null;
     issueError = null;
     issueCommentBody = "";
+    issueTimeline = [];
+    issueTimelineFailed = false;
+    issueTimelineLoading = true;
     try {
       issueDetail = await githubIssueView(p, String(n));
     } catch (e) {
       issueError = errText(e);
-    } finally {
       issueLoading = false;
+      issueTimelineLoading = false;
+      return;
+    }
+    issueLoading = false;
+    try {
+      issueTimeline = await githubPrTimeline(p, String(n));
+    } catch {
+      issueTimelineFailed = true;
+    } finally {
+      issueTimelineLoading = false;
     }
   }
 
@@ -555,13 +598,161 @@
     if (Number.isNaN(ms)) return "";
     return relTime(ms, Date.now());
   }
-  /** Conversation timeline: comments + reviews (with a verdict/body), oldest first. */
-  function timeline(pr: PrDetail): { author: string | null; body: string; at: string | null; review?: string }[] {
+  // --- Timeline rendering ---------------------------------------------------
+  /** Fill a full TimelineEvent from a partial (all optional fields default null). */
+  function mkEvent(e: Partial<TimelineEvent> & { event: string }): TimelineEvent {
+    return {
+      actor: null,
+      createdAt: null,
+      body: null,
+      state: null,
+      label: null,
+      labelColor: null,
+      commitSha: null,
+      commitMessage: null,
+      subject: null,
+      refNumber: null,
+      ...e,
+    };
+  }
+  /**
+   * The nodes to render on the rail: the description as a synthetic first
+   * "opened" bubble, then the chronological events. When the Timeline API call
+   * failed, `fallback` (the reviews/comments already in the detail) is used so
+   * the conversation is never lost.
+   */
+  function timelineNodes(
+    body: string,
+    author: string | null,
+    at: string | null,
+    events: TimelineEvent[],
+    failed: boolean,
+    fallback: TimelineEvent[],
+  ): TimelineEvent[] {
+    const nodes = [...(failed ? fallback : events)];
+    if (body.trim()) {
+      nodes.unshift(mkEvent({ event: "description", actor: author, createdAt: at, body }));
+    }
+    return nodes;
+  }
+  /** Comments/reviews already in a PrDetail, as timeline events (API-failure fallback). */
+  function fallbackNodes(pr: PrDetail): TimelineEvent[] {
     const items = [
-      ...pr.comments.map((c) => ({ author: c.author, body: c.body, at: c.createdAt })),
-      ...pr.reviews.map((r) => ({ author: r.author, body: r.body, at: r.submittedAt, review: r.state })),
+      ...pr.comments.map((c) => mkEvent({ event: "commented", actor: c.author, createdAt: c.createdAt, body: c.body })),
+      ...pr.reviews.map((r) => mkEvent({ event: "reviewed", actor: r.author, createdAt: r.submittedAt, body: r.body, state: r.state })),
     ];
-    return items.sort((a, b) => Date.parse(a.at ?? "") - Date.parse(b.at ?? ""));
+    return items.sort((a, b) => Date.parse(a.createdAt ?? "") - Date.parse(b.createdAt ?? ""));
+  }
+  /** A big node (its own card) vs a compact one-line rail event. */
+  function eventIsBig(ev: TimelineEvent): boolean {
+    if (ev.event === "description" || ev.event === "commented") return true;
+    return ev.event === "reviewed" && !!ev.body?.trim();
+  }
+  function eventIcon(ev: TimelineEvent) {
+    switch (ev.event) {
+      case "description":
+      case "commented":
+        return MessageSquareIcon;
+      case "reviewed":
+        if (ev.state === "APPROVED") return CheckIcon;
+        if (ev.state === "CHANGES_REQUESTED" || ev.state === "DISMISSED") return XIcon;
+        return EyeIcon;
+      case "committed":
+      case "referenced":
+        return GitCommitIcon;
+      case "labeled":
+      case "unlabeled":
+        return TagIcon;
+      case "assigned":
+      case "unassigned":
+        return UserIcon;
+      case "review_requested":
+      case "review_request_removed":
+        return EyeIcon;
+      case "closed":
+        return CircleSlashIcon;
+      case "merged":
+        return GitMergeIcon;
+      case "reopened":
+        return CircleDotIcon;
+      case "ready_for_review":
+      case "convert_to_draft":
+        return GitPullRequestIcon;
+      case "renamed":
+        return PencilIcon;
+      case "head_ref_force_pushed":
+      case "head_ref_deleted":
+      case "head_ref_restored":
+        return GitBranchIcon;
+      case "cross-referenced":
+        return LinkIcon;
+      default:
+        return CircleDotIcon;
+    }
+  }
+  function eventToneClass(ev: TimelineEvent): string {
+    if (ev.event === "merged") return "text-purple-500";
+    if (ev.event === "closed") return "text-red-500";
+    if (ev.event === "reopened" || ev.event === "ready_for_review") return "text-emerald-500";
+    if (ev.event === "committed") return "text-sky-500";
+    if (ev.event === "reviewed") {
+      if (ev.state === "APPROVED") return "text-emerald-500";
+      if (ev.state === "CHANGES_REQUESTED") return "text-red-500";
+    }
+    return "text-muted-foreground";
+  }
+  /** The localized verb for a compact rail event. */
+  function eventVerb(ev: TimelineEvent): string {
+    switch (ev.event) {
+      case "committed":
+        return i18n.t("github.timeline.committed");
+      case "reviewed":
+        if (ev.state === "APPROVED") return i18n.t("github.timeline.approved");
+        if (ev.state === "CHANGES_REQUESTED") return i18n.t("github.timeline.requestedChanges");
+        if (ev.state === "DISMISSED") return i18n.t("github.timeline.dismissedReview");
+        return i18n.t("github.timeline.reviewed");
+      case "labeled":
+        return i18n.t("github.timeline.labeled");
+      case "unlabeled":
+        return i18n.t("github.timeline.unlabeled");
+      case "assigned":
+        return i18n.t("github.timeline.assigned");
+      case "unassigned":
+        return i18n.t("github.timeline.unassigned");
+      case "closed":
+        return i18n.t("github.timeline.closed");
+      case "merged":
+        return i18n.t("github.timeline.merged");
+      case "reopened":
+        return i18n.t("github.timeline.reopened");
+      case "renamed":
+        return i18n.t("github.timeline.renamed");
+      case "review_requested":
+        return i18n.t("github.timeline.reviewRequested");
+      case "review_request_removed":
+        return i18n.t("github.timeline.reviewRequestRemoved");
+      case "head_ref_force_pushed":
+        return i18n.t("github.timeline.forcePushed");
+      case "head_ref_deleted":
+        return i18n.t("github.timeline.branchDeleted");
+      case "head_ref_restored":
+        return i18n.t("github.timeline.branchRestored");
+      case "cross-referenced":
+        return i18n.t("github.timeline.crossReferenced");
+      case "referenced":
+        return i18n.t("github.timeline.referenced");
+      case "ready_for_review":
+        return i18n.t("github.timeline.readyForReview");
+      case "convert_to_draft":
+        return i18n.t("github.timeline.convertToDraft");
+      default:
+        return ev.event;
+    }
+  }
+  /** Inline style for a colored label chip (subtle tint from the label's hex). */
+  function labelStyle(color: string | null): string {
+    if (!color || !/^[0-9a-fA-F]{6}$/.test(color)) return "";
+    return `border-color:#${color}66;background-color:#${color}22;`;
   }
   function errText(e: unknown): string {
     if (e && typeof e === "object" && "message" in e) return String((e as { message: unknown }).message);
@@ -683,6 +874,64 @@
   >
     {label}
   </span>
+{/snippet}
+
+{#snippet timelineNode(ev: TimelineEvent)}
+  {@const Icon = eventIcon(ev)}
+  {#if eventIsBig(ev)}
+    <div class="relative flex gap-3">
+      <span class={cn("relative z-10 mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full border border-border bg-background", eventToneClass(ev))}>
+        <Icon class="size-3.5" />
+      </span>
+      <div class="min-w-0 flex-1 overflow-hidden rounded-lg border border-border/60 bg-card">
+        <div class={cn("flex flex-wrap items-center gap-2 border-b border-border/50 bg-muted/30 px-3 py-1.5", text.meta)}>
+          <span class="font-medium text-foreground">{ev.actor ?? "—"}</span>
+          {#if ev.event === "reviewed" && ev.state}{@render pill(reviewLabel(ev.state), reviewTone(ev.state))}{/if}
+          {#if ev.createdAt}<span>{ago(ev.createdAt)}</span>{/if}
+        </div>
+        {#if ev.body?.trim()}
+          <div class={cn("whitespace-pre-wrap px-3 py-2.5", text.body)}>{ev.body}</div>
+        {/if}
+      </div>
+    </div>
+  {:else}
+    <div class="relative flex items-center gap-3">
+      <span class={cn("relative z-10 flex size-7 shrink-0 items-center justify-center rounded-full border border-border bg-background", eventToneClass(ev))}>
+        <Icon class="size-3.5" />
+      </span>
+      <div class={cn("flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 gap-y-0.5", text.meta)}>
+        {#if ev.actor}<span class="font-medium text-foreground">{ev.actor}</span>{/if}
+        <span class="text-muted-foreground">{eventVerb(ev)}</span>
+        {#if ev.label}
+          <span class="inline-flex items-center rounded-full border px-1.5 py-px text-[11px]" style={labelStyle(ev.labelColor)}>{ev.label}</span>
+        {/if}
+        {#if ev.subject}<span class="min-w-0 truncate font-medium text-foreground">{ev.subject}</span>{/if}
+        {#if ev.refNumber}<span class="font-mono text-muted-foreground">#{ev.refNumber}</span>{/if}
+        {#if ev.commitMessage}<span class="min-w-0 truncate text-foreground">{ev.commitMessage}</span>{/if}
+        {#if ev.commitSha}<span class="shrink-0 rounded bg-muted px-1 py-px font-mono text-[11px] text-muted-foreground">{ev.commitSha}</span>{/if}
+        {#if ev.createdAt}<span class="whitespace-nowrap text-muted-foreground">· {ago(ev.createdAt)}</span>{/if}
+      </div>
+    </div>
+  {/if}
+{/snippet}
+
+<!-- The vertical-rail timeline: a chronological node list (comments/reviews as
+     cards, everything else as compact one-line events). -->
+{#snippet timelineRail(nodes: TimelineEvent[], loading: boolean)}
+  {#if loading}
+    {@render loadingRow()}
+  {:else if nodes.length === 0}
+    <p class={cn("px-3.5 py-4 text-muted-foreground", text.meta)}>{i18n.t("github.pr.noComments")}</p>
+  {:else}
+    <div class="relative px-3.5 py-3">
+      <div class="absolute bottom-4 left-[27px] top-4 w-px bg-border/60"></div>
+      <div class="space-y-3">
+        {#each nodes as ev, ni (ni)}
+          {@render timelineNode(ev)}
+        {/each}
+      </div>
+    </div>
+  {/if}
 {/snippet}
 
 {#snippet emptyState(Icon: typeof PlusIcon, title: string, desc: string)}
@@ -993,63 +1242,23 @@
         onconfirm={mergePr}
       />
 
-      <!-- Conversation: description + comments + reviews, then a comment field -->
+      <!-- Timeline: description + comments + reviews + commits + events, GitHub-style
+           vertical rail, oldest-first, then a comment field. -->
       <div class={cn("overflow-hidden", panel.card)}>
         <div class={cn("flex items-center gap-1.5 border-b border-border/50 px-3.5 py-2", text.section)}>
           <MessageSquareIcon class="size-3.5" />{i18n.t("github.pr.conversation")}
         </div>
-        {#if pr.body.trim()}
-          <div class="border-b border-border/50 px-3.5 py-3">
-            <div class={cn("mb-1 flex items-center gap-2", text.meta)}>
-              {#if pr.author}<span class="font-medium text-foreground">{pr.author}</span>{/if}
-              {i18n.t("github.pr.description")}
-            </div>
-            <div class={cn("whitespace-pre-wrap", text.body)}>{pr.body}</div>
-          </div>
-        {/if}
-        {#each timeline(pr) as item, ti (ti)}
-          <div class="border-b border-border/50 px-3.5 py-3">
-            <div class={cn("mb-1 flex flex-wrap items-center gap-2", text.meta)}>
-              <span class="font-medium text-foreground">{item.author ?? "—"}</span>
-              {#if item.review}{@render pill(reviewLabel(item.review), reviewTone(item.review))}{/if}
-              {#if item.at}<span>{ago(item.at)}</span>{/if}
-            </div>
-            {#if item.body.trim()}<div class={cn("whitespace-pre-wrap", text.body)}>{item.body}</div>{/if}
-          </div>
-        {/each}
-        {#if !pr.body.trim() && timeline(pr).length === 0}
-          <p class={cn("px-3.5 py-4 text-muted-foreground", text.meta)}>{i18n.t("github.pr.noComments")}</p>
-        {/if}
-        <div class="space-y-2 p-3">
+        {@render timelineRail(
+          timelineNodes(pr.body, pr.author, pr.createdAt, prTimeline, prTimelineFailed, fallbackNodes(pr)),
+          prTimelineLoading,
+        )}
+        <div class="space-y-2 border-t border-border/50 p-3">
           <Textarea placeholder={i18n.t("github.pr.commentPlaceholder")} bind:value={commentBody} rows={2} />
           <div class="flex justify-end">
             <Button size="sm" disabled={busy || !commentBody.trim()} onclick={postComment}>{i18n.t("github.pr.postComment")}</Button>
           </div>
         </div>
       </div>
-
-      <!-- Commits (collapsible) -->
-      {#if pr.commits.length > 0}
-        <div class={cn("overflow-hidden", panel.card)}>
-          <button class={cn("flex w-full items-center gap-1.5 px-3.5 py-2 text-left transition-colors hover:bg-accent/40", text.section)} onclick={() => (commitsOpen = !commitsOpen)}>
-            {#if commitsOpen}<ChevronDownIcon class="size-3.5" />{:else}<ChevronRightIcon class="size-3.5" />{/if}
-            <GitCommitIcon class="size-3.5" />
-            {i18n.t("github.pr.commitsCount", { n: pr.commits.length })}
-          </button>
-          {#if commitsOpen}
-            <div class="divide-y divide-border/50 border-t border-border/50">
-              {#each pr.commits as c, cmi (cmi)}
-                <div class="flex items-center gap-2.5 px-3.5 py-2">
-                  <span class="shrink-0 rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">{c.oid.slice(0, 7)}</span>
-                  <span class={cn("min-w-0 flex-1 truncate", text.body)}>{c.message}</span>
-                  {#if c.author}<span class={cn("shrink-0 text-muted-foreground", text.indicator)}>{c.author}</span>{/if}
-                  {#if c.committedAt}<span class={cn("shrink-0 text-muted-foreground", text.indicator)}>{ago(c.committedAt)}</span>{/if}
-                </div>
-              {/each}
-            </div>
-          {/if}
-        </div>
-      {/if}
 
       <!-- Checks -->
       {#if pr.checks.length > 0}
@@ -1240,33 +1449,24 @@
         </div>
       {/if}
 
-      <!-- Conversation: description + comments, then a comment field -->
+      <!-- Timeline: description + comments + events (labeled/assigned/closed/…),
+           GitHub-style vertical rail, then a comment field. -->
       <div class={cn("overflow-hidden", panel.card)}>
         <div class={cn("flex items-center gap-1.5 border-b border-border/50 px-3.5 py-2", text.section)}>
           <MessageSquareIcon class="size-3.5" />{i18n.t("github.pr.conversation")}
         </div>
-        {#if issue.body.trim()}
-          <div class="border-b border-border/50 px-3.5 py-3">
-            <div class={cn("mb-1 flex items-center gap-2", text.meta)}>
-              {#if issue.author}<span class="font-medium text-foreground">{issue.author}</span>{/if}
-              {i18n.t("github.pr.description")}
-            </div>
-            <div class={cn("whitespace-pre-wrap", text.body)}>{issue.body}</div>
-          </div>
-        {/if}
-        {#each issue.comments as c, ci (ci)}
-          <div class="border-b border-border/50 px-3.5 py-3">
-            <div class={cn("mb-1 flex flex-wrap items-center gap-2", text.meta)}>
-              <span class="font-medium text-foreground">{c.author ?? "—"}</span>
-              {#if c.createdAt}<span>{ago(c.createdAt)}</span>{/if}
-            </div>
-            {#if c.body.trim()}<div class={cn("whitespace-pre-wrap", text.body)}>{c.body}</div>{/if}
-          </div>
-        {/each}
-        {#if !issue.body.trim() && issue.comments.length === 0}
-          <p class={cn("px-3.5 py-4 text-muted-foreground", text.meta)}>{i18n.t("github.pr.noComments")}</p>
-        {/if}
-        <div class="space-y-2 p-3">
+        {@render timelineRail(
+          timelineNodes(
+            issue.body,
+            issue.author,
+            issue.createdAt,
+            issueTimeline,
+            issueTimelineFailed,
+            issue.comments.map((c) => mkEvent({ event: "commented", actor: c.author, createdAt: c.createdAt, body: c.body })),
+          ),
+          issueTimelineLoading,
+        )}
+        <div class="space-y-2 border-t border-border/50 p-3">
           <Textarea placeholder={i18n.t("github.pr.commentPlaceholder")} bind:value={issueCommentBody} rows={2} />
           <div class="flex justify-end">
             <Button size="sm" disabled={busy || !issueCommentBody.trim()} onclick={postIssueComment}>{i18n.t("github.pr.postComment")}</Button>
