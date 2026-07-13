@@ -16,7 +16,7 @@ standalone app** (three-panel shell, PTY terminals + splits, git worktrees, git
 status/diff/stage/commit/history, agent monitoring with the axum hook server +
 OSC/process layers, settings/themes/i18n, multi-agent orchestration,
 **in-app auto-updater**, **browser-control MCP for agents**, **orchestration run
-engine**). 158 Rust backend tests + 140 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
+engine**). 160 Rust backend tests + 142 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
 (developed on Windows; CI is `{ubuntu, windows}`). **Phase 6 (embedded bridge /
 mobile pairing) is NOT started.**
 
@@ -64,7 +64,10 @@ mobile pairing) is NOT started.**
   parallel/fan-in dependencies, **headless** steps (print-mode, verified by exit
   code), **HITL gates**, per-step **retry**, durable persistence + re-attach, and
   orchestration **MCP tools** for structured agent reports (auto-nudged into
-  chaining interactive steps when the agent has the tool).
+  chaining interactive steps when the agent has the tool). The builder has a
+  **contextual variable picker** (per-field descriptions + live previews, insert at
+  cursor), **type cards** (headless the default for chaining), **searchable**
+  agent/model/worktree pickers, and an **Examples** menu of ready-made runs.
 - **Cross-cutting (S)** — Settings (theme + terminal profiles w/ OS templates),
   design tokens, full EN/ES i18n + Language picker, agents registry + install
   detection + manual + auto-launch, per-agent env vars, a configurable agent
@@ -217,6 +220,12 @@ durable persistence, orchestration MCP tools) — are **done** (see `CHANGELOG.m
       the Windows-side CLI against the 9P share (functional but slow); route it
       through `wsl.exe -d <distro>` with the Linux-side CLI (see `wsl.rs` +
       `git.rs`'s WSL path). `FOR-DEV:` marker in `agentrun.rs`.
+- [ ] **Per-agent PTY submit strategy.** `pty_paste_submit` (bracketed paste + a
+      delayed Enter, 150 ms for multi-line) covers standard TUIs, but a Claude
+      Code-family agent with a *long* post-paste Enter guard may still leave a
+      multi-line prompt unsent when driven interactively. Add a per-agent submit
+      override (delay / key) if one is found. `FOR-DEV:` marker in `commands.rs`
+      (`pty_paste_submit`). Headless avoids typing entirely, so it's the workaround.
 - [ ] **Remediation + evaluator-optimizer.** `onFailure: "remediate:<stepId>"` (run a
       fix step, then retry) and a `kind: "eval"` step (generate → evaluate → loop) —
       the DAG/model supports them; the scheduler + UI don't yet.
@@ -310,7 +319,7 @@ durable persistence, orchestration MCP tools) — are **done** (see `CHANGELOG.m
 
 - ✅ **Verify** — `.github/workflows/ci-desktop.yml` runs svelte-check + `npm test`
   (Vitest) + vite build + cargo fmt/clippy/test on `{ubuntu, windows}` (macOS
-  deferred with Apple). 158 Rust + 140 Vitest tests.
+  deferred with Apple). 160 Rust + 142 Vitest tests.
 - ✅ **`release-desktop.yml`** — exists: `tauri-action` bundles on a `desktop-v*` tag
   → draft GitHub Release, **and signs the updater artifacts** when the signing
   secrets are set. **Windows ships without OS code-signing for now; macOS deferred.**

@@ -246,15 +246,21 @@ agentes** corriendo **o** cuando existe alguna corrida):
   una fallo/omitio), despacha `ready` hasta un tope de concurrencia (4), detecta
   completado, y deriva el estado de la corrida. **La logica de control vive en el
   frontend** porque necesita el estado vivo de agentes; el backend aporta primitivos.
+- **Plantillas de ejemplo**: el UI ofrece corridas listas (secuencial, paralelo/
+  fan-in, gate) con pasos **headless** preconfigurados a un agente instalado, para
+  arrancar sin construir desde cero (`orchestration/examples.ts`, builder puro).
 
 ### 3.2 Paso de contexto (pizarra A→B→C)
 
 - Cada paso completado guarda `output` (+ `summary`) en la corrida. El prompt de un
   paso resuelve `{{steps.<id>.output|summary|title}}` contra pasos previos
   (`resolveTemplate`). Referenciar un paso lo agrega como dependencia automatica.
-- **Interactivo** → output = el `summary` del hook (limitado pero real), o el
-  **resultado estructurado** que el agente reporte por MCP (mejor). **Headless** →
-  output = **stdout completo** (robusto). Esto implementa encadenamiento + sintesis.
+- **Interactivo** → output = el `summary` del hook (delgado, puede venir vacio), o el
+  **resultado estructurado** que el agente reporte por MCP — posible solo en los
+  agentes inyectables (claude/codex/gemini/opencode). **Headless** → output = **stdout
+  completo** (robusto, verificado). Por eso un paso nuevo **defaultea a headless** para
+  encadenar. En el editor, un **selector de contexto** lista los pasos previos y sus
+  campos (con vista previa del valor capturado) e inserta el token en el cursor.
 
 ### 3.3 Dependencias, paralelo y fan-in
 

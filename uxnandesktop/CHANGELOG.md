@@ -63,6 +63,34 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   a stuck status): a queued message — or a blocked interactive step — is
   **force-delivered** after a 12 s hold cap, and the Broadcast list shows a
   "waiting for the agent to be free…" hint meanwhile.
+- A **multi-line** paste now waits longer (150 ms vs 50 ms) before its Enter, so
+  Claude Code-family agents that briefly *guard* the post-paste Enter still submit.
+
+### Changed — Run builder: clearer authoring + ready-made examples
+
+- **Contextual variable picker.** The step editor's cryptic "insert output" chips
+  are replaced by an **Insert from context** picker that lists the prior steps and,
+  per field (`output` / `summary` / `title`), shows a description **and a live
+  preview** of the captured value once the step has run. **Insert** drops the token
+  **at the cursor** and auto-adds the dependency — no more guessing `{{steps.s1.…}}`.
+- **Step type as cards, headless first.** The type is chosen from three cards
+  (Headless / Interactive / Human gate); a new step defaults to **headless** (full
+  output, verified — best for chaining). A visible hint + the context picker state
+  that an **interactive** step's output is a thin summary — real content only if the
+  agent reports via MCP (Claude / Codex / Gemini / OpenCode) — so use headless for
+  full chaining.
+- **Searchable pickers.** Agent / model / worktree now use the shared **Combobox**
+  (and **AiModelPicker** for models: searchable, `provider/model` split, a **loading
+  state** for CLIs queried live) instead of a plain Select that could overflow.
+- **Roomier console.** The modal is wider and uses the full height, so the builder
+  isn't cramped.
+- **Examples.** A new **Examples** menu adds ready-made runs — *Read & summarize*
+  (A→B), *Parallel review → merge* (fan-in), *Draft → approve → polish* (gate) — as
+  editable drafts with **headless** steps preset to an installed agent (paid like
+  Claude/Codex, else free like OpenCode/Pi). Pure builder unit-tested
+  (`orchestration/examples.test.ts`).
+- **Status-bar attention.** The orchestration entry point highlights subtly when it
+  (re)appears, clearing when you open the console.
 
 ### Changed — Desktop stable and nightly releases now have separate, enforced tags
 

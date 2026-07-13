@@ -70,7 +70,9 @@ available today are:
   backpressure; and a **run engine** (**Runs**) chains agents into a durable graph of
   steps — one step's output feeds the next, independent steps run in parallel,
   headless steps capture full output verified by exit code, and a step can pause for
-  your approval. See [`docs/orchestration.md`](docs/orchestration.md).
+  your approval. A **context picker** inserts a prior step's output into a prompt, and
+  an **Examples** menu drops in ready-made runs. See
+  [`docs/orchestration.md`](docs/orchestration.md).
 - **AI-provider usage.** A **Providers** settings section shows how much of each
   quota you've consumed — session / weekly / monthly windows (with resets), plan,
   account and credit balance — for **Codex, Claude, Copilot and Gemini**. It reads

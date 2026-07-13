@@ -92,10 +92,15 @@ the run's shared "blackboard", and detects completion — then opens the next st
 
 > **Interactive vs Headless — which to use?** Interactive keeps a human-visible agent
 > in the loop and reuses an agent you already launched, but its captured output is only
-> the short hook summary. Headless is for robust **chaining**: it captures the complete
-> answer and verifies completion by exit code, at the cost of spawning a fresh one-shot
-> process (no live conversation). Prefer **headless** when a later step needs the
-> previous step's full output.
+> the short hook **summary** — and it's real content *only* when the agent reports via
+> MCP, which just **Claude / Codex / Gemini / OpenCode** can do (with MCP injection on).
+> An interactive **Pi** or any other agent has no way to hand its answer back, so
+> `{{steps.sX.output}}` from it will be **empty**. Headless is for robust **chaining**:
+> it captures the complete answer and verifies completion by exit code, at the cost of
+> spawning a fresh one-shot process (no live conversation). **Prefer headless whenever a
+> later step needs the previous step's full output** — this is why a new step defaults
+> to headless. The step editor states this inline, and the context picker marks an
+> interactive step's `output` as "may be empty — use headless for the full text".
 
 ## Passing context between steps (A → B → C)
 
@@ -106,9 +111,29 @@ step's prompt can plant them with a template reference:
 - `{{steps.s1.summary}}` → its short summary
 - `{{steps.s1.title}}` → its title
 
-In the step editor, the **Insert output** chips add these for you (and automatically
-make the step *run after* the one it references). Step ids are short and stable
-(`s1`, `s2`, …), so a reference never breaks when you reorder steps.
+In the step editor, the **Insert from context** picker adds these for you: it lists the
+prior steps and, per field (`output` / `summary` / `title`), shows a plain-language
+description and — once the step has run — a **live preview** of the captured value.
+Click **Insert** to drop the token **at your cursor** (it also auto-adds the
+dependency). Step ids are short and stable (`s1`, `s2`, …), so a reference never breaks
+when you reorder steps.
+
+## Start from an example
+
+The **Runs** tab has an **Examples** menu with ready-made runs, so you can try
+orchestration (and your agents) without building one from scratch:
+
+- **Read & summarize (A → B)** — one agent reads the README, the next reshapes its full
+  output (context passing).
+- **Parallel review → merge** — two agents review in parallel, a third merges both
+  (fan-in).
+- **Draft → approve → polish** — draft, pause at a **human gate**, then polish with your
+  note.
+
+Each example is added as a **draft** with **headless** steps preset to an installed
+agent (a paid one like Claude/Codex if you have it, else a free one like OpenCode/Pi) —
+review the agent/worktree per step and **Start**. They use headless precisely because
+it captures full output for reliable chaining.
 
 ## Dependencies, parallelism & fan-in
 
@@ -211,9 +236,10 @@ scenarios below map to Stages E1–E3 of the plan.
 
 - **Frontend:** `npm test` — the pure engine logic (`src/lib/orchestration/run.ts`) is
   unit-tested in `run.test.ts` (DAG readiness, template substitution, cycle detection,
-  validation, status derivation).
-- **Backend:** the headless runner (`src-tauri/src/agentrun.rs`) and the persistence
-  field are unit-tested; run `cargo test` in `src-tauri/`.
+  validation, status derivation), and the example-run builder in `examples.test.ts`.
+- **Backend:** the headless runner (`src-tauri/src/agentrun.rs`), the persistence
+  field, and the paste/submit payload (`commands.rs`) are unit-tested; run `cargo test`
+  in `src-tauri/`.
 - **Types/lint:** `npm run check` (svelte-check) and `cargo clippy` / `cargo fmt`.
 
 ---
