@@ -60,7 +60,7 @@
 | Conversación — **managers** (`ThreadManager`, `IncomingMessageProcessor`, eventos de dominio + streaming, **per-thread in-memory buffer** que sobrevive a la navegación) | ✅ Hecho | 02a §5.2.2/§5.2.5 |
 | Conversación — **UI** (`ConversationScreen` con M3 + Neural Expressive, renderers, composer anclado abajo) cableada a datos reales | ✅ Hecho | Sin samples; modelo/agente del thread, git por `cwd` real |
 | **Indicador "Responding…" por thread** | ✅ Hecho | `ThreadActivity` + `threadActivityProvider`; spinner por thread en lista y conversación |
-| Flujo **Nueva conversación** (proyecto `project/list` + agente `agent/list` + modelo `agent/models` + **folder browser** `workspace/browseDirs`) + **selector de modelos** (`thread/setModel`, `AgentModel[]` estructurado) | ✅ Hecho | M3; skip onboarding si ya hay PC |
+| Flujo **Nueva conversación** (proyecto `project/list` + agente `agent/list` + modelo `agent/models` + **folder browser** `workspace/browseDirs`) + **selector de modelos** (`thread/setModel`, `AgentModel[]` estructurado) | ✅ Hecho | Diálogo M3 full-screen Neural Expressive; comparación directa de agentes en tarjetas de esquinas dinámicas (chips sólo en la selección); skip onboarding si ya hay PC |
 | **Adjuntar imágenes** (image picker, base64 inline, thumbnail strip, image-only message) | ✅ Hecho (gated by `AgentCapabilities.images`) | Envío en `turn/send { attachments }`; `text` ahora opcional |
 | **Voz → texto** en el composer (`speech_to_text`) | ✅ Hecho | Verificado on-device (Android); iOS pending `NSMicrophoneUsageDescription`/`NSSpeechRecognitionUsageDescription` (FOR-HUMAN) |
 | **Stop the turn** mid-run | ✅ Hecho | `turn/cancel` desde el composer |

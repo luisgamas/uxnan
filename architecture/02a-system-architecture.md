@@ -1710,8 +1710,11 @@ visor encuentra el archivo inmediatamente.
 Las RPCs `workspace/list`, `workspace/searchFiles`, `workspace/readFile` y
 `workspace/readImage` son consumidas hoy por:
 
-- **Folder browser en la app** (`NewConversationSheet` /
-  `workspace_browser.dart`) — el selector de root + breadcrumb.
+- **Folder browser en la app** (`NewConversationScreen` /
+  `WorkspaceBrowserSheet`, en `presentation/screens/threads/`) — el selector
+  de root + breadcrumb dentro del diálogo full-screen Neural Expressive. La
+  selección de agente se compara directamente en un grupo de tarjetas de
+  esquinas dinámicas; sólo la tarjeta seleccionada revela sus capability chips.
 - **Visor de archivos del workspace** (`FileBrowserScreen` +
   `FileViewerScreen` en `presentation/screens/conversation/files/`,
   manageado por `FileBrowserManager`) — el árbol perezoso, la búsqueda fuzzy

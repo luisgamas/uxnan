@@ -34,7 +34,10 @@ connected to live bridge data, validated on-device against a real bridge.
   +a −d** with per-file diffs, **Copy response**, **Last edits** strip above the
   composer; **Thinking** section (settings-gated, default off).
 - **New conversation flow** — `project/list` + `agent/list` + `agent/models` +
-  **folder browser** (`workspace/browseDirs`) to root a thread anywhere.
+  **folder browser** (`workspace/browseDirs`) to root a thread anywhere. The
+  full-screen Neural Expressive dialog compares agents in one dynamic-corner
+  card group; selecting an agent expands only its capability chips and
+  collapses the previous selection.
 - **Workspace file browser + viewer** — lazy git-aware tree, repo-wide fuzzy
   search with relative-path results, ancestor reveal and hidden pre-positioning
   of the selected row, selectable text/Markdown/diff viewing, inline editing,

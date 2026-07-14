@@ -6,6 +6,19 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — Neural Expressive new-conversation full-screen dialog
+- Restored direct agent comparison cards in the full-screen creation flow,
+  replacing the sparse agent combobox and its extra picker sheet. Agent cards
+  now form a dynamic-corner Neural Expressive group, expose sign-in state in
+  place, and use semantic tonal selection rather than heavy outlines. Cards
+  stay compact until selected: choosing an agent expands only its capability
+  chips and automatically collapses the previously selected card.
+- Moved the variable-length dialog headline into the content area, leaving the
+  compact top bar for close/start actions per Material 3 full-screen-dialog
+  guidance. The workspace card now has one unified tap target, section labels
+  use normal title casing, the optional worktree follows the essential
+  agent/model choices, and wide layouts use the shared content-width token.
+
 ### Fixed — complete default Material 3 color scheme
 - The fresh-install Uxnan brand theme now derives a complete Material 3
   `ColorScheme` from the official blue, green, and error seed colors instead
