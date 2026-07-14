@@ -596,6 +596,18 @@ export interface WorktreeStatus {
   behind: number;
 }
 
+/** A sub-agent (child a parent agent spawned, e.g. a Claude Task-tool subagent),
+ *  tracked within the parent's PTY session (mirror of Rust `SubagentEntry`).
+ *  Children only ever reach `working` / `done`. */
+export interface SubagentEntry {
+  id: string;
+  agentType?: string | null;
+  description?: string | null;
+  status: AgentStatus;
+  startedAt: number;
+  lastUpdate: number;
+}
+
 /** A cached agent state reported via the hook server (mirror of Rust
  *  `AgentStateEntry`). Keyed by `agentId` — the `UXNAN_AGENT_ID` (PTY id) the
  *  ADE injected and the agent's hook echoed back. */
@@ -608,6 +620,8 @@ export interface AgentStateEntry {
   interrupted: boolean;
   /** Short preview of the agent's latest response (sent on `done`), if any. */
   summary?: string | null;
+  /** Sub-agents (children) this session spawned; empty for agents that don't. */
+  subagents?: SubagentEntry[];
   firstSeen: number;
   lastUpdate: number;
 }

@@ -17,7 +17,7 @@ import { app } from "./app.svelte";
 import { toast } from "$lib/toast";
 import { notify } from "$lib/notify";
 import { i18n } from "$lib/i18n";
-import type { AgentStatus, AgentStatusEvent } from "$lib/types";
+import type { AgentStatus, AgentStatusEvent, SubagentEntry } from "$lib/types";
 
 /** A report grows stale (shown dimmed) after this long with no update (spec §1.5). */
 const STALE_MS = 30 * 60 * 1000;
@@ -31,6 +31,8 @@ export interface LiveAgentState {
   interrupted: boolean;
   /** Short preview of the agent's latest response (sent on `done`), if any. */
   summary?: string | null;
+  /** Sub-agents (children) this session spawned; empty for agents that don't. */
+  subagents: SubagentEntry[];
   /** Last hook update (epoch ms; the backend reports seconds, scaled here). */
   lastUpdate: number;
 }
@@ -43,6 +45,7 @@ function toLive(e: AgentStatusEvent): LiveAgentState {
     tool: e.tool,
     interrupted: e.interrupted,
     summary: e.summary,
+    subagents: e.subagents ?? [],
     lastUpdate: e.lastUpdate * 1000,
   };
 }

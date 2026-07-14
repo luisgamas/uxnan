@@ -5,6 +5,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — sub-agent (Task-tool child) tracking in the agent view
+
+- When a Claude Code session spawns **sub-agents** (via the Task tool), they now
+  appear as **nested rows** under the parent in the left-panel agent view, each
+  with its own status dot, and the parent shows a **count badge** (active / total).
+  The parent is **done-gated**: it won't flash "Done" while a spawned child is
+  still working (a background child can outlive the parent's own Stop).
+- Rides the same hook transport: the ADE now subscribes Claude's `SubagentStart` /
+  `SubagentStop` and tracks children in a **per-session roster** on the parent's
+  cache entry (keyed by a child id pulled from the raw payload, capped at 32),
+  **without ever touching the parent's own status**. The roster is **agent-generic**,
+  so any agent that later reports child signals plugs in (OpenCode sub-sessions are
+  structurally supported but not yet surfaced — see `FOR-DEV.md`).
+- `src-tauri/src/model.rs` (`SubagentEntry` + `upsert_subagent`), `hooks.rs`
+  (`source_subagent`, subagent routing in `handle_hook`, `subagents` on
+  `AgentStatusEvent`), `agent_hooks.rs` (`CLAUDE_EVENTS`), and the frontend
+  (`types.ts`, `agentStatus.svelte.ts`, `agentDisplay.ts` done-gate, `AgentRow.svelte`
+  nested rows + badge, EN/ES i18n). 4 new Rust tests (163 total). **Validated against
+  Claude Code 2.1.209** by capturing real hook payloads: `SubagentStart` / `SubagentStop`
+  both carry `agent_id` + `agent_type`, and `SubagentStop` adds the child's final reply.
+  The extractor stays defensive — it **ignores an event with no stable child id** (no
+  bogus rows) — since the fields are version-sensitive.
+
 ### Fixed — agent status no longer sticks on "Waiting for input" after a turn ends
 
 - **Claude:** a finished turn now reads as **Done**, not "Waiting for input".

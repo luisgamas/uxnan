@@ -13,7 +13,7 @@ import { terminals, type GroupTab } from "./terminals.svelte";
 import { agentStatus } from "./agentStatus.svelte";
 import { agentMonitor } from "./agentMonitor.svelte";
 import { zeroSessions, isZeroAgent } from "./zeroSessions.svelte";
-import type { AgentStatus } from "$lib/types";
+import type { AgentStatus, SubagentEntry } from "$lib/types";
 
 /** Display state: the four reported states plus "idle" (an agent at rest with no
  *  precise report). */
@@ -41,16 +41,23 @@ export function resolveAgentDisplay(tab: GroupTab): AgentDisplay | null {
   const hook = agentStatus.get(tab.id);
   if (hook) {
     const stale = agentStatus.isStale(tab.id);
+    // Done-gate: while a spawned child is still working, the parent isn't done —
+    // keep it "working" so it doesn't flash a premature ✓ (a background subagent
+    // can outlive the parent's own Stop).
+    let status = hook.status;
+    if (status === "done" && hook.subagents.some((s) => s.status === "working")) {
+      status = "working";
+    }
     // Safety net: an attention state (waiting/blocked) that went quiet past the
     // staleness window and never got a terminal event shouldn't dominate the
     // "needs you" lane forever — present it as a neutral idle (still dimmed).
     // `done`/`working` keep their meaning. The common Claude "stuck on waiting"
     // case is fixed at the source in the backend event mapping; this backstops
     // any agent (or future one) that gets stuck without a closing event.
-    if (stale && (hook.status === "waiting" || hook.status === "blocked")) {
+    if (stale && (status === "waiting" || status === "blocked")) {
       return { status: "idle", source: "hook", stale: true };
     }
-    return { status: hook.status, source: "hook", stale };
+    return { status, source: "hook", stale };
   }
   // 2. Terminal-title inference.
   const title = agentMonitor.titleStatus(tab.id);
@@ -77,6 +84,8 @@ export interface AgentView {
   interrupted: boolean;
   /** Epoch ms of the last hook update, for a relative timestamp (null if unknown). */
   lastUpdate: number | null;
+  /** Sub-agents (children) this session spawned — rendered as nested rows. */
+  subagents: SubagentEntry[];
 }
 
 /** Resolve the agent-view state for a terminal tab in `workspacePath` (its worktree
@@ -113,7 +122,15 @@ export function resolveAgentView(tab: GroupTab, workspacePath: string): AgentVie
   }
 
   if (!title) title = name;
-  return { status, stale: base?.stale ?? false, title, preview, interrupted, lastUpdate };
+  return {
+    status,
+    stale: base?.stale ?? false,
+    title,
+    preview,
+    interrupted,
+    lastUpdate,
+    subagents: hook?.subagents ?? [],
+  };
 }
 
 /** Whether any open terminal currently resolves to a "working" agent — drives

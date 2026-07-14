@@ -844,6 +844,33 @@ pub struct AgentReport {
     pub summary: Option<String>,
 }
 
+/// Max sub-agents tracked per parent session — a safety cap so a runaway
+/// spawn loop can't grow the roster unbounded (oldest finished child is dropped
+/// first when exceeded).
+pub const MAX_SUBAGENTS: usize = 32;
+
+/// A sub-agent (child a parent agent spawned, e.g. a Claude Task-tool subagent)
+/// tracked *within* a parent PTY session. A child runs inside the parent's CLI
+/// process, so its hook reports carry the same outer `agent_id` (PTY id) as the
+/// parent; the child is distinguished by an id pulled from the raw hook payload.
+/// Children only ever reach `working` / `done`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SubagentEntry {
+    /// Stable id of the child within the parent session (from the raw payload).
+    pub id: String,
+    /// The child's declared kind (a Claude `subagent_type`, e.g. `code-reviewer`),
+    /// if the payload carried one.
+    #[serde(default)]
+    pub agent_type: Option<String>,
+    /// Short description of the child's task, if reported.
+    #[serde(default)]
+    pub description: Option<String>,
+    pub status: AgentStatus,
+    pub started_at: i64,
+    pub last_update: i64,
+}
+
 /// Last-known state reported by an agent via the local hook server (spec `02d`
 /// §1.1). Keyed by `agent_id` — the value the ADE injects as `UXNAN_AGENT_ID`
 /// into each terminal (the PTY id), echoed back by the agent's hook so the
@@ -869,6 +896,10 @@ pub struct AgentStateEntry {
     /// Short preview of the agent's latest response (for `done` notifications).
     #[serde(default)]
     pub summary: Option<String>,
+    /// Sub-agents (children this session spawned, e.g. Claude Task-tool
+    /// subagents). Empty for agents that don't spawn children.
+    #[serde(default)]
+    pub subagents: Vec<SubagentEntry>,
     pub first_seen: i64,
     pub last_update: i64,
 }
@@ -910,12 +941,74 @@ impl AppData {
                 tool: report.tool,
                 interrupted: report.interrupted,
                 summary: report.summary,
+                subagents: Vec::new(),
                 first_seen: now,
                 last_update: now,
             };
             self.agent_cache.push(entry.clone());
             entry
         }
+    }
+
+    /// Record a sub-agent (child) lifecycle event under its parent PTY entry,
+    /// **without touching the parent's own status** (a child spawn/finish must
+    /// not flip the parent to working/done). Upserts the child by id; the parent
+    /// entry is seeded as `working` if the child reports before the parent's first
+    /// status. `parent.last_update` is bumped so an active child keeps the parent
+    /// fresh. Returns the resulting parent entry (cloned) for broadcast.
+    pub fn upsert_subagent(
+        &mut self,
+        parent_agent_id: String,
+        child: SubagentEntry,
+        now: i64,
+    ) -> AgentStateEntry {
+        let idx = match self
+            .agent_cache
+            .iter()
+            .position(|e| e.agent_id == parent_agent_id)
+        {
+            Some(i) => i,
+            None => {
+                self.agent_cache.push(AgentStateEntry {
+                    agent_id: parent_agent_id,
+                    status: AgentStatus::Working,
+                    agent_type: None,
+                    prompt: None,
+                    tool: None,
+                    interrupted: false,
+                    summary: None,
+                    subagents: Vec::new(),
+                    first_seen: now,
+                    last_update: now,
+                });
+                self.agent_cache.len() - 1
+            }
+        };
+        let parent = &mut self.agent_cache[idx];
+        if let Some(existing) = parent.subagents.iter_mut().find(|s| s.id == child.id) {
+            existing.status = child.status;
+            if child.agent_type.is_some() {
+                existing.agent_type = child.agent_type;
+            }
+            if child.description.is_some() {
+                existing.description = child.description;
+            }
+            existing.last_update = now;
+        } else {
+            // Cap the roster: when full, drop the oldest finished child (or the
+            // oldest overall) so a spawn storm can't grow it without bound.
+            if parent.subagents.len() >= MAX_SUBAGENTS {
+                let drop_at = parent
+                    .subagents
+                    .iter()
+                    .position(|s| s.status == AgentStatus::Done)
+                    .unwrap_or(0);
+                parent.subagents.remove(drop_at);
+            }
+            parent.subagents.push(child);
+        }
+        parent.last_update = now;
+        parent.clone()
     }
 
     /// Drop cached agent states not updated within [`AGENT_CACHE_TTL_SECS`].
@@ -1157,6 +1250,53 @@ mod tests {
     }
 
     #[test]
+    fn upsert_subagent_tracks_children_without_touching_parent() {
+        let mut data = AppData::default();
+        // Parent reports working first.
+        data.upsert_agent_state(report("pty1", AgentStatus::Working), 100);
+        // A child spawns (SubagentStart → working). Parent status must not change.
+        let child = |status| SubagentEntry {
+            id: "child-a".into(),
+            agent_type: Some("code-reviewer".into()),
+            description: Some("review the diff".into()),
+            status,
+            started_at: 110,
+            last_update: 110,
+        };
+        let parent = data.upsert_subagent("pty1".into(), child(AgentStatus::Working), 110);
+        assert_eq!(parent.status, AgentStatus::Working);
+        assert_eq!(parent.subagents.len(), 1);
+        assert_eq!(parent.subagents[0].status, AgentStatus::Working);
+        assert_eq!(parent.last_update, 110);
+        // Same child finishes (SubagentStop → done) → updated in place, not duplicated.
+        let parent = data.upsert_subagent("pty1".into(), child(AgentStatus::Done), 120);
+        assert_eq!(parent.subagents.len(), 1);
+        assert_eq!(parent.subagents[0].status, AgentStatus::Done);
+        // Parent's own status is still whatever it last reported.
+        assert_eq!(parent.status, AgentStatus::Working);
+    }
+
+    #[test]
+    fn upsert_subagent_seeds_parent_when_child_reports_first() {
+        let mut data = AppData::default();
+        let parent = data.upsert_subagent(
+            "pty2".into(),
+            SubagentEntry {
+                id: "c1".into(),
+                agent_type: None,
+                description: None,
+                status: AgentStatus::Working,
+                started_at: 5,
+                last_update: 5,
+            },
+            5,
+        );
+        assert_eq!(parent.status, AgentStatus::Working);
+        assert_eq!(data.agent_cache.len(), 1);
+        assert_eq!(data.agent_cache[0].subagents.len(), 1);
+    }
+
+    #[test]
     fn agent_state_entry_round_trips_camel_case() {
         let entry = AgentStateEntry {
             agent_id: "pty1".into(),
@@ -1166,6 +1306,7 @@ mod tests {
             tool: Some("web_search".into()),
             interrupted: true,
             summary: None,
+            subagents: Vec::new(),
             first_seen: 1,
             last_update: 2,
         };

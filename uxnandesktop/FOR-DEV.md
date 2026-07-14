@@ -15,7 +15,7 @@ which tracks assets only a human can provide.)
 standalone app** (three-panel shell, PTY terminals + splits, git worktrees, git
 status/diff/stage/commit/history, agent monitoring with the axum hook server +
 OSC/process layers, settings/themes/i18n, multi-agent orchestration,
-**in-app auto-updater**, **browser-control MCP for agents**, **user quick commands**). 159 Rust backend tests + 127 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
+**in-app auto-updater**, **browser-control MCP for agents**, **user quick commands**). 163 Rust backend tests + 127 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
 (developed on Windows; CI is `{ubuntu, windows}`). **Phase 6 (embedded bridge /
 mobile pairing) is NOT started.**
 
@@ -226,6 +226,13 @@ are **done** (see `CHANGELOG.md` + `architecture/02d` §3). Remaining follow-ups
       embedded bridge / a local control API.
 - [ ] Persist the per-worktree launch agent onto `WorktreeData.agentId` (today
       the choice drives the one-shot launch but isn't recorded on the worktree).
+- [ ] **Surface OpenCode sub-sessions as sub-agents.** The roster model is
+      agent-generic, but the OpenCode plugin
+      (`static/hooks/uxnan-opencode-status-plugin.js`) ignores session identity
+      today. OpenCode sessions carry a `parentID`; read `properties.sessionID` /
+      `parentID`, POST child sessions as sub-agents (distinct child status), and
+      confirm the payload shape empirically. Then update `architecture/02d` →
+      *Subagentes* + `docs/agent-hooks.md` (OpenCode moves from "planned" to wired).
 
 **File tree / mixed tabs**
 - [ ] Tree virtualization (TanStack Virtual) for very large folders.

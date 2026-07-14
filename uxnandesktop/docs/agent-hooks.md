@@ -55,6 +55,12 @@ distinct, precise states** plus a derived idle:
 > precise state as soon as its first hook lands — even a wrapper / renamed /
 > `node`-launched agent that process detection can't name. Process detection is only
 > the fallback for agents that report no hook.
+>
+> **Sub-agents.** When an agent spawns children (Claude Code's Task tool), they
+> show as **nested rows** under the parent with a count badge (active / total).
+> The parent won't read "Done" while a child is still working. Children ride the
+> same hooks (`SubagentStart` / `SubagentStop`); OpenCode sub-sessions are
+> planned. Only Claude spawns sub-agents today.
 
 These states show up everywhere you track an agent:
 

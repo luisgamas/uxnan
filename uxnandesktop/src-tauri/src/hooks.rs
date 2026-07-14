@@ -49,7 +49,7 @@ use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::net::TcpListener;
 
-use crate::model::{AgentReport, AgentStatus};
+use crate::model::{AgentReport, AgentStatus, SubagentEntry};
 use crate::state::{AppState, HookServerInfo};
 
 /// Header carrying the shared secret that authorizes a hook report.
@@ -219,6 +219,42 @@ fn source_interrupted(source: &Value) -> bool {
         .unwrap_or(false)
 }
 
+/// Best-effort extraction of a sub-agent (child) identity from a Claude
+/// `SubagentStart`/`SubagentStop` payload: `(id, agent_type, description)`.
+///
+/// Validated against Claude Code 2.1.209: `SubagentStart` carries `agent_id` +
+/// `agent_type`; `SubagentStop` adds `last_assistant_message` (the child's final
+/// reply, used as the description). Field names are still version-sensitive, so we
+/// try the known aliases and return `None` when no stable child id is present (the
+/// caller then ignores the event rather than inventing a bogus row).
+fn source_subagent(source: &Value) -> Option<(String, Option<String>, Option<String>)> {
+    let first_str = |keys: &[&str]| -> Option<String> {
+        keys.iter()
+            .find_map(|k| source.get(*k).and_then(|v| v.as_str()))
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+    };
+    let id = first_str(&["agent_id", "subagent_id", "agentId", "subagentId"])?;
+    let agent_type = first_str(&["agent_type", "subagent_type", "agentType", "subagentType"]);
+    let description = first_str(&["description", "task", "last_assistant_message"])
+        .or_else(|| {
+            source
+                .get("tool_input")
+                .and_then(|t| t.get("description").or_else(|| t.get("prompt")))
+                .and_then(|v| v.as_str())
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+        })
+        // A child's final reply can be long — collapse + cap for the roster.
+        .map(|d| tidy(&d, PREVIEW_MAX));
+    Some((id, agent_type, description))
+}
+
+/// Whether a Claude hook event name is a sub-agent lifecycle event.
+fn is_claude_subagent_event(event: &str) -> bool {
+    matches!(event, "SubagentStart" | "SubagentStop")
+}
+
 /// Collapse whitespace and truncate for a one-glance notification preview.
 fn tidy(s: &str, max: usize) -> String {
     let collapsed = s.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -297,8 +333,28 @@ pub struct AgentStatusEvent {
     pub tool: Option<String>,
     pub interrupted: bool,
     pub summary: Option<String>,
+    pub subagents: Vec<SubagentEntry>,
     pub first_seen: i64,
     pub last_update: i64,
+}
+
+/// Broadcast a cached agent entry to the frontend as `agent:status-changed`.
+fn emit_agent_status(app: &AppHandle, entry: crate::model::AgentStateEntry) {
+    let _ = app.emit(
+        "agent:status-changed",
+        AgentStatusEvent {
+            agent_id: entry.agent_id,
+            status: entry.status,
+            agent_type: entry.agent_type,
+            prompt: entry.prompt,
+            tool: entry.tool,
+            interrupted: entry.interrupted,
+            summary: entry.summary,
+            subagents: entry.subagents,
+            first_seen: entry.first_seen,
+            last_update: entry.last_update,
+        },
+    );
 }
 
 /// Shared context handed to the axum handlers.
@@ -449,6 +505,47 @@ async fn handle_hook(
         }
     });
     let source = source_owned.as_ref();
+    let event = body_get("event").or_else(|| source.and_then(event_name));
+
+    // Sub-agent (child) lifecycle: a Claude Task-tool subagent runs inside the
+    // same CLI process / PTY, so its report arrives under the parent's
+    // `agent_id`. Route it to the parent's roster WITHOUT touching the parent's
+    // own status (a child spawn/finish must not flip the parent), then broadcast
+    // the parent entry with its updated child list.
+    if agent_type.as_deref() == Some("claude")
+        && event.as_deref().is_some_and(is_claude_subagent_event)
+    {
+        let child_status = if event.as_deref() == Some("SubagentStart") {
+            AgentStatus::Working
+        } else {
+            AgentStatus::Done
+        };
+        let Some((id, child_type, description)) = source.and_then(source_subagent) else {
+            // No stable child id in the payload — ignore rather than invent a row.
+            return StatusCode::NO_CONTENT;
+        };
+        let now = now_secs();
+        let state = ctx.app.state::<AppState>();
+        let entry = {
+            let mut data = state.data.write().await;
+            let entry = data.upsert_subagent(
+                agent_id,
+                SubagentEntry {
+                    id,
+                    agent_type: child_type,
+                    description,
+                    status: child_status,
+                    started_at: now,
+                    last_update: now,
+                },
+                now,
+            );
+            let _ = state.persistence.save(&data);
+            entry
+        };
+        emit_agent_status(&ctx.app, entry);
+        return StatusCode::NO_CONTENT;
+    }
 
     // Resolve the effective status. Priority: an explicit header/body status
     // (the wrapper knows it directly), else derive from the provider event.
@@ -457,18 +554,15 @@ async fn handle_hook(
         .and_then(|s| parse_status(&s));
     let status = match direct_status {
         Some(s) => s,
-        None => {
-            let event = body_get("event").or_else(|| source.and_then(event_name));
-            match (agent_type.as_deref(), event.as_deref()) {
-                (Some(at), Some(ev)) => match normalize_event(at, ev, source) {
-                    Some(s) => s,
-                    // Not a state-changing event — ignore, don't cache a lie.
-                    None => return StatusCode::NO_CONTENT,
-                },
-                // No status and nothing to normalize: nothing to do.
-                _ => return StatusCode::NO_CONTENT,
-            }
-        }
+        None => match (agent_type.as_deref(), event.as_deref()) {
+            (Some(at), Some(ev)) => match normalize_event(at, ev, source) {
+                Some(s) => s,
+                // Not a state-changing event — ignore, don't cache a lie.
+                None => return StatusCode::NO_CONTENT,
+            },
+            // No status and nothing to normalize: nothing to do.
+            _ => return StatusCode::NO_CONTENT,
+        },
     };
 
     // Enrich from the raw payload / headers.
@@ -528,20 +622,7 @@ async fn handle_hook(
         entry
     };
 
-    let _ = ctx.app.emit(
-        "agent:status-changed",
-        AgentStatusEvent {
-            agent_id: entry.agent_id,
-            status: entry.status,
-            agent_type: entry.agent_type,
-            prompt: entry.prompt,
-            tool: entry.tool,
-            interrupted: entry.interrupted,
-            summary: entry.summary,
-            first_seen: entry.first_seen,
-            last_update: entry.last_update,
-        },
-    );
+    emit_agent_status(&ctx.app, entry);
     StatusCode::NO_CONTENT
 }
 
@@ -730,6 +811,44 @@ mod tests {
     }
 
     #[test]
+    fn source_subagent_extracts_child_or_none() {
+        // Real Claude Code 2.1.209 `SubagentStart` shape: id + type, no description.
+        let start = json!({ "agent_id": "a0be512ce35611391", "agent_type": "general-purpose" });
+        assert_eq!(
+            source_subagent(&start),
+            Some((
+                "a0be512ce35611391".to_string(),
+                Some("general-purpose".to_string()),
+                None,
+            ))
+        );
+        // Real `SubagentStop` shape adds the child's final reply as the description.
+        let stop = json!({
+            "agent_id": "a0be512ce35611391",
+            "agent_type": "code-reviewer",
+            "last_assistant_message": "Found 2 issues.",
+        });
+        assert_eq!(
+            source_subagent(&stop),
+            Some((
+                "a0be512ce35611391".to_string(),
+                Some("code-reviewer".to_string()),
+                Some("Found 2 issues.".to_string()),
+            ))
+        );
+        // No stable child id → None (never invent a bogus row).
+        assert_eq!(source_subagent(&json!({ "foo": "bar" })), None);
+    }
+
+    #[test]
+    fn is_claude_subagent_event_matches_lifecycle() {
+        assert!(is_claude_subagent_event("SubagentStart"));
+        assert!(is_claude_subagent_event("SubagentStop"));
+        assert!(!is_claude_subagent_event("Stop"));
+        assert!(!is_claude_subagent_event("PreToolUse"));
+    }
+
+    #[test]
     fn status_event_serializes_camel_case() {
         let ev = AgentStatusEvent {
             agent_id: "x".into(),
@@ -739,6 +858,7 @@ mod tests {
             tool: None,
             interrupted: false,
             summary: None,
+            subagents: Vec::new(),
             first_seen: 1,
             last_update: 2,
         };

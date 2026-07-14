@@ -152,6 +152,35 @@ entiende que los estados precisos requieren una instalacion manual
 gobernados por hooks — los tabs plain y los agentes ya conectados no la
 muestran.
 
+### Subagentes (agentes hijos)
+
+Un agente puede lanzar **subagentes** (p. ej. la herramienta Task de Claude Code).
+Como el hijo corre **dentro del mismo proceso/PTY** que el padre, sus hooks llegan
+con el **mismo `agent_id`** (id del PTY) — la separacion sale de campos del payload
+crudo, no del envelope. El ADE suscribe los eventos de ciclo de vida
+`SubagentStart`/`SubagentStop` de Claude (`agent_hooks::CLAUDE_EVENTS`) y mantiene un
+**roster de subagentes por sesion** en la entrada del padre
+(`AgentStateEntry.subagents` + `model::upsert_subagent`), **sin tocar el estado del
+padre** (un spawn/fin de hijo no debe voltear al padre a `working`/`done`). El roster
+esta limitado (`MAX_SUBAGENTS = 32`; se descarta primero el hijo terminado mas
+antiguo). Cada reporte de subagente se difunde reusando `agent:status-changed` con la
+lista `subagents` actualizada.
+
+En la agent view (`AgentRow.svelte`) los subagentes **activos** se muestran como
+**filas hijas indentadas** bajo el padre, cada una con su punto de estado, y un
+**badge** en el padre resume activos/total. El display del padre esta **done-gated**
+(`agentDisplay.ts`): mientras un hijo siga `working`, el padre no se muestra `done`
+(evita un ✓ prematuro cuando un hijo de fondo sobrevive al `Stop` del padre).
+
+El roster es **agnostico al agente**: cualquier agente que reporte senales de hijo se
+enchufa. Hoy esta cableado **Claude**; **OpenCode** es estructuralmente compatible
+(sus sesiones llevan `parentID`) pero aun no se expone (requiere trabajo en su plugin
++ captura empirica del payload — `FOR-DEV.md`). `SubagentStart`/`Stop` de Claude estan
+**validados contra Claude Code 2.1.209** (ambos traen `agent_id` + `agent_type`;
+`SubagentStop` agrega la respuesta final del hijo). El extractor
+(`hooks::source_subagent`) sigue defensivo — **ignora un evento sin id de hijo
+estable** (nunca inventa una fila) — por si los campos cambian entre versiones.
+
 ### 1.3 Capa 2: Deteccion por Titulo de Terminal
 
 Como **fallback** para agentes que no soportan hooks HTTP nativos, el ADE analiza el titulo del terminal y la salida del proceso para inferir el estado del agente.

@@ -111,6 +111,10 @@ const CLAUDE_EVENTS: &[(&str, bool)] = &[
     ("Notification", false),
     ("Stop", false),
     ("SessionEnd", false),
+    // Sub-agent (Task-tool child) lifecycle → the parent's roster (nested rows in
+    // the agent view). Lifecycle events, so no all-tools matcher.
+    ("SubagentStart", false),
+    ("SubagentStop", false),
 ];
 
 /// Gemini CLI turn events. Gemini has no permission hook, so no `waiting`.
