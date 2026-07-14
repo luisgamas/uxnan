@@ -5,6 +5,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — richer provider usage (reset time, Codex resets, account type, $)
+
+- **Absolute reset time.** Every quota window and credit line now shows *when* a
+  limit resets (a localized clock/date — "resets in 2h · 3:00 PM"), not just a
+  relative countdown, in the Settings card and (opt-in) the status-bar popover.
+- **Codex "reset credits" (reinicios).** Settings → Providers now reads Codex's
+  redeemable rate-limit resets (dedicated endpoint) and shows how many are available
+  and **when each one expires** (per‑credit) — and lets you **redeem one directly
+  from uxnan** (`usage_codex_redeem_reset` → the provider's `consume` endpoint)
+  **behind a confirmation** (uxnan's shared `ConfirmDialog`) that spells out which
+  reset is used, how many remain, and their expiries, then refreshes so the count
+  and windows update.
+- **Real $ balance for Grok.** The Grok reader now surfaces the on-demand spend vs
+  cap (and any prepaid balance) the billing API exposes, as a $ credit line.
+- **Account type.** The "Authenticated as …" line now carries an account-type badge
+  (Subscription / Pay-as-you-go / Free / Team / Enterprise), derived per provider,
+  so the kind of account is clear beyond the plan name.
+- **Status-bar toggles.** New per-provider popover toggles to show/hide the reset
+  time and Codex's reset credits, alongside the existing plan/credit/window picks.
+- Contract additions (`shared/…/usage.ts`, `architecture/02b`): `account.accountType`,
+  `ProviderUsage.resetCredits`, `CreditBalance.available` — all additive.
+
 ### Added — Grok provider usage
 
 - Added Grok to Settings → Providers, using the Grok CLI's own
