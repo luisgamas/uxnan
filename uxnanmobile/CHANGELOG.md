@@ -6,6 +6,15 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — Usage & credit on the profile (`agent/usageStats`)
+- The Profile screen now has a **"Usage & credit"** section (shown only when a PC
+  is connected) that calls the bridge's new `agent/usageStats` and renders, per
+  activated provider (**Codex, Claude, Copilot, Gemini, Grok**), its quota windows
+  (a labelled bar with % used + reset time), plan and credit balance — read live
+  from the paired PC. Not-installed providers are hidden; `authRequired` / `error`
+  states show a small pill + the bridge's hint. Degrades to nothing against an
+  older bridge without the handler. New `ProviderUsage` model + `usageStatsProvider`.
+
 ### Added — Profile in Settings + per-PC statistics
 - The **Profile** now has a header at the top of **Settings** (avatar + name +
   active-session count) that opens it, and each PC's card overflow menu gains a

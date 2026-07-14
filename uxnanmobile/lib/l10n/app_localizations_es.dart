@@ -277,6 +277,23 @@ class AppLocalizationsEs extends AppLocalizations {
   String get profileAgentConversationsLabel => 'conversaciones';
 
   @override
+  String get profileUsageTitle => 'Uso y crédito';
+
+  @override
+  String get usageNotSignedIn => 'Sin sesión';
+
+  @override
+  String get usageLoadError => 'No se pudo cargar';
+
+  @override
+  String get usageCreditLabel => 'Crédito';
+
+  @override
+  String usageResets(String when) {
+    return 'Reinicia $when';
+  }
+
+  @override
   String get deviceActive => 'Activa';
 
   @override

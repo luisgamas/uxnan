@@ -182,12 +182,14 @@ shipping.
 - [ ] **OpenCode/pi interactive approvals** — blocked on the bridge side (their
       headless modes expose no pre-tool channel; see `bridge/FOR-DEV.md`). The app
       already renders approvals for Echo/Claude/Codex/Gemini.
-- [ ] **AI-provider usage stats (`agent/usageStats`)** — the desktop ships this
-      natively (Settings → Providers: quota windows, plan/account, credit). The
-      `shared` contract (`ProviderUsage`) exists; once the bridge implements the
-      handler (`bridge/FOR-DEV.md`), add a mobile view that calls `agent/usageStats`
-      and renders the per-provider quota windows / plan / credit for the paired PC.
-      Blocked on the bridge handler + a live bridge to verify.
+- [ ] **AI-provider usage stats (`agent/usageStats`) — live verification.** The
+      **bridge reader** (`bridge/src/usage/usage-reader.ts`) and the **mobile
+      "Usage & credit" section** (profile: per-provider quota windows, plan,
+      credit; `usageStatsProvider` + `ProviderUsage`, shown only when connected)
+      are **implemented**. Remaining: **verify on-device against a real bridge**
+      with signed-in providers — confirm each provider's live response maps
+      correctly (Codex / Claude / Copilot / Gemini / Grok) and the offline /
+      not-installed / auth-required / error states render right.
 
 ## iOS (all blocked on the first macOS build + FOR-HUMAN assets)
 

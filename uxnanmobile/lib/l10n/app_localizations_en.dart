@@ -276,6 +276,23 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileAgentConversationsLabel => 'conversations';
 
   @override
+  String get profileUsageTitle => 'Usage & credit';
+
+  @override
+  String get usageNotSignedIn => 'Not signed in';
+
+  @override
+  String get usageLoadError => 'Couldn\'t load';
+
+  @override
+  String get usageCreditLabel => 'Credit';
+
+  @override
+  String usageResets(String when) {
+    return 'Resets $when';
+  }
+
+  @override
   String get deviceActive => 'Active';
 
   @override

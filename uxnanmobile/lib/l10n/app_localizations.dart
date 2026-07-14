@@ -584,6 +584,36 @@ abstract class AppLocalizations {
   /// **'conversations'**
   String get profileAgentConversationsLabel;
 
+  /// No description provided for @profileUsageTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Usage & credit'**
+  String get profileUsageTitle;
+
+  /// No description provided for @usageNotSignedIn.
+  ///
+  /// In en, this message translates to:
+  /// **'Not signed in'**
+  String get usageNotSignedIn;
+
+  /// No description provided for @usageLoadError.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load'**
+  String get usageLoadError;
+
+  /// No description provided for @usageCreditLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Credit'**
+  String get usageCreditLabel;
+
+  /// When a usage quota window resets (date/time).
+  ///
+  /// In en, this message translates to:
+  /// **'Resets {when}'**
+  String usageResets(String when);
+
   /// No description provided for @deviceActive.
   ///
   /// In en, this message translates to:

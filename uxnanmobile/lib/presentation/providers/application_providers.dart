@@ -37,6 +37,7 @@ import 'package:uxnan/domain/value_objects/notification_preferences.dart';
 import 'package:uxnan/domain/value_objects/profile_avatar.dart';
 import 'package:uxnan/domain/value_objects/profile_metrics.dart';
 import 'package:uxnan/domain/value_objects/prompt_template.dart';
+import 'package:uxnan/domain/value_objects/provider_usage.dart';
 import 'package:uxnan/domain/value_objects/turn_timeline_snapshot.dart';
 import 'package:uxnan/infrastructure/transport/secure_transport_layer.dart';
 import 'package:uxnan/infrastructure/transport/transport_selector.dart';
@@ -263,6 +264,45 @@ final profileAvatarProvider =
     NotifierProvider<ProfileAvatarSetting, ProfileAvatar>(
   ProfileAvatarSetting.new,
 );
+
+/// The providers the profile requests usage for. The bridge returns
+/// `notInstalled` for any not set up on the PC (a fast, network-free path), so
+/// listing all is cheap; the UI hides the not-installed ones.
+const List<String> _usageProviderIds = [
+  'codex',
+  'claude',
+  'copilot',
+  'gemini',
+  'grok',
+];
+
+/// Per-provider usage/quota (`agent/usageStats`) for the connected PC, or an
+/// empty list when offline or against a bridge without the handler.
+/// `autoDispose` so re-opening re-queries; each read is best-effort.
+final usageStatsProvider = FutureProvider.autoDispose<List<ProviderUsage>>((
+  ref,
+) async {
+  final connected = ref.watch(connectedDeviceProvider).value;
+  if (connected == null) return const [];
+  try {
+    final response = await ref.watch(sessionCoordinatorProvider).sendRequest(
+      'agent/usageStats',
+      {'providers': _usageProviderIds},
+    );
+    final result = response.result;
+    if (result is! Map) return const [];
+    final list = result['usage'];
+    if (list is! List) return const [];
+    return list
+        .whereType<Map<dynamic, dynamic>>()
+        .map((m) => ProviderUsage.fromJson(m.cast<String, dynamic>()))
+        .whereType<ProviderUsage>()
+        .toList();
+  } on Object {
+    // Old bridge (no handler → error) or a transient failure: show nothing.
+    return const [];
+  }
+});
 
 /// Classifies inbound bridge notifications into domain events.
 final incomingMessageProcessorProvider =

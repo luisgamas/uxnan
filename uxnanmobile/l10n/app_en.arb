@@ -126,6 +126,15 @@
   "profileNameLabel": "Name",
   "profileNameHint": "Your name",
   "profileAgentConversationsLabel": "conversations",
+  "profileUsageTitle": "Usage & credit",
+  "usageNotSignedIn": "Not signed in",
+  "usageLoadError": "Couldn't load",
+  "usageCreditLabel": "Credit",
+  "usageResets": "Resets {when}",
+  "@usageResets": {
+    "description": "When a usage quota window resets (date/time).",
+    "placeholders": { "when": { "type": "String" } }
+  },
   "deviceActive": "Active",
   "deviceConnect": "Connect",
   "deviceConnectFailed": "Couldn't reach {device}. Staying on the current PC.",
