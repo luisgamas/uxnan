@@ -370,6 +370,16 @@ pub async fn usage_detect(
     Ok(crate::usage::detect_present(&providers))
 }
 
+/// Redeem one Codex rate-limit reset ("reinicio") from the UI. Returns the outcome
+/// code (`reset` / `nothing_to_reset` / `no_credit` / `already_redeemed`) so the
+/// frontend can message the result and refresh.
+#[tauri::command]
+pub async fn usage_codex_redeem_reset() -> Result<String, CommandError> {
+    crate::usage::codex_redeem_reset()
+        .await
+        .map_err(|e| CommandError::from(AppError::Invalid(e)))
+}
+
 /// Resize a PTY when its pane changes size.
 #[tauri::command]
 pub async fn pty_resize(

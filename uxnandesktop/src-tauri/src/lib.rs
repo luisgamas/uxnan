@@ -215,6 +215,7 @@ pub fn run() {
             commands::ping,
             commands::usage_read,
             commands::usage_detect,
+            commands::usage_codex_redeem_reset,
             commands::mcp_info,
             commands::pty_create,
             commands::pty_write,

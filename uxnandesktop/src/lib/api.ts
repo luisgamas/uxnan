@@ -81,6 +81,12 @@ export function usageDetect(providers: UsageProvider[]): Promise<UsageProvider[]
   return invoke<UsageProvider[]>("usage_detect", { providers });
 }
 
+/** Redeem one Codex rate-limit reset ("reinicio"). Returns the outcome code
+ *  (`reset` / `nothing_to_reset` / `no_credit` / `already_redeemed`). */
+export function usageCodexRedeemReset(): Promise<string> {
+  return invoke<string>("usage_codex_redeem_reset");
+}
+
 /** Coordinates of the local agent hook server (null until it's listening). */
 export function getHookInfo(): Promise<HookServerInfo | null> {
   return invoke<HookServerInfo | null>("get_hook_info");

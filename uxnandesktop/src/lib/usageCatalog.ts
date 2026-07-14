@@ -21,14 +21,16 @@ export interface UsageCatalogProvider {
   favicon?: string;
   /** Whether the provider yields a monetary/credit balance (for the UI hint). */
   hasCredit?: boolean;
+  /** Whether the provider grants redeemable rate-limit resets (Codex). */
+  hasResetCredits?: boolean;
 }
 
 export const USAGE_CATALOG: UsageCatalogProvider[] = [
-  { id: "codex", name: "Codex", logo: "codex", favicon: "openai.com", hasCredit: true },
+  { id: "codex", name: "Codex", logo: "codex", favicon: "openai.com", hasCredit: true, hasResetCredits: true },
   { id: "claude", name: "Claude Code", logo: "claudecode", favicon: "claude.ai", hasCredit: true },
   { id: "copilot", name: "GitHub Copilot", logo: "copilot", favicon: "github.com" },
   { id: "gemini", name: "Gemini CLI", logo: "gemini", favicon: "gemini.google.com" },
-  { id: "grok", name: "Grok", logo: "grok", favicon: "x.ai" },
+  { id: "grok", name: "Grok", logo: "grok", favicon: "x.ai", hasCredit: true },
 ];
 
 export function usageProvider(id: UsageProvider): UsageCatalogProvider | undefined {

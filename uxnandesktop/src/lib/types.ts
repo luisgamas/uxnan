@@ -68,6 +68,15 @@ export type UsageStatus = "ok" | "authRequired" | "notInstalled" | "error";
 /** How the data was obtained, for the provenance label. */
 export type UsageSource = "token";
 
+/** The kind of billing relationship (mirror of Rust `AccountType`). Derived per
+ *  provider so the UI can label the account beyond its plan name. */
+export type AccountType =
+  | "subscription"
+  | "payAsYouGo"
+  | "free"
+  | "team"
+  | "enterprise";
+
 /** A single quota/rate window, expressed as a used-percentage with a reset. */
 export interface UsageWindow {
   id: string;
@@ -84,6 +93,24 @@ export interface CreditBalance {
   currency: string;
   period: string;
   resetsAt?: number;
+  /** Amount still available this period (e.g. Grok on-demand / prepaid). */
+  available?: number;
+}
+
+/** One redeemable reset (which one, when it expires) — per-credit detail. */
+export interface ResetCreditEntry {
+  title?: string;
+  expiresAt?: number;
+}
+
+/** Redeemable rate-limit resets a provider grants (Codex). Distinct from money
+ *  `credit`: these are reset tokens that roll a hit limit back early. */
+export interface ResetCredits {
+  available: number;
+  totalEarned?: number;
+  nextExpiresAt?: number;
+  /** The individual available resets, soonest-expiring first, when detailed. */
+  entries?: ResetCreditEntry[];
 }
 
 /** One provider's usage snapshot (result of `usage_read`). */
@@ -91,9 +118,10 @@ export interface ProviderUsage {
   provider: UsageProvider;
   status: UsageStatus;
   source?: UsageSource;
-  account?: { email?: string; organization?: string; plan?: string };
+  account?: { email?: string; organization?: string; plan?: string; accountType?: AccountType };
   windows: UsageWindow[];
   credit?: CreditBalance;
+  resetCredits?: ResetCredits;
   updatedAt: number;
   message?: string;
 }
@@ -106,6 +134,10 @@ export interface UsageStatusBarPick {
   windows: string[];
   showCredit?: boolean;
   showPlan?: boolean;
+  /** Show the absolute reset time on each window meter. */
+  showResetTime?: boolean;
+  /** Show Codex's redeemable rate-limit resets ("reset credits"). */
+  showResetCredits?: boolean;
 }
 
 /** A provider the user activated in Settings → Providers. Only activated
