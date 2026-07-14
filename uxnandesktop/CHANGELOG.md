@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — left-panel polish
+
+- Subtle refinements to the left panel, keeping the neutral token-driven style
+  (projects stay borderless): the agent-view **"Agents · n"** label is more legible
+  (8px → 10px), the **unread / "needs review"** dot on project & worktree cards is a
+  touch larger with a soft halo (so a finished-but-unreviewed agent reads at a
+  glance without tinting the card), and the collapsed agent-avatar strip gains a
+  tactile hover + a more legible "+N". (`AgentSpace.svelte`, `WorktreeRow.svelte`,
+  `ProjectCard.svelte`.)
+
 ### Added — configurable terminal keyboard arbitration + interrupt inference
 
 - **You now control which shortcuts go to uxnan vs the TUI/agent while a terminal
