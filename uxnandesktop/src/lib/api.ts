@@ -25,6 +25,7 @@ import type {
   RemoteOwner,
   RemoveOutcome,
   ProviderUsage,
+  QuickCommand,
   RepoData,
   SavedTerminalLayout,
   UpdateInfo,
@@ -42,6 +43,18 @@ export function getAppState(): Promise<AppData> {
 /** Persist updated settings; resolves to the new full state. */
 export function updateSettings(settings: AppSettings): Promise<AppData> {
   return invoke<AppData>("update_settings", { settings });
+}
+
+/** Persist the full set of user-programmed quick commands (create / edit /
+ *  duplicate / delete / move / prune all funnel through this snapshot setter). */
+export function quickCommandsSet(commands: QuickCommand[]): Promise<void> {
+  return invoke<void>("quick_commands_set", { commands });
+}
+
+/** Write raw bytes to a PTY's stdin (used to type a quick command into the
+ *  currently-focused terminal). */
+export function ptyWrite(id: string, data: string): Promise<void> {
+  return invoke<void>("pty_write", { id, data });
 }
 
 /** Backend liveness probe; resolves to `"pong"`. */

@@ -224,6 +224,10 @@
         e.preventDefault();
         app.openSettings();
         return;
+      case "openQuickCommands":
+        e.preventDefault();
+        app.quickCommandsMenuOpen = true;
+        return;
       case "toggleLeftSidebar":
         e.preventDefault();
         toggleLeftSidebar();

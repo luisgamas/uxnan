@@ -276,6 +276,10 @@ El lanzamiento de un agente sigue un flujo de 6 pasos orquestado entre el fronte
 5. **Se inyecta el comando de startup** al PTY. El comando del agente se escribe al stdin del PTY como si el usuario lo hubiera tecleado.
 6. **El agente arranca** y comienza a reportar estado. El ADE empieza a monitorear via hooks HTTP, secuencias OSC, o heurísticas de título.
 
+#### Comandos rápidos del usuario (lanzador ⚡)
+
+El mismo mecanismo de "comando de una sola vez" (paso 5) alimenta los **comandos rápidos** definidos por el usuario. Persistidos en `AppData.quickCommands` (comando `quick_commands_set`, `#[serde(default)]`), cada uno tiene un **scope** (global / project / worktree — podado al eliminar su proyecto/worktree, del lado frontend que conoce las rutas vivas). Se lanzan desde un menú **⚡** en la barra superior (slot fijo junto a min/max/close; atajo `openQuickCommands` → `Mod+Shift+P`) que separa los comandos del *worktree/proyecto activo* de los *globales*. Al ejecutar (`projects.runQuickCommand`) se sustituyen variables `{worktree}`/`{branch}`/`{repo}`/`{repoName}`/`{path}`, se resuelve el shell (un perfil de terminal) y el cwd, y se despacha a una **pestaña nueva** (`terminals.create` con `runCommand`) o a la **terminal enfocada** (`pty_write`), corriendo de inmediato o solo pre-escribiendo el comando — un flag `runCommandExecute` omite el Enter final para el modo "solo escribir".
+
 ### 5.2 Control del Agente
 
 Una vez que el agente está ejecutándose, el usuario tiene varias opciones de control:

@@ -5,6 +5,35 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — user quick commands (top-bar ⚡ launcher + Settings)
+
+- Program shell commands you run often and launch them in the active
+  worktree — or a project/worktree of your choice — from a new **⚡ launcher** in
+  the top bar. It sits in the fixed window-controls slot (left of
+  minimize/maximize/close), so a hidden panel never covers it. Empty → a "create
+  your first command" entry that jumps to settings; otherwise a stable menu with
+  two titled sections — **active worktree/project** commands, then **global** ones
+  — plus **Manage commands…**. Opens with **`Ctrl/⌘+Shift+P`** (rebindable in
+  Settings → Keyboard shortcuts).
+- **Settings → Quick commands** — create / edit / duplicate / delete / **move**
+  commands. Each command has: a name + optional icon, the command line with
+  **insertable variables** (`{worktree}` `{branch}` `{repo}` `{repoName}` `{path}`,
+  substituted at run time, each a click-to-insert chip with a tooltip), a **scope**
+  (global / project / worktree — the move target), and, under **Advanced options**,
+  where it runs (**a new terminal tab** or the **currently-focused terminal**),
+  whether it **runs immediately or is only pre-typed**, the **working directory**
+  (active worktree / project root / a custom path), the **shell** (any configured
+  terminal profile), and an optional **confirm-before-running** toggle.
+- Commands persist flat in `AppData.quickCommands` (new `quick_commands_set`
+  command; `#[serde(default)]`, so older state loads with no schema bump).
+  Project- and worktree-scoped commands are **pruned automatically** when their
+  project or worktree is removed. Running reuses the existing terminal
+  `runCommand` launch path (so PowerShell/pwsh's slower startup is handled by the
+  same shell-settle timing as agent launch), threading a new `runCommandExecute`
+  flag to omit the trailing Enter for "type only". EN/ES i18n; 10 new Vitest cases
+  in `src/lib/quickCommands.test.ts` (token substitution, cwd resolution, scope
+  filters).
+
 ### Changed — agent MCP/trust setup no longer writes to your project or prompts
 
 - The browser-control MCP server is now injected **only** into each CLI's

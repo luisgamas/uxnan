@@ -44,6 +44,7 @@
     shell,
     args,
     runCommand,
+    runCommandExecute = true,
     env,
     onexit,
   }: {
@@ -53,6 +54,8 @@
     shell?: string;
     args?: string[];
     runCommand?: string;
+    /** Whether `runCommand` is auto-run (Enter appended) or only pre-typed. */
+    runCommandExecute?: boolean;
     env?: [string, string][];
     onexit?: () => void;
   } = $props();
@@ -212,7 +215,11 @@
     launchTimer = setTimeout(async () => {
       launchTimer = undefined;
       try {
-        await invoke("pty_write", { id, data: `${runCommand}\r` });
+        // Auto-run appends Enter; "type only" leaves the line for the user to run.
+        await invoke("pty_write", {
+          id,
+          data: runCommandExecute ? `${runCommand}\r` : runCommand,
+        });
         launchedIds.add(id);
       } catch {
         // Leave the id retryable if the backend was not ready for this write.

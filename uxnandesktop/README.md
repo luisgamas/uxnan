@@ -83,6 +83,13 @@ available today are:
   automatically — and, via an injected **browser-control MCP server**, discover
   `browser_*` tools to preview and test what they build with no setup. See
   [the integrated browser](./docs/browser.md).
+- **Quick commands.** Program shell commands you run often and launch them from a
+  top-bar **⚡** menu in the active worktree — or a project/worktree of your choice.
+  Each command carries a scope (**global · project · worktree**, pruned with its
+  project/worktree), substitution variables (`{worktree}` `{branch}` `{repo}` …),
+  and, under advanced options, where it runs (a new tab or the focused terminal),
+  whether it runs immediately or is only pre-typed, the working directory, and the
+  shell. Opens with `Ctrl/⌘+Shift+P`.
 - **Personalization and internationalization.** Full custom theming with design
   tokens and light/dark modes, terminal profiles, per-agent launch settings and
   environment variables, a configurable launch shell, and a completely translated

@@ -49,6 +49,9 @@ export interface TerminalTab extends BaseTab {
   /** One-shot command typed into the shell once it starts (agent launch).
    *  Transient — never serialized, so a restored layout doesn't re-run it. */
   runCommand?: string;
+  /** Whether `runCommand` is auto-run (typed + Enter) or only pre-typed for the
+   *  user to run. Defaults to run (`true`). Transient. */
+  runCommandExecute?: boolean;
   /** Extra environment variables for this tab's PTY (agent env), as `[key,
    *  value]` pairs. Transient — applied at spawn, never serialized. */
   env?: [string, string][];
@@ -164,6 +167,8 @@ export interface NewTabOptions {
   args?: string[];
   /** One-shot command to type into the shell once it starts (agent launch). */
   runCommand?: string;
+  /** Whether `runCommand` is auto-run (Enter appended) or only pre-typed. */
+  runCommandExecute?: boolean;
   /** Extra environment variables for this tab's PTY (agent env). */
   env?: [string, string][];
   /** Agent launched in this tab (enables idle monitoring + notifications). */
@@ -187,6 +192,7 @@ function newTab(opts?: Omit<NewTabOptions, "groupId" | "workspace">): TerminalTa
     shell: opts?.shell,
     args: opts?.args,
     runCommand: opts?.runCommand,
+    runCommandExecute: opts?.runCommandExecute,
     env: opts?.env,
     agentName: opts?.agentName,
     agentIcon: opts?.agentIcon,

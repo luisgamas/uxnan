@@ -49,6 +49,7 @@
   import AgentLogo from "./AgentLogo.svelte";
   import AgentHooksPanel from "./AgentHooksPanel.svelte";
   import ThemeSettings from "./ThemeSettings.svelte";
+  import QuickCommandsSettings from "./QuickCommandsSettings.svelte";
   import SettingsSection from "./SettingsSection.svelte";
   import SettingsRow from "./SettingsRow.svelte";
   import {
@@ -79,6 +80,7 @@
   import CircleHelpIcon from "@lucide/svelte/icons/circle-help";
   import CopyIcon from "@lucide/svelte/icons/copy";
   import CheckIcon from "@lucide/svelte/icons/check";
+  import ZapIcon from "@lucide/svelte/icons/zap";
 
   // Persist (debounced for typing; immediate for discrete actions).
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -666,6 +668,7 @@
         { id: "appearance", key: "settings.appearance", icon: PaletteIcon },
         { id: "language", key: "settings.language", icon: LanguagesIcon },
         { id: "shortcuts", key: "settings.shortcuts", icon: KeyboardIcon },
+        { id: "commands", key: "settings.commands", icon: ZapIcon },
       ],
     },
     {
@@ -852,6 +855,8 @@
             {/each}
             </div>
           </SettingsSection>
+        {:else if app.settingsSection === "commands"}
+          <QuickCommandsSettings />
         {:else if app.settingsSection === "agents"}
           <div class="flex flex-col gap-6">
             <SettingsSection title={i18n.t("settings.agents")} description={i18n.t("settings.agentsDesc")}>

@@ -31,6 +31,13 @@ pub struct AppData {
     /// (restored on startup; the backend never interprets it).
     #[serde(default)]
     pub terminal_layout: Option<serde_json::Value>,
+    /// User-programmed quick commands, runnable from the top-bar launcher. A flat
+    /// list: each command carries its own [`QuickCommandScope`] + binding
+    /// (`project_id` / `worktree_path`). Pruned by the frontend when the project
+    /// or worktree it belongs to is removed. `#[serde(default)]` so older state
+    /// loads with an empty list and no schema bump.
+    #[serde(default)]
+    pub quick_commands: Vec<QuickCommand>,
 }
 
 impl Default for AppData {
@@ -41,6 +48,7 @@ impl Default for AppData {
             settings: AppSettings::default(),
             agent_cache: Vec::new(),
             terminal_layout: None,
+            quick_commands: Vec::new(),
         }
     }
 }
@@ -152,6 +160,93 @@ pub struct AgentProfile {
     /// Logo key for the UI (a catalog id, e.g. `claudecode`); `None` → generic.
     #[serde(default)]
     pub icon: Option<String>,
+}
+
+/// Where a [`QuickCommand`] applies. A flat list of commands is scoped by this:
+/// `Global` is always available; `Project` is bound to a repo id and shows for
+/// every worktree of that project; `Worktree` is bound to a single worktree's
+/// absolute path (worktrees have no stable id — see [`RepoData::worktree_order`]).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum QuickCommandScope {
+    Global,
+    Project,
+    Worktree,
+}
+
+/// Where a [`QuickCommand`] runs. `NewTab` spawns a fresh integrated terminal;
+/// `Active` types into the currently-focused integrated terminal.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum QuickCommandTarget {
+    NewTab,
+    Active,
+}
+
+/// Whether a [`QuickCommand`] auto-runs (`Execute`, typed with a trailing Enter)
+/// or is only pre-typed into the shell for the user to run (`TypeOnly`).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum QuickCommandRunMode {
+    Execute,
+    TypeOnly,
+}
+
+/// Working directory a [`QuickCommand`] runs in (only meaningful for
+/// [`QuickCommandTarget::NewTab`]; the `Active` target inherits the focused
+/// terminal's cwd).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum QuickCommandCwd {
+    /// The active worktree/workspace folder.
+    ActiveWorktree,
+    /// The active project's root folder.
+    ProjectRoot,
+    /// A fixed custom path ([`QuickCommand::custom_cwd`]).
+    Custom,
+}
+
+/// A user-programmed quick command, runnable from the top-bar launcher. The
+/// `command` line may contain `{worktree}` / `{branch}` / `{repo}` /
+/// `{repoName}` / `{path}` tokens, substituted with the active context at run
+/// time. Same `camelCase` serialization as the rest of the model, mirrored in
+/// `src/lib/types.ts`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct QuickCommand {
+    pub id: String,
+    pub name: String,
+    /// The shell command line (may contain substitution tokens).
+    pub command: String,
+    /// Optional helper text shown in the menu/settings.
+    #[serde(default)]
+    pub description: Option<String>,
+    /// Optional icon: a builtin glyph key or an inline `data:` URL (same form as
+    /// [`RepoData::icon`]); `None` → the default launcher glyph.
+    #[serde(default)]
+    pub icon: Option<String>,
+    pub scope: QuickCommandScope,
+    /// Bound repo id when `scope == Project`.
+    #[serde(default)]
+    pub project_id: Option<String>,
+    /// Bound worktree absolute path when `scope == Worktree`.
+    #[serde(default)]
+    pub worktree_path: Option<String>,
+    #[serde(default = "default_run_mode")]
+    pub run_mode: QuickCommandRunMode,
+    #[serde(default = "default_command_target")]
+    pub target: QuickCommandTarget,
+    #[serde(default = "default_command_cwd")]
+    pub cwd: QuickCommandCwd,
+    /// Fixed working directory when `cwd == Custom`.
+    #[serde(default)]
+    pub custom_cwd: Option<String>,
+    /// Terminal profile (shell) to run in; `None` → the default terminal shell.
+    #[serde(default)]
+    pub shell_profile_id: Option<String>,
+    /// Ask the user to confirm before running (for destructive commands).
+    #[serde(default)]
+    pub confirm: bool,
 }
 
 /// Starter profiles seeded on a fresh install: the shells guaranteed to be
@@ -685,6 +780,21 @@ fn default_language() -> String {
 /// Serde default for boolean settings that should default to `true`.
 fn default_true() -> bool {
     true
+}
+
+/// Serde default for [`QuickCommand::run_mode`] — auto-run.
+fn default_run_mode() -> QuickCommandRunMode {
+    QuickCommandRunMode::Execute
+}
+
+/// Serde default for [`QuickCommand::target`] — a fresh terminal tab.
+fn default_command_target() -> QuickCommandTarget {
+    QuickCommandTarget::NewTab
+}
+
+/// Serde default for [`QuickCommand::cwd`] — the active worktree.
+fn default_command_cwd() -> QuickCommandCwd {
+    QuickCommandCwd::ActiveWorktree
 }
 
 impl AppSettings {

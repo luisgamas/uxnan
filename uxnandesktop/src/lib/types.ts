@@ -49,6 +49,49 @@ export interface AgentProfile {
   icon?: string | null;
 }
 
+// --- Quick commands (top-bar launcher) --------------------------------------
+// Mirror of the Rust `QuickCommand` model. A flat list persisted in `AppData`;
+// each command carries its own scope + binding.
+
+/** Where a quick command applies. */
+export type QuickCommandScope = "global" | "project" | "worktree";
+
+/** Where a quick command runs: a fresh integrated terminal tab, or the
+ *  currently-focused integrated terminal. */
+export type QuickCommandTarget = "newTab" | "active";
+
+/** Whether the command auto-runs (typed + Enter) or is only pre-typed. */
+export type QuickCommandRunMode = "execute" | "typeOnly";
+
+/** Working directory a quick command runs in (only for the `newTab` target). */
+export type QuickCommandCwd = "activeWorktree" | "projectRoot" | "custom";
+
+/** A user-programmed quick command. `command` may contain `{worktree}` /
+ *  `{branch}` / `{repo}` / `{repoName}` / `{path}` tokens, substituted with the
+ *  active context at run time. */
+export interface QuickCommand {
+  id: string;
+  name: string;
+  command: string;
+  description?: string | null;
+  /** Builtin glyph key or inline `data:` URL; null → default launcher glyph. */
+  icon?: string | null;
+  scope: QuickCommandScope;
+  /** Bound repo id when `scope === "project"`. */
+  projectId?: string | null;
+  /** Bound worktree absolute path when `scope === "worktree"`. */
+  worktreePath?: string | null;
+  runMode: QuickCommandRunMode;
+  target: QuickCommandTarget;
+  cwd: QuickCommandCwd;
+  /** Fixed working directory when `cwd === "custom"`. */
+  customCwd?: string | null;
+  /** Terminal profile (shell) to run in; null → the default terminal shell. */
+  shellProfileId?: string | null;
+  /** Ask the user to confirm before running. */
+  confirm: boolean;
+}
+
 // --- AI-provider usage statistics (Settings → Providers) --------------------
 // Mirror of `shared/src/models/usage.ts` (the bridge serves the same shape to
 // the phone later). Read natively in Rust here via the `usage_read` command.
@@ -688,6 +731,7 @@ export interface AppData {
   settings: AppSettings;
   agentCache: AgentStateEntry[];
   terminalLayout?: SavedTerminalLayout | null;
+  quickCommands?: QuickCommand[];
 }
 
 /** Mirror of the Rust `CommandError` returned across the command boundary. */

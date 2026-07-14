@@ -8,6 +8,7 @@
 
 import {
   branchList,
+  ptyWrite,
   repoAdd,
   repoRemove,
   repoReorder as apiRepoReorder,
@@ -22,6 +23,7 @@ import {
 import type {
   AgentProfile,
   BranchList,
+  QuickCommand,
   RepoData,
   SidebarGroupBy,
   SortMode,
@@ -30,6 +32,11 @@ import type {
 } from "$lib/types";
 import { app } from "$lib/state/app.svelte";
 import { terminals, GLOBAL_WORKSPACE } from "$lib/state/terminals.svelte";
+import {
+  resolveCommandCwd,
+  substituteTokens,
+  type CommandContext,
+} from "$lib/quickCommands";
 import { unread } from "$lib/state/unread.svelte";
 import { agentStatus } from "$lib/state/agentStatus.svelte";
 import { resolveAgentDisplay } from "$lib/state/agentDisplay";
@@ -612,10 +619,18 @@ class ProjectsStore {
   async removeProject(id: string): Promise<void> {
     this.error = null;
     try {
+      // Collect the repo's worktree paths (+ its root) before dropping them, so
+      // scoped quick commands bound to any of them are pruned too.
+      const repo = app.repos.find((r) => r.id === id);
+      const worktreePaths = [
+        ...(this.worktreesByRepo[id] ?? []).map((w) => w.path),
+        ...(repo ? [repo.path] : []),
+      ];
       await repoRemove(id);
       app.repos = app.repos.filter((r) => r.id !== id);
       const { [id]: _removed, ...rest } = this.worktreesByRepo;
       this.worktreesByRepo = rest;
+      app.pruneProjectCommands(id, worktreePaths);
       toast.success(i18n.t("toast.projectRemoved"));
     } catch (e) {
       this.error = msg(e);
@@ -669,6 +684,8 @@ class ProjectsStore {
       await new Promise((resolve) => setTimeout(resolve, 200));
       const outcome = await worktreeRemove(row.repoId, row.path, row.branch, force);
       await this.loadWorktrees(row.repoId);
+      // Drop any quick commands scoped to the now-removed worktree.
+      app.pruneWorktreeCommands(row.path);
       // The worktree is gone either way; the message depends on what happened to
       // the branch (kept because unmerged / cleaned up after a squash merge).
       if (outcome?.branchPreserved) {
@@ -706,6 +723,66 @@ class ProjectsStore {
   launchAgentAt(path: string, agent: AgentProfile): void {
     this.activeWorktreePath = path;
     app.launchAgent(agent, { cwd: path, workspace: path });
+  }
+
+  // --- Quick commands ------------------------------------------------------
+
+  /** Build the active-workspace context quick commands resolve against (token
+   *  substitution + cwd). Reads the live active workspace + its repo/branch. */
+  commandContext(): CommandContext {
+    const ws = terminals.activeWorkspace;
+    const repo = this.activeRepo;
+    let branch: string | null = null;
+    if (repo && ws && ws !== GLOBAL_WORKSPACE) {
+      branch = this.worktreesOf(repo.id).find((w) => w.path === ws)?.branch ?? null;
+    }
+    return {
+      worktreePath: ws === GLOBAL_WORKSPACE ? "" : ws,
+      branch,
+      repoId: repo?.id ?? null,
+      repoPath: repo?.path ?? null,
+      repoName: repo?.name ?? null,
+    };
+  }
+
+  /** Run a quick command: substitute its tokens against the active context,
+   *  resolve its shell, and dispatch to a fresh terminal tab or the focused
+   *  terminal. The `active` target falls back to a new tab when no terminal is
+   *  focused. Confirmation (if the command opts in) is handled by the caller. */
+  async runQuickCommand(cmd: QuickCommand): Promise<void> {
+    const ctx = this.commandContext();
+    const command = substituteTokens(cmd.command, ctx);
+    const execute = cmd.runMode === "execute";
+
+    // Type into the currently-focused terminal when asked (and one exists).
+    if (cmd.target === "active") {
+      const id = terminals.activePtyId();
+      if (id) {
+        try {
+          await ptyWrite(id, command + (execute ? "\r" : ""));
+        } catch (e) {
+          this.error = msg(e);
+        }
+        return;
+      }
+      // No focused terminal — fall through to a new tab.
+    }
+
+    // Resolve the shell: the command's pinned terminal profile, else the default.
+    const profile = cmd.shellProfileId
+      ? app.profile(cmd.shellProfileId)
+      : app.defaultProfile();
+    const shell = profile?.command?.trim() || undefined;
+    const cwd = resolveCommandCwd(cmd, ctx);
+    terminals.create({
+      cwd,
+      title: cmd.name.trim() || baseName(command),
+      shell,
+      args: shell ? profile?.args : undefined,
+      runCommand: command,
+      runCommandExecute: execute,
+      workspace: ctx.worktreePath || undefined,
+    });
   }
 
   /** Friendly label for a workspace key (repo / branch), for the breadcrumb. The

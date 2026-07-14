@@ -349,6 +349,9 @@ pub struct AppData {
     pub repos: Vec<RepoData>,
     pub settings: AppSettings,
     pub agent_cache: Vec<AgentStateEntry>,
+    pub quick_commands: Vec<QuickCommand>, // Comandos rápidos del usuario (lanzador ⚡);
+                                           // #[serde(default)], persistidos vía quick_commands_set,
+                                           // scope global/project/worktree, poda al eliminar su proyecto/worktree
 }
 
 #[derive(Debug, Serialize, Deserialize)]

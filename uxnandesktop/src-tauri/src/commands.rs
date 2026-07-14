@@ -12,7 +12,7 @@ use uuid::Uuid;
 use crate::agent_hooks::{self, AgentHooksStatus, HookInstall};
 use crate::error::{AppError, CommandError};
 use crate::git::{self, WorktreeEntry};
-use crate::model::{AgentStateEntry, AppData, AppSettings, RepoData};
+use crate::model::{AgentStateEntry, AppData, AppSettings, QuickCommand, RepoData};
 use crate::state::{AppState, HookServerInfo};
 
 /// Return the full persisted application state. The frontend calls this once at
@@ -35,6 +35,21 @@ pub async fn update_settings(
     data.settings = settings;
     state.persistence.save(&data).map_err(CommandError::from)?;
     Ok(data.clone())
+}
+
+/// Replace the full set of user-programmed quick commands. Create / edit /
+/// duplicate / delete / move / prune all funnel through this snapshot setter,
+/// mirroring [`update_settings`] — the frontend owns the array and persists the
+/// whole list. Pruning on project/worktree removal is done frontend-side (it
+/// holds the live worktree paths) and lands here as a plain overwrite.
+#[tauri::command]
+pub async fn quick_commands_set(
+    state: State<'_, AppState>,
+    commands: Vec<QuickCommand>,
+) -> Result<(), CommandError> {
+    let mut data = state.data.write().await;
+    data.quick_commands = commands;
+    state.persistence.save(&data).map_err(CommandError::from)
 }
 
 /// Lightweight liveness probe. Used by the frontend at startup to confirm the

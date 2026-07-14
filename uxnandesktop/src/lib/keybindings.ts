@@ -49,6 +49,13 @@ export const KEY_ACTIONS: KeyAction[] = [
     default: "Mod+,",
   },
   {
+    id: "openQuickCommands",
+    labelKey: "shortcuts.openQuickCommands",
+    descKey: "shortcuts.openQuickCommandsDesc",
+    category: "general",
+    default: "Mod+Shift+P",
+  },
+  {
     id: "worktreePalette",
     labelKey: "shortcuts.worktreePalette",
     descKey: "shortcuts.worktreePaletteDesc",

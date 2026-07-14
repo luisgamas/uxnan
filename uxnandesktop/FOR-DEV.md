@@ -15,7 +15,7 @@ which tracks assets only a human can provide.)
 standalone app** (three-panel shell, PTY terminals + splits, git worktrees, git
 status/diff/stage/commit/history, agent monitoring with the axum hook server +
 OSC/process layers, settings/themes/i18n, multi-agent orchestration,
-**in-app auto-updater**, **browser-control MCP for agents**). 159 Rust backend tests + 117 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
+**in-app auto-updater**, **browser-control MCP for agents**, **user quick commands**). 159 Rust backend tests + 127 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
 (developed on Windows; CI is `{ubuntu, windows}`). **Phase 6 (embedded bridge /
 mobile pairing) is NOT started.**
 
@@ -78,6 +78,16 @@ mobile pairing) is NOT started.**
   blur), credit, per-provider refresh interval + status-bar visibility, and a
   status-bar gauge popover. Contract-first (`shared` `agent/usageStats`); the
   bridge/mobile side is Phase 6 (see below).
+- **User quick commands** — a top-bar ⚡ launcher (in the fixed window-controls
+  slot, left of min/max/close, so a hidden panel never covers it) + a Settings →
+  Quick commands editor. Commands are persisted flat in `AppData.quickCommands`
+  (`quick_commands_set`), each scoped **global / project / worktree** and pruned
+  when its project/worktree is removed (frontend-side, where live worktree paths
+  are known). Runtime (`projects.runQuickCommand`) reuses the terminal
+  `runCommand` launch path: substitutes `{worktree}`/`{branch}`/`{repo}`/
+  `{repoName}`/`{path}` tokens, resolves the shell (a terminal profile) + cwd, and
+  dispatches to a **new tab** or the **focused terminal** (`pty_write`), running
+  immediately or only pre-typing (`runCommandExecute`). Opens with **`Mod+Shift+P`**.
 
 ## Integrated developer browser ☐
 

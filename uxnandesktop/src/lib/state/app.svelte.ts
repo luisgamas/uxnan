@@ -11,6 +11,7 @@ import {
   getHookInstall,
   openExternal,
   ping,
+  quickCommandsSet,
   setAgentCommands,
   updateSettings,
 } from "$lib/api";
@@ -22,6 +23,7 @@ import {
   type AppSettings,
   type AgentHooksStatus,
   type HookInstall,
+  type QuickCommand,
   type RepoData,
   type TerminalProfile,
 } from "$lib/types";
@@ -57,6 +59,7 @@ export type SettingsSection =
   | "appearance"
   | "language"
   | "shortcuts"
+  | "commands"
   | "agents"
   | "providers"
   | "aicommit"
@@ -70,6 +73,12 @@ class AppStore {
   repos = $state<RepoData[]>([]);
   /** Persisted UI/app settings. */
   settings = $state<AppSettings>({ ...DEFAULT_SETTINGS });
+  /** User-programmed quick commands (top-bar launcher). A flat list; each item
+   *  carries its own scope + binding. Persisted separately from settings. */
+  quickCommands = $state<QuickCommand[]>([]);
+  /** Bindable open state for the top-bar quick-commands menu, so a keyboard
+   *  shortcut can open it without the trigger being focused. */
+  quickCommandsMenuOpen = $state(false);
   /** Currently selected worktree, or null when none is active. */
   activeWorktreeId = $state<string | null>(null);
   /** Backend reachability for the status bar. */
@@ -240,6 +249,7 @@ class AppStore {
       const data = await getAppState();
       this.repos = data.repos;
       this.settings = data.settings;
+      this.quickCommands = data.quickCommands ?? [];
       this.backend = "ready";
       this.errorMessage = null;
       terminals.restore(data.terminalLayout ?? null);
@@ -283,6 +293,79 @@ class AppStore {
     } catch (err) {
       this.errorMessage = err instanceof Error ? err.message : String(err);
     }
+  }
+
+  // --- Quick commands ------------------------------------------------------
+
+  /** Persist the current quick-commands snapshot to disk. */
+  async persistQuickCommands(): Promise<void> {
+    try {
+      await quickCommandsSet($state.snapshot(this.quickCommands));
+    } catch (err) {
+      this.errorMessage = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  /** Replace the whole quick-commands list and persist. */
+  setQuickCommands(list: QuickCommand[]): void {
+    this.quickCommands = list;
+    void this.persistQuickCommands();
+  }
+
+  /** Append a quick command and persist. */
+  addQuickCommand(cmd: QuickCommand): void {
+    this.quickCommands.push(cmd);
+    void this.persistQuickCommands();
+  }
+
+  /** Replace a quick command (matched by id) and persist. */
+  updateQuickCommand(cmd: QuickCommand): void {
+    const i = this.quickCommands.findIndex((c) => c.id === cmd.id);
+    if (i >= 0) this.quickCommands[i] = cmd;
+    void this.persistQuickCommands();
+  }
+
+  /** Remove a quick command by id and persist. */
+  removeQuickCommand(id: string): void {
+    this.quickCommands = this.quickCommands.filter((c) => c.id !== id);
+    void this.persistQuickCommands();
+  }
+
+  /** Duplicate a quick command (a fresh id, a "copy" suffix) and persist. */
+  duplicateQuickCommand(id: string): void {
+    const src = this.quickCommands.find((c) => c.id === id);
+    if (!src) return;
+    const copy: QuickCommand = {
+      ...$state.snapshot(src),
+      id: crypto.randomUUID(),
+      name: i18n.t("commands.copyName", { name: src.name }),
+    };
+    const i = this.quickCommands.findIndex((c) => c.id === id);
+    this.quickCommands.splice(i + 1, 0, copy);
+    void this.persistQuickCommands();
+  }
+
+  /** Drop worktree-scoped commands bound to `path` (called when the worktree is
+   *  removed). No-op + no write when nothing matches. */
+  pruneWorktreeCommands(path: string): void {
+    const before = this.quickCommands.length;
+    this.quickCommands = this.quickCommands.filter(
+      (c) => !(c.scope === "worktree" && c.worktreePath === path),
+    );
+    if (this.quickCommands.length !== before) void this.persistQuickCommands();
+  }
+
+  /** Drop project-scoped commands bound to `repoId` and any worktree-scoped ones
+   *  under `worktreePaths` (called when the whole project is removed). */
+  pruneProjectCommands(repoId: string, worktreePaths: string[]): void {
+    const paths = new Set(worktreePaths);
+    const before = this.quickCommands.length;
+    this.quickCommands = this.quickCommands.filter(
+      (c) =>
+        !(c.scope === "project" && c.projectId === repoId) &&
+        !(c.scope === "worktree" && c.worktreePath != null && paths.has(c.worktreePath)),
+    );
+    if (this.quickCommands.length !== before) void this.persistQuickCommands();
   }
 
   // --- Terminal profiles ---------------------------------------------------
