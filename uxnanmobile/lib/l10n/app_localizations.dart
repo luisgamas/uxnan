@@ -638,6 +638,12 @@ abstract class AppLocalizations {
   /// **'Rename'**
   String get deviceRename;
 
+  /// No description provided for @deviceStatistics.
+  ///
+  /// In en, this message translates to:
+  /// **'Statistics'**
+  String get deviceStatistics;
+
   /// No description provided for @deviceVerifyConnection.
   ///
   /// In en, this message translates to:

@@ -6,6 +6,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — Profile in Settings + per-PC statistics
+- The **Profile** now has a header at the top of **Settings** (avatar + name +
+  active-session count) that opens it, and each PC's card overflow menu gains a
+  **Statistics** entry opening a **per-PC details screen** — the same activity
+  heatmap, stat tiles and per-agent breakdown, scoped to that one PC, with a
+  header showing its pairing / last-seen and live connection status. The stat
+  grid and per-agent breakdown are now shared widgets reused by both screens.
+
 ### Added — Profile screen: activity heatmap, stats & customization
 - A new **Profile** screen (a person icon in the Devices app bar) aggregates
   activity across every paired PC — all derived locally, no bridge call: an

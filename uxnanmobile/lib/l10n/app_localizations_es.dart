@@ -306,6 +306,9 @@ class AppLocalizationsEs extends AppLocalizations {
   String get deviceRename => 'Renombrar';
 
   @override
+  String get deviceStatistics => 'Estadísticas';
+
+  @override
   String get deviceVerifyConnection => 'Verificar conexión';
 
   @override

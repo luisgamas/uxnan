@@ -206,6 +206,8 @@ class MyDevicesScreen extends ConsumerWidget {
                 connectedEndpoint: device.macDeviceId == connectedId
                     ? connectedEndpoint
                     : null,
+                onStats: () =>
+                    context.push(AppRoutes.deviceStats(device.macDeviceId)),
                 onOpen: () => _open(context, device),
                 onConnect: () => _connect(ref, context, device),
                 onRename: () => _rename(ref, context, device),
@@ -237,6 +239,7 @@ class _DeviceCard extends StatelessWidget {
     required this.isConnecting,
     required this.relayConnected,
     required this.connectedEndpoint,
+    required this.onStats,
     required this.onOpen,
     required this.onConnect,
     required this.onRename,
@@ -256,6 +259,7 @@ class _DeviceCard extends StatelessWidget {
   /// (the winning direct host, or the relay); null when unknown / not connected.
   /// Preferred over [TrustedDevice.hosts] for the displayed address.
   final String? connectedEndpoint;
+  final VoidCallback onStats;
   final VoidCallback onOpen;
   final VoidCallback onConnect;
   final VoidCallback onRename;
@@ -313,6 +317,16 @@ class _DeviceCard extends StatelessWidget {
                   color: colors.onSurfaceVariant,
                 ),
                 itemBuilder: (context) => [
+                  PopupMenuItem<void>(
+                    onTap: onStats,
+                    child: Row(
+                      children: [
+                        const Icon(Icons.insights_rounded, size: 18),
+                        const SizedBox(width: UxnanSpacing.sm),
+                        Flexible(child: Text(l10n.deviceStatistics)),
+                      ],
+                    ),
+                  ),
                   PopupMenuItem<void>(
                     onTap: onVerify,
                     child: Row(

@@ -51,6 +51,10 @@ this app:
   selection, a live context-usage indicator, per-agent sign-in status, voice and
   image input, a full Git screen, and a searchable workspace file browser and
   viewer are all available from the phone.
+- **Your activity, at a glance.** A profile with a GitHub-style contribution
+  heatmap and stat tiles — conversations, agents used, time connected, longest
+  session and more — aggregated **locally** across every paired PC, plus a
+  per-PC breakdown from each device's menu, and a custom name and avatar.
 - **Full custom theming.** Beyond system light/dark, a dedicated Theme Manager
   lets you build, preview, import and export your own themes (single- or
   dual-brightness), so the app genuinely looks the way you want.

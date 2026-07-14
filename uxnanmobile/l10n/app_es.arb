@@ -125,6 +125,7 @@
   "deviceNeverConnected": "Nunca conectado",
   "devicePairedLabel": "Pareado",
   "deviceRename": "Renombrar",
+  "deviceStatistics": "Estadísticas",
   "deviceVerifyConnection": "Verificar conexión",
   "deviceVerifying": "Comprobando el bridge…",
   "deviceVerifyOk": "El bridge responde.",

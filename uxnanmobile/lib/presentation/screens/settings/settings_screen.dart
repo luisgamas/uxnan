@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
+import 'package:uxnan/presentation/providers/application_providers.dart';
+import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/screens/settings/personalization_screen.dart';
 import 'package:uxnan/presentation/screens/settings/sections/about_section_screen.dart';
 import 'package:uxnan/presentation/screens/settings/sections/conversation_section_screen.dart';
@@ -9,7 +12,9 @@ import 'package:uxnan/presentation/screens/settings/sections/source_control_sect
 import 'package:uxnan/presentation/screens/settings/sections/updates_section_screen.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/expressive_card.dart';
+import 'package:uxnan/presentation/widgets/ne_card.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
+import 'package:uxnan/presentation/widgets/profile_avatar_view.dart';
 import 'package:uxnan/presentation/widgets/settings_tiles.dart';
 
 /// A single settings section reachable from the landing list.
@@ -89,6 +94,7 @@ class SettingsScreen extends ConsumerWidget {
           ),
           sliver: SliverList.list(
             children: [
+              const _ProfileHeaderCard(),
               NeSectionHeader(label: l10n.settingsGeneralSection, first: true),
               _SectionGroup(sections: general),
               NeSectionHeader(label: l10n.settingsWorkspaceSection),
@@ -99,6 +105,56 @@ class SettingsScreen extends ConsumerWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// A tappable profile header at the top of Settings: the user's avatar, name
+/// and current active-session count. Opens the full Profile screen on tap.
+class _ProfileHeaderCard extends ConsumerWidget {
+  const _ProfileHeaderCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final name = ref.watch(profileNameProvider) ?? l10n.profileDisplayName;
+    final avatar = ref.watch(profileAvatarProvider);
+    final online = ref.watch(connectedDeviceProvider).value != null ? 1 : 0;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: UxnanSpacing.md),
+      child: NeCard(
+        onTap: () => context.push(AppRoutes.profile),
+        child: Row(
+          children: [
+            ProfileAvatarView(avatar: avatar, size: 48),
+            const SizedBox(width: UxnanSpacing.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
+                    style: textTheme.titleMedium,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    l10n.profileActiveSessions(online),
+                    style: textTheme.bodySmall?.copyWith(
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right_rounded, color: colors.onSurfaceVariant),
+          ],
+        ),
+      ),
     );
   }
 }

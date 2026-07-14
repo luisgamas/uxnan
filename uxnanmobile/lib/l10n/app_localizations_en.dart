@@ -305,6 +305,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get deviceRename => 'Rename';
 
   @override
+  String get deviceStatistics => 'Statistics';
+
+  @override
   String get deviceVerifyConnection => 'Verify connection';
 
   @override

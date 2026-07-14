@@ -146,6 +146,7 @@
   "deviceNeverConnected": "Never connected",
   "devicePairedLabel": "Paired",
   "deviceRename": "Rename",
+  "deviceStatistics": "Statistics",
   "deviceVerifyConnection": "Verify connection",
   "deviceVerifying": "Checking the bridge…",
   "deviceVerifyOk": "The bridge is reachable.",

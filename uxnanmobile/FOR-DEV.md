@@ -29,6 +29,16 @@ connected to live bridge data, validated on-device against a real bridge.
   endpoint** (the direct host that won the dial race, or the relay — carried on
   `connectedEndpointStream`), not the first advertised host, and **blurs it by
   default with tap-to-reveal** so the network topology isn't exposed at a glance.
+- **Profile & metrics (phone-local).** A **Profile** screen (Devices app-bar
+  avatar + a Settings header) aggregating activity across every paired PC — a
+  GitHub-style contribution heatmap (Combined / Conversations / Messages / Work,
+  per year, tap-a-day / tap-outside-to-clear), stat tiles (time connected,
+  longest session, agents used, conversations, messages, sessions, git actions,
+  most-used transport, models) and a per-agent breakdown — plus a **per-PC
+  details** screen (device-card ▸ Statistics), a customizable name + avatar
+  (picked image or preset icon), and a phone-only connection-session log +
+  `MetricsRepository`. All derived locally; the per-agent usage/credit view is
+  Phase B (the `agent/usageStats` item below).
 - **Live streaming conversations** that survive leaving/re-entering the screen
   (per-thread in-memory buffers + `turn/list` re-sync) with a per-thread
   **"Responding…"** activity indicator. Timeline auto-follow yields to manual
@@ -134,14 +144,6 @@ shipping.
 
 ## App-side pending work (no live bridge needed)
 
-- [ ] **Profile: Settings header + per-PC details screen.** The **`ProfileScreen`**
-      (Devices app-bar avatar) — activity heatmap, stat tiles, per-agent breakdown,
-      and name/avatar customization — is **DONE**, on the phone-local metrics
-      aggregation (`MetricsRepository`) + connection-session log. Remaining: a
-      **profile header at the top of Settings** (avatar + name + active-sessions
-      count) and a **per-PC details screen** (reached from the device-card menu,
-      reusing `ActivitySection` + `pcMetricsProvider`). The per-agent usage/credit
-      view is Phase B (the `agent/usageStats` item below).
 - [ ] **Bridge-update: fixed "About" row in Settings.** The bridge-outdated
       **banner** (thread list) and its data are done — `bridgeUpdateProvider`
       exposes `{ currentVersion, latestVersion }` from `bridge/status`
