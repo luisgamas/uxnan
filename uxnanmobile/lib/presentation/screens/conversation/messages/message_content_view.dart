@@ -24,7 +24,6 @@ import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/markdown.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
-import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 
 /// Renders a single [MessageContent] block. The enclosing bubble provides the
 /// background; this widget renders the block's body.
@@ -1774,12 +1773,10 @@ class _AssistantTurnViewState extends ConsumerState<AssistantTurnView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Neural Expressive activity cue: a morphing polygon at the very
-          // start of the response while the agent is still producing it.
           if (message.isStreaming) ...[
-            // Not `const`: PolygonLoader's assert reads `shapes.length`, which
-            // isn't a valid constant expression.
-            PolygonLoader(size: 20),
+            _AgentRespondingStatus(
+              label: AppLocalizations.of(context).conversationAgentResponding,
+            ),
             const SizedBox(height: UxnanSpacing.sm),
           ],
           if (showThinking && thinking.isNotEmpty) ...[
@@ -1801,6 +1798,45 @@ class _AssistantTurnViewState extends ConsumerState<AssistantTurnView> {
           ],
         ],
       ),
+    );
+  }
+}
+
+/// A quiet in-flow activity cue at the beginning of the live assistant turn.
+/// It stays with the response instead of competing with composer context and
+/// token meters in the fixed bottom chrome.
+class _AgentRespondingStatus extends StatelessWidget {
+  const _AgentRespondingStatus({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox.square(
+          dimension: 14,
+          child: RepaintBoundary(
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: colors.onSurfaceVariant,
+            ),
+          ),
+        ),
+        const SizedBox(width: UxnanSpacing.sm),
+        Text(
+          label,
+          key: const ValueKey('agent-responding-status'),
+          style: textTheme.labelMedium?.copyWith(
+            color: colors.onSurfaceVariant,
+            fontStyle: FontStyle.italic,
+          ),
+        ),
+      ],
     );
   }
 }

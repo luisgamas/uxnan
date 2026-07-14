@@ -58,6 +58,26 @@ void main() {
     expect(find.byType(HighlightView), findsOneWidget);
   });
 
+  testWidgets('streaming assistant turn shows a compact responding cue',
+      (tester) async {
+    final message = Message(
+      id: 'streaming',
+      threadId: 'th1',
+      turnId: 't1',
+      role: MessageRole.assistant,
+      contents: const [TextContent('Working', isStreaming: true)],
+      deliveryState: MessageDeliveryState.delivered,
+      orderIndex: 0,
+      createdAt: DateTime(2026),
+    );
+
+    await tester.pumpWidget(_wrap(MessageBubble(message: message)));
+    await tester.pump();
+
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(find.text('Agent responding…'), findsOneWidget);
+  });
+
   testWidgets('renders approval, plan and subagent cards', (tester) async {
     final message = Message(
       id: 'm2',
@@ -634,6 +654,8 @@ void main() {
 
     await tester.enterText(find.byType(TextField), '  hola  ');
     await tester.pumpAndSettle();
+    // Dictation remains available while Send occupies its own primary slot.
+    expect(find.byIcon(Icons.mic_none_rounded), findsOneWidget);
     await tester.tap(find.byIcon(Icons.arrow_upward_rounded));
     await tester.pump();
 
@@ -677,6 +699,22 @@ void main() {
     expect(editable.focusNode.hasPrimaryFocus, isTrue);
   });
 
+  testWidgets('ComposerBar contracts when idle and stretches on focus',
+      (tester) async {
+    await tester.pumpWidget(_wrap(ComposerBar(onSend: (_) {})));
+    await tester.pumpAndSettle();
+
+    final surface = find.byKey(const ValueKey('composer-surface'));
+    final focusedSize = tester.getSize(surface);
+
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pumpAndSettle();
+    final idleSize = tester.getSize(surface);
+
+    expect(idleSize.width, lessThan(focusedSize.width));
+    expect(idleSize.height, lessThan(focusedSize.height));
+  });
+
   testWidgets('ComposerBar dictates recognized speech into the field',
       (tester) async {
     final speech = _FakeSpeech();
@@ -705,14 +743,13 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('hola'), findsOneWidget);
 
-    // …and the final result stops the session. With text now in the field the
-    // pill swaps the trailing action from mic to Send (NE spec §6.5: the right
-    // button is mic when empty, send when there's text).
+    // …and the final result stops the session. Send appears in its own slot,
+    // while the mic remains available to continue dictating later.
     speech.emit('hola mundo', isFinal: true);
     await tester.pumpAndSettle();
     expect(find.text('hola mundo'), findsOneWidget);
     expect(find.byIcon(Icons.arrow_upward_rounded), findsOneWidget);
-    expect(find.byIcon(Icons.mic_none_rounded), findsNothing);
+    expect(find.byIcon(Icons.mic_none_rounded), findsOneWidget);
   });
 
   testWidgets('ComposerBar warns when voice input is unavailable',

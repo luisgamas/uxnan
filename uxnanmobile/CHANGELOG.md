@@ -6,6 +6,24 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — focused composer and compact turn context
+- The Neural Expressive composer now contracts slightly while idle, then
+  stretches, gains vertical breathing room and subtle elevation when focused,
+  without adding an outline. Voice dictation remains independently
+  available beside the contextual Send/Stop action, including after text has
+  already been entered; sending safely stops an active dictation session.
+- Reasoning/run-option knobs and approval mode moved out of the "+" menu into
+  a compact icon-only shelf above the composer. The shelf is visible by
+  default, folds to one chevron, and left-aligns its controls as one tight
+  group. Interactive targets remain 48 dp while their neutral 38 dp visual
+  surfaces and 24 dp glyphs match the context, token, and edit indicators
+  anchored on the right. Approval is green for Approve for me, orange for Request
+  approval, and red for Full access.
+- The "+" now opens a small anchored two-row menu for Photo library and Camera
+  instead of a modal sheet. The live assistant turn once again owns its
+  activity cue, now a small circular progress indicator followed by the quiet
+  italic "Agent responding…" label instead of the previous polygon loader.
+
 ### Changed — calmer, controllable conversation timeline
 - Streaming auto-follow now yields immediately to a manual timeline drag. The
   conversation keeps following naturally when untouched, remains detached

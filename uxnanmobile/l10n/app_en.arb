@@ -228,9 +228,9 @@
   },
   "composerOptionsShow": "Show options",
   "composerOptionsHide": "Hide options",
-  "composerTools": "Turn options",
+  "composerTools": "Add to conversation",
   "@composerTools": {
-    "description": "Title of the composer '+' turn-tools sheet (attach + run options + approval) and tooltip of the '+' button."
+    "description": "Tooltip of the composer '+' button. Its anchored menu contains immediate add-to-turn actions such as media attachments."
   },
 
   "composerMentionFilesTitle": "Files & folders",
@@ -404,6 +404,10 @@
   "turnFailed": "The agent turn failed",
   "@turnFailed": {
     "description": "Fallback shown inline on a failed agent turn when the bridge sent no error text."
+  },
+  "conversationAgentResponding": "Agent responding…",
+  "@conversationAgentResponding": {
+    "description": "Low-emphasis status beside the composer while the active agent turn is running."
   },
   "runOptionAuto": "Auto",
   "@runOptionAuto": {

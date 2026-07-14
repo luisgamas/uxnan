@@ -383,28 +383,38 @@ any secondary header action.
 
 ```text
 ┌────────────────────────────────────────────────────────┐
-│  ➕   [  Type a message...                     ]   🎙️  │
+│  ➕   [  Type a message...              ]  🎙️  [↑] │
 └────────────────────────────────────────────────────────┘
    Height: 56 dp
    Shape: StadiumBorder (radius = 28 dp = height/2)
    Color: surfaceContainerHighest
-   Lateral margin: 16 dp on compact, 24 dp on medium+
+   Lateral margin: 24 dp idle → 16 dp focused on compact
    Bottom margin: 16 dp + SafeArea bottom
    Position: floating over the content (not anchored to the keyboard)
 ```
 
 **"+" Menu (Unified Plus Menu):**
-When tapping "➕", a **bottom sheet** is displayed (not a floating context menu) with:
-- Top section: horizontal carousel for quick upload (Photos, Camera, Recent)
-- Bottom section (scroll): access to storage (Files, Drive, Notebooks) and
-  AI tools (Deep Research, Canvas, Create Image, etc.)
-- Opening animation: `spatialDefault` (k=700, ζ=0.90)
+With only Photo library and Camera available, tapping "➕" opens a compact
+anchored M3 popup menu with two icon-and-label rows. A bottom sheet is reserved
+for a future larger action set; persistent turn context is not mixed into this
+menu.
+
+Reasoning/run-option and approval controls live as a tightly left-aligned icon
+group in a compact horizontal shelf above the pill. Each keeps a 48 dp touch
+target around a 38 dp neutral circular surface with a 24 dp glyph, matching the
+38 dp visual height and `surfaceContainerHigh` tone of the context, token, and
+edit pills on the right. The shelf is visible by default and folds to one chevron. Tooltips
+carry the option/value labels. Approval uses semantic status colors: success
+for Approve for me, warning for Request approval, and error for Full access.
+While a turn is active, its response begins with a 14 dp circular progress
+indicator and an italic on-surface-variant "Agent responding…" label.
 
 **Pill Input states:**
 ```text
-Default:    surfaceContainerHighest, no border
-Focused:    2 dp outline with primary color, subtle shadow elevation 2
-With text:  send button (→) appears, replacing the voice icon
+Default:    surfaceContainerHighest, no border, compact idle footprint
+Focused:    no outline, elevation 2, expands horizontally/vertically
+With text:  send button (↑) appears beside the always-available voice action
+Running:    stop replaces send; voice remains an independent action
 ```
 
 ---

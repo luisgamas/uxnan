@@ -938,10 +938,10 @@ abstract class AppLocalizations {
   /// **'Hide options'**
   String get composerOptionsHide;
 
-  /// Title of the composer '+' turn-tools sheet (attach + run options + approval) and tooltip of the '+' button.
+  /// Tooltip of the composer '+' button. Its anchored menu contains immediate add-to-turn actions such as media attachments.
   ///
   /// In en, this message translates to:
-  /// **'Turn options'**
+  /// **'Add to conversation'**
   String get composerTools;
 
   /// Header of the inline @-mention suggestion panel above the composer.
@@ -1657,6 +1657,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'The agent turn failed'**
   String get turnFailed;
+
+  /// Low-emphasis status beside the composer while the active agent turn is running.
+  ///
+  /// In en, this message translates to:
+  /// **'Agent responding…'**
+  String get conversationAgentResponding;
 
   /// Run-option value meaning 'leave the agent's default' (no explicit choice).
   ///

@@ -6,7 +6,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uxnan/domain/entities/agent_command.dart';
-import 'package:uxnan/domain/entities/agent_model.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/enums/agent_id.dart';
 import 'package:uxnan/domain/enums/approval_mode.dart';
@@ -24,11 +23,12 @@ import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_bar.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_commands.dart';
-import 'package:uxnan/presentation/screens/conversation/composer/turn_tools_sheet.dart';
+import 'package:uxnan/presentation/screens/conversation/composer/turn_control_shelf.dart';
 import 'package:uxnan/presentation/screens/conversation/files/file_browser_screen.dart';
 import 'package:uxnan/presentation/screens/conversation/git/git_screen.dart';
 import 'package:uxnan/presentation/screens/conversation/messages/message_bubble.dart';
 import 'package:uxnan/presentation/screens/conversation/session_environment.dart';
+import 'package:uxnan/presentation/screens/conversation/support/approval_mode_sheet.dart';
 import 'package:uxnan/presentation/screens/conversation/support/model_picker_sheet.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
@@ -75,6 +75,9 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   // the State, so it resets every time the conversation is (re)opened — the
   // banner reappears on re-entry unless hidden permanently in settings.
   bool _autonomousBannerDismissed = false;
+  // Persistent turn context is visible by default, but can be folded down to
+  // one chevron when the user wants a completely quiet conversation surface.
+  bool _turnControlsExpanded = true;
   // Set when the user sends a message and the "scroll to latest on send"
   // setting is on: forces the next timeline update to jump to the bottom if the
   // user had scrolled up. Cleared once that scroll happens.
@@ -359,27 +362,13 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     );
   }
 
-  /// Opens the unified turn-tools sheet (attach + run-option knobs + approval).
-  void _openTurnTools(
-    List<AgentModelOption> runOptions, {
-    required bool showAttach,
-    required bool showApproval,
-  }) {
-    TurnToolsSheet.show(
-      context,
-      threadId: widget.threadId,
-      showAttach: showAttach,
-      runOptions: runOptions,
-      showApproval: showApproval,
-      approvalMode: _approvalMode,
-      onApprovalChanged: (mode) {
-        setState(() => _approvalMode = mode);
-        // Persist to the bridge (source of truth); best-effort offline.
-        unawaited(
-          ref.read(threadManagerProvider).setAccessMode(widget.threadId, mode),
-        );
-      },
-      onAttach: _pickAttachment,
+  Future<void> _pickApprovalMode() async {
+    final mode = await ApprovalModeSheet.show(context, _approvalMode);
+    if (mode == null || !mounted || mode == _approvalMode) return;
+    setState(() => _approvalMode = mode);
+    // Persist to the bridge (source of truth); best-effort offline.
+    unawaited(
+      ref.read(threadManagerProvider).setAccessMode(widget.threadId, mode),
     );
   }
 
@@ -581,13 +570,12 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     final contentInset = _horizontalInset(MediaQuery.sizeOf(context).width);
     final running = connectedHere && activity == ThreadActivity.running;
 
-    // The unified "+" turn-tools sheet holds: attach (images-capable agents),
-    // the data-driven run-option knobs, and the approval mode (tool-gating
-    // agents). The "+" is shown only when there's at least one of them.
+    // The "+" is reserved for immediate media actions. Persistent turn
+    // context (reasoning and approval) lives in the collapsible shelf.
     final showAttach = caps?.images ?? false;
     final showRunOptions = connectedHere && runOptions.isNotEmpty;
     final showApproval = caps?.approvals ?? false;
-    final hasTurnTools = showAttach || showRunOptions || showApproval;
+    final showTurnControls = showRunOptions || showApproval;
 
     // Resolve git state for the real workspace once the thread's cwd is known,
     // and probe whether that cwd still exists (folders/worktrees can vanish).
@@ -743,15 +731,34 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                       _Centered(
                         child: _LoginRequiredBanner(agentId: thread.agentId),
                       ),
-                    if (lastEdits != null || environment.showContext)
+                    if (showTurnControls ||
+                        lastEdits != null ||
+                        environment.showContext)
                       _Centered(
-                        child: _ComposerInfoBar(
-                          edits: lastEdits,
-                          showContext: environment.showContext,
-                          hasContext: environment.hasContext,
-                          percent: environment.contextPercent,
-                          tokenLabel: environment.contextTokensLabel,
-                          mode: contextMode,
+                        child: _ComposerContextBar(
+                          controls: showTurnControls
+                              ? TurnControlShelf(
+                                  threadId: widget.threadId,
+                                  options: runOptions,
+                                  showApproval: showApproval,
+                                  approvalMode: _approvalMode,
+                                  expanded: _turnControlsExpanded,
+                                  onExpandedChanged: (value) => setState(
+                                    () => _turnControlsExpanded = value,
+                                  ),
+                                  onApprovalTap: _pickApprovalMode,
+                                )
+                              : null,
+                          info: lastEdits != null || environment.showContext
+                              ? _ComposerInfoBar(
+                                  edits: lastEdits,
+                                  showContext: environment.showContext,
+                                  hasContext: environment.hasContext,
+                                  percent: environment.contextPercent,
+                                  tokenLabel: environment.contextTokensLabel,
+                                  mode: contextMode,
+                                )
+                              : null,
                         ),
                       ),
                     if (_attachments.isNotEmpty)
@@ -774,13 +781,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                       onStop: () => ref
                           .read(threadManagerProvider)
                           .cancelTurn(widget.threadId),
-                      onPlus: hasTurnTools
-                          ? () => _openTurnTools(
-                                runOptions,
-                                showAttach: showAttach,
-                                showApproval: showApproval,
-                              )
-                          : null,
+                      onAttach: showAttach ? _pickAttachment : null,
                       onSend: (text) {
                         // Honor the scroll-to-latest-on-send setting: arm a
                         // forced scroll so the user sees their message even if
@@ -933,8 +934,8 @@ class _ContextBadge extends StatelessWidget {
     return Tooltip(
       message: 'Context $percent%',
       child: Container(
-        width: 34,
-        height: 34,
+        width: UxnanSize.compactComposerChrome,
+        height: UxnanSize.compactComposerChrome,
         decoration: BoxDecoration(
           color: colors.surfaceContainerHigh,
           shape: BoxShape.circle,
@@ -971,31 +972,33 @@ class _TokenChip extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     return Tooltip(
       message: 'Context: $label tokens',
-      child: Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: UxnanSpacing.sm,
-          vertical: 4,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(
+          minHeight: UxnanSize.compactComposerChrome,
         ),
-        decoration: BoxDecoration(
-          color: colors.surfaceContainerHigh,
-          borderRadius: const BorderRadius.all(UxnanRadius.full),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.donut_large_outlined,
-              size: 13,
-              color: colors.onSurfaceVariant,
-            ),
-            const SizedBox(width: UxnanSpacing.xs),
-            Text(
-              label,
-              style: UxnanTypography.codeSmall.copyWith(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: UxnanSpacing.sm),
+          decoration: BoxDecoration(
+            color: colors.surfaceContainerHigh,
+            borderRadius: const BorderRadius.all(UxnanRadius.full),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.donut_large_outlined,
+                size: 13,
                 color: colors.onSurfaceVariant,
               ),
-            ),
-          ],
+              const SizedBox(width: UxnanSpacing.xs),
+              Text(
+                label,
+                style: UxnanTypography.codeSmall.copyWith(
+                  color: colors.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1121,6 +1124,36 @@ _TurnEdits? _lastTurnEdits(TurnTimelineSnapshot? snapshot) {
   return null;
 }
 
+/// Shared line above the composer: persistent turn controls stay left while
+/// diff/context indicators remain anchored right. The controls can scroll
+/// horizontally without displacing the token indicator on compact screens.
+class _ComposerContextBar extends StatelessWidget {
+  const _ComposerContextBar({this.controls, this.info});
+
+  final Widget? controls;
+  final Widget? info;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        UxnanSpacing.lg,
+        UxnanSpacing.xs,
+        UxnanSpacing.lg,
+        0,
+      ),
+      child: Row(
+        children: [
+          if (controls != null) Expanded(child: controls!),
+          if (controls != null && info != null)
+            const SizedBox(width: UxnanSpacing.sm),
+          if (info != null) info!,
+        ],
+      ),
+    );
+  }
+}
+
 /// A compact, right-aligned info row just above the composer: the latest turn's
 /// numeric diff (`+a −d`) on the left and the context-usage indicator on the
 /// right, both on the same neutral surface as the top-bar Icon Surfaces. Purely
@@ -1162,26 +1195,19 @@ class _ComposerInfoBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final edits = this.edits;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        UxnanSpacing.lg,
-        UxnanSpacing.xs,
-        UxnanSpacing.lg,
-        0,
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          if (edits != null)
-            _DiffNumericPill(
-              additions: edits.additions,
-              deletions: edits.deletions,
-            ),
-          if (edits != null && showContext)
-            const SizedBox(width: UxnanSpacing.xs),
-          if (showContext) ..._contextWidgets(),
-        ],
-      ),
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: [
+        if (edits != null)
+          _DiffNumericPill(
+            additions: edits.additions,
+            deletions: edits.deletions,
+          ),
+        if (edits != null && showContext)
+          const SizedBox(width: UxnanSpacing.xs),
+        if (showContext) ..._contextWidgets(),
+      ],
     );
   }
 }
@@ -1195,31 +1221,34 @@ class _DiffNumericPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: UxnanSpacing.sm,
-        vertical: 4,
+    return ConstrainedBox(
+      constraints: const BoxConstraints(
+        minHeight: UxnanSize.compactComposerChrome,
       ),
-      decoration: BoxDecoration(
-        color: colors.surfaceContainerHigh,
-        borderRadius: const BorderRadius.all(UxnanRadius.full),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            '+$additions',
-            style:
-                UxnanTypography.codeSmall.copyWith(color: UxnanColors.gitAdded),
-          ),
-          const SizedBox(width: UxnanSpacing.xs),
-          Text(
-            '−$deletions',
-            style: UxnanTypography.codeSmall.copyWith(
-              color: UxnanColors.gitDeleted,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: UxnanSpacing.sm),
+        decoration: BoxDecoration(
+          color: colors.surfaceContainerHigh,
+          borderRadius: const BorderRadius.all(UxnanRadius.full),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '+$additions',
+              style: UxnanTypography.codeSmall.copyWith(
+                color: UxnanColors.gitAdded,
+              ),
             ),
-          ),
-        ],
+            const SizedBox(width: UxnanSpacing.xs),
+            Text(
+              '−$deletions',
+              style: UxnanTypography.codeSmall.copyWith(
+                color: UxnanColors.gitDeleted,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

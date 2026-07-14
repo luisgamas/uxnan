@@ -464,7 +464,7 @@ class AppLocalizationsEs extends AppLocalizations {
   String get composerOptionsHide => 'Ocultar opciones';
 
   @override
-  String get composerTools => 'Opciones del turno';
+  String get composerTools => 'Añadir a la conversación';
 
   @override
   String get composerMentionFilesTitle => 'Archivos y carpetas';
@@ -834,6 +834,9 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get turnFailed => 'El turno del agente falló';
+
+  @override
+  String get conversationAgentResponding => 'Agente respondiendo…';
 
   @override
   String get runOptionAuto => 'Automático';

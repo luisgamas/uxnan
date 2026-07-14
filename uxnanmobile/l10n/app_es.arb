@@ -149,7 +149,7 @@
   "composerVoiceUnavailable": "La entrada de voz no está disponible en este dispositivo.",
   "composerOptionsShow": "Mostrar opciones",
   "composerOptionsHide": "Ocultar opciones",
-  "composerTools": "Opciones del turno",
+  "composerTools": "Añadir a la conversación",
 
   "composerMentionFilesTitle": "Archivos y carpetas",
   "composerMentionLoading": "Listando…",
@@ -281,6 +281,7 @@
   "questionSkipped": "Omitida",
   "questionFailed": "No se pudo enviar tu respuesta; reintenta",
   "turnFailed": "El turno del agente falló",
+  "conversationAgentResponding": "Agente respondiendo…",
   "runOptionAuto": "Automático",
 
   "authRequiresLoginTitle": "Agente sin sesión iniciada",

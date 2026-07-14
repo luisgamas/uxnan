@@ -463,7 +463,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get composerOptionsHide => 'Hide options';
 
   @override
-  String get composerTools => 'Turn options';
+  String get composerTools => 'Add to conversation';
 
   @override
   String get composerMentionFilesTitle => 'Files & folders';
@@ -832,6 +832,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get turnFailed => 'The agent turn failed';
+
+  @override
+  String get conversationAgentResponding => 'Agent responding…';
 
   @override
   String get runOptionAuto => 'Auto';

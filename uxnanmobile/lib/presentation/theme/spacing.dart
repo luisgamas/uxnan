@@ -34,6 +34,21 @@ class UxnanSpacing {
   static const double maxContentWidth = 760;
 }
 
+/// Shared component dimensions that must remain visually synchronized across
+/// otherwise different widgets.
+class UxnanSize {
+  const UxnanSize._();
+
+  /// Visual height of the compact chrome above the conversation composer.
+  static const double compactComposerChrome = 38;
+
+  /// Glyph size inside compact composer-chrome icon surfaces.
+  static const double compactComposerIcon = 24;
+
+  /// Minimum interactive target required for icon-only controls.
+  static const double minTouchTarget = 48;
+}
+
 /// Corner-radius scale for the Uxnan design system.
 class UxnanRadius {
   const UxnanRadius._();

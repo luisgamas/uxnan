@@ -73,9 +73,15 @@ connected to live bridge data, validated on-device against a real bridge.
   single/multi-select option card that morphs to a resolved summary, persisted
   per `questionId`; answered via `turn/send { questionResponse }`. Validated
   end-to-end against OpenCode's `question` tool.
-- **Composer** — bottom-anchored bar; **stop-the-turn** mid-run; **voice → text**
-  (`speech_to_text`); **image attachments** (photo library / camera, downscaled to
-  2048 px / q85, image-only message allowed, gated by the agent's `images`
+- **Composer** — focus-responsive floating pill (narrower/shorter idle,
+  expanded and subtly elevated while active, without a focus outline);
+  **independent voice → text**
+  (`speech_to_text`) beside contextual Send/Stop; a collapsible turn-context
+  icon shelf with a left-aligned 38 dp visual rhythm (48 dp touch targets) for
+  data-driven reasoning options and color-coded approval mode;
+  a compact in-turn circular **Agent responding…** cue; **image attachments**
+  in an anchored two-row "+" menu (photo library / camera, downscaled to 2048
+  px / q85, image-only message allowed, gated by the agent's `images`
   capability).
 - **Per-PC threads** (`Thread.deviceId`) with per-agent filter chips, search /
   sort / density, archived-thread screen, per-thread actions (rename / archive /
