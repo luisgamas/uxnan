@@ -6,6 +6,15 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — complete default Material 3 color scheme
+- The fresh-install Uxnan brand theme now derives a complete Material 3
+  `ColorScheme` from the official blue, green, and error seed colors instead
+  of manually supplying only a subset of roles. Every surface layer
+  (`surfaceContainerLowest` through `surfaceContainerHighest`), fixed role,
+  inverse role, and outline now has a deliberate tonal value, restoring visible
+  depth for cards, sheets, inputs, and Neural Expressive neutral surfaces in
+  both light and dark mode. Custom themes remain untouched.
+
 ### Changed — selectable text and full-surface image previews
 - Removed the file-wide copy action from the viewer app bar. Markdown preview,
   syntax-highlighted source and git diff text now support native selection and

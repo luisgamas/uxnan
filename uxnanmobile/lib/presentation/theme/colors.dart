@@ -9,6 +9,14 @@ import 'package:flutter/material.dart';
 class UxnanColors {
   const UxnanColors._();
 
+  // Brand seeds. The default Material 3 scheme derives every semantic role
+  // from these keys; widgets must use ColorScheme roles rather than these
+  // source colors directly.
+  static const Color brandPrimary = Color(0xFF1B6EF3);
+  static const Color brandSecondary = Color(0xFF00C896);
+  static const Color brandError = Color(0xFFB3261E);
+
+  // Legacy semantic colors retained for non-ColorScheme status indicators.
   // Brand.
   /// Primary brand color in light mode.
   static const Color lightPrimary = Color(0xFF1B6EF3);

@@ -88,44 +88,41 @@ ThemeData buildUxnanTheme({
   );
 }
 
-/// The hand-tuned brand palette ([ThemeSource.brand]). Identical to a fresh
-/// install — no visual regression for users that never personalize.
+/// The default Material 3 brand palette ([ThemeSource.brand]).
+///
+/// A complete M3 scheme is generated first so every semantic role, including
+/// the full surface-container hierarchy, has a deliberate tonal value. The
+/// product's green secondary and error colors then replace their respective
+/// generated tonal families. This preserves Uxnan's identity without making
+/// cards, sheets, and neutral surfaces fall back to incomplete constructor
+/// defaults.
 ColorScheme _buildBrandColorScheme(Brightness brightness) {
-  final surface = UxnanColors.surfaceFor(brightness);
-  final surfaceVariant = UxnanColors.surfaceVariantFor(brightness);
-  final surfaceElevated = UxnanColors.surfaceElevatedFor(brightness);
-  final primary = UxnanColors.primaryFor(brightness);
-  final primaryContainer = UxnanColors.primaryContainerFor(brightness);
-  final secondary = UxnanColors.secondaryFor(brightness);
-  final secondaryContainer = UxnanColors.secondaryContainerFor(brightness);
-  final error = UxnanColors.errorFor(brightness);
-  final onSurface = UxnanColors.onSurfaceFor(brightness);
-  final onSurfaceVariant = UxnanColors.onSurfaceMutedFor(brightness);
-  final outline = UxnanColors.outlineFor(brightness);
-  return ColorScheme(
+  final primary = ColorScheme.fromSeed(
+    seedColor: UxnanColors.brandPrimary,
     brightness: brightness,
-    primary: primary,
-    onPrimary: brightness == Brightness.dark
-        ? UxnanColors.onPrimary
-        : UxnanColors.lightOnPrimary,
-    primaryContainer: primaryContainer,
-    onPrimaryContainer: onSurface,
-    secondary: secondary,
-    onSecondary: brightness == Brightness.dark
-        ? UxnanColors.onSecondary
-        : UxnanColors.lightOnSecondary,
-    secondaryContainer: secondaryContainer,
-    onSecondaryContainer: onSurface,
-    error: error,
-    onError: Colors.white,
-    surface: surface,
-    onSurface: onSurface,
-    onSurfaceVariant: onSurfaceVariant,
-    surfaceContainerHighest: surfaceVariant,
-    surfaceContainerHigh: surfaceElevated,
-    outline: outline,
-    outlineVariant:
-        outline.withValues(alpha: brightness == Brightness.dark ? 0.5 : 0.35),
+  );
+  final secondary = ColorScheme.fromSeed(
+    seedColor: UxnanColors.brandSecondary,
+    brightness: brightness,
+  );
+  final error = ColorScheme.fromSeed(
+    seedColor: UxnanColors.brandError,
+    brightness: brightness,
+  );
+
+  return primary.copyWith(
+    secondary: secondary.primary,
+    onSecondary: secondary.onPrimary,
+    secondaryContainer: secondary.primaryContainer,
+    onSecondaryContainer: secondary.onPrimaryContainer,
+    secondaryFixed: secondary.primaryFixed,
+    secondaryFixedDim: secondary.primaryFixedDim,
+    onSecondaryFixed: secondary.onPrimaryFixed,
+    onSecondaryFixedVariant: secondary.onPrimaryFixedVariant,
+    error: error.primary,
+    onError: error.onPrimary,
+    errorContainer: error.primaryContainer,
+    onErrorContainer: error.onPrimaryContainer,
   );
 }
 
