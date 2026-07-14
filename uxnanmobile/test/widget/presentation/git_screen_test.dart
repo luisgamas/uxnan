@@ -118,6 +118,25 @@ void main() {
   });
 
   testWidgets(
+      'Git commit composer contracts when idle and matches focused elevation',
+      (tester) async {
+    await tester.pumpWidget(_wrap(const GitScreen(), state: _sampleState()));
+    await tester.pumpAndSettle();
+
+    final surface = find.byKey(const ValueKey('git-composer-surface'));
+    final focusedSize = tester.getSize(surface);
+    expect(tester.widget<Material>(surface).elevation, 2);
+
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pumpAndSettle();
+
+    final idleSize = tester.getSize(surface);
+    expect(idleSize.width, lessThan(focusedSize.width));
+    expect(idleSize.height, lessThan(focusedSize.height));
+    expect(tester.widget<Material>(surface).elevation, 0);
+  });
+
+  testWidgets(
       'GitScreen keeps the tap-outside-to-unfocus behavior on the '
       'commit title field', (tester) async {
     // Mirrors the conversation screen test: the GestureDetector wrapping the

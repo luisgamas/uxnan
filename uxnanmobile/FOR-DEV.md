@@ -89,7 +89,8 @@ connected to live bridge data, validated on-device against a real bridge.
   for CLI resume.
 - **Full Git** — full-screen `GitScreen` (per-file `git/diff`, branch switch with
   auto-stash, smart PR dialog, undo-commit, `git/revert`, `git/deleteBranch`,
-  `git/removeWorktree`, etc.).
+  `git/removeWorktree`, etc.) with a focus-responsive commit composer aligned
+  to the conversation composer's Neural Expressive geometry and elevation.
 - **FCM push** (gated) — Android LIVE; deep-link to conversation; **personalized
   copy** + foreground suppression; per-channel notification preferences (Replies /
   Errors).

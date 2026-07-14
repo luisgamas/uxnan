@@ -12,6 +12,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   without adding an outline. Voice dictation remains independently
   available beside the contextual Send/Stop action, including after text has
   already been entered; sending safely stops an active dictation session.
+- The Git commit composer now shares the same focus response: 24 dp idle and
+  16 dp focused side margins, 4→8 dp vertical padding, elevation 0→2, and the
+  same reduced-motion-aware 220 ms transition. Its existing commit-details
+  morph and separate action buttons remain unchanged.
 - Reasoning/run-option knobs and approval mode moved out of the "+" menu into
   a compact icon-only shelf above the composer. The shelf is visible by
   default, folds to one chevron, and left-aligns its controls as one tight

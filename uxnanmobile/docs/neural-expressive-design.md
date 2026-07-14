@@ -417,6 +417,11 @@ With text:  send button (↑) appears beside the always-available voice action
 Running:    stop replaces send; voice remains an independent action
 ```
 
+The Git commit composer reuses these same focus states, including the 24→16 dp
+compact-screen side margins, 4→8 dp vertical padding, elevation 0→2, 220 ms
+ease-out transition, and reduced-motion fallback. It retains its task-specific
+morph from a stadium into a 24 dp rounded surface when commit details are open.
+
 ---
 
 ### 4.4 Navigation Drawer / Sidebar
