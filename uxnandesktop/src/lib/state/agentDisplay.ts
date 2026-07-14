@@ -40,7 +40,17 @@ export function resolveAgentDisplay(tab: GroupTab): AgentDisplay | null {
   // 1. Precise hook state.
   const hook = agentStatus.get(tab.id);
   if (hook) {
-    return { status: hook.status, source: "hook", stale: agentStatus.isStale(tab.id) };
+    const stale = agentStatus.isStale(tab.id);
+    // Safety net: an attention state (waiting/blocked) that went quiet past the
+    // staleness window and never got a terminal event shouldn't dominate the
+    // "needs you" lane forever — present it as a neutral idle (still dimmed).
+    // `done`/`working` keep their meaning. The common Claude "stuck on waiting"
+    // case is fixed at the source in the backend event mapping; this backstops
+    // any agent (or future one) that gets stuck without a closing event.
+    if (stale && (hook.status === "waiting" || hook.status === "blocked")) {
+      return { status: "idle", source: "hook", stale: true };
+    }
+    return { status: hook.status, source: "hook", stale };
   }
   // 2. Terminal-title inference.
   const title = agentMonitor.titleStatus(tab.id);

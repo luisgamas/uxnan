@@ -95,6 +95,20 @@ Los estados posibles de un agente son cuatro, cada uno con un significado especi
 | `done` | Tarea completada | Punto azul / check |
 | `idle` (derivado) | Agente en reposo, sin reporte preciso | Punto gris |
 
+> **Semantica `done` vs `waiting` (fin de turno).** `done` es el estado de reposo
+> tras completar un turno — la tarjeta muestra "Listo" + badge de no-leido.
+> `waiting` se reserva para **esperas reales a mitad de tarea** (el agente necesita
+> tu respuesta para continuar: permiso, pregunta, elicitacion). En Claude Code esto
+> importa: al terminar dispara `Stop` (→ `done`) y, ya en reposo en el prompt, una
+> `Notification` de tipo `idle_prompt`. Esa notificacion de reposo mapea a **`done`**
+> (no a `waiting`), para que no pise — el cache es last-write-wins — el `done` previo
+> y deje la tarjeta atascada en "Esperando tu respuesta". Solo
+> `permission_prompt` / `elicitation_dialog` / `agent_needs_input` producen
+> `waiting`; `auth_success` y otros avisos transitorios se ignoran
+> (`hooks::normalize_event`). Los demas agentes no tienen este riesgo: Codex no
+> suscribe `Notification`, y Gemini/OpenCode/Pi ya mapean su evento de reposo/fin a
+> `done`.
+
 Ademas, un reporte sin actualizacion por mas de **30 minutos** se considera
 `stale` y se atenua (`opacity-40`) tanto en la sidebar como en la barra de
 tabs. Un terminal plain (sin agente corriendo y sin output reciente) no
@@ -155,12 +169,24 @@ El ADE detecta **que proceso esta corriendo en primer plano** en cada PTY:
 - Esta capa no determina el estado especifico del agente, pero confirma que un agente esta activo en un PTY determinado y habilita el monitoreo por las capas superiores.
 - Es la capa mas basica: solo detecta presencia, no estado detallado.
 
+**Identidad por hook (no solo por proceso).** Ademas de `procscan`, **el propio
+reporte de hook (Capa 1) establece la identidad del tab**: como el reporter declara
+su `agentType`, un agente iniciado **a mano** en cualquier terminal del ADE — incluso
+un wrapper, un binario renombrado o uno lanzado via `node` que `procscan` no sabe
+nombrar — aparece en la agent view y alimenta el punto de estado del worktree en
+cuanto llega su **primer hook**, sin depender de la coincidencia por nombre de
+ejecutable. La deteccion de proceso queda como **fallback** para agentes sin hook. El
+hook solo sella la identidad de un tab que aun no la tiene (una identidad de
+lanzamiento o ya detectada siempre gana). Sitio: `state/agentStatus.svelte.ts`
+(`sealIdentity`).
+
 ### 1.5 Staleness y Limpieza
 
 Para evitar que estados obsoletos contaminen la interfaz:
 
 - **Marca de stale:** Si un agente no reporta estado en **30 minutos**, su estado se marca como "stale".
 - **Visualizacion diferenciada:** Los estados stale se muestran con **opacidad reducida** en la UI, tanto en la sidebar como en la barra de tabs. Esto indica al usuario que la informacion puede no estar actualizada.
+- **Neutralizacion de atencion obsoleta:** un estado de atencion (`waiting`/`blocked`) que quedo obsoleto (stale, sin evento de cierre que lo resuelva) se degrada a `idle` neutral en la UI, para que ningun agente atascado domine la lane «Te necesita» indefinidamente. `done`/`working` conservan su significado. (`state/agentDisplay.ts`.)
 - **Limpieza automatica:** Al cabo de **7 dias sin actividad**, el registro del agente se elimina del cache persistente en disco. Esto evita acumulacion indefinida de datos de agentes antiguos.
 
 ---

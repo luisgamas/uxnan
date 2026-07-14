@@ -93,13 +93,19 @@ pub fn normalize_event(
             "UserPromptSubmit" | "PreToolUse" | "PostToolUse" | "PostToolUseFailure"
             | "PreCompact" => Some(AgentStatus::Working),
             "PermissionRequest" => Some(AgentStatus::Waiting),
-            // Claude also surfaces a permission/idle prompt as a `Notification`
-            // with a `notification_type`; only the "needs you" kinds mean waiting.
+            // Claude surfaces several prompts as a `Notification` carrying a
+            // `notification_type`. Only the kinds that genuinely block on the user
+            // *mid-turn* mean `waiting`. `idle_prompt` fires right after `Stop`
+            // when Claude is idle at the prompt — that's the finished/resting
+            // state, so it maps to `done`; mapping it to `waiting` (as before) let
+            // it clobber the preceding `Stop`→`done` (last-write-wins), leaving the
+            // card stuck on "waiting for input". `auth_success` is a transient auth
+            // notice that must not change the turn state.
             "Notification" => match source.and_then(notification_type).as_deref() {
-                Some(
-                    "permission_prompt" | "idle_prompt" | "auth_success" | "elicitation_dialog"
-                    | "agent_needs_input",
-                ) => Some(AgentStatus::Waiting),
+                Some("permission_prompt" | "elicitation_dialog" | "agent_needs_input") => {
+                    Some(AgentStatus::Waiting)
+                }
+                Some("idle_prompt") => Some(AgentStatus::Done),
                 _ => None,
             },
             "Stop" | "SessionEnd" => Some(AgentStatus::Done),
@@ -616,12 +622,22 @@ mod tests {
             normalize_event("claude", "Stop", None),
             Some(AgentStatus::Done)
         );
-        // Claude Notification is waiting only for the "needs you" types.
+        // Claude Notification is waiting only for the genuine mid-turn "needs you"
+        // types; `idle_prompt` (fires right after Stop) is the finished/resting
+        // state → done, and auth/unknown notices are ignored (never override the
+        // turn state).
         let notif = json!({ "notification_type": "permission_prompt" });
         assert_eq!(
             normalize_event("claude", "Notification", Some(&notif)),
             Some(AgentStatus::Waiting)
         );
+        let idle = json!({ "notification_type": "idle_prompt" });
+        assert_eq!(
+            normalize_event("claude", "Notification", Some(&idle)),
+            Some(AgentStatus::Done)
+        );
+        let auth = json!({ "notification_type": "auth_success" });
+        assert_eq!(normalize_event("claude", "Notification", Some(&auth)), None);
         let chatty = json!({ "notification_type": "auth_refresh" });
         assert_eq!(
             normalize_event("claude", "Notification", Some(&chatty)),

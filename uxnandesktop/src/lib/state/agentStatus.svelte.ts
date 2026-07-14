@@ -69,6 +69,9 @@ class AgentStatusStore {
         const p = e.payload;
         const prevState = this.byId[p.agentId];
         this.byId = { ...this.byId, [p.agentId]: toLive(p) };
+        // Let the hook establish the tab's agent identity (below), so an agent
+        // started by hand shows up without waiting for process detection.
+        this.sealIdentity(p);
         // Announce meaningful transitions (done / blocked / waiting). Pass the
         // previous state so we can recover the task prompt on `done` (the Stop
         // report's own prompt may be the freshly-read transcript task).
@@ -155,6 +158,25 @@ class AgentStatusStore {
   isStale(id: string): boolean {
     const s = this.byId[id];
     return !!s && Date.now() - s.lastUpdate > STALE_MS;
+  }
+
+  /** Let the hook itself establish the tab's agent identity. A hook report is
+   *  self-declared (it carries the agent type), which is authoritative — so an
+   *  agent the user typed by hand in a terminal shows up in the agent view (and
+   *  drives the worktree dot) immediately, instead of depending on process-tree
+   *  detection matching its executable name (a wrapper / renamed / node-launched
+   *  agent would otherwise report state but stay invisible). Only seals a tab with
+   *  no identity yet — a launched or already-detected identity always wins. */
+  private sealIdentity(p: AgentStatusEvent): void {
+    const type = (p.agentType ?? "").trim();
+    if (!type) return;
+    const tab = terminals.findTab(p.agentId);
+    if (!tab || tab.kind !== "terminal") return;
+    if (tab.agentName || tab.agentCommand) return;
+    const a = app.resolveAgent(type);
+    tab.agentName = a.name;
+    tab.agentIcon = a.icon;
+    tab.agentCommand = type;
   }
 }
 

@@ -5,6 +5,35 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — agent status no longer sticks on "Waiting for input" after a turn ends
+
+- **Claude:** a finished turn now reads as **Done**, not "Waiting for input".
+  When Claude finishes it fires `Stop` (→ `done`) and then, sitting idle at the
+  prompt, a `Notification` with `notification_type: "idle_prompt"`. The ADE was
+  mapping that idle notice to **`waiting`**, which — because the state cache is
+  last-write-wins — clobbered the `done` and left the worktree card stuck on
+  "Waiting for input" (and pinned in the **Needs you** lane). `idle_prompt` now
+  maps to **`done`** (the resting/finished state) and the transient `auth_success`
+  notice is ignored; only genuine mid-turn prompts (`permission_prompt` /
+  `elicitation_dialog` / `agent_needs_input`) still mean `waiting`. This affected
+  Claude only — Codex doesn't subscribe to `Notification`, and Gemini/OpenCode/Pi
+  already map their idle/finish events to `done`. (`src-tauri/src/hooks.rs`.)
+- A **stale** `waiting`/`blocked` hook state (no update in > 30 min and no closing
+  event) now decays to a neutral **`idle`** in the UI instead of dominating the
+  **Needs you** lane forever — an agent-agnostic backstop for any agent that gets
+  stuck without a terminal event. (`src/lib/state/agentDisplay.ts`.)
+
+### Changed — a hook report now establishes the tab's agent identity
+
+- An agent started **by hand** in any ADE terminal (not just via the launch
+  button) now appears in the agent view — and drives the worktree status dot — as
+  soon as its **first hook** arrives, instead of waiting for (or depending on)
+  process-tree detection matching its executable name. A hook is self-declared (it
+  carries the agent type), so a wrapper / renamed / `node`-launched agent that
+  process detection can't name is no longer invisible while still reporting precise
+  states. Process detection remains the fallback for agents with no hook.
+  (`src/lib/state/agentStatus.svelte.ts`.)
+
 ### Added — user quick commands (top-bar ⚡ launcher + Settings)
 
 - Program shell commands you run often and launch them in the active

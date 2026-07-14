@@ -41,6 +41,21 @@ distinct, precise states** plus a derived idle:
 | `idle` *(derived)* | Agent at rest, no precise report | Gray |
 | `stale` *(any)* | No update in > 30 min | Same color, dimmed (`opacity-40`) |
 
+> **`done` vs `waiting`.** A finished turn reads as **`done`** (the resting state) —
+> even though the agent is technically idle at its prompt waiting for your next
+> message. `waiting` is reserved for a genuine **mid-turn** prompt where the agent
+> needs your answer to continue (a permission / question / elicitation). So Claude's
+> post-turn idle notification maps to `done`, not `waiting` — the card shows "Done"
+> + an unread badge, and only a real mid-turn prompt pins it in the **Needs you**
+> lane. A stale `waiting`/`blocked` (no update in > 30 min, no closing event) decays
+> to a neutral `idle` so nothing sits in **Needs you** forever.
+>
+> **Identity from the hook.** A hook report is self-declared (it carries the agent
+> type), so an agent you start **by hand** in any ADE terminal shows its brand +
+> precise state as soon as its first hook lands — even a wrapper / renamed /
+> `node`-launched agent that process detection can't name. Process detection is only
+> the fallback for agents that report no hook.
+
 These states show up everywhere you track an agent:
 
 - **Sidebar** — a colored dot next to each agent terminal, on the project /
