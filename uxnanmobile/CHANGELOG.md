@@ -6,6 +6,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — Jump to latest always returns to the newest content
+- Tapping **Jump to latest** now always scrolls the conversation to the bottom,
+  even mid-fling or right after using the message rail. The auto-follow policy's
+  `resume()` was leaving an in-progress drag/momentum flag set, so `shouldFollow`
+  could stay false and the scheduled jump was skipped — the button appeared to do
+  nothing. `resume()` now clears that intent, so an explicit jump-to-latest is
+  never swallowed by an in-flight scroll.
+
 ### Changed — Usage & credit: persistent, manual by default, clearer labels
 - The "Usage & credit" data now **persists in memory**, so scrolling the profile
   no longer reloads it; the section is always present while connected

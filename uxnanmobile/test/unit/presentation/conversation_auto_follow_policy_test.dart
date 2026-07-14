@@ -28,6 +28,18 @@ void main() {
     expect(policy.shouldFollow, isTrue);
   });
 
+  test(
+      'resume overrides an in-progress drag/fling (jump-to-latest always '
+      'follows)', () {
+    final policy = ConversationAutoFollowPolicy()..beginUserScroll();
+    expect(policy.shouldFollow, isFalse);
+
+    // Tapping "jump to latest" mid-fling (before the scroll settled) must
+    // resume following instead of being swallowed by the drag state.
+    policy.resume();
+    expect(policy.shouldFollow, isTrue);
+  });
+
   test('explicit resume and saved bottom state restore following', () {
     final policy = ConversationAutoFollowPolicy()
       ..restore(atBottom: false)

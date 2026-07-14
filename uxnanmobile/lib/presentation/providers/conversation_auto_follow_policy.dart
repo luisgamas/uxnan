@@ -31,8 +31,13 @@ class ConversationAutoFollowPolicy {
     _followingLatest = atBottom;
   }
 
-  /// Re-enables auto-follow after an explicit user action.
+  /// Re-enables auto-follow after an explicit user action (jump-to-latest,
+  /// sending a message). This also clears any in-progress drag/fling intent:
+  /// the explicit command supersedes lingering momentum, so a tap on
+  /// "jump to latest" always follows — even mid-fling or right after a
+  /// programmatic jump whose end wasn't yet observed.
   void resume() {
+    _userDragging = false;
     _followingLatest = true;
   }
 }
