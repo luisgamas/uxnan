@@ -16,6 +16,8 @@ class ProfilePreferencesStore {
 
   static const String _nameKey = 'uxnan.profile.name';
   static const String _avatarKey = 'uxnan.profile.avatar';
+  static const String _usageRefreshKey = 'uxnan.profile.usageRefreshInterval';
+  static const String _usageClock24hKey = 'uxnan.profile.usageClock24h';
 
   /// The stored display name, or null when unset.
   Future<String?> readName() async {
@@ -57,5 +59,29 @@ class ProfilePreferencesStore {
     } else {
       await prefs.setString(_avatarKey, jsonEncode(avatar.toJson()));
     }
+  }
+
+  /// The stored usage auto-refresh interval name, or null when unset.
+  Future<String?> readUsageRefreshInterval() async {
+    final prefs = await _prefs;
+    return prefs.getString(_usageRefreshKey);
+  }
+
+  /// Persists the usage auto-refresh interval name.
+  Future<void> writeUsageRefreshInterval(String name) async {
+    final prefs = await _prefs;
+    await prefs.setString(_usageRefreshKey, name);
+  }
+
+  /// Whether usage reset times use a 24-hour clock, or null when unset.
+  Future<bool?> readUsageClock24h() async {
+    final prefs = await _prefs;
+    return prefs.getBool(_usageClock24hKey);
+  }
+
+  /// Persists the 24-hour-clock preference.
+  Future<void> writeUsageClock24h({required bool value}) async {
+    final prefs = await _prefs;
+    await prefs.setBool(_usageClock24hKey, value);
   }
 }

@@ -11,9 +11,11 @@ import 'package:uxnan/presentation/widgets/agent_visuals.dart';
 import 'package:uxnan/presentation/widgets/ne_card.dart';
 
 /// The "Usage & credit" block on the profile: per-provider quota windows, plan
-/// and credit read live from the connected PC (`agent/usageStats`). Hidden when
-/// offline, while there's no data, or when every activated provider is
-/// not-installed. Only providers set up on the PC are shown.
+/// and credit read live from the connected PC (`agent/usageStats`). While
+/// connected the block is always present — it shows a loading state, then the
+/// provider cards (not-installed providers hidden) with a manual refresh — and
+/// the data is kept in memory so scrolling never reloads it. Hidden only when
+/// offline (no PC to query).
 class UsageSection extends ConsumerWidget {
   /// Creates a [UsageSection].
   const UsageSection({super.key});
@@ -21,49 +23,75 @@ class UsageSection extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
-    final titleStyle = Theme.of(context).textTheme.titleMedium;
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
     final connected = ref.watch(connectedDeviceProvider).value;
+    // Nothing to query without a live PC — hide the whole block.
     if (connected == null) return const SizedBox.shrink();
 
     final usageAsync = ref.watch(usageStatsProvider);
-    final shown = (usageAsync.value ?? const <ProviderUsage>[])
-        .where((u) => u.status != UsageStatus.notInstalled)
-        .toList();
-
-    // The leading gap lives here (not in the parent) so a hidden section leaves
-    // no dangling space.
-    if (usageAsync.isLoading && usageAsync.value == null) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SizedBox(height: UxnanSpacing.xl),
-          Text(l10n.profileUsageTitle, style: titleStyle),
-          const SizedBox(height: UxnanSpacing.lg),
-          const Center(child: CircularProgressIndicator()),
-        ],
-      );
-    }
-    if (shown.isEmpty) return const SizedBox.shrink();
+    // The data is kept in memory (the provider is not autoDispose), so it stays
+    // put while scrolling and during a manual refresh.
+    final data = usageAsync.value ?? const <ProviderUsage>[];
+    final shown =
+        data.where((u) => u.status != UsageStatus.notInstalled).toList();
+    final loading = usageAsync.isLoading;
+    final use24h = ref.watch(usageClock24hProvider);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: UxnanSpacing.xl),
-        Text(l10n.profileUsageTitle, style: titleStyle),
+        Row(
+          children: [
+            Expanded(
+              child: Text(l10n.profileUsageTitle, style: textTheme.titleMedium),
+            ),
+            if (loading)
+              const Padding(
+                padding: EdgeInsets.all(UxnanSpacing.md),
+                child: SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              )
+            else
+              IconButton(
+                icon: const Icon(Icons.refresh_rounded),
+                tooltip: l10n.usageRefreshAction,
+                onPressed: () =>
+                    ref.read(usageStatsProvider.notifier).refresh(),
+              ),
+          ],
+        ),
         const SizedBox(height: UxnanSpacing.sm),
-        for (var i = 0; i < shown.length; i++) ...[
-          if (i > 0) const SizedBox(height: UxnanSpacing.sm),
-          _ProviderUsageCard(usage: shown[i]),
-        ],
+        if (shown.isNotEmpty)
+          for (var i = 0; i < shown.length; i++) ...[
+            if (i > 0) const SizedBox(height: UxnanSpacing.sm),
+            _ProviderUsageCard(usage: shown[i], use24h: use24h),
+          ]
+        else if (loading)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: UxnanSpacing.lg),
+            child: Center(child: CircularProgressIndicator()),
+          )
+        else
+          Text(
+            l10n.usageNoData,
+            style:
+                textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant),
+          ),
       ],
     );
   }
 }
 
 class _ProviderUsageCard extends StatelessWidget {
-  const _ProviderUsageCard({required this.usage});
+  const _ProviderUsageCard({required this.usage, required this.use24h});
 
   final ProviderUsage usage;
+  final bool use24h;
 
   @override
   Widget build(BuildContext context) {
@@ -116,7 +144,7 @@ class _ProviderUsageCard extends StatelessWidget {
           if (usage.status == UsageStatus.ok) ...[
             for (final window in usage.windows) ...[
               const SizedBox(height: UxnanSpacing.md),
-              _WindowBar(window: window),
+              _WindowBar(window: window, use24h: use24h),
             ],
             if (usage.credit != null) ...[
               const SizedBox(height: UxnanSpacing.md),
@@ -143,9 +171,10 @@ class _ProviderUsageCard extends StatelessWidget {
 }
 
 class _WindowBar extends StatelessWidget {
-  const _WindowBar({required this.window});
+  const _WindowBar({required this.window, required this.use24h});
 
   final UsageWindow window;
+  final bool use24h;
 
   @override
   Widget build(BuildContext context) {
@@ -184,10 +213,10 @@ class _WindowBar extends StatelessWidget {
             color: colors.primary,
           ),
         ),
-        if (reset != null) ...[
+        if (reset != null && reset.isAfter(DateTime.now())) ...[
           const SizedBox(height: 2),
           Text(
-            l10n.usageResets(DateFormat.MMMd().add_Hm().format(reset)),
+            _resetLabel(l10n, reset, use24h: use24h),
             style:
                 textTheme.labelSmall?.copyWith(color: colors.onSurfaceVariant),
           ),
@@ -224,6 +253,27 @@ class _StatusPill extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Builds the reset label: a relative duration for windows resetting within a
+/// day ("Resets in 6h 30min"), or days-remaining + the clock time for longer
+/// (weekly/monthly) windows ("Resets in 5d at 14:30" / "… 2:30 PM").
+String _resetLabel(
+  AppLocalizations l10n,
+  DateTime reset, {
+  required bool use24h,
+}) {
+  final diff = reset.difference(DateTime.now());
+  final clock = use24h ? DateFormat.Hm() : DateFormat.jm();
+  if (diff.inDays >= 1) {
+    return l10n.usageResetsInDays(diff.inDays, clock.format(reset));
+  }
+  final hours = diff.inHours;
+  final minutes = diff.inMinutes % 60;
+  final duration = hours > 0
+      ? (minutes > 0 ? '${hours}h ${minutes}min' : '${hours}h')
+      : '${minutes}min';
+  return l10n.usageResetsIn(duration);
 }
 
 String _creditLine(AppLocalizations l10n, CreditBalance credit) {

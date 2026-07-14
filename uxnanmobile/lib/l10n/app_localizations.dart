@@ -431,7 +431,7 @@ abstract class AppLocalizations {
   /// No description provided for @statConversations.
   ///
   /// In en, this message translates to:
-  /// **'Conversations'**
+  /// **'Chats'**
   String get statConversations;
 
   /// No description provided for @statAgentsUsed.
@@ -455,7 +455,7 @@ abstract class AppLocalizations {
   /// No description provided for @statSessions.
   ///
   /// In en, this message translates to:
-  /// **'Sessions'**
+  /// **'Connections'**
   String get statSessions;
 
   /// No description provided for @statTimeConnected.
@@ -491,7 +491,7 @@ abstract class AppLocalizations {
   /// No description provided for @profileByAgent.
   ///
   /// In en, this message translates to:
-  /// **'By agent'**
+  /// **'Conversations by agent'**
   String get profileByAgent;
 
   /// No description provided for @profileNoData.
@@ -608,11 +608,101 @@ abstract class AppLocalizations {
   /// **'Credit'**
   String get usageCreditLabel;
 
-  /// When a usage quota window resets (date/time).
+  /// Relative time until a short quota window resets (e.g. 6h 30min).
   ///
   /// In en, this message translates to:
-  /// **'Resets {when}'**
-  String usageResets(String when);
+  /// **'Resets in {duration}'**
+  String usageResetsIn(String duration);
+
+  /// Days remaining + clock time until a weekly/monthly window resets.
+  ///
+  /// In en, this message translates to:
+  /// **'Resets in {days}d at {time}'**
+  String usageResetsInDays(int days, String time);
+
+  /// No description provided for @usageRefreshAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Refresh usage'**
+  String get usageRefreshAction;
+
+  /// No description provided for @usageNoData.
+  ///
+  /// In en, this message translates to:
+  /// **'No usage data'**
+  String get usageNoData;
+
+  /// No description provided for @settingsUsageSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Usage'**
+  String get settingsUsageSection;
+
+  /// No description provided for @settingsUsageNavSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'How often provider usage refreshes'**
+  String get settingsUsageNavSubtitle;
+
+  /// No description provided for @usageRefreshTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto-refresh'**
+  String get usageRefreshTitle;
+
+  /// No description provided for @usageRefreshHint.
+  ///
+  /// In en, this message translates to:
+  /// **'How often to refresh provider usage while a PC is connected.'**
+  String get usageRefreshHint;
+
+  /// No description provided for @usageIntervalManual.
+  ///
+  /// In en, this message translates to:
+  /// **'Manual only'**
+  String get usageIntervalManual;
+
+  /// No description provided for @usageInterval5m.
+  ///
+  /// In en, this message translates to:
+  /// **'Every 5 minutes'**
+  String get usageInterval5m;
+
+  /// No description provided for @usageInterval10m.
+  ///
+  /// In en, this message translates to:
+  /// **'Every 10 minutes'**
+  String get usageInterval10m;
+
+  /// No description provided for @usageInterval20m.
+  ///
+  /// In en, this message translates to:
+  /// **'Every 20 minutes'**
+  String get usageInterval20m;
+
+  /// No description provided for @usageInterval1h.
+  ///
+  /// In en, this message translates to:
+  /// **'Every hour'**
+  String get usageInterval1h;
+
+  /// No description provided for @settingsUsageClockGroup.
+  ///
+  /// In en, this message translates to:
+  /// **'Time format'**
+  String get settingsUsageClockGroup;
+
+  /// No description provided for @usageClock24hTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'24-hour time'**
+  String get usageClock24hTitle;
+
+  /// No description provided for @usageClock24hSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Show reset times as 14:30 instead of 2:30 PM'**
+  String get usageClock24hSubtitle;
 
   /// No description provided for @deviceActive.
   ///

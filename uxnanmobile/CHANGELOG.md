@@ -6,6 +6,21 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — Usage & credit: persistent, manual by default, clearer labels
+- The "Usage & credit" data now **persists in memory**, so scrolling the profile
+  no longer reloads it; the section is always present while connected
+  (loading → cards) with a **manual refresh** button. **Auto-refresh is off
+  (manual only) by default**, configurable in **Settings → Usage**
+  (5 / 10 / 20 min, 1 h, or manual), which also gains a **24-hour / 12-hour**
+  clock toggle for reset times.
+- Reset times now read **"Resets in 6h 30min"** for sub-day windows and
+  **"Resets in 5d at 14:30"** for weekly/monthly windows (the clock honors the
+  24/12-hour setting).
+- Clearer metric labels: the connection-count tile is now **Connections** (was
+  "Sessions"), the per-agent section is **Conversations by agent** (each number
+  labelled "conversations"), and the conversations tile is shortened to **Chats**
+  so it no longer clips.
+
 ### Added — Usage & credit on the profile (`agent/usageStats`)
 - The Profile screen now has a **"Usage & credit"** section (shown only when a PC
   is connected) that calls the bridge's new `agent/usageStats` and renders, per

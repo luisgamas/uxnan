@@ -195,7 +195,7 @@ class AppLocalizationsEs extends AppLocalizations {
   }
 
   @override
-  String get statConversations => 'Conversaciones';
+  String get statConversations => 'Chats';
 
   @override
   String get statAgentsUsed => 'Agentes usados';
@@ -207,7 +207,7 @@ class AppLocalizationsEs extends AppLocalizations {
   String get statGitActions => 'Acciones Git';
 
   @override
-  String get statSessions => 'Sesiones';
+  String get statSessions => 'Conexiones';
 
   @override
   String get statTimeConnected => 'Tiempo conectado';
@@ -225,7 +225,7 @@ class AppLocalizationsEs extends AppLocalizations {
   String get profileActivity => 'Actividad';
 
   @override
-  String get profileByAgent => 'Por agente';
+  String get profileByAgent => 'Conversaciones por agente';
 
   @override
   String get profileNoData => 'Aún no hay actividad';
@@ -289,9 +289,58 @@ class AppLocalizationsEs extends AppLocalizations {
   String get usageCreditLabel => 'Crédito';
 
   @override
-  String usageResets(String when) {
-    return 'Reinicia $when';
+  String usageResetsIn(String duration) {
+    return 'Se reinicia en $duration';
   }
+
+  @override
+  String usageResetsInDays(int days, String time) {
+    return 'Se reinicia en ${days}d a las $time';
+  }
+
+  @override
+  String get usageRefreshAction => 'Actualizar uso';
+
+  @override
+  String get usageNoData => 'Sin datos de uso';
+
+  @override
+  String get settingsUsageSection => 'Uso';
+
+  @override
+  String get settingsUsageNavSubtitle => 'Cada cuánto se actualiza el uso';
+
+  @override
+  String get usageRefreshTitle => 'Actualización automática';
+
+  @override
+  String get usageRefreshHint =>
+      'Cada cuánto actualizar el uso de proveedores mientras haya un PC conectado.';
+
+  @override
+  String get usageIntervalManual => 'Solo manual';
+
+  @override
+  String get usageInterval5m => 'Cada 5 minutos';
+
+  @override
+  String get usageInterval10m => 'Cada 10 minutos';
+
+  @override
+  String get usageInterval20m => 'Cada 20 minutos';
+
+  @override
+  String get usageInterval1h => 'Cada hora';
+
+  @override
+  String get settingsUsageClockGroup => 'Formato de hora';
+
+  @override
+  String get usageClock24hTitle => 'Formato de 24 horas';
+
+  @override
+  String get usageClock24hSubtitle =>
+      'Mostrar las horas de reinicio como 14:30 en vez de 2:30 p. m.';
 
   @override
   String get deviceActive => 'Activa';

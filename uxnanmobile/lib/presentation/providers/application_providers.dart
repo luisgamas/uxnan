@@ -28,6 +28,7 @@ import 'package:uxnan/domain/enums/agent_id.dart';
 import 'package:uxnan/domain/enums/connection_phase.dart';
 import 'package:uxnan/domain/enums/context_indicator_mode.dart';
 import 'package:uxnan/domain/enums/thread_activity.dart';
+import 'package:uxnan/domain/enums/usage_refresh_interval.dart';
 import 'package:uxnan/domain/services/pairing_validator.dart';
 import 'package:uxnan/domain/value_objects/custom_theme.dart';
 import 'package:uxnan/domain/value_objects/git/git_action_progress.dart';
@@ -276,33 +277,122 @@ const List<String> _usageProviderIds = [
   'grok',
 ];
 
-/// Per-provider usage/quota (`agent/usageStats`) for the connected PC, or an
-/// empty list when offline or against a bridge without the handler.
-/// `autoDispose` so re-opening re-queries; each read is best-effort.
-final usageStatsProvider = FutureProvider.autoDispose<List<ProviderUsage>>((
-  ref,
-) async {
-  final connected = ref.watch(connectedDeviceProvider).value;
-  if (connected == null) return const [];
-  try {
-    final response = await ref.watch(sessionCoordinatorProvider).sendRequest(
-      'agent/usageStats',
-      {'providers': _usageProviderIds},
-    );
-    final result = response.result;
-    if (result is! Map) return const [];
-    final list = result['usage'];
-    if (list is! List) return const [];
-    return list
-        .whereType<Map<dynamic, dynamic>>()
-        .map((m) => ProviderUsage.fromJson(m.cast<String, dynamic>()))
-        .whereType<ProviderUsage>()
-        .toList();
-  } on Object {
-    // Old bridge (no handler → error) or a transient failure: show nothing.
-    return const [];
+/// The usage auto-refresh interval (persisted; default every 5 min). Only
+/// controls background polling — the data itself is kept in memory.
+class UsageRefreshIntervalSetting extends Notifier<UsageRefreshInterval> {
+  @override
+  UsageRefreshInterval build() {
+    unawaited(_hydrate());
+    return UsageRefreshInterval.manual;
   }
-});
+
+  Future<void> _hydrate() async {
+    final stored = await ref
+        .read(profilePreferencesStoreProvider)
+        .readUsageRefreshInterval();
+    final value = UsageRefreshIntervalX.fromName(stored);
+    if (value != state) state = value;
+  }
+
+  /// Persists and applies the auto-refresh interval.
+  Future<void> set(UsageRefreshInterval interval) async {
+    if (interval == state) return;
+    state = interval;
+    await ref
+        .read(profilePreferencesStoreProvider)
+        .writeUsageRefreshInterval(interval.name);
+  }
+}
+
+/// The persisted usage auto-refresh interval.
+final usageRefreshIntervalProvider =
+    NotifierProvider<UsageRefreshIntervalSetting, UsageRefreshInterval>(
+  UsageRefreshIntervalSetting.new,
+);
+
+/// Whether usage reset times use a 24-hour clock (true) or 12-hour (false).
+/// Persisted; defaults to 24-hour.
+class UsageClock24h extends Notifier<bool> {
+  @override
+  bool build() {
+    unawaited(_hydrate());
+    return true;
+  }
+
+  Future<void> _hydrate() async {
+    final stored =
+        await ref.read(profilePreferencesStoreProvider).readUsageClock24h();
+    if (stored != null && stored != state) state = stored;
+  }
+
+  /// Persists and applies the clock format.
+  Future<void> set({required bool value}) async {
+    if (value == state) return;
+    state = value;
+    await ref
+        .read(profilePreferencesStoreProvider)
+        .writeUsageClock24h(value: value);
+  }
+}
+
+/// Whether usage reset times use a 24-hour clock (persisted; default 24h).
+final usageClock24hProvider =
+    NotifierProvider<UsageClock24h, bool>(UsageClock24h.new);
+
+/// Per-provider usage/quota (`agent/usageStats`) for the connected PC. Kept
+/// alive (NOT autoDispose) so scrolling the profile never reloads it;
+/// auto-polls on the configured interval while connected, and exposes a manual
+/// [refresh]. Degrades to an empty list when offline or against a bridge
+/// without the handler.
+class UsageStatsController extends AsyncNotifier<List<ProviderUsage>> {
+  @override
+  Future<List<ProviderUsage>> build() async {
+    final connected = ref.watch(connectedDeviceProvider).value;
+    final interval = ref.watch(usageRefreshIntervalProvider).duration;
+    if (connected == null) return const [];
+    if (interval != null) {
+      // Fires once per period, then re-schedules via the rebuild refresh()
+      // triggers — a self-renewing poll that resets on any manual refresh.
+      final timer = Timer.periodic(interval, (_) => refresh());
+      ref.onDispose(timer.cancel);
+    }
+    return _fetch();
+  }
+
+  Future<List<ProviderUsage>> _fetch() async {
+    final connected = ref.read(connectedDeviceProvider).value;
+    if (connected == null) return const [];
+    try {
+      final response = await ref.read(sessionCoordinatorProvider).sendRequest(
+        'agent/usageStats',
+        {'providers': _usageProviderIds},
+      );
+      final result = response.result;
+      if (result is! Map) return const [];
+      final list = result['usage'];
+      if (list is! List) return const [];
+      return list
+          .whereType<Map<dynamic, dynamic>>()
+          .map((m) => ProviderUsage.fromJson(m.cast<String, dynamic>()))
+          .whereType<ProviderUsage>()
+          .toList();
+    } on Object {
+      // Old bridge (no handler → error) or a transient failure: show nothing.
+      return const [];
+    }
+  }
+
+  /// Re-fetches now. Rebuilds via `ref.invalidateSelf`, so Riverpod keeps the
+  /// previous data in `state.value` while `state.isLoading` is true — the cards
+  /// stay put and the header shows a spinner during the refresh.
+  void refresh() => ref.invalidateSelf();
+}
+
+/// Per-provider usage/quota for the connected PC (kept alive; auto-polls).
+final usageStatsProvider =
+    AsyncNotifierProvider<UsageStatsController, List<ProviderUsage>>(
+  UsageStatsController.new,
+);
 
 /// Classifies inbound bridge notifications into domain events.
 final incomingMessageProcessorProvider =

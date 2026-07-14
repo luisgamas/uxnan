@@ -194,7 +194,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get statConversations => 'Conversations';
+  String get statConversations => 'Chats';
 
   @override
   String get statAgentsUsed => 'Agents used';
@@ -206,7 +206,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get statGitActions => 'Git actions';
 
   @override
-  String get statSessions => 'Sessions';
+  String get statSessions => 'Connections';
 
   @override
   String get statTimeConnected => 'Time connected';
@@ -224,7 +224,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileActivity => 'Activity';
 
   @override
-  String get profileByAgent => 'By agent';
+  String get profileByAgent => 'Conversations by agent';
 
   @override
   String get profileNoData => 'No activity yet';
@@ -288,9 +288,58 @@ class AppLocalizationsEn extends AppLocalizations {
   String get usageCreditLabel => 'Credit';
 
   @override
-  String usageResets(String when) {
-    return 'Resets $when';
+  String usageResetsIn(String duration) {
+    return 'Resets in $duration';
   }
+
+  @override
+  String usageResetsInDays(int days, String time) {
+    return 'Resets in ${days}d at $time';
+  }
+
+  @override
+  String get usageRefreshAction => 'Refresh usage';
+
+  @override
+  String get usageNoData => 'No usage data';
+
+  @override
+  String get settingsUsageSection => 'Usage';
+
+  @override
+  String get settingsUsageNavSubtitle => 'How often provider usage refreshes';
+
+  @override
+  String get usageRefreshTitle => 'Auto-refresh';
+
+  @override
+  String get usageRefreshHint =>
+      'How often to refresh provider usage while a PC is connected.';
+
+  @override
+  String get usageIntervalManual => 'Manual only';
+
+  @override
+  String get usageInterval5m => 'Every 5 minutes';
+
+  @override
+  String get usageInterval10m => 'Every 10 minutes';
+
+  @override
+  String get usageInterval20m => 'Every 20 minutes';
+
+  @override
+  String get usageInterval1h => 'Every hour';
+
+  @override
+  String get settingsUsageClockGroup => 'Time format';
+
+  @override
+  String get usageClock24hTitle => '24-hour time';
+
+  @override
+  String get usageClock24hSubtitle =>
+      'Show reset times as 14:30 instead of 2:30 PM';
 
   @override
   String get deviceActive => 'Active';
