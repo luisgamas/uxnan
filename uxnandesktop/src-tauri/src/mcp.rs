@@ -40,7 +40,7 @@ use axum::{
 };
 use serde_json::{json, Value};
 
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
 
 /// The MCP protocol revision we default to when a client doesn't pin one. We echo
 /// the client's requested version when it sends one (forward-compatible).
@@ -119,6 +119,33 @@ fn tool_catalog() -> Value {
             "name": "browser_status",
             "description": "Report the integrated browser's state: whether a page is open, the current URL, whether the in-app browser is enabled, and how opens are routed (internal in-app / external system browser / ask). Call this first to decide whether to open or just navigate.",
             "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
+        },
+        {
+            "name": "orchestration_report_result",
+            "description": "Report the final result of the task uxnan's orchestration run engine gave you, so the run captures your output verbatim and can feed it to the next step. Call this once when you finish the task. Pass agentId = the exact value of your UXNAN_AGENT_ID environment variable, and result = your full answer/output.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "agentId": { "type": "string", "description": "The value of your UXNAN_AGENT_ID environment variable (identifies which run step you are)." },
+                    "result": { "type": "string", "description": "Your full result/output for the task, captured verbatim by the run." },
+                    "summary": { "type": "string", "description": "Optional one-line summary of the result." }
+                },
+                "required": ["agentId", "result"],
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "orchestration_report_progress",
+            "description": "Report a short progress update for your current orchestration-run step (optional; surfaces what you are doing in the run view). Pass agentId = your UXNAN_AGENT_ID value, and message = a one-line status.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "agentId": { "type": "string", "description": "The value of your UXNAN_AGENT_ID environment variable." },
+                    "message": { "type": "string", "description": "A one-line progress message." }
+                },
+                "required": ["agentId", "message"],
+                "additionalProperties": false
+            }
         }
     ])
 }
@@ -173,6 +200,35 @@ async fn call_tool(app: &AppHandle, name: &str, args: &Value) -> Value {
             let text = serde_json::to_string(&status).unwrap_or_else(|_| "{\"open\":false}".into());
             text_result(text, false)
         }
+        // Orchestration reporting (spec 02d §3): a cooperative agent→ADE channel.
+        // The backend stays dumb — it just emits an `agent:orchestration` event
+        // the frontend run engine attributes to the running step whose target tab
+        // equals `agentId` (the agent's own `UXNAN_AGENT_ID`).
+        "orchestration_report_result" => {
+            let agent_id = args.get("agentId").and_then(|v| v.as_str()).unwrap_or("");
+            let result = args.get("result").and_then(|v| v.as_str()).unwrap_or("");
+            if agent_id.is_empty() || result.is_empty() {
+                return text_result("missing required \"agentId\" or \"result\"".into(), true);
+            }
+            let summary = args.get("summary").and_then(|v| v.as_str());
+            let _ = app.emit(
+                "agent:orchestration",
+                json!({ "agentId": agent_id, "type": "result", "text": result, "summary": summary }),
+            );
+            text_result("Result reported to the orchestration run.".into(), false)
+        }
+        "orchestration_report_progress" => {
+            let agent_id = args.get("agentId").and_then(|v| v.as_str()).unwrap_or("");
+            let message = args.get("message").and_then(|v| v.as_str()).unwrap_or("");
+            if agent_id.is_empty() || message.is_empty() {
+                return text_result("missing required \"agentId\" or \"message\"".into(), true);
+            }
+            let _ = app.emit(
+                "agent:orchestration",
+                json!({ "agentId": agent_id, "type": "progress", "text": message }),
+            );
+            text_result("Progress reported to the orchestration run.".into(), false)
+        }
         other => text_result(format!("unknown tool: {other}"), true),
     }
 }
@@ -202,7 +258,7 @@ async fn handle_message(app: &AppHandle, msg: &Value) -> Option<Value> {
                         "version": env!("CARGO_PKG_VERSION"),
                         "title": "uxnan integrated browser"
                     },
-                    "instructions": "Drive uxnan's integrated in-app browser to preview and test web apps and dev servers you build. Call browser_status first, then browser_open/browser_navigate; browser_reload after code changes."
+                    "instructions": "Drive uxnan's integrated in-app browser to preview and test web apps and dev servers you build (call browser_status first, then browser_open/browser_navigate; browser_reload after code changes). If you are running as a step of a uxnan orchestration run, report your final output with orchestration_report_result (passing your UXNAN_AGENT_ID as agentId) so the run captures it for the next step."
                 }),
             )
         }
@@ -329,6 +385,8 @@ mod tests {
                 "browser_back",
                 "browser_forward",
                 "browser_status",
+                "orchestration_report_result",
+                "orchestration_report_progress",
             ]
         );
         // Every tool carries a non-empty description + object input schema so the

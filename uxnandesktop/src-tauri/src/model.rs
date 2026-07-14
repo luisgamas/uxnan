@@ -31,6 +31,12 @@ pub struct AppData {
     /// (restored on startup; the backend never interprets it).
     #[serde(default)]
     pub terminal_layout: Option<serde_json::Value>,
+    /// Opaque, frontend-owned serialization of the orchestration engine's runs
+    /// (the `Run` graph, step states + captured outputs — spec `02d` §3).
+    /// Persisted so a run survives a restart and the engine re-attaches on load;
+    /// the backend never interprets it (same pattern as `terminal_layout`).
+    #[serde(default)]
+    pub orchestration_runs: Option<serde_json::Value>,
 }
 
 impl Default for AppData {
@@ -41,6 +47,7 @@ impl Default for AppData {
             settings: AppSettings::default(),
             agent_cache: Vec::new(),
             terminal_layout: None,
+            orchestration_runs: None,
         }
     }
 }
@@ -808,6 +815,27 @@ mod tests {
         assert_eq!(data.version, SCHEMA_VERSION);
         assert!(data.repos.is_empty());
         assert!(data.agent_cache.is_empty());
+        assert!(data.orchestration_runs.is_none());
+    }
+
+    #[test]
+    fn orchestration_runs_default_absent_and_round_trip() {
+        // State persisted before orchestration runs existed must still load.
+        let legacy: AppData = serde_json::from_str(
+            r#"{"version":1,"repos":[],"settings":{"theme":"system","leftSidebarWidth":280,
+                "rightSidebarWidth":350,"leftSidebarOpen":true,"rightSidebarOpen":true}}"#,
+        )
+        .unwrap();
+        assert!(legacy.orchestration_runs.is_none());
+        // The opaque runs blob round-trips under the camelCase key, untouched.
+        let data = AppData {
+            orchestration_runs: Some(serde_json::json!([{ "id": "r1", "steps": [] }])),
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&data).unwrap();
+        assert!(json.contains("orchestrationRuns"));
+        let back: AppData = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.orchestration_runs, data.orchestration_runs);
     }
 
     #[test]
