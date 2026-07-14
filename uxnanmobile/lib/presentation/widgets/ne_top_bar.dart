@@ -125,6 +125,7 @@ class NeScaffold extends StatelessWidget {
     this.leading,
     this.actions = const [],
     this.floatingActionButton,
+    this.floatingActionButtonLocation,
     this.scrollController,
     this.onRefresh,
     this.automaticBackButton = true,
@@ -145,6 +146,11 @@ class NeScaffold extends StatelessWidget {
 
   /// Optional FAB.
   final Widget? floatingActionButton;
+
+  /// Where the [floatingActionButton] sits; defaults to the Scaffold's
+  /// end-float (bottom-right). Use [FloatingActionButtonLocation.centerFloat]
+  /// for bottom-centered floating scroll shortcuts.
+  final FloatingActionButtonLocation? floatingActionButtonLocation;
 
   /// Optional scroll controller for the content.
   final ScrollController? scrollController;
@@ -187,6 +193,7 @@ class NeScaffold extends StatelessWidget {
 
     return Scaffold(
       floatingActionButton: floatingActionButton,
+      floatingActionButtonLocation: floatingActionButtonLocation,
       body: Stack(
         children: [
           scroll,

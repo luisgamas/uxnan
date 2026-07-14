@@ -48,9 +48,10 @@ this app:
   / Tailscale) or **through the relay**.
 - **Parity with the bridge's main capabilities.** Streaming conversations with
   structured agent turns, interactive approvals, model and reasoning-effort
-  selection, a live context-usage indicator, per-agent sign-in status, voice and
-  image input, a full Git screen, and a searchable workspace file browser and
-  viewer are all available from the phone.
+  selection, a live context-usage indicator, a message scroll rail to jump
+  through your prompts, per-agent sign-in status, voice and image input, a full
+  Git screen, and a searchable workspace file browser and viewer are all
+  available from the phone.
 - **Your activity, at a glance.** A profile with a GitHub-style contribution
   heatmap and stat tiles — conversations, agents used, time connected, longest
   session and more — aggregated **locally** across every paired PC, plus a

@@ -1310,10 +1310,18 @@ Reglas de streaming:
 > de streaming; los saltos post-layout se agrupan por frame y vuelven a validar
 > la intención antes de mover el `ScrollController`. El seguimiento se reactiva
 > al volver cerca del fondo, usar "jump to latest" o enviar con la preferencia
-> correspondiente activa. Los disclosures secundarios de proceso
-> (razonamiento/actividad) son paneles tonales sin borde, contraídos por defecto
-> y con expansión exclusiva dentro de cada turno; los prompts largos del
-> usuario ofrecen una vista previa expandible sin alterar la copia completa.
+> correspondiente activa. "Jump to latest" es un comando explícito que **siempre**
+> desciende al contenido más reciente, superando cualquier inercia/arrastre en
+> curso. Los disclosures secundarios de proceso (razonamiento/actividad) son
+> paneles tonales sin borde, contraídos por defecto y con expansión exclusiva
+> dentro de cada turno; los prompts largos del usuario ofrecen una vista previa
+> expandible sin alterar la copia completa. Para navegar una conversación larga,
+> un **riel de mensajes** reutilizable (`MessageScrollRail`) vive en la orilla
+> derecha — un tick por mensaje del usuario, tenue en reposo — que al
+> arrastrarlo revela un efecto "fisheye" y una vista previa del mensaje y salta a
+> él al soltar. Los atajos de scroll flotantes van **centrados abajo**
+> ("jump to latest" en la conversación, que baja; "back to top" en el historial
+> de commits, que sube).
 
 #### 5.6.4 Reconciliacion de historial
 

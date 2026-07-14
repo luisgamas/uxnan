@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -36,6 +37,7 @@ import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/agent_visuals.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
 import 'package:uxnan/presentation/widgets/measure_size.dart';
+import 'package:uxnan/presentation/widgets/message_scroll_rail.dart';
 import 'package:uxnan/presentation/widgets/ne_circular_button.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 
@@ -65,6 +67,15 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   final ConversationAutoFollowPolicy _autoFollow =
       ConversationAutoFollowPolicy();
   bool _followFrameScheduled = false;
+
+  /// Stable keys for the user-message bubbles — the scroll rail's anchors — so
+  /// it can jump precisely to a chosen message. Only user messages are keyed.
+  final Map<String, GlobalKey> _userMessageKeys = {};
+
+  /// The rail anchor (user message) nearest the top of the reading area, or
+  /// null. Recomputed only when scrolling settles, so it never adds per-frame
+  /// work to the timeline's streaming/scroll path.
+  int? _currentRailTick;
   String? _gitCwd;
   // Vanished-cwd detection: the thread's folder/worktree can be removed outside
   // the app. We probe `workspace/exists` once per cwd; a confirmed-gone cwd
@@ -256,10 +267,102 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
           _autoFollow.endUserScroll(nearBottom: nearBottom);
           _setJumpToBottomVisibility(!nearBottom);
         }
+        // Refresh the rail's "you are here" only once motion settles — never
+        // per frame — so it can't affect streaming/scroll smoothness.
+        _updateCurrentRailTick();
       default:
         break;
     }
     return false;
+  }
+
+  /// Finds the rail anchor (user message) the reader is currently within — the
+  /// last one at/above the reading line among on-screen bubbles — and updates
+  /// [_currentRailTick] when it changes. Cheap: it only measures built bubbles.
+  void _updateCurrentRailTick() {
+    if (!mounted) return;
+    final tickForId = ref.read(railAnchorsProvider).tickForId;
+    if (tickForId.isEmpty || !_scroll.hasClients) {
+      if (_currentRailTick != null) setState(() => _currentRailTick = null);
+      return;
+    }
+    final reference = NeTopBar.preferredHeight(context) + 72;
+    int? above;
+    var aboveTop = double.negativeInfinity;
+    int? nearest;
+    var nearestDist = double.infinity;
+    tickForId.forEach((id, tick) {
+      final render = _userMessageKeys[id]?.currentContext?.findRenderObject();
+      if (render is! RenderBox || !render.hasSize) return;
+      final top = render.localToGlobal(Offset.zero).dy;
+      if (top <= reference && top > aboveTop) {
+        aboveTop = top;
+        above = tick;
+      }
+      final dist = (top - reference).abs();
+      if (dist < nearestDist) {
+        nearestDist = dist;
+        nearest = tick;
+      }
+    });
+    final result = above ?? nearest;
+    if (result != _currentRailTick) setState(() => _currentRailTick = result);
+  }
+
+  /// Scrolls the timeline so the user message at [messageIndex] rests just
+  /// below the top bar. Detaches auto-follow first (a manual navigation) so a
+  /// streaming update doesn't yank it back. Off-screen targets in the lazy list
+  /// are handled by estimating a jump, then revealing precisely once built.
+  Future<void> _scrollToUserMessage(int messageIndex) async {
+    final snapshot = ref.read(activeTimelineProvider).value;
+    if (snapshot == null || !_scroll.hasClients) return;
+    if (messageIndex < 0 || messageIndex >= snapshot.messages.length) return;
+    _autoFollow.beginUserScroll();
+    final id = snapshot.messages[messageIndex].id;
+    final topInset = NeTopBar.preferredHeight(context);
+    if (_revealUserMessage(id, topInset)) return;
+    // Off-screen and not built: estimate a jump by ordinal position, then
+    // reveal precisely once the target is laid out (one extra frame for late,
+    // variable-height content).
+    final max = _scroll.position.maxScrollExtent;
+    final frac = snapshot.messages.length <= 1
+        ? 0.0
+        : messageIndex / (snapshot.messages.length - 1);
+    _scroll.jumpTo((frac * max).clamp(0.0, max));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_revealUserMessage(id, topInset)) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _revealUserMessage(id, topInset);
+      });
+    });
+  }
+
+  /// Reveals the built bubble for [id] just below the top bar; returns false
+  /// when that bubble isn't currently laid out (off-screen in the lazy list).
+  bool _revealUserMessage(String id, double topInset) {
+    if (!_scroll.hasClients) return false;
+    final render = _userMessageKeys[id]?.currentContext?.findRenderObject();
+    if (render is! RenderBox || !render.hasSize) return false;
+    final RevealedOffset revealed;
+    try {
+      revealed = RenderAbstractViewport.of(render).getOffsetToReveal(render, 0);
+    } on Object {
+      return false;
+    }
+    final max = _scroll.position.maxScrollExtent;
+    final target =
+        (revealed.offset - topInset - UxnanSpacing.md).clamp(0.0, max);
+    if (MediaQuery.of(context).disableAnimations) {
+      _scroll.jumpTo(target);
+    } else {
+      _scroll.animateTo(
+        target,
+        duration: const Duration(milliseconds: 320),
+        curve: Curves.easeOutCubic,
+      );
+    }
+    return true;
   }
 
   /// Restores the saved scroll position for this thread once its content is
@@ -567,6 +670,13 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     // Aggregated edits of the most recent assistant turn that changed files,
     // for the green/red strip just above the composer.
     final lastEdits = _lastTurnEdits(snapshot);
+    // Scroll-rail anchors: one tick per user message (the minimap on the right
+    // edge), derived + memoized in [railAnchorsProvider] off the timeline.
+    // Prune stale bubble keys so the map tracks the current anchors.
+    final railAnchors = ref.watch(railAnchorsProvider);
+    _userMessageKeys.removeWhere(
+      (id, _) => !railAnchors.tickForId.containsKey(id),
+    );
     final contentInset = _horizontalInset(MediaQuery.sizeOf(context).width);
     final running = connectedHere && activity == ThreadActivity.running;
 
@@ -673,10 +783,19 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                       ),
                       sliver: SliverList.builder(
                         itemCount: snapshot.messages.length,
-                        itemBuilder: (context, index) => MessageBubble(
-                          key: ValueKey(snapshot.messages[index].id),
-                          message: snapshot.messages[index],
-                        ),
+                        itemBuilder: (context, index) {
+                          final message = snapshot.messages[index];
+                          // User bubbles carry a stable GlobalKey so the scroll
+                          // rail can jump precisely to them; other roles keep a
+                          // lightweight ValueKey.
+                          final key = message.role == MessageRole.user
+                              ? _userMessageKeys.putIfAbsent(
+                                  message.id,
+                                  GlobalKey.new,
+                                )
+                              : ValueKey(message.id);
+                          return MessageBubble(key: key, message: message);
+                        },
                       ),
                     ),
                   // Reserve room for the floating composer + its banners so
@@ -688,14 +807,47 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
               ),
             ),
           ),
+          // Message scroll rail (minimap): a subtle right-edge strip of ticks,
+          // one per user message. A slight drag or hover reveals it and jumps
+          // to the picked message. Overlaid on the timeline band between the
+          // top bar and composer, below both so it never covers them — only its
+          // thin edge strip is interactive; the rest passes touches through to
+          // the timeline, so it never interferes with normal scrolling.
+          if (railAnchors.items.length >= 2)
+            Positioned(
+              top: topInset + UxnanSpacing.sm,
+              left: 0,
+              right: 0,
+              bottom: _bottomChromeHeight + UxnanSpacing.xxl,
+              child: MessageScrollRail(
+                items: railAnchors.items,
+                currentIndex: _currentRailTick,
+                onSelected: (tick) {
+                  if (tick >= 0 && tick < railAnchors.messageIndices.length) {
+                    unawaited(
+                      _scrollToUserMessage(railAnchors.messageIndices[tick]),
+                    );
+                  }
+                },
+              ),
+            ),
           // Jump-to-latest button: appears (with a small spring) when the user
-          // has scrolled up, sitting just above the floating composer chrome.
+          // has scrolled up, floating horizontally centered just above the
+          // composer chrome — over the content, on its own layer, so it is
+          // always available (independent of the context bar) and never
+          // collides with the left controls or right indicators below it.
           Positioned(
-            right: UxnanSpacing.lg,
+            left: 0,
+            right: 0,
             bottom: _bottomChromeHeight + UxnanSpacing.md,
-            child: _JumpToBottomButton(
-              visible: _showJumpToBottom,
-              onTap: _scrollToBottom,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _JumpToBottomButton(
+                  visible: _showJumpToBottom,
+                  onTap: _scrollToBottom,
+                ),
+              ],
             ),
           ),
           // The floating bottom chrome — sign-in / cwd banners, the diff+context

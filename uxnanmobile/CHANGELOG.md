@@ -6,6 +6,24 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — Message scroll rail (conversation minimap)
+- Conversations gain a **message scroll rail** on the right edge — one short,
+  faint tick per user message. A slight drag (or hover) reveals it: the nearest
+  tick grows with a dock-style **fisheye** falloff, a preview bubble shows that
+  message (its text + the turn's final reply), and releasing jumps the timeline
+  to it; it auto-hides shortly after. Built as a **self-contained,
+  dependency-free reusable widget** (`lib/presentation/widgets/message_scroll_rail.dart`,
+  Flutter-only) so it can be lifted into another app, fed by a memoized
+  `railAnchorsProvider` derived off the timeline. Shown only with ≥2 user
+  messages; honors reduced-motion and 48 dp touch targets.
+
+### Changed — Floating scroll shortcuts are bottom-centered
+- The conversation's **Jump to latest** button and the git-history **Back to
+  top** FAB now float **bottom-centered** (were bottom-right), clear of the
+  composer's left turn-controls and right token/context indicators and reading as
+  a consistent pair (one scrolls down, one up). `NeScaffold` gains a
+  `floatingActionButtonLocation`.
+
 ### Fixed — Jump to latest always returns to the newest content
 - Tapping **Jump to latest** now always scrolls the conversation to the bottom,
   even mid-fling or right after using the message rail. The auto-follow policy's

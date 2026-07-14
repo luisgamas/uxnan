@@ -45,6 +45,7 @@ import 'package:uxnan/infrastructure/transport/transport_selector.dart';
 import 'package:uxnan/infrastructure/transport/websocket_transport.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
+import 'package:uxnan/presentation/providers/rail_anchors.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_commands.dart'
     show defaultPromptTemplates;
 import 'package:uxnan/presentation/screens/threads/thread_list_controls.dart'
@@ -476,6 +477,14 @@ final contextUsageForProvider =
 final activeTimelineProvider = StreamProvider<TurnTimelineSnapshot>(
   (ref) => ref.watch(threadManagerProvider).timelineStream,
 );
+
+/// The active thread's scroll-rail anchors (one per user message), derived and
+/// memoized off [activeTimelineProvider] so the mapping runs once per timeline
+/// change rather than on every conversation rebuild, and stays unit-testable.
+final railAnchorsProvider = Provider<RailAnchors>((ref) {
+  final messages = ref.watch(activeTimelineProvider).value?.messages;
+  return messages == null ? RailAnchors.empty : deriveRailAnchors(messages);
+});
 
 /// The thread with the given id (from the reactive thread list), for the UI.
 final threadByIdProvider = Provider.family<Thread?, String>((ref, threadId) {

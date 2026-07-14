@@ -667,6 +667,14 @@ reasoning or activity auto-collapses the previously open process disclosure in
 that same turn. Streaming follows the latest response only until the user
 manually scrolls, and long user prompts use an expandable visual-line preview
 so neither automation nor message length takes control of the reading surface.
+A minimal, reusable **message scroll rail** (`lib/presentation/widgets/message_scroll_rail.dart`)
+— faint at rest on the right edge, one short tick per user message — reveals on
+a slight drag with a dock-style fisheye and a message preview, jumping to the
+picked message on release, then auto-hides; it is a self-contained,
+dependency-free widget fed by a memoized `railAnchorsProvider`. Floating scroll
+shortcuts are **bottom-centered** and transient (jump-to-latest in the
+conversation, back-to-top in the git history), keeping them clear of the left
+turn-controls and right token/context indicators on the composer ribbon.
 
 ---
 
