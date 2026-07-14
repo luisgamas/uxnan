@@ -34,6 +34,23 @@ export type UsageStatus =
 export type UsageSource = 'token';
 
 /**
+ * The kind of billing relationship, so the UI can label an account beyond its
+ * plan name (e.g. distinguish a flat subscription from usage/credit billing).
+ * Derived per provider from its plan / billing signals.
+ */
+export type AccountType =
+  /** A flat paid subscription (Pro / Max / Plus / Pro+ …). */
+  | 'subscription'
+  /** Usage-billed: credits, on-demand, or pay-as-you-go on top of / instead of a plan. */
+  | 'payAsYouGo'
+  /** Free tier. */
+  | 'free'
+  /** A team / organization seat. */
+  | 'team'
+  /** An enterprise plan. */
+  | 'enterprise';
+
+/**
  * A single quota/rate window, expressed as a used-percentage with an optional
  * reset time — the atomic unit a provider reports (e.g. a 5-hour session, a
  * weekly cap, or a model-specific window).
@@ -64,6 +81,34 @@ export interface CreditBalance {
   period: string;
   /** When the balance resets (epoch ms), when known. */
   resetsAt?: number;
+  /** Amount still available this period, in `currency`, when the provider
+   *  reports a remaining balance directly (e.g. Grok on-demand / prepaid). */
+  available?: number;
+}
+
+/**
+ * "Reset credits" a provider grants to roll a hit rate-limit back early — Codex's
+ * rate-limit reset-credit system. Distinct from `credit` (money): these are
+ * redeemable reset tokens, not a balance.
+ */
+/** One redeemable reset — for the per-credit detail (which one, when it expires). */
+export interface ResetCreditEntry {
+  /** Short label the provider gives the reset (e.g. "Full reset"). */
+  title?: string;
+  /** When this reset lapses (epoch ms). */
+  expiresAt?: number;
+}
+
+export interface ResetCredits {
+  /** How many resets can be redeemed right now. */
+  available: number;
+  /** Total resets ever granted to this account, when reported. */
+  totalEarned?: number;
+  /** When the soonest still-available reset lapses (epoch ms), when known. */
+  nextExpiresAt?: number;
+  /** The individual available resets, soonest-expiring first, when the provider
+   *  details them. */
+  entries?: ResetCreditEntry[];
 }
 
 /** One provider's usage snapshot. */
@@ -72,10 +117,12 @@ export interface ProviderUsage {
   status: UsageStatus;
   /** How `windows`/`credit` were obtained (absent for states with no data). */
   source?: UsageSource;
-  account?: { email?: string; organization?: string; plan?: string };
+  account?: { email?: string; organization?: string; plan?: string; accountType?: AccountType };
   /** Quota/rate windows (percentage-based). Empty when none apply. */
   windows: UsageWindow[];
   credit?: CreditBalance;
+  /** Redeemable rate-limit resets (Codex), when the provider grants them. */
+  resetCredits?: ResetCredits;
   /** When this snapshot was produced (epoch ms). */
   updatedAt: number;
   /** Error/hint message for `error` / `authRequired` / `notInstalled` states. */
