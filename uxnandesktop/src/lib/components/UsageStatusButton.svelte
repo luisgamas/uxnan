@@ -132,15 +132,24 @@
             </div>
             {#if windows.length > 0}
               {#each windows as w (w.id)}
-                <UsageMeter window={w} compact />
+                <UsageMeter window={w} compact showReset={config.statusBar.showResetTime === true} />
               {/each}
             {:else}
               <span class={text.meta}>{i18n.t("providers.noData")}</span>
             {/if}
             {#if config.statusBar.showCredit && snap?.credit}
               <span class="font-mono text-[11px] text-muted-foreground">
-                {formatCredit(snap.credit.used, snap.credit.currency)}
-                {#if snap.credit.limit != null}&nbsp;/&nbsp;{formatCredit(snap.credit.limit, snap.credit.currency)}{/if}
+                {#if snap.credit.limit == null && snap.credit.available != null}
+                  {formatCredit(snap.credit.available, snap.credit.currency)}&nbsp;{i18n.t("providers.available")}
+                {:else}
+                  {formatCredit(snap.credit.used, snap.credit.currency)}
+                  {#if snap.credit.limit != null}&nbsp;/&nbsp;{formatCredit(snap.credit.limit, snap.credit.currency)}{/if}
+                {/if}
+              </span>
+            {/if}
+            {#if config.statusBar.showResetCredits && snap?.resetCredits}
+              <span class="text-[11px] text-muted-foreground">
+                {i18n.t("providers.resets")}: {i18n.t("providers.resetsCount", { count: snap.resetCredits.available })}
               </span>
             {/if}
           </div>

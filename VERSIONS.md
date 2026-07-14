@@ -115,6 +115,9 @@ release onward the workflow keeps `latest` current automatically.
 
 | Date (YYYY-MM-DD) | shared | bridge | relay | desktop | mobile |
 | ----------------- | ------ | ------ | ----- | ------- | ------ |
+| 2026-07-13 | — | — | — | 0.0.11-nightly.20260713.2 | — | <!-- desktop: richer provider usage — reset time, Codex resets + redeem, account type, Grok $ (PR #62) — nightly channel -->
+| 2026-07-13 | — | — | — | 0.0.11-nightly.20260713.1 | — | <!-- desktop: multi-agent orchestration run engine + broadcast rework (PR #61) — nightly channel -->
+| 2026-07-11 | — | — | — | 0.0.10-nightly.20260711.1 | — | <!-- desktop: Grok provider usage statistics (PR #60) — nightly channel -->
 | 2026-07-11 | 0.0.5-alpha.20260711 | 0.0.5-alpha.20260711 | — | 0.0.9-alpha.20260711 | 0.0.5-alpha.20260711+20260711 | <!-- shared/bridge: interactive ACP question/approval workflows plus Zero and Grok; desktop: file workspace, smart sidebar, agent views and provider usage; mobile: Zero/Grok, question cards and clearer turn errors (PRs #56-#58) -->
 | 2026-07-05 | — | — | — | 0.0.8-alpha.20260705 | — | <!-- desktop: tooltip system, project cards/icons/tabs, batch theme import, bulk add projects, worktree gating (PRs #47-#52) -->
 | 2026-07-05 | — | — | — | 0.0.7-alpha.20260705 | — | <!-- desktop: update toast redesign with elevated card + release notes link (PR #53) -->

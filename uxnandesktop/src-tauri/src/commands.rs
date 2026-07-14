@@ -71,6 +71,20 @@ pub async fn set_terminal_layout(
     state.persistence.save(&data).map_err(CommandError::from)
 }
 
+/// Persist the frontend-owned orchestration runs (opaque JSON — the `Run` graph,
+/// step states + captured outputs; spec `02d` §3). The frontend debounces these
+/// writes; restored on next startup via `get_app_state` so a run survives a
+/// restart and the engine re-attaches. Mirror of `set_terminal_layout`.
+#[tauri::command]
+pub async fn set_orchestration_runs(
+    state: State<'_, AppState>,
+    runs: serde_json::Value,
+) -> Result<(), CommandError> {
+    let mut data = state.data.write().await;
+    data.orchestration_runs = Some(runs);
+    state.persistence.save(&data).map_err(CommandError::from)
+}
+
 // --- Terminals (PTY) -------------------------------------------------------
 //
 // The frontend chooses `id` (so it can subscribe to `pty:output:{id}` before
@@ -274,6 +288,82 @@ pub async fn pty_write(
     state.pty.write(&id, &data).map_err(CommandError::from)
 }
 
+/// Delay between delivering input and submitting it, so the TUI ingests it before
+/// the Enter arrives as a *separate* event (see below).
+const PASTE_SUBMIT_DELAY_MS: u64 = 50;
+
+/// Longer gap before Enter for a **multi-line** (bracketed) paste: some TUIs
+/// (Claude Code-family agents) briefly *guard* the Enter right after a paste — to
+/// stop an accidental multi-line submit — so a too-quick Enter is swallowed and the
+/// text is left in the composer. This gives that guard time to clear.
+const BRACKETED_SUBMIT_DELAY_MS: u64 = 150;
+
+/// Wrap `text` in bracketed-paste markers (`ESC[200~` … `ESC[201~`), stripping any
+/// terminators already inside it so the payload can't break out of the paste early.
+/// Pure so it can be unit-tested; the Enter is sent separately (see the command).
+fn bracketed_paste(text: &str) -> String {
+    let sanitized = text.replace("\u{1b}[200~", "").replace("\u{1b}[201~", "");
+    format!("\u{1b}[200~{sanitized}\u{1b}[201~")
+}
+
+/// The text payload to write before the (separate) Enter, chosen so the trailing
+/// Enter reliably *submits* on the widest range of agent TUIs:
+///  - **Single-line** (no newline): sent **verbatim**. A bare Enter arriving as a
+///    distinct write then submits it on every TUI — including Claude Code-family
+///    agents that run a *paste guard* (they swallow the Enter right after a
+///    bracketed paste to stop an accidental multi-line submit; a non-paste keeps
+///    that guard from arming, so the Enter goes through).
+///  - **Multi-line** (`\n`/`\r` inside): wrapped in **bracketed paste** so the
+///    whole block lands as one paste and only the trailing Enter submits — never
+///    at the first embedded newline.
+fn pty_submit_payload(text: &str) -> String {
+    if text.contains('\n') || text.contains('\r') {
+        bracketed_paste(text)
+    } else {
+        text.to_string()
+    }
+}
+
+/// Type `text` into an agent's PTY, then submit it with a **separate** Enter — the
+/// robust way to drive an interactive TUI (used by the orchestration broadcast +
+/// run engine). Solves two problems a plain `pty_write("{text}\r")` does not:
+///  1. **Concatenation / no-submit.** Many TUIs treat a `\r` arriving in the *same*
+///     input burst as part of the composer content (a literal newline, or a paste),
+///     not "submit" — so the text is left in the box and the next message appends
+///     to it. Sending the `\r` as a distinct write ~50 ms later makes the app read
+///     it as a real keypress = submit.
+///  2. **Multi-line prompts** (a chained `{{steps…}}` value, a multi-line message)
+///     would otherwise submit at the first embedded `\n`. Multi-line text is sent
+///     as **bracketed paste** so the whole block is one paste unit — see
+///     [`pty_submit_payload`] for why single-line stays verbatim.
+///
+/// Best-effort like `pty_write`: a dead PTY drops it.
+///
+// FOR-DEV: bracketed paste assumes the agent enabled DECSET 2004 (every modern
+// coding TUI — Claude Code, Codex, Gemini, OpenCode, Pi — does). A multi-line
+// submit into an agent with a *long* post-paste Enter guard may still not fire; if
+// one is found, add a per-agent submit strategy (delay / key) here. See FOR-DEV.md.
+#[tauri::command]
+pub async fn pty_paste_submit(
+    state: State<'_, AppState>,
+    id: String,
+    text: String,
+) -> Result<(), CommandError> {
+    let multiline = text.contains('\n') || text.contains('\r');
+    state
+        .pty
+        .write(&id, &pty_submit_payload(&text))
+        .map_err(CommandError::from)?;
+    let delay = if multiline {
+        BRACKETED_SUBMIT_DELAY_MS
+    } else {
+        PASTE_SUBMIT_DELAY_MS
+    };
+    tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+    state.pty.write(&id, "\r").map_err(CommandError::from)?;
+    Ok(())
+}
+
 /// Return the subset of `commands` that resolve to an installed executable
 /// (PATH + PATHEXT). Used by the Settings agent catalog to enable only the
 /// agents actually present on the machine.
@@ -303,6 +393,16 @@ pub async fn usage_detect(
     providers: Vec<crate::usage::UsageProvider>,
 ) -> Result<Vec<crate::usage::UsageProvider>, CommandError> {
     Ok(crate::usage::detect_present(&providers))
+}
+
+/// Redeem one Codex rate-limit reset ("reinicio") from the UI. Returns the outcome
+/// code (`reset` / `nothing_to_reset` / `no_credit` / `already_redeemed`) so the
+/// frontend can message the result and refresh.
+#[tauri::command]
+pub async fn usage_codex_redeem_reset() -> Result<String, CommandError> {
+    crate::usage::codex_redeem_reset()
+        .await
+        .map_err(|e| CommandError::from(AppError::Invalid(e)))
 }
 
 /// Resize a PTY when its pane changes size.
@@ -1098,6 +1198,25 @@ pub async fn ai_commit_models(
         .map_err(CommandError::from)
 }
 
+/// Run an agent **headless** (print-mode) for one orchestration-run step (spec
+/// `02d` §3): drive the installed CLI non-interactively against `prompt` in `cwd`
+/// and return its captured stdout/stderr + the verified exit code. `model` empty
+/// → the CLI's default; `timeoutMs` overrides the default budget. Errors only on
+/// a spawn failure / timeout / unsupported agent — a non-zero exit comes back in
+/// `exitCode` so the engine can gate on it.
+#[tauri::command]
+pub async fn agent_run_headless(
+    agent: String,
+    model: String,
+    prompt: String,
+    cwd: String,
+    timeout_ms: Option<u64>,
+) -> Result<crate::agentrun::HeadlessResult, CommandError> {
+    crate::agentrun::run_headless(&agent, &model, &prompt, &cwd, timeout_ms)
+        .await
+        .map_err(CommandError::from)
+}
+
 /// Payload of the `agent:detected` event: which agent command (if any) the
 /// background process scan found running in a terminal.
 #[derive(Debug, Clone, Serialize)]
@@ -1346,7 +1465,26 @@ pub async fn get_hook_scripts(
 
 #[cfg(test)]
 mod tests {
-    use super::reorder_by_ids;
+    use super::{bracketed_paste, pty_submit_payload, reorder_by_ids};
+
+    #[test]
+    fn bracketed_paste_wraps_and_sanitizes() {
+        // Plain multi-line text is wrapped verbatim between the paste markers.
+        assert_eq!(bracketed_paste("a\nb"), "\u{1b}[200~a\nb\u{1b}[201~");
+        // Any embedded terminators are stripped so the payload can't escape early.
+        let sneaky = "x\u{1b}[201~ then \u{1b}[200~y";
+        assert_eq!(bracketed_paste(sneaky), "\u{1b}[200~x then y\u{1b}[201~");
+    }
+
+    #[test]
+    fn submit_payload_wraps_only_multiline() {
+        // Single-line goes verbatim (a separate Enter then submits on every TUI,
+        // incl. Claude Code-family paste guards).
+        assert_eq!(pty_submit_payload("hello world"), "hello world");
+        // Multi-line (\n or \r) is wrapped so only the trailing Enter submits.
+        assert_eq!(pty_submit_payload("a\nb"), "\u{1b}[200~a\nb\u{1b}[201~");
+        assert_eq!(pty_submit_payload("a\rb"), "\u{1b}[200~a\rb\u{1b}[201~");
+    }
 
     /// A minimal keyed item, so `reorder_by_ids` is exercised without building a
     /// full `RepoData`.

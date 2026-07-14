@@ -465,8 +465,10 @@ interface TurnUsage {
 
 **`ProviderUsage`** (item de `agent/usageStats`, `shared/src/models/usage.ts`):
 ```typescript
-type UsageProvider = 'codex' | 'claude' | 'copilot' | 'gemini';
+type UsageProvider = 'codex' | 'claude' | 'copilot' | 'gemini' | 'grok';
 type UsageStatus = 'ok' | 'authRequired' | 'notInstalled' | 'error';
+
+type AccountType = 'subscription' | 'payAsYouGo' | 'free' | 'team' | 'enterprise';
 
 interface UsageWindow {
   id: string; label: string;
@@ -474,15 +476,27 @@ interface UsageWindow {
   windowMinutes?: number;       // 300=5h, 10080=7d, 43200=30d
   resetsAt?: number;            // epoch ms
 }
-interface CreditBalance { used: number; limit?: number; currency: string; period: string; resetsAt?: number }
+interface CreditBalance {
+  used: number; limit?: number; currency: string; period: string;
+  resetsAt?: number;            // epoch ms
+  available?: number;           // saldo restante cuando el proveedor lo da directo (Grok on-demand/prepaid)
+}
+interface ResetCreditEntry { title?: string; expiresAt?: number }  // detalle por-reinicio
+interface ResetCredits {        // "reinicios" que el proveedor otorga (Codex)
+  available: number;            // redimibles ahora
+  totalEarned?: number;
+  nextExpiresAt?: number;       // epoch ms
+  entries?: ResetCreditEntry[]; // cada reinicio disponible, el que vence primero primero
+}
 
 interface ProviderUsage {
   provider: UsageProvider;
   status: UsageStatus;
   source?: 'token';             // se lee del token del CLI (nunca cookies ni keys pegadas)
-  account?: { email?: string; organization?: string; plan?: string };
+  account?: { email?: string; organization?: string; plan?: string; accountType?: AccountType };
   windows: UsageWindow[];       // ventanas de cuota (%)
-  credit?: CreditBalance;       // saldo cuando el proveedor lo expone (Codex/Claude)
+  credit?: CreditBalance;       // saldo $ cuando el proveedor lo expone (Codex/Claude/Grok)
+  resetCredits?: ResetCredits;  // reinicios de rate-limit redimibles (Codex)
   updatedAt: number;            // epoch ms
   message?: string;             // hint/error para estados != ok
 }

@@ -15,7 +15,8 @@ which tracks assets only a human can provide.)
 standalone app** (three-panel shell, PTY terminals + splits, git worktrees, git
 status/diff/stage/commit/history, agent monitoring with the axum hook server +
 OSC/process layers, settings/themes/i18n, multi-agent orchestration,
-**in-app auto-updater**, **browser-control MCP for agents**, **user quick commands**). 163 Rust backend tests + 137 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
+**in-app auto-updater**, **browser-control MCP for agents**, **orchestration run
+engine**, **user quick commands**). 174 Rust backend tests + 166 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
 (developed on Windows; CI is `{ubuntu, windows}`). **Phase 6 (embedded bridge /
 mobile pairing) is NOT started.**
 
@@ -55,10 +56,18 @@ mobile pairing) is NOT started.**
   (`UXNAN_ENDPOINT_FILE`) survives app restarts; `WSLENV` carries the vars into
   WSL (WSL2 host-loopback is a documented gap). Settings → Agents → Hooks shows a
   card per agent (incl. Pi) + a master install switch.
-- **Multi-agent orchestration** (spec `02d` §3) — a console (status bar, shown with
-  ≥2 live agents) routing a message to all agents, one type (fan-out), or a
-  coordinator's workers, with backpressure + an in-memory coordinator→workers task
-  graph.
+- **Multi-agent orchestration** (spec `02d` §3) — a two-tab console (status bar,
+  shown with ≥2 live agents or any saved run): **Broadcast** (**explicit recipient
+  selection** — tick individuals / whole types / all; coordinator retired — with
+  robust paste+submit delivery and a busy-agent hold cap) + a **run engine**
+  (**Runs**): a DAG of steps with context passing (`{{steps.s1.output}}`),
+  parallel/fan-in dependencies, **headless** steps (print-mode, verified by exit
+  code), **HITL gates**, per-step **retry**, durable persistence + re-attach, and
+  orchestration **MCP tools** for structured agent reports (auto-nudged into
+  chaining interactive steps when the agent has the tool). The builder has a
+  **contextual variable picker** (per-field descriptions + live previews, insert at
+  cursor), **type cards** (headless the default for chaining), **searchable**
+  agent/model/worktree pickers, and an **Examples** menu of ready-made runs.
 - **Cross-cutting (S)** — Settings (theme + terminal profiles w/ OS templates),
   design tokens, full EN/ES i18n + Language picker, agents registry + install
   detection + manual + auto-launch, per-agent env vars, a configurable agent
@@ -72,7 +81,7 @@ mobile pairing) is NOT started.**
   a `FOR-HUMAN.md` item.
 - **AI-provider usage statistics (Settings → Providers)** — native Rust reader
   (`src-tauri/src/usage.rs`, `usage_read`/`usage_detect`) for **Codex, Claude,
-  Copilot, Gemini**, reading each CLI's own stored token → the provider's official
+  Copilot, Gemini, Grok**, reading each CLI's own stored token → the provider's official
   usage API (never cookies / pasted keys). Tabbed UI with per-provider quota
   windows ("% used"), plan/account ("Authenticated as …" with click-to-reveal
   blur), credit, per-provider refresh interval + status-bar visibility, and a
@@ -213,17 +222,39 @@ yet on either side** — the bridge's `desktop/*` handler is also an empty stub
 
 **Agents** — env vars per agent, shell-aware quoting, the configurable Windows
 launch shell (cmd by default), auto-launch on worktree create, and multi-agent
-orchestration (in-memory task graph, @type/@all routing, fan-out, backpressure)
-are **done** (see `CHANGELOG.md` + `architecture/02d` §3). Remaining follow-ups:
+orchestration — **Broadcast** (fan-out + backpressure) and the **run engine** (DAG
+of steps, context passing, headless with verified completion, HITL gates, retry,
+durable persistence, orchestration MCP tools) — are **done** (see `CHANGELOG.md` +
+`architecture/02d` §3). Remaining orchestration follow-ups:
+- [ ] **Headless large context via stdin.** The headless prompt is passed as a CLI
+      argument and capped (~28 KB) to stay under the OS argv limit
+      (`agentrun.rs::MAX_PROMPT_BYTES`); a chained, context-heavy prompt is clipped.
+      Add a per-agent stdin variant for large prompts (pattern in
+      `aicommit::codex_models_inner`).
+- [ ] **Headless in-distro WSL routing.** A headless step in a `\\wsl$` worktree runs
+      the Windows-side CLI against the 9P share (functional but slow); route it
+      through `wsl.exe -d <distro>` with the Linux-side CLI (see `wsl.rs` +
+      `git.rs`'s WSL path). `FOR-DEV:` marker in `agentrun.rs`.
+- [ ] **Per-agent PTY submit strategy.** `pty_paste_submit` (bracketed paste + a
+      delayed Enter, 150 ms for multi-line) covers standard TUIs, but a Claude
+      Code-family agent with a *long* post-paste Enter guard may still leave a
+      multi-line prompt unsent when driven interactively. Add a per-agent submit
+      override (delay / key) if one is found. `FOR-DEV:` marker in `commands.rs`
+      (`pty_paste_submit`). Headless avoids typing entirely, so it's the workaround.
+- [ ] **Remediation + evaluator-optimizer.** `onFailure: "remediate:<stepId>"` (run a
+      fix step, then retry) and a `kind: "eval"` step (generate → evaluate → loop) —
+      the DAG/model supports them; the scheduler + UI don't yet.
+- [ ] **`orchestration_raise_gate` MCP tool / agent-created steps.** Let a coordinator
+      agent request a human gate or spawn worker steps over the injected MCP channel
+      (the report tools exist; step-creation from an agent doesn't).
+- [ ] **Background (Tokio) run engine.** The engine advances while the app is open;
+      runs are durable and re-attach on load, but a closed app doesn't progress a
+      run. A backend driver would let runs advance headless. (LangGraph-style:
+      durable data, re-attachable driver — the data half is done.)
 - [ ] **Orchestration lineage in the *main* sidebar.** The coordinator→workers
-      task graph is surfaced in the orchestration console today (spec `02d` §3.4
-      updated to match). Moving the nested lineage into the left project tree is
-      a larger sidebar-tree refactor, deferred.
-- [ ] **Agent-driven worker creation.** §3.1's "a coordinator *creates* worker
-      agents in their own worktrees" needs an agent→ADE control channel that
-      doesn't exist yet (agents are opaque CLIs). Today the user creates the
-      worktrees/agents and designates the coordinator/workers. Unblocks with the
-      embedded bridge / a local control API.
+      relation and a run's step graph are surfaced in the console today (spec `02d`
+      §3.8 / §3.1). Moving the nested lineage into the left project tree is a larger
+      sidebar-tree refactor, deferred.
 - [ ] Persist the per-worktree launch agent onto `WorktreeData.agentId` (today
       the choice drives the one-shot launch but isn't recorded on the worktree).
 
@@ -303,7 +334,7 @@ are **done** (see `CHANGELOG.md` + `architecture/02d` §3). Remaining follow-ups
 
 - ✅ **Verify** — `.github/workflows/ci-desktop.yml` runs svelte-check + `npm test`
   (Vitest) + vite build + cargo fmt/clippy/test on `{ubuntu, windows}` (macOS
-  deferred with Apple). 126 Rust + 57 Vitest tests.
+  deferred with Apple). 165 Rust + 146 Vitest tests.
 - ✅ **`release-desktop.yml`** — exists: `tauri-action` bundles on a `desktop-v*` tag
   → draft GitHub Release, **and signs the updater artifacts** when the signing
   secrets are set. **Windows ships without OS code-signing for now; macOS deferred.**

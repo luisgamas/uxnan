@@ -3,7 +3,27 @@
 All notable changes to the shared contracts package are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added — richer `agent/usageStats` fields (account type, reset credits, $ balance)
+
+- `ProviderUsage.account` gains **`accountType`**
+  (`AccountType = 'subscription' | 'payAsYouGo' | 'free' | 'team' | 'enterprise'`),
+  derived per provider so a client can identify the account beyond its plan name.
+- `ProviderUsage` gains **`resetCredits`** (`{ available, totalEarned?,
+  nextExpiresAt?, entries?: { title?, expiresAt? }[] }`) — a provider's redeemable
+  rate-limit "resets" (Codex), with per-credit detail (which one, when each expires).
+- `CreditBalance` gains **`available`** — a remaining $ balance the provider reports
+  directly (e.g. Grok on-demand / prepaid).
+- All additive: older payloads deserialize unchanged. Contract mirrored in
+  `architecture/02b`; desktop reader implemented, bridge/mobile consume in Phase 6.
+
 ## [0.0.5-alpha.20260711] - 2026-07-11
+
+### Changed — Grok usage provider
+
+- Extended the `agent/usageStats` `UsageProvider` union with `grok` for the
+  desktop's Grok CLI billing reader and future bridge/mobile consumers.
 
 ### Added — `grok` in the `AgentId` union
 - **`AgentId`** (`src/agents/agent-capabilities.ts`) gains **`'grok'`** — xAI's
@@ -20,7 +40,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   balance — for the providers the caller activated. Params
   `{ providers: UsageProvider[] }` → `{ usage: ProviderUsage[] }`.
 - **Usage models** (`src/models/usage.ts`, exported from the package root):
-  `UsageProvider` (`codex`/`claude`/`copilot`/`gemini`), `UsageStatus`
+  `UsageProvider` (`codex`/`claude`/`copilot`/`gemini`/`grok`), `UsageStatus`
   (`ok`/`authRequired`/`notInstalled`/`error`), `UsageSource` (`token`),
   `UsageWindow`, `CreditBalance`, `ProviderUsage`, and the
   `UsageStatsParams`/`UsageStatsResult` request/response shapes.

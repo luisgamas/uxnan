@@ -27,6 +27,7 @@ import type {
   ProviderUsage,
   QuickCommand,
   RepoData,
+  SavedRun,
   SavedTerminalLayout,
   UpdateInfo,
   UsageProvider,
@@ -91,6 +92,12 @@ export function usageRead(providers: UsageProvider[]): Promise<ProviderUsage[]> 
  *  the Providers catalog can enable only the available ones. */
 export function usageDetect(providers: UsageProvider[]): Promise<UsageProvider[]> {
   return invoke<UsageProvider[]>("usage_detect", { providers });
+}
+
+/** Redeem one Codex rate-limit reset ("reinicio"). Returns the outcome code
+ *  (`reset` / `nothing_to_reset` / `no_credit` / `already_redeemed`). */
+export function usageCodexRedeemReset(): Promise<string> {
+  return invoke<string>("usage_codex_redeem_reset");
 }
 
 /** Coordinates of the local agent hook server (null until it's listening). */
@@ -205,6 +212,12 @@ export function setTerminalLayout(
   layout: SavedTerminalLayout | null,
 ): Promise<void> {
   return invoke("set_terminal_layout", { layout });
+}
+
+/** Persist the orchestration engine's runs (opaque `Run[]` blob; restored on
+ *  next startup so a run survives a restart — spec `02d` §3). */
+export function setOrchestrationRuns(runs: SavedRun[]): Promise<void> {
+  return invoke("set_orchestration_runs", { runs });
 }
 
 // --- Repositories & worktrees ----------------------------------------------
@@ -638,6 +651,34 @@ export function aiCommitAgents(): Promise<string[]> {
  *  Claude/Gemini, a live CLI query for OpenCode/Pi/Codex). */
 export function aiCommitModels(agentId: string): Promise<AgentModel[]> {
   return invoke<AgentModel[]>("ai_commit_models", { agentId });
+}
+
+/** Captured result of a headless (print-mode) agent run: raw output + the
+ *  verified process exit code (`null` if terminated by a signal). */
+export interface HeadlessResult {
+  stdout: string;
+  stderr: string;
+  exitCode: number | null;
+}
+
+/** Run an agent headless (print-mode) for one orchestration-run step: drive the
+ *  installed CLI non-interactively against `prompt` in `cwd`, capturing its full
+ *  stdout + a verified exit code (the engine's completion signal). `model` empty
+ *  → the CLI's default; `timeoutMs` overrides the backend default. */
+export function agentRunHeadless(
+  agent: string,
+  model: string,
+  prompt: string,
+  cwd: string,
+  timeoutMs?: number,
+): Promise<HeadlessResult> {
+  return invoke<HeadlessResult>("agent_run_headless", {
+    agent,
+    model,
+    prompt,
+    cwd,
+    timeoutMs: timeoutMs ?? null,
+  });
 }
 
 // --- Auto-updater (Settings → Updates) -------------------------------------
